@@ -3,7 +3,7 @@
 
 /**
  * The Motion Space's two floating panels and the execution list's tab (#1490 design §13.8). At most one panel is open;
- * the execution list keeps its tab while closed, and the annotation panel may focus one thread.
+ * the execution list keeps its tab while closed. Which thread the annotation panel shows is `useMotionAnnotations`'.
  */
 
 /** Which execution-list tab shows. */
@@ -13,8 +13,6 @@ export type MotionTab = 'done' | 'running';
 export interface MotionPanelsState {
   panel: 'none' | 'executions' | 'annotations';
   tab: MotionTab;
-  /** The thread the annotation panel opened on, or null. */
-  focusThreadId: string | null;
 }
 
 /** What can happen to the panels. */
@@ -23,8 +21,8 @@ export type MotionPanelsEvent =
   | { type: 'toggle_annotations' }
   | { type: 'new' }
   | { type: 'accepted'; created: boolean; tab: MotionTab }
-  | { type: 'marker'; threadId: string }
-  | { type: 'notification'; threadId: string }
+  /** A thread opened: from its marker, its pin, the panel, "Modified from" or a notification. */
+  | { type: 'open_thread' }
   | { type: 'locate' }
   | { type: 'escape' }
   | { type: 'leave' }
@@ -32,7 +30,7 @@ export type MotionPanelsEvent =
   | { type: 'pick_tab'; tab: MotionTab };
 
 /** Both panels closed, on the completed tab. */
-export const MOTION_PANELS_CLOSED: MotionPanelsState = { panel: 'none', tab: 'done', focusThreadId: null };
+export const MOTION_PANELS_CLOSED: MotionPanelsState = { panel: 'none', tab: 'done' };
 
 /**
  * The panels after one event.
@@ -44,17 +42,16 @@ export const MOTION_PANELS_CLOSED: MotionPanelsState = { panel: 'none', tab: 'do
 export function transitionMotionPanels(state: MotionPanelsState, event: MotionPanelsEvent): MotionPanelsState {
   switch (event.type) {
     case 'toggle_executions':
-      return { ...state, panel: state.panel === 'executions' ? 'none' : 'executions', focusThreadId: null };
+      return { ...state, panel: state.panel === 'executions' ? 'none' : 'executions' };
     case 'toggle_annotations':
-      return { ...state, panel: state.panel === 'annotations' ? 'none' : 'annotations', focusThreadId: null };
+      return { ...state, panel: state.panel === 'annotations' ? 'none' : 'annotations' };
     case 'accepted':
-      return { panel: 'executions', tab: event.tab, focusThreadId: null };
-    case 'marker':
-    case 'notification':
-      return { ...state, panel: 'annotations', focusThreadId: event.threadId };
+      return { panel: 'executions', tab: event.tab };
+    case 'open_thread':
+      return { ...state, panel: 'annotations' };
     case 'escape':
     case 'leave':
-      return { ...state, panel: 'none', focusThreadId: null };
+      return { ...state, panel: 'none' };
     case 'show_tab':
     case 'pick_tab':
       return { ...state, tab: event.tab };

@@ -24,6 +24,9 @@ interface MotionThreadCardProps {
   viewerId: string | undefined;
   /** Whether this connection may write annotations now. */
   canWrite: boolean;
+  /** What has been written in its reply box and not sent, kept outside the card so it outlives the card. */
+  draft: string;
+  onDraft: (threadId: string, body: string) => void;
 }
 
 /**
@@ -37,13 +40,13 @@ interface MotionThreadCardProps {
  * @param props.myRole - The user's role.
  * @param props.viewerId - The user's id.
  * @param props.canWrite - Whether annotations may be written now.
+ * @param props.draft - Its unsent reply.
+ * @param props.onDraft - Keeps its unsent reply.
  * @returns The card.
  * @throws {never} Never.
  */
-export function MotionThreadCard({ thread, timeSeconds, store, myRole, viewerId, canWrite }: MotionThreadCardProps): React.JSX.Element {
+export function MotionThreadCard({ thread, timeSeconds, store, myRole, viewerId, canWrite, draft, onDraft }: MotionThreadCardProps): React.JSX.Element {
   const t = useTranslation();
-  // Unsent replies by thread: the card stays mounted while the user opens one thread after another.
-  const [drafts, setDrafts] = React.useState<ReadonlyMap<string, string>>(() => new Map());
   const authorIds = React.useMemo(() => thread.comments.map((comment) => comment.userId), [thread.comments]);
   const profiles = useUserProfiles(authorIds);
   const card = React.useMemo((): CommentCardView => ({
@@ -61,7 +64,6 @@ export function MotionThreadCard({ thread, timeSeconds, store, myRole, viewerId,
       fromAgent: false,
     })),
   }), [thread, timeSeconds, profiles]);
-  const onDraft = React.useCallback((threadId: string, body: string): void => setDrafts((current) => new Map(current).set(threadId, body)), []);
   /**
    * Run one write; a full Space has said so in its own toast.
    * @param write - The write.
@@ -85,7 +87,7 @@ export function MotionThreadCard({ thread, timeSeconds, store, myRole, viewerId,
   const onDelete = React.useCallback((threadId: string): void => { void run(() => store.deleteThread({ threadId })); }, [run, store]);
   const onDeleteReply = React.useCallback((threadId: string, commentId: string): void => { void run(() => store.deleteComment({ threadId, commentId })); }, [run, store]);
   return <div data-testid='motion-thread-card' className='w-72'>
-    <DocumentCommentCard card={card} marked={false} reading myRole={canWrite ? myRole : 'viewer'} viewerId={viewerId} draft={drafts.get(thread.id) ?? ''} onDraft={onDraft}
+    <DocumentCommentCard card={card} marked={false} reading myRole={canWrite ? myRole : 'viewer'} viewerId={viewerId} draft={draft} onDraft={onDraft}
       onReply={onReply} onResolve={onResolve} onReopen={onReopen} onDelete={onDelete} onDeleteReply={onDeleteReply} />
   </div>;
 }

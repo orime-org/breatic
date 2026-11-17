@@ -10,12 +10,9 @@ import { describe, expect, it } from 'vitest';
 
 import { transitionMotionPanels, type MotionPanelsEvent, type MotionPanelsState } from '@web/spaces/web-animation/motion-panels';
 
-const T = 't0000000-0000-4000-8000-000000000001';
-const U = 'u0000000-0000-4000-8000-000000000002';
-
-const closed = (tab: 'done' | 'running' = 'done'): MotionPanelsState => ({ panel: 'none', tab, focusThreadId: null });
-const executions = (tab: 'done' | 'running' = 'done'): MotionPanelsState => ({ panel: 'executions', tab, focusThreadId: null });
-const annotations = (focusThreadId: string | null = null): MotionPanelsState => ({ panel: 'annotations', tab: 'done', focusThreadId });
+const closed = (tab: 'done' | 'running' = 'done'): MotionPanelsState => ({ panel: 'none', tab });
+const executions = (tab: 'done' | 'running' = 'done'): MotionPanelsState => ({ panel: 'executions', tab });
+const annotations = (): MotionPanelsState => ({ panel: 'annotations', tab: 'done' });
 
 type Row = [string, MotionPanelsEvent, MotionPanelsState];
 
@@ -25,10 +22,9 @@ const FROM_CLOSED: Row[] = [
   ['New', { type: 'new' }, closed()],
   ['a new row accepted', { type: 'accepted', created: true, tab: 'running' }, executions('running')],
   ['an existing row answered', { type: 'accepted', created: false, tab: 'done' }, executions('done')],
-  ['a marker on the scrub bar', { type: 'marker', threadId: T }, annotations(T)],
+  ['a thread opened (marker, pin, panel, Modified from)', { type: 'open_thread' }, annotations()],
   ['a locate request', { type: 'locate' }, closed()],
   ['Esc', { type: 'escape' }, closed()],
-  ['a notification', { type: 'notification', threadId: T }, annotations(T)],
   ['leaving', { type: 'leave' }, closed()],
 ];
 
@@ -38,23 +34,21 @@ const FROM_EXECUTIONS: Row[] = [
   ['New', { type: 'new' }, executions()],
   ['a new row accepted', { type: 'accepted', created: true, tab: 'running' }, executions('running')],
   ['an existing row answered', { type: 'accepted', created: false, tab: 'done' }, executions('done')],
-  ['a marker on the scrub bar', { type: 'marker', threadId: T }, annotations(T)],
+  ['a thread opened (marker, pin, panel, Modified from)', { type: 'open_thread' }, annotations()],
   ['a locate request', { type: 'locate' }, executions()],
   ['Esc', { type: 'escape' }, closed()],
-  ['a notification', { type: 'notification', threadId: T }, annotations(T)],
   ['leaving', { type: 'leave' }, closed()],
 ];
 
 const FROM_ANNOTATIONS: Row[] = [
   ['Executions', { type: 'toggle_executions' }, executions()],
   ['Annotations', { type: 'toggle_annotations' }, closed()],
-  ['New', { type: 'new' }, annotations(U)],
+  ['New', { type: 'new' }, annotations()],
   ['a new row accepted', { type: 'accepted', created: true, tab: 'running' }, executions('running')],
   ['an existing row answered', { type: 'accepted', created: false, tab: 'done' }, executions('done')],
-  ['a marker on the scrub bar', { type: 'marker', threadId: T }, annotations(T)],
-  ['a locate request', { type: 'locate' }, annotations(U)],
+  ['a thread opened (marker, pin, panel, Modified from)', { type: 'open_thread' }, annotations()],
+  ['a locate request', { type: 'locate' }, annotations()],
   ['Esc', { type: 'escape' }, closed()],
-  ['a notification', { type: 'notification', threadId: T }, annotations(T)],
   ['leaving', { type: 'leave' }, closed()],
 ];
 
@@ -67,8 +61,8 @@ describe('transitionMotionPanels', () => {
     expect(transitionMotionPanels(executions(), event)).toEqual(next);
   });
 
-  it.each(FROM_ANNOTATIONS)('with the annotation panel open on a thread, %s', (_name, event, next) => {
-    expect(transitionMotionPanels(annotations(U), event)).toEqual(next);
+  it.each(FROM_ANNOTATIONS)('with the annotation panel open, %s', (_name, event, next) => {
+    expect(transitionMotionPanels(annotations(), event)).toEqual(next);
   });
 
   it('switches the execution list\'s tab when the selected row asks for one, keeping the panel', () => {

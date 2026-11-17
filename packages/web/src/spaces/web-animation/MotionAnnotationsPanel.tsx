@@ -12,6 +12,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { bodyText } from '@web/spaces/document/use-comment-cards';
 import { annotationGroups, type ListedAnnotation } from '@web/spaces/web-animation/annotation-groups';
+import type { AnnotationFilter } from '@web/spaces/web-animation/use-motion-annotations';
 import { MotionPanel } from '@web/spaces/web-animation/motion-parts';
 import { webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
 
@@ -56,7 +57,7 @@ const AnnotationItem = React.memo(function AnnotationItem({ item, author, active
     comments.length > 1 ? t('spaces.webAnimation.replies', { count: comments.length - 1 }) : null,
     item.anchor.point !== null ? t('spaces.webAnimation.hasPoint') : null,
   ].filter((part): part is string => part !== null).join(' · ');
-  return <Button type='button' variant={null} size={null} data-testid={`motion-annotation-${item.id}`} onClick={open}
+  return <Button type='button' variant={null} size={null} data-testid={`motion-annotation-${item.id}`} data-thread-id={item.id} aria-current={active ? 'true' : undefined} onClick={open}
     className={cn('flex w-full gap-2 px-3 py-2 text-left hover-enabled:bg-accent', active && 'bg-accent-strong hover-enabled:bg-accent-strong')}>
     <span className='mt-0.5 w-10 shrink-0 text-2xs tabular-nums text-muted-foreground'>{formatAnnotationTime(item.anchor.timeSeconds)}</span>
     <span className='flex min-w-0 flex-1 flex-col gap-0.5'>
@@ -73,6 +74,11 @@ interface MotionAnnotationsPanelProps {
   order: readonly string[];
   rows: ReadonlyMap<string, WebAnimationRowView>;
   activeThreadId: string | null;
+  /** Open leaves resolved threads out; opening a resolved thread switches it to All. */
+  filter: AnnotationFilter;
+  onFilter: (filter: AnnotationFilter) => void;
+  /** The list's scroller, which opening a thread scrolls to its item. */
+  viewportRef: React.Ref<HTMLDivElement>;
   onOpen: (threadId: string) => void;
   onClose: () => void;
 }
@@ -85,16 +91,18 @@ interface MotionAnnotationsPanelProps {
  * @param props.order - Result ids in the execution list's order.
  * @param props.rows - The loaded rows, for group titles.
  * @param props.activeThreadId - The thread whose card is open.
+ * @param props.filter - Which threads it lists.
+ * @param props.onFilter - Switches between Open and All.
+ * @param props.viewportRef - Receives the list's scroller.
  * @param props.onOpen - Opens a thread on its result and time.
  * @param props.onClose - Closes the panel.
  * @returns The panel.
  * @throws {never} Never.
  */
-export function MotionAnnotationsPanel({ threads, order, rows, activeThreadId, onOpen, onClose }: MotionAnnotationsPanelProps): React.JSX.Element {
+export function MotionAnnotationsPanel({ threads, order, rows, activeThreadId, filter, onFilter, viewportRef, onOpen, onClose }: MotionAnnotationsPanelProps): React.JSX.Element {
   const t = useTranslation();
-  const [filter, setFilter] = React.useState<'open' | 'all'>('open');
-  const showOpen = React.useCallback((): void => setFilter('open'), []);
-  const showAll = React.useCallback((): void => setFilter('all'), []);
+  const showOpen = React.useCallback((): void => onFilter('open'), [onFilter]);
+  const showAll = React.useCallback((): void => onFilter('all'), [onFilter]);
   const groups = React.useMemo(() => annotationGroups(threads, { order, filter }), [threads, order, filter]);
   const live = threads.filter((thread) => thread.deletedAt === undefined);
   const openCount = live.filter((thread) => !thread.resolved).length;
@@ -109,7 +117,7 @@ export function MotionAnnotationsPanel({ threads, order, rows, activeThreadId, o
         {t('spaces.webAnimation.annotationsAll', { count: live.length })}
       </Button>
     </div>
-    <ScrollArea className='min-h-0 flex-1'>
+    <ScrollArea className='min-h-0 flex-1' viewportRef={viewportRef}>
       {groups.length === 0
         ? <p className='p-6 text-center text-xs text-muted-foreground'>{t(filter === 'open' && live.length > 0 ? 'spaces.webAnimation.noOpenAnnotations' : 'spaces.webAnimation.noAnnotations')}</p>
         : groups.map((group) => {

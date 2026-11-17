@@ -9,7 +9,7 @@ import {
   MessageSquarePlus, Pause, Pencil, Play, Plus, RotateCcw, Undo2, Upload, Video, X,
 } from 'lucide-react';
 import { formatCredits, getLocale, newId } from '@breatic/shared';
-import { anchorTimeWithin, readWebAnimationAnchor, webAnimationExecutionEnded, webAnimationExecutionFailed, type WebAnimationRowView } from '@breatic/shared/space-content';
+import { anchorTimeWithin, webAnimationExecutionEnded, webAnimationExecutionFailed, type WebAnimationRowView } from '@breatic/shared/space-content';
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@web/components/ui/alert-dialog';
 import { Button } from '@web/components/ui/button';
@@ -49,6 +49,7 @@ import { MotionAnnotationsPanel, formatAnnotationTime } from '@web/spaces/web-an
 import { MotionExecutionsPanel } from '@web/spaces/web-animation/MotionExecutionsPanel';
 import { MotionResultPlayer } from '@web/spaces/web-animation/MotionResultPlayer';
 import { MotionThreadCard } from '@web/spaces/web-animation/MotionThreadCard';
+import { useMotionAnnotations } from '@web/spaces/web-animation/use-motion-annotations';
 import { useMotionClock } from '@web/spaces/web-animation/use-motion-clock';
 import { rowsOf, useMotionLists } from '@web/spaces/web-animation/use-motion-lists';
 import { WebAnimationDialog } from '@web/spaces/web-animation/WebAnimationDialog';
@@ -72,21 +73,6 @@ function ratioOf(row: WebAnimationRowView): number {
   if (row.kind === 'web_animation_export') return row.input.width / row.input.height;
   const [width, height] = row.input.aspect.split(':').map(Number) as [number, number];
   return width / height;
-}
-
-/**
- * The Space's annotation threads, kept current from its thread store.
- * @param store - The store.
- * @returns The threads.
- * @throws {never} Never.
- */
-function useThreads(store: ReturnType<typeof webAnimationAnnotationStore>): ThreadData[] {
-  const [threads, setThreads] = React.useState<ThreadData[]>(() => [...store.getThreads().values()]);
-  React.useEffect(() => {
-    setThreads([...store.getThreads().values()]);
-    return store.subscribe((all) => setThreads([...all.values()]));
-  }, [store]);
-  return threads;
 }
 
 /** "Put on canvas" for an exported video. */
@@ -176,10 +162,14 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
 /** The details popover's props. */
 interface DetailsProps {
   row: WebAnimationRowView;
+  /** Whether its popover is open; opening an annotation closes it. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   unresolvedOnBase: number;
   readOnly: boolean;
   onCancel: (row: WebAnimationRowView) => void;
-  onOpen: (executionId: string) => void;
+  /** Opens the result a modification started from, at its earliest open annotation. */
+  onOpenBase: () => void;
 }
 
 /**
@@ -187,21 +177,22 @@ interface DetailsProps {
  * modified from with that result's open annotations, why it failed, and Cancel while it runs.
  * @param props - The row and what the details offer.
  * @param props.row - The row.
+ * @param props.open - Whether the popover is open.
+ * @param props.onOpenChange - Opens or closes it.
  * @param props.unresolvedOnBase - Open annotations on the result a modification started from.
  * @param props.readOnly - Whether the user may act.
  * @param props.onCancel - Cancels it.
- * @param props.onOpen - Opens the result a modification started from.
+ * @param props.onOpenBase - Opens the result a modification started from.
  * @returns The popover.
  * @throws {never} Never.
  */
-function Details({ row, unresolvedOnBase, readOnly, onCancel, onOpen }: DetailsProps): React.JSX.Element {
+function Details({ row, open, onOpenChange, unresolvedOnBase, readOnly, onCancel, onOpenBase }: DetailsProps): React.JSX.Element {
   const t = useTranslation();
   const cancelling = useRunning(cancelIntent(row.id)) !== undefined;
   const unfinished = !webAnimationExecutionEnded(row.status);
   const cancel = React.useCallback((): void => onCancel(row), [onCancel, row]);
   const base = row.kind === 'web_animation_modify' ? row.base : null;
-  const openBase = React.useCallback((): void => { if (base !== null) onOpen(base.executionId); }, [base, onOpen]);
-  return <Popover>
+  return <Popover open={open} onOpenChange={onOpenChange}>
     <PopoverTrigger asChild>
       <BarButton testId='motion-details' label={t('spaces.webAnimation.details')} icon={<Ellipsis className='size-4' />} />
     </PopoverTrigger>
@@ -218,7 +209,7 @@ function Details({ row, unresolvedOnBase, readOnly, onCancel, onOpen }: DetailsP
         </dd>
         {base !== null && <>
           <dt className='text-muted-foreground'>{t('spaces.webAnimation.modifiedFromLabel')}</dt>
-          <dd><Button type='button' variant={null} size={null} className='text-left underline' onClick={openBase}>
+          <dd><Button type='button' variant={null} size={null} className='text-left underline' onClick={onOpenBase}>
             {unresolvedOnBase > 0 ? t('spaces.webAnimation.baseWithAnnotations', { base: base.request, count: unresolvedOnBase }) : base.request}
           </Button></dd>
         </>}
@@ -266,7 +257,6 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const doc = React.useMemo(() => getDoc(docName.webAnimationSpace(projectId, spaceId)), [projectId, spaceId]);
   const readWho = React.useCallback(() => ({ role: myRole, viewerId }), [myRole, viewerId]);
   const store = React.useMemo(() => webAnimationAnnotationStore({ doc, readWho }), [doc, readWho]);
-  const threads = useThreads(store);
   const docReady = connection.hasEverSynced;
   const annotationsWritable = !readOnly && docReady && connection.writeAccess !== 'denied';
 
@@ -347,7 +337,8 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
 
   // Every change of the shown result passes the annotation draft first (design §13.7 switch_result): a draft without
   // words closes; one with words asks, and the switch waits for the user to agree to discard it.
-  const [activeThreadId, setActiveThreadId] = React.useState<string | null>(null);
+  // The card of a thread the user just wrote opens; set once the annotations below exist.
+  const showWritten = React.useRef<(threadId: string) => void>(() => undefined);
   const [annotation, setAnnotation] = React.useState(ANNOTATION_DRAFT_IDLE);
   // Which close of a draft with words the user is asked to confirm.
   const [discardAsked, setDiscardAsked] = React.useState<'cancel' | 'switch_result' | null>(null);
@@ -364,7 +355,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
       if (effect.type === 'write') {
         store.createThread({ initialComment: { body: asCommentBody(effect.text.trim()) as never }, metadata: { webAnimationAnchor: effect.anchor } }).then((thread) => {
           annotate({ type: 'written' });
-          setActiveThreadId(thread.id);
+          showWritten.current(thread.id);
         }, (err: unknown) => annotate({ type: 'write_failed', reason: err instanceof SpaceFullError ? 'space_full' : 'failed' }));
       }
     }
@@ -493,23 +484,21 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const retryExportAsset = React.useCallback((): void => { void refetchExportAsset(); }, [refetchExportAsset]);
   const download = React.useCallback((): void => { if (exportAsset !== undefined) downloadAsset(exportAsset.fileUrl); }, [exportAsset]);
 
-  // Annotations (design §10).
-  const resultThreads = React.useMemo(() => threads.flatMap((thread) => {
-    const anchor = readWebAnimationAnchor(thread.metadata);
-    return thread.deletedAt === undefined && anchor !== null && anchor.executionId === selectedId ? [{ thread, anchor }] : [];
-  }), [threads, selectedId]);
-  const activeThread = React.useMemo(() => {
-    const thread = threads.find((item) => item.id === activeThreadId && item.deletedAt === undefined);
-    const anchor = thread === undefined ? null : readWebAnimationAnchor(thread.metadata);
-    return thread === undefined || anchor === null ? null : { thread, anchor };
-  }, [threads, activeThreadId]);
+  // Annotations (design §10): one owner opens a thread from every entry and keeps the unsent replies.
+  const openAnnotationPanel = React.useCallback((): void => dispatchPanels({ type: 'open_thread' }), []);
+  const focused = React.useCallback((threadId: string): void => select({ type: 'focused', threadId }), [select]);
+  const annotations = useMotionAnnotations({
+    store, selectedId, focusThreadId: selection.status === 'selected' ? selection.focusThreadId : null,
+    baseExecutionId: row?.kind === 'web_animation_modify' ? row.base.executionId : null,
+    showResult, locate, openPanel: openAnnotationPanel, seek: seekClock, onFocused: focused,
+  });
+  const { threads, resultThreads, activeThread, openThread, closeThread } = annotations;
+  showWritten.current = annotations.showWritten;
   React.useEffect(() => { annotate(docReady ? { type: 'reconnect' } : { type: 'disconnect' }); }, [docReady, annotate]);
   const addAnnotation = React.useCallback((): void => {
-    if (selectedId !== null) {
-      setActiveThreadId(null);
-      // The anchor's time lies within the result (design §13.6).
-      annotate({ type: 'add', executionId: selectedId, timeSeconds: anchorTimeWithin(clockTime.current, durationSeconds) });
-    }
+    // The open card hides while the annotation is written and shows again after (design §13.7).
+    // The anchor's time lies within the result (design §13.6).
+    if (selectedId !== null) annotate({ type: 'add', executionId: selectedId, timeSeconds: anchorTimeWithin(clockTime.current, durationSeconds) });
   }, [selectedId, durationSeconds, annotate]);
   const clickFrame = React.useCallback((event: React.MouseEvent<HTMLDivElement>): void => {
     if (annotationRef.current.status !== 'picking' && annotationRef.current.status !== 'writing') return;
@@ -534,45 +523,12 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const typeAnnotation = React.useCallback((text: string): void => annotate({ type: 'type', text }), [annotate]);
   const sendAnnotation = React.useCallback((): void => annotate({ type: 'send' }), [annotate]);
   const cancelAnnotation = React.useCallback((): void => annotate({ type: 'cancel', confirmed: false }), [annotate]);
-  // Opening a thread locates its result with the thread as the selection's focus, whether that result shows already or
-  // not; the playhead jumps once the focused thread's result shows, and the focus is spent (design §10.1, §13.2).
-  const openThread = React.useCallback((threadId: string): void => {
-    const thread = threads.find((item) => item.id === threadId);
-    const anchor = thread === undefined ? null : readWebAnimationAnchor(thread.metadata);
-    if (anchor === null) return;
-    showResult(() => {
-      setActiveThreadId(threadId);
-      locate(anchor.executionId, threadId);
-    });
-  }, [threads, showResult, locate]);
-  const focusThreadId = selection.status === 'selected' ? selection.focusThreadId : null;
-  React.useEffect(() => {
-    if (focusThreadId === null || activeThread === null || activeThread.thread.id !== focusThreadId || activeThread.anchor.executionId !== selectedId) return;
-    seekClock(activeThread.anchor.timeSeconds);
-    select({ type: 'focused', threadId: focusThreadId });
-  }, [focusThreadId, activeThread, selectedId, seekClock, select]);
-  const openMarker = React.useCallback((threadId: string): void => {
-    dispatchPanels({ type: 'marker', threadId });
-    openThread(threadId);
-  }, [openThread]);
-  const closeThread = React.useCallback((): void => setActiveThreadId(null), []);
   const pickRow = React.useCallback((id: string): void => showResult(() => {
-    setActiveThreadId(null);
+    closeThread();
     pick(id);
-  }), [showResult, pick]);
+  }), [showResult, closeThread, pick]);
   const order = React.useMemo(() => [...rowsOf(lists.done.own), ...rowsOf(lists.done.legacy)].map((item) => item.id), [lists.done.own, lists.done.legacy]);
-  // The open annotations on the result a modification started from, earliest first (design §10.1).
-  const baseExecutionId = row?.kind === 'web_animation_modify' ? row.base.executionId : null;
-  const openOnBase = React.useMemo(() => threads.flatMap((thread) => {
-    const anchor = readWebAnimationAnchor(thread.metadata);
-    return !thread.resolved && thread.deletedAt === undefined && anchor !== null && anchor.executionId === baseExecutionId ? [{ id: thread.id, timeSeconds: anchor.timeSeconds }] : [];
-  }).sort((a, b) => a.timeSeconds - b.timeSeconds), [threads, baseExecutionId]);
-  // "Modified from X" opens X's annotations at the earliest open one, or X itself when none is open.
-  const openBase = React.useCallback((executionId: string): void => {
-    const earliest = openOnBase[0];
-    if (earliest === undefined) locateShown(executionId);
-    else openMarker(earliest.id);
-  }, [openOnBase, locateShown, openMarker]);
+  const activeDraft = activeThread === null ? '' : annotations.drafts.get(activeThread.thread.id) ?? '';
 
   const toggleExecutions = React.useCallback((): void => panelsEvent({ type: 'toggle_executions' }), [panelsEvent]);
   const toggleAnnotations = React.useCallback((): void => panelsEvent({ type: 'toggle_annotations' }), [panelsEvent]);
@@ -582,7 +538,6 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const seekValue = React.useMemo(() => [clock.time], [clock.time]);
   const finished = row?.status === 'succeeded';
   const failed = row !== undefined && webAnimationExecutionFailed(row.status);
-  const unresolvedCount = threads.filter((thread) => !thread.resolved && thread.deletedAt === undefined).length;
   const panelOpen = panels.panel !== 'none';
   const frameStyle = React.useMemo(() => {
     const ratio = row === undefined ? 16 / 9 : ratioOf(row);
@@ -600,7 +555,8 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
 
   return <div data-testid='motion-space' className='relative isolate h-full overflow-hidden bg-muted'>
     {panels.panel === 'executions' && <MotionExecutionsPanel lists={lists} tab={panels.tab} selectedId={selectedId} onTab={pickTab} onPick={pickRow} onClose={closePanel} />}
-    {panels.panel === 'annotations' && <MotionAnnotationsPanel threads={threads} order={order} rows={lists.byId} activeThreadId={activeThreadId} onOpen={openThread} onClose={closePanel} />}
+    {panels.panel === 'annotations' && <MotionAnnotationsPanel threads={threads} order={order} rows={lists.byId} activeThreadId={activeThread?.thread.id ?? null}
+      filter={annotations.filter} onFilter={annotations.setFilter} viewportRef={annotations.viewportRef} onOpen={openThread} onClose={closePanel} />}
     <div className={cn('absolute bottom-[4.5rem] left-6 top-6 flex items-center justify-center', panelOpen ? 'right-[22rem]' : 'right-6')} style={{ containerType: 'size' }}>
       {row === undefined
         ? selection.status === 'fetching' || doneShows === 'pending'
@@ -644,7 +600,8 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
           {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the click is only kept from the frame */}
           {activeThread !== null && activeThread.anchor.executionId === row.id && annotation.status === 'idle' && <div className='absolute z-20' style={cardStyle(activeThread.anchor.point)} onClick={(event) => event.stopPropagation()}>
             <div className='relative'>
-              <MotionThreadCard thread={activeThread.thread} timeSeconds={activeThread.anchor.timeSeconds} store={store} myRole={myRole} viewerId={viewerId} canWrite={annotationsWritable} />
+              <MotionThreadCard thread={activeThread.thread} timeSeconds={activeThread.anchor.timeSeconds} store={store} myRole={myRole} viewerId={viewerId} canWrite={annotationsWritable}
+                draft={activeDraft} onDraft={annotations.setDraft} />
               <Button type='button' variant='ghost' size='compact' className='absolute right-1 top-1 px-1' aria-label={t('spaces.webAnimation.closePanel')} onClick={closeThread} icon={<X className='size-4' />} />
             </div>
           </div>}
@@ -659,7 +616,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
       <div className='relative mr-2 flex h-8 min-w-24 flex-1 items-center'>
         <Slider aria-label={t('timeline.seek')} value={seekValue} onValueChange={seekTo} min={0} max={Math.max(0.01, durationSeconds)} step={0.01} disabled={!finished} className='w-full' />
         {finished && playable(row) && docReady && resultThreads.map(({ thread, anchor }) => <Button key={thread.id} type='button' variant={null} size={null} data-testid={`motion-marker-${thread.id}`}
-          aria-label={bodyPreview(thread)} onClick={() => openMarker(thread.id)}
+          aria-label={bodyPreview(thread)} onClick={() => openThread(thread.id)}
           className={cn('absolute top-0 h-2.5 w-1.5 -translate-x-1/2 rounded-sm', thread.resolved ? 'bg-muted-foreground' : 'bg-status-selected')}
           style={{ left: `${(anchor.timeSeconds / Math.max(0.01, durationSeconds)) * 100}%` }} />)}
       </div>
@@ -678,13 +635,14 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
           {!readOnly && <PlaceOnCanvas projectId={projectId} row={row} canvases={canvases} />}
           <BarButton testId='motion-action-view-source' label={t('spaces.webAnimation.viewSource')} icon={<Undo2 className='size-4' />} onClick={viewSource} />
         </>}
-        <Details row={row} unresolvedOnBase={openOnBase.length} readOnly={readOnly} onCancel={cancel} onOpen={openBase} />
+        <Details row={row} open={annotations.detailsOpen} onOpenChange={annotations.setDetailsOpen} unresolvedOnBase={annotations.openOnBaseCount} readOnly={readOnly}
+          onCancel={cancel} onOpenBase={annotations.openBase} />
       </>}
       <Separator orientation='vertical' className='mx-1 h-5' />
       <BarButton testId='motion-open-executions' label={t('spaces.webAnimation.executions')} icon={<List className='size-4' />} pressed={panels.panel === 'executions'}
         count={lists.totals.inProgress} onClick={toggleExecutions} />
       <BarButton testId='motion-open-annotations' label={t('spaces.webAnimation.annotations')} icon={<MessageSquare className='size-4' />} pressed={panels.panel === 'annotations'}
-        count={docReady ? unresolvedCount : 0} onClick={toggleAnnotations} loading={!docReady} />
+        count={docReady ? annotations.unresolvedCount : 0} onClick={toggleAnnotations} loading={!docReady} />
       {!readOnly && <BarButton testId='motion-new' label={t('spaces.webAnimation.new')} icon={<Plus className='size-4' />} onClick={openNew} />}
     </div>
     <AlertDialog open={discardAsked !== null} onOpenChange={keepWriting}>

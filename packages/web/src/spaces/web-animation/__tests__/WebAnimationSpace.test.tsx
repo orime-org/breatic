@@ -19,6 +19,7 @@ import { t } from '@breatic/shared';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
+import type * as PopoverModule from '@web/components/ui/popover';
 import { getSceneControls } from '@web/data/api/scene';
 import type * as SceneApiModule from '@web/data/api/scene';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
@@ -45,6 +46,16 @@ vi.mock('@web/data/api/timeline', async (importOriginal) => {
 vi.mock('@hyperframes/player', () => ({}));
 vi.mock('@web/data/api/scene', async (importOriginal) => ({ ...await importOriginal<typeof SceneApiModule>(), getSceneControls: vi.fn() }));
 vi.mock('@web/spaces/canvas/place-video-on-canvas', () => ({ placeVideoOnCanvas: vi.fn() }));
+/** The props every PopoverContent was last rendered with, in render order. */
+const popoverContentProps: Array<Record<string, unknown>> = [];
+vi.mock('@web/components/ui/popover', async (importOriginal) => {
+  const actual = await importOriginal<typeof PopoverModule>();
+  const Recorded = React.forwardRef<HTMLDivElement, React.ComponentProps<typeof actual.PopoverContent>>(function Recorded(props, ref) {
+    popoverContentProps.push(props as Record<string, unknown>);
+    return <actual.PopoverContent ref={ref} {...props} />;
+  });
+  return { ...actual, PopoverContent: Recorded };
+});
 vi.mock('@web/lib/toast', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() } }));
 
 const PROJECT = '60000000-0000-4000-8000-000000000001';
@@ -137,12 +148,40 @@ function showInActivity(readOnly = false): (mode: 'visible' | 'hidden') => void 
  * Seed annotation threads into the Space's document before it opens.
  * @param anchors - Each thread's words, result and time.
  */
-async function seedThreads(anchors: Array<{ text: string; executionId: string; timeSeconds: number }>): Promise<void> {
+async function seedThreads(anchors: Array<{ text: string; executionId: string; timeSeconds: number; point?: { x: number; y: number }; resolved?: boolean }>): Promise<string[]> {
   const store = webAnimationAnnotationStore({ doc: getDoc(docName.webAnimationSpace(PROJECT, SPACE)), readWho: () => ({ role: 'editor', viewerId: 'u1' }) });
-  for (const { text, executionId, timeSeconds } of anchors) {
-    await store.createThread({ initialComment: { body: asCommentBody(text) as never }, metadata: { webAnimationAnchor: { executionId, timeSeconds, point: null } } });
+  const ids: string[] = [];
+  for (const { text, executionId, timeSeconds, point = null, resolved = false } of anchors) {
+    const thread = await store.createThread({ initialComment: { body: asCommentBody(text) as never }, metadata: { webAnimationAnchor: { executionId, timeSeconds, point } } });
+    if (resolved) await store.resolveThread({ threadId: thread.id });
+    ids.push(thread.id);
   }
+  return ids;
 }
+
+/**
+ * Lay the annotation panel out with one thread's item below the fold, and catch where its viewport is scrolled to.
+ * @param threadId - The thread whose item lies below the fold.
+ * @returns The scrollTo calls, with the element each was made on.
+ */
+function threadBelowFold(threadId: string): Array<{ on: Element; options: unknown }> {
+  const calls: Array<{ on: Element; options: unknown }> = [];
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: Element) {
+    if (this.getAttribute('data-thread-id') === threadId) return DOMRect.fromRect({ x: 0, y: 1000, width: 300, height: 40 });
+    if (this.hasAttribute('data-radix-scroll-area-viewport')) return DOMRect.fromRect({ x: 0, y: 0, width: 300, height: 300 });
+    return DOMRect.fromRect({ x: 0, y: 0, width: 0, height: 0 });
+  });
+  Element.prototype.scrollTo = function scrollTo(this: Element, options?: unknown) { calls.push({ on: this, options }); } as typeof Element.prototype.scrollTo;
+  return calls;
+}
+
+let realScrollTo: PropertyDescriptor | undefined;
+beforeEach(() => { realScrollTo = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo'); });
+afterEach(() => {
+  vi.restoreAllMocks();
+  if (realScrollTo) Object.defineProperty(Element.prototype, 'scrollTo', realScrollTo);
+  else delete (Element.prototype as unknown as Record<string, unknown>).scrollTo;
+});
 
 beforeEach(() => {
   _resetForTests();
@@ -460,6 +499,111 @@ describe('opening an annotation', () => {
   });
 });
 
+describe('one owner for opening an annotation', () => {
+  /**
+   * Show NEWER with these threads on it, and the user.
+   * @param anchors - The threads.
+   * @returns The thread ids and the user.
+   */
+  async function onNewer(anchors: Parameters<typeof seedThreads>[0]): Promise<{ ids: string[]; user: ReturnType<typeof userEvent.setup> }> {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z'), done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')]);
+    const ids = await seedThreads(anchors);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    return { ids, user: userEvent.setup() };
+  }
+
+  /**
+   * Open a thread from the annotation panel by its words.
+   * @param user - The user.
+   * @param text - The thread's words.
+   */
+  async function fromPanel(user: ReturnType<typeof userEvent.setup>, text: string): Promise<void> {
+    if (screen.queryByTestId('motion-panel-annotations') === null) await user.click(screen.getByTestId('motion-open-annotations'));
+    await user.click(within(await screen.findByTestId('motion-panel-annotations')).getByRole('button', { name: new RegExp(text) }));
+  }
+
+  /**
+   * The card's own close button, apart from the panel's.
+   * @returns The button.
+   */
+  function closeCardButton(): HTMLElement {
+    const panel = screen.queryByTestId('motion-panel-annotations');
+    return screen.getAllByRole('button', { name: t('spaces.webAnimation.closePanel') }).find((button) => panel === null || !panel.contains(button))!;
+  }
+
+  /**
+   * The open card's reply box.
+   * @returns The box.
+   */
+  async function replyBox(): Promise<HTMLElement> {
+    return within(await screen.findByTestId('motion-thread-card')).getByTestId('doc-comment-reply-input');
+  }
+
+  it('lists a resolved thread opened from its marker, as the active item', async () => {
+    const { ids: [id], user } = await onNewer([{ text: 'Settled note', executionId: NEWER, timeSeconds: 1, resolved: true }]);
+    await user.click(await screen.findByTestId(`motion-marker-${id}`));
+    const panel = await screen.findByTestId('motion-panel-annotations');
+    expect(within(panel).getByTestId(`motion-annotation-${id}`)).toHaveAttribute('aria-current', 'true');
+    expect(within(panel).getByRole('button', { name: new RegExp(t('spaces.webAnimation.annotationsAll', { count: 1 })) })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('scrolls the panel to a thread below the fold opened from its marker', async () => {
+    const anchors = Array.from({ length: 8 }, (_, index) => ({ text: `Note ${index}`, executionId: NEWER, timeSeconds: index * 0.4 }));
+    const { ids, user } = await onNewer(anchors);
+    const target = ids.at(-1)!;
+    const calls = threadBelowFold(target);
+    await user.click(await screen.findByTestId(`motion-marker-${target}`));
+    const panel = await screen.findByTestId('motion-panel-annotations');
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]!.on).toBe(panel.querySelector('[data-radix-scroll-area-viewport]'));
+    expect(calls[0]!.options).toEqual({ top: 1040 - 300, behavior: 'smooth' });
+  });
+
+  it('keeps an unsent reply when the card is closed and opened again', async () => {
+    const { user } = await onNewer([{ text: 'First note', executionId: NEWER, timeSeconds: 1 }]);
+    await fromPanel(user, 'First note');
+    await user.type(await replyBox(), 'Half a reply');
+    await user.click(closeCardButton());
+    expect(screen.queryByTestId('motion-thread-card')).toBeNull();
+    await fromPanel(user, 'First note');
+    expect(await replyBox()).toHaveValue('Half a reply');
+  });
+
+  it('keeps an unsent reply while a thread on a result still being read is open', async () => {
+    vi.mocked(timelineApi.getExecution).mockReset().mockReturnValue(new Promise(() => {}));
+    const { user } = await onNewer([{ text: 'First note', executionId: NEWER, timeSeconds: 1 }, { text: 'Far note', executionId: '90000000-0000-4000-8000-0000000000d2', timeSeconds: 1 }]);
+    await fromPanel(user, 'First note');
+    await user.type(await replyBox(), 'Half a reply');
+    await fromPanel(user, 'Far note');
+    await screen.findByTestId('motion-loading');
+    await fromPanel(user, 'First note');
+    expect(await replyBox()).toHaveValue('Half a reply');
+  });
+
+  it('keeps an unsent reply through adding an annotation and cancelling it', async () => {
+    const { user } = await onNewer([{ text: 'First note', executionId: NEWER, timeSeconds: 1 }]);
+    await fromPanel(user, 'First note');
+    await user.type(await replyBox(), 'Half a reply');
+    await user.click(screen.getByTestId('motion-action-add-annotation'));
+    await screen.findByTestId('motion-annotation-draft');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByTestId('motion-annotation-draft')).toBeNull());
+    expect(await replyBox()).toHaveValue('Half a reply');
+  });
+
+  it('clears the reply once it is sent', async () => {
+    const { user } = await onNewer([{ text: 'First note', executionId: NEWER, timeSeconds: 1 }]);
+    await fromPanel(user, 'First note');
+    await user.type(await replyBox(), 'Done now');
+    await user.click(within(screen.getByTestId('motion-thread-card')).getByTestId('doc-comment-reply-save'));
+    await waitFor(async () => expect(await replyBox()).toHaveValue(''));
+    await user.click(closeCardButton());
+    await fromPanel(user, 'First note');
+    expect(await replyBox()).toHaveValue('');
+  });
+});
+
 describe('the result a modification started from', () => {
   const MODIFIED = '90000000-0000-4000-8000-0000000000a1';
 
@@ -476,6 +620,7 @@ describe('the result a modification started from', () => {
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', MODIFIED));
     const user = userEvent.setup();
     await user.click(screen.getByTestId('motion-details'));
+    expect(await screen.findByText(t('spaces.webAnimation.statusLabel'))).toBeInTheDocument();
     return user;
   }
 
@@ -494,6 +639,16 @@ describe('the result a modification started from', () => {
     expect(await screen.findByTestId('motion-panel-annotations')).toBeInTheDocument();
     expect(screen.getByTestId('motion-bottom-bar')).toHaveTextContent('0:02.0 / 0:04.0');
     expect(within(screen.getByTestId('motion-thread-card')).getByText('Earliest open note')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(t('spaces.webAnimation.statusLabel'))).toBeNull());
+  });
+
+  it('scrolls the panel to the original result\'s earliest open annotation below the fold', async () => {
+    const ids = await seedThreads(Array.from({ length: 8 }, (_, index) => ({ text: `Note ${index}`, executionId: index === 7 ? OLDER : NEWER, timeSeconds: 1 + index * 0.1 })));
+    const calls = threadBelowFold(ids.at(-1)!);
+    const user = await onModification();
+    await user.click(await screen.findByRole('button', { name: t('spaces.webAnimation.baseWithAnnotations', { base: 'Older logo', count: 1 }) }));
+    const panel = await screen.findByTestId('motion-panel-annotations');
+    await waitFor(() => expect(calls.filter((call) => call.on === panel.querySelector('[data-radix-scroll-area-viewport]'))).toHaveLength(1));
   });
 
   it('shows the original result when it has no open annotation', async () => {
@@ -501,6 +656,7 @@ describe('the result a modification started from', () => {
     await user.click(await screen.findByRole('button', { name: 'Older logo' }));
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', OLDER));
     expect(screen.queryByTestId('motion-panel-annotations')).toBeNull();
+    await waitFor(() => expect(screen.queryByText(t('spaces.webAnimation.statusLabel'))).toBeNull());
   });
 });
 
