@@ -71,6 +71,12 @@ describe('insert entries out of reach', () => {
     expect(reach(editor, 'cell', 'below')).toContain('table');
   });
 
+  it('greys the table filling a row that has blocks nested under it', () => {
+    const editor = editorWith([{ ...para(''), children: [para('child one'), para('child two')] }, para('after')]);
+    expect(reach(editor, '', 'fill')).toContain('table');
+    expect(reach(editor, '', 'below')).not.toContain('table');
+  });
+
   it('greys columns inside a column, both ways', () => {
     const editor = editorWith([columnsBlock(['left'], ['right'])]);
     expect(reach(editor, 'left', 'fill')).toContain('columns');

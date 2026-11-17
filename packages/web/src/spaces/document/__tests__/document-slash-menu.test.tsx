@@ -293,7 +293,7 @@ describe('the mouse on the menu (A3)', () => {
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);
     type(editor, '/he');
-    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-heading-3'));
+    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-heading-3'), { movementX: 1 });
     expect(screen.getByTestId('doc-slash-row-heading-3').hasAttribute('data-highlighted')).toBe(true);
     fireEvent.mouseDown(screen.getByTestId('doc-slash-row-heading-3'));
     expect(read(editor)[0]?.props?.['level']).toBe(3);
@@ -328,7 +328,7 @@ describe('the mouse on the menu (A3)', () => {
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);
     type(editor, '/tab');
-    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-table'));
+    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-table'), { movementX: 1 });
     expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
     press(editor, 'Escape');
     expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
@@ -342,13 +342,13 @@ describe('the mouse on the menu (A3)', () => {
     caretAtEnd(editor, read(editor)[0]!.id);
     type(editor, '/');
     const table = screen.getByTestId('doc-slash-row-table');
-    fireEvent.mouseMove(table);
+    fireEvent.mouseMove(table, { movementX: 1 });
     expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
     press(editor, 'Escape');
     press(editor, 'ArrowDown');
     press(editor, 'ArrowDown');
     expect(table.hasAttribute('data-highlighted')).toBe(false);
-    fireEvent.mouseMove(table);
+    fireEvent.mouseMove(table, { movementX: 1 });
     expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
     expect(table.hasAttribute('data-highlighted')).toBe(true);
   });
@@ -374,6 +374,29 @@ describe('the mouse on the menu (A3)', () => {
     expect(screen.getByTestId('doc-slash-table-size-1-2').hasAttribute('data-on')).toBe(true);
   });
 
+  it('ignores a pointer move that stays where the pointer was', () => {
+    const { editor } = open([para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/');
+    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-heading-3'), { clientX: 10, clientY: 10, movementX: 1 });
+    press(editor, 'ArrowDown');
+    const lit = document.querySelector('[data-testid^="doc-slash-row-"][data-highlighted]');
+    expect(lit?.getAttribute('data-testid')).not.toBe('doc-slash-row-heading-3');
+    // WebKit sends this when the list scrolls under a pointer at rest.
+    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-heading-3'), { clientX: 10, clientY: 10 });
+    expect(lit?.hasAttribute('data-highlighted')).toBe(true);
+  });
+
+  it('starts a menu opened by a second trigger on its first row', () => {
+    const { editor } = open([para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/');
+    press(editor, 'ArrowDown');
+    press(editor, 'ArrowDown');
+    type(editor, ' /');
+    expect(screen.getByTestId('doc-slash-row-heading-1').hasAttribute('data-highlighted')).toBe(true);
+  });
+
   it('marks Table as opening a grid, as the insert menu does', () => {
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);
@@ -394,6 +417,17 @@ describe('entries out of reach (A7)', () => {
     press(editor, 'Enter');
     expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
     expect(textOf(editor, id)).toBe('cell /ta');
+  });
+
+  it('greys the table on an empty row with blocks under it, and they stay', () => {
+    const { editor } = open([{ ...para(''), children: [para('child one'), para('child two')] }, para('after')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/table');
+    expect(screen.getByTestId('doc-slash-row-table').getAttribute('aria-disabled')).toBe('true');
+    press(editor, 'Enter');
+    press(editor, 'Enter');
+    expect(idOf(editor, 'child one')).toBeTruthy();
+    expect(idOf(editor, 'child two')).toBeTruthy();
   });
 });
 
