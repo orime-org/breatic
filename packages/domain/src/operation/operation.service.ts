@@ -306,6 +306,34 @@ export function defersCount(upload: UploadPlacement, assetKind: string): boolean
 }
 
 /**
+ * Settle the operation an upload counts under once it has its asset, in the
+ * caller's commit (design 3.2): deferred when it is a derived image, otherwise
+ * tied to the asset and counted. A miss settles here from its grant, a dedup
+ * hit from its ticket; both describe where the file lands the same way.
+ * @param key - The upload's key.
+ * @param placement - Where it lands.
+ * @param asset - The registered asset.
+ * @param asset.id - Its id.
+ * @param asset.kind - What the stored bytes are; null when it cannot be read.
+ * @param tx - The caller's transaction.
+ * @returns The count's outcome, to settle after the commit; null when deferred.
+ * @throws {Error} When the database fails.
+ */
+export async function settleUploadOperation(
+  key: string,
+  placement: UploadPlacement,
+  asset: { id: string; kind: string | null },
+  tx: DbTx,
+): Promise<CountOutcome | null> {
+  if (asset.kind !== null && defersCount(placement, asset.kind)) {
+    await deferOperation(key, asset.id, tx);
+    return null;
+  }
+  await recordOperationAsset(key, asset.id, tx);
+  return countOperation(key, tx);
+}
+
+/**
  * Defer a derived upload instead of counting it (design 3.2.1).
  * @param key - The upload's key.
  * @param assetId - The image it registered.

@@ -25,7 +25,7 @@ import {
   UploadOpenFailed,
   uploadTicketService,
 } from "@breatic/domain";
-import { TRANSFER_KEY_DIR, TRANSFER_MEDIA_TYPE, type NodeTaskAction } from "@breatic/shared";
+import { TRANSFER_KEY_DIR, TRANSFER_MEDIA_TYPE, type NodeTaskAction, type StudioAssetEntity } from "@breatic/shared";
 
 import * as assetUploadService from "@server/modules/asset/assetUpload.service.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
@@ -258,6 +258,24 @@ function uploadOperation(scope: TicketScope, key: string): operationService.Admi
 }
 
 /**
+ * Where a file lands, as its grant records it and the operation count reads
+ * it (design 3.2.1). A cover and a 3D model are node-free and write no row on
+ * the project activity feed, so they are marked derived; a 3D model's purpose
+ * is carried by its Space task row, not as an asset source.
+ * @param item - The file.
+ * @returns Its placement.
+ */
+function placementOf(item: TicketItem): operationService.UploadPlacement & { assetSource: StudioAssetEntity["source"] | null } {
+  return {
+    derived: item.purpose === "project_cover" || item.purpose === "scene_model" ? true : (item.derived ?? null),
+    spaceId: item.space_id ?? null,
+    nodeId: item.node_id ?? null,
+    assetSource: item.purpose === "scene_model" ? null : (item.purpose ?? null),
+    source: item.source ?? null,
+  };
+}
+
+/**
  * Count a dedup hit once every write of its branch has succeeded, or defer it
  * when it is a derived image (inner#1968, design 3.2).
  * @param item - The file.
@@ -267,21 +285,8 @@ function uploadOperation(scope: TicketScope, key: string): operationService.Admi
  * @param hit.kind - What it is.
  */
 async function countDedupHit(item: TicketItem, key: string, hit: { assetId: string; kind: string }): Promise<void> {
-  const placement = {
-    derived: item.derived ?? null,
-    spaceId: item.space_id ?? null,
-    nodeId: item.node_id ?? null,
-    assetSource: item.purpose ?? null,
-    source: item.source ?? null,
-  };
-  const outcome = await db.transaction(async (tx) => {
-    if (operationService.defersCount(placement, hit.kind)) {
-      await operationService.deferOperation(key, hit.assetId, tx);
-      return null;
-    }
-    await operationService.recordOperationAsset(key, hit.assetId, tx);
-    return operationService.countOperation(key, tx);
-  });
+  const outcome = await db.transaction((tx) =>
+    operationService.settleUploadOperation(key, placementOf(item), { id: hit.assetId, kind: hit.kind }, tx));
   await operationService.settleOverage(outcome);
 }
 
@@ -428,14 +433,9 @@ async function prepareMiss(
       ext,
       expiresAt: new Date(expiresAt),
       context: {
-        nodeId: item.node_id ?? null,
-        spaceId: item.space_id ?? null,
-        source: item.source ?? null,
+        ...placementOf(item),
         toolName: item.tool_name ?? null,
-        // Node-free models and covers write no row on the project activity feed.
-        derived: item.purpose === "project_cover" || item.purpose === "scene_model" ? true : (item.derived ?? null),
         filename: item.filename,
-        assetSource: item.purpose === "scene_model" ? null : (item.purpose ?? null),
       },
     },
     { budgetMs: getNodeTaskConfig().default_budget_ms, ...uploadRowOf(item) },

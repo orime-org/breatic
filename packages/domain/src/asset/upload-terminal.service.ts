@@ -42,12 +42,7 @@ export async function referenceUploadAsset(grant: UploadGrant, assetId: string, 
 async function countUpload(grant: UploadGrant, assetId: string, tx: DbTx): Promise<operationService.CountOutcome | null> {
   if (grant.operationKey === null) return null;
   const asset = await assetRepo.findLiveInStudio(grant.studioId, assetId, tx);
-  if (asset !== null && operationService.defersCount(grant, asset.kind)) {
-    await operationService.deferOperation(grant.operationKey, assetId, tx);
-    return null;
-  }
-  await operationService.recordOperationAsset(grant.operationKey, assetId, tx);
-  return operationService.countOperation(grant.operationKey, tx);
+  return operationService.settleUploadOperation(grant.operationKey, grant, { id: assetId, kind: asset?.kind ?? null }, tx);
 }
 
 /**
