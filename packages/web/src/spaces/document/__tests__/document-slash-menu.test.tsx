@@ -293,7 +293,7 @@ describe('the mouse on the menu (A3)', () => {
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);
     type(editor, '/he');
-    fireEvent.mouseEnter(screen.getByTestId('doc-slash-row-heading-3'));
+    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-heading-3'));
     expect(screen.getByTestId('doc-slash-row-heading-3').hasAttribute('data-highlighted')).toBe(true);
     fireEvent.mouseDown(screen.getByTestId('doc-slash-row-heading-3'));
     expect(read(editor)[0]?.props?.['level']).toBe(3);
@@ -328,7 +328,7 @@ describe('the mouse on the menu (A3)', () => {
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);
     type(editor, '/tab');
-    fireEvent.mouseEnter(screen.getByTestId('doc-slash-row-table'));
+    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-table'));
     expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
     press(editor, 'Escape');
     expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
@@ -351,6 +351,27 @@ describe('the mouse on the menu (A3)', () => {
     fireEvent.mouseMove(table);
     expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
     expect(table.hasAttribute('data-highlighted')).toBe(true);
+  });
+
+  it('lights nothing when a row only comes under a pointer that has not moved', () => {
+    const { editor } = open([para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/');
+    fireEvent.mouseEnter(screen.getByTestId('doc-slash-row-quote'));
+    expect(screen.getByTestId('doc-slash-row-heading-1').hasAttribute('data-highlighted')).toBe(true);
+    fireEvent.mouseEnter(screen.getByTestId('doc-slash-row-table'));
+    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
+  });
+
+  it('keeps the lit size when Table is pressed with the grid open', () => {
+    const { editor } = open([para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/tab');
+    press(editor, 'Enter');
+    press(editor, 'ArrowRight');
+    expect(screen.getByTestId('doc-slash-table-size-1-2').hasAttribute('data-on')).toBe(true);
+    fireEvent.mouseDown(screen.getByTestId('doc-slash-row-table'));
+    expect(screen.getByTestId('doc-slash-table-size-1-2').hasAttribute('data-on')).toBe(true);
   });
 
   it('marks Table as opening a grid, as the insert menu does', () => {

@@ -258,6 +258,25 @@ test.describe('the slash menu in the document body', () => {
     await expect.poll(() => lines(page)).toContain('docTable');
   });
 
+  test('keeps the keyboard highlight when the list scrolls under a pointer that has not moved', async () => {
+    await page.setViewportSize({ width: 1680, height: 640 });
+    await openFreshDocument(page);
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('/');
+    const list = page.locator(`${MENU} [data-radix-scroll-area-viewport]`);
+    const row = await page.getByTestId('doc-slash-row-heading-2').boundingBox();
+    await page.mouse.move(row!.x + 30, row!.y + row!.height / 2);
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('ArrowUp');
+    // The list has to have scrolled for a row to pass under the pointer.
+    await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    await expect(page.getByTestId('doc-slash-row-video')).toHaveAttribute('data-highlighted', '');
+    await page.waitForTimeout(300);
+    await expect(page.getByTestId('doc-slash-row-video')).toHaveAttribute('data-highlighted', '');
+    await expect(page.getByTestId('doc-slash-table-grid')).toHaveCount(0);
+  });
+
   test('keeps the size grid open when the pointer leaves it sideways, as the insert menu does', async () => {
     await openFreshDocument(page);
     await page.keyboard.type('/');
