@@ -313,6 +313,30 @@ describe('the mouse on the menu (A3)', () => {
     expect(read(editor).some((block) => block.type === 'docTable')).toBe(false);
   });
 
+  it('picks nothing on a press with Control held, the secondary click on a Mac', () => {
+    const { editor } = open([para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/');
+    fireEvent.mouseDown(screen.getByTestId('doc-slash-row-heading-3'), { button: 0, ctrlKey: true });
+    expect(read(editor)[0]?.type).toBe('paragraph');
+    fireEvent.mouseDown(screen.getByTestId('doc-slash-row-table'));
+    fireEvent.mouseDown(screen.getByTestId('doc-slash-table-size-2-2'), { button: 0, ctrlKey: true });
+    expect(read(editor).some((block) => block.type === 'docTable')).toBe(false);
+  });
+
+  it('leaves the page taking the pointer when a grid opened by hover is reopened from the keyboard', () => {
+    const { editor } = open([para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/tab');
+    fireEvent.mouseEnter(screen.getByTestId('doc-slash-row-table'));
+    expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
+    press(editor, 'Escape');
+    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
+    press(editor, 'ArrowRight');
+    expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
+    expect(document.body.style.pointerEvents).toBe('');
+  });
+
   it('marks Table as opening a grid, as the insert menu does', () => {
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);

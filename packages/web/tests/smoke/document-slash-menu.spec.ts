@@ -211,6 +211,22 @@ test.describe('the slash menu in the document body', () => {
     await expect.poll(() => lines(page)).toContain('docTable');
   });
 
+  test('keeps the size grid open when the pointer leaves it sideways, as the insert menu does', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('/');
+    const table = await page.getByTestId('doc-slash-row-table').boundingBox();
+    await page.mouse.move(table!.x + 20, table!.y + table!.height / 2);
+    const grid = page.getByTestId('doc-slash-table-grid');
+    await expect(grid).toBeVisible();
+    const cell = await page.getByTestId('doc-slash-table-size-3-3').boundingBox();
+    await page.mouse.move(cell!.x + 4, cell!.y + 4, { steps: 8 });
+    const box = await grid.boundingBox();
+    await page.mouse.move(box!.x + box!.width + 15, cell!.y + 4, { steps: 5 });
+    await page.waitForTimeout(400);
+    await expect(grid).toBeVisible();
+    expect(await page.evaluate(() => document.body.style.pointerEvents)).toBe('');
+  });
+
   test('stays under the trigger when the window narrows', async () => {
     await openFreshDocument(page);
     await page.keyboard.type('x /');

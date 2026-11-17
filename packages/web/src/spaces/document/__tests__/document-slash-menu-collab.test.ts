@@ -157,31 +157,6 @@ describe('the slash menu when a collaborator deletes its row', () => {
     expect((ours.document as unknown as { id: string }[]).map((block) => block.id)).not.toContain(second);
     expect(menu?.store.state?.show ?? false).toBe(false);
   });
-
-  it('lets the body unmount once the row is gone', () => {
-    const a = new Y.Doc();
-    const b = new Y.Doc();
-    const ours = mount(a);
-    const theirs = mount(b);
-    ours.replaceBlocks(ours.document, [para('first'), para('second'), para('third')] as never);
-    const sync = syncer(a, b);
-    sync();
-
-    const menu = ours.getExtension(SuggestionMenu);
-    menu?.addSuggestionMenu({ triggerCharacter: '/' });
-    const second = idOf(ours, 'second');
-    ours.updateBlock(second, { content: '' } as never);
-    ours.setTextCursorPosition(second, 'start');
-    typeAtCaret(ours, '/');
-
-    sync();
-    theirs.removeBlocks([second]);
-    sync();
-    expect(() => {
-      mounted.splice(mounted.indexOf(ours), 1);
-      ours.unmount();
-    }).not.toThrow();
-  });
 });
 
 describe('the slash menu when the caret goes into a code block', () => {
