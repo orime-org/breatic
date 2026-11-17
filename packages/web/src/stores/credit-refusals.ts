@@ -10,6 +10,7 @@
 import { t } from '@breatic/shared';
 
 import { ApiException } from '@web/data/api/types';
+import { StreamRefusedError } from '@web/data/stream/sse';
 import { spendCapMessage } from '@web/lib/spend-cap-message';
 
 /** The server's reason for a refusal past a spend limit. */
@@ -17,11 +18,11 @@ const SPEND_CAP_REACHED = 'spend_cap_reached';
 
 /**
  * What a spend-limit refusal says, or null for any other failure.
- * @param err - What a request rejected with.
+ * @param err - What a request, or a stream before it opened, rejected with.
  * @returns The sentence, in the user's language, or null.
  */
 export function refusalSentence(err: unknown): string | null {
-  if (!(err instanceof ApiException) || err.reason !== SPEND_CAP_REACHED) return null;
+  if (!(err instanceof ApiException || err instanceof StreamRefusedError) || err.reason !== SPEND_CAP_REACHED) return null;
   const { scope, limit, resetsAt } = err.details ?? {};
   if ((scope !== 'member' && scope !== 'studio') || typeof resetsAt !== 'string') {
     return err.fromServer && err.message ? err.message : t('credits.refusal.spendCap');

@@ -55,7 +55,7 @@ import {
   type TextToolRequest,
   type TextToolsConfig,
 } from '@web/data/api/text-tools';
-import { StreamRefusedError } from '@web/data/stream/sse';
+import { textToolRefusal } from '@web/spaces/document/text-tool-refusal';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { langFor } from '@web/features/preferences/supported-langs';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -272,7 +272,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
             }
           },
           onError: (err) => {
-            failure.current = err instanceof StreamRefusedError && err.fromServer ? err.message : null;
+            failure.current = textToolRefusal(err);
             send({ type: 'error', seq });
           },
           signal: controller.signal,

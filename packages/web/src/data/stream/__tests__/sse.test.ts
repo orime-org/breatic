@@ -210,6 +210,13 @@ describe('when the server answers with an envelope instead of a stream', () => {
     expect(refusal.fromServer).toBe(false);
   });
 
+  it('carries every field of the error body, so a spend-limit refusal can name its limit and reset (inner#1968 H-36)', async () => {
+    const error = { code: 402, message: 'cap reached', reason: 'spend_cap_reached', scope: 'member', limit: '10', resetsAt: '2026-12-01T00:00:00.000Z' };
+    const refusal = await refusalFrom(envelopeResponse({ error }, 402));
+    expect(refusal.reason).toBe('spend_cap_reached');
+    expect(refusal.details).toEqual(error);
+  });
+
   it('says the sentence is not ours when the body is our shape but has no message', async () => {
     // A proxy that answers JSON, or one of ours that failed before it had
     // anything to say. The shape parses; there is still no sentence in it.
