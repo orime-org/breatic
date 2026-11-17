@@ -978,7 +978,17 @@ export function renderProductGuide(): string {
       "estimate, a star with a number that may read ≥ or ≤ a number, or so much per 1K characters, and is missing " +
       "when no estimate is available; and the round button with an upward arrow. On the picture panel a model " +
       `with no settings shows the pill as ${quoted(t("canvas.generatePanel.imageParams"))}; on the video and ` +
-      "sound panels such a model shows no pill.",
+      "sound panels such a model shows no pill. When the studio runs the model on a key its payer brought, the " +
+      `estimate reads ${quoted(t("canvas.generatePanel.usesOwnKey"))} for the payer and ` +
+      `${quoted(t("canvas.generatePanel.usesStudioKey"))} for everyone else, and the run takes no credits.`,
+    `Bringing your own keys: ${quoted(t("byok.heading"))} in the account menu on the studio pages opens a ` +
+      "dialog where an account adds its own keys for upstreams (one OpenRouter key runs every language model; " +
+      "keys for other upstreams run picture, video, sound and 3D models) and picks, model by model, which upstream " +
+      "with a key runs it. A studio's runs use the keys of whoever pays for it: the owner's own on a personal " +
+      "studio, the Studio Admin's on a team studio. A run on such a key takes no credits. When the key fails, the " +
+      "run fails and its task or the Agent's reply says which upstream and whose key it was, and what to do: top " +
+      "up at that upstream or change the key in that dialog, or, on the Studio Admin's key, ask the Studio Admin. " +
+      "Such a run never moves to the platform's keys.",
     "Clicking the mode lists the modes this node's type offers; picking one changes which models are offered. " +
       "Clicking the model's name lists the current mode's models, each with its maker's icon, its name and a line " +
       "saying what it is good at; picking one switches to it. Mode and model together decide which slot buttons " +

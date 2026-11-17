@@ -69,6 +69,8 @@ interface SavedKey {
   lastBalanceState: 'known' | 'forbidden' | 'no_cap' | 'unsupported' | null;
   lastBalanceAmount: string | null;
   lastFailure: string | null;
+  /** Whether the key can read the actual costs of its calls; null where the upstream has no such probe. */
+  costsReadable: boolean | null;
 }
 
 /** What `GET /account/byok` answers. */
@@ -98,6 +100,7 @@ const WAVESPEED_KEY: SavedKey = {
   lastBalanceState: 'known',
   lastBalanceAmount: '50.25',
   lastFailure: null,
+  costsReadable: null,
 };
 
 const FAL_KEY: SavedKey = {
@@ -108,6 +111,7 @@ const FAL_KEY: SavedKey = {
   lastBalanceState: null,
   lastBalanceAmount: null,
   lastFailure: 'invalid',
+  costsReadable: null,
 };
 
 /** What each media model's choices are with the WaveSpeed and fal keys saved. */
@@ -330,6 +334,18 @@ describe('ByokDialog', () => {
       expect(detail).toHaveTextContent('8c1e2a…7f3b');
       expect(detail).toHaveTextContent('Not connected');
       expect(detail).toHaveTextContent('The key is invalid or has been revoked.');
+    });
+
+    it('says a key that cannot read actual costs cannot, and says nothing of it otherwise', async () => {
+      const user = userEvent.setup();
+      serve(view({ keys: [WAVESPEED_KEY, { ...FAL_KEY, lastConnected: true, lastFailure: null, lastBalanceState: 'forbidden', costsReadable: false }] }));
+      const dialog = await mount();
+      const wavespeed = await within(dialog).findByTestId('byok-detail-wavespeed');
+      expect(wavespeed).not.toHaveTextContent('This key cannot read actual costs.');
+
+      await user.click(within(dialog).getByTestId('byok-upstream-fal'));
+
+      expect(within(dialog).getByTestId('byok-detail-fal')).toHaveTextContent('This key cannot read actual costs.');
     });
 
     it('checks the saved key again on refresh, with the button waiting on the request', async () => {

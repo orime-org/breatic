@@ -3,10 +3,12 @@
 
 import * as React from 'react';
 import { CircleAlert, Info, TriangleAlert } from 'lucide-react';
-
+import { encodeTaskFailure } from '@breatic/shared';
 
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useKeyFailureWords } from '@web/features/byok/key-failure-words';
+import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 
 import type { ChatFailureLine, ChatMessage } from '@web/pages/project/chat/types';
 
@@ -84,6 +86,7 @@ interface TurnEndingProps {
  */
 export function TurnEnding({ message }: TurnEndingProps): React.JSX.Element | null {
   const t = useTranslation();
+  const keys = useKeyFailureWords();
 
   // Nothing is said about how a turn ended while it is still going.
   if (message.streaming === true) return null;
@@ -92,10 +95,16 @@ export function TurnEnding({ message }: TurnEndingProps): React.JSX.Element | nu
     // A turn too long to fit hit a ceiling, like a reply cut off at the
     // length limit; sending it again would not change it.
     const tooLong = message.failedReason === 'too_long';
+    // A turn on the payer's own key says which upstream and whose key failed, the sentence a node's task says
+    // (inner#1953).
+    const { keyFailure } = message;
+    const text = keyFailure !== undefined
+      ? failureSentence(encodeTaskFailure(keyFailure.reason, keyFailure), t, undefined, keys)
+      : t(tooLong ? 'chat.error.turnTooLong' : 'chat.error.turnFailed');
     return (
       <EndingLine
         testId='message-bubble-error'
-        text={t(tooLong ? 'chat.error.turnTooLong' : 'chat.error.turnFailed')}
+        text={text}
         tone={tooLong ? 'warning' : 'error'}
         {...(message.failedJustNow === true ? { alert: true } : {})}
       />

@@ -33,7 +33,7 @@ import {
   stripDsml,
   TURNED_AWAY,
 } from '@breatic/shared';
-import type { CanvasProposal, ChatAttachedChip, DocumentProposal, SceneGenerationProposal } from '@breatic/shared';
+import type { CanvasProposal, ChatAttachedChip, ChatKeyFailureReason, ChatKeyRefusal, DocumentProposal, SceneGenerationProposal } from '@breatic/shared';
 import type {
   ChatAsset,
   ChatFailureLine,
@@ -51,6 +51,27 @@ const INTERRUPTED = 'data-interrupted';
 
 /** The part type carrying a turn that could not be finished. */
 const FAILED = 'data-failed';
+
+/** The failed mark's reasons that are a failure of the payer's own key (inner#1953). */
+const KEY_FAILURES: ReadonlySet<string> = new Set(['account_key_failed', 'account_key_missing', 'upstream_unavailable']);
+
+/** Why an upstream refused the payer's own key, as the failed mark carries it. */
+const KEY_REFUSALS: ReadonlySet<string> = new Set(['invalid', 'no_balance', 'model_not_found', 'rate_limited']);
+
+/**
+ * A failure of the payer's own key off a failed mark's data, live or reloaded alike.
+ * @param data - The mark's data.
+ * @returns The failure, or undefined for any other failure.
+ */
+function keyFailureOf(data: unknown): ChatMessage['keyFailure'] {
+  const { reason, upstream, keyReason } = (data ?? {}) as { reason?: unknown; upstream?: unknown; keyReason?: unknown };
+  if (typeof reason !== 'string' || !KEY_FAILURES.has(reason)) return undefined;
+  return {
+    reason: reason as ChatKeyFailureReason,
+    ...(typeof upstream === 'string' && upstream !== '' ? { upstream } : {}),
+    ...(typeof keyReason === 'string' && KEY_REFUSALS.has(keyReason) ? { keyReason: keyReason as ChatKeyRefusal } : {}),
+  };
+}
 
 /** The part type carrying a turn the output ceiling cut off. */
 const TRUNCATED = 'data-truncated';
@@ -508,6 +529,7 @@ export function toChatMessage(
   let truncated = false;
   let failed = false;
   let tooLong = false;
+  let keyFailure: ChatMessage['keyFailure'];
   let blocked = false;
   let thinkingMs: number | undefined;
   let thinkingNow = false;
@@ -639,6 +661,7 @@ export function toChatMessage(
       failed = true;
       // A turn whose request could not be made to fit (inner#1567).
       if ((part as { data?: { reason?: unknown } | null }).data?.reason === 'too_long') tooLong = true;
+      keyFailure = keyFailureOf((part as { data?: unknown }).data);
     }
     else if (part.type === TRUNCATED) truncated = true;
     else if (part.type === BLOCKED) blocked = true;
@@ -693,6 +716,7 @@ export function toChatMessage(
     ...(interrupted ? { interrupted: true as const } : {}),
     ...(failed ? { failed: true } : {}),
     ...(tooLong ? { failedReason: 'too_long' as const } : {}),
+    ...(keyFailure === undefined ? {} : { keyFailure }),
     ...(truncated ? { truncated: true as const } : {}),
     ...(blocked ? { blocked: true as const } : {}),
     ...(sources.length > 0 ? { sources, citations } : {}),

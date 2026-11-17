@@ -1187,8 +1187,8 @@
         "cut_short": "內容太長，沒能轉寫完。",
         "input_refused": "{model} 無法使用目前的設定，請修改設定或換個模型。",
         "model_not_configured": "這個部署還沒設定好 {model}：需要設定 {envVars}。",
-        "account_key_failed": "{keyReason, select, invalid {{upstream} 拒絕了這把 key：key 無效。到 BYOK 設定換 key。} no_balance {{upstream} 的 key 餘額不足。去 {upstream} 儲值。} model_not_found {{upstream} 用這把 key 跑不了這個模型。到 BYOK 設定換一家上游。} rate_limited {{upstream} 在限制這把 key 的請求，稍後再試。} other {{upstream} 的 key 出錯了。到 BYOK 設定檢查。}}",
-        "account_key_missing": "這次執行用的 key 已被替換或刪除，請重新執行。",
+        "account_key_failed": "{whose, select, self {{keyReason, select, invalid {{upstream} 拒絕了你的 key：key 無效。到 BYOK 設定換 key。} no_balance {你的 {upstream} key 餘額不足。去 {upstream} 儲值。} model_not_found {{upstream} 用你的 key 跑不了這個模型。到 BYOK 設定換一家上游。} rate_limited {{upstream} 在限制你這把 key 的請求，稍後再試。} other {你的 {upstream} key 出錯了。到 BYOK 設定檢查。}}} admin {{keyReason, select, invalid {{upstream} 拒絕了 Studio Admin 的 key：key 無效。請 Studio Admin 換 key。} no_balance {Studio Admin 的 {upstream} key 餘額不足。請 Studio Admin 去 {upstream} 儲值。} model_not_found {{upstream} 用 Studio Admin 的 key 跑不了這個模型。請 Studio Admin 換一家上游。} rate_limited {{upstream} 在限制 Studio Admin 這把 key 的請求，稍後再試。} other {Studio Admin 的 {upstream} key 出錯了。請 Studio Admin 檢查。}}} other {{keyReason, select, invalid {{upstream} 拒絕了這把 key：key 無效。到 BYOK 設定換 key。} no_balance {{upstream} 的 key 餘額不足。去 {upstream} 儲值。} model_not_found {{upstream} 用這把 key 跑不了這個模型。到 BYOK 設定換一家上游。} rate_limited {{upstream} 在限制這把 key 的請求，稍後再試。} other {{upstream} 的 key 出錯了。到 BYOK 設定檢查。}}}}",
+        "account_key_missing": "{whose, select, self {你這次執行用的 key 已被替換或刪除，請重新執行。} admin {這次執行用的 Studio Admin 的 key 已被替換或刪除，請重新執行。} other {這次執行用的 key 已被替換或刪除，請重新執行。}}",
         "upstream_unavailable": "連不上 {upstream}，稍後再試。"
       },
       "kind": {
@@ -3653,6 +3653,7 @@
     "balanceForbidden": "這把 key 沒有查詢餘額的權限。",
     "balanceNoCap": "這把 key 沒設額度上限。",
     "balanceUnsupported": "這家查不到餘額。",
+    "costsUnreadable": "這把 key 記不到實際花費。",
     "refresh": "重新整理",
     "replace": "替換",
     "delete": "刪除",

@@ -12,6 +12,8 @@ import type {
   AskUserQuestion,
   CanvasProposal,
   ChatAttachedChip,
+  ChatKeyFailureReason,
+  ChatKeyRefusal,
   DocumentProposal,
   SceneGenerationProposal,
   SharedSpace,
@@ -247,6 +249,11 @@ export interface ChatMessage {
    * sending it again would not change (inner#1567).
    */
   failedReason?: 'too_long';
+  /**
+   * The turn ran on the payer's own key and that key failed (inner#1953): refused by its upstream, replaced or
+   * deleted, or its upstream could not be reached. The ending says which upstream and whose key, not a bare failure.
+   */
+  keyFailure?: { reason: ChatKeyFailureReason; upstream?: string; keyReason?: ChatKeyRefusal };
   /**
    * The turn hit the per-call output ceiling, so this stops mid-sentence.
    *

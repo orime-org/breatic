@@ -26,6 +26,7 @@ import { useCollaboratorNamesFrom } from '@web/features/collab-editor/use-collab
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { useBlockSelectAll } from '@web/lib/use-block-select-all';
 import { useTrackActiveRegion } from '@web/features/active-region/use-track-active-region';
+import { KeyFailureWordsProvider } from '@web/features/byok/key-failure-words';
 import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { spaceRpcFailureNotice } from '@web/pages/project/space-rpc-failure';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
@@ -233,7 +234,10 @@ export default function ProjectPage(): React.JSX.Element {
         the key the workspace would carry one project's state into another's
         address. The socket is shared while the authorized workspace is mounted.
       */}
-      <ProjectWorkspace key={projectId} projectId={projectId} project={projectQuery.data} onAuthenticated={recheckVisit} />
+      {/* Whose key a failed run on the payer's own key used, for every failure sentence on the page (inner#1953). */}
+      <KeyFailureWordsProvider projectId={projectId}>
+        <ProjectWorkspace key={projectId} projectId={projectId} project={projectQuery.data} onAuthenticated={recheckVisit} />
+      </KeyFailureWordsProvider>
     </CollabSocketProvider>
   );
 }

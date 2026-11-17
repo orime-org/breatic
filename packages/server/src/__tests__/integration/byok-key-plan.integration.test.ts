@@ -137,6 +137,7 @@ interface KeyPlan {
   payer: "self" | "admin";
   llm: { usesAccountKey: boolean };
   models: Record<string, { upstream: string; availability: { upstreams: { upstream: string; configured: boolean }[] } }>;
+  upstreamNames: Record<string, string>;
 }
 
 /**
@@ -222,6 +223,16 @@ describe("GET /api/v1/projects/:id/key-plan", () => {
 
     const asAdmin = await keyPlan(admin.cookie, projectId);
     expect(asAdmin.plan!.payer).toBe("self");
+  });
+
+  it("names every upstream as the provider configuration does, so a key failure can say which one", async () => {
+    const { userId, cookie } = await signedIn();
+    const { projectId } = await seedStudio(userId, "personal");
+
+    const { status, plan } = await keyPlan(cookie, projectId);
+
+    expect(status).toBe(200);
+    expect(plan!.upstreamNames).toMatchObject({ openrouter: "OpenRouter", wavespeed: "WaveSpeed", sandbase: "SandBase", fal: "fal" });
   });
 
   it("answers 404 to an account that is not on the Project, Studio member or not", async () => {

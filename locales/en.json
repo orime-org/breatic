@@ -1187,8 +1187,8 @@
         "cut_short": "This is too long to transcribe in full.",
         "input_refused": "{model} can’t take this run as set up. Change the settings or pick another model.",
         "model_not_configured": "{model} is not set up on this deployment: it needs {envVars}.",
-        "account_key_failed": "{keyReason, select, invalid {{upstream} turned down the key as invalid. Change it in BYOK settings.} no_balance {The {upstream} key is out of balance. Top up at {upstream}.} model_not_found {{upstream} does not offer this model on this key. Pick another upstream in BYOK settings.} rate_limited {{upstream} is limiting requests on this key. Try again later.} other {The {upstream} key failed. Check it in BYOK settings.}}",
-        "account_key_missing": "The key this run used was replaced or deleted. Run it again.",
+        "account_key_failed": "{whose, select, self {{keyReason, select, invalid {{upstream} turned down your key as invalid. Change it in BYOK settings.} no_balance {Your {upstream} key is out of balance. Top up at {upstream}.} model_not_found {{upstream} does not offer this model on your key. Pick another upstream in BYOK settings.} rate_limited {{upstream} is limiting requests on your key. Try again later.} other {Your {upstream} key failed. Check it in BYOK settings.}}} admin {{keyReason, select, invalid {{upstream} turned down the Studio Admin's key as invalid. Ask the Studio Admin to change it.} no_balance {The Studio Admin's {upstream} key is out of balance. Ask the Studio Admin to top up at {upstream}.} model_not_found {{upstream} does not offer this model on the Studio Admin's key. Ask the Studio Admin to pick another upstream.} rate_limited {{upstream} is limiting requests on the Studio Admin's key. Try again later.} other {The Studio Admin's {upstream} key failed. Ask the Studio Admin to check it.}}} other {{keyReason, select, invalid {{upstream} turned down the key as invalid. Change it in BYOK settings.} no_balance {The {upstream} key is out of balance. Top up at {upstream}.} model_not_found {{upstream} does not offer this model on this key. Pick another upstream in BYOK settings.} rate_limited {{upstream} is limiting requests on this key. Try again later.} other {The {upstream} key failed. Check it in BYOK settings.}}}}",
+        "account_key_missing": "{whose, select, self {Your key for this run was replaced or deleted. Run it again.} admin {The Studio Admin's key for this run was replaced or deleted. Run it again.} other {The key this run used was replaced or deleted. Run it again.}}",
         "upstream_unavailable": "Couldn't reach {upstream}. Try again later."
       },
       "kind": {
@@ -3653,6 +3653,7 @@
     "balanceForbidden": "This key cannot read the balance.",
     "balanceNoCap": "This key has no spending limit.",
     "balanceUnsupported": "This upstream does not report a balance.",
+    "costsUnreadable": "This key cannot read actual costs.",
     "refresh": "Refresh",
     "replace": "Replace",
     "delete": "Delete",

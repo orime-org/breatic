@@ -21,6 +21,7 @@ import {
   type HoverPreviewKind,
 } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { MediaFullscreenSource } from '@web/spaces/canvas/nodes/_shared/MediaFullscreen';
+import { useKeyFailureWords } from '@web/features/byok/key-failure-words';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import {
@@ -190,6 +191,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
   onRestore,
 }: NodeHistoryRowProps): React.JSX.Element {
   const t = useTranslation();
+  const keys = useKeyFailureWords();
   const failed = entry.status === 'failed';
   const src = thumbSrc(entry, modality);
   const preview = previewFor(entry, modality);
@@ -298,7 +300,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
                 user's language is, through the one gate the task list
                 beside this panel reads by. */}
             {failed
-              ? failureSentence(entry.errorMessage, t, mediumOf(modality))
+              ? failureSentence(entry.errorMessage, t, mediumOf(modality), keys)
               : entry.entryType === 'upload'
                 ? (filename ?? t('canvas.history.typeUpload'))
                 : entry.entryType === 'snapshot'

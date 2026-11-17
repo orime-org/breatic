@@ -81,6 +81,8 @@ export interface KeyPlan {
   payer: "self" | "admin";
   llm: { usesAccountKey: boolean };
   models: Record<string, { upstream: string; availability: ModelAvailability }>;
+  /** Each upstream's name on screen, for a failure sentence that names the upstream a key failed on. */
+  upstreamNames: Record<string, string>;
 }
 
 /**
@@ -298,7 +300,8 @@ function heldOnly(upstream: string): KeySet {
 
 /**
  * The key plan of a Project: whose keys its runs use, whether language-model calls run on the payer's OpenRouter key,
- * and each media model the payer pointed at an upstream, with the availability the payer's keys give it.
+ * and each media model the payer pointed at an upstream, with the availability the payer's keys give it, beside every
+ * upstream's name on screen.
  * @param projectId - The Project.
  * @param userId - The caller, a member of it.
  * @returns The plan, with no key, sealed text or hint.
@@ -309,12 +312,13 @@ export async function readKeyPlan(projectId: string, userId: string): Promise<Ke
   const studioId = await projectsRepo.findOwnerStudioId(projectId);
   const plan = studioId === undefined ? null : await globalApi().getStudioKeyPlan(studioId);
   const payer = plan === null || plan.payerUserId === userId ? "self" : "admin";
-  if (plan === null || ring() === null) return { payer, llm: { usesAccountKey: false }, models: {} };
+  const upstreamNames = Object.fromEntries(Object.keys(provider().config.upstreams).map((u) => [u, listingOf(u).name]));
+  if (plan === null || ring() === null) return { payer, llm: { usesAccountKey: false }, models: {}, upstreamNames };
   const bindings = mediaBindings();
   const models: KeyPlan["models"] = {};
   for (const [model, upstream] of Object.entries(plan.models)) {
     if (!bindings.has(model)) continue;
     models[model] = { upstream, availability: provider().availability(model, heldOnly(upstream)) };
   }
-  return { payer, llm: { usesAccountKey: plan.upstreams.includes(ACCOUNT_LLM_UPSTREAM) }, models };
+  return { payer, llm: { usesAccountKey: plan.upstreams.includes(ACCOUNT_LLM_UPSTREAM) }, models, upstreamNames };
 }

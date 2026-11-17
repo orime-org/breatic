@@ -29,6 +29,8 @@ export interface ByokSavedKey {
   lastBalanceState: ByokBalanceState | null;
   lastBalanceAmount: string | null;
   lastFailure: string | null;
+  /** Whether the key can read the actual costs of its calls; false is said in its detail, null has no such probe. */
+  costsReadable: boolean | null;
 }
 
 /** The account's BYOK settings, as `GET /account/byok` answers them. */
@@ -51,6 +53,8 @@ export interface KeyPlan {
   llm: { usesAccountKey: boolean };
   /** Non-language models on the payer's key, with the availability counted on that payer's keys. */
   models: Record<string, { upstream: string; availability: ModelAvailability }>;
+  /** Each upstream's name on screen, for a failure that names the upstream a key failed on. */
+  upstreamNames: Record<string, string>;
 }
 
 export const byokApi = {

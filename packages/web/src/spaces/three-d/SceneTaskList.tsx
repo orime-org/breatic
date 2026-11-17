@@ -20,6 +20,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import { KindBadge } from '@web/spaces/canvas/_shared/KindBadge';
+import { useKeyFailureWords } from '@web/features/byok/key-failure-words';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { SceneUploads } from '@web/spaces/three-d/scene-uploads';
@@ -100,6 +101,7 @@ function passes(task: SpaceTask, filters: TaskFilters, userId: string): boolean 
 export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spaceId, userId, canEdit, canGenerate, uploads, remoteUploads, onPlace, focusTaskId, onFocused,
   onRetryGeneration, placedAssetIds, onLocate, filterHost }: SceneTaskListProps): React.JSX.Element {
   const t = useTranslation();
+  const keys = useKeyFailureWords();
   const queryClient = useQueryClient();
   const queryKey = React.useMemo(() => spaceTasksQueryKey(projectId, spaceId), [projectId, spaceId]);
   const query = useQuery({ queryKey, queryFn: ({ signal }) => listSpaceTasks(projectId, spaceId, signal) });
@@ -305,7 +307,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
                 : minutes >= 1 ? t('spaces.threeD.taskList.runningFor', { minutes }) : t('spaces.threeD.taskList.running')
             : t(`spaces.threeD.taskList.${task.status}`);
         const failure = task.status !== 'failed' ? null
-          : task.errorMessage ? failureSentence(task.errorMessage, t)
+          : task.errorMessage ? failureSentence(task.errorMessage, t, undefined, keys)
             : generation ? failureSentence('internal', t) : t('spaces.threeD.taskList.failedReason');
         // A run asked to rig says so while it runs, and says how the rig went once it holds a model.
         const rigNote = !generation || task.status === 'failed' ? null

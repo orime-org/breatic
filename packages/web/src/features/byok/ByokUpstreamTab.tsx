@@ -401,7 +401,8 @@ function UpstreamDetail({
 }
 
 /**
- * A saved key: its hint, whether it connected, when it was checked, and its balance or why it failed.
+ * A saved key: its hint, whether it connected, when it was checked, its balance or why it failed, and whether it can
+ * read the actual costs of its calls.
  * @param props - The key.
  * @param props.saved - The saved key.
  * @param props.kind - The upstream's group.
@@ -427,6 +428,7 @@ function SavedKeyState({ saved, kind }: { saved: ByokSavedKey; kind: ByokUpstrea
         <span className='text-muted-foreground'>{t('byok.lastChecked', { time: checkedAt })}</span>
       </div>
       {balance === null ? null : <p className='text-xs text-muted-foreground'>{balance}</p>}
+      {saved.costsReadable === false ? <p className='text-xs text-muted-foreground'>{t('byok.costsUnreadable')}</p> : null}
       {saved.lastConnected ? null : <p className='text-xs text-status-error-foreground'>{failureText(saved.lastFailure, t)}</p>}
     </>
   );
