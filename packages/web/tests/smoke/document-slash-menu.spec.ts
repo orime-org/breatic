@@ -17,6 +17,7 @@ import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
+import { switchLanguage } from '../helpers/language';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
 let page: Page;
@@ -98,6 +99,17 @@ async function crossToCell(p: Page, cell: string): Promise<void> {
   await expect(target).toBeVisible();
   const box = await target.boundingBox();
   await p.mouse.move(box!.x + 4, box!.y + 4, { steps: 25 });
+}
+
+/**
+ * The ids of the rows the menu lists, top to bottom.
+ * @param p - The page.
+ * @returns The row ids.
+ */
+async function rowIds(p: Page): Promise<string[]> {
+  return p
+    .locator(`${MENU} [data-testid^="doc-slash-row-"]`)
+    .evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')!.slice('doc-slash-row-'.length)));
 }
 
 test.describe('the slash menu in the document body', () => {
@@ -324,5 +336,89 @@ test.describe('the slash menu in the document body', () => {
     await page.keyboard.press('ControlOrMeta+z');
     await expect.poll(() => lines(page)).toEqual(['paragraph:ab ']);
   });
-});
 
+  test('turns an empty list item into the pick in place', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('- ');
+    await expect.poll(() => lines(page)).toEqual(['bulletListItem:']);
+    await page.keyboard.type('/head');
+    await expect(page.locator(MENU)).toBeVisible();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => lines(page)).toEqual(['heading1:']);
+  });
+
+  test('keeps the list through a pinyin composition and narrows it by the Chinese name it commits', async () => {
+    await openFreshDocument(page);
+    await switchLanguage(page, 'zh-CN');
+    try {
+      await page.locator(EDITOR).click();
+      await page.keyboard.type('/');
+      await expect(page.locator(MENU)).toBeVisible();
+      const all = await rowIds(page);
+      const cdp = await page.context().newCDPSession(page);
+      for (const text of ['b', 'bi', 'bia', 'biao']) {
+        await cdp.send('Input.imeSetComposition', { text, selectionStart: text.length, selectionEnd: text.length });
+      }
+      await expect(page.locator(MENU)).toBeVisible();
+      expect(await rowIds(page)).toEqual(all);
+      await cdp.send('Input.insertText', { text: '表格' });
+      await expect.poll(() => rowIds(page)).toEqual(['table']);
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('doc-slash-table-grid')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+      await expect(page.locator(MENU)).toBeHidden();
+      await expect.poll(() => lines(page)).toEqual(['paragraph:/表格']);
+    } finally {
+      await switchLanguage(page, 'en');
+    }
+  });
+
+  test('stays open while the list is scrolled by dragging its scrollbar', async () => {
+    await page.setViewportSize({ width: 1680, height: 640 });
+    await openFreshDocument(page);
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('/');
+    const list = page.locator(`${MENU} [data-radix-scroll-area-viewport]`);
+    const box = await list.boundingBox();
+    await page.mouse.move(box!.x + box!.width - 4, box!.y + 10, { steps: 3 });
+    const bar = page.locator(`${MENU} [data-radix-scroll-area-viewport] ~ [data-orientation="vertical"]`);
+    await expect(bar).toBeVisible();
+    const track = await bar.boundingBox();
+    await page.mouse.move(track!.x + track!.width / 2, track!.y + 6);
+    await page.mouse.down();
+    await page.mouse.move(track!.x + track!.width / 2, track!.y + track!.height - 6, { steps: 8 });
+    await page.mouse.up();
+    await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    await expect(page.locator(MENU)).toBeVisible();
+    await expect(page.locator(EDITOR)).toBeFocused();
+  });
+
+  test('closes when a co-editor deletes the line it is on, and typing carries on', async ({ browser }) => {
+    await openFreshDocument(page);
+    await page.keyboard.type('keep');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('/he');
+    await expect(page.locator(MENU)).toBeVisible();
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    const other = await browser.newPage({ viewport: { width: 1680, height: 950 } });
+    try {
+      await other.goto(page.url());
+      const line = other.locator(EDITOR).getByText('/he');
+      await expect(line).toBeVisible({ timeout: 15_000 });
+      await line.click();
+      await other.keyboard.press('End');
+      for (let i = 0; i < 4; i += 1) await other.keyboard.press('Backspace');
+      await expect.poll(() => lines(other)).toEqual(['paragraph:keep']);
+    } finally {
+      await other.close();
+    }
+    await expect(page.locator(MENU)).toBeHidden({ timeout: 10_000 });
+    await expect.poll(() => lines(page)).toEqual(['paragraph:keep']);
+    await page.keyboard.type('!');
+    await expect.poll(() => lines(page)).toEqual(['paragraph:keep!']);
+    expect(errors).toEqual([]);
+  });
+});
