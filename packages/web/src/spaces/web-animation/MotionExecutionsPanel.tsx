@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
+import type { WebAnimationRowView } from '@breatic/shared/space-content';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
@@ -16,7 +17,7 @@ import { rowsOf, type MotionLists } from '@web/spaces/web-animation/use-motion-l
 interface ListBlockProps {
   query: MotionLists['done']['own'];
   selectedId: string | null;
-  onPick: (id: string) => void;
+  onPick: (row: WebAnimationRowView) => void;
 }
 
 /**
@@ -41,7 +42,7 @@ interface MotionExecutionsPanelProps {
   tab: MotionTab;
   selectedId: string | null;
   onTab: (tab: MotionTab) => void;
-  onPick: (id: string) => void;
+  onPick: (row: WebAnimationRowView) => void;
   onClose: () => void;
 }
 

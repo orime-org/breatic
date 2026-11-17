@@ -292,17 +292,14 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     requestSeq.current += 1;
     select({ type: 'locate', executionId, row: rowById(executionId) ?? null, requestId: requestSeq.current, threadId });
   }, [rowById, select]);
-  const pick = React.useCallback((id: string): void => {
-    const found = rowById(id);
-    if (found !== undefined) select({ type: 'pick', row: found });
-  }, [rowById, select]);
+  const pick = React.useCallback((picked: WebAnimationRowView): void => select({ type: 'pick', row: picked }), [select]);
 
   // With nothing selected, the newest finished result opens once the list is there (design §7.1): on entering, after
   // an open request that names no result, and after a named result could not be read.
   React.useEffect(() => {
     if (lists.done.own.data === undefined || selection.status !== 'none') return;
     const newest = rowsOf(lists.done.own)[0] ?? rowsOf(lists.done.legacy)[0];
-    if (newest !== undefined) pick(newest.id);
+    if (newest !== undefined) pick(newest);
   }, [selection.status, lists.done.own, lists.done.legacy, pick]);
   // With nothing to show, the preview tells the Completed list's state (design §7.3).
   const doneShows = listShows(lists.done.own, lists.done.legacy);
@@ -524,10 +521,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const typeAnnotation = React.useCallback((text: string): void => annotate({ type: 'type', text }), [annotate]);
   const sendAnnotation = React.useCallback((): void => annotate({ type: 'send' }), [annotate]);
   const cancelAnnotation = React.useCallback((): void => annotate({ type: 'cancel', confirmed: false }), [annotate]);
-  const pickRow = React.useCallback((id: string): void => showResult(() => {
-    closeThread();
-    pick(id);
-  }), [showResult, closeThread, pick]);
+  const pickRow = React.useCallback((picked: WebAnimationRowView): void => showResult(() => pick(picked)), [showResult, pick]);
   const order = React.useMemo(() => [...rowsOf(lists.done.own), ...rowsOf(lists.done.legacy)].map((item) => item.id), [lists.done.own, lists.done.legacy]);
   const activeDraft = activeThread === null ? '' : annotations.drafts.get(activeThread.thread.id) ?? '';
 
@@ -551,7 +545,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
 
   return <div ref={setSpaceElement} data-testid='motion-space' className='relative isolate h-full overflow-hidden bg-muted'>
     {panels.panel === 'executions' && <MotionExecutionsPanel lists={lists} tab={panels.tab} selectedId={selectedId} onTab={pickTab} onPick={pickRow} onClose={closePanel} />}
-    {panels.panel === 'annotations' && <MotionAnnotationsPanel threads={threads} order={order} rows={lists.byId} activeThreadId={activeThread?.thread.id ?? null}
+    {panels.panel === 'annotations' && <MotionAnnotationsPanel threads={threads} order={order} rowOf={rowById} activeThreadId={activeThread?.thread.id ?? null}
       filter={annotations.filter} onFilter={annotations.setFilter} viewportRef={annotations.viewportRef} onOpen={openThread} onClose={closePanel} />}
     <div ref={setPreviewArea} data-testid='motion-preview-area' className={cn('absolute bottom-[4.5rem] left-6 top-6 flex items-center justify-center', panelOpen ? 'right-[22rem]' : 'right-6')}
       style={{ containerType: 'size' }}>

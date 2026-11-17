@@ -123,8 +123,10 @@ export function useMotionAnnotations(input: MotionAnnotationsInput): MotionAnnot
   const [filter, setFilter] = React.useState<AnnotationFilter>('open');
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [drafts, setDrafts] = React.useState<ReadonlyMap<string, string>>(() => new Map());
-  // A request to bring a thread's item into view; the count makes every request a new one.
-  const [reveal, setReveal] = React.useState<{ threadId: string; count: number } | null>(null);
+  // A request to bring a thread's item into view, served once: every request is a new object, and showing the Space
+  // again replays the effect with the request already served.
+  const [reveal, setReveal] = React.useState<{ threadId: string } | null>(null);
+  const served = React.useRef<{ threadId: string } | null>(null);
   const viewportRef = React.useRef<HTMLDivElement | null>(null);
 
   const resultThreads = React.useMemo(() => threads.flatMap((thread) => {
@@ -136,6 +138,13 @@ export function useMotionAnnotations(input: MotionAnnotationsInput): MotionAnnot
     const anchor = thread === undefined ? null : anchorOf(thread);
     return thread === undefined || anchor === null ? null : { thread, anchor };
   }, [threads, activeThreadId]);
+  // A thread's card belongs to its result: once another result shows, whichever entry showed it, the card closes and
+  // does not come back on returning (design §7.1, §10.1). A result still being read shows none yet and closes nothing.
+  const [shownId, setShownId] = React.useState(selectedId);
+  if (selectedId !== shownId) {
+    setShownId(selectedId);
+    if (selectedId !== null && activeThread !== null && activeThread.anchor.executionId !== selectedId) setActiveThreadId(null);
+  }
   const unresolvedCount = threads.filter((thread) => !thread.resolved && thread.deletedAt === undefined).length;
   // The open threads on the result a modification started from, earliest first (design §10.1).
   const openOnBase = React.useMemo(() => threads.flatMap((thread) => {
@@ -151,7 +160,7 @@ export function useMotionAnnotations(input: MotionAnnotationsInput): MotionAnnot
       setDetailsOpen(false);
       setActiveThreadId(threadId);
       if (thread.resolved) setFilter('all');
-      setReveal((current) => ({ threadId, count: (current?.count ?? 0) + 1 }));
+      setReveal({ threadId });
       openPanel();
       locate(anchor.executionId, threadId);
     });
@@ -180,7 +189,8 @@ export function useMotionAnnotations(input: MotionAnnotationsInput): MotionAnnot
   // The panel opens in the same render as the request, so its scroller and the item are there now.
   React.useEffect(() => {
     const viewport = viewportRef.current;
-    if (reveal === null || viewport === null) return;
+    if (reveal === null || reveal === served.current || viewport === null) return;
+    served.current = reveal;
     const item = [...viewport.querySelectorAll<HTMLElement>('[data-thread-id]')].find((element) => element.dataset.threadId === reveal.threadId);
     if (item !== undefined) revealWithin(viewport, item);
   }, [reveal]);

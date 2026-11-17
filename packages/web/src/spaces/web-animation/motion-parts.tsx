@@ -169,7 +169,7 @@ export function rowSummary(row: WebAnimationRowView, t: (key: string, params?: R
 interface MotionRowProps {
   row: WebAnimationRowView;
   selected: boolean;
-  onPick: (id: string) => void;
+  onPick: (row: WebAnimationRowView) => void;
 }
 
 /**
@@ -183,7 +183,7 @@ interface MotionRowProps {
  */
 export const MotionRow = React.memo(function MotionRow({ row, selected, onPick }: MotionRowProps): React.JSX.Element {
   const t = useTranslation();
-  const pick = React.useCallback((): void => onPick(row.id), [onPick, row.id]);
+  const pick = React.useCallback((): void => onPick(row), [onPick, row]);
   return <Button type='button' variant={null} size={null} data-testid={`motion-row-${row.id}`} aria-current={selected || undefined} onClick={pick}
     className={cn('flex w-full min-w-0 flex-col items-stretch gap-0.5 border-b border-border px-3 py-2 text-left hover-enabled:bg-accent', selected && 'bg-accent-strong hover-enabled:bg-accent-strong')}>
     <span className='truncate text-xs font-medium'>{webAnimationTitle(row, t)}</span>

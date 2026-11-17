@@ -72,7 +72,8 @@ interface MotionAnnotationsPanelProps {
   threads: readonly ThreadData[];
   /** Result ids in the execution list's order. */
   order: readonly string[];
-  rows: ReadonlyMap<string, WebAnimationRowView>;
+  /** A result's row: on a loaded page, or the shown one. */
+  rowOf: (id: string) => WebAnimationRowView | undefined;
   activeThreadId: string | null;
   /** Open leaves resolved threads out; opening a resolved thread switches it to All. */
   filter: AnnotationFilter;
@@ -89,7 +90,7 @@ interface MotionAnnotationsPanelProps {
  * @param props - The threads and the panel's state.
  * @param props.threads - The Space's threads.
  * @param props.order - Result ids in the execution list's order.
- * @param props.rows - The loaded rows, for group titles.
+ * @param props.rowOf - A result's row, for group titles.
  * @param props.activeThreadId - The thread whose card is open.
  * @param props.filter - Which threads it lists.
  * @param props.onFilter - Switches between Open and All.
@@ -99,7 +100,7 @@ interface MotionAnnotationsPanelProps {
  * @returns The panel.
  * @throws {never} Never.
  */
-export function MotionAnnotationsPanel({ threads, order, rows, activeThreadId, filter, onFilter, viewportRef, onOpen, onClose }: MotionAnnotationsPanelProps): React.JSX.Element {
+export function MotionAnnotationsPanel({ threads, order, rowOf, activeThreadId, filter, onFilter, viewportRef, onOpen, onClose }: MotionAnnotationsPanelProps): React.JSX.Element {
   const t = useTranslation();
   const showOpen = React.useCallback((): void => onFilter('open'), [onFilter]);
   const showAll = React.useCallback((): void => onFilter('all'), [onFilter]);
@@ -121,7 +122,7 @@ export function MotionAnnotationsPanel({ threads, order, rows, activeThreadId, f
       {groups.length === 0
         ? <p className='p-6 text-center text-xs text-muted-foreground'>{t(filter === 'open' && live.length > 0 ? 'spaces.webAnimation.noOpenAnnotations' : 'spaces.webAnimation.noAnnotations')}</p>
         : groups.map((group) => {
-          const row = rows.get(group.executionId);
+          const row = rowOf(group.executionId);
           return <section key={group.executionId}>
             <h4 className='truncate px-3 pb-1 pt-2.5 text-2xs font-medium text-muted-foreground'>{row === undefined ? t('spaces.webAnimation.unlistedResult') : webAnimationTitle(row, t)}</h4>
             {group.threads.map((item) => <AnnotationItem key={item.id} item={item} author={profiles.get(item.thread.comments[0]?.userId ?? '')?.name ?? null}

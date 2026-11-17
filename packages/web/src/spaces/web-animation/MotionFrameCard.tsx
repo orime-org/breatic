@@ -4,6 +4,8 @@
 import * as React from 'react';
 
 import { Popover, PopoverAnchor, PopoverContent } from '@web/components/ui/popover';
+import { ScrollArea } from '@web/components/ui/scroll-area';
+import { cn } from '@web/lib/utils';
 import type { FramePoint } from '@web/spaces/web-animation/annotation-draft';
 
 /** A card over the frame. */
@@ -60,7 +62,8 @@ const POINT_OFFSET = 18;
 /**
  * A card anchored to a point on the Motion frame, or to the frame's bottom centre (#1490 design §7.1, §7.3): the thread
  * card and the annotation write box. It opens beside the point and stays inside the preview area, flipping or sliding
- * near an edge; pressing outside does not close it, Esc does. One Esc closes only this card, not the panel behind it.
+ * near an edge, and no taller than the room there, scrolling what does not fit; pressing outside does not close it, Esc
+ * does. One Esc closes only this card, not the panel behind it.
  * @param props - The card.
  * @param props.testId - Its test hook.
  * @param props.point - Its point.
@@ -81,8 +84,9 @@ export function MotionFrameCard({ testId, point, boundary, container, onClose, c
     <PopoverAnchor asChild><span className='pointer-events-none absolute size-0' style={anchorStyle} /></PopoverAnchor>
     <PopoverContent data-testid={testId} container={container} side='right' align='start' sideOffset={point === null ? 8 : POINT_OFFSET}
       collisionBoundary={boundary} collisionPadding={8} onInteractOutside={keepOpen} onEscapeKeyDown={leaveWordsToTheBox} onOpenAutoFocus={focusCard}
-      onClick={stopAtCard} updatePositionStrategy='always' className={className}>
-      {children}
+      onClick={stopAtCard} updatePositionStrategy='always'
+      className={cn('grid max-h-[var(--radix-popover-content-available-height)] grid-rows-[minmax(0,1fr)] overflow-hidden', className)}>
+      <ScrollArea scrollbars='vertical' className='min-h-0'>{children}</ScrollArea>
     </PopoverContent>
   </Popover>;
 }

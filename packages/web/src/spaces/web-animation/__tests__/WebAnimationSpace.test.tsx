@@ -602,6 +602,57 @@ describe('one owner for opening an annotation', () => {
     await fromPanel(user, 'First note');
     expect(await replyBox()).toHaveValue('');
   });
+
+  it('closes the open card when an open request shows another result, so it does not come back on returning', async () => {
+    const { ids: [id], user } = await onNewer([{ text: 'First note', executionId: NEWER, timeSeconds: 1 }]);
+    await fromPanel(user, 'First note');
+    await screen.findByTestId('motion-thread-card');
+    act(() => useSpaceOpenRequestStore.setState({ state: { status: 'opened', request: { type: 'web_animation', select: OLDER }, spaceId: SPACE } }));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', OLDER));
+    expect(within(screen.getByTestId('motion-panel-annotations')).getByTestId(`motion-annotation-${id}`)).not.toHaveAttribute('aria-current');
+    await user.click(screen.getByTestId('motion-open-executions'));
+    await user.click(await screen.findByTestId(`motion-row-${NEWER}`));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    expect(screen.queryByTestId('motion-thread-card')).toBeNull();
+  });
+
+  it('closes the open card when another row is picked, so it does not come back on returning', async () => {
+    const { user } = await onNewer([{ text: 'First note', executionId: NEWER, timeSeconds: 1 }]);
+    await fromPanel(user, 'First note');
+    await screen.findByTestId('motion-thread-card');
+    await user.click(screen.getByTestId('motion-open-executions'));
+    await user.click(await screen.findByTestId(`motion-row-${OLDER}`));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', OLDER));
+    await user.click(screen.getByTestId(`motion-row-${NEWER}`));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    expect(screen.queryByTestId('motion-thread-card')).toBeNull();
+  });
+
+  it('scrolls the panel once for an opened thread, not again when the Space is shown again', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    const ids = await seedThreads(Array.from({ length: 8 }, (_, index) => ({ text: `Note ${index}`, executionId: NEWER, timeSeconds: index * 0.4 })));
+    const setMode = showInActivity();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const calls = threadBelowFold(ids.at(-1)!);
+    await userEvent.setup().click(await screen.findByTestId(`motion-marker-${ids.at(-1)!}`));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    act(() => setMode('hidden'));
+    act(() => setMode('visible'));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
+    expect(calls).toHaveLength(1);
+  });
+
+  it('titles the group of a shown result that is on no loaded page with that result', async () => {
+    const FAR = '90000000-0000-4000-8000-0000000000d2';
+    vi.mocked(timelineApi.getExecution).mockReset().mockResolvedValue(done(FAR, 'Far logo', '2026-11-14T09:00:00.000000Z') as never);
+    const { user } = await onNewer([{ text: 'Far note', executionId: FAR, timeSeconds: 1 }]);
+    act(() => useSpaceOpenRequestStore.setState({ state: { status: 'opened', request: { type: 'web_animation', select: FAR }, spaceId: SPACE } }));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', FAR));
+    await user.click(screen.getByTestId('motion-open-annotations'));
+    const panel = await screen.findByTestId('motion-panel-annotations');
+    expect(within(panel).getByRole('heading', { name: 'Far logo' })).toBeInTheDocument();
+    expect(within(panel).queryByText(t('spaces.webAnimation.unlistedResult'))).toBeNull();
+  });
 });
 
 describe('the thread card over the frame', () => {
@@ -638,6 +689,22 @@ describe('the thread card over the frame', () => {
     expect(props.collisionBoundary).toBe(screen.getByTestId('motion-preview-area'));
     expect(props).toMatchObject({ side: 'right', align: 'start' });
     expect(screen.getByTestId('motion-annotation-draft')).toContainElement(screen.getByTestId('doc-comment-motion-annotation-input'));
+  });
+
+  it('caps both cards at the room the preview area leaves and scrolls what does not fit', async () => {
+    const user = await openCard();
+    for (const testId of ['motion-thread-card-popover', 'motion-annotation-draft']) {
+      if (testId === 'motion-annotation-draft') {
+        await user.keyboard('{Escape}');
+        await user.click(screen.getByTestId('motion-action-add-annotation'));
+      }
+      const surface = await screen.findByTestId(testId);
+      expect(surface.className).toContain('max-h-[var(--radix-popover-content-available-height)]');
+      const viewport = surface.querySelector('[data-radix-scroll-area-viewport]');
+      expect(viewport).not.toBeNull();
+      expect(viewport!.contains(testId === 'motion-thread-card-popover'
+        ? screen.getByTestId('motion-thread-card') : screen.getByTestId('doc-comment-motion-annotation-input'))).toBe(true);
+    }
   });
 
   it('stays open when the user presses outside it', async () => {
