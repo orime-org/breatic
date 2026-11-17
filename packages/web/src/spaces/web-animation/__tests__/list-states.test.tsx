@@ -4,7 +4,7 @@
 /**
  * The states every web-animation list shares (#1490 design §7.3, §8.2): waiting only before the first answer, the
  * whole-list failure only when that first read failed, and a failed background read or Load more keeping what is shown;
- * Retry and Load more wait while they read, and a failed Load more turns into Retry.
+ * Load more waits while it reads, and a failed Load more turns into Retry.
  */
 
 import * as React from 'react';
@@ -34,14 +34,12 @@ describe('listShows', () => {
 });
 
 describe('ListLoadError', () => {
-  it('says the list failed and waits on Retry while it reads again', async () => {
+  it('says the list failed and reads it again on Retry', async () => {
     const onRetry = vi.fn();
-    const { rerender } = render(<ListLoadError message='List failed' retrying={false} onRetry={onRetry} />);
+    render(<ListLoadError message='List failed' onRetry={onRetry} />);
     expect(screen.getByText('List failed')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: t('timeline.retry') }));
     expect(onRetry).toHaveBeenCalledOnce();
-    rerender(<ListLoadError message='List failed' retrying onRetry={onRetry} />);
-    expect(screen.getByRole('button', { name: t('timeline.retry') })).toHaveAttribute('aria-busy', 'true');
   });
 });
 

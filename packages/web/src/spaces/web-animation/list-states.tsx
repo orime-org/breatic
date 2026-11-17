@@ -38,27 +38,25 @@ export function listShows(...queries: readonly ListStateQuery[]): ListShows {
 interface ListLoadErrorProps {
   /** What failed, in the list's own words. */
   message: string;
-  /** Whether Retry is reading the list again. */
-  retrying: boolean;
   onRetry: () => void;
   testId?: string;
 }
 
 /**
- * The whole-list failure: what failed and Retry, which waits while it reads.
+ * The whole-list failure: what failed and Retry. A retried first read is pending again, so the list shows its own
+ * loading state while it reads and this failure is gone.
  * @param props - The failure.
  * @param props.message - What failed.
- * @param props.retrying - Whether Retry is reading.
  * @param props.onRetry - Reads the list again.
  * @param props.testId - The Retry button's test id.
  * @returns The failure.
  * @throws {never} Never.
  */
-export function ListLoadError({ message, retrying, onRetry, testId }: ListLoadErrorProps): React.JSX.Element {
+export function ListLoadError({ message, onRetry, testId }: ListLoadErrorProps): React.JSX.Element {
   const t = useTranslation();
   return <div className='flex flex-col items-center gap-2 p-6 text-xs'>
     <span className='text-status-error-foreground'>{message}</span>
-    <Button type='button' data-testid={testId} variant='outline' size='sm' loading={retrying} onClick={onRetry}>{t('timeline.retry')}</Button>
+    <Button type='button' data-testid={testId} variant='outline' size='sm' onClick={onRetry}>{t('timeline.retry')}</Button>
   </div>;
 }
 

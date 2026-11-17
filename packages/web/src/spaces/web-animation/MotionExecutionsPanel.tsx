@@ -77,7 +77,7 @@ export function MotionExecutionsPanel({ lists, tab, selectedId, onTab, onPick, o
     </Tabs>
     <ScrollArea className='min-h-0 flex-1'>
       {shows === 'pending' ? <div className='flex flex-col gap-2 p-2'>{[0, 1, 2].map((index) => <Skeleton key={index} className='h-12 w-full' />)}</div>
-        : shows === 'failed' ? <ListLoadError message={t('spaces.webAnimation.listError')} retrying={current.own.isFetching || current.legacy.isFetching} onRetry={retry} />
+        : shows === 'failed' ? <ListLoadError message={t('spaces.webAnimation.listError')} onRetry={retry} />
           : empty ? <p className='p-6 text-center text-xs text-muted-foreground'>{t(tab === 'done' ? 'spaces.webAnimation.empty' : 'spaces.webAnimation.emptyInProgress')}</p>
             : <>
               <ListBlock query={current.own} selectedId={selectedId} onPick={onPick} />

@@ -123,7 +123,7 @@ export function TimelineWebAnimationPicker({ projectId, making, onPick, onGoMake
       </DialogHeader>
       <ScrollArea className='min-h-0 flex-1' viewportClassName='p-4'>
         {shows === 'pending' && <div className='flex flex-col gap-2'>{[0, 1, 2].map((index) => <Skeleton key={index} className='h-12 w-full' />)}</div>}
-        {shows === 'failed' && <ListLoadError message={t('timeline.webAnimation.picker.error')} retrying={list.isFetching} onRetry={retry} testId='timeline-web-animation-picker-retry' />}
+        {shows === 'failed' && <ListLoadError message={t('timeline.webAnimation.picker.error')} onRetry={retry} testId='timeline-web-animation-picker-retry' />}
         {shows === 'ready' && rows.length === 0 && <p className='py-6 text-sm text-muted-foreground'>{t('timeline.webAnimation.picker.empty')}</p>}
         <div className='flex flex-col gap-4'>
           {groups.map((group) => <section key={group.key} data-testid={`timeline-picker-group-${group.key}`} className='flex flex-col gap-1'>

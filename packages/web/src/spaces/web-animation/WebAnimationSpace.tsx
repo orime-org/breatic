@@ -603,7 +603,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         ? selection.status === 'fetching' || doneShows === 'pending'
           ? <LoaderCircle data-testid='motion-loading' className='size-5 animate-spin text-muted-foreground' />
           : doneShows === 'failed'
-            ? <ListLoadError message={t('spaces.webAnimation.listError')} retrying={lists.done.own.isFetching || lists.done.legacy.isFetching} onRetry={retryDone} />
+            ? <ListLoadError message={t('spaces.webAnimation.listError')} onRetry={retryDone} />
             : <div data-testid='motion-empty' className='flex flex-col items-center gap-3 text-sm text-muted-foreground'>
               <span>{t('spaces.webAnimation.empty')}</span>
               {!readOnly && <Button data-testid='motion-empty-new' size='sm' onClick={openNew} icon={<Plus className='size-4' />}>{t('spaces.webAnimation.new')}</Button>}

@@ -29,6 +29,7 @@ import { placeVideoOnCanvas } from '@web/spaces/canvas/place-video-on-canvas';
 import { asCommentBody } from '@web/spaces/document/document-comment-extension';
 import { bodyText } from '@web/spaces/document/use-comment-cards';
 import { webAnimationAnnotationStore } from '@web/spaces/web-animation/annotation-thread-store';
+import { motionListQueryKey } from '@web/spaces/web-animation/use-motion-lists';
 import { WebAnimationSpace } from '@web/spaces/web-animation/WebAnimationSpace';
 import { useCurrentUserStore } from '@web/stores';
 import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
@@ -580,6 +581,25 @@ describe('the execution list when a read fails', () => {
     await user.click(within(panel).getByRole('button', { name: t('timeline.retry') }));
     await waitFor(() => expect(within(panel).queryByText(t('spaces.webAnimation.listError'))).toBeNull());
     expect(panel.querySelectorAll('.skeleton-shimmer').length).toBeGreaterThan(0);
+  });
+
+  it('keeps Retry still while only the other list of the tab reads in the background', async () => {
+    vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string }) => {
+      if (params.group === 'running' || params.scope === 'timeline') return { rows: [], nextCursor: null, totals: { done: 0, inProgress: 0 } } as never;
+      throw new Error('network');
+    });
+    show();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('motion-open-executions'));
+    const panel = await screen.findByTestId('motion-panel-executions');
+    await within(panel).findByText(t('spaces.webAnimation.listError'));
+    vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(() => new Promise(() => {}));
+    void clients.at(-1)!.refetchQueries({ queryKey: motionListQueryKey(PROJECT, SPACE, 'timeline', 'done') });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
+    // The panel's and the preview's Retry.
+    const retries = screen.getAllByRole('button', { name: t('timeline.retry') });
+    expect(retries).toHaveLength(2);
+    for (const retry of retries) expect(retry).not.toHaveAttribute('aria-busy');
   });
 
   it('keeps the rows when a background read fails', async () => {
