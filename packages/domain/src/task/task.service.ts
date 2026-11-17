@@ -121,18 +121,6 @@ export async function markRunning(taskId: string, jobId: string, now: Date): Pro
 }
 
 /**
- * Complete a task whose cost is still being looked up, leaving it unbilled (inner#1743): the result carries
- * `costWait` and the pending lookups; the task's own job bills it once they are answered.
- * @param taskId - Task UUID
- * @param result - Its result, with `costWait` and the pending lookups.
- * @param durationMs - How long the run took from its first start, in milliseconds
- * @returns True for the call that completed it.
- */
-export async function markCompleted(taskId: string, result: Record<string, unknown>, durationMs: number): Promise<boolean> {
-  return taskRepo.markCompleted(taskId, result, durationMs);
-}
-
-/**
  * Mark a task as failed with an error message. A task completed and waiting on its cost is left alone: a stale run's
  * failure must not undo a delivered result.
  * @param taskId - Task UUID

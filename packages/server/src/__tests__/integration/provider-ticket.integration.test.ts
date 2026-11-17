@@ -120,8 +120,8 @@ describe("a completion whose cost is still being looked up", () => {
   it("completes the task without billing it, and only the first call wins", async () => {
     const { taskId } = await seedTask();
 
-    expect(await taskService.markCompleted(taskId, WAITING, 1200)).toBe(true);
-    expect(await taskService.markCompleted(taskId, WAITING, 1200)).toBe(false);
+    expect(await taskService.markCompletedAndCount(taskId, WAITING, 1200)).toBe(true);
+    expect(await taskService.markCompletedAndCount(taskId, WAITING, 1200)).toBe(false);
 
     const row = await rowOf(taskId);
     expect(row.status).toBe("completed");
@@ -131,7 +131,7 @@ describe("a completion whose cost is still being looked up", () => {
 
   it("writes what the lookups found back while it waits, and nothing once billed", async () => {
     const { taskId } = await seedTask();
-    await taskService.markCompleted(taskId, WAITING, 1200);
+    await taskService.markCompletedAndCount(taskId, WAITING, 1200);
     const found = { ...WAITING, costWait: { ...WAITING.costWait, lookups: 1 } };
 
     expect(await taskRepo.updateCostWait(taskId, found)).toBe(true);
@@ -144,7 +144,7 @@ describe("a completion whose cost is still being looked up", () => {
 
   it("is billed once, by whichever call first sets billed_at", async () => {
     const { taskId } = await seedTask();
-    await taskService.markCompleted(taskId, WAITING, 1200);
+    await taskService.markCompletedAndCount(taskId, WAITING, 1200);
 
     expect(await db.transaction((tx) => taskRepo.markBilled(taskId, 5.25, tx))).toBe(true);
     expect(await db.transaction((tx) => taskRepo.markBilled(taskId, 9, tx))).toBe(false);
@@ -157,7 +157,7 @@ describe("a completion whose cost is still being looked up", () => {
 
   it("is not turned failed by a stale run's failure while it waits", async () => {
     const { taskId } = await seedTask();
-    await taskService.markCompleted(taskId, WAITING, 1200);
+    await taskService.markCompletedAndCount(taskId, WAITING, 1200);
 
     expect(await taskService.markFailed(taskId, "late failure")).toBe(false);
 
