@@ -5,7 +5,7 @@ import {
   Color, MathUtils, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, type Material, type Mesh, type Object3D, type Texture,
 } from 'three';
 
-import type { SceneLook, SceneLookPart } from '@breatic/shared';
+import { SCENE_LOOK_PICTURE_COLOR, type SceneLook, type SceneLookPart } from '@breatic/shared';
 
 import { uploadBytes } from '@web/spaces/three-d/model-texture-metadata';
 
@@ -46,9 +46,6 @@ export interface ApplyLookOptions {
   /** A user picture's base texture when it is loaded and usable, otherwise null. */
   picture: (assetId: string) => Texture | null;
 }
-
-/** A material colour of white, which a user picture shows at unless a colour is stored. */
-const WHITE = 0xffffff;
 
 /** The textures an apply cloned for a material, disposed on its next apply. */
 const clones = new WeakMap<Material, Texture[]>();
@@ -94,7 +91,7 @@ export function buildPartTable(root: Object3D, partOf: (material: Material) => s
     table.set(part, {
       materialType: material.type,
       name: material.name || null,
-      color: `#${(lit.color ?? new Color(WHITE)).getHexString()}`,
+      color: `#${(lit.color ?? new Color(SCENE_LOOK_PICTURE_COLOR)).getHexString()}`,
       ...(lit.isMeshStandardMaterial ? { roughness: lit.roughness, metalness: lit.metalness,
         emissive: `#${lit.emissive.getHexString()}`, emissiveIntensity: lit.emissiveIntensity } : {}),
       opacity: material.opacity,
@@ -193,7 +190,7 @@ export function applyLook(root: Object3D, table: LookPartTable, look: SceneLook,
     if (material.color) {
       const own = entry.builtin ? options.themeColor : entry.color;
       if (fields.color !== undefined) material.color.set(fields.color);
-      else material.color.set(showingUser ? WHITE : own);
+      else material.color.set(showingUser ? SCENE_LOOK_PICTURE_COLOR : own);
     }
     if (lit) {
       if (fields.roughness !== undefined) material.roughness = fields.roughness;

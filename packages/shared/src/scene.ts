@@ -149,6 +149,12 @@ export const SCENE_LOOK_KEY_PREFIX = 'look.';
 /** The most parts one object's look may hold. */
 export const SCENE_LOOK_MAX_PARTS = 256;
 
+/** The colour a part shows a user picture at while no colour is stored, so the picture keeps its own colours. */
+export const SCENE_LOOK_PICTURE_COLOR = '#ffffff';
+
+/** The glow colour of a part whose model gives none. */
+export const SCENE_LOOK_EMISSIVE_DEFAULT = '#000000';
+
 /** The part that holds primitives without a material. */
 export const SCENE_LOOK_DEFAULT_PART = 'd';
 
