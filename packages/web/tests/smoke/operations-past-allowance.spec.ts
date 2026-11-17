@@ -4,16 +4,18 @@
 /**
  * An account whose monthly operations are used up (inner#1968, test spec K-01
  * and K-02): with fewer than 0.5 credits in the studio, Generate is refused
- * with a top-up that opens the credits overlay; after buying credits through
- * the Stripe sandbox, Generate runs as an operation past the allowance, the
- * membership panel counts it and the credits ledger shows its 0.5 charge.
+ * with a top-up that opens the credits overlay; once the studio holds credits
+ * again, Generate runs as an operation past the allowance, the membership
+ * panel counts it, and both the account's Spending page and the studio ledger
+ * show its 0.5 charge as an operation overage.
  *
  * Each case makes an admin of its own on `base` (500 operations a month),
  * fills the month with counted operations and charges the studio's trial
- * credits down to 0.4 (`scripts/seed-smoke-operations.ts`), then moves the
+ * credits down to 0.4 (K-01) or 0 (K-02) (`scripts/seed-smoke-operations.ts`), then moves the
  * admin back to `self_hosted`. The one generation that runs uses the panel's
- * default model at its cheapest settings (docs/TEST-MANDATE.md 2.2), and the
- * purchase is the smallest credit pack.
+ * default model at its cheapest settings (docs/TEST-MANDATE.md 2.2). Paying
+ * is not under test here, so the top-up is a back-office operator gift written
+ * to the database (`scripts/grant-smoke-credits.ts`).
  */
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -87,44 +89,6 @@ async function refusal(page: Page): Promise<Locator> {
   return toast;
 }
 
-/**
- * Fill and submit the Stripe sandbox checkout with the test card. The card
- * accordion's button is covered, so it is clicked from the page; the address
- * is entered by hand so the autocomplete list does not cover its fields; and
- * saving the details with Link is left off, since it asks for a phone number.
- * @param page - The page on the checkout.
- */
-async function payInSandbox(page: Page): Promise<void> {
-  await page.waitForURL(/checkout\.stripe\.com/, { timeout: 30_000 });
-  const card = page.getByTestId('card-accordion-item-button');
-  await card.waitFor({ state: 'attached', timeout: 30_000 }).catch(() => undefined);
-  if ((await card.count()) > 0) await card.evaluate((b) => (b as HTMLElement).click());
-  const email = page.locator('#email');
-  if ((await email.isVisible()) && (await email.isEditable()) && (await email.inputValue()) === '') await email.fill('smoke-buyer@breatic.test');
-  await page.locator('#cardNumber').fill('4242424242424242');
-  await page.locator('#cardExpiry').fill('1234');
-  await page.locator('#cardCvc').fill('123');
-  await page.locator('#billingName').fill('Smoke Buyer');
-  const country = page.locator('#billingCountry');
-  if (await country.isVisible()) await country.selectOption('US');
-  const manual = page.getByRole('button', { name: /enter address manually/i });
-  if (await manual.isVisible()) await manual.click();
-  const line1 = page.locator('#billingAddressLine1');
-  if (await line1.isVisible()) {
-    await line1.fill('1 Market St');
-    await page.locator('#billingLocality').fill('San Francisco');
-    await page.locator('#billingPostalCode').fill('94105');
-    const state = page.locator('#billingAdministrativeArea');
-    if (await state.isVisible()) await state.selectOption('CA');
-  } else {
-    const postal = page.locator('#billingPostalCode');
-    if (await postal.isVisible()) await postal.fill('94105');
-  }
-  const save = page.locator('#enableStripePass');
-  if ((await save.isVisible()) && (await save.isChecked())) await save.uncheck();
-  await page.getByTestId('hosted-payment-submit-button').click();
-}
-
 test('used-up operations with under 0.5 credits refuse Generate and offer a top-up @needs-model', async ({ browser }) => {
   const made: MadeSoFar = {};
   try {
@@ -148,40 +112,19 @@ test('used-up operations with under 0.5 credits refuse Generate and offer a top-
   }
 });
 
-test('after a sandbox top-up, Generate past the allowance runs and is charged 0.5 @needs-model @needs-payments', async ({ browser }) => {
-  // A Stripe checkout, then one real generation.
+test('after a top-up, Generate past the allowance runs, is charged 0.5 and shows on both ledgers @needs-model', async ({ browser }) => {
+  // One real generation.
   test.setTimeout(10 * 60_000);
   const made: MadeSoFar = {};
   try {
     const admin = await makeMeteredAdmin(browser, 'ops-topup', made);
-    runScript('seed-smoke-operations.ts', { userId: admin.userId, studioId: admin.studioId, leaveCredits: 0.4 });
+    runScript('seed-smoke-operations.ts', { userId: admin.userId, studioId: admin.studioId, leaveCredits: 0 });
     const page = await admin.context.newPage();
-    const api = admin.context.request;
 
     const nodeId = await generateOnce(page, admin.projectId);
-    const toast = await refusal(page);
-    await toast.getByRole('button', { name: say('credits.topUp') }).click();
-    await expect(page.getByTestId('credits-index')).toBeVisible({ timeout: 15_000 });
-    await page.locator('#credits-tab-buy').click();
-    // The smallest pack.
-    await page.getByTestId('credit-pack').first().getByRole('button').click();
-    await page.getByTestId('confirm-consent').click();
-    await page.getByTestId('confirm-pay').click();
-    await payInSandbox(page);
-    await page.waitForURL((url) => url.hostname === 'localhost', { timeout: 60_000 });
-    await expect(page.getByTestId('credits-index')).toBeVisible({ timeout: 30_000 });
+    await refusal(page);
 
-    const lots = await dataOf<{ items: Array<{ id: string; sourceKind: string; designatedStudioId: string | null }> }>(
-      await api.get('/api/v1/credits/lots'),
-      'list the lots',
-    );
-    const bought = lots.items.find((lot) => lot.sourceKind !== 'gift' && lot.designatedStudioId === null);
-    expect(bought, 'the purchased lot').toBeDefined();
-    await dataOf(
-      await api.patch(`/api/v1/credits/lots/${bought!.id}/designation`, { data: { studioId: admin.studioId } }),
-      'assign the purchase to the studio',
-    );
-
+    runScript('grant-smoke-credits.ts', { userId: admin.userId, studioId: admin.studioId, credits: '20' });
     await openCanvas(page, admin.projectId);
     await pressGenerate(page, nodeId);
     const node = visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`);
@@ -192,13 +135,26 @@ test('after a sandbox top-up, Generate past the allowance runs and is charged 0.
     await expect(row).toContainText(say('membership.operations.overageCount', { count: '1' }), { timeout: 20_000 });
     await page.keyboard.press('Escape');
 
+    // The account's Spending page reads the overage line (the ledger wire schema knows its kind).
     await page.getByRole('button', { name: 'Account' }).click();
     await page.getByTestId('account-menu').getByRole('menuitem', { name: /credit/i }).click();
     await expect(page.getByTestId('credits-index')).toBeVisible({ timeout: 15_000 });
     await page.locator('#credits-tab-ledger').click();
-    const overage = page.locator('tr').filter({ hasText: say('credits.eventOperationOverage') });
-    await expect(overage).toHaveCount(1, { timeout: 20_000 });
-    await expect(overage).toContainText('0.5');
+    const spent = page.locator('tr').filter({ hasText: say('credits.eventOperationOverage') });
+    await expect(spent).toHaveCount(1, { timeout: 20_000 });
+    await expect(spent).toContainText('0.5');
+    await expect(page.getByText(say('credits.loadFailed'))).toHaveCount(0);
+    await expect(page.getByText(say('credits.listPageFailed'))).toHaveCount(0);
+
+    // The studio ledger names it an operation overage, not a generation.
+    const studios = await dataOf<Array<{ id: string; slug: string }>>(await admin.context.request.get('/api/v1/studios'), 'list studios');
+    const slug = studios.find((studio) => studio.id === admin.studioId)?.slug;
+    expect(slug, 'the studio slug').toBeDefined();
+    await page.goto(`/studio/${slug}/credits`);
+    const line = page.locator('tr[data-testid^="studio-ledger-"]').filter({ hasText: say('credits.eventOperationOverage') });
+    await expect(line).toHaveCount(1, { timeout: 20_000 });
+    await expect(line).toContainText('0.5');
+    await expect(page.getByText(say('studio.container.credits.loadError'))).toHaveCount(0);
   } finally {
     await releaseMeteredAdmin(made);
   }
