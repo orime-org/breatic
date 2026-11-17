@@ -193,7 +193,7 @@ export const PlainTableSizeGrid = React.memo(function PlainTableSizeGrid({
               data-testid={`doc-slash-table-size-${size.rows}-${size.cols}`}
               data-on={on ? '' : undefined}
               className={cn(CELL, on && CELL_ON)}
-              onMouseEnter={() => {
+              onMouseMove={() => {
                 onHover(size);
               }}
               onMouseDown={(event) => {

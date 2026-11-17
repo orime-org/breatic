@@ -278,7 +278,9 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
   const index = moved.query === filterQuery ? Math.min(moved.index, items.length - 1) : 0;
   const highlight = React.useCallback(
     (next: number): void => {
-      setMoved({ query: filterQuery, index: next });
+      // The same row again keeps the state, so a pointer moving along a lit
+      // row renders nothing.
+      setMoved((now) => (now.query === filterQuery && now.index === next ? now : { query: filterQuery, index: next }));
     },
     [filterQuery],
   );
@@ -287,7 +289,13 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
   const grid = gridState !== null && gridState.query === query ? gridState : null;
   const openGrid = React.useCallback(
     (at: TableSize | null): void => {
-      setGrid({ query, at });
+      // The same size again keeps the state, so a pointer moving inside a lit
+      // cell renders nothing.
+      setGrid((now) =>
+        now !== null && now.query === query && now.at?.rows === at?.rows && now.at?.cols === at?.cols
+          ? now
+          : { query, at },
+      );
     },
     [query],
   );
@@ -580,16 +588,19 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
                 if (id !== 'table') closeGrid();
                 else if (grid === null) openGrid(null);
               };
+              // Only a pointer that moves lights a row, as Radix menu items
+              // do: a list scrolled under a still pointer lights nothing.
               const handlers = {
-                onMouseEnter: hover,
                 onMouseMove: hover,
                 onMouseLeave: id === 'table' ? graceFrom : undefined,
                 onMouseDown: (event: React.MouseEvent): void => {
                   // Only the main button picks, as in the insert menu;
                   // Control with it is the secondary click on a Mac.
                   if (event.button !== 0 || event.ctrlKey) return;
-                  if (id === 'table' && !out) openGrid(null);
-                  else pick(id);
+                  // A press on Table opens a closed grid and leaves an open
+                  // one as it is, as a Radix submenu trigger does.
+                  if (id !== 'table' || out) pick(id);
+                  else if (grid === null) openGrid(null);
                 },
               };
               return (
