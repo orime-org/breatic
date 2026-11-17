@@ -84,6 +84,11 @@ export async function openGenerationTasks(opts: {
         { err, nodeId, taskId: opts.taskId, projectId: opts.projectId },
         "node_task_open_failed",
       );
+      // The rows already open belong to a run that is not happening; left
+      // running they would count it until the two-hour harvest.
+      await failOpenedTasks(opts.projectId, opts.spaceId, rows, "internal").catch((settleErr: unknown) => {
+        logger.error({ err: settleErr, taskId: opts.taskId, projectId: opts.projectId }, "node_task_open_cleanup_failed");
+      });
       throw new AppError(503, t("canvas.task.couldNotStart"));
     }
     await publishCountsQuietly(docName, nodeId, opened.counts);

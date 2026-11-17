@@ -34,9 +34,12 @@ const open = vi.fn(async (_opts: OpenArgs) => ({
   counts: { running: 1, done: 0, failed: 0, expired: 0 },
 }));
 const emit = vi.fn();
+const settle = vi.fn(async (_opts: { taskId: string; outcome: string; errorMessage: string }) => ({
+  counts: { running: 0, done: 0, failed: 1, expired: 0 },
+}));
 
 vi.mock("@breatic/domain", () => ({
-  nodeTaskService: { open },
+  nodeTaskService: { open, settle },
   emitNodeTaskCounts: emit,
 }));
 
@@ -167,5 +170,27 @@ describe("opening a generation's task rows", () => {
     // happen, so opening more rows for it would only leave them to expire.
     expect(open).toHaveBeenCalledTimes(1);
     expect(emit).not.toHaveBeenCalled();
+  });
+
+  it("ends the rows it already opened when a later node's row cannot be opened (inner#1968 H-41)", async () => {
+    // A row left running would count a run that is not happening until the
+    // two-hour harvest ends it.
+    open.mockResolvedValueOnce({ id: "row-a", counts: { running: 1, done: 0, failed: 0, expired: 0 } });
+    open.mockRejectedValueOnce(new Error("no database"));
+
+    await expect(
+      openGenerationTasks({
+        projectId: PROJECT,
+        spaceId: SPACE,
+        nodeIds: [NODE_A, NODE_B],
+        startedByUserId: "user-1",
+        taskId: "job-1",
+        action: "generate",
+        label: "seedream-4",
+      }),
+    ).rejects.toMatchObject({ statusCode: 503 });
+
+    expect(settle).toHaveBeenCalledTimes(1);
+    expect(settle).toHaveBeenCalledWith({ taskId: "row-a", outcome: "failed", errorMessage: "internal" });
   });
 });
