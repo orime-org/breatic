@@ -401,6 +401,25 @@ describe('the mouse on the menu (A3)', () => {
     expect(screen.getByTestId('doc-slash-row-heading-1').hasAttribute('data-highlighted')).toBe(true);
   });
 
+  it('starts on the first row again when the query changes and comes back', () => {
+    const { editor } = open([para('')]);
+    const id = read(editor)[0]!.id;
+    caretAtEnd(editor, id);
+    type(editor, '/');
+    press(editor, 'ArrowDown');
+    press(editor, 'ArrowDown');
+    press(editor, 'ArrowDown');
+    expect(screen.getByTestId('doc-slash-row-heading-1').hasAttribute('data-highlighted')).toBe(false);
+    type(editor, 'h');
+    const view = editor.prosemirrorView!;
+    act(() => {
+      const { from } = view.state.selection;
+      view.dispatch(view.state.tr.delete(from - 1, from));
+    });
+    expect(textOf(editor, id)).toBe('/');
+    expect(screen.getByTestId('doc-slash-row-heading-1').hasAttribute('data-highlighted')).toBe(true);
+  });
+
   it('marks Table as opening a grid, as the insert menu does', () => {
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);
@@ -542,6 +561,19 @@ describe('keys while the size grid is open (design state table)', () => {
     });
     expect(textOf(editor, id)).toBe('');
     expect(menu()).toBeNull();
+  });
+  it('keeps the grid closed when input with no key changes the query and changes it back', () => {
+    const { editor, id } = gridOpen('/tab');
+    // An input method or a paste changes the line with no keydown.
+    type(editor, 'l');
+    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
+    const view = editor.prosemirrorView!;
+    act(() => {
+      const { from } = view.state.selection;
+      view.dispatch(view.state.tr.delete(from - 1, from));
+    });
+    expect(textOf(editor, id)).toBe('/tab');
+    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
   });
 });
 
