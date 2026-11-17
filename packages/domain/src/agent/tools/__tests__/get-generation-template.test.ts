@@ -244,6 +244,33 @@ describe("what one apply of a template costs (inner#1816)", () => {
   }
 });
 
+describe("a take of a template (inner#1811)", () => {
+  beforeEach(() => {
+    useFullCatalog();
+    setLocale("en");
+  });
+  afterAll(() => restoreProcessEnv());
+
+  it("names the settings a take sends, each price-moving one at its cheapest but the length, and what a take costs below the final", async () => {
+    const out = await read("product-ad-15s");
+    const line = /Takes cost ([\d.,]+) credits, each generate node at these settings: (\{.*\})\./.exec(out);
+    expect(line, out).not.toBeNull();
+    const takes = JSON.parse(line?.[2] ?? "{}") as Record<string, Record<string, unknown>>;
+    const result = byId("product-ad-15s").nodes.find((node) => node.key === "result");
+    if (result?.role !== "generate") throw new Error("product-ad-15s has no result generate node");
+    // The length stays the template's: its timed parts are written for it.
+    expect(takes.result?.duration).toBe(15);
+    const take = await estimateModelCredits(result.model, { params: takes.result ?? {} });
+    const final = await estimateModelCredits(result.model, { params: result.params });
+    expect(take?.credits).toBeLessThan(final?.credits ?? 0);
+    expect(out).toMatch(/One apply of this template costs [\d.,]+ credits at its settings\./);
+  });
+
+  it("tells the agent a template sent while the user is still deciding is a take at those settings", async () => {
+    expect(await read("product-ad-15s")).toContain("While the user is still deciding, an apply is a take");
+  });
+});
+
 describe("a template whose input goes into a slot or whose node stands beside the anchor (inner#1825 design 4.1, 4.2)", () => {
   beforeEach(() => {
     loadFixtureLocales();

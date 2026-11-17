@@ -16,6 +16,8 @@ import { z } from "zod";
 import { formatCredits, GENERATION_TEMPLATES, keyStanding, t, templateAnchor, templateSkeleton, type GenerationTemplate } from "@breatic/shared";
 
 import { templateCraft } from "@domain/agent/tools/template-craft.js";
+import { lowestValues } from "@domain/agent/tools/generation-models.js";
+import { modelsForMode } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 import { templateSegmentsText } from "@domain/agent/tools/template-expansion.js";
 import { PROPOSE_CANVAS_ACTION } from "@domain/agent/tools/tool-names.js";
@@ -35,7 +37,8 @@ const HOW_TO_SEND =
   "A template node with lines is a dialogue: send it lines, one per turn, each { speaker, prompt } with the speaker the template gives and only the words said, " +
   "no name or colon in front, and no prompt. " +
   "A template with steps gets a text node listing them when it is placed, so write no node for them. " +
-  "For several takes of one template, each take is an anchor carrying { id } with its own words; an input they share is one node wired or filled into every take.";
+  "For several takes of one template, each take is an anchor carrying { id } with its own words; an input they share is one node wired or filled into every take. " +
+  "While the user is still deciding, an apply is a take: keep the template's mode and model and write in each generate node's params the take settings this answer names; the template's own settings are for the final, made from the take they pick or when they ask for a final.";
 
 /**
  * One template written out for the agent: its nodes, wiring, inputs,
@@ -85,22 +88,72 @@ export function describeTemplate(template: GenerationTemplate): string {
   );
 }
 
+/** A template's generate nodes priced together, and whether every one was priced exactly. */
+interface TemplatePrice {
+  credits: number;
+  exact: boolean;
+}
+
 /**
- * What one apply of a template costs on this deployment, priced live: the
- * price list and its multiplier belong to the deployment, so a number
- * written into the template would be wrong elsewhere.
+ * The settings each generate node of a template runs at as a take: the
+ * template's own, with every setting that moves its model's price at its
+ * cheapest value but the length, which the template's timed parts are
+ * written for (inner#1811).
  * @param template - The template.
- * @returns The sentence, or "" when none of its generate nodes is priced.
+ * @returns Each generate node's key with its take settings.
  */
-async function applyCost(template: GenerationTemplate): Promise<string> {
+async function takeSettings(template: GenerationTemplate): Promise<Record<string, Record<string, unknown>>> {
+  const generates = template.nodes.flatMap((node) => (node.role === "generate" ? [node] : []));
+  const each = await Promise.all(
+    generates.map(async (node): Promise<[string, Record<string, unknown>]> => {
+      const answer = modelsForMode(node.type, node.mode);
+      const model = answer.available ? answer.models.find((one) => one.name === node.model) : undefined;
+      const { duration: _length, ...cheapest } = model === undefined ? {} : await lowestValues(model);
+      return [node.key, { ...node.params, ...cheapest }];
+    }),
+  );
+  return Object.fromEntries(each);
+}
+
+/**
+ * The sum of a template's generate nodes priced at the given settings.
+ * @param template - The template.
+ * @param settings - Each generate node's settings, by key.
+ * @returns The credits and whether every node was priced exactly, or undefined when none is priced.
+ */
+async function priceAt(template: GenerationTemplate, settings: Record<string, Record<string, unknown> | undefined>): Promise<TemplatePrice | undefined> {
   const prices = await Promise.all(
-    template.nodes.flatMap((node) => (node.role === "generate" ? [estimateModelCredits(node.model, { params: node.params })] : [])),
+    template.nodes.flatMap((node) => (node.role === "generate" ? [estimateModelCredits(node.model, { params: settings[node.key] ?? {} })] : [])),
   );
   const priced = prices.filter((price) => price !== undefined);
-  if (priced.length === 0) return "";
-  const sum = priced.reduce((total, price) => total + price.credits, 0);
-  const exact = priced.length === prices.length && priced.every((price) => price.bound === "exact");
-  return `One apply of this template costs ${exact ? "" : "at least "}${formatCredits(sum, "en-US")} credits at its settings.`;
+  if (priced.length === 0) return undefined;
+  return { credits: priced.reduce((total, price) => total + price.credits, 0), exact: priced.length === prices.length && priced.every((price) => price.bound === "exact") };
+}
+
+/**
+ * What one apply of a template costs on this deployment, at its settings
+ * (the final) and as a take, priced live: the price list and its multiplier
+ * belong to the deployment, so a number written into the template would be
+ * wrong elsewhere.
+ * @param template - The template.
+ * @returns The sentences, or "" when none of its generate nodes is priced.
+ */
+async function applyCost(template: GenerationTemplate): Promise<string> {
+  const own = Object.fromEntries(template.nodes.flatMap((node) => (node.role === "generate" ? [[node.key, node.params]] : [])));
+  const final = await priceAt(template, own);
+  if (final === undefined) return "";
+  const takes = await takeSettings(template);
+  const take = await priceAt(template, takes);
+  /**
+   * A price as the agent reads it.
+   * @param price - The price.
+   * @returns Its credits, marked a floor when not every node was priced exactly.
+   */
+  const amount = (price: TemplatePrice): string => `${price.exact ? "" : "at least "}${formatCredits(price.credits, "en-US")}`;
+  return (
+    `One apply of this template costs ${amount(final)} credits at its settings.` +
+    (take === undefined ? "" : ` Takes cost ${amount(take)} credits, each generate node at these settings: ${JSON.stringify(takes)}.`)
+  );
 }
 
 /** The tool that reads one template; it renders in the turn's language when called, so one object serves every turn. */
