@@ -33,3 +33,16 @@ export function gridTileRects(width: number, height: number, rows: number, cols:
   }
   return tiles;
 }
+
+/**
+ * The cells a grid of `total` cells keeps, row by row from 0, less the ones
+ * `skip` lists. Result i, its placement and the tile the container cuts for it
+ * are all cell `[i]`, so the browser and the container both read it here.
+ * @param total - How many cells the grid has.
+ * @param skip - The cells left out; anything but an array leaves none out.
+ * @returns The kept cell indices.
+ */
+export function keptCells(total: number, skip: unknown): number[] {
+  const skipped = new Set(Array.isArray(skip) ? skip : []);
+  return Array.from({ length: total }, (_, index) => index).filter((index) => !skipped.has(index));
+}

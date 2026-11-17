@@ -18,7 +18,7 @@ import { buildAdjustVideoFilter, parseAdjustValue } from "@shared/adjust-value.j
 import { DENOISE_NOISE_FLOOR_DB, denoiseReductionDb } from "@shared/audio-denoise.js";
 import { buildCompressorFilter, type DynamicsValue } from "@shared/audio-dynamics.js";
 import { PEAK_LIMITER, buildEqFilter } from "@shared/audio-eq.js";
-import { gridTileRects } from "@shared/mini-tools/grid-tiles.js";
+import { gridTileRects, keptCells } from "@shared/mini-tools/grid-tiles.js";
 import { pickMediaMetadata, realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
 
 /** The container's run endpoint, which the Durable Object posts a job to. */
@@ -841,9 +841,7 @@ function joinAudioSteps(params: Record<string, unknown>, clips: readonly ExtraIn
  * @throws {Error} When rows or cols is not a number.
  */
 export function gridCellsOf(params: Record<string, unknown>): number[] {
-  const total = numberOf(params, "rows") * numberOf(params, "cols");
-  const skipped = new Set(Array.isArray(params.skip) ? params.skip : []);
-  return Array.from({ length: total }, (_, index) => index).filter((index) => !skipped.has(index));
+  return keptCells(numberOf(params, "rows") * numberOf(params, "cols"), params.skip);
 }
 
 /**

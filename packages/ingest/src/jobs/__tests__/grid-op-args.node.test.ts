@@ -10,6 +10,8 @@
 
 import { describe, expect, it } from "vitest";
 import { gridTileRects } from "@shared/mini-tools/grid-tiles.js";
+import { miniToolById } from "@shared/mini-tools/derive.js";
+import { pickedCellsOf } from "@shared/mini-tools/outputs.js";
 
 import { gridCellsOf, inputRefusal, mediumOf, opSteps, outputFileName, outputRefusal } from "@ingest/jobs/op-args.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
@@ -54,6 +56,13 @@ describe("the grid's outputs", () => {
     expect(inputRefusal("grid", { streams: [{ index: 0, codecType: "audio", codecName: "aac", width: null, height: null, attachedPic: false }], durationSeconds: 3 })).toBe("tool_failed");
     expect(outputRefusal(picture(333, 233), "image")).toBeNull();
     expect(outputRefusal({ streams: [], durationSeconds: null }, "image")).toBe("tool_failed");
+  });
+
+  it("cuts the cells the browser lays its result nodes out for", () => {
+    const spec = miniToolById("image.grid")!;
+    for (const params of [{ rows: 3, cols: 3, skip: [4] }, { rows: 2, cols: 4, skip: [] }, { rows: 1, cols: 1, skip: [0, 7] }]) {
+      expect(gridCellsOf(params)).toEqual(pickedCellsOf(spec, params));
+    }
   });
 
   it("cuts cells row by row, leaving out the skipped ones", () => {
