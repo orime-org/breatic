@@ -11,7 +11,7 @@
  */
 
 import { FAILURE_LINES, reasonOf } from "@breatic/shared";
-import { BilledAnswerLost, NoUpstreamAvailable, type Cost, type JudgeAnswer } from "@breatic/provider";
+import { BilledAnswerLost, NoUpstreamAvailable, type Cost, type JudgeAnswer, type KeySet } from "@breatic/provider";
 import { z } from "zod";
 
 import { stripUnicodeTagsDeep } from "@domain/agent/strip-unicode-tags.js";
@@ -84,6 +84,8 @@ interface JevRequest {
    * answer, so an answer that cannot be read is still recorded.
    */
   readonly onBilled: (billed: { cost: Cost; upstream: string; model: string }) => void;
+  /** The key set the turn runs on (inner#1953); the deployment's when absent. */
+  readonly keys?: KeySet;
 }
 
 /** What the tool hands back: the keys that read, and the keys that did not. */
@@ -234,7 +236,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
       questions,
       budgetMs: Math.trunc(budgetMs),
       ...(abortSignal ? { signal: abortSignal } : {}),
-    });
+    }, undefined, request.keys);
   } catch (err: unknown) {
     const lost = lostAnswerOf(err);
     if (lost?.served !== undefined) onBilled({ cost: lost.costs[0]!, ...lost.served });

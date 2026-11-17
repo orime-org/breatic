@@ -129,11 +129,13 @@ export interface LlmApi {
   judge(request: JudgeRequest, route?: Route, keys?: KeySet): Promise<JudgeAnswer>;
   /**
    * Where a web-animation Messages call of a model may go, in order, for the Worker that relays it: every upstream of
-   * the model's route that takes a Messages request, with no key read here.
+   * the model's route that takes a Messages request, with no key read here. On an account's key set, only those the
+   * set holds a key for, and the plan records `keysOwner: "account"`.
    * @throws {UpstreamRequestRejected} When the route pins an upstream that takes none for this model.
    * @throws {NoUpstreamAvailable} When no upstream of the route takes one.
+   * @throws {AccountKeyFailure} `account_key_missing` when an account's set holds a key for no upstream that takes one.
    */
-  messagesPlan(modelId: string, route?: Route): MessagesPlan;
+  messagesPlan(modelId: string, route?: Route, keys?: KeySet): MessagesPlan;
   capabilities(modelId: string, policy: CapabilityPolicy, signal?: AbortSignal): Promise<{ pictures: boolean; contextWindow?: number }>;
   /**
    * Check that every model this deployment reaches directly (not through a

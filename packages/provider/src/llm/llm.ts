@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import type { JSONValue, SystemModelMessage } from "ai";
 import { candidateOf, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost, PendingCost, TokenBuckets } from "@provider/cost.js";
-import { BilledAnswerLost, NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "@provider/errors.js";
+import { AccountKeyFailure, BilledAnswerLost, NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
 import { answerText, boundSignal, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
@@ -605,11 +605,13 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       }
     },
 
-    messagesPlan(modelId, chosen = DEFAULT_ROUTE): MessagesPlan {
+    messagesPlan(modelId, chosen = DEFAULT_ROUTE, keys): MessagesPlan {
       const route = routeOf(config.llm.routes, modelId);
+      const onAccount = keys?.owner === "account";
       // Every upstream of the route that takes a Messages request, whatever keys this process holds: the Worker that
-      // sends the call reads its own.
-      const speaking = route.upstreams.filter(({ upstream }) => messagesSpeakerOf(kindOf(upstream)) !== undefined);
+      // sends the call reads its own. On an account's keys, only those the account holds a key for.
+      const speaking = route.upstreams.filter(({ upstream }) => messagesSpeakerOf(kindOf(upstream)) !== undefined && (!onAccount || hasKey(keys, upstream)));
+      if (onAccount && speaking.length === 0) throw new AccountKeyFailure(modelId, "account_key_missing");
       if (chosen.mode === "upstream" && !speaking.some(({ upstream }) => upstream === chosen.upstream)) {
         throw new UpstreamRequestRejected(modelId, chosen.upstream, `${chosen.upstream} takes no Messages request for ${modelId}`);
       }
@@ -621,6 +623,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       }
       return {
         model: modelId,
+        ...(onAccount ? { keysOwner: "account" as const } : {}),
         candidates: picked.map(({ upstream }) => {
           const decl = config.upstreams[upstream]!;
           // An upstream that reports no cost of its own is priced from the model's direct prices.

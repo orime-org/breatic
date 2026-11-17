@@ -13,7 +13,7 @@
  */
 
 import { env, getUsagePricing, type UsagePricing } from "@breatic/core";
-import type { Cost, CostLookup } from "@breatic/provider";
+import type { Cost, CostLookup, Payer } from "@breatic/provider";
 import { insertUsageRecord } from "@domain/credit/agentUsage.repo.js";
 import { toChargeCredits } from "@domain/credit/credit-math.js";
 import { creditsForUsd, type CostSource } from "@domain/credit/usage-cost.js";
@@ -26,7 +26,8 @@ export type UsageFeature =
   | "canvas_understand"
   | "canvas_transcribe"
   | "mini_tool"
-  | "timeline_web_animation";
+  | "timeline_web_animation"
+  | "canvas_generation";
 
 /** What inside the operation made the call. */
 export type UsageSource =
@@ -60,6 +61,11 @@ export interface UsageRow {
   credits: number;
   /** The call's stable identity, when it has one; a second row with the same identity is never written. */
   costIdentity: string | null;
+  /**
+   * The `account_provider_keys` row whose key paid the call (inner#1953); null for ours. Absent from a recorder opened
+   * with no key row in mind.
+   */
+  keyId?: string | null;
 }
 
 /** A paid call to a service that is not a language model. */
@@ -105,6 +111,8 @@ export interface AwaitedLookup {
   lookup: CostLookup;
   source: UsageSource;
   model: string;
+  /** Whose keys paid the call, as its pending cost said; absent when it did not say. */
+  payer?: Payer;
 }
 
 /** The operation a recorder writes its rows under. */
@@ -158,6 +166,11 @@ export interface UsageRecorderOptions {
    * hears that it undercharged.
    */
   onMissingCost: (row: UsageRow) => void;
+  /**
+   * The account key row the operation's calls run on (inner#1953). A call whose cost says an account's keys paid it is
+   * written under this row at 0 credits and charged nothing; a call our keys paid is charged as ever.
+   */
+  keyId?: string | null;
 }
 
 /**
@@ -232,6 +245,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
    */
   const appendCall = (call: { source: UsageSource; model: string; upstream: string }, cost: Exclude<Cost, { state: "pending" }>, requestCount: number | null, costIdentity: string | null): void => {
     const costUsd = cost.state === "known" ? cost.usd : 0;
+    const onAccount = cost.payer === "account";
     append({
       ...base,
       source: call.source,
@@ -244,8 +258,9 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
       requestCount,
       costUsd,
       costSource: cost.state === "known" ? SOURCE_OF[cost.source] : "missing",
-      credits: creditsForUsd(costUsd, multiplier),
+      credits: onAccount ? 0 : creditsForUsd(costUsd, multiplier),
       costIdentity,
+      ...(options.keyId === undefined ? {} : { keyId: onAccount ? options.keyId : null }),
     });
   };
 
@@ -253,7 +268,8 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
     operation: base,
     recordModelCall(call) {
       if (call.cost.state === "pending") {
-        lookups.set(JSON.stringify(call.cost.lookup), { lookup: call.cost.lookup, source: call.source, model: call.model });
+        const payer = call.cost.payer;
+        lookups.set(JSON.stringify(call.cost.lookup), { lookup: call.cost.lookup, source: call.source, model: call.model, ...(payer === undefined ? {} : { payer }) });
         return;
       }
       appendCall(call, call.cost, call.requests ?? null, call.costIdentity ?? null);
@@ -274,6 +290,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
         costSource: cost.costSource,
         credits: creditsForUsd(cost.costUsd, multiplier),
         costIdentity: null,
+        ...(options.keyId === undefined ? {} : { keyId: null }),
       });
     },
     recordLookedUpCall(call) {

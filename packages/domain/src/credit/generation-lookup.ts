@@ -33,8 +33,13 @@ interface UsageLookupCall {
   projectId: string | null;
   /** What the ledger row says the charge was for. */
   description: string;
-  /** Whether the operation is charged; a failed worker task is recorded only. */
+  /** Whether the operation is charged; a failed worker task is recorded only, and an account's key is never charged. */
   charge: boolean;
+  /**
+   * The `account_provider_keys` row whose key paid the call (inner#1953): the worker looks the cost up with that key.
+   * Absent for a call our keys paid.
+   */
+  keyId?: string;
 }
 
 /**
@@ -68,17 +73,22 @@ async function enqueueUsageLookup(job: UsageLookupCall & { lookup: CostLookup; u
  * @param lookups - provider's lookups of the pending costs, each with its call's source and model; each lookup names
  *   the upstream that served its call.
  * @param operation - The operation they belong to.
- * @param call - What a ledger row says the charge was for, and whether it is charged.
+ * @param call - What a ledger row says the charge was for, whether it is charged and the account key row it ran on.
  * @param call.description - What the ledger row says the charge was for.
  * @param call.charge - Whether the operation is charged.
+ * @param call.keyId - The account key row the operation's calls run on, or null/absent for ours. A call it paid for is
+ *   queued with the row's id and never charged; a call our keys paid for beside it is charged as asked.
  * @returns Nothing once every job is queued.
  */
 export async function handOffLookups(
   lookups: readonly AwaitedLookup[],
   operation: RecordedOperation,
-  call: { description: string; charge: boolean },
+  call: { description: string; charge: boolean; keyId?: string | null },
 ): Promise<void> {
-  for (const { lookup, source, model } of lookups) {
-    await enqueueUsageLookup({ ...operation, ...call, model, source, lookup, upstream: lookup.upstream });
+  const { keyId, ...rest } = call;
+  for (const { lookup, source, model, payer } of lookups) {
+    const onAccount = keyId != null && payer !== "deployment";
+    const job = { ...operation, ...rest, model, source, lookup, upstream: lookup.upstream };
+    await enqueueUsageLookup(onAccount ? { ...job, charge: false, keyId } : job);
   }
 }

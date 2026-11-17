@@ -21,6 +21,12 @@ export interface KeySet {
   keyOf(upstream: string): string | undefined;
 }
 
+/**
+ * The one upstream an account's own key runs language-model calls on (inner#1953): an account fills in one OpenRouter
+ * key, and every language model goes through it.
+ */
+export const ACCOUNT_LLM_UPSTREAM = "openrouter";
+
 /** A key a user filled in may hold only printable ASCII: anything else could break the header it is sent in. */
 const WELL_FORMED = /^[\x21-\x7E]+$/;
 

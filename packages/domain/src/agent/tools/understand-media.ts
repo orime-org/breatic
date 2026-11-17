@@ -17,7 +17,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { budgetDeadlineFrom, getAgentConfig, getUnderstandConfig } from "@breatic/core";
-import type { Cost } from "@breatic/provider";
+import type { Cost, KeySet } from "@breatic/provider";
 import { FAILURE_LINES, type FailureLine, type LongMediaSourceReference } from "@breatic/shared";
 import { isStop, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
@@ -257,10 +257,12 @@ const understandMediaContextSchema: z.ZodType<UnderstandMediaContext> = usageCon
  * everyone else.
  * @param options - The main model's resolved ability to see pictures.
  * @param options.seesPictures - Whether the main model receives prepared pictures directly.
+ * @param options.keys - The key set the turn runs on (inner#1953); every reading, short or in batches, goes out on it.
  * @returns The tool.
  * @throws {Error} when the Agent configuration cannot be loaded.
  */
-export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}): Tool<UnderstandMediaInput, string, UnderstandMediaContext> {
+export function makeUnderstandMediaTool(options: { seesPictures?: boolean; keys?: KeySet } = {}): Tool<UnderstandMediaInput, string, UnderstandMediaContext> {
+  const keys = options.keys === undefined ? {} : { keys: options.keys };
   const config = { ...getAgentConfig() };
   const inputSchema = z.object({
     items: z.array(z.object({ url: z.string().url().describe("Address of the image, video or audio") }))
@@ -339,6 +341,7 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
           maxOutputTokens: config.understand_media_max_output_tokens,
           ...(abortSignal ? { signal: abortSignal } : {}),
           onBilled: recordBilled,
+          ...keys,
         };
         const singleUrl = input.items.length === 1 ? input.items[0]?.url : undefined;
         let longSource: LongMediaSourceReference | null = null;
@@ -370,6 +373,7 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
             userActionKey: toolCallId,
             signal: abortSignal,
             onBilled: recordBilled,
+            ...keys,
           });
         } else {
           try {
@@ -391,6 +395,7 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
               userActionKey: toolCallId,
               signal: abortSignal,
               onBilled: recordBilled,
+              ...keys,
             });
           }
         }
@@ -466,6 +471,7 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
  * @param input.userActionKey - The stable SDK tool-call identity for retries.
  * @param input.signal - The turn cancellation signal, when present.
  * @param input.onBilled - The per-request billing recorder.
+ * @param input.keys - The key set every batch goes out on; the deployment's when absent.
  * @returns The combined understanding answer in source-time order.
  * @throws {Error} When processing fails, the user stops waiting, or the call budget expires.
  */
@@ -478,6 +484,7 @@ async function understandLongMedia(input: {
   userActionKey: string;
   signal?: AbortSignal;
   onBilled: (cost: Cost, upstream: string) => void;
+  keys?: KeySet;
 }): Promise<Awaited<ReturnType<typeof understandMediaAt>>> {
   if (!input.context.projectId || !input.context.actorUserId) throw new Error("Long-media ownership context is missing.");
   const deadlineAt = budgetDeadlineFrom(Date.now());
@@ -528,6 +535,7 @@ async function understandLongMedia(input: {
         checkpoint: durableOperation.checkpoint,
         signal: input.signal ? AbortSignal.any([input.signal, durableOperation.signal]) : durableOperation.signal,
         onBilled: input.onBilled,
+        ...(input.keys === undefined ? {} : { keys: input.keys }),
       }, segments);
       await durableOperation.complete();
       return answer;

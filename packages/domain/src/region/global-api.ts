@@ -46,6 +46,15 @@ import {
   type RegionalChargeOutcome,
   type RegionalChargeRequest,
 } from "@domain/credit/creditLot.service.js";
+import {
+  providerKeyByIdHere,
+  studioKeyPlanHere,
+  studioProviderKeyHere,
+  type KeyPurpose,
+  type ProviderKeyById,
+  type StudioKeyPlan,
+  type StudioProviderKey,
+} from "@domain/provider/account-keys.service.js";
 import { abandonHere, extendHere, positionHere, releaseHere, reserveHere, type HoldFields, type ReserveOutcome } from "@domain/credit/creditHold.service.js";
 
 /** An account as other regions read it. */
@@ -252,6 +261,25 @@ export const GLOBAL_FUNCTIONS = {
    * @returns Each key's live row and cover row.
    */
   findAssetsByKeys: (keys: string[]): Promise<Record<string, KeyLookupAnswer>> => lookupKeysHere(keys),
+  /**
+   * The sealed key a Studio's payer brought for a call's purpose (inner#1953); the caller opens it in its own process.
+   * @param studioId - The Studio.
+   * @param purpose - A language-model call, or a run of one media model.
+   * @returns The payer, the key row and its sealed text, or null for the deployment's keys.
+   */
+  getStudioProviderKey: (studioId: string, purpose: KeyPurpose): Promise<StudioProviderKey | null> => studioProviderKeyHere(studioId, purpose),
+  /**
+   * A recorded key row's sealed text, while the row is live (inner#1953).
+   * @param keyId - The row.
+   * @returns The row, or null once replaced, deleted or erased.
+   */
+  getProviderKeyById: (keyId: string): Promise<ProviderKeyById | null> => providerKeyByIdHere(keyId),
+  /**
+   * The upstreams and model choices a Studio's payer brought, with no key or sealed text (inner#1953).
+   * @param studioId - The Studio.
+   * @returns The plan, or null when the Studio or its payer is gone.
+   */
+  getStudioKeyPlan: (studioId: string): Promise<StudioKeyPlan | null> => studioKeyPlanHere(studioId),
   /** Queue an account's ad conversion, credited to its sign-up click; core's own client calls the same. */
   enqueueAdsConversion: enqueueAccountAdsConversion,
 };

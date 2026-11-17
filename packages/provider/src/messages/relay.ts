@@ -44,6 +44,8 @@ export interface MessagesCandidate {
 /** Where one model's Messages calls go, in order; serializable, carried with the job. */
 export interface MessagesPlan {
   model: string;
+  /** `account` when the plan was made on an account's keys (inner#1953); absent for the deployment's. */
+  keysOwner?: "account";
   candidates: MessagesCandidate[];
 }
 

@@ -203,6 +203,10 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
   cut_short: false,
   input_refused: false,
   model_not_configured: false,
+  // About the account's key or its upstream, never the file (inner#1953).
+  account_key_failed: false,
+  account_key_missing: false,
+  upstream_unavailable: false,
 };
 
 /**

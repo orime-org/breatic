@@ -15,7 +15,7 @@ export {
   type AccountKeyFailureReason,
   type UnavailableReason,
 } from "@provider/errors.js";
-export { MalformedKey, type KeySet } from "@provider/keys.js";
+export { ACCOUNT_LLM_UPSTREAM, MalformedKey, type KeySet } from "@provider/keys.js";
 export type { KeyBalance, KeyCheck } from "@provider/check-key.js";
 export { costSchema, type Cost, type CostLookup, type Payer, type PendingCost, type TokenBuckets } from "@provider/cost.js";
 export { createProvider, type Provider, type ProviderOptions } from "@provider/provider.js";

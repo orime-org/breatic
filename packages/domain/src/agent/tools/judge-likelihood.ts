@@ -20,6 +20,7 @@ import { tool } from "ai";
 import type { Tool } from "ai";
 import { z } from "zod";
 
+import type { KeySet } from "@breatic/provider";
 import { askJev } from "@domain/agent/tools/jev.js";
 import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
@@ -126,29 +127,39 @@ const DESCRIPTION = [
 ].join("\n");
 
 /**
- * The tool, ready to be registered.
+ * The tool for a turn that runs on a key set (inner#1953).
+ * @param keys - The turn's key set; the deployment's when absent.
+ * @returns The tool, ready to be registered.
+ */
+export function makeJudgeLikelihood(keys?: KeySet): Tool<z.infer<typeof inputSchema>, JevAnswers, UsageContext> {
+  return tool({
+    description: DESCRIPTION,
+    inputSchema,
+    contextSchema: usageContextSchema,
+    // What the panel reads about a running call, resolved by the web package.
+    metadata: { runningLine: "chat.tool.judging" },
+    execute: async (
+      { state, questions },
+      { abortSignal, context }: { abortSignal?: AbortSignal; context: UsageContext },
+    ): Promise<JevAnswers> => {
+      // A deployment without the decisions endpoint's key has this tool left
+      // out of the set (`buildToolSet`); one that reaches it anyway is told so
+      // by `askJev`.
+      return askJev({
+        state,
+        questions,
+        budgetMs: getAgentConfig().judge_likelihood_timeout_ms,
+        ...(abortSignal ? { abortSignal } : {}),
+        onBilled: ({ cost, upstream, model }) =>
+          context.usage.recordModelCall({ source: "tool:judge_likelihood", model, upstream, cost, requests: 1 }),
+        ...(keys === undefined ? {} : { keys }),
+      });
+    },
+  });
+}
+
+/**
+ * The tool on the deployment's keys.
  * @throws {Error} Carrying tool failure detail, or the user's stop.
  */
-export const judgeLikelihood: Tool<z.infer<typeof inputSchema>, JevAnswers, UsageContext> = tool({
-  description: DESCRIPTION,
-  inputSchema,
-  contextSchema: usageContextSchema,
-  // What the panel reads about a running call, resolved by the web package.
-  metadata: { runningLine: "chat.tool.judging" },
-  execute: async (
-    { state, questions },
-    { abortSignal, context }: { abortSignal?: AbortSignal; context: UsageContext },
-  ): Promise<JevAnswers> => {
-    // A deployment without the decisions endpoint's key has this tool left
-    // out of the set (`buildToolSet`); one that reaches it anyway is told so
-    // by `askJev`.
-    return askJev({
-      state,
-      questions,
-      budgetMs: getAgentConfig().judge_likelihood_timeout_ms,
-      ...(abortSignal ? { abortSignal } : {}),
-      onBilled: ({ cost, upstream, model }) =>
-        context.usage.recordModelCall({ source: "tool:judge_likelihood", model, upstream, cost, requests: 1 }),
-    });
-  },
-});
+export const judgeLikelihood: Tool<z.infer<typeof inputSchema>, JevAnswers, UsageContext> = makeJudgeLikelihood();
