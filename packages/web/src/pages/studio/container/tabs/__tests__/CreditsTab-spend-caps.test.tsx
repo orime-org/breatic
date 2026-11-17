@@ -146,4 +146,13 @@ describe('the own-limit dialog', () => {
     // DialogBody's own padding, the inset the title and hint above it share.
     expect(group.parentElement).toHaveClass('px-4');
   });
+
+  it.each([
+    ['300.000000', '现在默认 300 积分'],
+    [null, '现在默认 不限'],
+    ['0.000000', '现在默认 0（禁止花积分）'],
+  ])('names the current default %s in its hint', async (memberDefault, text) => {
+    const dialog = await openDialog(memberDefault);
+    expect(within(dialog).getByText(new RegExp(text.replace(/[()（）]/g, '.')))).toBeInTheDocument();
+  });
 });

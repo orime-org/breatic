@@ -3070,7 +3070,7 @@
           "override": "Set own limit…",
           "restoreDefault": "Restore default",
           "overrideTitle": "Own limit · {name}",
-          "overrideHint": "Applies to this person only, over the default."
+          "overrideHint": "Applies to this person only, over the default (now {fallback})."
         }
       },
       "members": {

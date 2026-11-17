@@ -260,6 +260,7 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
           slug={slug}
           member={editing}
           name={nameOf.get(editing.userId) ?? '—'}
+          fallback={limitText(view.memberDefault, t)}
           onClose={() => setEditing(null)}
         />
       )}
@@ -276,10 +277,11 @@ type OverrideMode = 'amount' | 'none' | 'zero';
  * @param props.slug - The Studio.
  * @param props.member - Their row.
  * @param props.name - Their name.
+ * @param props.fallback - The per-person default in words, which this overrides.
  * @param props.onClose - Closes the dialog.
  * @returns The dialog.
  */
-function OverrideDialog({ slug, member, name, onClose }: { slug: string; member: SpendLimitMember; name: string; onClose: () => void }): React.JSX.Element {
+function OverrideDialog({ slug, member, name, fallback, onClose }: { slug: string; member: SpendLimitMember; name: string; fallback: string; onClose: () => void }): React.JSX.Element {
   const t = useTranslation();
   const queryClient = useQueryClient();
   const id = React.useId();
@@ -309,7 +311,7 @@ function OverrideDialog({ slug, member, name, onClose }: { slug: string; member:
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t(`${KEY}.overrideTitle`, { name })}</DialogTitle>
-          <DialogDescription>{t(`${KEY}.overrideHint`)}</DialogDescription>
+          <DialogDescription>{t(`${KEY}.overrideHint`, { fallback })}</DialogDescription>
         </DialogHeader>
         <DialogBody>
           <RadioGroup value={mode} onValueChange={(next) => setMode(next as OverrideMode)} className='gap-2'>

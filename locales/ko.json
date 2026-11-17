@@ -3070,7 +3070,7 @@
           "override": "개별 설정…",
           "restoreDefault": "기본값으로 복원",
           "overrideTitle": "개별 한도 · {name}",
-          "overrideHint": "이 사람에게만 적용되며 기본값보다 우선합니다."
+          "overrideHint": "이 사람에게만 적용되며 기본값보다 우선합니다(현재 기본값: {fallback})."
         }
       },
       "members": {
