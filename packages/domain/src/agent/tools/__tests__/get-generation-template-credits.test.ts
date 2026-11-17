@@ -2,16 +2,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The cost sentence of `get_generation_template` when some or all of a
- * template's generate nodes are not exactly priced (inner#1816). The model
- * catalog's estimate is replaced by a table keyed by node model, so the
- * other test file keeps the real catalog.
+ * The cost sentences of `get_generation_template` when some or all of a
+ * template's generate nodes are not exactly priced (inner#1816), and when a
+ * take of it is or is not cheaper than its final (inner#1811). The model
+ * catalog's estimate is replaced by tables keyed by node model, so the other
+ * test file keeps the real catalog.
  */
+
+import { isDeepStrictEqual } from "node:util";
 
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { formatCredits, setLocale } from "@breatic/shared";
+import { formatCredits, GENERATION_TEMPLATES, setLocale } from "@breatic/shared";
 import type { CreditEstimate } from "@breatic/shared/pricing";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
@@ -19,12 +22,18 @@ import type * as Catalog from "@domain/model-catalog/model-catalog.js";
 
 import { TOOL_MAP } from "../index.js";
 
-/** What each model is priced at in the current test; a model left out has no price. */
+/** What each model is priced at in the current test, whatever its settings; a model left out has no price. */
 const PRICES = vi.hoisted(() => new Map<string, CreditEstimate>());
+
+/** Models whose price in the current test depends on their settings; these win over PRICES. */
+const PRICED_BY_SETTINGS = vi.hoisted(() => new Map<string, (params: Record<string, unknown>) => CreditEstimate>());
 
 vi.mock("@domain/model-catalog/model-catalog.js", async (importOriginal) => {
   const original = await importOriginal<typeof Catalog>();
-  return { ...original, estimateModelCredits: vi.fn(async (model: string) => PRICES.get(model)) };
+  return {
+    ...original,
+    estimateModelCredits: vi.fn(async (model: string, input: { params: Record<string, unknown> }) => PRICED_BY_SETTINGS.get(model)?.(input.params) ?? PRICES.get(model)),
+  };
 });
 
 beforeEach(() => {
@@ -32,6 +41,7 @@ beforeEach(() => {
   setLocale("en");
   useFullCatalog();
   PRICES.clear();
+  PRICED_BY_SETTINGS.clear();
 });
 
 afterAll(() => {
@@ -57,25 +67,64 @@ async function read(id: string): Promise<string> {
 const VIDEO = "seedance-2.5-image-to-video";
 const SCENE = "nano-banana-pro-edit-ultra";
 
+/**
+ * Price a model one way at the template's own settings and another way at any other.
+ * @param model - The model, as one or more of carried-object-transition's generate nodes use it.
+ * @param atOwn - Its price at the template's settings.
+ * @param otherwise - Its price at any other settings, a take's among them.
+ */
+function priceBySettings(model: string, atOwn: CreditEstimate, otherwise: CreditEstimate): void {
+  const template = GENERATION_TEMPLATES.find((one) => one.id === "carried-object-transition");
+  const owns = (template?.nodes ?? []).flatMap((node) => (node.role === "generate" && node.model === model ? [node.params ?? {}] : []));
+  if (owns.length === 0) throw new Error(`carried-object-transition has no generate node on ${model}`);
+  PRICED_BY_SETTINGS.set(model, (params) => (owns.some((own) => isDeepStrictEqual(own, params)) ? atOwn : otherwise));
+}
+
 describe("the cost of one apply when not every node is exactly priced", () => {
   it("says at least the sum of the priced nodes when one node has no price", async () => {
     PRICES.set(SCENE, { credits: 12.5, bound: "exact" });
-    expect(await read("carried-object-transition")).toContain(`One apply of this template costs at least ${formatCredits(25, "en-US")} credits at its settings.`);
+    expect(await read("carried-object-transition")).toContain(`At its settings this template costs at least ${formatCredits(25, "en-US")} credits.`);
   });
 
   it("says at least the sum when one node's estimate is not exact", async () => {
     PRICES.set(SCENE, { credits: 12.5, bound: "exact" });
     PRICES.set(VIDEO, { credits: 1200.25, bound: "at_least" });
-    expect(await read("carried-object-transition")).toContain(`One apply of this template costs at least ${formatCredits(1225.25, "en-US")} credits at its settings.`);
+    expect(await read("carried-object-transition")).toContain(`At its settings this template costs at least ${formatCredits(1225.25, "en-US")} credits.`);
   });
 
   it("gives the exact sum, written by formatCredits, when every node is exactly priced", async () => {
     PRICES.set(SCENE, { credits: 12.5, bound: "exact" });
     PRICES.set(VIDEO, { credits: 1200.25, bound: "exact" });
-    expect(await read("carried-object-transition")).toContain(`One apply of this template costs ${formatCredits(1225.25, "en-US")} credits at its settings.`);
+    const answer = await read("carried-object-transition");
+    expect(answer).toContain(`At its settings this template costs ${formatCredits(1225.25, "en-US")} credits.`);
+    // Priced the same at every setting, so a take would cost what the final does: no take is offered.
+    expect(answer).not.toContain("A take costs");
   });
 
   it("says nothing of cost when no node has a price", async () => {
-    expect(await read("carried-object-transition")).not.toContain("One apply of this template costs");
+    expect(await read("carried-object-transition")).not.toContain("this template costs");
+  });
+});
+
+describe("the take of a template", () => {
+  it("is offered, priced as a floor, when its cheaper settings cost less and one node's estimate is not exact", async () => {
+    priceBySettings(SCENE, { credits: 12.5, bound: "exact" }, { credits: 5, bound: "exact" });
+    // The video node has no price setting to lower on a take, so it runs at its own.
+    PRICES.set(VIDEO, { credits: 1200.25, bound: "at_least" });
+    const answer = await read("carried-object-transition");
+    expect(answer).toContain(`At its settings this template costs at least ${formatCredits(1225.25, "en-US")} credits.`);
+    expect(answer).toContain(`A take costs at least ${formatCredits(1210.25, "en-US")} credits;`);
+  });
+
+  it("is not offered when a setting cheaper on its own costs no less beside the template's other settings", async () => {
+    PRICES.set(SCENE, { credits: 12.5, bound: "exact" });
+    // Silent is cheaper at the default length, but costs the same at the template's 5 seconds.
+    PRICED_BY_SETTINGS.set(VIDEO, (params) => {
+      if (params.generate_audio !== false) return { credits: 1200.25, bound: "exact" };
+      return { credits: params.duration === 5 ? 1200.25 : 100, bound: "exact" };
+    });
+    const answer = await read("carried-object-transition");
+    expect(answer).toContain(`At its settings this template costs ${formatCredits(1225.25, "en-US")} credits.`);
+    expect(answer).not.toContain("A take costs");
   });
 });
