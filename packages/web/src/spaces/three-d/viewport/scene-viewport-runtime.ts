@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Box3, BoxHelper, Color, DirectionalLight, GridHelper, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, PCFSoftShadowMap, PerspectiveCamera, PlaneGeometry, Quaternion, Raycaster, Scene, ShadowMaterial, SkinnedMesh, SphereGeometry, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, WebGLRenderTarget } from 'three';
+import { Box3, BoxHelper, Color, DirectionalLight, GridHelper, Group, HemisphereLight, Mesh, MeshBasicMaterial, OrthographicCamera, PCFSoftShadowMap, PerspectiveCamera, PlaneGeometry, Quaternion, Raycaster, Scene, ShadowMaterial, SkinnedMesh, SphereGeometry, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControlsGizmo } from 'three/addons/controls/TransformControls.js';
 import type { Bone, Intersection, Object3D } from 'three';
@@ -18,6 +18,8 @@ import { ScenePilot, pilotPivotDistance } from '@web/spaces/three-d/viewport/sce
 import { displayedObjects, previewedObjectIds } from '@web/spaces/three-d/viewport/scene-display';
 import { applyPose, poseRigOf, type PoseRig } from '@web/spaces/three-d/viewport/pose-rig';
 import { SceneMiniMapRuntime } from '@web/spaces/three-d/viewport/scene-mini-map';
+import { SceneLookRuntime, lookReportOf } from '@web/spaces/three-d/viewport/scene-look-runtime';
+import { decideScenePick, partAtHit } from '@web/spaces/three-d/viewport/look-highlight';
 import { applySceneGridTheme } from '@web/spaces/three-d/viewport/scene-grid-theme';
 import { ModelResourceCache, acquireMeasured, loadSceneModel, type MeasuredSceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 import type { SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
@@ -185,6 +187,25 @@ export class SceneViewportRuntime {
   private overview: SceneMiniMapRuntime | null = null;
   private overviewHost: HTMLDivElement | null = null;
   private outlines: BoxHelper[] = [];
+  /** True while an update or a model load runs, which ends with one 'changed' of its own. */
+  private syncing = false;
+  /** Each loaded object's look, its pictures and the highlighted part (inner#1693). */
+  private readonly looks = new SceneLookRuntime({
+    textures: () => this.props.lookTextures ?? null,
+    limits: () => ({ maxTextureEdge: Math.min(this.props.importLimits.maxTextureEdge, this.renderer.capabilities.maxTextureSize),
+      maxTextureBytes: this.props.importLimits.maxTextureBytes }),
+    themeColor: () => this.token('--color-muted-foreground'),
+    highlightColor: () => this.token('--color-status-selected'),
+    onProgramChanged: (root) => {
+      // As a model load does: its programs compile first, so the shadow budget counts their samplers (design 5.2).
+      this.renderer.compile(root, this.camera);
+      this.syncLights();
+      this.markShadows(true);
+    },
+    // Inside an update or a model load, their own one 'changed' covers it.
+    onChanged: () => { if (!this.syncing) this.monitorEvent({ type: 'changed' }); },
+    onFailure: (id, failure) => this.props.onLookFailure?.(id, failure),
+  });
   private gesture: SceneTransformGesture | null = null;
   private joint: JointGesture | null = null;
   /** What each object is drawn with: the document, or a collaborator's drag (design 5.4). */
@@ -365,7 +386,7 @@ export class SceneViewportRuntime {
    * @param render - The render to run.
    */
   private withoutHelpers(render: () => void): void {
-    const helpers: Object3D[] = [this.grid, this.controls.getHelper(), this.markers, ...this.outlines];
+    const helpers: Object3D[] = [this.grid, this.controls.getHelper(), this.markers, ...this.outlines, ...this.looks.overlays()];
     const shown = helpers.map((helper) => helper.visible);
     try {
       for (const helper of helpers) helper.visible = false;
@@ -472,6 +493,19 @@ export class SceneViewportRuntime {
    */
   update(props: SceneViewportProps): void {
     if (this.disposed) return;
+    this.syncing = true;
+    try {
+      this.updateNow(props);
+    } finally {
+      this.syncing = false;
+    }
+  }
+
+  /**
+   * Apply new props to the scene.
+   * @param props - The latest scene content, selection, permissions, revisions and session callbacks.
+   */
+  private updateNow(props: SceneViewportProps): void {
     const previous = this.props;
     this.leaveCameraView(previous, props);
     this.props = props;
@@ -491,6 +525,7 @@ export class SceneViewportRuntime {
     for (const [id, item] of this.items) {
       if (!visible.has(id)) {
         this.overview?.remove(id);
+        this.looks.remove(id);
         item.lease.release();
         this.items.delete(id);
         this.figures.delete(id);
@@ -509,6 +544,7 @@ export class SceneViewportRuntime {
       if (item && (item.source !== source || (item.state === 'failed' && props.modelRetryRevision !== previous.modelRetryRevision))) {
         if (this.gesture?.matrices.has(object.id) || this.joint?.id === object.id) this.endGesture(false);
         this.overview?.remove(object.id);
+        this.looks.remove(object.id);
         item.lease.release();
         this.items.delete(object.id);
         item = undefined;
@@ -518,7 +554,11 @@ export class SceneViewportRuntime {
         applyObject(item.root, object);
         applyPose(item.root, object.pose, !this.previewed.has(object.id));
       }
+      // A look drag is a local gesture too, and its preview shows here.
+      if (item?.root) this.looks.sync(object, item.root);
     }
+    if (props.modelRetryRevision !== previous.modelRetryRevision) this.looks.retry();
+    this.syncHighlight();
     this.enterCameraView(props.cameraView ?? null);
     if (this.view === null && !this.dragging && !this.sameView(props.view)) {
       this.camera.position.fromArray(props.view.position);
@@ -642,6 +682,16 @@ export class SceneViewportRuntime {
     }
     if (this.localGestureIds().has(object.id)) return;
     figure.update(object, { ink: this.token('--color-muted-foreground'), director: this.props.director }, this.lightPlan.lights[object.id]);
+  }
+
+  /**
+   * Highlight the single selected object's selected part, or nothing (inner#1693 design 5.5).
+   */
+  private syncHighlight(): void {
+    const ids = this.props.selectedIds;
+    const id = ids.length === 1 ? ids[0] ?? null : null;
+    const root = id === null ? null : this.items.get(id)?.root ?? null;
+    this.looks.setHighlight(id, root, this.props.selectedPart ?? null);
   }
 
   /**
@@ -848,6 +898,7 @@ export class SceneViewportRuntime {
     const item: RenderedObject = { source, lease: this.resources.acquire(model), root: null, state: 'loading' };
     this.items.set(object.id, item);
     this.props.onModelStateChange?.(object.id, 'loading');
+    this.props.onLookReport?.(object.id, 'loading');
     void item.lease.ready.then((root) => {
       if (this.disposed || this.items.get(object.id) !== item) {
         item.lease.release();
@@ -868,12 +919,20 @@ export class SceneViewportRuntime {
       const rig = poseRigOf(root);
       applyObject(root, latest);
       applyPose(root, latest.pose, !this.previewed.has(object.id));
+      this.syncing = true;
+      try {
+        this.looks.sync(latest, root);
+      } finally {
+        this.syncing = false;
+      }
       this.scene.add(root);
       this.syncLights();
       this.markShadows(true);
       this.monitorEvent({ type: 'changed' });
       this.props.onModelStateChange?.(object.id, 'ready');
       this.props.onSkeletonState(object.id, rig === null ? 'none' : rig.kind);
+      this.props.onLookReport?.(object.id, lookReportOf(root, this.renderer.capabilities.maxTextureSize) ?? 'failed');
+      this.syncHighlight();
       this.syncControls();
       if (this.pendingFocus) this.focus();
       this.restyle();
@@ -883,6 +942,7 @@ export class SceneViewportRuntime {
       item.lease.release();
       item.state = 'failed';
       this.props.onModelStateChange?.(object.id, 'failed', sceneError(error));
+      this.props.onLookReport?.(object.id, 'failed');
       this.inspect();
     });
   }
@@ -1271,7 +1331,12 @@ export class SceneViewportRuntime {
       if (key !== null) this.props.onJointSelect(key);
       return;
     }
-    if (typeof root.userData.sceneObjectId === 'string') this.props.onSelect(root.userData.sceneObjectId, event.shiftKey);
+    if (typeof root.userData.sceneObjectId !== 'string') return;
+    const selected = this.props.selectedIds;
+    const pick = decideScenePick({ poseTarget: false, shift: event.shiftKey, hitId: root.userData.sceneObjectId,
+      onlySelected: selected.length === 1 ? selected[0] ?? null : null, part: partAtHit(hit) });
+    if (pick.kind === 'part') this.props.onSelectPart?.(pick.part);
+    else if (pick.kind === 'select') this.props.onSelect(pick.id, pick.additive);
   };
 
   /**
@@ -1410,16 +1475,9 @@ export class SceneViewportRuntime {
   private restyle = (): void => {
     this.scene.background = new Color(this.token('--color-background'));
     applySceneGridTheme(this.grid, this.token('--color-muted-foreground'));
-    const color = this.token('--color-muted-foreground');
-    for (const object of this.props.objects) {
-      if (object.model.kind !== 'builtin') continue;
-      this.items.get(object.id)?.root?.traverse((child) => {
-        if (!(child instanceof Mesh)) return;
-        for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
-          if (material instanceof MeshStandardMaterial) material.color.setStyle(color);
-        }
-      });
-    }
+    // Built-in models take the theme colour through their look (inner#1693 design 5.2).
+    this.looks.restyle();
+    this.looks.restyleHighlight();
     this.syncMarkers(this.jointTarget());
     this.rebuildOutlines();
     this.syncOverview();
@@ -1542,6 +1600,7 @@ export class SceneViewportRuntime {
     this.orbit.dispose();
     this.overview?.dispose();
     this.overview = null;
+    this.looks.dispose();
     this.resources.dispose();
     for (const figure of this.figures.values()) figure.dispose();
     this.figures.clear();

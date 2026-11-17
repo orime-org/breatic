@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Box3, CircleGeometry, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
+import { Box3, CircleGeometry, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
 import { isSceneLight, isSceneModelFile, type SceneObject } from '@breatic/shared';
-import type { ModelResourceCache, SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
+import { lookModelOf, type ModelResourceCache, type SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
+import { applyLook, releaseLook } from '@web/spaces/three-d/viewport/look-materials';
 import { applyPose } from '@web/spaces/three-d/viewport/pose-rig';
 
 /**
@@ -145,6 +146,8 @@ export class SceneMiniMapRuntime {
    * @throws {never} Release is idempotent.
    */
   remove(id: string): void {
+    const root = this.items.get(id)?.root;
+    if (root) releaseLook(root);
     this.items.get(id)?.lease.release(); this.items.delete(id);
   }
 
@@ -169,11 +172,9 @@ export class SceneMiniMapRuntime {
       if (!root) continue;
       root.position.fromArray(object.position); root.quaternion.fromArray(object.rotation); root.scale.fromArray(object.scale); root.updateMatrixWorld(true);
       applyPose(root, object.pose, !this.previewed.has(object.id));
-      if (object.model.kind === 'builtin' && builtin) root.traverse((child) => {
-        if (child instanceof Mesh) for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
-          if (material instanceof MeshStandardMaterial) material.color.setStyle(builtin);
-        }
-      });
+      // The same per-part values as the main view; user pictures are not loaded here and show as unusable (inner#1693 design 5.2).
+      const look = lookModelOf(root);
+      if (look && builtin) applyLook(root, look.table, object.look ?? {}, { themeColor: builtin, picture: () => null });
       bounds.expandByObject(root);
     }
     for (const icon of this.icons.values()) {

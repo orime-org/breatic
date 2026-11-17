@@ -5,6 +5,8 @@ import type { SceneDirectorConfig, SceneImportLimits, SceneModelFile, SceneObjec
 import type { SceneEnvironmentValues } from '@web/data/yjs/scene-document';
 import type { LightsPlan } from '@web/spaces/three-d/viewport/director-lights';
 import type { MeasuredSceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
+import type { LookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
+import type { SceneLookFailure, SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
 
 /** Plain tuples keep the Project shell outside the lazy Three dependency graph. */
 export type SceneVector3 = [number, number, number];
@@ -60,6 +62,16 @@ export interface SceneViewportProps {
   onJointSelect: (key: string | null) => void;
   /** Told once per loaded model what its skeleton allows. */
   onSkeletonState: (id: string, state: SceneSkeletonState) => void;
+  /** The single selected object's highlighted part, or null (inner#1693 design 5.5). */
+  selectedPart?: string | null;
+  /** A plain click on the only selected object picked this part (design 5.6). */
+  onSelectPart?: (part: string) => void;
+  /** Part pictures for this Project. */
+  lookTextures?: LookTextureCache | null;
+  /** Told each model's parts when it loads, or that it is loading or failed. */
+  onLookReport?: (id: string, report: SceneLookReport | 'loading' | 'failed') => void;
+  /** Told whether some part pictures of an object are not shown. */
+  onLookFailure?: (id: string, failure: SceneLookFailure | null) => void;
   onSelect: (id: string | null, additive: boolean) => void;
   onGestureStart: () => boolean;
   onGestureChange: (patches: readonly SceneTransformPatch[]) => void;
