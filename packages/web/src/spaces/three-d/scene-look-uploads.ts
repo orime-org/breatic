@@ -12,7 +12,7 @@ import type { UploadContext } from '@web/data/upload/ingest-upload';
 import { peekSceneSession, type SceneSession } from '@web/data/yjs/scene-session';
 import { toast } from '@web/lib/toast';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
-import { checkLookWrite } from '@web/spaces/three-d/look-texture-budget';
+import { checkLookWrite, type LookTextureReason } from '@web/spaces/three-d/look-texture-budget';
 import { pageLookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
 import { modelUploadFailure } from '@web/spaces/three-d/model-upload-failure';
 
@@ -47,6 +47,18 @@ export interface SceneLookUploadDeps {
   session: (name: string) => SceneSession | undefined;
 }
 
+/** A refused look write: which limit, and the bytes the object's textures would take. */
+export interface LookLimitIssue {
+  reason: LookTextureReason;
+  total: number;
+}
+
+/** The scene's texture limits, the edge capped by this device. */
+export interface LookTextureLimits {
+  maxTextureEdge: number;
+  maxTextureBytes: number;
+}
+
 /** What an upload records when it starts (inner#1693 design 6.3). */
 export interface SceneLookUploadStart {
   projectId: string;
@@ -61,7 +73,7 @@ export interface SceneLookUploadStart {
   /** Extra bytes per part that keeps its own picture with its own tiling. */
   clampBytes: Readonly<Record<string, number>>;
   /** The scene's texture limits, the edge already capped by this device's largest texture. */
-  limits: { maxTextureEdge: number; maxTextureBytes: number };
+  limits: LookTextureLimits;
 }
 
 /** One running upload, shown on its part row. */
@@ -81,6 +93,15 @@ export interface SceneLookUploads {
 }
 
 const LOOK_IMAGE_TYPES = new Set(['png', 'jpeg', 'webp']);
+
+/**
+ * Whether a header's type is a picture a part may use.
+ * @param type - The type `image-dimensions` read.
+ * @returns True for PNG, JPEG and WebP.
+ */
+export function isLookImageType(type: string): boolean {
+  return LOOK_IMAGE_TYPES.has(type);
+}
 /** Enough of a file to hold its image header; a JPEG may put large metadata before its size. */
 const LOCAL_HEADER_BYTES = 512 * 1024;
 
@@ -92,6 +113,23 @@ const LOCAL_HEADER_BYTES = 512 * 1024;
  */
 function mib(bytes: number, round: (value: number) => number): string {
   return new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 }).format(round(bytes / 1024 / 1024 * 10) / 10);
+}
+
+/**
+ * Why a picture cannot go on a part: its edge over this device's or the scene's limit, or the object's pictures over
+ * the texture budget together (inner#1693 design 7).
+ * @param issue - The refusal and the object's texture total.
+ * @param size - The new picture's size.
+ * @param limits - The limits it was judged against.
+ * @returns The notice.
+ */
+export function lookLimitNotice(issue: LookLimitIssue, size: LookImageSize | { width: number; height: number }, limits: LookTextureLimits): LookUploadNotice {
+  if (issue.reason === 'edge') {
+    return { key: 'spaces.threeD.importModel.limit.textureEdge',
+      params: { actual: String(Math.max(size.width, size.height)), allowed: String(limits.maxTextureEdge) }, severity: 'warning' };
+  }
+  return { key: 'spaces.threeD.look.objectTexturesTooLarge',
+    params: { actual: mib(issue.total, Math.ceil), allowed: mib(limits.maxTextureBytes, Math.floor) }, severity: 'warning' };
 }
 
 /**
@@ -141,27 +179,10 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
     checkLookWrite({ ownBytes: input.ownBytes, clampBytes: input.clampBytes, limits: input.limits, look, part: input.part, map, mapSize,
       size: (assetId) => deps.size(input.projectId, assetId) });
 
-  /**
-   * Tell why a picture is over a limit.
-   * @param issue - Which limit, and the object's texture total.
-   * @param size - The new picture's size.
-   * @param input - The upload's start record.
-   */
-  const notifyLimit = (issue: NonNullable<Awaited<ReturnType<typeof checkLookWrite>>>, size: LookImageSize, input: SceneLookUploadStart): void => {
-    const { maxTextureEdge, maxTextureBytes } = input.limits;
-    if (issue.reason === 'edge') {
-      deps.notify({ key: 'spaces.threeD.importModel.limit.textureEdge',
-        params: { actual: String(Math.max(size.width, size.height)), allowed: String(maxTextureEdge) }, severity: 'warning' });
-    } else {
-      deps.notify({ key: 'spaces.threeD.look.objectTexturesTooLarge',
-        params: { actual: mib(issue.total, Math.ceil), allowed: mib(maxTextureBytes, Math.floor) }, severity: 'warning' });
-    }
-  };
-
   return {
     async start(input) {
       const local = await deps.readLocalSize(input.file);
-      if (!local || !LOOK_IMAGE_TYPES.has(local.type)) {
+      if (!local || !isLookImageType(local.type)) {
         deps.notify({ key: 'canvas.upload.unsupportedType', params: { filename: input.file.name }, severity: 'warning' });
         return;
       }
@@ -169,7 +190,7 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       const startLook = opened ? lookOf(opened, input.objectId) : undefined;
       const issue = await overLimit(input, startLook ?? {}, 'local', local);
       if (issue) {
-        notifyLimit(issue, local, input);
+        deps.notify(lookLimitNotice(issue, local, input.limits));
         return;
       }
 

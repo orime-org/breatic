@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { Euler, Quaternion } from 'three';
-import { SceneObjectValuesSchema, isSceneLight, isSceneModelFile, type SceneObject } from '@breatic/shared';
+import { SceneObjectValuesSchema, isSceneLight, isSceneModelFile, type SceneImportLimits, type SceneObject } from '@breatic/shared';
 import type { SceneEditorProps } from '@web/spaces/three-d/SceneEditor';
 import type { SceneField, SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
 import type { SceneDirectorFields } from '@web/spaces/three-d/SceneDirectorFields';
@@ -13,6 +13,18 @@ import { Button } from '@web/components/ui/button';
 import { Switch } from '@web/components/ui/switch';
 import { POSE_PRESETS, POSE_PRESET_NAMES } from '@web/spaces/three-d/viewport/pose-presets';
 import type { SceneSkeletonState } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
+import { SceneLookPanel } from '@web/spaces/three-d/SceneLookPanel';
+
+/** What the appearance section needs from the editor (inner#1693). */
+export interface SceneLookInputs {
+  /** What the viewport reported for each loaded model's parts. */
+  reports: ReadonlyMap<string, SceneLookReport | 'loading' | 'failed'>;
+  selectedPart: string | null;
+  onSelectPart: (part: string | null) => void;
+  projectId: string;
+  limits: SceneImportLimits;
+}
 
 export interface ScenePoseInputs {
   /** What the viewport reported for each loaded object's skeleton. */
@@ -106,10 +118,11 @@ function transformFields(object: SceneObject): readonly ('position' | 'rotation'
  * @param root0.skeletonStates - What each loaded object's skeleton allows.
  * @param root0.jointMode - Whether joint mode is on.
  * @param root0.onJointModeChange - Asks the editor for a joint mode.
+ * @param root0.look - What the appearance section needs, when the editor provides it.
  * @returns The current selection inspector.
  * @throws {never} Command refusals are reported by the session owner.
  */
-export const SceneInspector = React.memo(function SceneInspector({ session, snapshot, readObjects, namedPeers, spaceId, Field, DirectorFields, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, onJointModeChange }: Pick<SceneEditorProps, 'session' | 'snapshot' | 'readObjects' | 'namedPeers' | 'spaceId'> & SceneFieldDraftOwner & ScenePoseInputs & { Field: typeof SceneField; DirectorFields: typeof SceneDirectorFields }): React.JSX.Element {
+export const SceneInspector = React.memo(function SceneInspector({ session, snapshot, readObjects, namedPeers, spaceId, Field, DirectorFields, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, onJointModeChange, look }: Pick<SceneEditorProps, 'session' | 'snapshot' | 'readObjects' | 'namedPeers' | 'spaceId'> & SceneFieldDraftOwner & ScenePoseInputs & { Field: typeof SceneField; DirectorFields: typeof SceneDirectorFields; look?: SceneLookInputs }): React.JSX.Element {
   const t = useTranslation();
   const selected = snapshot.objects.filter((object) => snapshot.selectedIds.includes(object.id));
   const mutable = snapshot.canEdit && selected.length > 0 && selected.every((object) => !object.locked);
@@ -171,6 +184,8 @@ export const SceneInspector = React.memo(function SceneInspector({ session, snap
       </fieldset>)}
       <DirectorFields object={object} session={session} canEdit={snapshot.canEdit} spaceId={spaceId} Field={Field} compact={false}
         fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} />
+      {look && isSceneModelFile(object.model) ? <SceneLookPanel key={object.id} session={session} object={object} report={look.reports.get(object.id) ?? 'loading'}
+        projectId={look.projectId} spaceId={spaceId} limits={look.limits} mutable={mutable} selectedPart={look.selectedPart} onSelectPart={look.onSelectPart} /> : null}
       {skeleton ? <PoseSection objectId={object.id} state={skeleton} mutable={mutable} session={session}
         jointMode={jointMode} onJointModeChange={onJointModeChange} /> : null}</> : <><p className='text-xs font-medium'>{t('spaces.threeD.selectedCount', { count: selected.length })}</p><p className='text-xs text-muted-foreground'>{t('spaces.threeD.multiTransform')}</p>
         {(['position', 'rotation', 'scale'] as const).map((field) => <p key={field} className='text-xs'>{geometryLabels[field]}: {geometries.every((item) => JSON.stringify(item[field]) === JSON.stringify(geometries[0]?.[field])) ? geometries[0]?.[field].map(numberText).join(', ') : t('spaces.threeD.mixed')}</p>)}</>}

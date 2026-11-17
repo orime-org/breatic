@@ -42,8 +42,9 @@ afterEach(() => cleanup());
 function renderSection(props: Partial<Props> = {}): { onCommand: ReturnType<typeof vi.fn>; onSelectPart: ReturnType<typeof vi.fn>; onChoosePicture: ReturnType<typeof vi.fn> } {
   const Section = (sectionModule as Record<string, unknown>).SceneLookSection as React.ComponentType<Props> | undefined;
   expect(Section, 'SceneLookSection must be exported').toBeDefined();
+  const Mounted = Section as React.ComponentType<Props>;
   const onCommand = vi.fn(); const onSelectPart = vi.fn(); const onChoosePicture = vi.fn();
-  render(<TooltipProvider><Section objectId={ID} parts={PARTS} look={{}} selectedPart={null} mutable
+  render(<TooltipProvider><Mounted objectId={ID} parts={PARTS} look={{}} selectedPart={null} mutable
     onSelectPart={onSelectPart} onCommand={onCommand} onChoosePicture={onChoosePicture} {...props} /></TooltipProvider>);
   return { onCommand, onSelectPart, onChoosePicture };
 }
