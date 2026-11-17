@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { setLocale, setLocaleMessages, t } from '@breatic/shared';
 import { expect, type BrowserContext } from 'playwright/test';
 
 import { dataOf } from '../helpers/api';
@@ -27,9 +28,10 @@ import { stateFile, test } from '../helpers/slot';
 import { visibleSpace } from '../helpers/space';
 
 /** The English catalog the suite's accounts read the product in. */
-const EN = JSON.parse(readFileSync(resolve(__dirname, '../../../../locales/en.json'), 'utf8')) as {
-  credits: { spendCap: { member: string } };
-};
+const EN = JSON.parse(readFileSync(resolve(__dirname, '../../../../locales/en.json'), 'utf8')) as Record<string, unknown>;
+// The expected sentence is formatted the way the page formats it: the message is ICU, with a plural select.
+setLocaleMessages('en', EN);
+setLocale('en');
 
 /** B's time zone: behind UTC, so the UTC month's first instant is the day before there. */
 const B_TIME_ZONE = 'America/Los_Angeles';
@@ -104,7 +106,7 @@ test('a member whose own limit is 0 is refused Generate with the reset day in lo
     const localDay = resetsAt.toLocaleDateString('en', { year: 'numeric', month: 'long', day: 'numeric', timeZone: B_TIME_ZONE });
     const utcDay = resetsAt.toLocaleDateString('en', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
     expect(localDay).not.toBe(utcDay);
-    const sentence = EN.credits.spendCap.member.replace('{limit}', '0').replace('{date}', localDay);
+    const sentence = t('credits.spendCap.member', { limit: '0', date: localDay });
     const toast = bPage.locator('[data-sonner-toast]').filter({ hasText: sentence });
     await expect(toast).toBeVisible({ timeout: 20_000 });
     await expect(toast).not.toContainText(utcDay);
