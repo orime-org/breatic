@@ -319,10 +319,12 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
     ? new Set<InsertEntryId>()
     : insertReach(editor.prosemirrorState.doc, row.blockId, row.bare ? 'fill' : 'below');
 
-  // The highlight belongs to the query it was moved under: a new query starts
-  // on the first row again, as BlockNote's does.
+  // The highlight belongs to the query it was moved under: any change of query
+  // starts on the first row again, as BlockNote's does, so a query typed and
+  // taken back does not bring an old highlight back.
   const [moved, setMoved] = React.useState({ query: filterQuery, index: 0 });
-  const index = moved.query === filterQuery ? Math.min(moved.index, items.length - 1) : 0;
+  if (moved.query !== filterQuery) setMoved({ query: filterQuery, index: 0 });
+  const index = Math.min(moved.index, items.length - 1);
   const highlight = React.useCallback(
     (next: number): void => {
       // The same row again keeps the state, so a pointer moving along a lit
@@ -332,8 +334,11 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
     [filterQuery],
   );
 
-  const [gridState, setGrid] = React.useState<GridState | null>(null);
-  const grid = gridState !== null && gridState.query === query ? gridState : null;
+  // The grid belongs to the query it was opened under: any change of query
+  // closes it, including input that sends no key (an input method, a paste),
+  // so a query typed and taken back does not reopen it.
+  const [grid, setGrid] = React.useState<GridState | null>(null);
+  if (grid !== null && grid.query !== query) setGrid(null);
   const openGrid = React.useCallback(
     (at: TableSize | null): void => {
       // The same size again keeps the state, so a pointer moving inside a lit
