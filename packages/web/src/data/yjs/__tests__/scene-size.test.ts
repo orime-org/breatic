@@ -160,6 +160,38 @@ describe('SC-09 posing a character is edit; resetting its pose deletes its keys:
     refused: refusedIn });
 });
 
+/**
+ * The initial scene with a look on o1: one flat look key on its record (inner#1693).
+ * @returns The document.
+ */
+function seedLooked(): Y.Doc {
+  return seed({ 'look.0.color': '#112233' });
+}
+
+describe('SC-10 changing a part look is edit; resetting it deletes its keys: remove', () => {
+  kindRows({ id: 'SC-10', title: 'set a part colour', kind: 'edit', name: NAME, seed,
+    run: run({ type: 'look', id: O1, part: '0', set: { color: '#ff0000' } } as unknown as SceneCommand),
+    written: (result, target) => {
+      expect(result).toEqual({ ok: true, ids: [O1] });
+      expect((target.getMap('objects').get(O1) as Y.Map<unknown>).get('look.0.color')).toBe('#ff0000');
+    },
+    refused: refusedIn });
+  kindRows({ id: 'SC-10', title: 'reset a part', kind: 'remove', name: NAME, seed: seedLooked,
+    run: run({ type: 'look', id: O1, part: '0', set: { color: null } } as unknown as SceneCommand),
+    written: (result, target) => {
+      expect(result).toEqual({ ok: true, ids: [O1] });
+      expect((target.getMap('objects').get(O1) as Y.Map<unknown>).has('look.0.color')).toBe(false);
+    },
+    refused: refusedIn });
+  kindRows({ id: 'SC-10', title: 'reset every part', kind: 'remove', name: NAME, seed: seedLooked,
+    run: run({ type: 'look', id: O1, part: null, set: {} } as unknown as SceneCommand),
+    written: (result, target) => {
+      expect(result).toEqual({ ok: true, ids: [O1] });
+      expect((target.getMap('objects').get(O1) as Y.Map<unknown>).has('look.0.color')).toBe(false);
+    },
+    refused: refusedIn });
+});
+
 describe('SC-05 a record without a locked key reads unlocked and can be deleted', () => {
   it('SC-05 o3 reads locked false', () => {
     seed();
