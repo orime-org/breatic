@@ -1,0 +1,585 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+/**
+ * The BYOK settings dialog (inner#1953): the account's own upstream keys, and which keyed upstream each non-language
+ * model runs on.
+ *
+ * The dialog talks to the server only through the request helpers in `@web/data/api/request`, which this file
+ * replaces, so what it pins is the HTTP contract (paths relative to the API base, methods, bodies) and what the user
+ * sees, not the name of the api module in between.
+ *
+ * Contract this file assumes. The view's `enabled`, `keys`, `models` and `choices` follow the server's route tests
+ * (`packages/server/src/__tests__/integration/byok-account-routes.integration.test.ts`); `upstreams` (the deployment's
+ * list, from `config/provider/upstreams.yaml`) is this file's addition, since the dialog cannot name or group an upstream
+ * without it. Model names, modalities and every upstream a model is bound to come from the catalog the panels already
+ * read (`GET /models`).
+ *
+ *   GET    /account/byok                                       -> ByokView
+ *   PUT    /account/byok/keys/:upstream   {key}                -> the saved key (422 with a localized message when it does not connect)
+ *   POST   /account/byok/keys/:upstream/check                  -> the checked key
+ *   DELETE /account/byok/keys/:upstream
+ *   PUT    /account/byok/models/:model    {upstream: string | null}
+ *
+ * The dialog shows what a write did by reading the view again.
+ *
+ * Never a full key in any answer: a saved key is only ever shown by its `displayHint`.
+ */
+
+import * as React from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+const { api, toasts } = vi.hoisted(() => ({
+  api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
+  toasts: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}));
+
+vi.mock('@web/data/api/request', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/request')>()),
+  apiGet: api.get,
+  apiPost: api.post,
+  apiPut: api.put,
+  apiDelete: api.delete,
+}));
+vi.mock('@web/lib/toast', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/lib/toast')>();
+  return { ...actual, toast: { ...actual.toast, ...toasts } };
+});
+
+import { ByokDialog } from '@web/features/byok/ByokDialog';
+import { ApiException } from '@web/data/api/types';
+
+/** One upstream the deployment lists. */
+interface Upstream {
+  upstream: string;
+  name: string;
+  kind: 'llm' | 'official' | 'reseller';
+  keyUrl: string | null;
+}
+
+/** One saved key, as the server answers it: never the key itself. */
+interface SavedKey {
+  upstream: string;
+  displayHint: string;
+  lastConnected: boolean;
+  lastCheckedAt: string;
+  lastBalanceState: 'known' | 'forbidden' | 'no_cap' | 'unsupported' | null;
+  lastBalanceAmount: string | null;
+  lastFailure: string | null;
+}
+
+/** What `GET /account/byok` answers. */
+interface ByokView {
+  enabled: boolean;
+  upstreams: Upstream[];
+  keys: SavedKey[];
+  /** The upstream each model is pointed at; a model left out runs on the platform key. */
+  models: { model: string; upstream: string }[];
+  /** For each media model, the upstreams holding a key of this account that can run it. */
+  choices: Record<string, string[]>;
+}
+
+const UPSTREAMS: Upstream[] = [
+  { upstream: 'openrouter', name: 'OpenRouter', kind: 'llm', keyUrl: 'https://openrouter.ai/settings/keys' },
+  { upstream: 'google', name: 'Google', kind: 'official', keyUrl: 'https://aistudio.google.com/apikey' },
+  { upstream: 'wavespeed', name: 'WaveSpeed', kind: 'reseller', keyUrl: 'https://wavespeed.ai/accesskey' },
+  { upstream: 'fal', name: 'fal', kind: 'reseller', keyUrl: 'https://fal.ai/dashboard/keys' },
+  { upstream: 'sandbase', name: 'SandBase', kind: 'reseller', keyUrl: 'https://sandbase.example/keys' },
+];
+
+const WAVESPEED_KEY: SavedKey = {
+  upstream: 'wavespeed',
+  displayHint: 'wsk_3f…9d0e',
+  lastConnected: true,
+  lastCheckedAt: '2026-11-17T02:00:00.000Z',
+  lastBalanceState: 'known',
+  lastBalanceAmount: '50.25',
+  lastFailure: null,
+};
+
+const FAL_KEY: SavedKey = {
+  upstream: 'fal',
+  displayHint: '8c1e2a…7f3b',
+  lastConnected: false,
+  lastCheckedAt: '2026-11-17T03:00:00.000Z',
+  lastBalanceState: null,
+  lastBalanceAmount: null,
+  lastFailure: 'invalid',
+};
+
+/** What each media model's choices are with the WaveSpeed and fal keys saved. */
+const CHOICES: Record<string, string[]> = {
+  'seedream-5': ['wavespeed', 'fal'],
+  'nano-banana-pro': ['wavespeed'],
+  // Only upstreams without a key run it: it has no choice to make, so it is not listed.
+  'imagen-4-ultra': [],
+  'veo-3-1': ['fal'],
+};
+
+/**
+ * One catalog entry, as `GET /models` carries it.
+ * @param name - The model's id.
+ * @param displayName - Its name on screen.
+ * @param modality - Its catalog bucket.
+ * @param upstreams - Every upstream it is bound to.
+ * @returns The entry.
+ */
+function entry(name: string, displayName: string, modality: string, upstreams: string[]): Record<string, unknown> {
+  return {
+    name,
+    display_name: displayName,
+    modality,
+    mode: 'generate',
+    takes_prompt: true,
+    params: {},
+    availability: { upstreams: upstreams.map((upstream, weight) => ({ upstream, weight, configured: true, envVar: `${upstream.toUpperCase()}_KEY` })) },
+  };
+}
+
+const CATALOG = {
+  image: [
+    entry('seedream-5', 'Seedream 5.0', 'image', ['wavespeed', 'fal']),
+    entry('nano-banana-pro', 'Nano Banana Pro', 'image', ['google', 'wavespeed']),
+    entry('imagen-4-ultra', 'Imagen 4 Ultra', 'image', ['google', 'sandbase']),
+  ],
+  video: [entry('veo-3-1', 'Veo 3.1', 'video', ['google', 'fal'])],
+  audio: [],
+  tts: [],
+  three_d: [],
+  total: 4,
+  credit_multiplier: 1,
+};
+
+/**
+ * The account's view.
+ * @param over - Fields to override.
+ * @returns The view.
+ */
+function view(over: Partial<ByokView> = {}): ByokView {
+  return {
+    enabled: true,
+    upstreams: UPSTREAMS,
+    keys: [WAVESPEED_KEY, FAL_KEY],
+    models: [{ model: 'seedream-5', upstream: 'wavespeed' }, { model: 'veo-3-1', upstream: 'fal' }],
+    choices: CHOICES,
+    ...over,
+  };
+}
+
+/** An account with no key at all. */
+const EMPTY: Partial<ByokView> = { keys: [], models: [], choices: {} };
+
+/**
+ * Make the reads answer one view, now and on every re-read, beside the model catalog.
+ * @param answer - The view.
+ */
+function serve(answer: ByokView): void {
+  api.get.mockImplementation((url: string) => {
+    if (url === '/account/byok') return Promise.resolve(answer);
+    if (url === '/models') return Promise.resolve(CATALOG);
+    return Promise.reject(new Error(`unexpected GET ${url}`));
+  });
+}
+
+/**
+ * A key the server refused because it does not connect.
+ * @param message - The server's localized reason.
+ * @returns The exception.
+ */
+function refused(message: string): ApiException {
+  return new ApiException({ status: 422, message, fromServer: true, reason: 'key_check_failed' });
+}
+
+/**
+ * Each call's leading arguments: the path and, for a write, the body. Axios options after them are the
+ * implementation's business.
+ * @param fn - The replaced request helper.
+ * @param count - How many leading arguments to keep.
+ * @returns One array per call.
+ */
+function leading(fn: { mock: { calls: unknown[][] } }, count: number): unknown[][] {
+  return fn.mock.calls.map((call) => call.slice(0, count));
+}
+
+/**
+ * Render the open dialog.
+ * @returns The dialog element.
+ */
+async function mount(): Promise<HTMLElement> {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <ByokDialog open onOpenChange={() => undefined} />
+    </QueryClientProvider>,
+  );
+  return screen.findByRole('dialog', { name: 'BYOK settings' });
+}
+
+/**
+ * The upstream rows of the left list, top to bottom, by upstream id.
+ * @param dialog - The BYOK dialog.
+ * @returns The ids.
+ */
+function rowOrder(dialog: HTMLElement): string[] {
+  return [...dialog.querySelectorAll('[data-testid^="byok-upstream-"]')].map((row) =>
+    (row.getAttribute('data-testid') ?? '').replace('byok-upstream-', ''),
+  );
+}
+
+/**
+ * Switch to the models tab.
+ * @param user - The userEvent session.
+ * @param dialog - The BYOK dialog.
+ */
+async function openModels(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement): Promise<void> {
+  await user.click(within(dialog).getByRole('tab', { name: 'Models' }));
+}
+
+/**
+ * The options a model row's select offers, in order.
+ * @param user - The userEvent session.
+ * @param model - The model's name.
+ * @returns The option labels.
+ */
+async function optionsOf(user: ReturnType<typeof userEvent.setup>, model: string): Promise<string[]> {
+  await user.click(within(screen.getByTestId(`byok-model-${model}`)).getByRole('combobox'));
+  const listbox = await screen.findByRole('listbox');
+  return within(listbox).getAllByRole('option').map((option) => (option.textContent ?? '').trim());
+}
+
+describe('ByokDialog', () => {
+  beforeEach(() => {
+    for (const fn of [...Object.values(api), ...Object.values(toasts)]) fn.mockReset();
+    serve(view());
+  });
+
+  it('is titled BYOK settings and has an upstream keys tab and a models tab', async () => {
+    const dialog = await mount();
+    const tabs = within(dialog).getAllByRole('tab').map((tab) => tab.textContent?.trim());
+    expect(tabs.slice(0, 2)).toEqual(['Upstream keys', 'Models']);
+    expect(within(dialog).getByRole('tab', { name: 'Upstream keys' })).toHaveAttribute('aria-selected', 'true');
+    expect(leading(api.get, 1)).toContainEqual(['/account/byok']);
+  });
+
+  it('says so, and offers nothing, where the deployment has no master key', async () => {
+    serve(view({ enabled: false, ...EMPTY }));
+    const dialog = await mount();
+    expect(await within(dialog).findByText('Bring your own key is not turned on for this deployment.')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('tab')).toBeNull();
+  });
+
+  describe('upstream keys tab', () => {
+    it('lists added upstreams first, then the rest by language model, official API and reseller', async () => {
+      const dialog = await mount();
+      await waitFor(() => expect(rowOrder(dialog)).toEqual(['wavespeed', 'fal', 'openrouter', 'google', 'sandbase']));
+
+      const text = dialog.textContent ?? '';
+      const at = (word: string): number => text.indexOf(word);
+      expect(at('Added')).toBeGreaterThanOrEqual(0);
+      expect(at('Language model')).toBeGreaterThan(at('Added'));
+      expect(at('Official API')).toBeGreaterThan(at('Language model'));
+      expect(at('Reseller')).toBeGreaterThan(at('Official API'));
+    });
+
+    it('marks each added upstream with a status dot, green when connected and red when not', async () => {
+      const dialog = await mount();
+      const wavespeed = await within(dialog).findByTestId('byok-upstream-wavespeed');
+      const fal = within(dialog).getByTestId('byok-upstream-fal');
+      expect(within(wavespeed).getByTestId('byok-status-dot')).toHaveAttribute('data-state', 'connected');
+      expect(within(fal).getByTestId('byok-status-dot')).toHaveAttribute('data-state', 'failed');
+      expect(within(within(dialog).getByTestId('byok-upstream-sandbase')).queryByTestId('byok-status-dot')).toBeNull();
+    });
+
+    it('says none are added yet when the account has no key', async () => {
+      serve(view(EMPTY));
+      const dialog = await mount();
+      expect(await within(dialog).findByText('None added yet')).toBeInTheDocument();
+    });
+
+    it('filters the list as the user types in the search box', async () => {
+      const user = userEvent.setup();
+      const dialog = await mount();
+      await within(dialog).findByTestId('byok-upstream-wavespeed');
+
+      await user.type(within(dialog).getByPlaceholderText('Search upstreams'), 'sand');
+
+      expect(rowOrder(dialog)).toEqual(['sandbase']);
+    });
+
+    it('opens on the first added upstream, showing its hint, status, balance and where to get a key', async () => {
+      const dialog = await mount();
+      const detail = await within(dialog).findByTestId('byok-detail-wavespeed');
+      expect(detail).toHaveTextContent('wsk_3f…9d0e');
+      expect(detail).toHaveTextContent('Connected');
+      expect(detail).toHaveTextContent('50.25');
+      expect(within(detail).getByRole('link', { name: 'Get a key from WaveSpeed' })).toHaveAttribute(
+        'href',
+        'https://wavespeed.ai/accesskey',
+      );
+    });
+
+    it('shows why a key that did not connect failed', async () => {
+      const user = userEvent.setup();
+      const dialog = await mount();
+      await user.click(await within(dialog).findByTestId('byok-upstream-fal'));
+
+      const detail = within(dialog).getByTestId('byok-detail-fal');
+      expect(detail).toHaveTextContent('8c1e2a…7f3b');
+      expect(detail).toHaveTextContent('Not connected');
+      expect(detail).toHaveTextContent('The key is invalid or has been revoked.');
+    });
+
+    it('checks the saved key again on refresh, with the button waiting on the request', async () => {
+      let answer: (next: SavedKey) => void = () => undefined;
+      api.post.mockReturnValue(new Promise<SavedKey>((resolve) => { answer = resolve; }));
+      const user = userEvent.setup();
+      const dialog = await mount();
+      const detail = await within(dialog).findByTestId('byok-detail-wavespeed');
+
+      await user.click(within(detail).getByRole('button', { name: 'Refresh' }));
+
+      expect(leading(api.post, 1)).toEqual([['/account/byok/keys/wavespeed/check']]);
+      expect(within(detail).getByRole('button', { name: 'Refresh' })).toHaveAttribute('aria-busy', 'true');
+
+      const fresh: SavedKey = { ...WAVESPEED_KEY, lastBalanceAmount: '12.00', lastCheckedAt: '2026-11-17T05:00:00.000Z' };
+      const checked = view({ keys: [fresh, FAL_KEY] });
+      serve(checked);
+      answer(fresh);
+      await waitFor(() => expect(within(dialog).getByTestId('byok-detail-wavespeed')).toHaveTextContent('12.00'));
+      expect(within(dialog).getByRole('button', { name: 'Refresh' })).not.toHaveAttribute('aria-busy', 'true');
+    });
+
+    it('adds a key for an upstream not yet added, and moves it to the added group', async () => {
+      const user = userEvent.setup();
+      const sandbase: SavedKey = { ...WAVESPEED_KEY, upstream: 'sandbase', displayHint: 'sb-sec…3456', lastBalanceAmount: '42.13' };
+      api.put.mockImplementation(() => {
+        serve(view({ keys: [WAVESPEED_KEY, FAL_KEY, sandbase] }));
+        return Promise.resolve(sandbase);
+      });
+      const dialog = await mount();
+      await user.click(await within(dialog).findByTestId('byok-upstream-sandbase'));
+      const detail = within(dialog).getByTestId('byok-detail-sandbase');
+
+      await user.type(within(detail).getByLabelText('API key'), 'sb-secret-123456');
+      await user.click(within(detail).getByRole('button', { name: 'Save' }));
+
+      expect(leading(api.put, 2)).toEqual([['/account/byok/keys/sandbase', { key: 'sb-secret-123456' }]]);
+      await waitFor(() => expect(rowOrder(dialog).slice(0, 3)).toEqual(['wavespeed', 'fal', 'sandbase']));
+      const after = within(dialog).getByTestId('byok-detail-sandbase');
+      expect(after).toHaveTextContent('sb-sec…3456');
+      expect(dialog.textContent).not.toContain('sb-secret-123456');
+    });
+
+    it('keeps a key that does not connect unsaved, with the reason under the input', async () => {
+      const user = userEvent.setup();
+      api.put.mockRejectedValue(refused('Could not connect: the key is invalid.'));
+      const dialog = await mount();
+      await user.click(await within(dialog).findByTestId('byok-upstream-sandbase'));
+      const detail = within(dialog).getByTestId('byok-detail-sandbase');
+
+      await user.type(within(detail).getByLabelText('API key'), 'sb-wrong');
+      await user.click(within(detail).getByRole('button', { name: 'Save' }));
+
+      expect(await within(detail).findByText('Could not connect: the key is invalid.')).toBeInTheDocument();
+      expect(within(detail).getByLabelText('API key')).toHaveAttribute('aria-invalid', 'true');
+      expect(rowOrder(dialog).indexOf('sandbase')).toBeGreaterThan(rowOrder(dialog).indexOf('google'));
+    });
+
+    describe('replacing a key', () => {
+      /**
+       * Open the replace dialog for WaveSpeed.
+       * @param user - The userEvent session.
+       * @returns The replace dialog.
+       */
+      async function openReplace(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+        const dialog = await mount();
+        const detail = await within(dialog).findByTestId('byok-detail-wavespeed');
+        await user.click(within(detail).getByRole('button', { name: 'Replace' }));
+        return screen.findByRole('dialog', { name: 'Replace the WaveSpeed key' });
+      }
+
+      it('says tasks using the old key will be interrupted', async () => {
+        const user = userEvent.setup();
+        const replace = await openReplace(user);
+        expect(replace).toHaveTextContent(/tasks using the old key will be interrupted/i);
+      });
+
+      it('saves the new key and closes', async () => {
+        const user = userEvent.setup();
+        const replaced: SavedKey = { ...WAVESPEED_KEY, displayHint: 'wsk_new…beef' };
+        api.put.mockImplementation(() => {
+          serve(view({ keys: [replaced, FAL_KEY] }));
+          return Promise.resolve(replaced);
+        });
+        const replace = await openReplace(user);
+
+        await user.type(within(replace).getByLabelText('API key'), 'wsk_new_key_beef');
+        await user.click(within(replace).getByRole('button', { name: 'Save' }));
+
+        expect(leading(api.put, 2)).toEqual([['/account/byok/keys/wavespeed', { key: 'wsk_new_key_beef' }]]);
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Replace the WaveSpeed key' })).toBeNull());
+        expect(await screen.findByTestId('byok-detail-wavespeed')).toHaveTextContent('wsk_new…beef');
+      });
+
+      it('keeps the old key and the dialog open, with the reason inline, when the new key does not connect', async () => {
+        const user = userEvent.setup();
+        api.put.mockRejectedValue(refused('Could not connect: the key is invalid.'));
+        const replace = await openReplace(user);
+
+        await user.type(within(replace).getByLabelText('API key'), 'wsk_bad');
+        await user.click(within(replace).getByRole('button', { name: 'Save' }));
+
+        expect(await within(replace).findByText('Could not connect: the key is invalid.')).toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: 'Replace the WaveSpeed key' })).toBeInTheDocument();
+        expect(screen.getByTestId('byok-detail-wavespeed')).toHaveTextContent('wsk_3f…9d0e');
+      });
+    });
+
+    describe('deleting a key', () => {
+      it('warns that tasks using it will be interrupted and lists the models that go back to the platform key', async () => {
+        const user = userEvent.setup();
+        const dialog = await mount();
+        await user.click(await within(dialog).findByTestId('byok-upstream-fal'));
+        await user.click(within(within(dialog).getByTestId('byok-detail-fal')).getByRole('button', { name: 'Delete' }));
+
+        const confirm = await screen.findByRole('alertdialog');
+        expect(confirm).toHaveTextContent(/tasks using this key will be interrupted/i);
+        expect(confirm).toHaveTextContent('Veo 3.1');
+        expect(confirm).not.toHaveTextContent('Seedream 5.0');
+        expect(api.delete).not.toHaveBeenCalled();
+      });
+
+      it('deletes on confirm', async () => {
+        const user = userEvent.setup();
+        const deleted = view({
+          keys: [WAVESPEED_KEY],
+          models: [{ model: 'seedream-5', upstream: 'wavespeed' }],
+          choices: { 'seedream-5': ['wavespeed'], 'nano-banana-pro': ['wavespeed'] },
+        });
+        api.delete.mockImplementation(() => {
+          serve(deleted);
+          return Promise.resolve(undefined);
+        });
+        const dialog = await mount();
+        await user.click(await within(dialog).findByTestId('byok-upstream-fal'));
+        await user.click(within(within(dialog).getByTestId('byok-detail-fal')).getByRole('button', { name: 'Delete' }));
+        const confirm = await screen.findByRole('alertdialog');
+
+        await user.click(within(confirm).getByRole('button', { name: 'Delete' }));
+
+        expect(leading(api.delete, 1)).toEqual([['/account/byok/keys/fal']]);
+        await waitFor(() => expect(rowOrder(dialog)[0]).toBe('wavespeed'));
+        await waitFor(() => expect(rowOrder(dialog).indexOf('fal')).toBeGreaterThan(rowOrder(dialog).indexOf('google')));
+      });
+    });
+  });
+
+  describe('models tab', () => {
+    it('lists only models a keyed upstream can run, under modality tabs', async () => {
+      const user = userEvent.setup();
+      const dialog = await mount();
+      await openModels(user, dialog);
+
+      const image = await within(dialog).findByRole('tab', { name: /^Image/ });
+      expect(image).toHaveAttribute('aria-selected', 'true');
+      expect(image).toHaveTextContent('2');
+      expect(within(dialog).getByTestId('byok-model-seedream-5')).toBeInTheDocument();
+      expect(within(dialog).getByTestId('byok-model-nano-banana-pro')).toBeInTheDocument();
+      expect(within(dialog).queryByTestId('byok-model-imagen-4-ultra')).toBeNull();
+      expect(within(dialog).queryByTestId('byok-model-veo-3-1')).toBeNull();
+
+      await user.click(within(dialog).getByRole('tab', { name: /^Video/ }));
+      expect(await within(dialog).findByTestId('byok-model-veo-3-1')).toBeInTheDocument();
+      expect(within(dialog).queryByTestId('byok-model-seedream-5')).toBeNull();
+    });
+
+    it('filters the models as the user types in the search box', async () => {
+      const user = userEvent.setup();
+      const dialog = await mount();
+      await openModels(user, dialog);
+      await within(dialog).findByTestId('byok-model-seedream-5');
+
+      await user.type(within(dialog).getByPlaceholderText('Search models'), 'nano');
+
+      expect(within(dialog).getByTestId('byok-model-nano-banana-pro')).toBeInTheDocument();
+      expect(within(dialog).queryByTestId('byok-model-seedream-5')).toBeNull();
+    });
+
+    it('defaults each model to the platform key and offers only keyed upstreams that run it', async () => {
+      const user = userEvent.setup();
+      const dialog = await mount();
+      await openModels(user, dialog);
+      const nano = await within(dialog).findByTestId('byok-model-nano-banana-pro');
+      expect(within(nano).getByRole('combobox')).toHaveTextContent('Platform key (uses credits)');
+
+      expect(await optionsOf(user, 'nano-banana-pro')).toEqual(['Platform key (uses credits)', 'WaveSpeed']);
+    });
+
+    it('shows the upstream a model is set to, among every keyed upstream that runs it', async () => {
+      const user = userEvent.setup();
+      const dialog = await mount();
+      await openModels(user, dialog);
+      const seedream = await within(dialog).findByTestId('byok-model-seedream-5');
+      expect(within(seedream).getByRole('combobox')).toHaveTextContent('WaveSpeed');
+
+      expect(await optionsOf(user, 'seedream-5')).toEqual(['Platform key (uses credits)', 'WaveSpeed', 'fal']);
+    });
+
+    it('saves the upstream the user picks for a model', async () => {
+      const user = userEvent.setup();
+      api.put.mockResolvedValue(undefined);
+      const dialog = await mount();
+      await openModels(user, dialog);
+      await within(dialog).findByTestId('byok-model-nano-banana-pro');
+
+      await optionsOf(user, 'nano-banana-pro');
+      await user.click(screen.getByRole('option', { name: 'WaveSpeed' }));
+
+      await waitFor(() =>
+        expect(leading(api.put, 2)).toEqual([['/account/byok/models/nano-banana-pro', { upstream: 'wavespeed' }]]),
+      );
+    });
+
+    it('clears the choice when the user picks the platform key back', async () => {
+      const user = userEvent.setup();
+      api.put.mockResolvedValue(undefined);
+      const dialog = await mount();
+      await openModels(user, dialog);
+      await within(dialog).findByTestId('byok-model-seedream-5');
+
+      await optionsOf(user, 'seedream-5');
+      await user.click(screen.getByRole('option', { name: 'Platform key (uses credits)' }));
+
+      await waitFor(() =>
+        expect(leading(api.put, 2)).toEqual([['/account/byok/models/seedream-5', { upstream: null }]]),
+      );
+    });
+
+    it('gives an OpenRouter key no per-model choice: it already covers every language model', async () => {
+      const user = userEvent.setup();
+      serve(view({
+        ...EMPTY,
+        keys: [{ ...WAVESPEED_KEY, upstream: 'openrouter', displayHint: 'sk-or-…a1B2', lastBalanceState: 'no_cap', lastBalanceAmount: null }],
+      }));
+      const dialog = await mount();
+      await openModels(user, dialog);
+
+      expect(await within(dialog).findByText(/Add an upstream key, then choose here/)).toBeInTheDocument();
+      expect(within(dialog).queryByTestId(/^byok-model-/)).toBeNull();
+    });
+
+    it('points an account with no key back to the upstream keys tab', async () => {
+      const user = userEvent.setup();
+      serve(view(EMPTY));
+      const dialog = await mount();
+      await openModels(user, dialog);
+
+      await user.click(await within(dialog).findByRole('button', { name: 'Add a key' }));
+
+      expect(within(dialog).getByRole('tab', { name: 'Upstream keys' })).toHaveAttribute('aria-selected', 'true');
+    });
+  });
+});

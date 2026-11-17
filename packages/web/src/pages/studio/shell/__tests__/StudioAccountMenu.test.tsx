@@ -236,13 +236,15 @@ describe('StudioAccountMenu', () => {
     const labels = screen
       .getAllByRole('menuitem')
       .map((entry) => entry.textContent ?? '');
-    expect(labels).toHaveLength(6);
+    // BYOK settings is account-level too, so it joins the account group, after settings (inner#1953).
+    expect(labels).toHaveLength(7);
     expect(labels[0]).toContain('Account settings');
-    expect(labels[1]).toBe('Promoter program');
-    expect(labels[2]).toContain('Membership');
-    expect(labels[3]).toContain('Credits');
-    expect(labels[4]).toBe('Sign out of other devices');
-    expect(labels[5]).toBe('Sign out');
+    expect(labels[1]).toBe('BYOK settings');
+    expect(labels[2]).toBe('Promoter program');
+    expect(labels[3]).toContain('Membership');
+    expect(labels[4]).toContain('Credits');
+    expect(labels[5]).toBe('Sign out of other devices');
+    expect(labels[6]).toBe('Sign out');
   });
 
   describe('promoter program entry (inner#1868)', () => {
