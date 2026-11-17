@@ -14,6 +14,7 @@ import { AccountKeyFailure, type KeySet, type Route } from "@breatic/provider";
 import { provider } from "@domain/provider/instance.js";
 import type { KeyPurpose } from "@domain/provider/account-keys.service.js";
 import { globalApi } from "@domain/region/global-api.js";
+import { PROMPT_REWRITTEN_MODELS } from "@domain/provider/prompt-rewritten-models.js";
 
 /** Who pays for a call: a Studio, or the Studio a Project belongs to. */
 export type KeyPayer = { studioId: string } | { projectId: string };
@@ -86,4 +87,29 @@ export async function keysById(keyId: string | null): Promise<{ keys: KeySet; ac
   const found = masterKeys === null ? null : await globalApi().getProviderKeyById(keyId);
   if (masterKeys === null || found === null) throw new AccountKeyFailure("", "account_key_missing");
   return { keys: accountKeySet(found.upstream, openProviderKey(found.ciphertext, masterKeys)), accountId: found.userId };
+}
+
+
+/**
+ * Whether a param asks for the step that serves it: something given, and not a switch turned off.
+ * @param value - The param's value.
+ * @returns True when the step runs.
+ */
+function asksForStep(value: unknown): boolean {
+  if (value === undefined || value === null || value === false) return false;
+  return typeof value === "string" || Array.isArray(value) ? value.length > 0 : true;
+}
+
+/**
+ * Whether a media run makes a language-model call of its own (inner#1953): its prompt is rewritten, or a step on one
+ * of its bindings describes an input first (Kling O3's elements). That call runs on the payer's language-model keys.
+ * @param model - The catalog model.
+ * @param params - The run's params, in our names.
+ * @returns True when the run has a language-model step.
+ */
+export function runCallsLlm(model: string, params: Readonly<Record<string, unknown>>): boolean {
+  if (PROMPT_REWRITTEN_MODELS.has(model)) return true;
+  return (provider().config.models[model] ?? []).some((binding) =>
+    (binding.extra_steps ?? []).some((step) => step.describe !== undefined && (step.for_param === undefined || asksForStep(params[step.for_param]))),
+  );
 }

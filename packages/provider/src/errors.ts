@@ -236,3 +236,34 @@ export class AccountKeyFailure extends Error {
     if (detail.reason !== undefined) this.reason = detail.reason;
   }
 }
+
+const ACCOUNT_KEY_FAILURE_KINDS: readonly string[] = ["account_key_failed", "account_key_missing", "upstream_unavailable"] satisfies AccountKeyFailureKind[];
+
+/** A key failure as read off an error. */
+export interface AccountKeyFailureFacts {
+  kind: AccountKeyFailureKind;
+  upstream?: string;
+  reason?: AccountKeyFailureReason;
+}
+
+/**
+ * The first account-key failure on an error or its causes (inner#1953): an AccountKeyFailure, or any error carrying one
+ * of its kinds (reading a key row that is gone raises `account_key_missing`), wherever it sits on the cause chain.
+ * @param error - What was thrown.
+ * @returns Its kind, upstream and reason, or undefined when the error is not one.
+ */
+export function accountKeyFailureIn(error: unknown): AccountKeyFailureFacts | undefined {
+  const seen = new Set<unknown>();
+  for (let at = error; typeof at === "object" && at !== null && !seen.has(at); at = (at as { cause?: unknown }).cause) {
+    seen.add(at);
+    const { kind, upstream, reason } = at as { kind?: unknown; upstream?: unknown; reason?: unknown };
+    if (typeof kind === "string" && ACCOUNT_KEY_FAILURE_KINDS.includes(kind)) {
+      return {
+        kind: kind as AccountKeyFailureKind,
+        ...(typeof upstream === "string" ? { upstream } : {}),
+        ...(typeof reason === "string" ? { reason: reason as AccountKeyFailureReason } : {}),
+      };
+    }
+  }
+  return undefined;
+}

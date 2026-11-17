@@ -244,9 +244,16 @@ export type MessagePart =
      * request could not be made to fit the model's context window however
      * much earlier history was folded into memory (inner#1567). The user is
      * told to narrow the request rather than to send it again. `shutdown` is a
-     * turn the server stopped because it was shutting down (inner#1717).
+     * turn the server stopped because it was shutting down (inner#1717). The
+     * account-key reasons are a turn on the payer's own key that failed
+     * (inner#1953): the key was refused, its row is gone, or its upstream could
+     * not be reached; the user is told to top up or replace the key.
      */
-    reason?: "too_long" | "shutdown";
+    reason?: "too_long" | "shutdown" | ChatKeyFailureReason;
+    /** The upstream whose key failed, for an account-key reason. */
+    upstream?: string;
+    /** Why the upstream refused the key, for `account_key_failed`. */
+    keyReason?: ChatKeyRefusal;
   }
   /**
    * A message the user sent while this turn ran, taken in at the step
@@ -384,6 +391,13 @@ export interface TaskEntity {
   providerResultUrl: string | null;
   /** Vendor task id for async generation; on retry the Worker resumes by polling it (#1628). */
   providerTaskId: string | null;
+  /**
+   * The account key row the task's media runs on (inner#1953); null on our keys. Read back by id on every pickup, never
+   * the key itself. Absent from an entity built without the column.
+   */
+  keyId?: string | null;
+  /** The account key row of a language-model step inside the task (a reading, a prompt rewrite), as `keyId`. */
+  llmKeyId?: string | null;
   /** Idempotency guard for credit deduction — set when charge has been applied. */
   billedAt: Date | null;
   /** Actual credits charged (audit trail). */
@@ -966,8 +980,14 @@ export interface AccountActivityCoverageEntity {
   createdAt: Date;
 }
 
+/** How a chat turn on the payer's own key failed (inner#1953), as its stored reply keeps it. */
+export type ChatKeyFailureReason = "account_key_failed" | "account_key_missing" | "upstream_unavailable";
+
+/** Why an upstream refused the payer's own key (inner#1953). */
+export type ChatKeyRefusal = "invalid" | "no_balance" | "model_not_found" | "rate_limited";
+
 /** What the last check of an account's upstream key found about its balance (inner#1953). */
-export type ProviderKeyBalanceState = "known" | "unsupported" | "forbidden";
+export type ProviderKeyBalanceState = "known" | "unsupported" | "forbidden" | "no_cap";
 
 /**
  * An account's own key for one upstream (inner#1953), without the key or its sealed text: only the hint the user is
@@ -984,6 +1004,8 @@ export interface AccountProviderKey {
   lastBalanceCurrency: string | null;
   lastBalanceState: ProviderKeyBalanceState | null;
   lastFailure: string | null;
+  /** Whether the key can read the actual costs of its calls (fal); null where the upstream has no such probe. */
+  lastCostsReadable: boolean | null;
   createdAt: Date;
   updatedAt: Date;
 }

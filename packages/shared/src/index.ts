@@ -1204,7 +1204,7 @@ export { purchaseRowSchema, creditLotViewSchema, studioLotViewSchema, creditLedg
 export { projectVisitRequestSchema, projectVisitReceiptSchema, projectVisitOpenedSchema, projectVisitLookupSchema } from "@shared/project-visit-contract.js";
 export type { ProjectVisitRequest, ProjectVisitReceipt, ProjectVisitOpened, ProjectVisitLookup } from "@shared/project-visit-contract.js";
 export type { AccountActivityEntity, AccountActivityKind, AccountActivityCoverageEntity } from "@shared/types/entities.js";
-export type { AccountProviderKey, AccountModelUpstream, ProviderKeyBalanceState } from "@shared/types/entities.js";
+export type { AccountProviderKey, AccountModelUpstream, ChatKeyFailureReason, ChatKeyRefusal, ProviderKeyBalanceState } from "@shared/types/entities.js";
 export type {
   TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, WebAnimationSourceVersion, DocumentVersion,
 } from "@shared/types/entities.js";

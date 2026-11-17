@@ -17,6 +17,9 @@ CREATE TABLE account_provider_keys (
   last_balance_currency varchar(8),
   last_balance_state text,
   last_failure text,
+  -- Whether the key can read the actual costs of its calls (fal's billing
+  -- events); null where the upstream has no such probe.
+  last_costs_readable boolean,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
@@ -25,7 +28,7 @@ CREATE TABLE account_provider_keys (
   CONSTRAINT account_provider_keys_sealed_while_live_check CHECK ((deleted_at IS NULL) = (ciphertext IS NOT NULL)),
   CONSTRAINT account_provider_keys_hint_check CHECK (char_length(display_hint) <= 32),
   CONSTRAINT account_provider_keys_balance_state_check CHECK (
-    last_balance_state IS NULL OR last_balance_state IN ('known', 'unsupported', 'forbidden')
+    last_balance_state IS NULL OR last_balance_state IN ('known', 'unsupported', 'forbidden', 'no_cap')
   )
 );
 --> statement-breakpoint

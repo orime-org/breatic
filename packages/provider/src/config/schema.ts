@@ -34,6 +34,12 @@ const upstreamSchema = z.strictObject({
   billing_url: z.string().min(1).optional(),
   /** How long a run answered completed without outputs may still be storing them, in ms; SandBase reads it. */
   empty_output_wait_ms: z.number().int().positive().default(EMPTY_OUTPUT_WAIT_MS),
+  /** The name a user knows the upstream by, where they add their own key for it (inner#1953). */
+  display_name: z.string().min(1).optional(),
+  /** Whether it is a model vendor's own API or a reseller of many vendors' models, for listing it to a user. */
+  group: z.enum(["official", "reseller"]).optional(),
+  /** Where the upstream hands out keys (inner#1953). */
+  key_url: z.url().optional(),
 });
 
 /** How a written value is converted after its spelling: to a string, a number, or a one-item list. */

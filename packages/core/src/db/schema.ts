@@ -1203,8 +1203,10 @@ export const accountProviderKeys = pgTable(
     lastConnected: boolean("last_connected"),
     lastBalanceAmount: numeric("last_balance_amount"),
     lastBalanceCurrency: varchar("last_balance_currency", { length: 8 }),
-    lastBalanceState: text("last_balance_state").$type<"known" | "unsupported" | "forbidden">(),
+    lastBalanceState: text("last_balance_state").$type<"known" | "unsupported" | "forbidden" | "no_cap">(),
     lastFailure: text("last_failure"),
+    /** Whether the key can read the actual costs of its calls; null where the upstream has no such probe. */
+    lastCostsReadable: boolean("last_costs_readable"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },

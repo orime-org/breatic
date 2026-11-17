@@ -314,6 +314,24 @@ describe("every cost says who paid it", () => {
   });
 });
 
+describe("an account-paid description names its upstream", () => {
+  it("marks the description's cost on the account's LLM keys with the upstream that billed it, so the caller records it under that key", async () => {
+    const { runner } = started();
+    wavespeedServes();
+    const keys = accountKeys({ wavespeed: "acct-ws" });
+    const llmKeys = accountKeys({ openrouter: "acct-or" });
+    let answer: MediaAnswer = await runner.plan("kling-elements", { prompt: "{{ref:elements:1}} walks", params: { elements: [imageUrl] } }, { mode: "default" }, planOptions(keys, llmKeys) as never);
+    for (let i = 0; i < 10 && (answer.state === "send" || answer.state === "running"); i++) {
+      const bounds = { ...live(), keys, llmKeys } as never;
+      answer = answer.state === "send" ? await runner.send(stored(answer.ticket), bounds) : await runner.poll(stored(answer.ticket), bounds);
+    }
+    const done = expectState(answer, "done");
+    const described = done.costs.filter((c) => (c as { upstream?: unknown }).upstream === "openrouter");
+    expect(described).toEqual([expect.objectContaining({ state: "known", usd: 0.0004, payer: "account", upstream: "openrouter" })]);
+    for (const cost of done.costs.filter((c) => !described.includes(c))) expect((cost as { upstream?: unknown }).upstream).toBeUndefined();
+  });
+});
+
 describe("a failure of an account's key (critical path)", () => {
   type Upstream = "wavespeed" | "fal" | "sandbase";
   const fakeOf = (u: Upstream): FakeUpstream => ({ wavespeed: ws, fal, sandbase: sb })[u];

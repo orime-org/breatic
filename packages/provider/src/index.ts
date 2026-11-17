@@ -3,6 +3,7 @@
 
 export {
   AccountKeyFailure,
+  accountKeyFailureIn,
   BilledAnswerLost,
   DeadlinePassed,
   NoUpstreamAvailable,
@@ -11,6 +12,7 @@ export {
   UpstreamTaskFailed,
   UnderstandInterrupted,
   costsOf,
+  type AccountKeyFailureFacts,
   type AccountKeyFailureKind,
   type AccountKeyFailureReason,
   type UnavailableReason,

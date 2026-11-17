@@ -39,6 +39,8 @@ export interface NewTimelineExecution {
   input: Record<string, unknown>;
   inputHash: string;
   deadlineAt: Date;
+  /** The account key row its language-model calls run on (inner#1953); null or absent on our keys. */
+  llmKeyId?: string | null;
 }
 
 /** The outcome of one {@link transition} call. */
@@ -119,6 +121,18 @@ function toEntity(row: Row): TimelineExecution {
 export async function insert(input: NewTimelineExecution, tx?: DbTx): Promise<TimelineExecution | null> {
   const [row] = await (tx ?? db).insert(t).values(input).onConflictDoNothing().returning(columns);
   return row === undefined ? null : toEntity(row);
+}
+
+/**
+ * The account key row a live execution's model calls run on (inner#1953): its id only, never the key.
+ * @param id - The execution.
+ * @param tx - The transaction to read in.
+ * @returns The row's id, or null on our keys or when there is no such execution.
+ * @throws {Error} When the read fails.
+ */
+export async function llmKeyIdOf(id: string, tx?: DbTx): Promise<string | null> {
+  const [row] = await (tx ?? db).select({ llmKeyId: t.llmKeyId }).from(t).where(and(eq(t.id, id), isNull(t.deletedAt))).limit(1);
+  return row?.llmKeyId ?? null;
 }
 
 /**

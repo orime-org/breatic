@@ -333,6 +333,7 @@ export { initProvider, provider } from "@domain/provider/instance.js";
 export { readProviderConfig } from "@domain/provider/provider-config-loader.js";
 
 // ── Which keys a model call runs on (inner#1953) ──
-export { resolveKeys, keysById, type KeyPayer, type ResolvedKeys } from "@domain/provider/provider-keys.js";
+export { resolveKeys, keysById, runCallsLlm, type KeyPayer, type ResolvedKeys } from "@domain/provider/provider-keys.js";
+export { PROMPT_REWRITTEN_MODELS } from "@domain/provider/prompt-rewritten-models.js";
 export { type KeyPurpose, type StudioKeyPlan } from "@domain/provider/account-keys.service.js";
 export { accountKeyFailureIn, type AccountKeyFailureFacts } from "@domain/provider/key-failure.js";

@@ -956,7 +956,14 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       if (i === index) return { ...s, status: "done" as const, output: {} };
       return i === index + 1 ? { ...s, description } : s;
     });
-    return waiting(next(ticket, { steps, costs: [...ticket.costs, ...answer.costs.map(paid)] }));
+    /**
+     * On an account's LLM keys, name the upstream that billed a description's cost, so the caller records it under that
+     * key and not the media steps' (inner#1953).
+     * @param cost - The cost.
+     * @returns The cost, named.
+     */
+    const named = (cost: Cost): Cost => (ticket.llmKeysOwner === "account" && cost.state !== "pending" ? { ...cost, upstream: answer.upstream } : cost);
+    return waiting(next(ticket, { steps, costs: [...ticket.costs, ...answer.costs.map(paid).map(named)] }));
   };
 
   return {

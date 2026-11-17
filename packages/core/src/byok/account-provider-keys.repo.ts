@@ -23,6 +23,8 @@ export interface ProviderKeyCheckRecord {
   balanceCurrency: string | null;
   /** Why it did not connect; null when it did. */
   failure: string | null;
+  /** Whether the key can read the actual costs of its calls; null where the upstream has no such probe. */
+  costsReadable?: boolean | null;
 }
 
 /** A key to save: already checked by the caller and sealed. */
@@ -54,6 +56,7 @@ const entityColumns = {
   lastBalanceCurrency: accountProviderKeys.lastBalanceCurrency,
   lastBalanceState: accountProviderKeys.lastBalanceState,
   lastFailure: accountProviderKeys.lastFailure,
+  lastCostsReadable: accountProviderKeys.lastCostsReadable,
   createdAt: accountProviderKeys.createdAt,
   updatedAt: accountProviderKeys.updatedAt,
 };
@@ -81,6 +84,7 @@ function checkColumns(check: ProviderKeyCheckRecord): Partial<typeof accountProv
     lastBalanceAmount: check.balanceAmount === null ? null : String(check.balanceAmount),
     lastBalanceCurrency: check.balanceCurrency,
     lastFailure: check.failure,
+    lastCostsReadable: check.costsReadable ?? null,
   };
 }
 
