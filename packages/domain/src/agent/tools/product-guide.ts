@@ -19,7 +19,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-import { getAgentConfig, getMiniToolsConfig, getSceneConfig } from "@breatic/core";
+import { getAgentConfig, getMiniToolsConfig, getOperationsConfig, getSceneConfig } from "@breatic/core";
 import {
   AGENT_INSTRUCTIONS_MAX_CHARS,
   CHAT_MESSAGE_MAX_CHARS,
@@ -252,6 +252,17 @@ function templateMenuLine(type: GenerationNodeType, node: string): string {
     return `${quoted(t(`canvas.template.goal.${goal}`))}, holding ${ALL_OF.format(named)}`;
   });
   return `${node} lists ${rows.join("; then ")}.`;
+}
+
+/**
+ * The sentence a refusal shows when the month's operations are used up and
+ * the credits cannot pay for one more: the server's own, naming the
+ * configured price of one more operation, which the page shows as it is.
+ * @returns It, quoted.
+ */
+function operationsRefusal(): string {
+  const overage = getOperationsConfig().overage_credits;
+  return quoted(t("server.operation.exhausted", { credits: overage }));
 }
 
 /**
@@ -588,7 +599,7 @@ export function renderProductGuide(): string {
       "credits in the project's studio to be answered; with none, the message reads " +
       `${quoted(t("server.credit.none"))} or names what stands in the way, such as credits not yet assigned to ` +
       "a studio. When the month's operations of the Studio's admin are used up and the Studio's credits cannot " +
-      `pay for one more, a sent message is refused and stays in the box, and the message says ${quoted(t("credits.refusal.operations"))} ` +
+      `pay for one more, a sent message is refused and stays in the box, and the message says ${operationsRefusal()} ` +
       `with a ${quoted(t("credits.topUp"))} button that opens the credits panel. A message waiting its turn when a ` +
       "monthly spend limit is reached stays waiting, and the waiting area above the box says so. Credits are bought from the account menu on the studio pages, under " +
       `${quoted(t("studio.topBar.credits"))} then ${quoted(t("credits.section.buy"))}; only the studio's admin ` +
@@ -915,7 +926,7 @@ export function renderProductGuide(): string {
     `  - ${quoted(t("canvas.generatePanel.errorUnavailable"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorFailed"))}`,
     "  - when the month's operations of the Studio's admin are used up and the Studio's credits cannot pay " +
-      `for one more, with a ${quoted(t("credits.topUp"))} button that opens the credits panel: ${quoted(t("credits.refusal.operations"))}`,
+      `for one more, with a ${quoted(t("credits.topUp"))} button that opens the credits panel: ${operationsRefusal()}`,
     "  - when a monthly spend limit the Studio's admin set is reached, with no button, since adding credits does " +
       "not lift a limit (see the When something is wrong section); the message names the limit and the day it " +
       `resets, or says only ${quoted(t("credits.refusal.spendCap"))}`,

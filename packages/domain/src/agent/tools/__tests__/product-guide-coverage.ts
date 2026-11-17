@@ -60,6 +60,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   // the credits panel the top-up opens on the project page.
   "canvas.task.waitReason": { described: /starts by itself when an earlier one ends|waits its turn/ },
   "canvas.task.cancelFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  // The page's own words for the operations refusal, shown only when the answer carries no server sentence; the guide quotes the server's.
+  "credits.refusal.operations": { described: /month's operations of the Studio's admin are used up/ },
   "credits.spendCap.member": { described: /names the limit and the day it resets/ },
   "credits.spendCap.studio": { described: /names the limit and the day it resets/ },
   "credits.panelTitle": { excluded: REASONS.CREDITS_PANEL },
@@ -1129,7 +1131,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.idempotency.in_progress": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.idempotency.mismatch": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.idempotency.missing": { excluded: REASONS.SAYS_TRY_AGAIN },
-  "server.operation.exhausted": { described: /month's operations of the Studio's admin are used up/ },
   "server.operation.key_taken": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.internal.idempotency_key_reused": { excluded: REASONS.NO_CALLER },
   "server.internal.invalid_body": { excluded: REASONS.NO_CALLER },

@@ -19,8 +19,8 @@
  * tool's label and names both the task and the picture.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { loadLocales } from "@breatic/core";
-import { setLocale, t } from "@breatic/shared";
+import { getOperationsConfig, loadLocales } from "@breatic/core";
+import { formatCredits, setLocale, t } from "@breatic/shared";
 import { miniToolById } from "@breatic/shared/mini-tools";
 
 import { renderProductGuide } from "@domain/agent/tools/product-guide.js";
@@ -83,6 +83,12 @@ describe("I-13 the product guide on operations, queueing and spend caps", () => 
 
   it("says a chat message is refused when the operations are used up and the credits fall short", () => {
     expect(section("The chat panel")).toContain("本月操作次数已用完");
+  });
+
+  it("quotes the operations refusal the server sends, with the configured price of one more", () => {
+    const shown = t("server.operation.exhausted", { credits: formatCredits(getOperationsConfig().overage_credits, "zh-CN") });
+    expect(section("The chat panel")).toContain(shown);
+    expect(section("Generating")).toContain(shown);
   });
 
   it("says the grid's result nodes show the task's progress before the picture", () => {
