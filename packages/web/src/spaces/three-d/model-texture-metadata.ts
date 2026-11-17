@@ -156,9 +156,10 @@ export function uploadBytes(size: ImageSize, mipmaps: boolean): number {
  * @param json - The checked glTF document.
  * @param sizes - The declared dimensions of every image any browser decodes, from validateModelTextureMetadata.
  * @param limits - Configured cumulative texture budget.
+ * @returns The bytes the largest browser's uploads take, which part pictures are counted beside (inner#1693 design 7).
  * @throws {ModelImportError} When the textures any browser uploads exceed the cumulative budget.
  */
-export function validateModelTextureBytes(json: GltfDocument, sizes: ReadonlyMap<number, ImageSize>, limits: SceneImportLimits): void {
+export function validateModelTextureBytes(json: GltfDocument, sizes: ReadonlyMap<number, ImageSize>, limits: SceneImportLimits): number {
   const { textures, samplers } = json as { textures?: ({ sampler?: unknown } | null)[] | null; samplers?: Record<string, Record<string, unknown> | null> | null };
   // ponytail: an image used as colour and as data through a cloned texture uploads once per colour space and is counted once;
   // count per material slot colour space if such models exceed the budget on devices.
@@ -191,6 +192,7 @@ export function validateModelTextureBytes(json: GltfDocument, sizes: ReadonlyMap
     throw new ModelImportError('budget', 'Model textures exceed the configured cumulative budget', { detail: '',
       budget: { limit: 'textureBytes', allowed: limits.maxTextureBytes, actual: total } });
   }
+  return total;
 }
 
 /**
