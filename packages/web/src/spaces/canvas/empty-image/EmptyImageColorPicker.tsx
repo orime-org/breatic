@@ -77,7 +77,7 @@ export const EmptyImageColorPicker = React.memo(function EmptyImageColorPicker({
           // for a clear affordance. Both are paint-only and never change the
           // layout rect, so the popover the trigger is anchored to can't jump
           // (a hover SCALE did change the rect — the earlier user-reported bug).
-          className='h-8 w-8 rounded-full border border-border transition hover:border-active-border hover:opacity-70 focus-visible:border-active-border focus-visible:outline-none'
+          className='h-8 w-8 rounded-full border border-swatch-border transition hover:border-active-border hover:opacity-70 focus-visible:border-active-border focus-visible:outline-none'
         />
       )}
     </PopoverTrigger>
