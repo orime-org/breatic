@@ -192,9 +192,7 @@ function relayed(candidate: MessagesCandidate, speaker: MessagesSpeaker, upstrea
    * @returns Nothing.
    */
   const end = async (): Promise<void> => {
-    // On Node a pull still waiting on the upstream never resumes once the caller cancels (measured with the relay
-    // tests), so only one end is reached; the guard keeps the end exactly once on a runtime that does resume it.
-    /* v8 ignore next -- @preserve */
+    // message_stop ends the call; the EOF, read error or cancel that follows reaches here again and counts nothing.
     if (ended) return;
     ended = true;
     if (!started && usage === undefined) {
