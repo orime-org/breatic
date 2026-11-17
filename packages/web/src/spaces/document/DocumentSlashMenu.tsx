@@ -110,15 +110,8 @@ function slashRow(editor: HandleEditor, typed: string): SlashRow | undefined {
   return undefined;
 }
 
-/**
- * Drops a move in which the pointer did not move: WebKit sends one when the
- * list or the body scrolls under a pointer at rest, and it must not light the
- * row that scrolled under it.
- * @param event - The move, at the capture phase of a menu surface.
- */
-function ignoreStillPointer(event: React.MouseEvent): void {
-  if (event.movementX === 0 && event.movementY === 0) event.stopPropagation();
-}
+/** Where the pointer was at the last move the document saw, or null before any. */
+type PointerAt = React.RefObject<{ readonly x: number; readonly y: number } | null>;
 
 /**
  * Cancels a press so the body keeps the focus and the caret.
@@ -188,6 +181,23 @@ interface DocumentSlashMenuProps {
 export function DocumentSlashMenu({ editor }: DocumentSlashMenuProps): React.JSX.Element | null {
   const menu = useSlashExtension(editor);
   const state = useExtensionState(SuggestionMenu, { editor: editor as never });
+  const pointer: PointerAt = React.useRef(null);
+
+  React.useEffect(() => {
+    // At the bubble phase of the document, after the menu's own handlers have
+    // compared the move with the one before it.
+    /**
+     * Records where the pointer is.
+     * @param event - A move.
+     */
+    const onMove = (event: MouseEvent): void => {
+      pointer.current = { x: event.clientX, y: event.clientY };
+    };
+    document.addEventListener('mousemove', onMove);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+    };
+  }, []);
 
   React.useEffect(() => {
     // A trigger committed by an input method is caught after the composition
@@ -239,6 +249,7 @@ export function DocumentSlashMenu({ editor }: DocumentSlashMenuProps): React.JSX
     <OpenSlashMenu
       key={opening?.decorationId}
       editor={editor}
+      pointer={pointer}
       menu={menu}
       trigger={state.triggerCharacter}
       query={state.query}
@@ -253,6 +264,8 @@ interface OpenSlashMenuProps {
   trigger: string;
   /** What is typed after it, up to the caret. */
   query: string;
+  /** Where the pointer was at the last move. */
+  pointer: PointerAt;
 }
 
 /** The size grid, open for the query it was opened under. */
@@ -270,9 +283,10 @@ interface GridState {
  * @param props.menu - The suggestion extension.
  * @param props.trigger - The trigger that opened the menu.
  * @param props.query - What is typed after it.
+ * @param props.pointer - Where the pointer was at the last move.
  * @returns The menu.
  */
-function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): React.JSX.Element {
+function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuProps): React.JSX.Element {
   const t = useTranslation();
   const mediaPick = useDocumentMediaPick();
 
@@ -281,6 +295,17 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
   const [frozen, setFrozen] = React.useState<string | null>(null);
   const composing = frozen !== null;
   const filterQuery = frozen ?? query;
+
+  // WebKit sends a move where the pointer already was when the list or the
+  // body scrolls under a pointer at rest; it must not light the row that
+  // scrolled under it. Dropped at the capture phase of each menu surface.
+  const ignoreStillPointer = React.useCallback(
+    (event: React.MouseEvent): void => {
+      const at = pointer.current;
+      if (at !== null && at.x === event.clientX && at.y === event.clientY) event.stopPropagation();
+    },
+    [pointer],
+  );
 
   const ids = mediaPick === null ? INSERT_ENTRY_IDS_WITHOUT_MEDIA : INSERT_ENTRY_IDS;
   const items = filterInsertEntries(ids, filterQuery, (id) => {
