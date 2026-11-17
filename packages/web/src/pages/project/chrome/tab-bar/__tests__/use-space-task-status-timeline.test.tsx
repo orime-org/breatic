@@ -60,6 +60,7 @@ function row(n: number, status: TimelineExecutionRow['status']): TimelineExecuti
     resultSourceVersionId: null,
     failureReason: null,
     failureUpstream: null,
+    failureKeyReason: null,
     billedCredits: null,
     billedAt: null,
     createdAt: new Date().toISOString(),

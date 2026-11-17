@@ -27,7 +27,6 @@ const request = {
   maxTokens: 32_000,
   callTimeoutMs: 300_000,
   model: "deepseek/deepseek-v4.1-flash-1017",
-  modelKeys: { url: "https://api.example.test/api/v1/ingest/model-keys", executionId: "40000000-0000-4000-8000-000000000001" },
   messagesPlan: {
     model: "deepseek/deepseek-v4.1-flash-1017",
     candidates: [
@@ -63,6 +62,18 @@ describe("webAnimationJobReportSchema: the upstream a failure names (inner#1953)
     expect(webAnimationJobReportSchema.parse(failed).failureUpstream).toBeUndefined();
     expect(webAnimationJobReportSchema.parse({ ...failed, failureUpstream: null }).failureUpstream).toBeNull();
   });
+
+  it("carries why the upstream refused the payer's own key, and refuses a reason it does not know", () => {
+    const keyFailed = { ...failed, failureReason: "account_key_failed", failureUpstream: "openrouter" };
+    expect(webAnimationJobReportSchema.parse({ ...keyFailed, failureKeyReason: "no_balance" }).failureKeyReason).toBe("no_balance");
+    expect(webAnimationJobReportSchema.parse(keyFailed).failureKeyReason).toBeUndefined();
+    expect(webAnimationJobReportSchema.safeParse({ ...keyFailed, failureKeyReason: "bored" }).success).toBe(false);
+  });
+
+  it("keeps a plan made on the payer's own keys marked as such, so the relay never reads it as ours", () => {
+    const plan = { ...request.messagesPlan, keysOwner: "account" };
+    expect(webAnimationJobRequestSchema.parse({ ...request, messagesPlan: plan }).messagesPlan).toMatchObject({ keysOwner: "account" });
+  });
 });
 
 describe("webAnimationJobRequestSchema", () => {
@@ -86,11 +97,11 @@ describe("webAnimationJobRequestSchema", () => {
     }
   });
 
-  it("requires where the Worker reads the keys of each model call and the execution it asks for (inner#1953)", () => {
-    const { modelKeys: _dropped, ...rest } = request;
-    expect(webAnimationJobRequestSchema.safeParse(rest).success).toBe(false);
-    expect(webAnimationJobRequestSchema.safeParse({ ...request, modelKeys: { ...request.modelKeys, url: "not a url" } }).success).toBe(false);
-    expect(webAnimationJobRequestSchema.safeParse({ ...request, modelKeys: { ...request.modelKeys, executionId: "timeline:x" } }).success).toBe(false);
+  it("carries the keys of its model calls only sealed (inner#1953)", () => {
+    const sealed = "eyJhbGciOiJSU0EtT0FFUC0yNTYiLCJlbmMiOiJBMjU2R0NNIn0.a.b.c.d";
+    expect(webAnimationJobRequestSchema.parse({ ...request, sealedKeys: sealed }).sealedKeys).toBe(sealed);
+    expect(webAnimationJobRequestSchema.parse(request).sealedKeys).toBeUndefined();
+    expect(webAnimationJobRequestSchema.safeParse({ ...request, sealedKeys: "" }).success).toBe(false);
   });
 
   it("carries the plan of where its model calls go", () => {

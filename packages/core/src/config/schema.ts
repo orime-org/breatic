@@ -404,18 +404,11 @@ export const coreConfigSchema = z.object({
     .string()
     .default("")
     .transform((value) => value.replace(/\/+$/, "")),
-  // This region's API as the ingest Worker reaches it (inner#1953): a
-  // web-animation job carries `<this>/api/v1/ingest/model-keys`, where the
-  // Worker reads each model call's keys. Empty leaves web animation off.
-  SERVER_PUBLIC_URL: z
-    .string()
-    .default("")
-    .transform((value) => value.trim().replace(/\/+$/, ""))
-    .refine((value) => value === "" || /^https?:\/\/[^/]/.test(value), { error: "SERVER_PUBLIC_URL must be an http(s) address" }),
   // The ingest Worker's public key (SPKI PEM; line breaks may be written as
-  // `\n`): the keys answered on that endpoint are sealed to it, and only the
-  // Worker's `KEY_UNSEAL_PRIVATE_KEY` opens them. Empty refuses every key
-  // request.
+  // `\n`, inner#1953): the worker seals the payer's own model keys to it when
+  // it submits a web-animation job, and only the Worker's
+  // `KEY_UNSEAL_PRIVATE_KEY` opens them. Empty fails such a job before it is
+  // submitted.
   INGEST_KEY_SEAL_PUBLIC_KEY: z.string().default(""),
   // ── Upload Size Limits (MB, per asset kind) ─────
   UPLOAD_MAX_IMAGE_MB: numeric(z.coerce.number().positive().default(50)),

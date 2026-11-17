@@ -26,8 +26,6 @@ web_animation:
     "1:1": { width: 1080, height: 1080 }
   model: deepseek/deepseek-v4.1-flash-1017
   max_tokens: 32000
-  # How far a signed model-key request's timestamp may be from the server's clock (inner#1953).
-  key_request_window_seconds: 300
   # One model call's limit; a cancel or the deadline waits at most this long to drain it.
   call_timeout_ms: 300000
   max_package_bytes: 5000000

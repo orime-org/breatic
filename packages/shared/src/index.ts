@@ -867,6 +867,7 @@ export {
   TASK_FAILURE_REASONS,
   encodeTaskFailure,
   readTaskFailure,
+  type AccountKeyFailureReason,
   type TaskFailureReason,
 } from "@shared/types/task-failure.js";
 // Which media the understanding endpoint takes. Both ends ask it: the browser

@@ -9,7 +9,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { relayMessages, type MessagesCallEnd, type MessagesCandidate, type MessagesPlan } from "../relay.js";
+import { relayMessages, type AccountKeyRefusal, type MessagesCallEnd, type MessagesCandidate, type MessagesPlan } from "../relay.js";
 import { startFakes, stopFakes, type LlmFakes } from "../../llm/__tests__/llm-harness.js";
 
 let fakes: LlmFakes;
@@ -82,6 +82,8 @@ interface Relayed {
   response: Response;
   started: { upstream: string; messageId: string }[];
   ended: MessagesCallEnd[];
+  /** The account key refusals the relay reported. */
+  keyRefused: AccountKeyRefusal[];
   /** Events in the order they happened, the stream's end included. */
   order: string[];
 }
@@ -104,8 +106,13 @@ async function relay(
 ): Promise<Relayed & { text: string }> {
   const started: Relayed["started"] = [];
   const ended: MessagesCallEnd[] = [];
+  const keyRefused: AccountKeyRefusal[] = [];
   const order: string[] = [];
   const response = await relayMessages(plan, body, {
+    onAccountKeyRefused: async (refusal) => {
+      keyRefused.push(refusal);
+      order.push("keyRefused");
+    },
     keyOf: (upstream) => (options.keys ?? KEYS)[upstream],
     maxTokens: options.maxTokens ?? 32_000,
     signal: options.signal ?? new AbortController().signal,
@@ -135,7 +142,7 @@ async function relay(
     }
   }
   order.push("closed");
-  return { response, started, ended, order, text };
+  return { response, started, ended, keyRefused, order, text };
 }
 
 /**
@@ -272,6 +279,50 @@ describe("relayMessages: which upstream serves", () => {
     const { response, ended } = await relay({ model: "m", candidates: [candidates().deepseek] }, BODY, { keys: {} });
     expect(response.status).toBe(502);
     expect(ended).toEqual([{ outcome: "upstream_error", upstream: null, tokens: null, cost: null }]);
+  });
+});
+
+describe("relayMessages: a plan on the payer's own keys (inner#1953)", () => {
+  const onAccount = (...list: MessagesCandidate[]): MessagesPlan => ({ model: "m", keysOwner: "account", candidates: list });
+
+  it.each([
+    ["invalid", { status: 401, body: { error: { message: "No auth credentials found" } } }],
+    ["no_balance", { status: 402, body: { error: { message: "Insufficient credits" } } }],
+    ["model_not_found", { status: 400, body: { error: { message: "deepseek/x is not a valid model ID" } } }],
+  ] as const)("reports the key refused as %s by the upstream's own reader, before the call ends, and tries no other upstream", async (reason, reply) => {
+    fakes.openrouter.answer(() => reply);
+    const { response, keyRefused, ended, order } = await relay(onAccount(candidates().openrouter, candidates().anthropic));
+
+    expect(keyRefused).toEqual([{ upstream: "openrouter", reason }]);
+    expect(response.status).toBe(reply.status);
+    expect(fakes.anthropic.seen).toHaveLength(0);
+    expect(ended).toEqual([{ outcome: "upstream_error", upstream: null, tokens: null, cost: null }]);
+    expect(order).toEqual(["keyRefused", "ended", "closed"]);
+  });
+
+  it("reports nothing for a rate limit, which the harness may ask again on the same key", async () => {
+    fakes.openrouter.answer(() => ({ status: 429, body: { error: { message: "slow down" } } }));
+    const { response, keyRefused } = await relay(onAccount(candidates().openrouter));
+
+    expect(response.status).toBe(429);
+    expect(keyRefused).toEqual([]);
+  });
+
+  it("reports nothing for a refusal of the request itself", async () => {
+    fakes.openrouter.answer(() => ({ status: 400, body: { error: { message: "bad request" } } }));
+    const { keyRefused } = await relay(onAccount(candidates().openrouter));
+
+    expect(keyRefused).toEqual([]);
+  });
+
+  it("reports nothing on the deployment's keys, which move on to the next upstream as before", async () => {
+    fakes.openrouter.answer(() => ({ status: 401, body: { error: { message: "No auth credentials found" } } }));
+    fakes.openrouter.answer(() => ({ status: 402, body: { error: { message: "Insufficient credits" } } }));
+    fakes.anthropic.answer(() => stream(COMPLETE));
+    const { response, keyRefused } = await relay({ model: "m", candidates: [candidates().openrouter, candidates().anthropic] });
+
+    expect(response.status).toBe(200);
+    expect(keyRefused).toEqual([]);
   });
 });
 

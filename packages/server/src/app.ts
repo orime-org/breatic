@@ -38,7 +38,6 @@ import { activitiesRoute } from "@server/routes/activities.js";
 import { projectAssetsRoute } from "@server/routes/project-assets.js";
 import { threeDTasksRoute } from "@server/routes/three-d-tasks.js";
 import { timelineRoute } from "@server/routes/timeline.js";
-import { ingestRoute } from "@server/routes/ingest.js";
 import { refuseGlobalOnlyPaths } from "@server/middleware/global-only-paths.js";
 import { membersRoute } from "@server/routes/members.js";
 import { usersRoute } from "@server/routes/users.js";
@@ -124,7 +123,6 @@ export function createApp(): Hono {
   app.route("/api/v1/projects", threeDTasksRoute);
   app.route("/api/v1/projects", keyPlanRoute);
   app.route("/api/v1/timeline", timelineRoute);
-  app.route("/api/v1/ingest", ingestRoute);
 
   return app;
 }

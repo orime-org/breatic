@@ -3672,10 +3672,10 @@
     "runsNone": "這裡沒有能用它跑的模型。",
     "openrouterNote": "所有語言模型呼叫都用這把 key，不扣點數。",
     "replaceTitle": "替換 {upstream} 的 key",
-    "replaceBody": "儲存前會先檢測新 key 能不能連通。替換後，正在用舊 key 的任務會中斷。",
+    "replaceBody": "儲存前會先檢測新 key 能不能連通。替換後，正在用舊 key 的任務可能會中斷或失敗。舊 key 若已洩露，請同時到 {upstream} 作廢它。",
     "deleteTitle": "要刪除 {upstream} 的 key 嗎？",
-    "deleteBody": "刪除後，正在用這把 key 的任務會中斷，設為用它的模型改回平台的 key。",
-    "deleteBodyLanguage": "刪除後，正在用這把 key 的任務會中斷，語言模型呼叫改回平台的 key。",
+    "deleteBody": "刪除後，正在用這把 key 的任務可能會中斷或失敗，設為用它的模型改回平台的 key。key 若已洩露，請同時到 {upstream} 作廢它。",
+    "deleteBodyLanguage": "刪除後，正在用這把 key 的任務可能會中斷或失敗，語言模型呼叫改回平台的 key。key 若已洩露，請同時到 {upstream} 作廢它。",
     "platformKey": "平台的 key（扣點數）",
     "modelsIntro": "沒選的模型用平台的 key，扣點數。只列出你已填 key 的上游能跑的模型。",
     "modelsEmpty": "新增上游的 key 後，在這裡選模型用哪家；沒選的都用平台的 key。",
@@ -4057,7 +4057,8 @@
         "feature_disabled": "網頁動畫暫不可用。",
         "check": "頁面沒有通過檢查。",
         "stopped": "製作意外中斷。",
-        "unknown": "執行失敗。"
+        "unknown": "執行失敗。",
+        "key_lost": "任務中斷，請重新執行。"
       },
       "preview": {
         "pending": "{track}：網頁動畫{status, select, awaiting_landing {儲存中} queued {排隊中} running {製作中} cancelling {取消中} other {等待中}}…",

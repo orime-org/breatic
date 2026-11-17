@@ -261,7 +261,7 @@ INGEST_SHARED_SECRET=YOUR_GENERATED_SECRET
 
 替换全部 `YOUR_...`。共享密钥必须与刚设置到 Cloudflare 的完全相同，bucket 必须一致；公开读取地址和 S3 endpoint 不能互换，URL 不带末尾 `/`。不要把密钥提交到仓库。
 
-开启网页动画时，再把 `WEB_ANIMATION_PREVIEW_BASE_URL` 设为提供 Worker 预览路由的 HTTPS 地址，最好是单独的域名；把 `SERVER_PUBLIC_URL` 设为 Worker 每次调模型前取 key 所访问的 API 地址；生成一对密钥，公钥填 `INGEST_KEY_SEAL_PUBLIC_KEY`，私钥用 `wrangler secret put KEY_UNSEAL_PRIVATE_KEY --env production` 放进 Worker（生成方法见 `.env.docker`）。Worker 自己不存任何模型 key。
+开启网页动画时，再把 `WEB_ANIMATION_PREVIEW_BASE_URL` 设为提供 Worker 预览路由的 HTTPS 地址，最好是单独的域名；生成一对密钥，公钥填 `INGEST_KEY_SEAL_PUBLIC_KEY`，私钥用 `wrangler secret put KEY_UNSEAL_PRIVATE_KEY --env production` 放进 Worker（生成方法见 `.env.docker`）。Worker 不存任何模型 key：每次运行用的 key 加密后随任务带过去，所以模型 key（如 `OPENROUTER_API_KEY`）只配在 server 上。
 
 Cloudflare Worker 不需要回调你的本机主站，因此个人使用不需要端口映射、内网穿透或公网主站域名。
 

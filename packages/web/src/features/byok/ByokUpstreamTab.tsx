@@ -532,7 +532,7 @@ function SavedKeyActions({
           <AlertDialogHeader>
             <AlertDialogTitle>{t('byok.deleteTitle', { upstream: upstream.name })}</AlertDialogTitle>
             <AlertDialogDescription>
-              {upstream.kind === 'llm' ? t('byok.deleteBodyLanguage') : t('byok.deleteBody')}
+              {upstream.kind === 'llm' ? t('byok.deleteBodyLanguage', { upstream: upstream.name }) : t('byok.deleteBody', { upstream: upstream.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {affected.length > 0 ? (
@@ -618,7 +618,7 @@ function ReplaceKeyForm({
     >
       <DialogHeader>
         <DialogTitle>{t('byok.replaceTitle', { upstream: upstream.name })}</DialogTitle>
-        <DialogDescription>{t('byok.replaceBody')}</DialogDescription>
+        <DialogDescription>{t('byok.replaceBody', { upstream: upstream.name })}</DialogDescription>
       </DialogHeader>
       <DialogBody>
         <KeyField value={value} onChange={change} error={error} saving={saving} />

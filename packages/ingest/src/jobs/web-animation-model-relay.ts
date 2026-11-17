@@ -9,27 +9,26 @@
  * rebuilds the body from the Messages field allowlist, clamps `max_tokens`, sends the plan's model, picks the upstream
  * and reads what the call cost.
  *
- * The Worker holds no model key (inner#1953): before each call the relay reads that call's keys for the plan's
- * upstreams from our server, and they live only in that call. A refusal for a missing key ends the job as
- * `account_key_missing`, one for a deployment without the keys as `feature_disabled`; our key is never used instead.
+ * The Worker holds no model key (inner#1953): each call runs on the keys the job was submitted with, sealed by our worker
+ * and opened into the job object's memory only. When a restart of the object has emptied that memory, the call ends the
+ * job as `key_lost_on_restart`. On a plan made on the payer's own keys, an upstream refusing that key for good ends the
+ * job as `account_key_failed`; our key never stands in.
  *
  * Each call is registered with the job's Durable Object before it is sent and ended exactly once, whatever happens
  * to it; the object refuses a new call while one is open or once the job is stopping. A plain function so it runs on
  * Node in tests; the container class wires it to its outbound handler.
  */
 
-import { relayMessages, type MessagesCallEnd, type MessagesPlan } from "@breatic/provider/messages";
-
-import type { ModelKeysFetch } from "@ingest/jobs/web-animation-model-keys.js";
+import { relayMessages, type AccountKeyRefusal, type MessagesCallEnd, type MessagesPlan } from "@breatic/provider/messages";
 
 /** The fake host the container's harness sends model calls to. */
 export const MODEL_HOST = "model.local";
 
-/** What the relay needs: the job's plan and limits, the read of each call's keys and the job object's registry. */
+/** What the relay needs: the job's plan, limits and keys, and the job object's registry. */
 export interface ModelRelayDeps {
   plan: MessagesPlan;
-  /** Reads one call's keys for these upstreams of the plan. */
-  fetchKeys: (upstreams: readonly string[]) => Promise<ModelKeysFetch>;
+  /** The keys the job was submitted with, by upstream; null when a restart of the job object has lost them. */
+  readKeys: () => Promise<Readonly<Record<string, string>> | null>;
   maxTokens: number;
   callTimeoutMs: number;
   registry: {
@@ -37,8 +36,8 @@ export interface ModelRelayDeps {
     beginModelCall: () => Promise<number | null>;
     recordModelCallStart: (seq: number, upstream: string, messageId: string) => Promise<void>;
     endModelCall: (seq: number, end: MessagesCallEnd) => Promise<void>;
-    /** Ends the job failed for this reason, naming the upstream the refusal named. */
-    failJob: (reason: string, upstream?: string) => Promise<void>;
+    /** Ends the job failed for this reason, naming the upstream and why it refused the payer's own key. */
+    failJob: (reason: string, upstream?: string, keyReason?: AccountKeyRefusal["reason"]) => Promise<void>;
   };
 }
 
@@ -55,11 +54,10 @@ function isObject(value: unknown): value is Record<string, unknown> {
 /**
  * Relay one model call from the container along the job's plan.
  * @param request - What the harness sent to `model.local`.
- * @param deps - The job's plan and limits, the key read and the registry.
+ * @param deps - The job's plan, limits and keys, and the registry.
  * @returns The upstream answer, streamed; 403 for anything but `POST /v1/messages`, 400 for a body that is not a JSON
- *   object, 409 when the job refuses a call, the server refused the keys (the job then ends) or the execution no longer
- *   runs, 503 when the keys could not be read this time, a refusal as the upstream gave it, 502 when no upstream could
- *   be reached.
+ *   object, 409 when the job refuses a call or has lost its keys (the job then ends), a refusal as the upstream gave
+ *   it, 502 when no upstream could be reached.
  * @throws {unknown} What the registry throws when the job object cannot be reached.
  */
 export async function relayModelCall(request: Request, deps: ModelRelayDeps): Promise<Response> {
@@ -74,14 +72,11 @@ export async function relayModelCall(request: Request, deps: ModelRelayDeps): Pr
   }
   if (!isObject(asked)) return new Response("Not a Messages body", { status: 400 });
 
-  const read = await deps.fetchKeys([...new Set(deps.plan.candidates.map(({ upstream }) => upstream))]);
-  if (read.kind === "refused") {
-    await deps.registry.failJob(read.reason, read.upstream);
-    return new Response("The model keys were refused", { status: 409 });
+  const keys = await deps.readKeys();
+  if (keys === null) {
+    await deps.registry.failJob("key_lost_on_restart");
+    return new Response("The job lost its keys in a restart", { status: 409 });
   }
-  if (read.kind === "not_running") return new Response("The execution no longer runs", { status: 409 });
-  if (read.kind === "unavailable") return new Response("The model keys could not be read", { status: 503 });
-  const { keys } = read;
 
   const seq = await deps.registry.beginModelCall();
   if (seq === null) return new Response("The job takes no model call now", { status: 409 });
@@ -97,6 +92,8 @@ export async function relayModelCall(request: Request, deps: ModelRelayDeps): Pr
     signal: abort.signal,
     ...(version === null ? {} : { anthropicVersion: version }),
     onStarted: (upstream, messageId) => deps.registry.recordModelCallStart(seq, upstream, messageId),
+    // On the payer's own keys, a key the upstream refused for good ends the job; ours never stands in (inner#1953).
+    onAccountKeyRefused: (refusal) => deps.registry.failJob("account_key_failed", refusal.upstream, refusal.reason),
     onEnded: async (end) => {
       clearTimeout(timer);
       request.signal.removeEventListener("abort", abandon);

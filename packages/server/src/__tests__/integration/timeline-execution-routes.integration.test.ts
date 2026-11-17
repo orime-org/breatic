@@ -502,14 +502,14 @@ describe("GET /timeline/executions", () => {
     const fx = await seedProject(0);
     const failed = await insertExecution(fx.projectId, fx.spaceId, fx.owner.userId);
     const plain = await insertExecution(fx.projectId, fx.spaceId, fx.owner.userId);
-    await sql`UPDATE timeline_executions SET status = 'failed', failure_reason = 'account_key_missing', failure_upstream = 'openrouter' WHERE id = ${failed.id}`;
+    await sql`UPDATE timeline_executions SET status = 'failed', failure_reason = 'account_key_failed', failure_upstream = 'openrouter', failure_key_reason = 'no_balance' WHERE id = ${failed.id}`;
     const res = await app.request(`/api/v1/timeline/executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}`, {
       headers: { Cookie: fx.viewer.cookie },
     });
     const { data } = (await res.json()) as { data: TimelineExecution[] };
 
-    expect(data.find((row) => row.id === failed.id)).toMatchObject({ failureReason: "account_key_missing", failureUpstream: "openrouter" });
-    expect(data.find((row) => row.id === plain.id)).toMatchObject({ failureUpstream: null });
+    expect(data.find((row) => row.id === failed.id)).toMatchObject({ failureReason: "account_key_failed", failureUpstream: "openrouter", failureKeyReason: "no_balance" });
+    expect(data.find((row) => row.id === plain.id)).toMatchObject({ failureUpstream: null, failureKeyReason: null });
   });
 
   it("answers an outsider with 404", async () => {

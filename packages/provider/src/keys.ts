@@ -10,8 +10,8 @@
 
 import type { ProviderConfig } from "@provider/config/schema.js";
 import type { Cost, CostLookup, Payer } from "@provider/cost.js";
-import { AccountKeyFailure, NoUpstreamAvailable, UpstreamRequestRejected, type AccountKeyFailureKind, type AccountKeyFailureReason } from "@provider/errors.js";
-import { passingStatus, type Failure, type Phase } from "@provider/routing/decide.js";
+import { AccountKeyFailure, NoUpstreamAvailable, UpstreamRequestRejected } from "@provider/errors.js";
+import { accountFailureOf, type Failure } from "@provider/routing/decide.js";
 
 /** The keys one call may use, by upstream name, and whose they are. */
 export interface KeySet {
@@ -188,32 +188,6 @@ export function paidOn(keys: KeySet): (cost: Cost) => Cost {
  */
 export function lookupOwner(lookup: CostLookup): Payer | undefined {
   return lookup["payer"] === "account" ? "account" : undefined;
-}
-
-/** How a failure on an account's key reads, and whether asking again could change it. */
-interface Turned {
-  kind: AccountKeyFailureKind;
-  reason?: AccountKeyFailureReason;
-  /** True when asking again cannot change it. */
-  lasting: boolean;
-}
-
-/**
- * How a failure on an account's key reads: a missing model or balance and a 401 are lasting; a 429 is the key's rate
- * limit, and a connection that was never made, a 408 or a 5xx the upstream's, both passing.
- * @param failure - The failure class, read the answering upstream's way.
- * @param phase - Where the call was.
- * @returns The reading, or undefined for a failure that is not the account's (a refused request, a lost answer, an abort).
- */
-export function accountFailureOf(failure: Failure | null, phase: Phase): Turned | undefined {
-  if (failure === null) return undefined;
-  if (failure.kind === "model_not_found") return { kind: "account_key_failed", reason: "model_not_found", lasting: true };
-  if (failure.kind === "insufficient_balance") return { kind: "account_key_failed", reason: "no_balance", lasting: true };
-  if (failure.kind === "not_sent") return { kind: "upstream_unavailable", lasting: false };
-  if (failure.kind !== "http_status") return undefined;
-  if (failure.status === 401) return { kind: "account_key_failed", reason: "invalid", lasting: true };
-  if (failure.status === 429) return { kind: "account_key_failed", reason: "rate_limited", lasting: false };
-  return passingStatus(failure.status, phase) ? { kind: "upstream_unavailable", lasting: false } : undefined;
 }
 
 /**

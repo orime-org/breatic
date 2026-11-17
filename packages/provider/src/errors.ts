@@ -3,6 +3,7 @@
 
 import type { Cost } from "@provider/cost.js";
 import type { RejectedInput } from "@provider/pricing/estimate.js";
+import type { AccountKeyFailureKind, AccountKeyFailureReason } from "@provider/routing/decide.js";
 
 /** Why one upstream could not serve a call. */
 export type UnavailableReason =
@@ -195,11 +196,7 @@ export class DeadlinePassed extends Error {
 }
 
 
-/** How a call on an account's key set failed in a way the account, not the request, has to fix. */
-export type AccountKeyFailureKind = "account_key_missing" | "account_key_failed" | "upstream_unavailable";
-
-/** Why an upstream turned an account's key down, for `account_key_failed`. */
-export type AccountKeyFailureReason = "invalid" | "no_balance" | "model_not_found" | "rate_limited";
+export type { AccountKeyFailureKind, AccountKeyFailureReason };
 
 /**
  * A call on an account's key set (`KeySet` with owner `account`) that failed on the account's side: it holds no key for

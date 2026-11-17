@@ -65,6 +65,9 @@ ALTER TABLE timeline_executions ADD COLUMN llm_key_id uuid;
 -- whose key failed where; null for any other failure.
 ALTER TABLE timeline_executions ADD COLUMN failure_upstream text;
 --> statement-breakpoint
+-- Why that upstream refused the payer's own key (account_key_failed).
+ALTER TABLE timeline_executions ADD COLUMN failure_key_reason text;
+--> statement-breakpoint
 ALTER TABLE agent_usage_records ADD COLUMN key_id uuid;
 --> statement-breakpoint
 

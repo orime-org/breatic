@@ -9,19 +9,19 @@
  * job's plan (which rebuilds the body, picks the upstream and reads the cost; its own tests cover those), and
  * records each call against the job's Durable Object: one call in flight, every begun call ended exactly once.
  *
- * Before each call it reads that call's keys for the plan's upstreams from our server (inner#1953); the Worker holds
- * none of its own. A refusal for a missing key ends the job as `account_key_missing`, one for a deployment without the
- * keys as `feature_disabled`; neither begins a call or reaches an upstream.
+ * The Worker holds no key of its own (inner#1953): each call runs on the keys the job was submitted with, which only
+ * the job object's memory holds. When a restart of the object has emptied that memory, the call ends the job as
+ * `key_lost_on_restart` without beginning a call or reaching an upstream. On a plan made on the payer's own keys, an
+ * upstream refusing that key for good ends the job as `account_key_failed`.
  *
  * The relay is a plain function so these cases run on Node: the container class wires it to its outbound handler with
- * the job's plan and limits, the key read and its own Durable Object as the registry. The upstream is a global fetch stand-in; the
- * sample events below are copied from what OpenRouter answered in the DD probe.
+ * the job's plan and limits, the job's keys and its own Durable Object as the registry. The upstream is a global fetch
+ * stand-in; the sample events below are copied from what OpenRouter answered in the DD probe.
  */
 
 import type { MessagesCallEnd, MessagesPlan } from "@breatic/provider/messages";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import type { ModelKeysFetch } from "@ingest/jobs/web-animation-model-keys.js";
 import { MODEL_HOST, relayModelCall, type ModelRelayDeps } from "@ingest/jobs/web-animation-model-relay.js";
 
 const API_KEY = "test-openrouter-key";
@@ -122,8 +122,8 @@ interface Harness {
   beginModelCall: Mock<() => Promise<number | null>>;
   recordModelCallStart: Mock<(seq: number, upstream: string, messageId: string) => Promise<void>>;
   endModelCall: Mock<(seq: number, end: MessagesCallEnd) => Promise<void>>;
-  failJob: Mock<(reason: string, upstream?: string) => Promise<void>>;
-  fetchKeys: Mock<(upstreams: readonly string[]) => Promise<ModelKeysFetch>>;
+  failJob: Mock<(reason: string, upstream?: string, keyReason?: string) => Promise<void>>;
+  readKeys: Mock<() => Promise<Readonly<Record<string, string>> | null>>;
   fetch: Mock<(url: string, init: RequestInit) => Promise<Response>>;
 }
 
@@ -139,13 +139,13 @@ afterEach(() => {
  */
 function harness(
   upstream: (url: string, init: RequestInit) => Promise<Response>,
-  overrides: { seq?: number | null; callTimeoutMs?: number; keys?: ModelKeysFetch } = {},
+  overrides: { seq?: number | null; callTimeoutMs?: number; keys?: Record<string, string> | null } = {},
 ): Harness {
   const beginModelCall = vi.fn(async (): Promise<number | null> => (overrides.seq === undefined ? 7 : overrides.seq));
   const recordModelCallStart = vi.fn(async (_seq: number, _upstream: string, _messageId: string): Promise<void> => undefined);
   const endModelCall = vi.fn(async (_seq: number, _end: MessagesCallEnd): Promise<void> => undefined);
-  const failJob = vi.fn(async (_reason: string, _upstream?: string): Promise<void> => undefined);
-  const fetchKeys = vi.fn(async (_upstreams: readonly string[]): Promise<ModelKeysFetch> => overrides.keys ?? { kind: "keys", keys: { openrouter: API_KEY } });
+  const failJob = vi.fn(async (_reason: string, _upstream?: string, _keyReason?: string): Promise<void> => undefined);
+  const readKeys = vi.fn(async (): Promise<Readonly<Record<string, string>> | null> => (overrides.keys === undefined ? { openrouter: API_KEY } : overrides.keys));
   const fetch = vi.fn(upstream);
   vi.stubGlobal("fetch", fetch);
   return {
@@ -153,11 +153,11 @@ function harness(
     recordModelCallStart,
     endModelCall,
     failJob,
-    fetchKeys,
+    readKeys,
     fetch,
     deps: {
       plan: PLAN,
-      fetchKeys,
+      readKeys,
       maxTokens: MAX_TOKENS,
       callTimeoutMs: overrides.callTimeoutMs ?? 60_000,
       registry: { beginModelCall, recordModelCallStart, endModelCall, failJob },
@@ -253,13 +253,13 @@ describe("relayModelCall: what reaches the plan's upstream", () => {
   });
 });
 
-describe("relayModelCall: reading the call's keys (inner#1953)", () => {
-  it("reads the keys of the plan's upstreams before beginning the call, and sends with the key read for its upstream", async () => {
+describe("relayModelCall: the job's keys (inner#1953)", () => {
+  it("sends the call with the key the job holds for its upstream, read before the call begins", async () => {
     const order: string[] = [];
-    const h = harness(async () => upstreamStream([COMPLETE_STREAM]));
-    h.fetchKeys.mockImplementation(async () => {
+    const h = harness(async () => upstreamStream([COMPLETE_STREAM]), { keys: { openrouter: "sk-or-held-by-the-job" } });
+    h.readKeys.mockImplementation(async () => {
       order.push("keys");
-      return { kind: "keys", keys: { openrouter: "sk-or-read-for-this-call" } };
+      return { openrouter: "sk-or-held-by-the-job" };
     });
     h.beginModelCall.mockImplementation(async () => {
       order.push("begin");
@@ -267,62 +267,44 @@ describe("relayModelCall: reading the call's keys (inner#1953)", () => {
     });
     await drain(await relayModelCall(harnessRequest(BODY), h.deps));
 
-    expect(h.fetchKeys).toHaveBeenCalledWith(["openrouter"]);
     expect(order).toEqual(["keys", "begin"]);
-    expect(new Headers(h.fetch.mock.calls[0]![1].headers).get("authorization")).toBe("Bearer sk-or-read-for-this-call");
+    expect(new Headers(h.fetch.mock.calls[0]![1].headers).get("authorization")).toBe("Bearer sk-or-held-by-the-job");
   });
 
-  it("reads the keys again for every call: none is kept from one call to the next", async () => {
-    const h = harness(async () => upstreamStream([COMPLETE_STREAM]));
-    await drain(await relayModelCall(harnessRequest(BODY), h.deps));
-    await drain(await relayModelCall(harnessRequest(BODY), h.deps));
+  it("ends the job as key_lost_on_restart when the job object no longer holds its keys, answering 409 without beginning a call or reaching an upstream", async () => {
+    const h = harness(async () => upstreamStream([COMPLETE_STREAM]), { keys: null });
+    const res = await relayModelCall(harnessRequest(BODY), h.deps);
 
-    expect(h.fetchKeys).toHaveBeenCalledTimes(2);
-  });
-
-  it("asks once for each upstream of a plan that names one twice", async () => {
-    const h = harness(async () => upstreamStream([COMPLETE_STREAM]));
-    const twice = { ...PLAN, candidates: [...PLAN.candidates, { ...PLAN.candidates[0]!, vendorModel: "other" }] };
-    await drain(await relayModelCall(harnessRequest(BODY), { ...h.deps, plan: twice }));
-
-    expect(h.fetchKeys).toHaveBeenCalledWith(["openrouter"]);
+    expect(res.status).toBe(409);
+    expect(h.failJob).toHaveBeenCalledWith("key_lost_on_restart");
+    expect(h.beginModelCall).not.toHaveBeenCalled();
+    expect(h.fetch).not.toHaveBeenCalled();
   });
 
   it.each([
-    ["account_key_missing", { kind: "refused", reason: "account_key_missing", upstream: "openrouter" }, "openrouter"],
-    ["feature_disabled", { kind: "refused", reason: "feature_disabled" }, undefined],
-  ] as const)("ends the job as %s on that refusal, naming its upstream, answering 409 without beginning a call or reaching an upstream", async (reason, keys, upstream) => {
-    const h = harness(async () => upstreamStream([COMPLETE_STREAM]), { keys });
-    const res = await relayModelCall(harnessRequest(BODY), h.deps);
+    [401, "invalid"],
+    [402, "no_balance"],
+  ] as const)("ends the job as account_key_failed when the upstream answers %i to the payer's own key, naming the upstream and %s", async (status, keyReason) => {
+    const h = harness(async () => new Response(JSON.stringify({ error: { message: "refused" } }), { status, headers: { "content-type": "application/json" } }));
+    const res = await relayModelCall(harnessRequest(BODY), { ...h.deps, plan: { ...PLAN, keysOwner: "account" } });
 
-    expect(res.status).toBe(409);
-    expect(h.failJob).toHaveBeenCalledWith(reason, upstream);
-    expect(h.beginModelCall).not.toHaveBeenCalled();
-    expect(h.fetch).not.toHaveBeenCalled();
+    expect(res.status).toBe(status);
+    await drain(res);
+    expect(h.failJob).toHaveBeenCalledWith("account_key_failed", "openrouter", keyReason);
+    await vi.waitFor(() => expect(h.endModelCall).toHaveBeenCalledTimes(1));
   });
 
-  it("answers 409 for an execution no longer running, leaving the job to its own ending", async () => {
-    const h = harness(async () => upstreamStream([COMPLETE_STREAM]), { keys: { kind: "not_running" } });
+  it("does not end the job when the upstream refuses our key: the refusal reaches the harness as before", async () => {
+    const h = harness(async () => new Response(JSON.stringify({ error: { message: "refused" } }), { status: 401, headers: { "content-type": "application/json" } }));
     const res = await relayModelCall(harnessRequest(BODY), h.deps);
 
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(401);
+    await drain(res);
     expect(h.failJob).not.toHaveBeenCalled();
-    expect(h.beginModelCall).not.toHaveBeenCalled();
-    expect(h.fetch).not.toHaveBeenCalled();
   });
 
-  it("answers 503 when the keys could not be read this time, so the harness may call again", async () => {
-    const h = harness(async () => upstreamStream([COMPLETE_STREAM]), { keys: { kind: "unavailable", status: 502 } });
-    const res = await relayModelCall(harnessRequest(BODY), h.deps);
-
-    expect(res.status).toBe(503);
-    expect(h.failJob).not.toHaveBeenCalled();
-    expect(h.beginModelCall).not.toHaveBeenCalled();
-    expect(h.fetch).not.toHaveBeenCalled();
-  });
-
-  it("skips an upstream the read gave no key for, and answers 502 when it gave none", async () => {
-    const h = harness(async () => upstreamStream([COMPLETE_STREAM]), { keys: { kind: "keys", keys: {} } });
+  it("skips an upstream the job holds no key for, and answers 502 when it holds none", async () => {
+    const h = harness(async () => upstreamStream([COMPLETE_STREAM]), { keys: {} });
     const res = await relayModelCall(harnessRequest(BODY), h.deps);
 
     expect(res.status).toBe(502);
@@ -335,7 +317,7 @@ describe("relayModelCall: reading the call's keys (inner#1953)", () => {
     await relayModelCall(harnessRequest(BODY, { method: "GET" }), h.deps);
     await relayModelCall(harnessRequest("not json"), h.deps);
 
-    expect(h.fetchKeys).not.toHaveBeenCalled();
+    expect(h.readKeys).not.toHaveBeenCalled();
   });
 });
 

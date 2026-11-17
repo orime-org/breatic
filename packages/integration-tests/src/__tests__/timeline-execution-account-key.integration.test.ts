@@ -33,10 +33,11 @@ vi.mock("ai", () => ({
 }));
 
 import type * as DomainModule from "@breatic/domain";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, generateKeyPairSync, randomBytes } from "node:crypto";
 import { accountProviderKeysRepo, createPgClient, createQueue, initCore, loadLocales, sealProviderKey } from "@breatic/core";
 import { initProvider, provider, USAGE_LOOKUP_QUEUE } from "@breatic/domain";
 import type { CostLookup } from "@breatic/provider";
+import { openModelKeys } from "@breatic/shared/space-content";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 import {
   CALLS,
@@ -58,12 +59,25 @@ const SECRET = randomBytes(32);
 const RING = { current: "t1", keys: { t1: SECRET } };
 const ACCOUNT_KEY = "sk-or-v1-timeline-account-key-never-stored";
 const LOOKUP: CostLookup = { upstream: "openrouter", generationId: "gen-3" };
+/** The ingest Worker's key pair: the worker seals to the public half, the Worker opens with the private half. */
+const PAIR = generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: "spki", format: "pem" },
+  privateKeyEncoding: { type: "pkcs8", format: "pem" },
+});
+/** This suite's environment: the master keys and the Worker's public key. */
+const ENV = {
+  ...process.env,
+  PROVIDER_KEY_SECRET_ID: "t1",
+  PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }),
+  INGEST_KEY_SEAL_PUBLIC_KEY: PAIR.publicKey.replace(/\n/g, "\\n"),
+};
 
 let sql: ReturnType<typeof createPgClient>;
 const owned: string[] = [];
 
 beforeAll(() => {
-  initCore({ ...process.env, PROVIDER_KEY_SECRET_ID: "t1", PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }) });
+  initCore(ENV);
   loadLocales();
   initProvider();
   sql = createPgClient(inject("DATABASE_URL"), { name: "timeline-account-key-driver", max: 4, prepare: false });
@@ -128,6 +142,36 @@ describe("an execution accepted on the payer's OpenRouter key", () => {
     expect(JSON.stringify(ingest.calls)).not.toContain(ACCOUNT_KEY);
   });
 
+  it("submits the account's key sealed to the Worker's public key, and keeps it out of the stored step", async () => {
+    const { fx } = await seedOnAccountKey("queued");
+    const ingest = installFakeIngest(fx);
+
+    await pickUp(fx);
+
+    const submit = ingest.calls.find((call) => call.route === "submit");
+    const sealed = (submit?.body as { sealedKeys?: string } | undefined)?.sealedKeys;
+    expect(typeof sealed).toBe("string");
+    expect(await openModelKeys(sealed!, PAIR.privateKey)).toEqual({ openrouter: ACCOUNT_KEY });
+    const [stored] = await sql<{ steps: unknown }[]>`SELECT steps FROM timeline_executions WHERE id = ${fx.execution.id}`;
+    expect(JSON.stringify(stored?.steps)).not.toContain(sealed!);
+    expect(JSON.stringify(stored?.steps)).not.toContain("sealedKeys");
+  });
+
+  it("fails as feature_disabled without submitting when this deployment has no public key to seal with", async () => {
+    initCore({ ...ENV, INGEST_KEY_SEAL_PUBLIC_KEY: "" });
+    try {
+      const { fx } = await seedOnAccountKey("queued");
+      const ingest = installFakeIngest(fx);
+
+      await pickUp(fx);
+
+      expect(await read(fx.execution.id)).toMatchObject({ status: "failed", failureReason: "feature_disabled" });
+      expect(ingest.calls.filter((call) => call.route === "submit")).toEqual([]);
+    } finally {
+      initCore(ENV);
+    }
+  });
+
   it("records its model calls under the key row at no credits, leaves them out of the charge, and queues the lookup uncharged", async () => {
     const { fx, keyId } = await seedOnAccountKey("running");
     const ingest = installFakeIngest(fx);
@@ -163,6 +207,19 @@ describe("an execution accepted on the payer's OpenRouter key", () => {
     expect(await read(fx.execution.id)).toMatchObject({ status: "failed", failureReason: "account_key_missing", failureUpstream: "openrouter" });
     expect(ingest.calls.filter((call) => call.route === "submit")).toEqual([]);
     expect(plan).not.toHaveBeenCalled();
+  });
+
+  it("fails as account_key_failed with the upstream and why it refused the payer's key, as the failed report names them", async () => {
+    const { fx } = await seedOnAccountKey("queued");
+    const ingest = installFakeIngest(fx);
+    await pickUp(fx);
+    ingest.read = () => json(report(fx, "failed", { calls: [], failureReason: "account_key_failed", failureUpstream: "openrouter", failureKeyReason: "no_balance" }));
+
+    await pickUp(fx);
+
+    expect(await read(fx.execution.id)).toMatchObject({
+      status: "failed", failureReason: "account_key_failed", failureUpstream: "openrouter", failureKeyReason: "no_balance",
+    });
   });
 
   it("fails with the upstream a failed report names when the Worker's key read was refused mid-run", async () => {

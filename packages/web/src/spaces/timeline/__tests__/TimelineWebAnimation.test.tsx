@@ -119,7 +119,7 @@ function row(id: string, status: TimelineExecution['status'], fields: Partial<Li
     actionId: `a${id.slice(1)}`, input: { prompt: `Prompt of ${status}`, engine: 'deepseek', aspect: '16:9', durationSeconds: 3, fps: SETTINGS.fps },
     inputHash: `sha256:${status}`, engine: 'deepseek', status, phase: status === 'running' ? 'writing' : null, steps: [],
     attempt: 1, fence: null, deadlineAt: new Date(Date.now() + 3_600_000).toISOString(),
-    resultSourceVersionId: null, failureReason: null, failureUpstream: null, billedCredits: null, billedAt: null,
+    resultSourceVersionId: null, failureReason: null, failureUpstream: null, failureKeyReason: null, billedCredits: null, billedAt: null,
     createdAt: '2026-11-07T08:00:00.000000Z', updatedAt: '2026-11-07T08:00:00.000000Z', usageCredits: 0, ...fields,
   };
 }
@@ -603,6 +603,7 @@ describe('execution list', () => {
       .map((reason): [string, string] => [reason, 'check']),
     ...['harness_failed', 'container_failed', 'internal'].map((reason): [string, string] => [reason, 'stopped']),
     ['feature_disabled', 'feature_disabled'],
+    ['key_lost_on_restart', 'key_lost'],
     ['a_reason_with_no_sentence', 'unknown'],
     [null, 'unknown'],
   ];
@@ -632,6 +633,23 @@ describe('execution list', () => {
       const detail = await expand(EXEC_FAILED);
       expect(detail).toHaveTextContent(sentence);
       expect(detail).not.toHaveTextContent(t('timeline.webAnimation.failure.unknown'));
+    } finally {
+      keyWords.current = undefined;
+    }
+  });
+
+  it.each([
+    ['self', 'Your OpenRouter key is out of balance. Top up at OpenRouter.'],
+    ['admin', 'The Studio Admin\'s OpenRouter key is out of balance. Ask the Studio Admin to top up at OpenRouter.'],
+  ] as const)('tells why the upstream refused %s key, with the canvas sentence (inner#1953)', async (payer, sentence) => {
+    keyWords.current = { payer, upstreamNames: { openrouter: 'OpenRouter' } };
+    try {
+      rows = [row(EXEC_FAILED, 'failed', { failureReason: 'account_key_failed', failureUpstream: 'openrouter', failureKeyReason: 'no_balance' })];
+      seed();
+      showTimeline();
+      await openList();
+      await view('completed');
+      expect(await expand(EXEC_FAILED)).toHaveTextContent(sentence);
     } finally {
       keyWords.current = undefined;
     }
@@ -1171,7 +1189,7 @@ describe('web animation copy in every locale', () => {
     'timeline.webAnimation.usageLabel', 'timeline.webAnimation.usage', 'timeline.webAnimation.usagePending', 'timeline.webAnimation.durationShort',
     'timeline.webAnimation.cancel', 'timeline.webAnimation.addToTimeline', 'timeline.webAnimation.addPlaceholder', 'timeline.webAnimation.retry',
     'timeline.webAnimation.failure.feature_disabled', 'timeline.webAnimation.failure.unknown',
-    'timeline.webAnimation.failure.check', 'timeline.webAnimation.failure.stopped',
+    'timeline.webAnimation.failure.check', 'timeline.webAnimation.failure.stopped', 'timeline.webAnimation.failure.key_lost',
     'timeline.webAnimation.preview.pending', 'timeline.webAnimation.preview.failed', 'timeline.webAnimation.preview.unavailable',
     'timeline.errors.source_unresolved',
   ];
@@ -1202,6 +1220,7 @@ describe('web animation copy in every locale', () => {
     expect(readPath(english, 'timeline.webAnimation.usagePending')).toBe('Settled when it ends');
     expect(readPath(english, 'timeline.webAnimation.failure.check')).toBe('The page did not pass the check.');
     expect(readPath(english, 'timeline.webAnimation.failure.stopped')).toBe('Creation stopped unexpectedly.');
+    expect(readPath(english, 'timeline.webAnimation.failure.key_lost')).toBe('Creation was interrupted. Run it again.');
     expect(readPath(english, 'timeline.webAnimation.preview.pending')).toBe(
       '{track}: {status, select, awaiting_landing {saving web animation} queued {web animation queued} running {creating web animation} cancelling {cancelling web animation} other {web animation pending}}…');
     expect(readPath(english, 'timeline.webAnimation.preview.failed')).toBe(

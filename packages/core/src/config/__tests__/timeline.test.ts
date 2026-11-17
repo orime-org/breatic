@@ -40,16 +40,6 @@ describe("web_animation.duration_seconds", () => {
   });
 });
 
-describe("web_animation.key_request_window_seconds (inner#1953)", () => {
-  it("defaults to 300 seconds, the window a signed key request's timestamp may be off by", () => {
-    expect(timelineConfigSchema.parse({}).web_animation.key_request_window_seconds).toBe(300);
-  });
-
-  it("reads 300 from the tracked yaml", () => {
-    expect(getTimelineConfig().web_animation.key_request_window_seconds).toBe(300);
-  });
-});
-
 describe("web_animation.font_set_version", () => {
   it("defaults to 3, the set that carries Noto Sans JP and Noto Sans TC", () => {
     expect(timelineConfigSchema.parse({}).web_animation.font_set_version).toBe(3);

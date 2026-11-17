@@ -175,7 +175,7 @@ storage = "sqlite"
 # block enabled builds it. Without the block the web-animation job routes
 # answer 501 `feature_disabled`, and so does a submit without
 # KEY_UNSEAL_PRIVATE_KEY in `.dev.vars`, the private key that opens the model
-# keys each call reads from our server; everything else works.
+# keys each submit carries sealed; everything else works.
 #
 # To enable it, uncomment the four blocks below (the container, its binding,
 # its export and the static assets that serve the font set). `pnpm dev` lays
@@ -366,7 +366,7 @@ type = "durable-object"
 storage = "sqlite"
 
 # Web-animation execution, as at the top level; uncomment to deploy it, and set
-# the private key that opens each call's model keys,
+# the private key that opens the keys each submit carries,
 # `wrangler secret put KEY_UNSEAL_PRIVATE_KEY --env production` (its public half
 # is the server's INGEST_KEY_SEAL_PUBLIC_KEY). The Worker holds no model key.
 # Serve previews from a domain of their own (WEB_ANIMATION_PREVIEW_BASE_URL on

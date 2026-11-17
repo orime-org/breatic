@@ -388,25 +388,11 @@ describe("parseConfig — SENTRY_DSN", () => {
   });
 });
 
-describe("parseConfig — the model-key channel of web animation (inner#1953)", () => {
-  it("drops trailing slashes from SERVER_PUBLIC_URL, which the key endpoint's path is appended to", () => {
-    expect(parseConfig(baseEnv({ SERVER_PUBLIC_URL: "https://api.example.test//" })).SERVER_PUBLIC_URL).toBe("https://api.example.test");
-  });
-
-  it("refuses a SERVER_PUBLIC_URL that is not an http(s) address, so no job carries a key endpoint the Worker cannot reach", () => {
-    expect(() => parseConfig(baseEnv({ SERVER_PUBLIC_URL: "localhost:4010" }))).toThrow();
-  });
-
-  it("keeps both unset as empty, which leaves web animation without its key channel", () => {
-    const config = parseConfig(baseEnv());
-
-    expect(config.SERVER_PUBLIC_URL).toBe("");
-    expect(config.INGEST_KEY_SEAL_PUBLIC_KEY).toBe("");
-  });
-
-  it("keeps the seal public key as given", () => {
+describe("parseConfig — the seal key of web animation's account keys (inner#1953)", () => {
+  it("keeps the seal public key as given, and empty when unset", () => {
     const pem = "-----BEGIN PUBLIC KEY-----\\nMIIB\\n-----END PUBLIC KEY-----";
     expect(parseConfig(baseEnv({ INGEST_KEY_SEAL_PUBLIC_KEY: pem })).INGEST_KEY_SEAL_PUBLIC_KEY).toBe(pem);
+    expect(parseConfig(baseEnv()).INGEST_KEY_SEAL_PUBLIC_KEY).toBe("");
   });
 });
 

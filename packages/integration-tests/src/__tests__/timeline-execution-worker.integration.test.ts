@@ -48,12 +48,13 @@ vi.mock("ai", () => ({
 
 import type * as DomainModule from "@breatic/domain";
 import fc from "fast-check";
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync } from "node:crypto";
 import { createPgClient, createQueue, env, getStreamRedis, getTimelineConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
 import { initProvider, provider, toChargeCredits, USAGE_LOOKUP_QUEUE } from "@breatic/domain";
 import { NoUpstreamAvailable, type CostLookup } from "@breatic/provider";
+import { t } from "@breatic/shared";
 import { spaceTasksChangedChannel } from "@breatic/shared";
-import { WEB_ANIMATION_CONTAINER_CLASS, webAnimationJobRequestSchema } from "@breatic/shared/space-content";
+import { WEB_ANIMATION_CONTAINER_CLASS, openModelKeys, webAnimationJobRequestSchema } from "@breatic/shared/space-content";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 import {
   CALLS,
@@ -83,8 +84,19 @@ let sql: ReturnType<typeof createPgClient>;
 let errorLogs: () => Record<string, unknown>[];
 const owned: string[] = [];
 
+/** The ingest Worker's key pair: every submit seals the run's keys to the public half (inner#1953). */
+const PAIR = generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: "spki", format: "pem" },
+  privateKeyEncoding: { type: "pkcs8", format: "pem" },
+});
+/** Our OpenRouter key on this deployment, the only key of ours the suite sets. */
+const DEPLOYMENT_KEY = "sk-or-deployment-timeline-suite";
+/** This suite's environment: our key and the Worker's public key. */
+const ENV = { ...process.env, OPENROUTER_API_KEY: DEPLOYMENT_KEY, INGEST_KEY_SEAL_PUBLIC_KEY: PAIR.publicKey };
+
 beforeAll(() => {
-  initCore(process.env);
+  initCore(ENV);
   loadLocales();
   initProvider();
   errorLogs = captureErrorLogs("timeline-worker");
@@ -323,9 +335,13 @@ describe("picking up a queued execution", () => {
       maxTokens: config.max_tokens,
       callTimeoutMs: config.call_timeout_ms,
       model: config.model,
-      modelKeys: { url: "https://api.test.invalid/api/v1/ingest/model-keys", executionId: fx.execution.id },
       messagesPlan: provider().llm.messagesPlan(config.model),
+      sealedKeys: expect.any(String),
     });
+    // Our key for the plan's upstreams travels sealed with the submit, never in the stored step (inner#1953).
+    expect(await openModelKeys(submitted.sealedKeys!, PAIR.privateKey)).toEqual({ openrouter: DEPLOYMENT_KEY });
+    expect(JSON.stringify(row.steps)).not.toContain(DEPLOYMENT_KEY);
+    expect(JSON.stringify(row.steps)).not.toContain("sealedKeys");
     expect(submitted.messagesPlan!.candidates.length).toBeGreaterThan(0);
     expect(submitted.viewport.width * 9).toBe(submitted.viewport.height * 16);
     expect(await chargesFor(fx.execution.id)).toEqual([]);
@@ -412,7 +428,9 @@ describe("picking up a running execution again", () => {
       ["read", `timeline:${fx.execution.id}`],
       ["submit", `timeline:${fx.execution.id}`],
     ]);
-    expect(submits[1]!.body).toEqual(submits[0]!.body);
+    // The job is the same; its keys are sealed afresh at each submit (inner#1953).
+    const unsealed = (body: unknown): unknown => ({ ...(body as Record<string, unknown>), sealedKeys: undefined });
+    expect(unsealed(submits[1]!.body)).toEqual(unsealed(submits[0]!.body));
   });
 
   it("submits again on the next pickup after the Worker answered 503", async () => {
@@ -426,7 +444,8 @@ describe("picking up a running execution again", () => {
     await pickUp(fx);
     const submits = ingest.calls.filter((call) => call.route === "submit");
     expect(submits.length).toBeGreaterThanOrEqual(2);
-    expect(new Set(submits.map((call) => JSON.stringify(call.body))).size).toBe(1);
+    // The same job each time; its keys are sealed afresh at each submit (inner#1953).
+    expect(new Set(submits.map((call) => JSON.stringify({ ...(call.body as Record<string, unknown>), sealedKeys: undefined }))).size).toBe(1);
     expect((await read(fx.execution.id)).status).toBe("running");
   });
 });
@@ -733,17 +752,38 @@ describe("an ingest Worker without web-animation execution", () => {
     await expectFeatureDisabled(fx, "failed");
   });
 
-  it("fails the execution as feature_disabled without submitting when this region has no SERVER_PUBLIC_URL for the Worker's key requests, logging it", async () => {
-    initCore({ ...process.env, SERVER_PUBLIC_URL: "" });
+  it("fails the execution as feature_disabled without submitting when this deployment holds no key for its plan, logging the model and variables", async () => {
+    initCore(process.env);
+    try {
+      const fx = await seed("queued");
+      const ingest = installFakeIngest(fx);
+      const model = getTimelineConfig().web_animation.model;
+      await pickUp(fx);
+      await expectFeatureDisabled(fx, "failed");
+      expect(ingest.calls.filter((call) => call.route === "submit")).toEqual([]);
+      const envVars = provider().llm.messagesPlan(model).candidates.map(({ keyEnv }) => keyEnv);
+      expect(errorLogs()).toContainEqual(expect.objectContaining({
+        executionId: fx.execution.id,
+        envVars,
+        reason: t("server.model.not_configured", { model, envVars: envVars.join(", ") }),
+        msg: "timeline_model_not_configured",
+      }));
+    } finally {
+      initCore(ENV);
+    }
+  });
+
+  it("fails the execution as feature_disabled without submitting when this deployment has no public key to seal with", async () => {
+    initCore({ ...ENV, INGEST_KEY_SEAL_PUBLIC_KEY: "" });
     try {
       const fx = await seed("queued");
       const ingest = installFakeIngest(fx);
       await pickUp(fx);
       await expectFeatureDisabled(fx, "failed");
       expect(ingest.calls.filter((call) => call.route === "submit")).toEqual([]);
-      expect(errorLogs()).toContainEqual(expect.objectContaining({ executionId: fx.execution.id, msg: "timeline_server_public_url_unset" }));
+      expect(errorLogs()).toContainEqual(expect.objectContaining({ executionId: fx.execution.id, msg: "timeline_key_seal_public_key_unset" }));
     } finally {
-      initCore(process.env);
+      initCore(ENV);
     }
   });
 

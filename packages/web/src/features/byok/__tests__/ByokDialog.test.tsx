@@ -417,10 +417,11 @@ describe('ByokDialog', () => {
         return screen.findByRole('dialog', { name: 'Replace the WaveSpeed key' });
       }
 
-      it('says tasks using the old key will be interrupted', async () => {
+      it('says tasks using the old key may be interrupted or fail, and to revoke a leaked key at the upstream', async () => {
         const user = userEvent.setup();
         const replace = await openReplace(user);
-        expect(replace).toHaveTextContent(/tasks using the old key will be interrupted/i);
+        expect(replace).toHaveTextContent(/tasks using the old key may be interrupted or fail/i);
+        expect(replace).toHaveTextContent(/if the old key has leaked, also revoke it at WaveSpeed/i);
       });
 
       it('saves the new key and closes', async () => {
@@ -462,7 +463,8 @@ describe('ByokDialog', () => {
         await user.click(within(within(dialog).getByTestId('byok-detail-fal')).getByRole('button', { name: 'Delete' }));
 
         const confirm = await screen.findByRole('alertdialog');
-        expect(confirm).toHaveTextContent(/tasks using this key will be interrupted/i);
+        expect(confirm).toHaveTextContent(/tasks using this key may be interrupted or fail/i);
+        expect(confirm).toHaveTextContent(/if the key has leaked, also revoke it at fal/i);
         expect(confirm).toHaveTextContent('Veo 3.1');
         expect(confirm).not.toHaveTextContent('Seedream 5.0');
         expect(api.delete).not.toHaveBeenCalled();

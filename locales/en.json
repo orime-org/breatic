@@ -3672,10 +3672,10 @@
     "runsNone": "No model here runs on it.",
     "openrouterNote": "Every language model call uses this key, with no credits.",
     "replaceTitle": "Replace the {upstream} key",
-    "replaceBody": "The new key is checked before it is saved. Tasks using the old key will be interrupted.",
+    "replaceBody": "The new key is checked before it is saved. Tasks using the old key may be interrupted or fail. If the old key has leaked, also revoke it at {upstream}.",
     "deleteTitle": "Delete the {upstream} key?",
-    "deleteBody": "Tasks using this key will be interrupted, and models set to it go back to the platform key.",
-    "deleteBodyLanguage": "Tasks using this key will be interrupted, and language model calls go back to the platform key.",
+    "deleteBody": "Tasks using this key may be interrupted or fail, and models set to it go back to the platform key. If the key has leaked, also revoke it at {upstream}.",
+    "deleteBodyLanguage": "Tasks using this key may be interrupted or fail, and language model calls go back to the platform key. If the key has leaked, also revoke it at {upstream}.",
     "platformKey": "Platform key (uses credits)",
     "modelsIntro": "Models left unset use the platform key and spend credits. Only models an upstream you added can run are listed.",
     "modelsEmpty": "Add an upstream key, then choose here which upstream each model uses. Models left unset use the platform key.",
@@ -4057,7 +4057,8 @@
         "feature_disabled": "Web animation is unavailable right now.",
         "check": "The page did not pass the check.",
         "stopped": "Creation stopped unexpectedly.",
-        "unknown": "This execution failed."
+        "unknown": "This execution failed.",
+        "key_lost": "Creation was interrupted. Run it again."
       },
       "preview": {
         "pending": "{track}: {status, select, awaiting_landing {saving web animation} queued {web animation queued} running {creating web animation} cancelling {cancelling web animation} other {web animation pending}}…",

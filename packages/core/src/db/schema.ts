@@ -2362,6 +2362,8 @@ export const timelineExecutions = pgTable(
     failureReason: text("failure_reason"),
     /** The upstream a failure of the payer's own key names (0127, inner#1953); null for any other failure. */
     failureUpstream: text("failure_upstream"),
+    /** Why that upstream refused the payer's own key (0127, inner#1953); null for any other failure. */
+    failureKeyReason: text("failure_key_reason"),
     billedCredits: numeric("billed_credits"),
     billedAt: timestamp("billed_at", { withTimezone: true }),
     /** The account key row its language-model calls run on (0127, inner#1953); null is the deployment's keys. */

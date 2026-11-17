@@ -22,8 +22,10 @@ export type TimelineExecutionView = 'completed' | 'inProgress';
 
 const PHASES = ['writing', 'validating', 'saving'] as const;
 // The sentence each failure reason is told with; a reason not listed reads as a general failure.
-const FAILURE_SENTENCE: Readonly<Record<string, 'feature_disabled' | 'check' | 'stopped'>> = {
+const FAILURE_SENTENCE: Readonly<Record<string, 'feature_disabled' | 'check' | 'stopped' | 'key_lost'>> = {
   feature_disabled: 'feature_disabled',
+  // The job object restarted and lost the keys its run was submitted with (inner#1953).
+  key_lost_on_restart: 'key_lost',
   validation_failed: 'check', font_not_in_set: 'check', manifest_invalid: 'check', package_too_large: 'check', output_missing: 'check',
   viewport_mismatch: 'check', fps_mismatch: 'check', duration_mismatch: 'check', font_set_mismatch: 'check',
   harness_failed: 'stopped', container_failed: 'stopped', internal: 'stopped',
@@ -41,13 +43,17 @@ const KEY_FAILURES: ReadonlySet<string> = new Set(['account_key_missing', 'accou
  * @throws {never} Never.
  */
 export function executionFailureSentence(
-  row: Pick<TimelineExecutionRow, 'failureReason' | 'failureUpstream'>,
+  row: Pick<TimelineExecutionRow, 'failureReason' | 'failureUpstream' | 'failureKeyReason'>,
   t: ReturnType<typeof useTranslation>,
   keys: KeyFailureWords | undefined,
 ): string {
   if (row.failureReason !== null && KEY_FAILURES.has(row.failureReason)) {
     const reason = row.failureReason as 'account_key_missing' | 'account_key_failed';
-    return failureSentence(encodeTaskFailure(reason, row.failureUpstream === null ? {} : { upstream: row.failureUpstream }), t, undefined, keys);
+    const about = {
+      ...(row.failureUpstream === null ? {} : { upstream: row.failureUpstream }),
+      ...(row.failureKeyReason === null ? {} : { keyReason: row.failureKeyReason }),
+    };
+    return failureSentence(encodeTaskFailure(reason, about), t, undefined, keys);
   }
   return t(`timeline.webAnimation.failure.${(row.failureReason !== null && FAILURE_SENTENCE[row.failureReason]) || 'unknown'}`);
 }

@@ -46,7 +46,6 @@ const REQUEST: WebAnimationJobRequest = {
   maxTokens: 32_000,
   callTimeoutMs: 300_000,
   model: "deepseek/deepseek-v4.1-flash-1017",
-  modelKeys: { url: "https://api.example.test/api/v1/ingest/model-keys", executionId: "40000000-0000-4000-8000-000000000001" },
 };
 
 const TOKENS = { input: 41, output: 6, reasoning: 3, cacheRead: 128 };
@@ -136,7 +135,7 @@ describe("submit", () => {
     expect(result!.effects).toContain("start");
     expect(result!.refused).toBe(false);
     expect(report(result!.record)).toEqual({
-      state: "running", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: null, failureUpstream: null,
+      state: "running", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: null, failureUpstream: null, failureKeyReason: null,
     });
   });
 
@@ -172,7 +171,7 @@ describe("cancel before any submit", () => {
 
     expect(result!.effects).toEqual([]);
     expect(report(result!.record)).toEqual({
-      state: "cancelled_before_submit", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: null, failureUpstream: null,
+      state: "cancelled_before_submit", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: null, failureUpstream: null, failureKeyReason: null,
     });
   });
 
@@ -384,8 +383,8 @@ describe("the end of a job", () => {
   });
 });
 
-describe("a refused key read (inner#1953)", () => {
-  const refused: WebAnimationJobEvent = { type: "modelKeysRefused", reason: "account_key_missing", upstream: "openrouter" };
+describe("a key failure (inner#1953)", () => {
+  const refused: WebAnimationJobEvent = { type: "keyFailed", reason: "account_key_missing", upstream: "openrouter" };
 
   it("fails a running job with no call in flight at once, with the refusal's reason, and stops the container", () => {
     const [failed] = run(after([begin, started(1), ended(1)]), [refused]);
@@ -401,8 +400,20 @@ describe("a refused key read (inner#1953)", () => {
     expect(report(done!.record)).toMatchObject({ state: "failed", failureReason: "account_key_missing", failureUpstream: "openrouter" });
   });
 
+  it("fails with key_lost_on_restart when the job object lost the keys it was submitted with", () => {
+    const [failed] = run(after([begin, started(1), ended(1)]), [{ type: "keyFailed", reason: "key_lost_on_restart" }]);
+
+    expect(report(failed!.record)).toMatchObject({ state: "failed", failureReason: "key_lost_on_restart", failureUpstream: null });
+  });
+
+  it("keeps why the upstream refused the payer's own key", () => {
+    const [failed] = run(after([]), [{ type: "keyFailed", reason: "account_key_failed", upstream: "openrouter", keyReason: "no_balance" }]);
+
+    expect(report(failed!.record)).toMatchObject({ failureReason: "account_key_failed", failureUpstream: "openrouter", failureKeyReason: "no_balance" });
+  });
+
   it("names no upstream for a refusal that named none, nor for a failure of any other kind", () => {
-    const [noUpstream] = run(after([]), [{ type: "modelKeysRefused", reason: "feature_disabled" }]);
+    const [noUpstream] = run(after([]), [{ type: "keyFailed", reason: "feature_disabled" }]);
     const [other] = run(after([]), [{ type: "finished", ok: false, failureReason: "harness_failed", cpuUsec: 1 }]);
 
     expect(report(noUpstream!.record).failureUpstream).toBeNull();
@@ -434,7 +445,7 @@ describe("after the end", () => {
       { type: "cancel", deadlineAt: REQUEST.deadlineAt }, { type: "deadline" }, { type: "containerGone" },
       writtenPackage, { type: "progress", phase: "validating", steps: ["late"] },
       { type: "finished", ok: true, failureReason: null, cpuUsec: 99 },
-      { type: "modelKeysRefused", reason: "feature_disabled" },
+      { type: "keyFailed", reason: "feature_disabled" },
       { type: "submit", request: REQUEST },
     ]);
 
@@ -457,7 +468,7 @@ describe("invariants over any sequence of events", () => {
     fc.constant(writtenPackage),
     fc.constant(writtenManifest),
     fc.boolean().map((ok): WebAnimationJobEvent => ({ type: "finished", ok, failureReason: ok ? null : "tool_failed", cpuUsec: 1 })),
-    fc.constantFrom("account_key_missing", "feature_disabled").map((reason): WebAnimationJobEvent => ({ type: "modelKeysRefused", reason })),
+    fc.constantFrom("account_key_missing", "feature_disabled").map((reason): WebAnimationJobEvent => ({ type: "keyFailed", reason })),
   );
 
   it("keeps at most one call in flight, numbers calls 1, 2, 3 in order and stops the container at most once", () => {

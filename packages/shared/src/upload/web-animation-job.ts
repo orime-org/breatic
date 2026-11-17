@@ -9,6 +9,7 @@
 import { z } from "zod";
 
 import { TimelineRateSchema } from "@shared/timeline/schema.js";
+import { ACCOUNT_KEY_FAILURE_REASONS } from "@shared/types/task-failure.js";
 
 /** The container class `POST /jobs` dispatches web-animation jobs to. */
 export const WEB_ANIMATION_CONTAINER_CLASS = "WebAnimationContainer";
@@ -37,6 +38,8 @@ function sortedKeys(value: unknown): unknown {
  */
 const messagesPlan = z.object({
   model: z.string().min(1).max(200),
+  /** Set when the plan was made on the payer's own keys (inner#1953): the relay then ends the job on a refused key. */
+  keysOwner: z.literal("account").optional(),
   candidates: z.array(z.object({
     upstream: z.string().min(1),
     kind: z.string().min(1),
@@ -67,10 +70,11 @@ export const webAnimationJobRequestSchema = z.object({
   callTimeoutMs: positiveInteger,
   model: z.string().min(1).max(200),
   /**
-   * Where the Worker reads the keys of each model call (inner#1953): the key endpoint of the region that submitted the
-   * job, asked for the execution's keys before every call; the Worker holds none of its own.
+   * The keys the job's model calls run on, `{ [upstream]: key }` sealed to the Worker's public key (inner#1953): the
+   * payer's own when the plan was made on them, ours otherwise. Added by the worker at each submit and never stored;
+   * the Worker opens it into the job object's memory only. Absent only from a backend deployed before it.
    */
-  modelKeys: z.object({ url: z.url({ protocol: /^https?$/ }).max(2000), executionId: z.uuid() }),
+  sealedKeys: z.string().min(1).max(16_384).optional(),
   /**
    * Absent only from a backend deployed before the plan (inner#1743): a Worker deployed after it answers such a
    * submit 501 `feature_disabled`; remove the optional once every job submitted without it is past its deadline.
@@ -128,6 +132,8 @@ export const webAnimationJobReportSchema = z.object({
    * deployed before it.
    */
   failureUpstream: z.string().min(1).nullable().optional(),
+  /** Why the upstream refused the payer's own key (`account_key_failed`); null otherwise, absent from an older Worker. */
+  failureKeyReason: z.enum(ACCOUNT_KEY_FAILURE_REASONS).nullable().optional(),
 });
 
 /** What a job answers. */

@@ -7,19 +7,20 @@
  *
  * Web-animation execution is optional on a deployment: the `WEB_ANIMATION` Durable Object binding and the
  * `KEY_UNSEAL_PRIVATE_KEY` secret stay out of `REQUIRED_SETTINGS`. Without the binding the three endpoints answer 501
- * `feature_disabled` before the namespace is touched; a submit with no plan, or to a Worker without the private key
- * that opens each call's keys, answers the same. The Worker holds no model key: each call's keys are read from the
- * endpoint the job names (inner#1953), so a submit no longer depends on any key variable here. The worker reads 501 as
- * a terminal answer, while every other endpoint keeps working. 503 keeps its meaning: the container could not start this
- * time.
+ * `feature_disabled` before the namespace is touched; a submit with no plan, without the private key, without sealed
+ * keys or with keys the private key cannot open answers the same. The Worker holds no model key of its own
+ * (inner#1953): a submit's keys are opened here and handed to the job object beside the job, never inside it. The
+ * worker reads 501 as a terminal answer, while every other endpoint keeps working. 503 keeps its meaning: the container
+ * could not start this time.
  *
  * The pool has no container runtime, so the namespace here is a stand-in that records what the route asked of the
  * job object; the object's own behaviour is specified in `web-animation-transition.node.test.ts`.
  */
 
 import { env, createExecutionContext } from "cloudflare:test";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
+import { sealModelKeys } from "@shared/upload/model-keys.js";
 import type { WebAnimationJobReport, WebAnimationJobRequest } from "@shared/upload/web-animation-job.js";
 import * as entry from "@ingest/index.js";
 import worker from "@ingest/index.js";
@@ -39,7 +40,6 @@ const JOB: WebAnimationJobRequest = {
   maxTokens: 32_000,
   callTimeoutMs: 300_000,
   model: "deepseek/deepseek-v4.1-flash-1017",
-  modelKeys: { url: "https://api.example.test/api/v1/ingest/model-keys", executionId: "40000000-0000-4000-8000-000000000001" },
   messagesPlan: {
     model: "deepseek/deepseek-v4.1-flash-1017",
     candidates: [
@@ -50,6 +50,45 @@ const JOB: WebAnimationJobRequest = {
 };
 
 const JOB_PATH = `/jobs/WebAnimationContainer/${encodeURIComponent(JOB.jobId)}`;
+
+/** The keys a submit carries, as our worker seals them. */
+const KEYS = { openrouter: "test-openrouter-key" };
+
+/**
+ * One exported key as PEM.
+ * @param label - The PEM label.
+ * @param der - The DER bytes.
+ * @returns The PEM.
+ */
+function pem(label: string, der: ArrayBuffer): string {
+  return `-----BEGIN ${label}-----\n${btoa(String.fromCharCode(...new Uint8Array(der))).match(/.{1,64}/g)!.join("\n")}\n-----END ${label}-----`;
+}
+
+/**
+ * A key pair made by workerd's own WebCrypto, as PEM.
+ * @returns The SPKI public key and the PKCS#8 private key.
+ */
+async function platformKeyPair(): Promise<{ publicKey: string; privateKey: string }> {
+  const pair = await crypto.subtle.generateKey(
+    { name: "RSA-OAEP", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+    true,
+    ["encrypt", "decrypt"],
+  ) as CryptoKeyPair;
+  return {
+    publicKey: pem("PUBLIC KEY", await crypto.subtle.exportKey("spki", pair.publicKey) as ArrayBuffer),
+    privateKey: pem("PRIVATE KEY", await crypto.subtle.exportKey("pkcs8", pair.privateKey) as ArrayBuffer),
+  };
+}
+
+let PRIVATE_KEY = "";
+/** The job as our worker submits it: the job and, beside it, its keys sealed to this Worker's public key. */
+let SUBMITTED: WebAnimationJobRequest = JOB;
+
+beforeAll(async () => {
+  const pair = await platformKeyPair();
+  PRIVATE_KEY = pair.privateKey;
+  SUBMITTED = { ...JOB, sealedKeys: await sealModelKeys(KEYS, pair.publicKey) };
+});
 
 const RUNNING: WebAnimationJobReport = {
   state: "running", phase: "writing", steps: [], calls: [], container: null, outputs: [], failureReason: null,
@@ -73,7 +112,7 @@ interface ObjectAnswers {
  */
 function standIn(answers: ObjectAnswers = {}) {
   const stub = {
-    submit: vi.fn(async (_request: WebAnimationJobRequest) => (answers.submit ? answers.submit() : { kind: "report", report: RUNNING })),
+    submit: vi.fn(async (_request: WebAnimationJobRequest, _keys: Record<string, string>) => (answers.submit ? answers.submit() : { kind: "report", report: RUNNING })),
     report: vi.fn(async () => (answers.report ? answers.report() : RUNNING)),
     cancel: vi.fn(async (_deadlineAt: number) => (answers.cancel ? answers.cancel() : { ...RUNNING, state: "stopping" })),
   };
@@ -93,7 +132,7 @@ function standIn(answers: ObjectAnswers = {}) {
  * @returns The env.
  */
 function configured(namespace: unknown, without: string[] = [], overrides: Record<string, unknown> = {}): typeof env {
-  const full: Record<string, unknown> = { ...env, WEB_ANIMATION: namespace, KEY_UNSEAL_PRIVATE_KEY: "test-unseal-private-key", ...overrides };
+  const full: Record<string, unknown> = { ...env, WEB_ANIMATION: namespace, KEY_UNSEAL_PRIVATE_KEY: PRIVATE_KEY, ...overrides };
   for (const name of without) delete full[name];
   return full as unknown as typeof env;
 }
@@ -112,7 +151,7 @@ async function call(bindings: typeof env, path: string, init: RequestInit, withS
   return worker.fetch(new Request(`https://ingest.example.com${path}`, { ...init, headers }), bindings, createExecutionContext());
 }
 
-const submit = (bindings: typeof env, body: unknown = JOB): Promise<Response> =>
+const submit = (bindings: typeof env, body: unknown = SUBMITTED): Promise<Response> =>
   call(bindings, "/jobs", { method: "POST", body: JSON.stringify(body) });
 const read = (bindings: typeof env): Promise<Response> => call(bindings, JOB_PATH, { method: "GET" });
 const cancel = (bindings: typeof env, body: unknown = { deadlineAt: JOB.deadlineAt }): Promise<Response> =>
@@ -125,14 +164,15 @@ describe("the WebAnimationContainer class", () => {
 });
 
 describe("POST /jobs for WebAnimationContainer", () => {
-  it("hands a valid job to the object named by its job id and answers its report", async () => {
+  it("hands a valid job to the object named by its job id, with its opened keys beside it and not inside it, and answers its report", async () => {
     const { namespace, stub } = standIn();
     const res = await submit(configured(namespace));
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual(RUNNING);
     expect(namespace.idFromName).toHaveBeenCalledWith(JOB.jobId);
-    expect(stub.submit).toHaveBeenCalledWith(JOB);
+    expect(stub.submit).toHaveBeenCalledWith(JOB, KEYS);
+    expect(stub.submit.mock.calls[0]![0]).not.toHaveProperty("sealedKeys");
   });
 
   it("refuses a body that does not satisfy the web-animation job schema", async () => {
@@ -169,7 +209,7 @@ describe("POST /jobs for WebAnimationContainer", () => {
 
   it("refuses a caller without our secret", async () => {
     const { namespace, stub } = standIn();
-    const res = await call(configured(namespace), "/jobs", { method: "POST", body: JSON.stringify(JOB) }, false);
+    const res = await call(configured(namespace), "/jobs", { method: "POST", body: JSON.stringify(SUBMITTED) }, false);
 
     expect(res.status).toBe(401);
     expect(stub.submit).not.toHaveBeenCalled();
@@ -262,7 +302,7 @@ describe("a Worker without web-animation execution configured", () => {
   it.each([
     ["missing", ["KEY_UNSEAL_PRIVATE_KEY"], {}],
     ["empty", [], { KEY_UNSEAL_PRIVATE_KEY: "" }],
-  ])("answers a submit 501 feature_disabled when the private key that opens each call's keys is %s", async (_label, without, overrides) => {
+  ])("answers a submit 501 feature_disabled when the private key that opens its keys is %s", async (_label, without, overrides) => {
     const { namespace, stub } = standIn();
     const res = await submit(configured(namespace, without, overrides));
 
@@ -271,12 +311,23 @@ describe("a Worker without web-animation execution configured", () => {
     expect(stub.submit).not.toHaveBeenCalled();
   });
 
-  it("submits a job holding no model key of its own: no HARNESS_ variable is read", async () => {
+  it("answers a submit without sealed keys, or with keys this Worker cannot open, 501 feature_disabled", async () => {
     const { namespace, stub } = standIn();
-    const res = await submit(configured(namespace, ["HARNESS_OPENROUTER_API_KEY", "HARNESS_DEEPSEEK_API_KEY"]));
+    const other = await platformKeyPair();
+    for (const body of [JOB, { ...JOB, sealedKeys: await sealModelKeys(KEYS, other.publicKey) }, { ...JOB, sealedKeys: "not.a.jwe.at.all" }]) {
+      const res = await submit(configured(namespace), body);
+      expect(res.status).toBe(501);
+      await expect(res.text()).resolves.toBe("feature_disabled");
+    }
+    expect(stub.submit).not.toHaveBeenCalled();
+  });
+
+  it("holds no model key of its own: a HARNESS_ variable plays no part in a submit", async () => {
+    const { namespace, stub } = standIn();
+    const res = await submit(configured(namespace, [], { HARNESS_OPENROUTER_API_KEY: "a-key-the-worker-must-not-use" }));
 
     expect(res.status).toBe(200);
-    expect(stub.submit).toHaveBeenCalledTimes(1);
+    expect(stub.submit).toHaveBeenCalledWith(JOB, KEYS);
   });
 
   it("still reads and cancels a job without the private key, so a job already running is seen to its end", async () => {

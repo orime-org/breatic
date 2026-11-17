@@ -6,7 +6,7 @@
  *
  * Each call answers a report or says why there is none: no such job (404), the container could not start (503, the
  * next pickup submits again), or web-animation execution is not configured on this Worker (501, a terminal answer). The
- * Worker holds no model key: it reads each call's keys from the endpoint the job names (inner#1953).
+ * Worker holds no model key: each submit carries the keys sealed (inner#1953).
  */
 
 import { env } from "@breatic/core";

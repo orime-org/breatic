@@ -7,14 +7,17 @@
  * same object, and reading names the class the job was submitted to.
  *
  * Web-animation execution is optional on a deployment: without the `WEB_ANIMATION` binding its submit, read and cancel
- * answer 501 `feature_disabled` before the namespace is touched, and so does a submit with no model plan or to a
- * Worker without `KEY_UNSEAL_PRIVATE_KEY`, which opens the keys each call reads from our server (inner#1953). The
- * worker reads it as a terminal answer, while every other job keeps working.
+ * answer 501 `feature_disabled` before the namespace is touched, and so does a submit with no model plan, without
+ * `KEY_UNSEAL_PRIVATE_KEY`, or whose sealed keys are absent or do not open. The Worker holds no model key of its own
+ * (inner#1953): a submit's keys are opened here and handed to the job object beside the job, which holds them in memory
+ * only. The worker reads 501 as a terminal answer, while every other job keeps working.
  */
 
 import { miniToolJobRequestSchema } from "@breatic/shared";
 import {
+  ModelKeysUnreadable,
   WEB_ANIMATION_CONTAINER_CLASS,
+  openModelKeys,
   webAnimationJobCancelSchema,
   webAnimationJobRequestSchema,
 } from "@breatic/shared/space-content";
@@ -30,7 +33,7 @@ import {
 import type { WebAnimationEnv } from "@ingest/jobs/web-animation-container.js";
 
 /** What the job endpoints read. */
-export type JobsEnv = MiniToolEnv & WebAnimationEnv;
+export type JobsEnv = MiniToolEnv & WebAnimationEnv & { INGEST_SHARED_SECRET: string };
 
 /** `/jobs/<class>/<id>`. */
 export const JOB_PATH = /^\/jobs\/([^/]+)\/([^/]+)$/;
@@ -81,7 +84,7 @@ function isStartFailure(err: unknown): boolean {
  * @param body - The parsed request body.
  * @param env - The bindings.
  * @returns 200 with its report; 400 for a body that is not a job; 410 after a cancel that came before any submit;
- *   501 when the feature is off, the job has no plan or this Worker cannot open the keys its calls read; 503 when the
+ *   501 when the feature is off, the job has no plan, or its keys are absent or do not open here; 503 when the
  *   container could not start.
  * @throws {unknown} What the object throws other than a start failure.
  */
@@ -90,11 +93,20 @@ async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Respo
   if (namespace === null) return featureDisabled();
   const parsed = webAnimationJobRequestSchema.safeParse(body);
   if (!parsed.success) return new Response("Not a job", { status: 400 });
-  const job = parsed.data;
-  const plan = job.messagesPlan;
-  if (plan === undefined || (env.KEY_UNSEAL_PRIVATE_KEY ?? "") === "") return featureDisabled();
+  const { sealedKeys, ...job } = parsed.data;
+  const privateKey = env.KEY_UNSEAL_PRIVATE_KEY ?? "";
+  if (job.messagesPlan === undefined || privateKey === "" || sealedKeys === undefined) return featureDisabled();
+  let keys: Record<string, string>;
   try {
-    const answer = await namespace.get(namespace.idFromName(job.jobId)).submit(job);
+    keys = await openModelKeys(sealedKeys, privateKey);
+  } catch (err) {
+    if (!(err instanceof ModelKeysUnreadable)) throw err;
+    // The worker sealed to a public key that is not this Worker's: a deployment's configuration, not this run's.
+    noteFailure("ingest_web_animation_keys_unreadable", { jobId: job.jobId });
+    return featureDisabled();
+  }
+  try {
+    const answer = await namespace.get(namespace.idFromName(job.jobId)).submit(job, keys);
     if (!("report" in answer)) return new Response("Cancelled before it was submitted", { status: 410 });
     return Response.json(answer.report);
   } catch (err) {

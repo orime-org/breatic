@@ -16,7 +16,7 @@ import { answerText, isSuccess, parsed, send } from "@provider/http/request.js";
 import type { PriceEntries } from "@provider/llm/prices.js";
 import { counter, type MessagesSpeaker } from "@provider/llm/upstreams/common.js";
 import { messagesSpeakerOf } from "@provider/llm/upstreams/messages.js";
-import { decide } from "@provider/routing/decide.js";
+import { accountFailureOf, decide, type AccountKeyFailureReason, type Failure } from "@provider/routing/decide.js";
 
 /** The Messages fields a call may carry upstream; everything else the caller sends is dropped. */
 const ALLOWED_FIELDS = [
@@ -50,6 +50,12 @@ export interface MessagesPlan {
   candidates: MessagesCandidate[];
 }
 
+/** A refusal of the payer's own key that asking again cannot change, read by the upstream's own reader (inner#1953). */
+export interface AccountKeyRefusal {
+  upstream: string;
+  reason: AccountKeyFailureReason;
+}
+
 /** The counters of a completed call, as its usage stated them. */
 export interface MessagesTokens {
   input: number;
@@ -80,6 +86,11 @@ export interface RelayOptions {
   onStarted: (upstream: string, messageId: string) => Promise<void>;
   /** Awaited exactly once per call, before the answer's stream closes or errors. */
   onEnded: (end: MessagesCallEnd) => Promise<void>;
+  /**
+   * Awaited before the call ends when a plan on the payer's own keys was refused for good: its key is invalid, out of
+   * balance or does not reach the model. No other upstream is tried, and the deployment's keys are never used.
+   */
+  onAccountKeyRefused?: (refusal: AccountKeyRefusal) => Promise<void>;
 }
 
 const FAILED: MessagesCallEnd = { outcome: "upstream_error", upstream: null, tokens: null, cost: null };
@@ -130,6 +141,7 @@ function dropNullCounters(usage: unknown): void {
  */
 export async function relayMessages(plan: MessagesPlan, asked: Record<string, unknown>, options: RelayOptions): Promise<Response> {
   let refused: { status: number; text: string; contentType: string } | undefined;
+  let keyRefused: AccountKeyRefusal | undefined;
   for (const candidate of plan.candidates) {
     const speaker = messagesSpeakerOf(candidate.kind);
     const key = options.keyOf(candidate.upstream);
@@ -157,8 +169,15 @@ export async function relayMessages(plan: MessagesPlan, asked: Record<string, un
     const text = await answerText(url, response, MAX_REFUSAL_BYTES, REFUSAL_IDLE_MS, bounds).catch(() => "");
     const refusal = speaker.refusal(response.status, parsed(text));
     refused = { status: response.status, text, contentType };
-    if (decide(refusal === undefined ? { kind: "http_status", status: response.status } : { kind: refusal }, "llm_before_content", 0, 0) !== "switch") break;
+    const failure: Failure = refusal === undefined ? { kind: "http_status", status: response.status } : { kind: refusal };
+    const turned = plan.keysOwner === "account" ? accountFailureOf(failure, "llm_before_content") : undefined;
+    if (turned?.kind === "account_key_failed" && turned.lasting && turned.reason !== undefined) {
+      keyRefused = { upstream: candidate.upstream, reason: turned.reason };
+      break;
+    }
+    if (decide(failure, "llm_before_content", 0, 0) !== "switch") break;
   }
+  if (keyRefused !== undefined) await options.onAccountKeyRefused?.(keyRefused);
   await options.onEnded(FAILED);
   return refused === undefined
     ? new Response("The model service could not be reached", { status: 502 })

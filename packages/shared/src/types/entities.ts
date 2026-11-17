@@ -14,6 +14,7 @@ import type { ChatAttachedChip } from "@shared/schemas/api.js";
 import type { CreditSourceKind } from "@shared/types/credit.js";
 import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
+import type { AccountKeyFailureReason } from "@shared/types/task-failure.js";
 import type { TimelineRate } from "@shared/timeline/time.js";
 import type { TimelineExecutionStatusSchema } from "@shared/timeline/web-animation.js";
 import type { z } from "zod";
@@ -1050,6 +1051,8 @@ export interface TimelineExecution {
   failureReason: string | null;
   /** The upstream a failure of the payer's own key names (inner#1953); null for any other failure. */
   failureUpstream: string | null;
+  /** Why the upstream refused the payer's own key (`account_key_failed`, inner#1953); null otherwise. */
+  failureKeyReason: AccountKeyFailureReason | null;
   /** Credits charged, as Postgres renders the numeric. */
   billedCredits: string | null;
   billedAt: string | null;

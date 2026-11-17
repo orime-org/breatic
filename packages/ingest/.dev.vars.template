@@ -12,11 +12,10 @@
 # Generate one with `openssl rand -hex 32`.
 INGEST_SHARED_SECRET=
 
-# Optional: the private key that opens the model keys a web-animation run
-# fetches from the server before each model call (RSA-OAEP-256, PKCS#8 PEM).
-# The server holds the matching public key as INGEST_KEY_SEAL_PUBLIC_KEY; keys
-# are opened in memory for that one call and never stored here. Without it, a
-# web-animation submit answers 501 feature_disabled. Generate the pair as
-# `.env.dev` describes. On a deployment:
+# Optional: the private half (PKCS#8 PEM) of the key pair web-animation runs
+# need. The Worker holds no model key: our worker sends each run's keys sealed
+# to the public half (INGEST_KEY_SEAL_PUBLIC_KEY in the repo-root `.env`), and
+# this opens them into the job object's memory only. Without it, a
+# web-animation submit answers 501 feature_disabled. On a deployment:
 # `wrangler secret put KEY_UNSEAL_PRIVATE_KEY --env production`.
 KEY_UNSEAL_PRIVATE_KEY=

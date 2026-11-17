@@ -25,8 +25,6 @@ const webAnimationSchema = z.object({
   }).prefault({}),
   model: z.string().min(1).default("deepseek/deepseek-v4.1-flash-1017"),
   max_tokens: positiveInt.default(32_000),
-  /** How far a signed model-key request's timestamp may be from the server's clock (inner#1953). */
-  key_request_window_seconds: positiveInt.default(300),
   /** One model call's limit, and so the longest a cancel or deadline waits to drain it. */
   call_timeout_ms: positiveInt.default(300_000),
   max_package_bytes: positiveInt.default(5_000_000),

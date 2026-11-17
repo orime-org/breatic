@@ -2,25 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The model-key channel between the ingest Worker and our server (inner#1953): the Worker signs its request with the
- * shared secret and a timestamp, and the server answers the keys sealed as a compact JWE (`RSA-OAEP-256` + `A256GCM`)
- * that only the Worker's private key opens. Both ends call these functions, so one copy of the format serves both.
+ * The payer's own model keys of a web-animation job (inner#1953): our worker seals them as a compact JWE
+ * (`RSA-OAEP-256` + `A256GCM`) that only the ingest Worker's private key opens. Both ends call these functions, so one
+ * copy of the format serves both.
  */
 
 import fc from "fast-check";
 import { exportPKCS8, exportSPKI, generateKeyPair } from "jose";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import {
-  ModelKeysUnreadable,
-  openModelKeys,
-  sealModelKeys,
-  signModelKeysRequest,
-  verifyModelKeysRequest,
-} from "@shared/upload/model-keys.js";
-
-const SECRET = "test-ingest-secret";
-const BODY = JSON.stringify({ executionId: "7f1b6f1e-3c1e-4a8e-9a5e-2f1f6b0a9c11", upstreams: ["openrouter"] });
+import { ModelKeysUnreadable, openModelKeys, sealModelKeys } from "@shared/upload/model-keys.js";
 
 let publicKey: string;
 let privateKey: string;
@@ -86,48 +77,5 @@ describe("sealModelKeys / openModelKeys", () => {
     const sealed = await sealModelKeys({ openrouter: "k" }, publicKey.replace(/\n/g, "\\n"));
 
     expect(await openModelKeys(sealed, privateKey.replace(/\n/g, "\\n"))).toEqual({ openrouter: "k" });
-  });
-});
-
-describe("signModelKeysRequest / verifyModelKeysRequest", () => {
-  const NOW = 1_800_000_000;
-
-  it("accepts a request signed with the secret within the window", async () => {
-    const signature = await signModelKeysRequest(SECRET, NOW, BODY);
-
-    expect(await verifyModelKeysRequest({ secret: SECRET, timestamp: String(NOW), signature, body: BODY, nowSeconds: NOW + 299, windowSeconds: 300 })).toBe("ok");
-  });
-
-  it("refuses a timestamp outside the window", async () => {
-    const signature = await signModelKeysRequest(SECRET, NOW, BODY);
-
-    expect(await verifyModelKeysRequest({ secret: SECRET, timestamp: String(NOW), signature, body: BODY, nowSeconds: NOW + 301, windowSeconds: 300 })).toBe("timestamp");
-    expect(await verifyModelKeysRequest({ secret: SECRET, timestamp: String(NOW), signature, body: BODY, nowSeconds: NOW - 301, windowSeconds: 300 })).toBe("timestamp");
-  });
-
-  it("refuses a changed body, timestamp or secret, and missing or malformed headers", async () => {
-    const signature = await signModelKeysRequest(SECRET, NOW, BODY);
-    const base = { secret: SECRET, timestamp: String(NOW), signature, body: BODY, nowSeconds: NOW, windowSeconds: 300 };
-
-    expect(await verifyModelKeysRequest({ ...base, body: BODY.replace("openrouter", "fal") })).toBe("signature");
-    expect(await verifyModelKeysRequest({ ...base, timestamp: String(NOW + 1) })).toBe("signature");
-    expect(await verifyModelKeysRequest({ ...base, secret: "another-secret" })).toBe("signature");
-    expect(await verifyModelKeysRequest({ ...base, secret: "" })).toBe("signature");
-    expect(await verifyModelKeysRequest({ ...base, signature: undefined })).toBe("headers");
-    expect(await verifyModelKeysRequest({ ...base, timestamp: "soon" })).toBe("headers");
-    expect(await verifyModelKeysRequest({ ...base, signature: "%%%" })).toBe("headers");
-  });
-
-  it("accepts only the exact signed body, for any body", async () => {
-    await fc.assert(
-      fc.asyncProperty(fc.string(), fc.string(), async (body, other) => {
-        fc.pre(body !== other);
-        const signature = await signModelKeysRequest(SECRET, NOW, body);
-        const base = { secret: SECRET, timestamp: String(NOW), signature, nowSeconds: NOW, windowSeconds: 300 };
-        expect(await verifyModelKeysRequest({ ...base, body })).toBe("ok");
-        expect(await verifyModelKeysRequest({ ...base, body: other })).toBe("signature");
-      }),
-      { numRuns: 50 },
-    );
   });
 });
