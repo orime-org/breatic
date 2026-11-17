@@ -71,7 +71,7 @@ const SPACE_SECTIONS: Record<string, readonly string[]> = {
   ],
   document: ["Document spaces", "Document proposal cards", "Document snapshots"],
   timeline: ["Timeline spaces"],
-  "3d": ["3D spaces"],
+  "3d": ["3D spaces", "3D appearance"],
 };
 
 beforeAll(() => {
