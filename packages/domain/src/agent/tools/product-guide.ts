@@ -946,8 +946,8 @@ export function renderProductGuide(): string {
       "a task past it waits its turn and starts by itself when an earlier one ends, and the time it waits does " +
       "not count against its two hours. A node with a waiting task shows an hourglass in that column, just below " +
       `the spinning circle; hovering it shows ${quoted(t("canvas.task.status.waiting"))} with how many, and why: ` +
-      `${quoted(t("canvas.task.waitReasonLimit", { limit: 2 }))} — clicking it opens the ${quoted(t("canvas.task.status.running"))} ` +
-      `list, where a waiting row says ${quoted(t("canvas.task.status.waiting"))}, shows no running time and ` +
+      `${quoted(t("canvas.task.waitReasonLimit", { limit: 2 }))} — clicking it opens the ${quoted(t("canvas.task.status.waiting"))} ` +
+      `list, which holds only the waiting tasks (the ${quoted(t("canvas.task.status.running"))} list holds only those already running); each row there says ${quoted(t("canvas.task.status.waiting"))}, shows no running time and ` +
       `offers ${quoted(t("common.cancel"))}, which ends it as ${quoted(t("canvas.task.failure.cancelled"))} A task ` +
       "that has started running cannot be cancelled; pressing it then says " +
       `${quoted(t("canvas.task.alreadyStarted"))} A node with a waiting task cannot be deleted, as with a running one.`,
