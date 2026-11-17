@@ -17,6 +17,7 @@ import { DIVIDER } from '@web/spaces/document/document-divider';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
 import { COLUMNS, FORMULA } from '@web/spaces/document/document-insert-row';
 import { QUOTED } from '@web/spaces/document/document-list-block';
+import { holdsNestedBlocks, rowById } from '@web/spaces/document/document-row-by-id';
 import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
 
 /** The entries, in menu order: block types, then divider, table, columns, formula, then media. */
@@ -118,7 +119,9 @@ function blockQuoted(doc: PMNode, blockId: string): boolean {
  *
  * Quote is out of reach only when the row turns into the pick: a quoted row
  * made into a quote stays as it was. Below, the new row inherits the quote and
- * Quote gives a quoted row (`document-block-run.ts`).
+ * Quote gives a quoted row (`document-block-run.ts`). Table is out of reach
+ * when it would fill a row with blocks indented under it, whose own rows
+ * would replace them.
  * @param doc - The document.
  * @param blockId - The row.
  * @param mode - How the pick acts on it.
@@ -127,6 +130,10 @@ function blockQuoted(doc: PMNode, blockId: string): boolean {
 export function insertReach(doc: PMNode, blockId: string, mode: InsertMode): ReadonlySet<InsertEntryId> {
   const out = new Set<InsertEntryId>();
   if (blockInTableCell(doc, blockId)) out.add('table');
+  if (mode === 'fill') {
+    const row = rowById(doc, blockId);
+    if (row !== undefined && holdsNestedBlocks(row)) out.add('table');
+  }
   if (columnsOutOfReach(doc, blockId)) out.add(COLUMNS);
   if (mode === 'fill' && blockQuoted(doc, blockId)) out.add('quote');
   return out;

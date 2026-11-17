@@ -111,6 +111,16 @@ function slashRow(editor: HandleEditor, typed: string): SlashRow | undefined {
 }
 
 /**
+ * Drops a move in which the pointer did not move: WebKit sends one when the
+ * list or the body scrolls under a pointer at rest, and it must not light the
+ * row that scrolled under it.
+ * @param event - The move, at the capture phase of a menu surface.
+ */
+function ignoreStillPointer(event: React.MouseEvent): void {
+  if (event.movementX === 0 && event.movementY === 0) event.stopPropagation();
+}
+
+/**
  * Cancels a press so the body keeps the focus and the caret.
  * @param event - The press.
  */
@@ -221,7 +231,19 @@ export function DocumentSlashMenu({ editor }: DocumentSlashMenuProps): React.JSX
   }, [editor, menu]);
 
   if (state === undefined || !slashMenuShown(state)) return null;
-  return <OpenSlashMenu editor={editor} menu={menu} trigger={state.triggerCharacter} query={state.query} />;
+  // The extension draws a fresh id for every opening and carries it unchanged
+  // while that menu stays open, so a trigger typed with a menu already open
+  // remounts the menu.
+  const opening = menu.prosemirrorPlugins?.[0]?.getState(editor.prosemirrorState) as { decorationId?: string } | undefined;
+  return (
+    <OpenSlashMenu
+      key={opening?.decorationId}
+      editor={editor}
+      menu={menu}
+      trigger={state.triggerCharacter}
+      query={state.query}
+    />
+  );
 }
 
 interface OpenSlashMenuProps {
@@ -562,6 +584,7 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
         // Faded in once placed, so the first frame at the library's origin is not seen.
         style={{ ...floatingStyles, opacity: isPositioned ? 1 : 0 }}
         data-testid='doc-slash-menu'
+        onMouseMoveCapture={ignoreStillPointer}
         // Nothing on the menu takes the focus from the body: rows, scrollbar,
         // rules, padding and the empty line alike (5.4).
         onMouseDownCapture={keepFocus}
@@ -637,6 +660,7 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
           ref={gridFloat.refs.setFloating}
           style={gridFloat.floatingStyles}
           data-testid='doc-slash-table-grid'
+          onMouseMoveCapture={ignoreStillPointer}
           onMouseDownCapture={keepFocus}
           className={menuSurface}
           {...layer}
