@@ -273,11 +273,10 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   // Panels and selection (design §13.2, §13.8).
   const [panels, dispatchPanels] = React.useReducer(transitionMotionPanels, MOTION_PANELS_CLOSED);
   const panelsEvent = React.useCallback((event: MotionPanelsEvent): void => dispatchPanels(event), []);
-  const [selection, setSelection] = React.useState<SelectionState>(SELECTION_NONE);
+  const [selection, setSelection] = React.useState<SelectionState<WebAnimationRowView>>(SELECTION_NONE);
   const selectionRef = React.useRef(selection);
-  const [fetched, setFetched] = React.useState<ReadonlyMap<string, WebAnimationRowView>>(() => new Map());
   const requestSeq = React.useRef(0);
-  const select = React.useCallback((event: SelectionEvent): void => {
+  const select = React.useCallback((event: SelectionEvent<WebAnimationRowView>): void => {
     const { state, effects } = transitionWebAnimationSelection(selectionRef.current, event);
     selectionRef.current = state;
     setSelection(state);
@@ -285,21 +284,27 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
       if (effect.type === 'show_tab') dispatchPanels({ type: 'show_tab', tab: effect.tab });
       if (effect.type === 'toast_not_found') toast.warning(t('spaces.webAnimation.notFound'));
       if (effect.type === 'fetch') {
-        timelineApi.getExecution(projectId, spaceId, effect.executionId).then((row) => {
-          setFetched((current) => new Map(current).set(row.id, row));
-          select({ type: 'fetched', requestId: effect.requestId, row });
-        }, () => select({ type: 'fetch_failed', requestId: effect.requestId }));
+        timelineApi.getExecution(projectId, spaceId, effect.executionId).then((row) => select({ type: 'fetched', requestId: effect.requestId, row }), () => select({ type: 'fetch_failed', requestId: effect.requestId }));
       }
     }
   }, [projectId, spaceId, t]);
-  const rowById = React.useCallback((id: string): WebAnimationRowView | undefined => lists.byId.get(id) ?? fetched.get(id), [lists.byId, fetched]);
-  const selectedId = selection.status === 'selected' ? selection.executionId : null;
-  const row = selectedId === null ? undefined : rowById(selectedId);
+  // A row by id: its copy on a loaded page, or the selected row as the selection last saw it.
+  const rowById = React.useCallback((id: string): WebAnimationRowView | undefined => {
+    const current = selectionRef.current;
+    return lists.byId.get(id) ?? (current.status === 'selected' && current.row.id === id ? current.row : undefined);
+  }, [lists.byId]);
+  const selected = selection.status === 'selected' ? selection.row : undefined;
+  const selectedId = selected?.id ?? null;
+  // The shown row is never missing while one is selected: the freshest listed copy, or the one the selection holds.
+  const row = selected === undefined ? undefined : lists.byId.get(selected.id) ?? selected;
   const locate = React.useCallback((executionId: string, threadId: string | null): void => {
     requestSeq.current += 1;
-    select({ type: 'locate', executionId, loaded: rowById(executionId) !== undefined, requestId: requestSeq.current, threadId });
+    select({ type: 'locate', executionId, row: rowById(executionId) ?? null, requestId: requestSeq.current, threadId });
   }, [rowById, select]);
-  const pick = React.useCallback((id: string): void => select({ type: 'pick', executionId: id }), [select]);
+  const pick = React.useCallback((id: string): void => {
+    const found = rowById(id);
+    if (found !== undefined) select({ type: 'pick', row: found });
+  }, [rowById, select]);
 
   // With nothing selected, the newest finished result opens once the list is there (design §7.1): on entering, after
   // an open request that names no result, and after a named result could not be read.
@@ -313,11 +318,11 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const { refetch: refetchDoneOwn } = lists.done.own;
   const { refetch: refetchDoneLegacy } = lists.done.legacy;
   const retryDone = React.useCallback((): void => { void refetchDoneOwn(); void refetchDoneLegacy(); }, [refetchDoneOwn, refetchDoneLegacy]);
-  // A row's status crossing into the other tab moves the tab with it.
-  const status = row?.status;
+  // The selection keeps the freshest copy of its row, and moves the tab only when that row crosses into the other one;
+  // running this again with the copy it holds (the Space shown again, a new `select`) asks for nothing.
   React.useEffect(() => {
-    if (selectedId !== null && status !== undefined) select({ type: 'row_changed', row: { id: selectedId, status } });
-  }, [selectedId, status, select]);
+    if (row !== undefined) select({ type: 'row_changed', row });
+  }, [row, select]);
 
   // Esc closes the open panel.
   React.useEffect(() => {
@@ -403,7 +408,6 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         return;
       }
       const { row: accepted, created } = outcome.result;
-      setFetched((current) => new Map(current).set(accepted.id, accepted));
       showResult(() => select({ type: 'accepted', created, row: accepted }));
       dispatchPanels({ type: 'accepted', created, tab: created || !webAnimationExecutionEnded(accepted.status) ? 'running' : 'done' });
       refresh();

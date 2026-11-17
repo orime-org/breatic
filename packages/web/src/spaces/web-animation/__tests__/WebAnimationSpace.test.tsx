@@ -110,14 +110,27 @@ function listing(rows: Array<Record<string, unknown>>): void {
  * @returns The Space's element.
  */
 function show(readOnly = false): HTMLElement {
+  showInActivity(readOnly);
+  return screen.getByTestId('space-region');
+}
+
+/**
+ * Render the Motion Space inside a React Activity, as the Project page keeps a Space tab that is not shown.
+ * @param readOnly - Whether the user is a Viewer.
+ * @returns Hides or shows the Space again.
+ */
+function showInActivity(readOnly = false): (mode: 'visible' | 'hidden') => void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   clients.push(client);
-  render(<QueryClientProvider client={client}><TooltipProvider><SpaceConnectionContext.Provider value={CONNECTED}>
+  const tree = (mode: 'visible' | 'hidden'): React.JSX.Element => <QueryClientProvider client={client}><TooltipProvider><SpaceConnectionContext.Provider value={CONNECTED}>
     <div data-region='space' data-testid='space-region'>
-      <WebAnimationSpace projectId={PROJECT} spaceId={SPACE} readOnly={readOnly} myRole={readOnly ? 'viewer' : 'editor'} />
+      <React.Activity mode={mode}>
+        <WebAnimationSpace projectId={PROJECT} spaceId={SPACE} readOnly={readOnly} myRole={readOnly ? 'viewer' : 'editor'} />
+      </React.Activity>
     </div>
-  </SpaceConnectionContext.Provider></TooltipProvider></QueryClientProvider>);
-  return screen.getByTestId('space-region');
+  </SpaceConnectionContext.Provider></TooltipProvider></QueryClientProvider>;
+  const { rerender } = render(tree('visible'));
+  return (mode) => rerender(tree(mode));
 }
 
 /**
@@ -548,6 +561,73 @@ describe('a preview that cannot load', () => {
 async function refetchFailing(): Promise<void> {
   await act(async () => { await clients.at(-1)!.refetchQueries(); await new Promise((resolve) => setTimeout(resolve, 10)); });
 }
+
+describe('the selected result', () => {
+  /**
+   * A row still running, as the In Progress list answers it.
+   * @param id - The execution.
+   * @returns The row.
+   */
+  function running(id: string): Record<string, unknown> {
+    return { ...done(id, 'Running logo', '2026-11-15T10:00:00.000000Z'), status: 'running', phase: 'generating', resultSourceVersionId: null, usageCredits: 0, billedCredits: null, billedAt: null };
+  }
+
+  /**
+   * Answer the lists with these rows in Completed and In Progress.
+   * @param doneRows - The finished rows, newest first.
+   * @param runningRows - The rows still running.
+   */
+  function lists(doneRows: Array<Record<string, unknown>>, runningRows: Array<Record<string, unknown>>): void {
+    vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string }) => {
+      if (params.scope === 'timeline') return { rows: [], nextCursor: null, totals: { done: 0, inProgress: 0 } } as never;
+      const rows = params.group === 'running' ? runningRows : doneRows;
+      return { rows, nextCursor: null, totals: { done: doneRows.length, inProgress: runningRows.length } } as never;
+    });
+  }
+
+  it('stays in the preview after a read of the list no longer holds it', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z'), done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    // A newer result pushes NEWER off the first page.
+    vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string }) => (
+      params.group === 'running' || params.scope === 'timeline'
+        ? { rows: [], nextCursor: null, totals: { done: 0, inProgress: 0 } }
+        : { rows: [done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')], nextCursor: 'next', totals: { done: 3, inProgress: 0 } }
+    ) as never);
+    await refetchFailing();
+    expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER);
+    expect(screen.queryByTestId('motion-empty')).toBeNull();
+  });
+
+  it('keeps the tab the user chose when the Space is shown again', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    const setMode = showInActivity();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('motion-open-executions'));
+    const inProgress = within(await screen.findByTestId('motion-panel-executions')).getByRole('tab', { name: new RegExp(t('spaces.webAnimation.inProgress')) });
+    await user.click(inProgress);
+    expect(inProgress).toHaveAttribute('aria-selected', 'true');
+    act(() => setMode('hidden'));
+    act(() => setMode('visible'));
+    expect(within(screen.getByTestId('motion-panel-executions')).getByRole('tab', { name: new RegExp(t('spaces.webAnimation.inProgress')) })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('moves the tab with the selected row when it ends', async () => {
+    lists([], [running(NEWER)]);
+    show();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('motion-open-executions'));
+    const panel = await screen.findByTestId('motion-panel-executions');
+    await user.click(within(panel).getByRole('tab', { name: new RegExp(t('spaces.webAnimation.inProgress')) }));
+    await user.click(await within(panel).findByTestId(`motion-row-${NEWER}`));
+    lists([done(NEWER, 'Running logo', '2026-11-15T10:00:00.000000Z')], []);
+    await refetchFailing();
+    await waitFor(() => expect(within(panel).getByRole('tab', { name: new RegExp(t('spaces.webAnimation.completed')) })).toHaveAttribute('aria-selected', 'true'));
+    expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER);
+  });
+});
 
 describe('the execution list when a read fails', () => {
   it('keeps the rows when Load more fails, and turns Load more into Retry', async () => {
