@@ -52,6 +52,25 @@ interface NativeHandleObservation {
   center: [number, number, number];
 }
 
+/**
+ * Each part's first material as drawn, for the page's own inspection: its class, colour and whether it shows a picture.
+ * @param root - A loaded instance.
+ * @returns The drawn state by part.
+ */
+function renderedParts(root: Group): Record<string, { type: string; color: string | null; map: boolean }> {
+  const parts: Record<string, { type: string; color: string | null; map: boolean }> = {};
+  root.traverse((child) => {
+    if (child.userData.lookHighlight || !(child instanceof Mesh)) return;
+    for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
+      const part = material.userData.lookPart as string | undefined;
+      if (part === undefined || parts[part]) continue;
+      const drawn = material as MeshBasicMaterial;
+      parts[part] = { type: material.type, color: drawn.color ? `#${drawn.color.getHexString()}` : null, map: Boolean(drawn.map) };
+    }
+  });
+  return parts;
+}
+
 interface RenderedObject {
   source: string;
   lease: SceneModelLease;
@@ -203,7 +222,11 @@ export class SceneViewportRuntime {
       this.markShadows(true);
     },
     // Inside an update or a model load, their own one 'changed' covers it.
-    onChanged: () => { if (!this.syncing) this.monitorEvent({ type: 'changed' }); },
+    onChanged: () => {
+      if (this.syncing) return;
+      this.monitorEvent({ type: 'changed' });
+      this.inspect();
+    },
     onFailure: (id, failure) => this.props.onLookFailure?.(id, failure),
   });
   private gesture: SceneTransformGesture | null = null;
@@ -1562,7 +1585,9 @@ export class SceneViewportRuntime {
     const canvas = this.renderer.domElement;
     canvas.dataset.gestureActive = String(this.dragging);
     canvas.dataset.view = JSON.stringify({ position: this.camera.position.toArray(), target: this.orbit.target.toArray() });
-    canvas.dataset.objects = JSON.stringify([...this.items].flatMap(([id, item]) => item.root ? [{ id, position: item.root.position.toArray(), rotation: item.root.quaternion.toArray(), scale: item.root.scale.toArray() }] : []));
+    canvas.dataset.objects = JSON.stringify([...this.items].flatMap(([id, item]) => item.root ? [{ id, position: item.root.position.toArray(), rotation: item.root.quaternion.toArray(), scale: item.root.scale.toArray(),
+      parts: renderedParts(item.root) }] : []));
+    canvas.dataset.partHighlight = String(this.looks.overlays().length);
   }
 
   /**

@@ -1,0 +1,207 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+/**
+ * Part appearance in a 3D Space (inner#1693): presets and colours on a part, undo, reload, picking a part in the
+ * scene, copies, resets, a second member and a locked object.
+ */
+
+import { expect, type Page } from 'playwright/test';
+import { test, stateFile } from '../helpers/slot';
+import { openSmokeProject, smokeProjectId, smokeProjectUrl } from '../helpers/project';
+import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { liveModuleUrl } from '../helpers/live-module';
+import type * as ManagerModule from '../../src/data/yjs/manager';
+import type * as SceneSessionModule from '../../src/data/yjs/scene-session';
+
+interface DrawnPart { type: string; color: string | null; map: boolean }
+interface Rendered { id: string; parts: Record<string, DrawnPart> }
+
+const METAL = { roughness: 0.15, metalness: 1, opacity: 1, transmission: 0 };
+const GLASS = { roughness: 0.05, metalness: 0, opacity: 1, transmission: 1 };
+
+/**
+ * What the viewport draws for each object's parts.
+ * @param page - A page showing the scene.
+ * @returns Each object's id and drawn parts.
+ */
+async function rendered(page: Page): Promise<Rendered[]> {
+  return JSON.parse(await visibleSpace(page).getByTestId('three-d-viewport').getAttribute('data-objects') ?? '[]') as Rendered[];
+}
+
+/**
+ * Every object's committed look, in document order, read from the app's own live session.
+ * @param page - A page showing the scene.
+ * @param spaceId - The 3D Space.
+ * @returns The looks as stored; an object without one gives {}.
+ */
+async function committedLooks(page: Page, spaceId: string): Promise<Array<Record<string, Record<string, unknown>>>> {
+  const managerAt = await liveModuleUrl(page, 'data/yjs/manager.ts');
+  const sceneAt = await liveModuleUrl(page, 'data/yjs/scene-session.ts');
+  return page.evaluate(async ({ managerAt, sceneAt, projectId, spaceId }) => {
+    const manager = await import(/* @vite-ignore */ managerAt) as typeof ManagerModule;
+    const scene = await import(/* @vite-ignore */ sceneAt) as typeof SceneSessionModule;
+    const session = scene.peekSceneSession(manager.docName.threeDSpace(projectId, spaceId));
+    if (!session || session.getSnapshot().status !== 'ready') throw new Error('The displayed scene has no live ready session.');
+    return session.getSnapshot().objects.map((object) => ({ ...object.look }));
+  }, { managerAt, sceneAt, projectId: smokeProjectId(), spaceId });
+}
+
+/**
+ * Open a fresh 3D Space with one built-in box selected and its parts listed.
+ * @param page - The page.
+ * @param label - Space name prefix.
+ * @returns The Space id.
+ */
+async function sceneWithBox(page: Page, label: string): Promise<string> {
+  await openSmokeProject(page);
+  const id = await createSpace(page, '3d', `${label}-${Date.now()}`);
+  await visibleSpace(page).getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Add block', exact: true }).click();
+  await expect(page.getByTestId('scene-look-part-0')).toBeVisible({ timeout: 30_000 });
+  return id;
+}
+
+/**
+ * Set the selected part's colour through the colour field's text box.
+ * @param page - The page.
+ * @param hex - The colour.
+ */
+async function setPartColor(page: Page, hex: string): Promise<void> {
+  const swatch = page.getByTestId('scene-look-part-fields').getByRole('button', { name: 'Colour', exact: true });
+  await swatch.click();
+  // The swatch names the popover it opens; the right panel around it is a popover of its own.
+  const popover = await swatch.getAttribute('aria-controls');
+  if (!popover) throw new Error('The colour swatch names no popover.');
+  const box = page.locator(`[id="${popover}"] input`);
+  await box.fill(hex);
+  await box.press('Enter');
+  await page.keyboard.press('Escape');
+}
+
+/**
+ * Click the selected object in the scene at a point the transform handles do not answer.
+ * @param page - The page with one object selected.
+ * @param shift - Whether Shift is held.
+ * @throws {Error} When no point near the object's centre is free of the handles.
+ */
+async function clickSelectedObject(page: Page, shift = false): Promise<void> {
+  const canvas = visibleSpace(page).getByTestId('three-d-viewport');
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('The viewport has no box.');
+  const native = JSON.parse(await canvas.getAttribute('data-native-controls') ?? '{}') as { center: number[] };
+  const centre = { x: box.x + (native.center[0] + 1) / 2 * box.width, y: box.y + (1 - native.center[1]) / 2 * box.height };
+  // The box stands on its origin, so its faces are above the handle centre.
+  for (const [dx, dy] of [[-14, -30], [14, -30], [-20, -18], [20, -18], [0, -40], [-8, -48]]) {
+    await page.mouse.move(centre.x + dx, centre.y + dy);
+    const axis = (JSON.parse(await canvas.getAttribute('data-native-controls') ?? '{}') as { axis: string | null }).axis;
+    if (axis !== null) continue;
+    if (shift) await page.keyboard.down('Shift');
+    await page.mouse.click(centre.x + dx, centre.y + dy);
+    if (shift) await page.keyboard.up('Shift');
+    return;
+  }
+  throw new Error('No point on the object is free of the transform handles.');
+}
+
+test('a box part takes a preset and a colour, undo takes back one step, and the look stays after reload', async ({ page }) => {
+  const id = await sceneWithBox(page, 'scene-look-preset');
+  try {
+    await expect.poll(async () => (await rendered(page))[0]?.parts['0']?.type).toBe('MeshStandardMaterial');
+    await page.getByTestId('scene-look-part-0').click();
+    await page.getByTestId('scene-look-preset-glass').click();
+    await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: GLASS }]);
+    // Glass lets light through, which takes the physical material.
+    await expect.poll(async () => (await rendered(page))[0].parts['0'].type).toBe('MeshPhysicalMaterial');
+    await expect(page.getByTestId('scene-look-modified-0')).toBeVisible();
+
+    await setPartColor(page, '#ff0000');
+    await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: { ...GLASS, color: '#ff0000' } }]);
+    await expect.poll(async () => (await rendered(page))[0].parts['0'].color).toBe('#ff0000');
+
+    await visibleSpace(page).getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: GLASS }]);
+    await expect.poll(async () => (await rendered(page))[0].parts['0'].color).not.toBe('#ff0000');
+
+    await page.reload();
+    await expect.poll(async () => (await rendered(page)).length, { timeout: 30_000 }).toBe(1);
+    await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: GLASS }]);
+    await expect.poll(async () => (await rendered(page))[0].parts['0'].type).toBe('MeshPhysicalMaterial');
+  } finally {
+    await deleteSpace(page, id);
+  }
+});
+
+test('clicking the only selected object picks its part and tints it; Shift-click selects as before', async ({ page }) => {
+  const id = await sceneWithBox(page, 'scene-look-pick');
+  try {
+    const canvas = visibleSpace(page).getByTestId('three-d-viewport');
+    await expect.poll(async () => (await rendered(page)).length).toBe(1);
+    await expect(canvas).toHaveAttribute('data-part-highlight', '0');
+    await clickSelectedObject(page);
+    await expect(page.getByTestId('scene-look-part-0')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('scene-look-part-fields')).toBeVisible();
+    await expect.poll(async () => Number(await canvas.getAttribute('data-part-highlight'))).toBeGreaterThan(0);
+
+    // Shift-click toggles the object out of the selection and drops the part with it.
+    await clickSelectedObject(page, true);
+    await expect(page.getByTestId('scene-look-section')).toHaveCount(0);
+    await expect(canvas).toHaveAttribute('data-part-highlight', '0');
+  } finally {
+    await deleteSpace(page, id);
+  }
+});
+
+test('a copy keeps the look and changes on its own; reset part and reset all write back the model', async ({ page }) => {
+  const id = await sceneWithBox(page, 'scene-look-copy');
+  try {
+    await page.getByTestId('scene-look-part-0').click();
+    await page.getByTestId('scene-look-preset-metal').click();
+    await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: METAL }]);
+
+    await visibleSpace(page).getByRole('button', { name: 'Duplicate', exact: true }).click();
+    await expect.poll(async () => (await rendered(page)).length, { timeout: 30_000 }).toBe(2);
+    await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: METAL }, { 0: METAL }]);
+    // The copy is selected: changing it leaves the original as it was.
+    await page.getByTestId('scene-look-part-0').click();
+    await page.getByTestId('scene-look-preset-glass').click();
+    await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: METAL }, { 0: GLASS }]);
+
+    await page.getByTestId('scene-look-reset-part').click();
+    await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: METAL }, {}]);
+    await expect(page.getByTestId('scene-look-reset-all')).toBeDisabled();
+    await page.getByTestId('scene-look-preset-glass').click();
+    await page.getByTestId('scene-look-reset-all').click();
+    await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: METAL }, {}]);
+    await expect.poll(async () => (await rendered(page))[1]?.parts['0']?.type).toBe('MeshStandardMaterial');
+  } finally {
+    await deleteSpace(page, id);
+  }
+});
+
+test('a second member sees a part change at once, and a locked object keeps its part list but greys every setting', async ({ page, browser, baseURL }) => {
+  const id = await sceneWithBox(page, 'scene-look-peer');
+  const peerContext = await browser.newContext({ baseURL, storageState: stateFile('A') });
+  const peer = await peerContext.newPage();
+  try {
+    await peer.goto(smokeProjectUrl());
+    await peer.getByTestId('space-drawer-trigger').click();
+    await peer.getByTestId(`space-drawer-row-${id}`).getByRole('button').first().click();
+    await expect(peer.getByTestId('space-drawer')).toHaveCount(0);
+    await expect.poll(async () => (await rendered(peer)).length, { timeout: 30_000 }).toBe(1);
+
+    await page.getByTestId('scene-look-part-0').click();
+    await setPartColor(page, '#00ff00');
+    await expect.poll(() => committedLooks(peer, id)).toEqual([{ 0: { color: '#00ff00' } }]);
+    await expect.poll(async () => (await rendered(peer))[0].parts['0'].color).toBe('#00ff00');
+
+    await page.getByRole('button', { name: 'Lock', exact: true }).click();
+    await expect(page.getByTestId('scene-look-part-0')).toBeEnabled();
+    await expect(page.getByTestId('scene-look-preset-metal')).toBeDisabled();
+    await expect(page.getByTestId('scene-look-reset-all')).toBeDisabled();
+    await expect(page.getByTestId('scene-look-reset-part')).toBeDisabled();
+  } finally {
+    await peerContext.close();
+    await deleteSpace(page, id);
+  }
+});
