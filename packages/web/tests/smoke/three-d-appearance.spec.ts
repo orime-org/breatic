@@ -6,17 +6,22 @@
  * scene, copies, resets, a second member and a locked object.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { expect, type Page } from 'playwright/test';
 import { test, stateFile } from '../helpers/slot';
 import { openSmokeProject, smokeProjectId, smokeProjectUrl } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { liveModuleUrl } from '../helpers/live-module';
+import { roomForUploads } from '../helpers/upload-budget';
+import { uniquePicture } from '../helpers/upload';
 import type * as ManagerModule from '../../src/data/yjs/manager';
 import type * as SceneSessionModule from '../../src/data/yjs/scene-session';
 
 interface DrawnPart { type: string; color: string | null; map: boolean }
 interface Rendered { id: string; parts: Record<string, DrawnPart> }
 
+const FIXTURES = join(__dirname, '..', 'fixtures');
 const METAL = { roughness: 0.15, metalness: 1, opacity: 1, transmission: 0 };
 const GLASS = { roughness: 0.05, metalness: 0, opacity: 1, transmission: 1 };
 
@@ -202,6 +207,33 @@ test('a second member sees a part change at once, and a locked object keeps its 
     await expect(page.getByTestId('scene-look-reset-part')).toBeDisabled();
   } finally {
     await peerContext.close();
+    await deleteSpace(page, id);
+  }
+});
+
+test('a picture from the computer uploads onto the part it was chosen for @needs-storage @needs-ingest', async ({ page }) => {
+  const id = await sceneWithBox(page, 'scene-look-upload');
+  try {
+    await page.getByTestId('scene-look-part-0').click();
+    await roomForUploads(1);
+    await page.getByTestId('scene-look-choose-image').click();
+    await page.getByTestId('scene-image-picker-local').click();
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Choose file', exact: true }).click();
+    await (await chooser).setFiles({ name: 'pattern.png', mimeType: 'image/png', buffer: uniquePicture(readFileSync(join(FIXTURES, 'portrait.png'))) });
+
+    await expect.poll(async () => {
+      const [look] = await committedLooks(page, id);
+      return typeof look?.['0']?.map === 'string' && look['0'].map !== 'none';
+    }, { timeout: 60_000 }).toBe(true);
+    // The picture shows on the part at white, its colours its own.
+    await expect.poll(async () => (await rendered(page))[0].parts['0'], { timeout: 60_000 }).toMatchObject({ map: true, color: '#ffffff' });
+    await expect(page.getByTestId('scene-look-remove-image')).toBeVisible();
+
+    await page.getByTestId('scene-look-remove-image').click();
+    await expect.poll(() => committedLooks(page, id)).toEqual([{}]);
+    await expect.poll(async () => (await rendered(page))[0].parts['0'].map).toBe(false);
+  } finally {
     await deleteSpace(page, id);
   }
 });
