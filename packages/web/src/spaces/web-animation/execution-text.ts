@@ -115,3 +115,15 @@ export function stepMark(row: Pick<WebAnimationRowView, 'kind' | 'status' | 'pha
 export function cancelIntent(executionId: string): string {
   return `web-animation-cancel:${executionId}`;
 }
+
+/**
+ * The run-once intent of exporting one source version from one Motion Space, which Export and Re-export read; a
+ * second press while it waits joins the first.
+ * @param spaceId - The Motion Space.
+ * @param sourceVersionId - The source version rendered.
+ * @returns The intent.
+ * @throws {never} Never.
+ */
+export function exportIntent(spaceId: string, sourceVersionId: string): string {
+  return `web-animation-export:${spaceId}:${sourceVersionId}`;
+}

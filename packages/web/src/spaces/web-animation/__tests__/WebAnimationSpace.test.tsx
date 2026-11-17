@@ -31,12 +31,13 @@ import { bodyText } from '@web/spaces/document/use-comment-cards';
 import { webAnimationAnnotationStore } from '@web/spaces/web-animation/annotation-thread-store';
 import { WebAnimationSpace } from '@web/spaces/web-animation/WebAnimationSpace';
 import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
+import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
   return {
     ...actual,
-    timelineApi: { ...actual.timelineApi, listSpaceExecutions: vi.fn(), getExecution: vi.fn(), previewUrl: vi.fn(), limits: vi.fn(), resolveAsset: vi.fn() },
+    timelineApi: { ...actual.timelineApi, listSpaceExecutions: vi.fn(), getExecution: vi.fn(), previewUrl: vi.fn(), limits: vi.fn(), resolveAsset: vi.fn(), acceptExecution: vi.fn() },
   };
 });
 vi.mock('@hyperframes/player', () => ({}));
@@ -137,6 +138,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetRunOnceForTests();
   useSpaceOpenRequestStore.setState({ state: { status: 'none' } });
   for (const client of clients.splice(0)) client.clear();
   _resetForTests();
@@ -630,6 +632,38 @@ describe('the preview when the list read fails', () => {
     act(() => useSpaceOpenRequestStore.setState({ state: { status: 'opened', request: { type: 'web_animation', select: OLDER }, spaceId: SPACE } }));
     await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(t('spaces.webAnimation.notFound')));
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+  });
+});
+
+describe('exporting a result', () => {
+  beforeEach(() => {
+    vi.mocked(timelineApi.acceptExecution).mockReset().mockReturnValue(new Promise(() => {}));
+  });
+
+  /**
+   * Press a button twice before any answer, and see one request go and the button wait.
+   * @param testId - The button.
+   */
+  async function pressTwice(testId: string): Promise<void> {
+    const button = await screen.findByTestId(testId);
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await waitFor(() => expect(timelineApi.acceptExecution).toHaveBeenCalledOnce());
+    await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
+    expect(timelineApi.acceptExecution).toHaveBeenCalledOnce();
+    expect(screen.getByTestId(testId)).toHaveAttribute('aria-busy', 'true');
+  }
+
+  it('sends one export for two quick presses of Export, which waits for the answer', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    show();
+    await pressTwice('motion-action-export');
+  });
+
+  it('sends one export for two quick presses of Re-export, which waits for the answer', async () => {
+    listing([{ ...exported(done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')), status: 'failed', failureReason: 'render' }]);
+    show();
+    await pressTwice('motion-retry');
   });
 });
 

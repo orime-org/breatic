@@ -39,7 +39,7 @@ import { ANNOTATION_DRAFT_IDLE, transitionAnnotationDraft, type AnnotationDraftE
 import { webAnimationAnnotationStore } from '@web/spaces/web-animation/annotation-thread-store';
 import { CANVAS_PLACEMENT_IDLE, transitionCanvasPlacement, type CanvasPlacementEvent } from '@web/spaces/web-animation/canvas-placement';
 import { transitionCreationDraft, type CreationDraftInput, type CreationDraftState } from '@web/spaces/web-animation/creation-draft';
-import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, endedSentenceKey, executionStepKeys, failureSentenceKey, phaseKey, stepMark } from '@web/spaces/web-animation/execution-text';
+import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, endedSentenceKey, exportIntent, executionStepKeys, failureSentenceKey, phaseKey, stepMark } from '@web/spaces/web-animation/execution-text';
 import { MOTION_PANELS_CLOSED, transitionMotionPanels, type MotionPanelsEvent, type MotionTab } from '@web/spaces/web-animation/motion-panels';
 import { ListLoadError, listShows } from '@web/spaces/web-animation/list-states';
 import { BarButton, PreviewUnavailable, playable, rowSeconds } from '@web/spaces/web-animation/motion-parts';
@@ -55,7 +55,7 @@ import { SELECTION_NONE, transitionWebAnimationSelection, type SelectionEvent, t
 import { useCurrentUserStore } from '@web/stores';
 import { useCanvasRevealStore } from '@web/stores/canvas-reveal';
 import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
-import { runOnce, useRunning } from '@web/stores/task-actions-in-flight';
+import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 
 /** How close to the playhead an annotation's point shows on the frame, in seconds. */
 const PIN_WINDOW_SECONDS = 0.15;
@@ -386,8 +386,11 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
 
   // Running, accepting and cancelling (design §4.2).
   const refresh = React.useCallback((): void => { void queryClient.invalidateQueries({ queryKey: spaceTasksQueryKey(projectId, spaceId) }); }, [queryClient, projectId, spaceId]);
-  const accept = React.useCallback((request: WebAnimationAcceptRequest, actionId: string, onRefused?: (message: string) => void): void => {
-    void runOnce(`web-animation-execution:${spaceId}:${actionId}`, {
+  // `intent` is what the button waits on, and a press while it waits sends nothing; `actionId` is fresh for every press
+  // that does send.
+  const accept = React.useCallback((request: WebAnimationAcceptRequest, intent: string, actionId: string, onRefused?: (message: string) => void): void => {
+    if (getRunning(intent) !== undefined) return;
+    void runOnce(intent, {
       scope: 'timeline-execution',
       prepare: () => ({ ...request, projectId, spaceId, actionId } as WebAnimationAcceptBody),
       send: (key, body) => timelineApi.acceptExecution(body, key),
@@ -439,23 +442,30 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     accept(input.base === null
       ? { kind: 'web_animation_create', prompt: input.prompt, ...common }
       : { kind: 'web_animation_modify', baseSourceVersionId: input.base.sourceVersionId, instruction: input.prompt, ...common },
-    actionId, (error) => dispatchDraft({ type: 'refused', error }));
-  }, [draft, readOnly, accept]);
+    `web-animation-execution:${spaceId}:${actionId}`, actionId, (error) => dispatchDraft({ type: 'refused', error }));
+  }, [draft, readOnly, spaceId, accept]);
 
   // The shown result's actions (design §7.2).
   const modify = React.useCallback((): void => {
     if (!playable(row)) return;
     openDialog({ base: { executionId: row.id, sourceVersionId: row.resultSourceVersionId, request: row.request }, aspect: row.input.aspect, durationSeconds: row.input.durationSeconds });
   }, [row, openDialog]);
+  // Export and Re-export of the shown result wait on the same intent: the source version it renders.
+  const shownExportIntent = playable(row) ? exportIntent(spaceId, row.resultSourceVersionId)
+    : row?.kind === 'web_animation_export' ? exportIntent(spaceId, row.input.sourceVersionId) : '';
+  const exporting = useRunning(shownExportIntent) !== undefined;
   const exportVideo = React.useCallback((): void => {
-    if (playable(row)) accept({ kind: 'web_animation_export', sourceVersionId: row.resultSourceVersionId }, newId());
-  }, [row, accept]);
+    if (playable(row)) accept({ kind: 'web_animation_export', sourceVersionId: row.resultSourceVersionId }, exportIntent(spaceId, row.resultSourceVersionId), newId());
+  }, [row, spaceId, accept]);
   const retry = React.useCallback((): void => {
     if (row === undefined) return;
-    if (row.kind === 'web_animation_export') { accept({ kind: 'web_animation_export', sourceVersionId: row.input.sourceVersionId }, newId()); return; }
+    if (row.kind === 'web_animation_export') {
+      accept({ kind: 'web_animation_export', sourceVersionId: row.input.sourceVersionId }, exportIntent(spaceId, row.input.sourceVersionId), newId());
+      return;
+    }
     const base = row.kind === 'web_animation_modify' ? { executionId: row.base.executionId, sourceVersionId: row.input.baseSourceVersionId, request: row.base.request } : null;
     openDialog({ base, prompt: row.request, aspect: row.input.aspect, durationSeconds: row.input.durationSeconds }, true);
-  }, [row, accept, openDialog]);
+  }, [row, spaceId, accept, openDialog]);
   // The result a modification starts from: listed here, or read once when it is not.
   const baseId = draft.status !== 'closed' ? draft.input.base?.executionId ?? null : null;
   const listedBase = baseId === null ? undefined : rowById(baseId);
@@ -607,7 +617,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
               ? <span className='text-status-error-foreground'>{t(endedSentenceKey(row.status, row.failureReason))}</span>
               : <span className='flex items-center gap-1.5'><LoaderCircle className='size-3.5 animate-spin' />
                 {`${t(`timeline.webAnimation.status.${row.status}`)}${row.phase !== null ? ` · ${t(phaseKey(row.kind, row.phase))}` : ''}`}</span>}
-            {failed && !readOnly && <Button data-testid='motion-retry' variant='outline' size='sm' onClick={retry} icon={<RotateCcw className='size-4' />}>
+            {failed && !readOnly && <Button data-testid='motion-retry' variant='outline' size='sm' loading={exporting} onClick={retry} icon={<RotateCcw className='size-4' />}>
               {t(row.kind === 'web_animation_export' ? 'spaces.webAnimation.reexport' : 'timeline.webAnimation.retry')}</Button>}
           </div>}
           {finished && playable(row) && resultThreads.filter(({ anchor }) => anchor.point !== null && Math.abs(anchor.timeSeconds - clock.time) < PIN_WINDOW_SECONDS).map(({ thread, anchor }) =>
@@ -657,7 +667,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
           {!readOnly && <BarButton testId='motion-action-modify' label={t('spaces.webAnimation.modify')} icon={<Pencil className='size-4' />} onClick={modify} />}
           {exportRow !== null
             ? <BarButton testId='motion-action-view-video' label={t('spaces.webAnimation.viewVideo')} icon={<Video className='size-4' />} onClick={viewVideo} />
-            : !readOnly && <BarButton testId='motion-action-export' label={t('spaces.webAnimation.export')} icon={<Upload className='size-4' />} onClick={exportVideo} />}
+            : !readOnly && <BarButton testId='motion-action-export' label={t('spaces.webAnimation.export')} icon={<Upload className='size-4' />} onClick={exportVideo} loading={exporting} />}
         </>}
         {finished && row.kind === 'web_animation_export' && <>
           <BarButton testId='motion-action-download' label={t('spaces.webAnimation.download')} icon={<Download className='size-4' />} onClick={download} disabled={exportAsset === undefined} />
