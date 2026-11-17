@@ -478,6 +478,10 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(tryCheaply()).not.toContain("made at the lowest cost: every setting that sets the price at its cheapest value, on a fast and cheap model.");
   });
 
+  it("keeps on a take the one model a step's prompt is written for, with its price settings at their cheapest", () => {
+    expect(tryCheaply()).toContain("A step whose prompt is written for one model keeps that model on its takes, so a take shows what its final will be; its other settings stay as above.");
+  });
+
   it("sets a setting the user names on a take as named, keeps every other as above, and does not make the take a final", () => {
     expect(tryCheaply()).toContain("On a take, a setting they name is set as they name it and every other setting stays as above; naming one does not make the take a final.");
     expect(tryCheaply()).not.toContain("A setting they name is set as they name it; every other setting stays at its cheapest.");
@@ -583,9 +587,9 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     expect(reach).toContain("a timeline holds video clips from the Project's videos and web animations it makes from a typed request, shown on top of the video below them.");
   });
 
-  it("makes Video trial shots before the final shot as takes on a fast, cheap model", () => {
+  it("makes Video trial shots before the final shot as takes on a fast, cheap model or the one model their prompt is written for", () => {
     const para = paragraphs().get("Video") ?? "";
-    expect(para).toContain("trial shots before the final shot, made as takes on a fast, cheap model;");
+    expect(para).toContain("trial shots before the final shot, made as takes on a fast, cheap model, or on the one model their prompt is written for;");
     expect(para).not.toContain("trial shots short unless they named the length");
     expect(para).not.toContain("trial shots short and on a fast model");
   });

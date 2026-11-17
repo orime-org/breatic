@@ -104,7 +104,7 @@
     "lang": "zh-CN",
     "text": "做一段 15 秒的产品宣传视频，产品是一款白色保温杯。",
     "user": "A small brand owner. No product photo to share; no brand guidelines. It will be posted on Douyin (vertical). Answers in Simplified Chinese.",
-    "pass": "Before anything is spent, the agent lays out the steps with what each makes and the estimated credits of what it proposes now (later steps may be estimated roughly); a turn that proposes nothing yet, waiting for the user's photo, owes no credits. It makes key frames first as 2-3 different looks; video is made from the picked key frame, and trial shots run at the lowest settings on a fast, cheap model, keeping the length the user named. It asks only what changes the result (such as where it is posted, or whether there is a product photo)."
+    "pass": "Before anything is spent, the agent lays out the steps with what each makes and the estimated credits of what it proposes now (later steps may be estimated roughly); a turn that proposes nothing yet, waiting for the user's photo, owes no credits. It makes key frames first as 2-3 different looks; video is made from the picked key frame, and trial shots run at the lowest settings on a fast, cheap model, or on a template's own model when they follow a template, keeping the length the user named. It asks only what changes the result (such as where it is posted, or whether there is a product photo)."
   },
   {
     "id": "timeline-cut",
