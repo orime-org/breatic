@@ -9,8 +9,6 @@
  * runs on the upstream the account chose for that model, while that upstream's key is live; anything else runs on the
  * deployment's keys. A soft-deleted account's keys are never used. The answer names key rows by id and never holds a
  * key in its serialisable part.
- *
- * Also the cleanup that clears a retired key's sealed text once no unfinished task points at it.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";

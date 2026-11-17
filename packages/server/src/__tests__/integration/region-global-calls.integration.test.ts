@@ -19,6 +19,10 @@
  *   2. Every call they make to the global region is a listed interface.
  *   3. A storage refusal tells the admin, reading the admin's account from
  *      the global region.
+ *   4. Choosing the keys a call runs on (inner#1953) reads the payer's sealed
+ *      key from the global region through the listed BYOK functions alone and
+ *      opens it here; a key row the global region no longer answers fails the
+ *      read as `account_key_missing`.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -34,12 +38,14 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
-import crypto, { generateKeyPairSync } from "node:crypto";
+import crypto, { generateKeyPairSync, randomBytes } from "node:crypto";
 import postgres from "postgres";
+import * as core from "@breatic/core";
 import { identityCookieName, getMembershipLimits, initCore, loadLocales, signIdentityToken } from "@breatic/core";
 import type { Hono } from "hono";
 import { withPeer } from "../helpers/peer.js";
 import { startRegionStandIn, type RegionStandIn } from "./region-harness.js";
+import * as domain from "@breatic/domain";
 import { assetRepo } from "@breatic/domain";
 import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
 import { assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
@@ -73,9 +79,15 @@ const LISTED = new Set([
   "getUnassignedCredits",
   "getGrantedCredits",
   "getStudioDebt",
+  "getStudioProviderKey",
+  "getProviderKeyById",
+  "getStudioKeyPlan",
 ]);
 
 const keys = generateKeyPairSync("ed25519");
+/** The master key this region seals and opens account keys with (inner#1953). */
+const SEAL_SECRET = randomBytes(32);
+const SEAL_RING = { current: "t1", keys: { t1: SEAL_SECRET } };
 const PRIVATE_KEY = keys.privateKey.export({ type: "pkcs8", format: "pem" }).toString();
 const PUBLIC_KEY = keys.publicKey.export({ type: "spki", format: "pem" }).toString();
 
@@ -110,6 +122,8 @@ beforeAll(async () => {
     PAYMENT_ENABLED: "true",
     STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
     STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+    PROVIDER_KEY_SECRET_ID: "t1",
+    PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SEAL_SECRET.toString("hex") }),
   });
   sql = postgres(inject("DATABASE_URL"), {
     max: 2,
@@ -212,5 +226,110 @@ describe("serving Studio and Project requests in a region", () => {
     await vi.waitFor(() => expect(global.received.map((call) => call.fn)).toContain("getAccounts"));
     const accounts = global.received.find((call) => call.fn === "getAccounts");
     expect(accounts?.args).toEqual([[userId]]);
+  });
+});
+
+/** The BYOK pieces under test, read by name so the suites above still run before they exist. */
+type Purpose = { kind: "llm" } | { kind: "media"; model: string };
+type KeySetLike = { owner: string; keyOf(upstream: string): string | undefined };
+const sealProviderKey = (core as unknown as { sealProviderKey?: (key: string, ring: typeof SEAL_RING) => string }).sealProviderKey;
+const resolveKeys = (domain as unknown as {
+  resolveKeys?: (payer: { projectId: string } | { studioId: string }, purpose: Purpose) => Promise<{ keys: KeySetLike; keyId: string | null; route: unknown }>;
+}).resolveKeys;
+const keysByKeyId = (domain as unknown as { keysByKeyId?: (keyId: string) => Promise<{ keys: KeySetLike; keyId: string }> }).keysByKeyId;
+
+/**
+ * The first error on a cause chain that names a key failure kind.
+ * @param value - What was thrown.
+ * @returns Its kind, or undefined.
+ */
+function keyFailureKind(value: unknown): string | undefined {
+  const seen = new Set<unknown>();
+  for (let at = value; typeof at === "object" && at !== null && !seen.has(at); at = (at as { cause?: unknown }).cause) {
+    seen.add(at);
+    const kind = (at as { kind?: unknown; code?: unknown }).kind ?? (at as { code?: unknown }).code;
+    if (kind === "account_key_missing" || kind === "account_key_failed") return kind;
+  }
+  return undefined;
+}
+
+describe("choosing a call's keys in a region (inner#1953)", () => {
+  it("reads the payer's sealed key from the global region through a listed function and opens it here", async () => {
+    expect(sealProviderKey, "sealProviderKey").toBeTypeOf("function");
+    expect(resolveKeys, "resolveKeys").toBeTypeOf("function");
+    const { userId, studioId } = await regionStudio();
+    const [project] = await sql<{ id: string }[]>`
+      INSERT INTO projects (studio_id, created_by_user_id, slug, name)
+      VALUES (${studioId}, ${userId}, ${`gc-k-${crypto.randomBytes(4).toString("hex")}`}, 'Keys') RETURNING id
+    `;
+    const key = `sk-or-v1-${crypto.randomBytes(16).toString("hex")}`;
+    const keyId = crypto.randomUUID();
+    global.answers.getStudioProviderKey = (_studio: unknown, purpose: unknown) =>
+      (purpose as Purpose).kind === "llm" ? { payerUserId: userId, keyId, upstream: "openrouter", ciphertext: sealProviderKey!(key, SEAL_RING) } : null;
+    global.received.length = 0;
+
+    const resolved = await resolveKeys!({ projectId: project!.id }, { kind: "llm" });
+
+    expect(resolved.keys.owner).toBe("account");
+    expect(resolved.keyId).toBe(keyId);
+    expect(resolved.keys.keyOf("openrouter")).toBe(key);
+    expect(global.received.map((call) => call.fn)).toEqual(["getStudioProviderKey"]);
+    expect(global.received[0]!.args).toEqual([studioId, { kind: "llm" }]);
+    for (const call of global.received) {
+      expect(call.signed).toBe(true);
+      expect([...LISTED], `unlisted global call ${call.fn}`).toContain(call.fn);
+      expect(JSON.stringify(call.args)).not.toContain(key);
+    }
+  });
+
+  it("routes a media model to the upstream the global region names for it", async () => {
+    expect(sealProviderKey, "sealProviderKey").toBeTypeOf("function");
+    expect(resolveKeys, "resolveKeys").toBeTypeOf("function");
+    const { userId, studioId } = await regionStudio();
+    const key = `fal-${crypto.randomBytes(16).toString("hex")}`;
+    const keyId = crypto.randomUUID();
+    const model = "gpt-image-2.5-sunburst-text-to-image";
+    global.answers.getStudioProviderKey = { payerUserId: userId, keyId, upstream: "fal", ciphertext: sealProviderKey!(key, SEAL_RING) };
+    global.received.length = 0;
+
+    const resolved = await resolveKeys!({ studioId }, { kind: "media", model });
+
+    expect(resolved.keyId).toBe(keyId);
+    expect(resolved.route).toEqual({ mode: "upstream", upstream: "fal" });
+    expect(resolved.keys.keyOf("fal")).toBe(key);
+    expect(resolved.keys.keyOf("openrouter")).toBeUndefined();
+    expect(global.received.map((call) => [call.fn, call.args])).toEqual([["getStudioProviderKey", [studioId, { kind: "media", model }]]]);
+  });
+
+  it("runs on the deployment's keys when the global region answers no key", async () => {
+    expect(resolveKeys, "resolveKeys").toBeTypeOf("function");
+    const { studioId } = await regionStudio();
+    global.answers.getStudioProviderKey = null;
+
+    const resolved = await resolveKeys!({ studioId }, { kind: "llm" });
+
+    expect(resolved.keys.owner).toBe("deployment");
+    expect(resolved.keyId).toBeNull();
+  });
+
+  it("reads a task's key by row id through the global region, and fails as account_key_missing once it answers null", async () => {
+    expect(sealProviderKey, "sealProviderKey").toBeTypeOf("function");
+    expect(keysByKeyId, "keysByKeyId").toBeTypeOf("function");
+    const { userId } = await regionStudio();
+    const key = `ws-${crypto.randomBytes(16).toString("hex")}`;
+    const keyId = crypto.randomUUID();
+    global.answers.getProviderKeyById = { id: keyId, userId, upstream: "wavespeed", ciphertext: sealProviderKey!(key, SEAL_RING) };
+    global.received.length = 0;
+
+    const live = await keysByKeyId!(keyId);
+    expect(live.keys.owner).toBe("account");
+    expect(live.keys.keyOf("wavespeed")).toBe(key);
+
+    global.answers.getProviderKeyById = null;
+    const gone = await keysByKeyId!(keyId).then(() => null, (err: unknown) => err);
+    expect(keyFailureKind(gone)).toBe("account_key_missing");
+    expect(String(gone)).not.toContain(key);
+
+    expect(global.received.map((call) => [call.fn, call.args])).toEqual([["getProviderKeyById", [keyId]], ["getProviderKeyById", [keyId]]]);
   });
 });

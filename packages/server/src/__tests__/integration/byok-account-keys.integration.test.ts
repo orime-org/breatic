@@ -5,10 +5,10 @@
  * An account's own upstream keys and its per-model upstream choices (inner#1953), against the testcontainer
  * Postgres the migrations built.
  *
- * `account_provider_keys`: one live key per account and upstream; a replaced or deleted key is soft-deleted with its
- * sealed text kept, so the tasks, turns and look-ups already using it still read it by row id, until a cleanup clears
- * the sealed text of rows nothing unfinished points at. Erasing an account clears its sealed text at once, inside the
- * erase's own transaction. No answer meant for the account ever carries the sealed text.
+ * `account_provider_keys`: one live key per account and upstream, held in this table alone; replacing, deleting or
+ * erasing a key clears its sealed text and soft-deletes its row at once, so a task still naming the row by id can no
+ * longer read it. Erasing an account does so inside the erase's own transaction. No answer meant for the account ever
+ * carries the sealed text.
  *
  * `account_model_upstreams`: one live choice per account and model; deleting a key drops the choices that named its
  * upstream.
