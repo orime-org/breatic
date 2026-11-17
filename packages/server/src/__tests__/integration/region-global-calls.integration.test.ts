@@ -312,7 +312,7 @@ describe("choosing a call's keys in a region (inner#1953)", () => {
     expect(resolved.keyId).toBeNull();
   });
 
-  it("reads a task's key by row id through the global region, and fails as account_key_missing once it answers null", async () => {
+  it("reads a task's key by row id through the global region, and fails as account_key_missing once the row is retired or gone", async () => {
     expect(sealProviderKey, "sealProviderKey").toBeTypeOf("function");
     expect(keysById, "keysById").toBeTypeOf("function");
     const { userId } = await regionStudio();
@@ -325,11 +325,22 @@ describe("choosing a call's keys in a region (inner#1953)", () => {
     expect(live.keys.owner).toBe("account");
     expect(live.keys.keyOf("wavespeed")).toBe(key);
 
+    // A replaced, deleted or erased row is still there, retired: its upstream comes back and its sealed text does not.
+    global.answers.getProviderKeyById = { id: keyId, userId, upstream: "wavespeed", ciphertext: null };
+    const retired = await keysById!(keyId).then(() => null, (err: unknown) => err);
+    expect(keyFailureKind(retired)).toBe("account_key_missing");
+    expect((retired as { upstream?: unknown }).upstream).toBe("wavespeed");
+    expect(String(retired)).not.toContain(key);
+
+    // No row at all names no upstream.
     global.answers.getProviderKeyById = null;
     const gone = await keysById!(keyId).then(() => null, (err: unknown) => err);
     expect(keyFailureKind(gone)).toBe("account_key_missing");
+    expect((gone as { upstream?: unknown }).upstream).toBeUndefined();
     expect(String(gone)).not.toContain(key);
 
-    expect(global.received.map((call) => [call.fn, call.args])).toEqual([["getProviderKeyById", [keyId]], ["getProviderKeyById", [keyId]]]);
+    expect(global.received.map((call) => [call.fn, call.args])).toEqual([
+      ["getProviderKeyById", [keyId]], ["getProviderKeyById", [keyId]], ["getProviderKeyById", [keyId]],
+    ]);
   });
 });

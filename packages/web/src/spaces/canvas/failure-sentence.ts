@@ -96,9 +96,10 @@ export function failureSentence(
     // The model a refusal or a missing setup is about, and the variables it needs.
     model: held.model ?? '',
     envVars: (held.envVars ?? []).join(', '),
-    // The upstream an account's own key failed on by its name on screen, whose key it was, and why (inner#1953).
-    // Always a value: ICU throws on a select with none.
-    upstream: held.upstream === undefined ? '' : (keys?.upstreamNames[held.upstream] ?? held.upstream),
+    // The upstream an account's own key failed on or whose key is gone, by its name on screen, whose key it was, and
+    // why (inner#1953). Always a value: ICU throws on a select with none, and the gone-key sentence selects on `none`
+    // to drop the upstream a run did not record.
+    upstream: held.upstream === undefined ? 'none' : (keys?.upstreamNames[held.upstream] ?? held.upstream),
     whose: keys?.payer ?? 'other',
     keyReason: held.keyReason ?? 'other',
   });

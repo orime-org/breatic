@@ -152,6 +152,27 @@ describe('a run on an account key that failed', () => {
     }
   });
 
+  it('names the upstream whose key is gone when the run knows it, for the payer, a member and before the plan', () => {
+    const gone = encodeTaskFailure('account_key_missing', { upstream: 'wavespeed' });
+    setLocale('en');
+    const t = renderHook(() => useTranslation()).result.current;
+    expect(failureSentence(gone, t, undefined, own)).toBe('Your WaveSpeed Cloud key for this run was replaced or deleted. Run it again.');
+    expect(failureSentence(gone, t, undefined, admins)).toBe(
+      'The Studio Admin\'s WaveSpeed Cloud key for this run was replaced or deleted. Run it again.',
+    );
+    expect(failureSentence(gone, t)).toBe('The wavespeed key this run used was replaced or deleted. Run it again.');
+    for (const locale of ['zh-CN', 'zh-TW', 'ja', 'ko']) {
+      setLocale(locale);
+      const tl = renderHook(() => useTranslation()).result.current;
+      for (const keys of [own, admins, undefined]) {
+        const sentence = failureSentence(gone, tl, undefined, keys);
+        expect(sentence, `${locale} ${keys?.payer}`).toContain(keys === undefined ? 'wavespeed' : 'WaveSpeed Cloud');
+        expect(sentence, `${locale} ${keys?.payer}`).not.toMatch(/[{}]|none|account_key/);
+      }
+      expect(failureSentence('account_key_missing', tl, undefined, own), locale).not.toMatch(/none|[{}]/);
+    }
+  });
+
   it('falls back to the upstream id and no owner while the key plan is not known', () => {
     setLocale('en');
     const t = renderHook(() => useTranslation()).result.current;

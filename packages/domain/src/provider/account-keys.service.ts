@@ -24,12 +24,15 @@ export interface StudioProviderKey {
   ciphertext: string;
 }
 
-/** A live key row, sealed. */
+/**
+ * A key row by id: sealed while it and its account are live; once it is replaced, deleted or erased, or its account is
+ * gone, only whose it was and its upstream, with `ciphertext` null.
+ */
 export interface ProviderKeyById {
   id: string;
   userId: string;
   upstream: string;
-  ciphertext: string;
+  ciphertext: string | null;
 }
 
 /** What a Studio's payer brought, without any key or sealed text. */
@@ -71,15 +74,19 @@ export async function studioProviderKeyHere(studioId: string, purpose: KeyPurpos
 }
 
 /**
- * A key row's sealed text, while the row and its account are live.
+ * A key row's sealed text while the row and its account are live, and otherwise only whose it was and its upstream, so a
+ * run on a key that is gone can say which upstream's key it was.
  * @param keyId - The row a task, turn or lookup recorded.
- * @returns The row, or null once it was replaced, deleted or its account erased or deleted.
+ * @returns The live row, the retired row with `ciphertext` null, or null when no row has the id.
  */
 export async function providerKeyByIdHere(keyId: string): Promise<ProviderKeyById | null> {
   const sealed = await accountProviderKeysRepo.sealedKeyById(keyId);
-  if (sealed === null) return null;
-  const [user] = await usersRepo.getUsersByIds([sealed.userId]);
-  return user === undefined ? null : sealed;
+  if (sealed !== null) {
+    const [user] = await usersRepo.getUsersByIds([sealed.userId]);
+    if (user !== undefined) return sealed;
+  }
+  const owner = await accountProviderKeysRepo.keyOwnerById(keyId);
+  return owner === null ? null : { ...owner, ciphertext: null };
 }
 
 /**

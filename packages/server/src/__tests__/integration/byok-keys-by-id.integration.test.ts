@@ -32,7 +32,7 @@ import { randomBytes } from "node:crypto";
 import fc from "fast-check";
 import postgres from "postgres";
 import { accountProviderKeysRepo, initCore, sealProviderKey } from "@breatic/core";
-import { keysById } from "@breatic/domain";
+import { accountKeyFailureIn, keysById } from "@breatic/domain";
 
 const SECRET = randomBytes(32);
 const RING = { current: "t1", keys: { t1: SECRET } };
@@ -123,6 +123,7 @@ describe("keysById", () => {
 
     const err = await thrownBy(keysById(oldId));
     expect(kindOf(err)).toBe("account_key_missing");
+    expect(accountKeyFailureIn(err)?.upstream).toBe("fal");
     expect(String(err)).not.toContain("fal-new");
   });
 
@@ -131,11 +132,15 @@ describe("keysById", () => {
     const keyId = await saveKey(userId, "openrouter", "sk-or-v1-deleted");
     await accountProviderKeysRepo.deleteKey(userId, "openrouter");
 
-    expect(kindOf(await thrownBy(keysById(keyId)))).toBe("account_key_missing");
+    const err = await thrownBy(keysById(keyId));
+    expect(kindOf(err)).toBe("account_key_missing");
+    expect(accountKeyFailureIn(err)?.upstream).toBe("openrouter");
   });
 
-  it("fails as account_key_missing for an id no row has", async () => {
-    expect(kindOf(await thrownBy(keysById(crypto.randomUUID())))).toBe("account_key_missing");
+  it("fails as account_key_missing naming no upstream for an id no row has", async () => {
+    const err = await thrownBy(keysById(crypto.randomUUID()));
+    expect(kindOf(err)).toBe("account_key_missing");
+    expect(accountKeyFailureIn(err)?.upstream).toBeUndefined();
   });
 
   it("property: never holds the key in its serialisable part", async () => {

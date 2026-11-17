@@ -211,7 +211,7 @@ export type AccountKeyFailureReason = "invalid" | "no_balance" | "model_not_foun
 export class AccountKeyFailure extends Error {
   readonly kind: AccountKeyFailureKind;
   readonly model: string;
-  /** The upstream that failed; absent for `account_key_missing`. */
+  /** The upstream that failed, or whose key is gone; absent when not known. */
   readonly upstream?: string;
   readonly reason?: AccountKeyFailureReason;
 

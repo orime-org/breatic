@@ -173,6 +173,21 @@ export async function sealedKeyById(id: string): Promise<SealedProviderKey | nul
 }
 
 /**
+ * Which account and upstream a key row belongs to, whatever its state, never with its sealed text: a task that recorded
+ * a row since replaced or deleted still names the upstream whose key is gone.
+ * @param id - The `account_provider_keys` row a task or turn recorded.
+ * @returns The row's account and upstream, or null when no row has the id.
+ */
+export async function keyOwnerById(id: string): Promise<{ id: string; userId: string; upstream: string } | null> {
+  const rows = await db
+    .select({ id: accountProviderKeys.id, userId: accountProviderKeys.userId, upstream: accountProviderKeys.upstream })
+    .from(accountProviderKeys)
+    .where(eq(accountProviderKeys.id, id))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
  * Delete an account's key for an upstream: clear its sealed text and soft-delete the row, and drop the account's
  * model choices that named that upstream, in one transaction.
  * @param userId - The account.

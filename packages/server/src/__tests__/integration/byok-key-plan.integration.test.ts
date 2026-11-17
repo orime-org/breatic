@@ -278,16 +278,17 @@ describe("the BYOK global functions, in the global region", () => {
     expect(await globals.getStudioProviderKey!(studioId, { kind: "media", model: "ideogram-v3-quality" })).toBeNull();
   });
 
-  it("getProviderKeyById answers a live row's sealed text, and null once the key is replaced or deleted", async () => {
+  it("getProviderKeyById answers a live row's sealed text, a retired row's upstream without it, and null for no row", async () => {
     const { userId } = await signedIn();
     const old = await saveKey(userId, "fal", "fal-first-plan-key");
     const replacing = await saveKey(userId, "fal", "fal-second-plan-key");
 
-    expect(await globals.getProviderKeyById!(old.id)).toBeNull();
+    expect(await globals.getProviderKeyById!(old.id)).toEqual({ id: old.id, userId, upstream: "fal", ciphertext: null });
     expect(await globals.getProviderKeyById!(replacing.id)).toMatchObject({ id: replacing.id, userId, upstream: "fal", ciphertext: replacing.ciphertext });
 
     await accountProviderKeysRepo.deleteKey(userId, "fal");
-    expect(await globals.getProviderKeyById!(replacing.id)).toBeNull();
+    expect(await globals.getProviderKeyById!(replacing.id)).toEqual({ id: replacing.id, userId, upstream: "fal", ciphertext: null });
+    expect(await globals.getProviderKeyById!(crypto.randomUUID())).toBeNull();
   });
 
   it("getStudioKeyPlan answers upstream names and model choices without any sealed text", async () => {
