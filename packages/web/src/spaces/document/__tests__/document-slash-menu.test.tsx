@@ -485,6 +485,84 @@ describe('the table entry (A4, design 5.8)', () => {
   });
 });
 
+describe('keys while the size grid is open (design state table)', () => {
+  /** Opens the menu with the query typed and the size grid open from the keyboard. */
+  function gridOpen(query: string): { editor: Editor; manager: Y.UndoManager; id: string } {
+    const { editor, manager } = open([para('')]);
+    const id = read(editor)[0]!.id;
+    caretAtEnd(editor, id);
+    type(editor, query);
+    manager.stopCapturing();
+    press(editor, 'ArrowRight');
+    expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
+    return { editor, manager, id };
+  }
+
+  it('closes the grid and opens a new menu on a trigger typed after a space', () => {
+    const { editor, id } = gridOpen('/tab');
+    press(editor, ' ');
+    type(editor, ' ');
+    press(editor, '/');
+    type(editor, '/');
+    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
+    expect(textOf(editor, id)).toBe('/tab /');
+    expect(menu()).not.toBeNull();
+    expect(rows()).toContain('heading-1');
+  });
+
+  it('closes the grid and narrows the list on another character', () => {
+    const { editor, id } = gridOpen('/tab');
+    press(editor, 'l');
+    type(editor, 'l');
+    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
+    expect(textOf(editor, id)).toBe('/tabl');
+    expect(rows()).toEqual(['table']);
+  });
+
+  it('closes the grid and shortens the query on Backspace', () => {
+    const { editor, id } = gridOpen('/tab');
+    press(editor, 'Backspace');
+    const view = editor.prosemirrorView!;
+    act(() => {
+      const { from } = view.state.selection;
+      view.dispatch(view.state.tr.delete(from - 1, from));
+    });
+    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
+    expect(textOf(editor, id)).toBe('/ta');
+    expect(menu()).not.toBeNull();
+    expect(rows()).toContain('table');
+  });
+
+  it('closes the grid on Cmd+Z, and the menu once the undo takes the query out', () => {
+    const { editor, manager, id } = gridOpen('/tab');
+    press(editor, 'z', { metaKey: true });
+    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
+    act(() => {
+      manager.undo();
+    });
+    expect(textOf(editor, id)).toBe('');
+    expect(menu()).toBeNull();
+  });
+});
+
+describe('undo while the menu is open (design state table)', () => {
+  it('keeps the menu open on the shorter query when an undo leaves the trigger', () => {
+    const { editor, manager } = open([para('')]);
+    const id = read(editor)[0]!.id;
+    caretAtEnd(editor, id);
+    type(editor, '/');
+    manager.stopCapturing();
+    type(editor, 'he');
+    expect(rows()).not.toContain('table');
+    act(() => {
+      manager.undo();
+    });
+    expect(textOf(editor, id)).toBe('/');
+    expect(menu()).not.toBeNull();
+    expect(rows()).toContain('table');
+  });
+});
+
 describe('media entries (A4, design 5.9)', () => {
   it('opens the picker with the query in place, then lands the file over it', () => {
     const start = vi.fn();
