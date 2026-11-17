@@ -267,4 +267,22 @@ describe("account_model_upstreams", () => {
     expect(dropped).toHaveLength(2);
     for (const row of dropped) expect(row.deleted_at).not.toBeNull();
   });
+
+  it("is erased with the account: every choice soft-deleted, another account's kept", async () => {
+    const userId = await seedUser();
+    const other = await seedUser();
+    await save(userId, "fal");
+    await save(other, "fal");
+    await accountModelUpstreamsRepo.setModelUpstream(userId, "nano-banana-2", "fal");
+    await accountModelUpstreamsRepo.setModelUpstream(other, "nano-banana-2", "fal");
+    await sql`UPDATE users SET deleted_at = now() WHERE id = ${userId}`;
+
+    expect(await eraseAccountAnalytics([userId])).toEqual({ notDeleted: [] });
+
+    expect(await accountModelUpstreamsRepo.liveModelUpstreamsFor(userId)).toEqual([]);
+    const rows = await sql`SELECT deleted_at FROM account_model_upstreams WHERE user_id = ${userId}`;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.deleted_at).not.toBeNull();
+    expect((await accountModelUpstreamsRepo.liveModelUpstreamsFor(other)).map((c) => c.upstream)).toEqual(["fal"]);
+  });
 });

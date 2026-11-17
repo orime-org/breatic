@@ -333,6 +333,14 @@ export const coreConfigSchema = z.object({
   // Parent domain the identity cookie is set on, so every region's API host
   // receives it; empty sets it on the API host alone.
   IDENTITY_COOKIE_DOMAIN: z.string().default(""),
+
+  // ── Accounts' own provider keys (inner#1953) ─────────
+  // The master keys that seal the upstream keys accounts save: the id new
+  // seals use, and a JSON object of every key by id (32 bytes as 64 hex
+  // characters), so a key rotated out keeps opening older seals while it is
+  // listed. Neither set turns bring-your-own-key off.
+  PROVIDER_KEY_SECRET_ID: z.string().default("").transform((value) => value.trim()),
+  PROVIDER_KEY_SECRETS: jsonRecord("PROVIDER_KEY_SECRETS"),
   // The global region's worker aligns the Studio directory once at start.
   // Only for a deployment that starts it after every process of the previous
   // release has stopped, as the bundled docker-compose.yml does; elsewhere
@@ -443,6 +451,38 @@ export const coreConfigSchema = z.object({
 export type CoreConfig = z.infer<typeof coreConfigSchema>;
 
 /**
+ * Refuse a half or malformed bring-your-own-key master key configuration, never repeating a secret.
+ * @param config - The parsed configuration.
+ * @throws {Error} When only one of the two variables is set, the current id names no secret, an id is not a plain
+ *   token, or a secret is not 32 bytes of hex.
+ */
+function assertProviderKeySecrets(config: CoreConfig): void {
+  const id = config.PROVIDER_KEY_SECRET_ID;
+  const secrets = config.PROVIDER_KEY_SECRETS;
+  const ids = Object.keys(secrets);
+  if (id === "" && ids.length === 0) return;
+  if (ids.length === 0) {
+    throw new Error("FATAL: PROVIDER_KEY_SECRET_ID is set without PROVIDER_KEY_SECRETS, the master keys it names. Refusing to start.");
+  }
+  if (id === "") {
+    throw new Error("FATAL: PROVIDER_KEY_SECRETS is set without PROVIDER_KEY_SECRET_ID, the id new seals use. Refusing to start.");
+  }
+  if (!Object.hasOwn(secrets, id)) {
+    throw new Error("FATAL: PROVIDER_KEY_SECRET_ID names no key in PROVIDER_KEY_SECRETS. Refusing to start.");
+  }
+  for (const [kid, hex] of Object.entries(secrets)) {
+    if (!/^[A-Za-z0-9_-]+$/.test(kid)) {
+      throw new Error("FATAL: every id in PROVIDER_KEY_SECRETS may contain only letters, digits, '_' and '-'. Refusing to start.");
+    }
+    if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+      throw new Error(
+        `FATAL: PROVIDER_KEY_SECRETS["${kid}"] must be 32 bytes as 64 hex characters (openssl rand -hex 32). Refusing to start.`,
+      );
+    }
+  }
+}
+
+/**
  * Validate a raw environment map into a typed {@link CoreConfig}.
  * @param rawEnv - The raw key/value map the application read from
  *   `process.env` (the entry owns the `process.env` read; this
@@ -451,7 +491,8 @@ export type CoreConfig = z.infer<typeof coreConfigSchema>;
  * @throws {z.ZodError} if a required variable is missing / malformed.
  * @throws {Error} if payments are enabled without Stripe secrets, the
  *   internal API is enabled without its secret, or a region outside the
- *   global region lacks the global API address or public keys, or signs.
+ *   global region lacks the global API address or public keys, or signs,
+ *   or the provider key master keys are set half or malformed.
  */
 export function parseConfig(rawEnv: Record<string, string | undefined>): CoreConfig {
   const config = coreConfigSchema.parse(rawEnv);
@@ -541,6 +582,8 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
       "under. Refusing to start.",
     );
   }
+
+  assertProviderKeySecrets(config);
 
   // The yjs binary store must be a DIFFERENT database than the business
   // DB — they are separate transaction / failure domains by design (the

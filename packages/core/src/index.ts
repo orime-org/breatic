@@ -388,3 +388,16 @@ export * from "@core/credit/credit-grant-contract.js";
 
 export * as accountActivityRepo from "@core/activity/account-activity.repo.js";
 export * as accountActivityCoverageRepo from "@core/activity/account-activity-coverage.repo.js";
+export * as accountProviderKeysRepo from "@core/byok/account-provider-keys.repo.js";
+export * as accountModelUpstreamsRepo from "@core/byok/account-model-upstreams.repo.js";
+export type { NewAccountProviderKey, ProviderKeyCheckRecord, SealedProviderKey } from "@core/byok/account-provider-keys.repo.js";
+export {
+  InvalidProviderKey,
+  ProviderKeySealBroken,
+  displayHintOf,
+  normalizeProviderKey,
+  openProviderKey,
+  providerKeyRingOf,
+  sealProviderKey,
+  type ProviderKeyRing,
+} from "@core/secrets/provider-key-box.js";

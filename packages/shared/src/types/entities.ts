@@ -966,6 +966,38 @@ export interface AccountActivityCoverageEntity {
   createdAt: Date;
 }
 
+/** What the last check of an account's upstream key found about its balance (inner#1953). */
+export type ProviderKeyBalanceState = "known" | "unsupported" | "forbidden";
+
+/**
+ * An account's own key for one upstream (inner#1953), without the key or its sealed text: only the hint the user is
+ * shown and what the last check found.
+ */
+export interface AccountProviderKey {
+  id: string;
+  userId: string;
+  upstream: string;
+  displayHint: string;
+  lastCheckedAt: Date | null;
+  lastConnected: boolean | null;
+  lastBalanceAmount: number | null;
+  lastBalanceCurrency: string | null;
+  lastBalanceState: ProviderKeyBalanceState | null;
+  lastFailure: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** The upstream an account chose for a catalog model that is not a language model (inner#1953). */
+export interface AccountModelUpstream {
+  id: string;
+  userId: string;
+  model: string;
+  upstream: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 /** Where a Timeline execution is (inner#1711), as `TimelineExecutionStatusSchema` lists it. */
 export type TimelineExecutionStatus = z.infer<typeof TimelineExecutionStatusSchema>;
 

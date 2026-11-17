@@ -72,6 +72,9 @@ export const TABLE_PLACEMENT: Readonly<Record<string, TablePlacement>> = {
   studio_storage_usage_global: "global",
   region_outbox_applied: "global",
   directory_reconciliations: "global",
+  // Accounts' own upstream keys and per-model upstream choices (inner#1953)
+  account_provider_keys: "global",
+  account_model_upstreams: "global",
   // Account-level rows in the global region, Studio and Project rows in their region
   notifications: "both",
   analytics_milestones: "both",
