@@ -7,7 +7,7 @@ import { getLocale } from '@breatic/shared';
 
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
 import { Input } from '@web/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@web/components/ui/radio-group';
 import {
@@ -311,30 +311,32 @@ function OverrideDialog({ slug, member, name, onClose }: { slug: string; member:
           <DialogTitle>{t(`${KEY}.overrideTitle`, { name })}</DialogTitle>
           <DialogDescription>{t(`${KEY}.overrideHint`)}</DialogDescription>
         </DialogHeader>
-        <RadioGroup value={mode} onValueChange={(next) => setMode(next as OverrideMode)} className='gap-2'>
-          <label htmlFor={`${id}-amount`} className='flex items-center gap-1.5 text-sm'>
-            <RadioGroupItem id={`${id}-amount`} value='amount' />
-            {t(`${KEY}.perMonth`)}
-            <Input
-              value={text}
-              inputMode='decimal'
-              autoComplete='off'
-              disabled={mode !== 'amount'}
-              aria-label={t(`${KEY}.perMonth`)}
-              onChange={(event) => setText(event.target.value)}
-              className='h-7 w-24 text-sm tabular-nums'
-            />
-            {t('studio.container.credits.unit')}
-          </label>
-          <label htmlFor={`${id}-none`} className='flex items-center gap-1.5 text-sm'>
-            <RadioGroupItem id={`${id}-none`} value='none' />
-            {t(`${KEY}.unlimited`)}
-          </label>
-          <label htmlFor={`${id}-zero`} className='flex items-center gap-1.5 text-sm'>
-            <RadioGroupItem id={`${id}-zero`} value='zero' />
-            {t(`${KEY}.zero`)}
-          </label>
-        </RadioGroup>
+        <DialogBody>
+          <RadioGroup value={mode} onValueChange={(next) => setMode(next as OverrideMode)} className='gap-2'>
+            <label htmlFor={`${id}-amount`} className='flex items-center gap-1.5 text-sm'>
+              <RadioGroupItem id={`${id}-amount`} value='amount' />
+              {t(`${KEY}.perMonth`)}
+              <Input
+                value={text}
+                inputMode='decimal'
+                autoComplete='off'
+                disabled={mode !== 'amount'}
+                aria-label={t(`${KEY}.perMonth`)}
+                onChange={(event) => setText(event.target.value)}
+                className='h-7 w-24 text-sm tabular-nums'
+              />
+              {t('studio.container.credits.unit')}
+            </label>
+            <label htmlFor={`${id}-none`} className='flex items-center gap-1.5 text-sm'>
+              <RadioGroupItem id={`${id}-none`} value='none' />
+              {t(`${KEY}.unlimited`)}
+            </label>
+            <label htmlFor={`${id}-zero`} className='flex items-center gap-1.5 text-sm'>
+              <RadioGroupItem id={`${id}-zero`} value='zero' />
+              {t(`${KEY}.zero`)}
+            </label>
+          </RadioGroup>
+        </DialogBody>
         <DialogFooter>
           <Button variant='outline' onClick={onClose}>{t('common.cancel')}</Button>
           <Button disabled={credits === undefined} loading={saving} onClick={() => void save()}>{t(`${KEY}.save`)}</Button>
