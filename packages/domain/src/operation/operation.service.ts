@@ -30,7 +30,7 @@ import { quantizeQuotedCredits, serializeCreditMicro, type OperationUsage, type 
 import * as operationRepo from "@domain/operation/operation.repo.js";
 import type { OperationKind, OperationRow } from "@domain/operation/operation.repo.js";
 import { emitOperationAudit, type OperationAudit } from "@domain/operation/operation-events.js";
-import { findLiveByKeyInStudio } from "@domain/asset/asset.repo.js";
+import { findLiveIdsByKeysInStudio } from "@domain/asset/asset.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import { OPERATION_OVERAGE_DESCRIPTION } from "@domain/credit/creditLot.repo.js";
@@ -123,7 +123,9 @@ async function lockStudioAccount(studioId: string, tx: DbTx): Promise<Membership
 
 /**
  * The live assets of a studio that the given URLs name, in input order, at
- * most `max_absorbed_per_operation` distinct.
+ * most `max_absorbed_per_operation` distinct, read in one query: an Agent
+ * message can name every picture on a canvas, and the admission holds the
+ * account's lock while it reads.
  * @param studioId - The studio.
  * @param inputs - The URLs.
  * @param tx - The admission's transaction.
@@ -131,17 +133,11 @@ async function lockStudioAccount(studioId: string, tx: DbTx): Promise<Membership
  */
 async function resolveInputs(studioId: string, inputs: readonly string[], tx: DbTx): Promise<string[]> {
   if (inputs.length === 0) return [];
-  const max = getOperationsConfig().max_absorbed_per_operation;
   const storage = await getStorageAdapter();
-  const ids: string[] = [];
-  for (const url of inputs) {
-    if (ids.length >= max) break;
-    const key = storage.keyFromUrl(url);
-    if (key === null) continue;
-    const asset = await findLiveByKeyInStudio(studioId, key, tx);
-    if (asset !== null && !ids.includes(asset.id)) ids.push(asset.id);
-  }
-  return ids;
+  const keys = [...new Set(inputs.map((url) => storage.keyFromUrl(url)).filter((key): key is string => key !== null))];
+  const found = await findLiveIdsByKeysInStudio(studioId, keys, tx);
+  const ids = [...new Set(keys.flatMap((key) => found.get(key) ?? []))];
+  return ids.slice(0, getOperationsConfig().max_absorbed_per_operation);
 }
 
 /**

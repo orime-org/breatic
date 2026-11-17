@@ -244,6 +244,16 @@ describe("B.3 whose rows a run may claim", () => {
     expect(claimed).toHaveLength(2);
     expect(claimed.length).toBeLessThanOrEqual(Math.min(3, MAX_ABSORBED));
   });
+
+  it("B-64 a run naming more images than it may use, some twice and some not ours, claims the first ten in the order named", async () => {
+    const a = await seedAccount(sql);
+    const crops: Derived[] = [];
+    for (let i = 0; i < MAX_ABSORBED + 2; i++) crops.push(await derivedUpload(app, sql, a));
+    const named = [crops[0]!.url, crops[0]!.url, "https://elsewhere.example/picture.png", ...crops.slice(1).map((c) => c.url)];
+    const { key } = await admit(a, "generation", named);
+    const claimed = await sql<{ operation_key: string }[]>`select operation_key from operation_ledger where absorbed_by = ${key}`;
+    expect(claimed.map((row) => row.operation_key).sort()).toEqual(crops.slice(0, MAX_ABSORBED).map((c) => c.key).sort());
+  });
 });
 
 describe("B.3 claiming against the allowance and the 0.5 holds", () => {

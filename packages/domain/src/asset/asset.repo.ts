@@ -12,6 +12,8 @@ export const findByStudioAndHash: typeof assetRepo.findByStudioAndHash = assetRe
 export const findLiveInStudio: typeof assetRepo.findLiveInStudio = assetRepo.findLiveInStudio;
 /** The shared repository implementation of findLiveByKeyInStudio. */
 export const findLiveByKeyInStudio: typeof assetRepo.findLiveByKeyInStudio = assetRepo.findLiveByKeyInStudio;
+/** The shared repository implementation of findLiveIdsByKeysInStudio. */
+export const findLiveIdsByKeysInStudio: typeof assetRepo.findLiveIdsByKeysInStudio = assetRepo.findLiveIdsByKeysInStudio;
 /** The shared repository implementation of findById. */
 export const findById: typeof assetRepo.findById = assetRepo.findById;
 /** The shared repository implementation of fillMediaNumbers. */
