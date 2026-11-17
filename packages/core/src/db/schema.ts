@@ -2148,13 +2148,18 @@ export const creditHolds = pgTable(
 
 // ── 8f. Credit charge requests (0121, inner#1617) ─────────────────────
 
+/**
+ * What kind of delivery a charge request is for. The CHECK in 0121 (widened
+ * in 0126) lists the same values; the column type and domain's
+ * `ChargeRequestKind` both read this list.
+ */
+export const CHARGE_REQUEST_KINDS = ["task", "timeline_execution", "operation", "operation_overage"] as const;
+
 export const creditChargeRequests = pgTable(
   "credit_charge_requests",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    // 'task' | 'timeline_execution' | 'operation' | 'operation_overage'.
-    // CHECK in 0121, widened in 0126.
-    kind: varchar("kind", { length: 24 }).$type<"task" | "timeline_execution" | "operation" | "operation_overage">().notNull(),
+    kind: varchar("kind", { length: 24 }).$type<(typeof CHARGE_REQUEST_KINDS)[number]>().notNull(),
     actorUserId: uuid("actor_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
