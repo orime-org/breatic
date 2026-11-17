@@ -107,17 +107,6 @@ export function stepMark(row: Pick<WebAnimationRowView, 'kind' | 'status' | 'pha
 }
 
 /**
- * The colour a status is told in: a result in the text colour, a failure or expiry in the error colour, the rest muted.
- * @param status - The status.
- * @returns The class.
- * @throws {never} Never.
- */
-export function statusTone(status: TimelineExecutionStatus): string {
-  if (status === 'succeeded') return 'text-foreground';
-  return status === 'failed' || status === 'expired' ? 'text-status-error-foreground' : 'text-muted-foreground';
-}
-
-/**
  * The run-once intent of cancelling one execution, which its button reads.
  * @param executionId - The execution.
  * @returns The intent.
