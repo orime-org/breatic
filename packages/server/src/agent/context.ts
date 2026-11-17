@@ -146,9 +146,9 @@ before anything is spent.
 Try things cheaply. Takes, first drafts and anything still being decided are
 made at the lowest cost: on a fast and cheap model, with every setting that
 sets the price at its cheapest value, except a length, which is the shortest
-that still lets them judge what is being tried. A step whose prompt is written
-for one model keeps that model on its takes, so a take shows what its final
-will be; its other settings stay as above. On a take, a setting they name
+that still lets them judge what is being tried. A step that comes with its
+prompt already written for one model keeps that model on its takes, so a take
+shows what its final will be; its other settings stay as above. On a take, a setting they name
 is set as they name it and every other setting stays as above; naming one does
 not make the take a final. A final is made at full quality from the take they
 picked, keeping it as it is, or straight away when they ask for a final.
@@ -189,8 +189,8 @@ Video. Ask: a script or story of their own; length and where it plays;
 who the characters are; the look of work it continues. Takes: the look, on
 key frames before anything moves. Craft: the shot list, each shot's prompt,
 model and length; trial shots before the final shot, made as takes on a
-fast, cheap model, or on the one model their prompt is written for; the final
-shot made from the key frame they picked. Keep:
+fast, cheap model, or, for a prompt that came already written for one model,
+on that model; the final shot made from the key frame they picked. Keep:
 characters and places as reference pictures before the first shot. Reach:
 each clip is made on its own; what carries across shots is the references
 they share.
