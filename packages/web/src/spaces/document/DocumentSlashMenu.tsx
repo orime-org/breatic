@@ -27,8 +27,6 @@ import {
   shift,
   size,
   useFloating,
-  useHover,
-  useInteractions,
 } from '@floating-ui/react';
 import { ChevronRight } from 'lucide-react';
 import type { Transaction } from '@tiptap/pm/state';
@@ -479,34 +477,54 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
     update();
   }, [referencePos, update]);
 
-  // The size grid stands beside the table row, as a submenu does. The
-  // pointer may cross the rows below on its way to the grid: inside the
-  // triangle between the row and the grid nothing else takes the pointer,
-  // the grace the insert menu's Radix submenu gives. The grid's state is
-  // ours alone: hovering Table opens it, and it closes only where the insert
-  // menu's submenu closes (another row hovered, a key, a pick, the query
-  // changing), so the hover's own close requests are not taken.
+  // The size grid stands beside the table row, as a submenu does, and works
+  // as the insert menu's Radix submenu: the pointer moving on Table lights it
+  // and opens the grid, and each time the pointer leaves Table while the grid
+  // is open, the triangle from that point to the grid is a grace in which
+  // the rows it crosses neither light nor close the grid. The triangle is
+  // floating-ui's safePolygon; the grid's state is the menu's alone.
   const gridFloat = useFloating({
     open: grid !== null,
-    onOpenChange: (open) => {
-      if (open) setGrid((now) => (now !== null && now.query === query ? now : { query, at: null }));
-    },
     strategy: 'absolute',
     placement: 'right-start',
     middleware: [offset({ mainAxis: 4 + 5, alignmentAxis: -5 }), flip({ padding: EDGE }), shift({ padding: EDGE })],
     whileElementsMounted: autoUpdate,
   });
-  const gridHover = useHover(gridFloat.context, {
-    enabled: !reach.has('table'),
-    handleClose: safePolygon({ blockPointerEvents: true }),
-  });
-  const { getReferenceProps, getFloatingProps } = useInteractions([gridHover]);
-  // A grid closed here leaves the hover's open event behind; a later open
-  // from the keyboard would then block the page's pointer as a hover does.
-  const gridContext = gridFloat.context;
+  const grace = React.useRef<((event: MouseEvent) => void) | null>(null);
   React.useEffect(() => {
-    if (grid === null) gridContext.dataRef.current.openEvent = undefined;
-  }, [grid, gridContext]);
+    if (grid === null) grace.current = null;
+  }, [grid]);
+  React.useEffect(() => {
+    /**
+     * Hands every pointer move to the grace while one is set.
+     * @param event - The move.
+     */
+    const onMove = (event: MouseEvent): void => {
+      grace.current?.(event);
+    };
+    document.addEventListener('mousemove', onMove);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+    };
+  }, []);
+  const gridContext = gridFloat.context;
+  const graceFrom = React.useCallback(
+    (event: React.MouseEvent): void => {
+      if (grid === null || gridContext.elements.floating === null) return;
+      // Called as useHover calls it: the floating context with the point
+      // the pointer left from.
+      const handler = safePolygon()({
+        ...gridContext,
+        x: event.clientX,
+        y: event.clientY,
+        onClose: () => {
+          if (grace.current === handler) grace.current = null;
+        },
+      });
+      grace.current = handler;
+    },
+    [grid, gridContext],
+  );
 
   // The lit row stays in sight, scrolling the menu's own list only.
   React.useEffect(() => {
@@ -552,14 +570,20 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
               const { Icon, labelKey } = insertEntryLook(id);
               const out = reach.has(id);
               const ruled = ruleBetween(items[at - 1], id);
+              /** The pointer on a row: lights it, and opens or closes the grid. */
+              const hover = (): void => {
+                // A row out of reach does not light up under the pointer,
+                // as in the insert menu; nor does one the pointer crosses
+                // on its way to the grid.
+                if (out || (id !== 'table' && grace.current !== null)) return;
+                highlight(at);
+                if (id !== 'table') closeGrid();
+                else if (grid === null) openGrid(null);
+              };
               const handlers = {
-                onMouseEnter: (): void => {
-                  // A row out of reach does not light up under the
-                  // pointer, as in the insert menu.
-                  if (out) return;
-                  highlight(at);
-                  if (id !== 'table') closeGrid();
-                },
+                onMouseEnter: hover,
+                onMouseMove: hover,
+                onMouseLeave: id === 'table' ? graceFrom : undefined,
                 onMouseDown: (event: React.MouseEvent): void => {
                   // Only the main button picks, as in the insert menu;
                   // Control with it is the secondary click on a Mac.
@@ -585,7 +609,7 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
                       out && UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
                       id === 'table' && grid !== null && 'bg-accent',
                     )}
-                    {...(id === 'table' ? getReferenceProps(handlers) : handlers)}
+                    {...handlers}
                   >
                     <Icon />
                     {t(labelKey)}
@@ -605,7 +629,6 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
           onMouseDownCapture={keepFocus}
           className={menuSurface}
           {...layer}
-          {...getFloatingProps()}
         >
           <MenuRows>
             <PlainTableSizeGrid at={grid.at} onHover={openGrid} onPick={onGridPick} />

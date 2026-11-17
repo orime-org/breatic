@@ -27,7 +27,10 @@ export function slashMayOpen(tr: Transaction): boolean {
   const { $from, empty } = tr.selection;
   if (!empty) return false;
   if ($from.parentOffset === 0) return true;
-  const before = $from.parent.textBetween($from.parentOffset - 1, $from.parentOffset, undefined, '￼');
+  // A line break made by Shift+Enter starts a line as a block start does.
+  const before = $from.parent.textBetween($from.parentOffset - 1, $from.parentOffset, undefined, (leaf) =>
+    leaf.type.name === 'hardBreak' ? '\n' : '\ufffc',
+  );
   return /\s/u.test(before);
 }
 
