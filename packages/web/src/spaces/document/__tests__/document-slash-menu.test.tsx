@@ -293,7 +293,7 @@ describe('the mouse on the menu (A3)', () => {
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);
     type(editor, '/he');
-    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-heading-3'), { movementX: 1 });
+    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-heading-3'));
     expect(screen.getByTestId('doc-slash-row-heading-3').hasAttribute('data-highlighted')).toBe(true);
     fireEvent.mouseDown(screen.getByTestId('doc-slash-row-heading-3'));
     expect(read(editor)[0]?.props?.['level']).toBe(3);
@@ -328,7 +328,7 @@ describe('the mouse on the menu (A3)', () => {
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);
     type(editor, '/tab');
-    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-table'), { movementX: 1 });
+    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-table'));
     expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
     press(editor, 'Escape');
     expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
@@ -342,13 +342,13 @@ describe('the mouse on the menu (A3)', () => {
     caretAtEnd(editor, read(editor)[0]!.id);
     type(editor, '/');
     const table = screen.getByTestId('doc-slash-row-table');
-    fireEvent.mouseMove(table, { movementX: 1 });
+    fireEvent.mouseMove(table, { clientX: 10, clientY: 10 });
     expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
     press(editor, 'Escape');
     press(editor, 'ArrowDown');
     press(editor, 'ArrowDown');
     expect(table.hasAttribute('data-highlighted')).toBe(false);
-    fireEvent.mouseMove(table, { movementX: 1 });
+    fireEvent.mouseMove(table, { clientX: 11, clientY: 10 });
     expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
     expect(table.hasAttribute('data-highlighted')).toBe(true);
   });
@@ -374,17 +374,21 @@ describe('the mouse on the menu (A3)', () => {
     expect(screen.getByTestId('doc-slash-table-size-1-2').hasAttribute('data-on')).toBe(true);
   });
 
-  it('ignores a pointer move that stays where the pointer was', () => {
+  it('ignores a move where the pointer already was, and lights on the next real move', () => {
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);
+    // The pointer comes to rest where the menu is about to open.
+    fireEvent.mouseMove(document.body, { clientX: 10, clientY: 10 });
     type(editor, '/');
-    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-heading-3'), { clientX: 10, clientY: 10, movementX: 1 });
     press(editor, 'ArrowDown');
-    const lit = document.querySelector('[data-testid^="doc-slash-row-"][data-highlighted]');
-    expect(lit?.getAttribute('data-testid')).not.toBe('doc-slash-row-heading-3');
+    const lit = screen.getByTestId('doc-slash-row-heading-2');
+    expect(lit.hasAttribute('data-highlighted')).toBe(true);
     // WebKit sends this when the list scrolls under a pointer at rest.
-    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-heading-3'), { clientX: 10, clientY: 10 });
-    expect(lit?.hasAttribute('data-highlighted')).toBe(true);
+    const under = screen.getByTestId('doc-slash-row-heading-3');
+    fireEvent.mouseMove(under, { clientX: 10, clientY: 10 });
+    expect(lit.hasAttribute('data-highlighted')).toBe(true);
+    fireEvent.mouseMove(under, { clientX: 11, clientY: 10 });
+    expect(under.hasAttribute('data-highlighted')).toBe(true);
   });
 
   it('starts a menu opened by a second trigger on its first row', () => {
