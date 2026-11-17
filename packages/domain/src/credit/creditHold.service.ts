@@ -18,7 +18,6 @@
 
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
-import * as creditChargeRepo from "@domain/credit/creditCharge.repo.js";
 import * as spendLimitRepo from "@domain/credit/spendLimit.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import { fromMicroCredits, positionFrom, serializeCreditPosition, toChargeMicro, toMicroCredits, type CreditPositionMicro } from "@domain/credit/credit-math.js";
@@ -86,10 +85,8 @@ export interface MonthSpent {
 export async function monthSpent(studioId: string, tx?: DbTx): Promise<MonthSpent> {
   const month = utcMonthOf(new Date());
   const byActor = new Map<string, bigint>();
-  const charged = await creditChargeRepo.sumByActorBetween(studioId, month.start, month.next, tx);
-  const held = await creditHoldRepo.sumUnclaimedByActor(studioId, tx);
   let total = 0n;
-  for (const { actorUserId, amount } of [...charged, ...held]) {
+  for (const { actorUserId, amount } of await creditHoldRepo.sumSpentByActor(studioId, month.start, month.next, tx)) {
     const micro = toMicroCredits(amount);
     byActor.set(actorUserId, (byActor.get(actorUserId) ?? 0n) + micro);
     total += micro;

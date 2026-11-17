@@ -349,6 +349,28 @@ describe("H counting what was spent this month", () => {
     expect(got.filter((g) => g === "ok")).toHaveLength(1);
   });
 
+  it("L1 a request that takes over a hold while the month is being summed is counted once", async () => {
+    const a = await seedAccount(sql);
+    const y = await seedMember(sql, a);
+    const reference = await hold(a, y.userId, 2);
+    // Another session holds credit_holds while the sum runs, then files the
+    // request that takes the hold over and lets go. Whatever the sum reads
+    // must see the hold or the request, never neither.
+    const blocker = await sql.reserve();
+    try {
+      await blocker`begin`;
+      await blocker`lock table credit_holds in access exclusive mode`;
+      const summing = creditHoldService.monthSpent(a.studioId);
+      await expect.poll(async () => (await sql`select 1 from pg_locks l join pg_class c on c.oid = l.relation where c.relname = 'credit_holds' and not l.granted`).length, { timeout: 5_000 }).toBeGreaterThan(0);
+      await blocker`insert into credit_charge_requests(kind, actor_user_id, reference_id, project_id, studio_id, amount, release_hold, status)
+        values ('operation', ${y.userId}, ${`spent-${crypto.randomUUID()}`}, ${a.projectId}, ${a.studioId}, 2, ${reference}, 'pending')`;
+      await blocker`commit`;
+      expect((await summing).total).toBe(2_000_000n);
+    } finally {
+      blocker.release();
+    }
+  });
+
   it("H-17 a started run is charged what it cost though that passes the cap; the next one is refused", async () => {
     const a = await seedAccount(sql);
     const y = await seedMember(sql, a);

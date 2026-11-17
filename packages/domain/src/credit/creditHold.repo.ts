@@ -9,7 +9,7 @@
  * first; releasing only shrinks what is held and takes none.
  */
 
-import { and, eq, gt, lt, sql } from "drizzle-orm";
+import { and, eq, gt, gte, lt, sql } from "drizzle-orm";
 import { db, creditChargeRequests, creditHolds } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 
@@ -95,15 +95,26 @@ export async function extendHold(referenceId: string, until: Date, tx?: DbTx, du
 }
 
 /**
- * What each person's counted holds in a studio add up to, leaving out a hold a
- * pending charge request has taken over, which that request already counts
- * (inner#1968, design 3.10).
+ * What each person spent in a studio over a span (inner#1968, design 3.10):
+ * their charge requests created in it, pending or settled, and their counted
+ * holds that no pending request has taken over, which that request already
+ * counts. Both parts are read in one statement, so they share one snapshot: a
+ * request filed between two reads would otherwise leave its hold claimed and
+ * itself unseen, and count in neither.
  * @param studioId - The studio.
+ * @param from - The span's first instant.
+ * @param to - The instant after its last.
  * @param tx - Optional transaction, so an admission sums under its lock.
- * @returns One sum per person holding anything.
+ * @returns One row per person and part; a person may appear twice.
  */
-export async function sumUnclaimedByActor(studioId: string, tx?: DbTx): Promise<Array<{ actorUserId: string; amount: string }>> {
-  return (tx ?? db)
+export async function sumSpentByActor(studioId: string, from: Date, to: Date, tx?: DbTx): Promise<Array<{ actorUserId: string; amount: string }>> {
+  const conn = tx ?? db;
+  const charged = conn
+    .select({ actorUserId: creditChargeRequests.actorUserId, amount: sql<string>`SUM(${creditChargeRequests.amount})::text` })
+    .from(creditChargeRequests)
+    .where(and(eq(creditChargeRequests.studioId, studioId), gte(creditChargeRequests.createdAt, from), lt(creditChargeRequests.createdAt, to)))
+    .groupBy(creditChargeRequests.actorUserId);
+  const held = conn
     .select({ actorUserId: creditHolds.actorUserId, amount: sql<string>`SUM(${creditHolds.amount})::text` })
     .from(creditHolds)
     .where(
@@ -115,4 +126,5 @@ export async function sumUnclaimedByActor(studioId: string, tx?: DbTx): Promise<
       ),
     )
     .groupBy(creditHolds.actorUserId);
+  return charged.unionAll(held);
 }
