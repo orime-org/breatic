@@ -42,7 +42,8 @@ interface MotionThreadCardProps {
  */
 export function MotionThreadCard({ thread, timeSeconds, store, myRole, viewerId, canWrite }: MotionThreadCardProps): React.JSX.Element {
   const t = useTranslation();
-  const [draft, setDraft] = React.useState('');
+  // Unsent replies by thread: the card stays mounted while the user opens one thread after another.
+  const [drafts, setDrafts] = React.useState<ReadonlyMap<string, string>>(() => new Map());
   const authorIds = React.useMemo(() => thread.comments.map((comment) => comment.userId), [thread.comments]);
   const profiles = useUserProfiles(authorIds);
   const card = React.useMemo((): CommentCardView => ({
@@ -60,7 +61,7 @@ export function MotionThreadCard({ thread, timeSeconds, store, myRole, viewerId,
       fromAgent: false,
     })),
   }), [thread, timeSeconds, profiles]);
-  const onDraft = React.useCallback((_threadId: string, body: string): void => setDraft(body), []);
+  const onDraft = React.useCallback((threadId: string, body: string): void => setDrafts((current) => new Map(current).set(threadId, body)), []);
   /**
    * Run one write; a full Space has said so in its own toast.
    * @param write - The write.
@@ -84,7 +85,7 @@ export function MotionThreadCard({ thread, timeSeconds, store, myRole, viewerId,
   const onDelete = React.useCallback((threadId: string): void => { void run(() => store.deleteThread({ threadId })); }, [run, store]);
   const onDeleteReply = React.useCallback((threadId: string, commentId: string): void => { void run(() => store.deleteComment({ threadId, commentId })); }, [run, store]);
   return <div data-testid='motion-thread-card' className='w-72'>
-    <DocumentCommentCard card={card} marked={false} reading myRole={canWrite ? myRole : 'viewer'} viewerId={viewerId} draft={draft} onDraft={onDraft}
+    <DocumentCommentCard card={card} marked={false} reading myRole={canWrite ? myRole : 'viewer'} viewerId={viewerId} draft={drafts.get(thread.id) ?? ''} onDraft={onDraft}
       onReply={onReply} onResolve={onResolve} onReopen={onReopen} onDelete={onDelete} onDeleteReply={onDeleteReply} />
   </div>;
 }

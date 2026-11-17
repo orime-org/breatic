@@ -27,6 +27,7 @@ import type { SocketState } from '@web/data/yjs/use-socket';
 import { toast } from '@web/lib/toast';
 import { placeVideoOnCanvas } from '@web/spaces/canvas/place-video-on-canvas';
 import { asCommentBody } from '@web/spaces/document/document-comment-extension';
+import { bodyText } from '@web/spaces/document/use-comment-cards';
 import { webAnimationAnnotationStore } from '@web/spaces/web-animation/annotation-thread-store';
 import { WebAnimationSpace } from '@web/spaces/web-animation/WebAnimationSpace';
 import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
@@ -417,6 +418,27 @@ describe('opening an annotation', () => {
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
     await user.click(screen.getByRole('button', { name: 'Shown note' }));
     expect(screen.getByTestId('motion-bottom-bar')).toHaveTextContent('0:01.0 / 0:04.0');
+  });
+
+  it('keeps an unsent reply with its own thread, and Reply posts each thread\'s own words to it', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    await seedThreads([{ text: 'First note', executionId: NEWER, timeSeconds: 1 }, { text: 'Second note', executionId: NEWER, timeSeconds: 2 }]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await openFromPanel(user, 'First note');
+    await user.type(within(await screen.findByTestId('motion-thread-card')).getByTestId('doc-comment-reply-input'), 'For the first');
+    await openFromPanel(user, 'Second note');
+    const card = screen.getByTestId('motion-thread-card');
+    expect(within(card).getByTestId('doc-comment-reply-input')).toHaveValue('');
+    await user.type(within(card).getByTestId('doc-comment-reply-input'), 'For the second');
+    await user.click(within(card).getByTestId('doc-comment-reply-save'));
+    const threads = [...webAnimationAnnotationStore({ doc: getDoc(docName.webAnimationSpace(PROJECT, SPACE)), readWho: () => ({ role: 'editor', viewerId: 'u1' }) }).getThreads().values()];
+    const bodies = (words: string): string[] => (threads.find((thread) => bodyText(thread.comments[0]!.body) === words)?.comments ?? []).map((comment) => bodyText(comment.body));
+    await waitFor(() => expect(bodies('Second note')).toEqual(['Second note', 'For the second']));
+    expect(bodies('First note')).toEqual(['First note']);
+    await openFromPanel(user, 'First note');
+    expect(within(screen.getByTestId('motion-thread-card')).getByTestId('doc-comment-reply-input')).toHaveValue('For the first');
   });
 });
 
