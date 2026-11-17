@@ -84,7 +84,7 @@ const NEVER_ENDED: CompositionEnd = { mark: () => undefined, justEnded: () => fa
 interface SlashRow {
   /** The row's block id. */
   readonly blockId: string;
-  /** Characters into the row's text where the trigger starts. */
+  /** Positions into the row's content where the trigger starts. */
   readonly offset: number;
   /** Whether the row holds nothing but the trigger and the query. */
   readonly bare: boolean;
@@ -93,7 +93,7 @@ interface SlashRow {
 /**
  * The row the caret is in, and where the trigger and query sit in it. The
  * query runs from the trigger to the caret, so the trigger starts that many
- * characters back.
+ * positions back.
  * @param editor - The editor.
  * @param typed - The trigger and the query.
  * @returns The row, or undefined when the caret is in no row.
@@ -482,12 +482,14 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
   // The size grid stands beside the table row, as a submenu does. The
   // pointer may cross the rows below on its way to the grid: inside the
   // triangle between the row and the grid nothing else takes the pointer,
-  // the grace the insert menu's Radix submenu gives.
+  // the grace the insert menu's Radix submenu gives. The grid's state is
+  // ours alone: hovering Table opens it, and it closes only where the insert
+  // menu's submenu closes (another row hovered, a key, a pick, the query
+  // changing), so the hover's own close requests are not taken.
   const gridFloat = useFloating({
     open: grid !== null,
     onOpenChange: (open) => {
-      if (!open) closeGrid();
-      else setGrid((now) => (now !== null && now.query === query ? now : { query, at: null }));
+      if (open) setGrid((now) => (now !== null && now.query === query ? now : { query, at: null }));
     },
     strategy: 'absolute',
     placement: 'right-start',
@@ -499,6 +501,12 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
     handleClose: safePolygon({ blockPointerEvents: true }),
   });
   const { getReferenceProps, getFloatingProps } = useInteractions([gridHover]);
+  // A grid closed here leaves the hover's open event behind; a later open
+  // from the keyboard would then block the page's pointer as a hover does.
+  const gridContext = gridFloat.context;
+  React.useEffect(() => {
+    if (grid === null) gridContext.dataRef.current.openEvent = undefined;
+  }, [grid, gridContext]);
 
   // The lit row stays in sight, scrolling the menu's own list only.
   React.useEffect(() => {
@@ -553,8 +561,9 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
                   if (id !== 'table') closeGrid();
                 },
                 onMouseDown: (event: React.MouseEvent): void => {
-                  // Only the main button picks, as in the insert menu.
-                  if (event.button !== 0) return;
+                  // Only the main button picks, as in the insert menu;
+                  // Control with it is the secondary click on a Mac.
+                  if (event.button !== 0 || event.ctrlKey) return;
                   if (id === 'table' && !out) openGrid(null);
                   else pick(id);
                 },
