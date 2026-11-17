@@ -37,8 +37,7 @@ const HOW_TO_SEND =
   "A template node with lines is a dialogue: send it lines, one per turn, each { speaker, prompt } with the speaker the template gives and only the words said, " +
   "no name or colon in front, and no prompt. " +
   "A template with steps gets a text node listing them when it is placed, so write no node for them. " +
-  "For several takes of one template, each take is an anchor carrying { id } with its own words; an input they share is one node wired or filled into every take. " +
-  "While the user is still deciding, an apply is a take: keep the template's mode and model and write in each generate node's params the take settings this answer names; the template's own settings are for the final, made from the take they pick or when they ask for a final.";
+  "For several takes of one template, each take is an anchor carrying { id } with its own words; an input they share is one node wired or filled into every take.";
 
 /**
  * One template written out for the agent: its nodes, wiring, inputs,
@@ -94,65 +93,79 @@ interface TemplatePrice {
   exact: boolean;
 }
 
-/**
- * The settings each generate node of a template runs at as a take: the
- * template's own, with every setting that moves its model's price at its
- * cheapest value but the length, which the template's timed parts are
- * written for (inner#1811).
- * @param template - The template.
- * @returns Each generate node's key with its take settings.
- */
-async function takeSettings(template: GenerationTemplate): Promise<Record<string, Record<string, unknown>>> {
-  const generates = template.nodes.flatMap((node) => (node.role === "generate" ? [node] : []));
-  const each = await Promise.all(
-    generates.map(async (node): Promise<[string, Record<string, unknown>]> => {
-      const answer = modelsForMode(node.type, node.mode);
-      const model = answer.available ? answer.models.find((one) => one.name === node.model) : undefined;
-      const { duration: _length, ...cheapest } = model === undefined ? {} : await lowestValues(model);
-      return [node.key, { ...node.params, ...cheapest }];
-    }),
-  );
-  return Object.fromEntries(each);
+/** One generate node of a template, with the settings a take of it changes. */
+interface NodeSettings {
+  key: string;
+  model: string;
+  own: Record<string, unknown>;
+  /** Each setting that moves the model's price, at a cheaper value than the node runs at; never the length. */
+  cheaper: Record<string, unknown>;
 }
 
 /**
- * The sum of a template's generate nodes priced at the given settings.
+ * Each generate node of a template with the settings a take of it changes:
+ * every setting that moves its model's price, set cheaper than the template
+ * or the model's default sets it, but the length, which the template's timed
+ * parts are written for (inner#1811).
  * @param template - The template.
- * @param settings - Each generate node's settings, by key.
+ * @returns Its generate nodes.
+ */
+async function nodeSettings(template: GenerationTemplate): Promise<NodeSettings[]> {
+  return Promise.all(
+    template.nodes.flatMap((node) => (node.role === "generate" ? [node] : [])).map(async (node): Promise<NodeSettings> => {
+      const own = node.params ?? {};
+      const answer = modelsForMode(node.type, node.mode);
+      const model = answer.available ? answer.models.find((one) => one.name === node.model) : undefined;
+      const { duration: _length, ...lowest } = model === undefined ? {} : await lowestValues(model);
+      const cheaper = Object.fromEntries(Object.entries(lowest).filter(([name, value]) => value !== (own[name] ?? model?.params[name]?.default)));
+      return { key: node.key, model: node.model, own, cheaper };
+    }),
+  );
+}
+
+/**
+ * Generate nodes priced together.
+ * @param nodes - Each node's model and the settings it is priced at.
  * @returns The credits and whether every node was priced exactly, or undefined when none is priced.
  */
-async function priceAt(template: GenerationTemplate, settings: Record<string, Record<string, unknown> | undefined>): Promise<TemplatePrice | undefined> {
-  const prices = await Promise.all(
-    template.nodes.flatMap((node) => (node.role === "generate" ? [estimateModelCredits(node.model, { params: settings[node.key] ?? {} })] : [])),
-  );
+async function priceOf(nodes: ReadonlyArray<{ model: string; params: Record<string, unknown> }>): Promise<TemplatePrice | undefined> {
+  const prices = await Promise.all(nodes.map((node) => estimateModelCredits(node.model, { params: node.params })));
   const priced = prices.filter((price) => price !== undefined);
   if (priced.length === 0) return undefined;
   return { credits: priced.reduce((total, price) => total + price.credits, 0), exact: priced.length === prices.length && priced.every((price) => price.bound === "exact") };
 }
 
 /**
- * What one apply of a template costs on this deployment, at its settings
- * (the final) and as a take, priced live: the price list and its multiplier
- * belong to the deployment, so a number written into the template would be
- * wrong elsewhere.
+ * A price as the agent reads it.
+ * @param price - The price.
+ * @returns Its credits, marked a floor when not every node was priced exactly.
+ */
+function amount(price: TemplatePrice): string {
+  return `${price.exact ? "" : "at least "}${formatCredits(price.credits, "en-US")}`;
+}
+
+/**
+ * What a template costs on this deployment at its settings, and, when some
+ * setting makes it cheaper, how a take of it runs and what that costs,
+ * priced live: the price list and its multiplier belong to the deployment,
+ * so a number written into the template would be wrong elsewhere.
  * @param template - The template.
  * @returns The sentences, or "" when none of its generate nodes is priced.
  */
 async function applyCost(template: GenerationTemplate): Promise<string> {
-  const own = Object.fromEntries(template.nodes.flatMap((node) => (node.role === "generate" ? [[node.key, node.params]] : [])));
-  const final = await priceAt(template, own);
+  const nodes = await nodeSettings(template);
+  const final = await priceOf(nodes.map((node) => ({ model: node.model, params: node.own })));
   if (final === undefined) return "";
-  const takes = await takeSettings(template);
-  const take = await priceAt(template, takes);
-  /**
-   * A price as the agent reads it.
-   * @param price - The price.
-   * @returns Its credits, marked a floor when not every node was priced exactly.
-   */
-  const amount = (price: TemplatePrice): string => `${price.exact ? "" : "at least "}${formatCredits(price.credits, "en-US")}`;
+  const finalSentence = `At its settings this template costs ${amount(final)} credits.`;
+  const changed = nodes.filter((node) => Object.keys(node.cheaper).length > 0);
+  const take = changed.length === 0 ? undefined : await priceOf(nodes.map((node) => ({ model: node.model, params: { ...node.own, ...node.cheaper } })));
+  // Nothing cheaper: an apply runs at its cheapest and is its own final.
+  if (take === undefined || take.credits >= final.credits) return finalSentence;
+  const cheaper = JSON.stringify(Object.fromEntries(changed.map((node) => [node.key, node.cheaper])));
   return (
-    `One apply of this template costs ${amount(final)} credits at its settings.` +
-    (take === undefined ? "" : ` Takes cost ${amount(take)} credits, each generate node at these settings: ${JSON.stringify(takes)}.`)
+    `${finalSentence} While the user is still deciding, apply it as a take: keep its mode, model and length, which its prompts and wiring are written for, ` +
+    `and write these cheaper settings in its generate nodes' params: ${cheaper}. A take costs ${amount(take)} credits; ` +
+    "the final is made at its settings from the take they pick, keeping it as it is, or when they ask for a final."
   );
 }
 

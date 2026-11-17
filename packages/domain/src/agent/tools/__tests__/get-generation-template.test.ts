@@ -239,35 +239,40 @@ describe("what one apply of a template costs (inner#1816)", () => {
       for (const one of each) expect(one?.bound, id).toBe("exact");
       const sum = each.reduce((total, one) => total + (one?.credits ?? 0), 0);
       expect(sum).toBeGreaterThan(0);
-      expect(await read(id)).toContain(`One apply of this template costs ${formatCredits(sum, "en-US")} credits at its settings.`);
+      expect(await read(id)).toContain(`At its settings this template costs ${formatCredits(sum, "en-US")} credits.`);
     });
   }
 });
 
 describe("a take of a template (inner#1811)", () => {
-  beforeEach(() => {
-    useFullCatalog();
-    setLocale("en");
-  });
-  afterAll(() => restoreProcessEnv());
+  /**
+   * The credits a sentence of the answer gives.
+   * @param text - The number as written.
+   * @returns The number.
+   */
+  const credits = (text: string | undefined): number => Number((text ?? "").replace(/,/g, ""));
 
-  it("names the settings a take sends, each price-moving one at its cheapest but the length, and what a take costs below the final", async () => {
+  it("names only the cheaper settings a take writes, keeps the mode, model and length, and prices the take below the final", async () => {
     const out = await read("product-ad-15s");
-    const line = /Takes cost ([\d.,]+) credits, each generate node at these settings: (\{.*\})\./.exec(out);
-    expect(line, out).not.toBeNull();
-    const takes = JSON.parse(line?.[2] ?? "{}") as Record<string, Record<string, unknown>>;
-    const result = byId("product-ad-15s").nodes.find((node) => node.key === "result");
-    if (result?.role !== "generate") throw new Error("product-ad-15s has no result generate node");
-    // The length stays the template's: its timed parts are written for it.
-    expect(takes.result?.duration).toBe(15);
-    const take = await estimateModelCredits(result.model, { params: takes.result ?? {} });
-    const final = await estimateModelCredits(result.model, { params: result.params });
-    expect(take?.credits).toBeLessThan(final?.credits ?? 0);
-    expect(out).toMatch(/One apply of this template costs [\d.,]+ credits at its settings\./);
+    const final = /At its settings this template costs ([\d.,]+) credits/.exec(out);
+    const take = /write these cheaper settings in its generate nodes' params: (\{.*?\})\. A take costs ([\d.,]+) credits/.exec(out);
+    expect(final, out).not.toBeNull();
+    expect(take, out).not.toBeNull();
+    const overrides = JSON.parse(take?.[1] ?? "{}") as Record<string, Record<string, unknown>>;
+    // The still's model is cheapest at its default 4k, so only the video changes.
+    expect(overrides).toEqual({ result: { resolution: "480p" } });
+    const generates = byId("product-ad-15s").nodes.flatMap((node) => (node.role === "generate" ? [node] : []));
+    const each = await Promise.all(generates.map((node) => estimateModelCredits(node.model, { params: { ...node.params, ...overrides[node.key] } })));
+    const sum = each.reduce((total, one) => total + (one?.credits ?? 0), 0);
+    expect(credits(take?.[2])).toBe(credits(formatCredits(sum, "en-US")));
+    expect(credits(take?.[2])).toBeLessThan(credits(final?.[1]));
   });
 
-  it("tells the agent a template sent while the user is still deciding is a take at those settings", async () => {
-    expect(await read("product-ad-15s")).toContain("While the user is still deciding, an apply is a take");
+  it("says nothing of a take when no setting makes the template cheaper, so an apply is its final", async () => {
+    const out = await read("character-bible");
+    expect(out).toMatch(/At its settings this template costs [\d.,]+ credits\./);
+    expect(out).not.toContain("A take costs");
+    expect(out).not.toContain("cheaper settings");
   });
 });
 
