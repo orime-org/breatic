@@ -3,7 +3,8 @@
 
 /**
  * Cancelling a task that waits for a free slot (inner#1968, test spec area G:
- * G-25 to G-29, G-36; invariant K5; 5.1 resolution #14). Real Postgres and
+ * G-25 to G-29, G-36, and the F8 cancel cells G-40 to G-42; invariant K5;
+ * 5.1 resolution #14). Real Postgres and
  * Redis through the real Hono app, payments on.
  *
  * `POST /api/v1/canvas/tasks/:taskId/cancel` is allowed to whoever may
@@ -30,8 +31,9 @@ vi.mock("@breatic/shared", async (importOriginal) =>
 import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
-import { env, getNodeTaskConfig, getStreamRedis, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
-import { spaceTasksChangedChannel, TASK_FAILURE_REASONS } from "@breatic/shared";
+import { env, getNodeTaskConfig, getStreamRedis, initCore, loadLocales, reportGraceMs, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
+import { nodeTaskService, runningSlotService } from "@breatic/domain";
+import { canvasSpaceDocName, spaceTasksChangedChannel, TASK_FAILURE_REASONS } from "@breatic/shared";
 import * as timelineExecutionService from "@server/modules/timeline/timeline-execution.service.js";
 import { PAYMENTS_ON, request, seedAccount, seedMember, type Account, type Actor } from "./paid-account-fixtures.js";
 
@@ -201,6 +203,99 @@ describe("G-29 cancelling a Timeline execution that has not started", () => {
     const [execution] = await sql<{ status: string }[]>`select status from timeline_executions where id = ${row.id}`;
     expect(execution!.status).toBe("cancelled");
     expect(await holds()).toEqual(before);
+  });
+});
+
+/**
+ * Every node-task-counts event the stream carries for one node.
+ * @param a - Whose canvas.
+ * @param nodeId - The node.
+ * @returns Each event's counts, oldest first.
+ */
+async function countsEvents(a: Account, nodeId: string): Promise<Record<string, number>[]> {
+  const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
+  return raw
+    .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
+    .filter((e) => e.type === "node-task-counts" && e.docName === canvasSpaceDocName(a.projectId, a.spaceId) && e.nodeId === nodeId)
+    .map((e) => e.counts as Record<string, number>);
+}
+
+/**
+ * Every stored column of a task, its node task row and its credit hold.
+ * @param taskId - The task.
+ * @returns The three rows as read.
+ */
+async function rowsOf(taskId: string): Promise<unknown[]> {
+  return [
+    [...(await sql`select * from tasks where id = ${taskId}`)],
+    [...(await sql`select * from node_tasks where task_id = ${taskId}`)],
+    [...(await sql`select * from credit_holds where reference_id = ${taskId}`)],
+  ];
+}
+
+describe("G-40 cancelling a task the gate has not judged yet (F8 fresh × T7)", () => {
+  it("G-40 cancels it, releases its hold in the same commit, ends its node row as cancelled with a counts event, and a later pickup returns without starting it", async () => {
+    const a = await seedAccount(sql);
+    const { taskId, nodeId } = await generate(a);
+    const [fresh] = await sql<{ slot_wait_since: Date | null }[]>`select slot_wait_since from tasks where id = ${taskId}`;
+    expect(fresh!.slot_wait_since).toBeNull();
+    const [node] = await sql<{ waiting_since: Date | null }[]>`select waiting_since from node_tasks where task_id = ${taskId}`;
+    expect(node!.waiting_since).toBeNull();
+    expect(await standing(taskId)).toMatchObject({ task: "pending", hold: "held", node: { status: "running" } });
+    const runningBefore = (await nodeTaskService.countsFor({ projectId: a.projectId, nodeId })).running;
+    const eventsBefore = (await countsEvents(a, nodeId)).length;
+
+    const res = await cancel(a, taskId);
+    expect(res.status, await res.clone().text()).toBe(200);
+    const body = (await res.json()) as { data: { cancelled: boolean; counts: Record<string, number> } };
+    expect(body.data.cancelled).toBe(true);
+    expect(body.data.counts.running).toBe(runningBefore - 1);
+    expect(await standing(taskId)).toEqual({ task: "cancelled", hold: "released", node: { status: "failed", error_message: "cancelled" } });
+    const events = await countsEvents(a, nodeId);
+    expect(events.length).toBeGreaterThan(eventsBefore);
+    expect(events.at(-1)).toMatchObject({ running: runningBefore - 1 });
+
+    // The worker's pickup reads an ended row and returns: no start, no wait recorded.
+    const after = await rowsOf(taskId);
+    const picked = (await runningSlotService.startWithinLimit({ table: "tasks", id: taskId, jobId: `job-${taskId}` })) as { outcome: string };
+    expect(picked.outcome).toBe("ended");
+    expect(await rowsOf(taskId)).toEqual(after);
+  });
+});
+
+describe("G-41 cancelling a running row past its deadline (F8 stale × T7)", () => {
+  it("G-41 answers 409 and changes nothing: task, node row, hold and slot columns stay as they were, and no counts event is sent", async () => {
+    const a = await seedAccount(sql);
+    const { taskId, nodeId } = await generate(a);
+    const B = getNodeTaskConfig().default_budget_ms;
+    await sql`update tasks set status = 'running', started_at = now() - ${B + reportGraceMs() + 1} * interval '1 millisecond' where id = ${taskId}`;
+    expect(await standing(taskId)).toMatchObject({ task: "running", hold: "held", node: { status: "running" } });
+    const before = await rowsOf(taskId);
+    const eventsBefore = (await countsEvents(a, nodeId)).length;
+    const res = await cancel(a, taskId);
+    expect(res.status).toBe(409);
+    expect(await rowsOf(taskId)).toEqual(before);
+    expect((await countsEvents(a, nodeId)).length).toBe(eventsBefore);
+  });
+});
+
+describe("G-42 cancelling a task that already ended (F8 ended × T7)", () => {
+  it.each(["completed", "failed", "cancelled"] as const)("G-42 answers 409 for a %s task and changes nothing, sending no counts event", async (end) => {
+    const a = await seedAccount(sql);
+    const { taskId, nodeId } = await generate(a);
+    if (end === "cancelled") {
+      expect((await cancel(a, taskId)).status).toBe(200);
+    } else {
+      await sql`update tasks set status = ${end}, completed_at = now() where id = ${taskId}`;
+      await sql`update node_tasks set status = ${end === "completed" ? "done" : "failed"}, settled_at = now() where task_id = ${taskId}`;
+      await sql`update credit_holds set status = 'released', released_at = now() where reference_id = ${taskId}`;
+    }
+    const before = await rowsOf(taskId);
+    const eventsBefore = (await countsEvents(a, nodeId)).length;
+    const res = await cancel(a, taskId);
+    expect(res.status).toBe(409);
+    expect(await rowsOf(taskId)).toEqual(before);
+    expect((await countsEvents(a, nodeId)).length).toBe(eventsBefore);
   });
 });
 

@@ -3,7 +3,8 @@
 
 /**
  * How many tasks one person may run at once (inner#1968, test spec area G:
- * G-01 to G-21, G-23, G-24, G-30 to G-33; invariants K1 to K4; PT-4).
+ * G-01 to G-21, G-23, G-24, G-30 to G-33, the F8 waiting and fresh cells
+ * G-43 to G-45; invariants K1 to K4; PT-4).
  *
  * The worker calls the domain gate `runningSlotService.startWithinLimit` for a
  * row nobody has taken yet (`tasks.status = 'pending'`, Timeline `queued`).
@@ -45,13 +46,14 @@ import fc from "fast-check";
 import postgres from "postgres";
 import { Worker, type Job, type Queue } from "bullmq";
 import { canvasSpaceDocName, spaceTasksChangedChannel } from "@breatic/shared";
-import { createQueue, env, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
+import { createQueue, type TimelineExecutionJobData, env, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
 import { nodeTaskService, runningSlotService, sceneTaskService, taskService } from "@breatic/domain";
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
 import { finishFailedRun, runTask, type TaskJobData } from "@worker/handlers/dispatch.js";
 import { listSpaceTasks } from "@server/modules/asset/scene-tasks.service.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
+import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -778,6 +780,115 @@ describe("G waiting for a free slot", () => {
 });
 
 /**
+ * A queued Timeline execution that already waits for a slot, its original deadline 1 ms gone, created first so the
+ * sweep's window reaches it.
+ * @param p - Whose.
+ * @param checkedAt - When the gate last checked it.
+ * @returns Its id.
+ */
+async function waitingExecution(p: Person, checkedAt: Date): Promise<string> {
+  const id = await execution(p, "queued");
+  const now = await dbNow();
+  await sql`update timeline_executions set slot_wait_since = ${new Date(now.getTime() - 60_000)}, slot_checked_at = ${checkedAt}, slot_wait_limit = 2,
+    deadline_at = ${new Date(now.getTime() - 1)}, created_at = '2000-01-01T00:00:00Z' where id = ${id}`;
+  return id;
+}
+
+/**
+ * Every stored column of a Timeline execution.
+ * @param id - The execution.
+ * @returns The row as read.
+ */
+async function executionRow(id: string): Promise<Record<string, unknown>> {
+  const [row] = await sql<Record<string, unknown>[]>`select * from timeline_executions where id = ${id}`;
+  return row!;
+}
+
+describe("G F8 a waiting Timeline execution has no deadline until it starts", () => {
+  it("G-43 K4 a waiter past its original deadline is not expired by the take, by a deadline event or by the Timeline sweep", async () => {
+    const p = await person();
+    await running(p, 2);
+    const now = await dbNow();
+    const recent = await waitingExecution(p, now);
+    const stale = await waitingExecution(p, new Date(now.getTime() - STALE - 1000));
+
+    // 1. The take goes through the gate, which holds it back: no "past its deadline, end it" branch.
+    const job = { data: { executionId: recent } } as unknown as Job<TimelineExecutionJobData>;
+    const thrown = await runTimelineExecution(job).then(() => null, (err: unknown) => err);
+    expect((thrown as Error | null)?.name).toBe("StillRunning");
+    expect((await executionRow(recent)).status).toBe("queued");
+
+    // 2. A deadline event changes neither row.
+    for (const id of [recent, stale]) {
+      const before = await executionRow(id);
+      const moved = await timelineExecutionRepo.transition({ id, event: { type: "deadline" } });
+      expect(moved.applied).toBe(false);
+      expect(await executionRow(id)).toEqual(before);
+    }
+
+    // 3. The sweep leaves the recently checked waiter out and only puts the stale one's job back.
+    const listed = (await timelineExecutionRepo.listForSweep({ limit: 100_000 })).map((r) => r.id);
+    expect(listed).not.toContain(recent);
+    expect(listed).toContain(stale);
+    const asked: string[] = [];
+    const added: string[] = [];
+    await sweepTimelineExecutions({
+      getJob: async (id: string) => { asked.push(id); return undefined; },
+      add: async (_name: string, data: TimelineExecutionJobData) => { added.push(data.executionId); return undefined; },
+    } as unknown as Parameters<typeof sweepTimelineExecutions>[0]);
+    expect(asked).not.toContain(recent);
+    expect(added).not.toContain(recent);
+    expect(added).toContain(stale);
+
+    for (const id of [recent, stale]) expect((await executionRow(id)).status).toBe("queued");
+  });
+
+  it("G-44 a waiter that starts gets a fresh deadline of start + budget, and later deadline checks use it", async () => {
+    const p = await person();
+    await running(p, 2);
+    const id = await waitingExecution(p, await dbNow());
+    expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
+    await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
+    const before = await dbNow();
+    expect(await pick(id, "timeline_executions")).toEqual({ started: true });
+    const after = await dbNow();
+    const row = await executionRow(id);
+    expect(row.status).toBe("running");
+    const deadline = (row.deadline_at as Date).getTime();
+    expect(deadline).toBeGreaterThanOrEqual(before.getTime() + B - 1);
+    expect(deadline).toBeLessThanOrEqual(after.getTime() + B + 1);
+    // The original deadline has passed; the new one has not, so a deadline event does not expire it.
+    const moved = await timelineExecutionRepo.transition({ id, event: { type: "deadline" } });
+    expect(moved.applied).toBe(false);
+    expect((await executionRow(id)).status).toBe("running");
+  });
+});
+
+describe("G F8 a task the gate has not judged keeps its node row's deadline", () => {
+  it("G-45 both harvests expire a fresh task's overdue node row, and leave an equally overdue waiting row alone", async () => {
+    const p = await person();
+    const now = await dbNow();
+    const overdue = new Date(now.getTime() - B - 1);
+    const waiting = { since: now, checkedAt: now, limit: 2 };
+    const freshNode = await seedTask(p, { node: true, nodeStartedAt: overdue });
+    const freshScene = await seedTask(p, { scene: true, nodeStartedAt: overdue });
+    const waitNode = await seedTask(p, { node: true, nodeStartedAt: overdue, waiting });
+    const waitScene = await seedTask(p, { scene: true, nodeStartedAt: overdue, waiting });
+    expect((await nodeRow(freshNode.nodeTaskId!)).waiting_since).toBeNull();
+    expect((await taskRow(freshNode.taskId)).slot_wait_since).toBeNull();
+
+    await nodeTaskService.harvestAndList({ projectId: p.projectId, nodeId: freshNode.nodeId! });
+    await nodeTaskService.harvestAndList({ projectId: p.projectId, nodeId: waitNode.nodeId! });
+    await sceneTaskService.harvestAndList(p.projectId, p.spaceId);
+
+    expect(await nodeRow(freshNode.nodeTaskId!)).toMatchObject({ status: "expired", error_message: "expired" });
+    expect(await nodeRow(freshScene.nodeTaskId!)).toMatchObject({ status: "expired", error_message: "expired" });
+    expect((await nodeRow(waitNode.nodeTaskId!)).status).toBe("running");
+    expect((await nodeRow(waitScene.nodeTaskId!)).status).toBe("running");
+  });
+});
+
+/**
  * Every node-task-counts event the stream carries for one node.
  * @param p - Whose canvas.
  * @param nodeId - The node.
@@ -925,38 +1036,103 @@ describe("G a 3D Space's waiting row tells the Space's list", () => {
   });
 });
 
+/**
+ * How many rows the person runs within their deadline, as the gate counts `R`.
+ * @param p - Whose.
+ * @returns Running tasks within budget and grace plus running or cancelling Timeline executions within grace of
+ *   their deadline.
+ */
+async function inDeadlineRunning(p: Person): Promise<number> {
+  const grace = reportGraceMs();
+  const [row] = await sql<{ n: number }[]>`select
+    (select count(*) from tasks where user_id = ${p.userId} and status = 'running' and started_at > now() - ${B + grace} * interval '1 millisecond')
+    + (select count(*) from timeline_executions where actor_user_id = ${p.userId} and status in ('running', 'cancelling') and deadline_at > now() - ${grace} * interval '1 millisecond') as n`;
+  return Number(row!.n);
+}
+
+/**
+ * Move the person's clock on by writing every time column of their rows that far back.
+ * @param p - Whose.
+ * @param ms - How far.
+ */
+async function advance(p: Person, ms: number): Promise<void> {
+  const by = sql`${ms} * interval '1 millisecond'`;
+  await sql`update tasks set created_at = created_at - ${by}, started_at = started_at - ${by}, slot_wait_since = slot_wait_since - ${by}, slot_checked_at = slot_checked_at - ${by} where user_id = ${p.userId}`;
+  await sql`update node_tasks set started_at = started_at - ${by}, waiting_since = waiting_since - ${by} where started_by_user_id = ${p.userId}`;
+  await sql`update timeline_executions set created_at = created_at - ${by}, deadline_at = deadline_at - ${by}, slot_wait_since = slot_wait_since - ${by}, slot_checked_at = slot_checked_at - ${by} where actor_user_id = ${p.userId}`;
+}
+
 describe("PT-4 the gate under concurrent pickups (K1, K4, K5)", () => {
-  it("never starts a task when the person already runs their limit, never fails a waiter, and starts each row once", async () => {
+  it("PT-4 K1 K4 never starts past the limit, and a waiting row is never failed or expired because it waited, across clock jumps, harvests, deadline events and the Timeline sweep", async () => {
+    const queue = { add: async () => undefined, getJob: async () => undefined } as unknown as Parameters<typeof sweepTimelineExecutions>[0];
     await fc.assert(
       fc.asyncProperty(
         fc.constantFrom(1, 2, 3, 10),
         fc.integer({ min: 1, max: 8 }),
-        fc.array(fc.record({ workers: fc.integer({ min: 1, max: 4 }), finish: fc.integer({ min: 0, max: 2 }) }), { minLength: 1, maxLength: 8 }),
-        async (limit, n, rounds) => {
+        fc.integer({ min: 0, max: 3 }),
+        fc.array(fc.record({
+          workers: fc.integer({ min: 1, max: 4 }),
+          finish: fc.integer({ min: 0, max: 2 }),
+          advanceMs: fc.oneof(fc.constant(0), fc.integer({ min: 1, max: 4 * 3_600_000 })),
+        }), { minLength: 1, maxLength: 8 }),
+        async (limit, n, m, rounds) => {
           const p = await person("enterprise", limit);
           const base = await dbNow();
-          const ids: string[] = [];
-          for (let i = 0; i < n; i += 1) ids.push((await seedTask(p, { createdAt: new Date(base.getTime() - 60_000 + i) })).taskId);
-          const startedOnce = new Set<string>();
-          for (const round of rounds) {
-            const pending = (await sql<{ id: string }[]>`select id from tasks where user_id = ${p.userId} and status = 'pending' order by created_at`).map((r) => r.id);
-            const batch = pending.slice(0, round.workers);
-            const got = await Promise.all(batch.map((id) => pick(id)));
-            got.forEach((g, i) => {
-              if (!("started" in g)) return;
-              expect(startedOnce.has(batch[i]!)).toBe(false);
-              startedOnce.add(batch[i]!);
-            });
-            // K1: no pickup took the person past the limit.
-            expect(await runningCount(p)).toBeLessThanOrEqual(limit);
-            // K4: waiting never fails a row.
-            const [failed] = await sql<{ n: number }[]>`select count(*)::int as n from tasks where user_id = ${p.userId} and status = 'failed'`;
-            expect(failed!.n).toBe(0);
-            if (round.finish > 0) {
-              await sql`update tasks set status = 'completed', completed_at = now() where id in (select id from tasks where user_id = ${p.userId} and status = 'running' order by started_at limit ${round.finish})`;
-            }
+          const tasks: Seeded[] = [];
+          for (let i = 0; i < n; i += 1) tasks.push(await seedTask(p, { node: true, createdAt: new Date(base.getTime() - 60_000 + i) }));
+          const executions: string[] = [];
+          for (let i = 0; i < m; i += 1) {
+            const id = await execution(p, "queued");
+            // Ahead of every other suite's rows, so the sweep's window reaches it.
+            await sql`update timeline_executions set created_at = ${new Date(Date.UTC(1999, 0, 1) + i)} where id = ${id}`;
+            executions.push(id);
           }
-          expect(ids.length).toBe(n);
+          try {
+            const startedOnce = new Set<string>();
+            for (const round of rounds) {
+              const pendingTasks = (await sql<{ id: string }[]>`select id from tasks where id = any(${tasks.map((t) => t.taskId)}) and status = 'pending' order by created_at`).map((r) => ({ id: r.id, table: "tasks" as const }));
+              const queued = executions.length === 0 ? [] : (await sql<{ id: string }[]>`select id from timeline_executions where id = any(${executions}) and status = 'queued' order by created_at`).map((r) => ({ id: r.id, table: "timeline_executions" as const }));
+              const batch = [...pendingTasks, ...queued].slice(0, round.workers);
+              const got = await Promise.all(batch.map((b) => pick(b.id, b.table)));
+              got.forEach((g, i) => {
+                if (!("started" in g)) return;
+                expect(startedOnce.has(batch[i]!.id)).toBe(false);
+                startedOnce.add(batch[i]!.id);
+              });
+              // K1: no pickup took the person past the limit.
+              expect(await inDeadlineRunning(p)).toBeLessThanOrEqual(limit);
+
+              // The rows that wait after this step's pickups.
+              // A node row harvested while its task was still fresh (G-45) stays expired; this step must not
+              // expire one that waits.
+              const waitingTasks = tasks.length === 0 ? [] : await sql<{ id: string; node_status: string }[]>`select t.id, n.status as node_status from tasks t join node_tasks n on n.task_id = t.id
+                where t.id = any(${tasks.map((x) => x.taskId)}) and t.status = 'pending' and t.slot_wait_since is not null`;
+              const waitingExecutions = executions.length === 0 ? [] : await sql<{ id: string }[]>`select id from timeline_executions where id = any(${executions}) and status = 'queued' and slot_wait_since is not null`;
+
+              if (round.finish > 0) {
+                await sql`update tasks set status = 'completed', completed_at = now() where id in (select id from tasks where user_id = ${p.userId} and status = 'running' order by started_at limit ${round.finish})`;
+                await sql`update timeline_executions set status = 'succeeded', fence = null where id in (select id from timeline_executions where actor_user_id = ${p.userId} and status = 'running' order by deadline_at limit ${round.finish})`;
+              }
+              if (round.advanceMs > 0) await advance(p, round.advanceMs);
+              for (const t of tasks) await nodeTaskService.harvestAndList({ projectId: p.projectId, nodeId: t.nodeId! });
+              await sceneTaskService.harvestAndList(p.projectId, p.spaceId);
+              for (const id of executions) await timelineExecutionRepo.transition({ id, event: { type: "deadline" } });
+              await sweepTimelineExecutions(queue);
+
+              // K4: no event in this step ends a waiter, so every waiter still waits, its node row unharvested.
+              for (const { id, node_status } of waitingTasks) {
+                expect((await taskRow(id)).status).toBe("pending");
+                const node = tasks.find((t) => t.taskId === id)!;
+                expect((await nodeRow(node.nodeTaskId!)).status).toBe(node_status);
+              }
+              for (const { id } of waitingExecutions) expect((await executionRow(id)).status).toBe("queued");
+              const [failed] = await sql<{ n: number }[]>`select count(*)::int as n from tasks where user_id = ${p.userId} and status = 'failed'`;
+              expect(failed!.n).toBe(0);
+            }
+          } finally {
+            // Leave no open execution behind for the other suites' sweeps.
+            await sql`update timeline_executions set status = 'cancelled', fence = null where actor_user_id = ${p.userId} and status in ('awaiting_landing', 'queued', 'running', 'cancelling')`;
+          }
         },
       ),
       { numRuns: 100 },
