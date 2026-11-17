@@ -30,7 +30,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import postgres from "postgres";
 import { db, getNodeTaskConfig, initCore, loadLocales, reportGraceMs } from "@breatic/core";
-import { creditHoldService, creditLotService, operationService } from "@breatic/domain";
+import { creditHoldService, creditLotRepo, creditLotService, operationService } from "@breatic/domain";
 import { seedDesignatedLot } from "./studio-credit-fixtures.js";
 
 let sql: ReturnType<typeof postgres>;
@@ -361,6 +361,34 @@ describe("admission at and beyond the allowance", () => {
     expect(filed).toMatchObject({ kind: "operation_overage", amount: "0.500000" });
     await creditLotService.settleCharge(filed!.id);
     expect(await balance(a)).toBeCloseTo(-0.5, 6);
+  });
+});
+
+describe("the credits pages name an overage charge (design 3.4)", () => {
+  it("a paid overage is an operation_overage line on both the studio's and the account's ledger", async () => {
+    const a = await account(ALLOWANCE, 0.7);
+    const key = await admit(a);
+    await count(key);
+    await creditLotService.settleCharge((await requests(key))[0]!.id);
+    const [studioLine] = await creditLotRepo.listLedgerByStudio(a.studioId, 10, null);
+    expect(studioLine).toMatchObject({ kind: "operation_overage", projectId: a.projectId, model: null });
+    expect(Number(studioLine!.charged)).toBeCloseTo(-0.5, 6);
+    expect(Number(studioLine!.owed)).toBe(0);
+    const [accountLine] = await creditLotRepo.listLedgerByPayer(a.userId, 10, null);
+    expect(accountLine).toMatchObject({ kind: "operation_overage", studioId: a.studioId, projectId: a.projectId });
+    expect(Number(accountLine!.amount)).toBeCloseTo(-0.5, 6);
+  });
+
+  it("an overage the pool could not cover is still an operation_overage line on the studio's ledger, owing the 0.5", async () => {
+    const a = await account(ALLOWANCE - 1, 0);
+    const running = await admit(a);
+    await counted(a, 1);
+    await count(running);
+    await creditLotService.settleCharge((await requests(running))[0]!.id);
+    const [line] = await creditLotRepo.listLedgerByStudio(a.studioId, 10, null);
+    expect(line).toMatchObject({ kind: "operation_overage", projectId: a.projectId });
+    expect(Number(line!.charged)).toBe(0);
+    expect(Number(line!.owed)).toBeCloseTo(-0.5, 6);
   });
 });
 

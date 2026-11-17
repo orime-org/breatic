@@ -49,6 +49,7 @@ import type {
   CreditLedgerEntryEntity,
   CreditLedgerEntryType,
   CreditLedgerKind,
+  StudioLedgerKind,
 } from "@breatic/shared";
 
 /**
@@ -1268,7 +1269,7 @@ export interface PayerLedgerRow {
   projectName: string | null;
   model: string | null;
   provider: string | null;
-  /** Which of the three kinds of line this is. */
+  /** Which kind of line this is. */
   kind: CreditLedgerKind;
   /** What this line came to. Negative. */
   amount: string;
@@ -1315,7 +1316,7 @@ export async function listLedgerByPayer(
       projectName: sql<string | null>`MAX(${projects.name})`,
       model: sql<string | null>`MAX(${creditLedger.model})`,
       provider: sql<string | null>`MAX(${creditLedger.provider})`,
-      // Which of the three this line is. A repayment carries no project and
+      // Which kind of line this is. A repayment carries no project and
       // no model, so without saying so it reads as a generation that never
       // happened; and a run that drew on no purchase cost this account
       // nothing, which the figure alone cannot say.
@@ -1393,8 +1394,8 @@ export interface StudioLedgerRow {
   createdAt: Date;
   /** The same instant at the precision the column stores, for the cursor. */
   cursorAt: string;
-  /** A generation, or a designation paying off what the studio owed. */
-  kind: "generation" | "debt_repayment";
+  /** A generation, a designation paying off what the studio owed, or an operation past the allowance. */
+  kind: StudioLedgerKind;
   actorUserId: string | null;
   actorName: string | null;
   projectId: string | null;
@@ -1458,9 +1459,15 @@ export async function listLedgerByStudio(
       id: groupId,
       createdAt: groupAt,
       cursorAt: groupCursorAt,
-      kind: sql<"generation" | "debt_repayment">`CASE
+      // The same overage test as the account ledger's: a charge for an
+      // operation past the allowance writes its `spend` and `debt_incurred`
+      // rows with this description and no model, and read as a generation it
+      // would show a run of no model.
+      kind: sql<StudioLedgerKind>`CASE
         WHEN BOOL_AND(${creditLedger.entryType} = 'debt_repayment')
-        THEN 'debt_repayment' ELSE 'generation' END`,
+        THEN 'debt_repayment'
+        WHEN BOOL_AND(${creditLedger.description} = ${OPERATION_OVERAGE_DESCRIPTION})
+        THEN 'operation_overage' ELSE 'generation' END`,
       actorUserId: sql<string | null>`MAX(${creditLedger.actorUserId}::text)`,
       actorName: sql<string | null>`MAX(${studios.name})`,
       projectId: sql<string | null>`MAX(${creditLedger.projectId}::text)`,
