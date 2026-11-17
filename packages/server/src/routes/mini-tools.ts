@@ -25,6 +25,7 @@ import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { projectService } from "@server/modules";
 import { prepareRun } from "@server/modules/mini-tool/mini-tool.service.js";
 import { startRowedRun } from "@server/modules/task/generation-task.js";
+import { creditsToHold, taskKeyRows } from "@server/modules/task/run-keys.js";
 
 const miniTools = new Hono<{ Variables: AuthVariables }>();
 
@@ -63,6 +64,8 @@ miniTools.post(
     run.params,
     run.model,
     "mini_tool",
+    undefined,
+    run.keys === undefined ? undefined : taskKeyRows(run.keys),
   );
 
   const status = await startRowedRun({
@@ -73,7 +76,8 @@ miniTools.post(
     userId: user.id,
     action: "mini_tool",
     label: spec.id,
-    credits: () => Promise.resolve(run.credits),
+    // What the payer's own key pays for is not held (inner#1953).
+    credits: () => (run.keys === undefined ? Promise.resolve(run.credits) : creditsToHold(run.keys, body.project_id, user.id, () => Promise.resolve(run.credits))),
     enqueue: () =>
       tasksQueue().add(
         "execute-mini-tool",

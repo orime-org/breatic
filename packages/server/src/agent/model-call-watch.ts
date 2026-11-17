@@ -30,17 +30,29 @@ export interface ModelCallWatch {
 }
 
 /**
+ * How a later lookup of an operation's costs is charged (inner#1953): on the payer's own key it names the key row, so
+ * the cost is asked with that key and no other, and is never charged; on our keys it is charged.
+ * @param description - What the ledger row says the charge was for.
+ * @param keyId - The account key row the operation ran on, or null for our keys.
+ * @returns What `handOffLookups` is handed.
+ */
+export function lookupCharge(description: string, keyId: string | null | undefined): { description: string; charge: boolean; keyId?: string } {
+  return keyId == null ? { description, charge: true } : { description, charge: false, keyId };
+}
+
+/**
  * Watch one stream's model calls.
  * @param usage - The operation's recorder; rows and lookups go under its operation.
- * @param call - The model the stream calls, and what a ledger row says the charge was for.
+ * @param call - The model the stream calls, what a ledger row says the charge was for, and the key row it runs on.
  * @param call.model - The model id.
  * @param call.description - What the ledger row says the charge was for.
+ * @param call.keyId - The account key row the stream runs on (inner#1953); null or absent for our keys.
  * @param pendingCosts - The prepared call's `pendingCosts`.
  * @returns The watch.
  */
 export function watchModelCalls(
   usage: UsageRecorder,
-  call: { model: string; description: string },
+  call: { model: string; description: string; keyId?: string | null },
   pendingCosts: () => readonly PendingCost[],
 ): ModelCallWatch {
   let served: string | undefined;
@@ -56,7 +68,7 @@ export function watchModelCalls(
       const cutOff: AwaitedLookup[] = [];
       for (const pending of pendingCosts()) {
         if (pending.state === "pending") {
-          cutOff.push({ lookup: pending.lookup, source: "model", model: call.model });
+          cutOff.push({ lookup: pending.lookup, source: "model", model: call.model, ...(pending.payer === undefined ? {} : { payer: pending.payer }) });
           served ??= pending.lookup.upstream;
           continue;
         }
@@ -66,7 +78,7 @@ export function watchModelCalls(
       }
       const lookups = [...usage.awaitingLookup(), ...cutOff];
       if (lookups.length === 0) return;
-      await handOffLookups(lookups, usage.operation, { description: call.description, charge: true });
+      await handOffLookups(lookups, usage.operation, lookupCharge(call.description, call.keyId));
     },
   };
 }

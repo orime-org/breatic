@@ -665,15 +665,17 @@ export async function modelForQueued(conversation: ConversationEntity, userId: s
  * @param conversation - The conversation, already checked writable.
  * @param userId - The user.
  * @param toolCallId - The call being answered.
- * @returns The model id, and the upstream to stay on when there is one.
+ * @returns The model id, the upstream to stay on when there is one, and the account key row the paused segment ran on.
  */
 export async function modelForResume(
   conversation: ConversationEntity,
   userId: string,
   toolCallId: string,
-): Promise<{ modelId: string; upstream?: string }> {
+): Promise<{ modelId: string; upstream?: string; keyId?: string }> {
   const run = await messageRepo.getReplyRun(conversation.id, toolCallId);
   const started = listedModel(run.modelId ?? null);
-  if (started === undefined) return { modelId: await modelForMessage(conversation, userId, undefined) };
-  return { modelId: started.id, ...(run.servedUpstream === undefined ? {} : { upstream: run.servedUpstream }) };
+  // The account key row the paused segment ran on stays the resumed one's, whatever model it resumes on (inner#1953).
+  const keyId = run.keyId === undefined ? {} : { keyId: run.keyId };
+  if (started === undefined) return { modelId: await modelForMessage(conversation, userId, undefined), ...keyId };
+  return { modelId: started.id, ...(run.servedUpstream === undefined ? {} : { upstream: run.servedUpstream }), ...keyId };
 }

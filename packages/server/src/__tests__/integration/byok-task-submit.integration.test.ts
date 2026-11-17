@@ -84,7 +84,7 @@ const IMAGE = "gpt-image-2.5-sunburst-text-to-image";
 const REWRITTEN = "nano-banana-2";
 /** The model `image.remove-bg` runs, bound on WaveSpeed and fal. */
 const REMOVE_BG = "bria-remove-background";
-/** A video model whose run first describes each element image on a language model, bound on WaveSpeed and fal. */
+/** A video model whose run first describes each element image on a language model, bound on WaveSpeed and fal (which takes no elements). */
 const KLING_O3 = "kling-video-o3-4k-image-to-video";
 /** A Kling O3 run with one element, so its description step runs. */
 const KLING_PARAMS = {
@@ -94,10 +94,12 @@ const KLING_PARAMS = {
   duration: 5,
 };
 
-/** A 3D model bound on WaveSpeed, fal and SandBase. */
+/** A 3D model bound on WaveSpeed, fal and SandBase; only WaveSpeed takes its default `delight`. */
 const T23D = "tripo-h3.1-t23d";
 
 const FAL_KEY = "fal-account-key-never-stored";
+/** fal takes neither Tripo's default `delight` nor Kling O3's `elements`, so the runs that need them go to WaveSpeed. */
+const WAVESPEED_KEY = "ws-account-key-never-stored";
 const OPENROUTER_KEY = "sk-or-v1-account-key-never-stored";
 
 let sql: ReturnType<typeof postgres>;
@@ -313,7 +315,7 @@ describe("a canvas generation", () => {
     const fx = await seed(100_000);
     await pointAt(fx.userId, IMAGE, "fal", FAL_KEY);
     // Only the key row is retired, so the choice still names fal: the key's own state decides.
-    await sql`UPDATE account_provider_keys SET deleted_at = now() WHERE user_id = ${fx.userId} AND upstream = 'fal'`;
+    await sql`UPDATE account_provider_keys SET deleted_at = now(), ciphertext = NULL WHERE user_id = ${fx.userId} AND upstream = 'fal'`;
 
     const { taskId } = await acceptedTask(await SUBMIT.generate(fx, IMAGE));
 
@@ -353,7 +355,7 @@ describe("Kling O3 with elements, whose description step runs on a language mode
 
   it("is admitted with no credits in the Studio, holding nothing, when the media and the description both run on the payer's keys", async () => {
     const fx = await seed(0);
-    const keyId = await pointAt(fx.userId, KLING_O3, "fal", FAL_KEY);
+    const keyId = await pointAt(fx.userId, KLING_O3, "wavespeed", WAVESPEED_KEY);
     const llmKeyId = await saveKey(fx.userId, "openrouter", OPENROUTER_KEY);
 
     const { taskId } = await acceptedTask(await submitKling(fx));
@@ -508,15 +510,15 @@ describe("a model mini-tool", () => {
 });
 
 describe("a 3D generation", () => {
-  it("runs a model the payer pointed at fal on that key row, holding nothing, with no credits in the Studio", async () => {
+  it("runs a model the payer pointed at WaveSpeed on that key row, holding nothing, with no credits in the Studio", async () => {
     const fx = await seed(0);
-    const keyId = await pointAt(fx.userId, T23D, "fal", FAL_KEY);
+    const keyId = await pointAt(fx.userId, T23D, "wavespeed", WAVESPEED_KEY);
 
     const { taskId } = await acceptedTask(await SUBMIT.threeD(fx));
 
     expect(await keyColumns(taskId)).toEqual({ key_id: keyId, llm_key_id: null });
     expect(await holdsFor(taskId)).toEqual([]);
-    expect(await taskRowText(taskId)).not.toContain(FAL_KEY);
+    expect(await taskRowText(taskId)).not.toContain(WAVESPEED_KEY);
   });
 
   it("holds the estimate on our keys, and refuses what the credits cannot cover, as before", async () => {
@@ -539,7 +541,7 @@ describe("a 3D generation", () => {
   it("accepts a model the deployment has no key for when the payer's key can run it", async () => {
     deploy();
     const fx = await seed(0);
-    const keyId = await pointAt(fx.userId, T23D, "fal", FAL_KEY);
+    const keyId = await pointAt(fx.userId, T23D, "wavespeed", WAVESPEED_KEY);
 
     const { taskId } = await acceptedTask(await SUBMIT.threeD(fx));
 

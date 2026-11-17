@@ -24,7 +24,7 @@ import {
   logger,
   timelineExecutionRepo,
 } from "@breatic/core";
-import { SMALLEST_CREDIT, sumCreditsByOperationKeys, timelineOperationKey, webAnimationSourceRepo } from "@breatic/domain";
+import { SMALLEST_CREDIT, resolveKeys, sumCreditsByOperationKeys, timelineOperationKey, webAnimationSourceRepo } from "@breatic/domain";
 import { ceilToCreditCent, extractPromptText, signPayload, t, type TimelineExecution, type TimelineExecutionRow, type TimelineWebResolution } from "@breatic/shared";
 import {
   TimelineExecutionInputSchema,
@@ -112,7 +112,10 @@ export async function accept(userId: string, body: TimelineExecutionCreateInput 
   if (existing !== undefined) return sameAction(existing, inputHash);
 
   // An execution needs a balance above zero to start, as an Agent chat turn does (chat.ts). Payments off: no check.
+  // Asked on the payer's own OpenRouter key too: the render container runs on ours (inner#1953).
   await precheckCredits(projectId, userId, SMALLEST_CREDIT);
+  // The key row its language-model calls run on, settled at acceptance and read back by id (inner#1953).
+  const { keyId: llmKeyId } = await resolveKeys({ projectId }, { kind: "llm" });
   try {
     const row = await db.transaction(async (tx) => {
       const inserted = await timelineExecutionRepo.insert(
@@ -126,6 +129,7 @@ export async function accept(userId: string, body: TimelineExecutionCreateInput 
           input: { ...input },
           inputHash,
           deadlineAt: new Date(budgetDeadlineFrom(Date.now())),
+          llmKeyId,
         },
         tx,
       );

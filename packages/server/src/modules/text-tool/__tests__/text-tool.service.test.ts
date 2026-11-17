@@ -58,6 +58,8 @@ const recorders = vi.hoisted(() => ({
 
 vi.mock("@breatic/domain", async () => ({
   handOffLookups,
+  // The run goes out on the deployment's keys (inner#1953).
+  resolveKeys: async () => ({ keys: { owner: "deployment", keyOf: () => undefined }, route: { mode: "default" }, keyId: null }),
   // A run cut off before its finish leaves its generation among the prepared call's pending costs.
   provider: () => ({
     llm: {

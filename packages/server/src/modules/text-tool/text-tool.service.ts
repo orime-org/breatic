@@ -14,7 +14,7 @@ import { accountActivityRepo } from "@breatic/core";
 import { serializeCreditMicro, type CreditDecimal, type TextToolLanguage } from "@breatic/shared";
 
 import { stepCountIs } from "ai";
-import { provider, streamTextRetry } from "@breatic/domain";
+import { provider, resolveKeys, streamTextRetry, type ResolvedKeys } from "@breatic/domain";
 import { getModelForTool, getPromptForTool, getTextToolsConfig } from "@server/config/text-tools.js";
 import { logger } from "@breatic/core";
 import { creditLotService, createUsageRecorder } from "@breatic/domain";
@@ -100,6 +100,8 @@ function buildUserMessage(tool: string, params: Record<string, unknown>): string
  * @param signal - AbortSignal for cancellation on client disconnect
  * @param operationKey - The key the run is recorded and charged under, minted
  *   by the route for every request.
+ * @param keys - The keys the route settled for the run; when absent, those of whoever pays for the project's Studio
+ *   (inner#1953).
  * @yields TextToolEvent stream
  */
 export async function* executeTextTool(
@@ -109,7 +111,16 @@ export async function* executeTextTool(
   params: Record<string, unknown>,
   signal: AbortSignal,
   operationKey: string,
+  keys?: ResolvedKeys,
 ): AsyncGenerator<TextToolEvent> {
+  // The run goes out on the keys of whoever pays for the project's Studio (inner#1953), never moved to ours.
+  let resolved: ResolvedKeys;
+  try {
+    resolved = keys ?? (await resolveKeys({ projectId }, { kind: "llm" }));
+  } catch (err) {
+    yield { type: "error", err };
+    return;
+  }
   let totalTokens = 0;
   // Declared out here so both exits reach them. The model call is recorded
   // when its response arrives. A call cut off before that is handed over by
@@ -125,6 +136,7 @@ export async function* executeTextTool(
     actorUserId: userId,
     projectId,
     onMissingCost: (row) => logger.error({ row, userId, tool }, "agent_usage_cost_missing"),
+    ...(resolved.keyId === null ? {} : { keyId: resolved.keyId }),
   });
   // Set once the model is known; records the run's model calls.
   let calls: ModelCallWatch | undefined;
@@ -134,8 +146,12 @@ export async function* executeTextTool(
     await accountActivityRepo.recordActivity({ userId, projectId: null, kind: "agent_started" });
     modelString = model;
     // No temperature: Gemini 3.8 deprecates the sampling parameters.
-    const prepared = provider().llm.prepare(model, { thinking: true, thinkingLevel: getTextToolsConfig().thinking_level, cache: false });
-    const watch = watchModelCalls(usage, { model, description: `Text tool: ${tool}` }, prepared.pendingCosts);
+    const wants = { thinking: true, thinkingLevel: getTextToolsConfig().thinking_level, cache: false } as const;
+    // Our keys are provider's own default, so a run on them hands provider none.
+    const prepared = resolved.keyId === null
+      ? provider().llm.prepare(model, wants)
+      : provider().llm.prepare(model, wants, undefined, resolved.keys);
+    const watch = watchModelCalls(usage, { model, description: `Text tool: ${tool}`, keyId: resolved.keyId }, prepared.pendingCosts);
     calls = watch;
     const systemPrompt = getPromptForTool(tool);
     const userMessage = buildUserMessage(tool, params);

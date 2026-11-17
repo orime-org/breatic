@@ -8,7 +8,7 @@
 
 import { AppError, logger, ValidationError } from "@breatic/core";
 import { inputRefusalFor, llmServability, servability, type Servability } from "@breatic/domain";
-import type { Route } from "@breatic/provider";
+import type { KeySet, Route } from "@breatic/provider";
 import { inputRefusalText, t } from "@breatic/shared";
 import type { EstimateInput } from "@breatic/shared/pricing";
 
@@ -17,11 +17,12 @@ import type { EstimateInput } from "@breatic/shared/pricing";
  * @param model - The model's name.
  * @param displayName - What the user knows the model as.
  * @param route - How the run chooses its upstream; the weights when left out.
+ * @param keys - The account's key set the run goes out on (inner#1953); the deployment's when absent.
  * @throws {AppError} 503 when no upstream the route may use has its key, naming the variables it reads.
  * @throws {ValidationError} When the route names an upstream the model is not offered through.
  */
-export function assertServable(model: string, displayName: string, route?: Route): void {
-  refuseUnservable(servability(model, route), displayName);
+export function assertServable(model: string, displayName: string, route?: Route, keys?: KeySet): void {
+  refuseUnservable(keys === undefined ? servability(model, route) : servability(model, route, keys), displayName);
 }
 
 /**
@@ -29,11 +30,12 @@ export function assertServable(model: string, displayName: string, route?: Route
  * @param model - Our model id, which is also what the user knows it as.
  * @param use - `call` for chat, consolidation and the text tools; `understand` for reading media.
  * @param route - How the call chooses its upstream; the weights when left out.
+ * @param keys - The key set the call goes out on (inner#1953); the deployment's when absent.
  * @throws {AppError} 503 when no upstream of that use the route may use has its key, naming the variables they read.
  * @throws {ValidationError} When the route names an upstream the model has no route on.
  */
-export function assertLlmServable(model: string, use: "call" | "understand", route?: Route): void {
-  refuseUnservable(llmServability(model, use, route), model);
+export function assertLlmServable(model: string, use: "call" | "understand", route?: Route, keys?: KeySet): void {
+  refuseUnservable(keys === undefined ? llmServability(model, use, route) : llmServability(model, use, route, keys), model);
 }
 
 /**
@@ -59,6 +61,7 @@ function refuseUnservable(served: Servability, displayName: string): void {
  * @param input - The run as the request describes it, as it is priced.
  * @param route - How the run chooses its upstream; the weights when left out.
  * @param context - Who and where, for the log line.
+ * @param keys - The key set the run goes out on (inner#1953); the deployment's when absent.
  * @returns Nothing when an upstream takes the run.
  * @throws {ValidationError} When none does, naming the limit.
  */
@@ -68,8 +71,9 @@ export async function assertTakesInput(
   input: EstimateInput,
   route: Route | undefined,
   context: Record<string, unknown>,
+  keys?: KeySet,
 ): Promise<void> {
-  const refusal = await inputRefusalFor(model, input, route);
+  const refusal = await (keys === undefined ? inputRefusalFor(model, input, route) : inputRefusalFor(model, input, route, keys));
   if (refusal === null) return;
   logger.warn({ ...context, model, reason: "input_refused", refusal }, "execute_gate_rejected");
   throw new ValidationError(inputRefusalText(refusal, displayName));

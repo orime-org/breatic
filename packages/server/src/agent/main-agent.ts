@@ -12,9 +12,9 @@ import { randomUUID } from "node:crypto";
 import { parseCreditDecimal } from "@breatic/shared";
 
 import { createUIMessageStream, stepCountIs, wrapLanguageModel } from "ai";
-import { globalApi, provider, streamTextRetry } from "@breatic/domain";
+import { globalApi, keysById, provider, resolveKeys, streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, Tool, ToolSet, UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
-import type { PreparedCall } from "@breatic/provider";
+import type { KeySet, PreparedCall } from "@breatic/provider";
 import {
   buildAgentConfig,
   finalizeTurn,
@@ -50,7 +50,7 @@ import { knownTokensAtStart, requestTokens } from "@server/agent/request-size.js
 import type { Assembly, FoldResult, FoldTrigger, TurnIdentity } from "@server/agent/turn-fold.js";
 import { currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { readContextOverflow, unrecognised400, type ContextOverflow } from "@breatic/provider";
+import { accountKeyFailureIn, readContextOverflow, unrecognised400, type ContextOverflow } from "@breatic/provider";
 import { lastFullSnapshotKey, pictureFactsOfRows, prefixHash, replayRows, stripThinking } from "@server/agent/history-replay.js";
 import type { ReplyForModel, UserForModel } from "@server/agent/history-replay.js";
 import { endingNote } from "@server/agent/model-messages.js";
@@ -104,6 +104,28 @@ const REPLIED_IN_CHAT: CardResult = { repliedInChat: true };
  */
 const FAILED_TEXT = "The assistant could not finish this turn.";
 
+/** The keys a turn runs on (inner#1953), or why they could not be read; undefined keys are the deployment's. */
+type TurnKeys = { keys: KeySet | undefined; keyId: string | null } | { failed: unknown };
+
+/** A turn on our keys. */
+const ON_OUR_KEYS: TurnKeys = { keys: undefined, keyId: null };
+
+/**
+ * What a failed reply's mark says about an account key's failure (inner#1953): which kind, which upstream and why, so
+ * the panel can tell the user to top up or replace the key. Empty for any other failure.
+ * @param err - What the turn failed with.
+ * @returns The mark's data.
+ */
+function keyFailureFrame(err: unknown): Record<string, string> {
+  const facts = accountKeyFailureIn(err);
+  if (facts === undefined) return {};
+  return {
+    reason: facts.kind,
+    ...(facts.upstream === undefined || facts.upstream === "" ? {} : { upstream: facts.upstream }),
+    ...(facts.reason === undefined ? {} : { keyReason: facts.reason }),
+  };
+}
+
 /**
  * Main Agent for streaming chat interactions.
  *
@@ -121,6 +143,36 @@ export class MainAgent {
    */
   private get ctx(): ReturnType<typeof getContext> {
     return getContext();
+  }
+
+  /**
+   * The keys a new turn runs on: those of whoever pays for the project's Studio (inner#1953).
+   * @returns The keys and their row, or the failure to read them, which ends the turn.
+   */
+  private async freshKeys(): Promise<TurnKeys> {
+    try {
+      const resolved = await resolveKeys({ projectId: this.ctx.projectId }, { kind: "llm" });
+      // Our keys are provider's own default, so a turn on them hands provider none.
+      return resolved.keyId === null ? ON_OUR_KEYS : { keys: resolved.keys, keyId: resolved.keyId };
+    } catch (err) {
+      return { failed: err };
+    }
+  }
+
+  /**
+   * The keys a resumed segment runs on: the key row its paused segment recorded, read back by id, never resolved
+   * again (inner#1953).
+   * @param keyId - The row the paused segment ran on; our keys when absent.
+   * @returns The keys and their row, or the failure to read them (`account_key_missing` once the row is gone).
+   */
+  private async resumedKeys(keyId: string | undefined): Promise<TurnKeys> {
+    if (keyId === undefined) return ON_OUR_KEYS;
+    try {
+      const found = await keysById(keyId);
+      return { keys: found?.keys, keyId };
+    } catch (err) {
+      return { failed: err };
+    }
   }
 
   /**
@@ -224,7 +276,7 @@ export class MainAgent {
       closedAsks,
     };
     await hooks.beforeStream?.(turnIndex);
-    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal, modelId, undefined, hooks);
+    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal, modelId, undefined, hooks, await this.freshKeys());
   }
 
   /**
@@ -267,7 +319,7 @@ export class MainAgent {
       output,
     };
     await hooks.beforeStream?.(turnIndex);
-    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal, modelId, upstream, hooks);
+    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal, modelId, upstream, hooks, await this.resumedKeys(hooks.resumeKeyId));
   }
 
   /**
@@ -314,6 +366,7 @@ export class MainAgent {
    * @param requestedModel - The model the route resolved for this turn (#1363).
    * @param resumeOn - The upstream a resumed segment stays on.
    * @param hooks - What the run lends the turn (inner#1717).
+   * @param turnKeys - The keys the turn runs on, or why they could not be read (inner#1953).
    * @returns The turn's chunks, in the SDK's own protocol.
    */
   private runStream(
@@ -325,8 +378,13 @@ export class MainAgent {
     requestedModel?: string,
     resumeOn?: string,
     hooks: TurnHooks = {},
+    turnKeys: TurnKeys = ON_OUR_KEYS,
   ): ReadableStream<UIMessageChunk> {
     const { userId, conversationId, projectId } = this.ctx;
+    // The account key row the turn runs on (inner#1953): its calls are recorded under it at no credits, its reply
+    // records it for a resumed segment, and a later lookup asks with it. Null on our keys.
+    const keyId = "failed" in turnKeys ? null : turnKeys.keyId;
+    const keys = "failed" in turnKeys ? undefined : turnKeys.keys;
     const agentCfg = getAgentConfig();
     // The asking browser's choice, held for the end of the turn, which can
     // run after the request that started it has returned.
@@ -410,6 +468,7 @@ export class MainAgent {
       projectId,
       onMissingCost: (row) =>
         logger.error({ row, userId, conversationId }, "agent_usage_cost_missing"),
+      ...(keyId === null ? {} : { keyId }),
     });
     // Set once the model is known; records the turn's model calls.
     let calls: ModelCallWatch | undefined;
@@ -648,6 +707,8 @@ export class MainAgent {
         // served it, which the resumed segment stays on (inner#1743).
         modelId: sent.agentConfig.modelId,
         ...(calls?.served() === undefined ? {} : { servedUpstream: calls.served() }),
+        // The account key row it ran on, which a resumed segment reads its key back by (inner#1953).
+        ...(keyId === null ? {} : { keyId }),
         steps: keptSteps,
         ...(pictureFacts.length === 0 ? {} : { pictures: pictureFacts }),
         countCoverage: {
@@ -730,6 +791,8 @@ export class MainAgent {
             return (await foldedLinks).urlFor(url);
           },
           preparePictures,
+          // Whether a model-calling tool is offered, and the keys its calls go out on (inner#1953).
+          ...(keys === undefined ? {} : { keys }),
           // The Spaces a request to read Spaces may name: this turn's list.
           spaces: (opening.kind === "message" ? opening.turn.spaces : opening.space.spaces) ?? [],
         },
@@ -888,6 +951,8 @@ export class MainAgent {
      * @throws {unknown} When the turn fails; the stream's `onError` records it.
      */
     const askTheModel = async (writer: UIMessageStreamWriter): Promise<void> => {
+      // The payer's key row is gone or could not be read: the turn ends here, asking no model on any other key.
+      if ("failed" in turnKeys) throw turnKeys.failed;
       sent = await assemble();
       if (sent.agentConfig.contextWindowFallback === true) {
         logger.warn({ userId, conversationId, model: sent.agentConfig.modelId, window: sent.agentConfig.contextWindow }, "agent_context_window_fallback");
@@ -913,12 +978,13 @@ export class MainAgent {
       // searches and decides between tools, and shows its working. It is
       // also the one whose prefix repeats -- every step of a turn and every
       // later turn resends it -- so it is the one that asks for caching.
-      const prepared = provider().llm.prepare(
-        agentConfig.modelId,
-        { thinking: true, cache: agentCfg.prompt_cache_ttl, session: conversationId },
-        resumeOn === undefined ? undefined : { mode: "upstream", upstream: resumeOn },
-      );
-      const watch = watchModelCalls(usage, { model: agentConfig.modelId, description: "Agent chat" }, prepared.pendingCosts);
+      const wants = { thinking: true, cache: agentCfg.prompt_cache_ttl, session: conversationId };
+      const route = resumeOn === undefined ? undefined : { mode: "upstream" as const, upstream: resumeOn };
+      // On our keys provider uses its own default; only the payer's key set is handed over (inner#1953).
+      const prepared = keys === undefined
+        ? provider().llm.prepare(agentConfig.modelId, wants, route)
+        : provider().llm.prepare(agentConfig.modelId, wants, route, keys);
+      const watch = watchModelCalls(usage, { model: agentConfig.modelId, description: "Agent chat", keyId }, prepared.pendingCosts);
       calls = watch;
 
       let messages = sent.messages;
@@ -1337,7 +1403,7 @@ export class MainAgent {
       }
       if (failed !== undefined) {
         if (signal?.aborted !== true) sayThoughtFor(writer);
-        writer.write({ type: "data-failed", data: {} });
+        writer.write({ type: "data-failed", data: keyFailureFrame(streamFailure) });
         writer.write(failed);
       }
       if (finished !== undefined) writer.write(finished);
@@ -1373,7 +1439,7 @@ export class MainAgent {
             // Said before the error frame the SDK writes for this throw: the
             // page draws a failed reply only from this mark (inner#1717).
             sayThoughtFor(writer);
-            writer.write({ type: "data-failed", data: {} });
+            writer.write({ type: "data-failed", data: keyFailureFrame(err) });
             throw err;
           }
         } finally {

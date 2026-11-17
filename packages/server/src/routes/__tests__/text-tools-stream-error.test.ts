@@ -28,6 +28,12 @@ vi.mock("@server/modules", () => ({
   precheckCredits: async () => undefined,
 }));
 
+// Which keys the run goes out on is not this file's subject either: the deployment's (inner#1953).
+vi.mock("@breatic/domain", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveKeys: async () => ({ keys: { owner: "deployment", keyOf: () => undefined }, route: { mode: "default" }, keyId: null }),
+}));
+
 // Whether this deployment can serve the tool's model is not this file's subject either.
 vi.mock("@server/modules/task/model-servable.js", () => ({ assertLlmServable: () => undefined }));
 

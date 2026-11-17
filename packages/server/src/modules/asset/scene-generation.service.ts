@@ -35,6 +35,7 @@ import {
 import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 import { assertServable, assertTakesInput } from "@server/modules/task/model-servable.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
+import { accountKeys, creditsToHold, runRoute, taskKeyRows, type RunKeys } from "@server/modules/task/run-keys.js";
 import { recordJobId, settleUnqueuedRun } from "@server/modules/task/generation-task.js";
 import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
@@ -145,6 +146,8 @@ function withoutAssetIds(params: Record<string, unknown>): Record<string, unknow
 export interface CheckedSubmission {
   plan: SceneGenerationPlan;
   images: ProjectImageInput[];
+  /** The keys it runs on (inner#1953); our keys when absent. */
+  keys?: RunKeys;
 }
 
 /**
@@ -153,11 +156,12 @@ export interface CheckedSubmission {
  * to an image of the project.
  * @param projectId - The project.
  * @param submission - What is asked for.
+ * @param keys - The keys of whoever pays for the Studio (inner#1953), settled by the caller; our keys when absent.
  * @returns The resolved run and its views.
  * @throws {ValidationError} 422 naming the rule broken, or the view slot that does not resolve.
  * @throws {AppError} 503 when no upstream here can serve the model, naming the variables it needs.
  */
-export async function checkSubmission(projectId: string, submission: SceneGenerationBody): Promise<CheckedSubmission> {
+export async function checkSubmission(projectId: string, submission: SceneGenerationBody, keys?: RunKeys): Promise<CheckedSubmission> {
   const views = submission.image_asset_ids ?? [];
   const plan = planSceneGeneration({
     mode: submission.mode,
@@ -167,20 +171,26 @@ export async function checkSubmission(projectId: string, submission: SceneGenera
     imageCount: views.length,
   });
   if (!plan.ok) throw new ValidationError(problemMessage(plan.problem));
+  const route = keys === undefined ? undefined : runRoute(keys, undefined);
+  const onAccount = keys === undefined ? undefined : accountKeys(keys.media);
   // A model no upstream here can serve is refused before anything is held or queued.
-  assertServable(plan.entry.name, plan.entry.display_name);
-  await assertTakesInput(plan.entry.name, plan.entry.display_name, { params: plan.params, prompt: plan.prompt ?? undefined }, undefined, { projectId });
-  return { plan, images: await resolveProjectImageInputs(projectId, views) };
+  assertServable(plan.entry.name, plan.entry.display_name, route, onAccount);
+  await assertTakesInput(plan.entry.name, plan.entry.display_name, { params: plan.params, prompt: plan.prompt ?? undefined }, route, { projectId }, onAccount);
+  return { plan, images: await resolveProjectImageInputs(projectId, views), ...(keys === undefined ? {} : { keys }) };
 }
 
 /**
- * What a checked submission is held for: the estimate of the settings it sends.
+ * What a checked submission is held for: the estimate of the settings it sends; nothing when the payer's own key pays.
  * @param checked - The checked submission.
- * @returns The credits.
+ * @param projectId - The project; its Studio pays.
+ * @param userId - Who submits it.
+ * @returns The credits, or null to hold nothing.
  * @throws {Error} When the model's pricing formula does not produce a finite price.
  */
-export async function estimateOf(checked: CheckedSubmission): Promise<number> {
-  return estimateTaskCredits(checked.plan.entry.name, { params: checked.plan.params, prompt: checked.plan.prompt ?? undefined });
+export async function estimateOf(checked: CheckedSubmission, projectId: string, userId: string): Promise<number | null> {
+  const { plan, keys } = checked;
+  if (keys === undefined) return estimateTaskCredits(plan.entry.name, { params: plan.params, prompt: plan.prompt ?? undefined });
+  return creditsToHold(keys, projectId, userId, () => estimateTaskCredits(plan.entry.name, { params: plan.params, prompt: plan.prompt ?? undefined }));
 }
 
 /**
@@ -203,15 +213,16 @@ export async function startSceneGeneration(
   held: { taskId: string; checked: CheckedSubmission },
 ): Promise<SceneGenerationAnswer> {
   const { taskId } = held;
-  const { plan, images } = held.checked;
-  const params = jobParams(plan, submission.prompt, images);
+  const { plan, images, keys } = held.checked;
+  const route = keys === undefined ? undefined : runRoute(keys, undefined);
+  const params = { ...jobParams(plan, submission.prompt, images), ...(route === undefined ? {} : { route }) };
   const label = rowLabel(plan.prompt ?? images[0]?.displayName ?? plan.entry.display_name);
 
   let rowId: string | undefined;
   let queued: { rowId: string; jobId: string | undefined };
   try {
     await assertStorageAllowance(projectId, "generate");
-    const task = await admitGeneration(userId, projectId, spaceId, "three_d", "append", params, plan.entry.name, "task", taskId);
+    const task = await admitGeneration(userId, projectId, spaceId, "three_d", "append", params, plan.entry.name, "task", taskId, keys === undefined ? undefined : taskKeyRows(keys));
     rowId = await sceneTaskService.openGeneration({
       projectId,
       spaceId,

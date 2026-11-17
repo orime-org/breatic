@@ -146,6 +146,8 @@ function replyRecord(): Record<string, unknown> | undefined {
 beforeEach(() => {
   vi.clearAllMocks();
   h.failWith.value = undefined;
+  // A model left by an earlier case would answer for a turn that prepared none.
+  h.model = undefined;
   h.resolveKeys.mockResolvedValue({ keys: ACCOUNT, keyId: "key-1", route: { mode: "default" } });
   h.keysById.mockResolvedValue({ keys: ACCOUNT, accountId: "u-admin" });
 });
@@ -195,7 +197,7 @@ describe("a chat turn on the payer's OpenRouter key", () => {
 
 describe("a segment resumed by an answer to its card", () => {
   it("runs on the key row the paused segment recorded, not on a fresh resolution", async () => {
-    await drain(() => new MainAgent().answer("ask-1", { answers: [] }, 3, undefined, "UTC", {}, "deepseek/deepseek-v4.1-flash-1017", "openrouter", { resumeKeyId: "key-1" } as never));
+    await drain(() => new MainAgent().answer("ask-1", { answers: [] }, 3, undefined, "UTC", {}, "deepseek/deepseek-v4.1-flash-1017", "openrouter", { resumeKeyId: "key-1" }));
 
     expect(h.keysById).toHaveBeenCalledWith("key-1");
     expect(h.resolveKeys).not.toHaveBeenCalled();
@@ -205,7 +207,7 @@ describe("a segment resumed by an answer to its card", () => {
 
   it("ends failed with account_key_missing once that row is replaced or deleted, asking no model and using no other key", async () => {
     h.keysById.mockRejectedValue(Object.assign(new Error("the key row is gone"), { kind: "account_key_missing" }));
-    await drain(() => new MainAgent().answer("ask-1", { answers: [] }, 3, undefined, "UTC", {}, "deepseek/deepseek-v4.1-flash-1017", "openrouter", { resumeKeyId: "key-1" } as never));
+    await drain(() => new MainAgent().answer("ask-1", { answers: [] }, 3, undefined, "UTC", {}, "deepseek/deepseek-v4.1-flash-1017", "openrouter", { resumeKeyId: "key-1" }));
 
     expect(sent).toContainEqual(expect.objectContaining({ type: "data-failed", data: expect.objectContaining({ reason: "account_key_missing" }) }));
     expect(h.model?.doStreamCalls ?? []).toHaveLength(0);

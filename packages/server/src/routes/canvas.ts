@@ -47,6 +47,7 @@ import {
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import { assertLlmServable, assertServable, assertTakesInput } from "@server/modules/task/model-servable.js";
+import { accountKeys, creditsToHold, mediaRunKeys, runRoute, taskKeyRows } from "@server/modules/task/run-keys.js";
 import { catalogEntryOf } from "@breatic/shared/mini-tools";
 import { nodeTaskService } from "@breatic/domain";
 import {
@@ -56,7 +57,7 @@ import {
 } from "@server/modules/task/generation-task.js";
 import { startUrlIngest } from "@server/modules/asset/url-ingest.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
-import { UNDERSTAND_PINS } from "@breatic/domain";
+import { UNDERSTAND_PINS, resolveKeys } from "@breatic/domain";
 import {
   assertStorageAllowance,
   pasteAssetsService,
@@ -238,10 +239,10 @@ canvas.post(
   // releases the hold; once queued, the worker charges or releases it.
   // The run as it is priced, and asked about before anything is held.
   const estimateInput = { params: body.params, prompt: extractPromptText(body.params.prompt ?? body.params.text) };
-  const { taskId } = await holdRun({
+  const { taskId, checked: keys } = await holdRun({
     projectId,
     userId: user.id,
-    check: () => {
+    check: async () => {
       // #1675 execute gate (cross-modality): a model whose modes all need a source
       // input (image / video / audio) must not be submitted without it (e.g. Nano
       // Banana Edit needs an image; a video-edit needs a video). Reject BEFORE
@@ -301,7 +302,10 @@ canvas.post(
       // A model no upstream here can serve, or a route through one it is not offered on, is refused before
       // anything is held or queued.
       const entry = body.model === undefined ? undefined : catalogEntryOf(modelCatalog.getModelCatalog(), body.model);
-      if (entry !== undefined) assertServable(entry.name, entry.display_name, body.route);
+      // inner#1953: the keys of whoever pays for the Studio, settled once here; the task records their rows.
+      const runKeys = entry === undefined ? null : await mediaRunKeys(projectId, entry.name, body.params);
+      const route = runKeys === null ? body.route : runRoute(runKeys, body.route);
+      if (entry !== undefined) assertServable(entry.name, entry.display_name, route, runKeys === null ? undefined : accountKeys(runKeys.media));
       // inner#1825 text-length gate: a setting the model needs written, emptied.
       const short = violatesTextLengthForModel(body.model, body.params);
       if (short) {
@@ -309,11 +313,15 @@ canvas.post(
         throw new ValidationError(t("server.canvas.param_too_short", { name: t(`canvas.generatePanel.param.${short.param}`) }));
       }
       // #1521: a run no upstream here takes (too long a text, too many lines) is refused naming the limit.
-      return entry === undefined
-        ? Promise.resolve()
-        : assertTakesInput(entry.name, entry.display_name, estimateInput, body.route, { userId: user.id, projectId });
+      if (entry !== undefined) {
+        await assertTakesInput(entry.name, entry.display_name, estimateInput, route, { userId: user.id, projectId }, runKeys === null ? undefined : accountKeys(runKeys.media));
+      }
+      return runKeys;
     },
-    credits: () => estimateTaskCredits(body.model, estimateInput, body.route),
+    credits: (runKeys) =>
+      runKeys === null
+        ? estimateTaskCredits(body.model, estimateInput, body.route)
+        : creditsToHold(runKeys, projectId, user.id, () => estimateTaskCredits(body.model, estimateInput, runRoute(runKeys, body.route))),
   });
 
   let task: Awaited<ReturnType<typeof taskService.create>>;
@@ -326,7 +334,8 @@ canvas.post(
     await assertStorageAllowance(projectId, "generate");
 
     // The run is held, priced and served on one route: the task row and the job both carry the one the estimate used.
-    const runParams = body.route === undefined ? body.params : { ...body.params, route: body.route };
+    const route = keys === null ? body.route : runRoute(keys, body.route);
+    const runParams = route === undefined ? body.params : { ...body.params, route };
     task = await admitGeneration(
       user.id,
       projectId,
@@ -337,6 +346,7 @@ canvas.post(
       body.model,
       body.source,
       taskId,
+      keys === null ? undefined : taskKeyRows(keys),
     );
 
     // A node carries several tasks at once (#186), so an overwrite claims
@@ -494,8 +504,10 @@ async function startReading(
 
   // Cross-tenant guard — see /canvas/tasks rationale.
   await projectService.assertAccess(body.project_id, userId, "editor");
+  // inner#1953: a reading runs on the OpenRouter key of whoever pays for the Studio when there is one, settled here.
+  const keys = await resolveKeys({ projectId: body.project_id }, { kind: "llm" });
   // A deployment with no understanding upstream refuses before the row opens, saying what it is missing.
-  assertLlmServable(model, "understand");
+  assertLlmServable(model, "understand", undefined, accountKeys(keys));
 
   const params: Record<string, unknown> = {
     source_type: body.source_type,
@@ -529,6 +541,8 @@ async function startReading(
     // column's own default, which predates this vocabulary — these rows
     // would then be the only ones it cannot account for.
     "understand",
+    undefined,
+    { keyId: null, llmKeyId: keys.keyId },
   );
 
   // The node this run writes to is already on the canvas — the browser built
@@ -542,7 +556,8 @@ async function startReading(
     userId,
     action,
     label: model,
-    credits: () => estimateTaskCredits(model, { params }),
+    // What the payer's own key pays for is not held.
+    credits: () => (keys.keyId === null ? estimateTaskCredits(model, { params }) : Promise.resolve(null)),
     enqueue: () =>
       tasksQueue().add(
         "execute-task",

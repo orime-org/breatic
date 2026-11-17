@@ -47,7 +47,8 @@ import { agentInstructionsService } from "@server/modules";
 import { runningTurnsService } from "@server/modules";
 import { projectService } from "@server/modules";
 import { precheckCredits } from "@server/modules";
-import { SMALLEST_CREDIT } from "@breatic/domain";
+import { SMALLEST_CREDIT, keysById, resolveKeys } from "@breatic/domain";
+import type { KeySet } from "@breatic/provider";
 import { startRun, stopChannel } from "@server/agent/chat-run.js";
 import { runStreams } from "@server/agent/run-stream.js";
 import { isShuttingDown } from "@server/agent/shutdown-flag.js";
@@ -245,15 +246,6 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
     throw new ValidationError(t("server.error.validation"));
   }
 
-  // A turn needs a balance above zero to start (#296). Payments off: no check.
-  // Checked before an answer is taken, so a refused answer leaves the card
-  // waiting.
-  await precheckCredits(body.project_id, user.id, SMALLEST_CREDIT);
-
-  // A message in the project's Agent chat is a collaboration action (inner#1442
-  // §4.8). Reported alongside the turn; it never rejects.
-  void reportCollaboratorFirstAction({ projectId: body.project_id, userId: user.id, action: "agent" });
-
   // An answer to a card resumes the turn that asked: a questionnaire's
   // (inner#1542) or a request to read Spaces (inner#1552). Both are taken,
   // refused and resumed alike; only how the answer is held to the call differs.
@@ -262,13 +254,40 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
   // refuse a request after the card's answer is already gone (#1363). A
   // resumed turn runs on the model it started on.
   const resumed = answer?.toolCallId ?? sharedSpaces?.toolCallId;
-  const { modelId, upstream } =
+  const { modelId, upstream, keyId } =
     resumed === undefined
-      ? { modelId: await conversationService.modelForMessage(conversation, user.id, body.model), upstream: undefined }
+      ? { modelId: await conversationService.modelForMessage(conversation, user.id, body.model), upstream: undefined, keyId: undefined }
       : await conversationService.modelForResume(conversation, user.id, resumed);
+  // inner#1953: a new turn runs on the keys of whoever pays for the Studio; a resumed one on the key row its paused
+  // segment ran on, read back by id. Null when that row is gone: the resumed run then ends failed on its own stream,
+  // saying so, without asking a model.
+  let keys: KeySet | undefined | null;
+  if (resumed === undefined) {
+    const resolved = await resolveKeys({ projectId: body.project_id }, { kind: "llm" });
+    keys = resolved.keyId === null ? undefined : resolved.keys;
+  }
+  else if (keyId === undefined) keys = undefined;
+  else {
+    try {
+      keys = (await keysById(keyId))?.keys;
+    } catch (err) {
+      logger.warn({ err, userId: user.id, conversationId: conversation.id, keyId }, "chat_resume_key_unreadable");
+      keys = null;
+    }
+  }
+  // A turn needs a balance above zero to start (#296), unless the payer's own key pays for it. Payments off: no
+  // check. Checked before an answer is taken, so a refused answer leaves the card waiting.
+  if (keys === undefined) await precheckCredits(body.project_id, user.id, SMALLEST_CREDIT);
+
+  // A message in the project's Agent chat is a collaboration action (inner#1442
+  // §4.8). Reported alongside the turn; it never rejects.
+  void reportCollaboratorFirstAction({ projectId: body.project_id, userId: user.id, action: "agent" });
+
   // A deployment with no upstream for the model, or none for the upstream a resumed turn stays on, refuses before
   // the card's answer is taken, saying what it is missing.
-  assertLlmServable(modelId, "call", upstream === undefined ? undefined : { mode: "upstream", upstream });
+  const stayOn = upstream === undefined ? undefined : { mode: "upstream" as const, upstream };
+  if (keys === undefined) assertLlmServable(modelId, "call", stayOn);
+  else if (keys !== null) assertLlmServable(modelId, "call", stayOn, keys);
   const card =
     answer !== undefined
       ? { toolCallId: answer.toolCallId, take: () => conversationService.answerAsk(conversation.id, answer, { userId: user.id, projectId: body.project_id }) }
@@ -324,6 +343,7 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
           space: body,
           ...(modelId === undefined ? {} : { modelId }),
           ...(upstream === undefined ? {} : { upstream }),
+          ...(keyId === undefined ? {} : { keyId }),
           locale: getActiveLocale(),
         },
       }).opened;
@@ -389,7 +409,8 @@ chat.post(
     const seen = await queue.peek(conversation.id);
     if (seen.active === null && !seen.awaiting && seen.work && !isShuttingDown()) {
       try {
-        await precheckCredits(projectId, user.id, SMALLEST_CREDIT);
+        // The payer's own OpenRouter key asks no balance (inner#1953).
+        if ((await resolveKeys({ projectId }, { kind: "llm" })).keyId === null) await precheckCredits(projectId, user.id, SMALLEST_CREDIT);
       } catch (err) {
         if (!(err instanceof AppError) || err.statusCode !== 402) throw err;
         return c.json({

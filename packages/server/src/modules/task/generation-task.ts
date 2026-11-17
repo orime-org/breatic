@@ -142,7 +142,8 @@ export async function failOpenedTasks(
  * @param opts.userId - Who started it.
  * @param opts.action - What the rows say this run is.
  * @param opts.label - What the rows name it by.
- * @param opts.credits - The run's estimate, held until the worker charges the run or it ends.
+ * @param opts.credits - The run's estimate, held until the worker charges the run or it ends; null holds nothing (the
+ *   payer's own key pays, inner#1953).
  * @param opts.enqueue - Queues the job, past the point of no return.
  * @param opts.logTag - Prefix of this lane's log events.
  * @param opts.logContext - Extra fields on the failure log.
@@ -157,7 +158,7 @@ export async function startRowedRun(opts: {
   userId: string;
   action: Exclude<NodeTaskAction, "upload">;
   label: string;
-  credits: () => Promise<number>;
+  credits: () => Promise<number | null>;
   enqueue: () => Promise<{ id?: string | undefined }>;
   logTag: string;
   logContext?: Record<string, unknown>;
@@ -174,7 +175,8 @@ export async function startRowedRun(opts: {
       action: opts.action,
       label: opts.label,
     });
-    await reserveForRun(projectId, opts.userId, taskId, await opts.credits());
+    const credits = await opts.credits();
+    if (credits !== null) await reserveForRun(projectId, opts.userId, taskId, credits);
     const job = await opts.enqueue();
     await recordJobId(taskId, job.id, projectId, opts.logTag);
     return "pending";
@@ -206,7 +208,8 @@ export async function startRowedRun(opts: {
  * @param opts.projectId - The project it runs in.
  * @param opts.userId - Who submits it.
  * @param opts.check - The submission's own checks; throws its refusal, returns what the estimate reads.
- * @param opts.credits - The run's estimate, from what the checks returned.
+ * @param opts.credits - The run's estimate, from what the checks returned; null holds nothing (the payer's own key
+ *   pays, inner#1953).
  * @returns The new task id, and what the checks returned.
  * @throws {AppError} 403 or 404 without editor access, the checks' refusal, 402 when the studio cannot cover the estimate.
  */
@@ -214,12 +217,13 @@ export async function holdRun<T>(opts: {
   projectId: string;
   userId: string;
   check: () => Promise<T>;
-  credits: (checked: T) => Promise<number>;
+  credits: (checked: T) => Promise<number | null>;
 }): Promise<{ taskId: string; checked: T }> {
   await assertAccess(opts.projectId, opts.userId, "editor");
   const checked = await opts.check();
   const taskId = randomUUID();
-  await reserveForRun(opts.projectId, opts.userId, taskId, await opts.credits(checked));
+  const credits = await opts.credits(checked);
+  if (credits !== null) await reserveForRun(opts.projectId, opts.userId, taskId, credits);
   return { taskId, checked };
 }
 

@@ -15,6 +15,7 @@ import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { validate } from "@server/middleware/validate.js";
+import { mediaRunKeys } from "@server/modules/task/run-keys.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { holdRun, sceneGenerationService, sceneTasksService } from "@server/modules";
 
@@ -37,8 +38,9 @@ threeDTasks.post(
     const held = await holdRun({
       projectId,
       userId,
-      check: () => sceneGenerationService.checkSubmission(projectId, body),
-      credits: sceneGenerationService.estimateOf,
+      // inner#1953: the keys of whoever pays for the Studio, settled once here; the task records their rows.
+      check: async () => sceneGenerationService.checkSubmission(projectId, body, await mediaRunKeys(projectId, body.model, body.params)),
+      credits: (checked) => sceneGenerationService.estimateOf(checked, projectId, userId),
     });
     const answer = await sceneGenerationService.startSceneGeneration(userId, projectId, spaceId, body, held);
     return c.json({ data: answer }, 201);

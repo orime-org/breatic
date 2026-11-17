@@ -24,7 +24,7 @@ const h = vi.hoisted(() => ({
   resolveKeys: vi.fn(),
   createUsageRecorder: vi.fn(),
   llm: {
-    prepare: vi.fn((id: string) => ({ model: { modelId: id }, options: { providerOptions: {}, maxRetries: 0 }, pendingCosts: () => [] })),
+    prepare: vi.fn((id: string, _wants?: unknown, _route?: unknown, _keys?: unknown) => ({ model: { modelId: id }, options: { providerOptions: {}, maxRetries: 0 }, pendingCosts: () => [] })),
     costOf: vi.fn(() => ({ state: "known", usd: 0.004, source: "reported", payer: "account", tokens: { input: 150, cachedInput: 0, output: 250, reasoning: 0 } })),
     servedBy: vi.fn(() => "openrouter"),
   },

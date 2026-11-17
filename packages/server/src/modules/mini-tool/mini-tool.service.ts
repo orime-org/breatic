@@ -10,6 +10,7 @@
 
 import { AppError, env, getMiniToolsConfig, getStorageAdapter, logger } from "@breatic/core";
 import { assertServable, assertTakesInput } from "@server/modules/task/model-servable.js";
+import { accountKeys, mediaRunKeys, runRoute, type RunKeys } from "@server/modules/task/run-keys.js";
 import {
   assetRepo,
   containerCostUsd,
@@ -49,6 +50,8 @@ export interface PreparedRun {
   inputKeys?: string[];
   /** What the precheck holds the user to. */
   credits: number;
+  /** A model tool's keys (inner#1953); absent on a container tool, which runs on ours. */
+  keys?: RunKeys;
 }
 
 /**
@@ -144,7 +147,11 @@ async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promi
   const model = spec.run.kind === "model" ? spec.run.model : "";
   const entry = catalogEntryOf(modelCatalog.getModelCatalog(), model);
   if (!entry) throw new AppError(503, t("server.mini_tool.unavailable"));
-  assertServable(model, entry.display_name, body.route);
+  // inner#1953: the keys of whoever pays for the Studio, settled once here; the task records their rows.
+  const keys = await mediaRunKeys(body.project_id, model, body.params);
+  const route = runRoute(keys, body.route);
+  const onAccount = accountKeys(keys.media);
+  assertServable(model, entry.display_name, route, onAccount);
   for (const [name, value] of Object.entries(body.params)) {
     const declared = entry.params?.[name];
     if (declared && !paramValueAllowed(declared, value)) {
@@ -154,16 +161,17 @@ async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promi
   await assertSourceWithinModel(spec, body, entry);
   const snapshot = snapshotOf(spec, body, entry);
   const input = miniToolEstimateInput(spec, snapshot);
-  await assertTakesInput(model, entry.display_name, input, body.route, { tool: body.tool, projectId: body.project_id });
+  await assertTakesInput(model, entry.display_name, input, route, { tool: body.tool, projectId: body.project_id }, onAccount);
   const params: Record<string, unknown> = { ...input.params };
   if (spec.prompt) params.prompt = miniToolPrompt(spec, snapshot.prompt);
   // The run is held, priced and served on one route: the task carries the one the estimate used.
-  if (body.route !== undefined) params.route = body.route;
+  if (route !== undefined) params.route = route;
   return {
     model,
     params,
     sourceKey: undefined,
-    credits: await estimateTaskCredits(model, input, body.route),
+    credits: await (onAccount === undefined ? estimateTaskCredits(model, input, route) : estimateTaskCredits(model, input, route, onAccount)),
+    keys,
   };
 }
 

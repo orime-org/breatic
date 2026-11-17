@@ -612,6 +612,11 @@ export const domainMock = async () => ({
   ...(await import("../../../../domain/src/agent/memory-entries.js")),
   createUsageRecorder: vi.fn(usageRecorderDouble),
   handOffLookups: mocks.handOffLookups,
+  // Which keys a call runs on (inner#1953): the deployment's, unless a suite says otherwise.
+  // Plain functions, so a suite's `vi.resetAllMocks` leaves them answering.
+  resolveKeys: async () => ({ keys: { owner: "deployment", keyOf: () => undefined }, route: { mode: "default" }, keyId: null }),
+  keysById: async () => null,
+  runCallsLlm: () => false,
   usersRepo: mocks.userRepo,
   profilesService: mocks.profilesService,
   // The same shape as the real one: every tool in the set gets the recorder.
