@@ -451,22 +451,21 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     if (!playable(row)) return;
     openDialog({ base: { executionId: row.id, sourceVersionId: row.resultSourceVersionId, request: row.request }, aspect: row.input.aspect, durationSeconds: row.input.durationSeconds });
   }, [row, openDialog]);
-  // Export and Re-export of the shown result wait on the same intent: the source version it renders.
-  const shownExportIntent = playable(row) ? exportIntent(spaceId, row.resultSourceVersionId)
-    : row?.kind === 'web_animation_export' ? exportIntent(spaceId, row.input.sourceVersionId) : '';
-  const exporting = useRunning(shownExportIntent) !== undefined;
+  // The source version Export (a finished result) and Re-export (an export) render; both wait on its one intent.
+  const exportSource = playable(row) ? row.resultSourceVersionId : row?.kind === 'web_animation_export' ? row.input.sourceVersionId : null;
+  const exporting = useRunning(exportSource === null ? '' : exportIntent(spaceId, exportSource)) !== undefined;
   const exportVideo = React.useCallback((): void => {
-    if (playable(row)) accept({ kind: 'web_animation_export', sourceVersionId: row.resultSourceVersionId }, exportIntent(spaceId, row.resultSourceVersionId), newId());
-  }, [row, spaceId, accept]);
+    if (exportSource !== null) accept({ kind: 'web_animation_export', sourceVersionId: exportSource }, exportIntent(spaceId, exportSource), newId());
+  }, [exportSource, spaceId, accept]);
   const retry = React.useCallback((): void => {
     if (row === undefined) return;
     if (row.kind === 'web_animation_export') {
-      accept({ kind: 'web_animation_export', sourceVersionId: row.input.sourceVersionId }, exportIntent(spaceId, row.input.sourceVersionId), newId());
+      exportVideo();
       return;
     }
     const base = row.kind === 'web_animation_modify' ? { executionId: row.base.executionId, sourceVersionId: row.input.baseSourceVersionId, request: row.base.request } : null;
     openDialog({ base, prompt: row.request, aspect: row.input.aspect, durationSeconds: row.input.durationSeconds }, true);
-  }, [row, spaceId, accept, openDialog]);
+  }, [row, exportVideo, openDialog]);
   // The result a modification starts from: listed here, or read once when it is not.
   const baseId = draft.status !== 'closed' ? draft.input.base?.executionId ?? null : null;
   const listedBase = baseId === null ? undefined : rowById(baseId);
