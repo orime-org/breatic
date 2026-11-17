@@ -1590,11 +1590,14 @@ export function renderProductGuide(): string {
       "A run that failed, was cancelled or expired shows why in the middle with " +
       `${quoted(t("timeline.webAnimation.retry"))}, which opens the dialog filled in as before, or ${quoted(t("spaces.webAnimation.reexport"))} for a video. ` +
       `The details button shows the name, ${quoted(t("spaces.webAnimation.statusLabel"))}, the request, the steps, the usage, ${quoted(t("spaces.webAnimation.modifiedFromLabel"))} for a modification ` +
+      "(pressing the web animation it names shows that one, at its earliest open annotation when it has any) " +
       `and ${quoted(t("timeline.webAnimation.cancel"))} while it runs.`,
     `${quoted(t("spaces.webAnimation.addAnnotation"))} pauses playback at the current time; click the picture to mark a spot, or just write, then send. ` +
       `The ${quoted(t("spaces.webAnimation.annotations"))} button shows how many are open; its panel lists this Space's annotations grouped by web animation and ordered by time, ` +
-      "with a switch between open and all. Pressing one, or its mark on the slider, shows that web animation at that time with the annotation's card, where you can reply, " +
-      "resolve or reopen it. Closing an annotation you have started writing asks before throwing it away. Everyone in the Space sees annotations as they are written. " +
+      "with a switch between open and all. Pressing one, its mark on the slider or its pin on the picture shows that web animation at that time with the annotation's card " +
+      "beside its spot, and opens this panel with the annotation in view (switched to all when it is resolved). In the card you can reply, resolve or reopen it; " +
+      "the card stays open while you work elsewhere, and its X or Esc closes it. A reply you have not sent stays in its card until you send it. " +
+      "Closing an annotation you have started writing asks before throwing it away. Everyone in the Space sees annotations as they are written. " +
       `When too many people are connected, the top of the Space says ${quoted(t("spaces.webAnimation.readOnlyNotice"))}`,
     `Viewers can open both panels, play, read annotations and download videos, without ${quoted(t("spaces.webAnimation.new"))} or any action that changes something.`,
     "## 3D spaces",

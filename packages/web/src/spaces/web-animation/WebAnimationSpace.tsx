@@ -48,6 +48,7 @@ import { requestTitle, webAnimationTitle } from '@web/spaces/web-animation/web-a
 import { MotionAnnotationsPanel, formatAnnotationTime } from '@web/spaces/web-animation/MotionAnnotationsPanel';
 import { MotionExecutionsPanel } from '@web/spaces/web-animation/MotionExecutionsPanel';
 import { MotionResultPlayer } from '@web/spaces/web-animation/MotionResultPlayer';
+import { MotionFrameCard } from '@web/spaces/web-animation/MotionFrameCard';
 import { MotionThreadCard } from '@web/spaces/web-animation/MotionThreadCard';
 import { useMotionAnnotations } from '@web/spaces/web-animation/use-motion-annotations';
 import { useMotionClock } from '@web/spaces/web-animation/use-motion-clock';
@@ -314,13 +315,13 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     if (row !== undefined) select({ type: 'row_changed', row });
   }, [row, select]);
 
-  // Esc closes the open panel.
+  // Esc closes the open panel, unless a card, popover or text box above it took the press (it prevents the default).
   React.useEffect(() => {
     /**
      * Close the panel on Esc.
      * @param event - The key.
      */
-    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') dispatchPanels({ type: 'escape' }); };
+    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !event.defaultPrevented) dispatchPanels({ type: 'escape' }); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
@@ -544,20 +545,16 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     return { aspectRatio: `${ratio}`, width: `min(100cqw, calc(100cqh * ${ratio}))` };
   }, [row]);
   const draftPoint = annotation.status === 'writing' ? annotation.point : null;
-  /**
-   * Where a card sits over the frame: beside its point, or at the bottom of the frame without one.
-   * @param point - The point, or null.
-   * @returns Its position.
-   */
-  const cardStyle = (point: FramePoint | null): React.CSSProperties => (point === null
-    ? { left: '50%', bottom: 8, transform: 'translateX(-50%)' }
-    : { left: `calc(${point.x * 100}% + 14px)`, top: `calc(${point.y * 100}% - 12px)` });
+  // The cards over the frame are drawn in the Space and kept inside the preview area.
+  const [spaceElement, setSpaceElement] = React.useState<HTMLDivElement | null>(null);
+  const [previewArea, setPreviewArea] = React.useState<HTMLDivElement | null>(null);
 
-  return <div data-testid='motion-space' className='relative isolate h-full overflow-hidden bg-muted'>
+  return <div ref={setSpaceElement} data-testid='motion-space' className='relative isolate h-full overflow-hidden bg-muted'>
     {panels.panel === 'executions' && <MotionExecutionsPanel lists={lists} tab={panels.tab} selectedId={selectedId} onTab={pickTab} onPick={pickRow} onClose={closePanel} />}
     {panels.panel === 'annotations' && <MotionAnnotationsPanel threads={threads} order={order} rows={lists.byId} activeThreadId={activeThread?.thread.id ?? null}
       filter={annotations.filter} onFilter={annotations.setFilter} viewportRef={annotations.viewportRef} onOpen={openThread} onClose={closePanel} />}
-    <div className={cn('absolute bottom-[4.5rem] left-6 top-6 flex items-center justify-center', panelOpen ? 'right-[22rem]' : 'right-6')} style={{ containerType: 'size' }}>
+    <div ref={setPreviewArea} data-testid='motion-preview-area' className={cn('absolute bottom-[4.5rem] left-6 top-6 flex items-center justify-center', panelOpen ? 'right-[22rem]' : 'right-6')}
+      style={{ containerType: 'size' }}>
       {row === undefined
         ? selection.status === 'fetching' || doneShows === 'pending'
           ? <LoaderCircle data-testid='motion-loading' className='size-5 animate-spin text-muted-foreground' />
@@ -589,22 +586,22 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
             <span className='rounded-full bg-popover px-3 py-1 text-xs text-popover-foreground shadow-md'>{t('spaces.webAnimation.pickPoint')}</span></div>}
           {draftPoint !== null && <span className='pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-status-selected'
             style={{ left: `${draftPoint.x * 100}%`, top: `${draftPoint.y * 100}%` }} />}
-          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the click is only kept from the frame */}
-          {annotation.status !== 'idle' && <div data-testid='motion-annotation-draft'
-            className='absolute z-20 w-72 rounded-chrome border border-border bg-card p-3 shadow-md' style={cardStyle(draftPoint)} onClick={(event) => event.stopPropagation()}>
+          {annotation.status !== 'idle' && <MotionFrameCard testId='motion-annotation-draft' point={draftPoint} boundary={previewArea} container={spaceElement} onClose={cancelAnnotation}
+            className='w-72 p-3'>
             <span className='mb-2 block text-2xs text-muted-foreground'>{t('spaces.webAnimation.annotateAt', { time: formatAnnotationTime(annotation.timeSeconds) })}</span>
             {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the box the user just asked for by pressing Add annotation; they expect to type immediately */}
             <DocumentCommentWriteBox name='motion-annotation' autoFocus value={annotation.status === 'picking' ? '' : annotation.text} placeholder={t('spaces.webAnimation.annotationPlaceholder')}
               onChange={typeAnnotation} onSave={sendAnnotation} onCancel={cancelAnnotation} />
-          </div>}
-          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the click is only kept from the frame */}
-          {activeThread !== null && activeThread.anchor.executionId === row.id && annotation.status === 'idle' && <div className='absolute z-20' style={cardStyle(activeThread.anchor.point)} onClick={(event) => event.stopPropagation()}>
-            <div className='relative'>
-              <MotionThreadCard thread={activeThread.thread} timeSeconds={activeThread.anchor.timeSeconds} store={store} myRole={myRole} viewerId={viewerId} canWrite={annotationsWritable}
-                draft={activeDraft} onDraft={annotations.setDraft} />
-              <Button type='button' variant='ghost' size='compact' className='absolute right-1 top-1 px-1' aria-label={t('spaces.webAnimation.closePanel')} onClick={closeThread} icon={<X className='size-4' />} />
-            </div>
-          </div>}
+          </MotionFrameCard>}
+          {activeThread !== null && activeThread.anchor.executionId === row.id && annotation.status === 'idle'
+            && <MotionFrameCard testId='motion-thread-card-popover' point={activeThread.anchor.point} boundary={previewArea} container={spaceElement} onClose={closeThread}
+              className='w-auto border-0 bg-transparent p-0 shadow-none'>
+              <div className='relative'>
+                <MotionThreadCard thread={activeThread.thread} timeSeconds={activeThread.anchor.timeSeconds} store={store} myRole={myRole} viewerId={viewerId} canWrite={annotationsWritable}
+                  draft={activeDraft} onDraft={annotations.setDraft} />
+                <Button type='button' variant='ghost' size='compact' className='absolute right-1 top-1 px-1' aria-label={t('spaces.webAnimation.closePanel')} onClick={closeThread} icon={<X className='size-4' />} />
+              </div>
+            </MotionFrameCard>}
         </div>}
     </div>
     <div data-testid='motion-bottom-bar' className='absolute inset-x-3 bottom-3 z-10 flex h-12 items-center gap-1 rounded-chrome border border-border bg-card px-2 shadow-md'>

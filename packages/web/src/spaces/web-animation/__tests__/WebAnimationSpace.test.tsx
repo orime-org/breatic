@@ -604,6 +604,71 @@ describe('one owner for opening an annotation', () => {
   });
 });
 
+describe('the thread card over the frame', () => {
+  /**
+   * Show NEWER with one thread marking a point near its bottom-right corner, opened from the panel.
+   * @returns The user.
+   */
+  async function openCard(): Promise<ReturnType<typeof userEvent.setup>> {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    await seedThreads([{ text: 'Corner note', executionId: NEWER, timeSeconds: 0, point: { x: 0.98, y: 0.97 } }]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('motion-open-annotations'));
+    await user.click(within(await screen.findByTestId('motion-panel-annotations')).getByRole('button', { name: /Corner note/ }));
+    await screen.findByTestId('motion-thread-card');
+    return user;
+  }
+
+  it('opens through a Popover kept inside the preview area, beside its point', async () => {
+    await openCard();
+    const props = popoverContentProps.filter((item) => item['data-testid'] === 'motion-thread-card-popover').at(-1)!;
+    expect(props.collisionBoundary).toBe(screen.getByTestId('motion-preview-area'));
+    expect(props).toMatchObject({ side: 'right', align: 'start' });
+    expect(screen.getByTestId('motion-thread-card-popover')).toContainElement(screen.getByTestId('motion-thread-card'));
+  });
+
+  it('opens the annotation write box through the same Popover, at the bottom of the frame before a point is marked', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    await userEvent.setup().click(screen.getByTestId('motion-action-add-annotation'));
+    const props = popoverContentProps.filter((item) => item['data-testid'] === 'motion-annotation-draft').at(-1)!;
+    expect(props.collisionBoundary).toBe(screen.getByTestId('motion-preview-area'));
+    expect(props).toMatchObject({ side: 'right', align: 'start' });
+    expect(screen.getByTestId('motion-annotation-draft')).toContainElement(screen.getByTestId('doc-comment-motion-annotation-input'));
+  });
+
+  it('stays open when the user presses outside it', async () => {
+    await openCard();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
+    fireEvent.pointerDown(screen.getByTestId('motion-bottom-bar'));
+    fireEvent.pointerDown(document.body);
+    expect(screen.getByTestId('motion-thread-card')).toBeInTheDocument();
+  });
+
+  it('leaves Esc in a reply box with words to the box, which drops the words, and closes on the next Esc', async () => {
+    const user = await openCard();
+    await user.type(within(screen.getByTestId('motion-thread-card')).getByTestId('doc-comment-reply-input'), 'Half a reply');
+    await user.keyboard('{Escape}');
+    expect(within(screen.getByTestId('motion-thread-card')).getByTestId('doc-comment-reply-input')).toHaveValue('');
+    expect(screen.getByTestId('motion-panel-annotations')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByTestId('motion-thread-card')).toBeNull();
+    expect(screen.getByTestId('motion-panel-annotations')).toBeInTheDocument();
+  });
+
+  it('closes on Esc and leaves the panel open for the next Esc', async () => {
+    const user = await openCard();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByTestId('motion-thread-card')).toBeNull();
+    expect(screen.getByTestId('motion-panel-annotations')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByTestId('motion-panel-annotations')).toBeNull();
+  });
+});
+
 describe('the result a modification started from', () => {
   const MODIFIED = '90000000-0000-4000-8000-0000000000a1';
 

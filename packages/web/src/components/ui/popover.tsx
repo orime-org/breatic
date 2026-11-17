@@ -24,6 +24,9 @@ const Popover = PopoverPrimitive.Root;
 
 const PopoverTrigger = PopoverPrimitive.Trigger;
 
+/** What the content is placed against when that is not the trigger (a point on a picture, a caret). */
+const PopoverAnchor = PopoverPrimitive.Anchor;
+
 const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content> & {
@@ -48,4 +51,4 @@ const PopoverContent = React.forwardRef<
 ));
 PopoverContent.displayName = PopoverPrimitive.Content.displayName;
 
-export { Popover, PopoverTrigger, PopoverContent };
+export { Popover, PopoverTrigger, PopoverAnchor, PopoverContent };
