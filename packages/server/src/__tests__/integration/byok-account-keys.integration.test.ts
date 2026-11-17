@@ -130,60 +130,45 @@ describe("account_provider_keys", () => {
     `).rejects.toMatchObject({ code: "23503" });
   });
 
-  it("replaces a key with a new row, keeping the old row's sealed text readable by its id", async () => {
+  it("replaces a key with a new row and clears the old row's sealed text at once", async () => {
     const userId = await seedUser();
-    const oldText = sealedText("old");
-    const oldId = await save(userId, "fal", oldText);
+    const oldId = await save(userId, "fal", sealedText("old"));
     const newText = sealedText("new");
     const newId = await save(userId, "fal", newText);
 
     expect(newId).not.toBe(oldId);
     const rows = await rowsOf(userId, "fal");
     expect(rows.map((r) => [r.id, r.ciphertext, r.deleted_at === null])).toEqual([
-      [oldId, oldText, false],
+      [oldId, null, false],
       [newId, newText, true],
     ]);
     expect((await accountProviderKeysRepo.liveKeysFor(userId)).map((k) => k.id)).toEqual([newId]);
-    expect(await accountProviderKeysRepo.sealedKeyById(oldId)).toMatchObject({ id: oldId, userId, upstream: "fal", ciphertext: oldText });
-    expect(await accountProviderKeysRepo.sealedKeyById(newId)).toMatchObject({ id: newId, ciphertext: newText });
+    // A task still holding the old row's id can no longer read a key from it.
+    expect(await accountProviderKeysRepo.sealedKeyById(oldId)).toBeNull();
+    expect(await accountProviderKeysRepo.sealedKeyById(newId)).toMatchObject({ id: newId, userId, upstream: "fal", ciphertext: newText });
   });
 
-  it("deletes a key by soft-deleting it: no longer live, sealed text still readable by id", async () => {
+  it("deletes a key by clearing its sealed text and soft-deleting the row", async () => {
     const userId = await seedUser();
-    const text = sealedText("gone");
-    const id = await save(userId, "wavespeed", text);
+    const id = await save(userId, "wavespeed", sealedText("gone"));
 
     expect(await accountProviderKeysRepo.deleteKey(userId, "wavespeed")).toBe(true);
 
     expect(await accountProviderKeysRepo.liveKeysFor(userId)).toEqual([]);
     const [row] = await rowsOf(userId, "wavespeed");
     expect(row!.deleted_at).not.toBeNull();
-    expect(row!.ciphertext).toBe(text);
-    expect(await accountProviderKeysRepo.sealedKeyById(id)).toMatchObject({ ciphertext: text });
+    expect(row!.ciphertext).toBeNull();
+    expect(await accountProviderKeysRepo.sealedKeyById(id)).toBeNull();
     // Nothing left to delete.
     expect(await accountProviderKeysRepo.deleteKey(userId, "wavespeed")).toBe(false);
   });
 
-  it("clears the sealed text of retired keys nothing unfinished points at, and of no other row", async () => {
+  it("keeps no sealed text on any retired row, however many times a key was replaced", async () => {
     const userId = await seedUser();
-    const stillUsedText = sealedText("still-used");
-    const stillUsed = await save(userId, "fal", stillUsedText);
-    const unused = await save(userId, "fal");           // replaces stillUsed
-    await accountProviderKeysRepo.deleteKey(userId, "fal");  // retires unused
-    const liveText = sealedText("live");
-    const live = await save(userId, "wavespeed", liveText);
-
-    await accountProviderKeysRepo.clearUnreferencedCiphertext([stillUsed]);
-
-    expect((await accountProviderKeysRepo.sealedKeyById(stillUsed))?.ciphertext).toBe(stillUsedText);
-    expect((await accountProviderKeysRepo.sealedKeyById(unused))?.ciphertext).toBeNull();
-    // A live key is never cleared, referenced or not.
-    expect((await accountProviderKeysRepo.sealedKeyById(live))?.ciphertext).toBe(liveText);
-
-    // Once the last reference ends, the next cleanup clears it too.
-    await accountProviderKeysRepo.clearUnreferencedCiphertext([]);
-    expect((await accountProviderKeysRepo.sealedKeyById(stillUsed))?.ciphertext).toBeNull();
-    expect((await accountProviderKeysRepo.sealedKeyById(live))?.ciphertext).toBe(liveText);
+    const ids = [];
+    for (let i = 0; i < 4; i++) ids.push(await save(userId, "fal"));
+    const rows = await rowsOf(userId, "fal");
+    expect(rows.filter((r) => r.ciphertext !== null).map((r) => r.id)).toEqual([ids[3]]);
   });
 
   it("is erased with the account: every sealed text cleared and every row soft-deleted, in the erase's transaction", async () => {

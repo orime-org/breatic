@@ -33,7 +33,7 @@ import { randomBytes } from "node:crypto";
 import fc from "fast-check";
 import postgres from "postgres";
 import { accountModelUpstreamsRepo, accountProviderKeysRepo, initCore, sealProviderKey } from "@breatic/core";
-import { cleanupRetiredProviderKeys, resolveKeys } from "@breatic/domain";
+import { resolveKeys } from "@breatic/domain";
 import { mirrorInDirectory } from "./directory-fixtures.js";
 
 const SECRET = randomBytes(32);
@@ -297,64 +297,5 @@ describe("resolveKeys: what the answer carries", () => {
       }),
       { numRuns: 12 },
     );
-  });
-});
-
-describe("cleanupRetiredProviderKeys", () => {
-  /**
-   * A task pointing at key rows.
-   * @param userId - Its owner.
-   * @param status - Its status.
-   * @param keyId - The media key row, or null for the deployment's key.
-   * @param llmKeyId - The key row of its language-model step, or null.
-   * @returns Once inserted.
-   */
-  async function seedTask(userId: string, status: string, keyId: string | null, llmKeyId: string | null): Promise<void> {
-    await sql`
-      INSERT INTO tasks (user_id, space_id, task_type, mode, status, key_id, llm_key_id)
-      VALUES (${userId}, ${crypto.randomUUID()}, 'image', 'append', ${status}, ${keyId}, ${llmKeyId})
-    `;
-  }
-
-  /**
-   * A key row's sealed text.
-   * @param id - The row.
-   * @returns The text, or null once cleared.
-   */
-  async function ciphertextOf(id: string): Promise<string | null> {
-    const [row] = await sql<{ ciphertext: string | null }[]>`SELECT ciphertext FROM account_provider_keys WHERE id = ${id}`;
-    return row!.ciphertext;
-  }
-
-  it("keeps a retired key's sealed text while an unfinished task points at it, by either column, and clears it after", async () => {
-    const userId = await seedUser();
-    const byMedia = await saveKey(userId, "fal", "fal-1");
-    const byLlm = await saveKey(userId, "openrouter", "or-1");
-    const finishedOnly = await saveKey(userId, "wavespeed", "ws-1");
-    await seedTask(userId, "running", byMedia, null);
-    await seedTask(userId, "pending", null, byLlm);
-    await seedTask(userId, "completed", finishedOnly, finishedOnly);
-    await seedTask(userId, "failed", byMedia, null);
-    for (const upstream of ["fal", "openrouter", "wavespeed"]) await accountProviderKeysRepo.deleteKey(userId, upstream);
-
-    await cleanupRetiredProviderKeys();
-
-    expect(await ciphertextOf(byMedia)).not.toBeNull();
-    expect(await ciphertextOf(byLlm)).not.toBeNull();
-    expect(await ciphertextOf(finishedOnly)).toBeNull();
-
-    await sql`UPDATE tasks SET status = 'completed' WHERE key_id = ${byMedia} OR llm_key_id = ${byLlm}`;
-    await cleanupRetiredProviderKeys();
-    expect(await ciphertextOf(byMedia)).toBeNull();
-    expect(await ciphertextOf(byLlm)).toBeNull();
-  });
-
-  it("never clears a live key", async () => {
-    const userId = await seedUser();
-    const live = await saveKey(userId, "fal", "fal-live");
-
-    await cleanupRetiredProviderKeys();
-
-    expect(await ciphertextOf(live)).not.toBeNull();
   });
 });
