@@ -63,6 +63,10 @@ describe('where a trigger may open the menu', () => {
     expect(slashMayOpen(caretIn('中文　', 3).prosemirrorView.state.tr)).toBe(true);
   });
 
+  it('opens at the start of a line made by Shift+Enter', () => {
+    expect(slashMayOpen(caretIn('abc\n', 4).prosemirrorView.state.tr)).toBe(true);
+  });
+
   it('stays closed inside a word, a date or "and/or"', () => {
     expect(slashMayOpen(caretIn('and', 3).prosemirrorView.state.tr)).toBe(false);
     expect(slashMayOpen(caretIn('11', 2).prosemirrorView.state.tr)).toBe(false);

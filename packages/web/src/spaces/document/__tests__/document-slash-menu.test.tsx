@@ -337,6 +337,22 @@ describe('the mouse on the menu (A3)', () => {
     expect(document.body.style.pointerEvents).toBe('');
   });
 
+  it('lights Table when the pointer moving on it opens the grid', () => {
+    const { editor } = open([para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/');
+    const table = screen.getByTestId('doc-slash-row-table');
+    fireEvent.mouseMove(table);
+    expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
+    press(editor, 'Escape');
+    press(editor, 'ArrowDown');
+    press(editor, 'ArrowDown');
+    expect(table.hasAttribute('data-highlighted')).toBe(false);
+    fireEvent.mouseMove(table);
+    expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
+    expect(table.hasAttribute('data-highlighted')).toBe(true);
+  });
+
   it('marks Table as opening a grid, as the insert menu does', () => {
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);
