@@ -46,7 +46,7 @@ beforeEach(() => {
 
 describe("understandMediaInBatches on a key set", () => {
   it("hands every batch the key set it was given", async () => {
-    await understandMediaInBatches({ ...request, keys: ACCOUNT } as never, segments);
+    await understandMediaInBatches({ ...request, keys: ACCOUNT }, segments);
 
     expect(understandMediaAtMock).toHaveBeenCalledTimes(2);
     for (const [batch] of understandMediaAtMock.mock.calls as [{ keys?: unknown }][]) expect(batch.keys).toBe(ACCOUNT);
@@ -61,7 +61,7 @@ describe("understandMediaInBatches on a key set", () => {
   it("stops at the first batch whose account key fails, keeping the key's own kind on the chain", async () => {
     understandMediaAtMock.mockRejectedValueOnce(Object.assign(new Error("Insufficient credits"), { kind: "account_key_failed", reason: "no_balance", upstream: "openrouter" }));
 
-    const thrown = await understandMediaInBatches({ ...request, keys: ACCOUNT } as never, segments).then(() => undefined, (err: unknown) => err);
+    const thrown = await understandMediaInBatches({ ...request, keys: ACCOUNT }, segments).then(() => undefined, (err: unknown) => err);
 
     expect(understandMediaAtMock).toHaveBeenCalledTimes(1);
     expect((thrown as { cause?: { kind?: unknown } }).cause?.kind).toBe("account_key_failed");

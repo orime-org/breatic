@@ -15,7 +15,7 @@ const understand = vi.hoisted(() => vi.fn());
 vi.mock("@domain/provider/instance.js", () => ({ provider: () => ({ llm: { understand } }) }));
 
 import { understandMedia } from "@domain/understand/understand.js";
-import { UnderstandRefused, type Media, type UnderstandRequest } from "@domain/understand/types.js";
+import { UnderstandRefused, type Media } from "@domain/understand/types.js";
 
 const KNOWN: Cost = { state: "known", usd: 0.004, source: "reported" };
 const AUDIO: Media = { kind: "audio", bytes: new Uint8Array([2, 3]), contentType: "audio/mpeg" };
@@ -47,7 +47,7 @@ function keyFailure(kind: string, extra: Record<string, unknown> = {}): Error {
  */
 function kindOf(value: unknown): unknown {
   for (let current = value; typeof current === "object" && current !== null; current = (current as { cause?: unknown }).cause) {
-    if ("kind" in current && typeof (current as { kind: unknown }).kind === "string" && String((current as { kind: string }).kind).startsWith("account_key")) return (current as { kind: string }).kind;
+    if ("kind" in current && typeof (current).kind === "string" && String((current as { kind: string }).kind).startsWith("account_key")) return (current as { kind: string }).kind;
   }
   return undefined;
 }
@@ -59,12 +59,12 @@ beforeEach(() => {
 
 describe("understandMedia on a key set", () => {
   it("hands provider the key set it was given", async () => {
-    await understandMedia({ ...base, keys: ACCOUNT } as UnderstandRequest);
+    await understandMedia({ ...base, keys: ACCOUNT });
     expect(understand.mock.calls[0]![2]).toBe(ACCOUNT);
   });
 
   it("hands provider no key set when none was resolved, so our keys are used", async () => {
-    await understandMedia(base as UnderstandRequest);
+    await understandMedia(base);
     expect(understand.mock.calls[0]![2]).toBeUndefined();
   });
 
@@ -76,7 +76,7 @@ describe("understandMedia on a key set", () => {
     ["account_key_missing on no upstream", "account_key_missing", () => Object.assign(new NoUpstreamAvailable("google/gemini-3.8-flash", []), { cause: keyFailure("account_key_missing") })],
   ])("passes %s on as itself, never as a refusal of the deployment", async (_name, kind, error) => {
     understand.mockRejectedValue(error());
-    const thrown = await understandMedia({ ...base, keys: ACCOUNT } as UnderstandRequest).then(() => undefined, (err: unknown) => err);
+    const thrown = await understandMedia({ ...base, keys: ACCOUNT }).then(() => undefined, (err: unknown) => err);
 
     expect(thrown).not.toBeInstanceOf(UnderstandRefused);
     expect(kindOf(thrown)).toBe(kind);

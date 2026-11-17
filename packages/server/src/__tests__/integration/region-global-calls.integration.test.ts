@@ -236,7 +236,7 @@ const sealProviderKey = (core as unknown as { sealProviderKey?: (key: string, ri
 const resolveKeys = (domain as unknown as {
   resolveKeys?: (payer: { projectId: string } | { studioId: string }, purpose: Purpose) => Promise<{ keys: KeySetLike; keyId: string | null; route: unknown }>;
 }).resolveKeys;
-const keysByKeyId = (domain as unknown as { keysByKeyId?: (keyId: string) => Promise<{ keys: KeySetLike; keyId: string }> }).keysByKeyId;
+const keysById = (domain as unknown as { keysById?: (keyId: string) => Promise<{ keys: KeySetLike; accountId: string }> }).keysById;
 
 /**
  * The first error on a cause chain that names a key failure kind.
@@ -314,19 +314,19 @@ describe("choosing a call's keys in a region (inner#1953)", () => {
 
   it("reads a task's key by row id through the global region, and fails as account_key_missing once it answers null", async () => {
     expect(sealProviderKey, "sealProviderKey").toBeTypeOf("function");
-    expect(keysByKeyId, "keysByKeyId").toBeTypeOf("function");
+    expect(keysById, "keysById").toBeTypeOf("function");
     const { userId } = await regionStudio();
     const key = `ws-${crypto.randomBytes(16).toString("hex")}`;
     const keyId = crypto.randomUUID();
     global.answers.getProviderKeyById = { id: keyId, userId, upstream: "wavespeed", ciphertext: sealProviderKey!(key, SEAL_RING) };
     global.received.length = 0;
 
-    const live = await keysByKeyId!(keyId);
+    const live = await keysById!(keyId);
     expect(live.keys.owner).toBe("account");
     expect(live.keys.keyOf("wavespeed")).toBe(key);
 
     global.answers.getProviderKeyById = null;
-    const gone = await keysByKeyId!(keyId).then(() => null, (err: unknown) => err);
+    const gone = await keysById!(keyId).then(() => null, (err: unknown) => err);
     expect(keyFailureKind(gone)).toBe("account_key_missing");
     expect(String(gone)).not.toContain(key);
 

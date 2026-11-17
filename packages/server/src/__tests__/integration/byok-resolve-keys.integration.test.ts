@@ -256,7 +256,7 @@ describe("resolveKeys: media calls", () => {
     await saveKey(userId, "fal", "fal-key");
     await accountModelUpstreamsRepo.setModelUpstream(userId, MODEL, "fal");
     // Only the key row is retired, so the choice still names fal: the key's own state decides.
-    await sql`UPDATE account_provider_keys SET deleted_at = now() WHERE user_id = ${userId} AND upstream = 'fal'`;
+    await sql`UPDATE account_provider_keys SET ciphertext = NULL, deleted_at = now() WHERE user_id = ${userId} AND upstream = 'fal'`;
 
     const resolved = await resolveKeys({ studioId }, MEDIA);
     expect(resolved.keys.owner).toBe("deployment");

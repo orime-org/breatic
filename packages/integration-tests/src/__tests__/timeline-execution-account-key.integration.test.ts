@@ -120,7 +120,7 @@ describe("an execution accepted on the payer's OpenRouter key", () => {
     await pickUp(fx);
 
     expect(plan).toHaveBeenCalledTimes(1);
-    const keys = plan.mock.calls[0]?.[1] as { owner?: string; keyOf?: (upstream: string) => string | undefined } | undefined;
+    const keys = plan.mock.calls[0]?.[2] as { owner?: string; keyOf?: (upstream: string) => string | undefined } | undefined;
     expect(keys?.owner).toBe("account");
     expect(keys?.keyOf?.("openrouter")).toBe(ACCOUNT_KEY);
     const [stored] = await sql<{ steps: unknown }[]>`SELECT steps FROM timeline_executions WHERE id = ${fx.execution.id}`;

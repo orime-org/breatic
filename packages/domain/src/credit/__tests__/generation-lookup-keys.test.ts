@@ -28,7 +28,7 @@ beforeEach(() => {
 
 describe("a lookup of a call an account's key paid for", () => {
   it("carries the key row's id and is never charged", async () => {
-    await handOffLookups([{ lookup, source: "model", model: "deepseek/deepseek-v4.1-flash-1017" }], operation, { description: "Agent chat", charge: true, keyId: KEY_ID } as never);
+    await handOffLookups([{ lookup, source: "model", model: "deepseek/deepseek-v4.1-flash-1017" }], operation, { description: "Agent chat", charge: true, keyId: KEY_ID });
 
     expect(queueAdd).toHaveBeenCalledWith("lookup", expect.objectContaining({ keyId: KEY_ID, charge: false }), expect.anything());
     const [, job] = queueAdd.mock.calls[0] as unknown as [string, Record<string, unknown>];
@@ -36,7 +36,7 @@ describe("a lookup of a call an account's key paid for", () => {
   });
 
   it("carries no key row for a call our key paid for, and is charged as asked", async () => {
-    await handOffLookups([{ lookup, source: "model", model: "m" }], operation, { description: "Agent chat", charge: true, keyId: null } as never);
+    await handOffLookups([{ lookup, source: "model", model: "m" }], operation, { description: "Agent chat", charge: true, keyId: null });
 
     const [, job] = queueAdd.mock.calls[0] as unknown as [string, Record<string, unknown>];
     expect(job.charge).toBe(true);

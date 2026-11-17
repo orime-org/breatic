@@ -32,7 +32,7 @@ function recorderOn(keyId: string | null): { recorder: ReturnType<typeof createU
     write: async (row) => void rows.push(row),
     onMissingCost: () => undefined,
     keyId,
-  } as Parameters<typeof createUsageRecorder>[0]);
+  });
   return { recorder, rows };
 }
 
@@ -87,7 +87,7 @@ describe("the canvas generation feature", () => {
     const rows: UsageRow[] = [];
     const recorder = createUsageRecorder({
       operationKey: "task:t1",
-      feature: "canvas_generation" as never,
+      feature: "canvas_generation",
       actorUserId: "u1",
       projectId: "p1",
       pricing: PRICING,
@@ -95,7 +95,7 @@ describe("the canvas generation feature", () => {
       write: async (row) => void rows.push(row),
       onMissingCost: () => undefined,
       keyId: KEY_ID,
-    } as Parameters<typeof createUsageRecorder>[0]);
+    });
     recorder.recordModelCall({ source: "model", model: "seedream-5", upstream: "fal", cost: { state: "known", usd: 0.03, source: "billing", payer: "account" } as never });
 
     expect((await recorder.settleForCharge()).credits).toBe(0);
