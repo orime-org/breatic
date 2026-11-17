@@ -3670,7 +3670,7 @@
     "getKey": "Get a key from {upstream}",
     "runsModels": "Models it runs",
     "runsNone": "No model here runs on it.",
-    "openrouterNote": "Every language model call uses this key, with no credits.",
+    "openrouterNote": "Every language model call, web animation included, uses this key, with no credits.",
     "replaceTitle": "Replace the {upstream} key",
     "replaceBody": "The new key is checked before it is saved. Tasks using the old key may be interrupted or fail. If the old key has leaked, also revoke it at {upstream}.",
     "deleteTitle": "Delete the {upstream} key?",

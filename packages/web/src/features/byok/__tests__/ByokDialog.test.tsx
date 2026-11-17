@@ -157,6 +157,24 @@ const CATALOG = {
   credit_multiplier: 1,
 };
 
+/** Two versions of one model under the same vendor name, told apart by their variant, both on WaveSpeed. */
+const TWIN_CATALOG = {
+  ...CATALOG,
+  image: [
+    { ...entry('gemini-pro-text', 'Gemini 3 Pro', 'image', ['wavespeed']), variant: 'Text' },
+    { ...entry('gemini-pro-reference', 'Gemini 3 Pro', 'image', ['wavespeed']), variant: 'Reference' },
+  ],
+  video: [],
+  total: 2,
+};
+
+/** The account's view over the twin catalog: a WaveSpeed key, both twins set to it. */
+const TWIN_VIEW: Partial<ByokView> = {
+  keys: [WAVESPEED_KEY],
+  models: [{ model: 'gemini-pro-text', upstream: 'wavespeed' }, { model: 'gemini-pro-reference', upstream: 'wavespeed' }],
+  choices: { 'gemini-pro-text': ['wavespeed'], 'gemini-pro-reference': ['wavespeed'] },
+};
+
 /**
  * The account's view.
  * @param over - Fields to override.
@@ -179,11 +197,12 @@ const EMPTY: Partial<ByokView> = { keys: [], models: [], choices: {} };
 /**
  * Make the reads answer one view, now and on every re-read, beside the model catalog.
  * @param answer - The view.
+ * @param catalog - The model catalog.
  */
-function serve(answer: ByokView): void {
+function serve(answer: ByokView, catalog: object = CATALOG): void {
   api.get.mockImplementation((url: string) => {
     if (url === '/account/byok') return Promise.resolve(answer);
-    if (url === '/models') return Promise.resolve(CATALOG);
+    if (url === '/models') return Promise.resolve(catalog);
     return Promise.reject(new Error(`unexpected GET ${url}`));
   });
 }
@@ -311,6 +330,51 @@ describe('ByokDialog', () => {
       await user.type(within(dialog).getByPlaceholderText('Search upstreams'), 'sand');
 
       expect(rowOrder(dialog)).toEqual(['sandbase']);
+    });
+
+    it('hides the line under the added group when the search hides that group', async () => {
+      const user = userEvent.setup();
+      serve(view(EMPTY));
+      const dialog = await mount();
+      await within(dialog).findByTestId('byok-upstream-wavespeed');
+      expect(within(dialog).getByTestId('byok-list-separator')).toBeInTheDocument();
+
+      await user.type(within(dialog).getByPlaceholderText('Search upstreams'), 'wave');
+
+      expect(rowOrder(dialog)).toEqual(['wavespeed']);
+      expect(within(dialog).queryByTestId('byok-list-separator')).toBeNull();
+    });
+
+    it('moves the right pane to the first upstream the search leaves, and empties it when none is left', async () => {
+      const user = userEvent.setup();
+      serve(view(EMPTY));
+      const dialog = await mount();
+      await within(dialog).findByTestId('byok-detail-openrouter');
+      const search = within(dialog).getByPlaceholderText('Search upstreams');
+
+      await user.type(search, 'wave');
+      expect(within(dialog).getByTestId('byok-detail-wavespeed')).toBeInTheDocument();
+      expect(within(dialog).queryByTestId('byok-detail-openrouter')).toBeNull();
+
+      await user.type(search, 'zz');
+      expect(within(dialog).queryByTestId(/^byok-detail-/)).toBeNull();
+    });
+
+    it('says an OpenRouter key covers every language model, web animation included', async () => {
+      const user = userEvent.setup();
+      const dialog = await mount();
+      await user.click(await within(dialog).findByTestId('byok-upstream-openrouter'));
+
+      expect(within(dialog).getByTestId('byok-detail-openrouter')).toHaveTextContent(/every language model.*web animation/i);
+    });
+
+    it('names the models an upstream runs the way the generation panel does, a shared name joined by its variant', async () => {
+      serve(view(TWIN_VIEW), TWIN_CATALOG);
+      const dialog = await mount();
+      const detail = await within(dialog).findByTestId('byok-detail-wavespeed');
+
+      expect(within(detail).getByText('Gemini 3 Pro Text')).toBeInTheDocument();
+      expect(within(detail).getByText('Gemini 3 Pro Reference')).toBeInTheDocument();
     });
 
     it('opens on the first added upstream, showing its hint, status, balance and where to get a key', async () => {
@@ -470,6 +534,18 @@ describe('ByokDialog', () => {
         expect(api.delete).not.toHaveBeenCalled();
       });
 
+      it('lists the models going back to the platform key by the names the generation panel gives them', async () => {
+        const user = userEvent.setup();
+        serve(view(TWIN_VIEW), TWIN_CATALOG);
+        const dialog = await mount();
+        const detail = await within(dialog).findByTestId('byok-detail-wavespeed');
+        await user.click(within(detail).getByRole('button', { name: 'Delete' }));
+
+        const confirm = await screen.findByRole('alertdialog');
+        expect(within(confirm).getByText('Gemini 3 Pro Text')).toBeInTheDocument();
+        expect(within(confirm).getByText('Gemini 3 Pro Reference')).toBeInTheDocument();
+      });
+
       it('deletes on confirm', async () => {
         const user = userEvent.setup();
         const deleted = view({
@@ -524,6 +600,23 @@ describe('ByokDialog', () => {
 
       expect(within(dialog).getByTestId('byok-model-nano-banana-pro')).toBeInTheDocument();
       expect(within(dialog).queryByTestId('byok-model-seedream-5')).toBeNull();
+    });
+
+    it('names each model the way the generation panel does, searches that name and says it when saved', async () => {
+      const user = userEvent.setup();
+      api.put.mockResolvedValue(undefined);
+      serve(view(TWIN_VIEW), TWIN_CATALOG);
+      const dialog = await mount();
+      await openModels(user, dialog);
+      expect(await within(dialog).findByTestId('byok-model-gemini-pro-text')).toHaveTextContent('Gemini 3 Pro Text');
+      expect(within(dialog).getByTestId('byok-model-gemini-pro-reference')).toHaveTextContent('Gemini 3 Pro Reference');
+
+      await user.type(within(dialog).getByPlaceholderText('Search models'), 'pro ref');
+      expect(within(dialog).queryByTestId('byok-model-gemini-pro-text')).toBeNull();
+
+      await optionsOf(user, 'gemini-pro-reference');
+      await user.click(screen.getByRole('option', { name: 'Platform key (uses credits)' }));
+      await waitFor(() => expect(toasts.success).toHaveBeenCalledWith('Gemini 3 Pro Reference now uses Platform key (uses credits)'));
     });
 
     it('defaults each model to the platform key and offers only keyed upstreams that run it', async () => {

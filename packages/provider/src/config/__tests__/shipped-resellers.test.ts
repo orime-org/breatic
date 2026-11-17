@@ -162,7 +162,7 @@ describe("a run as the application resolves it", () => {
 describe("the reseller upstreams", () => {
   it("declares fal and SandBase", () => {
     expect(config.upstreams.fal).toEqual({ kind: "fal", display_name: "fal", group: "reseller", key_url: "https://fal.ai/dashboard/keys", base_url: "https://queue.fal.run", billing_url: "https://api.fal.ai/v1", key_env: "FAL_KEY", concurrency: 10 });
-    expect(config.upstreams.sandbase).toEqual({ kind: "sandbase", display_name: "SandBase", group: "reseller", base_url: "https://api.sandbase.ai/v1", key_env: "SANDBASE_API_KEY", concurrency: 10, empty_output_wait_ms: 600_000 });
+    expect(config.upstreams.sandbase).toEqual({ kind: "sandbase", display_name: "SandBase", group: "reseller", key_url: "https://www.sandbase.ai/console/keys", base_url: "https://api.sandbase.ai/v1", key_env: "SANDBASE_API_KEY", concurrency: 10, empty_output_wait_ms: 600_000 });
   });
 
   it("lists every catalog model", () => {

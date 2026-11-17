@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getLocale, type ModelEntry, type ModelModality } from '@breatic/shared';
+import { getLocale, modelLabel, type ModelEntry, type ModelModality } from '@breatic/shared';
 
 import {
   AlertDialog,
@@ -62,14 +62,29 @@ type Translate = ReturnType<typeof useTranslation>;
 export function ByokUpstreamTab({ view, entries }: { view: ByokView; entries: ModelEntry[] }): React.JSX.Element {
   const keyOf = React.useMemo(() => new Map(view.keys.map((key) => [key.upstream, key])), [view.keys]);
   const [selected, setSelected] = React.useState<string | null>(null);
-  const firstAdded = view.upstreams.find((u) => keyOf.has(u.upstream))?.upstream ?? view.upstreams[0]?.upstream ?? null;
-  // Opens on the first added upstream; a pick the list no longer has falls back to it.
-  const current = selected !== null && view.upstreams.some((u) => u.upstream === selected) ? selected : firstAdded;
-  const upstream = view.upstreams.find((u) => u.upstream === current);
+  const [query, setQuery] = React.useState('');
+  const needle = query.trim().toLowerCase();
+  const shown = React.useMemo(
+    () => view.upstreams.filter((u) => u.name.toLowerCase().includes(needle)),
+    [view.upstreams, needle],
+  );
+  const firstAdded = shown.find((u) => keyOf.has(u.upstream))?.upstream ?? shown[0]?.upstream ?? null;
+  // Opens on the first added upstream; a pick the list no longer shows, deleted or searched away, falls back to the
+  // first one it does show, and nothing when the search leaves none.
+  const current = selected !== null && shown.some((u) => u.upstream === selected) ? selected : firstAdded;
+  const upstream = shown.find((u) => u.upstream === current);
 
   return (
     <>
-      <UpstreamList upstreams={view.upstreams} keyOf={keyOf} selected={current} onSelect={setSelected} />
+      <UpstreamList
+        shown={shown}
+        searching={needle !== ''}
+        query={query}
+        onQuery={setQuery}
+        keyOf={keyOf}
+        selected={current}
+        onSelect={setSelected}
+      />
       <ScrollArea className='min-h-0 flex-1'>
         {upstream === undefined ? null : (
           <UpstreamDetail
@@ -88,30 +103,37 @@ export function ByokUpstreamTab({ view, entries }: { view: ByokView; entries: Mo
 /**
  * The left column: a search box, the added upstreams, then the rest by group.
  * @param props - The list's data.
- * @param props.upstreams - The deployment's upstreams.
+ * @param props.shown - The deployment's upstreams the search leaves.
+ * @param props.searching - Whether the search box holds anything.
+ * @param props.query - What the search box holds.
+ * @param props.onQuery - Called as the user types in the search box.
  * @param props.keyOf - The saved key of each added upstream.
  * @param props.selected - The upstream on the right.
  * @param props.onSelect - Select an upstream.
  * @returns The column.
  */
 const UpstreamList = React.memo(function UpstreamList({
-  upstreams,
+  shown,
+  searching,
+  query,
+  onQuery,
   keyOf,
   selected,
   onSelect,
 }: {
-  upstreams: ByokUpstream[];
+  shown: ByokUpstream[];
+  searching: boolean;
+  query: string;
+  onQuery: (query: string) => void;
   keyOf: Map<string, ByokSavedKey>;
   selected: string | null;
   onSelect: (upstream: string) => void;
 }): React.JSX.Element {
   const t = useTranslation();
-  const [query, setQuery] = React.useState('');
-  const needle = query.trim().toLowerCase();
-  const shown = upstreams.filter((u) => u.name.toLowerCase().includes(needle));
   const added = shown.filter((u) => keyOf.has(u.upstream));
   const groups = GROUPS.map(([kind, label]) => [label, shown.filter((u) => u.kind === kind && !keyOf.has(u.upstream))] as const);
-  const searching = needle !== '';
+  // The added group shows while it has rows, and always outside a search, where it says none are added yet.
+  const addedShown = added.length > 0 || !searching;
 
   /**
    * One upstream's row.
@@ -162,17 +184,19 @@ const UpstreamList = React.memo(function UpstreamList({
           autoComplete='off'
           value={query}
           placeholder={t('byok.searchUpstreams')}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => onQuery(e.target.value)}
         />
       </div>
       <ScrollArea className='min-h-0 flex-1'>
         <div className='flex flex-col gap-0.5 px-2 pb-3'>
           {shown.length === 0 ? <p className='px-2 py-2 text-xs text-muted-foreground'>{t('byok.noUpstreamMatch')}</p> : null}
-          {added.length > 0 || !searching ? head(t('byok.added')) : null}
+          {addedShown ? head(t('byok.added')) : null}
           {added.length > 0 ? added.map(row) : searching ? null : (
             <p className='px-2 py-1 text-xs text-muted-foreground'>{t('byok.noneAdded')}</p>
           )}
-          {groups.some(([, list]) => list.length > 0) ? <div className='mx-2 my-1.5 h-px bg-border' /> : null}
+          {addedShown && groups.some(([, list]) => list.length > 0) ? (
+            <div data-testid='byok-list-separator' className='mx-2 my-1.5 h-px bg-border' />
+          ) : null}
           {groups.map(([label, list]) => list.length === 0 ? null : (
             <React.Fragment key={label}>
               {head(t('byok.notAddedGroup', { group: t(label) }))}
@@ -389,7 +413,7 @@ function UpstreamDetail({
               </span>
               <div className='flex flex-wrap gap-1'>
                 {list.map((m) => (
-                  <span key={m.name} className='rounded-chrome-sm bg-chip px-1.5 py-0.5 text-xs'>{m.display_name}</span>
+                  <span key={m.name} className='rounded-chrome-sm bg-chip px-1.5 py-0.5 text-xs'>{modelLabel(m, list)}</span>
                 ))}
               </div>
             </div>
@@ -511,9 +535,13 @@ function SavedKeyActions({
     onError: () => toast.error(t('byok.deleteFailed')),
   });
 
-  const affected = models
-    .filter((m) => m.upstream === id)
-    .map((m) => entries.find((entry) => entry.name === m.model)?.display_name ?? m.model);
+  const set = models.filter((m) => m.upstream === id).map((m) => m.model);
+  const known = entries.filter((entry) => set.includes(entry.name));
+  // Each named the way the generation panel names it among the others listed; a model the catalog lost keeps its id.
+  const affected = set.map((model) => {
+    const entry = known.find((e) => e.name === model);
+    return entry === undefined ? model : modelLabel(entry, known);
+  });
 
   return (
     <div className='ml-auto flex items-center gap-1.5'>

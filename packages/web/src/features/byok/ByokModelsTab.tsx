@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { ModelEntry, ModelModality } from '@breatic/shared';
+import { modelLabel, type ModelEntry, type ModelModality } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
@@ -23,6 +23,8 @@ const PLATFORM = '__platform__';
 /** A model the account can point at a keyed upstream, with those upstreams. */
 interface ModelChoice {
   entry: ModelEntry;
+  /** Its name on screen, as the generation panel names it among the models of its modality listed here. */
+  label: string;
   options: string[];
 }
 
@@ -53,13 +55,15 @@ export function ByokModelsTab({
   const names = React.useMemo(() => new Map(view.upstreams.map((u) => [u.upstream, u.name])), [view.upstreams]);
   const current = React.useMemo(() => new Map(view.models.map((m) => [m.model, m.upstream])), [view.models]);
   const choices = view.choices;
-  const usable = React.useMemo<ModelChoice[]>(
-    () => entries.flatMap((entry) => {
-      const options = choices?.[entry.name] ?? [];
-      return options.length > 0 ? [{ entry, options }] : [];
-    }),
-    [entries, choices],
-  );
+  const usable = React.useMemo<ModelChoice[]>(() => {
+    const listed = entries.filter((entry) => (choices?.[entry.name] ?? []).length > 0);
+    // Peers are the models listed together under the same modality tab.
+    return listed.map((entry) => ({
+      entry,
+      label: modelLabel(entry, listed.filter((peer) => peer.modality === entry.modality)),
+      options: choices?.[entry.name] ?? [],
+    }));
+  }, [entries, choices]);
   const changeModality = React.useCallback((next: string): void => {
     const found = BYOK_MODALITIES.find((m) => m === next);
     if (found !== undefined) setModality(found);
@@ -76,7 +80,7 @@ export function ByokModelsTab({
   }
 
   const needle = query.trim().toLowerCase();
-  const hits = usable.filter((m) => m.entry.display_name.toLowerCase().includes(needle));
+  const hits = usable.filter((m) => m.label.toLowerCase().includes(needle));
   const rows = hits.filter((m) => m.entry.modality === modality);
 
   return (
@@ -139,7 +143,7 @@ const ModelRow = React.memo(function ModelRow({
 }): React.JSX.Element {
   const t = useTranslation();
   const client = useQueryClient();
-  const { entry, options } = choice;
+  const { entry, label, options } = choice;
   const set = useMutation({
     mutationFn: async (next: string | null): Promise<void> => {
       await byokApi.setModel(entry.name, next);
@@ -147,7 +151,7 @@ const ModelRow = React.memo(function ModelRow({
     },
     onSuccess: (_, next) => {
       const name = next === null ? t('byok.platformKey') : names.get(next) ?? next;
-      toast.success(t('byok.modelSaved', { model: entry.display_name, upstream: name }));
+      toast.success(t('byok.modelSaved', { model: label, upstream: name }));
     },
     onError: () => toast.error(t('byok.modelSaveFailed')),
   });
@@ -158,7 +162,7 @@ const ModelRow = React.memo(function ModelRow({
 
   return (
     <div className='flex items-center gap-3 py-2' data-testid={`byok-model-${entry.name}`}>
-      <span className='min-w-0 truncate text-sm'>{entry.display_name}</span>
+      <span className='min-w-0 truncate text-sm'>{label}</span>
       <div className='ml-auto w-60 shrink-0'>
         <Select
           value={shown}

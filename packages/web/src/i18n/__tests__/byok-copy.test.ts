@@ -44,9 +44,9 @@ const ENGLISH: Record<string, string> = {
 
 /** Sentences whose English wording only needs to carry the point the tests look for. */
 const ENGLISH_CARRIES: Record<string, RegExp> = {
-  'byok.replaceBody': /tasks using the old key will be interrupted/i,
+  'byok.replaceBody': /tasks using the old key may be interrupted or fail/i,
   'byok.deleteTitle': /\{upstream\}/,
-  'byok.deleteBody': /tasks using this key will be interrupted/i,
+  'byok.deleteBody': /tasks using this key may be interrupted or fail/i,
   'byok.modelsIntro': /platform key/i,
   'byok.modelsEmpty': /^Add an upstream key, then choose here/,
 };

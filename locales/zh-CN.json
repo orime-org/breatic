@@ -3670,7 +3670,7 @@
     "getKey": "到 {upstream} 获取 key",
     "runsModels": "这家能跑的模型",
     "runsNone": "这里没有能用它跑的模型。",
-    "openrouterNote": "所有语言模型调用都用这把 key，不扣积分。",
+    "openrouterNote": "所有语言模型调用（含网页动画）都用这把 key，不扣积分。",
     "replaceTitle": "替换 {upstream} 的 key",
     "replaceBody": "保存前会先检测新 key 能不能连通。替换后，正在用旧 key 的任务可能会中断或失败。旧 key 若已泄露，请同时到 {upstream} 作废它。",
     "deleteTitle": "要删除 {upstream} 的 key 吗？",
