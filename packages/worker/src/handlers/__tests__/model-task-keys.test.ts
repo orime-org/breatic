@@ -91,7 +91,7 @@ describe("the keys a model run uses", () => {
   });
 
   it("runs on our keys, owning its clones as the deployment, when the task holds no key row", async () => {
-    await runModelTask({ ...TASK, keyId: null, llmKeyId: null } as unknown as ModelTask);
+    await runModelTask({ ...TASK, keyId: null, llmKeyId: null });
 
     const [run] = h.runMedia.mock.calls[0] as [Record<string, unknown>];
     expect(run.keys).toBeUndefined();
@@ -100,7 +100,7 @@ describe("the keys a model run uses", () => {
   });
 
   it("runs the media on the account's key and the description on ours when only the media has a key row", async () => {
-    await runModelTask({ ...TASK, llmKeyId: null } as unknown as ModelTask);
+    await runModelTask({ ...TASK, llmKeyId: null });
 
     const [run] = h.runMedia.mock.calls[0] as [Record<string, unknown>];
     expect(run.keys).toBe(MEDIA_KEYS);
@@ -108,7 +108,7 @@ describe("the keys a model run uses", () => {
   });
 
   it("rewrites Nano Banana 2's prompt on the task's LLM keys", async () => {
-    await runModelTask({ ...TASK, model: "nano-banana-2", params: { prompt: "a cat", resolution: "1k" } } as unknown as ModelTask);
+    await runModelTask({ ...TASK, model: "nano-banana-2", params: { prompt: "a cat", resolution: "1k" } });
     const [run] = h.runMedia.mock.calls[0] as [{ input: (rows: object) => Promise<unknown> }];
     await run.input({});
 

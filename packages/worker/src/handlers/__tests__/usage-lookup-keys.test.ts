@@ -89,7 +89,7 @@ describe("a lookup of a call an account's key paid for", () => {
   });
 
   it("records the call with 0 credits and the key row's id, and charges nothing", async () => {
-    await runUsageLookup(jobOf({ ...DATA, charge: true } as UsageLookupJob), recorder);
+    await runUsageLookup(jobOf({ ...DATA, charge: true }), recorder);
 
     expect(opened[0]).toMatchObject({ keyId: KEY_ID });
     expect(rows).toHaveLength(1);
@@ -120,10 +120,10 @@ describe("a lookup of a call an account's key paid for", () => {
 
 describe("a lookup of a call our key paid for", () => {
   it("asks with our keys and reads no key row", async () => {
-    const { keyId: _keyId, ...ours } = DATA as UsageLookupJob & { keyId?: string };
+    const { keyId: _keyId, ...ours } = DATA;
     h.costLookup.mockResolvedValue({ state: "known", usd: 0.02, source: "billing", payer: "deployment" });
 
-    await runUsageLookup(jobOf(ours as UsageLookupJob), recorder);
+    await runUsageLookup(jobOf(ours), recorder);
 
     expect(h.keysById).not.toHaveBeenCalled();
     expect((h.costLookup.mock.calls[0]![1] as { keys?: KeySet }).keys).toBeUndefined();

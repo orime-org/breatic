@@ -26,8 +26,8 @@ import { billedCredits, lookUp, openWait, pricedCosts, type WaitingCost } from "
 
 const MEDIA: KeySet = { owner: "account", keyOf: (u: string) => (u === "wavespeed" ? "acct-ws" : undefined) };
 const LLM: KeySet = { owner: "account", keyOf: (u: string) => (u === "openrouter" ? "acct-or" : undefined) };
-const known = (usd: number, payer: "deployment" | "account"): Cost => ({ state: "known", usd, source: "billing", payer } as Cost);
-const pending = (upstream: string, payer: "deployment" | "account"): Cost => ({ state: "pending", lookup: { upstream, predictionId: `p-${upstream}` }, payer } as Cost);
+const known = (usd: number, payer: "deployment" | "account"): Cost => ({ state: "known", usd, source: "billing", payer });
+const pending = (upstream: string, payer: "deployment" | "account"): Cost => ({ state: "pending", lookup: { upstream, predictionId: `p-${upstream}` }, payer });
 
 type LookUpWithKeys = (entries: readonly WaitingCost[], lastAttempt: boolean, keys: { media?: KeySet; llm?: KeySet }) => Promise<WaitingCost[]>;
 

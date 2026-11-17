@@ -48,10 +48,10 @@ function setup(held: { ticket: MediaTicket | null; sendingAt: Date | null }, run
       markSending: async () => undefined,
       clearSending: async () => undefined,
     },
-    clones: { liveClonesFor, recordClone, retireClone: vi.fn(async () => undefined) } as unknown as MediaRunDeps["clones"],
+    clones: { liveClonesFor, recordClone, retireClone: vi.fn(async () => undefined) },
     sourceOf: async () => ({ sha256: "sha-a", durationSeconds: null }),
     legacy: async () => ({}),
-    readingPlace: (async <T>(work: () => Promise<T>): Promise<T> => work()) as MediaRunDeps["readingPlace"],
+    readingPlace: (async <T>(work: () => Promise<T>): Promise<T> => work()),
     pollIntervalMs: 1_000,
   };
   const run = {
@@ -81,8 +81,8 @@ const keyFailure = (kind: string, extra: Record<string, unknown> = {}): Error =>
 
 describe("the keys reach every call to provider", () => {
   it("plans with the media and LLM key sets, and sends with both", async () => {
-    const plan = vi.fn(async () => send(ticket(1, "send")));
-    const sendFn = vi.fn(async () => running(ticket(2, "running")));
+    const plan = vi.fn(async (..._args: unknown[]) => send(ticket(1, "send")));
+    const sendFn = vi.fn(async (..._args: unknown[]) => running(ticket(2, "running")));
     const { run, deps } = setup({ ticket: null, sendingAt: null }, { plan, send: sendFn });
 
     await expect(runMedia(run, deps)).rejects.toBeInstanceOf(StillRunning);
@@ -92,7 +92,7 @@ describe("the keys reach every call to provider", () => {
   });
 
   it("polls a running ticket with both key sets", async () => {
-    const poll = vi.fn(async () => running(ticket(3, "running")));
+    const poll = vi.fn(async (..._args: unknown[]) => running(ticket(3, "running")));
     const { run, deps } = setup({ ticket: ticket(2, "running"), sendingAt: null }, { poll });
 
     await expect(runMedia(run, deps)).rejects.toBeInstanceOf(StillRunning);
@@ -100,7 +100,7 @@ describe("the keys reach every call to provider", () => {
   });
 
   it("recovers a cut send with both key sets", async () => {
-    const recover = vi.fn(async () => running(ticket(3, "running")));
+    const recover = vi.fn(async (..._args: unknown[]) => running(ticket(3, "running")));
     const { run, deps } = setup({ ticket: ticket(2, "send"), sendingAt: new Date() }, { recover });
 
     await expect(runMedia(run, deps)).rejects.toBeInstanceOf(StillRunning);
@@ -108,8 +108,8 @@ describe("the keys reach every call to provider", () => {
   });
 
   it("hands provider no key set for a run on our keys", async () => {
-    const plan = vi.fn(async () => send(ticket(1, "send")));
-    const sendFn = vi.fn(async () => running(ticket(2, "running")));
+    const plan = vi.fn(async (..._args: unknown[]) => send(ticket(1, "send")));
+    const sendFn = vi.fn(async (..._args: unknown[]) => running(ticket(2, "running")));
     const { run, deps } = setup({ ticket: null, sendingAt: null }, { plan, send: sendFn });
     const ours = { ...run, keys: undefined, llmKeys: undefined, cloneOwner: "deployment" } as unknown as MediaRun;
 

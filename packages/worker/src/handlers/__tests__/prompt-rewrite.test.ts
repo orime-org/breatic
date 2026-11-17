@@ -11,9 +11,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const h = vi.hoisted(() => ({ warn: vi.fn(), prepare: vi.fn() }));
 
 vi.mock("@breatic/core", () => ({ logger: { warn: h.warn } }));
-vi.mock("@breatic/domain", () => ({
+vi.mock("@breatic/domain", async () => ({
   generateTextRetry: vi.fn(),
   provider: () => ({ llm: { prepare: h.prepare } }),
+  // The real list: it is domain's, and the server reads the same one (inner#1953).
+  ...(await import("../../../../domain/src/provider/prompt-rewritten-models.js")),
 }));
 
 import { generateTextRetry } from "@breatic/domain";

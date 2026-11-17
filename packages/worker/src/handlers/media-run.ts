@@ -15,11 +15,13 @@
 import { logger } from "@breatic/core";
 import { assertBeforeDeadline, DeadlinePassed, encodeTaskFailure } from "@breatic/shared";
 import {
+  accountKeyFailureIn,
   DeadlinePassed as ProviderDeadlinePassed,
   NoUpstreamAvailable,
   SendNotAccepted,
   UpstreamTaskFailed,
   type Cost,
+  type KeySet,
   type Route,
 } from "@breatic/provider";
 import { ticketState, type LegacyRows, type MediaAnswer, type MediaInput, type MediaOutput, type MediaRunner, type MediaTicket } from "@breatic/provider/media";
@@ -48,6 +50,12 @@ export interface MediaRun {
   outputCount: number;
   /** Whether this pickup is the queue's last try, so provider gives an optional step up on any failure. */
   lastAttempt: boolean;
+  /** The account's keys the media steps run on (inner#1953); absent on our keys. */
+  keys?: KeySet;
+  /** The account's keys a language-model step inside the run runs on; absent on our keys. */
+  llmKeys?: KeySet;
+  /** Whose keys make and reuse the run's clones: the account's id, or `deployment` (the default) for ours. */
+  cloneOwner?: upstreamCloneRepo.CloneKeyOwner;
 }
 
 /** What the run reads and writes besides provider. */
@@ -92,13 +100,19 @@ export interface MediaRunDone {
 /**
  * What the task row and the node hold about a failed run: an upstream's failure as it read before provider, its own
  * words after the upstream's name; a model none of whose upstreams has its key, or a run every upstream here with its
- * key refused for its input (#1521), as a code each viewer reads in their own language, naming the model and the
- * variables or the limit; anything else in provider's words.
+ * key refused for its input (#1521), or a run an account's own key failed (inner#1953), as a code each viewer reads in
+ * their own language, naming the model and the variables, the limit or the key's upstream; anything else in provider's
+ * words.
  * @param reason - provider's reason.
  * @param displayName - What the user knows the model as.
  * @returns What the row stores.
  */
 function failureMessage(reason: Error, displayName: string): string {
+  // An account's own key failed or is gone (inner#1953): the row names the key's code, the model, the upstream and why.
+  const keyFailure = accountKeyFailureIn(reason);
+  if (keyFailure !== undefined) {
+    return encodeTaskFailure(keyFailure.kind, { model: displayName, upstream: keyFailure.upstream, keyReason: keyFailure.reason });
+  }
   if (reason instanceof UpstreamTaskFailed) return `${reason.upstream} task failed: ${reason.upstreamError}`;
   if (reason instanceof NoUpstreamAvailable && reason.reasons.length > 0 && reason.reasons.every((r) => r.kind === "missing_key")) {
     const envVars = reason.reasons.map((r) => (r.kind === "missing_key" ? r.envVar : ""));
@@ -165,6 +179,24 @@ function durationsOf(params: Readonly<Record<string, unknown>>, lengths: Readonl
 }
 
 /**
+ * The account key sets a run hands every call to provider, each left out on our keys.
+ * @param run - The run.
+ * @returns The fields.
+ */
+function keyBounds(run: MediaRun): { keys?: KeySet; llmKeys?: KeySet } {
+  return { ...(run.keys !== undefined && { keys: run.keys }), ...(run.llmKeys !== undefined && { llmKeys: run.llmKeys }) };
+}
+
+/**
+ * The clone cache's owner argument: the run's, or none for the cache's default, our keys.
+ * @param run - The run.
+ * @returns The argument list.
+ */
+function ownerArg(run: MediaRun): [] | [upstreamCloneRepo.CloneKeyOwner] {
+  return run.cloneOwner === undefined ? [] : [run.cloneOwner];
+}
+
+/**
  * The first answer of a task with no ticket: a ticket from what an older task left, or a fresh plan.
  * @param run - The run.
  * @param deps - Its dependencies.
@@ -182,8 +214,8 @@ async function open(run: MediaRun, deps: MediaRunDeps): Promise<MediaAnswer> {
     if (source.durationSeconds !== null) lengths.set(url, source.durationSeconds);
   }
   const shas = [...new Set(Object.values(sourceKeys))];
-  const clones = run.studioId === null ? [] : await deps.clones.liveClonesFor(run.studioId, shas);
-  const options = { idempotencyKey: run.taskId, sourceKeys, clones, durations: durationsOf(input.params, lengths) };
+  const clones = run.studioId === null ? [] : await deps.clones.liveClonesFor(run.studioId, shas, ...ownerArg(run));
+  const options = { idempotencyKey: run.taskId, sourceKeys, clones, durations: durationsOf(input.params, lengths), ...keyBounds(run) };
   const left = (legacy.providerTaskId ?? null) !== null || (legacy.steps ?? []).length > 0;
   return left
     ? deps.runner.ticketFromLegacy(run.model, input, run.route, options, legacy)
@@ -201,8 +233,8 @@ async function resume(run: MediaRun, deps: MediaRunDeps, held: taskRepo.StoredTi
   if (held.ticket === null) return open(run, deps);
   const ticket = held.ticket as MediaTicket;
   const state = ticketState(ticket);
-  if (state.phase === "running") return deps.runner.poll(ticket, { deadlineAt: run.deadlineAt, finalAsk: Date.now() >= run.deadlineAt });
-  if (held.sendingAt !== null) return deps.runner.recover(ticket, { deadlineAt: run.deadlineAt });
+  if (state.phase === "running") return deps.runner.poll(ticket, { deadlineAt: run.deadlineAt, finalAsk: Date.now() >= run.deadlineAt, ...keyBounds(run) });
+  if (held.sendingAt !== null) return deps.runner.recover(ticket, { deadlineAt: run.deadlineAt, ...keyBounds(run) });
   return { state: "send", ticket, step: { kind: state.step }, clones: [], retiredClones: [], warnings: [] };
 }
 
@@ -215,8 +247,8 @@ async function resume(run: MediaRun, deps: MediaRunDeps, held: taskRepo.StoredTi
 async function absorb(run: MediaRun, deps: MediaRunDeps, answer: MediaAnswer): Promise<void> {
   for (const warning of answer.warnings) logger.warn({ taskId: run.taskId, ...warning.detail }, warning.code);
   if (run.studioId === null) return;
-  for (const clone of answer.clones) await deps.clones.recordClone(run.studioId, clone.upstream, clone.kind, clone.sourceKey, clone.upstreamId);
-  for (const clone of answer.retiredClones) await deps.clones.retireClone(run.studioId, clone.upstream, clone.kind, clone.upstreamId);
+  for (const clone of answer.clones) await deps.clones.recordClone(run.studioId, clone.upstream, clone.kind, clone.sourceKey, clone.upstreamId, ...ownerArg(run));
+  for (const clone of answer.retiredClones) await deps.clones.retireClone(run.studioId, clone.upstream, clone.kind, clone.upstreamId, ...ownerArg(run));
 }
 
 /**
@@ -244,7 +276,7 @@ async function store(run: MediaRun, deps: MediaRunDeps, ticket: MediaTicket, sto
  */
 async function sendOnce(run: MediaRun, deps: MediaRunDeps, ticket: MediaTicket): Promise<MediaAnswer> {
   await deps.tickets.markSending(run.taskId);
-  return deps.runner.send(ticket, { deadlineAt: run.deadlineAt, final: run.lastAttempt });
+  return deps.runner.send(ticket, { deadlineAt: run.deadlineAt, final: run.lastAttempt, ...keyBounds(run) });
 }
 
 /**

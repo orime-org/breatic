@@ -243,6 +243,26 @@ describe("a model generation on an account's key", () => {
     expect(chargeArg()?.amount).toBe(0.5);
   });
 
+  it("records each account-paid cost under its own key row: an OpenRouter description under the LLM row, the media under the media row", async () => {
+    const rows: Record<string, unknown[]> = {};
+    h.createUsageRecorder.mockImplementation((options: Record<string, unknown>) => ({
+      operation: { operationKey: options.operationKey, feature: options.feature, actorUserId: options.actorUserId, projectId: options.projectId },
+      recordServiceCall: vi.fn(),
+      recordModelCall: (call: unknown) => void (rows[String(options.keyId)] ??= []).push(call),
+      recordLookedUpCall: vi.fn(),
+      awaitingLookup: () => [],
+      settle: async () => 0,
+      settleForCharge: async () => ({ credits: 0, writeFailures: [] }),
+    }));
+    const DESCRIPTION = { state: "known", usd: 0.01, source: "reported", payer: "account", upstream: "openrouter" };
+    h.runModelTask.mockResolvedValue({ outputs: [{ kind: "url", url: "https://cdn/out.png" }], costs: [ACCOUNT_COST, DESCRIPTION], servedBy: "fal", passedOverCosts: [] });
+
+    await runTask(jobOf({}), "lock-token");
+
+    expect(rows[MEDIA_KEY_ID]).toEqual([expect.objectContaining({ upstream: "fal", cost: ACCOUNT_COST })]);
+    expect(rows[LLM_KEY_ID]).toEqual([expect.objectContaining({ upstream: "openrouter", cost: DESCRIPTION })]);
+  });
+
   it.each([
     ["account_key_failed", { reason: "no_balance", upstream: "fal" }],
     ["account_key_missing", {}],

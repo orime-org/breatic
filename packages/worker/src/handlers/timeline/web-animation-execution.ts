@@ -16,6 +16,11 @@
  * writer charges, then the lookups of pending costs are queued, then the terminal transition. The job lock is re-checked
  * before each of those four writes, and the terminal transition also needs this attempt's fence, so a writer that
  * lost the job changes nothing more.
+ *
+ * An execution accepted on the payer's own OpenRouter key (inner#1953) holds that key row's id, never the key: the job's
+ * plan is made on the keys read by the id, its model calls are recorded under the row at no credits and their lookups
+ * queued uncharged with it, while the container runs on ours and is charged. A row replaced or deleted before the job
+ * is fixed or submitted fails the execution as `account_key_missing`; our key is never used instead.
  */
 
 import { DelayedError, type Job } from "bullmq";
@@ -30,12 +35,13 @@ import {
   type TimelineExecutionEvent,
   type TimelineExecutionJobData,
 } from "@breatic/core";
-import { costSchema, NoUpstreamAvailable, type Cost } from "@breatic/provider";
+import { accountKeyFailureIn, costSchema, NoUpstreamAvailable, type Cost, type KeySet } from "@breatic/provider";
 import {
   containerCostUsd,
   createUsageRecorder,
   creditLotService,
   handOffLookups,
+  keysById,
   provider,
   sumCreditsByOperationKeys,
   timelineOperationKey,
@@ -82,6 +88,8 @@ interface Pickup {
   step: JobStep;
   /** When the job's last report is due: two polls past the deadline. */
   endsAt: number;
+  /** The account key row its model calls run on, or null on ours (inner#1953). */
+  llmKeyId: string | null;
 }
 
 /** One file a report says the job wrote. */
@@ -152,11 +160,12 @@ function storedStep(steps: unknown[]): JobStep | undefined {
  * submits it.
  * @param row - The execution.
  * @param input - Its frozen input.
+ * @param keys - The account's keys its model calls run on; ours when absent.
  * @returns The step.
  * @throws {RangeError} When the input's duration does not make a frame count.
  * @throws {NoUpstreamAvailable} When no upstream of the model takes a Messages call.
  */
-function newStep(row: TimelineExecution, input: TimelineExecutionInput): JobStep {
+function newStep(row: TimelineExecution, input: TimelineExecutionInput, keys: KeySet | undefined): JobStep {
   const config = getTimelineConfig().web_animation;
   const prefix = `web-animation/${row.projectId}/${row.id}`;
   return {
@@ -177,7 +186,7 @@ function newStep(row: TimelineExecution, input: TimelineExecutionInput): JobStep
       maxTokens: config.max_tokens,
       callTimeoutMs: config.call_timeout_ms,
       model: config.model,
-      messagesPlan: provider().llm.messagesPlan(config.model),
+      messagesPlan: provider().llm.messagesPlan(config.model, undefined, keys),
     }),
   };
 }
@@ -340,6 +349,7 @@ async function recordUsage(pickup: Pickup, report: EndedReport): Promise<{ looku
     projectId: row.projectId,
     // Every call recorded at zero is logged with its identity below.
     onMissingCost: () => {},
+    ...(pickup.llmKeyId !== null && { keyId: pickup.llmKeyId }),
   });
   for (const call of report.calls) {
     if (call.outcome === "upstream_error") continue;
@@ -447,7 +457,7 @@ async function settle(pickup: Pickup, report: EndedReport, end: RunEnd): Promise
   await bill(pickup, report);
   // Queued once the charge is decided, whether or not this writer made it: the charge sums only the rows already
   // written, each lookup charges its own call, and a second hand-off of a call is the same job.
-  await handOffLookups(lookups, operation, { description: "timeline_web_animation", charge: true });
+  await handOffLookups(lookups, operation, { description: "timeline_web_animation", charge: true, keyId: pickup.llmKeyId });
   if (!(await owns(pickup))) return;
   await move(row, event);
 }
@@ -502,6 +512,26 @@ async function cancelling(pickup: Pickup): Promise<void> {
 }
 
 /**
+ * The account's keys an execution's model calls run on, read by the key row's id before anything is fixed or
+ * submitted; a row replaced or deleted since acceptance fails the execution as `account_key_missing`.
+ * @param row - The execution, as this pickup holds it.
+ * @param llmKeyId - The key row, or null on ours.
+ * @returns The keys (undefined on ours), or null once the execution was failed.
+ * @throws {Error} When the key cannot be read for another reason, or a write fails; the job's retry picks it up again.
+ */
+async function accountKeys(row: TimelineExecution, llmKeyId: string | null): Promise<KeySet | undefined | null> {
+  if (llmKeyId === null) return undefined;
+  try {
+    return (await keysById(llmKeyId))?.keys;
+  } catch (err) {
+    if (accountKeyFailureIn(err)?.kind !== "account_key_missing") throw err;
+    logger.error({ err, executionId: row.id, llmKeyId }, "timeline_account_key_missing");
+    await move(row, { type: "failure", fence: row.fence, reason: "account_key_missing" });
+    return null;
+  }
+}
+
+/**
  * Read the job, submitting it when the Worker holds none, and settle it once it ends.
  * @param pickup - The pickup.
  * @returns Nothing.
@@ -518,6 +548,8 @@ async function running(pickup: Pickup): Promise<void> {
       if (await owns(pickup)) await move(pickup.row, { type: "deadline" });
       return;
     }
+    // A job not submitted yet runs only while its account key row is live.
+    if ((await accountKeys(pickup.row, pickup.llmKeyId)) === null) return;
     answer = await submitWebAnimationJob(request, endsAt);
     if (answer.kind === "unavailable") logger.warn({ executionId: pickup.row.id, jobId: request.jobId }, "web_animation_container_start_refused");
   }
@@ -555,10 +587,13 @@ async function pickUp(job: Job<TimelineExecutionJobData>, token: string | undefi
     await move(row, { type: "failure", fence: row.fence, reason: "internal" });
     return;
   }
+  const llmKeyId = await timelineExecutionRepo.llmKeyIdOf(row.id);
   let step = storedStep(row.steps);
   if (step === undefined) {
+    const keys = await accountKeys(row, llmKeyId);
+    if (keys === null) return;
     try {
-      step = newStep(row, input.data);
+      step = newStep(row, input.data, keys);
     } catch (err) {
       if (!(err instanceof NoUpstreamAvailable)) throw err;
       // No upstream of the model takes a Messages call: a deployment's configuration, not this run's.
@@ -574,6 +609,7 @@ async function pickUp(job: Job<TimelineExecutionJobData>, token: string | undefi
     row,
     step,
     endsAt: step.request.deadlineAt + 2 * getTimelineConfig().web_animation.poll_interval_ms,
+    llmKeyId,
   };
   if (row.status === "cancelling") return cancelling(pickup);
   return running(pickup);

@@ -22,7 +22,7 @@ import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, publishSpaceTasksChanged } from "@breatic/core";
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getUnderstandConfig, getAgentConfig } from "@breatic/core";
-import { costsOf, type Cost } from "@breatic/provider";
+import { accountKeyFailureIn, costsOf, type Cost, type KeySet } from "@breatic/provider";
 import { failureOutcome, taskRepo, taskService, upstreamStepRepo } from "@breatic/domain";
 import { creditHoldService, creditLotService, toChargeCredits } from "@breatic/domain";
 import { modelCatalog, nodeHistoryService, sceneTaskService } from "@breatic/domain";
@@ -31,6 +31,7 @@ import {
   assetService,
   createUsageRecorder,
   handOffLookups,
+  keysById,
   settleTaskForNode,
   readingLimitsUntil,
   understandMediaAt,
@@ -75,7 +76,10 @@ import {
   openWait,
   pricedCosts,
   unanswered,
+  keyRowOf,
+  payerOf,
   type CostWait,
+  type LookupKeys,
   type RecordAs,
   type WaitingCost,
 } from "@worker/handlers/cost-wait.js";
@@ -100,24 +104,41 @@ export interface RunProduce {
   pending: Extract<Cost, { state: "pending" }>[];
   /** The upstream that served a model run, which the charge names. */
   servedBy?: string;
-  /** For a reading: how its pending calls are recorded once looked up. */
+  /** How its pending calls are recorded once looked up. */
   recordAs?: RecordAs;
+  /** A model run's costs, each saying who paid it, for its usage rows (inner#1953). */
+  costs?: Cost[];
 }
 
 /**
- * A finished model run as the completion reads it: each output as an address or as bytes to store.
+ * A finished model run as the completion reads it: each output as an address or as bytes to store. Only what our keys
+ * paid is charged. A run on an account's key row (inner#1953) also carries its costs, so each is recorded as usage, an
+ * account's at 0 credits under its key row; a run wholly on our keys is logged as before.
  * @param taskId - The task, for the log.
  * @param model - The model it ran on.
  * @param done - What provider answered.
+ * @param rows - The account key rows its account-paid costs are recorded under: the media's and the language-model
+ *   step's, each null on our keys.
+ * @param rows.keyId - The media's row.
+ * @param rows.llmKeyId - The language-model step's row.
  * @returns The run's outputs and costs.
  */
-function produced(taskId: string, model: string, done: MediaRunDone): RunProduce {
+function produced(taskId: string, model: string, done: MediaRunDone, rows: { keyId: string | null; llmKeyId: string | null }): RunProduce {
+  const { keyId, llmKeyId } = rows;
   const outputs: PersistedOutput[] = done.outputs.map((output) =>
     output.kind === "url" ? { url: output.url } : { extra: { buffer: Buffer.from(output.bytes), contentType: output.contentType } },
   );
   // A step provider gave up is not charged; what it cost stays in the log.
   if (done.notice) logger.warn({ taskId, notice: done.notice, passedOverCosts: done.passedOverCosts }, "optional_step_failed");
-  return { result: { outputs, model, ...(done.notice && { notice: done.notice }) }, ...pricedCosts(taskId, done.costs), servedBy: done.servedBy };
+  return {
+    result: { outputs, model, ...(done.notice && { notice: done.notice }) },
+    ...pricedCosts(taskId, done.costs),
+    servedBy: done.servedBy,
+    ...((keyId !== null || llmKeyId !== null) && {
+      costs: done.costs,
+      recordAs: { feature: "canvas_generation", model, ...(keyId !== null && { keyId }), ...(llmKeyId !== null && { llmKeyId }) },
+    }),
+  };
 }
 
 
@@ -511,10 +532,14 @@ async function runTaskBody(
     }
     return (existing.result ?? { alreadyCompleted: true });
   }
+  // The account key rows the task was submitted on (inner#1953): every pickup reads the keys by these ids.
+  const keyId = existing?.keyId ?? null;
+  const llmKeyId = existing?.llmKeyId ?? null;
   // Completed and delivered, waiting on its upstream's bill (inner#1743).
   const waiting = existing === null ? null : costWaitOf(existing.result);
   if (existing !== null && waiting !== null) {
-    return await settleCostWait({ job, token, runEnd, taskType, result: existing.result ?? {}, durationMs: existing.durationMs ?? undefined, ...waiting });
+    const keys = { media: await lookupKeys(keyId), llm: await lookupKeys(llmKeyId) };
+    return await settleCostWait({ job, token, runEnd, taskType, result: existing.result ?? {}, durationMs: existing.durationMs ?? undefined, keys, ...waiting });
   }
   if (existing?.providerResultUrl) {
     logger.warn(
@@ -565,6 +590,7 @@ async function runTaskBody(
       actorUserId: userId,
       projectId: projectId ?? null,
       onMissingCost: (row) => logger.error({ row, taskId }, "agent_usage_cost_missing"),
+      ...(llmKeyId !== null && { keyId: llmKeyId }),
     });
 
   // Set before any work runs, so every still-going answer below has it.
@@ -586,6 +612,8 @@ async function runTaskBody(
         taskId,
         deadlineAt,
         lastAttempt: isTerminalAttempt(job),
+        ...(keyId !== null && { keyId }),
+        ...(llmKeyId !== null && { llmKeyId }),
       });
     } else if (taskType === "understand") {
       // A reading answers with one piece of text, and the row on the node it
@@ -608,10 +636,18 @@ async function runTaskBody(
       }
       const feature = isTranscription(params) ? "canvas_transcribe" : "canvas_understand";
       const recorder = recorderFor(feature);
-      const [result, credits, servedBy] = await runUnderstand(params, recorder, deadlineAt, { taskId, projectId: projectId ?? undefined, actorUserId: userId });
+      // Read before anything is sent: a row replaced or deleted since submit ends the reading here.
+      const llm = llmKeyId === null ? null : await keysById(llmKeyId);
+      const [result, credits, servedBy] = await runUnderstand(params, recorder, deadlineAt, {
+        taskId,
+        projectId: projectId ?? undefined,
+        actorUserId: userId,
+        ...(llm !== null && llmKeyId !== null && { keys: llm.keys, keyId: llmKeyId }),
+      });
       // A call whose cost is pending wrote no usage row; the task waits on it and records it once looked up.
       const pending = recorder.awaitingLookup().map(({ lookup }) => ({ state: "pending" as const, lookup }));
-      run = { result, credits, pending, recordAs: { feature, model: UNDERSTAND_PINS.model }, ...(servedBy !== undefined && { servedBy }) };
+      const recordAs: RecordAs = { feature, model: UNDERSTAND_PINS.model, ...(llmKeyId !== null && { llmKeyId }) };
+      run = { result, credits, pending, recordAs, ...(servedBy !== undefined && { servedBy }) };
     } else if (MODEL_TASK_TYPES.has(taskType)) {
       if (!model) throw new Error(`a ${taskType} task names no model`);
       run = produced(taskId, model, await runModelTask({
@@ -623,7 +659,9 @@ async function runTaskBody(
         outputCount: 1,
         deadlineAt,
         lastAttempt: isTerminalAttempt(job),
-      }));
+        ...(keyId !== null && { keyId }),
+        ...(llmKeyId !== null && { llmKeyId }),
+      }), { keyId, llmKeyId });
     } else {
       throw new Error(`Task type '${taskType}' has no runner`);
     }
@@ -795,6 +833,7 @@ async function runTaskBody(
     const wasFirst = await taskService.markCompleted(taskId, waitingResult, durationMs);
     await creditHoldService.extendHold(taskId, holdUntil(wait, now));
     if (wasFirst) await reportFirstGeneration({ taskId, taskType, userId, projectId });
+    if (wasFirst) await recordGenerationUsage(runEnd, run, usedModel, servedBy);
     await deliver(runEnd, taskType, { ...delivery, billingPending: true });
     const delivered: CostWait = { ...wait, delivered: true };
     await taskRepo.updateCostWait(taskId, { ...waitingResult, costWait: delivered });
@@ -821,6 +860,7 @@ async function runTaskBody(
   // upstream reports nothing would otherwise leave no trace of the usage at
   // all — the charge below is skipped for exactly those.
   if (wasFirst) logGenerationUsage({ taskId, taskType, model: usedModel, provider: servedBy, credits: creditsUsed, durationMs, userId, projectId });
+  if (wasFirst) await recordGenerationUsage(runEnd, run, usedModel, servedBy);
 
   if (!wasFirst) logger.info({ taskId }, "Task already completed by a prior run; settling only what is pending");
   await settleRunCharge({ taskId, userId, projectId: projectId ?? null, wasFirst, creditsUsed });
@@ -956,6 +996,75 @@ function logGenerationUsage(usage: {
 }
 
 /**
+ * One recorder per account key row a task's calls are recorded under (none for ours), opened on first use.
+ * @param end - The run.
+ * @param feature - The task's feature.
+ * @returns The recorder for a row.
+ */
+function recordersByRow(end: RunContext, feature: RecordAs["feature"]): { of: (row: string | undefined) => UsageRecorder; all: () => UsageRecorder[] } {
+  const opened = new Map<string | undefined, UsageRecorder>();
+  return {
+    of: (row) => {
+      let recorder = opened.get(row);
+      if (recorder === undefined) {
+        recorder = createUsageRecorder({
+          operationKey: `task:${end.taskId}`,
+          feature,
+          actorUserId: end.userId,
+          projectId: end.projectId ?? null,
+          onMissingCost: (usageRow) => logger.error({ row: usageRow, taskId: end.taskId }, "agent_usage_cost_missing"),
+          ...(row !== undefined && { keyId: row }),
+        });
+        opened.set(row, recorder);
+      }
+      return recorder;
+    },
+    all: () => [...opened.values()],
+  };
+}
+
+/**
+ * Write a finished model run's usage rows (inner#1953): every cost in hand, an account's at 0 credits under the key row
+ * that paid it (an OpenRouter description under the LLM row, the rest under the media row); a pending cost is recorded
+ * once its lookup answers. The charge was decided apart, so a row that fails to land is logged, never the run undone.
+ * @param end - The run.
+ * @param run - What it produced and cost.
+ * @param model - The model it ran on.
+ * @param servedBy - The upstream that served it.
+ */
+async function recordGenerationUsage(end: RunContext, run: RunProduce, model: string | undefined, servedBy: string): Promise<void> {
+  const recordAs = run.recordAs;
+  if (run.costs === undefined || recordAs?.feature !== "canvas_generation") return;
+  try {
+    const recorders = recordersByRow(end, recordAs.feature);
+    for (const cost of run.costs) {
+      const upstream = cost.state === "pending" ? cost.lookup.upstream : (cost.upstream ?? servedBy);
+      recorders.of(keyRowOf(recordAs, cost.payer, upstream)).recordModelCall({ source: "model", model: model ?? "unknown", upstream, cost, requests: 1 });
+    }
+    for (const recorder of recorders.all()) await recorder.settle();
+  } catch (err) {
+    logger.error({ err, taskId: end.taskId }, "agent_usage_record_failed");
+  }
+}
+
+/**
+ * The account keys a waiting task's lookups are asked with, read by the key row's id; a row replaced or deleted since
+ * gives none, so the costs it paid are recorded as missing instead of asked with ours.
+ * @param keyId - The row, or null on our keys.
+ * @returns The keys, or undefined.
+ * @throws {ProviderKeySealBroken} When the sealed key cannot be opened; the pickup is delivered again.
+ */
+async function lookupKeys(keyId: string | null): Promise<KeySet | undefined> {
+  if (keyId === null) return undefined;
+  try {
+    return (await keysById(keyId))?.keys;
+  } catch (err) {
+    if (accountKeyFailureIn(err)?.kind === "account_key_missing") return undefined;
+    throw err;
+  }
+}
+
+/**
  * Log what a failed run cost upstream; the task is not charged for it. A run that ends here on a throw is asked what
  * its ticket held.
  * @param taskId - The task.
@@ -1007,6 +1116,8 @@ interface CostWaitPickup {
   durationMs: number | undefined;
   wait: CostWait;
   pending: WaitingCost[];
+  /** The task's account key sets, for the costs an account's keys paid. */
+  keys: LookupKeys;
 }
 
 /**
@@ -1023,7 +1134,7 @@ async function settleCostWait(pickup: CostWaitPickup): Promise<Record<string, un
   await creditHoldService.extendHold(taskId, holdUntil(pickup.wait, now));
   const wait = await deliverWaiting(runEnd, taskType, result, pickup.durationMs, pickup.wait);
   const last = lastLookup(wait, now);
-  const pending = await lookUp(pickup.pending, last);
+  const pending = await lookUp(pickup.pending, last, pickup.keys);
   if (!last && pending.some(unanswered)) {
     const next = { ...wait, attempts: wait.attempts + 1 };
     const updated = { ...result, costWait: next, pendingCosts: pending };
@@ -1086,18 +1197,16 @@ async function recordLookedUpCalls(runEnd: RunContext, pending: readonly Waiting
   const calls = pending.filter((entry): entry is WaitingCost & { recordAs: RecordAs } => entry.recordAs !== undefined);
   const first = calls[0];
   if (first === undefined) return;
-  const recorder = createUsageRecorder({
-    operationKey: `task:${runEnd.taskId}`,
-    feature: first.recordAs.feature,
-    actorUserId: runEnd.userId,
-    projectId: runEnd.projectId ?? null,
-    onMissingCost: (row) => logger.error({ row, taskId: runEnd.taskId }, "agent_usage_cost_missing"),
-  });
+  // Each call under the key row that paid it, as at completion.
+  const recorders = recordersByRow(runEnd, first.recordAs.feature);
   for (const { lookup, cost, recordAs } of calls) {
-    recorder.recordLookedUpCall({ source: "model", model: recordAs.model, upstream: lookup.upstream, cost: cost ?? { state: "pending", lookup } });
+    recorders.of(keyRowOf(recordAs, payerOf(cost, lookup), lookup.upstream))
+      .recordLookedUpCall({ source: "model", model: recordAs.model, upstream: lookup.upstream, cost: cost ?? { state: "pending", lookup } });
   }
   // The task is billed; a usage row that fails to land is logged, never the billing undone.
-  await recorder.settle().catch((err: unknown) => logger.error({ err, taskId: runEnd.taskId }, "agent_usage_record_failed"));
+  for (const recorder of recorders.all()) {
+    await recorder.settle().catch((err: unknown) => logger.error({ err, taskId: runEnd.taskId }, "agent_usage_record_failed"));
+  }
 }
 
 /**
@@ -1901,6 +2010,10 @@ interface RunMiniToolOpts {
   deadlineAt: number;
   /** Whether no retry follows this attempt. */
   lastAttempt: boolean;
+  /** The account key row a model tool's media runs on, or null on ours (inner#1953). */
+  keyId?: string | null;
+  /** The account key row of a language-model step inside a model tool's run, or null on ours. */
+  llmKeyId?: string | null;
 }
 
 /**
@@ -1930,8 +2043,10 @@ export async function runMiniTool(opts: RunMiniToolOpts): Promise<RunProduce> {
       outputCount: spec.outputs.length,
       deadlineAt,
       lastAttempt,
+      ...(opts.keyId != null && { keyId: opts.keyId }),
+      ...(opts.llmKeyId != null && { llmKeyId: opts.llmKeyId }),
     });
-    return produced(taskId, model, done);
+    return produced(taskId, model, done, { keyId: opts.keyId ?? null, llmKeyId: opts.llmKeyId ?? null });
   }
 
   if (spec.run.kind === "container") {
@@ -1976,6 +2091,8 @@ export async function runMiniTool(opts: RunMiniToolOpts): Promise<RunProduce> {
  * @param execution.taskId - The durable task identifier.
  * @param execution.projectId - The owning project, when the task has one.
  * @param execution.actorUserId - The user who initiated the task.
+ * @param execution.keys - The account's keys the reading runs on (inner#1953); ours when absent.
+ * @param execution.keyId - Their key row, under which a lookup of a call they paid is queued.
  * @returns A `[result, credits, servedBy]` tuple: one output holding the text, the credits of what is known, unrounded
  *   (the charge rounds them once), and the upstream that billed the reading (none when nothing was billed).
  * @throws {MediaUnavailable} when the address yields no usable media.
@@ -1991,7 +2108,7 @@ export async function runUnderstand(
   params: Record<string, unknown>,
   usage: UsageRecorder,
   deadlineAt: number,
-  execution?: { taskId: string; projectId?: string; actorUserId: string },
+  execution?: { taskId: string; projectId?: string; actorUserId: string; keys?: KeySet; keyId?: string },
 ): Promise<[Record<string, unknown>, number, string | undefined]> {
   const sourceType = params.source_type as string;
   const cfg = getUnderstandConfig();
@@ -2015,7 +2132,7 @@ export async function runUnderstand(
   const recordUnpriced = async (): Promise<void> => {
     const lookups = usage.awaitingLookup();
     if (lookups.length === 0) return;
-    await handOffLookups(lookups, usage.operation, { description: "Task: understand", charge: false })
+    await handOffLookups(lookups, usage.operation, { description: "Task: understand", charge: false, keyId: execution?.keyId ?? null })
       .catch((err: unknown) => logger.error({ err, operationKey: usage.operation.operationKey }, "usage_lookup_enqueue_failed"));
   };
   /**
@@ -2087,6 +2204,7 @@ export async function runUnderstand(
           checkpoint: durableOperation.checkpoint,
           signal: durableOperation.signal,
           onBilled: record,
+          ...(execution?.keys !== undefined && { keys: execution.keys }),
         }, progress.segments));
         await durableOperation.complete();
       } finally {
@@ -2107,6 +2225,7 @@ export async function runUnderstand(
         ...readingLimitsUntil(deadlineAt, cfg.max_media_bytes),
         maxOutputTokens: transcribing ? cfg.transcribe_max_output_tokens : cfg.max_output_tokens,
         onBilled: record,
+        ...(execution?.keys !== undefined && { keys: execution.keys }),
       }));
     }
   } catch (err) {

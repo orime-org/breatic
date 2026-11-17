@@ -23,8 +23,7 @@ import { rewrittenPrompt } from "@worker/handlers/prompt-rewrite.js";
 const FALLBACK = JSON.stringify({ subject: "a cat" });
 const LATER = Date.now() + 60_000;
 const LLM_KEYS: KeySet = { owner: "account", keyOf: (u: string) => (u === "openrouter" ? "acct-or" : undefined) };
-type WithKeys = (prompt: string, params: Record<string, unknown>, fallback: string, deadlineAt: number, llmKeys?: KeySet) => Promise<string>;
-const rewrite = rewrittenPrompt as unknown as WithKeys;
+const rewrite = rewrittenPrompt;
 
 beforeEach(() => {
   vi.clearAllMocks();

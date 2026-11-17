@@ -15,6 +15,7 @@ import { MediaUnavailable, UnderstandRefused } from "@breatic/domain";
 import type { RefusalKind, UnavailableKind } from "@breatic/domain";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { MediaRunFailed } from "@worker/handlers/media-run.js";
+import { accountKeyFailureIn } from "@breatic/provider";
 import { DeadlinePassed } from "@breatic/shared";
 import {
   assetNameFromUrl,
@@ -144,6 +145,9 @@ export function verdictStands(err: unknown): boolean {
   // provider answered the run failed: an upstream refused or failed it, or none can take it. A redelivery reads the
   // same answer.
   if (err instanceof MediaRunFailed) return true;
+  // An account's key failed, or its row is gone (inner#1953): another attempt runs on the same key or the same missing
+  // row, and our key is never tried instead.
+  if (accountKeyFailureIn(err) !== undefined) return true;
   // A redelivery reads the same job, which has already ended.
   if (err instanceof ContainerJobFailed) return true;
   // The task's two hours do not come back.
@@ -161,6 +165,8 @@ export function verdictStands(err: unknown): boolean {
  * @returns The stored code, which the user is told in their own language.
  */
 export function understandFailureCode(err: unknown): TaskFailureReason {
+  const keyFailure = accountKeyFailureIn(err);
+  if (keyFailure !== undefined) return keyFailure.kind;
   if (err instanceof MediaUnavailable) return UNAVAILABLE_AS[err.kind];
   if (err instanceof UnderstandRefused) return REFUSAL_AS[err.kind];
   if (err instanceof CutShort) return "cut_short";

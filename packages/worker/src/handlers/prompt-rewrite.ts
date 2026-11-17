@@ -5,16 +5,18 @@
  * Nano Banana 2's prompt, rewritten by an LLM into the structured JSON shape its camera controls travel in
  * (inner#1743). The rewrite is an enhancement: when it fails or answers something that is not JSON, the shape the
  * catalog writes itself (`paramsToSend`) is sent. It runs once, when the run is opened, and is not charged to the
- * user.
+ * user. On the paying account's own OpenRouter key (inner#1953) a failure of that key ends the task instead, so the
+ * user learns the key needs their attention.
  */
 
 import { stepCountIs } from "ai";
 import { logger } from "@breatic/core";
 import { generateTextRetry, provider } from "@breatic/domain";
 import { cameraPrompt, untilDeadline } from "@breatic/shared";
+import { accountKeyFailureIn, type KeySet } from "@breatic/provider";
 
-/** The models whose prompt is rewritten. */
-export const REWRITTEN_MODELS: ReadonlySet<string> = new Set(["nano-banana-2"]);
+/** The models whose prompt is rewritten: domain's one list, which the server also reads to record the step's key row. */
+export { PROMPT_REWRITTEN_MODELS as REWRITTEN_MODELS } from "@breatic/domain";
 
 /** What the model is asked to write. */
 const ASK = "Convert this image description into a structured prompt JSON with fields: subject, style, technical, lighting, composition.";
@@ -25,17 +27,20 @@ const ASK = "Convert this image description into a structured prompt JSON with f
  * @param params - The run's params, for the camera the user turned on.
  * @param fallback - The prompt the catalog writes itself.
  * @param deadlineAt - When the task runs out; the call is cut there.
+ * @param llmKeys - The account's keys the task's language-model step runs on; ours when absent.
  * @returns The prompt to send.
+ * @throws {AccountKeyFailure} When the account's key failed or its row is gone; never answered with the catalog's shape.
  */
 export async function rewrittenPrompt(
   prompt: string,
   params: Readonly<Record<string, unknown>>,
   fallback: string,
   deadlineAt: number,
+  llmKeys?: KeySet,
 ): Promise<string> {
   const camera = cameraPrompt(params);
   try {
-    const prepared = provider().llm.prepare("deepseek/deepseek-chat", { thinking: false, cache: false, temperature: 0.3 });
+    const prepared = provider().llm.prepare("deepseek/deepseek-chat", { thinking: false, cache: false, temperature: 0.3 }, undefined, llmKeys);
     const result = await generateTextRetry({
       model: prepared.model,
       messages: [{ role: "user", content: camera === "" ? `${ASK} Description: "${prompt}"` : `${ASK} Camera info: ${camera}. Description: "${prompt}"` }],
@@ -48,6 +53,7 @@ export async function rewrittenPrompt(
     JSON.parse(json);
     return json;
   } catch (err) {
+    if (accountKeyFailureIn(err) !== undefined) throw err;
     logger.warn({ err }, "nano_banana_prompt_rewrite_failed");
     return fallback;
   }

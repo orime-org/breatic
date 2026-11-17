@@ -8,10 +8,11 @@
  * (#1967), the run laid out in our param names (`paramsToSend`), on the route the estimate used. Nano Banana 2's
  * prompt is rewritten when the run is opened, never on a later pickup. The run itself goes ticket by ticket
  * (`runMedia`), against the task row, the studio's clone cache and what a task from before provider left behind.
+ * Each pickup reads the account keys the task runs on by the key row ids it holds (inner#1953), never storing a key.
  */
 
 import { getStorageAdapter, getUnderstandConfig, getWorkerConfig } from "@breatic/core";
-import { assetRepo, assetService, provider, taskRepo, taskService, upstreamCloneRepo, upstreamStepRepo } from "@breatic/domain";
+import { assetRepo, assetService, keysById, provider, taskRepo, taskService, upstreamCloneRepo, upstreamStepRepo } from "@breatic/domain";
 import { paramsToSend, routeSchema, type SendableModel } from "@breatic/shared";
 import type { Cost, Route } from "@breatic/provider";
 import { createMediaRunner, type LegacyRows, type LegacyStep, type MediaInput, type MediaRunner } from "@breatic/provider/media";
@@ -37,6 +38,10 @@ export interface ModelTask {
   deadlineAt: number;
   /** Whether no retry follows this attempt. */
   lastAttempt: boolean;
+  /** The account key row the media runs on (`tasks.key_id`); null or absent on our keys. */
+  keyId?: string | null;
+  /** The account key row of a language-model step inside the run (`tasks.llm_key_id`); null or absent on ours. */
+  llmKeyId?: string | null;
 }
 
 /** Fields a task carries in its params that are not the model's. */
@@ -102,6 +107,8 @@ function generationSent(legacy: LegacyRows): boolean {
  * @throws {StillRunning} When the run is running upstream, or no reading place is free for a description.
  * @throws {MediaRunFailed} When provider answered the run failed.
  * @throws {DeadlinePassed} When the deadline passed before a step could be sent, or cut a call.
+ * @throws {AccountKeyFailure} `account_key_missing` when a key row the task holds was replaced or deleted; nothing is
+ *   sent, and our keys are never used instead.
  * @throws {Error} When the model is not in the catalog, a text param is longer than its cap or shorter than its least
  *   length once cleaned, or the task's route is not one `routeSchema` accepts.
  */
@@ -113,6 +120,9 @@ export async function runModelTask(task: ModelTask): Promise<MediaRunDone> {
   const entry = declared as unknown as SendableModel;
   const route: Route = task.params.route === undefined ? { mode: "default" } : routeSchema.parse(task.params.route);
   const studioId = task.projectId === undefined ? null : await assetService.resolveOwnerStudioId(task.projectId);
+  // Read before anything is sent: a row replaced or deleted since submit ends the run here.
+  const media = task.keyId == null ? null : await keysById(task.keyId);
+  const llm = task.llmKeyId == null ? null : await keysById(task.llmKeyId);
 
   /**
    * The run as provider takes it.
@@ -122,7 +132,7 @@ export async function runModelTask(task: ModelTask): Promise<MediaRunDone> {
   const input = async (legacy: LegacyRows): Promise<MediaInput> => {
     const sent = paramsToSend(entry, validated, prompt);
     if (!REWRITTEN_MODELS.has(entry.name) || generationSent(legacy)) return sent;
-    return { ...sent, prompt: await rewrittenPrompt(prompt, validated, sent.prompt, task.deadlineAt) };
+    return { ...sent, prompt: await rewrittenPrompt(prompt, validated, sent.prompt, task.deadlineAt, ...(llm === null ? [] : [llm.keys])) };
   };
 
   const deps: MediaRunDeps = {
@@ -144,6 +154,9 @@ export async function runModelTask(task: ModelTask): Promise<MediaRunDone> {
     deadlineAt: task.deadlineAt,
     outputCount: task.outputCount,
     lastAttempt: task.lastAttempt,
+    ...(media !== null && { keys: media.keys }),
+    ...(llm !== null && { llmKeys: llm.keys }),
+    cloneOwner: media?.accountId ?? "deployment",
   }, deps);
 }
 

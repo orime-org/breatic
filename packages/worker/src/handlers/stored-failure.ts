@@ -12,7 +12,9 @@
  */
 
 import { understandFailureMessage } from "@worker/handlers/understand-failure.js";
-import { DeadlinePassed } from "@breatic/shared";
+import { MediaRunFailed } from "@worker/handlers/media-run.js";
+import { accountKeyFailureIn } from "@breatic/provider";
+import { DeadlinePassed, encodeTaskFailure } from "@breatic/shared";
 
 /**
  * What a failed run's row is given to hold.
@@ -35,6 +37,12 @@ export function storedFailure(
 ): string {
   // Running out of the two hours means the same thing whatever the task was.
   if (err instanceof DeadlinePassed) return err.message;
+  // An account's own key failed or is gone (inner#1953), in any lane: the row names the key's code, the upstream and
+  // why, so the user knows which key to top up or change. A failed media run already wrote it naming its model.
+  const keyFailure = err instanceof MediaRunFailed ? undefined : accountKeyFailureIn(err);
+  if (keyFailure !== undefined) {
+    return encodeTaskFailure(keyFailure.kind, { upstream: keyFailure.upstream, keyReason: keyFailure.reason, reading });
+  }
   if (taskType === "understand") return understandFailureMessage(err, sourceUrl, reading);
   return err instanceof Error ? err.message : String(err);
 }
