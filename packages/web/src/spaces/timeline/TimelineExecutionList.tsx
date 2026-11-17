@@ -3,14 +3,16 @@
 
 import * as React from 'react';
 import { Check, CircleSlash, Code, Dot, LoaderCircle, Plus, RotateCcw, X } from 'lucide-react';
-import { formatCredits, getLocale, type TimelineExecutionRow, type TimelineExecutionStatus } from '@breatic/shared';
+import { encodeTaskFailure, formatCredits, getLocale, type TimelineExecutionRow, type TimelineExecutionStatus } from '@breatic/shared';
 import { TimelineExecutionInputSchema, timelineExecutionEnded, type TimelineExecutionInput } from '@breatic/shared/space-content';
 
 import { Button } from '@web/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@web/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
+import { useKeyFailureWords, type KeyFailureWords } from '@web/features/byok/key-failure-words';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
+import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import { useRunning } from '@web/stores/task-actions-in-flight';
 import { WEB_ANIMATION_ENGINE_NAMES } from '@web/spaces/timeline/TimelineWebAnimationDialog';
 import { TimelineWebResultPreview } from '@web/spaces/timeline/TimelineWebResultPreview';
@@ -26,6 +28,29 @@ const FAILURE_SENTENCE: Readonly<Record<string, 'feature_disabled' | 'check' | '
   viewport_mismatch: 'check', fps_mismatch: 'check', duration_mismatch: 'check', font_set_mismatch: 'check',
   harness_failed: 'stopped', container_failed: 'stopped', internal: 'stopped',
 };
+
+/** The failures of the payer's own key, told with the canvas task sentence that names the upstream (inner#1953). */
+const KEY_FAILURES: ReadonlySet<string> = new Set(['account_key_missing', 'account_key_failed']);
+
+/**
+ * The sentence a failed execution is told with.
+ * @param row - The failed execution.
+ * @param t - The translator.
+ * @param keys - Whose key it was to the viewer and each upstream's name, off the Project's key plan.
+ * @returns The sentence.
+ * @throws {never} Never.
+ */
+export function executionFailureSentence(
+  row: Pick<TimelineExecutionRow, 'failureReason' | 'failureUpstream'>,
+  t: ReturnType<typeof useTranslation>,
+  keys: KeyFailureWords | undefined,
+): string {
+  if (row.failureReason !== null && KEY_FAILURES.has(row.failureReason)) {
+    const reason = row.failureReason as 'account_key_missing' | 'account_key_failed';
+    return failureSentence(encodeTaskFailure(reason, row.failureUpstream === null ? {} : { upstream: row.failureUpstream }), t, undefined, keys);
+  }
+  return t(`timeline.webAnimation.failure.${(row.failureReason !== null && FAILURE_SENTENCE[row.failureReason]) || 'unknown'}`);
+}
 
 /**
  * The input an execution froze, when it can be read.
@@ -103,6 +128,7 @@ function statusTone(status: TimelineExecutionStatus): string {
  */
 const ExecutionRow = React.memo(function ExecutionRow({ projectId, row, open, readOnly, onToggle, onCancel, onAdd, onRetry }: ExecutionRowProps): React.JSX.Element {
   const t = useTranslation();
+  const keys = useKeyFailureWords();
   const input = timelineExecutionInput(row);
   const unfinished = !timelineExecutionEnded(row.status);
   const cancelling = useRunning(timelineCancelIntent(row.id)) !== undefined;
@@ -151,7 +177,7 @@ const ExecutionRow = React.memo(function ExecutionRow({ projectId, row, open, re
         })}
       </ol>
       {row.status === 'failed' && <p className='text-status-error-foreground'>
-        {t(`timeline.webAnimation.failure.${(row.failureReason !== null && FAILURE_SENTENCE[row.failureReason]) || 'unknown'}`)}
+        {executionFailureSentence(row, t, keys)}
       </p>}
       <dl className='grid grid-cols-[auto_1fr] gap-x-3 gap-y-1'>
         <dt className='text-muted-foreground'>{t('timeline.webAnimation.dialog.prompt')}</dt>

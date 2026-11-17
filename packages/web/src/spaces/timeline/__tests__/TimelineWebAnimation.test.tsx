@@ -69,6 +69,10 @@ vi.mock('@hyperframes/player', () => {
   return {};
 });
 vi.mock('react-moveable', async () => (await import('@web/spaces/timeline/__tests__/helpers/moveable-mock')).moveableModule);
+// The Project page's key words, as its key plan gives them; a case sets them (inner#1953).
+const keyWords = vi.hoisted((): { current: { payer: 'self' | 'admin'; upstreamNames: Record<string, string> } | undefined } => ({ current: undefined }));
+vi.mock('@web/features/byok/key-failure-words', () => ({ useKeyFailureWords: () => keyWords.current }));
+
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
 }));
@@ -115,7 +119,7 @@ function row(id: string, status: TimelineExecution['status'], fields: Partial<Li
     actionId: `a${id.slice(1)}`, input: { prompt: `Prompt of ${status}`, engine: 'deepseek', aspect: '16:9', durationSeconds: 3, fps: SETTINGS.fps },
     inputHash: `sha256:${status}`, engine: 'deepseek', status, phase: status === 'running' ? 'writing' : null, steps: [],
     attempt: 1, fence: null, deadlineAt: new Date(Date.now() + 3_600_000).toISOString(),
-    resultSourceVersionId: null, failureReason: null, billedCredits: null, billedAt: null,
+    resultSourceVersionId: null, failureReason: null, failureUpstream: null, billedCredits: null, billedAt: null,
     createdAt: '2026-11-07T08:00:00.000000Z', updatedAt: '2026-11-07T08:00:00.000000Z', usageCredits: 0, ...fields,
   };
 }
@@ -612,6 +616,36 @@ describe('execution list', () => {
     const detail = await expand(EXEC_FAILED);
     expect(detail).toHaveTextContent(t(`timeline.webAnimation.failure.${line}`));
     if (line !== 'unknown') expect(detail).not.toHaveTextContent(t('timeline.webAnimation.failure.unknown'));
+  });
+
+  it.each([
+    ['self', 'Your OpenRouter key for this run was replaced or deleted. Run it again.'],
+    ['admin', 'The Studio Admin\'s OpenRouter key for this run was replaced or deleted. Run it again.'],
+  ] as const)('names the upstream and %s as whose key was gone, with the canvas sentence (inner#1953)', async (payer, sentence) => {
+    keyWords.current = { payer, upstreamNames: { openrouter: 'OpenRouter' } };
+    try {
+      rows = [row(EXEC_FAILED, 'failed', { failureReason: 'account_key_missing', failureUpstream: 'openrouter' })];
+      seed();
+      showTimeline();
+      await openList();
+      await view('completed');
+      const detail = await expand(EXEC_FAILED);
+      expect(detail).toHaveTextContent(sentence);
+      expect(detail).not.toHaveTextContent(t('timeline.webAnimation.failure.unknown'));
+    } finally {
+      keyWords.current = undefined;
+    }
+  });
+
+  it('tells a failed key without the key plan by the upstream id', async () => {
+    rows = [
+      row(EXEC_FAILED, 'failed', { failureReason: 'account_key_failed', failureUpstream: 'openrouter' }),
+    ];
+    seed();
+    showTimeline();
+    await openList();
+    await view('completed');
+    expect(await expand(EXEC_FAILED)).toHaveTextContent('The openrouter key failed. Check it in BYOK settings.');
   });
 
   it('lets a Viewer open rows and read their details but offers no action', async () => {

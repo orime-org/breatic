@@ -160,8 +160,19 @@ describe("an execution accepted on the payer's OpenRouter key", () => {
 
     await pickUp(fx);
 
-    expect(await read(fx.execution.id)).toMatchObject({ status: "failed", failureReason: "account_key_missing" });
+    expect(await read(fx.execution.id)).toMatchObject({ status: "failed", failureReason: "account_key_missing", failureUpstream: "openrouter" });
     expect(ingest.calls.filter((call) => call.route === "submit")).toEqual([]);
     expect(plan).not.toHaveBeenCalled();
+  });
+
+  it("fails with the upstream a failed report names when the Worker's key read was refused mid-run", async () => {
+    const { fx } = await seedOnAccountKey("queued");
+    const ingest = installFakeIngest(fx);
+    await pickUp(fx);
+    ingest.read = () => json(report(fx, "failed", { calls: [], failureReason: "account_key_missing", failureUpstream: "openrouter" }));
+
+    await pickUp(fx);
+
+    expect(await read(fx.execution.id)).toMatchObject({ status: "failed", failureReason: "account_key_missing", failureUpstream: "openrouter" });
   });
 });

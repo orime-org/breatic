@@ -55,6 +55,16 @@ const legacyCall = {
   outcome: "completed" as const,
 };
 
+describe("webAnimationJobReportSchema: the upstream a failure names (inner#1953)", () => {
+  const failed = { state: "failed", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: "account_key_missing" };
+
+  it("carries the upstream a refused key read named, and reads a report without one", () => {
+    expect(webAnimationJobReportSchema.parse({ ...failed, failureUpstream: "openrouter" }).failureUpstream).toBe("openrouter");
+    expect(webAnimationJobReportSchema.parse(failed).failureUpstream).toBeUndefined();
+    expect(webAnimationJobReportSchema.parse({ ...failed, failureUpstream: null }).failureUpstream).toBeNull();
+  });
+});
+
 describe("webAnimationJobRequestSchema", () => {
   it("accepts the request the worker builds", () => {
     expect(webAnimationJobRequestSchema.parse(request)).toEqual(request);

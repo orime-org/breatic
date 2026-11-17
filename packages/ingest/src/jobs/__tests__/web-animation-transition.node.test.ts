@@ -136,7 +136,7 @@ describe("submit", () => {
     expect(result!.effects).toContain("start");
     expect(result!.refused).toBe(false);
     expect(report(result!.record)).toEqual({
-      state: "running", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: null,
+      state: "running", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: null, failureUpstream: null,
     });
   });
 
@@ -172,7 +172,7 @@ describe("cancel before any submit", () => {
 
     expect(result!.effects).toEqual([]);
     expect(report(result!.record)).toEqual({
-      state: "cancelled_before_submit", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: null,
+      state: "cancelled_before_submit", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: null, failureUpstream: null,
     });
   });
 
@@ -385,20 +385,28 @@ describe("the end of a job", () => {
 });
 
 describe("a refused key read (inner#1953)", () => {
-  const refused: WebAnimationJobEvent = { type: "modelKeysRefused", reason: "account_key_missing" };
+  const refused: WebAnimationJobEvent = { type: "modelKeysRefused", reason: "account_key_missing", upstream: "openrouter" };
 
   it("fails a running job with no call in flight at once, with the refusal's reason, and stops the container", () => {
     const [failed] = run(after([begin, started(1), ended(1)]), [refused]);
 
     expect(failed!.effects).toEqual(["destroy"]);
-    expect(report(failed!.record)).toMatchObject({ state: "failed", failureReason: "account_key_missing" });
+    expect(report(failed!.record)).toMatchObject({ state: "failed", failureReason: "account_key_missing", failureUpstream: "openrouter" });
   });
 
   it("waits for a call in flight, then fails with the refusal's reason when that call ends", () => {
     const [stopping, done] = run(after([begin, started(1)]), [refused, ended(1)]);
 
     expect(report(stopping!.record).state).toBe("stopping");
-    expect(report(done!.record)).toMatchObject({ state: "failed", failureReason: "account_key_missing" });
+    expect(report(done!.record)).toMatchObject({ state: "failed", failureReason: "account_key_missing", failureUpstream: "openrouter" });
+  });
+
+  it("names no upstream for a refusal that named none, nor for a failure of any other kind", () => {
+    const [noUpstream] = run(after([]), [{ type: "modelKeysRefused", reason: "feature_disabled" }]);
+    const [other] = run(after([]), [{ type: "finished", ok: false, failureReason: "harness_failed", cpuUsec: 1 }]);
+
+    expect(report(noUpstream!.record).failureUpstream).toBeNull();
+    expect(report(other!.record).failureUpstream).toBeNull();
   });
 
   it("changes nothing on a job already stopping or ended", () => {

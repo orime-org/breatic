@@ -123,6 +123,11 @@ export const webAnimationJobReportSchema = z.object({
     bytes: nonnegativeInteger,
   })),
   failureReason: z.string().min(1).nullable(),
+  /**
+   * The upstream a refused key read named (inner#1953); null when the failure names none, absent from a Worker
+   * deployed before it.
+   */
+  failureUpstream: z.string().min(1).nullable().optional(),
 });
 
 /** What a job answers. */

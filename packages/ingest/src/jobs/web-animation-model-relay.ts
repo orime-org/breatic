@@ -37,8 +37,8 @@ export interface ModelRelayDeps {
     beginModelCall: () => Promise<number | null>;
     recordModelCallStart: (seq: number, upstream: string, messageId: string) => Promise<void>;
     endModelCall: (seq: number, end: MessagesCallEnd) => Promise<void>;
-    /** Ends the job failed for this reason. */
-    failJob: (reason: string) => Promise<void>;
+    /** Ends the job failed for this reason, naming the upstream the refusal named. */
+    failJob: (reason: string, upstream?: string) => Promise<void>;
   };
 }
 
@@ -76,7 +76,7 @@ export async function relayModelCall(request: Request, deps: ModelRelayDeps): Pr
 
   const read = await deps.fetchKeys([...new Set(deps.plan.candidates.map(({ upstream }) => upstream))]);
   if (read.kind === "refused") {
-    await deps.registry.failJob(read.reason);
+    await deps.registry.failJob(read.reason, read.upstream);
     return new Response("The model keys were refused", { status: 409 });
   }
   if (read.kind === "not_running") return new Response("The execution no longer runs", { status: 409 });

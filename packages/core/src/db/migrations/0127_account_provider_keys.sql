@@ -61,6 +61,10 @@ ALTER TABLE tasks ADD COLUMN llm_key_id uuid;
 --> statement-breakpoint
 ALTER TABLE timeline_executions ADD COLUMN llm_key_id uuid;
 --> statement-breakpoint
+-- The upstream a failure of the payer's own key names, so the page can say
+-- whose key failed where; null for any other failure.
+ALTER TABLE timeline_executions ADD COLUMN failure_upstream text;
+--> statement-breakpoint
 ALTER TABLE agent_usage_records ADD COLUMN key_id uuid;
 --> statement-breakpoint
 

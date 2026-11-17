@@ -37,7 +37,7 @@ export interface WebAnimationJobRecord {
   /** Epoch ms the pre-submit cancel marker stands until; null for a job. */
   markerUntil: number | null;
   /** How a stopping job ends once its open call has ended. */
-  endAs: { state: Terminal; failureReason: string | null } | null;
+  endAs: { state: Terminal; failureReason: string | null; failureUpstream?: string | null } | null;
   phase: WebAnimationJobReport["phase"];
   steps: unknown[];
   calls: StoredCall[];
@@ -47,6 +47,8 @@ export interface WebAnimationJobRecord {
   endedAt: number | null;
   cpuUsec: number | null;
   failureReason: string | null;
+  /** The upstream a refused key read named (inner#1953); absent from a record stored before it. */
+  failureUpstream?: string | null;
 }
 
 /** Something that happened to a job; the object's RPC methods map onto these one to one. */
@@ -62,7 +64,7 @@ export type WebAnimationJobEvent =
   | { type: "progress"; phase: NonNullable<WebAnimationJobReport["phase"]>; steps: unknown[] }
   | { type: "finished"; ok: boolean; failureReason: string | null; cpuUsec: number | null }
   /** Our server refused a call's keys for good (inner#1953): the job fails with that reason. */
-  | { type: "modelKeysRefused"; reason: string }
+  | { type: "modelKeysRefused"; reason: string; upstream?: string }
   | { type: "containerGone" };
 
 /** What the object does after a transition: start the container, stop it, or bound the drain of an open call. */
@@ -100,7 +102,7 @@ function stay(record: WebAnimationJobRecord | null): WebAnimationTransition {
 function blank(state: WebAnimationJobState, request: WebAnimationJobRequest | null): WebAnimationJobRecord {
   return {
     state, request, markerUntil: null, endAs: null, phase: null, steps: [], calls: [], outputs: [],
-    startedAt: null, endedAt: null, cpuUsec: null, failureReason: null,
+    startedAt: null, endedAt: null, cpuUsec: null, failureReason: null, failureUpstream: null,
   };
 }
 
@@ -120,16 +122,18 @@ function openCall(record: WebAnimationJobRecord): StoredCall | undefined {
  * @param state - Where it ends.
  * @param failureReason - Why a failed job failed.
  * @param now - Epoch ms.
+ * @param failureUpstream - The upstream a failed job's refused key read named.
  * @returns The ended job and its effects.
  * @throws {never} Never.
  */
-function end(record: WebAnimationJobRecord, state: Terminal, failureReason: string | null, now: number): WebAnimationTransition {
+function end(record: WebAnimationJobRecord, state: Terminal, failureReason: string | null, now: number, failureUpstream: string | null = null): WebAnimationTransition {
   return {
     record: {
       ...record,
       state,
       endAs: null,
       failureReason: state === "failed" ? failureReason : null,
+      failureUpstream: state === "failed" ? failureUpstream : null,
       endedAt: now,
       calls: record.calls.map((call) => (call.outcome === null ? { ...call, outcome: "cut_off" } : call)),
     },
@@ -145,12 +149,13 @@ function end(record: WebAnimationJobRecord, state: Terminal, failureReason: stri
  * @param state - Where it ends.
  * @param failureReason - Why, when it ends failed.
  * @param now - Epoch ms.
+ * @param failureUpstream - The upstream a refused key read named, when it ends failed for that.
  * @returns The transition.
  * @throws {never} Never.
  */
-function stop(record: WebAnimationJobRecord, state: Terminal, failureReason: string | null, now: number): WebAnimationTransition {
-  if (openCall(record) === undefined) return end(record, state, failureReason, now);
-  return { record: { ...record, state: "stopping", endAs: { state, failureReason } }, effects: ["scheduleDrain"], seq: null, refused: false };
+function stop(record: WebAnimationJobRecord, state: Terminal, failureReason: string | null, now: number, failureUpstream: string | null = null): WebAnimationTransition {
+  if (openCall(record) === undefined) return end(record, state, failureReason, now, failureUpstream);
+  return { record: { ...record, state: "stopping", endAs: { state, failureReason, failureUpstream } }, effects: ["scheduleDrain"], seq: null, refused: false };
 }
 
 /**
@@ -199,7 +204,7 @@ export function transitionWebAnimationJob(
     case "deadline":
       return running ? stop(record, "expired", null, now) : stay(record);
     case "modelKeysRefused":
-      return running ? stop(record, "failed", event.reason, now) : stay(record);
+      return running ? stop(record, "failed", event.reason, now, event.upstream ?? null) : stay(record);
     case "finished": {
       const withCpu = { ...record, cpuUsec: event.cpuUsec };
       if (!running) return stay(withCpu);
@@ -209,7 +214,9 @@ export function transitionWebAnimationJob(
       return stop(withCpu, "failed", event.ok ? "output_missing" : (event.failureReason ?? "container_failed"), now);
     }
     case "containerGone":
-      return running ? end(record, "failed", "container_gone", now) : end(record, record.endAs?.state ?? "failed", record.endAs?.failureReason ?? null, now);
+      return running
+        ? end(record, "failed", "container_gone", now)
+        : end(record, record.endAs?.state ?? "failed", record.endAs?.failureReason ?? null, now, record.endAs?.failureUpstream ?? null);
     case "beginModelCall": {
       if (!running || openCall(record) !== undefined) return stay(record);
       const seq = record.calls.length + 1;
@@ -229,7 +236,7 @@ export function transitionWebAnimationJob(
         ...record,
         calls: record.calls.map((call) => (call.seq === event.seq ? { ...call, outcome, upstream: event.upstream ?? call.upstream, tokens, cost } : call)),
       };
-      return record.endAs === null ? stay(ended) : end(ended, record.endAs.state, record.endAs.failureReason, now);
+      return record.endAs === null ? stay(ended) : end(ended, record.endAs.state, record.endAs.failureReason, now, record.endAs.failureUpstream ?? null);
     }
     case "written": {
       if (event.key !== record.request?.packageKey && event.key !== record.request?.manifestKey) return stay(record);
@@ -264,5 +271,6 @@ export function reportOfWebAnimationJob(record: WebAnimationJobRecord | null): W
       : null,
     outputs: record.outputs,
     failureReason: record.failureReason,
+    failureUpstream: record.failureUpstream ?? null,
   };
 }

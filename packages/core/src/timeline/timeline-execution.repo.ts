@@ -22,7 +22,8 @@ export type TimelineExecutionEvent =
   | { type: "claim" }
   | { type: "retry" }
   | { type: "success"; fence: string | null; resultSourceVersionId: string }
-  | { type: "failure"; fence: string | null; reason: string }
+  /** `upstream` is the upstream a failure of the payer's own key names (inner#1953). */
+  | { type: "failure"; fence: string | null; reason: string; upstream?: string | null }
   | { type: "cancel" }
   | { type: "cancelAck" }
   | { type: "deadline" }
@@ -81,6 +82,7 @@ const columns = {
   deadlineAt: iso(t.deadlineAt),
   resultSourceVersionId: t.resultSourceVersionId,
   failureReason: t.failureReason,
+  failureUpstream: t.failureUpstream,
   billedCredits: t.billedCredits,
   billedAt: iso<string | null>(t.billedAt),
   createdAt: iso(t.createdAt),
@@ -227,6 +229,7 @@ function plan(event: TimelineExecutionEvent): { where: SQL | undefined; set: PgU
         set: {
           status: sql`CASE WHEN ${t.status} = 'cancelling' THEN 'cancelled' ELSE 'failed' END`,
           failureReason: sql`CASE WHEN ${t.status} = 'cancelling' THEN ${t.failureReason} ELSE ${event.reason} END`,
+          failureUpstream: sql`CASE WHEN ${t.status} = 'cancelling' THEN ${t.failureUpstream} ELSE ${event.upstream ?? null}::text END`,
           fence: null,
         },
       };

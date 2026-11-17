@@ -214,10 +214,11 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
   /**
    * Fail the job because our server refused a call's keys for good (inner#1953).
    * @param reason - The failure reason: `account_key_missing` or `feature_disabled`.
+   * @param upstream - The upstream the refusal named, if any.
    * @returns Nothing.
    */
-  async refuseModelKeys(reason: string): Promise<void> {
-    await this.apply({ type: "modelKeysRefused", reason });
+  async refuseModelKeys(reason: string, upstream?: string): Promise<void> {
+    await this.apply({ type: "modelKeysRefused", reason, ...(upstream === undefined ? {} : { upstream }) });
   }
 
   /**
@@ -454,7 +455,7 @@ async function modelCall(request: Request, env: WebAnimationEnv, ctx: OutboundHa
         beginModelCall: () => job.beginModelCall(),
         recordModelCallStart: (seq, upstream, messageId) => job.recordModelCallStart(seq, upstream, messageId),
         endModelCall: (seq, end) => job.endModelCall(seq, end),
-        failJob: (reason) => job.refuseModelKeys(reason),
+        failJob: (reason, upstream) => job.refuseModelKeys(reason, upstream),
       },
     });
   } catch (err) {

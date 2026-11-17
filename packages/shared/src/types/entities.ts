@@ -1048,6 +1048,8 @@ export interface TimelineExecution {
   deadlineAt: string;
   resultSourceVersionId: string | null;
   failureReason: string | null;
+  /** The upstream a failure of the payer's own key names (inner#1953); null for any other failure. */
+  failureUpstream: string | null;
   /** Credits charged, as Postgres renders the numeric. */
   billedCredits: string | null;
   billedAt: string | null;

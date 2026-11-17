@@ -59,6 +59,7 @@ function row(n: number, status: TimelineExecutionRow['status']): TimelineExecuti
     deadlineAt: new Date(Date.now() + 3_600_000).toISOString(),
     resultSourceVersionId: null,
     failureReason: null,
+    failureUpstream: null,
     billedCredits: null,
     billedAt: null,
     createdAt: new Date().toISOString(),

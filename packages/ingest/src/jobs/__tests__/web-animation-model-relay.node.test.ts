@@ -122,7 +122,7 @@ interface Harness {
   beginModelCall: Mock<() => Promise<number | null>>;
   recordModelCallStart: Mock<(seq: number, upstream: string, messageId: string) => Promise<void>>;
   endModelCall: Mock<(seq: number, end: MessagesCallEnd) => Promise<void>>;
-  failJob: Mock<(reason: string) => Promise<void>>;
+  failJob: Mock<(reason: string, upstream?: string) => Promise<void>>;
   fetchKeys: Mock<(upstreams: readonly string[]) => Promise<ModelKeysFetch>>;
   fetch: Mock<(url: string, init: RequestInit) => Promise<Response>>;
 }
@@ -144,7 +144,7 @@ function harness(
   const beginModelCall = vi.fn(async (): Promise<number | null> => (overrides.seq === undefined ? 7 : overrides.seq));
   const recordModelCallStart = vi.fn(async (_seq: number, _upstream: string, _messageId: string): Promise<void> => undefined);
   const endModelCall = vi.fn(async (_seq: number, _end: MessagesCallEnd): Promise<void> => undefined);
-  const failJob = vi.fn(async (_reason: string): Promise<void> => undefined);
+  const failJob = vi.fn(async (_reason: string, _upstream?: string): Promise<void> => undefined);
   const fetchKeys = vi.fn(async (_upstreams: readonly string[]): Promise<ModelKeysFetch> => overrides.keys ?? { kind: "keys", keys: { openrouter: API_KEY } });
   const fetch = vi.fn(upstream);
   vi.stubGlobal("fetch", fetch);
@@ -289,14 +289,14 @@ describe("relayModelCall: reading the call's keys (inner#1953)", () => {
   });
 
   it.each([
-    ["account_key_missing", { kind: "refused", reason: "account_key_missing", upstream: "openrouter" }],
-    ["feature_disabled", { kind: "refused", reason: "feature_disabled" }],
-  ] as const)("ends the job as %s on that refusal, answering 409 without beginning a call or reaching an upstream", async (reason, keys) => {
+    ["account_key_missing", { kind: "refused", reason: "account_key_missing", upstream: "openrouter" }, "openrouter"],
+    ["feature_disabled", { kind: "refused", reason: "feature_disabled" }, undefined],
+  ] as const)("ends the job as %s on that refusal, naming its upstream, answering 409 without beginning a call or reaching an upstream", async (reason, keys, upstream) => {
     const h = harness(async () => upstreamStream([COMPLETE_STREAM]), { keys });
     const res = await relayModelCall(harnessRequest(BODY), h.deps);
 
     expect(res.status).toBe(409);
-    expect(h.failJob).toHaveBeenCalledWith(reason);
+    expect(h.failJob).toHaveBeenCalledWith(reason, upstream);
     expect(h.beginModelCall).not.toHaveBeenCalled();
     expect(h.fetch).not.toHaveBeenCalled();
   });

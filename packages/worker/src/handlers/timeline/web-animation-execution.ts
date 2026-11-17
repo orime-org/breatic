@@ -459,7 +459,9 @@ async function finish(pickup: Pickup, report: EndedReport): Promise<void> {
     return settle(pickup, report, "manifest" in checked ? { type: "result", ...checked } : { type: "failure", fence, reason: checked.reason });
   }
   const reason = report.state === "failed" ? (report.failureReason ?? "container_failed") : "container_cancelled";
-  return settle(pickup, report, { type: "failure", fence, reason });
+  // The upstream a refused key read named, so the page can say whose key failed where (inner#1953).
+  const upstream = report.state === "failed" ? (report.failureUpstream ?? null) : null;
+  return settle(pickup, report, { type: "failure", fence, reason, upstream });
 }
 
 /**
@@ -505,9 +507,10 @@ async function accountKeys(row: TimelineExecution, llmKeyId: string | null): Pro
   try {
     return (await keysById(llmKeyId))?.keys;
   } catch (err) {
-    if (accountKeyFailureIn(err)?.kind !== "account_key_missing") throw err;
+    const failure = accountKeyFailureIn(err);
+    if (failure?.kind !== "account_key_missing") throw err;
     logger.error({ err, executionId: row.id, llmKeyId }, "timeline_account_key_missing");
-    await move(row, { type: "failure", fence: row.fence, reason: "account_key_missing" });
+    await move(row, { type: "failure", fence: row.fence, reason: "account_key_missing", upstream: failure.upstream ?? null });
     return null;
   }
 }

@@ -498,6 +498,20 @@ describe("GET /timeline/executions", () => {
     expect(data[1]).toMatchObject({ id: older.id, projectId: fx.projectId, spaceId: fx.spaceId, status: "awaiting_landing", steps: [], phase: null });
   });
 
+  it("answers the upstream a failure of the payer's own key names, so the page can say whose key failed where (inner#1953)", async () => {
+    const fx = await seedProject(0);
+    const failed = await insertExecution(fx.projectId, fx.spaceId, fx.owner.userId);
+    const plain = await insertExecution(fx.projectId, fx.spaceId, fx.owner.userId);
+    await sql`UPDATE timeline_executions SET status = 'failed', failure_reason = 'account_key_missing', failure_upstream = 'openrouter' WHERE id = ${failed.id}`;
+    const res = await app.request(`/api/v1/timeline/executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}`, {
+      headers: { Cookie: fx.viewer.cookie },
+    });
+    const { data } = (await res.json()) as { data: TimelineExecution[] };
+
+    expect(data.find((row) => row.id === failed.id)).toMatchObject({ failureReason: "account_key_missing", failureUpstream: "openrouter" });
+    expect(data.find((row) => row.id === plain.id)).toMatchObject({ failureUpstream: null });
+  });
+
   it("answers an outsider with 404", async () => {
     const fx = await seedProject(0);
     const outsider = await seedUser();
