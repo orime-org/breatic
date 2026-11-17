@@ -5,7 +5,7 @@ import type * as Y from 'yjs';
 import { z } from 'zod';
 import type { Awareness } from 'y-protocols/awareness';
 
-import { SceneObjectSchema, type SceneObject, type ScenePose, type SceneRotation, type SceneVector } from '@breatic/shared';
+import { SceneObjectSchema, type SceneLook, type SceneObject, type ScenePose, type SceneRotation, type SceneVector } from '@breatic/shared';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import { runHistoryStep } from '@web/data/yjs/history-step';
 import {
@@ -16,8 +16,8 @@ import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle } from '@web/lib/publ
 import { userPaletteColor } from '@web/lib/user-color';
 import type { WriteAccess } from '@web/data/yjs/use-socket';
 
-/** A gesture draft: the transform fields a drag previews, or the whole pose a joint drag shows. */
-type SceneGestureDraft = ScenePatch & { pose?: ScenePose };
+/** A gesture draft: the transform fields a drag previews, the whole pose a joint drag shows, or the look fields a slider drags. */
+type SceneGestureDraft = ScenePatch & { pose?: ScenePose; look?: SceneLook };
 
 export interface SceneEnvironment {
   readOnly: boolean;
@@ -68,6 +68,8 @@ export class SceneSession {
   private pilot: { id: string; position: SceneVector; rotation: SceneRotation } | null = null;
   /** Each gesture target's committed pose when the drag began; a release writes only bones this drag changed. */
   private gestureStartPoses = new Map<string, ScenePose>();
+  /** Each gesture target's committed look when the drag began; a release writes only the fields this drag changed. */
+  private gestureStartLooks = new Map<string, SceneLook>();
   /** Drag previews reach awareness at most once per frame and per interval, as the canvas publishes its own. */
   private readonly previewPublish = createPublishThrottle(() => this.publishNow(), PRESENCE_WRITE_INTERVAL_MS);
   private cancelRevision = 0;
@@ -121,7 +123,7 @@ export class SceneSession {
     if (this.pilot && (!canEdit || byId.get(this.pilot.id)?.locked !== false)) this.pilot = null;
     const objects = scene.objects.map((object) => {
       const patch = this.gesture?.find((item) => item.id === object.id);
-      return patch ? { ...object, ...patch } : object;
+      return patch ? withDraft(object, patch) : object;
     });
     this.snapshot = { ...scene, objects, selectedIds: this.selectedIds,
       gestureActive: this.gesture !== null, cancelRevision: this.cancelRevision, canEdit,
@@ -314,19 +316,25 @@ export class SceneSession {
     this.gesture = this.selectedIds.map((id) => ({ id }));
     this.gestureStartPoses = new Map(this.snapshot.objects
       .filter((object) => this.selectedIds.includes(object.id)).map((object) => [object.id, object.pose ?? {}]));
+    this.gestureStartLooks = new Map(this.snapshot.objects
+      .filter((object) => this.selectedIds.includes(object.id)).map((object) => [object.id, object.look ?? {}]));
     this.refresh();
     return true;
   }
 
   /**
    * Preview only fields supplied by the active control, keeping committed values independent.
-   * @param patches - The active gesture's draft per object: the transform fields a drag supplies, or the whole pose a joint drag shows.
+   * @param patches - The active gesture's draft per object: the transform fields a drag supplies, the whole pose a joint drag shows,
+   *   or the look fields a slider drags, merged into their parts.
    */
   previewGesture(patches: readonly SceneGestureDraft[]): void {
     if (!this.gesture) return;
     if (patches.some((patch) => !this.selectedIds.includes(patch.id))) return;
     const committed = readSceneDocument(this.doc).objects;
-    if (patches.some((patch) => !SceneObjectSchema.safeParse({ ...committed.find((object) => object.id === patch.id), ...patch }).success)) return;
+    if (patches.some((patch) => {
+      const object = committed.find((item) => item.id === patch.id);
+      return !object || !SceneObjectSchema.safeParse(withDraft(object, patch)).success;
+    })) return;
     this.gesture = patches.map((patch) => structuredClone(patch));
     this.refresh();
   }
@@ -348,6 +356,7 @@ export class SceneSession {
   endGesture(commit: boolean): void {
     const gesture = this.gesture;
     const startPoses = this.gestureStartPoses;
+    const startLooks = this.gestureStartLooks;
     this.previewPublish.cancel();
     if (!commit || !gesture) {
       this.clearGesture();
@@ -355,15 +364,17 @@ export class SceneSession {
       return;
     }
     this.publishNow();
-    const transforms = gesture.map(({ pose: _pose, ...transform }) => transform)
+    const transforms = gesture.map(({ pose: _pose, look: _look, ...transform }) => transform)
       .filter((transform) => Object.keys(transform).length > 1);
     const poses = gesture.flatMap((patch) => (patch.pose ? [poseChange(patch.id, startPoses.get(patch.id) ?? {}, patch.pose)] : []))
       .filter((command) => Object.keys(command.set).length > 0);
+    const looks = gesture.flatMap((patch) => lookChanges(patch.id, startLooks.get(patch.id) ?? {}, patch.look ?? {}));
     // The gesture stays published while the document is written: the undo stack
     // refreshes this session inside the transaction, before the document update
     // goes out, and a withdrawal there would reach collaborators first.
     if (transforms.length > 0) this.execute({ type: 'patch', patches: transforms });
     poses.forEach((command) => this.execute(command));
+    looks.forEach((command) => this.execute(command));
     this.previewPublish.cancel();
     this.clearGesture();
     this.refresh();
@@ -448,6 +459,36 @@ export class SceneSession {
     this.listeners.clear();
   }
 
+}
+
+/**
+ * An object as a gesture draft shows it: transform fields and a pose replace, look fields merge into their parts.
+ * @param object - The committed object.
+ * @param draft - The gesture's draft for it.
+ * @returns The object with the draft applied.
+ */
+function withDraft(object: SceneObject, draft: SceneGestureDraft): SceneObject {
+  const { look, ...rest } = draft;
+  if (!look) return { ...object, ...rest };
+  const merged: Record<string, SceneLook[string]> = { ...object.look };
+  for (const [part, fields] of Object.entries(look)) merged[part] = { ...merged[part], ...fields };
+  return { ...object, ...rest, look: merged };
+}
+
+/**
+ * One look command per part whose dragged fields differ from where the drag started; parts and fields another member
+ * committed meanwhile are left alone.
+ * @param id - The object.
+ * @param start - Its committed look when the drag began.
+ * @param draft - The dragged parts and fields.
+ * @returns The look commands to write.
+ */
+function lookChanges(id: string, start: SceneLook, draft: SceneLook): Extract<SceneCommand, { type: 'look' }>[] {
+  return Object.entries(draft).flatMap(([part, fields]) => {
+    const before: Record<string, unknown> = start[part] ?? {};
+    const set = Object.fromEntries(Object.entries(fields).filter(([field, value]) => JSON.stringify(before[field]) !== JSON.stringify(value)));
+    return Object.keys(set).length > 0 ? [{ type: 'look' as const, id, part, set }] : [];
+  });
 }
 
 /**

@@ -6,16 +6,16 @@ import { z } from 'zod';
 
 import {
   DEFAULT_VIEWFINDER_RATIO, SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, SCENE_AMBIENT_INTENSITY_MAX,
-  SCENE_FOCAL_LENGTH_DEFAULT, SCENE_FORMAT_VERSION, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY, SCENE_POSE_KEY_PREFIX, SCENE_SPOT_ANGLE_DEFAULT,
-  SceneColorSchema, SceneObjectSchema, SceneObjectValuesSchema, ScenePoseSchema,
-  expandScenePose, gatherScenePose, getSceneRootMap, isSceneModelFile, nextDirectorNumber,
-  type SceneEditableField, type SceneModel, type SceneObject, type SceneObjectValues, type ScenePose,
+  SCENE_FOCAL_LENGTH_DEFAULT, SCENE_FORMAT_VERSION, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY, SCENE_LOOK_FIELDS, SCENE_LOOK_KEY_PREFIX,
+  SCENE_POSE_KEY_PREFIX, SCENE_SPOT_ANGLE_DEFAULT, SceneColorSchema, SceneLookSchema, SceneObjectSchema, SceneObjectValuesSchema,
+  ScenePoseSchema, expandSceneLook, expandScenePose, gatherSceneLook, gatherScenePose, getSceneRootMap, isSceneModelFile, nextDirectorNumber,
+  type SceneEditableField, type SceneLook, type SceneLookField, type SceneLookPart, type SceneModel, type SceneObject, type SceneObjectValues, type ScenePose,
 } from '@breatic/shared';
 
 import { strongestKind, writeSpaceDoc, type SpaceRefusalReason, type SpaceWriteKind } from '@web/data/yjs/space-write';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 
-/** Fields a `patch` command may write; a pose is written by `pose` commands, a number and the lock by their own. */
+/** Fields a `patch` command may write; a pose and a look are written by their own commands, a number and the lock by theirs. */
 const PATCH_MASK = { name: true, position: true, rotation: true, scale: true,
   focalLength: true, frame: true, freeRatio: true, color: true, intensity: true, castShadow: true, angle: true } as const;
 const PATCH_FIELDS = Object.keys(PATCH_MASK) as Array<keyof typeof PATCH_MASK>;
@@ -36,6 +36,8 @@ export interface SceneCommandLimits {
 const NO_LIGHTS: SceneCommandLimits = { maxLights: 0 };
 
 export type ScenePatch = z.infer<typeof PATCH_SCHEMA>;
+/** Look fields to write on one part; a null field is deleted. */
+export type SceneLookSet = { readonly [K in SceneLookField]?: SceneLookPart[K] | null };
 export type SceneCommand =
   | { type: 'create'; objects: readonly SceneObject[] }
   | { type: 'patch'; patches: readonly ScenePatch[] }
@@ -43,6 +45,8 @@ export type SceneCommand =
   | { type: 'lock'; ids: readonly string[]; locked: boolean }
   | { type: 'duplicate'; copies: readonly { sourceId: string; id: string }[] }
   | { type: 'pose'; id: string; set: ScenePose; replace: boolean }
+  /** Writes one part's fields, or with a null part deletes every look key of the object. */
+  | { type: 'look'; id: string; part: string | null; set: SceneLookSet }
   | { type: 'environment'; set: Partial<SceneEnvironmentValues> };
 
 /**
@@ -64,13 +68,13 @@ export interface SceneDocumentSnapshot {
 interface SceneWrite { id: string; field: SceneEditableField; value: unknown }
 interface SceneUnset { id: string; field: SceneEditableField }
 interface SceneCreation { id: string; values: SceneObjectValues }
-/** One flat pose key on a record: written with a value, deleted without one. */
-interface ScenePoseWrite { id: string; key: string; value?: readonly number[] }
+/** One flat `pose.` or `look.` key on a record: written with a value, deleted without one. */
+interface SceneKeyWrite { id: string; key: string; value?: unknown }
 /** One key on the `scene` root. */
 interface SceneRootWrite { key: keyof SceneEnvironmentValues; value: unknown }
 /** `unsets` delete a key whose absence reads as its default (an unlock deletes `locked`). */
 type ScenePlan = { ok: true; ids: readonly string[]; creates: SceneCreation[]; writes: SceneWrite[]; unsets: SceneUnset[]; deletes: string[];
-  poseWrites: ScenePoseWrite[]; rootWrites: SceneRootWrite[] }
+  keyWrites: SceneKeyWrite[]; rootWrites: SceneRootWrite[] }
   | { ok: false; reason: SceneCommandFailure };
 
 /**
@@ -126,7 +130,7 @@ function readRecord(id: string, value: unknown): SceneObject {
   if (!(value instanceof Y.Map)) throw new Error('Object must be a shared map');
   const model = SceneObjectValuesSchema.shape.model.parse(value.get('model'));
   const stored: Record<string, unknown> = Object.fromEntries(value.entries());
-  return SceneObjectSchema.parse({ ...editableDefaults(model), ...gatherScenePose(stored), model, id });
+  return SceneObjectSchema.parse({ ...editableDefaults(model), ...gatherSceneLook(gatherScenePose(stored)), model, id });
 }
 
 /**
@@ -230,7 +234,7 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
   if (scene.status !== 'ready') return { ok: false, reason: 'unsupported' };
   const byId = new Map(scene.objects.map((object) => [object.id, object]));
   const invalidIds = new Set(scene.invalidObjects.map((object) => object.id));
-  const plan: Extract<ScenePlan, { ok: true }> = { ok: true, ids: [], creates: [], writes: [], unsets: [], deletes: [], poseWrites: [], rootWrites: [] };
+  const plan: Extract<ScenePlan, { ok: true }> = { ok: true, ids: [], creates: [], writes: [], unsets: [], deletes: [], keyWrites: [], rootWrites: [] };
 
   if (command.type === 'environment') {
     const parsed = SceneEnvironmentSchema.partial().safeParse(command.set);
@@ -285,9 +289,21 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
     const next = command.replace ? set.data : { ...current, ...set.data };
     if (!ScenePoseSchema.safeParse(next).success) return { ok: false, reason: 'invalid' };
     for (const [key, value] of Object.entries(set.data)) {
-      if (JSON.stringify(current[key]) !== JSON.stringify(value)) plan.poseWrites.push({ id: command.id, key, value });
+      if (JSON.stringify(current[key]) !== JSON.stringify(value)) plan.keyWrites.push({ id: command.id, key: `${SCENE_POSE_KEY_PREFIX}${key}`, value });
     }
-    cleared.forEach((key) => plan.poseWrites.push({ id: command.id, key }));
+    cleared.forEach((key) => plan.keyWrites.push({ id: command.id, key: `${SCENE_POSE_KEY_PREFIX}${key}` }));
+    plan.ids = [command.id];
+    return plan;
+  }
+
+  if (command.type === 'look') {
+    const object = byId.get(command.id);
+    if (!object) return { ok: false, reason: invalidIds.has(command.id) ? 'invalid' : 'missing' };
+    if (object.locked) return { ok: false, reason: 'locked' };
+    if (!isSceneModelFile(object.model)) return { ok: false, reason: 'invalid' };
+    const writes = lookWrites(object.look ?? {}, command.part, command.set);
+    if (writes === null) return { ok: false, reason: 'invalid' };
+    plan.keyWrites.push(...writes.map((write) => ({ ...write, id: command.id })));
     plan.ids = [command.id];
     return plan;
   }
@@ -324,12 +340,52 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
 }
 
 /**
+ * The record key one part field is stored under.
+ * @param part - The part.
+ * @param field - The field.
+ * @returns `look.<part>.<field>`.
+ */
+function lookKey(part: string, field: string): string {
+  return `${SCENE_LOOK_KEY_PREFIX}${part}.${field}`;
+}
+
+/**
+ * The flat keys a look command writes: changed values set, null fields deleted, or with a null part every key deleted.
+ * @param current - The object's current look.
+ * @param part - The part to write, or null to reset every part.
+ * @param set - Fields to write; a null field is deleted.
+ * @returns The key writes without an id, or null when the command or the resulting look is invalid.
+ */
+function lookWrites(current: SceneLook, part: string | null, set: SceneLookSet): Omit<SceneKeyWrite, 'id'>[] | null {
+  if (part === null) {
+    if (typeof set !== 'object' || set === null || Object.keys(set).length > 0) return null;
+    return Object.entries(current).flatMap(([at, fields]) => Object.keys(fields).map((field) => ({ key: lookKey(at, field) })));
+  }
+  if (typeof part !== 'string' || typeof set !== 'object' || set === null) return null;
+  const entries = Object.entries(set);
+  if (entries.some(([field]) => !(SCENE_LOOK_FIELDS as readonly string[]).includes(field))) return null;
+  const values = Object.fromEntries(entries.filter(([, value]) => value !== null));
+  // Own keys from Object.fromEntries, so a `__proto__` part is judged like any other key.
+  if (!SceneLookSchema.safeParse(Object.fromEntries([[part, values]])).success) return null;
+  const before: SceneLookPart = Object.prototype.hasOwnProperty.call(current, part) ? current[part] ?? {} : {};
+  const after = Object.fromEntries(Object.entries({ ...before, ...values }).filter(([field]) => set[field as SceneLookField] !== null));
+  const others = Object.entries(current).filter(([at]) => at !== part);
+  const next = Object.fromEntries(Object.keys(after).length > 0 ? [...others, [part, after]] : others);
+  if (!SceneLookSchema.safeParse(next).success) return null;
+  const record = before as Record<string, unknown>;
+  return entries.flatMap(([field, value]) => {
+    if (value === null) return field in record ? [{ key: lookKey(part, field) }] : [];
+    return JSON.stringify(record[field]) === JSON.stringify(value) ? [] : [{ key: lookKey(part, field), value }];
+  });
+}
+
+/**
  * What a plan writes in Yjs: new records `add`, field values `edit`, deleted keys and records `remove`.
  * @param plan - The accepted plan.
  * @returns The strongest of them.
  */
 function planKind(plan: Extract<ScenePlan, { ok: true }>): SpaceWriteKind {
-  const edits = plan.writes.length > 0 || plan.rootWrites.length > 0 || plan.poseWrites.some((write) => write.value !== undefined);
+  const edits = plan.writes.length > 0 || plan.rootWrites.length > 0 || plan.keyWrites.some((write) => write.value !== undefined);
   return strongestKind(...(plan.creates.length > 0 ? ['add' as const] : []), ...(edits ? ['edit' as const] : []));
 }
 
@@ -349,23 +405,22 @@ export function applySceneCommand(doc: Y.Doc, command: SceneCommand, origin: sym
   const plan = planSceneCommand(doc, name, command, canEdit, limits);
   if (!plan.ok) return plan;
   // A command that changes nothing leaves no transaction, so no empty undo item.
-  if (plan.creates.length + plan.writes.length + plan.unsets.length + plan.deletes.length + plan.poseWrites.length + plan.rootWrites.length === 0) {
+  if (plan.creates.length + plan.writes.length + plan.unsets.length + plan.deletes.length + plan.keyWrites.length + plan.rootWrites.length === 0) {
     return { ok: true, ids: plan.ids };
   }
   const objects = doc.getMap<unknown>('objects');
   const root = doc.getMap<unknown>('scene');
   const written = writeSpaceDoc(name, { kind: planKind(plan) }, () => doc.transact(() => {
     for (const creation of plan.creates) {
-      const { pose, ...values } = creation.values;
-      objects.set(creation.id, new Y.Map<unknown>(Object.entries({ ...values, ...expandScenePose(pose ?? {}) })));
+      const { pose, look, ...values } = creation.values;
+      objects.set(creation.id, new Y.Map<unknown>(Object.entries({ ...values, ...expandScenePose(pose ?? {}), ...expandSceneLook(look ?? {}) })));
     }
     for (const write of plan.writes) (objects.get(write.id) as Y.Map<unknown>).set(write.field, write.value);
     for (const unset of plan.unsets) (objects.get(unset.id) as Y.Map<unknown>).delete(unset.field);
-    for (const write of plan.poseWrites) {
+    for (const write of plan.keyWrites) {
       const record = objects.get(write.id) as Y.Map<unknown>;
-      const key = `${SCENE_POSE_KEY_PREFIX}${write.key}`;
-      if (write.value === undefined) record.delete(key);
-      else record.set(key, write.value);
+      if (write.value === undefined) record.delete(write.key);
+      else record.set(write.key, write.value);
     }
     for (const id of plan.deletes) objects.delete(id);
     for (const write of plan.rootWrites) root.set(write.key, write.value);

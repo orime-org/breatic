@@ -54,17 +54,17 @@ let session: SceneSession;
 
 /**
  * Loads the scene into the registered document and opens an editable session.
- * @param o1Pose - Flat pose keys stored on o1's record (inner#1692).
+ * @param o1Keys - Flat pose or look keys stored on o1's record (inner#1692, inner#1693).
  * @returns The document.
  */
-function seed(o1Pose: Readonly<Record<string, readonly number[]>> = {}): Y.Doc {
+function seed(o1Keys: Readonly<Record<string, unknown>> = {}): Y.Doc {
   doc = getDoc(NAME);
   loadRemote(doc, (source) => {
     source.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
     const objects = source.getMap<unknown>('objects');
     for (const item of [object(O1), object(O2, true)]) {
       const { id, ...values } = item;
-      objects.set(id, new Y.Map<unknown>(Object.entries(id === O1 ? { ...values, ...o1Pose } : values)));
+      objects.set(id, new Y.Map<unknown>(Object.entries(id === O1 ? { ...values, ...o1Keys } : values)));
     }
     const { id, locked: _locked, ...values } = object(O3);
     objects.set(id, new Y.Map<unknown>(Object.entries(values)));
