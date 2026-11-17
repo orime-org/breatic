@@ -454,6 +454,24 @@ describe('the table entry (A4, design 5.8)', () => {
     expect(table?.children[0]?.children).toHaveLength(2);
   });
 
+  it('lights the first cell on Enter in a grid the pointer opened, and inserts it on the next Enter', () => {
+    const { editor } = open([para('')]);
+    const id = read(editor)[0]!.id;
+    caretAtEnd(editor, id);
+    type(editor, '/table');
+    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-table'), { clientX: 10, clientY: 10 });
+    expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
+    press(editor, 'Enter');
+    expect(screen.getByTestId('doc-slash-table-size-1-1').hasAttribute('data-on')).toBe(true);
+    expect(textOf(editor, id)).toBe('/table');
+    press(editor, 'Enter');
+    const table = read(editor).find((block) => block.type !== 'paragraph') as
+      | (ReadBlock & { children: { children: unknown[] }[] })
+      | undefined;
+    expect(table?.children).toHaveLength(1);
+    expect(table?.children[0]?.children).toHaveLength(1);
+  });
+
   it('goes back to the list on Escape and keeps what was typed', () => {
     const { editor } = open([para('')]);
     const id = read(editor)[0]!.id;
