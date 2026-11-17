@@ -194,3 +194,45 @@ export class DeadlinePassed extends Error {
   }
 }
 
+
+/** How a call on an account's key set failed in a way the account, not the request, has to fix. */
+export type AccountKeyFailureKind = "account_key_missing" | "account_key_failed" | "upstream_unavailable";
+
+/** Why an upstream turned an account's key down, for `account_key_failed`. */
+export type AccountKeyFailureReason = "invalid" | "no_balance" | "model_not_found" | "rate_limited";
+
+/**
+ * A call on an account's key set (`KeySet` with owner `account`) that failed on the account's side: it holds no key for
+ * any upstream of the model (`account_key_missing`), an upstream turned the key down (`account_key_failed`, with
+ * `reason`), or the upstream could not be reached or kept failing on the caller's last try (`upstream_unavailable`). The
+ * call never moves to another upstream or to the deployment's keys. It never holds the key; the upstream's own error,
+ * when there was one, is its cause, carrying any billed answer for `costsOf`.
+ */
+export class AccountKeyFailure extends Error {
+  readonly kind: AccountKeyFailureKind;
+  readonly model: string;
+  /** The upstream that failed; absent for `account_key_missing`. */
+  readonly upstream?: string;
+  readonly reason?: AccountKeyFailureReason;
+
+  /**
+   * Record what the error carries.
+   * @param model - Our model id.
+   * @param kind - How it failed.
+   * @param detail - The upstream, the reason and the upstream's own error.
+   * @param detail.upstream - The upstream that failed.
+   * @param detail.reason - Why it turned the key down.
+   * @param detail.cause - The upstream's own error.
+   */
+  constructor(model: string, kind: AccountKeyFailureKind, detail: { upstream?: string; reason?: AccountKeyFailureReason; cause?: unknown } = {}) {
+    const what = kind === "account_key_missing"
+      ? `The account's keys reach no upstream of ${model}`
+      : `${detail.upstream ?? "The upstream"} failed ${model} on the account's key: ${detail.reason ?? kind}`;
+    super(what, detail.cause === undefined ? undefined : { cause: detail.cause });
+    this.name = "AccountKeyFailure";
+    this.kind = kind;
+    this.model = model;
+    if (detail.upstream !== undefined) this.upstream = detail.upstream;
+    if (detail.reason !== undefined) this.reason = detail.reason;
+  }
+}

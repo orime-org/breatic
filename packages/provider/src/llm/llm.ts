@@ -7,8 +7,9 @@
  * reading media, the decisions endpoint and the picture capability.
  */
 
+import { createHash } from "node:crypto";
 import type { JSONValue, SystemModelMessage } from "ai";
-import { candidateOf, hasKey, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
+import { candidateOf, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost, PendingCost, TokenBuckets } from "@provider/cost.js";
 import { BilledAnswerLost, NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
@@ -19,6 +20,7 @@ import { classifyLlm, costRefOf, InBandError, pauseBeforeRetry, SwitchingModel }
 import { AnswerUnread, assertSucceeded, MediaReadFailed, StepRefused, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
 import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
 import { messagesSpeakerOf } from "@provider/llm/upstreams/messages.js";
+import { assertAccountReaches, deploymentKeySet, hasKey, keyFor, keysOr, llmFailureOn, paidAsMarked, paidOn, payerMark, triedOn, type KeySet } from "@provider/keys.js";
 import { cacheMark, hasLlmAdapter, isClaude, messageOf, optionsFor, vendorOf, type ModelV4, type Vendor, type VendorOptions } from "@provider/llm/vendors.js";
 import type { MessagesPlan } from "@provider/messages/relay.js";
 import type { ProviderOptions } from "@provider/provider.js";
@@ -85,6 +87,8 @@ function cleanDeep(value: unknown, clean: (text: string) => string): unknown {
  * @returns The LLM API.
  */
 export function createLlm(config: ProviderConfig, options: ProviderOptions): LlmApi {
+  const deploymentKeys = deploymentKeySet(config, options.keyOf);
+  /** Each upstream's model factory by the key it was built with (hashed): one client per key, never shared across keys. */
   const factories = new Map<string, (modelId: string) => ModelV4>();
   let refreshing: Promise<void> | undefined;
   let catalog: { pictures: ReadonlyMap<string, boolean>; freshUntil: number; retryAfter: number } = {
@@ -126,14 +130,16 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @param route - The route that matched.
    * @param upstream - The upstream.
    * @param modelId - Our model id.
+   * @param key - The key the call is sent with.
    * @returns Its model.
    */
-  const modelOn = (route: LlmRoute, upstream: string, modelId: string): ModelV4 => {
+  const modelOn = (route: LlmRoute, upstream: string, modelId: string, key: string): ModelV4 => {
     const decl = config.upstreams[upstream]!;
-    let factory = factories.get(upstream);
+    const cacheKey = `${upstream}\u0000${createHash("sha256").update(key).digest("hex")}`;
+    let factory = factories.get(cacheKey);
     if (factory === undefined) {
-      factory = vendorOf(decl.kind).build(decl, options.keyOf(decl.key_env) ?? "");
-      factories.set(upstream, factory);
+      factory = vendorOf(decl.kind).build(decl, key);
+      factories.set(cacheKey, factory);
     }
     return factory(vendorModelId(route, upstream, modelId));
   };
@@ -156,15 +162,19 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @param route - The matched route.
    * @param modelId - Our model id.
    * @param chosen - The caller's mode.
+   * @param keys - The key set; an account's tries only the first upstream it holds a key for.
    * @returns The plan.
    * @throws {NoUpstreamAvailable} When none is configured.
    * @throws {UpstreamRequestRejected} When the mode names an upstream the route does not have.
+   * @throws {AccountKeyFailure} When an account's set holds a key for none of the route's upstreams.
+   * @throws {MalformedKey} When an account's key is not printable ASCII.
    */
-  const planFor = (route: LlmRoute, modelId: string, chosen: Route): RoutePlan => {
-    const candidates = candidatesOn(route);
-    if (chosen.mode !== "cheapest") return planRoute(modelId, chosen, candidates);
-    const plan = planRoute(modelId, DEFAULT_ROUTE, candidates);
-    return { ...plan, order: byUnitPrice(modelId, plan.order) };
+  const planFor = (route: LlmRoute, modelId: string, chosen: Route, keys: KeySet): RoutePlan => {
+    const candidates = candidatesOn(route, keys);
+    assertAccountReaches(modelId, keys, candidates);
+    const plan = planRoute(modelId, chosen.mode === "cheapest" ? DEFAULT_ROUTE : chosen, candidates);
+    const order = chosen.mode === "cheapest" ? byUnitPrice(modelId, plan.order) : plan.order;
+    return { ...plan, order: triedOn(keys, order) };
   };
 
   /**
@@ -197,18 +207,20 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * A route's upstreams as routing candidates, in the order the route holds them:
    * lowest weight first, since parseProviderConfig sorts every route when it loads.
    * @param route - The route.
+   * @param keys - The key set.
    * @returns One candidate per upstream.
    */
-  const candidatesOn = (route: LlmRoute): Candidate[] =>
-    route.upstreams.map(({ upstream, weight }) => candidateOf(config, upstream, weight, options.keyOf));
+  const candidatesOn = (route: LlmRoute, keys: KeySet): Candidate[] =>
+    route.upstreams.map(({ upstream, weight }) => candidateOf(config, upstream, weight, keys));
 
   /**
    * The upstreams that serve the decisions endpoint, the one it uses first.
+   * @param keys - The key set.
    * @returns Their names.
    */
-  const judgeUpstreams = (): string[] => {
+  const judgeUpstreams = (keys: KeySet): string[] => {
     const names = Object.keys(config.upstreams).filter((u) => llmVendorOf(u)?.decisions !== undefined);
-    const used = names.find((u) => hasKey(options.keyOf, config.upstreams[u]!.key_env)) ?? names[0];
+    const used = names.find((u) => hasKey(keys, u)) ?? names[0];
     return used === undefined ? [] : [used, ...names.filter((u) => u !== used)];
   };
 
@@ -257,7 +269,14 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @param finished - The call's model, usage and metadata.
    * @returns Known, pending or missing.
    */
-  const costOf = (finished: FinishedCall): Cost => {
+  const costOf = (finished: FinishedCall): Cost => paidAsMarked(finished.providerMetadata?.breatic)(rawCostOf(finished));
+
+  /**
+   * The cost of a finished call, before it is marked with its payer.
+   * @param finished - The call's model, usage and metadata.
+   * @returns Known, pending or missing.
+   */
+  const rawCostOf = (finished: FinishedCall): Cost => {
     const breatic = finished.providerMetadata?.breatic as { costRef?: unknown; cacheTtl?: unknown; sentAt?: unknown } | undefined;
     const { usage } = finished;
     // Input counts every input token, the cached among them; reasoning is part of output.
@@ -362,23 +381,24 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   /**
    * The first upstream serving the decisions endpoint that the route allows.
    * @param chosen - The caller's mode.
+   * @param keys - The key set.
    * @returns Its name, key and the endpoint it serves.
    * @throws {NoUpstreamAvailable} When none has a key.
    * @throws {UpstreamRequestRejected} When the route names an upstream that does not serve it.
    */
-  const decisionsUpstream = (chosen: Route): { upstream: string; key: string; decisions: NonNullable<Vendor["decisions"]> } => {
-    const names = judgeUpstreams();
+  const decisionsUpstream = (chosen: Route, keys: KeySet): { upstream: string; key: string; decisions: NonNullable<Vendor["decisions"]> } => {
+    const names = judgeUpstreams(keys);
     // The endpoint's model, named in an error before an upstream is chosen.
     const model = names.length === 0 ? "the decisions endpoint" : llmVendorOf(names[0]!)!.decisions!.model;
     if (chosen.mode === "upstream" && !names.includes(chosen.upstream)) {
       throw new UpstreamRequestRejected(model, chosen.upstream, `${chosen.upstream} does not serve ${model}`);
     }
     const pool = chosen.mode === "upstream" ? [chosen.upstream] : names;
-    const configured = pool.find((u) => hasKey(options.keyOf, config.upstreams[u]!.key_env));
+    const configured = pool.find((u) => hasKey(keys, u));
     if (configured === undefined) {
       throw new NoUpstreamAvailable(model, pool.map((u) => ({ upstream: u, kind: "missing_key", envVar: config.upstreams[u]!.key_env })));
     }
-    return { upstream: configured, key: options.keyOf(config.upstreams[configured]!.key_env)!, decisions: llmVendorOf(configured)!.decisions! };
+    return { upstream: configured, key: keyFor(keys, configured), decisions: llmVendorOf(configured)!.decisions! };
   };
 
   /**
@@ -454,19 +474,23 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   };
 
   return {
-    prepare(modelId, wants, chosen = DEFAULT_ROUTE): PreparedCall {
+    prepare(modelId, wants, chosen = DEFAULT_ROUTE, given): PreparedCall {
+      const keys = keysOr(given, deploymentKeys);
       const route = routeOf(config.llm.routes, modelId);
-      const plan = planFor(route, modelId, chosen);
+      const plan = planFor(route, modelId, chosen, keys);
       const pending = new Map<string, PendingCost>();
+      const first = plan.order[0]!.upstream;
       const model = new SwitchingModel({
         modelId,
         plan,
-        modelFor: (c) => modelOn(route, c.upstream, modelId),
+        modelFor: (c) => modelOn(route, c.upstream, modelId, keyFor(keys, c.upstream)),
         vendorFor: (upstream) => vendorOf(kindOf(upstream)),
         maxRetries: options.llmMaxRetries,
         pending,
-        breatic: wants.cache === false ? {} : { cacheTtl: wants.cache },
+        breatic: { ...(wants.cache === false ? {} : { cacheTtl: wants.cache }), ...payerMark(keys) },
+        failed: llmFailureOn(keys, modelId, first, (error) => classifyLlm(error, vendorOf(kindOf(first)))),
       });
+      const paid = paidOn(keys);
       const temperature = wants.temperature === undefined || isClaude(modelId) ? {} : { temperature: wants.temperature };
       return {
         model,
@@ -490,16 +514,20 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             ...(parts.projectInstructions === undefined ? [] : [{ role: "system" as const, content: parts.projectInstructions }]),
           ];
         },
-        pendingCosts: () => [...pending.values()],
+        pendingCosts: () => [...pending.values()].map((cost) => paid(cost) as PendingCost),
       };
     },
 
     costOf,
     servedBy,
 
-    async understand(request, chosen = DEFAULT_ROUTE) {
+    async understand(request, chosen = DEFAULT_ROUTE, given) {
+      const keys = keysOr(given, deploymentKeys);
       const route = routeOf(config.llm.understand_routes, request.model);
-      const plan = planFor(route, request.model, chosen);
+      const plan = planFor(route, request.model, chosen, keys);
+      const first = plan.order[0]!.upstream;
+      const failed = llmFailureOn(keys, request.model, first, (error) => understandFailure(error, first));
+      const paid = paidOn(keys);
       const { signal, dispose } = boundSignal({ deadlineAt: request.deadlineAt, ...(request.signal ? { signal: request.signal } : {}) });
       const question = options.cleanText(request.question);
       let answering: string | undefined;
@@ -522,7 +550,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             try {
               answered = await adapter.ask({
                 decl,
-                key: options.keyOf(decl.key_env) ?? "",
+                key: keyFor(keys, c.upstream),
                 modelId: vendorModelId(route, c.upstream, request.model),
                 question,
                 media: request.media,
@@ -568,9 +596,9 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             return reading;
           },
         });
-        return { text: served.value.text, finishReason: served.value.finishReason, costs: [...billed], upstream: served.servedBy };
+        return { text: served.value.text, finishReason: served.value.finishReason, costs: billed.map(paid), upstream: served.servedBy };
       } catch (error) {
-        throw understandEnding(request.model, answering, error, billed);
+        throw failed(understandEnding(request.model, answering, error, billed.map(paid)));
       } finally {
         dispose();
         for (const cleanup of session.cleanups) cleanup();
@@ -609,8 +637,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       };
     },
 
-    async judge(request, chosen = DEFAULT_ROUTE) {
-      const { upstream, key, decisions } = decisionsUpstream(chosen);
+    async judge(request, chosen = DEFAULT_ROUTE, keys) {
+      const { upstream, key, decisions } = decisionsUpstream(chosen, keysOr(keys, deploymentKeys));
       const served = { upstream, model: decisions.model };
       const url = decisions.url(config.upstreams[upstream]!);
       const body = JSON.stringify({
@@ -636,13 +664,14 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       return { status: response.status, body: text, cost, ...served };
     },
 
-    availability(modelId, use) {
-      const candidates = candidatesOn(routeOf(use === "call" ? config.llm.routes : config.llm.understand_routes, modelId));
+    availability(modelId, use, keys) {
+      const candidates = candidatesOn(routeOf(use === "call" ? config.llm.routes : config.llm.understand_routes, modelId), keysOr(keys, deploymentKeys));
       return { upstreams: candidates.map(({ upstream, weight, configured, envVar }) => ({ upstream, weight, configured, envVar })) };
     },
 
-    judgeAvailability() {
-      const candidates = judgeUpstreams().map((upstream, weight) => candidateOf(config, upstream, weight, options.keyOf));
+    judgeAvailability(given) {
+      const keys = keysOr(given, deploymentKeys);
+      const candidates = judgeUpstreams(keys).map((upstream, weight) => candidateOf(config, upstream, weight, keys));
       return { upstreams: candidates.map(({ upstream, weight, configured, envVar }) => ({ upstream, weight, configured, envVar })) };
     },
 
@@ -652,7 +681,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         const routes = [config.llm.routes, config.llm.understand_routes].flatMap((list) => list.find((r) => model.startsWith(r.prefix)) ?? []);
         for (const { upstream } of routes.flatMap((r) => r.upstreams)) {
           const decl = config.upstreams[upstream]!;
-          if (vendorOf(decl.kind).gateway || !hasKey(options.keyOf, decl.key_env) || config.llm.prices[model] !== undefined) continue;
+          if (vendorOf(decl.kind).gateway || !hasKey(deploymentKeys, upstream) || config.llm.prices[model] !== undefined) continue;
           problems.add(`${model}: reached directly on ${upstream} with no token price in llm.yaml`);
         }
       }

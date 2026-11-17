@@ -184,7 +184,7 @@ describe("an account's pending cost", () => {
     // Asked on the deployment's keys (none passed), the account's generation is refused before anything is sent.
     await expect(provider.cost.lookup(lookup, { lastAttempt: false })).rejects.toThrow();
     expect(fakes.openrouter.seen.filter((s) => s.path === "/api/v1/generation")).toHaveLength(0);
-    const cost = await provider.cost.lookup(lookup, { lastAttempt: false, keys } as never);
+    const cost = await provider.cost.lookup(lookup, { lastAttempt: false, keys });
     expect(cost).toMatchObject({ state: "known", payer: "account" });
     expect(fakes.openrouter.seen.filter((s) => s.path === "/api/v1/generation").map((s) => s.authorization)).toEqual(["Bearer acct-or"]);
     expect(deploymentKeys).not.toHaveBeenCalled();

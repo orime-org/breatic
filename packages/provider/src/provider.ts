@@ -11,11 +11,13 @@ import {
   type MediaBinding,
   type ProviderConfigInput,
 } from "@provider/config/schema.js";
+import { checkKey, type KeyCheck } from "@provider/check-key.js";
 import type { Cost, CostLookup } from "@provider/cost.js";
 import { sideBounds } from "@provider/http/request.js";
 import type { LlmApi } from "@provider/llm/api.js";
 import { createLlm } from "@provider/llm/llm.js";
 import { hasLlmAdapter, vendorOf } from "@provider/llm/vendors.js";
+import { deploymentKeySet, keyFor, keysOr, lookupOwner, paidOn, recordedKeys, type KeySet } from "@provider/keys.js";
 import { mediaAdapter } from "@provider/media/adapters.js";
 import {
   estimateCost,
@@ -47,8 +49,10 @@ export interface Provider {
   readonly config: ProviderConfig;
   /** The caller's key reader. */
   readonly keyOf: (envName: string) => string | undefined;
-  /** A model's upstreams in effective weight order, each saying whether its key is configured. */
-  availability(model: string): Availability;
+  /** The deployment's key set, which a call handed no key set runs on. */
+  readonly deploymentKeys: KeySet;
+  /** A model's upstreams in effective weight order, each saying whether the key set (the deployment's by default) holds its key. */
+  availability(model: string, keys?: KeySet): Availability;
   /**
    * Check this instance's bindings against our catalog.
    * @throws {ProviderConfigError} Listing every mismatch.
@@ -56,14 +60,25 @@ export interface Provider {
   assertBindsCatalog(catalog: CatalogShape): void;
   /** A model's pricing on each upstream, for the browser to estimate with. */
   pricingRules(model: string): PricingRules;
-  /** The estimate of the upstream the route would choose; null when it reaches none. */
-  estimate(model: string, input: EstimateInput, route: Route): Promise<Estimate | null>;
-  /** Why no configured upstream the route may use takes the run; null when one does, none is configured or none configured is priced. */
-  refusal(model: string, input: EstimateInput, route: Route): Promise<RejectedInput | null>;
+  /** The estimate of the upstream the route would choose on the key set; null when it reaches none. */
+  estimate(model: string, input: EstimateInput, route: Route, keys?: KeySet): Promise<Estimate | null>;
+  /** Why no upstream the key set holds a key for and the route may use takes the run; null when one does, none is configured or none configured is priced. */
+  refusal(model: string, input: EstimateInput, route: Route, keys?: KeySet): Promise<RejectedInput | null>;
+  /**
+   * Check a key a user filled in for one upstream: whether it reaches the upstream, and what balance it may read. The
+   * answer and any error never hold the key.
+   * @throws {MalformedKey} When the key is not printable ASCII; nothing is sent.
+   * @throws {Error} When the upstream is unknown or provider cannot check its keys.
+   */
+  checkKey(upstream: string, key: string): Promise<KeyCheck>;
   readonly llm: LlmApi;
   readonly cost: {
-    /** Ask the upstream again for a cost that was pending; the last attempt answers known or missing. */
-    lookup(lookup: CostLookup, options: { lastAttempt: boolean }): Promise<Cost>;
+    /**
+     * Ask the upstream again for a cost that was pending, with the keys of the owner that ran the call (the deployment's
+     * by default); the last attempt answers known or missing.
+     * @throws {Error} When the keys are another owner's than the lookup recorded.
+     */
+    lookup(lookup: CostLookup, options: { lastAttempt: boolean; keys?: KeySet }): Promise<Cost>;
     /**
      * The lookup of a generation queued before lookups named their upstream: the first upstream that keeps
      * generations to look a cost up by, or undefined when none does.
@@ -80,13 +95,15 @@ export interface Provider {
  */
 export function createProvider(options: ProviderOptions): Provider {
   const config = parseProviderConfig(options.config);
+  const deploymentKeys = deploymentKeySet(config, options.keyOf);
   /**
    * A model's upstreams in effective weight order, each with its key state.
    * @param model - Our model id.
+   * @param keys - The key set; the deployment's when absent.
    * @returns The availability.
    */
-  const availability = (model: string): Availability => ({
-    upstreams: candidatesOf(config, model, options.keyOf).map(({ upstream, weight, configured, envVar }) => ({ upstream, weight, configured, envVar })),
+  const availability = (model: string, keys?: KeySet): Availability => ({
+    upstreams: candidatesOf(config, model, keysOr(keys, deploymentKeys)).map(({ upstream, weight, configured, envVar }) => ({ upstream, weight, configured, envVar })),
   });
   /**
    * A model's pricing on each upstream.
@@ -101,14 +118,19 @@ export function createProvider(options: ProviderOptions): Provider {
   return {
     config,
     keyOf: options.keyOf,
+    deploymentKeys,
     availability,
     assertBindsCatalog: (catalog) => assertBindsCatalog(config, catalog),
     pricingRules,
-    estimate: (model, input, route) => estimateCost(pricingRules(model), availability(model), input, route),
-    refusal: (model, input, route) => inputRefusal(pricingRules(model), availability(model), input, route),
+    estimate: (model, input, route, keys) => estimateCost(pricingRules(model), availability(model, keys), input, route),
+    refusal: (model, input, route, keys) => inputRefusal(pricingRules(model), availability(model, keys), input, route),
+    checkKey: (upstream, key) => checkKey(config, upstream, key),
     llm: createLlm(config, options),
     cost: {
-      lookup: (lookup, { lastAttempt }) => lookupCost(config, options, lookup, lastAttempt),
+      lookup: async (lookup, { lastAttempt, keys }) => {
+        const owned = recordedKeys(lookupOwner(lookup), keys, deploymentKeys, `call ${lookup.upstream} billed`);
+        return paidOn(owned)(await lookupCost(config, owned, lookup, lastAttempt));
+      },
       fromGeneration(generationId) {
         const upstream = Object.keys(config.upstreams).find((u) => hasLlmAdapter(config.upstreams[u]!.kind) && vendorOf(config.upstreams[u]!.kind).costs !== undefined);
         return upstream === undefined ? undefined : { upstream, generationId };
@@ -168,15 +190,15 @@ function limitsOf(binding: MediaBinding): Pick<UpstreamPricing, "limits" | "voic
  * by generation id, a media upstream through its adapter. Until the last attempt an
  * unanswered lookup stays pending; on it, it is missing.
  * @param config - The validated configuration.
- * @param options - The caller's options.
+ * @param keys - The keys of the owner that ran the call.
  * @param lookup - The handle.
  * @param lastAttempt - Whether no later lookup follows.
  * @returns The cost.
  */
-async function lookupCost(config: ProviderConfig, options: ProviderOptions, lookup: CostLookup, lastAttempt: boolean): Promise<Cost> {
+async function lookupCost(config: ProviderConfig, keys: KeySet, lookup: CostLookup, lastAttempt: boolean): Promise<Cost> {
   const decl = config.upstreams[lookup.upstream];
   if (decl === undefined) return { state: "missing", reason: `unknown upstream ${lookup.upstream}` };
-  const key = options.keyOf(decl.key_env) ?? "";
+  const key = keyFor(keys, lookup.upstream);
   const media = mediaAdapter(decl.kind);
   if (media !== undefined && typeof lookup.predictionId === "string") {
     return (await media.billed({ name: lookup.upstream, decl, key }, lookup.predictionId, sideBounds(), lastAttempt)).cost;

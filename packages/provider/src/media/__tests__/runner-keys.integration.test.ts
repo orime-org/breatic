@@ -169,7 +169,7 @@ describe("an account's key set on a media run", () => {
     fal.answer(({ method }) => (method === "POST" ? { status: 200, body: { request_id: "f1", status_url: `${fal.url}/m/requests/f1/status`, response_url: `${fal.url}/m/requests/f1` } } : undefined));
     const keys = accountKeys({ fal: "acct-fal" });
     const planned = expectState(await runner.plan("m", { prompt: "a fox", params: {} }, { mode: "default" }, planOptions(keys) as never), "send");
-    expectState(await runner.send(stored(planned.ticket), { ...live(), keys } as never), "running");
+    expectState(await runner.send(stored(planned.ticket), { ...live(), keys }), "running");
     // WaveSpeed comes first by weight and has the deployment's key, but the account has none for it.
     expect(ws.seen).toHaveLength(0);
     expect(auths(fal)).toEqual(["Key acct-fal"]);
@@ -194,8 +194,8 @@ describe("an account's key set on a media run", () => {
     });
     const keys = accountKeys({ wavespeed: "acct-ws" });
     const planned = expectState(await runner.plan("m", { prompt: "a fox", params: {} }, { mode: "default" }, planOptions(keys) as never), "send");
-    const running = expectState(await runner.send(stored(planned.ticket), { ...live(), keys } as never), "running");
-    expectState(await runner.poll(stored(running.ticket), { ...live(), keys } as never), "done");
+    const running = expectState(await runner.send(stored(planned.ticket), { ...live(), keys }), "running");
+    expectState(await runner.poll(stored(running.ticket), { ...live(), keys }), "done");
     expect(new Set(auths(ws))).toEqual(new Set(["Bearer acct-ws"]));
     expect(deploymentKeys).not.toHaveBeenCalled();
   });
@@ -211,7 +211,7 @@ describe("the ticket records whose keys each step runs on (critical path)", () =
     await expect(runner.send(stored(planned.ticket), live())).rejects.toThrow();
     expect(ws.seen).toHaveLength(0);
     await expect(runner.recover(stored(planned.ticket), live())).rejects.toThrow();
-    const running = expectState(await runner.send(stored(planned.ticket), { ...live(), keys } as never), "running");
+    const running = expectState(await runner.send(stored(planned.ticket), { ...live(), keys }), "running");
     await expect(runner.poll(stored(running.ticket), live())).rejects.toThrow();
     expect(ws.seen.filter((s) => s.method === "GET")).toHaveLength(0);
   });
@@ -220,7 +220,7 @@ describe("the ticket records whose keys each step runs on (critical path)", () =
     const { runner } = started();
     ws.answer(({ method }) => (method === "POST" ? accepted("p-1") : undefined));
     const planned = expectState(await runner.plan("m", { prompt: "a fox", params: {} }, { mode: "default" }, planOptions() as never), "send");
-    await expect(runner.send(stored(planned.ticket), { ...live(), keys: accountKeys({ wavespeed: "acct-ws" }) } as never)).rejects.toThrow();
+    await expect(runner.send(stored(planned.ticket), { ...live(), keys: accountKeys({ wavespeed: "acct-ws" }) })).rejects.toThrow();
     expect(ws.seen).toHaveLength(0);
   });
 
@@ -232,9 +232,9 @@ describe("the ticket records whose keys each step runs on (critical path)", () =
     const planned = expectState(await runner.plan("kling-elements", { prompt: "{{ref:elements:1}} walks", params: { elements: [imageUrl] } }, { mode: "default" }, planOptions(keys, llmKeys) as never), "send");
     expect(planned.step.kind).toBe("describe");
     // The media keys match; the describe step was recorded on the account's LLM keys, not the deployment's.
-    await expect(runner.send(stored(planned.ticket), { ...live(), keys } as never)).rejects.toThrow();
+    await expect(runner.send(stored(planned.ticket), { ...live(), keys })).rejects.toThrow();
     expect(or.seen).toHaveLength(0);
-    const described = expectState(await runner.send(stored(planned.ticket), { ...live(), keys, llmKeys } as never), "send");
+    const described = expectState(await runner.send(stored(planned.ticket), { ...live(), keys, llmKeys }), "send");
     expect(described.step.kind).toBe("element");
     expect(auths(or)).toEqual(["Bearer acct-or"]);
   });
@@ -247,13 +247,13 @@ describe("the ticket records whose keys each step runs on (critical path)", () =
     });
     const keys = accountKeys({ wavespeed: "acct-ws" });
     const planned = expectState(await runner.plan("m", { prompt: "a fox", params: {} }, { mode: "default" }, planOptions(keys) as never), "send");
-    const running = expectState(await runner.send(stored(planned.ticket), { ...live(), keys } as never), "running");
+    const running = expectState(await runner.send(stored(planned.ticket), { ...live(), keys }), "running");
     const pending = runner.abandon(stored(running.ticket)).costs.find((c): c is Extract<Cost, { state: "pending" }> => c.state === "pending");
     expect(pending).toBeDefined();
     const lookup = JSON.parse(JSON.stringify(pending!.lookup)) as Extract<Cost, { state: "pending" }>["lookup"];
     await expect(provider.cost.lookup(lookup, { lastAttempt: false })).rejects.toThrow();
     ws.seen.length = 0;
-    const cost = await provider.cost.lookup(lookup, { lastAttempt: false, keys } as never);
+    const cost = await provider.cost.lookup(lookup, { lastAttempt: false, keys });
     expect(cost).toMatchObject({ state: "known", usd: 0.3, payer: "account" });
     expect(auths(ws)).toEqual(["Bearer acct-ws"]);
     expect(deploymentKeys).not.toHaveBeenCalled();
@@ -337,7 +337,7 @@ describe("a failure of an account's key (critical path)", () => {
     fakeOf(upstream).answer(({ method }) => (method === "POST" ? reply : undefined));
     const keys = accountKeys({ [upstream]: keyFor[upstream] });
     const planned = expectState(await runner.plan("m", { prompt: "a fox", params: {} }, { mode: "default" }, planOptions(keys) as never), "send");
-    const answer = await runner.send(stored(planned.ticket), { ...live(), keys } as never);
+    const answer = await runner.send(stored(planned.ticket), { ...live(), keys });
     expect(keyFailureOf(answer)).toMatchObject({ kind: "account_key_failed", reason, upstream });
     expect(auths(fakeOf(upstream))).toEqual([authFor[upstream]]);
     for (const other of (["wavespeed", "fal", "sandbase"] as const).filter((u) => u !== upstream)) expect(fakeOf(other).seen).toHaveLength(0);
@@ -349,7 +349,7 @@ describe("a failure of an account's key (critical path)", () => {
     fal.answer(({ method }) => (method === "POST" ? { status: 403, body: { detail: "Content policy violation" } } : undefined));
     const keys = accountKeys({ fal: "acct-fal" });
     const planned = expectState(await runner.plan("m", { prompt: "a fox", params: {} }, { mode: "default" }, planOptions(keys) as never), "send");
-    const failed = expectState(await runner.send(stored(planned.ticket), { ...live(), keys } as never), "failed");
+    const failed = expectState(await runner.send(stored(planned.ticket), { ...live(), keys }), "failed");
     expect(failed.reason).toBeInstanceOf(UpstreamRequestRejected);
     expect(keyFailureOf(failed)).toBeUndefined();
     expect(auths(fal)).toEqual(["Key acct-fal"]);
@@ -365,8 +365,8 @@ describe("a failure of an account's key (critical path)", () => {
     fal.answer(({ method }) => (method === "POST" ? reply : undefined));
     const keys = accountKeys({ fal: "acct-fal", wavespeed: "acct-ws" });
     const planned = expectState(await runner.plan("m", { prompt: "a fox", params: {} }, { mode: "upstream", upstream: "fal" }, planOptions(keys) as never), "send");
-    await expect(runner.send(stored(planned.ticket), { ...live(), keys } as never)).rejects.toBeInstanceOf(SendNotAccepted);
-    const last = await runner.send(stored(planned.ticket), { ...live(), keys, final: true } as never);
+    await expect(runner.send(stored(planned.ticket), { ...live(), keys })).rejects.toBeInstanceOf(SendNotAccepted);
+    const last = await runner.send(stored(planned.ticket), { ...live(), keys, final: true });
     expect(keyFailureOf(last)).toMatchObject({ kind, ...(reason === undefined ? {} : { reason }), upstream: "fal" });
     // Both sends reached fal (its transport may retry a 429 itself), every one on the account's key.
     expect(auths(fal).length).toBeGreaterThanOrEqual(2);
@@ -382,7 +382,7 @@ describe("a failure of an account's key (critical path)", () => {
     const { runner, deploymentKeys } = started(config({ sandbase: url }));
     const keys = accountKeys({ sandbase: "acct-sb" });
     const planned = expectState(await runner.plan("m", { prompt: "a fox", params: {} }, { mode: "default" }, planOptions(keys) as never), "send");
-    const outcome = await settled(runner.send(stored(planned.ticket), { ...live(), keys, final: true } as never));
+    const outcome = await settled(runner.send(stored(planned.ticket), { ...live(), keys, final: true }));
     expect(keyFailureOf("error" in outcome ? outcome.error : outcome.answer)).toMatchObject({ kind: "upstream_unavailable", upstream: "sandbase" });
     expect([...ws.seen, ...fal.seen]).toHaveLength(0);
     expect(deploymentKeys).not.toHaveBeenCalled();
@@ -394,7 +394,7 @@ describe("a failure of an account's key (critical path)", () => {
     fal.answer(({ method }) => (method === "POST" ? { status: 200, body: { request_id: "f1", status_url: `${fal.url}/s`, response_url: `${fal.url}/r` } } : undefined));
     const keys = accountKeys({ wavespeed: "acct-ws", fal: "acct-fal" });
     const planned = expectState(await runner.plan("m", { prompt: "a fox", params: {} }, { mode: "default" }, planOptions(keys) as never), "send");
-    const answer = await runner.send(stored(planned.ticket), { ...live(), keys } as never);
+    const answer = await runner.send(stored(planned.ticket), { ...live(), keys });
     expect(keyFailureOf(answer)).toMatchObject({ kind: "account_key_failed", reason: "invalid", upstream: "wavespeed" });
     expect(fal.seen).toHaveLength(0);
   });

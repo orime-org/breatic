@@ -20,11 +20,19 @@ export interface TokenBuckets {
   reasoning: number;
 }
 
-/** What one paid call cost. */
+/** Whose keys paid a call: the deployment's (ours) or an account's (the user's). */
+export type Payer = "deployment" | "account";
+
+/**
+ * What one paid call cost. `payer` says whose keys paid it: every cost an account's keys paid carries `account`, and a
+ * cost the deployment's keys paid carries `deployment` when it sits beside an account's (a media run whose description
+ * ran on other keys than its media steps); without it the deployment paid. An account's pending lookup also carries
+ * `payer: "account"`, and is looked up only with that account's keys.
+ */
 export type Cost =
-  | { state: "known"; usd: number; tokens?: TokenBuckets; source: "reported" | "billing" | "price_table" }
-  | { state: "pending"; lookup: CostLookup }
-  | { state: "missing"; reason: string; tokens?: TokenBuckets };
+  | { state: "known"; usd: number; tokens?: TokenBuckets; source: "reported" | "billing" | "price_table"; payer?: Payer }
+  | { state: "pending"; lookup: CostLookup; payer?: Payer }
+  | { state: "missing"; reason: string; tokens?: TokenBuckets; payer?: Payer };
 
 /**
  * A cost a call could not hand over in a finish: a lookup, which names its upstream, or a missing cost with the
@@ -34,6 +42,7 @@ export type PendingCost = Extract<Cost, { state: "pending" }> | (Extract<Cost, {
 
 
 const tokenCount = z.number().int().nonnegative();
+const payer = z.enum(["deployment", "account"]).optional();
 
 /** The token buckets of a Cost, as JSON carries them. */
 const tokenBucketsSchema = z.strictObject({ input: tokenCount, cachedInput: tokenCount, output: tokenCount, reasoning: tokenCount });
@@ -43,7 +52,7 @@ const tokenBucketsSchema = z.strictObject({ input: tokenCount, cachedInput: toke
  * back with this rather than trusting its shape.
  */
 export const costSchema: z.ZodType<Cost> = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("known"), usd: z.number().finite().nonnegative(), tokens: tokenBucketsSchema.optional(), source: z.enum(["reported", "billing", "price_table"]) }),
-  z.strictObject({ state: z.literal("pending"), lookup: z.looseObject({ upstream: z.string().min(1) }) }),
-  z.strictObject({ state: z.literal("missing"), reason: z.string(), tokens: tokenBucketsSchema.optional() }),
+  z.strictObject({ state: z.literal("known"), usd: z.number().finite().nonnegative(), tokens: tokenBucketsSchema.optional(), source: z.enum(["reported", "billing", "price_table"]), payer }),
+  z.strictObject({ state: z.literal("pending"), lookup: z.looseObject({ upstream: z.string().min(1) }), payer }),
+  z.strictObject({ state: z.literal("missing"), reason: z.string(), tokens: tokenBucketsSchema.optional(), payer }),
 ]);

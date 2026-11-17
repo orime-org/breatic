@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 export {
+  AccountKeyFailure,
   BilledAnswerLost,
   DeadlinePassed,
   NoUpstreamAvailable,
@@ -10,9 +11,13 @@ export {
   UpstreamTaskFailed,
   UnderstandInterrupted,
   costsOf,
+  type AccountKeyFailureKind,
+  type AccountKeyFailureReason,
   type UnavailableReason,
 } from "@provider/errors.js";
-export { costSchema, type Cost, type CostLookup, type PendingCost, type TokenBuckets } from "@provider/cost.js";
+export { MalformedKey, type KeySet } from "@provider/keys.js";
+export type { KeyBalance, KeyCheck } from "@provider/check-key.js";
+export { costSchema, type Cost, type CostLookup, type Payer, type PendingCost, type TokenBuckets } from "@provider/cost.js";
 export { createProvider, type Provider, type ProviderOptions } from "@provider/provider.js";
 export { providerErrorOf, readContextOverflow, unrecognised400, type ContextOverflow } from "@provider/llm/context-overflow.js";
 export type { Route } from "@provider/routing/route.js";
