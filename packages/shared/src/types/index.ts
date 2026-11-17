@@ -51,6 +51,7 @@ export type {
   CreditLedgerKind,
   CreditLedgerView,
   StudioLedgerView,
+  StudioLedgerKind,
   ProjectCreditsView,
   StudioCreditsView,
   StudioCreditSummary,
@@ -60,6 +61,8 @@ export type {
 export {
   accountTotal,
   CREDIT_SOURCE_KINDS,
+  CREDIT_LEDGER_KINDS,
+  STUDIO_LEDGER_KINDS,
   isPurchased,
   GRANTED_SOURCE_KINDS,
   HELD_LIFECYCLES,

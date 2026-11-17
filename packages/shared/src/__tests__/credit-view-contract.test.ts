@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import * as shared from "@shared/index.js";
 
 type CreditSchemaName =
@@ -153,5 +153,37 @@ describe("credit view nullability, paging and other units", () => {
   it("accepts an aggregate beyond one numeric row in an account overview", () => {
     const overview = { assignedCredits: "199999999999999.999998", unassignedCredits: "0.000000", underRefundCredits: "0.000001", billing: true, studios: [] };
     expect(schema("creditOverviewSchema").parse(overview)).toEqual(overview);
+  });
+});
+
+describe("ledger kinds come from one list (inner#1968)", () => {
+  const kinds = shared as unknown as { CREDIT_LEDGER_KINDS?: readonly string[]; STUDIO_LEDGER_KINDS?: readonly string[] };
+
+  it("accepts an operation overage line on an account's ledger", () => {
+    const overage = { ...ledger, kind: "operation_overage", projectId: ID, projectName: "Demo", amount: "-0.500000" };
+    expect(schema("creditLedgerViewSchema").parse(overage)).toEqual(overage);
+  });
+
+  it("accepts an operation overage line on a studio's ledger", () => {
+    const overage = { ...studioLedger, kind: "operation_overage", charged: "-0.500000", consumed: "-0.500000", owed: "0.000000" };
+    expect(schema("studioLedgerViewSchema").parse(overage)).toEqual(overage);
+  });
+
+  it("validates exactly the account ledger kinds the exported list names", () => {
+    expect(kinds.CREDIT_LEDGER_KINDS).toEqual(["generation", "debt_repayment", "unbilled", "operation_overage"]);
+    for (const kind of kinds.CREDIT_LEDGER_KINDS ?? []) {
+      expect(schema("creditLedgerViewSchema").safeParse({ ...ledger, kind }).success, kind).toBe(true);
+    }
+    expect(schema("creditLedgerViewSchema").safeParse({ ...ledger, kind: "refund" }).success).toBe(false);
+    expectTypeOf<shared.CreditLedgerKind>().toEqualTypeOf<(typeof shared.CREDIT_LEDGER_KINDS)[number]>();
+  });
+
+  it("validates exactly the studio ledger kinds the exported list names", () => {
+    expect(kinds.STUDIO_LEDGER_KINDS).toEqual(["generation", "debt_repayment", "operation_overage"]);
+    for (const kind of kinds.STUDIO_LEDGER_KINDS ?? []) {
+      expect(schema("studioLedgerViewSchema").safeParse({ ...studioLedger, kind }).success, kind).toBe(true);
+    }
+    expect(schema("studioLedgerViewSchema").safeParse({ ...studioLedger, kind: "unbilled" }).success).toBe(false);
+    expectTypeOf<shared.StudioLedgerView["kind"]>().toEqualTypeOf<(typeof shared.STUDIO_LEDGER_KINDS)[number]>();
   });
 });
