@@ -48,7 +48,6 @@ function limits(over: Partial<MembershipLimits> = {}): MembershipLimits {
     project_members: 12,
     concurrent_editors: 6,
     storage_bytes: 200 * GIB,
-    monthly_operations: 4000,
     running_tasks_per_user: 5,
     ...over,
   };
@@ -59,13 +58,11 @@ const CATALOG: readonly TierOffer[] = [
   {
     tier: 'base',
     limits: limits({ team_studios: 0, concurrent_editors: 2, storage_bytes: 5 * GIB }),
-    monthlyOperations: 500,
     prices: { month: null, year: null },
   },
   {
     tier: 'pro',
     limits: limits(),
-    monthlyOperations: 4000,
     prices: {
       month: { priceCents: 1999, currency: 'usd' },
       year: { priceCents: 19999, currency: 'usd' },
@@ -74,7 +71,6 @@ const CATALOG: readonly TierOffer[] = [
   {
     tier: 'team',
     limits: limits({ team_studios: 3, concurrent_editors: 20, storage_bytes: 500 * GIB }),
-    monthlyOperations: 16000,
     prices: {
       month: { priceCents: 7999, currency: 'usd' },
       year: { priceCents: 79999, currency: 'usd' },

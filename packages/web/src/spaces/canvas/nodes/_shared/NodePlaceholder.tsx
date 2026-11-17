@@ -16,7 +16,6 @@ import {
   PeerActivityContext,
 } from '@web/spaces/canvas/nodes/_shared/node-peer-activity-context';
 import { useUploadMark } from '@web/spaces/canvas/nodes/_shared/use-upload-mark';
-import { openCreditsOverlay } from '@web/stores/credit-refusals';
 import type { Modality } from '@web/data/yjs/node-view';
 
 interface NodePlaceholderProps {
@@ -91,11 +90,7 @@ export function NodePlaceholder({
   // line, an operation that ended; the viewer's own skeleton wins over both.
   const peerLine = usePeerLine();
   const failed = mark?.state === 'failed' && peerLine === null ? mark.message : undefined;
-  // A refusal past the month's operations offers to add credits (inner#1968).
-  // Its line sits beside the placeholder rather than inside it: a button
-  // cannot hold another button.
-  const topUp = failed !== undefined && 'text' in failed && failed.topUp === true ? failed.text : undefined;
-  const placeholder = (
+  return (
     <Button
       type='button'
       // No variant, no size: the node shell already draws this control's
@@ -123,7 +118,7 @@ export function NodePlaceholder({
       ) : (
         <Icon className='h-5 w-5 shrink-0 opacity-70' aria-hidden='true' />
       )}
-      {waiting || topUp !== undefined ? null : failed ? (
+      {waiting ? null : failed ? (
         <span data-testid='node-upload-error' className='text-xs text-balance wrap-anywhere [word-break:auto-phrase]'>
           {'text' in failed ? failed.text : t(failed.key, failed.params)}
         </span>
@@ -140,32 +135,6 @@ export function NodePlaceholder({
           </span>
         </span>
       )}
-    </Button>
-  );
-  if (topUp === undefined) return placeholder;
-  return (
-    <div className='relative h-full w-full'>
-      {placeholder}
-      <span
-        data-testid='node-upload-error'
-        className='absolute inset-x-2 bottom-2 flex flex-col items-center gap-1.5 text-center text-xs text-balance text-status-error wrap-anywhere [word-break:auto-phrase]'
-      >
-        {topUp}
-        <TopUpButton />
-      </span>
-    </div>
-  );
-}
-
-/**
- * The top-up press a used-up refusal offers on a node: it opens the credits overlay.
- * @returns The button.
- */
-function TopUpButton(): React.JSX.Element {
-  const t = useTranslation();
-  return (
-    <Button variant='default' size='compact' className='nodrag' onClick={openCreditsOverlay}>
-      {t('credits.topUp')}
     </Button>
   );
 }

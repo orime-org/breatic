@@ -47,11 +47,6 @@ export interface MiniToolJobRequest {
    */
   extra?: { storageKey: string }[];
   outputs: MiniToolJobOutput[];
-  /**
-   * How many outputs the container may be writing back at once
-   * (`output_concurrency` in `config/mini-tools.yaml`); one when left out.
-   */
-  outputConcurrency?: number;
 }
 
 /** What a job answers. */
@@ -60,12 +55,8 @@ export type MiniToolJobReport =
   | { state: "done"; outputs: (IngestMeasurements & { storageKey: string })[]; usage: ContainerUsage }
   | { state: "failed"; reason: ContainerFailure; usage: ContainerUsage | null };
 
-/**
- * The most outputs one container job may write; every container tool's
- * result count stays within it. The grid split, cut in the container since
- * inner#1968, writes up to eight rows by eight columns of tiles.
- */
-export const MINI_TOOL_JOB_MAX_OUTPUTS = 64;
+/** The most outputs one container job may write; every container tool's result count stays within it. */
+export const MINI_TOOL_JOB_MAX_OUTPUTS = 8;
 
 /**
  * The most inputs one container job may read after its first (inner#1825):
@@ -97,7 +88,6 @@ export const miniToolJobRequestSchema = z.object({
     )
     .min(1)
     .max(MINI_TOOL_JOB_MAX_OUTPUTS),
-  outputConcurrency: z.number().int().min(1).max(MINI_TOOL_JOB_MAX_OUTPUTS).optional(),
 });
 
 

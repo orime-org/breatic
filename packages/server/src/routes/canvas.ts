@@ -38,7 +38,6 @@ import {
 } from "@server/config/limits.js";
 import {
   creditHoldService,
-  operationService,
   taskService,
   estimateTaskCredits,
   sendsUntakenPrompt,
@@ -47,15 +46,13 @@ import {
   modelCatalog,
   violatesTextLengthForModel,
 } from "@breatic/domain";
-import { nodeHistoryService, taskOperationKey } from "@breatic/domain";
+import { nodeHistoryService } from "@breatic/domain";
 import { assertLlmServable, assertServable } from "@server/modules/task/model-servable.js";
 import { catalogEntryOf } from "@breatic/shared/mini-tools";
 import { nodeTaskService, runningSlotService } from "@breatic/domain";
 import {
-  admitTaskOperation,
   holdRowedRun,
   holdRun,
-  mediaUrlsIn,
   openGenerationTasks,
   startRowedRun,
 } from "@server/modules/task/generation-task.js";
@@ -192,8 +189,6 @@ canvas.post(
   "/ingest-url",
   rateLimitFor("ingest-url", "user"),
   validate("json", ingestUrlSchema),
-  // One address of one press is one operation, keyed by the browser's id (inner#1968).
-  runOnce("ingest-url", { operationId: true }),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
@@ -204,8 +199,6 @@ canvas.post(
       spaceId: body.space_id,
       nodeId: body.node_id,
       userId: user.id,
-      // A template's own resource is not the user's operation.
-      operationKey: body.template_resource === undefined ? `url:${user.id}:${c.req.header("idempotency-key")!}` : null,
     });
     return c.json({ data: { task_id: taskId } }, 201);
   },
@@ -324,8 +317,6 @@ canvas.post(
         { params: body.params, prompt: extractPromptText(body.params.prompt ?? body.params.text) },
         body.route,
       ),
-    // The run's references, among them any focus crop it uses up (inner#1968).
-    inputs: () => mediaUrlsIn(body.params),
   });
 
   let task: Awaited<ReturnType<typeof taskService.create>>;
@@ -407,9 +398,6 @@ canvas.post(
   } catch (err) {
     await creditHoldService.releaseHold(taskId).catch((releaseErr: unknown) =>
       logger.error({ err: releaseErr, taskId, projectId }, "credit_hold_release_failed"),
-    );
-    await operationService.releaseOperation(taskOperationKey(taskId), undefined, "not_started").catch((releaseErr: unknown) =>
-      logger.error({ err: releaseErr, taskId, projectId }, "operation_release_failed"),
     );
     throw err;
   }
@@ -530,11 +518,7 @@ async function startReading(
     ...reading,
   };
 
-  // One reading is one operation, admitted under the id its task takes
-  // before any row opens (inner#1968); a way out before the rows open gives
-  // it back, and from there `startRowedRun` settles it.
   const taskId = randomUUID();
-  await admitTaskOperation("tool_run", taskId, body.project_id, userId, []);
   // Understand tasks transcribe / analyze a media URL into a result node;
   // they always produce a new node ('append'), no overwrite semantics.
   // Its estimate is held before its task row is written, so a refusal by
@@ -837,8 +821,8 @@ canvas.delete(
  * task's, or that of one of its rows in a node or 3D task list.
  *
  * Who may cancel is who may clear the task's row: a project editor, the
- * project read from the task row. The task, its credit hold and its ledger
- * row end in one commit under its person's running-slot lock; its rows on the
+ * project read from the task row. The task and its credit hold end in one
+ * commit under its person's running-slot lock; its rows on the
  * canvas end failed with the reason `cancelled`, and their counts go out.
  * @param c - Hono context; the task id in the path.
  * @returns `{ data: { cancelled: true, counts } }`; `counts` is the node's, null for a 3D Space's own row.

@@ -12,7 +12,6 @@
  * never counts toward storage.
  */
 
-import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, beforeEach, afterAll, inject, vi } from "vitest";
 
 vi.mock("ai", () => ({
@@ -129,7 +128,7 @@ async function transferTicket(cookie: string | undefined, payload: unknown): Pro
 async function uploadTicket(cookie: string, payload: Record<string, unknown>): Promise<Response> {
   return app.request("/api/v1/assets/upload-ticket", {
     method: "POST",
-    headers: { "Idempotency-Key": randomUUID(), "content-type": "application/json", cookie },
+    headers: { "content-type": "application/json", cookie },
     body: JSON.stringify({
       filename: "photo.png",
       content_type: "image/png",

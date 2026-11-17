@@ -21,7 +21,6 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
-import { operationsSentence } from '@web/stores/credit-refusals';
 import { cn } from '@web/lib/utils';
 import { MediaCaption } from '@web/spaces/document/DocumentMediaBlock';
 import type { PendingStatus } from '@web/spaces/document/document-pending-status';
@@ -65,8 +64,6 @@ const FAILURE_MESSAGE: Readonly<Record<PendingFailureReason, string>> = {
   empty: 'spaces.document.media.failure.empty',
   unreachable: 'spaces.document.media.failure.unreachable',
   spaceFull: 'spaces.sizeCap.reason',
-  operations: 'credits.refusal.operations',
-  spendCap: 'credits.refusal.spendCap',
 };
 
 /**
@@ -96,9 +93,7 @@ export const DocumentPendingMedia = React.memo(function DocumentPendingMedia({
   const failed = status.kind === 'failed' || status.kind === 'peerFailed';
   const said =
     status.kind === 'failed'
-      ? status.failure.reason === 'operations'
-        ? operationsSentence(status.failure.credits)
-        : t(FAILURE_MESSAGE[status.failure.reason])
+      ? t(FAILURE_MESSAGE[status.failure.reason])
       : status.kind === 'peerFailed'
         ? t(FAILURE_MESSAGE.failed)
         : percent === null

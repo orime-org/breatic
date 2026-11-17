@@ -60,7 +60,7 @@ export type ReserveOutcome =
  * @param at - The instant.
  * @returns Its first instant and the next month's.
  */
-export function utcMonthOf(at: Date): { start: Date; next: Date } {
+function utcMonthOf(at: Date): { start: Date; next: Date } {
   return {
     start: new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1)),
     next: new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth() + 1, 1)),
@@ -106,7 +106,7 @@ export async function monthSpent(studioId: string, tx?: DbTx): Promise<MonthSpen
  * @param tx - The admission's transaction.
  * @returns The limit passed, or null when the work fits.
  */
-export async function spendCapHit(studioId: string, actorUserId: string, estimate: bigint | null, tx: DbTx): Promise<SpendCapHit | null> {
+async function spendCapHit(studioId: string, actorUserId: string, estimate: bigint | null, tx: DbTx): Promise<SpendCapHit | null> {
   const limits = await spendLimitRepo.getStudioLimits(studioId, tx);
   const override = await spendLimitRepo.findOverride(studioId, actorUserId, tx);
   const memberLimit = override === null ? limits.memberDefault : override.monthlyCredits;
@@ -159,7 +159,7 @@ export async function spendCapFor(projectId: string, actorUserId: string, estima
  * @param tx - The transaction that takes and keeps the lock.
  * @returns Its balance, counted holds and what is left.
  */
-export async function lockedPosition(studioId: string, tx: DbTx): Promise<CreditPositionMicro> {
+async function lockedPosition(studioId: string, tx: DbTx): Promise<CreditPositionMicro> {
   const debt = await creditLotRepo.lockDebt(studioId, tx);
   const lots = await creditLotRepo.sumSpendableForStudio(studioId, tx);
   const held = await creditHoldRepo.sumHeldForStudio(studioId, tx);

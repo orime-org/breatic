@@ -117,8 +117,6 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       hash: HASH,
       nodeId: 'n1',
       spaceId: 's1',
-      // The file's operation id (inner#1968 design 3.2).
-      operationId: expect.any(String),
     }, undefined);
     expect(deps.sendToIngest).toHaveBeenCalledWith(file, TICKET, CFG, undefined, undefined);
     expect(deps.onFailure).not.toHaveBeenCalled();
@@ -282,8 +280,6 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       size: file.size,
       hash: HASH,
       purpose: 'studio_avatar',
-      // The file's operation id (inner#1968 design 3.2).
-      operationId: expect.any(String),
     }, undefined);
   });
 
@@ -315,13 +311,9 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
 
   // No ticket means no grant, so nothing on the server knows this upload was
   // ever attempted and nobody will announce how it ended.
-  // A 5xx marked done is final for its key (inner#1968 design 3.2): fresh
-  // keys stop at clientMaxAttempts and the upload fails.
   it('sends nothing when the ticket request finally fails', async () => {
     const deps = makeUploadDeps({
-      requestTicket: vi.fn().mockRejectedValue(
-        new ApiException({ status: 503, message: 'HTTP 503', idempotencyStatus: 'done' }),
-      ),
+      requestTicket: vi.fn().mockRejectedValue(apiError(503)),
     });
 
     await runMediaUpload(file, context, deps);
@@ -450,8 +442,6 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       size: file.size,
       hash: HASH,
       derived: true,
-      // The file's operation id (inner#1968 design 3.2).
-      operationId: expect.any(String),
     }, undefined);
   });
 });
@@ -584,62 +574,5 @@ describe('runMediaUpload — the server could not open the upload (inner#1595)',
     expect(completes).toHaveLength(1);
     expect(deps.onSuccess).not.toHaveBeenCalled();
     expect(deps.onFailure).not.toHaveBeenCalled();
-  });
-});
-
-// inner#1968 D-23: the ticket refused because the month's operations are used
-// up and the studio cannot pay for one more.
-describe('a ticket refused for operations used up', () => {
-  it('names the failure operations, apart from an ordinary failure', async () => {
-    const file = new File(['x'], 'photo.png', { type: 'image/png' });
-    const context = { projectId: 'p1', nodeId: 'n1', spaceId: 's1' };
-    const deps = makeUploadDeps({
-      requestTicket: vi.fn().mockRejectedValue(
-        new ApiException({ status: 402, message: 'used up', reason: 'operations_exhausted' }),
-      ),
-    });
-
-    await runMediaUpload(file, context, deps);
-
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'operations' });
-  });
-});
-
-// inner#1968 H-33: the ticket refused because the person or the studio has
-// reached its monthly spend cap. Topping up does not lift a cap.
-describe('a ticket refused for a spend cap', () => {
-  it('names the failure spendCap', async () => {
-    const file = new File(['x'], 'photo.png', { type: 'image/png' });
-    const context = { projectId: 'p1', nodeId: 'n1', spaceId: 's1' };
-    const deps = makeUploadDeps({
-      requestTicket: vi.fn().mockRejectedValue(
-        new ApiException({
-          status: 402,
-          message: 'capped',
-          reason: 'spend_cap_reached',
-          details: { reason: 'spend_cap_reached', scope: 'member', limit: '10', resetsAt: '2026-12-01T00:00:00.000Z' },
-        }),
-      ),
-    });
-
-    await runMediaUpload(file, context, deps);
-
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'spendCap' });
-  });
-});
-
-// inner#1968 design 21 row 23: the ticket's refusal names the price of one
-// more operation, which the failure carries to wherever the sentence is said.
-describe('a ticket refused for operations used up, with the price named', () => {
-  it('carries the price on the failure', async () => {
-    const deps = makeUploadDeps({
-      requestTicket: vi.fn().mockRejectedValue(
-        new ApiException({ status: 402, message: 'used up', reason: 'operations_exhausted', details: { reason: 'operations_exhausted', credits: '0.5' } }),
-      ),
-    });
-
-    await runMediaUpload(new File(['x'], 'photo.png', { type: 'image/png' }), { projectId: 'p1', nodeId: 'n1', spaceId: 's1' }, deps);
-
-    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'operations', credits: '0.5' });
   });
 });

@@ -11,7 +11,6 @@
  * run the flag catches before it runs still leaves that ending, so the user
  * sees the turn failed and can carry on; a sync opens no run meanwhile.
  */
-import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
 
 const script = vi.hoisted(() => ({
@@ -127,7 +126,7 @@ async function stoppedAtCard(toolCallId: string): Promise<Seeded> {
 async function answer(who: Seeded, toolCallId: string, headers: Record<string, string> = {}): Promise<Response> {
   return app.request("/api/v1/chat/message", {
     method: "POST",
-    headers: { "Idempotency-Key": randomUUID(), Cookie: who.cookie, "Content-Type": "application/json", ...headers },
+    headers: { Cookie: who.cookie, "Content-Type": "application/json", ...headers },
     body: JSON.stringify({
       message: "",
       project_id: who.projectId,

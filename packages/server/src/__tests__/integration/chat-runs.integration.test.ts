@@ -12,7 +12,6 @@
  * calls a case scripts, and a run that crashed is made the way a crash looks
  * from outside: its keys left behind, its `active` gone.
  */
-import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
 
 const faults = vi.hoisted(() => ({ historyFails: false, leaseFails: false }));
@@ -157,7 +156,7 @@ describe("POST /chat/message", () => {
     const who = await seedOwner(sql, app);
     const res = await app.request("/api/v1/chat/message", {
       method: "POST",
-      headers: { "Idempotency-Key": randomUUID(), Cookie: who.cookie, "Content-Type": "application/json" },
+      headers: { Cookie: who.cookie, "Content-Type": "application/json" },
       body: JSON.stringify({ message: "hi", project_id: who.projectId, conversation_id: who.conversationId }),
     });
     expect(res.status).toBe(422);

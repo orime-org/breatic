@@ -300,7 +300,7 @@ import { initCore, db as serviceDb, schema, createTestDb, createRedisClient, tas
 import { assetService, creditLotService, taskService } from "@breatic/domain";
 import { startTaskListener } from "@collab/services/task-listener.js";
 import type { GroupConsumer } from "@collab/services/stream-group-consumer.js";
-import { openGenerationTasks, startRowedRun } from "@server/modules/task/generation-task.js";
+import { holdRowedRun, openGenerationTasks, startRowedRun } from "@server/modules/task/generation-task.js";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import { eq } from "drizzle-orm";
@@ -1115,65 +1115,6 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     }
   });
 
-  it("Test 3b (inner#1968): a grid cut on the server lands each tile on its own node, in cell order", async () => {
-    // Rows 2, cols 2, the last cell skipped: three tiles, one per result node.
-    const nodeIds = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
-    const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
-    providerCtrl.mode = "multi";
-    providerCtrl.outputs = [
-      { url: "https://oss/grid-0.png", cover_url: "" },
-      { url: "https://oss/grid-1.png", cover_url: "" },
-      { url: "https://oss/grid-2.png", cover_url: "" },
-    ];
-    for (const nodeId of nodeIds) await seedNode(hocuspocus, docName, nodeId, { name: `Grid ${nodeId}`, attachments: [] });
-    const params = { rows: 2, cols: 2, skip: [3] };
-    const [taskRow] = await db.insert(schema.tasks).values({
-      userId: FIXTURE_USER_ID,
-      projectId: FIXTURE_PROJECT_ID,
-      spaceId: FIXTURE_SPACE_ID,
-      taskType: "image",
-      mode: "append",
-      source: "mini_tool",
-      params,
-    }).returning();
-    const taskId = taskRow!.id;
-    await openTaskRows(taskId, nodeIds, FIXTURE_USER_ID);
-
-    await tasksQueue.add("run-task", {
-      taskId,
-      taskType: "image",
-      userId: FIXTURE_USER_ID,
-      projectId: FIXTURE_PROJECT_ID,
-      spaceId: FIXTURE_SPACE_ID,
-      source: "mini_tool",
-      toolId: "image.grid",
-      sourceKey: "image/source.png",
-      params,
-      targetNodeIds: nodeIds,
-      mode: "append" as const,
-    }, { attempts: 1 });
-
-    await waitForCondition(
-      async () => (await taskService.getByIdInternal(taskId))?.status === "completed",
-      30_000,
-      `task ${taskId} completed (grid)`,
-    );
-    await waitForCondition(
-      async () => {
-        const checks = await Promise.all(nodeIds.map(async (id) => {
-          const d = await readNodeData(hocuspocus, docName, id);
-          return d != null && settled(d) && typeof d["content"] === "string";
-        }));
-        return checks.every(Boolean);
-      },
-      5_000,
-      "all 3 grid nodes state=idle with content",
-    );
-    for (let i = 0; i < nodeIds.length; i++) {
-      expect((await readNodeData(hocuspocus, docName, nodeIds[i]!))!["content"]).toBe(providerCtrl.outputs[i]!.url);
-    }
-  });
-
   // ── Asset-layer hardening (adversarial holes #4 / #1 / #2) ──────────────
   afterEach(() => {
     storageCtrl.failDownload = false;
@@ -1612,6 +1553,13 @@ describe("transcription results and usage cross the real settlement and collabor
           targetNodeIds: [nodeId],
           params,
         };
+        await holdRowedRun({
+          taskId,
+          projectId: FIXTURE_PROJECT_ID,
+          userId: FIXTURE_USER_ID,
+          credits: async () => 2,
+          create: async () => undefined,
+        });
         const admitted = await startRowedRun({
           taskId,
           projectId: FIXTURE_PROJECT_ID,
@@ -1620,7 +1568,6 @@ describe("transcription results and usage cross the real settlement and collabor
           userId: FIXTURE_USER_ID,
           action: "transcribe",
           label: MODEL,
-          credits: async () => 2,
           enqueue: async () => tasksQueue.add("run-task", jobData, { attempts: 1 }),
           logTag: "transcribe_integration",
         });

@@ -124,14 +124,6 @@ describe('a failure', () => {
     draw({ kind: 'failed', failure: { reason, retryable: false } }, 'Hero');
     expect(screen.getByTestId('doc-pending-failure').textContent).toBe(said);
   });
-  // inner#1968 design 21 row 23: the block says the toast's sentence, with
-  // the price of one more operation when the server named it.
-  it('says used-up operations with the price the server named', () => {
-    draw({ kind: 'failed', failure: { reason: 'operations', retryable: true, credits: '0.5' } }, 'Hero');
-    expect(screen.getByTestId('doc-pending-failure').textContent).toBe(
-      'This month\'s operations are used up, and there are fewer than 0.5 credits for the next one. Add credits to continue.',
-    );
-  });
 });
 
 describe('its buttons', () => {

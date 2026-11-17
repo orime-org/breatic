@@ -19,7 +19,6 @@ import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { formatBytes } from '@web/lib/format-bytes';
-import { OperationsRow } from '@web/features/membership/OperationsRow';
 import { QuotaRow } from '@web/features/membership/QuotaRow';
 import { SALES_EMAIL } from '@web/features/membership/pricing';
 import { SubscriptionLines } from '@web/features/membership/SubscriptionLines';
@@ -96,7 +95,7 @@ export function MembershipContent({
   membership,
 }: MembershipContentProps): React.JSX.Element {
   const t = useTranslation();
-  const { tier, limits, usage, catalog, subscription, operations, storageLimitBytes } = membership;
+  const { tier, limits, usage, catalog, subscription, storageLimitBytes } = membership;
   const onPriceList = isComparableMembershipTier(tier);
   const { choose, cancel, resume, busy, pending } =
     useSubscriptionActions(subscription);
@@ -216,7 +215,6 @@ export function MembershipContent({
                     overLabel={t('membership.overLimitTag')}
                   />
                 )}
-                {operations === null ? null : <OperationsRow operations={operations} />}
                 <p
                   className='text-sm text-foreground-secondary'
                   data-testid='enterprise-quota-note'
@@ -268,8 +266,6 @@ export function MembershipContent({
                     {t('membership.overLimit.storage')}
                   </p>
                 ) : null}
-                {/* Self-hosted counts no operations, so it has no row (3.3). */}
-                {operations === null ? null : <OperationsRow operations={operations} />}
                 {tier === 'self_hosted' ? (
                 // The four per-studio ceilings, listed here only for this tier:
                 // it is not on the price list, so the comparison table below —

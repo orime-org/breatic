@@ -11,7 +11,6 @@
  * `GET /assets/upload-status` under the storage key this answers.
  */
 
-import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 /** The routes reach the agent stack on import; this keeps it inert. */
@@ -116,7 +115,7 @@ async function seedEditor(): Promise<{
 async function submit(cookie: string, body: Record<string, unknown>): Promise<Response> {
   return app.request("/api/v1/assets/ingest-url", {
     method: "POST",
-    headers: { "Idempotency-Key": randomUUID(), "content-type": "application/json", cookie },
+    headers: { "content-type": "application/json", cookie },
     body: JSON.stringify({ url: SOURCE, space_id: crypto.randomUUID(), ...body }),
   });
 }
@@ -247,7 +246,7 @@ describe("POST /assets/ingest-url — what it refuses", () => {
     for (let n = 0; n < max; n += 1) {
       const res = await app.request("/api/v1/canvas/ingest-url", {
         method: "POST",
-        headers: { "Idempotency-Key": randomUUID(), "content-type": "application/json", cookie },
+        headers: { "content-type": "application/json", cookie },
         body: JSON.stringify({
           url: SOURCE,
           project_id: projectId,

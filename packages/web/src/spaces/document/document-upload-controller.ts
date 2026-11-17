@@ -55,18 +55,12 @@ export type PendingFailureReason =
   | 'empty'
   | 'unreachable'
   /** The Space could not take an add when the upload was asked for (inner#1790). */
-  | 'spaceFull'
-  /** The month's operations are used up and the Studio cannot pay for one more (inner#1968). */
-  | 'operations'
-  /** A monthly spend limit was reached (inner#1968). */
-  | 'spendCap';
+  | 'spaceFull';
 
 /** Why an upload did not finish, and whether running it again can help. */
 export interface UploadFailure {
   readonly reason: PendingFailureReason;
   readonly retryable: boolean;
-  /** With `operations`: what one more operation costs, as the server said it (inner#1968). */
-  readonly credits?: string;
 }
 
 /** How an upload ended. */

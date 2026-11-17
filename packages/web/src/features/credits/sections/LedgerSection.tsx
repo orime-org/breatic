@@ -216,11 +216,7 @@ const LedgerRow = React.memo(function LedgerRow({ row }: LedgerRowProps): React.
           <td className='py-2.25 text-muted-foreground'>
             {row.projectName ?? '—'}
           </td>
-          {/* An operation past the monthly allowance (inner#1968) has no
-              model; the column names what it was instead. */}
-          <td className='py-2.25 text-muted-foreground'>
-            {row.kind === 'operation_overage' ? t('credits.eventOperationOverage') : (row.model ?? '—')}
-          </td>
+          <td className='py-2.25 text-muted-foreground'>{row.model ?? '—'}</td>
         </>
       )}
       {/* On most lines the figure is what left this account's purchases. On

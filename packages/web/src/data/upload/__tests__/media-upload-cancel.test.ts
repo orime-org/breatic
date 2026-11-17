@@ -134,7 +134,7 @@ describe('runMediaUpload cancellation ownership', () => {
 
     expect(deps.hashFile).toHaveBeenCalledWith(FILE, controller.signal);
     expect(deps.requestTicket).toHaveBeenCalledWith({
-      ...CONTEXT, filename: FILE.name, contentType: FILE.type, size: FILE.size, hash: HASH, operationId: expect.any(String),
+      ...CONTEXT, filename: FILE.name, contentType: FILE.type, size: FILE.size, hash: HASH,
     }, controller.signal);
     expect(deps.sendToIngest).toHaveBeenCalledWith(FILE, TICKET, CONFIG, expect.any(Function), controller.signal);
     expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, controller.signal);

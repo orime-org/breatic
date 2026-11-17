@@ -13,7 +13,7 @@
  */
 
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -36,8 +36,6 @@ export interface RunBody {
   /** The inputs after the source, in order: a join's further clips (inner#1825 §6.4). */
   extra?: string[];
   outputs: { url: string; key: string; coverUrl?: string }[];
-  /** How many outputs may be on their way to the Worker at once; one when left out. */
-  outputConcurrency?: number;
   reportUrl: string;
 }
 
@@ -131,30 +129,25 @@ export async function runJob(job: RunBody): Promise<void> {
       const path = join(dir, `source-${i + 1}`);
       extra.push({ path, probe: await fetched(url, path, false) });
     }
-    // Outputs are made one after another and sent while the next is made, at
-    // most `outputConcurrency` in flight: a grid's tiles wait mostly on the
-    // Worker's answer to each write, not on the cut.
-    const limit = Math.max(1, job.outputConcurrency ?? 1);
-    const measured: unknown[] = [];
-    const sending = new Set<Promise<void>>();
-    let sendFailed: { err: unknown } | null = null;
-    /**
-     * Send one made output and its cover, then free its files.
-     * @param index - Its place in the job's outputs.
-     * @param file - The output file.
-     * @param report - Its probe.
-     * @returns Nothing.
-     * @throws {Error} When the Worker does not take the output.
-     */
-    const send = async (index: number, file: string, report: ProbeReport): Promise<void> => {
-      const output = job.outputs[index]!;
+    for (const output of job.outputs) {
+      const file = join(dir, outputFileName(job.op));
+      // An operation runs as long as its job's deadline allows; the Durable
+      // Object destroys the container when that passes.
+      await runSteps(opSteps(job.op, job.params, input, file, dir, source, extra));
+      const probed = await runCommand("ffprobe", probeArgs(file, "own-file")).then((out) => out.stdout, () => null);
+      const report = probed === null ? NOTHING_FOUND : readProbeOutput(probed.toString("utf8"));
+      const empty = outputRefusal(report, mediumOf(job.op));
+      if (empty !== null) {
+        reason = empty;
+        throw new Error(`output refused: ${empty}`);
+      }
       await put(output.url, file).catch(ours);
       const numbers = pickMediaMetadata(report);
       let cover: { width: number | null; height: number | null } | null = null;
       if (output.coverUrl !== undefined && numbers.width !== null) {
         const frame = await runCommand("ffmpeg", coverArgs(file, "own-file"), COVER_MAX_BYTES).then((out) => out.stdout, () => null);
         if (frame !== null && frame.length > 0) {
-          const coverFile = join(dir, `out-${String(index)}`, "cover.png");
+          const coverFile = join(dir, "cover.png");
           await writeFile(coverFile, frame);
           // A cover that does not land leaves the output standing (storage rule ③).
           const landed = await put(output.coverUrl, coverFile).then(() => true, () => false);
@@ -162,40 +155,8 @@ export async function runJob(job: RunBody): Promise<void> {
           if (landed) cover = { width: size?.width ?? null, height: size?.height ?? null };
         }
       }
-      measured[index] = { ...numbers, cover };
-      await rm(join(dir, `out-${String(index)}`), { recursive: true, force: true });
-    };
-    try {
-      for (const index of job.outputs.keys()) {
-        while (sending.size >= limit) await Promise.race(sending);
-        if (sendFailed !== null) break;
-        await mkdir(join(dir, `out-${String(index)}`));
-        const file = join(dir, `out-${String(index)}`, outputFileName(job.op));
-        // An operation runs as long as its job's deadline allows; the Durable
-        // Object destroys the container when that passes.
-        await runSteps(opSteps(job.op, job.params, input, file, dir, source, extra, index));
-        const probed = await runCommand("ffprobe", probeArgs(file, "own-file")).then((out) => out.stdout, () => null);
-        const report = probed === null ? NOTHING_FOUND : readProbeOutput(probed.toString("utf8"));
-        const empty = outputRefusal(report, mediumOf(job.op));
-        if (empty !== null) {
-          reason = empty;
-          throw new Error(`output refused: ${empty}`);
-        }
-        const sent: Promise<void> = send(index, file, report)
-          .catch((err: unknown) => {
-            sendFailed ??= { err };
-          })
-          .finally(() => {
-            sending.delete(sent);
-          });
-        sending.add(sent);
-      }
-    } finally {
-      // Nothing is removed or reported while a write is still on its way.
-      await Promise.all(sending);
+      media[output.key] = { ...numbers, cover };
     }
-    if (sendFailed !== null) throw (sendFailed as { err: unknown }).err;
-    for (const [index, output] of job.outputs.entries()) media[output.key] = measured[index];
     ok = true;
   } catch (err) {
     console.error("mini_tool_run_failed", { op: job.op, err: err instanceof Error ? err.message : String(err) });

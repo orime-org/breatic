@@ -25,7 +25,7 @@ import { runOnce } from "@server/middleware/run-once.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { projectService } from "@server/modules";
 import { prepareRun } from "@server/modules/mini-tool/mini-tool.service.js";
-import { admitTaskOperation, holdRowedRun, startRowedRun } from "@server/modules/task/generation-task.js";
+import { holdRowedRun, startRowedRun } from "@server/modules/task/generation-task.js";
 
 const miniTools = new Hono<{ Variables: AuthVariables }>();
 
@@ -55,13 +55,9 @@ miniTools.post(
   const run = await prepareRun(spec, body);
 
   const taskType = outputTemplateOf(spec).modality;
-  // One run is one operation under the id its task takes, admitted before
-  // any row opens; the drawing and expand inputs are the derived images it
-  // may use up (inner#1968).
+  // Its estimate is held under the id its task takes before any row opens,
+  // so a refusal leaves nothing on the nodes (inner#1968).
   const taskId = randomUUID();
-  const drawn = body.drawing === undefined ? [] : "mask" in body.drawing ? [body.drawing.mask] : [body.drawing.image];
-  const expanded = body.expand === undefined ? [] : [body.expand.image, body.expand.mask];
-  await admitTaskOperation("tool_run", taskId, body.project_id, user.id, [...drawn, ...expanded]);
   const task = await holdRowedRun({
     taskId,
     projectId: body.project_id,

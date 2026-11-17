@@ -35,16 +35,3 @@ describe('executeErrorMessage', () => {
     );
   });
 });
-
-// inner#1968 D-22: the run is refused because the month's operations are used
-// up and the studio cannot pay for one more. The function reads the whole
-// refusal, so the reason picks the sentence before the status does.
-describe('executeErrorMessage for operations used up', () => {
-  it('says something other than the plain credits sentence', async () => {
-    const usedUp = new ApiException({ status: 402, message: 'used up', reason: 'operations_exhausted', fromServer: true });
-    const credits = new ApiException({ status: 402, message: 'credits', fromServer: true });
-    const said = await executeErrorMessage(usedUp, echo);
-    expect(said).not.toBe(await executeErrorMessage(credits, echo));
-    expect(said).not.toBe('canvas.generatePanel.errorCredits');
-  });
-});

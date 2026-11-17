@@ -24,7 +24,7 @@ import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getUnderstandConfig, getAgentConfig } from "@breatic/core";
 import { costsOf, type Cost } from "@breatic/provider";
 import { failureOutcome, runningSlotService, taskRepo, taskService, upstreamStepRepo } from "@breatic/domain";
-import { creditHoldService, creditLotService, operationService, taskOperationKey, toChargeCredits } from "@breatic/domain";
+import { creditHoldService, creditLotService, toChargeCredits } from "@breatic/domain";
 import { modelCatalog, nodeHistoryService, sceneTaskService } from "@breatic/domain";
 import {
   assetRepo,
@@ -586,7 +586,7 @@ async function runTaskBody(
    */
   const recorderFor = (feature: "canvas_understand" | "canvas_transcribe"): UsageRecorder =>
     createUsageRecorder({
-      operationKey: taskOperationKey(taskId),
+      operationKey: `task:${taskId}`,
       feature,
       actorUserId: userId,
       projectId: projectId ?? null,
@@ -818,7 +818,7 @@ async function runTaskBody(
     const wait = openWait(run.credits, servedBy, now);
     const pendingCosts: WaitingCost[] = run.pending.map((cost) => ({ lookup: cost.lookup, ...(run.recordAs !== undefined && { recordAs: run.recordAs }) }));
     const waitingResult = { ...result, costWait: wait, pendingCosts };
-    const wasFirst = await taskService.markCompletedAndCount(taskId, waitingResult, durationMs);
+    const wasFirst = await taskService.markCompleted(taskId, waitingResult, durationMs);
     await creditHoldService.extendHold(taskId, holdUntil(wait, now));
     if (wasFirst) await reportFirstGeneration({ taskId, taskType, userId, projectId });
     await deliver(runEnd, taskType, { ...delivery, billingPending: true });
@@ -1113,7 +1113,7 @@ async function recordLookedUpCalls(runEnd: RunContext, pending: readonly Waiting
   const first = calls[0];
   if (first === undefined) return;
   const recorder = createUsageRecorder({
-    operationKey: taskOperationKey(runEnd.taskId),
+    operationKey: `task:${runEnd.taskId}`,
     feature: first.recordAs.feature,
     actorUserId: runEnd.userId,
     projectId: runEnd.projectId ?? null,
@@ -1557,19 +1557,6 @@ export async function releaseRunHold(taskId: string, userId: string): Promise<vo
 }
 
 /**
- * Give back the operation a run that failed for good was admitted as
- * (inner#1968). A run already counted is left counted. A release that fails
- * leaves the row to expire out of what is in flight; it never counts.
- * @param taskId - The run.
- * @param userId - Who started it, for the log.
- */
-export async function releaseRunOperation(taskId: string, userId: string): Promise<void> {
-  await operationService.releaseOperation(taskOperationKey(taskId), undefined, "run_failed").catch((err: unknown) =>
-    logger.error({ err, taskId, userId }, "operation_release_failed"),
-  );
-}
-
-/**
  * Settle a completed run's charge, or release what was held for it
  * (inner#1611, inner#1617).
  *
@@ -1650,7 +1637,6 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
   // The run is over, so what was held for it is free again (inner#1611). A
   // release that fails leaves the hold to expire; the outcome is still written.
   if (end.settles) await releaseRunHold(end.taskId, end.userId);
-  if (end.settles) await releaseRunOperation(end.taskId, end.userId);
   await recordFailureHistory(
     end.taskId,
     end.projectId,

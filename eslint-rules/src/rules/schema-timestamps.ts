@@ -49,10 +49,6 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "internal charge outbox (0121, inner#1617): appended in the delivery transaction and settled by the credit engine, kept as the record that the charge was asked for; soft-deleting a pending row would drop a charge without saying so",
   ],
   [
-    "operationLedger",
-    "append-only usage ledger (0126, inner#1968): a row is one operation's spent allowance or charged overage; soft-deleting it would shrink this period's usage and leave a charged 0.5 credit without its operation. Deleting a project does not refund used operations, the same as creditLedger and creditChargeRequests",
-  ],
-  [
     "projectLifecycleOutbox",
     "internal transactional-outbox command queue, not a business entity: appended in a business tx, marked sent_at by the relay, retained as an audit trail",
   ],

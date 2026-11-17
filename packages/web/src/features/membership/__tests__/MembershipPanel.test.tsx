@@ -26,7 +26,7 @@
  * 而不是各判各的）。
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -35,8 +35,6 @@ import type {
   MembershipLimits,
   SubscriptionSummary,
 } from '@breatic/shared';
-import { setLocale } from '@breatic/shared';
-import type { ReactElement } from 'react';
 
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -64,7 +62,6 @@ function limits(over: Partial<MembershipLimits> = {}): MembershipLimits {
     studio_members: 10,
     project_members: 12,
     storage_bytes: 200 * GIB,
-    monthly_operations: 4000,
     running_tasks_per_user: 5,
     ...over,
   };
@@ -111,13 +108,11 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
           studio_members: 1,
           project_members: 4,
           storage_bytes: 5 * GIB,
-          monthly_operations: 500,
           running_tasks_per_user: 2,
         },
-        monthlyOperations: 500,
         prices: { month: null, year: null },
       },
-      { tier: 'pro', limits: limits(), monthlyOperations: 4000, prices: { month: { priceCents: 1999, currency: 'usd' }, year: { priceCents: 19999, currency: 'usd' } } },
+      { tier: 'pro', limits: limits(), prices: { month: { priceCents: 1999, currency: 'usd' }, year: { priceCents: 19999, currency: 'usd' } } },
       {
         tier: 'team',
         limits: {
@@ -127,16 +122,13 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
           studio_members: 100,
           project_members: 40,
           storage_bytes: 500 * GIB,
-          monthly_operations: 16000,
           running_tasks_per_user: 10,
         },
-        monthlyOperations: 16000,
         prices: { month: { priceCents: 7999, currency: 'usd' }, year: { priceCents: 79999, currency: 'usd' } },
       },
     ],
     subscription: null,
     storageLimitBytes: 200 * GIB,
-    operations: null,
     ...over,
   };
 }
@@ -273,9 +265,9 @@ describe('MembershipPanel', () => {
       answer({
         subscription: subscription({ period: 'month' }),
         catalog: [
-          { tier: 'base', limits: limits(), monthlyOperations: 4000, prices: { month: null, year: null } },
-          { tier: 'pro', limits: limits(), monthlyOperations: 4000, prices: { month: { priceCents: 1250, currency: 'eur' }, year: { priceCents: 12500, currency: 'eur' } } },
-          { tier: 'team', limits: limits(), monthlyOperations: 4000, prices: { month: { priceCents: 3900, currency: 'eur' }, year: { priceCents: 39000, currency: 'eur' } } },
+          { tier: 'base', limits: limits(), prices: { month: null, year: null } },
+          { tier: 'pro', limits: limits(), prices: { month: { priceCents: 1250, currency: 'eur' }, year: { priceCents: 12500, currency: 'eur' } } },
+          { tier: 'team', limits: limits(), prices: { month: { priceCents: 3900, currency: 'eur' }, year: { priceCents: 39000, currency: 'eur' } } },
         ],
       }),
     );
@@ -904,14 +896,14 @@ describe('MembershipPanel', () => {
     }
   });
 
-  it('gives the table eight rows for eight figures, and no price row', async () => {
-    // The six ceilings plus monthly operations and running tasks (inner#1968 I-11).
+  it('gives the table seven rows for seven figures, and no price row', async () => {
+    // The six ceilings plus running tasks (inner#1968 I-11).
     membershipMock.mockResolvedValue(answer());
     setup();
 
     await screen.findByTestId('current-tier-name');
     const cells = document.querySelectorAll('[data-testid^="compare-cell-pro-"]');
-    expect(cells).toHaveLength(8);
+    expect(cells).toHaveLength(7);
     expect(
       document.querySelector('[data-testid$="-monthlyFee"]'),
     ).toBeNull();
@@ -992,7 +984,6 @@ describe('MembershipPanel', () => {
           studio_members: 33,
           project_members: 44,
           storage_bytes: 100 * 1024 ** 4,
-          monthly_operations: 9999,
           running_tasks_per_user: 9999,
         },
       }),
@@ -1220,10 +1211,9 @@ describe('MembershipPanel while its answer is on the way (#307 A11/A12)', () => 
     for (const [tier, name] of [['base', 'Starter'], ['pro', 'PRO'], ['team', 'Team']]) {
       expect(screen.getByTestId(`compare-column-${tier}`)).toHaveTextContent(name);
     }
-    // Every figure is a bar until the answer brings it: eight rows, the six
-    // ceilings plus monthly operations and running tasks (inner#1968 I-11,
-    // I-12), three tiers each.
-    expect(screen.getAllByTestId('compare-cell-skeleton')).toHaveLength(24);
+    // Every figure is a bar until the answer brings it: seven rows, the six
+    // ceilings plus running tasks (inner#1968 I-11), three tiers each.
+    expect(screen.getAllByTestId('compare-cell-skeleton')).toHaveLength(21);
     expect(screen.getByTestId('membership-contact-priced')).toBeInTheDocument();
   });
 
@@ -1243,7 +1233,7 @@ describe('MembershipPanel for an enterprise account (inner#1968 F-20)', () => {
   const TIB = 1024 ** 4;
 
   /**
-   * An enterprise answer with storage used, its cap and the period's operations.
+   * An enterprise answer with storage used and its cap.
    * @param storageLimitBytes - The agreement's storage cap, or null without an agreement.
    * @param storageBytes - Bytes used.
    * @returns The answer.
@@ -1254,30 +1244,19 @@ describe('MembershipPanel for an enterprise account (inner#1968 F-20)', () => {
       limits: null,
       usage: { teamStudios: 1, storageBytes },
       storageLimitBytes,
-      operations: {
-        monthlyAllowance: 20000,
-        usedThisPeriod: 9830,
-        allowanceUsed: 9830,
-        allowanceRemaining: 10170,
-        overageThisPeriod: 0,
-        periodStart: '2026-11-10T00:00:00.000Z',
-        nextResetAt: '2026-12-10T00:00:00.000Z',
-        overageCredits: '0.5',
-      },
     } as Partial<AccountMembership>);
   }
 
-  it('draws storage against the agreement and the operations row for an active agreement', async () => {
+  it('draws storage against the agreement for an active agreement', async () => {
     const used = Math.round(1.24 * TIB);
     membershipMock.mockResolvedValue(enterprise(5 * TIB, used));
     setup();
 
     const storage = await screen.findByTestId('quota-storage');
     expect(storage).toHaveTextContent(`${formatBytes(used)} / 5 TiB`);
-    expect(screen.getByTestId('quota-operations')).toHaveTextContent('9,830 / 20,000');
   });
 
-  it('draws storage as used against no cap, and the operations row, without an agreement', async () => {
+  it('draws storage as used against no cap without an agreement', async () => {
     const used = 320 * 1024 ** 3;
     membershipMock.mockResolvedValue(enterprise(null, used));
     setup();
@@ -1285,260 +1264,21 @@ describe('MembershipPanel for an enterprise account (inner#1968 F-20)', () => {
     const storage = await screen.findByTestId('quota-storage');
     expect(storage).toHaveTextContent('320 GiB');
     expect(storage).not.toHaveTextContent(/320 GiB \/ \d/);
-    expect(screen.getByTestId('quota-operations')).toHaveTextContent('9,830 / 20,000');
   });
 });
 
-describe('MembershipPanel on a self-hosted account (inner#1968 E-05)', () => {
-  it('draws the operations row for a metered account and leaves it out when operations is null', async () => {
-    membershipMock.mockResolvedValue(
-      answer({
-        operations: {
-          monthlyAllowance: 4000,
-          usedThisPeriod: 120,
-          allowanceUsed: 120,
-          allowanceRemaining: 3880,
-          overageThisPeriod: 0,
-          periodStart: '2026-11-10T00:00:00.000Z',
-          nextResetAt: '2026-12-10T00:00:00.000Z',
-          overageCredits: '0.5',
-        },
-      } as Partial<AccountMembership>),
-    );
-    const metered = setup();
-    await screen.findByTestId('quota-storage');
-    expect(screen.getByTestId('quota-operations')).toHaveTextContent('120 / 4,000');
-    metered.unmount();
-
-    membershipMock.mockResolvedValue(answer({ operations: null } as unknown as Partial<AccountMembership>));
-    setup();
-    await screen.findByTestId('quota-storage');
-    expect(screen.queryByTestId('quota-operations')).toBeNull();
-  });
-});
-
-describe('MembershipPanel operations row (inner#1968 I-05 to I-12)', () => {
-  // The texts are the confirmed demo's, so the panel renders in zh-CN. The
-  // overage price arrives as a `CreditDecimal`, six decimals, and is shown
-  // as formatCredits writes it.
-  let zone: string | undefined;
-
-  beforeEach(() => {
-    zone = process.env.TZ;
-    process.env.TZ = 'UTC';
-    setLocale('zh-CN');
-  });
-
-  afterEach(() => {
-    if (zone === undefined) delete process.env.TZ;
-    else process.env.TZ = zone;
-    setLocale('en');
-  });
-
-  /**
-   * The period's operations, the I-05 normal state unless overridden.
-   * @param over - Fields to override.
-   * @returns The operations.
-   */
-  function operations(over: Record<string, unknown> = {}): Record<string, unknown> {
-    return {
-      monthlyAllowance: 4000,
-      usedThisPeriod: 1240,
-      allowanceUsed: 1240,
-      allowanceRemaining: 2760,
-      overageThisPeriod: 0,
-      periodStart: '2026-11-10T00:00:00.000Z',
-      nextResetAt: '2026-12-10T00:00:00.000Z',
-      overageCredits: '0.500000',
-      ...over,
-    };
-  }
-
-  /**
-   * An answer carrying the given operations.
-   * @param ops - The operations.
-   * @param over - Other fields to override.
-   * @returns The answer.
-   */
-  function withOperations(ops: Record<string, unknown>, over: Partial<AccountMembership> = {}): AccountMembership {
-    return answer({ operations: ops, ...over } as unknown as Partial<AccountMembership>);
-  }
-
-  /**
-   * The operations row's progress bar fill.
-   * @param row - The row.
-   * @returns The fill element.
-   */
-  function fillOf(row: HTMLElement): HTMLElement {
-    const fill = row.querySelector<HTMLElement>('[style*="width"]');
-    expect(fill).not.toBeNull();
-    return fill!;
-  }
-
-  it('I-05 the normal state: used against the allowance, 31%, what is left, the reset day and that it is shared', async () => {
-    membershipMock.mockResolvedValue(withOperations(operations()));
-    setup();
-    const row = await screen.findByTestId('quota-operations');
-    expect(row).toHaveTextContent('本月操作次数');
-    expect(row).toHaveTextContent('1,240 / 4,000');
-    expect(parseFloat(fillOf(row).style.width)).toBeCloseTo(31, 5);
-    expect(row).toHaveTextContent('剩余 2,760 次');
-    expect(row).toHaveTextContent('2026年12月10日 重置');
-    expect(row).toHaveTextContent('在你管理的所有 Studio 中共用');
-    expect(row).not.toHaveTextContent('超出部分');
-    expect(row).not.toHaveTextContent('本月已超出');
-  });
-
-  it('I-06 used up and charging: a full bar that does not turn red, none left, and the overage price', async () => {
-    membershipMock.mockResolvedValue(
-      withOperations(operations({ usedThisPeriod: 4000, allowanceUsed: 4000, allowanceRemaining: 0 })),
-    );
-    setup();
-    const row = await screen.findByTestId('quota-operations');
-    expect(row).toHaveTextContent('4,000 / 4,000');
-    const fill = fillOf(row);
-    expect(parseFloat(fill.style.width)).toBeCloseTo(100, 5);
-    expect(fill.className).not.toContain('bg-status-error');
-    expect(row).toHaveTextContent('剩余 0 次');
-    expect(row).toHaveTextContent('超出部分每次 0.5 积分，从操作所在的 Studio 扣');
-    expect(row).not.toHaveTextContent('本月已超出');
-  });
-
-  it('I-07 over the allowance: the I-06 lines and how many went over', async () => {
-    membershipMock.mockResolvedValue(
-      withOperations(
-        operations({ usedThisPeriod: 4037, allowanceUsed: 4000, allowanceRemaining: 0, overageThisPeriod: 37 }),
-      ),
-    );
-    setup();
-    const row = await screen.findByTestId('quota-operations');
-    expect(row).toHaveTextContent('4,000 / 4,000');
-    expect(fillOf(row).className).not.toContain('bg-status-error');
-    expect(row).toHaveTextContent('剩余 0 次');
-    expect(row).toHaveTextContent('超出部分每次 0.5 积分，从操作所在的 Studio 扣');
-    expect(row).toHaveTextContent('本月已超出 37 次');
-  });
-
-  it('I-09 an active enterprise agreement: its allowance, what is left and its own reset day', async () => {
-    membershipMock.mockResolvedValue(
-      withOperations(
-        operations({
-          monthlyAllowance: 20000,
-          usedThisPeriod: 9830,
-          allowanceUsed: 9830,
-          allowanceRemaining: 10170,
-          periodStart: '2026-10-31T02:00:00.000Z',
-          nextResetAt: '2026-11-30T02:00:00.000Z',
-        }),
-        { tier: 'enterprise', limits: null, storageLimitBytes: 5 * 1024 ** 4 } as Partial<AccountMembership>,
-      ),
-    );
-    setup();
-    const row = await screen.findByTestId('quota-operations');
-    expect(row).toHaveTextContent('9,830 / 20,000');
-    expect(row).toHaveTextContent('剩余 10,170 次');
-    expect(row).toHaveTextContent('2026年11月30日 重置');
-  });
-
-  it('I-10 the reset day is the local one', async () => {
-    process.env.TZ = 'America/Los_Angeles';
-    membershipMock.mockResolvedValue(withOperations(operations({ nextResetAt: '2026-12-10T02:00:00.000Z' })));
-    setup();
-    const row = await screen.findByTestId('quota-operations');
-    expect(row).toHaveTextContent('2026年12月9日 重置');
-  });
-
-  it('I-11 the comparison table has a row for monthly operations and one for running tasks', async () => {
-    const catalog = answer().catalog.map((offer) => {
-      const figures = {
-        base: { monthly_operations: 500, running_tasks_per_user: 2 },
-        pro: { monthly_operations: 4000, running_tasks_per_user: 5 },
-        team: { monthly_operations: 16000, running_tasks_per_user: 10 },
-      }[offer.tier];
-      return { ...offer, monthlyOperations: figures.monthly_operations, limits: { ...offer.limits, ...figures } };
-    });
-    membershipMock.mockResolvedValue(withOperations(operations(), { catalog }));
+describe('MembershipPanel running tasks row (inner#1968 I-11)', () => {
+  it('I-11 the comparison table has a row for running tasks', async () => {
+    const running = { base: 2, pro: 5, team: 10 } as const;
+    const catalog = answer().catalog.map((offer) => ({
+      ...offer,
+      limits: { ...offer.limits, running_tasks_per_user: running[offer.tier as keyof typeof running] },
+    }));
+    membershipMock.mockResolvedValue(answer({ catalog }));
     setup();
     await screen.findByTestId('current-tier-name');
-    expect(screen.getByText('每月操作次数')).toBeInTheDocument();
-    expect(screen.getByText('同时运行的任务数')).toBeInTheDocument();
-    const expected: Record<string, [string, string, string]> = {
-      monthlyOperations: ['500', '4,000', '16,000'],
-      runningTasksPerUser: ['2', '5', '10'],
-    };
-    for (const [row, [base, pro, team]] of Object.entries(expected)) {
-      expect(screen.getByTestId(`compare-cell-base-${row}`).textContent).toBe(base);
-      expect(screen.getByTestId(`compare-cell-pro-${row}`).textContent).toBe(pro);
-      expect(screen.getByTestId(`compare-cell-team-${row}`).textContent).toBe(team);
-    }
-  });
-
-  it('I-12 loading, then one answer; reopening reads again and shows the next answer whole', async () => {
-    let arrive: (value: AccountMembership) => void = () => {};
-    membershipMock.mockReturnValueOnce(new Promise<AccountMembership>((resolve) => { arrive = resolve; }));
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-    /**
-     * The panel, open or closed, on the shared cache.
-     * @param open - Whether it is open.
-     * @returns The element.
-     */
-    const panel = (open: boolean): ReactElement => (
-      <QueryClientProvider client={qc}>
-        <MembershipPanel open={open} onOpenChange={() => {}} />
-      </QueryClientProvider>
-    );
-    const view = render(panel(true));
-    expect(screen.getAllByTestId('quota-row-skeleton').length).toBeGreaterThan(0);
-    expect(screen.queryByTestId('quota-operations')).toBeNull();
-
-    arrive(withOperations(operations()));
-    const first = await screen.findByTestId('quota-operations');
-    expect(first).toHaveTextContent('1,240 / 4,000');
-    expect(first).toHaveTextContent('剩余 2,760 次');
-    expect(first).toHaveTextContent('2026年12月10日 重置');
-
-    membershipMock.mockResolvedValueOnce(
-      withOperations(
-        operations({
-          usedThisPeriod: 12,
-          allowanceUsed: 12,
-          allowanceRemaining: 3988,
-          periodStart: '2026-12-10T00:00:00.000Z',
-          nextResetAt: '2027-01-10T00:00:00.000Z',
-        }),
-      ),
-    );
-    view.rerender(panel(false));
-    view.rerender(panel(true));
-    await waitFor(() => expect(screen.getByTestId('quota-operations')).toHaveTextContent('12 / 4,000'));
-    const second = screen.getByTestId('quota-operations');
-    expect(second).toHaveTextContent('剩余 3,988 次');
-    expect(second).toHaveTextContent('2027年1月10日 重置');
-    expect(membershipMock).toHaveBeenCalledTimes(2);
-  });
-
-  it('I-12 a failed read shows the existing error, and reopening reads again', async () => {
-    membershipMock.mockRejectedValueOnce(new Error('network'));
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-    /**
-     * The panel, open or closed, on the shared cache.
-     * @param open - Whether it is open.
-     * @returns The element.
-     */
-    const panel = (open: boolean): ReactElement => (
-      <QueryClientProvider client={qc}>
-        <MembershipPanel open={open} onOpenChange={() => {}} />
-      </QueryClientProvider>
-    );
-    const view = render(panel(true));
-    await screen.findByRole('alert');
-    expect(screen.queryByTestId('quota-operations')).toBeNull();
-
-    membershipMock.mockResolvedValueOnce(withOperations(operations()));
-    view.rerender(panel(false));
-    view.rerender(panel(true));
-    const row = await screen.findByTestId('quota-operations');
-    expect(row).toHaveTextContent('1,240 / 4,000');
-    expect(row).toHaveTextContent('剩余 2,760 次');
+    expect(screen.getByTestId('compare-cell-base-runningTasksPerUser').textContent).toBe('2');
+    expect(screen.getByTestId('compare-cell-pro-runningTasksPerUser').textContent).toBe('5');
+    expect(screen.getByTestId('compare-cell-team-runningTasksPerUser').textContent).toBe('10');
   });
 });

@@ -25,7 +25,7 @@ import {
   getCachedUnderstandMaxBytes,
 } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
-import { refusalSentence, toastFailure } from '@web/stores/credit-refusals';
+import { refusalSentence } from '@web/stores/credit-refusals';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';
@@ -331,12 +331,12 @@ function buildReadingRun(
  * @param err - The final failure.
  */
 async function reportReadingFailure(reading: Reading, err: unknown): Promise<void> {
-  toastFailure(await readingFailureSentence(reading, err), err);
+  toast.error(await readingFailureSentence(reading, err));
 }
 
 /**
- * The sentence for {@link reportReadingFailure}: a used-up or spend-limit
- * refusal's own (inner#1968); the server's own when it
+ * The sentence for {@link reportReadingFailure}: a spend-limit refusal's own
+ * (inner#1968); the server's own when it
  * wrote one; why, when a proxy refused the request as too large without one
  * (inner#1006); otherwise the reading's short line.
  * @param reading - Which reading it was.

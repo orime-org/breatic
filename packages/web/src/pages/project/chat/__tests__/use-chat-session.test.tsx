@@ -20,7 +20,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { setLocale, t } from '@breatic/shared';
+import { t } from '@breatic/shared';
 import type { ChatSendAnswer, ChatSyncAnswer } from '@breatic/shared';
 
 const toastSpy = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
@@ -86,7 +86,7 @@ import { resetChatLiveForTests } from '@web/stores/chat-live';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { replyOpens, storesWhatIsDrawn, stubRunWire } from '@web/test-utils/chat-run-wire';
 import type { RunWire } from '@web/test-utils/chat-run-wire';
-import { expectNoTopUpAction, expectTopUpToast, toastsShown } from '@web/test-utils/top-up-toast';
+import { spendCapMessage } from '@web/lib/spend-cap-message';
 
 /** The limits the server reads, as `GET /chat/stream-config` answers them. */
 const LIMITS = {
@@ -894,44 +894,35 @@ describe('the wait for the limits before a send (inner#1413)', () => {
   });
 });
 
-// inner#1968 D-26: a send refused because the month's operations are used up
-// is said in the server's words with a 充值 action that opens the credits
-// overlay; a spend-limit refusal offers no such action.
-describe('a send refused for operations used up', () => {
-  const SENTENCE = '本月操作次数已用完，积分不足 0.5。充值后可继续。';
-
+// inner#1968 H-31: a send refused at a spend limit is said in the spend-limit
+// sentence, with no action (adding credits does not lift a limit), and what
+// the user typed stays in the input.
+describe('a send refused at a spend limit', () => {
   beforeEach(() => {
-    setLocale('zh-CN');
     toastSpy.error.mockClear();
     toastSpy.warning.mockClear();
   });
 
-  afterEach(() => {
-    setLocale('en');
-  });
-
-  /**
-   * Send one message that the server refuses with `err`.
-   * @param err - The refusal.
-   */
-  async function refusedWith(err: ApiException): Promise<void> {
+  it('says the spend-limit sentence with no action and keeps the draft', async () => {
     const panel = await anOpenPanel();
-    vi.mocked(chatApi.sendMessage).mockRejectedValueOnce(err);
+    const details = { scope: 'member' as const, limit: '10', resetsAt: '2026-12-01T00:00:00.000Z' };
+    vi.mocked(chatApi.sendMessage).mockRejectedValueOnce(
+      new ApiException({ status: 402, message: 'cap reached', reason: 'spend_cap_reached', fromServer: true, details }),
+    );
+    act(() => {
+      panel.result.current.setDraft('hello');
+    });
     act(() => {
       void panel.result.current.send('hello');
     });
     await waitFor(() => {
-      expect(toastsShown(toastSpy.error, toastSpy.warning).length).toBeGreaterThan(0);
+      expect(toastSpy.error.mock.calls.length + toastSpy.warning.mock.calls.length).toBeGreaterThan(0);
     });
-  }
 
-  it('says it in the server words with a 充值 action that opens the credits overlay', async () => {
-    await refusedWith(new ApiException({ status: 402, message: SENTENCE, reason: 'operations_exhausted', fromServer: true }));
-    expectTopUpToast(toastsShown(toastSpy.error, toastSpy.warning), SENTENCE, '充值');
-  });
-
-  it('offers no 充值 action for a spend limit', async () => {
-    await refusedWith(new ApiException({ status: 402, message: 'cap reached', reason: 'spend_cap_reached', fromServer: true, details: { scope: 'member', limit: '10', resetsAt: '2026-12-01T00:00:00.000Z' } }));
-    expectNoTopUpAction(toastsShown(toastSpy.error, toastSpy.warning));
+    const calls = [...toastSpy.error.mock.calls, ...toastSpy.warning.mock.calls] as unknown[][];
+    expect(calls).toHaveLength(1);
+    expect(calls[0]![0]).toBe(spendCapMessage('spend_cap_reached', details.scope, details.limit, details.resetsAt));
+    expect((calls[0]![1] as { action?: unknown } | undefined)?.action).toBeUndefined();
+    expect(panel.result.current.draft).toBe('hello');
   });
 });

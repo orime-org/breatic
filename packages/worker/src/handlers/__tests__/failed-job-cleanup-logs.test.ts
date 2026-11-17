@@ -32,8 +32,6 @@ vi.mock("@breatic/core", () => ({
   logger: { info: vi.fn(), warn: mockWarn, error: mockError, debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", () => ({
-  // The operation a run that failed for good gives back (inner#1968).
-  operationService: { releaseOperation: vi.fn(async () => true) },
   creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   // The billed-then-crashed branch reads this first: a job that was already
   // paid for must not be stamped failed over its result.
@@ -49,7 +47,6 @@ vi.mock("@worker/handlers/dispatch.js", () => ({
   mediaKindForActivity: vi.fn(() => "image"),
   recordGenerationForNodes: mockRecordGeneration,
   releaseRunHold: vi.fn(async () => undefined),
-  releaseRunOperation: vi.fn(async () => undefined),
 }));
 
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";

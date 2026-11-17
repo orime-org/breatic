@@ -18,7 +18,7 @@ import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { textToolSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { admitOperationOrRefuse, precheckCredits, projectService, textToolService } from "@server/modules";
+import { precheckCredits, projectService, textToolService } from "@server/modules";
 import { getModelForTool, getTextToolsConfig } from "@server/config/text-tools.js";
 import { assertLlmServable } from "@server/modules/task/model-servable.js";
 import { SMALLEST_CREDIT } from "@breatic/domain";
@@ -147,8 +147,6 @@ textTools.post(
     // request. A key from the client would let the same key be sent again,
     // and the charge for a key already billed is skipped.
     const operationKey = newId();
-    // One run is one operation, admitted before the stream opens (inner#1968).
-    await admitOperationOrRefuse({ kind: "text_tool", key: textToolService.textToolOperationKey(operationKey), projectId, actorUserId: user.id, inputs: [] });
     let ended = false;
     return streamUntilClientLeaves(c, async (s, stopped) => {
       for await (const event of textToolService.executeTextTool(

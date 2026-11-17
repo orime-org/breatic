@@ -16,12 +16,10 @@ import { describe, it, expect } from 'vitest';
 
 import { UPLOAD_FAILURE_REASONS } from '@web/data/upload/media-upload';
 import {
-  ingestRefusalToastKey,
   resolveUploadFailure,
   uploadFailureMessageKey,
   uploadRetryCanChange,
 } from '@web/spaces/canvas/upload-failure';
-import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 /**
  * The plan for a failure the browser says rather than reports.
@@ -139,12 +137,10 @@ describe('resolveUploadFailure', () => {
 });
 
 describe('which failures a retry can change (shared with the document body, inner#1127 A6)', () => {
-  // Used-up operations pass once credits are added (inner#1968 design 3.3).
-  it('answers yes for the failures that are about this attempt: the catch-all, a transfer, a rate limit and used-up operations', () => {
+  it('answers yes for the failures that are about this attempt: the catch-all, a transfer and a rate limit', () => {
     expect(UPLOAD_FAILURE_REASONS.filter(uploadRetryCanChange)).toEqual([
       'rateLimited',
       'transfer',
-      'operations',
       'upload',
     ]);
   });
@@ -179,16 +175,5 @@ describe('where an upload the server could not open lands (inner#1595)', () => {
       toastKey: uploadFailureMessageKey('transfer'),
       severity: 'error',
     });
-  });
-});
-
-// inner#1968 D-24: an address pasted onto the canvas once the month's
-// operations are used up and the studio cannot pay for one more.
-describe('ingestRefusalToastKey for operations used up', () => {
-  it('says the operations are used up, apart from a plain refused upload', () => {
-    const key = ingestRefusalToastKey(402, 'operations_exhausted');
-    expect(key).not.toBe(ingestRefusalToastKey(402, undefined));
-    const zhCN = LOCALE_CATALOGS.find(([tag]) => tag === 'zh-CN')![1];
-    expect(readPath(zhCN, key)).toBe('本月操作次数已用完，积分不足 {credits}。充值后可继续。');
   });
 });

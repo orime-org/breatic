@@ -13,7 +13,7 @@
 
 import { t } from '@breatic/shared';
 import { ApiException } from '@web/data/api/types';
-import { isOperationsExhausted, refusalSentence } from '@web/stores/credit-refusals';
+import { refusalSentence } from '@web/stores/credit-refusals';
 
 /**
  * Something that went wrong, told once to whoever is looking.
@@ -52,9 +52,7 @@ export type ChatMishap = {
   conversationId: string | null;
 } & (
   | { kind: 'network' }
-  // `topUp` when the refusal is the month's operations used up (inner#1968):
-  // the toast then offers to add credits.
-  | { kind: 'server'; message: string; topUp?: true }
+  | { kind: 'server'; message: string }
   // The stream reached us and the server said this turn is over without
   // saying anything a user could act on. Not `server`: that one carries the
   // sentence the server wrote for the user, and this one has none -- what
@@ -122,9 +120,9 @@ function serverSentence(err: unknown): string | undefined {
  * @returns Which kind of mishap it is, and the server's own words when it
  *   answered with any.
  */
-export function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'; message: string; topUp?: true } {
+export function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'; message: string } {
   const refused = refusalSentence(err);
-  if (refused !== null) return isOperationsExhausted(err) ? { kind: 'server', message: refused, topUp: true } : { kind: 'server', message: refused };
+  if (refused !== null) return { kind: 'server', message: refused };
   const said = serverSentence(err);
   return said === undefined ? { kind: 'network' } : { kind: 'server', message: said };
 }

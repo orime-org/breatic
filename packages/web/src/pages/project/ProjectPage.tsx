@@ -47,7 +47,6 @@ import {
   endAllKeptEditors,
   endSpaceKeptEditors,
 } from '@web/spaces/canvas/kept-editors';
-import { CreditsOverlayHost } from '@web/features/credits/CreditsOverlayHost';
 import { LeaveProjectGuard, type LeaveProjectGuardHandle } from '@web/pages/project/LeaveProjectGuard';
 import { ProjectJoinGate } from '@web/pages/project/ProjectJoinGate';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
@@ -876,7 +875,6 @@ function ProjectWorkspace({
           data-testid='project-page'
         >
           <LeaveProjectGuard ref={leaveGuard} />
-          <CreditsOverlayHost />
           <ConnectionBanner
             status={connectionStatus}
             onReload={requestRefresh}

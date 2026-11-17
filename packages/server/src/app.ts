@@ -43,7 +43,6 @@ import { studiosRoute, studioRoute } from "@server/routes/studios.js";
 import { decisionsRoute } from "@server/routes/decisions.js";
 import { projectInvitesRoute } from "@server/routes/project-invitations.js";
 import { notificationsRoute } from "@server/routes/notifications.js";
-import { attachOperationAuditLog } from "@server/modules/operation/operation-audit.js";
 import {
   projectRoleUpgradeRequestsRoute,
   roleUpgradeRequestWithdrawRoute,
@@ -55,7 +54,6 @@ import {
  */
 export function createApp(): Hono {
   const app = new Hono();
-  attachOperationAuditLog();
 
   // ── Middleware ─────────────────────────────────
   app.use("*", corsMiddleware);

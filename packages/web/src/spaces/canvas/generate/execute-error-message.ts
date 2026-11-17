@@ -40,9 +40,8 @@ export async function tooLargeMessage(): Promise<{ key: string; params?: { limit
 }
 
 /**
- * Maps a failed execute request to a user-facing message. The two refusals of
- * the monthly operations and spend limits (inner#1968) are read off the
- * refusal's reason first; then credits, full storage, an outage and a request
+ * Maps a failed execute request to a user-facing message. A refusal at a
+ * spend limit (inner#1968) is read off the refusal's reason first; then credits, full storage, an outage and a request
  * over the body limit are the meaningful task-create failures.
  * @param err - What the request rejected with.
  * @param translate - The i18n translate function.

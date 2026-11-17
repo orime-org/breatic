@@ -17,7 +17,6 @@
  * error, it is a list of every conversation the user has anywhere.
  */
 
-import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
 
 import crypto from "node:crypto";
@@ -302,7 +301,7 @@ describe("the conversation an open lands on", () => {
     // 走真实路由而不是裸 SQL —— 要测的正是「说话」这个动作带来的排序变化。
     const said = await app.request("/api/v1/chat/message", {
       method: "POST",
-      headers: { "Idempotency-Key": randomUUID(), "Content-Type": "application/json", Cookie: cookie },
+      headers: { "Content-Type": "application/json", Cookie: cookie },
       body: JSON.stringify({
         message: "just spoke here",
         project_id: projectId,

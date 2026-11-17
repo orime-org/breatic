@@ -14,22 +14,21 @@
  * room and a single upload throws its refusal straight to the user.
  */
 
-import { accountActivityRepo, db } from "@breatic/core";
-import { env, getNodeTaskConfig, getStorageConfig, logger } from "@breatic/core";
+import { accountActivityRepo } from "@breatic/core";
+import { AppError, env, getNodeTaskConfig, getStorageConfig, logger } from "@breatic/core";
 import {
   assetService,
-  operationService,
   safeExt,
   sceneTaskService,
   uploadDeadlineByKey,
   UploadOpenFailed,
   uploadTicketService,
 } from "@breatic/domain";
-import { TRANSFER_KEY_DIR, TRANSFER_MEDIA_TYPE, type NodeTaskAction, type StudioAssetEntity } from "@breatic/shared";
+import { TRANSFER_KEY_DIR, TRANSFER_MEDIA_TYPE, type NodeTaskAction } from "@breatic/shared";
 
 import * as assetUploadService from "@server/modules/asset/assetUpload.service.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
-import { admitOperationOrRefuse, assertOperationKeyFree } from "@server/modules/operation/operation-admission.service.js";
+import { INSUFFICIENT_STORAGE, assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
 import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 
@@ -67,11 +66,6 @@ export interface TicketScope {
   studioId: string;
   /** Absent for a studio's own picture, which belongs to no project. */
   projectId?: string | undefined;
-  /**
-   * The operations ledger key this file counts under, `upload:<userId>:<id>`
-   * (inner#1968); absent for a transfer, which is not an operation.
-   */
-  operationKey?: string | undefined;
 }
 
 /** How one file is answered. */
@@ -242,171 +236,76 @@ export async function issueUploadTicket(
 }
 
 /**
- * The operation one file counts as.
- * @param scope - Where it goes, who asked and its key.
- * @param key - Its ledger key.
- * @returns The admission input.
- */
-function uploadOperation(scope: TicketScope, key: string): operationService.AdmitInput {
-  return {
-    kind: "upload",
-    key,
-    ...(scope.projectId !== undefined ? { projectId: scope.projectId } : { studioId: scope.studioId }),
-    actorUserId: scope.userId,
-    inputs: [],
-  };
-}
-
-/**
- * Where a file lands, as its grant records it and the operation count reads
- * it (design 3.2.1). A cover and a 3D model are node-free and write no row on
- * the project activity feed, so they are marked derived; a 3D model's purpose
- * is carried by its Space task row, not as an asset source.
- * @param item - The file.
- * @returns Its placement.
- */
-function placementOf(item: TicketItem): operationService.UploadPlacement & { assetSource: StudioAssetEntity["source"] | null } {
-  return {
-    derived: item.purpose === "project_cover" || item.purpose === "scene_model" ? true : (item.derived ?? null),
-    spaceId: item.space_id ?? null,
-    nodeId: item.node_id ?? null,
-    assetSource: item.purpose === "scene_model" ? null : (item.purpose ?? null),
-    source: item.source ?? null,
-  };
-}
-
-/**
- * Count a dedup hit once every write of its branch has succeeded, or defer it
- * when it is a derived image (inner#1968, design 3.2).
- * @param item - The file.
- * @param key - Its ledger key.
- * @param hit - The asset it hit.
- * @param hit.assetId - Its id.
- * @param hit.kind - What it is.
- */
-async function countDedupHit(item: TicketItem, key: string, hit: { assetId: string; kind: string }): Promise<void> {
-  const outcome = await db.transaction((tx) =>
-    operationService.settleUploadOperation(key, placementOf(item), { id: hit.assetId, kind: hit.kind }, tx));
-  await operationService.settleOverage(outcome);
-}
-
-/**
  * Everything before opening the upload: the cap, the dedup pass, the storage
  * allowance, and the grant and task row.
  * @param scope - Where it goes and who asked.
  * @param item - The file.
  * @param admitStorage - Asked once this file needs room; false refuses it.
+ * @param recordUserAction - Whether this file is the batch request's first accepted file.
  * @returns The answer when the file is settled here, otherwise what opening
  *   its upload needs.
  * @throws {Error} When the ingest Worker is not configured.
- * @throws {OperationKeyTakenError} 409 when the file's key already has a row.
- * @throws {OperationsExhaustedError} 402 when its operation is refused.
  */
 async function prepareUpload(
   scope: TicketScope,
   item: TicketItem,
   admitStorage: () => Promise<boolean>,
+  recordUserAction = true,
 ): Promise<TicketOutcome | Prepared> {
-  const { userId, studioId, projectId, operationKey } = scope;
+  const { userId, studioId, projectId } = scope;
   const { upload, ingest } = getStorageConfig();
   if (item.size > upload.max_upload_bytes) {
     logger.info({ size: item.size, cap: upload.max_upload_bytes, userId }, "upload_ticket_rejected_over_cap");
     return { kind: "refused", reason: "too_large" };
   }
-  // A key that ran before is not run again: no dedup pass, no grant.
-  if (operationKey !== undefined) await assertOperationKeyFree(operationKey, userId, projectId ?? null);
 
   // Dedup: the owner studio already holding this content skips the upload
   // entirely — no key, no grant, no ticket.
   const dedupHit = await assetUploadService.checkUploadDedup({ studioId, contentHash: item.client_hash });
   if (dedupHit) {
-    if (operationKey !== undefined) await admitOperationOrRefuse(uploadOperation(scope, operationKey));
-    try {
-      return await settleHit(scope, item, dedupHit, operationKey);
-    } catch (err) {
-      if (operationKey !== undefined) await operationService.releaseOperation(operationKey, undefined, "dedup_hit_failed");
-      throw err;
+    if (recordUserAction) await accountActivityRepo.recordActivity({ userId, projectId: projectId ?? null, kind: "project_action" });
+    logger.info({ hash: item.client_hash, userId, studioId, projectId }, "upload_ticket_dedup_hit");
+    // No bytes move, but the node now shows something it did not show before:
+    // a task row is opened and settled in the same pass, pointing at the
+    // node's history row for this content (written now, or the one the node
+    // already holds). The project activity feed gets nothing, because its only
+    // shape for this is `asset:uploaded` and nothing was uploaded. A studio's
+    // avatar has no project and no node, so there is nothing to settle.
+    if (projectId !== undefined) {
+      await assetUploadService.settleDedupHit({
+        projectId,
+        hit: dedupHit,
+        userId,
+        metadata: { filename: item.filename, size: item.size, mimeType: item.content_type },
+        row: uploadRowOf(item),
+        nodeId: item.node_id,
+        spaceId: item.space_id,
+      });
     }
-  }
-  return prepareMiss(scope, item, admitStorage, ingest);
-}
-
-/**
- * Settle a dedup hit: its history row, its 3D task row, then its count.
- * @param scope - Where it goes and who asked.
- * @param item - The file.
- * @param dedupHit - The asset the studio already holds.
- * @param operationKey - The file's ledger key, when it counts.
- * @returns The answer.
- */
-async function settleHit(
-  scope: TicketScope,
-  item: TicketItem,
-  dedupHit: NonNullable<Awaited<ReturnType<typeof assetUploadService.checkUploadDedup>>>,
-  operationKey: string | undefined,
-): Promise<TicketOutcome> {
-  const { userId, studioId, projectId } = scope;
-  await accountActivityRepo.recordActivity({ userId, projectId: projectId ?? null, kind: "project_action" });
-  logger.info({ hash: item.client_hash, userId, studioId, projectId }, "upload_ticket_dedup_hit");
-  // No bytes move, but the node now shows something it did not show before:
-  // a task row is opened and settled in the same pass, pointing at the
-  // node's history row for this content (written now, or the one the node
-  // already holds). The project activity feed gets nothing, because its only
-  // shape for this is `asset:uploaded` and nothing was uploaded. A studio's
-  // avatar has no project and no node, so there is nothing to settle.
-  if (projectId !== undefined) {
-    await assetUploadService.settleDedupHit({
-      projectId,
-      hit: dedupHit,
-      userId,
-      metadata: { filename: item.filename, size: item.size, mimeType: item.content_type },
-      row: uploadRowOf(item),
-      nodeId: item.node_id,
-      spaceId: item.space_id,
-    });
-  }
-  // A 3D model is reused from the Space's task list, so the hit opens that
-  // row already holding the model (inner#1690).
-  let sceneTaskId: string | undefined;
-  if (item.purpose === "scene_model" && projectId !== undefined && item.space_id !== undefined) {
-    sceneTaskId = await sceneTaskService.openDone({
-      projectId,
-      spaceId: item.space_id,
-      startedByUserId: userId,
-      label: uploadRowOf(item).label,
+    // A 3D model is reused from the Space's task list, so the hit opens that
+    // row already holding the model (inner#1690).
+    let sceneTaskId: string | undefined;
+    if (item.purpose === "scene_model" && projectId !== undefined && item.space_id !== undefined) {
+      sceneTaskId = await sceneTaskService.openDone({
+        projectId,
+        spaceId: item.space_id,
+        startedByUserId: userId,
+        label: uploadRowOf(item).label,
+        assetId: dedupHit.assetId,
+      });
+      await publishSpaceTasksQuietly(projectId, item.space_id);
+    }
+    return {
+      kind: "alreadyExists",
       assetId: dedupHit.assetId,
-    });
-    await publishSpaceTasksQuietly(projectId, item.space_id);
+      taskId: sceneTaskId,
+      fileUrl: dedupHit.fileUrl,
+      assetKind: dedupHit.kind,
+      width: dedupHit.width,
+      height: dedupHit.height,
+    };
   }
-  if (operationKey !== undefined) await countDedupHit(item, operationKey, dedupHit);
-  return {
-    kind: "alreadyExists",
-    assetId: dedupHit.assetId,
-    taskId: sceneTaskId,
-    fileUrl: dedupHit.fileUrl,
-    assetKind: dedupHit.kind,
-    width: dedupHit.width,
-    height: dedupHit.height,
-  };
-}
 
-/**
- * Open a miss: the storage allowance, then the operation, grant and task row
- * in one transaction.
- * @param scope - Where it goes and who asked.
- * @param item - The file.
- * @param admitStorage - Asked once this file needs room; false refuses it.
- * @param ingest - The ingest settings.
- * @returns What opening its upload needs, or the storage refusal.
- * @throws {Error} When the ingest Worker is not configured.
- */
-async function prepareMiss(
-  scope: TicketScope,
-  item: TicketItem,
-  admitStorage: () => Promise<boolean>,
-  ingest: ReturnType<typeof getStorageConfig>["ingest"],
-): Promise<TicketOutcome | Prepared> {
-  const { userId, studioId, projectId, operationKey } = scope;
   // Storage gate, after the dedup return: that path consumes nothing.
   if (!(await admitStorage())) return { kind: "refused", reason: "storage" };
 
@@ -433,14 +332,18 @@ async function prepareMiss(
       ext,
       expiresAt: new Date(expiresAt),
       context: {
-        ...placementOf(item),
+        nodeId: item.node_id ?? null,
+        spaceId: item.space_id ?? null,
+        source: item.source ?? null,
         toolName: item.tool_name ?? null,
+        // Node-free models and covers write no row on the project activity feed.
+        derived: item.purpose === "project_cover" || item.purpose === "scene_model" ? true : (item.derived ?? null),
         filename: item.filename,
+        assetSource: item.purpose === "scene_model" ? null : (item.purpose ?? null),
       },
     },
     { budgetMs: getNodeTaskConfig().default_budget_ms, ...uploadRowOf(item) },
-    true,
-    ...(operationKey === undefined ? [] : [uploadOperation(scope, operationKey)]),
+    recordUserAction,
   );
   // The upload's two hours, read off the row or the grant just opened
   // (inner#1367). The ticket carries it; every session token the Worker
@@ -510,4 +413,60 @@ async function openPrepared(scope: TicketScope, prepared: Prepared): Promise<Tic
     totalParts: opened.totalParts,
     taskId,
   };
+}
+
+/** What every file of one batch shares: one browser tool's export, onto one Space. */
+export interface TicketBatchContext {
+  spaceId: string;
+  toolName: string;
+}
+
+/**
+ * Answer every file of one browser tool's export, in order. Files the studio
+ * already holds settle as hits whatever its storage; the storage allowance is
+ * asked once, at the first file that needs room, and refusing it refuses every
+ * file that needs room. Every grant and row is opened first, one file after
+ * another, then every upload is opened at once; a file whose upload did not
+ * open is answered `openFailed` on its own.
+ * @param scope - Where they go and who asked; `projectId` is required.
+ * @param context - What they share.
+ * @param items - The files, each on its own node.
+ * @returns One outcome per file, in the order given.
+ * @throws {AppError} Any storage refusal other than being full, and the errors {@link issueUploadTicket} throws.
+ */
+export async function issueUploadTicketBatch(
+  scope: TicketScope & { projectId: string },
+  context: TicketBatchContext,
+  items: readonly TicketItem[],
+): Promise<TicketOutcome[]> {
+  let admitted: Promise<boolean> | undefined;
+  /**
+   * The studio's storage answer, asked once for the whole batch.
+   * @returns Whether a file that needs room may have it.
+   */
+  const admit = (): Promise<boolean> =>
+    (admitted ??= assertStudioStorageAllowance(scope.studioId, "upload").then(
+      () => true,
+      (err: unknown) => {
+        if (err instanceof AppError && err.statusCode === INSUFFICIENT_STORAGE) return false;
+        throw err;
+      },
+    ));
+  const prepared: (TicketOutcome | Prepared)[] = [];
+  let actionRecorded = false;
+  for (const item of items) {
+    prepared.push(
+      await prepareUpload(
+        scope,
+        { ...item, space_id: context.spaceId, source: "mini_tool", tool_name: context.toolName },
+        admit,
+        !actionRecorded,
+      ),
+    );
+    const outcome = prepared.at(-1);
+    if (outcome && outcome.kind !== "refused") actionRecorded = true;
+  }
+  return Promise.all(
+    prepared.map((file) => (file.kind === "prepared" ? openPrepared(scope, file) : file)),
+  );
 }

@@ -39,7 +39,6 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   logger: { warn: vi.fn(), error: vi.fn() },
   getMiniToolsConfig: () => ({
     poll_interval_ms: 1000,
-    output_concurrency: 6,
     prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
     classes: { Std1: { instance_type: "standard-1", vcpu: 0.5, memory_gib: 4, disk_gb: 8 } },
     ops: {
@@ -50,7 +49,6 @@ vi.mock("@breatic/core", async (importOriginal) => ({
 }));
 
 vi.mock("@breatic/domain", async () => ({
-  taskOperationKey: (await import("@domain/task/operation-key.js")).taskOperationKey,
   // The real names, so a flag's line is the one the worker writes.
   INGEST_SIDE_EFFECT_EVENTS: (await import("@domain/asset/ingest-report.service.js")).INGEST_SIDE_EFFECT_EVENTS,
   // The billing formula itself, so the charge these cases assert is the real one.
@@ -135,7 +133,6 @@ describe("runContainerJob", () => {
       op: "cut",
       input: { storageKey: "v/src.mp4" },
       outputs: [OUT],
-      outputConcurrency: 6,
     });
     expect(result).toMatchObject({ outputs: [{ url: "https://cdn/out.mp4", duration_seconds: 2 }] });
     const usd = 10 * (4 * 0.0000025 + 8 * 0.00000007) + 4 * 0.00002;

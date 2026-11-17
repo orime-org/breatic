@@ -16,7 +16,6 @@
  * internal marker a tool result carries would ride along into both.
  */
 
-import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
 
@@ -368,7 +367,7 @@ describe("the language an error about the request comes back in", () => {
 
     const res = await app.request("/api/v1/chat/message", {
       method: "POST",
-      headers: { "Idempotency-Key": randomUUID(),
+      headers: {
         "Content-Type": "application/json",
         Cookie: cookie,
         "Accept-Language": "zh-CN",

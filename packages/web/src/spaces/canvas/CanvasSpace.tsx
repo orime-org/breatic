@@ -164,6 +164,7 @@ import {
   uploadAcceptFor,
   refusedFormatParams,
   markedSinks,
+  fillNodesFromFiles,
   computeDeletedAssetEntries,
   type UploadNodeSpec,
   assetUrlSurvives,
@@ -3751,6 +3752,29 @@ function CanvasSpaceInner({
       }),
     [projectId, spaceId],
   );
+  // Fill a browser tool's result nodes with its export in one batch upload
+  // (inner#1303 §6.5): the same lock gate and busy registration as fillUpload,
+  // one ticket request for every file.
+  const fillUploads = React.useCallback(
+    (entries: { nodeId: string; file: File; markOp: string }[], tag: MiniToolUploadTag): void => {
+      fillNodesFromFiles(entries, projectId, {
+        getUploadConfig: assetsApi.fetchUploadConfig,
+        hashFile,
+        requestTicketBatch: assetsApi.requestUploadTicketBatch,
+        sendToIngest: sendFileAndFinish,
+        spaceId,
+        tag,
+        isLocked: (nodeId) => isNodeLocked(projectId, spaceId, nodeId),
+        onLocked: () => {
+          const gateBlock = evaluateNodeGate({ locked: true });
+          if (gateBlock) warnNodeGate(t(gateBlock.toastKey));
+        },
+        track: trackOperation,
+        onUploadFailure: (outcome, f) => failUploadNode(outcome, f, tag),
+      });
+    },
+    [projectId, spaceId, t, failUploadNode, trackOperation],
+  );
   // Reset an image node to a fresh blank PNG (#1623): the panel's Execute. reset
   // ≡ "upload a new image" (user 2026-07-20), so it rasterises the blank canvas
   // then hands it to the SAME fillUpload pipeline (handling → ticket → write
@@ -4112,6 +4136,7 @@ function CanvasSpaceInner({
         },
         exportFile: exportMiniToolFile,
         fillUpload,
+        fillUploads,
         exportDrawing,
         exportExpand,
         uploadImage: (file) => uploadDerivedImage(file, { projectId, spaceId }),
@@ -4140,6 +4165,7 @@ function CanvasSpaceInner({
       viewerId,
       buffer,
       fillUpload,
+      fillUploads,
       frameBuilt,
       trackOperation,
       sessionStore,

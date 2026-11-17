@@ -56,13 +56,11 @@ import {
   NotFoundError,
   TooManyRequestsError,
   ValidationError,
-  getOperationsConfig,
   loadLocales,
   runWithLocale,
 } from "@breatic/core";
 
-import { REQUEST_SHAPE_REASON, formatCredits } from "@breatic/shared";
-import { OperationsExhaustedError } from "@server/modules/operation/operation-admission.service.js";
+import { REQUEST_SHAPE_REASON } from "@breatic/shared";
 import { errorHandler } from "@server/middleware/error-handler.js";
 
 loadLocales();
@@ -271,14 +269,5 @@ describe("a request refused until a wait is over", () => {
     const app = appThrowing(new TooManyRequestsError("Wait a moment", 36.2));
     const res = await runWithLocale("en", () => app.request("/boom"));
     expect(res.headers.get("Retry-After")).toBe("37");
-  });
-});
-
-describe("a refusal past the month's operations (inner#1968 design 21 row 23)", () => {
-  it("carries the overage price beside its sentence, so a page can say the same with the amount", async () => {
-    const { status, body } = await answerFor(new OperationsExhaustedError());
-    expect(status).toBe(402);
-    expect(body.error).toMatchObject({ reason: "operations_exhausted", credits: String(getOperationsConfig().overage_credits) });
-    expect(String(body.error?.message)).toContain(formatCredits(getOperationsConfig().overage_credits, "en"));
   });
 });

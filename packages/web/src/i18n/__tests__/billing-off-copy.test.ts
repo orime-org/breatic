@@ -2,13 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The sentences of the monthly operations (inner#1968, test spec E-07 and the
- * 5.1 #11 resolution).
- *
- * The refusal once the operations are used up says how many credits one more
- * would take, from `operations.overage_credits` through `{credits}`, in every
- * locale. A deployment with payments off is called self-hosted; the old
- * "this deployment" wording is gone from all five locales.
+ * The billing-off sentences (inner#1968, test spec E-07). A deployment with
+ * payments off is called self-hosted; the old "this deployment" wording is
+ * gone from all five locales.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -31,18 +27,6 @@ const OLD_WORDING: Record<LocaleTag, readonly [string, string]> = {
 function zhCN(): unknown {
   return LOCALE_CATALOGS.find(([tag]) => tag === 'zh-CN')![1];
 }
-
-describe('5.1 #11 the operations-used-up refusal', () => {
-  it('reads in zh-CN as the demo wrote it, with the credits as a placeholder', () => {
-    expect(readPath(zhCN(), 'server.operation.exhausted')).toBe('本月操作次数已用完，积分不足 {credits}。充值后可继续。');
-  });
-
-  it.each(LOCALE_CATALOGS)('%s carries it with {credits}', (_tag, catalog) => {
-    const message = readPath(catalog, 'server.operation.exhausted');
-    expect(typeof message).toBe('string');
-    expect(message as string).toContain('{credits}');
-  });
-});
 
 describe('E-07 a deployment with payments off is self-hosted', () => {
   it('reads in zh-CN as 自部署', () => {

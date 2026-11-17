@@ -351,10 +351,6 @@
     "spend_cap": {
       "member": "你本月在这个 Studio 的花费已到上限（{limit} 积分）。需要更多请联系 Studio Admin",
       "studio": "这个 Studio 本月的花费已到上限。请联系 Studio Admin"
-    },
-    "operation": {
-      "exhausted": "本月操作次数已用完，积分不足 {credits}。充值后可继续。",
-      "key_taken": "这次操作已经处理过了。"
     }
   },
   "chat": {
@@ -3429,7 +3425,6 @@
       "studioMembers": "每个 Studio 成员上限",
       "projectMembers": "每个 Project 成员上限",
       "concurrentEditors": "每个 Document 同时可编辑",
-      "monthlyOperations": "每月操作次数",
       "runningTasksPerUser": "同时运行的任务数"
     },
     "quotaValue": "{used} / {limit}",
@@ -3502,15 +3497,7 @@
       "loadFailed": "没有读到推广信息。",
       "retry": "重试"
     },
-    "quotaUnlimited": "{used} / 不限",
-    "operations": {
-      "label": "本月操作次数",
-      "remaining": "剩余 {count} 次",
-      "resetsOn": "{date} 重置",
-      "overagePrice": "超出部分每次 {credits} 积分，从操作所在的 Studio 扣",
-      "overageCount": "本月已超出 {count} 次",
-      "shared": "在你管理的所有 Studio 中共用"
-    }
+    "quotaUnlimited": "{used} / 不限"
   },
   "promoter": {
     "heading": "推广计划",
@@ -3693,10 +3680,7 @@
     "refundHint": {
       "assigned": "解除指定后可以申请退款"
     },
-    "eventOperationOverage": "超出操作次数",
-    "topUp": "充值",
     "refusal": {
-      "operations": "本月操作次数已用完，积分不足。充值后可继续。",
       "spendCap": "本月花费已到上限。请联系 Studio Admin"
     },
     "spendCap": {

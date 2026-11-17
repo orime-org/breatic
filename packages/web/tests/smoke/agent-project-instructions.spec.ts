@@ -74,7 +74,7 @@ async function askInNewConversation(api: APIRequestContext, projectId: string, m
     'create conversation',
   );
   const sent = await dataOf<{ running: boolean }>(await api.post('/api/v1/chat/message', {
-    headers: { 'Accept-Language': 'zh-CN', 'Idempotency-Key': randomUUID() },
+    headers: { 'Accept-Language': 'zh-CN' },
     data: {
       id: randomUUID(), project_id: projectId, conversation_id: conversation.id, message, attached_chips: [], time_zone: 'Asia/Shanghai',
       ...(model === undefined ? {} : { model }),

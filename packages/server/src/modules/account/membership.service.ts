@@ -25,7 +25,6 @@ import {
   getMembershipReadingForUser,
   getSubscriptionPlan,
 } from "@breatic/core";
-import { operationService } from "@breatic/domain";
 import {
   BILLING_PERIODS,
   COMPARABLE_MEMBERSHIP_TIERS,
@@ -65,10 +64,9 @@ export async function readAccountMembership(
   const limits = tier === "enterprise" ? null : reading.limits;
   const storageLimitBytes = reading.storageBytes;
 
-  const [teamStudios, storageBytes, operations] = await Promise.all([
+  const [teamStudios, storageBytes] = await Promise.all([
     studioRepo.countTeamStudiosAdministeredBy(userId),
     assetUsageService.accountStorageUsage(userId),
-    operationService.readMeteredOperationUsage(userId),
   ]);
 
   return {
@@ -76,16 +74,11 @@ export async function readAccountMembership(
     limits,
     usage: { teamStudios, storageBytes },
     storageLimitBytes,
-    operations,
-    catalog: COMPARABLE_MEMBERSHIP_TIERS.map((offered) => {
-      const offeredLimits = getMembershipLimits(offered);
-      return {
-        tier: offered,
-        limits: offeredLimits,
-        monthlyOperations: offeredLimits.monthly_operations,
-        prices: pricesOf(offered, selling),
-      };
-    }),
+    catalog: COMPARABLE_MEMBERSHIP_TIERS.map((offered) => ({
+      tier: offered,
+      limits: getMembershipLimits(offered),
+      prices: pricesOf(offered, selling),
+    })),
     subscription,
   };
 }

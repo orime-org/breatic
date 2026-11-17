@@ -351,10 +351,6 @@
     "spend_cap": {
       "member": "你本月在這個 Studio 的花費已達上限（{limit} 點數）。需要更多請聯絡 Studio Admin",
       "studio": "這個 Studio 本月的花費已達上限。請聯絡 Studio Admin"
-    },
-    "operation": {
-      "exhausted": "本月操作次數已用完，點數不足 {credits}。儲值後可繼續。",
-      "key_taken": "這次操作已經處理過了。"
     }
   },
   "chat": {
@@ -3429,7 +3425,6 @@
       "studioMembers": "每個 Studio 成員上限",
       "projectMembers": "每個 Project 成員上限",
       "concurrentEditors": "每個 Document 同時可編輯",
-      "monthlyOperations": "每月操作次數",
       "runningTasksPerUser": "同時執行的任務數"
     },
     "quotaValue": "{used} / {limit}",
@@ -3502,15 +3497,7 @@
       "loadFailed": "沒有讀到推廣資訊。",
       "retry": "重試"
     },
-    "quotaUnlimited": "{used} / 不限",
-    "operations": {
-      "label": "本月操作次數",
-      "remaining": "剩餘 {count} 次",
-      "resetsOn": "{date} 重置",
-      "overagePrice": "超出部分每次 {credits} 點數，從操作所在的 Studio 扣",
-      "overageCount": "本月已超出 {count} 次",
-      "shared": "在你管理的所有 Studio 中共用"
-    }
+    "quotaUnlimited": "{used} / 不限"
   },
   "promoter": {
     "heading": "推廣計畫",
@@ -3693,10 +3680,7 @@
     "refundHint": {
       "assigned": "解除指定後可以申請退款"
     },
-    "eventOperationOverage": "超出操作次數",
-    "topUp": "儲值",
     "refusal": {
-      "operations": "本月操作次數已用完，點數不足。儲值後可繼續。",
       "spendCap": "本月花費已達上限。請聯絡 Studio Admin"
     },
     "spendCap": {

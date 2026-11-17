@@ -3,8 +3,9 @@
 
 /**
  * Monthly spend caps of a team studio (inner#1968, test spec area H: H-01 to
- * H-26, H-28 to H-30; invariants L1 to L3; PT-5; 5.1 resolutions #9, #10).
- * Real Postgres and Redis through the real Hono app, payments on.
+ * H-26, H-28 to H-30; E-09; invariants L1 to L3; PT-5; 5.1 resolutions #9,
+ * #10). Real Postgres and Redis through the real Hono app, payments on except
+ * where E-09 turns them off: with payments off no cap is judged.
  *
  * A studio admin sets a default per-person monthly cap and a studio-wide
  * monthly cap (`studio_spend_limits`), and may override one person's cap
@@ -59,7 +60,7 @@ import { chargeNow } from "./studio-credit-fixtures.js";
 import { startRun } from "@server/agent/chat-run.js";
 import { chatQueue } from "@server/modules/chat-queue/chat-queue.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
-import { PAYMENTS_ON, dbNow, request, seedAccount, seedMember, signIn, ticket, type Account, type Actor } from "./operation-counting-fixtures.js";
+import { PAYMENTS_ON, dbNow, request, seedAccount, seedMember, signIn, type Account, type Actor } from "./paid-account-fixtures.js";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -198,7 +199,19 @@ function generation(a: Account): Record<string, unknown> {
 
 /** The studio's slug, as the fixtures write it. */
 function slugOf(a: Account): string {
-  return `oc-${a.studioId}`;
+  return `pa-${a.studioId}`;
+}
+
+/**
+ * How many credit holds and charge requests the studio has.
+ * @param a - Whose studio.
+ * @returns Both counts.
+ */
+async function creditFootprint(a: Account): Promise<{ holds: number; requests: number }> {
+  const [row] = await sql<{ holds: number; requests: number }[]>`select
+    (select count(*)::int from credit_holds where studio_id = ${a.studioId}) as holds,
+    (select count(*)::int from credit_charge_requests where studio_id = ${a.studioId}) as requests`;
+  return row!;
 }
 
 describe("H judging the caps at admission", () => {
@@ -215,7 +228,6 @@ describe("H judging the caps at admission", () => {
     expect(error.resetsAt).toBe((await month()).next.toISOString());
     expect(await sql`select 1 from tasks where user_id = ${y.userId}`).toEqual([]);
     expect(await sql`select 1 from credit_holds where actor_user_id = ${y.userId}`).toEqual([]);
-    expect(await sql`select 1 from operation_ledger where actor_user_id = ${y.userId}`).toEqual([]);
   });
 
   it("H-01 H-02 with 9 spent of 10, an estimate of 2 is refused and an estimate of 1 passes", async () => {
@@ -249,32 +261,33 @@ describe("H judging the caps at admission", () => {
     expect(await reserve(a, y.userId, 1)).toMatchObject({ scope: "studio", limit: 100 });
   });
 
-  it("H-07 a cap of 0 refuses a generation and the overage hold of an operation", async () => {
-    const a = await seedAccount(sql, { used: 4000 });
-    const y = await seedMember(sql, a);
-    await caps(a, 0);
-    expect(await reserve(a, y.userId, 1)).toMatchObject({ scope: "member", limit: 0 });
-    const { res } = await ticket(app, a, {}, crypto.randomUUID(), y);
-    expect(res.status).toBe(402);
-    expect(await refusal(res)).toMatchObject({ reason: "spend_cap_reached", scope: "member" });
-  });
-
-  it("H-08 a cap of 0 leaves what spends no credits alone: an upload within the allowance and the free grid", async () => {
+  it("H-07 a cap of 0 refuses a generation", async () => {
     const a = await seedAccount(sql);
     const y = await seedMember(sql, a);
     await caps(a, 0);
-    const { res } = await ticket(app, a, {}, crypto.randomUUID(), y);
-    expect(res.status, await res.clone().text()).toBe(201);
-    const grid = await request(app, y.cookie, "POST", "/mini-tools", {
-      project_id: a.projectId,
-      space_id: a.spaceId,
-      tool: "image.grid",
-      node_ids: Array.from({ length: 4 }, () => crypto.randomUUID()),
-      source: { url: "https://assets.invalid/image/a.png" },
-      params: { rows: 2, cols: 2, skip: [] },
-      slots: {},
-    });
-    expect(grid.status).not.toBe(402);
+    expect(await reserve(a, y.userId, 1)).toMatchObject({ scope: "member", limit: 0 });
+  });
+
+  it("H-08 caps of 0 leave what spends no credits alone: single and batch upload tickets and both address ingests", async () => {
+    const a = await seedAccount(sql);
+    const y = await seedMember(sql, a);
+    await caps(a, 0, 0);
+    const before = await creditFootprint(a);
+    const file = (): Record<string, unknown> => ({ filename: "photo.png", content_type: "image/png", size: 4096, client_hash: crypto.randomBytes(32).toString("hex") });
+    const answers = [
+      await request(app, y.cookie, "POST", "/assets/upload-ticket", { ...file(), project_id: a.projectId }),
+      await request(app, y.cookie, "POST", "/assets/upload-ticket", {
+        project_id: a.projectId,
+        space_id: a.spaceId,
+        source: "mini_tool",
+        tool_name: "image.grid",
+        items: [file(), file()].map((item) => ({ ...item, node_id: crypto.randomUUID() })),
+      }),
+      await request(app, y.cookie, "POST", "/canvas/ingest-url", { url: "https://cdn.test.invalid/picture.jpg", project_id: a.projectId, space_id: a.spaceId, node_id: crypto.randomUUID() }),
+      await request(app, y.cookie, "POST", "/assets/ingest-url", { url: "https://cdn.test.invalid/picture.jpg", project_id: a.projectId, space_id: a.spaceId }),
+    ];
+    expect(answers.map((res) => res.status)).toEqual([201, 200, 201, 201]);
+    expect(await creditFootprint(a)).toEqual(before);
   });
 
   it("H-09 no caps set is no cap, apart from a cap of 0", async () => {
@@ -301,6 +314,23 @@ describe("H judging the caps at admission", () => {
     await caps(a, 10);
     await spend(a, y.userId, 10);
     expect(await reserve(a, y.userId, 1)).toMatchObject({ scope: "member" });
+  });
+});
+
+describe("E-09 payments off", () => {
+  beforeAll(() => {
+    initCore({ ...process.env, PAYMENT_ENABLED: "false" });
+  });
+
+  afterAll(() => {
+    initCore(PAYMENTS_ON);
+  });
+
+  it("E-09 a per-member spend limit of 0 is not judged: the generation is let through", async () => {
+    const a = await seedAccount(sql);
+    await caps(a, 0);
+    expect(await reserve(a, a.userId, 1)).toBe("ok");
+    expect(await outcome(precheckCredits(a.projectId, a.userId, SMALLEST_CREDIT))).toBe("ok");
   });
 });
 

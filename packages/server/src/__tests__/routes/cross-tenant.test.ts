@@ -8,7 +8,6 @@
  * checked against the authenticated user before any side effect runs.
  */
 
-import { randomUUID } from "node:crypto";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("ai", () => ({
@@ -102,10 +101,9 @@ describe("POST /assets/upload-ticket — project ownership", () => {
   it("rejects with 403 for a project this caller may not write to", async () => {
     mocks.projectService.assertAccess.mockRejectedValue(new ForbiddenError("nope"));
     const app = createApp();
-    // Every upload names its operation by an Idempotency-Key (inner#1968 design 3.2).
     const res = await app.request("/api/v1/assets/upload-ticket", {
       method: "POST",
-      headers: { ...AUTH, "Idempotency-Key": randomUUID() },
+      headers: AUTH,
       body: JSON.stringify({
         filename: "a.png",
         content_type: "image/png",

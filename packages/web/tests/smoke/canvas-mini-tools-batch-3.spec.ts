@@ -7,12 +7,11 @@
  *
  * What the unit suite cannot reach: Fabric drawing on a real canvas inside a
  * real node, the pointer reaching it through the canvas's transform, and a
- * press on Run that builds the nodes downstream and fills them: the adjust and
- * the markup through the real upload, the grid from one run in the media
- * container (inner#1968 design 3.2.2) — sixty-four tiles at once for an 8×8
- * grid. Every case reaches the ingest Worker and R2, and the cases share one
- * page, so all of them carry those tags; the expand also runs the pinned model
- * for real.
+ * press on Run that builds the nodes downstream and fills them through the
+ * real upload — sixty-four of them at once for an 8×8 grid. Every case
+ * uploads through the ingest Worker into R2, and the cases share one page, so
+ * all of them carry those tags; the expand also runs the pinned model for
+ * real.
  *
  * Needs a running dev stack (`pnpm dev`):
  *
@@ -24,9 +23,9 @@ import { expect, type Locator, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
-import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { openTool, seedNode } from '../helpers/mini-tool';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { expectOnlyPartsTo, expectOpenedUpload, PART_PATH, recordRequests } from '../helpers/upload';
 
 /**
  * A public JPEG served with CORS, 400×300, so the browser can draw it onto a
@@ -190,57 +189,6 @@ async function storedResults(count: number, waitMs = 120_000): Promise<string[]>
   return pictures.evaluateAll((els) => els.map((el) => el.getAttribute('src') ?? ''));
 }
 
-/**
- * Put the case's picture on the canvas as a registered asset, in place of the
- * seeded one. The grid is cut in the media container (inner#1968 design
- * 3.2.2), whose inputs come only from our storage, so its source is uploaded
- * through the canvas; the seeded node, which only points at the picture, is
- * removed and the uploaded one takes its place and its id variable.
- */
-async function registerSource(): Promise<void> {
-  const bytes = await (await page.request.get(image)).body();
-  const at = await liveModuleUrl(page, CANVAS_SPACE);
-  const nodeIds = (): Promise<{ id: string; content: string }[]> =>
-    page.evaluate(
-      async ([pid, sid, url]: [string, string, string]) => {
-        const canvas = (await import(/* @vite-ignore */ url)) as {
-          readCanvasGraph: (p: string, s: string) => { nodes: { id: string; data?: { content?: string } }[] };
-        };
-        return canvas.readCanvasGraph(pid, sid).nodes.map((n) => ({ id: n.id, content: n.data?.content ?? '' }));
-      },
-      [projectId, spaceId, at] as [string, string, string],
-    );
-  const before = new Set((await nodeIds()).map((n) => n.id));
-  await page
-    .locator('input[data-testid="canvas-upload-input"][multiple]')
-    .setInputFiles([{ name: 'grid-source.jpg', mimeType: 'image/jpeg', buffer: bytes }]);
-  let uploaded = '';
-  await expect
-    .poll(
-      async () => {
-        uploaded = (await nodeIds()).find((n) => !before.has(n.id) && /^https?:\/\//.test(n.content))?.id ?? '';
-        return uploaded;
-      },
-      { timeout: 120_000, intervals: [1_000] },
-    )
-    .not.toBe('');
-  const seeded = imageNode;
-  await page.evaluate(
-    async ([pid, sid, gone, kept, url]: [string, string, string, string, string]) => {
-      const canvas = (await import(/* @vite-ignore */ url)) as {
-        removeNode: (p: string, s: string, n: string) => unknown;
-        setNodePosition: (p: string, s: string, n: string, at: { x: number; y: number }, parent: null) => void;
-      };
-      canvas.removeNode(pid, sid, gone);
-      canvas.setNodePosition(pid, sid, kept, { x: 0, y: 0 }, null);
-    },
-    [projectId, spaceId, seeded, uploaded, at] as [string, string, string, string, string],
-  );
-  imageNode = uploaded;
-  await expect(nodeOf(seeded)).toHaveCount(0);
-  await expect(nodeOf(imageNode).getByTestId('image-node-img')).toBeVisible({ timeout: 20_000 });
-}
-
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
   await openSmokeProject(page);
@@ -397,7 +345,6 @@ test('markup draws, goes back to select, keeps Escape for itself, and Run fills 
 });
 
 test('a 2×2 grid cuts four tiles of the source into a group @needs-ingest @needs-internet @needs-storage', async () => {
-  await registerSource();
   await openTool(page, imageNode, 'image.grid');
   await expect(nodeOf(imageNode).getByTestId('mini-tool-grid-layer')).toBeVisible({ timeout: 15_000 });
   await stepSlider('mini-tool-param-rows-slider', 'ArrowLeft', 1);
@@ -434,18 +381,14 @@ test('a 2×2 grid cuts four tiles of the source into a group @needs-ingest @need
 });
 
 // A13: the group and its tiles are on the canvas at the press, and the
-// uploader sees each tile wait until the server answers the run.
-test('a grid shows its group and waiting tiles before the server answers the run @needs-ingest @needs-internet @needs-storage', async () => {
-  await registerSource();
+// uploader sees each tile wait until the server answers.
+test('a grid shows its group and waiting tiles before the tickets come back @needs-ingest @needs-internet @needs-storage', async () => {
   await openTool(page, imageNode, 'image.grid');
   await stepSlider('mini-tool-param-rows-slider', 'ArrowLeft', 1);
   await stepSlider('mini-tool-param-cols-slider', 'ArrowLeft', 1);
   let release: () => void = () => undefined;
   const held = new Promise<void>((resolve) => (release = resolve));
-  // The grid is one container run since inner#1968 design 3.2.2: its request is
-  // what the tiles wait on now, not a ticket per tile.
-  await page.route('**/api/v1/mini-tools', async (route) => {
-    if (route.request().method() !== 'POST') return route.continue();
+  await page.route('**/assets/upload-ticket*', async (route) => {
     await held;
     await route.continue();
   });
@@ -453,8 +396,40 @@ test('a grid shows its group and waiting tiles before the server answers the run
   await expect(visibleSpace(page).getByTestId('group-node')).toHaveCount(1, { timeout: 5_000 });
   await expect(results().getByTestId('node-upload-skeleton')).toHaveCount(4, { timeout: 5_000 });
   release();
+  await page.unroute('**/assets/upload-ticket*');
   await expect(results().getByTestId('node-upload-skeleton')).toHaveCount(0, { timeout: 30_000 });
   await storedResults(4);
+});
+
+test('a grid tile whose upload failed uploads again on Retry @needs-ingest @needs-internet @needs-storage', async () => {
+  await openTool(page, imageNode, 'image.grid');
+  await stepSlider('mini-tool-param-rows-slider', 'ArrowLeft', 1);
+  await stepSlider('mini-tool-param-cols-slider', 'ArrowLeft', 1);
+  // Every transfer to the ingest Worker is cut, so each tile fails as an
+  // upload that stopped before it finished.
+  let cut = 0;
+  const cutRequests: { method: string; url: string }[] = [];
+  await page.route('**/uploads**', (route) => {
+    cut += 1;
+    cutRequests.push({ method: route.request().method(), url: route.request().url() });
+    return route.abort('connectionfailed');
+  });
+  await page.getByTestId('mini-tool-run').click();
+  await expect(results()).toHaveCount(4, { timeout: 20_000 });
+  await expect.poll(() => cut, { timeout: 60_000 }).toBeGreaterThan(0);
+  // What was cut is a part: the server opens every tile's upload (inner#1595).
+  for (const request of cutRequests) {
+    expect(request.method).toBe('PUT');
+    expect(new URL(request.url).pathname).toMatch(PART_PATH);
+  }
+  const tile = results().first();
+  const failed = tile.getByTestId('task-count-failed');
+  await expect(failed).toBeVisible({ timeout: 60_000 });
+  await page.unroute('**/uploads**');
+
+  await failed.click();
+  await page.getByTestId('node-task-row').first().getByTestId('task-action-retry').click();
+  await expect(tile.getByTestId('image-node-img')).toHaveAttribute('src', /^https?:\/\//, { timeout: 60_000 });
 });
 
 test('a 1×1 grid cannot be run @needs-ingest @needs-internet @needs-storage', async () => {
@@ -466,7 +441,6 @@ test('a 1×1 grid cannot be run @needs-ingest @needs-internet @needs-storage', a
 
 // A15: the user picks which tiles to cut on the node itself.
 test('a grid cuts only the tiles picked on the node, each at its own place @needs-ingest @needs-internet @needs-storage', async () => {
-  await registerSource();
   await openTool(page, imageNode, 'image.grid');
   const layer = nodeOf(imageNode).getByTestId('mini-tool-grid-layer');
   await expect(layer).toBeVisible({ timeout: 15_000 });
@@ -516,11 +490,13 @@ test('a grid cuts only the tiles picked on the node, each at its own place @need
   await expect(visibleSpace(page).getByTestId('group-node')).toHaveCount(1);
 });
 
-test('an 8×8 grid lands all sixty-four tiles @needs-ingest @needs-internet @needs-storage', async () => {
-  // The container writes sixty-four tiles through the local Worker: measured
-  // 7.5 minutes from the press, so the tiles get ten.
-  test.setTimeout(12 * 60_000);
-  await registerSource();
+test('an 8×8 grid uploads all sixty-four tiles @needs-ingest @needs-internet @needs-storage', async () => {
+  test.setTimeout(300_000);
+  // inner#1595: the server opens all sixty-four uploads; the page only sends parts.
+  const sent = recordRequests(page);
+  const batchAnswer = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && /\/assets\/upload-ticket$/.test(new URL(r.url()).pathname),
+  );
   await openTool(page, imageNode, 'image.grid');
   await stepSlider('mini-tool-param-rows-slider', 'ArrowRight', 5);
   await stepSlider('mini-tool-param-cols-slider', 'ArrowRight', 5);
@@ -536,9 +512,12 @@ test('an 8×8 grid lands all sixty-four tiles @needs-ingest @needs-internet @nee
       return box.x >= pane.x && box.y >= pane.y && box.x + box.width <= pane.x + pane.width && box.y + box.height <= pane.y + pane.height;
     }, { timeout: 5_000 })
     .toBe(true);
-  // One container run cuts them all (inner#1968 design 3.2.2).
-  const urls = await storedResults(64, 10 * 60_000);
+  const urls = await storedResults(64);
   expect(new Set(urls).size).toBe(64);
+  const { data } = (await (await batchAnswer).json()) as { data: { items: Record<string, unknown>[] } };
+  const opened = data.items.filter((item) => !('alreadyExists' in item));
+  for (const item of opened) expectOpenedUpload(item);
+  if (opened[0] !== undefined) expect(expectOnlyPartsTo(sent, String(opened[0].uploadUrl))).toBeGreaterThan(0);
 });
 
 test('the expand grows past the picture and runs the model to a larger picture @needs-ingest @needs-internet @needs-model @needs-storage', async () => {

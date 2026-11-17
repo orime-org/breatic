@@ -29,7 +29,6 @@ import { runWire } from "@server/agent/run-wire.js";
 import { chatSubscriber, runStreams } from "@server/agent/run-stream.js";
 import { isShuttingDown, trackRun } from "@server/agent/shutdown-flag.js";
 import { takenMessageOf, type TakenMessage, type TurnEnded } from "@server/agent/taken-message.js";
-import { releaseChatMessages, renewChatMessages } from "@server/modules/operation/operation-admission.service.js";
 
 /** How a run was opened. */
 export type RunEntrance =
@@ -150,8 +149,7 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
     // other failure says nothing about that, so what waits stays for a sync.
     if (err instanceof NotFoundError || err instanceof ForbiddenError) {
       logger.warn({ err, ...ctx, runId }, "chat_run_refused");
-      // What waited can never run, so none of it is an operation (inner#1968).
-      await releaseChatMessages(await queue.clear(conversationId), "run_refused");
+      await queue.clear(conversationId);
     } else {
       logger.error({ err, ...ctx, runId }, "chat_run_check_failed");
       await queue.settle(conversationId, runId, { kind: "unsaved" });
@@ -170,8 +168,6 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
   let opening: TakenMessage | undefined;
   let alsoTaken: TakenMessage[] = [];
   let operationKey: string | undefined;
-  // The messages this run took, kept in flight while it runs (inner#1968).
-  const inFlight: { id: string; userId: string }[] = [];
   if (entrance.kind === "head") {
     let taken = await queue.head(conversationId, runId);
     let status: Awaited<ReturnType<typeof messageRepo.takenStatus>> | undefined;
@@ -185,8 +181,6 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
       if (status.answered.size === 0 && refused.length === 0) break;
       if (refused.length > 0) logger.warn({ ...ctx, runId, messageIds: refused }, "chat_message_id_refused");
       taken = await queue.forget(conversationId, runId, [...status.answered, ...refused]);
-      // A refused id never runs; an answered one already counted, and stays counted (inner#1968).
-      await releaseChatMessages(refused.map((id) => ({ id, userId })), "message_id_refused");
       if (taken.length === 0) taken = await queue.head(conversationId, runId);
     }
     const first = taken[0];
@@ -203,8 +197,6 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
     }
     opening = takenMessageOf(taken[0]!);
     alsoTaken = taken.slice(1).map(takenMessageOf);
-    inFlight.push(...taken);
-    await renewChatMessages(taken);
   }
 
   const stop = new AbortController();
@@ -213,7 +205,6 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
   const held: { lease: runningTurnsService.RunningLease | null } = { lease: null };
   const renew = setInterval(() => {
     void queue.renew(conversationId, runId).catch((err: unknown) => logger.error({ err, ...ctx, runId }, "chat_run_renew_failed"));
-    void renewChatMessages(inFlight);
     void held.lease?.renew().catch((err: unknown) => logger.error({ err, ...ctx, runId }, "chat_running_lease_failed"));
   }, getAgentConfig().chat_run_renew_ms);
   let turnReady!: (turn: Promise<ReadableStream<UIMessageChunk>>) => void;
@@ -267,12 +258,7 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
     };
     const agent = new MainAgent();
     const hooks = {
-      drain: async () => {
-        const drained = await queue.drain(conversationId, runId);
-        inFlight.push(...drained);
-        await renewChatMessages(drained);
-        return drained.map(takenMessageOf);
-      },
+      drain: async () => (await queue.drain(conversationId, runId)).map(takenMessageOf),
       beforeStream,
       onEnded: (e: TurnEnded) => {
         ended = e;

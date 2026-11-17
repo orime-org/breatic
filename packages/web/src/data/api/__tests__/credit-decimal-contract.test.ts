@@ -113,22 +113,3 @@ describe('decimal credit client contracts', () => {
     await expect(fetchProjectCredits('project-1')).resolves.toEqual(exact);
   });
 });
-
-describe('ledger lines past the operation allowance (inner#1968)', () => {
-  it('reads an account ledger page that holds an operation overage line', async () => {
-    const data = { ...page, items: [{ ...ledger, kind: 'operation_overage', amount: '-0.500000' }] };
-    transport.apiGet.mockResolvedValue(data);
-    await expect(fetchCreditLedger()).resolves.toEqual(data);
-  });
-
-  it('reads a studio ledger page that holds an operation overage line', async () => {
-    const line = {
-      id: ledger.id, kind: 'operation_overage', actorUserId: null, actorName: null,
-      projectId: null, projectName: null, model: null, provider: null,
-      charged: '-0.500000', consumed: '-0.500000', owed: '0.000000', createdAt: ledger.createdAt,
-    };
-    const data = { ...studio, ledger: { items: [line], nextCursor: null } };
-    transport.apiGet.mockResolvedValue(data);
-    await expect(fetchStudioCredits('studio-1')).resolves.toEqual(data);
-  });
-});

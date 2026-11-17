@@ -83,7 +83,6 @@ vi.mock("@breatic/core", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", async () => ({
-  taskOperationKey: (await import("@domain/task/operation-key.js")).taskOperationKey,
   failureOutcome: (await import("@domain/node-task/failure-outcome.js")).failureOutcome,
   buildAgentConfig: vi.fn(),
   generateTextRetry: vi.fn(),
@@ -102,8 +101,6 @@ vi.mock("@breatic/domain", async () => ({
     settleCharge: h.settleCharge,
     pendingChargeRequestId: vi.fn(async () => null),
   },
-  // The operation a run that failed for good gives back (inner#1968).
-  operationService: { releaseOperation: vi.fn(async () => true) },
   creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   creditsForUsd: (usd: number) => usd,
   toChargeCredits: (await import("@domain/credit/credit-math.js")).toChargeCredits,

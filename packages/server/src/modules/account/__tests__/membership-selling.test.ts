@@ -30,12 +30,6 @@ vi.mock("@breatic/core", () => ({
   BILLING_PERIODS: ["month", "year"],
 }));
 
-// The panel's operations line is read through domain (inner#1968); this file
-// is about selling, so it answers "not counted".
-vi.mock("@breatic/domain", () => ({
-  operationService: { readOperationUsage: vi.fn(async () => null), readMeteredOperationUsage: vi.fn(async () => null) },
-}));
-
 vi.mock("@server/modules/subscription/subscription-panel.js", () => ({
   readStoredSubscriptionSummary: vi.fn(),
 }));

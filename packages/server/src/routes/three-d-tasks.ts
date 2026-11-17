@@ -39,7 +39,6 @@ threeDTasks.post(
       userId,
       check: () => sceneGenerationService.checkSubmission(projectId, body),
       credits: sceneGenerationService.estimateOf,
-      inputs: (checked) => checked.images.map((image) => image.url),
     });
     const answer = await sceneGenerationService.startSceneGeneration(userId, projectId, spaceId, body, held);
     return c.json({ data: answer }, 201);

@@ -107,20 +107,16 @@ const FILE_FAILURE_REASON: Readonly<Record<UploadFailureReason, PendingFailureRe
   tooLarge: 'tooLarge',
   upload: 'failed',
   transfer: 'failed',
-  // Adding credits lets it through (inner#1968).
-  operations: 'operations',
-  spendCap: 'spendCap',
 };
 
 /**
  * A failure.
  * @param reason - What it says.
  * @param retryable - Whether running it again can help.
- * @param credits - With `operations`: the price of one more, when the server named it.
  * @returns The outcome.
  */
-function fail(reason: PendingFailureReason, retryable: boolean, credits?: unknown): UploadOutcome {
-  return { ok: false, failure: typeof credits === 'string' ? { reason, retryable, credits } : { reason, retryable } };
+function fail(reason: PendingFailureReason, retryable: boolean): UploadOutcome {
+  return { ok: false, failure: { reason, retryable } };
 }
 
 /**
@@ -144,9 +140,6 @@ function done(url: string, width?: number | null, height?: number | null): Uploa
  * @returns The outcome.
  */
 function refusal(err: unknown): UploadOutcome {
-  // Adding credits changes the first answer; it does not lift a spend limit (inner#1968).
-  if (err instanceof ApiException && err.reason === 'operations_exhausted') return fail('operations', true, err.details?.credits);
-  if (err instanceof ApiException && err.reason === 'spend_cap_reached') return fail('spendCap', false);
   const status = err instanceof ApiException ? err.status : 0;
   if (status === STORAGE_FULL_STATUS) return fail('storageFull', false);
   if (status === RATE_LIMITED_STATUS) return fail('rateLimited', true);
@@ -182,7 +175,7 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
       return done(filed.fileUrl, filed.width, filed.height);
     } catch (err) {
       const reason = err instanceof UploadFailedError ? err.reason : 'upload';
-      return fail(FILE_FAILURE_REASON[reason], uploadRetryCanChange(reason), err instanceof UploadFailedError ? err.credits : undefined);
+      return fail(FILE_FAILURE_REASON[reason], uploadRetryCanChange(reason));
     }
   };
 

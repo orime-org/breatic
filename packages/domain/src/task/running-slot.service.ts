@@ -22,11 +22,11 @@ import {
   getNodeTaskConfig,
   getStreamRedis,
   getWorkerConfig,
-  negotiatedOperationsOf,
   projectsRepo,
   publishSpaceTasksChanged,
   reportGraceMs,
   runningTaskLimitForStudio,
+  runningTasksPerUserOf,
   timelineExecutionRepo,
   type DbTx,
 } from "@breatic/core";
@@ -36,14 +36,11 @@ import * as nodeTaskRepo from "@domain/node-task/node-task.repo.js";
 import * as nodeTaskService from "@domain/node-task/node-task.service.js";
 import * as sceneTaskService from "@domain/node-task/scene-task.service.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
-import * as operationService from "@domain/operation/operation.service.js";
 import { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
-import { timelineOperationKey } from "@domain/timeline/operation-key.js";
 import { StillRunning } from "@domain/task/still-running.js";
 
 export { StillRunning };
 import type { NodeTaskCounts, TaskRowPlace } from "@domain/node-task/node-task.repo.js";
-import { taskOperationKey } from "@domain/task/operation-key.js";
 
 /** Which row the gate judges. */
 export interface GateInput {
@@ -114,7 +111,7 @@ async function limitFor(projectId: string | null, userId: string): Promise<numbe
       // person's own limit applies, as for work outside any studio.
     }
   }
-  return negotiatedOperationsOf(await getMembershipReadingForUser(userId)).runningTasksPerUser;
+  return runningTasksPerUserOf(await getMembershipReadingForUser(userId));
 }
 
 /**
@@ -149,21 +146,19 @@ function waitDelay(limit: number, running: number, ahead: number): number {
 }
 
 /**
- * Keep what a task or execution holds alive: its credit hold, its ledger row
- * and its overage hold, to now + budget + grace. While it waits only what has
- * less than half its budget left is renewed; a start renews everything.
- * @param key - The operation key.
- * @param creditHold - The credit hold's key, when it has one.
+ * Keep a task's credit hold alive to now + budget + grace. While the task
+ * waits the hold is renewed only once it has less than half the budget left;
+ * a start renews it whatever is left.
+ * @param creditHold - The credit hold's key.
  * @param always - Renew whatever is left.
  * @param tx - The gate's transaction.
  */
-async function renewHoldings(key: string, creditHold: string | null, always: boolean, tx: DbTx): Promise<void> {
+async function renewHoldings(creditHold: string, always: boolean, tx: DbTx): Promise<void> {
   const budget = getNodeTaskConfig().default_budget_ms;
   const now = Date.now();
   const until = new Date(now + budget + reportGraceMs());
   const dueBefore = always ? until : new Date(now + budget / 2);
-  if (creditHold !== null) await creditHoldRepo.extendHold(creditHold, until, tx, dueBefore);
-  await operationService.extendInFlight(key, until, dueBefore, tx);
+  await creditHoldRepo.extendHold(creditHold, until, tx, dueBefore);
 }
 
 /**
@@ -220,17 +215,16 @@ async function judgeTask(row: taskRepo.GateTaskRow, jobId: string, limit: number
   return db.transaction(async (tx): Promise<Judged> => {
     if (!(await takeLock(row.userId, tx))) return { kind: "busy" };
     const { running, ahead } = await standing(row.userId, limit, row.createdAt, tx);
-    const key = taskOperationKey(row.id);
     if (running + ahead < limit) {
       if ((await taskRepo.startPending(row.id, jobId, tx)) === null) return { kind: "ended" };
       const places = row.slotWaitSince === null ? [] : await nodeTaskRepo.startWaiting(row.id, tx);
-      await renewHoldings(key, row.id, true, tx);
+      await renewHoldings(row.id, true, tx);
       return { kind: "started", places, space: false };
     }
     await taskRepo.markSlotWait(row.id, tx);
     await taskRepo.noteSlotCheck(row.id, limit, getWorkerConfig().slot_wait_stale_ms, tx);
     const places = await nodeTaskRepo.markWaiting(row.id, tx);
-    await renewHoldings(key, row.id, false, tx);
+    await renewHoldings(row.id, false, tx);
     return { kind: "waiting", delayMs: waitDelay(limit, running, ahead), places, space: false };
   });
 }
@@ -248,33 +242,27 @@ async function judgeExecution(row: { id: string; actorUserId: string; createdAt:
   return db.transaction(async (tx): Promise<Judged> => {
     if (!(await takeLock(row.actorUserId, tx))) return { kind: "busy" };
     const { running, ahead } = await standing(row.actorUserId, limit, row.createdAt, tx);
-    const key = timelineOperationKey(row.id);
     if (running + ahead < limit) {
       const budgetMs = getNodeTaskConfig().default_budget_ms;
       const claimed = await timelineExecutionRepo.transition({ id: row.id, event: { type: "claim", budgetMs } }, tx);
       if (!claimed.applied) return { kind: "ended" };
-      await renewHoldings(key, null, true, tx);
       return { kind: "started", places: [], space: true };
     }
     const first = await timelineExecutionRepo.markSlotWait(row.id, tx);
     await timelineExecutionRepo.noteSlotCheck(row.id, limit, getWorkerConfig().slot_wait_stale_ms, tx);
-    await renewHoldings(key, null, false, tx);
     return { kind: "waiting", delayMs: waitDelay(limit, running, ahead), places: [], space: first };
   });
 }
 
 /**
  * Close what a task the old code failed left open (design 3.9, round 7 W3):
- * its holds, its ledger row and its running node rows. Each step is a no-op on
+ * its credit hold and its running node rows. Each step is a no-op on
  * a task already closed.
  * @param row - The task.
  * @returns The signals that failed.
  */
 async function closeFailed(row: taskRepo.GateTaskRow): Promise<unknown[]> {
-  await db.transaction(async (tx) => {
-    await creditHoldRepo.releaseHold(row.id, tx);
-    await operationService.releaseOperation(taskOperationKey(row.id), tx, "run_failed");
-  });
+  await creditHoldRepo.releaseHold(row.id);
   return (await failRows(row.id, row.errorMessage ?? "internal")).publishFailures;
 }
 
@@ -330,8 +318,8 @@ export interface CancelOutcome {
 }
 
 /**
- * Cancel a task that has not started (design 3.9): the task, its credit hold
- * and its ledger row in one commit under the person's lock, then its rows
+ * Cancel a task that has not started (design 3.9): the task and its credit
+ * hold in one commit under the person's lock, then its rows
  * end as failed with the reason `cancelled`.
  * @param taskId - The task.
  * @returns Whether it was cancelled, and the node's counts.
@@ -344,7 +332,6 @@ export async function cancelQueued(taskId: string): Promise<CancelOutcome> {
     await taskRepo.lockRunningSlots(row.userId, tx);
     if (!(await taskRepo.cancelPending(taskId, tx))) return false;
     await creditHoldRepo.releaseHold(taskId, tx);
-    await operationService.releaseOperation(taskOperationKey(taskId), tx, "cancelled");
     return true;
   });
   if (!cancelled) return { cancelled: false, counts: null, publishFailures: [] };
@@ -353,9 +340,8 @@ export async function cancelQueued(taskId: string): Promise<CancelOutcome> {
 
 /**
  * End a task for good, waiting or running (design 3.9, failure cleanup and
- * the stale-waiter sweep): the task fails, its credit hold and ledger row are
- * released in one commit under the person's lock, then its open rows end as
- * failed.
+ * the stale-waiter sweep): the task fails and its credit hold is released
+ * in one commit under the person's lock, then its open rows end as failed.
  * @param taskId - The task.
  * @param errorMessage - What the task and its rows show.
  * @returns Whether this call failed the task, and the signals that failed.
@@ -368,7 +354,6 @@ export async function failTask(taskId: string, errorMessage: string): Promise<{ 
     await taskRepo.lockRunningSlots(row.userId, tx);
     const moved = await taskRepo.failOpen(taskId, errorMessage, tx);
     await creditHoldRepo.releaseHold(taskId, tx);
-    await operationService.releaseOperation(taskOperationKey(taskId), tx, "run_failed");
     return moved;
   });
   return { failed, publishFailures: (await failRows(taskId, errorMessage)).publishFailures };

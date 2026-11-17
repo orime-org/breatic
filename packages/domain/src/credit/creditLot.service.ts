@@ -104,11 +104,6 @@ export interface ChargeInput {
    * recorded against nobody's purchase.
    */
   projectId: string | null;
-  /**
-   * The studio charged when there is no project (a studio avatar's overage,
-   * inner#1968). Ignored when `projectId` is set.
-   */
-  studioId?: string;
   /** Who ran the generation. Recorded as the actor, and as the payer when there is no lot. */
   actorUserId: string;
   /** How many credits it cost. */
@@ -305,7 +300,7 @@ async function applyCharge(input: ChargeInput, tx: DbTx): Promise<ChargeOutcome>
         if (err instanceof NotFoundError) return null;
         throw err;
       })
-    : input.studioId ?? null;
+    : null;
 
   const usageEntry = {
     payerUserId: input.actorUserId,
@@ -359,9 +354,7 @@ async function applyCharge(input: ChargeInput, tx: DbTx): Promise<ChargeOutcome>
   // request row and joins the rest at the debt, a
   // designation one table earlier, and accepting a transfer at the
   // membership. An admission that holds credits takes the same debt lock, so
-  // it sees this charge and the hold it releases together. An operation's
-  // admission (inner#1968) takes the account's `users` row before the debt,
-  // and a settlement never waits on `users`, so the two cannot deadlock.
+  // it sees this charge and the hold it releases together.
   await creditLotRepo.lockDebt(studioId, tx);
   if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold, tx);
   const candidates = await creditLotRepo.listSpendableLots(studioId, tx);
@@ -486,7 +479,6 @@ async function settleOnce(requestId: string): Promise<ChargeOutcome | null> {
     const outcome = await applyCharge(
       {
         projectId: request.projectId,
-        ...(request.projectId === null && request.studioId !== null ? { studioId: request.studioId } : {}),
         actorUserId: request.actorUserId,
         amount: Number(request.amount),
         description: request.description ?? undefined,

@@ -156,8 +156,7 @@ describe("MINI_TOOLS registry", () => {
 
   it("cuts a grid into rows times columns of tiles inside a group", () => {
     const grid = miniToolById("image.grid");
-    // Cut in the media container since inner#1968 (design 3.2.2).
-    expect(grid?.run.kind).toBe("container");
+    expect(grid?.run.kind).toBe("browser");
     expect(grid?.groupOutputs).toBe(true);
     expect(grid?.outputLayout).toBe("grid");
     expect(grid && outputsOf(grid, {}).length).toBe(9);
@@ -184,7 +183,7 @@ describe("MINI_TOOLS registry", () => {
     ]);
   });
 
-  it("runs crop and rotate in the browser and the grid, video and audio edits in a container", () => {
+  it("runs crop and rotate in the browser and the video and audio edits in a container", () => {
     expect(miniToolById("image.crop")?.run.kind).toBe("browser");
     expect(miniToolById("image.rotate")?.run.kind).toBe("browser");
     const containerIds = MINI_TOOLS.filter((tool) => tool.run.kind === "container").map(
@@ -200,7 +199,6 @@ describe("MINI_TOOLS registry", () => {
         "video.stabilize",
         "video.hdr",
         "video.join",
-        "image.grid",
         ...BATCH_ONE.audio.slice(0, 11),
       ].sort(),
     );

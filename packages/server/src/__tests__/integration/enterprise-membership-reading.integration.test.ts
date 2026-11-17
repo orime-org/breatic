@@ -95,7 +95,7 @@ describe("enterprise membership unified reads", () => {
   ] as const)("reads configured safe-integer limits from %s through %s as %s", async (storedTier, effectiveTier, enterpriseState) => {
     const config = getMembershipConfig();
     const original = config.tiers[effectiveTier];
-    const configured = tierLimitsSchema.parse({ team_studios: 2147483648, projects_per_studio: 2147483648, concurrent_editors: 2147483648, studio_members: 2147483648, project_members: 2147483648, storage_bytes: Number.MAX_SAFE_INTEGER, monthly_operations: 2147483648, running_tasks_per_user: 2147483648 });
+    const configured = tierLimitsSchema.parse({ team_studios: 2147483648, projects_per_studio: 2147483648, concurrent_editors: 2147483648, studio_members: 2147483648, project_members: 2147483648, storage_bytes: Number.MAX_SAFE_INTEGER, running_tasks_per_user: 2147483648 });
     const { userId, studioId } = await account(storedTier);
     if (storedTier === "enterprise") await enterprise(userId, "2000-01-01T00:00:00Z", effectiveTier);
     config.tiers[effectiveTier] = configured;
@@ -126,12 +126,13 @@ describe("enterprise membership unified reads", () => {
     if (state === "deleted") await sql`update users set deleted_at=now() where id=${userId}`;
     await expect(getMembershipReadingForUser(userId)).rejects.toThrow(`No live account ${userId}`);
   });
-  // Since inner#1968 (design 3.6) the agreement also carries its two operation
-  // terms (the column defaults here) and its storage_bytes caps storage.
+  // Since inner#1968 (design 3.6) the agreement also carries its
+  // running_tasks_per_user term (the column default here) and its storage_bytes
+  // caps storage.
   it("reads all negotiated limits while retaining the enterprise display and storage rules", async () => {
     const { userId, studioId } = await account("enterprise");
     await enterprise(userId, "2070-01-01T00:00:00Z");
-    const agreed = { ...limits, monthly_operations: 16000, running_tasks_per_user: 10 };
+    const agreed = { ...limits, running_tasks_per_user: 10 };
     expect(await getHonouredTierForUser(userId)).toBe("enterprise");
     expect(await getLimitsForStudio(studioId)).toEqual(agreed);
     expect(await db.transaction((tx) => lockLimitsForUser(userId, tx))).toEqual(agreed);

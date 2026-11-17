@@ -20,7 +20,7 @@ import {
 
 import { miniToolsApi } from '@web/data/api/mini-tools';
 import { ApiException } from '@web/data/api/types';
-import { isOperationsExhausted, refusalSentence } from '@web/stores/credit-refusals';
+import { refusalSentence } from '@web/stores/credit-refusals';
 import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
@@ -123,6 +123,8 @@ export interface MiniToolRun {
   exportFile: (spec: MiniToolSpec, snapshot: MiniToolSnapshot, capture?: MiniToolCapture) => Promise<ExportedFile[]>;
   /** Upload a browser tool's one file into its node, tagged with the tool, carrying on the press's operation. */
   fillUpload: (nodeId: string, file: File, modality: CreatableNodeType, tag: MiniToolUploadTag, markOp: string) => void;
+  /** Upload a browser tool's files into their nodes in one batch, tagged with the tool, each carrying on its node's operation. */
+  fillUploads: (entries: { nodeId: string; file: File; markOp: string }[], tag: MiniToolUploadTag) => void;
   /** What the user made on the node, copied out at the press. */
   capture?: MiniToolCapture | undefined;
   /** Make a drawing tool's images from the source and the drawing. */
@@ -394,18 +396,17 @@ export function useMiniToolRunning(spaceId: string, nodeId: string, toolId: stri
 type Settle = (message?: UploadMarkMessage) => void;
 
 /**
- * What a refused or unreached request says on the nodes: a used-up or
- * spend-limit refusal's own sentence; the server's sentence when it gave one, already in the user's language; a request
+ * What a refused or unreached request says on the nodes: a spend-limit
+ * refusal's own sentence (inner#1968); the server's sentence when it gave
+ * one, already in the user's language; a request
  * refused as too large by a proxy with no sentence of ours says why
  * (inner#1006); a request that never arrived has none.
  * @param err - What the send rejected with.
  * @returns The message.
  */
 async function refusalOf(err: unknown): Promise<UploadMarkMessage> {
-  // The month's operations used up offer to add credits; a spend limit says its
-  // limit and reset day (inner#1968).
   const refused = refusalSentence(err);
-  if (refused !== null) return isOperationsExhausted(err) ? { text: refused, topUp: true } : { text: refused };
+  if (refused !== null) return { text: refused };
   if (err instanceof ApiException && err.fromServer && err.message) return { text: err.message };
   if (err instanceof ApiException && err.status === 413) return await tooLargeMessage();
   return { key: 'canvas.miniTool.panel.couldNotStart' };
@@ -557,13 +558,23 @@ async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => vo
     const tag: MiniToolUploadTag = { source: 'mini_tool', toolName: spec.id };
     const output = outputTemplateOf(spec);
     const handed = new Set<number>();
-    // A browser tool makes one file; the grid, the one tool with many
-    // results, is cut on the server (inner#1968 design 3.2.2).
-    const [node] = nodes;
-    const [only] = files;
-    if (node !== undefined && only !== undefined && output.modality !== 'text') {
-      handed.add(0);
-      run.fillUpload(node.id, only.file, output.modality, tag, ops[0]);
+    // A grouped run's files go up in one batch, which the server takes from a
+    // grouping tool only; any other run's one file goes up on its own.
+    if (spec.groupOutputs === true) {
+      const entries = nodes.flatMap((built, index) => {
+        const made = files[index];
+        if (made === undefined) return [];
+        handed.add(index);
+        return [{ nodeId: built.id, file: made.file, markOp: ops[index] }];
+      });
+      run.fillUploads(entries, tag);
+    } else {
+      const [node] = nodes;
+      const [only] = files;
+      if (node !== undefined && only !== undefined && output.modality !== 'text') {
+        handed.add(0);
+        run.fillUpload(node.id, only.file, output.modality, tag, ops[0]);
+      }
     }
     const now = useUploadMarksStore.getState();
     nodes.forEach((node, index) => {

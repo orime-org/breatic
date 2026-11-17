@@ -27,7 +27,6 @@ import { toast } from '@web/lib/toast';
 import { PanelRunFooter } from '@web/spaces/canvas/_shared/PanelRunFooter';
 import { creditEstimateText } from '@web/spaces/canvas/generate/credit-estimate-text';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
-import { toastFailure } from '@web/stores/credit-refusals';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
@@ -298,7 +297,7 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
       onFailure: async (err) => {
         // A 422 of ours names the rule or the view slot, in the user's language.
         const ours = err instanceof ApiException && err.status === 422 && err.fromServer;
-        toastFailure(ours ? err.message : await executeErrorMessage(err, t), err);
+        toast.error(ours ? err.message : await executeErrorMessage(err, t));
       },
     });
   }, [entry, ready, mode, settings, origin, prompt, views, intent, projectId, spaceId, onClose, onSubmitted, t]);

@@ -15,7 +15,6 @@
  * grant carries no key to be found by.
  */
 
-import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 /** The canvas routes reach the agent stack on import; this keeps it inert. */
@@ -127,7 +126,7 @@ async function submit(
 ): Promise<Response> {
   return app.request("/api/v1/canvas/ingest-url", {
     method: "POST",
-    headers: { "Idempotency-Key": randomUUID(), "content-type": "application/json", cookie },
+    headers: { "content-type": "application/json", cookie },
     body: JSON.stringify({
       url: SOURCE,
       node_id: crypto.randomUUID(),
@@ -277,7 +276,7 @@ describe("POST /canvas/ingest-url — what it refuses", () => {
 
     const res = await app.request("/api/v1/canvas/ingest-url", {
       method: "POST",
-      headers: { "Idempotency-Key": randomUUID(), "content-type": "application/json" },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({
         url: SOURCE,
         project_id: projectId,
@@ -356,7 +355,7 @@ describe("POST /canvas/ingest-url — what it refuses", () => {
 
     const res = await app.request("/api/v1/canvas/ingest-url", {
       method: "POST",
-      headers: { "Idempotency-Key": randomUUID(), "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({
         url: SOURCE,
         project_id: projectId,

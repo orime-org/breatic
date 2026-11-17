@@ -77,8 +77,6 @@ export interface UploadGrant {
   generationTaskId: string | null;
   /** The uploading browser's analytics consent when the ticket was issued (inner#1442 §4.4.5). */
   analyticsConsent: ConsentSnapshot | null;
-  /** The operations ledger key this upload counts under; null for files our services make (inner#1968). */
-  operationKey: string | null;
   createdAt: Date;
 }
 
@@ -125,7 +123,6 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     assetSource: row.assetSource as GrantAssetSource | null,
     generationTaskId: row.generationTaskId,
     analyticsConsent: row.analyticsConsent,
-    operationKey: row.operationKey,
     createdAt: row.createdAt,
   };
 }
@@ -154,7 +151,6 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  *   bytes, when one did.
  * @param input.analyticsConsent - The uploading browser's analytics consent;
  *   absent reads as no consent.
- * @param input.operationKey - The operations ledger key it counts under (inner#1968).
  * @param tx - Optional enclosing upload admission transaction.
  * @returns The persisted grant.
  * @throws {Error} When the storage key was already issued (UNIQUE violation).
@@ -177,7 +173,6 @@ export async function issueGrant(input: {
     generationTaskId?: string | null;
   };
   analyticsConsent?: ConsentSnapshot;
-  operationKey?: string | null;
 }, tx?: DbTx): Promise<UploadGrant> {
   const rows = await (tx ?? db)
     .insert(uploadGrants)
@@ -197,7 +192,6 @@ export async function issueGrant(input: {
       assetSource: input.context.assetSource ?? null,
       generationTaskId: input.context.generationTaskId ?? null,
       analyticsConsent: input.analyticsConsent ?? null,
-      operationKey: input.operationKey ?? null,
     })
     .returning();
   return toEntity(rows[0]!);

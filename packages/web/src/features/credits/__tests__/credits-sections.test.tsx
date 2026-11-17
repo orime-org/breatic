@@ -574,41 +574,14 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent('seedream-4.0');
     });
 
-    // inner#1968 D-27: an operation over the monthly allowance is charged
-    // 0.5 on its own line, beside that operation's model fee.
-    it('names an operation overage line and keeps it apart from the model fee', async () => {
-      fetchCreditLedger.mockResolvedValue({
-        items: [
-          entry({ id: 'e-overage', kind: 'operation_overage', amount: '-0.500000' as CreditDecimal, model: null }),
-          entry({ id: 'e-fee' }),
-        ],
-        nextCursor: null,
-      });
-      setLocale('zh-CN');
-      try {
-        await openOn('ledger');
-        const body = await panel();
-        const rows = [...body.querySelectorAll('tbody tr')];
-        const overage = rows.find((row) => row.textContent?.includes('超出操作次数'));
-        expect(overage).toBeDefined();
-        expect(overage).toHaveTextContent('-0.5');
-        expect(overage).toHaveTextContent('Autumn keyvisual');
-        expect(overage).not.toHaveTextContent('seedream-4.0');
-        expect(rows.some((row) => row !== overage && row.textContent?.includes('seedream-4.0'))).toBe(true);
-      } finally {
-        setLocale('en');
-      }
-    });
-
     // inner#1968 E-08: with payments off the ledger says it is self-hosted.
-    it('says self-hosted where nothing is charged, with no overage line', async () => {
+    it('says self-hosted where nothing is charged', async () => {
       fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
       setLocale('zh-CN');
       try {
         await openOn('ledger');
         const body = await panel();
         expect(body).toHaveTextContent('自部署不计积分，下面是用量记录。');
-        expect(body).not.toHaveTextContent('超出操作次数');
       } finally {
         setLocale('en');
       }

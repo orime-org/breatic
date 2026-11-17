@@ -66,8 +66,7 @@ export interface ChatQueue {
   remove(conversationId: string, id: string): Promise<"removed" | "taken" | "gone">;
   settle(conversationId: string, runId: string, ending: RunEnding): Promise<string | null>;
   renew(conversationId: string, runId: string): Promise<boolean>;
-  /** Drop everything the conversation's queue holds; answers what waited or was taken, so each can be given back. */
-  clear(conversationId: string): Promise<QueueItem[]>;
+  clear(conversationId: string): Promise<void>;
   /** The messages waiting, in order. */
   pending(conversationId: string): Promise<QueueItem[]>;
   /** Whether a run holds the conversation, a card waits, and whether there is work a claim would start a run for. */
@@ -337,9 +336,7 @@ export function createChatQueue(redis: Redis): ChatQueue {
     },
     async clear(c) {
       const k = chatQueueKeys(c);
-      const [queued, taken] = await Promise.all([redis.lrange(k.queue, 0, -1), redis.lrange(k.taken, 0, -1)]);
       await redis.del(k.active, k.queue, k.taken, k.ids, k.awaiting);
-      return [...items(taken), ...items(queued)];
     },
     async pending(c) {
       return items(await redis.lrange(chatQueueKeys(c).queue, 0, -1));

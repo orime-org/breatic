@@ -185,33 +185,6 @@ export async function findLiveByKeyInStudio(
 }
 
 /**
- * The live assets of one studio stored under any of the given keys, in one
- * query.
- * @param studioId - The studio.
- * @param storageKeys - The keys; an empty list reads nothing.
- * @param tx - Optional transaction.
- * @returns Each found key's asset id.
- */
-export async function findLiveIdsByKeysInStudio(
-  studioId: string,
-  storageKeys: readonly string[],
-  tx?: DbTx,
-): Promise<Map<string, string>> {
-  if (storageKeys.length === 0) return new Map();
-  const rows = await (tx ?? db)
-    .select({ id: studioAssets.id, storageKey: studioAssets.storageKey })
-    .from(studioAssets)
-    .where(
-      and(
-        inArray(studioAssets.storageKey, [...storageKeys]),
-        eq(studioAssets.studioId, studioId),
-        isNull(studioAssets.deletedAt),
-      ),
-    );
-  return new Map(rows.map((row) => [row.storageKey, row.id]));
-}
-
-/**
  * An asset row by id, deleted or not.
  * @param assetId - The row's id.
  * @returns The `StudioAssetEntity`, or null when no row has that id.

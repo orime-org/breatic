@@ -115,8 +115,6 @@ function toMessageData(row: StoredRow): MessageData {
  *   a reply whose turn never asked the model
  * @param rowId - The id to store it under: a reply keeps the one its stream
  *   was opened with, so the page that drew it reads it back under that id
- * @param withinCommit - Writes that must commit with this message or not at
- *   all: a reply counts the operations its turn took in (inner#1968)
  * @returns The turn index this message went into — callers billing by turn
  *   need this exact number and recomputing it later would race
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
@@ -127,18 +125,8 @@ function toMessageData(row: StoredRow): MessageData {
  *   not stop the billing: a failure there is recorded and the turn still settles, having
  *   already spent whatever its finished steps spent.
  */
-export async function addMessage(
-  id: string,
-  message: MessageInput,
-  forModel?: unknown,
-  rowId?: string,
-  withinCommit?: (tx: DbTx) => Promise<void>,
-): Promise<number> {
-  return db.transaction(async (tx) => {
-    const turnIndex = await insertIn(tx, id, message, forModel, rowId);
-    if (withinCommit !== undefined) await withinCommit(tx);
-    return turnIndex;
-  });
+export async function addMessage(id: string, message: MessageInput, forModel?: unknown, rowId?: string): Promise<number> {
+  return db.transaction(async (tx) => insertIn(tx, id, message, forModel, rowId));
 }
 
 /**

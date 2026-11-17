@@ -49,10 +49,7 @@ vi.mock("@breatic/core", () => ({
   NotFoundError: class extends Error {},
   logger: { info: vi.fn(), warn: vi.fn(), error: mockLogError, debug: vi.fn() },
 }));
-vi.mock("@breatic/domain", async () => ({
-  taskOperationKey: (await import("@domain/task/operation-key.js")).taskOperationKey,
-  // The operation a run that failed for good gives back (inner#1968).
-  operationService: { releaseOperation: vi.fn(async () => true) },
+vi.mock("@breatic/domain", () => ({
   creditHoldService: { releaseHold: mockReleaseHold },
   buildAgentConfig: vi.fn(),
   generateTextRetry: vi.fn(),

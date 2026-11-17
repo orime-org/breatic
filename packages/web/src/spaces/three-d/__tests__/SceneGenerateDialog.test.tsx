@@ -10,10 +10,11 @@ import { setLocale, t } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { ApiException } from '@web/data/api/types';
+import { spendCapMessage } from '@web/lib/spend-cap-message';
 import { toast } from '@web/lib/toast';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { SceneGenerateDialog } from '@web/spaces/three-d/SceneGenerateDialog';
-import { expectNoTopUpAction, expectTopUpToast, toastsShown } from '@web/test-utils/top-up-toast';
+import { toastsShown } from '@web/test-utils/shown-toasts';
 import { I23D, MODE_LABEL, MULTIVIEW, PROJECT, RAW_CATALOG, SPACE, T23D, projectImage, valueLabel } from '@web/spaces/three-d/__tests__/scene-generate-fixtures';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
@@ -574,12 +575,9 @@ describe('SceneGenerateDialog view slot uploads (inner#1691 design 7.1)', () => 
   });
 });
 
-// inner#1968 D-22: a 3D generation refused because the month's operations are
-// used up says so with a 充值 action that opens the credits overlay; a
-// spend-limit refusal offers no such action.
-describe('SceneGenerateDialog refused for operations used up', () => {
-  const SENTENCE = '本月操作次数已用完，积分不足 0.5。充值后可继续。';
-
+// inner#1968 D-22: a 3D generation refused at a spend limit says the limit's
+// own sentence.
+describe('SceneGenerateDialog refused at a spend limit', () => {
   beforeEach(() => {
     setLocale('zh-CN');
     vi.mocked(toast.error).mockClear();
@@ -605,13 +603,11 @@ describe('SceneGenerateDialog refused for operations used up', () => {
     await waitFor(() => expect(toastsShown(toast.error, toast.warning).length).toBeGreaterThan(0));
   }
 
-  it('says it with a 充值 action that opens the credits overlay', async () => {
-    await refusedWith(new ApiException({ status: 402, message: SENTENCE, reason: 'operations_exhausted', fromServer: true }));
-    expectTopUpToast(toastsShown(toast.error, toast.warning), '本月操作次数已用完', '充值');
-  });
-
-  it('offers no 充值 action for a spend limit', async () => {
-    await refusedWith(new ApiException({ status: 402, message: 'cap reached', reason: 'spend_cap_reached', fromServer: true, details: { scope: 'member', limit: '10', resetsAt: '2026-12-01T00:00:00.000Z' } }));
-    expectNoTopUpAction(toastsShown(toast.error, toast.warning));
+  it('says the spend limit in the toast', async () => {
+    const resetsAt = '2026-12-01T00:00:00.000Z';
+    await refusedWith(new ApiException({ status: 402, message: 'cap reached', reason: 'spend_cap_reached', fromServer: true, details: { scope: 'member', limit: '10', resetsAt } }));
+    expect(toastsShown(toast.error, toast.warning).map((shown) => shown.message)).toEqual([
+      spendCapMessage('spend_cap_reached', 'member', '10', resetsAt),
+    ]);
   });
 });

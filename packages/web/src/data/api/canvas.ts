@@ -3,7 +3,6 @@
 
 import type { CanvasPasteAnswer, CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
 
-import { newId } from '@breatic/shared';
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 import { noteCreditsChanged } from '@web/data/api/credits';
 import { bodyOrTransfer } from '@web/data/upload/transfer-body';
@@ -287,8 +286,7 @@ export const canvasApi = {
       node_id: string;
     },
   ): Promise<{ task_id: string }> {
-    // One fetched address is one operation (inner#1968), keyed per request.
-    return apiPost<{ task_id: string }>('/canvas/ingest-url', body, runOnceRequest(newId()));
+    return apiPost<{ task_id: string }>('/canvas/ingest-url', body);
   },
   /**
    * Keep a copy of what a text node says right now (#2175).

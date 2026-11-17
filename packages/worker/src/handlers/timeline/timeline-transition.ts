@@ -7,8 +7,7 @@
  * changes nothing the user sees.
  */
 
-import { logger, publishSpaceTasksChanged, type TimelineExecutionEvent, type TimelineExecutionTransition } from "@breatic/core";
-import { timelineSettlement } from "@breatic/domain";
+import { logger, publishSpaceTasksChanged, timelineExecutionRepo, type TimelineExecutionEvent, type TimelineExecutionTransition } from "@breatic/core";
 import type { TimelineExecution } from "@breatic/shared";
 
 /**
@@ -33,8 +32,7 @@ export async function signalSpace(row: Pick<TimelineExecution, "id" | "projectId
  * @throws {Error} When the write fails.
  */
 export async function move(row: Pick<TimelineExecution, "id" | "projectId" | "spaceId">, event: TimelineExecutionEvent): Promise<TimelineExecutionTransition> {
-  // An ending transition settles the execution's operation in its own commit (inner#1968).
-  const result = await timelineSettlement.transition({ id: row.id, event });
+  const result = await timelineExecutionRepo.transition({ id: row.id, event });
   if (result.applied) await signalSpace(result.row);
   return result;
 }

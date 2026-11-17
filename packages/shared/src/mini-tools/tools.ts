@@ -131,9 +131,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
   {
     id: "image.grid",
     source: "image",
-    // Cut on the server, so the tiles it registers are the source's (inner#1968).
-    run: { kind: "container", op: "grid" },
-    billing: "free",
+    run: { kind: "browser" },
     labelKey: key("image.grid", "label"),
     guide: "cuts the picture into a grid of equal tiles, one node for each tile picked, inside a group",
     icon: "Grid3x3",

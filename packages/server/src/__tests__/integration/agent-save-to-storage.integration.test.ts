@@ -11,7 +11,6 @@
  * which is the only call that leaves this process.
  */
 
-import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
 import crypto from "node:crypto";
 import postgres from "postgres";
@@ -253,7 +252,7 @@ describe("the agent's save — the gates", () => {
     for (let n = 0; n < max; n += 1) {
       const res = await app.request("/api/v1/canvas/ingest-url", {
         method: "POST",
-        headers: { "Idempotency-Key": randomUUID(), "content-type": "application/json", cookie },
+        headers: { "content-type": "application/json", cookie },
         body: JSON.stringify({
           url: SOURCE,
           project_id: projectId,

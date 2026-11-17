@@ -90,11 +90,6 @@ export type UploadTicketRequest = UploadContext & {
   size: number;
   /** Mandatory — a hashless upload is refused before it is asked for. */
   hash: string;
-  /**
-   * This file's operation id for this user action (inner#1968), sent as the
-   * request's `Idempotency-Key`; one is minted when absent.
-   */
-  operationId?: string;
 };
 
 /**
@@ -145,5 +140,34 @@ export function isAlreadyStored(
  */
 export function isOpenFailed(res: UploadTicketResponse): res is OpenFailedAnswer {
   return 'openFailed' in res;
+}
+
+/** The batch form's other answer: this file was turned down before any bytes moved. */
+export interface UploadRefused {
+  refused: { reason: 'storage' | 'too_large' };
+}
+
+/** What the batch form answers for each file, in the order asked. */
+export type BatchTicketAnswer = UploadTicketResponse | UploadRefused;
+
+/**
+ * One browser tool's export of many files onto one Space, each on its own node
+ * (inner#1303 §7).
+ */
+export interface BatchTicketRequest {
+  projectId: string;
+  spaceId: string;
+  source: 'mini_tool';
+  toolName: string;
+  items: { filename: string; contentType: string; size: number; hash: string; nodeId: string }[];
+}
+
+/**
+ * Tell a refusal from the other two answers.
+ * @param res - One file's answer.
+ * @returns True when the file was turned down.
+ */
+export function isRefused(res: BatchTicketAnswer): res is UploadRefused {
+  return 'refused' in res;
 }
 

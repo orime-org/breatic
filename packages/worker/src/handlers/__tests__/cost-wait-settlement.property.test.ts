@@ -78,12 +78,11 @@ vi.mock("@breatic/core", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", async () => ({
-  taskOperationKey: (await import("@domain/task/operation-key.js")).taskOperationKey,
   failureOutcome: (await import("@domain/node-task/failure-outcome.js")).failureOutcome,
   taskService: {
     getByIdInternal: vi.fn(async () => ({ ...h.state.row, userId: "user-1", startedAt: new Date(h.state.now - 4_000), providerResultUrl: null })),
     markRunning: vi.fn(async () => new Date(h.state.now - 4_000)),
-    markCompletedAndCount: vi.fn(async (_taskId: string, result: Record<string, unknown>) => {
+    markCompleted: vi.fn(async (_taskId: string, result: Record<string, unknown>) => {
       if (h.state.row.status === "completed") return false;
       h.state.row = { ...h.state.row, status: "completed", result };
       return true;
@@ -110,8 +109,6 @@ vi.mock("@breatic/domain", async () => ({
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: { resolveOwnerStudioId: vi.fn(async () => "studio-1") },
   creditLotService: { settleCharge: vi.fn(async () => ({ billed: true, charged: "0", shortfall: "0", studioId: "studio-1", lotIds: [] })), pendingChargeRequestId: vi.fn(async () => "req-1") },
-  // The operation a run that failed for good gives back (inner#1968).
-  operationService: { releaseOperation: vi.fn(async () => true) },
   creditHoldService: {
     extendHold: vi.fn(async () => h.maybeCrash("extendHold")),
     releaseHold: vi.fn(async () => undefined),

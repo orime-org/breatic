@@ -11,7 +11,6 @@ import { joinContinued, splitAtAnswer, toChatMessage } from '@web/pages/project/
 import { conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
 import type { OpenStatus, TurnPhase } from '@web/stores/conversation-runtime';
 import { mishapLine, watchChatMishaps } from '@web/stores/chat-mishaps';
-import { topUpAction } from '@web/stores/credit-refusals';
 import { toast } from '@web/lib/toast';
 import { chatAttachments } from '@web/stores/chat-attachments';
 import { chatSessionFor } from '@web/stores/chat-sessions';
@@ -403,8 +402,7 @@ export function useChatSession(
         // Said once, as it happens (inner#1530). What happens while no panel
         // is mounted is not told when one comes back: the user comes back
         // to a conversation that stopped moving, which is how they know.
-        if (told.kind === 'server' && told.topUp === true) toast.error(mishapLine(told), { action: topUpAction() });
-        else toast.error(mishapLine(told));
+        toast.error(mishapLine(told));
       }),
     [projectId, conversationId],
   );

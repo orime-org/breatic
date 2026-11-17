@@ -4,16 +4,18 @@
 import {
   isAlreadyStored,
   isOpenFailed,
+  isRefused,
+  type BatchTicketAnswer,
+  type BatchTicketRequest,
   type UploadContext,
   type UploadTicket,
   type UploadTicketRequest,
   type UploadTicketResponse,
 } from '@web/data/upload/ingest-upload';
-import { idempotencyRetryDeadline, newId, type UploadClientConfig, type UploadStatusResult } from '@breatic/shared';
-import { resendWait } from '@web/data/api/resend-wait';
-import { ApiException } from '@web/data/api/types';
+import type { UploadClientConfig, UploadStatusResult } from '@breatic/shared';
 import {
   errorStatus,
+  retryTransient,
   STORAGE_FULL_STATUS,
   UNSUPPORTED_TYPE_STATUS,
 } from '@web/data/upload/upload-retry';
@@ -66,10 +68,6 @@ export type StoredUpload = UploadStatusResult;
  * `tooLarge` — the server refused the file as over the upload cap, which the
  * browser checks first whenever it has read the cap; sending it again changes
  * nothing.
- * `operations` — the month's operations are used up and the studio cannot pay
- * for one more (inner#1968); adding credits changes the answer.
- * `spendCap` — a monthly spend limit was reached (inner#1968); adding credits
- * does not lift it.
  * `upload` — anything else along the way: the knobs, the ticket request, or a
  * finish that failed. A retry can fix it, and the server settles the row
  * itself whenever it answered.
@@ -81,8 +79,6 @@ export const UPLOAD_FAILURE_REASONS = [
   'unsupportedType',
   'tooLarge',
   'transfer',
-  'operations',
-  'spendCap',
   'upload',
 ] as const;
 
@@ -118,8 +114,6 @@ export function isUploadFailureReason(
 export interface UploadFailure {
   reason: UploadFailureReason;
   taskId?: string;
-  /** With `operations`: what one more operation costs, as the server said it (design 21 row 23). */
-  credits?: string;
 }
 
 /** Too Many Requests (RFC 6585 §4): a per-user limit on the upload routes. */
@@ -149,28 +143,12 @@ const REASON_BY_STATUS: ReadonlyMap<number, UploadFailureReason> = new Map([
  * @returns The failure reason to report.
  */
 function failureOf(err: unknown): UploadFailureReason {
-  // The two refusals of the monthly operations and spend limits are named by
-  // the server's reason, not a status of their own (inner#1968).
-  if (err instanceof ApiException && err.reason === 'operations_exhausted') return 'operations';
-  if (err instanceof ApiException && err.reason === 'spend_cap_reached') return 'spendCap';
   // Asked first because it is about which half broke rather than what the
   // answer said. The edge answers the browser rather than our server, so a
   // refusal from it reaches here with a status that says nothing about whether
   // anyone will end the row — and nobody will.
   if (err instanceof BytesNotDelivered) return 'transfer';
   return REASON_BY_STATUS.get(errorStatus(err) ?? -1) ?? 'upload';
-}
-
-/**
- * A refused ticket's failure: its reason, and for used-up operations the
- * price of one more when the server named it.
- * @param err - The rejection value.
- * @returns The failure to report.
- */
-function ticketFailureOf(err: unknown): UploadFailure {
-  const reason = failureOf(err);
-  const credits = reason === 'operations' && err instanceof ApiException ? err.details?.credits : undefined;
-  return typeof credits === 'string' ? { reason, credits } : { reason };
 }
 
 /**
@@ -249,72 +227,11 @@ export interface MediaUploadDeps {
 }
 
 /**
- * Ask for one file's ticket under the run-once rule (inner#1968 design 3.2):
- * one operation id per file and press. A 409 `in_progress` is the server still
- * running the first send, so it is waited out under that id; an unknown outcome
- * (no answer, a 5xx without `done`, a throttle) is resent under that id, and a
- * 5xx marked `done` already released that operation on the server, so the next
- * try takes a fresh id. Those last two count together: at most
- * `clientMaxAttempts` sends in all, so a drop with no network fails in seconds. A full store and a rate limit are final
- * here: neither lifts in the seconds a resend takes.
- * @param ask - Sends the request under an operation id.
- * @param cfg - The upload knobs.
- * @param sleep - Backoff sleep override (tests).
- * @param signal - Cancellation of this upload.
- * @returns The ticket answer.
- * @throws {unknown} The final failure.
- */
-async function requestTicketOnce(
-  ask: (operationId: string) => Promise<UploadTicketResponse>,
-  cfg: UploadClientConfig,
-  sleep: ((ms: number) => Promise<void>) | undefined,
-  signal: AbortSignal | undefined,
-): Promise<UploadTicketResponse> {
-  const stopAt = idempotencyRetryDeadline('upload-ticket', Date.now());
-  let sends = 1;
-  /**
-   * Wait out one backoff; a cancellation meanwhile is seen as the loop goes round.
-   * @param ms - How long.
-   * @returns Once waited.
-   */
-  const pause = (ms: number): Promise<void> =>
-    sleep ? sleep(ms) : new Promise<void>((resolve) => setTimeout(resolve, ms));
-  let tries = 1;
-  let operationId = newId();
-  let resends = 0;
-  for (;;) {
-    signal?.throwIfAborted();
-    try {
-      return await ask(operationId);
-    } catch (err) {
-      signal?.throwIfAborted();
-      const status = errorStatus(err);
-      const final = status === STORAGE_FULL_STATUS || status === RATE_LIMITED_STATUS;
-      const doneServerError = err instanceof ApiException && err.idempotencyStatus === 'done' && err.status >= 500;
-      const inProgress = err instanceof ApiException && err.idempotencyStatus === 'in_progress';
-      if (!final && doneServerError && sends < cfg.clientMaxAttempts) {
-        tries += 1;
-        sends += 1;
-        operationId = newId();
-        resends = 0;
-        await pause(Math.random() * cfg.clientRetryBaseDelayMs * 2 ** (tries - 2));
-        continue;
-      }
-      const wait = final ? null : resendWait(err, resends);
-      if (wait === null || Date.now() >= stopAt || (!inProgress && sends >= cfg.clientMaxAttempts)) throw err;
-      if (!inProgress) sends += 1;
-      resends += 1;
-      await pause(wait);
-    }
-  }
-}
-
-/**
  * Upload a media file (#173 design §4): fetch the knobs → hash the bytes
  * (Web Worker, any size) → ask for a ticket — the studio already holding this
  * content answers instantly and nothing moves — else send the parts to the
  * ingest Worker and complete. The two halves retry under different rules: the
- * ticket request under the run-once rule ({@link requestTicketOnce}), each part inside
+ * ticket request through `retryTransient` on the knobs above, each part inside
  * the shared HTTP transport on its own compiled-in policy. Network outcomes
  * route through `onSuccess` / `onFailure`; cancellation rejects the operation.
  *
@@ -353,24 +270,26 @@ export async function runMediaUpload(
       deps.onFailure({ reason: 'hash' });
       return;
     }
-    answer = await requestTicketOnce(
-      (operationId) =>
+    answer = await retryTransient(
+      () =>
         deps.requestTicket({
           ...context,
           filename: file.name,
           contentType: file.type,
           size: file.size,
           hash,
-          operationId,
         }, signal),
-      cfg,
-      deps.sleep,
-      signal,
+      {
+        attempts: cfg.clientMaxAttempts,
+        baseDelayMs: cfg.clientRetryBaseDelayMs,
+        ...(deps.sleep !== undefined && { sleep: deps.sleep }),
+        ...(signal !== undefined && { signal }),
+      },
     );
     signal?.throwIfAborted();
   } catch (err) {
     signal?.throwIfAborted();
-    deps.onFailure(ticketFailureOf(err));
+    deps.onFailure({ reason: failureOf(err) });
     return;
   }
 
@@ -465,14 +384,103 @@ async function deliverTicket(
   sinks.onSuccess(end.result);
 }
 
+/** One file of a batch, the node it lands on, and where its outcome goes. */
+export interface BatchUploadEntry extends UploadSinks {
+  file: File;
+  nodeId: string;
+}
+
+/** Injected dependencies for {@link runMediaUploadBatch}. */
+export interface BatchUploadDeps
+  extends Pick<MediaUploadDeps, 'getUploadConfig' | 'hashFile' | 'sendToIngest' | 'waitForEnding' | 'sleep'> {
+  /** Ask for every file's ticket in one request. */
+  requestTicketBatch: (request: BatchTicketRequest) => Promise<BatchTicketAnswer[]>;
+}
+
+/**
+ * Upload one browser tool's export of many files (inner#1303 §7): hash them
+ * all, ask for every ticket in one request, then send each file the server
+ * did not already hold. Each file's outcome goes to its own entry, by the same
+ * rules as {@link runMediaUpload}; a file the server refused before any bytes
+ * moved fails as `storage` when its account is full and `upload` otherwise.
+ * Never throws.
+ * @param entries - The files, each on its own node.
+ * @param context - Where they land and which tool made them.
+ * @param deps - Injected config / hash / network.
+ */
+export async function runMediaUploadBatch(
+  entries: readonly BatchUploadEntry[],
+  context: Omit<BatchTicketRequest, 'items'>,
+  deps: BatchUploadDeps,
+): Promise<void> {
+  let cfg: UploadClientConfig;
+  let hashes: (string | null)[];
+  try {
+    cfg = await deps.getUploadConfig();
+    hashes = await Promise.all(entries.map((entry) => deps.hashFile(entry.file)));
+  } catch (err) {
+    for (const entry of entries) entry.onFailure({ reason: failureOf(err) });
+    return;
+  }
+  const asked = entries.flatMap((entry, index) => {
+    const hash = hashes[index];
+    if (hash === null || hash === undefined) {
+      entry.onFailure({ reason: 'hash' });
+      return [];
+    }
+    return [{ entry, hash }];
+  });
+  if (asked.length === 0) return;
+
+  let answers: BatchTicketAnswer[];
+  try {
+    answers = await retryTransient(
+      () =>
+        deps.requestTicketBatch({
+          ...context,
+          items: asked.map(({ entry, hash }) => ({
+            filename: entry.file.name,
+            contentType: entry.file.type,
+            size: entry.file.size,
+            hash,
+            nodeId: entry.nodeId,
+          })),
+        }),
+      {
+        attempts: cfg.clientMaxAttempts,
+        baseDelayMs: cfg.clientRetryBaseDelayMs,
+        ...(deps.sleep !== undefined && { sleep: deps.sleep }),
+      },
+    );
+  } catch (err) {
+    const reason = failureOf(err);
+    for (const { entry } of asked) entry.onFailure({ reason });
+    return;
+  }
+
+  await Promise.all(
+    asked.map(({ entry }, index) => {
+      const answer = answers[index];
+      if (answer === undefined) {
+        entry.onFailure({ reason: 'upload' });
+        return Promise.resolve();
+      }
+      if (isRefused(answer)) {
+        entry.onFailure({ reason: answer.refused.reason === 'storage' ? 'storage' : 'upload' });
+        return Promise.resolve();
+      }
+      return deliverTicket(entry.file, answer, cfg, entry, deps);
+    }),
+  );
+}
+
 /** Why an upload did not complete; the caller picks the message from it. */
 export class UploadFailedError extends Error {
   /**
    * Name the reason the upload did not complete.
    * @param reason - The pipeline's verdict, also the message.
-   * @param credits - With `operations`: what one more operation costs, when the server said.
    */
-  constructor(readonly reason: UploadFailureReason, readonly credits?: string) {
+  constructor(readonly reason: UploadFailureReason) {
     super(reason);
     this.name = 'UploadFailedError';
   }
@@ -506,7 +514,7 @@ export function uploadMedia(
       ...(onProgress !== undefined && { onProgress }),
       ...(onRegistering !== undefined && { onRegistering }),
       onSuccess: resolve,
-      onFailure: (outcome) => reject(new UploadFailedError(outcome.reason, outcome.credits)),
+      onFailure: (outcome) => reject(new UploadFailedError(outcome.reason)),
     }, signal).catch(reject);
   });
 }

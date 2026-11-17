@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MINI_TOOL_JOB_MAX_EXTRA_INPUTS, MINI_TOOL_JOB_MAX_OUTPUTS } from "@breatic/shared";
+import { MINI_TOOL_JOB_MAX_EXTRA_INPUTS } from "@breatic/shared";
 import { CONTAINER_OPS, type ContainerOp } from "@breatic/shared/mini-tools";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
@@ -57,9 +57,6 @@ export const miniToolsConfigSchema = z
       .min(2)
       .max(MINI_TOOL_JOB_MAX_EXTRA_INPUTS + 1)
       .default(20),
-    // How many of one job's outputs the container writes back at once
-    // (inner#1968): a grid's tiles each wait on the Worker's answer.
-    output_concurrency: z.number().int().min(1).max(MINI_TOOL_JOB_MAX_OUTPUTS).default(6),
   })
   .superRefine((config, ctx) => {
     for (const [op, spec] of Object.entries(config.ops)) {
@@ -94,8 +91,8 @@ export function getMiniToolsConfig(): Readonly<MiniToolsConfig> {
 /**
  * How long past a task's deadline its last report may still land: two poll
  * intervals. The worker waits this long before settling a container job as
- * expired, and the operations ledger and the running-task count use the same
- * room (inner#1968), so all agree on when a task is over.
+ * expired, and the running-task count uses the same room (inner#1968), so
+ * both agree on when a task is over.
  * @param pollIntervalMs - The poll interval; the configured one by default.
  * @returns The grace in milliseconds.
  * @throws {z.ZodError} if the config file is malformed (first read only)

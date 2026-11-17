@@ -12,7 +12,6 @@
  * attach to. A run holds its place in the running list for as long as it
  * runs and gives it up as it ends.
  */
-import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
 
 /** Per model call, by its index: a hold, and what it says. */
@@ -504,7 +503,7 @@ describe("POST /chat/message", () => {
     await untilIdle(who.conversationId);
     const res = await app.request("/api/v1/chat/message", {
       method: "POST",
-      headers: { "Idempotency-Key": randomUUID(), Cookie: who.cookie, "Content-Type": "application/json" },
+      headers: { Cookie: who.cookie, "Content-Type": "application/json" },
       body: JSON.stringify({
         message: "",
         project_id: who.projectId,

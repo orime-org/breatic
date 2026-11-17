@@ -104,7 +104,6 @@ vi.mock("@breatic/core", () => ({
   logger: { info: h.info, warn: h.warn, error: h.error, debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", async () => ({
-  taskOperationKey: (await import("@domain/task/operation-key.js")).taskOperationKey,
   // The real judgement: the case below is about the ending it gives.
   failureOutcome: (await import("@domain/node-task/failure-outcome.js")).failureOutcome,
   buildAgentConfig: vi.fn(),
@@ -115,7 +114,7 @@ vi.mock("@breatic/domain", async () => ({
     getByIdInternal: h.getByIdInternal,
     recordProviderResult: h.recordProviderResult,
     markCompletedAndBill: h.markCompletedAndBill,
-    markCompletedAndCount: h.markCompleted,
+    markCompleted: h.markCompleted,
   },
   taskRepo: { clearSending: vi.fn(), updateCostWait: h.updateCostWait },
   upstreamStepRepo: { failOpenSteps: vi.fn() },
@@ -124,8 +123,6 @@ vi.mock("@breatic/domain", async () => ({
     settleCharge: h.settleCharge,
     pendingChargeRequestId: h.pendingChargeRequestId,
   },
-  // The operation a run that failed for good gives back (inner#1968).
-  operationService: { releaseOperation: vi.fn(async () => true) },
   creditHoldService: { releaseHold: vi.fn(async () => undefined), extendHold: h.extendHold },
   // A dollar is a credit here, so each case's cost is the figure to round.
   creditsForUsd: (usd: number) => usd,

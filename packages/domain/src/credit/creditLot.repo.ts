@@ -49,14 +49,7 @@ import type {
   CreditLedgerEntryEntity,
   CreditLedgerEntryType,
   CreditLedgerKind,
-  StudioLedgerKind,
 } from "@breatic/shared";
-
-/**
- * What an operation-overage charge writes on its ledger rows (inner#1968,
- * design 3.4), which is how the ledger reads such a line as its own kind.
- */
-export const OPERATION_OVERAGE_DESCRIPTION = "Operation overage";
 
 /**
  * What makes a lot spendable, stated once.
@@ -1269,7 +1262,7 @@ export interface PayerLedgerRow {
   projectName: string | null;
   model: string | null;
   provider: string | null;
-  /** Which kind of line this is. */
+  /** Which of the three kinds of line this is. */
   kind: CreditLedgerKind;
   /** What this line came to. Negative. */
   amount: string;
@@ -1316,7 +1309,7 @@ export async function listLedgerByPayer(
       projectName: sql<string | null>`MAX(${projects.name})`,
       model: sql<string | null>`MAX(${creditLedger.model})`,
       provider: sql<string | null>`MAX(${creditLedger.provider})`,
-      // Which kind of line this is. A repayment carries no project and
+      // Which of the three this line is. A repayment carries no project and
       // no model, so without saying so it reads as a generation that never
       // happened; and a run that drew on no purchase cost this account
       // nothing, which the figure alone cannot say.
@@ -1328,9 +1321,7 @@ export async function listLedgerByPayer(
       kind: sql<CreditLedgerKind>`CASE
         WHEN BOOL_AND(${creditLedger.lotId} IS NULL) THEN 'unbilled'
         WHEN BOOL_AND(${creditLedger.entryType} = 'debt_repayment')
-        THEN 'debt_repayment'
-        WHEN BOOL_AND(${creditLedger.description} = ${OPERATION_OVERAGE_DESCRIPTION})
-        THEN 'operation_overage' ELSE 'generation' END`,
+        THEN 'debt_repayment' ELSE 'generation' END`,
       amount: sql<string>`COALESCE(SUM(${creditLedger.amount}), 0)::text`,
     })
     .from(creditLedger)
@@ -1394,8 +1385,8 @@ export interface StudioLedgerRow {
   createdAt: Date;
   /** The same instant at the precision the column stores, for the cursor. */
   cursorAt: string;
-  /** A generation, a designation paying off what the studio owed, or an operation past the allowance. */
-  kind: StudioLedgerKind;
+  /** A generation, or a designation paying off what the studio owed. */
+  kind: "generation" | "debt_repayment";
   actorUserId: string | null;
   actorName: string | null;
   projectId: string | null;
@@ -1459,15 +1450,9 @@ export async function listLedgerByStudio(
       id: groupId,
       createdAt: groupAt,
       cursorAt: groupCursorAt,
-      // The same overage test as the account ledger's: a charge for an
-      // operation past the allowance writes its `spend` and `debt_incurred`
-      // rows with this description and no model, and read as a generation it
-      // would show a run of no model.
-      kind: sql<StudioLedgerKind>`CASE
+      kind: sql<"generation" | "debt_repayment">`CASE
         WHEN BOOL_AND(${creditLedger.entryType} = 'debt_repayment')
-        THEN 'debt_repayment'
-        WHEN BOOL_AND(${creditLedger.description} = ${OPERATION_OVERAGE_DESCRIPTION})
-        THEN 'operation_overage' ELSE 'generation' END`,
+        THEN 'debt_repayment' ELSE 'generation' END`,
       actorUserId: sql<string | null>`MAX(${creditLedger.actorUserId}::text)`,
       actorName: sql<string | null>`MAX(${studios.name})`,
       projectId: sql<string | null>`MAX(${creditLedger.projectId}::text)`,

@@ -20,6 +20,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { INGEST_NO_ANSWER, TRANSFER_MEDIA_TYPE } from "@breatic/shared";
+import { MINI_TOOLS, mostOutputsOf } from "@breatic/shared/mini-tools";
 
 const TRANSFER_TYPE = "application/vnd.breatic.transfer";
 
@@ -114,7 +115,7 @@ vi.mock("@server/modules/asset/upload-opening.js", () => ({ openUpload }));
 vi.mock("@server/modules/asset/ingest-side-effects.js", () => ({ noteIngestSideEffects }));
 vi.mock("@server/modules/task/publish-counts.js", () => ({ publishSpaceTasksQuietly }));
 
-const { issueTransferTicket, issueUploadTicket } = await import(
+const { issueTransferTicket, issueUploadTicket, issueUploadTicketBatch } = await import(
   "@server/modules/asset/upload-ticket.service.js"
 );
 
@@ -150,6 +151,11 @@ const D = new Error("db down");
 const F = new UploadOpenFailed({ storageKey: K, reason: "store_failed", settled: S, cause: C });
 /** The open failed and settling failed too. */
 const G = new UploadOpenFailed({ storageKey: K, reason: "store_failed", settleError: D, cause: C });
+
+/** The largest batch a grouped browser tool asks for, read the way the route reads it. */
+const BATCH_MAX = Math.max(
+  ...MINI_TOOLS.filter((spec) => spec.run.kind === "browser" && spec.groupOutputs === true).map(mostOutputsOf),
+);
 
 /**
  * Every `upload_open_failed` line logged so far.
@@ -488,3 +494,158 @@ describe("scene model upload provenance", () => {
   });
 });
 
+describe("inner#1595: issueUploadTicketBatch", () => {
+  const CONTEXT = { spaceId: ITEM.space_id, toolName: "image.grid" };
+  const Ka = "image/2026-10-26/a.png";
+  const Kb = "image/2026-10-26/b.png";
+  const Kd = "image/2026-10-26/d.png";
+
+  /**
+   * One tile of the batch.
+   * @param name - Its name, which is also its hash.
+   * @returns The tile.
+   */
+  function tileNamed(name: string): typeof ITEM {
+    return { ...ITEM, filename: `${name}.png`, client_hash: `hash-${name}`, node_id: `node-${name}` };
+  }
+
+  /** Four tiles, the third already held by the studio, opened as Ka, Kb, Kd. */
+  function fourTiles(): (typeof ITEM)[] {
+    checkUploadDedup.mockImplementation(async ({ contentHash }: { contentHash: string }) =>
+      contentHash === "hash-c"
+        ? { assetId: "asset-c", fileUrl: "https://cdn.test.invalid/c.png", kind: "image", width: 1, height: 1 }
+        : null,
+    );
+    openUpload
+      .mockResolvedValueOnce({ key: Ka, studioId: "studio-1", taskId: "task-a" })
+      .mockResolvedValueOnce({ key: Kb, studioId: "studio-1", taskId: "task-b" })
+      .mockResolvedValueOnce({ key: Kd, studioId: "studio-1", taskId: "task-d" });
+    return ["a", "b", "c", "d"].map(tileNamed);
+  }
+
+  /**
+   * Answer each key's open with what `byKey` says, or open it.
+   * @param byKey - The failure to throw for a key.
+   */
+  function openFailsFor(byKey: Record<string, unknown>): void {
+    openSignedUpload.mockImplementation(async (request: { storageKey: string }) => {
+      const failure = byKey[request.storageKey];
+      if (failure !== undefined) throw failure;
+      return OK;
+    });
+  }
+
+  it("T57: lets one file's open failure touch only that file", async () => {
+    const items = fourTiles();
+    openFailsFor({ [Kb]: new UploadOpenFailed({ storageKey: Kb, reason: "store_failed", settled: S, cause: C }) });
+
+    const outcomes = await issueUploadTicketBatch(SCOPE, CONTEXT, items);
+
+    expect(outcomes).toHaveLength(4);
+    expect(outcomes[0]).toMatchObject({ kind: "ticket", storageKey: Ka, uploadId: "u-1", token: "t-1", taskId: "task-a" });
+    expect(outcomes[1]).toEqual({ kind: "openFailed", reason: "store_failed", taskId: "task-b" });
+    expect(outcomes[2]).toMatchObject({ kind: "alreadyExists", assetId: "asset-c" });
+    expect(outcomes[3]).toMatchObject({ kind: "ticket", storageKey: Kd, taskId: "task-d" });
+    const keys = openSignedUpload.mock.calls.map((call) => (call[0] as { storageKey: string }).storageKey);
+    expect(keys.sort()).toEqual([Ka, Kb, Kd].sort());
+    // inner#1595 R1: the opener bounds itself by each request's deadline.
+    for (const call of openSignedUpload.mock.calls) expect(call).toHaveLength(1);
+    expect(assertStudioStorageAllowance).toHaveBeenCalledTimes(1);
+    const lines = openFailedLines();
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ key: Kb });
+    expect(noteIngestSideEffects).toHaveBeenCalledTimes(1);
+    expect(noteIngestSideEffects).toHaveBeenCalledWith(Kb, S);
+  });
+
+  it("T79: settles the batch when one file's settling failed too, with no AggregateError", async () => {
+    const items = fourTiles();
+    openFailsFor({ [Kb]: new UploadOpenFailed({ storageKey: Kb, reason: "store_failed", settleError: D, cause: C }) });
+
+    const outcomes = await issueUploadTicketBatch(SCOPE, CONTEXT, items);
+
+    expect(outcomes[0]).toMatchObject({ kind: "ticket", storageKey: Ka });
+    expect(outcomes[1]).toEqual({ kind: "openFailed", reason: "store_failed", taskId: "task-b" });
+    expect(outcomes[2]).toMatchObject({ kind: "alreadyExists" });
+    expect(outcomes[3]).toMatchObject({ kind: "ticket", storageKey: Kd });
+    const lines = openFailedLines();
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.settleError).toBe(D);
+    expect(noteIngestSideEffects).toHaveBeenCalledTimes(0);
+  });
+
+  it("T79: answers every file on its own when the whole batch fails to open", async () => {
+    const items = fourTiles();
+    openFailsFor({
+      [Ka]: new UploadOpenFailed({ storageKey: Ka, reason: "store_failed", settled: S, cause: C }),
+      [Kb]: new UploadOpenFailed({ storageKey: Kb, reason: "store_failed", settleError: D, cause: C }),
+      [Kd]: new UploadOpenFailed({ storageKey: Kd, reason: "store_failed", settled: S, cause: C }),
+    });
+
+    const outcomes = await issueUploadTicketBatch(SCOPE, CONTEXT, items);
+
+    expect(outcomes).toEqual([
+      { kind: "openFailed", reason: "store_failed", taskId: "task-a" },
+      { kind: "openFailed", reason: "store_failed", taskId: "task-b" },
+      expect.objectContaining({ kind: "alreadyExists" }),
+      { kind: "openFailed", reason: "store_failed", taskId: "task-d" },
+    ]);
+    const lines = openFailedLines();
+    expect(lines).toHaveLength(3);
+    const byKey = new Map(lines.map((line) => [line.key, line]));
+    expect(byKey.get(Kb)!.settleError).toBe(D);
+    expect(byKey.get(Ka)!.settleError).toBeUndefined();
+    expect(byKey.get(Kd)!.settleError).toBeUndefined();
+    expect(noteIngestSideEffects).toHaveBeenCalledTimes(2);
+    expect(noteIngestSideEffects).toHaveBeenCalledWith(Ka, S);
+    expect(noteIngestSideEffects).toHaveBeenCalledWith(Kd, S);
+  });
+
+  it("T58: opens every grant and row first, then opens every upload at once", async () => {
+    let n = 0;
+    openUpload.mockImplementation(async () => {
+      n += 1;
+      return { key: `image/2026-10-26/${n}.png`, studioId: "studio-1", taskId: `task-${n}` };
+    });
+    const pending: Array<() => void> = [];
+    openSignedUpload.mockImplementation(
+      (request: { storageKey: string }) =>
+        new Promise((resolve) => {
+          pending.push(() => resolve({ ...OK, uploadId: `u-${request.storageKey}` }));
+        }),
+    );
+    const items = Array.from({ length: 8 }, (_, i) => tileNamed(`t${i}`));
+
+    const running = issueUploadTicketBatch(SCOPE, CONTEXT, items);
+
+    // Every open is in flight before any of them has answered.
+    await vi.waitFor(() => expect(openSignedUpload).toHaveBeenCalledTimes(8));
+    expect(openUpload).toHaveBeenCalledTimes(8);
+    const firstOpen = Math.min(...openSignedUpload.mock.invocationCallOrder);
+    expect(Math.max(...openUpload.mock.invocationCallOrder)).toBeLessThan(firstOpen);
+    for (const answer of pending) answer();
+
+    const outcomes = await running;
+    expect(outcomes.map((outcome) => (outcome as { storageKey?: string }).storageKey)).toEqual(
+      Array.from({ length: 8 }, (_, i) => `image/2026-10-26/${i + 1}.png`),
+    );
+    expect(outcomes.every((outcome) => outcome.kind === "ticket")).toBe(true);
+  });
+
+  it("T59: opens BATCH_MAX files, each once", async () => {
+    expect(BATCH_MAX).toBe(64);
+    let n = 0;
+    openUpload.mockImplementation(async () => {
+      n += 1;
+      return { key: `image/2026-10-26/${n}.png`, studioId: "studio-1", taskId: `task-${n}` };
+    });
+    const items = Array.from({ length: BATCH_MAX }, (_, i) => tileNamed(`t${i}`));
+
+    const outcomes = await issueUploadTicketBatch(SCOPE, CONTEXT, items);
+
+    expect(openSignedUpload).toHaveBeenCalledTimes(BATCH_MAX);
+    const keys = openSignedUpload.mock.calls.map((call) => (call[0] as { storageKey: string }).storageKey);
+    expect(new Set(keys).size).toBe(BATCH_MAX);
+    expect(outcomes.every((outcome) => outcome.kind === "ticket")).toBe(true);
+  });
+});

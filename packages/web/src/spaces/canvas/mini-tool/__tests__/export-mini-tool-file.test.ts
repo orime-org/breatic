@@ -13,6 +13,14 @@ vi.mock('@web/spaces/canvas/focus/crop-export', async (original) => ({
   ...exporter,
 }));
 
+const grid = vi.hoisted(() => ({
+  exportGridTiles: vi.fn(() =>
+    Promise.resolve([
+      { blob: new Blob(['a'], { type: 'image/png' }), width: 50, height: 40 },
+      { blob: new Blob(['b'], { type: 'image/png' }), width: 51, height: 40 },
+    ]),
+  ),
+}));
 const adjust = vi.hoisted(() => ({
   exportAdjustedBlob: vi.fn(() => Promise.resolve(new Blob(['j'], { type: 'image/png' }))),
 }));
@@ -21,6 +29,10 @@ const mark = vi.hoisted(() => ({
   exportMarkBlob: vi.fn(() => Promise.resolve(new Blob(['m'], { type: 'image/png' }))),
 }));
 vi.mock('@web/spaces/canvas/mini-tool/mark-export', () => mark);
+vi.mock('@web/spaces/canvas/mini-tool/grid-export', async (original) => ({
+  ...(await original<object>()),
+  ...grid,
+}));
 
 import { orientedSize } from '@web/spaces/canvas/focus/crop-export';
 import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
@@ -64,6 +76,32 @@ describe('exportMiniToolFile', () => {
     const orient = { turns: 1, flipX: true, flipY: false };
     await exportMiniToolFile(miniToolById('image.rotate')!, snapshot({ orient }));
     expect(exporter.exportOrientedBlob).toHaveBeenCalledWith({ url: 'https://cdn/a.jpg', timeSeconds: null }, orient);
+  });
+});
+
+describe('exportMiniToolFile for a grid', () => {
+  it('exports one PNG per tile, cut by the rows and columns asked', async () => {
+    const made = await exportMiniToolFile(miniToolById('image.grid')!, snapshot({ rows: 1, cols: 2 }));
+
+    expect(grid.exportGridTiles).toHaveBeenCalledWith({ url: 'https://cdn/a.jpg', timeSeconds: null }, 1, 2, [0, 1]);
+    expect(made.map((tile) => tile.file.type)).toEqual(['image/png', 'image/png']);
+  });
+
+  it('cuts by the default rows and columns when the draft left them out', async () => {
+    await exportMiniToolFile(miniToolById('image.grid')!, snapshot({}));
+
+    expect(grid.exportGridTiles).toHaveBeenCalledWith(
+      { url: 'https://cdn/a.jpg', timeSeconds: null },
+      3,
+      3,
+      [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    );
+  });
+
+  it('cuts only the picked tiles, row by row', async () => {
+    await exportMiniToolFile(miniToolById('image.grid')!, snapshot({ rows: 3, cols: 3, skip: [0, 2, 3, 4, 7, 8] }));
+
+    expect(grid.exportGridTiles).toHaveBeenCalledWith({ url: 'https://cdn/a.jpg', timeSeconds: null }, 3, 3, [1, 5, 6]);
   });
 });
 

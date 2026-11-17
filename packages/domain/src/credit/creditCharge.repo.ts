@@ -13,11 +13,10 @@
 
 import { and, asc, eq, lt, sql } from "drizzle-orm";
 import { db, creditChargeRequests } from "@breatic/core";
-import type { CHARGE_REQUEST_KINDS } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 
-/** What kind of delivery a request charges for; `operation_overage` is one operation past the monthly allowance (inner#1968). */
-export type ChargeRequestKind = (typeof CHARGE_REQUEST_KINDS)[number];
+/** What kind of delivery a request charges for. */
+export type ChargeRequestKind = "task" | "timeline_execution" | "operation";
 
 /** A request about to be recorded. */
 export interface NewChargeRequest {
@@ -26,11 +25,6 @@ export interface NewChargeRequest {
   referenceId: string;
   actorUserId: string;
   projectId: string | null;
-  /**
-   * The studio charged when there is no project (a studio avatar's overage,
-   * inner#1968); otherwise the project's studio is written.
-   */
-  studioId?: string;
   /** Credits, already rounded to the cent. */
   amount: number;
   description?: string;
@@ -48,8 +42,6 @@ export interface ChargeRequest {
   referenceId: string;
   actorUserId: string;
   projectId: string | null;
-  /** The studio the request was filed against, for spend statistics. */
-  studioId: string | null;
   /** Decimal string. */
   amount: string;
   description: string | null;
@@ -74,11 +66,10 @@ export async function insertPending(input: NewChargeRequest, tx: DbTx): Promise<
       referenceId: input.referenceId,
       actorUserId: input.actorUserId,
       projectId: input.projectId,
-      // Written on every request (design 3.1 (8)): the one named, else the
-      // project's studio, read without a deleted filter so a project deleted
-      // mid-run cannot roll back the delivery this row commits with.
-      studioId: input.studioId
-        ?? (input.projectId === null ? null : sql`(SELECT studio_id FROM projects WHERE id = ${input.projectId})`),
+      // Written on every request (design 3.1 (8)): the project's studio,
+      // read without a deleted filter so a project deleted mid-run cannot
+      // roll back the delivery this row commits with.
+      studioId: input.projectId === null ? null : sql`(SELECT studio_id FROM projects WHERE id = ${input.projectId})`,
       amount: String(input.amount),
       description: input.description ?? null,
       // Cut to the ledger's widths (`credit_ledger.model` / `provider`): a
@@ -112,7 +103,6 @@ export async function lockById(id: string, tx: DbTx): Promise<ChargeRequest | nu
       referenceId: creditChargeRequests.referenceId,
       actorUserId: creditChargeRequests.actorUserId,
       projectId: creditChargeRequests.projectId,
-      studioId: creditChargeRequests.studioId,
       amount: creditChargeRequests.amount,
       description: creditChargeRequests.description,
       model: creditChargeRequests.model,

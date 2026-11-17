@@ -519,12 +519,12 @@ describe("§2 every entrance is behind the limit (T08)", () => {
       },
       {
         path: "/api/v1/assets/upload-ticket",
-        headers: { "Idempotency-Key": randomUUID(), "Content-Type": "application/json", Cookie: a.cookie },
+        headers: { "Content-Type": "application/json", Cookie: a.cookie },
         body: padded({ project_id: a.projectId, filename: "a.png", content_type: "image/png", size: 10, client_hash: "0".repeat(64) }, over),
       },
       {
         path: "/api/v1/chat/message",
-        headers: { "Idempotency-Key": randomUUID(), "Content-Type": "application/json", Cookie: a.cookie },
+        headers: { "Content-Type": "application/json", Cookie: a.cookie },
         body: padded({ message: "hi", project_id: a.projectId, conversation_id: a.conversationId, attached_chips: [] }, over),
       },
     ];

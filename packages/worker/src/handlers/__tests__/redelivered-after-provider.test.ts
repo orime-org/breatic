@@ -53,8 +53,7 @@ vi.mock("@breatic/core", () => ({
   NotFoundError: class extends Error {},
   logger: { info: vi.fn(), warn: mockWarn, error: mockError, debug: vi.fn() },
 }));
-vi.mock("@breatic/domain", async () => ({
-  taskOperationKey: (await import("@domain/task/operation-key.js")).taskOperationKey,
+vi.mock("@breatic/domain", () => ({
   buildAgentConfig: vi.fn(),
   generateTextRetry: vi.fn(),
   taskService: {
@@ -67,8 +66,6 @@ vi.mock("@breatic/domain", async () => ({
     pendingChargeRequestId: mockPendingChargeRequestId,
     settleCharge: mockSettleCharge,
   },
-  // The operation a run that failed for good gives back (inner#1968).
-  operationService: { releaseOperation: vi.fn(async () => true) },
   creditHoldService: { releaseHold: mockReleaseHold },
   nodeHistoryService: { recordGenerationFailure: mockRecordFailure },
   settleTaskForNode: mockSettleTaskForNode,

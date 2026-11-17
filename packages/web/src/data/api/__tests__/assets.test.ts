@@ -5,10 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // The api layer already unwraps the `{ data }` envelope, so these mocks
 // resolve directly to the inner object a caller sees.
-// `runOnceRequest` stays real: a ticket and a fetched address carry their
-// operation key since inner#1968 (design 3.2).
-vi.mock('@web/data/api/request', async (importOriginal) => ({
-  runOnceRequest: (await importOriginal<typeof import('@web/data/api/request')>()).runOnceRequest,
+vi.mock('@web/data/api/request', () => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
   request: { get: vi.fn() },
@@ -235,6 +232,33 @@ describe('assetsApi.fetchUploadStatus', () => {
   });
 });
 
+describe('assetsApi.requestUploadTicketBatch', () => {
+  it('sends every file of one export in the batch form and returns the answers in order', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ items: [{ refused: { reason: 'storage' } }] });
+
+    const answers = await assetsApi.requestUploadTicketBatch({
+      projectId: 'p1',
+      spaceId: 's1',
+      source: 'mini_tool',
+      toolName: 'image.grid',
+      items: [{ filename: 'GRID.png', contentType: 'image/png', size: 9, hash: 'c'.repeat(64), nodeId: 'n1' }],
+    });
+
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/assets/upload-ticket', {
+      project_id: 'p1',
+      space_id: 's1',
+      source: 'mini_tool',
+      tool_name: 'image.grid',
+      items: [{ filename: 'GRID.png', content_type: 'image/png', size: 9, client_hash: 'c'.repeat(64), node_id: 'n1' }],
+    }, expect.objectContaining({ timeout: 0 }));
+    expect(answers).toEqual([{ refused: { reason: 'storage' } }]);
+  });
+});
+
+
+// inner#1595 §3.5: the server opens the upload at the ingest Worker before it
+// answers, bounded by the task budget, so the page waits for that answer rather
+// than giving up at the client's 30 seconds and asking again.
 describe('ticket requests carry no client timeout (inner#1595)', () => {
   it('W07 asks for a single ticket with timeout 0, the body as before', async () => {
     vi.mocked(apiPost).mockResolvedValue({ alreadyExists: true, assetId: 'a1', fileUrl: 'u', kind: 'image' });
@@ -260,6 +284,29 @@ describe('ticket requests carry no client timeout (inner#1595)', () => {
       client_hash: 'a'.repeat(64),
       node_id: 'n1',
       space_id: 's1',
+    });
+    expect(config?.timeout).toBe(0);
+  });
+
+  it('W08 asks for a batch of tickets with timeout 0, the body as before', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ items: [] });
+
+    await assetsApi.requestUploadTicketBatch({
+      projectId: 'p1',
+      spaceId: 's1',
+      source: 'mini_tool',
+      toolName: 'image.grid',
+      items: [{ filename: 'GRID.png', contentType: 'image/png', size: 9, hash: 'c'.repeat(64), nodeId: 'n1' }],
+    });
+
+    expect(vi.mocked(apiPost)).toHaveBeenCalledOnce();
+    const [, body, config] = vi.mocked(apiPost).mock.calls[0]!;
+    expect(body).toEqual({
+      project_id: 'p1',
+      space_id: 's1',
+      source: 'mini_tool',
+      tool_name: 'image.grid',
+      items: [{ filename: 'GRID.png', content_type: 'image/png', size: 9, client_hash: 'c'.repeat(64), node_id: 'n1' }],
     });
     expect(config?.timeout).toBe(0);
   });

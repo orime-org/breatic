@@ -5,8 +5,7 @@
  * A person's own monthly spend limit (inner#1968, test spec K-04): the
  * Studio's admin sets member B's limit to 0 on the Studio's Credits tab, and
  * B pressing Generate is refused with the per-person sentence, which names the
- * reset day in B's own time and offers no top-up, since credits do not lift a
- * limit.
+ * reset day in B's own time.
  *
  * A makes a team Studio of its own with B in it; the limit is judged before
  * anything is held or run, so no model is called. B's browser runs in Los
@@ -29,13 +28,13 @@ import { visibleSpace } from '../helpers/space';
 
 /** The English catalog the suite's accounts read the product in. */
 const EN = JSON.parse(readFileSync(resolve(__dirname, '../../../../locales/en.json'), 'utf8')) as {
-  credits: { spendCap: { member: string }; topUp: string };
+  credits: { spendCap: { member: string } };
 };
 
 /** B's time zone: behind UTC, so the UTC month's first instant is the day before there. */
 const B_TIME_ZONE = 'America/Los_Angeles';
 
-test('a member whose own limit is 0 is refused Generate with the reset day in local time and no top-up @needs-payments', async ({ browser, page }) => {
+test('a member whose own limit is 0 is refused Generate with the reset day in local time @needs-payments', async ({ browser, page }) => {
   const stamp = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
   const slug = `spend-cap-${stamp}`;
   const a = page.context().request;
@@ -109,7 +108,6 @@ test('a member whose own limit is 0 is refused Generate with the reset day in lo
     const toast = bPage.locator('[data-sonner-toast]').filter({ hasText: sentence });
     await expect(toast).toBeVisible({ timeout: 20_000 });
     await expect(toast).not.toContainText(utcDay);
-    await expect(toast.getByRole('button', { name: EN.credits.topUp })).toHaveCount(0);
     await expect(visibleSpace(bPage).locator(`.react-flow__node[data-id="${nodeId}"]`).getByTestId('task-count-running')).toHaveCount(0);
   } finally {
     if (projectId !== undefined) {

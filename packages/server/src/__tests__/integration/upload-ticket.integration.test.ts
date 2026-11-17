@@ -22,7 +22,6 @@
  * changed, and the node history is where that is kept.
  */
 
-import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, beforeEach, afterAll, inject, vi } from "vitest";
 
 /**
@@ -252,7 +251,7 @@ async function requestTicket(
 ): Promise<Response> {
   return app.request("/api/v1/assets/upload-ticket", {
     method: "POST",
-    headers: { "Idempotency-Key": randomUUID(), "content-type": "application/json", cookie },
+    headers: { "content-type": "application/json", cookie },
     body: JSON.stringify(payload),
   });
 }
@@ -939,7 +938,7 @@ describe("POST /assets/upload-ticket", () => {
 
     const res = await app.request("/api/v1/assets/upload-ticket", {
       method: "POST",
-      headers: { "Idempotency-Key": randomUUID(), "content-type": "application/json" },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(body({ project_id: projectId })),
     });
 

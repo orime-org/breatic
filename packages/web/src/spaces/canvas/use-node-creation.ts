@@ -91,7 +91,6 @@ import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { refusalSentence, toastFailure } from '@web/stores/credit-refusals';
 import { ingestRefusalToastKey } from '@web/spaces/canvas/upload-failure';
 
 /** A node an upload just created: its id and the top-left it was written at. */
@@ -484,10 +483,7 @@ export function useNodeCreation(
         canvasApi
           .ingestUrl({ url, project_id: projectId, space_id: spaceId, node_id: target })
           .catch((err: unknown) => {
-            toastFailure(
-              refusalSentence(err) ?? t(ingestRefusalToastKey(err instanceof ApiException ? err.status : undefined)),
-              err,
-            );
+            toast.error(t(ingestRefusalToastKey(err instanceof ApiException ? err.status : undefined)));
           });
       }
       return placed.map((node) => node.id);

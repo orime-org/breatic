@@ -265,31 +265,14 @@ export interface StudioLotView {
 }
 
 /**
- * Every kind of line an account's ledger shows.
+ * What one line of an account's ledger is.
  *
  * `unbilled` is a run that drew on no purchase: every run on a deployment
  * that charges nobody, and the runs that reached no pool where it does
  * charge. It cost this account nothing, and it is still something the user
  * did.
  */
-export const CREDIT_LEDGER_KINDS = ["generation", "debt_repayment", "unbilled", "operation_overage"] as const;
-
-/**
- * One of {@link CREDIT_LEDGER_KINDS}. The type and the wire schema both read
- * that list, so a new kind cannot reach one and not the other (a kind the
- * schema did not know failed the whole page, inner#1968).
- */
-export type CreditLedgerKind = (typeof CREDIT_LEDGER_KINDS)[number];
-
-/**
- * Every kind of line a studio's ledger shows. An account's `unbilled` is not one:
- * the studio ledger shows a run that drew on no purchase as a generation with
- * a note, because what the studio consumed is still what it consumed.
- */
-export const STUDIO_LEDGER_KINDS = ["generation", "debt_repayment", "operation_overage"] as const;
-
-/** One of {@link STUDIO_LEDGER_KINDS}. */
-export type StudioLedgerKind = (typeof STUDIO_LEDGER_KINDS)[number];
+export type CreditLedgerKind = "generation" | "debt_repayment" | "unbilled";
 
 /**
  * One line of this account's ledger: one run, and what it came to here.
@@ -303,7 +286,7 @@ export type StudioLedgerKind = (typeof STUDIO_LEDGER_KINDS)[number];
  */
 export interface CreditLedgerView {
   id: string;
-  /** Which kind of line this is. */
+  /** Which of the three kinds of line this is. */
   kind: CreditLedgerKind;
   actorUserId: string | null;
   /** Who spent it, by display name. */
@@ -330,8 +313,8 @@ export interface CreditLedgerView {
 /** One line of a studio's ledger: everything one event moved. */
 export interface StudioLedgerView {
   id: string;
-  /** A generation, a designation paying off what the studio owed, or an operation past the allowance. */
-  kind: StudioLedgerKind;
+  /** A generation, or a designation paying off what the studio owed. */
+  kind: "generation" | "debt_repayment";
   /** Who ran it, which in a team is often not who paid. */
   actorUserId: string | null;
   actorName: string | null;
@@ -452,12 +435,12 @@ export const creditLotViewSchema = z.object({
 });
 export const studioLotViewSchema = z.object({ id, purchasedCredits: amount, remainingCredits: amount, createdAt: z.string(), buyerName: nullableText });
 export const creditLedgerViewSchema = z.object({
-  id, kind: z.enum(CREDIT_LEDGER_KINDS), actorUserId: id.nullable(), actorName: nullableText,
+  id, kind: z.enum(["generation", "debt_repayment", "unbilled"]), actorUserId: id.nullable(), actorName: nullableText,
   studioId: id.nullable(), studioName: nullableText, projectId: id.nullable(), projectName: nullableText,
   model: nullableText, provider: nullableText, amount: creditDecimalSchema, createdAt: z.string(),
 });
 export const studioLedgerViewSchema = z.object({
-  id, kind: z.enum(STUDIO_LEDGER_KINDS), actorUserId: id.nullable(), actorName: nullableText,
+  id, kind: z.enum(["generation", "debt_repayment"]), actorUserId: id.nullable(), actorName: nullableText,
   projectId: id.nullable(), projectName: nullableText, model: nullableText, provider: nullableText,
   charged: creditDecimalSchema, consumed: creditDecimalSchema, owed: creditDecimalSchema, createdAt: z.string(),
 });

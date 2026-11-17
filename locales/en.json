@@ -351,10 +351,6 @@
     "spend_cap": {
       "member": "You've reached your monthly spend limit in this Studio ({limit, select, 1 {1 credit} other {{limit} credits}}). Contact the Studio admin if you need more.",
       "studio": "This Studio has reached its monthly spend limit. Contact the Studio admin."
-    },
-    "operation": {
-      "exhausted": "This month's operations are used up, and there are fewer than {credits, select, 1 {1 credit} other {{credits} credits}} for the next one. Add credits to continue.",
-      "key_taken": "This operation was already handled."
     }
   },
   "chat": {
@@ -3429,7 +3425,6 @@
       "studioMembers": "Members per Studio",
       "projectMembers": "Members per Project",
       "concurrentEditors": "Simultaneous connections per document",
-      "monthlyOperations": "Operations per month",
       "runningTasksPerUser": "Tasks running at once"
     },
     "quotaValue": "{used} / {limit}",
@@ -3502,15 +3497,7 @@
       "loadFailed": "Couldn't load referral information.",
       "retry": "Retry"
     },
-    "quotaUnlimited": "{used} / Unlimited",
-    "operations": {
-      "label": "Operations this month",
-      "remaining": "{count} left",
-      "resetsOn": "Resets {date}",
-      "overagePrice": "Each operation past the allowance costs {credits, select, 1 {1 credit} other {{credits} credits}}, taken from the Studio it runs in",
-      "overageCount": "{count} over the allowance this month",
-      "shared": "Shared across every Studio you administer"
-    }
+    "quotaUnlimited": "{used} / Unlimited"
   },
   "promoter": {
     "heading": "Promoter program",
@@ -3693,10 +3680,7 @@
     "refundHint": {
       "assigned": "Unassign it to ask for a refund"
     },
-    "eventOperationOverage": "Operations over the allowance",
-    "topUp": "Add credits",
     "refusal": {
-      "operations": "This month's operations are used up and the credits are short. Add credits to continue.",
       "spendCap": "The monthly spend limit is reached. Contact the Studio admin."
     },
     "spendCap": {

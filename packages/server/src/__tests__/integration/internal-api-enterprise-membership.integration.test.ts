@@ -14,9 +14,9 @@ import { waitUntilBlockedOn } from "./lock-probe.js";
 
 const suite = useInternalApp("internal-api-enterprise-membership");
 const limits = { team_studios: 8, projects_per_studio: 500, concurrent_editors: 30, studio_members: 200, project_members: 80, storage_bytes: 1099511627776 };
-// A saved agreement is read back with its two operation terms, the column
-// defaults when the save left them out (inner#1968, design 3.6).
-const saved = { ...limits, monthly_operations: 16000, running_tasks_per_user: 10 };
+// A saved agreement is read back with its running_tasks_per_user term, the
+// column default when the save left it out (inner#1968, design 3.6).
+const saved = { ...limits, running_tasks_per_user: 10 };
 const body = { targetTier: "enterprise", expiresAt: "2099-10-26T00:00:00.000Z", entryTimezone: "UTC", contractNumber: "ENT-29", limits, expectedRevision: null, expectedStoredTier: "pro" };
 
 /** Create one live account on the selected tier. */
@@ -235,7 +235,7 @@ describe("enterprise membership signed internal API", () => {
     const id = await user(effectiveTier);
     const config = getMembershipConfig();
     const original = config.tiers[effectiveTier];
-    const configured = tierLimitsSchema.parse({ team_studios: 2147483648, projects_per_studio: 2147483648, concurrent_editors: 2147483648, studio_members: 2147483648, project_members: 2147483648, storage_bytes: Number.MAX_SAFE_INTEGER, monthly_operations: 2147483648, running_tasks_per_user: 2147483648 });
+    const configured = tierLimitsSchema.parse({ team_studios: 2147483648, projects_per_studio: 2147483648, concurrent_editors: 2147483648, studio_members: 2147483648, project_members: 2147483648, storage_bytes: Number.MAX_SAFE_INTEGER, running_tasks_per_user: 2147483648 });
     if (storedTier === "enterprise") {
       const opened = await call(suite.baseUrl, path(id), { body: { ...body, expiresAt: "2000-01-01T00:00:00.000Z", expectedStoredTier: effectiveTier }, idempotencyKey: key() });
       expect(opened.status).toBe(200);

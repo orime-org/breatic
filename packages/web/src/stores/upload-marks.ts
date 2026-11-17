@@ -24,10 +24,7 @@ import { newId } from '@breatic/shared';
  * A message for the user: a locale key and its parameters, or a sentence the
  * server already wrote in the user's language.
  */
-export type UploadMarkMessage =
-  | { key: string; params?: Record<string, string | number> }
-  // `topUp` when the month's operations are used up (inner#1968): the line offers to add credits.
-  | { text: string; topUp?: true };
+export type UploadMarkMessage = { key: string; params?: Record<string, string | number> } | { text: string };
 
 /**
  * What an operation is doing to its node: `upload`, `readText`, or the id of

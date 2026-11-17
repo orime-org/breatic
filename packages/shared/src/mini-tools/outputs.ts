@@ -10,7 +10,6 @@
  */
 
 import type { MiniToolOutput, MiniToolParam, MiniToolSpec } from "@shared/mini-tools/types.js";
-import { keptCells } from "@shared/mini-tools/grid-tiles.js";
 
 /**
  * A number param's value, falling back to its default.
@@ -38,7 +37,9 @@ export function pickedCellsOf(spec: MiniToolSpec, params: Readonly<Record<string
   const count = spec.outputCount;
   if (count?.kind !== "product") return null;
   const total = count.params.reduce((product, key) => product * numberParam(spec, params, key), 1);
-  return keptCells(total, count.except === undefined ? undefined : params[count.except]);
+  const listed = count.except === undefined ? undefined : params[count.except];
+  const skipped = new Set(Array.isArray(listed) ? listed : []);
+  return Array.from({ length: total }, (_, index) => index).filter((index) => !skipped.has(index));
 }
 
 /**

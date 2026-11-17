@@ -12,7 +12,6 @@
 import { accountActivityRepo } from "@breatic/core";
 import { reportCollaboratorFirstAction } from "@breatic/core";
 import { Hono } from "hono";
-import { createMiddleware } from "hono/factory";
 import type { Context } from "hono";
 import { randomUUID } from "node:crypto";
 import { runAfterReply } from "@server/utils/after-reply.js";
@@ -48,9 +47,8 @@ import { agentInstructionsService } from "@server/modules";
 import { runningTurnsService } from "@server/modules";
 import { projectService } from "@server/modules";
 import { precheckCredits } from "@server/modules";
-import { OperationsExhaustedError, SpendCapReachedError } from "@server/modules";
-import { chatOperationKey, releaseChatMessages, renewChatMessages } from "@server/modules/operation/operation-admission.service.js";
-import { SMALLEST_CREDIT, operationService } from "@breatic/domain";
+import { SpendCapReachedError } from "@server/modules";
+import { SMALLEST_CREDIT } from "@breatic/domain";
 import { startRun, stopChannel } from "@server/agent/chat-run.js";
 import { runStreams } from "@server/agent/run-stream.js";
 import { isShuttingDown } from "@server/agent/shutdown-flag.js";
@@ -222,62 +220,7 @@ chat.use("*", requireAuth);
  * @param c - Hono context with validated `chatMessageSchema` body
  * @returns The send's status and the waiting area as JSON
  */
-/** Runs a message send once per `Idempotency-Key` (inner#1968). */
-const runMessageOnce = runOnce("chat-message", { operationId: true });
-
-/**
- * Whether a send body answers a card rather than sending a new message.
- * @param text - The raw body.
- * @returns True for a card's answer.
- */
-function answersCard(text: string): boolean {
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return typeof parsed === "object" && parsed !== null && ("answer" in parsed || "shared_spaces" in parsed);
-  } catch {
-    // Not JSON: validate refuses it after runOnce has asked for its key.
-    return false;
-  }
-}
-
-/**
- * Run a new message once per press, keyed by its id (inner#1968): the key is
- * required, and a repeat is answered from what the first press stored. A
- * card's answer is not a new message and carries no operation, so one sent
- * without a key goes on as before. Mounted before `acceptTransferBody`, so a
- * replay never reads a transfer, which is read once, a second time.
- */
-const runChatMessageOnce = createMiddleware<{ Variables: AuthVariables }>(async (c, next) => {
-  if (c.req.header("idempotency-key") === undefined && answersCard(await c.req.text())) return next();
-  return runMessageOnce(c, next);
-});
-
-/**
- * The derived images a message carries that it may use up (design 3.2.1): a
- * picture attachment's own address (a 3D viewfinder shot), and each canvas
- * node's focus crops.
- * @param chips - What the message attaches.
- * @returns Their addresses, in order.
- */
-function derivedInputsOf(chips: readonly ChatAttachedChip[]): string[] {
-  const urls: string[] = [];
-  for (const chip of chips) {
-    const snapshot = chip.data_snapshot;
-    if (chip.type === "image" && typeof snapshot.url === "string") urls.push(snapshot.url);
-    if (chip.type !== "canvas" || !Array.isArray(snapshot.nodes)) continue;
-    for (const node of snapshot.nodes as unknown[]) {
-      const focus = (node as { data?: { focusImages?: unknown } } | null)?.data?.focusImages;
-      if (!Array.isArray(focus)) continue;
-      for (const image of focus as unknown[]) {
-        const url = (image as { url?: unknown } | null)?.url;
-        if (typeof url === "string") urls.push(url);
-      }
-    }
-  }
-  return urls;
-}
-
-chat.post("/message", runChatMessageOnce, acceptTransferBody("chat_message"), validate("json", chatMessageSchema), async (c) => {
+chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatMessageSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
@@ -394,29 +337,6 @@ chat.post("/message", runChatMessageOnce, acceptTransferBody("chat_message"), va
     return c.json({ error: { code: 409, message: t("server.error.conflict"), reason: "message_id_taken" } }, 409);
   }
   await accountActivityRepo.recordActivity({ userId: user.id, projectId: body.project_id, kind: "agent_started" });
-
-  // A new message is one operation, admitted before it is queued
-  // (inner#1968). A key already counted, deferred or released for good ran
-  // before: it is a duplicate. A key still reserved was admitted by a press
-  // that died before queueing, so this one queues it; a released key is
-  // admitted again.
-  const operationKey = chatOperationKey(user.id, body.id!);
-  const admitted = await operationService.admitOperation({
-    kind: "chat_message",
-    key: operationKey,
-    projectId: body.project_id,
-    actorUserId: user.id,
-    inputs: derivedInputsOf(body.attached_chips),
-    revive: true,
-  });
-  if (admitted.kind === "refused") throw new OperationsExhaustedError();
-  if (admitted.kind === "capped") throw new SpendCapReachedError(admitted.cap);
-  if (admitted.kind === "taken" && admitted.status !== "reserved") {
-    logger.warn({ userId: user.id, projectId: body.project_id, key: operationKey }, "operation_key_taken");
-    const { active } = await chatQueue().peek(conversation.id);
-    return c.json({ data: { status: "duplicate", pending: pendingOf(await chatQueue().pending(conversation.id)), running: active !== null } });
-  }
-  const admittedNow = admitted.kind !== "taken";
   const { project_id: _project, conversation_id: _conversation, ...said } = body;
   const item: QueueItem = {
     ...said,
@@ -425,14 +345,7 @@ chat.post("/message", runChatMessageOnce, acceptTransferBody("chat_message"), va
     userId: user.id,
     acceptLanguage: getActiveLocale(),
   };
-  let queued: Awaited<ReturnType<ReturnType<typeof chatQueue>["enqueue"]>>;
-  try {
-    queued = await chatQueue().enqueue(conversation.id, item);
-  } catch (err) {
-    if (admittedNow) await releaseChatMessages([item], "not_queued");
-    throw err;
-  }
-  if (admittedNow && (queued.status === "full" || queued.status === "duplicate")) await releaseChatMessages([item], `queue_${queued.status}`);
+  const queued = await chatQueue().enqueue(conversation.id, item);
   if (queued.status === "full") {
     return c.json({ error: { code: 409, message: t("server.chat.queue_full"), reason: "queue_full" } }, 409);
   }
@@ -475,8 +388,6 @@ chat.post(
     const queue = chatQueue();
     const next_sync_ms = getAgentConfig().chat_sync_interval_ms;
     const seen = await queue.peek(conversation.id);
-    // What still waits stays in flight while a page is open on it (inner#1968).
-    if (seen.work) await renewChatMessages(await queue.pending(conversation.id));
     if (seen.active === null && !seen.awaiting && seen.work && !isShuttingDown()) {
       try {
         await precheckCredits(projectId, user.id, SMALLEST_CREDIT);
@@ -582,10 +493,7 @@ chat.delete(
     const { project_id: projectId } = c.req.valid("json");
     await projectService.assertAccess(projectId, user.id, "editor");
     await conversationService.assertWritable(id, user.id, projectId);
-    const status = await chatQueue().remove(id, messageId);
-    // A message taken back before any run read it is not an operation (inner#1968).
-    if (status === "removed") await releaseChatMessages([{ id: messageId, userId: user.id }], "withdrawn");
-    return c.json({ data: { status } });
+    return c.json({ data: { status: await chatQueue().remove(id, messageId) } });
   },
 );
 
@@ -840,9 +748,7 @@ chat.delete("/conversations/:id", validate("param", idParamSchema), async (c) =>
   // Its queue first, so the run it stops opens no next run on what waited;
   // then the row; then the stop (inner#1717).
   const { active } = await chatQueue().peek(conversationId);
-  const cleared = await chatQueue().clear(conversationId);
-  // What waited will never run: none of it is an operation (inner#1968).
-  await releaseChatMessages(cleared, "conversation_deleted");
+  await chatQueue().clear(conversationId);
   await conversationService.deleteConversation(conversationId, user.id);
   if (active !== null) await getRedis().publish(stopChannel(active), "stop");
   return c.json({ message: "Conversation deleted" });

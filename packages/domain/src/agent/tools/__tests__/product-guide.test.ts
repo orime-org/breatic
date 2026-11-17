@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { getAgentConfig, getMiniToolsConfig, getOperationsConfig, loadLocales, runWithLocale } from "@breatic/core";
+import { getAgentConfig, getMiniToolsConfig, loadLocales, runWithLocale } from "@breatic/core";
 import { CHAT_MESSAGE_MAX_CHARS, GENERATION_TEMPLATES, TEMPLATE_GOALS, canConnect, canGenerate, t, templateGoalsFor } from "@breatic/shared";
 import { MINI_TOOLS } from "@breatic/shared/mini-tools";
 
@@ -95,7 +95,7 @@ type MessageCall = [id: string, values: Record<string, number> | undefined];
  */
 function messageCalls(): MessageCall[] {
   // A value the guide reads from the deployment's config, by the local it names it with.
-  const locals: Record<string, number> = { joinCap: getMiniToolsConfig().join_max_clips, overage: getOperationsConfig().overage_credits };
+  const locals: Record<string, number> = { joinCap: getMiniToolsConfig().join_max_clips };
   return [...source.matchAll(/\bt\("([\w.-]+)"(?:, (\{[^}]*\}))?\)/g)].map((m) => [
     m[1] ?? "",
     m[2] === undefined
@@ -1031,7 +1031,7 @@ describe("mini-tools and the task rows", () => {
     expect(tools).toMatch(/the tools marked \(billed by how long it runs\) in this section's list are billed that way/);
     for (const tool of MINI_TOOLS) {
       const line = `"${t(tool.labelKey)}": ${tool.guide} (billed by how long it runs).`;
-      expect(tools.includes(line), tool.id).toBe(tool.run.kind === "container" && tool.billing !== "free");
+      expect(tools.includes(line), tool.id).toBe(tool.run.kind === "container");
     }
   });
 

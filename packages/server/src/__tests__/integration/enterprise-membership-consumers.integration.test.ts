@@ -151,8 +151,8 @@ describe("saved enterprise information reaches actual consumers", () => {
     const a = await account(); const old = { ...negotiated, projects_per_studio: 20 };
     const changed = { team_studios: 999, projects_per_studio: 999, concurrent_editors: 999, studio_members: 999, project_members: 999, storage_bytes: 999 };
     await save(a, old); for (let n = 0; n < 25; n++) await seedProject(a);
-    // The agreement is read back with its two operation terms (inner#1968).
-    expect((await getMembershipReadingForUser(a.id)).limits).toEqual({ ...old, monthly_operations: 16000, running_tasks_per_user: 10 });
+    // The agreement is read back with its running_tasks_per_user term (inner#1968).
+    expect((await getMembershipReadingForUser(a.id)).limits).toEqual({ ...old, running_tasks_per_user: 10 });
     const gate = postgres(inject("DATABASE_URL"), { max: 1 });
     let release!: () => void; let locked!: () => void;
     const ready = new Promise<void>((resolve) => { locked = resolve; });

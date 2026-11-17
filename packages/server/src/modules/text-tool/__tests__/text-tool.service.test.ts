@@ -136,13 +136,6 @@ vi.mock("@breatic/domain", async () => ({
       }),
     };
   },
-  // A run is one operation (inner#1968 design 3.2): counted when it ends done
-  // or stopped, released when it fails. The ledger is pinned by the integration suites.
-  operationService: {
-    countOperation: vi.fn(async () => null),
-    settleOverage: vi.fn(async () => undefined),
-    releaseOperation: vi.fn(async () => true),
-  },
   creditLotService: {
     chargeOnce: async (...args: unknown[]) => {
       charge.calls.push(args);

@@ -4,9 +4,8 @@
 /**
  * Membership quota configuration loader.
  *
- * Reads `config/membership.yaml`: which tier a new account lands in, the
- * eight ceilings each of the four configured tiers carries, and how monthly
- * operations past the allowance are handled.
+ * Reads `config/membership.yaml`: which tier a new account lands in, and the
+ * seven ceilings each of the four configured tiers carries.
  *
  * Enterprise ceilings are negotiated per account and stored alongside their
  * validity in enterprise_memberships. Membership lookups resolve that record
@@ -96,17 +95,6 @@ export const membershipConfigSchema = z.object({
    * price file is mounted into server alone (inner#1636).
    */
   stale_after_days: z.number().int().positive(),
-  /** How operations past a tier's monthly allowance are handled (inner#1968). */
-  operations: z.object({
-    /** Credits one operation past the allowance costs. */
-    overage_credits: z.number().positive(),
-    /** How often unclaimed derived uploads are counted. */
-    deferred_sweep_interval_ms: z.number().int().positive(),
-    /** Derived uploads one operation can use up. */
-    max_absorbed_per_operation: z.number().int().positive(),
-    /** How long a queued Agent message stays in flight unless renewed. */
-    chat_message_lease_ms: z.number().int().positive(),
-  }),
 });
 
 /** Validated membership configuration. */
@@ -135,7 +123,7 @@ export function getMembershipConfig(): Readonly<MembershipConfig> {
 }
 
 /**
- * The eight ceilings for one tier.
+ * The seven ceilings for one tier.
  * @param tier - The membership tier to look up
  * @returns That tier's limits
  * @throws {z.ZodError} if the config file is malformed (first call only)
@@ -166,17 +154,4 @@ export function getDefaultMembershipTier(): ConfiguredMembershipTier {
  */
 export function getSubscriptionStaleAfterDays(): number {
   return getMembershipConfig().stale_after_days;
-}
-
-/** How operations past the monthly allowance are handled. */
-export type OperationsConfig = MembershipConfig["operations"];
-
-/**
- * How operations past a tier's monthly allowance are handled.
- * @returns The `operations` block of `config/membership.yaml`.
- * @throws {z.ZodError} if the config file is malformed (first call only)
- * @throws {Error} if `config/membership.yaml` cannot be read (first call only)
- */
-export function getOperationsConfig(): OperationsConfig {
-  return getMembershipConfig().operations;
 }

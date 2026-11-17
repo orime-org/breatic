@@ -89,7 +89,6 @@ vi.mock("@breatic/core", () => ({
   logger: { info: h.info, warn: h.warn, error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", async () => ({
-  taskOperationKey: (await import("@domain/task/operation-key.js")).taskOperationKey,
   // The real judgement: the case below is about the ending it gives.
   failureOutcome: (await import("@domain/node-task/failure-outcome.js")).failureOutcome,
   buildAgentConfig: vi.fn(),
@@ -105,8 +104,6 @@ vi.mock("@breatic/domain", async () => ({
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: { resolveOwnerStudioId: vi.fn(async () => "studio-1") },
   creditLotService: {},
-  // The operation a run that failed for good gives back (inner#1968).
-  operationService: { releaseOperation: vi.fn(async () => true) },
   creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   creditsForUsd: vi.fn(() => 0),
   toChargeCredits: (credits: number) => credits,

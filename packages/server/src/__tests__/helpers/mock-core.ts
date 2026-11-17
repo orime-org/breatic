@@ -283,24 +283,6 @@ export const mocks = {
     // No monthly spend limit is reached (inner#1968 design 3.10); limits are pinned by the integration suites.
     spendCapFor: vi.fn().mockResolvedValue(null),
   },
-  // The operation ledger every metered entry admits through (inner#1968
-  // design 3.2). Route tests are about routing: every operation is admitted
-  // as covered by the allowance; the ledger itself is pinned by the
-  // integration suites.
-  operationService: {
-    onOperationAudit: vi.fn(() => () => {}),
-    admitOperation: vi.fn().mockResolvedValue({ kind: "covered", studioId: "studio-1", accountUserId: "user-1" }),
-    operationStatus: vi.fn().mockResolvedValue(null),
-    countOperation: vi.fn().mockResolvedValue(null),
-    settleOverage: vi.fn().mockResolvedValue(undefined),
-    releaseOperation: vi.fn().mockResolvedValue(true),
-    renewOperation: vi.fn().mockResolvedValue(undefined),
-    defersCount: vi.fn().mockReturnValue(false),
-    deferOperation: vi.fn().mockResolvedValue(true),
-    recordOperationAsset: vi.fn().mockResolvedValue(undefined),
-    readMeteredOperationUsage: vi.fn().mockResolvedValue(null),
-    readOperationUsage: vi.fn().mockResolvedValue(null),
-  },
   creditLotService: {
     // Read at module evaluation by `routes/schemas.ts`, so a double without it
     // hands zod an undefined pattern: the schema still builds, and the first
@@ -617,7 +599,6 @@ export const domainMock = async () => ({
   // @breatic/core, whose mock factory lives in this file, so a top-level
   // import waits on itself and the suite hangs.
   ...(await import("../../../../domain/src/agent/memory-entries.js")),
-  taskOperationKey: (await import("../../../../domain/src/task/operation-key.js")).taskOperationKey,
   createUsageRecorder: vi.fn(usageRecorderDouble),
   handOffLookups: mocks.handOffLookups,
   // The same shape as the real one: every tool in the set gets the recorder.
@@ -647,7 +628,6 @@ export const domainMock = async () => ({
   UNDERSTAND_PINS: REAL_UNDERSTAND_PINS,
   creditLotService: mocks.creditLotService,
   creditHoldService: mocks.creditHoldService,
-  operationService: mocks.operationService,
   nodeHistoryService: mocks.nodeHistoryService,
   nodeHistoryRepo: mocks.nodeHistoryRepo,
   modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [], tts: [], three_d: [], total: 0 }) },

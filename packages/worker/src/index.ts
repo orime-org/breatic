@@ -33,7 +33,6 @@ import {
   runGracefulShutdown,
   getAgentConfig,
   getWorkerConfig,
-  getOperationsConfig,
   getTimelineConfig,
   TIMELINE_QUEUE,
   type TimelineExecutionJobData,
@@ -163,7 +162,6 @@ import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-swee
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
 import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
 import { sweepSlotWaiters } from "@worker/handlers/slot-wait-sweep.js";
-import { OPERATION_DEFERRED_SWEEP_QUEUE, attachOperationAuditLog, sweepDeferredOperations } from "@worker/handlers/operation-deferred-sweep.js";
 
 /** Queue holding the recurring sweep of Timeline executions that have not ended (inner#1711). */
 const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
@@ -188,7 +186,6 @@ const WORKER_QUEUES: readonly string[] = [
   TIMELINE_QUEUE,
   TIMELINE_SWEEP_QUEUE,
   CREDIT_CHARGE_SWEEP_QUEUE,
-  OPERATION_DEFERRED_SWEEP_QUEUE,
   SLOT_WAIT_SWEEP_QUEUE,
 ];
 
@@ -272,21 +269,6 @@ export function startWorker(): void {
     { name: creditChargeSweepJob, data: {}, opts: defaultJobOpts() },
   ).catch((err: unknown) => {
     logger.error({ err }, "credit_charge_sweep_schedule_failed");
-  });
-
-  // Derived uploads no operation used up in time are counted (inner#1968).
-  attachOperationAuditLog();
-  const operationSweepQueue = createQueue(OPERATION_DEFERRED_SWEEP_QUEUE);
-  const operationSweep = createWorker<Record<string, never>>(OPERATION_DEFERRED_SWEEP_QUEUE, () => sweepDeferredOperations());
-  operationSweep.on("failed", (job, err) => {
-    logger.error({ err, jobId: job?.id }, "operation_deferred_sweep_failed");
-  });
-  void operationSweepQueue.upsertJobScheduler(
-    OPERATION_DEFERRED_SWEEP_QUEUE,
-    { every: getOperationsConfig().deferred_sweep_interval_ms },
-    { name: OPERATION_DEFERRED_SWEEP_QUEUE, data: {}, opts: defaultJobOpts() },
-  ).catch((err: unknown) => {
-    logger.error({ err }, "operation_deferred_sweep_schedule_failed");
   });
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
@@ -613,7 +595,6 @@ export function startWorker(): void {
         () => timelineWorker.close(),
         () => timelineSweep.close(),
         () => creditChargeSweep.close(),
-        () => operationSweep.close(),
         () => slotWaitSweep.close(),
         () => timelineEvents.close(),
         () => urlIngest.close(),

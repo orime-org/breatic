@@ -10,12 +10,11 @@
  * `DELETE /canvas/node-tasks/:taskId` (a project editor, the project read from
  * the task row). Under the person's `running-tasks:<user_id>` lock it moves the
  * task `pending → cancelled` and, in the same transaction, releases the credit
- * hold and the ledger row and ends the node task row with the failure reason
- * `cancelled`; it answers `200 { data: { cancelled: true, counts } }`, `counts`
- * being the node's `NodeTaskCounts` (null for a 3D Space's own row). A task
- * that already started answers 409 and goes on. A Timeline execution's cancel
- * runs through `timelineSettlement.transition` and releases its ledger row and
- * `operation:` hold the same way.
+ * hold and ends the node task row with the failure reason `cancelled`; it
+ * answers `200 { data: { cancelled: true, counts } }`, `counts` being the
+ * node's `NodeTaskCounts` (null for a 3D Space's own row). A task that already
+ * started answers 409 and goes on. A Timeline execution's cancel runs through
+ * `timelineSettlement.transition` and holds no credits, so it touches no hold.
  *
  * The account is a pro admin of a team studio (five running tasks), so a fresh
  * task stays `pending` here: no worker runs in this suite.
@@ -34,7 +33,7 @@ import type { Hono } from "hono";
 import { env, getNodeTaskConfig, getStreamRedis, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
 import { spaceTasksChangedChannel, TASK_FAILURE_REASONS } from "@breatic/shared";
 import * as timelineExecutionService from "@server/modules/timeline/timeline-execution.service.js";
-import { PAYMENTS_ON, request, seedAccount, seedMember, type Account, type Actor } from "./operation-counting-fixtures.js";
+import { PAYMENTS_ON, request, seedAccount, seedMember, type Account, type Actor } from "./paid-account-fixtures.js";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -85,29 +84,28 @@ function cancel(who: Actor, taskId: string): Promise<Response> {
 }
 
 /**
- * Where a task, its hold, its ledger row and its node task row stand.
+ * Where a task, its hold and its node task row stand.
  * @param taskId - The task.
  * @returns Each one's status.
  */
-async function standing(taskId: string): Promise<{ task?: string; hold?: string; ledger?: string; node?: { status: string; error_message: string | null } }> {
+async function standing(taskId: string): Promise<{ task?: string; hold?: string; node?: { status: string; error_message: string | null } }> {
   const [task] = await sql<{ status: string }[]>`select status from tasks where id = ${taskId}`;
   const [hold] = await sql<{ status: string }[]>`select status from credit_holds where reference_id = ${taskId}`;
-  const [ledger] = await sql<{ status: string }[]>`select status from operation_ledger where operation_key = ${`task:${taskId}`}`;
   const [node] = await sql<{ status: string; error_message: string | null }[]>`select status, error_message from node_tasks where task_id = ${taskId}`;
-  return { task: task?.status, hold: hold?.status, ledger: ledger?.status, node };
+  return { task: task?.status, hold: hold?.status, node };
 }
 
 describe("G-25 cancelling a task that has not started", () => {
-  it("cancels it, releases its hold and ledger row, ends its node row as cancelled and answers the node's counts", async () => {
+  it("cancels it, releases its hold, ends its node row as cancelled and answers the node's counts", async () => {
     const a = await seedAccount(sql);
     const { taskId } = await generate(a);
-    expect(await standing(taskId)).toMatchObject({ task: "pending", hold: "held", ledger: "reserved", node: { status: "running" } });
+    expect(await standing(taskId)).toMatchObject({ task: "pending", hold: "held", node: { status: "running" } });
     const res = await cancel(a, taskId);
     expect(res.status, await res.clone().text()).toBe(200);
     const body = (await res.json()) as { data: { cancelled: boolean; counts: Record<string, number> | null } };
     expect(body.data.cancelled).toBe(true);
     expect(body.data.counts).toMatchObject({ running: 0, waiting: 0, failed: 1 });
-    expect(await standing(taskId)).toEqual({ task: "cancelled", hold: "released", ledger: "released", node: { status: "failed", error_message: "cancelled" } });
+    expect(await standing(taskId)).toEqual({ task: "cancelled", hold: "released", node: { status: "failed", error_message: "cancelled" } });
   });
 
   // The node and 3D task lists hold only their rows' ids, which differ from
@@ -134,7 +132,7 @@ describe("G-26 a task that already started", () => {
     await sql`update tasks set status = 'running', started_at = now() where id = ${taskId}`;
     const res = await cancel(a, taskId);
     expect(res.status).toBe(409);
-    expect(await standing(taskId)).toMatchObject({ task: "running", hold: "held", ledger: "reserved", node: { status: "running" } });
+    expect(await standing(taskId)).toMatchObject({ task: "running", hold: "held", node: { status: "running" } });
   });
 });
 
@@ -176,12 +174,12 @@ describe("G-28 a 3D generation that has not started", () => {
     expect(answer.status, await answer.clone().text()).toBe(200);
     expect(((await answer.json()) as { data: unknown }).data).toEqual({ cancelled: true, counts: null });
     expect(signals).toBe(1);
-    expect(await standing(taskId)).toMatchObject({ task: "cancelled", hold: "released", ledger: "released", node: { status: "failed", error_message: "cancelled" } });
+    expect(await standing(taskId)).toMatchObject({ task: "cancelled", hold: "released", node: { status: "failed", error_message: "cancelled" } });
   });
 });
 
 describe("G-29 cancelling a Timeline execution that has not started", () => {
-  it.each(["queued", "awaiting_landing"] as const)("cancels a %s execution and releases its ledger row and overage hold", async (state) => {
+  it.each(["queued", "awaiting_landing"] as const)("cancels a %s execution and touches no credit hold", async (state) => {
     const a = await seedAccount(sql);
     const budget = getNodeTaskConfig().default_budget_ms;
     const row = await timelineExecutionRepo.insert({
@@ -197,18 +195,12 @@ describe("G-29 cancelling a Timeline execution that has not started", () => {
     });
     if (row === null) throw new Error("fixture execution conflicted");
     if (state === "queued") await timelineExecutionRepo.transition({ id: row.id, event: { type: "land", inputHash: row.inputHash } });
-    const key = `timeline:${row.id}`;
-    const until = new Date(Date.now() + budget + 60_000);
-    await sql`insert into credit_holds(studio_id, actor_user_id, reference_id, amount, status, expires_at) values (${a.studioId}, ${a.userId}, ${`operation:${key}`}, 0.5, 'held', ${until})`;
-    await sql`insert into operation_ledger(operation_key, kind, account_user_id, studio_id, project_id, actor_user_id, status, admitted_as, overage_hold, expires_at)
-      values (${key}, 'timeline', ${a.userId}, ${a.studioId}, ${a.projectId}, ${a.userId}, 'reserved', 'held', ${`operation:${key}`}, ${until})`;
+    const holds = async (): Promise<unknown[]> => [...(await sql`select id, status, amount, released_at from credit_holds where studio_id = ${a.studioId} order by id`)];
+    const before = await holds();
     await timelineExecutionService.cancel(a.userId, row.id);
     const [execution] = await sql<{ status: string }[]>`select status from timeline_executions where id = ${row.id}`;
     expect(execution!.status).toBe("cancelled");
-    const [ledger] = await sql<{ status: string }[]>`select status from operation_ledger where operation_key = ${key}`;
-    expect(ledger!.status).toBe("released");
-    const [hold] = await sql<{ status: string }[]>`select status from credit_holds where reference_id = ${`operation:${key}`}`;
-    expect(hold!.status).toBe("released");
+    expect(await holds()).toEqual(before);
   });
 });
 

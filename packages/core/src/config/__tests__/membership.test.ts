@@ -14,7 +14,6 @@
 
 import { describe, it, expect } from "vitest";
 import { CONFIGURED_MEMBERSHIP_TIERS } from "@breatic/shared";
-import * as membershipConfig from "@core/config/membership.js";
 import {
   membershipConfigSchema,
   getMembershipConfig,
@@ -31,16 +30,7 @@ const FIELDS = [
   "studio_members",
   "project_members",
   "storage_bytes",
-  "monthly_operations",
   "running_tasks_per_user",
-] as const;
-
-/** Every key the operations block must carry. */
-const OPERATION_KEYS = [
-  "overage_credits",
-  "deferred_sweep_interval_ms",
-  "max_absorbed_per_operation",
-  "chat_message_lease_ms",
 ] as const;
 
 /**
@@ -56,7 +46,6 @@ function tier(over: Record<string, unknown> = {}): Record<string, unknown> {
     studio_members: 5,
     project_members: 4,
     storage_bytes: 1024,
-    monthly_operations: 500,
     running_tasks_per_user: 2,
     ...over,
   };
@@ -77,12 +66,6 @@ function config(over: Record<string, unknown> = {}): Record<string, unknown> {
       self_hosted: tier(),
     },
     stale_after_days: 14,
-    operations: {
-      overage_credits: 0.5,
-      deferred_sweep_interval_ms: 300000,
-      max_absorbed_per_operation: 10,
-      chat_message_lease_ms: 7200000,
-    },
     ...over,
   };
 }
@@ -228,7 +211,7 @@ describe("the real config/membership.yaml", () => {
     }
   });
 
-  it("gives base the 2026-11-15 numbers, all eight fields", () => {
+  it("gives base the 2026-11-15 numbers, all seven fields", () => {
     expect(getMembershipLimits("base")).toEqual({
       team_studios: 0,
       projects_per_studio: 9999,
@@ -236,12 +219,11 @@ describe("the real config/membership.yaml", () => {
       studio_members: 1,
       project_members: 4,
       storage_bytes: 5368709120,
-      monthly_operations: 500,
       running_tasks_per_user: 2,
     });
   });
 
-  it("gives pro the 2026-11-15 numbers, all eight fields", () => {
+  it("gives pro the 2026-11-15 numbers, all seven fields", () => {
     expect(getMembershipLimits("pro")).toEqual({
       team_studios: 1,
       projects_per_studio: 9999,
@@ -249,12 +231,11 @@ describe("the real config/membership.yaml", () => {
       studio_members: 10,
       project_members: 8,
       storage_bytes: 107374182400,
-      monthly_operations: 4000,
       running_tasks_per_user: 5,
     });
   });
 
-  it("gives team the 2026-11-15 numbers, all eight fields", () => {
+  it("gives team the 2026-11-15 numbers, all seven fields", () => {
     expect(getMembershipLimits("team")).toEqual({
       team_studios: 3,
       projects_per_studio: 9999,
@@ -262,12 +243,11 @@ describe("the real config/membership.yaml", () => {
       studio_members: 50,
       project_members: 40,
       storage_bytes: 536870912000,
-      monthly_operations: 16000,
       running_tasks_per_user: 10,
     });
   });
 
-  it("keeps self_hosted's six ceilings and adds the two new fields at 9999", () => {
+  it("keeps self_hosted's six ceilings and adds running_tasks_per_user at 9999", () => {
     expect(getMembershipLimits("self_hosted")).toEqual({
       team_studios: 9999,
       projects_per_studio: 9999,
@@ -275,78 +255,29 @@ describe("the real config/membership.yaml", () => {
       studio_members: 9999,
       project_members: 9999,
       storage_bytes: 109951162777600,
-      monthly_operations: 9999,
       running_tasks_per_user: 9999,
     });
   });
-
-  it("carries the operations block", () => {
-    const getOperationsConfig = (membershipConfig as Record<string, unknown>).getOperationsConfig as (() => unknown) | undefined;
-    expect(typeof getOperationsConfig).toBe("function");
-    expect(getOperationsConfig?.()).toEqual({
-      overage_credits: 0.5,
-      deferred_sweep_interval_ms: 300000,
-      max_absorbed_per_operation: 10,
-      chat_message_lease_ms: 7200000,
-    });
-  });
 });
 
-describe("membershipConfigSchema — the operations block", () => {
-  it("rejects a config without the operations block", () => {
-    const c = config();
-    delete c.operations;
-    expect(() => membershipConfigSchema.parse(c)).toThrow();
-  });
-
-  for (const key of OPERATION_KEYS) {
-    it(`rejects an operations block missing ${key}`, () => {
-      const operations = { ...(config().operations as Record<string, unknown>) };
-      delete operations[key];
-      expect(() => membershipConfigSchema.parse(config({ operations }))).toThrow();
-    });
-  }
-
-  it("rejects a non-positive overage price, absorb cap or lease", () => {
-    const base = config().operations as Record<string, unknown>;
-    for (const over of [
-      { overage_credits: 0 },
-      { overage_credits: -0.5 },
-      { max_absorbed_per_operation: 0 },
-      { chat_message_lease_ms: 0 },
-    ]) {
-      expect(() => membershipConfigSchema.parse(config({ operations: { ...base, ...over } })), JSON.stringify(over)).toThrow();
-    }
-  });
-});
-
-describe("membershipConfigSchema — the two per-tier fields", () => {
+describe("membershipConfigSchema — the running-task field", () => {
   for (const name of ["base", "pro", "team", "self_hosted"] as const) {
-    for (const field of ["monthly_operations", "running_tasks_per_user"] as const) {
-      it(`rejects ${name} missing ${field}`, () => {
-        const t = tier();
-        delete t[field];
-        const tiers = { ...(config().tiers as Record<string, unknown>), [name]: t };
-        expect(() => membershipConfigSchema.parse(config({ tiers }))).toThrow();
-      });
-    }
+    it(`rejects ${name} missing running_tasks_per_user`, () => {
+      const t = tier();
+      delete t.running_tasks_per_user;
+      const tiers = { ...(config().tiers as Record<string, unknown>), [name]: t };
+      expect(() => membershipConfigSchema.parse(config({ tiers }))).toThrow();
+    });
   }
 
-  it("rejects a running-task cap of 0 and fractional or negative values", () => {
+  it("rejects a running-task cap of 0 or a fractional one", () => {
     for (const over of [
       { running_tasks_per_user: 0 },
-      { monthly_operations: -1 },
-      { monthly_operations: 1.5 },
       { running_tasks_per_user: 2.5 },
     ]) {
       const tiers = { ...(config().tiers as Record<string, unknown>), base: tier(over) };
       expect(() => membershipConfigSchema.parse(config({ tiers })), JSON.stringify(over)).toThrow();
     }
-  });
-
-  it("accepts a monthly allowance of 0", () => {
-    const tiers = { ...(config().tiers as Record<string, unknown>), base: tier({ monthly_operations: 0 }) };
-    expect(membershipConfigSchema.parse(config({ tiers })).tiers.base.monthly_operations).toBe(0);
   });
 
   it("lets tierLimitsSchema pass an unknown extra key, so an older image reads a newer file", () => {

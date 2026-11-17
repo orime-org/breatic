@@ -9,9 +9,12 @@ import {
   reduceMediaType,
 } from '@breatic/shared';
 import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
-import type { SpaceWriteResult } from '@web/data/yjs/space-write';
+import { docName } from '@web/data/yjs/manager';
+import { canAdd, type SpaceWriteResult } from '@web/data/yjs/space-write';
 import {
   runMediaUpload,
+  runMediaUploadBatch,
+  type BatchUploadDeps,
   type MediaUploadDeps,
   type UploadFailure,
 } from '@web/data/upload/media-upload';
@@ -322,6 +325,67 @@ export function markedSinks(
       else useUploadMarksStore.getState().fail(spaceId, nodeId, op, uploadFailureMark(outcome, file));
     },
   };
+}
+
+/** Injected dependencies for {@link fillNodesFromFiles}. */
+export interface FillNodesDeps extends BatchUploadDeps {
+  /** The Space the nodes live in. */
+  spaceId: string;
+  /** The browser tool whose export this is. */
+  tag: MiniToolUploadTag;
+  /** Whether a node is locked, read fresh. */
+  isLocked: (nodeId: string) => boolean;
+  /** Said once when any node was left out for being locked. */
+  onLocked: () => void;
+  /** Register a node as busy for as long as `work` runs. */
+  track: (nodeId: string, work: Promise<void>) => void;
+  /** Hand one file's upload that failed after the answer to the caller, as `fillNodeFromFile` does. */
+  onUploadFailure: (outcome: UploadFailure, file: File) => void;
+}
+
+/**
+ * Fill a browser tool's result nodes with its export in one batch upload
+ * (inner#1303 §6.5): a locked node is left out, every other node is
+ * registered as busy before anything awaits, and each file's outcome goes to
+ * the caller as a single fill's would. What a node ends up holding arrives
+ * from the server through Yjs, past the size gate, so a Space that filled
+ * after the result nodes were built sends nothing and each node's mark says
+ * why (inner#1790, design 5.5).
+ * @param entries - Each node and the file it is filled with.
+ * @param projectId - The project, which gates the tickets.
+ * @param deps - The upload network and the canvas sinks.
+ */
+export function fillNodesFromFiles(
+  entries: readonly { nodeId: string; file: File; markOp: string }[],
+  projectId: string,
+  deps: FillNodesDeps,
+): void {
+  const open = entries.filter((entry) => !deps.isLocked(entry.nodeId));
+  if (open.length < entries.length) {
+    deps.onLocked();
+    const marks = useUploadMarksStore.getState();
+    for (const entry of entries) {
+      if (!open.includes(entry)) marks.answer(deps.spaceId, entry.nodeId, entry.markOp);
+    }
+  }
+  if (open.length === 0) return;
+  if (!canAdd(docName.canvasSpace(projectId, deps.spaceId))) {
+    const marks = useUploadMarksStore.getState();
+    for (const entry of open) marks.fail(deps.spaceId, entry.nodeId, entry.markOp, { key: 'spaces.sizeCap.reason' });
+    return;
+  }
+  const work = runMediaUploadBatch(
+    open.map((entry) => ({
+      file: entry.file,
+      nodeId: entry.nodeId,
+      // The node's content arrives from the server through Yjs.
+      onSuccess: () => undefined,
+      ...markedSinks(deps.spaceId, entry.nodeId, entry.markOp, entry.file, deps.onUploadFailure),
+    })),
+    { projectId, spaceId: deps.spaceId, ...deps.tag },
+    deps,
+  );
+  for (const entry of open) deps.track(entry.nodeId, work);
 }
 
 /** A minimal canvas node shape for asset-delete accounting (pure). */

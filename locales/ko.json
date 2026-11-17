@@ -351,10 +351,6 @@
     "spend_cap": {
       "member": "이 Studio에서 이번 달 사용 한도({limit} 크레딧)에 도달했습니다. 더 필요하면 Studio Admin에게 문의하세요",
       "studio": "이 Studio의 이번 달 사용 한도에 도달했습니다. Studio Admin에게 문의하세요"
-    },
-    "operation": {
-      "exhausted": "이번 달 작업 횟수를 모두 사용했고 크레딧이 {credits}보다 부족합니다. 충전하면 계속할 수 있습니다.",
-      "key_taken": "이 작업은 이미 처리되었습니다."
     }
   },
   "chat": {
@@ -3429,7 +3425,6 @@
       "studioMembers": "Studio당 멤버 한도",
       "projectMembers": "Project당 멤버 한도",
       "concurrentEditors": "Document당 동시 편집 수",
-      "monthlyOperations": "월간 작업 횟수",
       "runningTasksPerUser": "동시에 실행되는 작업 수"
     },
     "quotaValue": "{used} / {limit}",
@@ -3502,15 +3497,7 @@
       "loadFailed": "추천 정보를 불러오지 못했습니다.",
       "retry": "다시 시도"
     },
-    "quotaUnlimited": "{used} / 무제한",
-    "operations": {
-      "label": "이번 달 작업 횟수",
-      "remaining": "{count}회 남음",
-      "resetsOn": "{date} 초기화",
-      "overagePrice": "초과분은 회당 {credits} 크레딧이며, 작업한 Studio에서 차감됩니다",
-      "overageCount": "이번 달 {count}회 초과",
-      "shared": "내가 관리하는 모든 Studio에서 공유"
-    }
+    "quotaUnlimited": "{used} / 무제한"
   },
   "promoter": {
     "heading": "프로모터 프로그램",
@@ -3693,10 +3680,7 @@
     "refundHint": {
       "assigned": "지정을 해제하면 환불을 신청할 수 있습니다"
     },
-    "eventOperationOverage": "작업 횟수 초과분",
-    "topUp": "충전",
     "refusal": {
-      "operations": "이번 달 작업 횟수를 모두 사용했고 크레딧이 부족합니다. 충전하면 계속할 수 있습니다.",
       "spendCap": "이번 달 사용 한도에 도달했습니다. Studio Admin에게 문의하세요"
     },
     "spendCap": {

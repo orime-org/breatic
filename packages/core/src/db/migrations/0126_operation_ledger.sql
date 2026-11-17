@@ -1,68 +1,6 @@
--- Membership benefits (inner#1968): monthly operations, the per-person
--- running-task limit, and studio spend limits. Every schema change of the
--- feature is here, so later steps need no further migration.
-
--- One row per operation: reserved at admission, counted with its success, or
--- released. Append-only, so no deleted_at.
-CREATE TABLE "operation_ledger" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"operation_key" varchar(255) NOT NULL,
-	"kind" varchar(16) NOT NULL,
-	"account_user_id" uuid NOT NULL,
-	"studio_id" uuid NOT NULL,
-	"project_id" uuid,
-	"actor_user_id" uuid NOT NULL,
-	"status" varchar(10) NOT NULL,
-	"admitted_as" varchar(8) NOT NULL,
-	"overage_hold" varchar(255),
-	"asset_id" uuid,
-	"absorbed_by" varchar(255),
-	"absorbed_hold_released" boolean DEFAULT false NOT NULL,
-	"expires_at" timestamp with time zone NOT NULL,
-	"input_asset_ids" uuid[] DEFAULT '{}'::uuid[] NOT NULL,
-	"slot" varchar(10),
-	"period_start" timestamp with time zone,
-	"counted_at" timestamp with time zone,
-	"charge_request_id" uuid,
-	"released_at" timestamp with time zone,
-	"release_reason" varchar(32),
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "operation_ledger_operation_key_key" UNIQUE ("operation_key"),
-	CONSTRAINT "operation_ledger_account_user_id_fk" FOREIGN KEY ("account_user_id") REFERENCES "users"("id") ON DELETE restrict,
-	CONSTRAINT "operation_ledger_studio_id_fk" FOREIGN KEY ("studio_id") REFERENCES "studios"("id") ON DELETE restrict,
-	CONSTRAINT "operation_ledger_project_id_fk" FOREIGN KEY ("project_id") REFERENCES "projects"("id") ON DELETE restrict,
-	CONSTRAINT "operation_ledger_actor_user_id_fk" FOREIGN KEY ("actor_user_id") REFERENCES "users"("id") ON DELETE restrict,
-	CONSTRAINT "operation_ledger_asset_id_fk" FOREIGN KEY ("asset_id") REFERENCES "studio_assets"("id") ON DELETE restrict,
-	CONSTRAINT "operation_ledger_kind_check" CHECK ("kind" IN ('generation', 'tool_run', 'upload', 'url_paste', 'chat_message', 'text_tool', 'timeline')),
-	CONSTRAINT "operation_ledger_status_check" CHECK ("status" IN ('reserved', 'deferred', 'counted', 'released')),
-	CONSTRAINT "operation_ledger_admitted_as_check" CHECK ("admitted_as" IN ('covered', 'held')),
-	CONSTRAINT "operation_ledger_slot_check" CHECK ("slot" IN ('allowance', 'overage')),
-	CONSTRAINT "operation_ledger_counted_check" CHECK (("status" = 'counted') = ("slot" IS NOT NULL AND "period_start" IS NOT NULL AND "counted_at" IS NOT NULL)),
-	CONSTRAINT "operation_ledger_released_check" CHECK (("status" = 'released') = ("released_at" IS NOT NULL)),
-	CONSTRAINT "operation_ledger_held_check" CHECK ("admitted_as" <> 'held' OR "overage_hold" IS NOT NULL),
-	CONSTRAINT "operation_ledger_deferred_check" CHECK ("status" <> 'deferred' OR "asset_id" IS NOT NULL),
-	CONSTRAINT "operation_ledger_project_check" CHECK ("project_id" IS NOT NULL OR "kind" = 'upload')
-);
---> statement-breakpoint
-ALTER TABLE "operation_ledger" ADD CONSTRAINT "operation_ledger_charge_request_id_fk"
-	FOREIGN KEY ("charge_request_id") REFERENCES "credit_charge_requests"("id") ON DELETE restrict;
---> statement-breakpoint
-CREATE INDEX "operation_ledger_period_idx" ON "operation_ledger" ("account_user_id", "period_start") WHERE "status" = 'counted';
---> statement-breakpoint
-CREATE INDEX "operation_ledger_in_flight_idx" ON "operation_ledger" ("account_user_id", "expires_at") WHERE "status" IN ('reserved', 'deferred');
---> statement-breakpoint
-CREATE INDEX "operation_ledger_deferred_asset_idx" ON "operation_ledger" ("studio_id", "asset_id") WHERE "status" = 'deferred';
---> statement-breakpoint
-CREATE INDEX "operation_ledger_deferred_expiry_idx" ON "operation_ledger" ("expires_at") WHERE "status" = 'deferred';
---> statement-breakpoint
-
--- A charge for an operation past the monthly allowance.
-ALTER TABLE "credit_charge_requests" DROP CONSTRAINT "credit_charge_requests_kind_check";
---> statement-breakpoint
-ALTER TABLE "credit_charge_requests" ADD CONSTRAINT "credit_charge_requests_kind_check"
-	CHECK ("kind" IN ('task', 'timeline_execution', 'operation', 'operation_overage'));
---> statement-breakpoint
+-- Membership benefits (inner#1968): the per-person running-task limit and
+-- studio spend limits. Every schema change of the feature is here, so later
+-- steps need no further migration.
 
 -- The studio a charge request counts against, backfilled from its project;
 -- a request without a project keeps it empty.
@@ -76,23 +14,11 @@ CREATE INDEX "credit_charge_requests_studio_actor_idx" ON "credit_charge_request
 CREATE INDEX "credit_charge_requests_release_hold_idx" ON "credit_charge_requests" ("release_hold") WHERE "status" = 'pending' AND "release_hold" IS NOT NULL;
 --> statement-breakpoint
 
--- The two operation terms of an agreement; agreements already saved get the
--- defaults.
+-- The running-task term of an agreement; agreements already saved get the
+-- default.
 ALTER TABLE "enterprise_memberships"
-	ADD COLUMN "monthly_operations" integer DEFAULT 16000 NOT NULL
-		CONSTRAINT "enterprise_memberships_monthly_operations_check" CHECK ("monthly_operations" >= 0),
 	ADD COLUMN "running_tasks_per_user" integer DEFAULT 10 NOT NULL
 		CONSTRAINT "enterprise_memberships_running_tasks_per_user_check" CHECK ("running_tasks_per_user" BETWEEN 1 AND 30);
---> statement-breakpoint
-
--- Stripe's billing cycle anchor, which the monthly periods count from.
-ALTER TABLE "subscriptions" ADD COLUMN "billing_cycle_anchor" timestamp with time zone;
---> statement-breakpoint
-
--- The ledger key an upload grant counts under, written when it is issued.
-ALTER TABLE "upload_grants" ADD COLUMN "operation_key" varchar(255);
---> statement-breakpoint
-CREATE INDEX "upload_grants_operation_key_idx" ON "upload_grants" ("operation_key") WHERE "operation_key" IS NOT NULL;
 --> statement-breakpoint
 
 -- Waiting for a running-task slot.

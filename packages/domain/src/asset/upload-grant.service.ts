@@ -62,7 +62,6 @@ export type UploadTarget =
  *   frame lifted out of a video).
  * @param params.context.generationTaskId - The generation these bytes came out
  *   of, when one did.
- * @param params.operationKey - The operations ledger key this upload counts under (inner#1968).
  * @param tx - Optional enclosing upload admission transaction.
  * @returns The minted storage key K and the owner studio it was attributed to.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
@@ -73,7 +72,6 @@ export async function issueUploadGrant(params: UploadTarget & {
   taskType: string;
   ext: string;
   expiresAt: Date;
-  operationKey?: string | null;
   context: {
     nodeId?: string | null;
     spaceId?: string | null;
@@ -99,7 +97,6 @@ export async function issueUploadGrant(params: UploadTarget & {
     context: { ...params.context, projectId: params.projectId ?? null },
     // Read by the finishing paths, which run without the browser's cookie.
     analyticsConsent: currentConsent(),
-    operationKey: params.operationKey ?? null,
   }, tx);
   return { key, studioId };
 }

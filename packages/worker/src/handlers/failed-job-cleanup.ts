@@ -54,7 +54,6 @@ import {
   mediaKindForActivity,
   recordGenerationForNodes,
   releaseRunHold,
-  releaseRunOperation,
   runContextOf,
   settleSceneRow,
   type TaskJobData,
@@ -145,11 +144,10 @@ export async function cleanupFailedJobNodes(
   // what the nodes are told. A release that fails leaves the hold to expire.
   // A task that did not bill ends here for good, waiting or running, under
   // its person's running-slot lock (inner#1968): the task fails, its holds
-  // and ledger row are released in one commit, and every row it still has
+  // are released in one commit, and every row it still has
   // open ends failed, so the slot it held is free at once.
   if (task?.billedAt) {
     await releaseRunHold(job.data.taskId, job.data.userId);
-    await releaseRunOperation(job.data.taskId, job.data.userId);
   } else {
     const failure = storedFailure(
       job.data.taskType,
@@ -163,7 +161,6 @@ export async function cleanupFailedJobNodes(
     } catch (err) {
       logger.error({ err, taskId: job.data.taskId }, "crash_net_task_fail_failed");
       await releaseRunHold(job.data.taskId, job.data.userId);
-      await releaseRunOperation(job.data.taskId, job.data.userId);
     }
   }
 

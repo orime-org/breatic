@@ -351,10 +351,6 @@
     "spend_cap": {
       "member": "このStudioでの今月の利用額が上限（{limit} クレジット）に達しました。追加が必要な場合はStudioのAdminに連絡してください",
       "studio": "このStudioの今月の利用額が上限に達しました。StudioのAdminに連絡してください"
-    },
-    "operation": {
-      "exhausted": "今月の操作回数を使い切りました。クレジットが {credits} に足りません。チャージすると続けられます。",
-      "key_taken": "この操作はすでに処理されています。"
     }
   },
   "chat": {
@@ -3429,7 +3425,6 @@
       "studioMembers": "Studio ごとのメンバー上限",
       "projectMembers": "Project ごとのメンバー上限",
       "concurrentEditors": "1 Document の同時編集数",
-      "monthlyOperations": "月間操作回数",
       "runningTasksPerUser": "同時に実行できるタスク数"
     },
     "quotaValue": "{used} / {limit}",
@@ -3502,15 +3497,7 @@
       "loadFailed": "紹介情報を読み込めませんでした。",
       "retry": "再試行"
     },
-    "quotaUnlimited": "{used} / 無制限",
-    "operations": {
-      "label": "今月の操作回数",
-      "remaining": "残り {count} 回",
-      "resetsOn": "{date} にリセット",
-      "overagePrice": "超過分は 1 回 {credits} クレジット、操作した Studio から差し引きます",
-      "overageCount": "今月 {count} 回超過",
-      "shared": "あなたが管理するすべての Studio で共有"
-    }
+    "quotaUnlimited": "{used} / 無制限"
   },
   "promoter": {
     "heading": "プロモータープログラム",
@@ -3693,10 +3680,7 @@
     "refundHint": {
       "assigned": "割り当てを解除すると返金を申請できます"
     },
-    "eventOperationOverage": "操作回数の超過分",
-    "topUp": "チャージ",
     "refusal": {
-      "operations": "今月の操作回数を使い切り、クレジットが足りません。チャージすると続けられます。",
       "spendCap": "今月の利用額が上限に達しました。StudioのAdminに連絡してください"
     },
     "spendCap": {

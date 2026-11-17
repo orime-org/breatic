@@ -28,8 +28,7 @@ vi.mock("@server/modules", async (importOriginal) => {
 
 const queue = vi.hoisted(() => ({
   peek: vi.fn(async () => ({ active: null, awaiting: false, work: false })),
-  // Hands back what it cleared, whose operations are released (inner#1968 design 3.2).
-  clear: vi.fn(async () => []),
+  clear: vi.fn(async () => {}),
 }));
 
 vi.mock("@server/modules/chat-queue/chat-queue.service.js", async (importOriginal) => ({

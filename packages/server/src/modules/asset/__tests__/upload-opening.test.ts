@@ -13,7 +13,6 @@
  * order and the shared key are structural rather than a comment in each.
  */
 
-import type * as CoreModule from "@breatic/core";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const issueUploadGrant = vi.fn(async () => ({
@@ -35,10 +34,7 @@ vi.mock("@breatic/domain", () => ({
   emitNodeTaskCounts: emit,
 }));
 
-vi.mock("@breatic/core", async (importOriginal) => ({
-  // The operation admission an upload opens with reads these (inner#1968 design 3.2).
-  AppError: (await importOriginal<typeof CoreModule>()).AppError,
-  getOperationsConfig: (await importOriginal<typeof CoreModule>()).getOperationsConfig,
+vi.mock("@breatic/core", () => ({
   getStreamRedis: () => ({}),
   db: { transaction: vi.fn(async (callback: (tx: typeof FAKE_TX) => Promise<unknown>) => {
     const result = await callback(FAKE_TX);

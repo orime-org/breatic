@@ -7,21 +7,18 @@
  *
  * The guide is rendered in zh-CN so that the on-screen text it quotes can be
  * matched against the sentences the confirmed demo and the web suites pin
- * ("排队中", "取消", "花费上限", "Project 协作者", the spend-cap and the
- * operations-used-up sentences), whatever catalog keys the implementation
- * picks. The guide's own prose stays English.
+ * ("排队中", "取消", "花费上限", "Project 协作者" and the spend-cap
+ * sentence), whatever catalog keys the implementation picks. The guide's own
+ * prose stays English.
  *
  * Shapes this suite chose where the design names none: the queued state and
  * its cancel are told in the "Generating" and "3D spaces" sections; the rule
  * that a task already running cannot be cancelled is said with "cannot be
- * cancelled" (or "can't" / "can no longer"); the grid's result nodes are
- * described in a sentence of the "Mini-tools" section that quotes the grid
- * tool's label and names both the task and the picture.
+ * cancelled" (or "can't" / "can no longer").
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getOperationsConfig, loadLocales } from "@breatic/core";
-import { formatCredits, setLocale, t } from "@breatic/shared";
-import { miniToolById } from "@breatic/shared/mini-tools";
+import { loadLocales } from "@breatic/core";
+import { setLocale } from "@breatic/shared";
 
 import { renderProductGuide } from "@domain/agent/tools/product-guide.js";
 
@@ -53,7 +50,7 @@ function section(name: string): string {
 
 const CANNOT_CANCEL = /can(?:not|'t| no longer) be cancell?ed/i;
 
-describe("I-13 the product guide on operations, queueing and spend caps", () => {
+describe("I-13 the product guide on queueing and spend caps", () => {
   it("tells the queued state on a node with its reason, and that a queued task is cancelled from the count column and the task list", () => {
     const generating = section("Generating");
     expect(generating).toContain("排队中");
@@ -79,22 +76,5 @@ describe("I-13 the product guide on operations, queueing and spend caps", () => 
     const where = [...sections.values()].find((text) => text.includes('"花费上限"'));
     expect(where).toBeDefined();
     expect(where).toContain("Project 协作者");
-  });
-
-  it("says a chat message is refused when the operations are used up and the credits fall short", () => {
-    expect(section("The chat panel")).toContain("本月操作次数已用完");
-  });
-
-  it("quotes the operations refusal the server sends, with the configured price of one more", () => {
-    const shown = t("server.operation.exhausted", { credits: formatCredits(getOperationsConfig().overage_credits, "zh-CN") });
-    expect(section("The chat panel")).toContain(shown);
-    expect(section("Generating")).toContain(shown);
-  });
-
-  it("says the grid's result nodes show the task's progress before the picture", () => {
-    const label = `"${t(miniToolById("image.grid")!.labelKey)}"`;
-    const sentences = section("Mini-tools").split(/(?<=\.)\s+/);
-    const told = sentences.filter((s) => s.includes(label) && /\btasks?\b/i.test(s) && /\b(?:picture|image)s?\b/i.test(s));
-    expect(told).not.toEqual([]);
   });
 });

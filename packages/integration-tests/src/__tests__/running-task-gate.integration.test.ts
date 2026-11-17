@@ -109,8 +109,8 @@ async function person(tier: Tier = "base", runningTasks = 10): Promise<Person> {
   const stored = tier.startsWith("enterprise") ? "enterprise" : tier;
   await sql`insert into users(id, email, email_verified, membership_tier) values (${userId}, ${`${userId}@example.test`}, true, ${stored})`;
   if (tier === "enterprise") {
-    await sql`insert into enterprise_memberships(user_id,expires_at,entry_timezone,contract_number,team_studios,projects_per_studio,concurrent_editors,studio_members,project_members,storage_bytes,fallback_tier,revision,monthly_operations,running_tasks_per_user)
-      values(${userId}, now() + interval '30 days', 'UTC', 'TEST-ENT-1968', 8, 20, 30, 200, 80, 1099511627776, 'base', 1, 16000, ${runningTasks})`;
+    await sql`insert into enterprise_memberships(user_id,expires_at,entry_timezone,contract_number,team_studios,projects_per_studio,concurrent_editors,studio_members,project_members,storage_bytes,fallback_tier,revision,running_tasks_per_user)
+      values(${userId}, now() + interval '30 days', 'UTC', 'TEST-ENT-1968', 8, 20, 30, 200, 80, 1099511627776, 'base', 1, ${runningTasks})`;
   }
   await sql`insert into studios(id, created_by_user_id, slug, type, name) values (${studioId}, ${userId}, ${`g-${studioId}`}, 'personal', 'Gate')`;
   await sql`insert into studio_members(studio_id, user_id, role) values (${studioId}, ${userId}, 'admin')`;
@@ -288,29 +288,23 @@ async function runningCount(p: Person): Promise<number> {
 }
 
 /**
- * The credit hold and the ledger row an admitted task holds, expiring at `expiresAt`.
+ * The credit hold an admitted task holds, expiring at `expiresAt`.
  * @param p - Whose.
  * @param taskId - The task.
- * @param expiresAt - When both stop counting.
+ * @param expiresAt - When it stops counting.
  */
 async function inFlight(p: Person, taskId: string, expiresAt: Date): Promise<void> {
-  const key = `task:${taskId}`;
   await sql`insert into credit_holds(studio_id, actor_user_id, reference_id, amount, status, expires_at) values (${p.studioId}, ${p.userId}, ${taskId}, 1, 'held', ${expiresAt})`;
-  await sql`insert into credit_holds(studio_id, actor_user_id, reference_id, amount, status, expires_at) values (${p.studioId}, ${p.userId}, ${`operation:${key}`}, 0.5, 'held', ${expiresAt})`;
-  await sql`insert into operation_ledger(operation_key, kind, account_user_id, studio_id, project_id, actor_user_id, status, admitted_as, overage_hold, expires_at)
-    values (${key}, 'generation', ${p.userId}, ${p.studioId}, ${p.projectId}, ${p.userId}, 'reserved', 'held', ${`operation:${key}`}, ${expiresAt})`;
 }
 
 /**
- * What an admitted task holds: its credit hold, its overage hold and its ledger row.
+ * What an admitted task holds: its credit hold.
  * @param taskId - The task.
- * @returns Each one's status and expiry.
+ * @returns Its status and expiry.
  */
-async function holdings(taskId: string): Promise<{ credit: { status: string; expires_at: Date }; overage: { status: string; expires_at: Date }; ledger: { status: string; expires_at: Date } }> {
+async function holdings(taskId: string): Promise<{ credit: { status: string; expires_at: Date } }> {
   const [credit] = await sql<{ status: string; expires_at: Date }[]>`select status, expires_at from credit_holds where reference_id = ${taskId}`;
-  const [overage] = await sql<{ status: string; expires_at: Date }[]>`select status, expires_at from credit_holds where reference_id = ${`operation:task:${taskId}`}`;
-  const [ledger] = await sql<{ status: string; expires_at: Date }[]>`select status, expires_at from operation_ledger where operation_key = ${`task:${taskId}`}`;
-  return { credit: credit!, overage: overage!, ledger: ledger! };
+  return { credit: credit! };
 }
 
 /**
@@ -582,12 +576,10 @@ describe("G waiting for a free slot", () => {
     expect(await pick(renew.taskId)).toMatchObject({ waiting: true });
     const after = await dbNow();
     const kept = await holdings(keep.taskId);
-    for (const held of [kept.credit, kept.overage, kept.ledger]) expect(held.expires_at.getTime()).toBe(keepAt.getTime());
+    expect(kept.credit.expires_at.getTime()).toBe(keepAt.getTime());
     const renewed = await holdings(renew.taskId);
-    for (const held of [renewed.credit, renewed.overage, renewed.ledger]) {
-      expect(held.expires_at.getTime()).toBeGreaterThanOrEqual(before.getTime() + B + reportGraceMs() - 1);
-      expect(held.expires_at.getTime()).toBeLessThanOrEqual(after.getTime() + B + reportGraceMs() + 1);
-    }
+    expect(renewed.credit.expires_at.getTime()).toBeGreaterThanOrEqual(before.getTime() + B + reportGraceMs() - 1);
+    expect(renewed.credit.expires_at.getTime()).toBeLessThanOrEqual(after.getTime() + B + reportGraceMs() + 1);
   });
 
   it("G-16 starting renews holdings to now + budget + grace whatever is left", async () => {
@@ -599,11 +591,9 @@ describe("G waiting for a free slot", () => {
     expect(await pick(t.taskId)).toEqual({ started: true });
     const after = await dbNow();
     const held = await holdings(t.taskId);
-    for (const h of [held.credit, held.overage, held.ledger]) {
-      expect(h.status).not.toBe("released");
-      expect(h.expires_at.getTime()).toBeGreaterThanOrEqual(before.getTime() + B + reportGraceMs() - 1);
-      expect(h.expires_at.getTime()).toBeLessThanOrEqual(after.getTime() + B + reportGraceMs() + 1);
-    }
+    expect(held.credit.status).not.toBe("released");
+    expect(held.credit.expires_at.getTime()).toBeGreaterThanOrEqual(before.getTime() + B + reportGraceMs() - 1);
+    expect(held.credit.expires_at.getTime()).toBeLessThanOrEqual(after.getTime() + B + reportGraceMs() + 1);
   });
 
   it("G-17 a task with no node row that waited counts its deadline from its start, not its creation", async () => {
@@ -656,8 +646,6 @@ describe("G waiting for a free slot", () => {
     expect((await taskRow(doomed.taskId)).status).toBe("failed");
     const held = await holdings(doomed.taskId);
     expect(held.credit.status).toBe("released");
-    expect(held.overage.status).toBe("released");
-    expect(held.ledger.status).toBe("released");
     expect((await nodeRow(doomed.nodeTaskId!)).status).toBe("failed");
     expect(await pick(next.taskId)).toEqual({ started: true });
   });
@@ -672,7 +660,7 @@ describe("G waiting for a free slot", () => {
     await sweepSlotWaiters({ getJob: async () => undefined });
     expect((await taskRow(t.taskId)).status).toBe("failed");
     const held = await holdings(t.taskId);
-    expect([held.credit.status, held.overage.status, held.ledger.status]).toEqual(["released", "released", "released"]);
+    expect(held.credit.status).toBe("released");
     const node = await nodeRow(t.nodeTaskId!);
     expect(node.status).toBe("failed");
   });
@@ -704,7 +692,7 @@ describe("G waiting for a free slot", () => {
     expect(await pick(t.taskId)).toEqual({ ended: true });
     expect((await nodeRow(t.nodeTaskId!)).status).toBe("failed");
     const held = await holdings(t.taskId);
-    expect([held.credit.status, held.overage.status, held.ledger.status]).toEqual(["released", "released", "released"]);
+    expect(held.credit.status).toBe("released");
     const snapshot = async (): Promise<unknown[]> => [
       await taskRow(t.taskId),
       await nodeRow(t.nodeTaskId!),
@@ -783,14 +771,9 @@ describe("G waiting for a free slot", () => {
     for (let i = 0; i < 300; i += 1) waiters.push(await execution(p, "queued"));
     await sql`update timeline_executions set slot_wait_since = ${now}, slot_checked_at = ${now}, slot_wait_limit = 2, created_at = ${new Date(now.getTime() - 3_600_000)} where id = any(${waiters})`;
     const expired = await execution(p, "awaiting_landing", new Date(now.getTime() - 60_000));
-    const key = `timeline:${expired}`;
-    await sql`insert into operation_ledger(operation_key, kind, account_user_id, studio_id, project_id, actor_user_id, status, admitted_as, expires_at)
-      values (${key}, 'timeline', ${p.userId}, ${p.studioId}, ${p.projectId}, ${p.userId}, 'reserved', 'covered', ${new Date(now.getTime() + B)})`;
     await sweepTimelineExecutions({ add: async () => undefined, getJob: async () => undefined } as unknown as Parameters<typeof sweepTimelineExecutions>[0]);
     const [row] = await sql<{ status: string }[]>`select status from timeline_executions where id = ${expired}`;
     expect(row!.status).toBe("expired");
-    const [ledger] = await sql<{ status: string }[]>`select status from operation_ledger where operation_key = ${key}`;
-    expect(ledger!.status).toBe("released");
   });
 });
 

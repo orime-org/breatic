@@ -97,23 +97,11 @@ ops:
   audio_join:
     container_class: "MiniToolContainerStd4"
     precheck_seconds: 900
-  # inner#1968: the grid's tiles, cut with vips. Free, so precheck_seconds
-  # only sizes the run, never an estimate.
-  grid:
-    container_class: "MiniToolContainerStd1"
-    precheck_seconds: 300
 
 # The most clips one join takes, its source included (inner#1825 §6.3). The
 # join panel's add tile and slot pick stop here; at most
 # MINI_TOOL_JOB_MAX_EXTRA_INPUTS + 1, which the job contract can carry.
 join_max_clips: 20
-
-# How many of one job's outputs the container writes back at once (inner#1968).
-# Each write waits on the Worker storing, hashing and typing the object, so a
-# grid's 64 tiles one at a time spent minutes waiting. Six is what a Worker may
-# hold open at once per invocation
-# (https://developers.cloudflare.com/workers/platform/limits/#simultaneous-open-connections).
-output_concurrency: 6
 
 # The audio cut band draws the source's waveform from the peaks file beside it
 # (inner#1305 §4.4). An audio without one yet is decoded in the browser only

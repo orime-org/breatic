@@ -65,12 +65,11 @@ vi.mock("@breatic/core", () => ({
   logger: { info: h.info, warn: h.warn, error: h.error, debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", async () => ({
-  taskOperationKey: (await import("@domain/task/operation-key.js")).taskOperationKey,
   failureOutcome: (await import("@domain/node-task/failure-outcome.js")).failureOutcome,
   taskService: {
     getByIdInternal: h.getByIdInternal,
     markRunning: h.markRunning,
-    markCompletedAndCount: h.markCompleted,
+    markCompleted: h.markCompleted,
     markCompletedAndBill: h.markCompletedAndBill,
     markBilledAndCharge: h.markBilledAndCharge,
     markFailed: h.markFailed,
@@ -80,8 +79,6 @@ vi.mock("@breatic/domain", async () => ({
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: { resolveOwnerStudioId: vi.fn(async () => "studio-1") },
   creditLotService: { settleCharge: h.settleCharge, pendingChargeRequestId: h.pendingChargeRequestId },
-  // The operation a run that failed for good gives back (inner#1968).
-  operationService: { releaseOperation: vi.fn(async () => true) },
   creditHoldService: { extendHold: h.extendHold, releaseHold: h.releaseHold },
   creditsForUsd: (await import("@domain/credit/usage-cost.js")).creditsForUsd,
   toChargeCredits: (await import("@domain/credit/credit-math.js")).toChargeCredits,

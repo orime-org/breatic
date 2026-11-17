@@ -40,9 +40,6 @@ const SHARED_MESSAGE: Readonly<Record<Exclude<PictureFailure, keyof PictureMessa
   hash: 'studio.container.imageError.hash_unavailable',
   rateLimited: 'studio.container.imageError.rate_limited',
   tooLarge: 'server.error.upload_too_large',
-  // The month's operations and spend limits (inner#1968).
-  operations: 'credits.refusal.operations',
-  spendCap: 'credits.refusal.spendCap',
 };
 
 /** The caller's own sentences: the two failures that name the picture. */

@@ -403,14 +403,13 @@ export function exportsBeforeRun(spec: MiniToolSpec): boolean {
 }
 
 /**
- * How the footer states the cost: a browser tool and a tool marked free (the
- * grid, cut in the container) are free, any other container tool is billed on
- * what it used, a model tool shows the yaml estimate.
+ * How the footer states the cost: a browser tool is free, a container tool is
+ * billed on what it used, a model tool shows the yaml estimate.
  * @param spec - The tool.
  * @returns The mode.
  */
 export function creditMode(spec: MiniToolSpec): CreditMode {
-  if (spec.run.kind === 'browser' || spec.billing === 'free') return 'free';
+  if (spec.run.kind === 'browser') return 'free';
   if (spec.run.kind === 'container') return 'usage';
   return 'estimate';
 }

@@ -24,8 +24,6 @@ import type { UseQueryResult } from '@tanstack/react-query';
 import { authApi } from '@web/data/api/auth';
 import { CheckoutWaitOverlay } from '@web/features/credits/CheckoutWaitOverlay';
 import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
-import { CREDITS_OVERLAY_ID } from '@web/stores/credit-refusals';
-import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
 import { useCreditOverview } from '@web/features/credits/use-credit-overview';
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
@@ -109,9 +107,7 @@ export function StudioAccountMenu(): React.JSX.Element {
   const [logoutOthersOpen, setLogoutOthersOpen] = React.useState(false);
   const openLogoutOthers = React.useCallback((): void => setLogoutOthersOpen(true), []);
   const accountButtonRef = React.useRef<HTMLButtonElement>(null);
-  // An exclusive overlay, so a refusal's top-up button opens the same one from anywhere
-  // on the page (inner#1968).
-  const [creditsOpen, setCreditsOpen] = useExclusiveOverlay(CREDITS_OVERLAY_ID);
+  const [creditsOpen, setCreditsOpen] = React.useState(false);
 
   // The balance beside the Credits entry, read from the overlay's own query:
   // designating a pack or asking for a refund invalidates it, so the next
@@ -159,7 +155,7 @@ export function StudioAccountMenu(): React.JSX.Element {
       setCreditsOpen(next);
       if (!next) closeReturn();
     },
-    [closeReturn, setCreditsOpen],
+    [closeReturn],
   );
 
   /**

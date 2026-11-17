@@ -3,7 +3,7 @@
 
 /**
  * The 1968 tier numbers as the gates apply them, against real Postgres
- * (inner#1968, test spec area A: A-13 to A-19).
+ * (inner#1968, test spec area A: A-13 to A-19, and I-04).
  *
  * The numbers are written out rather than read from the config, so a config
  * that drifts from the agreed tiers fails here as well as in the loader test.
@@ -31,6 +31,7 @@ import * as studioInviteService from "@server/modules/studio/studioInvite.servic
 import * as projectInviteService from "@server/modules/project-invite/projectInvite.service.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
+import { readAccountMembership } from "@server/modules/account/membership.service.js";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -121,14 +122,14 @@ async function invitations(studioId: string): Promise<number> {
 }
 
 const TIERS = {
-  base: { team_studios: 0, projects_per_studio: 9999, concurrent_editors: 2, studio_members: 1, project_members: 4, storage_bytes: 5368709120, monthly_operations: 500, running_tasks_per_user: 2 },
-  pro: { team_studios: 1, projects_per_studio: 9999, concurrent_editors: 4, studio_members: 10, project_members: 8, storage_bytes: 107374182400, monthly_operations: 4000, running_tasks_per_user: 5 },
-  team: { team_studios: 3, projects_per_studio: 9999, concurrent_editors: 20, studio_members: 50, project_members: 40, storage_bytes: 536870912000, monthly_operations: 16000, running_tasks_per_user: 10 },
-  self_hosted: { team_studios: 9999, projects_per_studio: 9999, concurrent_editors: 9999, studio_members: 9999, project_members: 9999, storage_bytes: 109951162777600, monthly_operations: 9999, running_tasks_per_user: 9999 },
+  base: { team_studios: 0, projects_per_studio: 9999, concurrent_editors: 2, studio_members: 1, project_members: 4, storage_bytes: 5368709120, running_tasks_per_user: 2 },
+  pro: { team_studios: 1, projects_per_studio: 9999, concurrent_editors: 4, studio_members: 10, project_members: 8, storage_bytes: 107374182400, running_tasks_per_user: 5 },
+  team: { team_studios: 3, projects_per_studio: 9999, concurrent_editors: 20, studio_members: 50, project_members: 40, storage_bytes: 536870912000, running_tasks_per_user: 10 },
+  self_hosted: { team_studios: 9999, projects_per_studio: 9999, concurrent_editors: 9999, studio_members: 9999, project_members: 9999, storage_bytes: 109951162777600, running_tasks_per_user: 9999 },
 } as const;
 
 describe("1968 tier limits at the gates", () => {
-  it.each(Object.keys(TIERS) as (keyof typeof TIERS)[])("A-13 getLimitsForStudio for a %s studio carries the two operation fields", async (tier) => {
+  it.each(Object.keys(TIERS) as (keyof typeof TIERS)[])("A-13 getLimitsForStudio for a %s studio carries running_tasks_per_user", async (tier) => {
     const admin = await user(tier);
     const s = await studio(admin.id);
     expect(await getLimitsForStudio(s.id)).toEqual(TIERS[tier]);
@@ -206,5 +207,16 @@ describe("1968 tier limits at the gates", () => {
     const roomProject = await project(roomStudio.id, room.id);
     await bytes(roomStudio.id, room.id, 107374182399);
     await expect(assertStorageAllowance(roomProject, "upload")).resolves.toBeUndefined();
+  });
+
+  it("I-04 the catalog offers 2, 5 and 10 running tasks", async () => {
+    const a = await user("base");
+    const { catalog } = await readAccountMembership(a.id);
+    const offered = catalog.map((offer) => [offer.tier, offer.limits.running_tasks_per_user]);
+    expect(offered).toEqual([
+      ["base", 2],
+      ["pro", 5],
+      ["team", 10],
+    ]);
   });
 });

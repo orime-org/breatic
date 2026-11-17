@@ -14,9 +14,9 @@
  *
  * Enterprise plan presentation keeps its negotiated-agreement branch, and an
  * active agreement's storage_bytes caps storage. A legacy enterprise account
- * whose negotiated record is absent keeps uncapped storage and the 16,000
- * operations and 10 running tasks of the column defaults; its other quota
- * checks name it explicitly.
+ * whose negotiated record is absent keeps uncapped storage and the 10
+ * running tasks of the column default; its other quota checks name it
+ * explicitly.
  */
 
 import { and, eq, isNull, getTableColumns, sql } from "drizzle-orm";
@@ -36,9 +36,8 @@ import * as projectsRepo from "@core/project/projects.repo.js";
 import { getMembershipLimits, type MembershipLimits } from "@core/config/membership.js";
 import { subscriptionClock } from "@core/config/subscription.js";
 import { subscriptionFactsForMembership } from "@core/auth/subscription.repo.js";
-import { operationAllowanceOf, resolveMembershipReading, type OperationAllowance } from "@core/auth/membership-reading.js";
-import { enterpriseRecordSchema, enterpriseMembershipProfileSchema, negotiatedOperationsOf } from "@core/auth/enterprise-membership-contract.js";
-import { env } from "@core/config/env.js";
+import { resolveMembershipReading } from "@core/auth/membership-reading.js";
+import { enterpriseRecordSchema, enterpriseMembershipProfileSchema, runningTasksPerUserOf } from "@core/auth/enterprise-membership-contract.js";
 import type { EnterpriseRecord, RawMembershipSnapshot, EnterpriseMembershipWrite, EnterpriseMembershipProfile } from "@core/auth/enterprise-membership-contract.js";
 
 const KNOWN_TIERS: ReadonlySet<string> = new Set(MEMBERSHIP_TIERS);
@@ -105,7 +104,7 @@ export function asKnownTier(raw: string, subject: TierSubject): MembershipTier {
  * @param tier - The tier effective at that snapshot.
  * @param subject - The account and optional Studio for an actionable error.
  * @param negotiated - Negotiated limits when the record is active.
- * @returns The six limits.
+ * @returns The seven limits.
  * @throws {Error} When a legacy enterprise account has no negotiated record.
  */
 function limitsFor(tier: MembershipTier, subject: TierSubject, negotiated: MembershipLimits | null): MembershipLimits {
@@ -200,7 +199,7 @@ async function readUserTier(
 export interface AccountMembershipReading {
   /** The tier the account's ceilings are read from. */
   readonly tier: MembershipTier;
-  /** Its eight ceilings; null for `enterprise`, whose ceilings are negotiated. */
+  /** Its seven ceilings; null for `enterprise`, whose ceilings are negotiated. */
   readonly limits: MembershipLimits | null;
 }
 
@@ -243,21 +242,6 @@ export async function lockAccountRow(userId: string, tx: DbTx): Promise<void> {
 }
 
 /**
- * Lock an account row for an operations decision (inner#1968, design 3.3):
- * `FOR NO KEY UPDATE`, which queues behind every tier, subscription and
- * agreement write on the row (they take `FOR UPDATE`) and behind another
- * admission, but not behind the `FOR KEY SHARE` a foreign-key check takes,
- * so rows that reference the account are still inserted freely.
- * @param userId - The account whose allowance is decided.
- * @param tx - The enclosing transaction; the lock is meaningless without one.
- * @throws {Error} if no account has that id.
- */
-export async function lockOperationAccount(userId: string, tx: DbTx): Promise<void> {
-  const rows = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("no key update");
-  if (rows.length === 0) throw new Error(`No account ${userId}`);
-}
-
-/**
  * Who administers a studio, and how many bytes that account's tier allows.
  *
  * An active enterprise agreement caps storage at its storage_bytes; only a
@@ -288,7 +272,7 @@ export async function getStudioStorageQuota(
  * The ceilings that apply to a studio: its current admin's tier's.
  * @param studioId - The studio whose ceilings to resolve
  * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
- * @returns That tier's six ceilings
+ * @returns That tier's seven ceilings
  * @throws {Error} if the studio has no live admin, or that admin's stored
  *   tier is not one this build knows
  */
@@ -310,7 +294,7 @@ export async function getLimitsForStudio(
  * @throws {Error} if the studio has no live admin, or its data is invalid
  */
 export async function runningTaskLimitForStudio(studioId: string, tx?: DbTx): Promise<number> {
-  return negotiatedOperationsOf(await getMembershipReadingForStudio(studioId, tx)).runningTasksPerUser;
+  return runningTasksPerUserOf(await getMembershipReadingForStudio(studioId, tx));
 }
 
 /**
@@ -344,7 +328,7 @@ export async function runningTaskLimitForStudio(studioId: string, tx?: DbTx): Pr
  * accounts take different rows and never wait on each other.
  * @param userId - The account whose ceilings to resolve and whose row to lock
  * @param tx - The enclosing transaction; the lock is meaningless without one
- * @returns That tier's six ceilings
+ * @returns That tier's seven ceilings
  * @throws {Error} if no live account has that id, or its stored tier is not
  *   one this build knows
  */
@@ -507,8 +491,6 @@ export async function changeMembershipTier(
 export type MembershipReading = EnterpriseMembershipProfile["reading"] & {
   subject: TierSubject;
   storedTier: MembershipTier;
-  /** Monthly operations at the reading's instant (inner#1968); not part of the internal contract. */
-  operations: OperationAllowance;
 };
 
 type EnterpriseRecordRow = Omit<typeof enterpriseMemberships.$inferSelect, "expiresAt" | "createdAt" | "updatedAt"> & {
@@ -534,7 +516,7 @@ function enterpriseRecordOf(row: EnterpriseRecordRow): EnterpriseRecord {
   return enterpriseRecordSchema.parse({
     expiresAt: row.expiresAt, entryTimezone: row.entryTimezone,
     contractNumber: row.contractNumber, fallbackTier: row.fallbackTier, revision: row.revision,
-    limits: { team_studios: row.teamStudios, projects_per_studio: row.projectsPerStudio, concurrent_editors: row.concurrentEditors, studio_members: row.studioMembers, project_members: row.projectMembers, storage_bytes: row.storageBytes, monthly_operations: row.monthlyOperations, running_tasks_per_user: row.runningTasksPerUser },
+    limits: { team_studios: row.teamStudios, projects_per_studio: row.projectsPerStudio, concurrent_editors: row.concurrentEditors, studio_members: row.studioMembers, project_members: row.projectMembers, storage_bytes: row.storageBytes, running_tasks_per_user: row.runningTasksPerUser },
     createdAt: row.createdAt, updatedAt: row.updatedAt,
   });
 }
@@ -546,9 +528,9 @@ function enterpriseRecordOf(row: EnterpriseRecordRow): EnterpriseRecord {
  * @returns The profile and its membership subject, or null for an absent subject.
  * @throws {Error} When membership data or tier configuration is invalid.
  */
-async function readMembershipProfile(target: { userId: string } | { studioId: string }, tx?: DbTx): Promise<{ profile: EnterpriseMembershipProfile; subject: TierSubject; operations: OperationAllowance } | null> {
+async function readMembershipProfile(target: { userId: string } | { studioId: string }, tx?: DbTx): Promise<{ profile: EnterpriseMembershipProfile; subject: TierSubject } | null> {
   const selection = {
-    userId: users.id, email: users.email, storedTier: users.membershipTier, userCreatedAt: users.createdAt,
+    userId: users.id, email: users.email, storedTier: users.membershipTier,
     enterprise: enterpriseRecordSelection,
     facts: subscriptionFactsForMembership(users.id),
     asOf: sql<string>`statement_timestamp()`,
@@ -562,10 +544,8 @@ async function readMembershipProfile(target: { userId: string } | { studioId: st
   const subject: TierSubject = { accountId: row.userId, ...("studioId" in target ? { studioId: target.studioId } : {}) };
   const storedTier = asKnownTier(row.storedTier, subject);
   const enterprise = row.enterprise === null ? null : enterpriseRecordOf(row.enterprise);
-  const clock = { ...subscriptionClock(), now: new Date(row.asOf) };
-  const reading = resolveMembershipReading(storedTier, enterprise, row.facts, clock);
-  const operations = operationAllowanceOf(reading, { userCreatedAt: row.userCreatedAt, enterprise, subscriptions: row.facts, clock, paymentEnabled: env.PAYMENT_ENABLED });
-  return { subject, operations, profile: { account: { id: row.userId, email: row.email }, snapshot: { userId: row.userId, storedTier, enterprise }, reading } };
+  const reading = resolveMembershipReading(storedTier, enterprise, row.facts, { ...subscriptionClock(), now: new Date(row.asOf) });
+  return { subject, profile: { account: { id: row.userId, email: row.email }, snapshot: { userId: row.userId, storedTier, enterprise }, reading } };
 }
 
 /**
@@ -590,7 +570,7 @@ export async function getEnterpriseMembershipProfile(userId: string, tx?: DbTx):
 export async function getMembershipReadingForUser(userId: string, tx?: DbTx): Promise<MembershipReading> {
   const found = await readMembershipProfile({ userId }, tx);
   if (found === null) throw new Error(`No live account ${userId}`);
-  return { ...found.profile.reading, subject: found.subject, storedTier: found.profile.snapshot.storedTier, operations: found.operations };
+  return { ...found.profile.reading, subject: found.subject, storedTier: found.profile.snapshot.storedTier };
 }
 
 /**
@@ -600,10 +580,10 @@ export async function getMembershipReadingForUser(userId: string, tx?: DbTx): Pr
  * @returns The current administrator's complete entitlement decision.
  * @throws {Error} When no live administrator exists or its data is invalid.
  */
-export async function getMembershipReadingForStudio(studioId: string, tx?: DbTx): Promise<MembershipReading> {
+async function getMembershipReadingForStudio(studioId: string, tx?: DbTx): Promise<MembershipReading> {
   const found = await readMembershipProfile({ studioId }, tx);
   if (found === null) throw new Error(`No live admin for studio ${studioId}`);
-  return { ...found.profile.reading, subject: found.subject, storedTier: found.profile.snapshot.storedTier, operations: found.operations };
+  return { ...found.profile.reading, subject: found.subject, storedTier: found.profile.snapshot.storedTier };
 }
 
 /**
@@ -635,9 +615,8 @@ export async function writeEnterpriseMembershipRecord(userId: string, body: Ente
     userId, expiresAt: new Date(body.expiresAt), entryTimezone: body.entryTimezone, contractNumber: body.contractNumber,
     teamStudios: body.limits.team_studios, projectsPerStudio: body.limits.projects_per_studio, concurrentEditors: body.limits.concurrent_editors,
     studioMembers: body.limits.studio_members, projectMembers: body.limits.project_members, storageBytes: body.limits.storage_bytes,
-    // A save without the two operation terms keeps what is agreed, or the
-    // column defaults on a first save (inner#1968).
-    ...(body.limits.monthly_operations === undefined ? {} : { monthlyOperations: body.limits.monthly_operations }),
+    // A save without the running-task term keeps what is agreed, or the
+    // column default on a first save (inner#1968).
     ...(body.limits.running_tasks_per_user === undefined ? {} : { runningTasksPerUser: body.limits.running_tasks_per_user }),
     fallbackTier, revision, deletedAt: null, updatedAt: sql`statement_timestamp()`,
   };

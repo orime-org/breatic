@@ -18,7 +18,6 @@ import { buildAdjustVideoFilter, parseAdjustValue } from "@shared/adjust-value.j
 import { DENOISE_NOISE_FLOOR_DB, denoiseReductionDb } from "@shared/audio-denoise.js";
 import { buildCompressorFilter, type DynamicsValue } from "@shared/audio-dynamics.js";
 import { PEAK_LIMITER, buildEqFilter } from "@shared/audio-eq.js";
-import { gridTileRects, keptCells } from "@shared/mini-tools/grid-tiles.js";
 import { pickMediaMetadata, realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
 
 /** The container's run endpoint, which the Durable Object posts a job to. */
@@ -169,10 +168,7 @@ type AudioOp = "denoise" | "normalize" | "audio_speed" | "audio_cut" | "eq" | "c
 type JoinOp = "join" | "audio_join";
 
 /** An operation on a video source that writes video, one input in. */
-export type VideoOp = Exclude<ContainerOp, AudioOp | JoinOp | "grid">;
-
-/** What an operation writes. */
-export type OutputMedium = "audio" | "video" | "image";
+export type VideoOp = Exclude<ContainerOp, AudioOp | JoinOp>;
 
 /** The operations whose source is an audio file and whose result is one (inner#1305). */
 const AUDIO_OPS: ReadonlySet<ContainerOp> = new Set<AudioOp>([
@@ -194,10 +190,9 @@ const ON_SOUND: ReadonlySet<ContainerOp> = new Set(["audio_denoise", ...AUDIO_OP
 /**
  * What an operation writes.
  * @param op - The operation.
- * @returns `image` for the grid's tiles, `audio` for the audio operations and the audio join, `video` for the rest.
+ * @returns `audio` for the audio operations and the audio join, `video` for the rest.
  */
-export function mediumOf(op: ContainerOp): OutputMedium {
-  if (op === "grid") return "image";
+export function mediumOf(op: ContainerOp): "audio" | "video" {
   return AUDIO_OPS.has(op) || op === "audio_join" ? "audio" : "video";
 }
 
@@ -208,8 +203,7 @@ export function mediumOf(op: ContainerOp): OutputMedium {
  * @returns The file name.
  */
 export function outputFileName(op: ContainerOp): string {
-  const medium = mediumOf(op);
-  return medium === "audio" ? "out.m4a" : medium === "image" ? "out.png" : "out.mp4";
+  return mediumOf(op) === "audio" ? "out.m4a" : "out.mp4";
 }
 
 /**
@@ -221,8 +215,6 @@ export function outputFileName(op: ContainerOp): string {
  */
 export function inputRefusal(op: ContainerOp, probe: ProbeReport): ContainerFailure | null {
   if (ON_SOUND.has(op) && !probe.streams.some((stream) => stream.codecType === "audio")) return "no_audio_track";
-  // The grid cuts a still picture of a known size.
-  if (op === "grid" && (pickMediaMetadata(probe).width ?? 0) <= 0) return "tool_failed";
   return null;
 }
 
@@ -270,9 +262,8 @@ export function readProgressLength(progress: string): number | null {
  * @param medium - What the operation writes.
  * @returns The failure to report, or null when the output will do.
  */
-export function outputRefusal(probe: ProbeReport, medium: OutputMedium): ContainerFailure | null {
+export function outputRefusal(probe: ProbeReport, medium: "audio" | "video"): ContainerFailure | null {
   if (medium === "audio") return probe.streams.some((stream) => stream.codecType === "audio") ? null : "tool_failed";
-  if (medium === "image") return (pickMediaMetadata(probe).width ?? 0) > 0 ? null : "tool_failed";
   return realVideoStream(probe) === undefined ? "tool_failed" : null;
 }
 
@@ -404,7 +395,7 @@ function denoiseFilter(intensity: number): string {
 
 /** One program and its arguments. */
 export interface Command {
-  readonly program: "ffmpeg" | "sox" | "vips";
+  readonly program: "ffmpeg" | "sox";
   readonly args: string[];
 }
 
@@ -833,56 +824,6 @@ function joinAudioSteps(params: Record<string, unknown>, clips: readonly ExtraIn
 }
 
 /**
- * The cells a grid run cuts, in output order: every cell row by row, less
- * the ones `skip` lists. Output i is cell `[i]`, as the browser lays its
- * result nodes out (`pickedCellsOf`).
- * @param params - The run's rows, cols and skip.
- * @returns The cell indices.
- * @throws {Error} When rows or cols is not a number.
- */
-export function gridCellsOf(params: Record<string, unknown>): number[] {
-  return keptCells(numberOf(params, "rows") * numberOf(params, "cols"), params.skip);
-}
-
-/**
- * The runs that cut one tile of a grid (inner#1968, design 3.2.2): the source
- * turned upright once, by its EXIF orientation as the browser draws it, then
- * the tile's rectangle cut out of that. The rectangle is
- * {@link gridTileRects} of the upright size, which the probe reports with the
- * rotation applied, so the tiles match the browser's layout.
- * @param params - The run's rows, cols and skip.
- * @param input - The local source.
- * @param output - The tile's file.
- * @param workDir - Where the upright copy is kept for every tile.
- * @param source - The source's probe.
- * @param outputIndex - Which output this is.
- * @returns The steps.
- * @throws {Error} When the source's size is unknown or the output has no cell.
- */
-function gridSteps(
-  params: Record<string, unknown>,
-  input: string,
-  output: string,
-  workDir: string,
-  source: ProbeReport,
-  outputIndex: number,
-): RunStep[] {
-  const { width, height } = pickMediaMetadata(source);
-  if (width === null || height === null) throw new Error("the picture's size is unknown");
-  const cell = gridCellsOf(params)[outputIndex];
-  if (cell === undefined) throw new Error(`the grid has no output ${String(outputIndex)}`);
-  const rect = gridTileRects(width, height, numberOf(params, "rows"), numberOf(params, "cols"))[cell]!;
-  const upright = `${workDir}/upright.v`;
-  const crop: RunStep = {
-    kind: "run",
-    program: "vips",
-    args: ["crop", upright, `${output}[keep=icc]`, String(rect.x), String(rect.y), String(rect.width), String(rect.height)],
-  };
-  // The first tile turns the picture upright; the rest cut from that copy.
-  return outputIndex === 0 ? [{ kind: "run", program: "vips", args: ["autorot", input, upright] }, crop] : [crop];
-}
-
-/**
  * The steps one operation makes, the last writing `output`: an audio
  * operation's own, or a video operation's runs one after another.
  * @param op - The operation.
@@ -892,7 +833,6 @@ function gridSteps(
  * @param workDir - A directory the runs may write between them.
  * @param source - The source's probe.
  * @param extra - The inputs after the source, in order: a join's further clips.
- * @param outputIndex - Which of the job's outputs this run writes: a grid's tile.
  * @returns The steps.
  * @throws {Error} When a param the operation needs is missing.
  */
@@ -904,9 +844,7 @@ export function opSteps(
   workDir: string,
   source: ProbeReport,
   extra: readonly ExtraInput[] = [],
-  outputIndex = 0,
 ): RunStep[] {
-  if (op === "grid") return gridSteps(params, input, output, workDir, source, outputIndex);
   if (op === "join" || op === "audio_join") {
     const clips = [{ path: input, probe: source }, ...extra];
     return op === "join" ? joinVideoSteps(params, clips, output) : joinAudioSteps(params, clips, output);
