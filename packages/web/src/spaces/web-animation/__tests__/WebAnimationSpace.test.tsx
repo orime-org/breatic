@@ -30,6 +30,7 @@ import { asCommentBody } from '@web/spaces/document/document-comment-extension';
 import { bodyText } from '@web/spaces/document/use-comment-cards';
 import { webAnimationAnnotationStore } from '@web/spaces/web-animation/annotation-thread-store';
 import { WebAnimationSpace } from '@web/spaces/web-animation/WebAnimationSpace';
+import { useCurrentUserStore } from '@web/stores';
 import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 
@@ -139,6 +140,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   resetRunOnceForTests();
+  useCurrentUserStore.setState({ user: null });
   useSpaceOpenRequestStore.setState({ state: { status: 'none' } });
   for (const client of clients.splice(0)) client.clear();
   _resetForTests();
@@ -687,6 +689,8 @@ describe('putting an export on a Canvas', () => {
   }
 
   beforeEach(() => {
+    // The placement settings are read for the signed-in user.
+    useCurrentUserStore.setState({ user: { id: 'u1', name: 'Me', email: 'me@e.com', personalStudio: { name: 'Me', slug: 'me', avatarUrl: null }, membershipTier: 'base' } });
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.error).mockReset();
     vi.mocked(placeVideoOnCanvas).mockReset().mockResolvedValue({ status: 'placed', nodeId: 'node-1' });

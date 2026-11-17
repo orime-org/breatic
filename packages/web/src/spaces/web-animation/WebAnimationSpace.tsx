@@ -16,7 +16,8 @@ import { Button } from '@web/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
 import { Separator } from '@web/components/ui/separator';
 import { Slider } from '@web/components/ui/slider';
-import { getSceneControls, spaceTasksQueryKey } from '@web/data/api/scene';
+import { spaceTasksQueryKey } from '@web/data/api/scene';
+import { useSceneControls } from '@web/data/api/use-scene-controls';
 import { serverMessage } from '@web/data/api/server-message';
 import { timelineApi, type WebAnimationAcceptBody, type WebAnimationAcceptRequest } from '@web/data/api/timeline';
 import { useProjectSpaceList, type ProjectSpace } from '@web/data/yjs/project-meta';
@@ -109,7 +110,7 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
   const t = useTranslation();
   const userId = useCurrentUserStore((state) => state.user?.id ?? '');
   const asset = useTimelineAsset(projectId, row.resultAssetId ?? '').data;
-  const controls = useQuery({ queryKey: ['scene-controls', projectId, userId], queryFn: ({ signal }) => getSceneControls(projectId, signal) });
+  const controls = useSceneControls(projectId, userId);
   const [placement, setPlacement] = React.useState(CANVAS_PLACEMENT_IDLE);
   const [open, setOpen] = React.useState(false);
   const latest = React.useRef(placement);
