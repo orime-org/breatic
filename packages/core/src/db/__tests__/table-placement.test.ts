@@ -47,6 +47,13 @@ describe("table placement", () => {
     }
   });
 
+  it("keeps accounts' provider keys and model upstream choices global, with the accounts (inner#1953)", () => {
+    for (const name of ["account_provider_keys", "account_model_upstreams"]) {
+      expect(schemaTables).toContain(name);
+      expect(TABLE_PLACEMENT[name]).toBe("global");
+    }
+  });
+
   it("keeps Studio content regional", () => {
     for (const name of ["studios", "studio_members", "projects", "project_members", "studio_assets", "tasks", "credit_charge_requests"]) {
       expect(TABLE_PLACEMENT[name]).toBe("regional");
