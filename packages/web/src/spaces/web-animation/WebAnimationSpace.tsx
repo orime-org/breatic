@@ -562,9 +562,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     const ratio = row === undefined ? 16 / 9 : ratioOf(row);
     return { aspectRatio: `${ratio}`, width: `min(100cqw, calc(100cqh * ${ratio}))` };
   }, [row]);
-  // The draft shows only over the result it is on.
-  const shownDraft = annotation.status !== 'idle' && annotation.executionId === selectedId ? annotation : null;
-  const draftPoint = shownDraft?.status === 'writing' ? shownDraft.point : null;
+  const draftPoint = annotation.status === 'writing' ? annotation.point : null;
   /**
    * Where a card sits over the frame: beside its point, or at the bottom of the frame without one.
    * @param point - The point, or null.
@@ -586,7 +584,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
             {!readOnly && <Button data-testid='motion-empty-new' size='sm' onClick={openNew} icon={<Plus className='size-4' />}>{t('spaces.webAnimation.new')}</Button>}
           </div>
         // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a point on the frame is marked with the mouse only
-        : <div data-testid='motion-preview' data-execution-id={row.id} className={cn('relative', shownDraft?.status === 'picking' && 'cursor-crosshair')} style={frameStyle} onClick={clickFrame}>
+        : <div data-testid='motion-preview' data-execution-id={row.id} className={cn('relative', annotation.status === 'picking' && 'cursor-crosshair')} style={frameStyle} onClick={clickFrame}>
           {finished && playable(row) && <MotionResultPlayer projectId={projectId} executionId={row.id} sourceVersionId={row.resultSourceVersionId} input={row.input} frame={frame} />}
           {finished && row.kind === 'web_animation_export' && <ExportVideo key={row.id} url={exportAsset?.fileUrl ?? null} assetFailed={exportAssetRead.isError}
             assetRetrying={exportAssetRead.isFetching} onAssetRetry={retryExportAsset} time={clock.time} playing={clock.playing} />}
@@ -603,16 +601,16 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
               onClick={(event) => { event.stopPropagation(); openThread(thread.id); }}
               className={cn('absolute size-5 -translate-x-1/2 -translate-y-full rounded-full rounded-bl-none border border-background', thread.resolved ? 'bg-muted-foreground' : 'bg-status-selected')}
               style={{ left: `${(anchor.point?.x ?? 0) * 100}%`, top: `${(anchor.point?.y ?? 0) * 100}%` }} />)}
-          {shownDraft?.status === 'picking' && <div className='pointer-events-none absolute inset-x-0 top-2 flex justify-center'>
+          {annotation.status === 'picking' && <div className='pointer-events-none absolute inset-x-0 top-2 flex justify-center'>
             <span className='rounded-full bg-popover px-3 py-1 text-xs text-popover-foreground shadow-md'>{t('spaces.webAnimation.pickPoint')}</span></div>}
           {draftPoint !== null && <span className='pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-status-selected'
             style={{ left: `${draftPoint.x * 100}%`, top: `${draftPoint.y * 100}%` }} />}
           {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the click is only kept from the frame */}
-          {shownDraft !== null && <div data-testid='motion-annotation-draft'
+          {annotation.status !== 'idle' && <div data-testid='motion-annotation-draft'
             className='absolute z-20 w-72 rounded-chrome border border-border bg-card p-3 shadow-md' style={cardStyle(draftPoint)} onClick={(event) => event.stopPropagation()}>
-            <span className='mb-2 block text-2xs text-muted-foreground'>{t('spaces.webAnimation.annotateAt', { time: formatAnnotationTime(shownDraft.timeSeconds) })}</span>
+            <span className='mb-2 block text-2xs text-muted-foreground'>{t('spaces.webAnimation.annotateAt', { time: formatAnnotationTime(annotation.timeSeconds) })}</span>
             {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the box the user just asked for by pressing Add annotation; they expect to type immediately */}
-            <DocumentCommentWriteBox name='motion-annotation' autoFocus value={shownDraft.status === 'picking' ? '' : shownDraft.text} placeholder={t('spaces.webAnimation.annotationPlaceholder')}
+            <DocumentCommentWriteBox name='motion-annotation' autoFocus value={annotation.status === 'picking' ? '' : annotation.text} placeholder={t('spaces.webAnimation.annotationPlaceholder')}
               onChange={typeAnnotation} onSave={sendAnnotation} onCancel={cancelAnnotation} />
           </div>}
           {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the click is only kept from the frame */}
