@@ -1181,7 +1181,7 @@ export {
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
 
-export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType,
+export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType, isSceneLookImageMediaType, SCENE_LOOK_IMAGE_TYPES,
   SCENE_LOOK_KEY_PREFIX, SCENE_LOOK_MAX_PARTS, SCENE_LOOK_DEFAULT_PART, SCENE_LOOK_FIELDS, SceneLookPartSchema, SceneLookSchema, gatherSceneLook, expandSceneLook,
   SCENE_LIGHT_TYPES, VIEWFINDER_RATIOS, DEFAULT_VIEWFINDER_RATIO, SCENE_FREE_RATIO_MIN, SCENE_FREE_RATIO_MAX, SCENE_FOCAL_LENGTH_MIN, SCENE_FOCAL_LENGTH_MAX, SCENE_FOCAL_LENGTH_DEFAULT,
   SCENE_SPOT_ANGLE_MIN, SCENE_SPOT_ANGLE_MAX, SCENE_SPOT_ANGLE_DEFAULT, SCENE_LIGHT_INTENSITY, SCENE_LIGHT_COLOR_DEFAULT, SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, SCENE_AMBIENT_INTENSITY_MAX,

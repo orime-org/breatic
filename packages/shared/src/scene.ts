@@ -416,3 +416,16 @@ export interface SceneCaptureConfig {
 export function isSceneModelMediaType(value: string): boolean {
   return value === 'model/gltf-binary' || value === 'application/zip';
 }
+
+/** Picture types a part look may use (inner#1693). */
+export const SCENE_LOOK_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
+
+/**
+ * Whether a registered asset's media type is a picture a part look may use.
+ * @param value - A reduced MIME essence from an upload or the asset ledger.
+ * @returns Whether it is PNG, JPEG or WebP.
+ * @throws {never} Never.
+ */
+export function isSceneLookImageMediaType(value: string): boolean {
+  return (SCENE_LOOK_IMAGE_TYPES as readonly string[]).includes(value);
+}
