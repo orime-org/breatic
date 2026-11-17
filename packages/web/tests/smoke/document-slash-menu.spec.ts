@@ -421,4 +421,17 @@ test.describe('the slash menu in the document body', () => {
     await expect.poll(() => lines(page)).toEqual(['paragraph:keep!']);
     expect(errors).toEqual([]);
   });
+
+  test('lights the first cell on Enter in a grid the pointer opened, and inserts it on the next Enter', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('/table');
+    const table = await page.getByTestId('doc-slash-row-table').boundingBox();
+    await page.mouse.move(table!.x + 20, table!.y + table!.height / 2, { steps: 3 });
+    await expect(page.getByTestId('doc-slash-table-grid')).toBeVisible();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('doc-slash-table-size-1-1')).toHaveAttribute('data-on', '');
+    await page.keyboard.press('Enter');
+    await expect(page.locator(MENU)).toBeHidden();
+    await expect.poll(() => lines(page)).toContain('docTable');
+  });
 });
