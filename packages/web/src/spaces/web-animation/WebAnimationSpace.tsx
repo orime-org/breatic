@@ -189,7 +189,7 @@ interface DetailsProps {
  * @param props.unresolvedOnBase - Open annotations on the result a modification started from.
  * @param props.readOnly - Whether the user may act.
  * @param props.onCancel - Cancels it.
- * @param props.onOpen - Opens another result.
+ * @param props.onOpen - Opens the result a modification started from.
  * @returns The popover.
  * @throws {never} Never.
  */
@@ -547,8 +547,18 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     pick(id);
   }), [showResult, pick]);
   const order = React.useMemo(() => [...rowsOf(lists.done.own), ...rowsOf(lists.done.legacy)].map((item) => item.id), [lists.done.own, lists.done.legacy]);
-  const unresolvedOnBase = row?.kind === 'web_animation_modify'
-    ? threads.filter((thread) => !thread.resolved && thread.deletedAt === undefined && readWebAnimationAnchor(thread.metadata)?.executionId === row.base.executionId).length : 0;
+  // The open annotations on the result a modification started from, earliest first (design §10.1).
+  const baseExecutionId = row?.kind === 'web_animation_modify' ? row.base.executionId : null;
+  const openOnBase = React.useMemo(() => threads.flatMap((thread) => {
+    const anchor = readWebAnimationAnchor(thread.metadata);
+    return !thread.resolved && thread.deletedAt === undefined && anchor !== null && anchor.executionId === baseExecutionId ? [{ id: thread.id, timeSeconds: anchor.timeSeconds }] : [];
+  }).sort((a, b) => a.timeSeconds - b.timeSeconds), [threads, baseExecutionId]);
+  // "Modified from X" opens X's annotations at the earliest open one, or X itself when none is open.
+  const openBase = React.useCallback((executionId: string): void => {
+    const earliest = openOnBase[0];
+    if (earliest === undefined) locateShown(executionId);
+    else openMarker(earliest.id);
+  }, [openOnBase, locateShown, openMarker]);
 
   const toggleExecutions = React.useCallback((): void => panelsEvent({ type: 'toggle_executions' }), [panelsEvent]);
   const toggleAnnotations = React.useCallback((): void => panelsEvent({ type: 'toggle_annotations' }), [panelsEvent]);
@@ -654,7 +664,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
           {!readOnly && <PlaceOnCanvas projectId={projectId} row={row} canvases={canvases} />}
           <BarButton testId='motion-action-view-source' label={t('spaces.webAnimation.viewSource')} icon={<Undo2 className='size-4' />} onClick={viewSource} />
         </>}
-        <Details row={row} unresolvedOnBase={unresolvedOnBase} readOnly={readOnly} onCancel={cancel} onOpen={locateShown} />
+        <Details row={row} unresolvedOnBase={openOnBase.length} readOnly={readOnly} onCancel={cancel} onOpen={openBase} />
       </>}
       <Separator orientation='vertical' className='mx-1 h-5' />
       <BarButton testId='motion-open-executions' label={t('spaces.webAnimation.executions')} icon={<List className='size-4' />} pressed={panels.panel === 'executions'}

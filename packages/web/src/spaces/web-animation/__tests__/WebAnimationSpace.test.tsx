@@ -117,6 +117,17 @@ function show(readOnly = false): HTMLElement {
   return screen.getByTestId('space-region');
 }
 
+/**
+ * Seed annotation threads into the Space's document before it opens.
+ * @param anchors - Each thread's words, result and time.
+ */
+async function seedThreads(anchors: Array<{ text: string; executionId: string; timeSeconds: number }>): Promise<void> {
+  const store = webAnimationAnnotationStore({ doc: getDoc(docName.webAnimationSpace(PROJECT, SPACE)), readWho: () => ({ role: 'editor', viewerId: 'u1' }) });
+  for (const { text, executionId, timeSeconds } of anchors) {
+    await store.createThread({ initialComment: { body: asCommentBody(text) as never }, metadata: { webAnimationAnchor: { executionId, timeSeconds, point: null } } });
+  }
+}
+
 beforeEach(() => {
   _resetForTests();
   listing([]);
@@ -353,17 +364,6 @@ describe('opening an annotation', () => {
   const GONE = '90000000-0000-4000-8000-0000000000d1';
 
   /**
-   * Seed annotation threads into the Space's document before it opens.
-   * @param anchors - Each thread's words, result and time.
-   */
-  async function seedThreads(anchors: Array<{ text: string; executionId: string; timeSeconds: number }>): Promise<void> {
-    const store = webAnimationAnnotationStore({ doc: getDoc(docName.webAnimationSpace(PROJECT, SPACE)), readWho: () => ({ role: 'editor', viewerId: 'u1' }) });
-    for (const { text, executionId, timeSeconds } of anchors) {
-      await store.createThread({ initialComment: { body: asCommentBody(text) as never }, metadata: { webAnimationAnchor: { executionId, timeSeconds, point: null } } });
-    }
-  }
-
-  /**
    * Open a thread from the annotation panel by its words.
    * @param user - The user.
    * @param text - The thread's words.
@@ -439,6 +439,50 @@ describe('opening an annotation', () => {
     expect(bodies('First note')).toEqual(['First note']);
     await openFromPanel(user, 'First note');
     expect(within(screen.getByTestId('motion-thread-card')).getByTestId('doc-comment-reply-input')).toHaveValue('For the first');
+  });
+});
+
+describe('the result a modification started from', () => {
+  const MODIFIED = '90000000-0000-4000-8000-0000000000a1';
+
+  /**
+   * List a finished modification of OLDER, newest, with OLDER below it, and open it.
+   * @returns The user.
+   */
+  async function onModification(): Promise<ReturnType<typeof userEvent.setup>> {
+    listing([{
+      ...done(MODIFIED, 'Make the logo bigger', '2026-11-15T09:30:00.000000Z'), kind: 'web_animation_modify', base: { executionId: OLDER, request: 'Older logo' },
+      input: { baseSourceVersionId: `80000000-0000-4000-8000-${OLDER.slice(-12)}`, instruction: 'Make the logo bigger', engine: 'deepseek', aspect: '16:9', durationSeconds: 4, fps: { num: 24, den: 1 } },
+    }, done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', MODIFIED));
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('motion-details'));
+    return user;
+  }
+
+  it('opens the original result\'s annotations at its earliest open one', async () => {
+    await seedThreads([
+      { text: 'Later open note', executionId: OLDER, timeSeconds: 3 },
+      { text: 'Settled note', executionId: OLDER, timeSeconds: 1 },
+      { text: 'Earliest open note', executionId: OLDER, timeSeconds: 2 },
+    ]);
+    const store = webAnimationAnnotationStore({ doc: getDoc(docName.webAnimationSpace(PROJECT, SPACE)), readWho: () => ({ role: 'editor', viewerId: 'u1' }) });
+    const settled = [...store.getThreads().values()].find((thread) => bodyText(thread.comments[0]!.body) === 'Settled note')!;
+    await store.resolveThread({ threadId: settled.id });
+    const user = await onModification();
+    await user.click(await screen.findByRole('button', { name: t('spaces.webAnimation.baseWithAnnotations', { base: 'Older logo', count: 2 }) }));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', OLDER));
+    expect(await screen.findByTestId('motion-panel-annotations')).toBeInTheDocument();
+    expect(screen.getByTestId('motion-bottom-bar')).toHaveTextContent('0:02.0 / 0:04.0');
+    expect(within(screen.getByTestId('motion-thread-card')).getByText('Earliest open note')).toBeInTheDocument();
+  });
+
+  it('shows the original result when it has no open annotation', async () => {
+    const user = await onModification();
+    await user.click(await screen.findByRole('button', { name: 'Older logo' }));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', OLDER));
+    expect(screen.queryByTestId('motion-panel-annotations')).toBeNull();
   });
 });
 
