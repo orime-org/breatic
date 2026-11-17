@@ -281,6 +281,15 @@ describe('the 3D Space task list (inner#1690)', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
     expect(api.listSpaceTasks).toHaveBeenCalledTimes(2);
   });
+
+  it('sets no re-read for a row that waits for a slot, whose budget has not started', async () => {
+    const waiting = row({ id: 'waiting', startedAt: new Date(NOW - 3 * 3_600_000).toISOString(), deadlineAt: null, waitingSince: new Date(NOW - 3 * 3_600_000).toISOString(), slotWaitLimit: 2 });
+    api.listSpaceTasks.mockResolvedValue(listed(waiting));
+    renderList();
+    await rowOf('waiting');
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(api.listSpaceTasks).toHaveBeenCalledTimes(1);
+  });
 });
 
 /**

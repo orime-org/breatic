@@ -144,7 +144,8 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
   React.useEffect(() => {
     if (!data) return;
     const serverNow = Date.parse(data.serverNow);
-    const waits = data.tasks.filter((task) => task.status === 'running').map((task) => Date.parse(task.deadlineAt) - serverNow);
+    // A row waiting for a free slot has no deadline yet; its budget starts when it runs.
+    const waits = data.tasks.flatMap((task) => (task.status === 'running' && task.deadlineAt !== null ? [Date.parse(task.deadlineAt) - serverNow] : []));
     if (waits.length === 0) return;
     const timer = setTimeout(() => { void queryClient.invalidateQueries({ queryKey }); }, Math.max(0, Math.min(...waits)));
     return (): void => clearTimeout(timer);

@@ -481,6 +481,17 @@ describe("reading the Space's task list", () => {
     expect(Math.abs(Date.parse(data.serverNow) - before)).toBeLessThan(60_000);
   });
 
+  it("gives a row that waits for a free running slot no deadline, and keeps it running past the budget of its opening", async () => {
+    const { owner, projectId, spaceId } = await seedProject();
+    const { taskId } = await ticket(owner.cookie, sceneBody(projectId, spaceId, { label: "Waiting" }));
+    await sql`UPDATE node_tasks SET started_at = now() - (budget_ms + 60000) * interval '1 millisecond', waiting_since = now() - (budget_ms + 60000) * interval '1 millisecond' WHERE id = ${String(taskId)}`;
+
+    const res = await call("GET", `/projects/${projectId}/three-d/${spaceId}/tasks`, owner.cookie);
+    const { data } = (await res.json()) as { data: { tasks: { id: string; status: string; deadlineAt: string | null }[] } };
+
+    expect(data.tasks.find((task) => task.id === taskId)).toMatchObject({ status: "running", deadlineAt: null });
+  });
+
   it("refuses someone outside the project", async () => {
     const { projectId, spaceId } = await seedProject();
     const stranger = await seedUser();
