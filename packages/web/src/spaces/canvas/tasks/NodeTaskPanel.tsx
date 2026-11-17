@@ -22,7 +22,7 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import type { NodeTaskEntry } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
+import type { TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import type { TaskActionRequest } from '@web/stores/task-actions-in-flight';
 
 /**
@@ -30,17 +30,32 @@ import type { TaskActionRequest } from '@web/stores/task-actions-in-flight';
  * nothing else, so this is the one place on screen the word appears — without
  * it colour is the only thing saying which list this is (WCAG 1.4.1).
  */
-const TITLE_KEY: Readonly<Record<TaskStatus, string>> = {
+const TITLE_KEY: Readonly<Record<TaskListKind, string>> = {
   running: 'canvas.task.status.running',
+  waiting: 'canvas.task.status.waiting',
   done: 'canvas.task.status.done',
   failed: 'canvas.task.status.failed',
   expired: 'canvas.task.status.expired',
 };
 
+/**
+ * Whether one task belongs in one list. A waiting task is a running one on the
+ * wire, so the running list leaves it out and the queued list holds only it,
+ * the way the counts column splits the two (inner#1968).
+ * @param task - The task.
+ * @param list - The list.
+ * @returns Whether the task shows in that list.
+ */
+export function inTaskList(task: NodeTaskEntry, list: TaskListKind): boolean {
+  const waiting = task.status === 'running' && task.waitingSince != null;
+  if (list === 'waiting') return waiting;
+  return task.status === list && !waiting;
+}
+
 /** What {@link NodeTaskPanel} renders and reports. */
 export interface NodeTaskPanelProps {
-  /** The state whose count was clicked; only these rows show. */
-  status: TaskStatus;
+  /** The count that was clicked; only its rows show. */
+  status: TaskListKind;
   /** Every live task on the node, as the server last listed them. */
   entries: readonly NodeTaskEntry[];
   /** The user's clock, ticking once a second while rows are running. */
@@ -117,7 +132,7 @@ export function NodeTaskPanel({
 }: NodeTaskPanelProps): JSX.Element {
   const t = useTranslation();
   const shown = React.useMemo(
-    () => entries.filter((task) => task.status === status),
+    () => entries.filter((task) => inTaskList(task, status)),
     [entries, status],
   );
 

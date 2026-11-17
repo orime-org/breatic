@@ -39,7 +39,7 @@ import { NodeExpandLayer } from '@web/spaces/canvas/mini-tool/NodeExpandLayer';
 import { NodeGridLayer } from '@web/spaces/canvas/mini-tool/NodeGridLayer';
 import { NodeMarkLayer } from '@web/spaces/canvas/mini-tool/NodeMarkLayer';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
+import type { TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { typedViewOf } from '@web/data/yjs/node-view';
 
 /**
@@ -205,7 +205,7 @@ function makeFlowNode(
     const openTaskPanel = useCanvasSession((s) => s.openTaskPanel);
     const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
     const onOpenTasks = React.useCallback(
-      (next: TaskStatus | null): void => {
+      (next: TaskListKind | null): void => {
         if (next === null) closeActivePanel();
         else openTaskPanel(props.id, next);
       },

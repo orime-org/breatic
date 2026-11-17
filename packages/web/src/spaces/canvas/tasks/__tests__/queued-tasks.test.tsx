@@ -32,6 +32,7 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { deriveHandling } from '@web/data/yjs/node-view';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
+import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
 import { standsEmpty } from '@web/spaces/canvas/use-node-creation';
@@ -100,6 +101,74 @@ describe('G-38 the counts column of a node with a waiting task', () => {
     const tip = await screen.findByRole('tooltip');
     expect(tip).toHaveTextContent('排队中 · 1');
     expect(tip.textContent).toMatch(WAIT_TIP);
+  });
+});
+
+describe('G-38 each count opens its own list', () => {
+  const counts = { running: 2, waiting: 1, waitingLimit: 2, done: 0, failed: 0, expired: 0 } as NodeTaskCounts;
+  const entries = [
+    waitingEntry({ id: 't-run', label: 'running-one', waitingSince: null }),
+    waitingEntry({ id: 't-wait', label: 'waiting-one' }),
+  ];
+
+  /**
+   * Render the list for one count.
+   * @param status - The count that was clicked.
+   */
+  function renderList(status: React.ComponentProps<typeof NodeTaskPanel>['status']): void {
+    render(
+      <TooltipProvider>
+        <CollaboratorNamesProvider value={{ resolve: () => 'Ada', members: [] }}>
+          <NodeTaskPanel
+            status={status}
+            entries={entries}
+            now={NOW}
+            isLoading={false}
+            isError={false}
+            hasRetryFile={(): boolean => false}
+            isWaiting={(): boolean => false}
+            readOnly={false}
+            onReload={(): void => {}}
+            onClose={(): void => {}}
+            onView={(): void => {}}
+            onRetry={(): void => {}}
+            onDismiss={(): void => {}}
+            onCancel={(): void => {}}
+          />
+        </CollaboratorNamesProvider>
+      </TooltipProvider>,
+    );
+  }
+
+  it('opens the queued list from the queued count', async () => {
+    const onOpen = vi.fn();
+    render(<TooltipProvider><TaskCountColumn counts={counts} endedShown openFor={null} onOpen={onOpen} /></TooltipProvider>);
+    await userEvent.click(screen.getByTestId('task-count-waiting'));
+    expect(onOpen).toHaveBeenCalledWith('waiting');
+  });
+
+  it('marks only the queued count open while the queued list is', () => {
+    render(<TooltipProvider><TaskCountColumn counts={counts} endedShown openFor='waiting' onOpen={vi.fn()} /></TooltipProvider>);
+    expect(screen.getByTestId('task-count-waiting')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('task-count-running')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('titles the queued list queued and lists only the waiting row', () => {
+    renderList('waiting');
+    expect(screen.getByTestId('node-task-panel-title')).toHaveTextContent('排队中');
+    expect(screen.getByTestId('node-task-panel-count')).toHaveTextContent('1');
+    const rows = screen.getAllByTestId('node-task-row');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('排队中');
+  });
+
+  it('lists only the rows that run in the running list', () => {
+    renderList('running');
+    expect(screen.getByTestId('node-task-panel-title')).toHaveTextContent('运行中');
+    expect(screen.getByTestId('node-task-panel-count')).toHaveTextContent('1');
+    const rows = screen.getAllByTestId('node-task-row');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('已运行');
   });
 });
 

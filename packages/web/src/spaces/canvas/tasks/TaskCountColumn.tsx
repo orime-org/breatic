@@ -34,7 +34,7 @@ import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 import { waitReason } from '@web/spaces/canvas/tasks/wait-reason';
 import { TASK_COUNT_ORDER } from '@web/spaces/canvas/overlay-scale';
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
+import type { TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
 
 /**
  * The mark's colour per state. The state rides on the mark rather than on the
@@ -48,7 +48,7 @@ import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
  * A cell of the column: a task state, or the running tasks that wait for a
  * free slot (inner#1968, design 3.9), which `running` counts among its own.
  */
-type CountCell = TaskStatus | 'waiting';
+type CountCell = TaskListKind;
 
 const MARK_TONE: Readonly<Record<CountCell, string>> = {
   running: 'text-status-info-foreground',
@@ -99,9 +99,9 @@ export interface TaskCountColumnProps {
    */
   endedShown: boolean;
   /** Which state's list is open right now, `null` when none is. */
-  openFor: TaskStatus | null;
+  openFor: TaskListKind | null;
   /** Ask for one state's list, or `null` to close the open one. */
-  onOpen: (status: TaskStatus | null) => void;
+  onOpen: (status: TaskListKind | null) => void;
 }
 
 /**
@@ -124,17 +124,14 @@ function TaskCount({
   status: CountCell;
   value: number;
   isOpen: boolean;
-  onOpen: (status: TaskStatus | null) => void;
+  onOpen: (status: TaskListKind | null) => void;
   waitingLimit?: number;
 }): JSX.Element {
   const t = useTranslation();
   const Mark = MARK_SHAPE[status];
-  // Waiting tasks are running ones, so their cell opens the running list,
-  // where each says it is queued and can be cancelled.
-  const opens: TaskStatus = status === 'waiting' ? 'running' : status;
   const handleClick = React.useCallback(() => {
-    onOpen(isOpen ? null : opens);
-  }, [isOpen, onOpen, opens]);
+    onOpen(isOpen ? null : status);
+  }, [isOpen, onOpen, status]);
 
   // The state's name and how many are in it: the icon alone says nothing to a
   // user meeting it for the first time, and it is where the number the cell
@@ -216,7 +213,7 @@ export function TaskCountColumn({ counts, endedShown, openFor, onOpen }: TaskCou
           key={cell}
           status={cell}
           value={value(cell)}
-          isOpen={openFor === (cell === 'waiting' ? 'running' : cell)}
+          isOpen={openFor === cell}
           onOpen={onOpen}
           {...(cell === 'waiting' && counts.waitingLimit !== undefined && { waitingLimit: counts.waitingLimit })}
         />

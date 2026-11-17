@@ -32,6 +32,12 @@ import { useTranslation } from '@web/i18n/use-translation';
 export type TaskStatus = 'running' | 'done' | 'failed' | 'expired';
 
 /**
+ * Which list a node's count opens: one of the four states, or the running
+ * tasks that wait for a free slot (inner#1968), which have a count of their own.
+ */
+export type TaskListKind = TaskStatus | 'waiting';
+
+/**
  * The shape per state. All four are round outlines so a column of them reads
  * as one kind of thing, and the running one turns — the way this product
  * already says "working" everywhere else.

@@ -21,8 +21,8 @@ import { ApiException } from '@web/data/api/types';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
+import { NodeTaskPanel, inTaskList } from '@web/spaces/canvas/tasks/NodeTaskPanel';
+import type { TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { useTickingClock } from '@web/spaces/canvas/tasks/use-ticking-clock';
 import {
   clearRetryFile,
@@ -67,7 +67,7 @@ export interface NodeTaskPanelContainerProps {
 /** The open panel's own props, once there is a host to render for. */
 interface OpenNodeTaskPanelProps extends NodeTaskPanelContainerProps {
   nodeId: string;
-  status: TaskStatus;
+  status: TaskListKind;
 }
 
 /**
@@ -149,7 +149,7 @@ function OpenNodeTaskPanel({
   // three settled states show fixed instants.
   const counting = React.useMemo(
     () =>
-      status === 'running' && entries.some((task) => task.status === 'running'),
+      status === 'running' && entries.some((task) => inTaskList(task, 'running')),
     [status, entries],
   );
   const now = useTickingClock(counting);
@@ -208,7 +208,7 @@ function OpenNodeTaskPanel({
           // what remains in it says nothing about the one on screen; left
           // open, the panel would sit on a generic empty line with nothing
           // naming the state that emptied.
-          if (!left.some((row) => row.status === status)) closeActivePanel();
+          if (!left.some((row) => inTaskList(row, status))) closeActivePanel();
         })
         .catch(() => {
           toast.error(t('canvas.task.dismissFailed'));
