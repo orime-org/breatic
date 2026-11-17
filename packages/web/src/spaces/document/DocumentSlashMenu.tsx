@@ -424,12 +424,14 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
           now.closeGrid();
           return;
         }
+        // The first Enter or arrow on a grid the pointer opened lights its
+        // first cell, as the insert menu's submenu focuses its first item.
         if (event.key === 'Enter') {
           claim(event);
           if (at !== null) now.pick('table', at);
+          else now.openGrid({ rows: 1, cols: 1 });
           return;
         }
-        // The first arrow on a grid the pointer opened lights its first cell.
         const next = stepCell(at ?? { rows: 1, cols: 1 }, event.key);
         if (next !== undefined) {
           claim(event);
