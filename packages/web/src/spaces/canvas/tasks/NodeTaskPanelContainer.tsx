@@ -224,7 +224,7 @@ function OpenNodeTaskPanel({
   const cancel = React.useCallback(
     (taskId: string): void => {
       const request = canvasApi
-        .cancelTask(taskId)
+        .cancelTask(taskId, projectId)
         .then(() => {
           void query.refetch();
         })

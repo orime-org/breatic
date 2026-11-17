@@ -401,11 +401,16 @@ export const canvasApi = {
    * Cancel a task that waits for a free running slot (inner#1968, design
    * 3.9). A task that has started answers 409 and goes on.
    * @param taskId - The task, or one of its rows in a task list.
+   * @param projectId - The project it runs in, whose credits it held.
    * @returns The node's counts after it, null for a 3D Space's own row.
    * @throws {ApiException} When the request fails, 409 once the task has started.
    */
-  cancelTask(taskId: string): Promise<{ cancelled: true; counts: NodeTaskCounts | null }> {
-    return apiPost<{ cancelled: true; counts: NodeTaskCounts | null }>(`/canvas/tasks/${taskId}/cancel`, {});
+  cancelTask(taskId: string, projectId: string): Promise<{ cancelled: true; counts: NodeTaskCounts | null }> {
+    // A cancelled wait releases the hold its run took, so the top bar reads
+    // the credits again, as it does when the run request returns (inner#1611).
+    return apiPost<{ cancelled: true; counts: NodeTaskCounts | null }>(`/canvas/tasks/${taskId}/cancel`, {}).finally(() =>
+      noteCreditsChanged(projectId),
+    );
   },
 
   /**

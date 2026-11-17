@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Every request that holds or spends a project's credits says so when it
- * returns, whether it was admitted or refused (inner#1611), so the figure on
+ * Every request that holds, spends or releases a project's credits says so
+ * when it returns, whether it was admitted or refused (inner#1611), so the figure on
  * the project's top bar can be read again.
  */
 
@@ -47,6 +47,8 @@ const RUNS: { name: string; run: () => Promise<unknown> }[] = [
       ),
   },
   { name: 'a mini-tool run', run: () => miniToolsApi.run({ project_id: PROJECT } as never, 'k3') },
+  // Cancelling a queued task releases its hold (inner#1968).
+  { name: 'a cancelled wait', run: () => canvasApi.cancelTask('t-1', PROJECT) },
 ];
 
 describe.each(RUNS)('$name', ({ run }) => {
