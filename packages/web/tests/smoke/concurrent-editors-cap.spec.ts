@@ -17,43 +17,19 @@
  * `config/membership.yaml`) and back again at the end; the account itself stays
  * in the local database like any other the suite has made.
  */
-import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { resolve } from 'node:path';
 
 import { expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { dataOf } from '../helpers/api';
+import { runScript } from '../helpers/metered-account';
 import { credentialsFor } from '../helpers/credentials';
 import { MADE_BY_SMOKE } from '../helpers/project';
 import { stateFile, test } from '../helpers/slot';
 import { visibleSpace } from '../helpers/space';
 
-/** The repository root, where the account scripts run from. */
-const REPO_ROOT = resolve(__dirname, '../../../..');
-
 /** How long the three seats are watched after they first add up, for a late handover. */
 const SETTLE_MS = 5_000;
-
-/**
- * Run one of the suite's account scripts the way setup runs `seed-smoke-account.ts`.
- * @param script - The file under `scripts/`.
- * @param input - What the script reads from stdin.
- * @returns What the script printed.
- * @throws {Error} When the script fails, with what it printed.
- */
-function runScript(script: string, input: object): string {
-  try {
-    return execFileSync(
-      'pnpm',
-      ['exec', 'tsx', '--tsconfig', 'packages/server/tsconfig.json', `scripts/${script}`],
-      { cwd: REPO_ROOT, input: JSON.stringify(input), encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] },
-    );
-  } catch (err) {
-    const said = (err as { stderr?: string }).stderr?.trim() ?? String(err);
-    throw new Error(`scripts/${script} failed: ${said.slice(-400)}`);
-  }
-}
 
 /**
  * Which of the pages show the read-only notice in the Space on screen.

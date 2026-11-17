@@ -14,21 +14,17 @@
  * quality, 1K, docs/TEST-MANDATE.md 2.2); the fourth is cancelled while it
  * waits, so three generations are paid for.
  */
-import { execFileSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
 
 import { expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { dataOf } from '../helpers/api';
+import { pressGenerate, runScript } from '../helpers/metered-account';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { seedNode } from '../helpers/mini-tool';
 import { MADE_BY_SMOKE } from '../helpers/project';
 import { test } from '../helpers/slot';
 import { visibleSpace } from '../helpers/space';
-
-/** The repository root, where the account scripts run from. */
-const REPO_ROOT = resolve(__dirname, '../../../..');
 
 /** How long one cheapest generation may take to land (the model's `generation_time` is 120 s). */
 const GENERATION_WAIT_MS = 5 * 60_000;
@@ -39,26 +35,6 @@ interface Counts {
   waiting?: number;
   done: number;
   failed: number;
-}
-
-/**
- * Run one of the suite's account scripts the way setup runs `seed-smoke-account.ts`.
- * @param script - The file under `scripts/`.
- * @param input - What the script reads from stdin.
- * @returns What the script printed.
- * @throws {Error} When the script fails, with what it printed.
- */
-function runScript(script: string, input: object): string {
-  try {
-    return execFileSync(
-      'pnpm',
-      ['exec', 'tsx', '--tsconfig', 'packages/server/tsconfig.json', `scripts/${script}`],
-      { cwd: REPO_ROOT, input: JSON.stringify(input), encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] },
-    );
-  } catch (err) {
-    const said = (err as { stderr?: string }).stderr?.trim() ?? String(err);
-    throw new Error(`scripts/${script} failed: ${said.slice(-400)}`);
-  }
 }
 
 /**
@@ -95,24 +71,8 @@ async function nodeStates(
  * @param nodeId - The empty image node.
  */
 async function generate(page: Page, nodeId: string): Promise<void> {
+  await pressGenerate(page, nodeId);
   const node = visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`);
-  await expect(node).toBeVisible({ timeout: 15_000 });
-  const box = await node.boundingBox();
-  if (box === null) throw new Error(`node ${nodeId} has no box`);
-  await node.dispatchEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: box.x + box.width / 2, clientY: box.y + 8 });
-  await page.getByTestId('node-menu-generate').click();
-  await page.getByTestId('generate-prompt-editor').click();
-  await page.keyboard.type('A red apple on a white table');
-  const ratio = page.getByTestId('generate-ratio-trigger');
-  await ratio.click();
-  await page.getByTestId('generate-resolution-option-1k').click();
-  await page.getByTestId('generate-param-quality-option-low').click();
-  await ratio.click();
-  await expect(page.locator('[data-radix-popper-content-wrapper]')).toHaveCount(0);
-  await expect(ratio).toContainText('Low');
-  const execute = page.getByTestId('generate-execute');
-  await expect(execute).toBeEnabled({ timeout: 20_000 });
-  await execute.click();
   await expect(node.getByTestId('task-count-running').or(node.getByTestId('task-count-waiting'))).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press('Escape');
 }
