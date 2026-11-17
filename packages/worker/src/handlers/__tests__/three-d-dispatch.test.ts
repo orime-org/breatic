@@ -83,6 +83,7 @@ vi.mock("@breatic/core", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", async () => ({
+  taskOperationKey: (await import("@domain/task/operation-key.js")).taskOperationKey,
   failureOutcome: (await import("@domain/node-task/failure-outcome.js")).failureOutcome,
   buildAgentConfig: vi.fn(),
   generateTextRetry: vi.fn(),

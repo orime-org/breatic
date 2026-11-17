@@ -47,7 +47,7 @@ import {
   modelCatalog,
   violatesTextLengthForModel,
 } from "@breatic/domain";
-import { nodeHistoryService } from "@breatic/domain";
+import { nodeHistoryService, taskOperationKey } from "@breatic/domain";
 import { assertLlmServable, assertServable } from "@server/modules/task/model-servable.js";
 import { catalogEntryOf } from "@breatic/shared/mini-tools";
 import { nodeTaskService, runningSlotService } from "@breatic/domain";
@@ -408,7 +408,7 @@ canvas.post(
     await creditHoldService.releaseHold(taskId).catch((releaseErr: unknown) =>
       logger.error({ err: releaseErr, taskId, projectId }, "credit_hold_release_failed"),
     );
-    await operationService.releaseOperation(`task:${taskId}`, undefined, "not_started").catch((releaseErr: unknown) =>
+    await operationService.releaseOperation(taskOperationKey(taskId), undefined, "not_started").catch((releaseErr: unknown) =>
       logger.error({ err: releaseErr, taskId, projectId }, "operation_release_failed"),
     );
     throw err;

@@ -65,6 +65,7 @@ vi.mock("@breatic/core", () => ({
   logger: { info: h.info, warn: h.warn, error: h.error, debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", async () => ({
+  taskOperationKey: (await import("@domain/task/operation-key.js")).taskOperationKey,
   failureOutcome: (await import("@domain/node-task/failure-outcome.js")).failureOutcome,
   taskService: {
     getByIdInternal: h.getByIdInternal,

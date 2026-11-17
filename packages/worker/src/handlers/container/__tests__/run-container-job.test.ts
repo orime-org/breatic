@@ -50,6 +50,7 @@ vi.mock("@breatic/core", async (importOriginal) => ({
 }));
 
 vi.mock("@breatic/domain", async () => ({
+  taskOperationKey: (await import("@domain/task/operation-key.js")).taskOperationKey,
   // The real names, so a flag's line is the one the worker writes.
   INGEST_SIDE_EFFECT_EVENTS: (await import("@domain/asset/ingest-report.service.js")).INGEST_SIDE_EFFECT_EVENTS,
   // The billing formula itself, so the charge these cases assert is the real one.

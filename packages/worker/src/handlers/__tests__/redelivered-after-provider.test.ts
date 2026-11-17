@@ -53,7 +53,8 @@ vi.mock("@breatic/core", () => ({
   NotFoundError: class extends Error {},
   logger: { info: vi.fn(), warn: mockWarn, error: mockError, debug: vi.fn() },
 }));
-vi.mock("@breatic/domain", () => ({
+vi.mock("@breatic/domain", async () => ({
+  taskOperationKey: (await import("@domain/task/operation-key.js")).taskOperationKey,
   buildAgentConfig: vi.fn(),
   generateTextRetry: vi.fn(),
   taskService: {

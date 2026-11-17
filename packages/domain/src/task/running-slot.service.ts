@@ -43,6 +43,7 @@ import { StillRunning } from "@domain/task/still-running.js";
 
 export { StillRunning };
 import type { NodeTaskCounts, TaskRowPlace } from "@domain/node-task/node-task.repo.js";
+import { taskOperationKey } from "@domain/task/operation-key.js";
 
 /** Which row the gate judges. */
 export interface GateInput {
@@ -219,7 +220,7 @@ async function judgeTask(row: taskRepo.GateTaskRow, jobId: string, limit: number
   return db.transaction(async (tx): Promise<Judged> => {
     if (!(await takeLock(row.userId, tx))) return { kind: "busy" };
     const { running, ahead } = await standing(row.userId, limit, row.createdAt, tx);
-    const key = `task:${row.id}`;
+    const key = taskOperationKey(row.id);
     if (running + ahead < limit) {
       if ((await taskRepo.startPending(row.id, jobId, tx)) === null) return { kind: "ended" };
       const places = row.slotWaitSince === null ? [] : await nodeTaskRepo.startWaiting(row.id, tx);
@@ -272,7 +273,7 @@ async function judgeExecution(row: { id: string; actorUserId: string; createdAt:
 async function closeFailed(row: taskRepo.GateTaskRow): Promise<unknown[]> {
   await db.transaction(async (tx) => {
     await creditHoldRepo.releaseHold(row.id, tx);
-    await operationService.releaseOperation(`task:${row.id}`, tx, "run_failed");
+    await operationService.releaseOperation(taskOperationKey(row.id), tx, "run_failed");
   });
   return (await failRows(row.id, row.errorMessage ?? "internal")).publishFailures;
 }
@@ -343,7 +344,7 @@ export async function cancelQueued(taskId: string): Promise<CancelOutcome> {
     await taskRepo.lockRunningSlots(row.userId, tx);
     if (!(await taskRepo.cancelPending(taskId, tx))) return false;
     await creditHoldRepo.releaseHold(taskId, tx);
-    await operationService.releaseOperation(`task:${taskId}`, tx, "cancelled");
+    await operationService.releaseOperation(taskOperationKey(taskId), tx, "cancelled");
     return true;
   });
   if (!cancelled) return { cancelled: false, counts: null, publishFailures: [] };
@@ -367,7 +368,7 @@ export async function failTask(taskId: string, errorMessage: string): Promise<{ 
     await taskRepo.lockRunningSlots(row.userId, tx);
     const moved = await taskRepo.failOpen(taskId, errorMessage, tx);
     await creditHoldRepo.releaseHold(taskId, tx);
-    await operationService.releaseOperation(`task:${taskId}`, tx, "run_failed");
+    await operationService.releaseOperation(taskOperationKey(taskId), tx, "run_failed");
     return moved;
   });
   return { failed, publishFailures: (await failRows(taskId, errorMessage)).publishFailures };

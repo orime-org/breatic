@@ -19,6 +19,7 @@ import {
   creditsForUsd,
   ingestReportService,
   openContainerOutputs,
+  taskOperationKey,
   upstreamStepRepo,
 } from "@breatic/domain";
 import {
@@ -121,7 +122,7 @@ async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunIn
   if (held) return { stepId: step.id, job: held };
   const { deadlineAt } = input;
   const job: StoredJob = {
-    jobId: `task:${input.taskId}`,
+    jobId: taskOperationKey(input.taskId),
     containerClass: plan.container_class,
     deadlineAt,
     outputs: await openContainerOutputs({
@@ -204,7 +205,7 @@ async function recordUsage(input: ContainerRunInput, op: ContainerOp, containerC
   }
   const costUsd = containerCostUsd(usage, size, config.prices);
   const recorder = createUsageRecorder({
-    operationKey: `task:${input.taskId}`,
+    operationKey: taskOperationKey(input.taskId),
     feature: "mini_tool",
     actorUserId: input.userId,
     projectId: input.projectId,

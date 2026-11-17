@@ -49,6 +49,7 @@ vi.mock("@breatic/core", () => ({
 }));
 
 vi.mock("@breatic/domain", async () => ({
+  taskOperationKey: (await import("@domain/task/operation-key.js")).taskOperationKey,
   // The real emitter, so what this file asserts stays the shape of the event
   // rather than the fact that a function was called. It reaches
   // `publishNodeEvent` through the core mock above.

@@ -24,7 +24,7 @@ import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getUnderstandConfig, getAgentConfig } from "@breatic/core";
 import { costsOf, type Cost } from "@breatic/provider";
 import { failureOutcome, runningSlotService, taskRepo, taskService, upstreamStepRepo } from "@breatic/domain";
-import { creditHoldService, creditLotService, operationService, toChargeCredits } from "@breatic/domain";
+import { creditHoldService, creditLotService, operationService, taskOperationKey, toChargeCredits } from "@breatic/domain";
 import { modelCatalog, nodeHistoryService, sceneTaskService } from "@breatic/domain";
 import {
   assetRepo,
@@ -586,7 +586,7 @@ async function runTaskBody(
    */
   const recorderFor = (feature: "canvas_understand" | "canvas_transcribe"): UsageRecorder =>
     createUsageRecorder({
-      operationKey: `task:${taskId}`,
+      operationKey: taskOperationKey(taskId),
       feature,
       actorUserId: userId,
       projectId: projectId ?? null,
@@ -1113,7 +1113,7 @@ async function recordLookedUpCalls(runEnd: RunContext, pending: readonly Waiting
   const first = calls[0];
   if (first === undefined) return;
   const recorder = createUsageRecorder({
-    operationKey: `task:${runEnd.taskId}`,
+    operationKey: taskOperationKey(runEnd.taskId),
     feature: first.recordAs.feature,
     actorUserId: runEnd.userId,
     projectId: runEnd.projectId ?? null,
@@ -1564,7 +1564,7 @@ export async function releaseRunHold(taskId: string, userId: string): Promise<vo
  * @param userId - Who started it, for the log.
  */
 export async function releaseRunOperation(taskId: string, userId: string): Promise<void> {
-  await operationService.releaseOperation(`task:${taskId}`, undefined, "run_failed").catch((err: unknown) =>
+  await operationService.releaseOperation(taskOperationKey(taskId), undefined, "run_failed").catch((err: unknown) =>
     logger.error({ err, taskId, userId }, "operation_release_failed"),
   );
 }

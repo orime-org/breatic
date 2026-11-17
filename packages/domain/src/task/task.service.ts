@@ -14,6 +14,7 @@ import * as operationService from "@domain/operation/operation.service.js";
 import { t } from "@breatic/shared";
 import { db, NotFoundError, ForbiddenError, type DbTx } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
+import { taskOperationKey } from "@domain/task/operation-key.js";
 
 /**
  * Create a new task record.
@@ -185,7 +186,7 @@ export async function markCompletedAndBill(
       await creditLotService.requestCharge({ ...charge, kind: "task", referenceId: taskId }, tx);
     }
     // The run's operation counts in the commit that records its success (inner#1968).
-    if (completed) counted = await operationService.countOperation(`task:${taskId}`, tx);
+    if (completed) counted = await operationService.countOperation(taskOperationKey(taskId), tx);
     return completed;
   });
   await operationService.settleOverage(counted);
@@ -206,7 +207,7 @@ export async function markCompletedAndCount(taskId: string, result: Record<strin
   let counted: operationService.CountOutcome | null = null;
   const won = await db.transaction(async (tx) => {
     const completed = await taskRepo.markCompleted(taskId, result, durationMs, tx);
-    if (completed) counted = await operationService.countOperation(`task:${taskId}`, tx);
+    if (completed) counted = await operationService.countOperation(taskOperationKey(taskId), tx);
     return completed;
   });
   await operationService.settleOverage(counted);

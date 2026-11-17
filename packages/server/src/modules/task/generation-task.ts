@@ -18,7 +18,7 @@
 import { randomUUID } from "node:crypto";
 import { getNodeTaskConfig, AppError, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
-import { creditHoldService, nodeTaskService, operationService, taskService } from "@breatic/domain";
+import { creditHoldService, nodeTaskService, operationService, taskOperationKey, taskService } from "@breatic/domain";
 import { admitOperationOrRefuse } from "@server/modules/operation/operation-admission.service.js";
 import { assertWithinSpendCap, reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
 import { assertAccess } from "@server/modules/project/project.service.js";
@@ -156,7 +156,7 @@ export async function holdRowedRun<T>(opts: {
   } catch (err) {
     // A refused admission held nothing, and releasing it does nothing.
     await creditHoldService.releaseHold(opts.taskId);
-    await operationService.releaseOperation(`task:${opts.taskId}`, undefined, "not_started");
+    await operationService.releaseOperation(taskOperationKey(opts.taskId), undefined, "not_started");
     throw err;
   }
 }
@@ -267,7 +267,7 @@ export async function holdRun<T>(opts: {
   try {
     await reserveForRun(opts.projectId, opts.userId, taskId, estimate);
   } catch (err) {
-    await operationService.releaseOperation(`task:${taskId}`, undefined, "not_started");
+    await operationService.releaseOperation(taskOperationKey(taskId), undefined, "not_started");
     throw err;
   }
   return { taskId, checked };
@@ -306,7 +306,7 @@ export async function admitTaskOperation(
   userId: string,
   inputs: readonly string[],
 ): Promise<void> {
-  await admitOperationOrRefuse({ kind, key: `task:${taskId}`, projectId, actorUserId: userId, inputs });
+  await admitOperationOrRefuse({ kind, key: taskOperationKey(taskId), projectId, actorUserId: userId, inputs });
 }
 
 /**
@@ -332,7 +332,7 @@ export async function settleUnqueuedRun(
   for (const settle of [
     // A refused admission held nothing, and releasing it does nothing.
     (): Promise<unknown> => creditHoldService.releaseHold(taskId),
-    (): Promise<unknown> => operationService.releaseOperation(`task:${taskId}`, undefined, "not_started"),
+    (): Promise<unknown> => operationService.releaseOperation(taskOperationKey(taskId), undefined, "not_started"),
     (): Promise<unknown> => taskService.markFailed(taskId, reason),
     settleRow,
   ]) {

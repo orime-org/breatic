@@ -617,6 +617,7 @@ export const domainMock = async () => ({
   // @breatic/core, whose mock factory lives in this file, so a top-level
   // import waits on itself and the suite hangs.
   ...(await import("../../../../domain/src/agent/memory-entries.js")),
+  taskOperationKey: (await import("../../../../domain/src/task/operation-key.js")).taskOperationKey,
   createUsageRecorder: vi.fn(usageRecorderDouble),
   handOffLookups: mocks.handOffLookups,
   // The same shape as the real one: every tool in the set gets the recorder.

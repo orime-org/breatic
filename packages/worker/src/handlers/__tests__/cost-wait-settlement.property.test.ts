@@ -78,6 +78,7 @@ vi.mock("@breatic/core", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", async () => ({
+  taskOperationKey: (await import("@domain/task/operation-key.js")).taskOperationKey,
   failureOutcome: (await import("@domain/node-task/failure-outcome.js")).failureOutcome,
   taskService: {
     getByIdInternal: vi.fn(async () => ({ ...h.state.row, userId: "user-1", startedAt: new Date(h.state.now - 4_000), providerResultUrl: null })),
