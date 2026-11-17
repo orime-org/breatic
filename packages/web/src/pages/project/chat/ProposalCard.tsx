@@ -19,7 +19,7 @@ import {
   todosOf,
   writtenOf,
 } from '@web/pages/project/chat/proposal-card';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { useCanvasStore } from '@web/stores';
 
 interface ProposalCardProps {

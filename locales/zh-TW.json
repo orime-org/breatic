@@ -370,6 +370,13 @@
     },
     "region": {
       "unavailable": "這個 Studio 暫時無法存取，請稍後再試。"
+    },
+    "byok": {
+      "disabled": "這個部署沒有開啟自帶 key。",
+      "upstream_not_offered": "這裡不接受這家的 key。",
+      "key_malformed": "key 格式不對，請檢查是否多了字元後重新貼上。",
+      "key_not_connected": "這把 key 連不上，請檢查後再試。",
+      "model_choice_refused": "這家用你已儲存的 key 跑不了這個模型。"
     }
   },
   "chat": {
@@ -1034,7 +1041,9 @@
       },
       "editProposalMarks": "請替換大括號裡的內容。橘色的注意事項不會傳給模型。",
       "notePrefix": "注意事項：",
-      "integerBlank": "留空為自動"
+      "integerBlank": "留空為自動",
+      "usesOwnKey": "用你的 key，不扣點數",
+      "usesStudioKey": "用 Studio 的 key，不扣點數"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -1177,7 +1186,10 @@
         "no_audio_track": "{kind, select, audio {這段音訊讀不出聲音。} other {這個影片沒有音軌。}}",
         "cut_short": "內容太長，沒能轉寫完。",
         "input_refused": "{model} 無法使用目前的設定，請修改設定或換個模型。",
-        "model_not_configured": "這個部署還沒設定好 {model}：需要設定 {envVars}。"
+        "model_not_configured": "這個部署還沒設定好 {model}：需要設定 {envVars}。",
+        "account_key_failed": "{keyReason, select, invalid {{upstream} 拒絕了這把 key：key 無效。到 BYOK 設定換 key。} no_balance {{upstream} 的 key 餘額不足。去 {upstream} 儲值。} model_not_found {{upstream} 用這把 key 跑不了這個模型。到 BYOK 設定換一家上游。} rate_limited {{upstream} 在限制這把 key 的請求，稍後再試。} other {{upstream} 的 key 出錯了。到 BYOK 設定檢查。}}",
+        "account_key_missing": "這次執行用的 key 已被替換或刪除，請重新執行。",
+        "upstream_unavailable": "連不上 {upstream}，稍後再試。"
       },
       "kind": {
         "upload": "上傳",
@@ -3620,6 +3632,76 @@
     "cancel": "取消",
     "submit": "提交申請",
     "submitted": "申請已提交"
+  },
+  "byok": {
+    "heading": "BYOK 設定",
+    "tabKeys": "上游 key",
+    "tabModels": "模型",
+    "searchUpstreams": "搜尋上游",
+    "added": "已新增",
+    "noneAdded": "還沒有新增",
+    "notAddedGroup": "未新增 · {group}",
+    "groupLanguageModel": "語言模型",
+    "groupOfficial": "官方 API",
+    "groupReseller": "中轉",
+    "noUpstreamMatch": "沒有符合的上游",
+    "connected": "已連通",
+    "notConnected": "未連通",
+    "lastChecked": "上次檢測 {time}",
+    "balance": "餘額 ${amount}",
+    "balanceKeyLimit": "這把 key 剩餘額度 ${amount}",
+    "balanceForbidden": "這把 key 沒有查詢餘額的權限。",
+    "balanceNoCap": "這把 key 沒設額度上限。",
+    "balanceUnsupported": "這家查不到餘額。",
+    "refresh": "重新整理",
+    "replace": "替換",
+    "delete": "刪除",
+    "save": "儲存",
+    "keyLabel": "API key",
+    "keyPlaceholder": "貼上 key",
+    "keyEmpty": "請先貼上 key。",
+    "saveHint": "儲存前會先檢測這把 key 能不能連通。",
+    "saveFailed": "沒能儲存 key，請重試。",
+    "saved": "{upstream} 的 key 已儲存",
+    "deleted": "已刪除 {upstream} 的 key",
+    "checkFailed": "沒能檢測 key，請重試。",
+    "deleteFailed": "沒能刪除 key，請重試。",
+    "getKey": "到 {upstream} 取得 key",
+    "runsModels": "這家能跑的模型",
+    "runsNone": "這裡沒有能用它跑的模型。",
+    "openrouterNote": "所有語言模型呼叫都用這把 key，不扣點數。",
+    "replaceTitle": "替換 {upstream} 的 key",
+    "replaceBody": "儲存前會先檢測新 key 能不能連通。替換後，正在用舊 key 的任務會中斷。",
+    "deleteTitle": "要刪除 {upstream} 的 key 嗎？",
+    "deleteBody": "刪除後，正在用這把 key 的任務會中斷，設為用它的模型改回平台的 key。",
+    "deleteBodyLanguage": "刪除後，正在用這把 key 的任務會中斷，語言模型呼叫改回平台的 key。",
+    "platformKey": "平台的 key（扣點數）",
+    "modelsIntro": "沒選的模型用平台的 key，扣點數。只列出你已填 key 的上游能跑的模型。",
+    "modelsEmpty": "新增上游的 key 後，在這裡選模型用哪家；沒選的都用平台的 key。",
+    "goAddKey": "去新增 key",
+    "searchModels": "搜尋模型",
+    "noModelMatch": "沒有符合的模型",
+    "noModelsInModality": "你填的上游都跑不了這類模型。",
+    "modelSaved": "{model} 改用 {upstream}",
+    "modelSaveFailed": "沒能變更，請重試。",
+    "disabled": "這個部署沒有開啟自帶 key。",
+    "loadFailed": "沒能讀取 BYOK 設定。",
+    "retry": "重試",
+    "showKey": "顯示 key",
+    "hideKey": "隱藏 key",
+    "failure": {
+      "invalid": "key 無效或已被撤銷。",
+      "no_balance": "這把 key 的帳戶餘額不足。",
+      "unreachable": "連不上上游，稍後再試。",
+      "other": "這把 key 沒有連通。"
+    },
+    "modality": {
+      "image": "圖片",
+      "video": "影片",
+      "audio": "音訊",
+      "tts": "配音",
+      "three_d": "3D"
+    }
   },
   "credits": {
     "panelTitle": "點數",

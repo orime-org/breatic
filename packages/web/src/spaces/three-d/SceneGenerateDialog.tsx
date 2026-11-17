@@ -25,7 +25,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { PanelRunFooter } from '@web/spaces/canvas/_shared/PanelRunFooter';
 import { executeFailureMessage } from '@web/spaces/canvas/generate/execute-error-message';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { ModePill, type ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
@@ -214,7 +214,7 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
   // The run as the server plans it: the prompt cleaned and trimmed (`planSceneGeneration`). Priced, and asked why
   // no upstream here takes it (#1521), said by the press.
   const estimateInput = React.useMemo(() => ({ params: settings, ...(mode === 't23d' ? { prompt: extractPromptText(prompt).trim() } : {}) }), [settings, mode, prompt]);
-  const { creditText: shownCredits, refusalText } = useRunCheck(entry, estimateInput, catalog.data?.credit_multiplier ?? 1);
+  const { creditText: shownCredits, refusalText } = useRunCheck(entry, estimateInput, catalog.data?.credit_multiplier ?? 1, projectId);
   const creditText = shownCredits ?? '';
 
   // Uploads into the view slots; any still running is cancelled when the form goes.

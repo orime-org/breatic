@@ -6,6 +6,7 @@ import * as React from 'react';
 import { inputRefusalText, type InputRefusalShape, type ModelEntry, type RunRoute } from '@breatic/shared';
 import type { CreditEstimate, EstimateInput } from '@breatic/shared/pricing';
 
+import { useKeyPlan } from '@web/features/byok/byok-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { creditEstimateText } from '@web/spaces/canvas/generate/credit-estimate-text';
 
@@ -99,25 +100,50 @@ export interface RunCheck {
 
 /**
  * The estimate and the refusal of one run as set up, as a generation entry shows and says them.
+ *
+ * A model the project's payer runs on their own key (inner#1953) costs no credits, so the entry says whose key it
+ * uses instead of a figure, and the refusal is asked of that one upstream with the availability counted on the
+ * payer's keys: an upstream the deployment has no key for still answers it.
  * @param model - The selected model, or undefined when none is picked yet.
  * @param input - The run as it will be sent.
  * @param creditMultiplier - Credits per US cent, off the catalog.
- * @param route - How the run chooses its upstream, the same value its request carries.
+ * @param projectId - The project the entry is in, whose key plan decides whose key runs it; empty or undefined reads
+ *   none and prices on the deployment's weights.
  * @returns The estimate's text, the refusal sentence and a ref to the latest one.
  */
 export function useRunCheck(
   model: ModelEntry | undefined,
   input: EstimateInput,
   creditMultiplier: number,
-  route: RunRoute = DEFAULT_ROUTE,
+  projectId?: string,
 ): RunCheck {
   // Read so both sentences follow an in-session language switch.
   const t = useTranslation();
-  const { estimate, refusal } = useRunAnswer(model, input, creditMultiplier, route);
+  const project = projectId === '' ? undefined : projectId;
+  const plan = useKeyPlan(project);
+  const onKey = model === undefined ? undefined : plan.data?.models[model.name];
+  const asked = React.useMemo(
+    () => (model === undefined || onKey === undefined ? model : { ...model, availability: onKey.availability }),
+    [model, onKey],
+  );
+  const upstream = onKey?.upstream;
+  const route = React.useMemo<RunRoute>(
+    () => (upstream === undefined ? DEFAULT_ROUTE : { mode: 'upstream', upstream }),
+    [upstream],
+  );
+  const { estimate, refusal } = useRunAnswer(asked, input, creditMultiplier, route);
   const refusalText = refusal === undefined || model === undefined ? undefined : inputRefusalText(refusal, model.display_name);
   const latestRefusal = React.useRef<string | undefined>(undefined);
   React.useEffect(() => {
     latestRefusal.current = refusalText;
   }, [refusalText]);
-  return { creditText: estimate ? creditEstimateText(estimate, t) : undefined, refusalText, latestRefusal };
+  let creditText: string | undefined;
+  if (onKey !== undefined) {
+    creditText = t(plan.data?.payer === 'admin' ? 'canvas.generatePanel.usesStudioKey' : 'canvas.generatePanel.usesOwnKey');
+  } else if (project === undefined || !plan.isPending) {
+    // Nothing prints until the plan says whose key runs it, so a figure never flashes before "no credits". A plan
+    // that failed to load prices on the platform key, which the server charges by when it cannot read one either.
+    creditText = estimate ? creditEstimateText(estimate, t) : undefined;
+  }
+  return { creditText, refusalText, latestRefusal };
 }

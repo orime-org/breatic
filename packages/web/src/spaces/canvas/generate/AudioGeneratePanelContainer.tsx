@@ -70,7 +70,7 @@ import {
   CatalogGatedFrame,
   useOpenPanelNode,
 } from '@web/spaces/canvas/generate/generate-panel-frame';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { resolveModelSwitch, resolveParamsEdit } from '@web/spaces/canvas/generate/model-params';
 import {
   filterAvailableModes,
@@ -488,7 +488,7 @@ function AudioGeneratePanelBody({
   // The run as the click sends it: a model taking no prompt with these settings sends none, whatever the box
   // last held, and the lyrics go while the lyrics box is on the panel. Priced, and asked why no upstream here takes it (#1521), for the button and the click.
   const estimateInput = audioEstimateInput({ ...vm, params }, slots, vm.promptRequired ? extractPromptText(promptText) : '', lyrics ? lyricsText : undefined);
-  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
+  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
   const onExecute = React.useCallback((): void => {
     // Every execute-critical value is read synchronously here, never from a
     // render closure that batching and live collaboration make stale.

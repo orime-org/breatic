@@ -10,7 +10,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { toast } from '@web/lib/toast';
 import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { ownControlSummary, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { SCENE_MODE_LABELS, fillFromProposal } from '@web/spaces/three-d/scene-generation';

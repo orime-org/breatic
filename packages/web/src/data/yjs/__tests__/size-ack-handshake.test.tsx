@@ -43,7 +43,7 @@ import { clearAllDocSizes, readDocSize } from '@web/data/yjs/doc-size';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { readRequestedSpaces } from '@web/pages/project/chat/space-request-read';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 
 const { expectHandshake, resetServer, settle } = h7;
 type ScriptedServer = InstanceType<typeof h7.ScriptedServer>;

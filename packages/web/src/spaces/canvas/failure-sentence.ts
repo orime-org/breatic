@@ -92,5 +92,9 @@ export function failureSentence(
     // The model a refusal or a missing setup is about, and the variables it needs.
     model: held.model ?? '',
     envVars: (held.envVars ?? []).join(', '),
+    // The upstream an account's own key failed on, and why (inner#1953). Always a value: ICU throws on a select
+    // with none.
+    upstream: held.upstream ?? '',
+    keyReason: held.keyReason ?? 'other',
   });
 }

@@ -19,7 +19,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import * as React from 'react';
 
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 
 /**
  * Prefetch the model catalog once for this mount.

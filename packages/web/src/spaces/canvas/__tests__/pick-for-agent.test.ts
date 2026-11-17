@@ -15,7 +15,7 @@ import { voicesApi } from '@web/data/api/voices';
 import { addNode, setNodeMode } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { firstVoiceKey } from '@web/spaces/canvas/generate/first-voice-query';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { handToAgent, pickForAgent } from '@web/spaces/canvas/pick-for-agent';
 import * as attach from '@web/stores/attach-to-chat';
 

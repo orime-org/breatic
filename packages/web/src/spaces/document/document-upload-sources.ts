@@ -96,6 +96,10 @@ const FETCH_FAILURE: Readonly<Record<TaskFailureReason, UploadFailure>> = {
   cut_short: { reason: 'failed', retryable: false },
   input_refused: { reason: 'failed', retryable: false },
   model_not_configured: { reason: 'failed', retryable: false },
+  // A fetch runs on no model key; these come from model tasks (inner#1953) and never from a fetch.
+  account_key_failed: { reason: 'failed', retryable: false },
+  account_key_missing: { reason: 'failed', retryable: false },
+  upstream_unavailable: { reason: 'failed', retryable: true },
 };
 
 /** What the block says for each way a file upload fails. */

@@ -98,7 +98,7 @@ import {
 } from '@web/spaces/canvas/generate/video-panel-view-model';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import {
@@ -432,7 +432,7 @@ function VideoGeneratePanelBody({
   // prompt. Priced, and asked why no upstream here takes it (#1521), for the button and the click.
   const sentPrompt = !vm.promptRequired ? '' : shotRun ? (shotRun.writtenPrompt ?? '') : promptText;
   const estimateInput = videoEstimateInput(vm, extractPromptText(sentPrompt), shotRun?.params);
-  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
+  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
   // The picked slot URLs are a fresh object per view-model build, on the same
   // terms as the references above — at most one short string per slot, so a
   // stringify key is cheap and exact. Before the slots were collected into one
