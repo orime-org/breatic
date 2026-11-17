@@ -143,6 +143,93 @@ export function expandScenePose(pose: ScenePose): Record<string, unknown> {
   return Object.fromEntries(Object.entries(pose).map(([key, value]) => [`${SCENE_POSE_KEY_PREFIX}${key}`, value]));
 }
 
+/** Every changed field of a part's look is its own key on the object record: `look.<part>.<field>` (inner#1693). */
+export const SCENE_LOOK_KEY_PREFIX = 'look.';
+
+/** The most parts one object's look may hold. */
+export const SCENE_LOOK_MAX_PARTS = 256;
+
+/** The part that holds primitives without a material. */
+export const SCENE_LOOK_DEFAULT_PART = 'd';
+
+/** A part is a glTF material index from 0 to 9999 without leading zeros, or the default part. */
+const LOOK_PART_KEY = /^(?:0|[1-9]\d{0,3}|d)$/u;
+
+const unit = z.number().finite().min(0).max(1);
+
+/** The fields one part may change; each is optional and absent means the model's own value. */
+export const SceneLookPartSchema = z.object({
+  color: SceneColorSchema,
+  roughness: unit,
+  metalness: unit,
+  opacity: unit,
+  transmission: unit,
+  emissive: SceneColorSchema,
+  emissiveIntensity: z.number().finite().min(0).max(10),
+  map: z.union([z.string().uuid(), z.literal('none')]),
+  mapRepeat: z.tuple([z.number().finite().min(0.01).max(100), z.number().finite().min(0.01).max(100)]),
+  mapOffset: z.tuple([z.number().finite().min(-10).max(10), z.number().finite().min(-10).max(10)]),
+  mapRotation: z.number().finite().min(-180).max(180),
+}).partial().strict();
+
+export type SceneLookPart = z.infer<typeof SceneLookPartSchema>;
+export type SceneLookField = keyof SceneLookPart;
+/** Changed parts keyed by part. */
+export type SceneLook = Readonly<Record<string, SceneLookPart>>;
+
+/** Every look field, in panel order. */
+export const SCENE_LOOK_FIELDS = Object.keys(SceneLookPartSchema.shape) as readonly SceneLookField[];
+
+/**
+ * Check a whole look; own keys are read as given, so `__proto__` is judged like any other key.
+ * @param value - The candidate look.
+ * @returns Whether it holds at most {@link SCENE_LOOK_MAX_PARTS} well-formed parts.
+ */
+function isSceneLook(value: unknown): value is SceneLook {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const entries = Object.entries(value);
+  return entries.length <= SCENE_LOOK_MAX_PARTS
+    && entries.every(([part, fields]) => LOOK_PART_KEY.test(part) && SceneLookPartSchema.safeParse(fields).success);
+}
+
+/** A look as one value: the projection and commands carry it, the record stores it flat. */
+export const SceneLookSchema = z.custom<SceneLook>(isSceneLook, 'Invalid scene look');
+
+/**
+ * Collect a record's flat look keys into one `look` value; a `look.` key without exactly a part and a field stays as it is and is refused by the strict schema.
+ * @param record - A stored object record's plain values.
+ * @returns A copy without the gathered keys, carrying `look` only when the record had any.
+ */
+export function gatherSceneLook(record: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const values: [string, unknown][] = [];
+  const parts = new Map<string, [string, unknown][]>();
+  for (const [key, value] of Object.entries(record)) {
+    const path = key.startsWith(SCENE_LOOK_KEY_PREFIX) ? key.slice(SCENE_LOOK_KEY_PREFIX.length).split('.') : [];
+    const [part, field] = path;
+    if (path.length !== 2 || !part || !field) {
+      values.push([key, value]);
+      continue;
+    }
+    const fields = parts.get(part) ?? [];
+    fields.push([field, value]);
+    parts.set(part, fields);
+  }
+  // Object.fromEntries defines own keys, so a stored `look.__proto__.x` is validated like any other part.
+  const gathered = Object.fromEntries(values);
+  if (parts.size === 0) return gathered;
+  return { ...gathered, look: Object.fromEntries([...parts].map(([part, fields]) => [part, Object.fromEntries(fields)])) };
+}
+
+/**
+ * Spread a look into the flat record keys it is stored under.
+ * @param look - The look to store.
+ * @returns One prefixed key per part field.
+ */
+export function expandSceneLook(look: SceneLook): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(look).flatMap(([part, fields]) =>
+    Object.entries(fields).map(([field, value]) => [`${SCENE_LOOK_KEY_PREFIX}${part}.${field}`, value])));
+}
+
 /**
  * Plain scene values shared by the collaboration projection and renderer, each checked on its own;
  * which keys a kind may or must carry is checked by {@link SceneObjectSchema}.
@@ -155,6 +242,7 @@ export const SceneObjectValuesSchema = z.object({
   scale: SceneScaleSchema,
   locked: z.boolean(),
   pose: ScenePoseSchema.optional(),
+  look: SceneLookSchema.optional(),
   number: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
   focalLength: z.number().finite().min(SCENE_FOCAL_LENGTH_MIN).max(SCENE_FOCAL_LENGTH_MAX).optional(),
   frame: z.enum(VIEWFINDER_RATIOS).optional(),
@@ -183,6 +271,7 @@ function kindKeysIssue(values: z.infer<typeof SceneObjectValuesSchema>): string 
   }
   if (values.number === undefined) return 'A camera or light needs a number';
   if (values.pose !== undefined) return 'A camera or light has no pose';
+  if (values.look !== undefined) return 'A camera or light has no look';
   if (values.scale.some((axis) => axis !== 1)) return 'A camera or light keeps a unit scale';
   if (model.kind === 'camera') return SCENE_LIGHT_KEYS.some((key) => has[key] !== undefined) ? 'A camera carries no light keys' : null;
   if (SCENE_CAMERA_KEYS.some((key) => has[key] !== undefined)) return 'A light carries no camera keys';
@@ -261,8 +350,8 @@ export function nextDirectorNumber(objects: readonly SceneObject[], kind: 'camer
   return Math.max(0, ...objects.map((object) => (object.model.kind === kind ? object.number ?? 0 : 0))) + 1;
 }
 
-/** Record keys that commands overwrite after creation; `model` is fixed at creation and a pose is stored as flat `pose.` keys. */
-export type SceneEditableField = Exclude<keyof SceneObjectValues, 'model' | 'pose'>;
+/** Record keys that commands overwrite after creation; `model` is fixed at creation, and a pose and a look are stored as flat `pose.` and `look.` keys. */
+export type SceneEditableField = Exclude<keyof SceneObjectValues, 'model' | 'pose' | 'look'>;
 
 /** Configured import budgets carried by the readable Project API. */
 export interface SceneImportLimits {
