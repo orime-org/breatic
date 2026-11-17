@@ -521,6 +521,57 @@ describe('CreditsTab', () => {
     expect(row).toHaveTextContent('-150');
   });
 
+  it('names an operation past the allowance in the model column, beside its project (inner#1968)', async () => {
+    fetchStudioCredits.mockResolvedValue(
+      credits({
+        ledger: {
+          items: [
+            {
+              ...credits().ledger.items[0],
+              kind: 'operation_overage',
+              model: null,
+              provider: null,
+              charged: '-0.500000' as CreditDecimal,
+              consumed: '-0.500000' as CreditDecimal,
+            },
+          ],
+          nextCursor: null,
+        },
+      }),
+    );
+    renderTab(<CreditsTab slug='acme' />);
+
+    const row = await screen.findByTestId('studio-ledger-e1');
+    expect(row).toHaveTextContent('Operations over the allowance');
+    expect(row).toHaveTextContent('夏季广告片');
+    expect(within(row).queryByTestId('studio-ledger-event')).toBeNull();
+  });
+
+  it('marks what an operation past the allowance left owing, as a generation does (inner#1968)', async () => {
+    fetchStudioCredits.mockResolvedValue(
+      credits({
+        ledger: {
+          items: [
+            {
+              ...credits().ledger.items[0],
+              kind: 'operation_overage',
+              model: null,
+              provider: null,
+              charged: '0.000000' as CreditDecimal,
+              consumed: '-0.500000' as CreditDecimal,
+              owed: '-0.500000' as CreditDecimal,
+            },
+          ],
+          nextCursor: null,
+        },
+      }),
+    );
+    renderTab(<CreditsTab slug='acme' />);
+
+    const row = await screen.findByTestId('studio-ledger-e1');
+    expect(within(row).getByTestId('studio-ledger-note')).toHaveTextContent('owed 0.5');
+  });
+
   it('消耗和实扣相等时不标小字', async () => {
     fetchStudioCredits.mockResolvedValue(credits());
     renderTab(<CreditsTab slug='acme' />);

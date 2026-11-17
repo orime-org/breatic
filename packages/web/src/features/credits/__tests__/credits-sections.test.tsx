@@ -579,7 +579,7 @@ describe('the credits overlay, section by section', () => {
     it('names an operation overage line and keeps it apart from the model fee', async () => {
       fetchCreditLedger.mockResolvedValue({
         items: [
-          entry({ id: 'e-overage', kind: 'operation_overage' as CreditLedgerView['kind'], amount: '-0.500000' as CreditDecimal, model: null }),
+          entry({ id: 'e-overage', kind: 'operation_overage', amount: '-0.500000' as CreditDecimal, model: null }),
           entry({ id: 'e-fee' }),
         ],
         nextCursor: null,

@@ -134,9 +134,10 @@ const LedgerRow = React.memo(function LedgerRow({
   // What separates the two sentences is whether the studio ended up owing,
   // which `owed` answers on its own. A charge that reached no lot at all is
   // still a shortfall — it is the whole bill turned into debt, and reading it
-  // off `charged` would call the moment the debt was created a free run.
+  // off `charged` would call the moment the debt was created a free run. An
+  // operation past the allowance is charged the same way, so it can owe too.
   const note =
-    entry.kind !== 'generation' || entry.charged === entry.consumed
+    entry.kind === 'debt_repayment' || entry.charged === entry.consumed
       ? null
       : parseCreditDecimal(entry.owed) !== 0n
         ? t('studio.container.credits.noteShortfall', {
@@ -161,7 +162,11 @@ const LedgerRow = React.memo(function LedgerRow({
       ) : (
         <>
           <td className='py-1.5 text-muted-foreground'>{entry.projectName ?? '—'}</td>
-          <td className='py-1.5 text-muted-foreground'>{entry.model ?? '—'}</td>
+          {/* An operation past the monthly allowance (inner#1968) has no
+              model; the column names what it was instead. */}
+          <td className='py-1.5 text-muted-foreground'>
+            {entry.kind === 'operation_overage' ? t('credits.eventOperationOverage') : (entry.model ?? '—')}
+          </td>
         </>
       )}
       <td className='py-1.5 text-right tabular-nums'>
