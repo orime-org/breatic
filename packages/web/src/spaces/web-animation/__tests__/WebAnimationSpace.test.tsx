@@ -495,6 +495,11 @@ describe('a preview that cannot load', () => {
   });
 });
 
+/** Read every list again and let React Query tell its observers, which it does on a timer after the read settles. */
+async function refetchFailing(): Promise<void> {
+  await act(async () => { await clients.at(-1)!.refetchQueries(); await new Promise((resolve) => setTimeout(resolve, 10)); });
+}
+
 describe('the execution list when a read fails', () => {
   it('keeps the rows when Load more fails, and turns Load more into Retry', async () => {
     const first = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');
@@ -527,6 +532,60 @@ describe('the execution list when a read fails', () => {
     await user.click(within(panel).getByRole('button', { name: t('timeline.retry') }));
     await waitFor(() => expect(within(panel).queryByText(t('spaces.webAnimation.listError'))).toBeNull());
     expect(panel.querySelectorAll('.skeleton-shimmer').length).toBeGreaterThan(0);
+  });
+
+  it('keeps the rows when a background read fails', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    show();
+    await userEvent.setup().click(await screen.findByTestId('motion-open-executions'));
+    const panel = await screen.findByTestId('motion-panel-executions');
+    await within(panel).findByTestId(`motion-row-${NEWER}`);
+    vi.mocked(timelineApi.listSpaceExecutions).mockRejectedValue(new Error('network'));
+    await refetchFailing();
+    expect(within(panel).getByTestId(`motion-row-${NEWER}`)).toBeInTheDocument();
+    expect(within(panel).queryByText(t('spaces.webAnimation.listError'))).toBeNull();
+  });
+});
+
+describe('the preview when the list read fails', () => {
+  /** Fail every read of this Space's Completed list; the other lists answer empty. */
+  function failDone(): void {
+    vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string }) => {
+      if (params.group === 'running' || params.scope === 'timeline') return { rows: [], nextCursor: null, totals: { done: 0, inProgress: 0 } } as never;
+      throw new Error('network');
+    });
+  }
+
+  it('says the list failed with Retry on a failed first read, and waits while Retry reads it again', async () => {
+    failDone();
+    show();
+    const preview = await screen.findByText(t('spaces.webAnimation.listError'));
+    expect(screen.queryByTestId('motion-loading')).toBeNull();
+    vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(() => new Promise(() => {}));
+    await userEvent.setup().click(within(preview.parentElement as HTMLElement).getByRole('button', { name: t('timeline.retry') }));
+    expect(await screen.findByTestId('motion-loading')).toBeInTheDocument();
+    expect(screen.queryByText(t('spaces.webAnimation.listError'))).toBeNull();
+  });
+
+  it('keeps the empty state when a background read of the list fails', async () => {
+    show();
+    await screen.findByTestId('motion-empty');
+    failDone();
+    await refetchFailing();
+    expect(screen.getByTestId('motion-empty')).toBeInTheDocument();
+    expect(screen.queryByTestId('motion-loading')).toBeNull();
+  });
+
+  it('still opens the newest finished result after a background read failed and a named result could not be read', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    failDone();
+    await refetchFailing();
+    vi.mocked(timelineApi.getExecution).mockReset().mockRejectedValue(new Error('not found'));
+    act(() => useSpaceOpenRequestStore.setState({ state: { status: 'opened', request: { type: 'web_animation', select: OLDER }, spaceId: SPACE } }));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(t('spaces.webAnimation.notFound')));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
   });
 });
 

@@ -14,6 +14,7 @@ import { timelineApi } from '@web/data/api/timeline';
 import { useProjectSpaceList, type ProjectSpace } from '@web/data/yjs/project-meta';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
+import { ListLoadError, LoadMoreButton, listShows } from '@web/spaces/web-animation/list-states';
 import { webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
 
 /** A result the picker offers: a create or a modification. */
@@ -107,13 +108,13 @@ export function TimelineWebAnimationPicker({ projectId, making, onPick, onGoMake
   const queryKey = React.useMemo(() => ['timeline-web-results', projectId], [projectId]);
   const queryFn = React.useCallback(({ pageParam, signal }: { pageParam: string | undefined; signal: AbortSignal }) => timelineApi.listResults(projectId, pageParam, signal), [projectId]);
   const list = useInfiniteQuery({ queryKey, queryFn, initialPageParam: undefined as string | undefined, getNextPageParam: (page) => page.nextCursor ?? undefined });
-  const { refetch, fetchNextPage } = list;
+  const { refetch } = list;
+  const shows = listShows(list);
   const rows = React.useMemo(() => (list.data?.pages.flatMap((page) => page.rows) ?? [])
     .filter((row): row is PickableResult => row.kind !== 'web_animation_export'), [list.data]);
   const groups = React.useMemo(() => groupResults(rows, spaces, t('timeline.webAnimation.picker.deletedSpace')), [rows, spaces, t]);
   const changeOpen = React.useCallback((open: boolean): void => { if (!open) onClose(); }, [onClose]);
   const retry = React.useCallback((): void => { void refetch(); }, [refetch]);
-  const more = React.useCallback((): void => { void fetchNextPage(); }, [fetchNextPage]);
   return <Dialog open onOpenChange={changeOpen}>
     <DialogContent data-testid='timeline-web-animation-picker' onCloseAutoFocus={returnFocus} className='flex h-[min(36rem,85vh)] flex-col gap-0 p-0'>
       <DialogHeader className='shrink-0 border-b border-border p-4'>
@@ -121,19 +122,16 @@ export function TimelineWebAnimationPicker({ projectId, making, onPick, onGoMake
         <DialogDescription>{t('timeline.webAnimation.picker.description')}</DialogDescription>
       </DialogHeader>
       <ScrollArea className='min-h-0 flex-1' viewportClassName='p-4'>
-        {list.isPending && <div className='flex flex-col gap-2'>{[0, 1, 2].map((index) => <Skeleton key={index} className='h-12 w-full' />)}</div>}
-        {list.isError && <div className='flex flex-col items-start gap-3 py-4 text-sm'>
-          <p>{t('timeline.webAnimation.picker.error')}</p>
-          <Button type='button' data-testid='timeline-web-animation-picker-retry' variant='outline' onClick={retry} loading={list.isFetching}>{t('timeline.retry')}</Button>
-        </div>}
-        {list.isSuccess && rows.length === 0 && <p className='py-6 text-sm text-muted-foreground'>{t('timeline.webAnimation.picker.empty')}</p>}
+        {shows === 'pending' && <div className='flex flex-col gap-2'>{[0, 1, 2].map((index) => <Skeleton key={index} className='h-12 w-full' />)}</div>}
+        {shows === 'failed' && <ListLoadError message={t('timeline.webAnimation.picker.error')} retrying={list.isFetching} onRetry={retry} testId='timeline-web-animation-picker-retry' />}
+        {shows === 'ready' && rows.length === 0 && <p className='py-6 text-sm text-muted-foreground'>{t('timeline.webAnimation.picker.empty')}</p>}
         <div className='flex flex-col gap-4'>
           {groups.map((group) => <section key={group.key} data-testid={`timeline-picker-group-${group.key}`} className='flex flex-col gap-1'>
             <h3 className='truncate text-xs font-medium text-muted-foreground'>{group.name}</h3>
             {group.rows.map((row) => <PickerRow key={row.id} row={row} onPick={onPick} />)}
           </section>)}
         </div>
-        {list.hasNextPage && <Button type='button' variant='outline' className='mt-3 w-full' onClick={more} loading={list.isFetchingNextPage}>{t('timeline.webAnimation.picker.loadMore')}</Button>}
+        <LoadMoreButton query={list} className='mt-3' />
       </ScrollArea>
       <DialogFooter className='shrink-0 border-t border-border p-4 sm:justify-between'>
         <Button type='button' data-testid='timeline-web-animation-go-make' variant='outline' loading={making} onClick={onGoMake} icon={<Clapperboard className='size-4' />}>{t('timeline.webAnimation.goMake')}</Button>

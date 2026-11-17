@@ -3,11 +3,11 @@
 
 import * as React from 'react';
 
-import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@web/components/ui/tabs';
 import { useTranslation } from '@web/i18n/use-translation';
+import { ListLoadError, LoadMoreButton, listShows } from '@web/spaces/web-animation/list-states';
 import type { MotionTab } from '@web/spaces/web-animation/motion-panels';
 import { MotionPanel, MotionRow } from '@web/spaces/web-animation/motion-parts';
 import { rowsOf, type MotionLists } from '@web/spaces/web-animation/use-motion-lists';
@@ -29,16 +29,9 @@ interface ListBlockProps {
  * @throws {never} Never.
  */
 function ListBlock({ query, selectedId, onPick }: ListBlockProps): React.JSX.Element {
-  const t = useTranslation();
-  const { fetchNextPage } = query;
-  const more = React.useCallback((): void => { void fetchNextPage(); }, [fetchNextPage]);
   return <>
     {rowsOf(query).map((row) => <MotionRow key={row.id} row={row} selected={row.id === selectedId} onPick={onPick} />)}
-    {query.hasNextPage && <div className='p-2'>
-      <Button type='button' variant='outline' size='sm' className='w-full' loading={query.isFetchingNextPage} onClick={more}>
-        {t(query.isFetchNextPageError ? 'timeline.retry' : 'timeline.webAnimation.picker.loadMore')}
-      </Button>
-    </div>}
+    {query.hasNextPage && <div className='p-2'><LoadMoreButton query={query} /></div>}
   </>;
 }
 
@@ -73,9 +66,7 @@ export function MotionExecutionsPanel({ lists, tab, selectedId, onTab, onPick, o
   const { refetch: refetchOwn } = current.own;
   const { refetch: refetchLegacy } = current.legacy;
   const retry = React.useCallback((): void => { void refetchOwn(); void refetchLegacy(); }, [refetchOwn, refetchLegacy]);
-  const pending = current.own.isPending || current.legacy.isPending;
-  // Only a list that never loaded fails as a whole; a failed Load more or background read keeps the rows it has.
-  const failed = current.own.isLoadingError || current.legacy.isLoadingError;
+  const shows = listShows(current.own, current.legacy);
   const empty = rowsOf(current.own).length === 0 && rowsOf(current.legacy).length === 0;
   return <MotionPanel testId='motion-panel-executions' title={t('spaces.webAnimation.executions')} onClose={onClose}>
     <Tabs value={tab} onValueChange={changeTab} className='shrink-0 border-b border-border px-2 py-1.5'>
@@ -85,11 +76,8 @@ export function MotionExecutionsPanel({ lists, tab, selectedId, onTab, onPick, o
       </TabsList>
     </Tabs>
     <ScrollArea className='min-h-0 flex-1'>
-      {pending ? <div className='flex flex-col gap-2 p-2'>{[0, 1, 2].map((index) => <Skeleton key={index} className='h-12 w-full' />)}</div>
-        : failed ? <div className='flex flex-col items-center gap-2 p-6 text-xs'>
-          <span className='text-status-error-foreground'>{t('spaces.webAnimation.listError')}</span>
-          <Button type='button' variant='outline' size='sm' onClick={retry}>{t('timeline.retry')}</Button>
-        </div>
+      {shows === 'pending' ? <div className='flex flex-col gap-2 p-2'>{[0, 1, 2].map((index) => <Skeleton key={index} className='h-12 w-full' />)}</div>
+        : shows === 'failed' ? <ListLoadError message={t('spaces.webAnimation.listError')} retrying={current.own.isFetching || current.legacy.isFetching} onRetry={retry} />
           : empty ? <p className='p-6 text-center text-xs text-muted-foreground'>{t(tab === 'done' ? 'spaces.webAnimation.empty' : 'spaces.webAnimation.emptyInProgress')}</p>
             : <>
               <ListBlock query={current.own} selectedId={selectedId} onPick={onPick} />

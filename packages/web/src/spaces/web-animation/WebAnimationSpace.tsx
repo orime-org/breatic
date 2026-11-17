@@ -41,6 +41,7 @@ import { CANVAS_PLACEMENT_IDLE, transitionCanvasPlacement, type CanvasPlacementE
 import { transitionCreationDraft, type CreationDraftInput, type CreationDraftState } from '@web/spaces/web-animation/creation-draft';
 import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, endedSentenceKey, executionStepKeys, failureSentenceKey, phaseKey, stepMark } from '@web/spaces/web-animation/execution-text';
 import { MOTION_PANELS_CLOSED, transitionMotionPanels, type MotionPanelsEvent, type MotionTab } from '@web/spaces/web-animation/motion-panels';
+import { ListLoadError, listShows } from '@web/spaces/web-animation/list-states';
 import { BarButton, PreviewUnavailable, playable, rowSeconds } from '@web/spaces/web-animation/motion-parts';
 import { requestTitle, webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
 import { MotionAnnotationsPanel, formatAnnotationTime } from '@web/spaces/web-animation/MotionAnnotationsPanel';
@@ -302,10 +303,15 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   // With nothing selected, the newest finished result opens once the list is there (design §7.1): on entering, after
   // an open request that names no result, and after a named result could not be read.
   React.useEffect(() => {
-    if (!lists.done.own.isSuccess || selection.status !== 'none') return;
+    if (lists.done.own.data === undefined || selection.status !== 'none') return;
     const newest = rowsOf(lists.done.own)[0] ?? rowsOf(lists.done.legacy)[0];
     if (newest !== undefined) pick(newest.id);
   }, [selection.status, lists.done.own, lists.done.legacy, pick]);
+  // With nothing to show, the preview tells the Completed list's state (design §7.3).
+  const doneShows = listShows(lists.done.own, lists.done.legacy);
+  const { refetch: refetchDoneOwn } = lists.done.own;
+  const { refetch: refetchDoneLegacy } = lists.done.legacy;
+  const retryDone = React.useCallback((): void => { void refetchDoneOwn(); void refetchDoneLegacy(); }, [refetchDoneOwn, refetchDoneLegacy]);
   // A row's status crossing into the other tab moves the tab with it.
   const status = row?.status;
   React.useEffect(() => {
@@ -573,12 +579,14 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     {panels.panel === 'annotations' && <MotionAnnotationsPanel threads={threads} order={order} rows={lists.byId} activeThreadId={activeThreadId} onOpen={openThread} onClose={closePanel} />}
     <div className={cn('absolute bottom-[4.5rem] left-6 top-6 flex items-center justify-center', panelOpen ? 'right-[22rem]' : 'right-6')} style={{ containerType: 'size' }}>
       {row === undefined
-        ? selection.status === 'fetching' || !lists.done.own.isSuccess
+        ? selection.status === 'fetching' || doneShows === 'pending'
           ? <LoaderCircle data-testid='motion-loading' className='size-5 animate-spin text-muted-foreground' />
-          : <div data-testid='motion-empty' className='flex flex-col items-center gap-3 text-sm text-muted-foreground'>
-            <span>{t('spaces.webAnimation.empty')}</span>
-            {!readOnly && <Button data-testid='motion-empty-new' size='sm' onClick={openNew} icon={<Plus className='size-4' />}>{t('spaces.webAnimation.new')}</Button>}
-          </div>
+          : doneShows === 'failed'
+            ? <ListLoadError message={t('spaces.webAnimation.listError')} retrying={lists.done.own.isFetching || lists.done.legacy.isFetching} onRetry={retryDone} />
+            : <div data-testid='motion-empty' className='flex flex-col items-center gap-3 text-sm text-muted-foreground'>
+              <span>{t('spaces.webAnimation.empty')}</span>
+              {!readOnly && <Button data-testid='motion-empty-new' size='sm' onClick={openNew} icon={<Plus className='size-4' />}>{t('spaces.webAnimation.new')}</Button>}
+            </div>
         // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a point on the frame is marked with the mouse only
         : <div data-testid='motion-preview' data-execution-id={row.id} className={cn('relative', annotation.status === 'picking' && 'cursor-crosshair')} style={frameStyle} onClick={clickFrame}>
           {finished && playable(row) && <MotionResultPlayer projectId={projectId} executionId={row.id} sourceVersionId={row.resultSourceVersionId} input={row.input} frame={frame} />}

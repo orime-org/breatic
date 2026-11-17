@@ -712,6 +712,45 @@ describe('Add web animation', () => {
     await userEvent.click(await within(picker).findByTestId('timeline-web-animation-picker-retry'));
     await waitFor(() => expect(timelineApi.listResults).toHaveBeenCalledTimes(2));
   });
+
+  it('waits on Retry with the list loading while it reads again', async () => {
+    vi.mocked(timelineApi.listResults).mockRejectedValueOnce(new ApiException({ status: 500, message: 'Boom', fromServer: true })).mockReturnValueOnce(new Promise(() => {}));
+    seed();
+    showTimeline();
+    const picker = await openPicker();
+    expect(await within(picker).findByText(t('timeline.webAnimation.picker.error'))).toBeInTheDocument();
+    await userEvent.click(within(picker).getByTestId('timeline-web-animation-picker-retry'));
+    await waitFor(() => expect(within(picker).queryByText(t('timeline.webAnimation.picker.error'))).toBeNull());
+    expect(picker.querySelectorAll('.skeleton-shimmer').length).toBeGreaterThan(0);
+  });
+
+  it('keeps the rows when Load more fails, and turns Load more into Retry', async () => {
+    listSpaces([[MOTION_SPACE, 'web_animation', 'Launch motion']]);
+    vi.mocked(timelineApi.listResults).mockImplementation(async (_projectId: string, cursor?: string) => {
+      if (cursor !== undefined) throw new ApiException({ status: 500, message: 'Boom', fromServer: true });
+      return { rows: [result(EXEC_A, MOTION_SPACE, 'Gold dot along an arc', 'succeeded', SRC_A)], nextCursor: 'next', totals: { done: 2, inProgress: 0 } } as never;
+    });
+    seed();
+    showTimeline();
+    const picker = await openPicker();
+    await userEvent.click(await within(picker).findByRole('button', { name: t('timeline.webAnimation.picker.loadMore') }));
+    expect(await within(picker).findByRole('button', { name: t('timeline.retry') })).toBeInTheDocument();
+    expect(within(picker).getByTestId(`timeline-picker-row-${EXEC_A}`)).toBeInTheDocument();
+    expect(within(picker).queryByText(t('timeline.webAnimation.picker.error'))).toBeNull();
+  });
+
+  it('keeps the empty state when a background read of the results fails', async () => {
+    seed();
+    const client = showTimeline();
+    const picker = await openPicker();
+    await within(picker).findByText(t('timeline.webAnimation.picker.empty'));
+    vi.mocked(timelineApi.listResults).mockRejectedValue(new ApiException({ status: 500, message: 'Boom', fromServer: true }));
+    // React Query tells its observers on a timer after the read settles.
+    await act(async () => { await client.refetchQueries({ queryKey: ['timeline-web-results', PROJECT] }); await new Promise((resolve) => setTimeout(resolve, 10)); });
+    expect(client.getQueryState(['timeline-web-results', PROJECT])?.status).toBe('error');
+    expect(within(picker).getByText(t('timeline.webAnimation.picker.empty'))).toBeInTheDocument();
+    expect(within(picker).queryByText(t('timeline.webAnimation.picker.error'))).toBeNull();
+  });
 });
 
 describe('web animation copy in every locale', () => {
