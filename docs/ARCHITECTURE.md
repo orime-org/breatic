@@ -96,6 +96,10 @@ Asset registration and physical admission share a transaction-scoped advisory lo
 
 The server's internal listener runs the bounded recurring loop and drains it before closing database/queue clients. Direct signed R2 HEAD/DELETE operations are limited to its maintenance storage port; ordinary uploads remain write-only. Per-key leases version writeback, and every physical response is retained even when stale. Pause stops new destructive work while permitting HEAD-only recovery of an outstanding call. `config/maintenance.yaml` defaults physical execution off; API capability distinguishes configured, enabled and available. With credentials configured but physical execution disabled, preview can read retained objects and an owner may save an immutable queued acceptance; the loop neither claims work nor calls R2. Existing acceptances are preserved while deployment configuration remains off. Production enabling requires deployment verification of the exact scope and operational settings.
 
+### Running deployment identity
+
+The authenticated internal listener exposes `GET /internal/v1/deployment-version`. It returns the running server image’s release and full source revision, together with the expected business migration watermark from that image and the applied watermark from its database. The route returns 503 when it cannot establish those values.
+
 ### Internal refund decisions
 
 The internal refund preview returns `action`, `restoreCredits` and a complete `oneShot` map for `reject`, `settle`, `send_back` and `resolve_outside`. Each one-shot verdict uses `assessOneShot` with the current lot, payment, operations, refund copies, unresolved failures and dispute state. Execution judges the facts again inside the write transaction, including the submitted confirmation amounts and failed-refund identifiers.
