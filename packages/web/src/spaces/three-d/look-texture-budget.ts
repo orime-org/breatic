@@ -98,3 +98,52 @@ export function lookWriteIssue(before: LookTextureInput, after: LookTextureInput
   }
   return null;
 }
+
+/**
+ * The upload bytes an object's textures would take together: its own, its parts' own pictures with their own tiling,
+ * and every distinct look picture of known size.
+ * @param input - The object's budget input.
+ * @returns The byte total.
+ */
+export function lookTextureTotal(input: LookTextureInput): number {
+  let total = input.ownBytes;
+  const pictures = new Set<string>();
+  for (const [part, fields] of Object.entries(input.look)) {
+    if (fields.map === undefined) {
+      if (fields.mapRepeat !== undefined || fields.mapOffset !== undefined || fields.mapRotation !== undefined) total += input.clampBytes[part] ?? 0;
+    } else if (fields.map !== 'none') pictures.add(fields.map);
+  }
+  for (const map of pictures) {
+    const size = input.sizes.get(map);
+    if (size) total += uploadBytes(size, true);
+  }
+  return total;
+}
+
+/** A look write to judge before it is made. */
+export interface LookWriteCheck extends Omit<LookTextureInput, 'sizes'> {
+  part: string;
+  /** The picture the part would show. */
+  map: string;
+  /** Its size when already known (a local file), otherwise read through `size`. */
+  mapSize?: { width: number; height: number } | null;
+  /** A used picture's header size, or null when it cannot be read. */
+  size: (assetId: string) => Promise<{ width: number; height: number } | null>;
+}
+
+/**
+ * Judge putting a picture on a part from file headers alone (inner#1693 design 7): the write is refused when it would
+ * make any picture unusable that was not already unusable with the same picture.
+ * @param check - The object, the part, the picture and how to read sizes.
+ * @returns The refusal with the bytes the object's textures would take, or null.
+ */
+export async function checkLookWrite(check: LookWriteCheck): Promise<{ reason: LookTextureReason; total: number } | null> {
+  const used = new Set(Object.values(check.look).map((fields) => fields.map).filter((map): map is string => !!map && map !== 'none'));
+  used.add(check.map);
+  const sizes = new Map(await Promise.all([...used].map(async (id) =>
+    [id, id === check.map && check.mapSize !== undefined ? check.mapSize : await check.size(id)] as const)));
+  const base = { ownBytes: check.ownBytes, clampBytes: check.clampBytes, limits: check.limits, sizes };
+  const after = { ...base, look: { ...check.look, [check.part]: { ...check.look[check.part], map: check.map } } };
+  const issue = lookWriteIssue({ ...base, look: check.look }, after, check.part);
+  return issue ? { ...issue, total: lookTextureTotal(after) } : null;
+}

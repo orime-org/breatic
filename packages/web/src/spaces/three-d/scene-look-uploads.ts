@@ -1,0 +1,243 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import type { QueryClient } from '@tanstack/react-query';
+import { imageDimensionsFromData } from 'image-dimensions';
+
+import { getLocale, t, type SceneLook } from '@breatic/shared';
+
+import { projectImagesQueryKey } from '@web/data/api/scene';
+import { uploadMedia } from '@web/data/upload/media-upload';
+import type { UploadContext } from '@web/data/upload/ingest-upload';
+import { peekSceneSession, type SceneSession } from '@web/data/yjs/scene-session';
+import { toast } from '@web/lib/toast';
+import { useSpaceOperationsStore } from '@web/stores/space-operations';
+import { checkLookWrite } from '@web/spaces/three-d/look-texture-budget';
+import { pageLookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
+import { modelUploadFailure } from '@web/spaces/three-d/model-upload-failure';
+
+/** A picture's header size and type. */
+export interface LookImageSize {
+  width: number;
+  height: number;
+  type: string;
+}
+
+/** A message for the uploader. */
+export interface LookUploadNotice {
+  key: string;
+  params?: Record<string, string>;
+  severity: 'error' | 'warning';
+}
+
+export interface SceneLookUploadDeps {
+  /** Send the file through the common upload pipeline. */
+  upload: (file: File, context: UploadContext, onProgress: (fraction: number) => void) => Promise<{ assetId: string }>;
+  notify: (notice: LookUploadNotice) => void;
+  /** Hold a Space busy (closing its tab is held back). */
+  register: (spaceId: string, operationId: string) => void;
+  unregister: (spaceId: string, operationId: string) => void;
+  /** Refresh the Project's picture list, which now holds the upload. */
+  invalidateImages: (projectId: string) => void;
+  /** The local file's header size and type, or null when it cannot be read. */
+  readLocalSize: (file: File) => Promise<LookImageSize | null>;
+  /** A used picture's header size in a Project, or null when it cannot be read. */
+  size: (projectId: string, assetId: string) => Promise<LookImageSize | null>;
+  /** The open editing session of a Space document, if any; never creates one. */
+  session: (name: string) => SceneSession | undefined;
+}
+
+/** What an upload records when it starts (inner#1693 design 6.3). */
+export interface SceneLookUploadStart {
+  projectId: string;
+  spaceId: string;
+  /** The Space document's name. */
+  name: string;
+  objectId: string;
+  part: string;
+  file: File;
+  /** Upload bytes of the object's own textures. */
+  ownBytes: number;
+  /** Extra bytes per part that keeps its own picture with its own tiling. */
+  clampBytes: Readonly<Record<string, number>>;
+  /** The scene's texture limits, the edge already capped by this device's largest texture. */
+  limits: { maxTextureEdge: number; maxTextureBytes: number };
+}
+
+/** One running upload, shown on its part row. */
+export interface SceneLookUploadEntry {
+  spaceId: string;
+  objectId: string;
+  part: string;
+  percent: number;
+}
+
+export interface SceneLookUploads {
+  start: (input: SceneLookUploadStart) => Promise<void>;
+  /** The running upload of one part, if any. */
+  get: (spaceId: string, objectId: string, part: string) => SceneLookUploadEntry | undefined;
+  subscribe: (listener: () => void) => () => void;
+  getVersion: () => number;
+}
+
+const LOOK_IMAGE_TYPES = new Set(['png', 'jpeg', 'webp']);
+/** Enough of a file to hold its image header; a JPEG may put large metadata before its size. */
+const LOCAL_HEADER_BYTES = 512 * 1024;
+
+/**
+ * Format bytes as MiB with one decimal, rounded the way that keeps the comparison true.
+ * @param bytes - The byte count.
+ * @param round - Math.ceil for a measured value, Math.floor for a limit.
+ * @returns The formatted number.
+ */
+function mib(bytes: number, round: (value: number) => number): string {
+  return new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 }).format(round(bytes / 1024 / 1024 * 10) / 10);
+}
+
+/**
+ * The look of one object in a session's snapshot.
+ * @param session - The session.
+ * @param objectId - The object.
+ * @returns Its look, or undefined when it is gone.
+ */
+function lookOf(session: SceneSession, objectId: string): SceneLook | undefined {
+  const object = session.getSnapshot().objects.find((item) => item.id === objectId);
+  return object ? object.look ?? {} : undefined;
+}
+
+/**
+ * The page's part-picture uploads: each outlives the panel and the editor, and writes on completion only when the
+ * Space, the object, the user's access, the part's picture and the budget still allow (inner#1693 design 6.3).
+ * @param deps - The transport, the notices and the Space hold.
+ * @returns The holder.
+ */
+export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUploads {
+  const entries = new Map<string, SceneLookUploadEntry>();
+  const listeners = new Set<() => void>();
+  let version = 0;
+  /**
+   * The key of one part's upload.
+   * @param spaceId - The Space.
+   * @param objectId - The object.
+   * @param part - The part.
+   * @returns The key.
+   */
+  const keyOf = (spaceId: string, objectId: string, part: string): string => `${spaceId}/${objectId}/${part}`;
+  /** Tell subscribers the entries changed. */
+  const changed = (): void => {
+    version += 1;
+    listeners.forEach((listener) => listener());
+  };
+
+  /**
+   * Why putting this picture on the part would make a picture unusable, read from file headers.
+   * @param input - The upload's start record.
+   * @param look - The object's current look.
+   * @param map - The new picture's id, or a placeholder while it is local.
+   * @param mapSize - The new picture's size.
+   * @returns The refusal with the object's texture total, or null.
+   */
+  const overLimit = (input: SceneLookUploadStart, look: SceneLook, map: string, mapSize: LookImageSize): ReturnType<typeof checkLookWrite> =>
+    checkLookWrite({ ownBytes: input.ownBytes, clampBytes: input.clampBytes, limits: input.limits, look, part: input.part, map, mapSize,
+      size: (assetId) => deps.size(input.projectId, assetId) });
+
+  /**
+   * Tell why a picture is over a limit.
+   * @param issue - Which limit, and the object's texture total.
+   * @param size - The new picture's size.
+   * @param input - The upload's start record.
+   */
+  const notifyLimit = (issue: NonNullable<Awaited<ReturnType<typeof checkLookWrite>>>, size: LookImageSize, input: SceneLookUploadStart): void => {
+    const { maxTextureEdge, maxTextureBytes } = input.limits;
+    if (issue.reason === 'edge') {
+      deps.notify({ key: 'spaces.threeD.importModel.limit.textureEdge',
+        params: { actual: String(Math.max(size.width, size.height)), allowed: String(maxTextureEdge) }, severity: 'warning' });
+    } else {
+      deps.notify({ key: 'spaces.threeD.look.objectTexturesTooLarge',
+        params: { actual: mib(issue.total, Math.ceil), allowed: mib(maxTextureBytes, Math.floor) }, severity: 'warning' });
+    }
+  };
+
+  return {
+    async start(input) {
+      const local = await deps.readLocalSize(input.file);
+      if (!local || !LOOK_IMAGE_TYPES.has(local.type)) {
+        deps.notify({ key: 'canvas.upload.unsupportedType', params: { filename: input.file.name }, severity: 'warning' });
+        return;
+      }
+      const opened = deps.session(input.name);
+      const startLook = opened ? lookOf(opened, input.objectId) : undefined;
+      const issue = await overLimit(input, startLook ?? {}, 'local', local);
+      if (issue) {
+        notifyLimit(issue, local, input);
+        return;
+      }
+
+      const key = keyOf(input.spaceId, input.objectId, input.part);
+      const operationId = crypto.randomUUID();
+      entries.set(key, { spaceId: input.spaceId, objectId: input.objectId, part: input.part, percent: 0 });
+      changed();
+      deps.register(input.spaceId, operationId);
+      // Another explicit picture set on the part meanwhile blocks the write; a reset that deletes the key does not.
+      let partChanged = false;
+      let seen = startLook?.[input.part]?.map;
+      const unwatch = opened?.subscribe(() => {
+        const map = lookOf(opened, input.objectId)?.[input.part]?.map;
+        if (map !== undefined && map !== seen) partChanged = true;
+        seen = map;
+      });
+      try {
+        const stored = await deps.upload(input.file, { projectId: input.projectId, spaceId: input.spaceId }, (fraction) => {
+          const entry = entries.get(key);
+          if (entry) entries.set(key, { ...entry, percent: Math.round(fraction * 100) });
+          changed();
+        });
+        deps.invalidateImages(input.projectId);
+        const session = deps.session(input.name);
+        const look = session ? lookOf(session, input.objectId) : undefined;
+        const object = session?.getSnapshot().objects.find((item) => item.id === input.objectId);
+        if (!session) deps.notify({ key: 'spaces.threeD.look.spaceClosed', severity: 'warning' });
+        else if (!object || object.locked || look === undefined) deps.notify({ key: 'spaces.threeD.look.objectGone', severity: 'warning' });
+        else if (!session.getSnapshot().canEdit) deps.notify({ key: 'spaces.threeD.look.noLongerEditable', severity: 'warning' });
+        else if (partChanged) deps.notify({ key: 'spaces.threeD.look.partChanged', severity: 'warning' });
+        else if (await overLimit(input, look, stored.assetId, local)) deps.notify({ key: 'spaces.threeD.look.uploadedOverLimit', severity: 'warning' });
+        else session.execute({ type: 'look', id: input.objectId, part: input.part, set: { map: stored.assetId } });
+      } catch (error) {
+        const failure = modelUploadFailure(error, input.file.name);
+        deps.notify({ key: failure.key, params: failure.params, severity: 'error' });
+      } finally {
+        unwatch?.();
+        entries.delete(key);
+        deps.unregister(input.spaceId, operationId);
+        changed();
+      }
+    },
+    get: (spaceId, objectId, part) => entries.get(keyOf(spaceId, objectId, part)),
+    subscribe(listener) {
+      listeners.add(listener);
+      return (): void => { listeners.delete(listener); };
+    },
+    getVersion: () => version,
+  };
+}
+
+let pageUploads: SceneLookUploads | null = null;
+
+/**
+ * The page's part-picture uploads, wired to the real network on first use.
+ * @param queryClient - The page's query client, whose Project picture lists an upload refreshes.
+ * @returns The page-wide holder.
+ */
+export function pageSceneLookUploads(queryClient: QueryClient): SceneLookUploads {
+  pageUploads ??= createSceneLookUploads({
+    upload: (file, context, onProgress) => uploadMedia(file, context, onProgress),
+    notify: ({ key, params, severity }) => { toast[severity](t(key, params)); },
+    register: (spaceId, operationId) => useSpaceOperationsStore.getState().register(spaceId, operationId),
+    unregister: (spaceId, operationId) => useSpaceOperationsStore.getState().unregister(spaceId, operationId),
+    invalidateImages: (projectId) => { void queryClient.invalidateQueries({ queryKey: projectImagesQueryKey(projectId) }); },
+    readLocalSize: async (file) => imageDimensionsFromData(new Uint8Array(await file.slice(0, LOCAL_HEADER_BYTES).arrayBuffer())) ?? null,
+    size: (projectId, assetId) => pageLookTextureCache(projectId).size(assetId),
+    session: peekSceneSession,
+  });
+  return pageUploads;
+}

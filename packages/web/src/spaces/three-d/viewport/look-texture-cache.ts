@@ -4,6 +4,10 @@
 import { imageDimensionsFromStream } from 'image-dimensions';
 import { RepeatWrapping, SRGBColorSpace, Texture } from 'three';
 
+import { httpRequest, isSceneLookImageMediaType } from '@breatic/shared';
+
+import { resolveSceneAsset } from '@web/data/api/scene';
+
 /** A picture's size and type as its file header declares them. */
 export interface LookPictureSize {
   width: number;
@@ -149,4 +153,51 @@ export class LookTextureCache {
     texture.needsUpdate = true;
     return texture;
   }
+}
+
+const pageCaches = new Map<string, LookTextureCache>();
+
+/**
+ * The page's picture cache for one Project: header sizes and decoded pictures are shared by every 3D Space of it.
+ * @param projectId - The Project whose scene assets are read.
+ * @returns The cache.
+ */
+export function pageLookTextureCache(projectId: string): LookTextureCache {
+  let cache = pageCaches.get(projectId);
+  if (!cache) {
+    /**
+     * A picture asset's URL; anything that is not a look picture is refused.
+     * @param assetId - The asset.
+     * @returns Its registered URL.
+     * @throws {Error} When it is not a PNG, JPEG or WebP picture.
+     */
+    const resolve = async (assetId: string): Promise<string> => {
+      const asset = await resolveSceneAsset(projectId, assetId, new AbortController().signal);
+      if (!isSceneLookImageMediaType(asset.mimeType)) throw new Error(`Scene asset ${assetId} is not a look picture`);
+      return asset.url;
+    };
+    /**
+     * Fetch a picture.
+     * @param url - Its URL.
+     * @returns The response.
+     * @throws {Error} When the request fails or answers an error.
+     */
+    const fetchPicture = async (url: string): Promise<Response> => {
+      const response = await httpRequest(url, { method: 'GET' }, { replaySafe: true });
+      if (!response.ok) throw new Error(`Look picture request failed (${response.status})`);
+      return response;
+    };
+    cache = new LookTextureCache({
+      resolve,
+      open: async (url) => {
+        const body = (await fetchPicture(url)).body;
+        if (!body) throw new Error('Look picture response has no body');
+        return body;
+      },
+      download: async (url) => (await fetchPicture(url)).blob(),
+      decode: (blob, options) => createImageBitmap(blob, options),
+    });
+    pageCaches.set(projectId, cache);
+  }
+  return cache;
 }

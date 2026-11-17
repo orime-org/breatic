@@ -52,7 +52,7 @@ function lookOf(doc: Y.Doc): unknown {
 }
 
 interface Harness {
-  uploads: { start: (input: { projectId: string; spaceId: string; name: string; objectId: string; part: string; file: File; ownBytes: number; clampBytes: Record<string, number>; maxEdge: number }) => Promise<void> };
+  uploads: { start: (input: { projectId: string; spaceId: string; name: string; objectId: string; part: string; file: File; ownBytes: number; clampBytes: Record<string, number>; limits: { maxTextureEdge: number; maxTextureBytes: number } }) => Promise<void> };
   upload: ReturnType<typeof vi.fn>;
   notify: ReturnType<typeof vi.fn>;
   register: ReturnType<typeof vi.fn>;
@@ -84,8 +84,7 @@ function harness(session: () => SceneSession | undefined, localSize: { width: nu
   const uploads = factory!({
     upload, notify, register, unregister, invalidateImages,
     readLocalSize: async () => localSize,
-    size, session,
-    limits: { maxTextureEdge: 8192, maxTextureBytes: 268_435_456 },
+    size: (_projectId: string, assetId: string) => size(assetId), session,
   });
   return { uploads, upload, notify, register, unregister, invalidateImages, finish: (id) => finish(id), fail: (error) => fail(error) };
 }
@@ -97,7 +96,8 @@ async function settle(): Promise<void> {
 
 /** A start request for part 0 of the object. */
 function startFor(file = new File(['x'], 'pattern.png', { type: 'image/png' })): Parameters<Harness['uploads']['start']>[0] {
-  return { projectId: PROJECT, spaceId: SPACE, name: NAME, objectId: ID, part: '0', file, ownBytes: 0, clampBytes: {}, maxEdge: 8192 };
+  return { projectId: PROJECT, spaceId: SPACE, name: NAME, objectId: ID, part: '0', file, ownBytes: 0, clampBytes: {},
+    limits: { maxTextureEdge: 8192, maxTextureBytes: 268_435_456 } };
 }
 
 describe('SceneLookUploads', () => {
@@ -194,10 +194,12 @@ describe('SceneLookUploads', () => {
 
   it('does not write a picture that would go over the object budget at completion', async () => {
     const { doc, session } = editor();
-    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    const h = harness(() => session, { width: 4096, height: 4096, type: 'png' }, async () => ({ width: 8000, height: 8000, type: 'png' }));
+    // Each picture fits alone (4096 and 6000 px); together they pass the 256 MiB budget.
+    const h = harness(() => session, { width: 4096, height: 4096, type: 'png' }, async () => ({ width: 6000, height: 6000, type: 'png' }));
     const done = h.uploads.start({ ...startFor(), ownBytes: 0 });
     await settle();
+    // A collaborator puts a picture on another part during the upload.
+    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
     h.finish();
     await done;
     expect(lookOf(doc)).toEqual({ 1: { map: OTHER_IMAGE } });
