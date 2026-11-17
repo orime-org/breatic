@@ -3064,6 +3064,7 @@
           "unlimited": "不限",
           "zero": "0（禁止花积分）",
           "amount": "{amount} 积分",
+          "spentOfLimit": "{spent} / {limit} 积分",
           "sourceOverride": "单独设置",
           "sourceDefault": "默认",
           "atCap": "已到上限",

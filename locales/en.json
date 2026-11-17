@@ -349,11 +349,11 @@
       "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
     },
     "spend_cap": {
-      "member": "You've reached your monthly spend limit in this Studio ({limit} credits). Contact the Studio admin if you need more.",
+      "member": "You've reached your monthly spend limit in this Studio ({limit, select, 1 {1 credit} other {{limit} credits}}). Contact the Studio admin if you need more.",
       "studio": "This Studio has reached its monthly spend limit. Contact the Studio admin."
     },
     "operation": {
-      "exhausted": "This month's operations are used up, and there are fewer than {credits} credits for the next one. Add credits to continue.",
+      "exhausted": "This month's operations are used up, and there are fewer than {credits, select, 1 {1 credit} other {{credits} credits}} for the next one. Add credits to continue.",
       "key_taken": "This operation was already handled."
     }
   },
@@ -1172,7 +1172,7 @@
       },
       "waitReason": "You've reached the number of tasks you can run at once. This one starts by itself when an earlier one ends.",
       "cancelFailed": "That task could not be cancelled.",
-      "waitReasonLimit": "You've reached your limit of {limit} tasks running at once. This one starts by itself when an earlier one ends."
+      "waitReasonLimit": "You've reached your limit of {limit, plural, one {# task} other {# tasks}} running at once. This one starts by itself when an earlier one ends."
     },
     "panel": {
       "hostDeletedByPeer": "A collaborator deleted the node."
@@ -3063,7 +3063,8 @@
           "relationFormer": "Left (read-only)",
           "unlimited": "Unlimited",
           "zero": "0 (no credits)",
-          "amount": "{amount} credits",
+          "amount": "{amount, select, 1 {1 credit} other {{amount} credits}}",
+          "spentOfLimit": "{spent} / {limit, select, 1 {1 credit} other {{limit} credits}}",
           "sourceOverride": "Own",
           "sourceDefault": "Default",
           "atCap": "At limit",
@@ -3506,7 +3507,7 @@
       "label": "Operations this month",
       "remaining": "{count} left",
       "resetsOn": "Resets {date}",
-      "overagePrice": "Each operation past the allowance costs {credits} credits, taken from the Studio it runs in",
+      "overagePrice": "Each operation past the allowance costs {credits, select, 1 {1 credit} other {{credits} credits}}, taken from the Studio it runs in",
       "overageCount": "{count} over the allowance this month",
       "shared": "Shared across every Studio you administer"
     }
@@ -3699,7 +3700,7 @@
       "spendCap": "The monthly spend limit is reached. Contact the Studio admin."
     },
     "spendCap": {
-      "member": "You've reached your monthly spend limit in this Studio ({limit} credits). It resets on {date}. Contact the Studio admin if you need more.",
+      "member": "You've reached your monthly spend limit in this Studio ({limit, select, 1 {1 credit} other {{limit} credits}}). It resets on {date}. Contact the Studio admin if you need more.",
       "studio": "This Studio has reached its monthly spend limit. It resets on {date}. Contact the Studio admin."
     }
   },

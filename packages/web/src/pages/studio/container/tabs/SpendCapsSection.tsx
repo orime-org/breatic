@@ -195,7 +195,7 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
             <div className={studioCapped ? 'tabular-nums text-status-error' : 'tabular-nums'}>
               {view.studioMonthly === null
                 ? t(`${KEY}.amount`, { amount: formatCreditAmount(view.studioSpent) })
-                : t(`${KEY}.amount`, { amount: `${formatCreditAmount(view.studioSpent)} / ${formatCreditAmount(view.studioMonthly)}` })}
+                : t(`${KEY}.spentOfLimit`, { spent: formatCreditAmount(view.studioSpent), limit: formatCreditAmount(view.studioMonthly) })}
             </div>
           </div>
           <div>

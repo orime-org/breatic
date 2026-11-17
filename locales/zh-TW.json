@@ -3064,6 +3064,7 @@
           "unlimited": "不限",
           "zero": "0（禁止花點數）",
           "amount": "{amount} 點數",
+          "spentOfLimit": "{spent} / {limit} 點數",
           "sourceOverride": "單獨設定",
           "sourceDefault": "預設",
           "atCap": "已達上限",

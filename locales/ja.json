@@ -3064,6 +3064,7 @@
           "unlimited": "無制限",
           "zero": "0（クレジット使用不可）",
           "amount": "{amount} クレジット",
+          "spentOfLimit": "{spent} / {limit} クレジット",
           "sourceOverride": "個別",
           "sourceDefault": "既定",
           "atCap": "上限到達",

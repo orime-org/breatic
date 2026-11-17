@@ -3064,6 +3064,7 @@
           "unlimited": "무제한",
           "zero": "0(크레딧 사용 불가)",
           "amount": "{amount} 크레딧",
+          "spentOfLimit": "{spent} / {limit} 크레딧",
           "sourceOverride": "개별",
           "sourceDefault": "기본",
           "atCap": "한도 도달",
