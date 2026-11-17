@@ -26,6 +26,8 @@ import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import type { SocketState } from '@web/data/yjs/use-socket';
 import { toast } from '@web/lib/toast';
 import { placeVideoOnCanvas } from '@web/spaces/canvas/place-video-on-canvas';
+import { asCommentBody } from '@web/spaces/document/document-comment-extension';
+import { webAnimationAnnotationStore } from '@web/spaces/web-animation/annotation-thread-store';
 import { WebAnimationSpace } from '@web/spaces/web-animation/WebAnimationSpace';
 import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
 
@@ -345,6 +347,76 @@ describe('opening an annotation', () => {
     const panel = await screen.findByTestId('motion-panel-annotations');
     await user.click(within(panel).getByRole('button', { name: /Logo too small/ }));
     expect(bar).toHaveTextContent('0:00.0 / 0:04.0');
+  });
+
+  const GONE = '90000000-0000-4000-8000-0000000000d1';
+
+  /**
+   * Seed annotation threads into the Space's document before it opens.
+   * @param anchors - Each thread's words, result and time.
+   */
+  async function seedThreads(anchors: Array<{ text: string; executionId: string; timeSeconds: number }>): Promise<void> {
+    const store = webAnimationAnnotationStore({ doc: getDoc(docName.webAnimationSpace(PROJECT, SPACE)), readWho: () => ({ role: 'editor', viewerId: 'u1' }) });
+    for (const { text, executionId, timeSeconds } of anchors) {
+      await store.createThread({ initialComment: { body: asCommentBody(text) as never }, metadata: { webAnimationAnchor: { executionId, timeSeconds, point: null } } });
+    }
+  }
+
+  /**
+   * Open a thread from the annotation panel by its words.
+   * @param user - The user.
+   * @param text - The thread's words.
+   */
+  async function openFromPanel(user: ReturnType<typeof userEvent.setup>, text: string): Promise<void> {
+    if (screen.queryByTestId('motion-panel-annotations') === null) await user.click(screen.getByTestId('motion-open-annotations'));
+    const panel = await screen.findByTestId('motion-panel-annotations');
+    await user.click(within(panel).getByRole('button', { name: new RegExp(text) }));
+  }
+
+  it('lands on the newly opened thread\'s time after the result an earlier thread named could not be read', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    vi.mocked(timelineApi.getExecution).mockReset().mockRejectedValue(new Error('not found'));
+    await seedThreads([{ text: 'Gone note', executionId: GONE, timeSeconds: 3 }, { text: 'Shown note', executionId: NEWER, timeSeconds: 1 }]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await openFromPanel(user, 'Gone note');
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(t('spaces.webAnimation.notFound')));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    await openFromPanel(user, 'Shown note');
+    expect(screen.getByTestId('motion-bottom-bar')).toHaveTextContent('0:01.0 / 0:04.0');
+  });
+
+  it('lands on the newly opened thread\'s time after the user picked another row while an earlier one was read', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z'), done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')]);
+    vi.mocked(timelineApi.getExecution).mockReset().mockReturnValue(new Promise(() => {}));
+    await seedThreads([{ text: 'Gone note', executionId: GONE, timeSeconds: 3 }, { text: 'Older note', executionId: OLDER, timeSeconds: 2 }]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await openFromPanel(user, 'Gone note');
+    await screen.findByTestId('motion-loading');
+    await user.click(screen.getByTestId('motion-open-executions'));
+    await user.click(await screen.findByTestId(`motion-row-${OLDER}`));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', OLDER));
+    await openFromPanel(user, 'Older note');
+    expect(screen.getByTestId('motion-bottom-bar')).toHaveTextContent('0:02.0 / 0:04.0');
+  });
+
+  it('lands on the marker\'s time when it is opened on the shown result after a read that never landed', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    vi.mocked(timelineApi.getExecution).mockReset().mockReturnValue(new Promise(() => {}));
+    await seedThreads([{ text: 'Gone note', executionId: GONE, timeSeconds: 3 }, { text: 'Shown note', executionId: NEWER, timeSeconds: 1 }]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await openFromPanel(user, 'Gone note');
+    await screen.findByTestId('motion-loading');
+    await user.click(screen.getByTestId('motion-open-executions'));
+    await user.click(await screen.findByTestId(`motion-row-${NEWER}`));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    await user.click(screen.getByRole('button', { name: 'Shown note' }));
+    expect(screen.getByTestId('motion-bottom-bar')).toHaveTextContent('0:01.0 / 0:04.0');
   });
 });
 

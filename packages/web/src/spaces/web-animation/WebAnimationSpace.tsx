@@ -293,9 +293,9 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const rowById = React.useCallback((id: string): WebAnimationRowView | undefined => lists.byId.get(id) ?? fetched.get(id), [lists.byId, fetched]);
   const selectedId = selection.status === 'selected' ? selection.executionId : null;
   const row = selectedId === null ? undefined : rowById(selectedId);
-  const locate = React.useCallback((executionId: string): void => {
+  const locate = React.useCallback((executionId: string, threadId: string | null): void => {
     requestSeq.current += 1;
-    select({ type: 'locate', executionId, loaded: rowById(executionId) !== undefined, requestId: requestSeq.current });
+    select({ type: 'locate', executionId, loaded: rowById(executionId) !== undefined, requestId: requestSeq.current, threadId });
   }, [rowById, select]);
   const pick = React.useCallback((id: string): void => select({ type: 'pick', executionId: id }), [select]);
 
@@ -364,7 +364,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     if (now === 'writing') pendingSwitch.current = go;
     else if (now === 'idle') go();
   }, [annotate]);
-  const locateShown = React.useCallback((executionId: string): void => showResult(() => locate(executionId)), [showResult, locate]);
+  const locateShown = React.useCallback((executionId: string): void => showResult(() => locate(executionId, null)), [showResult, locate]);
 
   // An open request aimed at this Space (design §8.5): select its execution, then say it was handled.
   const openRequest = useSpaceOpenRequestStore((state) => state.state);
@@ -514,27 +514,23 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const typeAnnotation = React.useCallback((text: string): void => annotate({ type: 'type', text }), [annotate]);
   const sendAnnotation = React.useCallback((): void => annotate({ type: 'send' }), [annotate]);
   const cancelAnnotation = React.useCallback((): void => annotate({ type: 'cancel', confirmed: false }), [annotate]);
-  const pendingSeek = React.useRef<number | null>(null);
+  // Opening a thread locates its result with the thread as the selection's focus, whether that result shows already or
+  // not; the playhead jumps once the focused thread's result shows, and the focus is spent (design §10.1, §13.2).
   const openThread = React.useCallback((threadId: string): void => {
     const thread = threads.find((item) => item.id === threadId);
     const anchor = thread === undefined ? null : readWebAnimationAnchor(thread.metadata);
     if (anchor === null) return;
     showResult(() => {
       setActiveThreadId(threadId);
-      const shown = selectionRef.current;
-      if (shown.status === 'selected' && shown.executionId === anchor.executionId) {
-        seekClock(anchor.timeSeconds);
-        return;
-      }
-      pendingSeek.current = anchor.timeSeconds;
-      locate(anchor.executionId);
+      locate(anchor.executionId, threadId);
     });
-  }, [threads, showResult, seekClock, locate]);
+  }, [threads, showResult, locate]);
+  const focusThreadId = selection.status === 'selected' ? selection.focusThreadId : null;
   React.useEffect(() => {
-    if (pendingSeek.current === null || activeThread === null || activeThread.anchor.executionId !== selectedId) return;
-    seekClock(pendingSeek.current);
-    pendingSeek.current = null;
-  }, [activeThread, selectedId, seekClock]);
+    if (focusThreadId === null || activeThread === null || activeThread.thread.id !== focusThreadId || activeThread.anchor.executionId !== selectedId) return;
+    seekClock(activeThread.anchor.timeSeconds);
+    select({ type: 'focused', threadId: focusThreadId });
+  }, [focusThreadId, activeThread, selectedId, seekClock, select]);
   const openMarker = React.useCallback((threadId: string): void => {
     dispatchPanels({ type: 'marker', threadId });
     openThread(threadId);
