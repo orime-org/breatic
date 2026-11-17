@@ -122,7 +122,8 @@ describe('refusing a write that would make a picture unusable', () => {
   }
 
   it('refuses a big picture on a low part that would push a higher part\'s shown picture over', () => {
-    const own = LIMITS.maxTextureBytes - bytes(4096) - 10;
+    // Room for the model's textures, one 4096 picture and one 16 picture.
+    const own = LIMITS.maxTextureBytes - bytes(4096) - bytes(16) - 10;
     const base = { ownBytes: own, clampBytes: {}, sizes: sizes({ [A]: 4096, [B]: 16 }), limits: LIMITS };
     const before = { ...base, look: { 5: { map: A } } };
     const after = { ...base, look: { 1: { map: B }, 5: { map: A } } };
@@ -132,7 +133,8 @@ describe('refusing a write that would make a picture unusable', () => {
   });
 
   it('allows a write when a picture was already over before it', () => {
-    const own = LIMITS.maxTextureBytes - bytes(4096) - 10;
+    // Room for the model's textures, one 4096 picture and one 16 picture.
+    const own = LIMITS.maxTextureBytes - bytes(4096) - bytes(16) - 10;
     const base = { ownBytes: own, clampBytes: {}, sizes: sizes({ [A]: 4096, [B]: 4096, [C]: 16 }), limits: LIMITS };
     const before = { ...base, look: { 1: { map: A }, 2: { map: B } } };
     const after = { ...base, look: { 1: { map: A }, 2: { map: B }, 3: { map: C } } };

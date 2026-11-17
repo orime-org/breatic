@@ -135,7 +135,7 @@ function lookup(value: unknown, table: Readonly<Record<string, number>>, fallbac
  * @returns The byte count.
  * @throws {never} Never.
  */
-function uploadBytes(size: ImageSize, mipmaps: boolean): number {
+export function uploadBytes(size: ImageSize, mipmaps: boolean): number {
   let { width, height } = size;
   const levels = size.levels ?? (mipmaps ? Math.floor(Math.log2(Math.max(width, height))) + 1 : 1);
   let total = 0;
