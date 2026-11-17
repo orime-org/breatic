@@ -189,6 +189,22 @@ function OpenNodeTaskPanel({
     },
     [onRetry, nodeId, projectId, spaceId],
   );
+  // A row leaves the state this panel shows: cleared, or cancelled and ended.
+  // The count cell this panel opened from is drawn only while its own state
+  // holds a task, so the last row of THAT state leaving takes the cell with it.
+  // This list holds every state the node has, so what remains in it says
+  // nothing about the one on screen; left open, the panel would sit on a
+  // generic empty line with nothing naming the state that emptied.
+  const rowLeft = React.useCallback(
+    (taskId: string, keepRow: boolean): void => {
+      const rows = queryClient.getQueryData<NodeTaskEntry[]>(queryKey) ?? [];
+      const left = rows.filter((row) => row.id !== taskId);
+      if (!keepRow) queryClient.setQueryData<NodeTaskEntry[]>(queryKey, left);
+      if (!left.some((row) => inTaskList(row, status))) closeActivePanel();
+      else if (keepRow) void query.refetch();
+    },
+    [queryClient, queryKey, status, closeActivePanel, query],
+  );
   // Finish and Clear are the same request (§7.4). The row leaves this list as
   // soon as the server takes it — the list is this user's own fetch, not the
   // shared document. The node's counts wait for the event that follows.
@@ -197,43 +213,33 @@ function OpenNodeTaskPanel({
       const request = canvasApi
         .dismissNodeTask(taskId, { projectId, spaceId, nodeId })
         .then(() => {
-          const left = (
-            queryClient.getQueryData<NodeTaskEntry[]>(queryKey) ?? []
-          ).filter((row) => row.id !== taskId);
-          queryClient.setQueryData<NodeTaskEntry[]>(queryKey, left);
           clearRetryFile(projectId, spaceId, taskId);
-          // The count cell this panel opened from is drawn only while its own
-          // state holds a task, so clearing the last one of THAT state takes
-          // the cell with it. This list holds every state the node has, so
-          // what remains in it says nothing about the one on screen; left
-          // open, the panel would sit on a generic empty line with nothing
-          // naming the state that emptied.
-          if (!left.some((row) => inTaskList(row, status))) closeActivePanel();
+          rowLeft(taskId, false);
         })
         .catch(() => {
           toast.error(t('canvas.task.dismissFailed'));
         });
       trackTaskAction(taskActionKey(projectId, spaceId, taskId, 'dismiss'), request);
     },
-    [projectId, spaceId, nodeId, queryClient, queryKey, t, closeActivePanel, status],
+    [projectId, spaceId, nodeId, t, rowLeft],
   );
 
-  // Cancel a task that waits for a free slot (inner#1968). The row ends
-  // through the counts event; reading the list again shows it ended. One that
-  // started meanwhile answers 409 with the server's sentence.
+  // Cancel a task that waits for a free slot (inner#1968). The row ends as a
+  // failed one and stays on the node, so the list is read again to show it
+  // there. One that started meanwhile answers 409 with the server's sentence.
   const cancel = React.useCallback(
     (taskId: string): void => {
       const request = canvasApi
         .cancelTask(taskId, projectId)
         .then(() => {
-          void query.refetch();
+          rowLeft(taskId, true);
         })
         .catch((err: unknown) => {
           toast.error(err instanceof ApiException && err.fromServer ? err.message : t('canvas.task.cancelFailed'));
         });
       trackTaskAction(taskActionKey(projectId, spaceId, taskId, 'cancel'), request);
     },
-    [projectId, spaceId, query, t],
+    [projectId, spaceId, t, rowLeft],
   );
 
   if (hostNode === undefined) return null;
