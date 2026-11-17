@@ -21,7 +21,7 @@ describe("the causes a run on an account's key can fail on", () => {
     "carries the upstream and why its key failed (%s) back out",
     (keyReason) => {
       const about = { model: "Seedream 5", upstream: "fal", keyReason } as unknown as TaskFailureDetail;
-      expect(readTaskFailure(encodeTaskFailure("account_key_failed" as never, about))).toEqual({
+      expect(readTaskFailure(encodeTaskFailure("account_key_failed", about))).toEqual({
         reason: "account_key_failed",
         model: "Seedream 5",
         upstream: "fal",
@@ -38,11 +38,11 @@ describe("the causes a run on an account's key can fail on", () => {
   });
 
   it("names a replaced or deleted key, and an unreachable upstream, by the upstream", () => {
-    expect(readTaskFailure(encodeTaskFailure("account_key_missing" as never, { upstream: "openrouter" } as unknown as TaskFailureDetail))).toEqual({
+    expect(readTaskFailure(encodeTaskFailure("account_key_missing", { upstream: "openrouter" }))).toEqual({
       reason: "account_key_missing",
       upstream: "openrouter",
     });
-    expect(readTaskFailure(encodeTaskFailure("upstream_unavailable" as never, { upstream: "sandbase" } as unknown as TaskFailureDetail))).toEqual({
+    expect(readTaskFailure(encodeTaskFailure("upstream_unavailable", { upstream: "sandbase" }))).toEqual({
       reason: "upstream_unavailable",
       upstream: "sandbase",
     });

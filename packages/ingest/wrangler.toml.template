@@ -173,8 +173,9 @@ storage = "sqlite"
 # commented out unless you are developing or deploying it: the image is large
 # (Node, Chromium and the DeepSeek Harness), and every `wrangler dev` with the
 # block enabled builds it. Without the block the web-animation job routes
-# answer 501 `feature_disabled`, and without a model key in `.dev.vars` a
-# submit answers 501 naming the variables it needs; everything else works.
+# answer 501 `feature_disabled`, and so does a submit without
+# KEY_UNSEAL_PRIVATE_KEY in `.dev.vars`, the private key that opens the model
+# keys each call reads from our server; everything else works.
 #
 # To enable it, uncomment the four blocks below (the container, its binding,
 # its export and the static assets that serve the font set). `pnpm dev` lays
@@ -365,9 +366,9 @@ type = "durable-object"
 storage = "sqlite"
 
 # Web-animation execution, as at the top level; uncomment to deploy it, and set
-# each model key it calls with, `HARNESS_` plus the upstream's `key_env` in
-# config/provider/upstreams.yaml, such as
-# `wrangler secret put HARNESS_OPENROUTER_API_KEY --env production`.
+# the private key that opens each call's model keys,
+# `wrangler secret put KEY_UNSEAL_PRIVATE_KEY --env production` (its public half
+# is the server's INGEST_KEY_SEAL_PUBLIC_KEY). The Worker holds no model key.
 # Serve previews from a domain of their own (WEB_ANIMATION_PREVIEW_BASE_URL on
 # the server side), and keep the R2 `web-animation/` prefix off the public
 # asset domain.

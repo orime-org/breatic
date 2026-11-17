@@ -7,9 +7,9 @@
  * same object, and reading names the class the job was submitted to.
  *
  * Web-animation execution is optional on a deployment: without the `WEB_ANIMATION` binding its submit, read and cancel
- * answer 501 `feature_disabled` before the namespace is touched, and so does a submit with no model plan; a submit
- * whose plan names no upstream with a key here answers 501 naming the model and the variables it needs. The worker
- * reads both as terminal answers, while every other job keeps working.
+ * answer 501 `feature_disabled` before the namespace is touched, and so does a submit with no model plan or to a
+ * Worker without `KEY_UNSEAL_PRIVATE_KEY`, which opens the keys each call reads from our server (inner#1953). The
+ * worker reads it as a terminal answer, while every other job keeps working.
  */
 
 import { miniToolJobRequestSchema } from "@breatic/shared";
@@ -27,11 +27,10 @@ import {
   type MiniToolClass,
   type MiniToolEnv,
 } from "@ingest/jobs/mini-tool-container.js";
-import { harnessKeyName, harnessKeyOf } from "@ingest/jobs/harness-keys.js";
 import type { WebAnimationEnv } from "@ingest/jobs/web-animation-container.js";
 
 /** What the job endpoints read. */
-export type JobsEnv = MiniToolEnv & WebAnimationEnv & { INGEST_SHARED_SECRET: string };
+export type JobsEnv = MiniToolEnv & WebAnimationEnv;
 
 /** `/jobs/<class>/<id>`. */
 export const JOB_PATH = /^\/jobs\/([^/]+)\/([^/]+)$/;
@@ -82,8 +81,8 @@ function isStartFailure(err: unknown): boolean {
  * @param body - The parsed request body.
  * @param env - The bindings.
  * @returns 200 with its report; 400 for a body that is not a job; 410 after a cancel that came before any submit;
- *   501 when the feature is off or the job has no plan, or naming the model and its key variables when none of them
- *   is set here; 503 when the container could not start.
+ *   501 when the feature is off, the job has no plan or this Worker cannot open the keys its calls read; 503 when the
+ *   container could not start.
  * @throws {unknown} What the object throws other than a start failure.
  */
 async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Response> {
@@ -93,14 +92,7 @@ async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Respo
   if (!parsed.success) return new Response("Not a job", { status: 400 });
   const job = parsed.data;
   const plan = job.messagesPlan;
-  if (plan === undefined) return featureDisabled();
-  const keyOf = harnessKeyOf(env);
-  if (!plan.candidates.some(({ keyEnv }) => (keyOf(keyEnv) ?? "") !== "")) {
-    return Response.json(
-      { error: "not_configured", model: plan.model, envVars: plan.candidates.map(({ keyEnv }) => harnessKeyName(keyEnv)) },
-      { status: 501 },
-    );
-  }
+  if (plan === undefined || (env.KEY_UNSEAL_PRIVATE_KEY ?? "") === "") return featureDisabled();
   try {
     const answer = await namespace.get(namespace.idFromName(job.jobId)).submit(job);
     if (!("report" in answer)) return new Response("Cancelled before it was submitted", { status: 410 });

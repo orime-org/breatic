@@ -5,12 +5,13 @@
  * The web-animation job endpoints (inner#1711 design §3.7, §6): `POST /jobs` dispatching on `containerClass`,
  * `GET /jobs/WebAnimationContainer/<id>` and `POST /jobs/WebAnimationContainer/<id>/cancel`.
  *
- * Web-animation execution is optional on a deployment: the `WEB_ANIMATION` Durable Object binding and the model keys
- * (`HARNESS_` plus each upstream's key variable) stay out of `REQUIRED_SETTINGS`. Without the binding the three
- * endpoints answer 501 `feature_disabled` before the namespace is touched; a submit with no plan answers the same, and
- * one whose plan names no upstream with a key here answers 501 naming the model and the variables it needs. The worker
- * reads both as terminal answers, while every other endpoint keeps working. 503 keeps its meaning: the container could
- * not start this time.
+ * Web-animation execution is optional on a deployment: the `WEB_ANIMATION` Durable Object binding and the
+ * `KEY_UNSEAL_PRIVATE_KEY` secret stay out of `REQUIRED_SETTINGS`. Without the binding the three endpoints answer 501
+ * `feature_disabled` before the namespace is touched; a submit with no plan, or to a Worker without the private key
+ * that opens each call's keys, answers the same. The Worker holds no model key: each call's keys are read from the
+ * endpoint the job names (inner#1953), so a submit no longer depends on any key variable here. The worker reads 501 as
+ * a terminal answer, while every other endpoint keeps working. 503 keeps its meaning: the container could not start this
+ * time.
  *
  * The pool has no container runtime, so the namespace here is a stand-in that records what the route asked of the
  * job object; the object's own behaviour is specified in `web-animation-transition.node.test.ts`.
@@ -38,6 +39,7 @@ const JOB: WebAnimationJobRequest = {
   maxTokens: 32_000,
   callTimeoutMs: 300_000,
   model: "deepseek/deepseek-v4.1-flash-1017",
+  modelKeys: { url: "https://api.example.test/api/v1/ingest/model-keys", executionId: "40000000-0000-4000-8000-000000000001" },
   messagesPlan: {
     model: "deepseek/deepseek-v4.1-flash-1017",
     candidates: [
@@ -91,7 +93,7 @@ function standIn(answers: ObjectAnswers = {}) {
  * @returns The env.
  */
 function configured(namespace: unknown, without: string[] = [], overrides: Record<string, unknown> = {}): typeof env {
-  const full: Record<string, unknown> = { ...env, WEB_ANIMATION: namespace, HARNESS_OPENROUTER_API_KEY: "test-openrouter-key", ...overrides };
+  const full: Record<string, unknown> = { ...env, WEB_ANIMATION: namespace, KEY_UNSEAL_PRIVATE_KEY: "test-unseal-private-key", ...overrides };
   for (const name of without) delete full[name];
   return full as unknown as typeof env;
 }
@@ -258,32 +260,28 @@ describe("a Worker without web-animation execution configured", () => {
   });
 
   it.each([
-    ["missing", ["HARNESS_OPENROUTER_API_KEY"], {}],
-    ["empty", [], { HARNESS_OPENROUTER_API_KEY: "" }],
-  ])("answers a submit 501 naming the model and every key variable when the only key here is %s", async (_label, without, overrides) => {
+    ["missing", ["KEY_UNSEAL_PRIVATE_KEY"], {}],
+    ["empty", [], { KEY_UNSEAL_PRIVATE_KEY: "" }],
+  ])("answers a submit 501 feature_disabled when the private key that opens each call's keys is %s", async (_label, without, overrides) => {
     const { namespace, stub } = standIn();
     const res = await submit(configured(namespace, without, overrides));
 
     expect(res.status).toBe(501);
-    await expect(res.json()).resolves.toEqual({
-      error: "not_configured",
-      model: "deepseek/deepseek-v4.1-flash-1017",
-      envVars: ["HARNESS_OPENROUTER_API_KEY", "HARNESS_DEEPSEEK_API_KEY"],
-    });
+    await expect(res.text()).resolves.toBe("feature_disabled");
     expect(stub.submit).not.toHaveBeenCalled();
   });
 
-  it("submits a job when any upstream of its plan has its key here", async () => {
+  it("submits a job holding no model key of its own: no HARNESS_ variable is read", async () => {
     const { namespace, stub } = standIn();
-    const res = await submit(configured(namespace, ["HARNESS_OPENROUTER_API_KEY"], { HARNESS_DEEPSEEK_API_KEY: "test-deepseek-key" }));
+    const res = await submit(configured(namespace, ["HARNESS_OPENROUTER_API_KEY", "HARNESS_DEEPSEEK_API_KEY"]));
 
     expect(res.status).toBe(200);
     expect(stub.submit).toHaveBeenCalledTimes(1);
   });
 
-  it("still reads and cancels a job without any key, so a job already running is seen to its end", async () => {
+  it("still reads and cancels a job without the private key, so a job already running is seen to its end", async () => {
     const { namespace, stub } = standIn();
-    const bindings = configured(namespace, ["HARNESS_OPENROUTER_API_KEY"]);
+    const bindings = configured(namespace, ["KEY_UNSEAL_PRIVATE_KEY"]);
 
     expect((await read(bindings)).status).toBe(200);
     expect((await cancel(bindings)).status).toBe(200);

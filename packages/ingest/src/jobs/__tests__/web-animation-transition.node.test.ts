@@ -46,6 +46,7 @@ const REQUEST: WebAnimationJobRequest = {
   maxTokens: 32_000,
   callTimeoutMs: 300_000,
   model: "deepseek/deepseek-v4.1-flash-1017",
+  modelKeys: { url: "https://api.example.test/api/v1/ingest/model-keys", executionId: "40000000-0000-4000-8000-000000000001" },
 };
 
 const TOKENS = { input: 41, output: 6, reasoning: 3, cacheRead: 128 };
@@ -383,6 +384,32 @@ describe("the end of a job", () => {
   });
 });
 
+describe("a refused key read (inner#1953)", () => {
+  const refused: WebAnimationJobEvent = { type: "modelKeysRefused", reason: "account_key_missing" };
+
+  it("fails a running job with no call in flight at once, with the refusal's reason, and stops the container", () => {
+    const [failed] = run(after([begin, started(1), ended(1)]), [refused]);
+
+    expect(failed!.effects).toEqual(["destroy"]);
+    expect(report(failed!.record)).toMatchObject({ state: "failed", failureReason: "account_key_missing" });
+  });
+
+  it("waits for a call in flight, then fails with the refusal's reason when that call ends", () => {
+    const [stopping, done] = run(after([begin, started(1)]), [refused, ended(1)]);
+
+    expect(report(stopping!.record).state).toBe("stopping");
+    expect(report(done!.record)).toMatchObject({ state: "failed", failureReason: "account_key_missing" });
+  });
+
+  it("changes nothing on a job already stopping or ended", () => {
+    const stopping = after([begin, started(1), { type: "cancel", deadlineAt: REQUEST.deadlineAt }]);
+    const [same] = run(stopping, [refused]);
+
+    expect(same!.record).toBe(stopping);
+    expect(same!.effects).toEqual([]);
+  });
+});
+
 describe("after the end", () => {
   const ends: Array<[string, WebAnimationJobEvent[]]> = [
     ["done", [writtenPackage, writtenManifest, { type: "finished", ok: true, failureReason: null, cpuUsec: 5 }]],
@@ -399,6 +426,7 @@ describe("after the end", () => {
       { type: "cancel", deadlineAt: REQUEST.deadlineAt }, { type: "deadline" }, { type: "containerGone" },
       writtenPackage, { type: "progress", phase: "validating", steps: ["late"] },
       { type: "finished", ok: true, failureReason: null, cpuUsec: 99 },
+      { type: "modelKeysRefused", reason: "feature_disabled" },
       { type: "submit", request: REQUEST },
     ]);
 
@@ -421,6 +449,7 @@ describe("invariants over any sequence of events", () => {
     fc.constant(writtenPackage),
     fc.constant(writtenManifest),
     fc.boolean().map((ok): WebAnimationJobEvent => ({ type: "finished", ok, failureReason: ok ? null : "tool_failed", cpuUsec: 1 })),
+    fc.constantFrom("account_key_missing", "feature_disabled").map((reason): WebAnimationJobEvent => ({ type: "modelKeysRefused", reason })),
   );
 
   it("keeps at most one call in flight, numbers calls 1, 2, 3 in order and stops the container at most once", () => {

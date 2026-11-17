@@ -67,6 +67,11 @@ export const webAnimationJobRequestSchema = z.object({
   callTimeoutMs: positiveInteger,
   model: z.string().min(1).max(200),
   /**
+   * Where the Worker reads the keys of each model call (inner#1953): the key endpoint of the region that submitted the
+   * job, asked for the execution's keys before every call; the Worker holds none of its own.
+   */
+  modelKeys: z.object({ url: z.url({ protocol: /^https?$/ }).max(2000), executionId: z.uuid() }),
+  /**
    * Absent only from a backend deployed before the plan (inner#1743): a Worker deployed after it answers such a
    * submit 501 `feature_disabled`; remove the optional once every job submitted without it is past its deadline.
    */

@@ -46,7 +46,7 @@ beforeEach(() => {
 
 describe("handing off a cut-off call's lookup", () => {
   it("names the account's key row and asks for no charge", async () => {
-    const watch = watchModelCalls(recorder(), { model: "m", description: "Agent chat", keyId: "key-1" } as never, () => [CUT_OFF]);
+    const watch = watchModelCalls(recorder(), { model: "m", description: "Agent chat", keyId: "key-1" }, () => [CUT_OFF]);
 
     await watch.handOff();
 
@@ -54,7 +54,7 @@ describe("handing off a cut-off call's lookup", () => {
   });
 
   it("is charged and names no key row on the deployment's keys", async () => {
-    const watch = watchModelCalls(recorder(), { model: "m", description: "Agent chat", keyId: null } as never, () => [CUT_OFF]);
+    const watch = watchModelCalls(recorder(), { model: "m", description: "Agent chat", keyId: null }, () => [CUT_OFF]);
 
     await watch.handOff();
 

@@ -74,7 +74,8 @@ const candidates = (): Record<"openrouter" | "anthropic" | "deepseek", MessagesC
 });
 
 const BODY = { model: "deepseek-flash", messages: [{ role: "user", content: "Write index.html" }], max_tokens: 4_000, stream: true };
-const KEYS: Record<string, string> = { OPENROUTER_API_KEY: "or-key", ANTHROPIC_API_KEY: "an-key", DEEPSEEK_API_KEY: "ds-key" };
+/** The caller's keys by upstream, as a `KeySet` reads them (inner#1953). */
+const KEYS: Record<string, string> = { openrouter: "or-key", anthropic: "an-key", deepseek: "ds-key" };
 
 /** What one relayed call reported. */
 interface Relayed {
@@ -105,7 +106,7 @@ async function relay(
   const ended: MessagesCallEnd[] = [];
   const order: string[] = [];
   const response = await relayMessages(plan, body, {
-    keyOf: (name) => (options.keys ?? KEYS)[name],
+    keyOf: (upstream) => (options.keys ?? KEYS)[upstream],
     maxTokens: options.maxTokens ?? 32_000,
     signal: options.signal ?? new AbortController().signal,
     ...(options.anthropicVersion === undefined ? {} : { anthropicVersion: options.anthropicVersion }),
@@ -220,7 +221,7 @@ describe("relayMessages: what reaches each upstream", () => {
 describe("relayMessages: which upstream serves", () => {
   it("skips a candidate whose key the Worker lacks", async () => {
     fakes.openrouter.answer(() => stream(COMPLETE));
-    const { started } = await relay({ model: "m", candidates: [candidates().deepseek, candidates().openrouter] }, BODY, { keys: { OPENROUTER_API_KEY: "or-key" } });
+    const { started } = await relay({ model: "m", candidates: [candidates().deepseek, candidates().openrouter] }, BODY, { keys: { openrouter: "or-key" } });
     expect(fakes.deepseek.seen).toHaveLength(0);
     expect(started).toEqual([{ upstream: "openrouter", messageId: "gen-1762500000-abc" }]);
   });
@@ -444,7 +445,7 @@ describe("relayMessages: the stream's edges", () => {
     fakes.openrouter.answer(() => stream([MESSAGE_START], "hold"));
     const ended: MessagesCallEnd[] = [];
     const response = await relayMessages({ model: "m", candidates: [candidates().openrouter] }, BODY, {
-      keyOf: (name) => KEYS[name], maxTokens: 32_000, signal: new AbortController().signal,
+      keyOf: (upstream) => KEYS[upstream], maxTokens: 32_000, signal: new AbortController().signal,
       onStarted: async () => undefined,
       onEnded: async (end) => {
         ended.push(end);

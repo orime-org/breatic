@@ -9,14 +9,19 @@
  * job's plan (which rebuilds the body, picks the upstream and reads the cost; its own tests cover those), and
  * records each call against the job's Durable Object: one call in flight, every begun call ended exactly once.
  *
+ * Before each call it reads that call's keys for the plan's upstreams from our server (inner#1953); the Worker holds
+ * none of its own. A refusal for a missing key ends the job as `account_key_missing`, one for a deployment without the
+ * keys as `feature_disabled`; neither begins a call or reaches an upstream.
+ *
  * The relay is a plain function so these cases run on Node: the container class wires it to its outbound handler with
- * the job's plan and limits and its own Durable Object as the registry. The upstream is a global fetch stand-in; the
+ * the job's plan and limits, the key read and its own Durable Object as the registry. The upstream is a global fetch stand-in; the
  * sample events below are copied from what OpenRouter answered in the DD probe.
  */
 
 import type { MessagesCallEnd, MessagesPlan } from "@breatic/provider/messages";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
+import type { ModelKeysFetch } from "@ingest/jobs/web-animation-model-keys.js";
 import { MODEL_HOST, relayModelCall, type ModelRelayDeps } from "@ingest/jobs/web-animation-model-relay.js";
 
 const API_KEY = "test-openrouter-key";
@@ -117,6 +122,8 @@ interface Harness {
   beginModelCall: Mock<() => Promise<number | null>>;
   recordModelCallStart: Mock<(seq: number, upstream: string, messageId: string) => Promise<void>>;
   endModelCall: Mock<(seq: number, end: MessagesCallEnd) => Promise<void>>;
+  failJob: Mock<(reason: string) => Promise<void>>;
+  fetchKeys: Mock<(upstreams: readonly string[]) => Promise<ModelKeysFetch>>;
   fetch: Mock<(url: string, init: RequestInit) => Promise<Response>>;
 }
 
@@ -127,29 +134,33 @@ afterEach(() => {
 /**
  * Relay dependencies with a recording registry.
  * @param upstream - What the fake OpenRouter answers; it stands in for the global fetch provider sends with.
- * @param overrides - Limits or a begin answer to change.
+ * @param overrides - Limits, a begin answer or the keys read to change.
  * @returns The harness.
  */
 function harness(
   upstream: (url: string, init: RequestInit) => Promise<Response>,
-  overrides: { seq?: number | null; callTimeoutMs?: number } = {},
+  overrides: { seq?: number | null; callTimeoutMs?: number; keys?: ModelKeysFetch } = {},
 ): Harness {
   const beginModelCall = vi.fn(async (): Promise<number | null> => (overrides.seq === undefined ? 7 : overrides.seq));
   const recordModelCallStart = vi.fn(async (_seq: number, _upstream: string, _messageId: string): Promise<void> => undefined);
   const endModelCall = vi.fn(async (_seq: number, _end: MessagesCallEnd): Promise<void> => undefined);
+  const failJob = vi.fn(async (_reason: string): Promise<void> => undefined);
+  const fetchKeys = vi.fn(async (_upstreams: readonly string[]): Promise<ModelKeysFetch> => overrides.keys ?? { kind: "keys", keys: { openrouter: API_KEY } });
   const fetch = vi.fn(upstream);
   vi.stubGlobal("fetch", fetch);
   return {
     beginModelCall,
     recordModelCallStart,
     endModelCall,
+    failJob,
+    fetchKeys,
     fetch,
     deps: {
       plan: PLAN,
-      keyOf: (name) => (name === "OPENROUTER_API_KEY" ? API_KEY : undefined),
+      fetchKeys,
       maxTokens: MAX_TOKENS,
       callTimeoutMs: overrides.callTimeoutMs ?? 60_000,
-      registry: { beginModelCall, recordModelCallStart, endModelCall },
+      registry: { beginModelCall, recordModelCallStart, endModelCall, failJob },
     },
   };
 }
@@ -222,7 +233,7 @@ async function drain(res: Response): Promise<string> {
 }
 
 describe("relayModelCall: what reaches the plan's upstream", () => {
-  it("sends the call to the plan's upstream with the key keyOf reads for it and the harness's anthropic-version", async () => {
+  it("sends the call to the plan's upstream with the key read for it and the harness's anthropic-version", async () => {
     const h = harness(async () => upstreamStream([COMPLETE_STREAM]));
     await drain(await relayModelCall(harnessRequest(BODY, { headers: { authorization: "Bearer sk-placeholder" } }), h.deps));
 
@@ -239,6 +250,92 @@ describe("relayModelCall: what reaches the plan's upstream", () => {
     await drain(await relayModelCall(harnessRequest({ ...BODY, max_tokens: 1_000_000 }), h.deps));
 
     expect(sentBody(h)).toMatchObject({ model: MODEL, max_tokens: MAX_TOKENS, stream: true });
+  });
+});
+
+describe("relayModelCall: reading the call's keys (inner#1953)", () => {
+  it("reads the keys of the plan's upstreams before beginning the call, and sends with the key read for its upstream", async () => {
+    const order: string[] = [];
+    const h = harness(async () => upstreamStream([COMPLETE_STREAM]));
+    h.fetchKeys.mockImplementation(async () => {
+      order.push("keys");
+      return { kind: "keys", keys: { openrouter: "sk-or-read-for-this-call" } };
+    });
+    h.beginModelCall.mockImplementation(async () => {
+      order.push("begin");
+      return 7;
+    });
+    await drain(await relayModelCall(harnessRequest(BODY), h.deps));
+
+    expect(h.fetchKeys).toHaveBeenCalledWith(["openrouter"]);
+    expect(order).toEqual(["keys", "begin"]);
+    expect(new Headers(h.fetch.mock.calls[0]![1].headers).get("authorization")).toBe("Bearer sk-or-read-for-this-call");
+  });
+
+  it("reads the keys again for every call: none is kept from one call to the next", async () => {
+    const h = harness(async () => upstreamStream([COMPLETE_STREAM]));
+    await drain(await relayModelCall(harnessRequest(BODY), h.deps));
+    await drain(await relayModelCall(harnessRequest(BODY), h.deps));
+
+    expect(h.fetchKeys).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks once for each upstream of a plan that names one twice", async () => {
+    const h = harness(async () => upstreamStream([COMPLETE_STREAM]));
+    const twice = { ...PLAN, candidates: [...PLAN.candidates, { ...PLAN.candidates[0]!, vendorModel: "other" }] };
+    await drain(await relayModelCall(harnessRequest(BODY), { ...h.deps, plan: twice }));
+
+    expect(h.fetchKeys).toHaveBeenCalledWith(["openrouter"]);
+  });
+
+  it.each([
+    ["account_key_missing", { kind: "refused", reason: "account_key_missing", upstream: "openrouter" }],
+    ["feature_disabled", { kind: "refused", reason: "feature_disabled" }],
+  ] as const)("ends the job as %s on that refusal, answering 409 without beginning a call or reaching an upstream", async (reason, keys) => {
+    const h = harness(async () => upstreamStream([COMPLETE_STREAM]), { keys });
+    const res = await relayModelCall(harnessRequest(BODY), h.deps);
+
+    expect(res.status).toBe(409);
+    expect(h.failJob).toHaveBeenCalledWith(reason);
+    expect(h.beginModelCall).not.toHaveBeenCalled();
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+
+  it("answers 409 for an execution no longer running, leaving the job to its own ending", async () => {
+    const h = harness(async () => upstreamStream([COMPLETE_STREAM]), { keys: { kind: "not_running" } });
+    const res = await relayModelCall(harnessRequest(BODY), h.deps);
+
+    expect(res.status).toBe(409);
+    expect(h.failJob).not.toHaveBeenCalled();
+    expect(h.beginModelCall).not.toHaveBeenCalled();
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+
+  it("answers 503 when the keys could not be read this time, so the harness may call again", async () => {
+    const h = harness(async () => upstreamStream([COMPLETE_STREAM]), { keys: { kind: "unavailable", status: 502 } });
+    const res = await relayModelCall(harnessRequest(BODY), h.deps);
+
+    expect(res.status).toBe(503);
+    expect(h.failJob).not.toHaveBeenCalled();
+    expect(h.beginModelCall).not.toHaveBeenCalled();
+    expect(h.fetch).not.toHaveBeenCalled();
+  });
+
+  it("skips an upstream the read gave no key for, and answers 502 when it gave none", async () => {
+    const h = harness(async () => upstreamStream([COMPLETE_STREAM]), { keys: { kind: "keys", keys: {} } });
+    const res = await relayModelCall(harnessRequest(BODY), h.deps);
+
+    expect(res.status).toBe(502);
+    expect(h.fetch).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(h.endModelCall).toHaveBeenCalledWith(7, { outcome: "upstream_error", upstream: null, tokens: null, cost: null }));
+  });
+
+  it("reads no keys for a request it refuses", async () => {
+    const h = harness(async () => upstreamStream([COMPLETE_STREAM]));
+    await relayModelCall(harnessRequest(BODY, { method: "GET" }), h.deps);
+    await relayModelCall(harnessRequest("not json"), h.deps);
+
+    expect(h.fetchKeys).not.toHaveBeenCalled();
   });
 });
 

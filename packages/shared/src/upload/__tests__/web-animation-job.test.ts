@@ -27,6 +27,7 @@ const request = {
   maxTokens: 32_000,
   callTimeoutMs: 300_000,
   model: "deepseek/deepseek-v4.1-flash-1017",
+  modelKeys: { url: "https://api.example.test/api/v1/ingest/model-keys", executionId: "40000000-0000-4000-8000-000000000001" },
   messagesPlan: {
     model: "deepseek/deepseek-v4.1-flash-1017",
     candidates: [
@@ -73,6 +74,13 @@ describe("webAnimationJobRequestSchema", () => {
       const { [field]: _dropped, ...rest } = request;
       expect(webAnimationJobRequestSchema.safeParse(rest).success, field).toBe(false);
     }
+  });
+
+  it("requires where the Worker reads the keys of each model call and the execution it asks for (inner#1953)", () => {
+    const { modelKeys: _dropped, ...rest } = request;
+    expect(webAnimationJobRequestSchema.safeParse(rest).success).toBe(false);
+    expect(webAnimationJobRequestSchema.safeParse({ ...request, modelKeys: { ...request.modelKeys, url: "not a url" } }).success).toBe(false);
+    expect(webAnimationJobRequestSchema.safeParse({ ...request, modelKeys: { ...request.modelKeys, executionId: "timeline:x" } }).success).toBe(false);
   });
 
   it("carries the plan of where its model calls go", () => {

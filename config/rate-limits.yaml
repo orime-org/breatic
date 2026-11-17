@@ -128,6 +128,11 @@ mini_tool:      { max: 30,  window_seconds: 60 }
 # user-keyed). Same shape as Generate: one press puts a container run with
 # model calls behind it; credits are charged when it ends.
 timeline_execution: { max: 30, window_seconds: 60 }
+# The ingest Worker reading the keys of a web-animation model call (inner#1953),
+# counted per address our proxy wrote: the Worker asks once before each call,
+# a run makes its calls one at a time, and Cloudflare sends many runs from few
+# addresses, so this is sized for every running execution together.
+ingest-model-keys: { max: 600, window_seconds: 60 }
 
 # Reading the membership panel. Answered from our own database (#307), and
 # each read sums the storage of every studio the account administers. Sixty a

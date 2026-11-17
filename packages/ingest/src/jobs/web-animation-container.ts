@@ -24,7 +24,7 @@ import { noteFailure } from "@ingest/error-monitoring.js";
 import { askedKey } from "@ingest/object-url.js";
 import { MEDIA_OBJECT_HOST, mediaObjectUrl } from "@ingest/media-object-route.js";
 import { JOB_REPORT_HOST, JobStartFailed } from "@ingest/jobs/mini-tool-container.js";
-import { harnessKeyOf } from "@ingest/jobs/harness-keys.js";
+import { fetchModelKeys, type ModelKeysFetch, type ModelKeysTarget } from "@ingest/jobs/web-animation-model-keys.js";
 import { MODEL_HOST, relayModelCall } from "@ingest/jobs/web-animation-model-relay.js";
 import {
   WEB_ANIMATION_PORT,
@@ -44,13 +44,16 @@ import {
 import { hashStoredObject, writeStreamedObject } from "@ingest/stored-object.js";
 
 /**
- * What this class needs bound; the binding is optional, and its absence turns the feature off. The model keys are
- * `HARNESS_` plus each upstream's key variable (`key_env` in `config/provider/upstreams.yaml`), read through
- * `harnessKeyOf`.
+ * What this class needs bound; the binding and the private key are optional, and the absence of either turns the
+ * feature off. The Worker holds no model key: each call's keys are read from the server the job names, signed with
+ * the shared secret and opened with `KEY_UNSEAL_PRIVATE_KEY` (inner#1953).
  */
 export interface WebAnimationEnv {
   BUCKET: R2Bucket;
+  INGEST_SHARED_SECRET: string;
   WEB_ANIMATION?: DurableObjectNamespace<WebAnimationContainer>;
+  /** PKCS#8 PEM that opens the keys our server seals for each model call (a Worker secret). */
+  KEY_UNSEAL_PRIVATE_KEY?: string;
 }
 
 /** What a submit answers. */
@@ -74,10 +77,12 @@ interface JobObjects {
 
 /**
  * What the model relay is told about its job. `plan` is absent from a container started by a Worker deployed before
- * the plan (inner#1743), whose stored outbound params carry `model` instead.
+ * the plan (inner#1743), whose stored outbound params carry `model` instead, and `modelKeys` from one started before
+ * the Worker read its keys from our server (inner#1953).
  */
 interface ModelLimits {
   plan?: MessagesPlan;
+  modelKeys?: ModelKeysTarget;
   maxTokens: number;
   callTimeoutMs: number;
 }
@@ -207,6 +212,15 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
   }
 
   /**
+   * Fail the job because our server refused a call's keys for good (inner#1953).
+   * @param reason - The failure reason: `account_key_missing` or `feature_disabled`.
+   * @returns Nothing.
+   */
+  async refuseModelKeys(reason: string): Promise<void> {
+    await this.apply({ type: "modelKeysRefused", reason });
+  }
+
+  /**
    * One output the container wrote.
    * @param output - What the edge measured.
    * @returns Nothing.
@@ -306,7 +320,12 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
       packageKey: request.packageKey, manifestKey: request.manifestKey, maxPackageBytes: request.maxPackageBytes,
     };
     // The routes submit only a request with a plan; its prices are as provider's messagesPlan wrote them.
-    const limits: ModelLimits = { plan: request.messagesPlan as MessagesPlan, maxTokens: request.maxTokens, callTimeoutMs: request.callTimeoutMs };
+    const limits: ModelLimits = {
+      plan: request.messagesPlan as MessagesPlan,
+      modelKeys: request.modelKeys,
+      maxTokens: request.maxTokens,
+      callTimeoutMs: request.callTimeoutMs,
+    };
     const run: WebAnimationRunBody = {
       prompt: request.prompt,
       viewport: request.viewport,
@@ -395,27 +414,47 @@ function jobObject(env: WebAnimationEnv, ctx: OutboundHandlerContext<unknown>): 
 }
 
 /**
- * Relay one model call along the job's plan under its limits.
+ * Read one call's keys from our server, reporting a read that failed for a reason we must fix. Nothing about the keys
+ * is reported.
+ * @param target - The job's key endpoint and execution.
+ * @param upstreams - The plan's upstreams.
+ * @param env - The bindings, holding the shared secret and the private key.
+ * @param containerId - The container, for the report.
+ * @returns What the read gave.
+ */
+async function readModelKeys(target: ModelKeysTarget, upstreams: readonly string[], env: WebAnimationEnv, containerId: string): Promise<ModelKeysFetch> {
+  const read = await fetchModelKeys(target, upstreams, { sharedSecret: env.INGEST_SHARED_SECRET, privateKey: env.KEY_UNSEAL_PRIVATE_KEY ?? "" });
+  if (read.kind === "unavailable") {
+    noteFailure("ingest_web_animation_model_keys_unavailable", { containerId, executionId: target.executionId, status: read.status });
+  } else if (read.kind === "refused" && read.unreadable === true) {
+    noteFailure("ingest_web_animation_model_keys_unreadable", { containerId, executionId: target.executionId });
+  }
+  return read;
+}
+
+/**
+ * Relay one model call along the job's plan under its limits, on the keys read for that call.
  * @param request - What the harness sent to `model.local`.
- * @param env - The bindings, holding the keys.
- * @param ctx - The handler's context, carrying the job's plan and limits.
+ * @param env - The bindings, holding the shared secret and the private key.
+ * @param ctx - The handler's context, carrying the job's plan, key endpoint and limits.
  * @returns The relayed answer, or 503 when the job object could not be reached or the container was started without a
- *   plan, which no call is registered for.
+ *   plan or a key endpoint, which no call is registered for.
  */
 async function modelCall(request: Request, env: WebAnimationEnv, ctx: OutboundHandlerContext<ModelLimits>): Promise<Response> {
-  const plan = ctx.params.plan;
-  if (plan === undefined) return new Response("The job was started without a model plan", { status: 503 });
+  const { plan, modelKeys } = ctx.params;
+  if (plan === undefined || modelKeys === undefined) return new Response("The job was started without a model plan", { status: 503 });
   const job = jobObject(env, ctx);
   try {
     return await relayModelCall(request, {
       plan,
-      keyOf: harnessKeyOf(env),
+      fetchKeys: (upstreams) => readModelKeys(modelKeys, upstreams, env, ctx.containerId),
       maxTokens: ctx.params.maxTokens,
       callTimeoutMs: ctx.params.callTimeoutMs,
       registry: {
         beginModelCall: () => job.beginModelCall(),
         recordModelCallStart: (seq, upstream, messageId) => job.recordModelCallStart(seq, upstream, messageId),
         endModelCall: (seq, end) => job.endModelCall(seq, end),
+        failJob: (reason) => job.refuseModelKeys(reason),
       },
     });
   } catch (err) {

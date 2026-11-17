@@ -61,6 +61,8 @@ export type WebAnimationJobEvent =
   | { type: "written"; key: string; sha256: string; bytes: number }
   | { type: "progress"; phase: NonNullable<WebAnimationJobReport["phase"]>; steps: unknown[] }
   | { type: "finished"; ok: boolean; failureReason: string | null; cpuUsec: number | null }
+  /** Our server refused a call's keys for good (inner#1953): the job fails with that reason. */
+  | { type: "modelKeysRefused"; reason: string }
   | { type: "containerGone" };
 
 /** What the object does after a transition: start the container, stop it, or bound the drain of an open call. */
@@ -196,6 +198,8 @@ export function transitionWebAnimationJob(
       return running ? stop(record, "cancelled", null, now) : stay(record);
     case "deadline":
       return running ? stop(record, "expired", null, now) : stay(record);
+    case "modelKeysRefused":
+      return running ? stop(record, "failed", event.reason, now) : stay(record);
     case "finished": {
       const withCpu = { ...record, cpuUsec: event.cpuUsec };
       if (!running) return stay(withCpu);

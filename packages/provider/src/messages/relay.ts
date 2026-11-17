@@ -3,10 +3,11 @@
 
 /**
  * The model calls of the web-animation container, relayed from the ingest Worker (`@breatic/provider/messages`). The
- * Worker has no provider configuration: the application plans the call on Node (`provider.llm.messagesPlan`) and hands
- * the plan over with the job, and this relay sends each call to the plan's upstreams in order, moving on before the
- * first answer by the same rules as every other call, and tells the caller who served it and what it cost. It runs in
- * a Cloudflare Worker, so it imports nothing that needs Node beyond `AsyncLocalStorage`.
+ * Worker has no provider configuration and no key of its own: the application plans the call on Node
+ * (`provider.llm.messagesPlan`) and hands the plan over with the job, the Worker reads each call's keys by upstream
+ * (inner#1953), and this relay sends each call to the plan's upstreams in order, moving on before the first answer by
+ * the same rules as every other call, and tells the caller who served it and what it cost. It runs in a Cloudflare
+ * Worker, so it imports nothing that needs Node beyond `AsyncLocalStorage`.
  */
 
 import type { Cost } from "@provider/cost.js";
@@ -35,7 +36,7 @@ export interface MessagesCandidate {
   baseUrl: string;
   /** The id this upstream serves the model under. */
   vendorModel: string;
-  /** The environment variable of its key; the Worker reads its own copy of it. */
+  /** The environment variable of its key on our services, named for whoever sets it up; the relay asks for keys by upstream. */
   keyEnv: string;
   /** The model's direct prices, for an upstream priced from `llm.yaml`. */
   prices?: PriceEntries;
@@ -67,8 +68,8 @@ export interface MessagesCallEnd {
 
 /** What the relay needs from its caller. */
 export interface RelayOptions {
-  /** Reads one key the caller holds; undefined or empty means not configured. */
-  keyOf: (envName: string) => string | undefined;
+  /** Reads the key the caller holds for one upstream of the plan, as a `KeySet` does; undefined or empty means none. */
+  keyOf: (upstream: string) => string | undefined;
   /** The highest max_tokens a call may ask for. */
   maxTokens: number;
   /** Stops the call, whatever it is doing. */
@@ -131,7 +132,7 @@ export async function relayMessages(plan: MessagesPlan, asked: Record<string, un
   let refused: { status: number; text: string; contentType: string } | undefined;
   for (const candidate of plan.candidates) {
     const speaker = messagesSpeakerOf(candidate.kind);
-    const key = options.keyOf(candidate.keyEnv);
+    const key = options.keyOf(candidate.upstream);
     if (speaker === undefined || key === undefined || key === "") continue;
     const body = upstreamBody(asked, candidate.vendorModel, options.maxTokens);
     speaker.rewrite?.(body);

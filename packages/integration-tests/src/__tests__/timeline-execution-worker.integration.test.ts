@@ -52,7 +52,6 @@ import { createHash } from "node:crypto";
 import { createPgClient, createQueue, env, getStreamRedis, getTimelineConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
 import { initProvider, provider, toChargeCredits, USAGE_LOOKUP_QUEUE } from "@breatic/domain";
 import { NoUpstreamAvailable, type CostLookup } from "@breatic/provider";
-import { t } from "@breatic/shared";
 import { spaceTasksChangedChannel } from "@breatic/shared";
 import { WEB_ANIMATION_CONTAINER_CLASS, webAnimationJobRequestSchema } from "@breatic/shared/space-content";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
@@ -69,7 +68,6 @@ import {
   jobFor,
   json,
   manifest,
-  notConfigured,
   read,
   report,
   seedExecution,
@@ -325,6 +323,7 @@ describe("picking up a queued execution", () => {
       maxTokens: config.max_tokens,
       callTimeoutMs: config.call_timeout_ms,
       model: config.model,
+      modelKeys: { url: "https://api.test.invalid/api/v1/ingest/model-keys", executionId: fx.execution.id },
       messagesPlan: provider().llm.messagesPlan(config.model),
     });
     expect(submitted.messagesPlan!.candidates.length).toBeGreaterThan(0);
@@ -734,18 +733,18 @@ describe("an ingest Worker without web-animation execution", () => {
     await expectFeatureDisabled(fx, "failed");
   });
 
-  it("fails the execution as feature_disabled when the submit says no upstream has a key there, logging the model and variables", async () => {
-    const fx = await seed("queued");
-    const ingest = installFakeIngest(fx);
-    const model = getTimelineConfig().web_animation.model;
-    ingest.submit = () => notConfigured(model, ["HARNESS_OPENROUTER_API_KEY"]);
-    await pickUp(fx);
-    await expectFeatureDisabled(fx, "failed");
-    expect(errorLogs()).toContainEqual(expect.objectContaining({
-      executionId: fx.execution.id,
-      reason: t("server.model.not_configured", { model, envVars: "HARNESS_OPENROUTER_API_KEY" }),
-      msg: "timeline_model_not_configured",
-    }));
+  it("fails the execution as feature_disabled without submitting when this region has no SERVER_PUBLIC_URL for the Worker's key requests, logging it", async () => {
+    initCore({ ...process.env, SERVER_PUBLIC_URL: "" });
+    try {
+      const fx = await seed("queued");
+      const ingest = installFakeIngest(fx);
+      await pickUp(fx);
+      await expectFeatureDisabled(fx, "failed");
+      expect(ingest.calls.filter((call) => call.route === "submit")).toEqual([]);
+      expect(errorLogs()).toContainEqual(expect.objectContaining({ executionId: fx.execution.id, msg: "timeline_server_public_url_unset" }));
+    } finally {
+      initCore(process.env);
+    }
   });
 
   it("fails the execution as feature_disabled without submitting when no upstream of its model takes a Messages call", async () => {

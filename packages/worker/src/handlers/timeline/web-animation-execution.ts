@@ -26,6 +26,7 @@
 import { DelayedError, type Job } from "bullmq";
 import {
   db,
+  env,
   getMiniToolsConfig,
   getStorageAdapter,
   getTimelineConfig,
@@ -49,8 +50,9 @@ import {
   webAnimationSourceRepo,
   type AwaitedLookup,
 } from "@breatic/domain";
-import { t, type TimelineExecution } from "@breatic/shared";
+import type { TimelineExecution } from "@breatic/shared";
 import {
+  MODEL_KEYS_PATH,
   TimelineExecutionInputSchema,
   WEB_ANIMATION_CONTAINER_CLASS,
   WEB_ANIMATION_MANIFEST_MAX_BYTES,
@@ -157,15 +159,16 @@ function storedStep(steps: unknown[]): JobStep | undefined {
 
 /**
  * The job an execution runs: fixed from its accepted input, the yaml and provider's plan of the attempt that first
- * submits it.
+ * submits it. It names this region's key endpoint, where the Worker reads each model call's keys (inner#1953).
  * @param row - The execution.
  * @param input - Its frozen input.
  * @param keys - The account's keys its model calls run on; ours when absent.
+ * @param serverUrl - This region's API as the Worker reaches it.
  * @returns The step.
  * @throws {RangeError} When the input's duration does not make a frame count.
  * @throws {NoUpstreamAvailable} When no upstream of the model takes a Messages call.
  */
-function newStep(row: TimelineExecution, input: TimelineExecutionInput, keys: KeySet | undefined): JobStep {
+function newStep(row: TimelineExecution, input: TimelineExecutionInput, keys: KeySet | undefined, serverUrl: string): JobStep {
   const config = getTimelineConfig().web_animation;
   const prefix = `web-animation/${row.projectId}/${row.id}`;
   return {
@@ -186,6 +189,7 @@ function newStep(row: TimelineExecution, input: TimelineExecutionInput, keys: Ke
       maxTokens: config.max_tokens,
       callTimeoutMs: config.call_timeout_ms,
       model: config.model,
+      modelKeys: { url: `${serverUrl}${MODEL_KEYS_PATH}`, executionId: row.id },
       messagesPlan: provider().llm.messagesPlan(config.model, undefined, keys),
     }),
   };
@@ -274,29 +278,6 @@ async function take(row: TimelineExecution): Promise<TimelineExecution | null> {
 async function featureDisabled(pickup: Pickup): Promise<void> {
   const empty: EndedReport = { state: "failed", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: "feature_disabled" };
   await settle(pickup, empty, { type: "failure", fence: pickup.row.fence, reason: "feature_disabled" });
-}
-
-/**
- * End the row as not available because the Worker holds no key for any upstream of the job's plan, logging what the
- * deployment is missing.
- * @param pickup - The pickup.
- * @param answer - The Worker's answer.
- * @param answer.model - The plan's model.
- * @param answer.envVars - The Worker variables it needs.
- * @returns Nothing.
- * @throws {Error} When a write fails.
- */
-async function notConfigured(pickup: Pickup, answer: { model: string; envVars: string[] }): Promise<void> {
-  logger.error(
-    {
-      executionId: pickup.row.id,
-      model: answer.model,
-      envVars: answer.envVars,
-      reason: t("server.model.not_configured", { model: answer.model, envVars: answer.envVars.join(", ") }),
-    },
-    "timeline_model_not_configured",
-  );
-  return featureDisabled(pickup);
 }
 
 /**
@@ -554,7 +535,6 @@ async function running(pickup: Pickup): Promise<void> {
     if (answer.kind === "unavailable") logger.warn({ executionId: pickup.row.id, jobId: request.jobId }, "web_animation_container_start_refused");
   }
   if (answer.kind === "disabled") return featureDisabled(pickup);
-  if (answer.kind === "unconfigured") return notConfigured(pickup, answer);
   const report = answer.kind === "report" ? answer.report : null;
   if (report !== null && ended(report)) return finish(pickup, report);
   if (Date.now() >= endsAt) {
@@ -590,10 +570,16 @@ async function pickUp(job: Job<TimelineExecutionJobData>, token: string | undefi
   const llmKeyId = await timelineExecutionRepo.llmKeyIdOf(row.id);
   let step = storedStep(row.steps);
   if (step === undefined) {
+    if (env.SERVER_PUBLIC_URL === "") {
+      // The Worker could not read a key for any call: a deployment's configuration, not this run's.
+      logger.error({ executionId: row.id }, "timeline_server_public_url_unset");
+      await move(row, { type: "failure", fence: row.fence, reason: "feature_disabled" });
+      return;
+    }
     const keys = await accountKeys(row, llmKeyId);
     if (keys === null) return;
     try {
-      step = newStep(row, input.data, keys);
+      step = newStep(row, input.data, keys, env.SERVER_PUBLIC_URL);
     } catch (err) {
       if (!(err instanceof NoUpstreamAvailable)) throw err;
       // No upstream of the model takes a Messages call: a deployment's configuration, not this run's.

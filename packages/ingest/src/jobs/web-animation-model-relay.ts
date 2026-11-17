@@ -9,6 +9,10 @@
  * rebuilds the body from the Messages field allowlist, clamps `max_tokens`, sends the plan's model, picks the upstream
  * and reads what the call cost.
  *
+ * The Worker holds no model key (inner#1953): before each call the relay reads that call's keys for the plan's
+ * upstreams from our server, and they live only in that call. A refusal for a missing key ends the job as
+ * `account_key_missing`, one for a deployment without the keys as `feature_disabled`; our key is never used instead.
+ *
  * Each call is registered with the job's Durable Object before it is sent and ended exactly once, whatever happens
  * to it; the object refuses a new call while one is open or once the job is stopping. A plain function so it runs on
  * Node in tests; the container class wires it to its outbound handler.
@@ -16,14 +20,16 @@
 
 import { relayMessages, type MessagesCallEnd, type MessagesPlan } from "@breatic/provider/messages";
 
+import type { ModelKeysFetch } from "@ingest/jobs/web-animation-model-keys.js";
+
 /** The fake host the container's harness sends model calls to. */
 export const MODEL_HOST = "model.local";
 
-/** What the relay needs: the job's plan and limits, the Worker's keys and the job object's registry. */
+/** What the relay needs: the job's plan and limits, the read of each call's keys and the job object's registry. */
 export interface ModelRelayDeps {
   plan: MessagesPlan;
-  /** Reads the Worker's copy of one key the plan names. */
-  keyOf: (envName: string) => string | undefined;
+  /** Reads one call's keys for these upstreams of the plan. */
+  fetchKeys: (upstreams: readonly string[]) => Promise<ModelKeysFetch>;
   maxTokens: number;
   callTimeoutMs: number;
   registry: {
@@ -31,6 +37,8 @@ export interface ModelRelayDeps {
     beginModelCall: () => Promise<number | null>;
     recordModelCallStart: (seq: number, upstream: string, messageId: string) => Promise<void>;
     endModelCall: (seq: number, end: MessagesCallEnd) => Promise<void>;
+    /** Ends the job failed for this reason. */
+    failJob: (reason: string) => Promise<void>;
   };
 }
 
@@ -47,9 +55,11 @@ function isObject(value: unknown): value is Record<string, unknown> {
 /**
  * Relay one model call from the container along the job's plan.
  * @param request - What the harness sent to `model.local`.
- * @param deps - The job's plan and limits, the keys and the registry.
+ * @param deps - The job's plan and limits, the key read and the registry.
  * @returns The upstream answer, streamed; 403 for anything but `POST /v1/messages`, 400 for a body that is not a JSON
- *   object, 409 when the job refuses a call, a refusal as the upstream gave it, 502 when no upstream could be reached.
+ *   object, 409 when the job refuses a call, the server refused the keys (the job then ends) or the execution no longer
+ *   runs, 503 when the keys could not be read this time, a refusal as the upstream gave it, 502 when no upstream could
+ *   be reached.
  * @throws {unknown} What the registry throws when the job object cannot be reached.
  */
 export async function relayModelCall(request: Request, deps: ModelRelayDeps): Promise<Response> {
@@ -64,6 +74,15 @@ export async function relayModelCall(request: Request, deps: ModelRelayDeps): Pr
   }
   if (!isObject(asked)) return new Response("Not a Messages body", { status: 400 });
 
+  const read = await deps.fetchKeys([...new Set(deps.plan.candidates.map(({ upstream }) => upstream))]);
+  if (read.kind === "refused") {
+    await deps.registry.failJob(read.reason);
+    return new Response("The model keys were refused", { status: 409 });
+  }
+  if (read.kind === "not_running") return new Response("The execution no longer runs", { status: 409 });
+  if (read.kind === "unavailable") return new Response("The model keys could not be read", { status: 503 });
+  const { keys } = read;
+
   const seq = await deps.registry.beginModelCall();
   if (seq === null) return new Response("The job takes no model call now", { status: 409 });
 
@@ -73,7 +92,7 @@ export async function relayModelCall(request: Request, deps: ModelRelayDeps): Pr
   request.signal.addEventListener("abort", abandon);
   const version = request.headers.get("anthropic-version");
   return relayMessages(deps.plan, asked, {
-    keyOf: deps.keyOf,
+    keyOf: (upstream) => (Object.hasOwn(keys, upstream) ? keys[upstream] : undefined),
     maxTokens: deps.maxTokens,
     signal: abort.signal,
     ...(version === null ? {} : { anthropicVersion: version }),

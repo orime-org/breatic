@@ -66,6 +66,8 @@ process.env.UPLOAD_BASE_URL = "https://assets.test.invalid";
 // fixed test value, and tests that verify a ticket read it back from here.
 process.env.INGEST_BASE_URL = "https://ingest.test.invalid";
 process.env.INGEST_SHARED_SECRET = "integration-suite-ingest-secret";
+// Where a web-animation job tells the Worker to read its model keys (inner#1953).
+process.env.SERVER_PUBLIC_URL = "https://api.test.invalid";
 
 // Each test file hands back the connections it opened.
 //
