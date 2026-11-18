@@ -149,19 +149,24 @@ export async function cleanupFailedJobNodes(
   // The same exit the handler's own failure path uses, so a lane whose causes
   // are stored as codes keeps storing codes: a user opens a node's list in
   // their own language, and BullMQ's sentence is in one.
-  const failure = storedFailure(
+  let failure: string | undefined;
+  /**
+   * The stored cause, worked out once and only for a task that did not bill.
+   * @returns The cause.
+   */
+  const failureOf = (): string => (failure ??= storedFailure(
     job.data.taskType,
     new Error(`Task failed: ${reason}`),
     undefined,
     isTranscription(job.data.params ?? {}) ? "transcribe" : undefined,
-  );
+  ));
   // Whether the task and every row it had open are ended already.
   let rowsEnded = false;
   if (task?.billedAt) {
     await releaseRunHold(job.data.taskId, job.data.userId);
   } else {
     try {
-      const ended = await runningSlotService.failTask(job.data.taskId, failure);
+      const ended = await runningSlotService.failTask(job.data.taskId, failureOf());
       for (const err of ended.publishFailures) logger.warn({ err, taskId: job.data.taskId }, "crash_net_counts_publish_failed");
       rowsEnded = true;
     } catch (err) {
@@ -332,7 +337,7 @@ export async function cleanupFailedJobNodes(
         taskId: job.data.taskId,
         nodeId,
         outcome: "failed",
-        errorMessage: failure,
+        errorMessage: failureOf(),
       });
       emitted++;
     } catch (err) {
