@@ -148,30 +148,37 @@ describe("readCommentMentions — document", () => {
 });
 
 describe("readCommentAssignments — canvas", () => {
-  const assignment = { connectionId: "conn", assignedBy: "giver", assignedAt: 100 };
+  const assignment = { connectionId: "conn", assignedBy: "giver", assignedAt: 100, projectId: PROJECT };
 
   it("reads a hand-over as pending until a reply by that connection answers that hand-over", () => {
     const doc = new Y.Doc();
     annotation(doc, "a1", { assignment }, [{ id: "r1", createdBy: "giver", via: "conn", answers: 99 }]);
     annotation(doc, "a2", { assignment }, [{ id: "r2", createdBy: "giver", via: "conn", answers: 100 }]);
     annotation(doc, "a3", { assignment }, [{ id: "r3", createdBy: "giver", via: "other", answers: 100 }]);
-    expect(readCommentAssignments("canvas", doc)).toEqual([
-      { threadId: "a1", ...assignment, status: "pending" },
-      { threadId: "a2", ...assignment, status: "answered" },
-      { threadId: "a3", ...assignment, status: "pending" },
+    expect(readCommentAssignments("canvas", doc, PROJECT)).toEqual([
+      { threadId: "a1", connectionId: "conn", assignedBy: "giver", assignedAt: 100, status: "pending" },
+      { threadId: "a2", connectionId: "conn", assignedBy: "giver", assignedAt: 100, status: "answered" },
+      { threadId: "a3", connectionId: "conn", assignedBy: "giver", assignedAt: 100, status: "pending" },
     ]);
+  });
+
+  it("reads nothing from a hand-over given in another project, as a project copy carries", () => {
+    const doc = new Y.Doc();
+    annotation(doc, "a1", { assignment: { ...assignment, projectId: OTHER_PROJECT } });
+    annotation(doc, "a2", { assignment: { connectionId: "conn", assignedBy: "giver", assignedAt: 100 } });
+    expect(readCommentAssignments("canvas", doc, PROJECT)).toEqual([]);
   });
 
   it("reads nothing from an annotation with no hand-over or a malformed one", () => {
     const doc = new Y.Doc();
     annotation(doc, "a1", {});
     annotation(doc, "a2", { assignment: { connectionId: "conn", assignedBy: "giver", assignedAt: "soon" } });
-    expect(readCommentAssignments("canvas", doc)).toEqual([]);
+    expect(readCommentAssignments("canvas", doc, PROJECT)).toEqual([]);
   });
 });
 
 describe("readCommentAssignments — document", () => {
-  const assignment = { connectionId: "conn", assignedBy: "giver", assignedAt: 100 };
+  const assignment = { connectionId: "conn", assignedBy: "giver", assignedAt: 100, projectId: PROJECT };
 
   it("reads pending, answered and resolved, answered winning over resolved", () => {
     const doc = new Y.Doc();
@@ -180,7 +187,7 @@ describe("readCommentAssignments — document", () => {
     thread(doc, "answered", { metadata: { assignment }, comments: [{ id: "c1", userId: "a" }, answering] });
     thread(doc, "resolved", { metadata: { assignment }, resolved: true, comments: [{ id: "c1", userId: "a" }] });
     thread(doc, "both", { metadata: { assignment }, resolved: true, comments: [answering] });
-    expect(readCommentAssignments("document", doc).map((r) => [r.threadId, r.status])).toEqual([
+    expect(readCommentAssignments("document", doc, PROJECT).map((r) => [r.threadId, r.status])).toEqual([
       ["pending", "pending"],
       ["answered", "answered"],
       ["resolved", "resolved"],
@@ -192,6 +199,6 @@ describe("readCommentAssignments — document", () => {
     const doc = new Y.Doc();
     thread(doc, "t1", { metadata: { assignment }, comments: [{ id: "c2", userId: "g", deletedAt: 5, metadata: { via: "conn", answers: 100 } }] });
     thread(doc, "t2", { metadata: { assignment }, marked: false, comments: [{ id: "c1", userId: "a" }] });
-    expect(readCommentAssignments("document", doc)).toEqual([{ threadId: "t1", ...assignment, status: "pending" }]);
+    expect(readCommentAssignments("document", doc, PROJECT)).toEqual([{ threadId: "t1", connectionId: "conn", assignedBy: "giver", assignedAt: 100, status: "pending" }]);
   });
 });

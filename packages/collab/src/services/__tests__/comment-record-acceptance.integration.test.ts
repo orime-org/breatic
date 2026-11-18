@@ -133,7 +133,7 @@ describe("hand-overs", () => {
   it("records a hand-over as pending, then answered once its agent replies, telling the giver once per hand-over", async () => {
     const world = await seedWorld("editor");
     const id = randomUUID();
-    const assignment = { connectionId: world.connectionId, assignedBy: world.userId, assignedAt: 5_000 };
+    const assignment = { connectionId: world.connectionId, assignedBy: world.userId, assignedAt: 5_000, projectId: world.projectId };
     await storeCanvas(world, (c) => annotate(c, id, { createdBy: world.ownerId, assignment }));
     expect(await rows("comment_assignments", world)).toEqual([
       expect.objectContaining({ thread_id: id, connection_id: world.connectionId, assigned_by: world.userId, assigned_at: "5000", status: "pending", notified_at: null }),
@@ -157,7 +157,7 @@ describe("hand-overs", () => {
     subscriber.on("message", (_channel: string, message: string) => heard.push(message));
     await subscriber.subscribe(assignmentsChangedChannel(env.REDIS_KEY_PREFIX, world.projectId));
     try {
-      const assignment = { connectionId: world.connectionId, assignedBy: world.userId, assignedAt: 5_000 };
+      const assignment = { connectionId: world.connectionId, assignedBy: world.userId, assignedAt: 5_000, projectId: world.projectId };
       await storeCanvas(world, (c) => annotate(c, randomUUID(), { createdBy: world.ownerId, assignment }));
       await storeCanvas(world, () => undefined);
       await new Promise((resolve) => setTimeout(resolve, 200));
@@ -170,11 +170,20 @@ describe("hand-overs", () => {
   });
 });
 
+describe("a project copy", () => {
+  it("writes no hand-over record for a thread handed over in the project it was copied from", async () => {
+    const world = await seedWorld("editor");
+    const assignment = { connectionId: world.connectionId, assignedBy: world.userId, assignedAt: 5_000, projectId: randomUUID() };
+    await storeCanvas(world, (c) => annotate(c, randomUUID(), { createdBy: world.ownerId, assignment }));
+    expect(await rows("comment_assignments", world)).toEqual([]);
+  });
+});
+
 describe("a Space the project no longer lists", () => {
   it("writes no records for a store that lands after the Space left the meta document", async () => {
     const world = await seedWorld("editor");
     await yjsRepo.upsertDocData(projectMetaDocName(world.projectId), Y.encodeStateAsUpdate(new Y.Doc()));
-    const assignment = { connectionId: world.connectionId, assignedBy: world.userId, assignedAt: 5_000 };
+    const assignment = { connectionId: world.connectionId, assignedBy: world.userId, assignedAt: 5_000, projectId: world.projectId };
     await storeCanvas(world, (c) => annotate(c, randomUUID(), { createdBy: world.ownerId, assignment }));
     expect(await rows("comment_assignments", world)).toEqual([]);
   });
@@ -200,7 +209,7 @@ describe("deleting and restoring a Space", () => {
       annotate(c, id, {
         createdBy: world.ownerId,
         mentions: [{ userId: world.userId, projectId: world.projectId, mentionedAt: 1, label: "@m" }],
-        assignment: { connectionId: world.connectionId, assignedBy: world.userId, assignedAt: 5_000 },
+        assignment: { connectionId: world.connectionId, assignedBy: world.userId, assignedAt: 5_000, projectId: world.projectId },
       }),
     );
     /**

@@ -372,16 +372,16 @@ describe("comment_on_document", () => {
     const world = await seedDocumentWorld([paragraph("b0", "Hello world.")]);
     consumeOn(world, harness.instanceA);
     const { threadId } = resultOf<{ threadId: string }>(await call(world, "comment_on_document", { blockId: "b0", find: "world", text: "Tighten" }));
-    const assignment = { connectionId: world.connectionId, assignedBy: world.userId, assignedAt: 1_700_000_000_000 };
+    const assignment = { connectionId: world.connectionId, assignedBy: world.userId, assignedAt: 1_700_000_000_000, projectId: world.projectId };
     const name = documentSpaceDocName(world.projectId, world.spaceId);
     const conn = await harness.instanceA.openDirectConnection(name, {});
     try {
       await conn.transact((doc) => {
         (documentCommentThreads(doc).get(threadId) as Y.Map<unknown>).set("metadata", { assignment });
       });
-      expect(readCommentAssignments("document", conn.document!)).toEqual([{ threadId, ...assignment, status: "pending" }]);
+      expect(readCommentAssignments("document", conn.document!, world.projectId)).toEqual([{ threadId, connectionId: world.connectionId, assignedBy: world.userId, assignedAt: assignment.assignedAt, status: "pending" }]);
       await call(world, "comment_on_document", { threadId, text: "Tightened." });
-      expect(readCommentAssignments("document", conn.document!)).toEqual([{ threadId, ...assignment, status: "answered" }]);
+      expect(readCommentAssignments("document", conn.document!, world.projectId)).toEqual([{ threadId, connectionId: world.connectionId, assignedBy: world.userId, assignedAt: assignment.assignedAt, status: "answered" }]);
     } finally {
       await conn.disconnect();
     }
