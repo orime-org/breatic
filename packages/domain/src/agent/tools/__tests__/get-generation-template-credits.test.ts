@@ -101,9 +101,16 @@ describe("the take of a template", () => {
     PRICED_BY_SETTINGS.set(VIDEO, (params) => (params.generate_audio === false ? { credits: 1000, bound: "at_least" } : { credits: 1200.25, bound: "exact" }));
     const answer = await read("carried-object-transition");
     expect(answer).toContain(`At its settings this template costs ${formatCredits(1225.25, "en-US")} credits.`);
-    expect(answer).toContain('write these cheaper settings in its generate nodes\' params: {"result":{"generate_audio":false}}.');
+    expect(answer).toContain('write these cheaper settings in its generate nodes\' params: {"result":{"generate_audio":false}}; its final runs them at {"result":{"generate_audio":true}}.');
     expect(answer).toContain(`A take costs at least ${formatCredits(1025, "en-US")} credits;`);
     expect(answer).not.toContain("already its final");
+  });
+
+  it("gives the final's value of a lowered setting as the template sets it, over the model's default", async () => {
+    // product-ad-15s: "result" sets aspect_ratio 9:16 where seedance-2.5-text-to-video defaults to 16:9.
+    PRICES.set(SCENE, { credits: 12.5, bound: "exact" });
+    PRICED_BY_SETTINGS.set("seedance-2.5-text-to-video", (params) => ({ credits: params.aspect_ratio === "9:16" ? 1200.25 : 100, bound: "exact" }));
+    expect(await read("product-ad-15s")).toContain('; its final runs them at {"result":{"aspect_ratio":"9:16"}}.');
   });
 
   it("is not offered when a setting cheaper on its own costs no less beside the template's other settings", async () => {

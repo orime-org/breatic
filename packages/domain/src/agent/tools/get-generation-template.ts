@@ -100,13 +100,16 @@ interface NodeSettings {
   own: Record<string, unknown>;
   /** Each setting that moves the model's price, at a cheaper value than the node runs at; never the length. */
   cheaper: Record<string, unknown>;
+  /** The value each of those settings has on the final: the template's, else the model's default. */
+  final: Record<string, unknown>;
 }
 
 /**
  * Each generate node of a template with the settings a take of it changes:
  * every setting that moves its model's price, set cheaper than the template
  * or the model's default sets it, but the length, which the template's timed
- * parts are written for (inner#1811).
+ * parts are written for, and the value each has on the final, so a take the
+ * user brings up to those values is known to be the final (inner#1811).
  * @param template - The template.
  * @returns Its generate nodes.
  */
@@ -117,8 +120,15 @@ async function nodeSettings(template: GenerationTemplate): Promise<NodeSettings[
       const answer = modelsForMode(node.type, node.mode);
       const model = answer.available ? answer.models.find((one) => one.name === node.model) : undefined;
       const { duration: _length, ...lowest } = model === undefined ? {} : await lowestValues(model);
-      const cheaper = Object.fromEntries(Object.entries(lowest).filter(([name, value]) => value !== (own[name] ?? model?.params[name]?.default)));
-      return { key: node.key, model: node.model, own, cheaper };
+      /**
+       * A setting's value on the final.
+       * @param name - The setting.
+       * @returns The template's value, else the model's default.
+       */
+      const atFinal = (name: string): unknown => own[name] ?? model?.params[name]?.default;
+      const cheaper = Object.fromEntries(Object.entries(lowest).filter(([name, value]) => value !== atFinal(name)));
+      const final = Object.fromEntries(Object.keys(cheaper).map((name) => [name, atFinal(name)]));
+      return { key: node.key, model: node.model, own, cheaper, final };
     }),
   );
 }
@@ -164,10 +174,11 @@ async function applyCost(template: GenerationTemplate): Promise<string> {
     return `${finalSentence} A take of it is made keeping its mode, model and length, at these settings, which are already its cheapest, so a take of it is already its final.`;
   }
   const cheaper = JSON.stringify(Object.fromEntries(changed.map((node) => [node.key, node.cheaper])));
+  const atFinal = JSON.stringify(Object.fromEntries(changed.map((node) => [node.key, node.final])));
   return (
     `${finalSentence} A take of it is made this way, and comes before its final: apply it keeping its mode, model and length, which its prompts and wiring are written for, ` +
     "even once its prompts are in the user's words and its tweak segments filled, " +
-    `and write these cheaper settings in its generate nodes' params: ${cheaper}. A take costs ${amount(take)} credits; ` +
+    `and write these cheaper settings in its generate nodes' params: ${cheaper}; its final runs them at ${atFinal}. A take costs ${amount(take)} credits; ` +
     "the final is made at its settings from the take they pick, keeping it as it is, or straight away when they ask for a final."
   );
 }

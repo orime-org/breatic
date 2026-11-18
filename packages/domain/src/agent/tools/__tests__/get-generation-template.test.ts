@@ -255,12 +255,14 @@ describe("a take of a template (inner#1811)", () => {
   it("names only the cheaper settings a take writes, keeps the mode, model and length, and prices the take below the final", async () => {
     const out = await read("product-ad-15s");
     const final = /At its settings this template costs ([\d.,]+) credits/.exec(out);
-    const take = /write these cheaper settings in its generate nodes' params: (\{.*?\})\. A take costs ([\d.,]+) credits/.exec(out);
+    const take = /write these cheaper settings in its generate nodes' params: (\{.*?\}); its final runs them at \{.*?\}\. A take costs ([\d.,]+) credits/.exec(out);
     expect(final, out).not.toBeNull();
     expect(take, out).not.toBeNull();
     const overrides = JSON.parse(take?.[1] ?? "{}") as Record<string, Record<string, unknown>>;
     // The still's model is cheapest at its default 4k, so only the video changes.
     expect(overrides).toEqual({ result: { resolution: "480p" } });
+    // The final's value of each lowered setting, here the video model's default, so a take brought up to it is known to be the final.
+    expect(out).toContain(`params: {"result":{"resolution":"480p"}}; its final runs them at {"result":{"resolution":"720p"}}. A take costs`);
     const generates = byId("product-ad-15s").nodes.flatMap((node) => (node.role === "generate" ? [node] : []));
     const each = await Promise.all(generates.map((node) => estimateModelCredits(node.model, { params: { ...node.params, ...overrides[node.key] } })));
     const sum = each.reduce((total, one) => total + (one?.credits ?? 0), 0);

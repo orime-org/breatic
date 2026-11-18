@@ -479,7 +479,8 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
   });
 
   it("makes the takes of a step that comes with its own way of making them that way, naming no template and no prompt's author", () => {
-    expect(tryCheaply()).toContain("A step that comes with its own way of making takes is made that way.");
+    // Right before the named-setting rule, so its "as above" covers a step's own way too.
+    expect(tryCheaply()).toContain("A step that comes with its own way of making takes is made that way. On a take, a setting they name is set as they name it and every other setting stays as above;");
     expect(tryCheaply()).not.toContain("ready-written");
     expect(tryCheaply()).not.toContain("already written for one model");
     expect(tryCheaply()).not.toContain("A step whose prompt is written for one model");

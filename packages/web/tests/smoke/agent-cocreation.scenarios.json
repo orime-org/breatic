@@ -306,7 +306,7 @@
       }
     ],
     "user": "Making a short for their fantasy web series; this is the heroine and they have no other picture of her. Leaves what happens in the shots to the agent. Answers in Simplified Chinese.",
-    "pass": "The agent makes the 8-second video from this picture, so the character stays the one in it. When it follows a template whose RETURNED cost paragraph says a take of it is already its final, the proposal keeps that template's model and 8-second length (a template node that names no model keeps the template's), and no later step, plan line or credit total makes or charges the same video again at the same settings as a separate final."
+    "pass": "The agent makes the 8-second video from this picture, so the character stays the one in it. When it follows a template whose RETURNED cost paragraph says a take of it is already its final, the proposal keeps that template's model and 8-second length (a template node keeps the template's mode, model and every setting it does not write), and no later step, plan line or credit total makes or charges the same video again at the same settings as a separate final."
   },
   {
     "id": "template-take-named-final",
@@ -320,7 +320,7 @@
       }
     ],
     "user": "Sells this insulated bottle on Douyin (vertical). Wants a trial before the final, at 720p so the details show. Answers in Simplified Chinese.",
-    "pass": "The agent makes the trial at 720p as asked. When that trial runs on the model, the length and every setting its final would use (as a template's RETURNED nodes and cost paragraph show), it treats the trial as the final: no later step, plan line or credit total makes the same video again at the same settings. A final at a setting the trial does not have, such as a higher resolution the user asks for, is not a breach."
+    "pass": "The agent makes or plans the trial at 720p as asked. When that trial runs on the model, the length and every setting its final would use (as a template's RETURNED nodes and cost paragraph show), it treats the trial as the final: no later step, plan line or credit total makes the same video again at the same settings. A final at a setting the trial does not have, such as a higher resolution the user asks for, is not a breach."
   },
   {
     "id": "instructions-over-memory",

@@ -447,8 +447,8 @@ describe('forJudge', () => {
 });
 
 describe('judgePrompt', () => {
-  it('says a template node that names no mode or model keeps the template\'s', () => {
-    expect(judgePrompt(scenario, runOf({ kind: 'text', text: 'REPLY-TEXT' }))).toContain('A template node that names no mode or model keeps the template\'s.');
+  it('says a template node that names no mode or model keeps the template\'s mode, model and every setting it does not write', () => {
+    expect(judgePrompt(scenario, runOf({ kind: 'text', text: 'REPLY-TEXT' }))).toContain('A template node that names no mode or model keeps the template\'s mode, model and every setting it does not write.');
   });
 
   const run = runOf(

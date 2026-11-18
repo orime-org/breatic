@@ -236,7 +236,7 @@ export function judgePrompt(scenario: Scenario, run: Run): string {
     'An answer on a question card is not a message: a few words in another language there do not change the user\'s language.',
     'When the user says they will send something, waiting for it before making anything it could change, the look included, is right.',
     'Judge a stated price only against a RETURNED price for the same model and settings; a price for settings the run never priced is not a breach.',
-    'A template node that names no mode or model keeps the template\'s.',
+    'A template node that names no mode or model keeps the template\'s mode, model and every setting it does not write.',
     'A proposal call is a card the user sees when it is in state output-available, unless its RETURNED line says placed false: that proposal was refused and the user never sees it.',
     'A TOOL line shows what the agent sent; null means the input was not recorded. A RETURNED line under it shows what came back, where it was recorded.',
     `RUN:\n${transcriptOf(scenario, run)}`,
