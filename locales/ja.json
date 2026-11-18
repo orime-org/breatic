@@ -3636,8 +3636,8 @@
     "connected": "接続済み",
     "notConnected": "未接続",
     "lastChecked": "前回の確認 {time}",
-    "balance": "残高 ${amount}",
-    "balanceKeyLimit": "このキーの残り上限 ${amount}",
+    "balance": "残高 {amount}",
+    "balanceKeyLimit": "このキーの残り上限 {amount}",
     "balanceForbidden": "このキーには残高を確認する権限がありません。",
     "balanceNoCap": "このキーには利用上限が設定されていません。",
     "balanceUnsupported": "このアップストリームは残高を確認できません。",
@@ -3680,8 +3680,9 @@
     "hideKey": "キーを隠す",
     "failure": {
       "invalid": "キーが無効か、取り消されています。",
-      "no_balance": "このキーのアカウントの残高が不足しています。",
-      "unreachable": "アップストリームに接続できません。しばらくしてから再試行してください。",
+      "unavailable": "アップストリームに接続できません。しばらくしてから再試行してください。",
+      "rate_limited": "アップストリームがこのキーのリクエストを制限しています。しばらくしてから再試行してください。",
+      "refused": "アップストリームがチェックを拒否しました。",
       "other": "キーに接続できませんでした。"
     },
     "modality": {

@@ -3636,8 +3636,8 @@
     "connected": "연결됨",
     "notConnected": "연결 안 됨",
     "lastChecked": "마지막 확인 {time}",
-    "balance": "잔액 ${amount}",
-    "balanceKeyLimit": "이 키의 남은 한도 ${amount}",
+    "balance": "잔액 {amount}",
+    "balanceKeyLimit": "이 키의 남은 한도 {amount}",
     "balanceForbidden": "이 키로는 잔액을 조회할 권한이 없습니다.",
     "balanceNoCap": "이 키에는 사용 한도가 설정되어 있지 않습니다.",
     "balanceUnsupported": "이 업스트림은 잔액을 조회할 수 없습니다.",
@@ -3680,8 +3680,9 @@
     "hideKey": "키 숨기기",
     "failure": {
       "invalid": "키가 잘못되었거나 취소되었습니다.",
-      "no_balance": "이 키 계정의 잔액이 부족합니다.",
-      "unreachable": "업스트림에 연결할 수 없습니다. 잠시 후 다시 시도하세요.",
+      "unavailable": "업스트림에 연결할 수 없습니다. 잠시 후 다시 시도하세요.",
+      "rate_limited": "업스트림이 지금 이 키의 요청을 제한하고 있습니다. 잠시 후 다시 시도하세요.",
+      "refused": "업스트림이 확인을 거부했습니다.",
       "other": "키가 연결되지 않았습니다."
     },
     "modality": {

@@ -28,6 +28,8 @@ export interface ByokSavedKey {
   lastCheckedAt: string;
   lastBalanceState: ByokBalanceState | null;
   lastBalanceAmount: string | null;
+  /** The ISO 4217 code of the balance; null when the upstream reported none. */
+  lastBalanceCurrency: string | null;
   lastFailure: string | null;
   /** Whether the key can read the actual costs of its calls; false is said in its detail, null has no such probe. */
   costsReadable: boolean | null;

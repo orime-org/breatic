@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
-import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useIsMutating, useMutation, useMutationState, useQueryClient } from '@tanstack/react-query';
 import { getLocale, modelLabel, type ModelEntry, type ModelModality } from '@breatic/shared';
 
 import {
@@ -47,8 +47,8 @@ const GROUPS: readonly [ByokUpstreamKind, string][] = [
   ['reseller', 'byok.groupReseller'],
 ];
 
-/** Failure reasons with a sentence of their own; any other reads as the generic one. */
-const KNOWN_FAILURES = new Set(['invalid', 'no_balance', 'unreachable']);
+/** Why provider's key check says a key did not connect, each with a sentence of its own; any other reads as the generic one. */
+const KNOWN_FAILURES = new Set(['invalid', 'unavailable', 'rate_limited', 'refused']);
 
 type Translate = ReturnType<typeof useTranslation>;
 
@@ -220,7 +220,7 @@ function balanceText(saved: ByokSavedKey, kind: ByokUpstreamKind, t: Translate):
   switch (saved.lastBalanceState) {
     case 'known':
       if (saved.lastBalanceAmount === null) return null;
-      return t(kind === 'llm' ? 'byok.balanceKeyLimit' : 'byok.balance', { amount: saved.lastBalanceAmount });
+      return t(kind === 'llm' ? 'byok.balanceKeyLimit' : 'byok.balance', { amount: money(saved.lastBalanceAmount, saved.lastBalanceCurrency) });
     case 'forbidden':
       return t('byok.balanceForbidden');
     case 'no_cap':
@@ -229,6 +229,21 @@ function balanceText(saved: ByokSavedKey, kind: ByokUpstreamKind, t: Translate):
       return t('byok.balanceUnsupported');
     default:
       return null;
+  }
+}
+
+/**
+ * An amount of money in the user's locale, in the currency the upstream reported.
+ * @param amount - The amount, as the server sends it.
+ * @param currency - Its ISO 4217 code; US dollars when the upstream named none.
+ * @returns The formatted amount, or the bare amount and code when the code is not one the browser knows.
+ */
+function money(amount: string, currency: string | null): string {
+  const code = currency ?? 'USD';
+  try {
+    return new Intl.NumberFormat(getLocale(), { style: 'currency', currency: code }).format(Number(amount));
+  } catch {
+    return `${amount} ${code}`;
   }
 }
 
@@ -252,22 +267,37 @@ function saveKeyOf(upstream: string): readonly ['byok', 'save', string] {
 }
 
 /**
- * Saving a key: the check runs on the server first, and its refusal is kept for the field to show.
+ * Why a save was refused, in the user's language: the check's reason when it has a sentence of its own.
+ * @param err - What the save threw.
+ * @param t - The translator.
+ * @returns The sentence.
+ */
+function refusalText(err: unknown, t: Translate): string {
+  if (!(err instanceof ApiException) || !err.fromServer) return t('byok.saveFailed');
+  return err.reason !== undefined && KNOWN_FAILURES.has(err.reason) ? failureText(err.reason, t) : err.message;
+}
+
+/**
+ * Saving a key: the check runs on the server first. The wait and the refusal are read from the mutation cache by
+ * upstream, so both survive switching to another upstream and back.
  * @param upstream - The upstream.
  * @param onSaved - Called once the saved key is on screen.
- * @returns The save, its wait and its refusal.
+ * @returns The save, its wait, its refusal and a way to clear the refusal.
  */
 function useSaveKey(upstream: ByokUpstream, onSaved?: () => void): {
   save: (key: string) => void;
   saving: boolean;
   error: string | null;
-  setError: (error: string | null) => void;
+  clearError: () => void;
 } {
   const t = useTranslation();
   const client = useQueryClient();
-  const [error, setError] = React.useState<string | null>(null);
-  const mutation = useMutation({
-    mutationKey: saveKeyOf(upstream.upstream),
+  const mutationKey = saveKeyOf(upstream.upstream);
+  const [typedError, setTypedError] = React.useState<string | null>(null);
+  // The submit time of the last refusal the user has moved past by typing.
+  const [clearedAt, setClearedAt] = React.useState(0);
+  const { mutate } = useMutation({
+    mutationKey,
     mutationFn: async (key: string): Promise<void> => {
       await byokApi.saveKey(upstream.upstream, key);
       await rereadByok(client);
@@ -276,21 +306,28 @@ function useSaveKey(upstream: ByokUpstream, onSaved?: () => void): {
       toast.success(t('byok.saved', { upstream: upstream.name }));
       onSaved?.();
     },
-    onError: (err) => setError(err instanceof ApiException && err.fromServer ? err.message : t('byok.saveFailed')),
   });
-  const { mutate } = mutation;
+  const saving = useIsMutating({ mutationKey }) > 0;
+  const last = useMutationState({ filters: { mutationKey }, select: (m) => m.state }).at(-1);
+  const refused = last?.status === 'error' && last.submittedAt > clearedAt ? last.error : undefined;
+  const refusal = refused === undefined ? null : refusalText(refused, t);
+  const lastSubmittedAt = last?.submittedAt ?? 0;
   const save = React.useCallback(
     (key: string): void => {
       if (key.trim() === '') {
-        setError(t('byok.keyEmpty'));
+        setTypedError(t('byok.keyEmpty'));
         return;
       }
-      setError(null);
+      setTypedError(null);
       mutate(key);
     },
     [mutate, t],
   );
-  return { save, saving: mutation.isPending, error, setError };
+  const clearError = React.useCallback((): void => {
+    setTypedError(null);
+    setClearedAt(lastSubmittedAt);
+  }, [lastSubmittedAt]);
+  return { save, saving, error: typedError ?? refusal, clearError };
 }
 
 /**
@@ -467,11 +504,11 @@ function SavedKeyState({ saved, kind }: { saved: ByokSavedKey; kind: ByokUpstrea
 function AddKeyForm({ upstream }: { upstream: ByokUpstream }): React.JSX.Element {
   const t = useTranslation();
   const [value, setValue] = React.useState('');
-  const { save, saving, error, setError } = useSaveKey(upstream);
+  const { save, saving, error, clearError } = useSaveKey(upstream);
   const change = React.useCallback((next: string): void => {
     setValue(next);
-    setError(null);
-  }, [setError]);
+    clearError();
+  }, [clearError]);
   return (
     <form
       className='flex flex-col gap-1.5'
@@ -632,11 +669,11 @@ function ReplaceKeyForm({
   const t = useTranslation();
   const [value, setValue] = React.useState('');
   const close = React.useCallback((): void => onOpenChange(false), [onOpenChange]);
-  const { save, saving, error, setError } = useSaveKey(upstream, close);
+  const { save, saving, error, clearError } = useSaveKey(upstream, close);
   const change = React.useCallback((next: string): void => {
     setValue(next);
-    setError(null);
-  }, [setError]);
+    clearError();
+  }, [clearError]);
   return (
     <form
       onSubmit={(e) => {

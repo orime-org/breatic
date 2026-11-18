@@ -3636,8 +3636,8 @@
     "connected": "Connected",
     "notConnected": "Not connected",
     "lastChecked": "Checked {time}",
-    "balance": "Balance: ${amount}",
-    "balanceKeyLimit": "Left on this key: ${amount}",
+    "balance": "Balance: {amount}",
+    "balanceKeyLimit": "Left on this key: {amount}",
     "balanceForbidden": "This key cannot read the balance.",
     "balanceNoCap": "This key has no spending limit.",
     "balanceUnsupported": "This upstream does not report a balance.",
@@ -3680,8 +3680,9 @@
     "hideKey": "Hide key",
     "failure": {
       "invalid": "The key is invalid or has been revoked.",
-      "no_balance": "The account behind this key is out of balance.",
-      "unreachable": "Couldn't reach the upstream. Try again later.",
+      "unavailable": "Couldn't reach the upstream. Try again later.",
+      "rate_limited": "The upstream is limiting this key right now. Try again later.",
+      "refused": "The upstream refused the check.",
       "other": "The key didn't connect."
     },
     "modality": {

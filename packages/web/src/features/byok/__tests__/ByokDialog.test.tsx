@@ -26,6 +26,8 @@
  * Never a full key in any answer: a saved key is only ever shown by its `displayHint`.
  */
 
+import type * as requestModule from '@web/data/api/request';
+import type * as toastModule from '@web/lib/toast';
 import * as React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -38,14 +40,14 @@ const { api, toasts } = vi.hoisted(() => ({
 }));
 
 vi.mock('@web/data/api/request', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@web/data/api/request')>()),
+  ...(await importOriginal<typeof requestModule>()),
   apiGet: api.get,
   apiPost: api.post,
   apiPut: api.put,
   apiDelete: api.delete,
 }));
 vi.mock('@web/lib/toast', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@web/lib/toast')>();
+  const actual = await importOriginal<typeof toastModule>();
   return { ...actual, toast: { ...actual.toast, ...toasts } };
 });
 
@@ -68,6 +70,7 @@ interface SavedKey {
   lastCheckedAt: string;
   lastBalanceState: 'known' | 'forbidden' | 'no_cap' | 'unsupported' | null;
   lastBalanceAmount: string | null;
+  lastBalanceCurrency: string | null;
   lastFailure: string | null;
   /** Whether the key can read the actual costs of its calls; null where the upstream has no such probe. */
   costsReadable: boolean | null;
@@ -99,6 +102,7 @@ const WAVESPEED_KEY: SavedKey = {
   lastCheckedAt: '2026-11-17T02:00:00.000Z',
   lastBalanceState: 'known',
   lastBalanceAmount: '50.25',
+  lastBalanceCurrency: 'USD',
   lastFailure: null,
   costsReadable: null,
 };
@@ -110,6 +114,7 @@ const FAL_KEY: SavedKey = {
   lastCheckedAt: '2026-11-17T03:00:00.000Z',
   lastBalanceState: null,
   lastBalanceAmount: null,
+  lastBalanceCurrency: null,
   lastFailure: 'invalid',
   costsReadable: null,
 };
@@ -212,8 +217,8 @@ function serve(answer: ByokView, catalog: object = CATALOG): void {
  * @param message - The server's localized reason.
  * @returns The exception.
  */
-function refused(message: string): ApiException {
-  return new ApiException({ status: 422, message, fromServer: true, reason: 'key_check_failed' });
+function refused(message: string, reason = 'key_check_failed'): ApiException {
+  return new ApiException({ status: 422, message, fromServer: true, reason });
 }
 
 /**
@@ -400,6 +405,26 @@ describe('ByokDialog', () => {
       expect(detail).toHaveTextContent('The key is invalid or has been revoked.');
     });
 
+    it.each([
+      ['unavailable', 'Couldn\'t reach the upstream. Try again later.'],
+      ['rate_limited', 'The upstream is limiting this key right now. Try again later.'],
+      ['refused', 'The upstream refused the check.'],
+    ])('says a check that failed as %s in its own words, not as a bad key', async (failure, sentence) => {
+      const user = userEvent.setup();
+      serve(view({ keys: [WAVESPEED_KEY, { ...FAL_KEY, lastFailure: failure }] }));
+      const dialog = await mount();
+      await user.click(await within(dialog).findByTestId('byok-upstream-fal'));
+
+      expect(within(dialog).getByTestId('byok-detail-fal')).toHaveTextContent(sentence);
+    });
+
+    it('shows a balance as money in its own currency', async () => {
+      serve(view({ keys: [{ ...WAVESPEED_KEY, lastBalanceAmount: '12', lastBalanceCurrency: 'EUR' }, FAL_KEY] }));
+      const dialog = await mount();
+
+      expect(await within(dialog).findByTestId('byok-detail-wavespeed')).toHaveTextContent('€12.00');
+    });
+
     it('says a key that cannot read actual costs cannot, and says nothing of it otherwise', async () => {
       const user = userEvent.setup();
       serve(view({ keys: [WAVESPEED_KEY, { ...FAL_KEY, lastConnected: true, lastFailure: null, lastBalanceState: 'forbidden', costsReadable: false }] }));
@@ -451,6 +476,38 @@ describe('ByokDialog', () => {
       const after = within(dialog).getByTestId('byok-detail-sandbase');
       expect(after).toHaveTextContent('sb-sec…3456');
       expect(dialog.textContent).not.toContain('sb-secret-123456');
+    });
+
+    it('says why the upstream refused a key it could not check, in the words a saved key gets', async () => {
+      const user = userEvent.setup();
+      api.put.mockRejectedValue(refused('This key could not connect. Check it and try again.', 'unavailable'));
+      const dialog = await mount();
+      await user.click(await within(dialog).findByTestId('byok-upstream-sandbase'));
+      const detail = within(dialog).getByTestId('byok-detail-sandbase');
+
+      await user.type(within(detail).getByLabelText('API key'), 'sb-maybe');
+      await user.click(within(detail).getByRole('button', { name: 'Save' }));
+
+      expect(await within(detail).findByText('Couldn\'t reach the upstream. Try again later.')).toBeInTheDocument();
+    });
+
+    it('keeps a save waiting, and its refusal, across switching to another upstream and back', async () => {
+      let reject: (err: unknown) => void = () => undefined;
+      api.put.mockReturnValue(new Promise((_resolve, fail) => { reject = fail; }));
+      const user = userEvent.setup();
+      const dialog = await mount();
+      await user.click(await within(dialog).findByTestId('byok-upstream-sandbase'));
+      await user.type(within(within(dialog).getByTestId('byok-detail-sandbase')).getByLabelText('API key'), 'sb-wrong');
+      await user.click(within(within(dialog).getByTestId('byok-detail-sandbase')).getByRole('button', { name: 'Save' }));
+
+      await user.click(within(dialog).getByTestId('byok-upstream-wavespeed'));
+      await user.click(within(dialog).getByTestId('byok-upstream-sandbase'));
+      expect(within(within(dialog).getByTestId('byok-detail-sandbase')).getByRole('button', { name: 'Save' })).toHaveAttribute('aria-busy', 'true');
+
+      await user.click(within(dialog).getByTestId('byok-upstream-wavespeed'));
+      reject(refused('Could not connect: the key is invalid.'));
+      await user.click(within(dialog).getByTestId('byok-upstream-sandbase'));
+      expect(await within(within(dialog).getByTestId('byok-detail-sandbase')).findByText('Could not connect: the key is invalid.')).toBeInTheDocument();
     });
 
     it('keeps a key that does not connect unsaved, with the reason under the input', async () => {

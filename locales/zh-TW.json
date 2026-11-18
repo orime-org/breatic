@@ -3636,8 +3636,8 @@
     "connected": "已連通",
     "notConnected": "未連通",
     "lastChecked": "上次檢測 {time}",
-    "balance": "餘額 ${amount}",
-    "balanceKeyLimit": "這把 key 剩餘額度 ${amount}",
+    "balance": "餘額 {amount}",
+    "balanceKeyLimit": "這把 key 剩餘額度 {amount}",
     "balanceForbidden": "這把 key 沒有查詢餘額的權限。",
     "balanceNoCap": "這把 key 沒設額度上限。",
     "balanceUnsupported": "這家查不到餘額。",
@@ -3680,8 +3680,9 @@
     "hideKey": "隱藏 key",
     "failure": {
       "invalid": "key 無效或已被撤銷。",
-      "no_balance": "這把 key 的帳戶餘額不足。",
-      "unreachable": "連不上上游，稍後再試。",
+      "unavailable": "連不上上游，稍後再試。",
+      "rate_limited": "上游正在限制這把 key 的請求，稍後再試。",
+      "refused": "上游拒絕了這次檢測。",
       "other": "這把 key 沒有連通。"
     },
     "modality": {
