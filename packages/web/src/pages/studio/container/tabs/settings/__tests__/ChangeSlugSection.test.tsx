@@ -50,7 +50,6 @@ const STUDIO: StudioDetail = {
   bio: null,
   memberCount: 3,
   myStudioRole: 'admin',
-  region: null,
 };
 
 const SLUG_LABEL = 'studio.container.settings.slug';

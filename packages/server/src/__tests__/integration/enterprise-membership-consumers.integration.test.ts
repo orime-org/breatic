@@ -14,7 +14,6 @@ import { assertStorageAllowance } from "@server/modules/asset/storageQuota.servi
 import { readAccountMembership } from "@server/modules/account/membership.service.js";
 import { call, useInternalApp } from "./internal-api-harness.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
-import { mirrorInDirectory } from "./directory-fixtures.js";
 
 const suite = useInternalApp("enterprise-consumers");
 const negotiated = { team_studios: 2, projects_per_studio: 3, concurrent_editors: 5, studio_members: 2, project_members: 1, storage_bytes: 1 };
@@ -29,7 +28,6 @@ async function account(tier = "pro"): Promise<Account> {
   await suite.sql`insert into users(id,email,email_verified,membership_tier) values(${id},${email},true,${tier})`;
   await suite.sql`insert into studios(id,created_by_user_id,slug,name,type) values(${studioId},${id},${studioId},'Consumer','personal')`;
   await suite.sql`insert into studio_members(studio_id,user_id,role) values(${studioId},${id},'admin')`;
-  await mirrorInDirectory(suite.sql, studioId);
   return { id, email, studioId, slug: studioId };
 }
 
@@ -69,7 +67,6 @@ async function transfer(from: Account, to: Account): Promise<void> {
     await tx`select id from studios where id=${from.studioId} for update`;
     await tx`update studio_members set role='maintainer' where studio_id=${from.studioId} and user_id=${from.id}`;
     await tx`insert into studio_members(studio_id,user_id,role) values(${from.studioId},${to.id},'admin')`;
-    await tx`update studio_directory set admin_user_id=${to.id} where studio_id=${from.studioId}`;
   });
 }
 

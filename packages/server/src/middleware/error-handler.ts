@@ -33,11 +33,10 @@
 
 import type { ErrorHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { AppError, GlobalApiError, isRegionUnavailable, TooManyRequestsError } from "@breatic/core";
+import { AppError, TooManyRequestsError } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { REQUEST_SHAPE_REASON, t } from "@breatic/shared";
 import { RequestShapeError } from "@server/middleware/validate.js";
-import { REGION_UNAVAILABLE_REASON } from "@server/modules/region/fanout.js";
 
 /**
  * Global error handler for the Hono app.
@@ -51,11 +50,6 @@ export const errorHandler: ErrorHandler = (err, c) => {
     // security-relevant rejections — surface them as structured warns
     // per the "security monitoring" mandate. Other AppErrors (404 /
     // 409 / validation) are normal business outcomes, not logged here.
-    // A refusal built over a failure underneath (a region that did not
-    // answer a Studio creation) keeps that failure for the log.
-    if (err.cause !== undefined) {
-      logger.error({ err, cause: err.cause, path: c.req.path }, "app_error_with_cause");
-    }
     if (err.statusCode === 401 || err.statusCode === 403) {
       logger.warn(
         { status: err.statusCode, name: err.name, path: c.req.path },
@@ -109,17 +103,6 @@ export const errorHandler: ErrorHandler = (err, c) => {
         },
       },
       err.status,
-    );
-  }
-
-  // Outside the global region a request may need it (inner#1955). One it
-  // could not serve now is not the user's doing: say the Studio cannot be
-  // reached now. Any other refusal is a bug of ours.
-  if (err instanceof GlobalApiError && isRegionUnavailable(err)) {
-    logger.error({ err, status: err.status, path: c.req.path }, "global_region_unavailable");
-    return c.json(
-      { error: { code: 503, message: t("server.region.unavailable"), reason: REGION_UNAVAILABLE_REASON } },
-      503,
     );
   }
 

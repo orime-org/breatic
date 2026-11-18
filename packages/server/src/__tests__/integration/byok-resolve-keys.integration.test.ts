@@ -32,7 +32,6 @@ import fc from "fast-check";
 import postgres from "postgres";
 import { accountModelUpstreamsRepo, accountProviderKeysRepo, initCore, sealProviderKey } from "@breatic/core";
 import { resolveKeys } from "@breatic/domain";
-import { mirrorInDirectory } from "./directory-fixtures.js";
 
 const SECRET = randomBytes(32);
 const RING = { current: "t1", keys: { t1: SECRET } };
@@ -81,7 +80,6 @@ async function seedStudio(adminUserId: string, type: "personal" | "team"): Promi
     INSERT INTO studios (created_by_user_id, slug, type, name) VALUES (${adminUserId}, ${`resolve-${tag}`}, ${type}, 'Resolve') RETURNING id
   `;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${adminUserId}, 'admin')`;
-  await mirrorInDirectory(sql, studio!.id);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, slug, name) VALUES (${studio!.id}, ${adminUserId}, ${`resolve-p-${tag}`}, 'P') RETURNING id
   `;

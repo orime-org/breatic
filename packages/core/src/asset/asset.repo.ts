@@ -376,37 +376,7 @@ export async function findCoverOf(
 }
 
 /**
- * The live frame cut from the video under a storage key, as some live row
- * under that key points at it, from any studio. Rows under one key describe
- * the same bytes, but a row filed without its cover (a document paste names
- * only the video) does not say there is one. Only the frame written to the
- * key derived from the video counts: any studio can pair its row with a
- * picture of its own choosing.
- * @param storageKey - The video's storage key.
- * @returns The cover row, or null when no row under the key points at it.
- * @throws {Error} When the database query fails.
- */
-export async function findCoverUnderKey(storageKey: string): Promise<StudioAssetEntity | null> {
-  const cover = alias(studioAssets, "cover");
-  const rows = await db
-    .select({ cover })
-    .from(studioAssets)
-    .innerJoin(cover, eq(cover.id, studioAssets.coverAssetId))
-    .where(
-      and(
-        eq(studioAssets.storageKey, storageKey),
-        eq(studioAssets.kind, "video"),
-        isNull(studioAssets.deletedAt),
-        eq(cover.storageKey, coverKeyFor(storageKey)),
-        isNull(cover.deletedAt),
-      ),
-    )
-    .limit(1);
-  return rows[0] ? toEntity(rows[0].cover) : null;
-}
-
-/**
- * The live row each storage key names, and the cover row under each key that
+ * One live row for each storage key, and the cover row under each key that
  * names a video, in two queries.
  * @param keys - The storage keys.
  * @returns Per key found, its live row and cover row.
@@ -414,17 +384,17 @@ export async function findCoverUnderKey(storageKey: string): Promise<StudioAsset
  */
 export async function findByStorageKeys(
   keys: readonly string[],
-): Promise<Map<string, { asset: StudioAssetEntity | null; cover: StudioAssetEntity | null }>> {
-  const found = new Map<string, { asset: StudioAssetEntity | null; cover: StudioAssetEntity | null }>();
+): Promise<Map<string, { asset: StudioAssetEntity; cover: StudioAssetEntity | null }>> {
+  const found = new Map<string, { asset: StudioAssetEntity; cover: StudioAssetEntity | null }>();
   if (keys.length === 0) return found;
   const unique = [...new Set(keys)];
+  // Rows under one key describe the same bytes, so one per key is enough.
   const rows = await db
-    .select()
+    .selectDistinctOn([studioAssets.storageKey])
     .from(studioAssets)
-    .where(and(inArray(studioAssets.storageKey, unique), isNull(studioAssets.deletedAt)));
-  for (const row of rows) {
-    if (!found.has(row.storageKey)) found.set(row.storageKey, { asset: toEntity(row), cover: null });
-  }
+    .where(and(inArray(studioAssets.storageKey, unique), isNull(studioAssets.deletedAt)))
+    .orderBy(studioAssets.storageKey);
+  for (const row of rows) found.set(row.storageKey, { asset: toEntity(row), cover: null });
   const cover = alias(studioAssets, "cover");
   const covers = await db
     .select({ videoKey: studioAssets.storageKey, cover })
@@ -486,24 +456,6 @@ export async function usageByStudios(studioIds: string[]): Promise<number> {
       and(inArray(studioAssets.studioId, studioIds), isNull(studioAssets.deletedAt)),
     );
   return Number(rows[0]?.total ?? 0);
-}
-
-/**
- * What each Studio in this region uses, for the report sent to the global
- * region (inner#1955). Every Studio that ever held an asset is listed, with
- * zero once all of them are deleted, so the global row drops back too.
- * @returns Live asset bytes per Studio.
- * @throws {Error} When the database query fails.
- */
-export async function usagePerStudio(): Promise<{ studioId: string; bytes: number }[]> {
-  const rows = await db
-    .select({
-      studioId: studioAssets.studioId,
-      bytes: sql<string>`COALESCE(SUM(${studioAssets.sizeBytes}) FILTER (WHERE ${studioAssets.deletedAt} IS NULL), 0)`,
-    })
-    .from(studioAssets)
-    .groupBy(studioAssets.studioId);
-  return rows.map((row) => ({ studioId: row.studioId, bytes: Number(row.bytes) }));
 }
 
 /**

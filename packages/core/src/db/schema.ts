@@ -221,7 +221,8 @@ export const studios = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     createdByUserId: uuid("created_by_user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     // The studio's URL handle. Globally unique across personal + team
     // (they share the /studio/{slug} namespace). For a personal studio the
     // slug is chosen at registration (2nd onboarding step); for a team
@@ -277,7 +278,8 @@ export const projects = pgTable(
       .notNull()
       .references(() => studios.id, { onDelete: "restrict" }),
     createdByUserId: uuid("created_by_user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     name: varchar("name", { length: PROJECT_NAME_MAX_CHARS }).notNull(),
     description: text("description"),
     thumbnailUrl: text("thumbnail_url"),
@@ -294,7 +296,9 @@ export const projects = pgTable(
     // member until its studio's admin restores it. The two move together —
     // the CHECK `projects_archived_pair` saying so is hand-written in 0090.
     archivedAt: timestamp("archived_at", { withTimezone: true }),
-    archivedByUserId: uuid("archived_by_user_id"),
+    archivedByUserId: uuid("archived_by_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
     ...timestamps,
   },
   (table) => [index("projects_studio_id_idx").on(table.studioId, table.deletedAt)],
@@ -316,10 +320,13 @@ export const projectMembers = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
     userId: uuid("user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     role: varchar("role", { length: 16 }).notNull(),
     /** Null for the creator's row; set to inviter's id for invited members. */
-    addedBy: uuid("added_by"),
+    addedBy: uuid("added_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
     addedAt: timestamp("added_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -362,7 +369,8 @@ export const projectLastOpened = pgTable(
   "project_last_opened",
   {
     userId: uuid("user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
@@ -428,10 +436,13 @@ export const studioMembers = pgTable(
       .notNull()
       .references(() => studios.id, { onDelete: "restrict" }),
     userId: uuid("user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     role: varchar("role", { length: 16 }).notNull(),
     /** Null for the creator's admin row (no inviter); inviter's id otherwise. */
-    addedBy: uuid("added_by"),
+    addedBy: uuid("added_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
     addedAt: timestamp("added_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -455,7 +466,8 @@ export const conversations = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     // Null while the conversation has no name of its own. What the user
     // sees in that case is decided where their language is known, which is
     // not here.
@@ -498,7 +510,8 @@ export const conversationMessages = pgTable(
      * join back through `conversations` on every query.
      */
     userId: uuid("user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     role: varchar("role", { length: 16 }).notNull(),
     /** Increments on each user message; half of the billing idempotency key. */
     turnIndex: integer("turn_index").notNull(),
@@ -531,7 +544,7 @@ export const mediaUnderstandingOperations = pgTable(
   "media_understanding_operations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    actorUserId: uuid("actor_user_id").notNull(),
+    actorUserId: uuid("actor_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
     originKind: varchar("origin_kind", { length: 24 }).notNull(),
     originKey: varchar("origin_key", { length: 255 }).notNull(),
@@ -646,7 +659,7 @@ export const mediaUnderstandingAttempts = pgTable(
     supersededByAttemptId: uuid("superseded_by_attempt_id"),
     localAbortRequested: boolean("local_abort_requested").default(false).notNull(),
     approvalRequestId: uuid("approval_request_id"),
-    approvalActorUserId: uuid("approval_actor_user_id"),
+    approvalActorUserId: uuid("approval_actor_user_id").references(() => users.id, { onDelete: "restrict" }),
     approvalWarningVersion: varchar("approval_warning_version", { length: 64 }),
     approvedUnknownDigest: varchar("approved_unknown_digest", { length: 128 }),
     approvedInputRevision: integer("approved_input_revision"),
@@ -665,7 +678,7 @@ export const usageSettlementEnvelopes = pgTable(
   "usage_settlement_envelopes",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    actorUserId: uuid("actor_user_id").notNull(),
+    actorUserId: uuid("actor_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
     originKind: varchar("origin_kind", { length: 24 }).notNull(),
     originKey: varchar("origin_key", { length: 255 }).notNull(),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
@@ -695,7 +708,7 @@ export const creditSettlementReceipts = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     envelopeId: uuid("envelope_id").notNull().references(() => usageSettlementEnvelopes.id, { onDelete: "restrict" }),
-    actorUserId: uuid("actor_user_id").notNull(),
+    actorUserId: uuid("actor_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
     revision: integer("revision").notNull(),
     refKey: varchar("ref_key", { length: 255 }).notNull(),
     exactCumulativeUsd: numeric("exact_cumulative_usd", { precision: 28, scale: 12 }).notNull(),
@@ -720,7 +733,8 @@ export const tasks = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "set null",
     }),
@@ -802,9 +816,9 @@ export const tasks = pgTable(
      * task is accepted (inner#1953); null is the deployment's keys. No foreign
      * key: the key rows are global and this table regional.
      */
-    keyId: uuid("key_id"),
+    keyId: uuid("key_id").references(() => accountProviderKeys.id, { onDelete: "restrict" }),
     /** The key row of a language-model step inside the task, as `keyId`; null when none or on our keys. */
-    llmKeyId: uuid("llm_key_id"),
+    llmKeyId: uuid("llm_key_id").references(() => accountProviderKeys.id, { onDelete: "restrict" }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -879,7 +893,7 @@ export const studioUpstreamClones = pgTable(
     /** The source asset's sha256; an element adds its name after a colon. */
     sourceKey: text("source_key").notNull(),
     upstreamId: text("upstream_id").notNull(),
-    /** Whose upstream account holds the clone: `deployment` for our keys, else the account's id (0127, inner#1953). */
+    /** Whose upstream account holds the clone: `deployment` for our keys, else the account's id (0128, inner#1953). */
     keyOwner: text("key_owner").default("deployment").notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
@@ -911,7 +925,8 @@ export const nodeHistory = pgTable(
       .references(() => projects.id, { onDelete: "restrict" }),
     nodeId: uuid("node_id").notNull(),
     userId: uuid("user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
 
     entryType: varchar("entry_type", { length: 20 }).notNull(), // 'generation' | 'upload' | 'snapshot'
     status: varchar("status", { length: 20 }).notNull(),         // 'success' | 'failed'
@@ -1018,7 +1033,8 @@ export const nodeTasks = pgTable(
     status: varchar("status", { length: 20 }).notNull(),
 
     startedByUserId: uuid("started_by_user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     // Server clock, stamped when the row is written. The countdown the user
     // sees is derived from this and `budget_ms`, and so is the harvest that
     // judges the row dead when somebody reads this node's task list — one
@@ -1110,7 +1126,8 @@ export const conversationAttachments = pgTable(
       .notNull()
       .references(() => conversations.id, { onDelete: "restrict" }),
     userId: uuid("user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id),
 
     url: text("url").notNull(),
     thumbnailUrl: text("thumbnail_url"),
@@ -1188,7 +1205,7 @@ export const creditGrantOperations = pgTable("credit_grant_operations", {
 /**
  * An account's own key for one upstream, sealed (`secrets/provider-key-box.ts`); the only place a saved key is kept.
  * A live row always has its sealed text; replacing, deleting or erasing the key clears it and soft-deletes the row in
- * one write. One live row per account and upstream; the partial unique index and the CHECKs live in 0127.
+ * one write. One live row per account and upstream; the partial unique index and the CHECKs live in 0128.
  */
 export const accountProviderKeys = pgTable(
   "account_provider_keys",
@@ -1217,7 +1234,7 @@ export const accountProviderKeys = pgTable(
 
 /**
  * The upstream an account chose for a catalog model that is not a language model (inner#1953); one live choice per
- * account and model, and a model without one runs on the deployment's keys. Index and CHECKs live in 0127.
+ * account and model, and a model without one runs on the deployment's keys. Index and CHECKs live in 0128.
  */
 export const accountModelUpstreams = pgTable(
   "account_model_upstreams",
@@ -1290,7 +1307,7 @@ export const creditCompensations = pgTable("credit_compensations", {
   id: uuid("id").primaryKey(),
   sourceKind: varchar("source_kind", { length: 16 }).default("compensation").notNull(),
   targetUserId: uuid("target_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
-  personalStudioId: uuid("personal_studio_id").notNull(),
+  personalStudioId: uuid("personal_studio_id").notNull().references(() => studios.id, { onDelete: "restrict" }),
   credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
   reason: text("reason").notNull(),
   operationKey: text("operation_key").notNull().unique(),
@@ -1304,7 +1321,7 @@ export const creditGifts = pgTable("credit_gifts", {
   sourceKind: varchar("source_kind", { length: 16 }).default("gift").notNull(),
   origin: varchar("origin", { length: 16 }).notNull(),
   targetUserId: uuid("target_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
-  personalStudioId: uuid("personal_studio_id").notNull(),
+  personalStudioId: uuid("personal_studio_id").notNull().references(() => studios.id, { onDelete: "restrict" }),
   credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
   /** Explicit confirmation of a pre-existing manual gift, never a new funding instruction. */
   legacyConfirmation: jsonb("legacy_confirmation").$type<Record<string, unknown>>(),
@@ -1680,7 +1697,10 @@ export const creditLots = pgTable(
       precision: 20,
       scale: 6,
     }).notNull(),
-    designatedStudioId: uuid("designated_studio_id"),
+    designatedStudioId: uuid("designated_studio_id").references(
+      () => studios.id,
+      { onDelete: "restrict" },
+    ),
     // One of `active` / `depleted` / `refund_pending` / `refunding` /
     // `refunded`. CHECK in 0061.
     lifecycle: varchar("lifecycle", { length: 16 }).notNull(),
@@ -1768,8 +1788,12 @@ export const creditLedger = pgTable(
     lotId: uuid("lot_id").references(() => creditLots.id, {
       onDelete: "restrict",
     }),
-    studioId: uuid("studio_id"),
-    projectId: uuid("project_id"),
+    studioId: uuid("studio_id").references(() => studios.id, {
+      onDelete: "restrict",
+    }),
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "restrict",
+    }),
     // One of `topup` / `spend` / `refund` / `refund_rejected` (0061),
     // `debt_incurred` / `debt_repayment` (0063), `refund_reversed` (0094) or
     // `rounding_adjustment` (0100). CHECK in 0100.
@@ -2041,7 +2065,8 @@ export const agentUsageRecords = pgTable(
     // a mini-tool container run.
     source: varchar("source", { length: 40 }).notNull(),
     actorUserId: uuid("actor_user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     projectId: uuid("project_id").references(() => projects.id, {
       onDelete: "restrict",
     }),
@@ -2063,7 +2088,7 @@ export const agentUsageRecords = pgTable(
     costIdentity: varchar("cost_identity", { length: 255 }),
     // The `account_provider_keys` row that paid for the call (inner#1953);
     // null is the deployment's keys. No foreign key across regions.
-    keyId: uuid("key_id"),
+    keyId: uuid("key_id").references(() => accountProviderKeys.id, { onDelete: "restrict" }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -2115,7 +2140,8 @@ export const studioCreditDebts = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     studioId: uuid("studio_id")
-      .notNull(),
+      .notNull()
+      .references(() => studios.id, { onDelete: "restrict" }),
     // What is owed right now, never negative. CHECK in 0063.
     amount: numeric("amount", { precision: 20, scale: 6 })
       .default("0")
@@ -2139,7 +2165,8 @@ export const creditHolds = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     studioId: uuid("studio_id")
-      .notNull(),
+      .notNull()
+      .references(() => studios.id, { onDelete: "restrict" }),
     actorUserId: uuid("actor_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -2171,15 +2198,11 @@ export const creditChargeRequests = pgTable(
     // 'task' | 'timeline_execution' | 'operation'. CHECK in 0121.
     kind: varchar("kind", { length: 24 }).$type<"task" | "timeline_execution" | "operation">().notNull(),
     actorUserId: uuid("actor_user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     // What the settlement's ledger rows carry as their reference.
     referenceId: varchar("reference_id", { length: 255 }).notNull(),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
-    // The Studio charged, read from the Project when the request is written,
-    // so the global region can settle without reading this region's rows
-    // (inner#1955). Null when the request names no Project or its Project
-    // was already gone, rows written before 0126 included.
-    studioId: uuid("studio_id"),
     // Above zero. CHECK in 0121.
     amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
     description: text("description"),
@@ -2255,7 +2278,8 @@ export const projectMemories = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
@@ -2290,7 +2314,8 @@ export const agentMemories = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
     conversationId: uuid("conversation_id").references(() => conversations.id, { onDelete: "restrict" }),
     sourceConversationId: uuid("source_conversation_id").references(() => conversations.id, {
@@ -2323,7 +2348,8 @@ export const projectAgentInstructions = pgTable("project_agent_instructions", {
     .references(() => projects.id, { onDelete: "restrict" }),
   content: text("content").notNull(),
   updatedByUserId: uuid("updated_by_user_id")
-    .notNull(),
+    .notNull()
+    .references(() => users.id, { onDelete: "restrict" }),
   ...timestamps,
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
@@ -2346,7 +2372,8 @@ export const timelineExecutions = pgTable(
       .references(() => projects.id, { onDelete: "restrict" }),
     spaceId: uuid("space_id").notNull(),
     actorUserId: uuid("actor_user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     kind: text("kind").notNull(),
     actionId: text("action_id").notNull(),
     input: jsonb("input").$type<Record<string, unknown>>().notNull(),
@@ -2360,14 +2387,14 @@ export const timelineExecutions = pgTable(
     deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
     resultSourceVersionId: uuid("result_source_version_id"),
     failureReason: text("failure_reason"),
-    /** The upstream a failure of the payer's own key names (0127, inner#1953); null for any other failure. */
+    /** The upstream a failure of the payer's own key names (0128, inner#1953); null for any other failure. */
     failureUpstream: text("failure_upstream"),
-    /** Why that upstream refused the payer's own key (0127, inner#1953); null for any other failure. */
+    /** Why that upstream refused the payer's own key (0128, inner#1953); null for any other failure. */
     failureKeyReason: text("failure_key_reason"),
     billedCredits: numeric("billed_credits"),
     billedAt: timestamp("billed_at", { withTimezone: true }),
-    /** The account key row its language-model calls run on (0127, inner#1953); null is the deployment's keys. */
-    llmKeyId: uuid("llm_key_id"),
+    /** The account key row its language-model calls run on (0128, inner#1953); null is the deployment's keys. */
+    llmKeyId: uuid("llm_key_id").references(() => accountProviderKeys.id, { onDelete: "restrict" }),
     ...timestamps,
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
@@ -2431,14 +2458,15 @@ export const documentVersions = pgTable(
       .references(() => projects.id, { onDelete: "restrict" }),
     spaceId: uuid("space_id").notNull(),
     createdByUserId: uuid("created_by_user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     name: text("name"),
     content: jsonb("content").$type<Record<string, unknown>>().notNull(),
     schemaVersion: text("schema_version").notNull(),
     contentBytes: integer("content_bytes").notNull(),
     ...timestamps,
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
-    deletedByUserId: uuid("deleted_by_user_id"),
+    deletedByUserId: uuid("deleted_by_user_id").references(() => users.id, { onDelete: "restrict" }),
   },
   (table) => [
     index("document_versions_space_list_idx")
@@ -2486,7 +2514,8 @@ export const projectMemoryEntries = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
     authorId: uuid("author_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id),
     content: text("content").notNull(),
     sourceConversationId: uuid("source_conversation_id").references(
       () => conversations.id,
@@ -2563,7 +2592,8 @@ export const notifications = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: uuid("user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     /**
      * Notification type. Allowed values (CHECK enforced at SQL level):
      * - 'access.role_upgrade_request' - viewer asks owner for editor role
@@ -2647,7 +2677,8 @@ export const studioInvitations = pgTable(
     studioId: uuid("studio_id")
       .notNull()
       .references(() => studios.id, { onDelete: "restrict" }),
-    invitedUserId: uuid("invited_user_id"),
+    invitedUserId: uuid("invited_user_id")
+      .references(() => users.id, { onDelete: "restrict" }),
     /** Normalized recipient address until a verified account claims the invite. */
     invitedEmail: varchar("invited_email", { length: 320 }),
     /** Starts the recipient decision window after email verification. */
@@ -2655,7 +2686,8 @@ export const studioInvitations = pgTable(
     /** Granted studio role — 'maintainer' | 'guest' (admin is never invited). */
     role: varchar("role", { length: 16 }).notNull(),
     invitedBy: uuid("invited_by")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'failed' | 'revoked'. */
     status: varchar("status", { length: 16 }).notNull(),
     /**
@@ -2731,7 +2763,8 @@ export const projectInvitations = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
-    invitedUserId: uuid("invited_user_id"),
+    invitedUserId: uuid("invited_user_id")
+      .references(() => users.id, { onDelete: "restrict" }),
     /** Normalized recipient address until a verified account claims the invite. */
     invitedEmail: varchar("invited_email", { length: 320 }),
     /** Starts the recipient decision window after email verification. */
@@ -2739,7 +2772,8 @@ export const projectInvitations = pgTable(
     /** Granted project role — 'editor' | 'viewer' (owner is never invited). */
     role: varchar("role", { length: 16 }).notNull(),
     invitedBy: uuid("invited_by")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'failed' | 'revoked'. */
     status: varchar("status", { length: 16 }).notNull(),
     /**
@@ -2821,7 +2855,8 @@ export const roleUpgradeRequests = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
     requesterUserId: uuid("requester_user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     /** Role being asked for — 'editor' (a viewer asking to edit). */
     requestedRole: varchar("requested_role", { length: 16 }).notNull(),
     /** Optional note the requester wrote for the decider. */
@@ -2839,7 +2874,9 @@ export const roleUpgradeRequests = pgTable(
      */
     failedReason: varchar("failed_reason", { length: 16 }).$type<RequestFailedReason>(),
     /** Who decided. Null while pending, and stays null when the request fails or is cancelled. */
-    decidedByUserId: uuid("decided_by_user_id"),
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     /**
      * The bell notification that surfaces this request, so deciding / cancelling
@@ -2892,7 +2929,8 @@ export const projectJoinRequests = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
     requesterUserId: uuid("requester_user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     /** Optional note the requester wrote for the owner. */
     message: text("message"),
     /** Lifecycle: 'pending' | 'approved' | 'rejected' | 'failed' | 'cancelled'. */
@@ -2905,7 +2943,9 @@ export const projectJoinRequests = pgTable(
     failedReason: varchar("failed_reason", { length: 16 }).$type<RequestFailedReason>(),
     /** The role the owner granted: 'viewer' | 'editor'; non-null iff approved. */
     grantedRole: varchar("granted_role", { length: 16 }),
-    decidedByUserId: uuid("decided_by_user_id"),
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     /**
      * The owner's bell entry for this request. It follows the owner: an owner
@@ -2941,10 +2981,12 @@ export const projectTransfers = pgTable(
       .references(() => projects.id, { onDelete: "restrict" }),
     /** The current owner, offering the project away. */
     fromUserId: uuid("from_user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     /** The member being offered ownership. */
     toUserId: uuid("to_user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'failed' | 'cancelled'. */
     status: varchar("status", { length: 16 }).notNull(),
     /**
@@ -2991,15 +3033,13 @@ export const studioTransfers = pgTable(
       .references(() => studios.id, { onDelete: "restrict" }),
     /** The current admin, offering the studio away. */
     fromUserId: uuid("from_user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     /** The member being offered adminship. */
     toUserId: uuid("to_user_id")
-      .notNull(),
-    /**
-     * Lifecycle: 'pending' | 'accepting' | 'accepted' | 'declined' | 'failed' |
-     * 'cancelled'. `accepting` is the window between the global admin change
-     * and this region's role swap (inner#1955); the roles hold still in it.
-     */
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'failed' | 'cancelled'. */
     status: varchar("status", { length: 16 }).notNull(),
     /**
      * Why a `failed` request ended: 'expired' (nobody answered before its
@@ -3028,9 +3068,8 @@ export const studioTransfers = pgTable(
     uniqueIndex("studio_transfers_share_token_key").on(table.shareToken),
     index("studio_transfers_studio_id_idx").on(table.studioId, table.deletedAt),
     index("studio_transfers_to_user_id_idx").on(table.toUserId),
-    // One LIVE pending or accepting transfer per STUDIO (not per recipient) is
-    // enforced by a partial unique index (`studio_transfers_one_pending`) in
-    // the migration.
+    // One LIVE pending transfer per STUDIO (not per recipient) is enforced by a
+    // partial unique index (`studio_transfers_one_pending`) in the migration.
   ],
 );
 
@@ -3061,7 +3100,9 @@ export const projectActivities = pgTable(
      * at read time so renames propagate retroactively). Null for
      * system-originated rows (e.g. lazy-seed bootstrap entries).
      */
-    actorUserId: uuid("actor_user_id"),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
     /**
      * Event type. Allowed values (CHECK enforced at SQL level, 0034):
      * asset:uploaded | asset:deleted | generation:succeeded |
@@ -3208,7 +3249,8 @@ export const studioAssets = pgTable(
      * bytes is not recorded here (their upload deduped away).
      */
     producedByUserId: uuid("produced_by_user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     /**
      * The generation task that produced an AI asset - links to cost via
      * tasks.billed_credits + credit_ledger.reference_id. Null for
@@ -3308,7 +3350,8 @@ export const uploadGrants = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     /** The user the ticket was issued to. */
     userId: uuid("user_id")
-      .notNull(),
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     /** The owner studio resolved server-side at ticket time (resolveOwnerStudioId). */
     studioId: uuid("studio_id")
       .notNull()
@@ -3634,7 +3677,7 @@ export const storageReclaimAttempts = pgTable("storage_reclaim_attempts", {
 // ── Account interaction history and collection coverage ──────────────
 export const accountActivityEvents = pgTable("account_activity_events", {
   id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id").notNull(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
   kind: text("kind").$type<AccountActivityKind>().notNull(),
   occurredAt: timestamp("occurred_at", { withTimezone: true }).defaultNow().notNull(),
@@ -3663,205 +3706,3 @@ export const accountActivityCoverage = pgTable("account_activity_coverage", {
   check("account_activity_coverage_version_check", sql`${table.version} > 0`),
   check("account_activity_coverage_interval_check", sql`${table.endedAt} IS NULL OR ${table.endedAt} > ${table.startedAt}`),
 ]);
-
-// ── Regions (inner#1955) ───────────────────────────────────────────
-//
-// Global tables: the directory of every region's Studios and Projects, and
-// what the global region records about the others. Where every table's rows
-// live is in `table-placement.ts`.
-
-/** One row per Studio in any region; slug and personal-Studio uniqueness live here. */
-export const studioDirectory = pgTable(
-  "studio_directory",
-  {
-    studioId: uuid("studio_id").primaryKey(),
-    slug: varchar("slug", { length: 64 }).notNull(),
-    // Null for a Studio in the global region.
-    region: varchar("region", { length: 32 }),
-    type: varchar("type", { length: 16 }).$type<"personal" | "team">().notNull(),
-    name: varchar("name", { length: 255 }).notNull(),
-    avatarUrl: text("avatar_url"),
-    adminUserId: uuid("admin_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    createdByUserId: uuid("created_by_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    // `pending` holds the slug and the quota while a region creates the Studio.
-    state: varchar("state", { length: 16 }).$type<"pending" | "live">().default("live").notNull(),
-    // Expiry of the Studio's live transfer offer, null when there is none.
-    transferPendingUntil: timestamp("transfer_pending_until", { withTimezone: true }),
-    // The last admin change applied, so a retried change is recognised.
-    lastAdminChangeId: varchar("last_admin_change_id", { length: 64 }),
-    version: bigint("version", { mode: "number" }).default(0).notNull(),
-    ...timestamps,
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
-  },
-  (table) => [
-    uniqueIndex("studio_directory_slug_live").on(table.slug).where(sql`${table.deletedAt} IS NULL`),
-    uniqueIndex("studio_directory_one_personal")
-      .on(table.createdByUserId)
-      .where(sql`${table.type} = 'personal' AND ${table.deletedAt} IS NULL`),
-    index("studio_directory_admin_idx").on(table.adminUserId).where(sql`${table.deletedAt} IS NULL`),
-    index("studio_directory_pending_idx")
-      .on(table.createdAt)
-      .where(sql`${table.state} = 'pending' AND ${table.deletedAt} IS NULL`),
-  ],
-);
-
-/** The global copy of each Studio's members and roles. */
-export const studioDirectoryMembers = pgTable(
-  "studio_directory_members",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    studioId: uuid("studio_id")
-      .notNull()
-      .references(() => studioDirectory.studioId, { onDelete: "restrict" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    role: varchar("role", { length: 16 }).notNull(),
-    version: bigint("version", { mode: "number" }).default(0).notNull(),
-    ...timestamps,
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
-  },
-  (table) => [
-    uniqueIndex("studio_directory_members_key").on(table.studioId, table.userId),
-    index("studio_directory_members_user_idx").on(table.userId).where(sql`${table.deletedAt} IS NULL`),
-  ],
-);
-
-/** Which Studio, and so which region, each Project belongs to. */
-export const projectDirectory = pgTable(
-  "project_directory",
-  {
-    projectId: uuid("project_id").primaryKey(),
-    studioId: uuid("studio_id")
-      .notNull()
-      .references(() => studioDirectory.studioId, { onDelete: "restrict" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
-  },
-  (table) => [index("project_directory_studio_idx").on(table.studioId)],
-);
-
-/** The regions other than the global one where a user has members or notifications. */
-export const userRegions = pgTable(
-  "user_regions",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    region: varchar("region", { length: 32 }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [uniqueIndex("user_regions_key").on(table.userId, table.region)],
-);
-
-/** A new slug held while a region renames a Studio to it. */
-export const slugReservations = pgTable(
-  "slug_reservations",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    slug: varchar("slug", { length: 64 }).notNull(),
-    studioId: uuid("studio_id").notNull(),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    deletedAt: timestamp("deleted_at", { withTimezone: true }),
-  },
-  (table) => [uniqueIndex("slug_reservations_slug_live").on(table.slug).where(sql`${table.deletedAt} IS NULL`)],
-);
-
-/** One row per region charge request the global region settled, with its outcome. */
-export const creditChargeSettlements = pgTable(
-  "credit_charge_settlements",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    region: varchar("region", { length: 32 }).notNull(),
-    requestId: uuid("request_id").notNull(),
-    outcome: jsonb("outcome").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [uniqueIndex("credit_charge_settlements_key").on(table.region, table.requestId)],
-);
-
-/** The storage each region last reported for each Studio. */
-export const studioStorageUsageGlobal = pgTable(
-  "studio_storage_usage_global",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    studioId: uuid("studio_id").notNull(),
-    region: varchar("region", { length: 32 }).notNull(),
-    bytes: bigint("bytes", { mode: "number" }).notNull(),
-    asOf: timestamp("as_of", { withTimezone: true }).notNull(),
-    ...timestamps,
-  },
-  (table) => [uniqueIndex("studio_storage_usage_global_key").on(table.studioId, table.region)],
-);
-
-/** The last outbox event applied per region and aggregate. */
-export const regionOutboxApplied = pgTable(
-  "region_outbox_applied",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    region: varchar("region", { length: 32 }).notNull(),
-    aggregateKey: varchar("aggregate_key", { length: 160 }).notNull(),
-    lastId: bigint("last_id", { mode: "number" }).notNull(),
-    ...timestamps,
-  },
-  (table) => [uniqueIndex("region_outbox_applied_key").on(table.region, table.aggregateKey)],
-);
-
-/** The completion mark of the one-off directory reconciliation; a live row means done. */
-export const directoryReconciliations = pgTable("directory_reconciliations", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  deletedAt: timestamp("deleted_at", { withTimezone: true }),
-});
-
-// Regional tables: what a region sends to the global region.
-
-/**
- * Directory changes a region sends to the global region, in commit order.
- * The id is a sequence: the global region applies each aggregate's events in
- * id order.
- */
-export const regionOutbox = pgTable(
-  "region_outbox",
-  {
-    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
-    aggregateKey: varchar("aggregate_key", { length: 160 }).notNull(),
-    eventType: varchar("event_type", { length: 48 }).notNull(),
-    payload: jsonb("payload").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    // Null until the global region confirmed the event.
-    sentAt: timestamp("sent_at", { withTimezone: true }),
-  },
-  (table) => [index("region_outbox_unsent_idx").on(table.id).where(sql`${table.sentAt} IS NULL`)],
-);
-
-/** Outbox events the global region can never apply, set aside so the rest flow. */
-export const regionOutboxDeadLetters = pgTable(
-  "region_outbox_dead_letters",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    outboxId: bigint("outbox_id", { mode: "number" })
-      .notNull()
-      .references(() => regionOutbox.id, { onDelete: "restrict" }),
-    reason: text("reason").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [uniqueIndex("region_outbox_dead_letters_outbox_key").on(table.outboxId)],
-);
-
-/** Studio ids the global region gave up creating here; a late create of one is refused. */
-export const studioCreationTombstones = pgTable(
-  "studio_creation_tombstones",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    studioId: uuid("studio_id").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [uniqueIndex("studio_creation_tombstones_studio_key").on(table.studioId)],
-);

@@ -66,7 +66,6 @@ import {
 } from "@breatic/core";
 import { MEMBERSHIP_TIERS } from "@breatic/shared";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -318,7 +317,6 @@ describe("a downgrade, which takes nothing away", () => {
         VALUES (${studioId}, ${memberId}, 'maintainer')
       `;
     }
-    await mirrorAllInDirectory(sql);
     for (let i = 0; i < 12; i++) {
       await sql`
         INSERT INTO projects (studio_id, created_by_user_id, name, slug)
@@ -432,7 +430,6 @@ describe("the enterprise tier, which has no ceilings to give", () => {
       INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${st!.id}, ${adminUserId}, 'admin')
     `;
-    await mirrorAllInDirectory(sql);
 
     const err = await getLimitsForStudio(st!.id).then(
       () => null,

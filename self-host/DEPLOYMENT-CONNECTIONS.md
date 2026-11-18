@@ -77,7 +77,7 @@ When you delete an account on request, soft-delete it first (set `users.deleted_
 
 ## Back office internal API
 
-`INTERNAL_API_ENABLED=true` starts a second server listener, called by the Breatic back office and, in a deployment with several regions, by the other regions ([Multiple regions](#multiple-regions)), on `INTERNAL_API_HOST`:`INTERNAL_API_PORT` (default `127.0.0.1:3002`), plus, in the global region, the loop that finishes the credit-pack refunds it accepts. Every request carries an HMAC-SHA256 signature made with `INTERNAL_API_SECRET`, the same value the back office holds; with the API enabled and that secret empty, the services refuse to start. To rotate, move the old key to `INTERNAL_API_SECRET_PREVIOUS`: requests signed with either key are accepted until it is blanked. Back office requests are limited to 120 per 60 seconds per connection address (`internal-api` in `config/rate-limits.yaml`); calls between regions have their own budget, `region-api`.
+`INTERNAL_API_ENABLED=true` starts a second server listener, called only by the Breatic back office, on `INTERNAL_API_HOST`:`INTERNAL_API_PORT` (default `127.0.0.1:3002`), plus the loop that finishes the credit-pack refunds it accepts. Every request carries an HMAC-SHA256 signature made with `INTERNAL_API_SECRET`, the same value the back office holds; with the API enabled and that secret empty, the services refuse to start. To rotate, move the old key to `INTERNAL_API_SECRET_PREVIOUS`: requests signed with either key are accepted until it is blanked. Requests are limited to 120 per 60 seconds per connection address (`internal-api` in `config/rate-limits.yaml`).
 
 | Deployment | Product server | Back office connects to |
 |---|---|---|
@@ -119,33 +119,6 @@ SELECT
   has_table_privilege(current_user, 'public.credit_refund_refusals', 'UPDATE') AS can_update,
   has_table_privilege(current_user, 'public.credit_refund_refusals', 'DELETE') AS can_delete;
 ```
-
-## Multiple regions
-
-A deployment can run Studios in more than one region. One region is the global region: it alone holds accounts, sessions, membership, payments, the credit ledger and the Studio directory, and every region keeps its own Studios, Projects and documents. A self-hosted deployment with one region leaves every variable below blank. How regions work: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md#regions-and-the-global-region).
-
-| Variable | Global region | Every other region |
-|---|---|---|
-| `REGION` | Its code (letters, digits, `-`) | Its code |
-| `GLOBAL_REGION` | Its own code | The global region's code |
-| `INTERNAL_API_ENABLED`, `INTERNAL_API_SECRET` | `true`, and the secret every region shares | The same |
-| `REGION_API_URLS` | JSON `{"<region>": "<internal API URL>"}` of the other regions | Blank: only the global region calls other regions, and the others reach them through the global API |
-| `GLOBAL_API_URL` | Blank | The global region's internal API URL |
-| `IDENTITY_SIGNING_KEY`, `IDENTITY_SIGNING_KEY_ID` | An Ed25519 private key (PEM) and the key id it signs under | Blank |
-| `IDENTITY_PUBLIC_KEYS` | Blank | JSON `{"<key id>": "<PEM public key>"}`, including the global region's current key |
-| `IDENTITY_COOKIE_DOMAIN` | The parent domain shared by every region's API host, when the hosts differ; blank when all regions share one API host | The same |
-| `DATABASE_APP_ROLE` | Blank | The role the services' `DATABASE_URL` logs in as. Run `pnpm db:migrate` with a `DATABASE_URL` whose account may create tables and grant: its last step grants this role the region's tables and revokes the global ones. The `migrate` service in `docker-compose.yml` runs the migrations without that step |
-| `PAYMENT_ENABLED`, Stripe settings | Payments as configured | `PAYMENT_ENABLED` the same as the global region, so runs hold credits through it; no Stripe secrets. With it on the server reads `config/subscription.yaml` and `config/pricing.yaml` at start, so copy them from the global region |
-| `ALLOWED_ORIGINS` | Includes the product's web origin | The same, on server and collab (collab refuses WebSocket handshakes from other origins) |
-| `DIRECTORY_RECONCILE_ON_START` | `true` makes the worker align the Studio directory once at start; `docker-compose.yml` sets it and starts the worker after a healthy server, so the previous release has stopped by then. A deployment that cannot guarantee that leaves it blank and runs `pnpm db:reconcile-directory` once with the global region's settings after every process of the previous release has exited | Blank |
-
-Build the web image with `VITE_REGIONS` (a build argument of `Dockerfile.web`): `{"global": "<region>", "regions": {"<region>": {"api": "<public API URL>", "collab": "<public collab URL>"}}}`, one entry per region including the global one. Blank builds a single-region front end that keeps its API base: `VITE_API_BASE_URL` when set, otherwise the same-origin `/api/v1`.
-
-`pnpm db:migrate` and `pnpm db:reconcile-directory` run from a source checkout of the release (`pnpm install --frozen-lockfile && pnpm build` first) with that region's database settings; the product image carries no `scripts/`, `tsx` or `turbo`.
-
-Every region's internal listener must reach the others over a private network only, as in [Back office internal API](#back-office-internal-api). Calls between regions are limited under `region-api` in `config/rate-limits.yaml`, separately from the back office's `internal-api`, and their timeouts, sweeps and batch sizes are in `config/regions.yaml`.
-
-The services refuse to start when a region outside the global region has no `GLOBAL_API_URL` or `IDENTITY_PUBLIC_KEYS`, or holds `IDENTITY_SIGNING_KEY`; when a deployment with several regions has no `INTERNAL_API_SECRET`; when the global region of such a deployment has no `IDENTITY_SIGNING_KEY`, or a signing key has no `IDENTITY_SIGNING_KEY_ID`; and when the server of a multi-region deployment has `INTERNAL_API_ENABLED` off.
 
 ## Scope and verification
 

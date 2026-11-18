@@ -83,7 +83,6 @@ import {
 } from "@breatic/shared";
 import type { Hono } from "hono";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -150,7 +149,6 @@ async function seedEditor(): Promise<{
 
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
-  await mirrorAllInDirectory(sql);
   return {
     userId,
     studioId,

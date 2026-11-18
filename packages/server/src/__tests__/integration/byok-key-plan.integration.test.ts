@@ -7,8 +7,7 @@
  * media model was pointed at with the availability the payer's keys give it, and whether that payer is the caller or
  * the Studio's admin. Every member of the Project may read it; it carries no key, no sealed text and no hint.
  *
- * Also the three global functions behind BYOK, run in process as the global region runs them:
- * `getStudioProviderKey`, `getProviderKeyById` and `getStudioKeyPlan`.
+ * Also the three reads behind it: `studioProviderKey`, `providerKeyById` and `studioKeyPlan`.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -39,20 +38,14 @@ import {
   sessionCookieName,
   setSession,
 } from "@breatic/core";
-import { GLOBAL_FUNCTIONS, initProvider } from "@breatic/domain";
+import { initProvider } from "@breatic/domain";
+import { providerKeyById, studioKeyPlan, studioProviderKey } from "../../../../domain/src/provider/account-keys.service.js";
 import type { Hono } from "hono";
-import { mirrorInDirectory } from "./directory-fixtures.js";
 
 const SECRET = randomBytes(32);
 const RING = { current: "t1", keys: { t1: SECRET } };
 /** A media model bound on WaveSpeed, fal and SandBase. */
 const MODEL = "gpt-image-2.5-sunburst-text-to-image";
-/** What the BYOK global functions are, by name, until they exist. */
-type ByokGlobals = {
-  getStudioProviderKey: (studioId: string, purpose: { kind: "llm" } | { kind: "media"; model: string }) => Promise<unknown>;
-  getProviderKeyById: (keyId: string) => Promise<unknown>;
-  getStudioKeyPlan: (studioId: string) => Promise<unknown>;
-};
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -95,7 +88,6 @@ async function seedStudio(adminUserId: string, type: "personal" | "team"): Promi
     INSERT INTO studios (created_by_user_id, slug, type, name) VALUES (${adminUserId}, ${`plan-${tag}`}, ${type}, 'Plan') RETURNING id
   `;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${adminUserId}, 'admin')`;
-  await mirrorInDirectory(sql, studio!.id);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, slug, name) VALUES (${studio!.id}, ${adminUserId}, ${`plan-p-${tag}`}, 'P') RETURNING id
   `;
@@ -250,16 +242,10 @@ describe("GET /api/v1/projects/:id/key-plan", () => {
   });
 });
 
-describe("the BYOK global functions, in the global region", () => {
-  const globals = GLOBAL_FUNCTIONS as unknown as Partial<ByokGlobals>;
+describe("the BYOK reads behind key resolution and the key plan", () => {
 
-  it("exist", () => {
-    expect(globals.getStudioProviderKey).toBeTypeOf("function");
-    expect(globals.getProviderKeyById).toBeTypeOf("function");
-    expect(globals.getStudioKeyPlan).toBeTypeOf("function");
-  });
 
-  it("getStudioProviderKey answers the payer, the key row and its sealed text for the purpose, or null", async () => {
+  it("studioProviderKey answers the payer, the key row and its sealed text for the purpose, or null", async () => {
     const admin = await signedIn();
     const member = await signedIn();
     const { studioId } = await seedStudio(admin.userId, "team");
@@ -269,29 +255,29 @@ describe("the BYOK global functions, in the global region", () => {
     await saveKey(member.userId, "wavespeed", "ws-member-plan-key");
     await accountModelUpstreamsRepo.setModelUpstream(admin.userId, MODEL, "fal");
 
-    expect(await globals.getStudioProviderKey!(studioId, { kind: "llm" })).toMatchObject({
+    expect(await studioProviderKey(studioId, { kind: "llm" })).toMatchObject({
       payerUserId: admin.userId, keyId: or.id, upstream: "openrouter", ciphertext: or.ciphertext,
     });
-    expect(await globals.getStudioProviderKey!(studioId, { kind: "media", model: MODEL })).toMatchObject({
+    expect(await studioProviderKey(studioId, { kind: "media", model: MODEL })).toMatchObject({
       payerUserId: admin.userId, keyId: fal.id, upstream: "fal", ciphertext: fal.ciphertext,
     });
-    expect(await globals.getStudioProviderKey!(studioId, { kind: "media", model: "ideogram-v3-quality" })).toBeNull();
+    expect(await studioProviderKey(studioId, { kind: "media", model: "ideogram-v3-quality" })).toBeNull();
   });
 
-  it("getProviderKeyById answers a live row's sealed text, a retired row's upstream without it, and null for no row", async () => {
+  it("providerKeyById answers a live row's sealed text, a retired row's upstream without it, and null for no row", async () => {
     const { userId } = await signedIn();
     const old = await saveKey(userId, "fal", "fal-first-plan-key");
     const replacing = await saveKey(userId, "fal", "fal-second-plan-key");
 
-    expect(await globals.getProviderKeyById!(old.id)).toEqual({ id: old.id, userId, upstream: "fal", ciphertext: null });
-    expect(await globals.getProviderKeyById!(replacing.id)).toMatchObject({ id: replacing.id, userId, upstream: "fal", ciphertext: replacing.ciphertext });
+    expect(await providerKeyById(old.id)).toEqual({ id: old.id, userId, upstream: "fal", ciphertext: null });
+    expect(await providerKeyById(replacing.id)).toMatchObject({ id: replacing.id, userId, upstream: "fal", ciphertext: replacing.ciphertext });
 
     await accountProviderKeysRepo.deleteKey(userId, "fal");
-    expect(await globals.getProviderKeyById!(replacing.id)).toEqual({ id: replacing.id, userId, upstream: "fal", ciphertext: null });
-    expect(await globals.getProviderKeyById!(crypto.randomUUID())).toBeNull();
+    expect(await providerKeyById(replacing.id)).toEqual({ id: replacing.id, userId, upstream: "fal", ciphertext: null });
+    expect(await providerKeyById(crypto.randomUUID())).toBeNull();
   });
 
-  it("getStudioKeyPlan answers upstream names and model choices without any sealed text", async () => {
+  it("studioKeyPlan answers upstream names and model choices without any sealed text", async () => {
     const { userId } = await signedIn();
     const { studioId } = await seedStudio(userId, "personal");
     const keys = { openrouter: "sk-or-v1-plan-global-key", fal: "fal-plan-global-key" };
@@ -299,7 +285,7 @@ describe("the BYOK global functions, in the global region", () => {
     for (const [upstream, key] of Object.entries(keys)) saved.push({ key, ...(await saveKey(userId, upstream, key)) });
     await accountModelUpstreamsRepo.setModelUpstream(userId, MODEL, "fal");
 
-    const answer = await globals.getStudioKeyPlan!(studioId);
+    const answer = await studioKeyPlan(studioId);
     const text = JSON.stringify(answer);
 
     expect(text).toContain("openrouter");

@@ -16,7 +16,6 @@ const TEAM: StudioDetail = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'admin',
-  region: null,
 };
 
 const PERSONAL: StudioDetail = {
@@ -28,7 +27,6 @@ const PERSONAL: StudioDetail = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'admin',
-  region: null,
 };
 
 describe('StudioHeader', () => {

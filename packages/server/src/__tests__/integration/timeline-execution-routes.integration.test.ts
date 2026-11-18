@@ -30,7 +30,6 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { mirrorInDirectory } from "./directory-fixtures.js";
 import type { Hono } from "hono";
 import {
   env,
@@ -126,7 +125,6 @@ async function seedUser(): Promise<Member & { studioId: string }> {
     VALUES (${user!.id}, ${`tlx-s-${crypto.randomBytes(8).toString("hex")}`}, 'personal', 'Personal') RETURNING id
   `;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${user!.id}, 'admin')`;
-  await mirrorInDirectory(sql, studio!.id);
   return { userId: user!.id, studioId: studio!.id, cookie: await sessionFor(user!.id) };
 }
 

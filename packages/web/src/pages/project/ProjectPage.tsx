@@ -30,10 +30,6 @@ import { KeyFailureWordsProvider } from '@web/features/byok/key-failure-words';
 import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { spaceRpcFailureNotice } from '@web/pages/project/space-rpc-failure';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
-import { directoryApi } from '@web/data/api/directory';
-import { collabUrlFor, getRegionConfig, isRegionDown } from '@web/data/api/regions';
-import { useCurrentRegion } from '@web/data/api/use-current-region';
-import { RegionUnavailable } from '@web/components/RegionUnavailable';
 import { evictSceneSession } from '@web/data/yjs/scene-session';
 import { evictModelImportController } from '@web/spaces/three-d/model-import-controller';
 import { docName } from '@web/data/yjs/manager';
@@ -173,19 +169,8 @@ export default function ProjectPage(): React.JSX.Element {
   // dial until AuthBootstrap has resolved a session, or the first connect
   // races the cookie and sticks on authFailed forever (regressed in v14 reset).
   const userId = useCurrentUserStore((s) => s.user?.id);
-  // In a build with several regions the Project's region comes first: it
-  // decides where the Project, its calls and its collab live (inner#1955).
-  const regions = getRegionConfig();
-  const regionQuery = useQuery({
-    queryKey: ['project-region', projectId],
-    queryFn: () => (regions === null ? { region: null } : directoryApi.project(projectId)),
-    retry: (failureCount, err) => !(err instanceof ApiException && err.status === 404) && failureCount < 2,
-  });
-  const region = regionQuery.data?.region;
-  useCurrentRegion(region);
   const projectQuery = useQuery({
     queryKey: ['project', projectId],
-    enabled: region !== undefined,
     queryFn: () => projectsApi.get(projectId),
     // 403 = a studio member who is not on this project: offer to join
     // instead of looping a useless retry. The 404 path also
@@ -212,20 +197,14 @@ export default function ProjectPage(): React.JSX.Element {
   const { refetch } = projectQuery;
   const retry = React.useCallback(() => { void refetch(); }, [refetch]);
   const preferencesRestored = useRestoredPreferences(userId, projectId);
-  if (regionQuery.error instanceof ApiException && regionQuery.error.status === 404) return <main><NotFoundScreen /></main>;
-  if (regionQuery.isError) return <main><ResourceLoadError onRetry={() => { void regionQuery.refetch(); }} /></main>;
   if (projectQuery.error instanceof ApiException && projectQuery.error.status === 404) return <main><NotFoundScreen /></main>;
   if (projectQuery.error instanceof ApiException && projectQuery.error.status === 403) {
     return <ProjectJoinGate projectId={projectId} />;
   }
-  if (projectQuery.isError && !projectQuery.data) {
-    return <main>{region && isRegionDown(projectQuery.error)
-      ? <RegionUnavailable kind='project' onRetry={retry} />
-      : <ResourceLoadError onRetry={retry} />}</main>;
-  }
+  if (projectQuery.isError && !projectQuery.data) return <main><ResourceLoadError onRetry={retry} /></main>;
   if (!projectQuery.data || !preferencesRestored) return <LoadingScreen />;
   return (
-    <CollabSocketProvider userId={userId} url={collabUrlFor(region ?? null, regions)}>
+    <CollabSocketProvider userId={userId}>
       {/*
         Keyed on the project, because everything below belongs to one: the tab
         strip, the Spaces, the camera each one is on. The route can move from

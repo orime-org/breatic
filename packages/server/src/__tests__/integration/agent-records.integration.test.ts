@@ -20,7 +20,6 @@ import postgres from "postgres";
 import { initCore, getAgentConfig, loadLocales } from "@breatic/core";
 import { RecordsRefused, TOOL_MAP, type ProjectRecords } from "@breatic/domain";
 import { readQuestionnaire, type ChatSpace } from "@breatic/shared";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -64,7 +63,6 @@ async function seedUser(name: string): Promise<string> {
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${user!.id}, ${`${tag}-me`}, 'personal', ${name})
   `;
-  await mirrorAllInDirectory(sql);
   return user!.id;
 }
 
@@ -86,7 +84,6 @@ async function seedProject(userId: string): Promise<string> {
     VALUES (${studio!.id}, ${userId}, ${tag}, ${`${tag}-p`}) RETURNING id
   `;
   await addMember(project!.id, userId, "owner");
-  await mirrorAllInDirectory(sql);
   return project!.id;
 }
 

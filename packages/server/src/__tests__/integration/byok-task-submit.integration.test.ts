@@ -44,7 +44,6 @@ import {
 } from "@breatic/core";
 import { estimateTaskCredits, initProvider, readProviderConfig } from "@breatic/domain";
 import { ceilToCreditCent } from "@breatic/shared";
-import { mirrorInDirectory } from "./directory-fixtures.js";
 import { seedDesignatedLot } from "@server/__tests__/integration/studio-credit-fixtures.js";
 
 const SECRET = crypto.randomBytes(32);
@@ -145,7 +144,6 @@ async function seed(credits: number, spaceType: "canvas" | "timeline" = "canvas"
     INSERT INTO studios (created_by_user_id, slug, type, name) VALUES (${userId}, ${`byok-s-${tag}`}, 'team', 'BYOK') RETURNING id
   `;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${userId}, 'admin')`;
-  await mirrorInDirectory(sql, studio!.id);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug, initial_space_type)
     VALUES (${studio!.id}, ${userId}, ${`byok-p-${tag}`}, ${`byok-p-${tag}`}, ${spaceType}) RETURNING id

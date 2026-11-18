@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * An account's own upstream keys (inner#1953): the settings the BYOK dialog reads and writes, run in the global region
- * where both tables live, and the key plan a Project's panels read about whoever pays for its Studio.
+ * An account's own upstream keys (inner#1953): the settings the BYOK dialog reads and writes, and the key plan a
+ * Project's panels read about whoever pays for its Studio.
  *
  * A key is checked with its upstream before it is saved, sealed with this deployment's master keys and kept only in
  * `account_provider_keys`; nothing answered here carries a key or its sealed text, only the hint the user is shown.
@@ -27,7 +27,7 @@ import {
   type ProviderKeyCheckRecord,
   type ProviderKeyRing,
 } from "@breatic/core";
-import { globalApi, provider } from "@breatic/domain";
+import { provider, studioKeyPlan } from "@breatic/domain";
 import { ACCOUNT_LLM_UPSTREAM, type KeyCheck, type KeySet } from "@breatic/provider";
 import { t, type AccountProviderKey, type ModelAvailability, type ProviderKeyBalanceState } from "@breatic/shared";
 import { assertAccess } from "@server/modules/project/project.service.js";
@@ -310,7 +310,7 @@ function heldOnly(upstream: string): KeySet {
 export async function readKeyPlan(projectId: string, userId: string): Promise<KeyPlan> {
   await assertAccess(projectId, userId, "viewer");
   const studioId = await projectsRepo.findOwnerStudioId(projectId);
-  const plan = studioId === undefined ? null : await globalApi().getStudioKeyPlan(studioId);
+  const plan = studioId === undefined ? null : await studioKeyPlan(studioId);
   const payer = plan === null || plan.payerUserId === userId ? "self" : "admin";
   const upstreamNames = Object.fromEntries(Object.keys(provider().config.upstreams).map((u) => [u, listingOf(u).name]));
   if (plan === null || ring() === null) return { payer, llm: { usesAccountKey: false }, models: {}, upstreamNames };

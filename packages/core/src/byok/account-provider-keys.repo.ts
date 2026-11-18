@@ -158,14 +158,15 @@ export async function liveKeysFor(userId: string): Promise<AccountProviderKey[]>
 }
 
 /**
- * A key row's sealed text, only while the row is live.
+ * A key row's sealed text, only while the row and its account are live.
  * @param id - The `account_provider_keys` row a task or turn recorded.
- * @returns The sealed key, or null when the row was replaced, deleted, erased or never existed.
+ * @returns The sealed key, or null when the row was replaced, deleted, erased or never existed, or its account is gone.
  */
 export async function sealedKeyById(id: string): Promise<SealedProviderKey | null> {
   const rows = await db
     .select({ id: accountProviderKeys.id, userId: accountProviderKeys.userId, upstream: accountProviderKeys.upstream, ciphertext: accountProviderKeys.ciphertext })
     .from(accountProviderKeys)
+    .innerJoin(users, and(eq(users.id, accountProviderKeys.userId), isNull(users.deletedAt)))
     .where(and(eq(accountProviderKeys.id, id), isNull(accountProviderKeys.deletedAt), isNotNull(accountProviderKeys.ciphertext)))
     .limit(1);
   const row = rows[0];

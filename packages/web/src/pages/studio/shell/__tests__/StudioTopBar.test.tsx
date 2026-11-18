@@ -24,7 +24,7 @@ afterEach(() => setLocale('en'));
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED, unavailableRegions: [] });
+  vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED });
 });
 
 function setup() {

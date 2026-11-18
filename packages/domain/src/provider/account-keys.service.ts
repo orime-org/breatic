@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The global region's answers about the keys a Studio's payer brought (inner#1953). Both BYOK tables are global, so
- * code in a Studio's region reaches these only through `globalApi`; they hand back sealed text at most, never a key,
- * and the caller opens it in its own process.
+ * What a Studio's payer brought (inner#1953): sealed text at most, never a key; the caller opens it in its own process.
  */
 
-import { accountModelUpstreamsRepo, accountProviderKeysRepo, studioDirectoryRepo } from "@breatic/core";
+import { accountModelUpstreamsRepo, accountProviderKeysRepo } from "@breatic/core";
 import { ACCOUNT_LLM_UPSTREAM } from "@breatic/provider";
-import * as usersRepo from "@domain/auth/user.repo.js";
+import { liveAdminOf } from "@domain/auth/studioMembers.repo.js";
 
 /** What a call needs keys for: a language model (always provider's `ACCOUNT_LLM_UPSTREAM`), or one catalog media model. */
 export type KeyPurpose = { kind: "llm" } | { kind: "media"; model: string };
@@ -45,26 +43,14 @@ export interface StudioKeyPlan {
 }
 
 /**
- * The live account that pays for a Studio: its current admin in the directory.
- * @param studioId - The Studio.
- * @returns The account's id, or null when the Studio or its admin's account is gone.
- */
-async function livePayerOf(studioId: string): Promise<string | null> {
-  const row = await studioDirectoryRepo.findLive(studioId);
-  if (row === null) return null;
-  const [user] = await usersRepo.getUsersByIds([row.adminUserId]);
-  return user?.id ?? null;
-}
-
-/**
  * The payer's key a call of a Studio runs on, for its purpose: the language-model upstream's key, the key of the
  * upstream the payer chose for a media model.
  * @param studioId - The Studio.
  * @param purpose - What the call is for.
  * @returns The payer, the key row and its sealed text, or null when the call runs on the deployment's keys.
  */
-export async function studioProviderKeyHere(studioId: string, purpose: KeyPurpose): Promise<StudioProviderKey | null> {
-  const payerUserId = await livePayerOf(studioId);
+export async function studioProviderKey(studioId: string, purpose: KeyPurpose): Promise<StudioProviderKey | null> {
+  const payerUserId = await liveAdminOf(studioId);
   if (payerUserId === null) return null;
   const upstream = purpose.kind === "llm" ? ACCOUNT_LLM_UPSTREAM : await accountModelUpstreamsRepo.modelUpstreamFor(payerUserId, purpose.model);
   if (upstream === null) return null;
@@ -79,12 +65,9 @@ export async function studioProviderKeyHere(studioId: string, purpose: KeyPurpos
  * @param keyId - The row a task, turn or lookup recorded.
  * @returns The live row, the retired row with `ciphertext` null, or null when no row has the id.
  */
-export async function providerKeyByIdHere(keyId: string): Promise<ProviderKeyById | null> {
+export async function providerKeyById(keyId: string): Promise<ProviderKeyById | null> {
   const sealed = await accountProviderKeysRepo.sealedKeyById(keyId);
-  if (sealed !== null) {
-    const [user] = await usersRepo.getUsersByIds([sealed.userId]);
-    if (user !== undefined) return sealed;
-  }
+  if (sealed !== null) return sealed;
   const owner = await accountProviderKeysRepo.keyOwnerById(keyId);
   return owner === null ? null : { ...owner, ciphertext: null };
 }
@@ -94,8 +77,8 @@ export async function providerKeyByIdHere(keyId: string): Promise<ProviderKeyByI
  * @param studioId - The Studio.
  * @returns The payer's upstreams and model choices, or null when the Studio or its payer is gone.
  */
-export async function studioKeyPlanHere(studioId: string): Promise<StudioKeyPlan | null> {
-  const payerUserId = await livePayerOf(studioId);
+export async function studioKeyPlan(studioId: string): Promise<StudioKeyPlan | null> {
+  const payerUserId = await liveAdminOf(studioId);
   if (payerUserId === null) return null;
   const upstreams = (await accountProviderKeysRepo.liveKeysFor(payerUserId)).map((key) => key.upstream);
   const choices = await accountModelUpstreamsRepo.liveModelUpstreamsFor(payerUserId);

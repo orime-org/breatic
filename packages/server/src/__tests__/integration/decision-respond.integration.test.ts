@@ -32,7 +32,6 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { mirrorInDirectory } from "./directory-fixtures.js";
 import {
   initCore,
   ConflictError,
@@ -47,7 +46,7 @@ import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations
 import * as projectInvitationsRepo from "@server/modules/project-invite/projectInvitations.repo.js";
 import * as roleUpgradeRequestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
 import * as projectTransfersRepo from "@server/modules/project/projectTransfers.repo.js";
-import { studioTransfersRepo as studioTransfersRepo } from "@breatic/domain";
+import * as studioTransfersRepo from "@server/modules/studio/studioTransfers.repo.js";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -108,7 +107,6 @@ async function seedScene(): Promise<Scene> {
     VALUES (${studio!.id}, ${owner!.id}, 'admin', ${owner!.id}),
            (${studio!.id}, ${member!.id}, 'maintainer', ${owner!.id})
   `;
-  await mirrorInDirectory(sql, studio!.id);
   const projectSlug = `${tag}-p`;
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug)

@@ -44,7 +44,6 @@ import { initCore, loadLocales, NotFoundError } from "@breatic/core";
 import * as projectInviteService from "@server/modules/project-invite/projectInvite.service.js";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -114,7 +113,6 @@ async function seedStaleInvite(): Promise<{
     VALUES (${project!.id}, ${invitee!.id}, 'viewer', ${admin!.id}, 'pending',
             now() - interval '1 hour', ${`${tag}-token`})
   `;
-  await mirrorAllInDirectory(sql);
   return {
     projectId: project!.id,
     adminId: admin!.id,
@@ -155,7 +153,6 @@ async function seedStudioInvite(): Promise<{
             now() + interval '7 days', ${`${tag}-token`})
     RETURNING id
   `;
-  await mirrorAllInDirectory(sql);
   return {
     studioId: studio!.id,
     invitationId: invite!.id,
@@ -199,7 +196,7 @@ async function rowIsLockedByAnother(
  * them would pass whenever it happened to pick the other.
  *
  * The chain is walked rather than the top level read, for the reason
- * `packages/core/src/db/pg-error.ts` already documents: a query made through drizzle arrives
+ * `utils/pg-error.ts` already documents: a query made through drizzle arrives
  * as a `DrizzleQueryError` whose own `code` is undefined and whose SQLSTATE
  * sits on `.cause`. Measured here — under a real deadlock the invite side
  * rejected with `code=undefined, cause.code=40P01`, so a flat check reported

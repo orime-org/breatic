@@ -47,7 +47,6 @@ import * as studioTransferService from "@server/modules/studio/studioTransfer.se
 import * as studioService from "@server/modules/studio/studio.service.js";
 import type { NotificationListView } from "@breatic/shared";
 import type { Hono } from "hono";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -89,7 +88,6 @@ async function insertUserWithHandle(handle: string): Promise<string> {
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${userId}, ${handle}, 'personal', ${handle})
   `;
-  await mirrorAllInDirectory(sql);
   return userId;
 }
 
@@ -111,7 +109,6 @@ async function insertStudio(
   `;
   const id = rows[0]!.id;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${id}, ${adminUserId}, 'admin')`;
-  await mirrorAllInDirectory(sql);
   return { id, slug };
 }
 

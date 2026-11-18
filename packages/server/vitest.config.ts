@@ -52,9 +52,6 @@ export default defineConfig({
       // here, such an import fails on whichever tool happens to import a
       // sibling -- which is a property of that tool, not of the test.
       "@domain": resolve(__dirname, "../domain/src"),
-      // The same holds for a test that parses the core config schema from
-      // its source (real-stripe-config.test.ts).
-      "@core": resolve(__dirname, "../core/src"),
     },
   },
 });

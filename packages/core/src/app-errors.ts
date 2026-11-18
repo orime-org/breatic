@@ -20,11 +20,9 @@ export class AppError extends Error {
    * @param statusCode - HTTP status code
    * @param message - Human-readable error message
    * @param reason - The code the client branches on, if any
-   * @param options - The failure underneath, kept for the error log
-   * @param options.cause - That failure
    */
-  constructor(statusCode: number, message: string, reason?: string, options?: { cause?: unknown }) {
-    super(message, options);
+  constructor(statusCode: number, message: string, reason?: string) {
+    super(message);
     this.name = "AppError";
     this.statusCode = statusCode;
     if (reason !== undefined) this.reason = reason;
@@ -48,12 +46,9 @@ export class ConflictError extends AppError {
   /**
    * Construct a 409 error.
    * @param message - human-readable description of the conflicting state
-   * @param reason - the code the client branches on, if any
-   * @param options - the failure underneath, kept for the error log
-   * @param options.cause - that failure
    */
-  constructor(message: string, reason?: string, options?: { cause?: unknown }) {
-    super(409, message, reason, options);
+  constructor(message: string) {
+    super(409, message);
     this.name = "ConflictError";
   }
 }

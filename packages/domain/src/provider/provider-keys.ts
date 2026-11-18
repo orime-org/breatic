@@ -4,16 +4,14 @@
 /**
  * Which keys a model call runs on (inner#1953). Whoever pays for a Studio supplies them: a language-model call runs on
  * the payer's OpenRouter key when it has one, a media call on the upstream the payer chose for that model while that
- * upstream's key is live; anything else on the deployment's keys. The key is read sealed from the global region and
- * opened here; the answer names its key row by id, so a task, turn or lookup records the id and reads the key back
+ * upstream's key is live; anything else on the deployment's keys. The key is read sealed and opened here; the answer names its key row by id, so a task, turn or lookup records the id and reads the key back
  * with {@link keysById}, never storing it.
  */
 
 import { getConfig, openProviderKey, projectsRepo, providerKeyRingOf, type ProviderKeyRing } from "@breatic/core";
 import { AccountKeyFailure, type KeySet, type Route } from "@breatic/provider";
 import { provider } from "@domain/provider/instance.js";
-import type { KeyPurpose } from "@domain/provider/account-keys.service.js";
-import { globalApi } from "@domain/region/global-api.js";
+import { providerKeyById, studioProviderKey, type KeyPurpose } from "@domain/provider/account-keys.service.js";
 import { PROMPT_REWRITTEN_MODELS } from "@domain/provider/prompt-rewritten-models.js";
 
 /** Who pays for a call: a Studio, or the Studio a Project belongs to. */
@@ -64,7 +62,7 @@ export async function resolveKeys(payer: KeyPayer, purpose: KeyPurpose): Promise
   if (masterKeys === null) return ON_DEPLOYMENT;
   const studioId = "studioId" in payer ? payer.studioId : await projectsRepo.findOwnerStudioId(payer.projectId);
   if (studioId === undefined) return ON_DEPLOYMENT;
-  const found = await globalApi().getStudioProviderKey(studioId, purpose);
+  const found = await studioProviderKey(studioId, purpose);
   if (found === null) return ON_DEPLOYMENT;
   return {
     keys: accountKeySet(found.upstream, openProviderKey(found.ciphertext, masterKeys)),
@@ -85,7 +83,7 @@ export async function resolveKeys(payer: KeyPayer, purpose: KeyPurpose): Promise
 export async function keysById(keyId: string | null): Promise<{ keys: KeySet; accountId: string } | null> {
   if (keyId === null) return null;
   const masterKeys = ring();
-  const found = masterKeys === null ? null : await globalApi().getProviderKeyById(keyId);
+  const found = masterKeys === null ? null : await providerKeyById(keyId);
   // A retired row still names its upstream, so the user is told which key is gone; no other key is used instead.
   if (masterKeys === null || found === null || found.ciphertext === null) {
     throw new AccountKeyFailure("", "account_key_missing", found === null ? {} : { upstream: found.upstream });

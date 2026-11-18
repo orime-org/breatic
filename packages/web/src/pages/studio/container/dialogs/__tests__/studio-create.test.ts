@@ -21,7 +21,6 @@ const personal: StudioSummary = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'admin',
-  region: null,
 };
 const teamAdmin: StudioSummary = {
   id: 's-a',
@@ -32,7 +31,6 @@ const teamAdmin: StudioSummary = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'admin',
-  region: null,
 };
 const teamMaintainer: StudioSummary = {
   id: 's-c',
@@ -43,7 +41,6 @@ const teamMaintainer: StudioSummary = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'maintainer',
-  region: null,
 };
 const teamGuest: StudioSummary = {
   id: 's-m',
@@ -54,7 +51,6 @@ const teamGuest: StudioSummary = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'guest',
-  region: null,
 };
 
 const ALL = [personal, teamAdmin, teamMaintainer, teamGuest];
@@ -83,7 +79,6 @@ describe('defaultCreateStudioId (spec §7.1 — default selection)', () => {
     avatarUrl: null,
     bio: null,
     myStudioRole: s.myStudioRole,
-    region: null,
   });
 
   it('defaults to the personal studio for a global (rail) entry — no current studio', () => {

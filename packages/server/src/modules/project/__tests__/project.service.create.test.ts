@@ -43,6 +43,9 @@ vi.mock("@server/modules/project/project.repo.js", () => ({
 
 // The gate takes the studio's row before counting it. That row lock is the
 // studio module's; the count itself is stubbed above, in the project repo.
+vi.mock("@server/modules/studio/studio.repo.js", () => ({
+  lockStudio: vi.fn(async () => true),
+}));
 
 // studioAuthService.loadStudioRole is the create-authz source of truth.
 const { mockLoadStudioRole } = vi.hoisted(() => ({
@@ -50,9 +53,25 @@ const { mockLoadStudioRole } = vi.hoisted(() => ({
 }));
 vi.mock("@breatic/domain", () => ({
   studioAuthService: { loadStudioRole: mockLoadStudioRole },
-  studioRepo: { lockStudio: vi.fn(async () => true) },
-  directoryWrites: { projectCreated: vi.fn(async () => undefined) },
-  globalApi: () => ({
+}));
+
+vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unknown>>) => {
+  const actual = await importActual();
+  return {
+    ...actual,
+    accountActivityRepo: { recordActivity: vi.fn(async () => undefined) },
+    // The account has not claimed its first project yet (inner#1442 §4.8).
+    claimFirstMilestone: vi.fn(async () => true),
+    // The first-project conversion is queued after the create; nothing to upload here.
+    getAccountAttribution: vi.fn(async () => null),
+    enqueueAdsConversion: vi.fn(async () => false),
+    db: {
+      // Pass-through transaction — runs the callback immediately with a stub tx
+      // handle. createProject is mocked, so no real DB is needed.
+      transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
+        cb({ TX: true }),
+      ),
+    },
     // A tier with room. The six ceilings are read as one object, so the whole
     // shape is returned rather than the single field under test — a partial
     // stub would pass here and break the moment another ceiling is read.
@@ -64,25 +83,6 @@ vi.mock("@breatic/domain", () => ({
       project_members: 40,
       storage_bytes: 536870912000,
     })),
-    // The account has not claimed its first project yet (inner#1442 §4.8).
-    claimAccountMilestone: vi.fn(async () => ({ claimed: true })),
-    // The first-project conversion is queued after the create; nothing to upload here.
-    enqueueAdsConversion: vi.fn(async () => false),
-  }),
-}));
-
-vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unknown>>) => {
-  const actual = await importActual();
-  return {
-    ...actual,
-    accountActivityRepo: { recordActivity: vi.fn(async () => undefined) },
-    db: {
-      // Pass-through transaction — runs the callback immediately with a stub tx
-      // handle. createProject is mocked, so no real DB is needed.
-      transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
-        cb({ TX: true }),
-      ),
-    },
   };
 });
 

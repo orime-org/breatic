@@ -24,7 +24,7 @@ import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, projectJoinRequests } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { DecisionGrantRole, RequestFailedReason } from "@breatic/shared";
-import { mintShareToken } from "@breatic/core";
+import { mintShareToken } from "@server/utils/share-token.js";
 import { failedReasonAtNow } from "@server/modules/decision/decision.repo.js";
 
 /** Where a request sits in its lifecycle. */
@@ -379,9 +379,9 @@ export async function listLivePendingForProject(
  */
 export async function getDecisionKeys(
   id: string,
-  tx?: DbTx,
+  tx: DbTx,
 ): Promise<{ projectId: string; requesterUserId: string } | null> {
-  const rows = await (tx ?? db)
+  const rows = await tx
     .select({
       projectId: projectJoinRequests.projectId,
       requesterUserId: projectJoinRequests.requesterUserId,
