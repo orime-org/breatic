@@ -9,6 +9,7 @@
  */
 
 import { agentTokenExchangeResponseSchema, httpRequest, type AgentTokenExchangeResponse } from "@breatic/shared";
+import { z } from "zod";
 
 /** The confidential client the server lets exchange tokens. */
 const MCP_CLIENT_ID = "breatic-mcp";
@@ -82,4 +83,18 @@ export function createTokenExchanger(options: TokenExchangerOptions): (subjectTo
     if (!res.ok) throw new Error(`token exchange failed with ${String(res.status)}`);
     return agentTokenExchangeResponseSchema.parse(body);
   };
+}
+
+/**
+ * Find the server's token endpoint in its authorization server metadata (RFC 8414).
+ * @param issuer - `OAUTH_ISSUER`.
+ * @param timeoutMs - How long the read may take.
+ * @returns The token endpoint.
+ * @throws {Error} When the metadata cannot be read or names no token endpoint.
+ */
+export async function discoverTokenEndpoint(issuer: string, timeoutMs: number): Promise<string> {
+  const res = await httpRequest(new URL("/.well-known/oauth-authorization-server", issuer).toString(), { method: "GET" }, { replaySafe: true, timeoutMs });
+  if (!res.ok) throw new Error(`authorization server metadata answered ${String(res.status)}`);
+  const { token_endpoint: endpoint } = z.object({ token_endpoint: z.url() }).parse(await res.json());
+  return endpoint;
 }

@@ -9,8 +9,12 @@
 
 import { mcpEnv } from "@mcp/bootstrap-config.js";
 import { createLogger, createRedisClient, getMcpConfig, runGracefulShutdown, startHealthServer, type HealthCheck } from "@breatic/core";
+import { serve } from "@hono/node-server";
+import { McpServer } from "@modelcontextprotocol/server";
+import { createMcpApp } from "@mcp/app.js";
 import { createCommandChannel } from "@mcp/command-channel.js";
 import { redisAnswers, serverAnswers } from "@mcp/probes.js";
+import { createTokenExchanger, discoverTokenEndpoint } from "@mcp/token-exchange.js";
 
 const logger = createLogger("main");
 
@@ -45,7 +49,7 @@ async function exit(code: number): Promise<never> {
 }
 
 /**
- * Start the service: check what it depends on, then serve health.
+ * Start the service: check what it depends on, then serve MCP and health.
  * @returns Resolves once started.
  */
 async function main(): Promise<void> {
@@ -77,6 +81,16 @@ async function main(): Promise<void> {
     operationTtlSeconds: Math.ceil(mcpConfig.call_timeout_ms / 1000) + mcpConfig.reply_ttl_seconds,
   });
 
+  const tokenEndpoint = await discoverTokenEndpoint(mcpEnv.OAUTH_ISSUER, mcpConfig.call_timeout_ms);
+  const app = createMcpApp({
+    resourceUrl: new URL(mcpEnv.MCP_PUBLIC_URL),
+    issuer: mcpEnv.OAUTH_ISSUER,
+    exchange: createTokenExchanger({ tokenEndpoint, clientSecret: mcpEnv.MCP_CLIENT_SECRET, timeoutMs: mcpConfig.call_timeout_ms }),
+    buildServer: () => new McpServer({ name: "breatic", version: "1.0.0" }),
+    onError: (err) => logger.error({ err }, "mcp_handler_error"),
+  });
+  const httpServer = serve({ fetch: app.fetch, port: mcpEnv.MCP_PORT }, (info) => logger.info({ port: info.port }, "mcp_listening"));
+
   const healthServer = startHealthServer({
     port: mcpEnv.MCP_HEALTH_PORT,
     serviceName: "mcp",
@@ -98,9 +112,14 @@ async function main(): Promise<void> {
    */
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "Shutting down...");
+    let httpClosed: Promise<void> = Promise.resolve();
     await runGracefulShutdown({
-      releaseListenSocket: () => {},
+      // Stop taking requests; the ones in flight finish before the channel closes.
+      releaseListenSocket: () => {
+        httpClosed = new Promise<void>((resolve) => httpServer.close(() => resolve()));
+      },
       drains: [() => healthServer.stop(), async () => {
+        await httpClosed;
         await commands.close();
         await commandRedis.quit();
       }],
