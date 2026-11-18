@@ -235,6 +235,28 @@ describe('applyLook', () => {
   });
 });
 
+describe('applyLook on a material several meshes share', () => {
+  it('moves every mesh to one new material and one picture clone when the class changes', () => {
+    const root = new Group();
+    const shared = new MeshStandardMaterial({ color: '#ffffff' });
+    shared.userData.lookPart = '0';
+    const meshes = [0, 1, 2].map(() => new Mesh(new BoxGeometry(), shared));
+    root.add(...meshes);
+    const apply = exported<Apply>('applyLook');
+    const table = exported<Build>('buildPartTable')(root, partOf, { builtin: false });
+    const picture = new Texture();
+    const clone = vi.spyOn(picture, 'clone');
+    apply(root, table, { 0: { map: IMAGE } }, { themeColor: THEME, picture: () => picture });
+    expect(new Set(meshes.map((mesh) => mesh.material)).size).toBe(1);
+    expect(clone).toHaveBeenCalledTimes(1);
+    apply(root, table, { 0: { map: IMAGE, transmission: 1 } }, { themeColor: THEME, picture: () => picture });
+    const after = new Set(meshes.map((mesh) => mesh.material));
+    expect(after.size).toBe(1);
+    expect([...after][0]).toBeInstanceOf(MeshPhysicalMaterial);
+    expect(clone).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('buildPartTable picture transform', () => {
   it('records the own picture\'s tiling, offset and rotation in degrees as the default the panel shows', () => {
     const root = new Group();

@@ -198,7 +198,14 @@ function resetMaterial(current: Material, original: Material, physical: boolean)
  */
 export function applyLook(root: Object3D, table: LookPartTable, look: SceneLook, options: ApplyLookOptions): { programChanged: boolean } {
   let programChanged = false;
+  // Meshes that shared a material share its replacement, as instantiate gave them one clone (model-viewer does the same).
+  const replaced = new Map<Material, Material>();
   eachMaterial(root, (current, replace) => {
+    const done = replaced.get(current);
+    if (done) {
+      replace(done);
+      return;
+    }
     const part = current.userData.lookPart as string | undefined;
     const entry = part === undefined ? undefined : table.get(part);
     if (!part || !entry) return;
@@ -249,6 +256,7 @@ export function applyLook(root: Object3D, table: LookPartTable, look: SceneLook,
     material.needsUpdate = true;
     for (const texture of kept) texture.dispose();
     if (made.length > 0) clones.set(material, made);
+    replaced.set(current, material);
     if (material !== current) {
       replace(material);
       current.dispose();
