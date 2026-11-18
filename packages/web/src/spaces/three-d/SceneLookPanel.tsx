@@ -11,7 +11,7 @@ import { toast } from '@web/lib/toast';
 import { SceneImagePickerDialog } from '@web/spaces/three-d/SceneImagePickerDialog';
 import { SceneLookSection, type SceneLookGesture } from '@web/spaces/three-d/SceneLookSection';
 import { checkLookWrite } from '@web/spaces/three-d/look-texture-budget';
-import { isLookImageType, lookLimitNotice, pageSceneLookUploads } from '@web/spaces/three-d/scene-look-uploads';
+import { isLookImageType, lookLimitNotice, pageSceneLookUploads, unsupportedPictureNotice, type LookUploadNotice } from '@web/spaces/three-d/scene-look-uploads';
 import { takeStepKey } from '@web/spaces/three-d/slider-step-key';
 import { pageLookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
 import type { SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
@@ -28,6 +28,14 @@ export interface SceneLookPanelProps {
   mutable: boolean;
   selectedPart: string | null;
   onSelectPart: (part: string | null) => void;
+}
+
+/**
+ * Show a picture notice as a toast.
+ * @param notice - The notice.
+ */
+function notify(notice: LookUploadNotice): void {
+  toast[notice.severity](translate(notice.key, notice.params));
 }
 
 /**
@@ -91,22 +99,24 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
       try {
         const size = await textures.size(image.assetId);
         if (!size || !isLookImageType(size.type)) {
-          toast.warning(translate('canvas.upload.unsupportedType', { filename: image.displayName ?? '' }));
+          notify(unsupportedPictureNotice(image.displayName ?? ''));
           return;
         }
+        // Judged against the look as it is now: the size read above may have taken a while.
+        const current = session.getSnapshot().objects.find((item) => item.id === object.id);
+        if (!current) return;
         const issue = await checkLookWrite({ ownBytes: ready.ownBytes, clampBytes: ready.clampBytes, limits: textureLimits,
-          look, part, map: image.assetId, mapSize: size, size: (assetId) => textures.size(assetId) });
+          look: current.look ?? {}, part, map: image.assetId, mapSize: size, size: (assetId) => textures.size(assetId) });
         if (issue) {
-          const notice = lookLimitNotice(issue, size, textureLimits);
-          toast[notice.severity](translate(notice.key, notice.params));
+          notify(lookLimitNotice(issue, size, textureLimits));
           return;
         }
         session.execute({ type: 'look', id: object.id, part, set: { map: image.assetId } });
       } finally {
-        setChecking(null);
+        setChecking((shown) => (shown === part ? null : shown));
       }
     })();
-  }, [pickerPart, ready, textures, textureLimits, look, session, object.id]);
+  }, [pickerPart, ready, textures, textureLimits, session, object.id]);
   const pickFile = React.useCallback((file: File): void => {
     const part = pickerPart;
     if (part === null || !ready) return;
