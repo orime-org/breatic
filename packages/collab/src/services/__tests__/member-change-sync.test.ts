@@ -14,7 +14,8 @@
 
 import { describe, it, expect, vi } from "vitest";
 import type { Hocuspocus } from "@hocuspocus/server";
-import { COLLAB_REAUTH_REASONS, type ProjectRole } from "@breatic/shared";
+import * as Y from "yjs";
+import { COLLAB_REAUTH_REASONS, projectMetaDocName, type ProjectRole } from "@breatic/shared";
 
 const logged = vi.hoisted(() => ({ error: [] as unknown[][] }));
 vi.mock("@breatic/core", () => ({
@@ -31,6 +32,7 @@ import {
   recheckAllConnections,
   startMemberChangeSync,
 } from "@collab/services/member-change-sync.js";
+import { listAgentPresence, markAgentActive } from "@collab/hooks/presence.js";
 
 const P1 = "11111111-1111-4111-8111-111111111111";
 const P2 = "22222222-2222-4222-9222-222222222222";
@@ -174,6 +176,7 @@ describe("startMemberChangeSync", () => {
         };
       },
       loadRole,
+      isAgentConnectionUsable: async () => true,
     });
     if (!handlers) throw new Error("listen was not called");
     return { handlers, closed, stopped: () => stopped, stop: () => sync.stop() };
@@ -216,5 +219,50 @@ describe("startMemberChangeSync", () => {
     await stop();
 
     expect(stopped()).toBe(true);
+  });
+});
+
+describe("startMemberChangeSync — external agents (breatic#1488 §19.2)", () => {
+  /**
+   * Start the sync on an instance holding P1's meta document with one agent
+   * of Alice's and one of Bob's online.
+   * @param loadRole - The current-role reader.
+   * @returns The handlers and a reader of who is online.
+   */
+  async function startWithAgents(loadRole: (userId: string, projectId: string) => Promise<ProjectRole | null>): Promise<{
+    handlers: Parameters<Parameters<typeof startMemberChangeSync>[1]["listen"]>[0];
+    online: () => string[];
+  }> {
+    const meta = Object.assign(new Y.Doc(), { connections: new Map() });
+    markAgentActive({ document: meta, userId: ALICE, connectionId: "alice-agent", spaceId: null, focus: undefined, now: 0 });
+    markAgentActive({ document: meta, userId: BOB, connectionId: "bob-agent", spaceId: null, focus: undefined, now: 0 });
+    const hocuspocus = { documents: new Map([[projectMetaDocName(P1), meta]]) } as unknown as Hocuspocus;
+    let handlers: Parameters<Parameters<typeof startMemberChangeSync>[1]["listen"]>[0] | undefined;
+    await startMemberChangeSync(hocuspocus, {
+      listen: async (h) => {
+        handlers = h;
+        return { stop: async () => undefined, probe: async () => true };
+      },
+      loadRole,
+      isAgentConnectionUsable: async () => true,
+    });
+    if (!handlers) throw new Error("listen was not called");
+    return {
+      handlers,
+      online: () => listAgentPresence(meta).filter((a) => a.online).map((a) => a.connectionId).sort(),
+    };
+  }
+
+  it("marks a removed member's agents offline, and leaves a member whose role only changed", async () => {
+    const { handlers, online } = await startWithAgents(async (userId) => (userId === BOB ? null : "viewer"));
+    handlers.onChange({ projectId: P1, userId: ALICE });
+    handlers.onChange({ projectId: P1, userId: BOB });
+    await vi.waitFor(() => expect(online()).toEqual(["alice-agent"]));
+  });
+
+  it("rechecks every loaded agent each time listening starts", async () => {
+    const { handlers, online } = await startWithAgents(async (userId) => (userId === ALICE ? null : "editor"));
+    handlers.onListening();
+    await vi.waitFor(() => expect(online()).toEqual(["bob-agent"]));
   });
 });
