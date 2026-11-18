@@ -215,7 +215,7 @@ async function judgeTask(row: taskRepo.GateTaskRow, jobId: string, limit: number
       await renewHoldings(row.id, true, tx);
       return { kind: "started", places, space: false };
     }
-    await taskRepo.markSlotWait(row.id, tx);
+    await taskRepo.markSlotWait(row.id, jobId, tx);
     await taskRepo.noteSlotCheck(row.id, limit, getWorkerConfig().slot_wait_stale_ms, tx);
     const places = await nodeTaskRepo.markWaiting(row.id, tx);
     await renewHoldings(row.id, false, tx);

@@ -5,12 +5,10 @@
  * The sweep of tasks still waiting for a running slot that the gate has not
  * judged for longer than `slot_wait_stale_ms` (inner#1968, design 3.9).
  *
- * Such a waiter no longer holds anyone back, but its holds and ledger row stay
- * in flight. Its job decides: one that no longer exists or has ended will not
+ * Such a waiter no longer holds anyone back, but its credit hold stays held. Its job decides: one that no longer exists or has ended will not
  * pick the task up again, so the task ends here as failed through the same
  * path a job judged dead takes; one that still waits or runs is left to it and
- * logged. A task with no job id is treated as still running, as `checkRun`
- * treats it.
+ * logged. The gate records the judging job on a waiter that has none.
  */
 
 import type { Queue } from "bullmq";
@@ -29,7 +27,6 @@ const ENDED = new Set(["completed", "failed", "unknown"]);
  */
 export async function sweepSlotWaiters(queue: Pick<Queue, "getJob">): Promise<void> {
   for (const waiter of await runningSlotService.staleWaiters(getWorkerConfig().slot_wait_sweep_batch_size)) {
-    if (waiter.arqJobId === null) continue;
     try {
       const job = await queue.getJob(waiter.arqJobId);
       const state = job === undefined ? "missing" : await job.getState();

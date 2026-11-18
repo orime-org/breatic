@@ -7,7 +7,7 @@
  * Handles task lifecycle tracking with conditional timestamp updates.
  */
 
-import { and, eq, desc, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import { and, eq, desc, inArray, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 import { db, type DbTx } from "@breatic/core";
 import { tasks } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
@@ -544,15 +544,18 @@ export async function noteSlotCheck(id: string, limit: number, staleMs: number, 
 }
 
 /**
- * Mark a pending task as waiting for a slot, keeping the first moment it did.
+ * Mark a pending task as waiting for a slot, keeping the first moment it did,
+ * and the job that judged it when the task has none recorded yet: that job is
+ * the one that will pick it up again, and the stale-waiter sweep reads it.
  * @param id - The task.
+ * @param jobId - The job judging it.
  * @param tx - The gate's transaction.
  * @returns True when this is its first wait.
  */
-export async function markSlotWait(id: string, tx: DbTx): Promise<boolean> {
+export async function markSlotWait(id: string, jobId: string, tx: DbTx): Promise<boolean> {
   const rows = await tx
     .update(tasks)
-    .set({ slotWaitSince: sql`now()` })
+    .set({ slotWaitSince: sql`now()`, arqJobId: sql`coalesce(${tasks.arqJobId}, ${jobId})` })
     .where(and(eq(tasks.id, id), eq(tasks.status, "pending"), isNull(tasks.slotWaitSince)))
     .returning({ id: tasks.id });
   return rows.length > 0;
@@ -611,15 +614,18 @@ export async function failOpen(id: string, error: string, tx: DbTx): Promise<boo
  * @param limit - How many at most.
  * @returns Each task, its owner and its job.
  */
-export async function listStaleWaiters(staleMs: number, limit: number): Promise<Array<{ id: string; userId: string; arqJobId: string | null }>> {
-  return db
+export async function listStaleWaiters(staleMs: number, limit: number): Promise<Array<{ id: string; userId: string; arqJobId: string }>> {
+  const rows = await db
     .select({ id: tasks.id, userId: tasks.userId, arqJobId: tasks.arqJobId })
     .from(tasks)
     .where(and(
       eq(tasks.status, "pending"),
       sql`${tasks.slotWaitSince} is not null`,
+      // The gate records the judging job on its first wait.
+      isNotNull(tasks.arqJobId),
       sql`${tasks.slotCheckedAt} < now() - (${staleMs} * interval '1 millisecond')`,
     ))
     .orderBy(tasks.slotCheckedAt)
     .limit(limit);
+  return rows.flatMap(({ arqJobId, ...row }) => (arqJobId === null ? [] : [{ ...row, arqJobId }]));
 }
