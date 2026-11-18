@@ -93,23 +93,16 @@ async function takeLock(userId: string, tx: DbTx): Promise<boolean> {
 
 /**
  * The running-task limit for work in a project: that studio's, or the
- * person's own when the project is gone, there is none, or the studio's
- * admin cannot be read.
+ * person's own when the work has no project or its project is gone
+ * (design 3.9).
  * @param projectId - The project, if any.
  * @param userId - Who runs it.
  * @returns The limit.
- * @throws {Error} When the membership cannot be read.
+ * @throws {Error} When the membership cannot be read; the worker logs it and retries the job.
  */
 async function limitFor(projectId: string | null, userId: string): Promise<number> {
   const studioId = projectId === null ? undefined : await projectsRepo.findOwnerStudioId(projectId);
-  if (studioId !== undefined) {
-    try {
-      return await runningTaskLimitForStudio(studioId);
-    } catch {
-      // A studio whose admin cannot be read holds no task back for it: the
-      // person's own limit applies, as for work outside any studio.
-    }
-  }
+  if (studioId !== undefined) return runningTaskLimitForStudio(studioId);
   return runningTasksPerUserOf(await getMembershipReadingForUser(userId));
 }
 
