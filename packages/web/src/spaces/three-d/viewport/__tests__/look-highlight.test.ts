@@ -9,7 +9,7 @@ import {
   Bone, Box3, BoxGeometry, Float32BufferAttribute, Group, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, Points, PointsMaterial, Skeleton, SkinnedMesh,
   Uint16BufferAttribute, type Intersection,
 } from 'three';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import * as highlight from '@web/spaces/three-d/viewport/look-highlight';
 
@@ -62,7 +62,7 @@ describe('part highlight', () => {
     const line = new LineSegments(new BoxGeometry(), lineMaterial);
     const points = new Points(new BoxGeometry(), pointsMaterial);
     root.add(line, points);
-    const shown = exported<(root: Group, part: string) => { remove: () => void; overlays: Array<LineSegments | Points> }>('addPartHighlight')(root, '0');
+    const shown = exported<(root: Group, part: string, color: string) => { remove: () => void; overlays: Array<LineSegments | Points> }>('addPartHighlight')(root, '0', '#3b6fd8');
     expect(shown.overlays).toHaveLength(2);
     const [lineOverlay, pointsOverlay] = shown.overlays as [LineSegments, Points];
     expect(lineOverlay.isLineSegments).toBe(true);
@@ -77,9 +77,13 @@ describe('part highlight', () => {
       expect(hits).toEqual([]);
       expect(overlay.userData.lookHighlight).toBe(true);
     }
+    const materials = shown.overlays.map((overlay) => overlay.material as LineBasicMaterial | PointsMaterial);
+    for (const material of materials) expect(`#${material.color.getHexString()}`).toBe('#3b6fd8');
+    const disposals = materials.map((material) => vi.spyOn(material, 'dispose'));
     shown.remove();
     expect(line.children).toHaveLength(0);
     expect(points.children).toHaveLength(0);
+    for (const dispose of disposals) expect(dispose).toHaveBeenCalledTimes(1);
   });
 });
 

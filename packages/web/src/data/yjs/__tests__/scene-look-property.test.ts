@@ -135,7 +135,8 @@ describe('look commands under concurrent editing (property)', () => {
           } else merge(docs[0], docs[1]);
           for (const replica of docs) {
             const scene = readSceneDocument(replica);
-            expect(scene.objects.length + scene.invalidObjects.length).toBe(1);
+            expect(scene.invalidObjects).toEqual([]);
+            expect(scene.objects).toHaveLength(1);
           }
         }
         merge(docs[0], docs[1]);
