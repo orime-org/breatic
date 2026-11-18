@@ -620,6 +620,10 @@ describe("token exchange", () => {
     expect(body.expires_in).toBe(getMcpConfig().downstream_token_ttl_seconds);
     expect(body.access_token).not.toBe(tokens.access_token);
     expect(await downstreamWorks(body.access_token, userId)).toBe(true);
+    // The MCP service writes these into every command it sends collab (§6).
+    const [grantId] = await grantsOf(userId, clientId);
+    const [row] = await agentAccessService.listConnections(userId);
+    expect(body).toMatchObject({ user_id: userId, connection_id: row!.id, credential: { type: "oauth", grantId } });
   });
 
   it("trades a personal access token and records when the connection was last used", async () => {
@@ -628,7 +632,9 @@ describe("token exchange", () => {
     if (!created.ok) throw new Error("cap");
     const res = await exchange(created.token);
     expect(res.status).toBe(200);
-    expect(await downstreamWorks(((await res.json()) as { access_token: string }).access_token, userId)).toBe(true);
+    const body = (await res.json()) as { access_token: string };
+    expect(await downstreamWorks(body.access_token, userId)).toBe(true);
+    expect(body).toMatchObject({ user_id: userId, connection_id: created.connectionId, credential: { type: "pat", tokenId: created.tokenId } });
     const [row] = await agentAccessService.listConnections(userId);
     expect(row!.lastUsedAt).not.toBeNull();
   });
