@@ -52,6 +52,7 @@ import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
 import { finishFailedRun, runTask, type TaskJobData } from "@worker/handlers/dispatch.js";
 import { listSpaceTasks } from "@server/modules/asset/scene-tasks.service.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
+import { sweepSlotWaiters } from "@worker/handlers/slot-wait-sweep.js";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 
@@ -1153,6 +1154,214 @@ describe("PT-4 the gate under concurrent pickups (K1, K4, K5)", () => {
         },
       ),
       { numRuns: 100 },
+    );
+  });
+});
+
+/**
+ * A team studio of someone else's, on an enterprise agreement with its own
+ * running-task limit, that the person works in.
+ * @param p - Who joins it.
+ * @param limit - The admin's `running_tasks_per_user`.
+ * @returns The admin and the project the person works in there.
+ */
+async function otherStudio(p: Person, limit: number): Promise<{ adminId: string; projectId: string }> {
+  const admin = await person("enterprise", limit);
+  await sql`update studios set type = 'team' where id = ${admin.studioId}`;
+  await sql`insert into studio_members(studio_id, user_id, role) values (${admin.studioId}, ${p.userId}, 'maintainer')`;
+  await sql`insert into project_members(project_id, user_id, role, added_by) values (${admin.projectId}, ${p.userId}, 'editor', ${admin.userId})`;
+  return { adminId: admin.userId, projectId: admin.projectId };
+}
+
+/** One round of PT-4's events. */
+interface Pt4Round {
+  /** Pickups in this round; one pickup checks `R + W < L` exactly. */
+  workers: number;
+  /** What else happens in it. */
+  event: "finish" | "fail" | "cancel" | "advance" | "limit" | "lose";
+  /** Which row or studio the event picks, modulo how many there are. */
+  pickIndex: number;
+  /** How far the clock moves, for `advance`. */
+  advanceMs: number;
+  /** The new limit, for `limit`. */
+  limit: number;
+}
+
+describe("PT-4 the gate with cancels, failures, limit changes and lost jobs (K1, K2, K3, K4, K5)", () => {
+  it("PT-4 K1 K3 starts a row only when R + W < L, K5 starts or cancels it at most once and a cancel racing a pickup takes effect once, K4 ends a waiter only by its cancel, its failure or its lost job, and K2 starts its budget and node row at the start", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.boolean(),
+        fc.constantFrom(1, 2, 3, 10),
+        fc.constantFrom(1, 2, 3, 10),
+        fc.integer({ min: 1, max: 15 }),
+        fc.array(fc.record({
+          workers: fc.integer({ min: 1, max: 4 }),
+          event: fc.constantFrom("finish", "fail", "cancel", "advance", "limit", "lose"),
+          pickIndex: fc.nat(),
+          advanceMs: fc.integer({ min: 1, max: 4 * 3_600_000 }),
+          limit: fc.constantFrom(1, 2, 3, 10),
+        }), { minLength: 1, maxLength: 10 }),
+        async (twoPeople, ownLimit, otherLimit, n, rounds: Pt4Round[]) => {
+          const people = [await person("enterprise", ownLimit)];
+          if (twoPeople) people.push(await person("enterprise", ownLimit));
+          const other = await otherStudio(people[0]!, otherLimit);
+          /** The admin whose agreement sets each project's limit. */
+          const adminOf = new Map<string, string>([[other.projectId, other.adminId], ...people.map((q) => [q.projectId, q.userId] as const)]);
+          const base = await dbNow();
+          const rows: (Seeded & { owner: Person })[] = [];
+          for (let i = 0; i < n; i += 1) {
+            const owner = people[i % people.length]!;
+            const projectId = owner === people[0] && i % 3 === 2 ? other.projectId : owner.projectId;
+            const seeded = await seedTask(owner, { node: true, projectId, createdAt: new Date(base.getTime() - 60_000 + i) });
+            await inFlight(owner, seeded.taskId, new Date(base.getTime() + B));
+            rows.push({ ...seeded, owner });
+          }
+          const ids = rows.map((r) => r.taskId);
+          const lost = new Set<string>();
+          const queue = { getJob: async (id: string) => (lost.has(id) ? undefined : { getState: async () => "delayed" }) };
+          const startedOnce = new Set<string>();
+          const cancelledOnce = new Set<string>();
+          /** Why a waiter may end in this round, by task id. */
+          let mayEnd = new Map<string, "cancelled" | "failed">();
+
+          /**
+           * The limit a task waits under now, read from its studio's admin.
+           * @param taskId - The task.
+           * @returns `L`.
+           */
+          const limitOf = async (taskId: string): Promise<number> => {
+            const [row] = await sql<{ n: number }[]>`select e.running_tasks_per_user as n from tasks t join enterprise_memberships e on e.user_id = ${adminOf.get((await sql<{ project_id: string }[]>`select project_id from tasks where id = ${taskId}`)[0]!.project_id)!} where t.id = ${taskId}`;
+            return row!.n;
+          };
+          /**
+           * `W` as the gate counts it: the person's waiters under the same limit, judged recently, created earlier.
+           * @param taskId - The task about to be picked.
+           * @param limit - Its limit.
+           * @returns The count.
+           */
+          const ahead = async (taskId: string, limit: number): Promise<number> => {
+            const [row] = await sql<{ n: number }[]>`select count(*)::int as n from tasks w join tasks me on me.id = ${taskId}
+              where w.user_id = me.user_id and w.id <> me.id and w.status = 'pending' and w.slot_wait_since is not null and w.slot_wait_limit = ${limit}
+                and w.slot_checked_at > now() - ${STALE} * interval '1 millisecond' and w.created_at < me.created_at`;
+            return row!.n;
+          };
+
+          for (const round of rounds) {
+            const pending = await sql<{ id: string }[]>`select id from tasks where id = any(${ids}) and status = 'pending' order by created_at`;
+            const batch = pending.slice(0, round.workers).map((r) => r.id);
+            const waitingBefore = await sql<{ id: string }[]>`select id from tasks where id = any(${ids}) and status = 'pending' and slot_wait_since is not null`;
+
+            if (batch.length === 1) {
+              // One pickup: the gate's own arithmetic is checkable exactly (K1, K3).
+              const id = batch[0]!;
+              const owner = rows.find((r) => r.taskId === id)!.owner;
+              const limit = await limitOf(id);
+              const r = await inDeadlineRunning(owner);
+              const w = await ahead(id, limit);
+              const before = await dbNow();
+              const got = await pick(id);
+              const after = await dbNow();
+              if ("started" in got) {
+                expect(r + w, `R + W < L for ${id}`).toBeLessThan(limit);
+                const t = await taskRow(id);
+                between(t.started_at, before, after);
+                const node = await nodeRow(rows.find((x) => x.taskId === id)!.nodeTaskId!);
+                expect(node.waiting_since).toBeNull();
+                // K2: a row that waited starts its node row's budget where the task starts.
+                if (waitingBefore.some((w) => w.id === id)) expect(node.started_at.getTime()).toBe(t.started_at!.getTime());
+              }
+              if ("started" in got) {
+                expect(startedOnce.has(id)).toBe(false);
+                startedOnce.add(id);
+              }
+            } else if (batch.length > 1) {
+              const got = await Promise.all(batch.map((id) => pick(id)));
+              got.forEach((g, i) => {
+                if (!("started" in g)) return;
+                expect(startedOnce.has(batch[i]!)).toBe(false);
+                startedOnce.add(batch[i]!);
+              });
+              // K1 across concurrent pickups: each start had R < its L under the person's lock.
+              for (const q of people) {
+                const startedHere = batch.filter((id, i) => "started" in got[i]! && rows.find((x) => x.taskId === id)!.owner === q);
+                if (startedHere.length === 0) continue;
+                const highest = Math.max(...(await Promise.all(startedHere.map((id) => limitOf(id)))));
+                expect(await inDeadlineRunning(q)).toBeLessThanOrEqual(highest);
+              }
+            }
+
+            // The waiters after this round's pickups, with their node rows as they stand now.
+            const waitingNodes = await sql<{ id: string; node_status: string }[]>`select t.id, n.status as node_status from tasks t join node_tasks n on n.task_id = t.id
+              where t.id = any(${ids}) and t.status = 'pending' and t.slot_wait_since is not null`;
+            mayEnd = new Map();
+            const pick1 = <T>(list: readonly T[]): T | undefined => (list.length === 0 ? undefined : list[round.pickIndex % list.length]);
+            if (round.event === "finish") {
+              const done = pick1(await sql<{ id: string }[]>`select id from tasks where id = any(${ids}) and status = 'running' order by started_at`);
+              if (done) await sql`update tasks set status = 'completed', completed_at = now() where id = ${done.id}`;
+            } else if (round.event === "fail") {
+              const victim = pick1(await sql<{ id: string }[]>`select id from tasks where id = any(${ids}) and status in ('pending', 'running') order by created_at`);
+              if (victim) {
+                mayEnd.set(victim.id, "failed");
+                await runningSlotService.failTask(victim.id, "internal");
+              }
+            } else if (round.event === "cancel") {
+              const target = pick1(await sql<{ id: string }[]>`select id from tasks where id = any(${ids}) and status = 'pending' order by created_at`);
+              if (target) {
+                mayEnd.set(target.id, "cancelled");
+                const wasStarted = startedOnce.has(target.id);
+                const [cancel, got] = await Promise.all([runningSlotService.cancelQueued(target.id), pick(target.id)]);
+                const started = "started" in got;
+                // K5: the cancel and the pickup race; exactly one of them takes effect.
+                expect(cancel.cancelled && started, `both took effect for ${target.id}`).toBe(false);
+                expect(cancel.cancelled || started || "waiting" in got || "ended" in got).toBe(true);
+                if (started) {
+                  expect(wasStarted).toBe(false);
+                  startedOnce.add(target.id);
+                }
+                if (cancel.cancelled) {
+                  expect(cancelledOnce.has(target.id)).toBe(false);
+                  cancelledOnce.add(target.id);
+                  expect((await taskRow(target.id)).status).toBe("cancelled");
+                  // The hold is released in the cancel's own commit.
+                  expect((await holdings(target.id)).credit.status).not.toBe("held");
+                }
+              }
+            } else if (round.event === "advance") {
+              for (const q of people) await advance(q, round.advanceMs);
+            } else if (round.event === "limit") {
+              const admin = pick1([...new Set(adminOf.values())])!;
+              await sql`update enterprise_memberships set running_tasks_per_user = ${round.limit} where user_id = ${admin}`;
+            } else {
+              const victim = pick1(waitingBefore);
+              if (victim) {
+                lost.add(`job-${victim.id}`);
+                mayEnd.set(victim.id, "failed");
+                // Stale enough for the sweep to look at it.
+                await sql`update tasks set slot_checked_at = now() - ${STALE + 1000} * interval '1 millisecond' where id = ${victim.id}`;
+              }
+            }
+            for (const r of rows) await nodeTaskService.harvestAndList({ projectId: r.owner.projectId, nodeId: r.nodeId! });
+            await sweepSlotWaiters(queue);
+
+            // K4: a row that waited and never started ends only by this round's cancel, failure or lost job,
+            // never as expired.
+            for (const { id } of waitingBefore) {
+              const t = await taskRow(id);
+              if (t.status === "pending" || startedOnce.has(id)) continue;
+              expect(t.status, `waiter ${id} ended as ${t.status}`).toBe(mayEnd.get(id));
+            }
+            for (const { id, node_status } of waitingNodes) {
+              if ((await taskRow(id)).status !== "pending") continue;
+              // A row still waiting keeps its node row as it was (a fresh task's overdue row may already have
+              // expired, G-45) and its hold valid (K2, K4).
+              expect((await nodeRow(rows.find((x) => x.taskId === id)!.nodeTaskId!)).status).toBe(node_status);
+              expect((await holdings(id)).credit.status).toBe("held");
+            }
+          }
+        },
+      ),
+      { numRuns: 60 },
     );
   });
 });
