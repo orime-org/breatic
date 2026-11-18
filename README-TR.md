@@ -36,16 +36,16 @@ Breatic’te çalışırken senaryoyu gözden geçirebilir, farklı görseller d
 | Özellik | **Breatic** | Higgsfield | TapNow | LibTV | Luma | LTX Studio |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Ortak belge düzenleme** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **Ortak tuval** | ✅ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Ortak tuval** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Ortak 3D düzenleme** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | **Ortak zaman çizelgesi** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 3D ön görselleştirme | ✅ | ✓ | ✓ | ✓ | ✗ | ✗ |
-| Zaman çizelgesinde kurgu | ✅ | ✗ | ✓ | ✓ | ✗ | ✓ |
-| Proje temsilcisi | ✅ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| 3D ön görselleştirme | ✅ | ✅ | ✅ | ✅ | ✗ | ✗ |
+| Zaman çizelgesinde kurgu | ✅ | ✗ | ✅ | ✅ | ✗ | ✅ |
+| Proje temsilcisi | ✅ | ✅ | ✅ | ✅ | ✅ | ✗ |
 | Metin önerilerini inceleme | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Ekiple paylaşım | ✅ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Ekiple paylaşım | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-Ortak çalışma, birden fazla kişinin aynı çalışma alanını gerçek zamanlı olarak düzenleyebilmesi demektir. Temsilcinin önerdiği metin değişikliğini, özgün metne uygulayıp uygulamayacağınıza karar vermeden önce inceleyebilirsiniz. Bu karşılaştırma 18 Kasım 2026 itibarıyla kamuya açık ürün bilgilerine dayanır. ✅ / ✓ desteğin doğrulandığını, ✗ ise kamuya açık bilgilerden doğrulanamadığını gösterir.
+Ortak çalışma, birden fazla kişinin aynı çalışma alanını gerçek zamanlı olarak düzenleyebilmesi demektir. Temsilcinin önerdiği metin değişikliğini, özgün metne uygulayıp uygulamayacağınıza karar vermeden önce inceleyebilirsiniz. Bu karşılaştırma 18 Kasım 2026 itibarıyla kamuya açık ürün bilgilerine dayanır. ✅ desteğin doğrulandığını, ✗ ise kamuya açık bilgilerden doğrulanamadığını gösterir.
 
 ![Breatic tuvalindeki kafe görseli seçenekleri ve proje sohbeti; İngilizce arayüz](docs/images/readme/workspace-en.png)
 

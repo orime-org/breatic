@@ -36,16 +36,16 @@ En Breatic puedes revisar el guion, probar ideas visuales, preparar escenas y or
 | Función | **Breatic** | Higgsfield | TapNow | LibTV | Luma | LTX Studio |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Documentos colaborativos** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **Lienzo colaborativo** | ✅ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Lienzo colaborativo** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Edición 3D colaborativa** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | **Línea de tiempo colaborativa** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Previsualización 3D | ✅ | ✓ | ✓ | ✓ | ✗ | ✗ |
-| Edición en línea de tiempo | ✅ | ✗ | ✓ | ✓ | ✗ | ✓ |
-| Agente del proyecto | ✅ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| Previsualización 3D | ✅ | ✅ | ✅ | ✅ | ✗ | ✗ |
+| Edición en línea de tiempo | ✅ | ✗ | ✅ | ✅ | ✗ | ✅ |
+| Agente del proyecto | ✅ | ✅ | ✅ | ✅ | ✅ | ✗ |
 | Revisión de propuestas de redacción | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Uso compartido en equipo | ✅ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Uso compartido en equipo | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-Colaborar significa que varias personas pueden editar el mismo espacio de trabajo en tiempo real. Puedes revisar los cambios de redacción que propone el agente antes de decidir si aplicarlos al texto original. La comparación se basa en información pública de los productos disponible al 18 de noviembre de 2026. ✅ / ✓ indica compatibilidad confirmada y ✗ indica que no se pudo confirmar mediante información pública.
+Colaborar significa que varias personas pueden editar el mismo espacio de trabajo en tiempo real. Puedes revisar los cambios de redacción que propone el agente antes de decidir si aplicarlos al texto original. La comparación se basa en información pública de los productos disponible al 18 de noviembre de 2026. ✅ indica compatibilidad confirmada y ✗ indica que no se pudo confirmar mediante información pública.
 
 ![Imágenes de una cafetería en el lienzo de Breatic junto al chat del proyecto; interfaz en inglés](docs/images/readme/workspace-en.png)
 
