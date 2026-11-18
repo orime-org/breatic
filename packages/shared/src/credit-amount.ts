@@ -13,6 +13,8 @@ export const CREDIT_MICRO_PER_CENT = 10_000n;
 export const CREDIT_ROW_MAX_MICRO = 99_999_999_999_999_999_999n;
 export const CREDIT_GRANT_MAX_MICRO = 99_999_999_999_999_990_000n;
 export const CREDIT_AMOUNT_FORMAT = "decimal-v1";
+/** The largest monthly spend limit a Studio may set, in credits (inner#1968); the settings form and the route both hold to it. */
+export const SPEND_LIMIT_MAX_CREDITS = 1_000_000_000;
 
 /**
  * Parse a stored decimal without rounding or narrowing its magnitude.

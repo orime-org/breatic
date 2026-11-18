@@ -24,7 +24,7 @@ import { Hono } from "hono";
 import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { z } from "zod";
 import { validate } from "@server/middleware/validate.js";
-import { getActiveLocale, t } from "@breatic/shared";
+import { getActiveLocale, SPEND_LIMIT_MAX_CREDITS, t } from "@breatic/shared";
 import { createTeamStudioSchema, emailSchema, updateStudioSchema } from "@breatic/shared";
 import { creditPageQuerySchema, projectListQuerySchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -56,7 +56,7 @@ const changeRoleSchema = z.object({
 });
 
 /** A monthly spend limit in credits; null clears it (design 3.10). */
-const spendLimitAmount = z.number().nonnegative().max(1_000_000_000).nullable();
+const spendLimitAmount = z.number().nonnegative().max(SPEND_LIMIT_MAX_CREDITS).nullable();
 
 /** Spend-limits body — the per-person default and the studio total. */
 const studioSpendLimitsSchema = z.object({

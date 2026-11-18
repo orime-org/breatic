@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getLocale } from '@breatic/shared';
+import { getLocale, SPEND_LIMIT_MAX_CREDITS } from '@breatic/shared';
 
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
@@ -18,6 +18,7 @@ import {
   spendLimitsQueryKey,
   type SpendLimitMember,
 } from '@web/data/api/spend-limits';
+import { ApiException } from '@web/data/api/types';
 import { usersApi } from '@web/data/api/users';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
@@ -44,8 +45,23 @@ function draftOf(value: string | null): Draft {
  */
 function valueOf(draft: Draft): number | null | undefined {
   if (draft.kind === 'none') return null;
-  const credits = Number(draft.text.trim());
-  return draft.text.trim() !== '' && Number.isFinite(credits) && credits >= 0 ? credits : undefined;
+  const text = draft.text.trim();
+  // Digits with at most two decimals, the cents a limit is kept in, so what
+  // is saved is what the box shows.
+  if (!/^\d+(\.\d{1,2})?$/.test(text)) return undefined;
+  const credits = Number(text);
+  return credits <= SPEND_LIMIT_MAX_CREDITS ? credits : undefined;
+}
+
+/**
+ * Why a save failed, in the user's language: the server's own sentence when
+ * it sent one.
+ * @param err - What the save rejected with.
+ * @param fallback - The sentence for anything else.
+ * @returns The sentence.
+ */
+function saveFailure(err: unknown, fallback: string): string {
+  return err instanceof ApiException && err.fromServer && err.message ? err.message : fallback;
 }
 
 /**
@@ -136,42 +152,51 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
   const [saving, setSaving] = React.useState(false);
   const [editing, setEditing] = React.useState<SpendLimitMember | null>(null);
   const [restoring, setRestoring] = React.useState<string | null>(null);
+  // The drafts follow the two stored limits only: a person's own limit saved
+  // or restored reads the view again and leaves unsaved drafts as they are.
+  const storedStudio = view?.studioMonthly;
+  const storedMember = view?.memberDefault;
   const reset = React.useCallback((): void => {
-    if (view === undefined) return;
-    setStudioDraft(draftOf(view.studioMonthly));
-    setMemberDraft(draftOf(view.memberDefault));
-  }, [view]);
+    if (storedStudio === undefined || storedMember === undefined) return;
+    setStudioDraft(draftOf(storedStudio));
+    setMemberDraft(draftOf(storedMember));
+  }, [storedStudio, storedMember]);
   React.useEffect(reset, [reset]);
 
   const saveFailed = t(`${KEY}.saveFailed`);
   const savedLine = t(`${KEY}.saved`);
+  const invalidLine = t(`${KEY}.invalidAmount`, { max: formatCreditAmount(SPEND_LIMIT_MAX_CREDITS) });
   const studioValue = valueOf(studioDraft);
   const memberValue = valueOf(memberDraft);
+  const invalid = studioValue === undefined || memberValue === undefined;
   const dirty = view !== undefined && (
     JSON.stringify(studioDraft) !== JSON.stringify(draftOf(view.studioMonthly)) ||
     JSON.stringify(memberDraft) !== JSON.stringify(draftOf(view.memberDefault))
   );
   const save = React.useCallback(async (): Promise<void> => {
-    if (studioValue === undefined || memberValue === undefined) return;
+    if (studioValue === undefined || memberValue === undefined) {
+      toast.warning(invalidLine);
+      return;
+    }
     setSaving(true);
     try {
       await saveSpendLimits(slug, { studioMonthly: studioValue, memberDefault: memberValue });
       await queryClient.invalidateQueries({ queryKey });
       toast.success(savedLine);
-    } catch {
-      toast.error(saveFailed);
+    } catch (err) {
+      toast.error(saveFailure(err, saveFailed));
     } finally {
       setSaving(false);
     }
-  }, [slug, studioValue, memberValue, queryClient, queryKey, savedLine, saveFailed]);
+  }, [slug, studioValue, memberValue, queryClient, queryKey, savedLine, saveFailed, invalidLine]);
 
   const restore = React.useCallback(async (userId: string): Promise<void> => {
     setRestoring(userId);
     try {
       await removeMemberSpendLimit(slug, userId);
       await queryClient.invalidateQueries({ queryKey });
-    } catch {
-      toast.error(saveFailed);
+    } catch (err) {
+      toast.error(saveFailure(err, saveFailed));
     } finally {
       setRestoring(null);
     }
@@ -205,7 +230,7 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
         </div>
         <div className='flex gap-2'>
           <Button variant='outline' disabled={!dirty || saving} onClick={reset}>{t('common.cancel')}</Button>
-          <Button disabled={!dirty || studioValue === undefined || memberValue === undefined} loading={saving} onClick={() => void save()}>
+          <Button disabled={!dirty} aria-disabled={invalid || undefined} loading={saving} onClick={() => void save()}>
             {t(`${KEY}.save`)}
           </Button>
         </div>
@@ -292,19 +317,23 @@ function OverrideDialog({ slug, member, name, fallback, onClose }: { slug: strin
   const amount = valueOf({ kind: 'amount', text });
   const credits = mode === 'none' ? null : mode === 'zero' ? 0 : amount;
   const saveFailed = t(`${KEY}.saveFailed`);
+  const invalidLine = t(`${KEY}.invalidAmount`, { max: formatCreditAmount(SPEND_LIMIT_MAX_CREDITS) });
   const save = React.useCallback(async (): Promise<void> => {
-    if (credits === undefined) return;
+    if (credits === undefined) {
+      toast.warning(invalidLine);
+      return;
+    }
     setSaving(true);
     try {
       await saveMemberSpendLimit(slug, member.userId, credits);
       await queryClient.invalidateQueries({ queryKey: spendLimitsQueryKey(slug) });
       onClose();
-    } catch {
-      toast.error(saveFailed);
+    } catch (err) {
+      toast.error(saveFailure(err, saveFailed));
     } finally {
       setSaving(false);
     }
-  }, [credits, slug, member.userId, queryClient, onClose, saveFailed]);
+  }, [credits, slug, member.userId, queryClient, onClose, saveFailed, invalidLine]);
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -341,7 +370,7 @@ function OverrideDialog({ slug, member, name, fallback, onClose }: { slug: strin
         </DialogBody>
         <DialogFooter>
           <Button variant='outline' onClick={onClose}>{t('common.cancel')}</Button>
-          <Button disabled={credits === undefined} loading={saving} onClick={() => void save()}>{t(`${KEY}.save`)}</Button>
+          <Button aria-disabled={credits === undefined || undefined} loading={saving} onClick={() => void save()}>{t(`${KEY}.save`)}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

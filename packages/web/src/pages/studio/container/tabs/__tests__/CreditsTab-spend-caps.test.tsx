@@ -28,6 +28,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { setLocale } from '@breatic/shared';
 import { ApiException } from '@web/data/api/types';
+import { toast } from '@web/lib/toast';
 import { CreditsTab } from '@web/pages/studio/container/tabs/CreditsTab';
 import type * as CreditsApi from '@web/data/api/credits';
 import type * as RequestApi from '@web/data/api/request';
@@ -38,13 +39,20 @@ vi.mock('@web/data/api/credits', async (importOriginal) => ({
   fetchStudioCredits: (...args: unknown[]) => fetchStudioCredits(...args),
 }));
 const spendLimits = vi.fn();
+const put = vi.fn();
+const remove = vi.fn();
 vi.mock('@web/data/api/request', async (importOriginal) => {
   const actual = await importOriginal<typeof RequestApi>();
   return {
     ...actual,
     apiGet: (url: string, ...rest: unknown[]) => (/\/spend-limits$/.test(url) ? spendLimits(url) : (actual.apiGet as (...a: unknown[]) => unknown)(url, ...rest)),
+    apiPut: (...args: unknown[]) => put(...args),
+    apiDelete: (...args: unknown[]) => remove(...args),
   };
 });
+vi.mock('@web/lib/toast', () => ({
+  toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
+}));
 vi.mock('@web/lib/use-scrolled-to-end', () => ({
   useScrolledToEnd: () => ({ scrollerRef: () => {}, sentinelRef: () => {} }),
 }));
@@ -86,6 +94,10 @@ beforeEach(() => {
   fetchStudioCredits.mockReset();
   fetchStudioCredits.mockResolvedValue(CREDITS);
   spendLimits.mockReset();
+  put.mockReset();
+  remove.mockReset();
+  vi.mocked(toast.error).mockClear();
+  vi.mocked(toast.warning).mockClear();
 });
 afterEach(() => setLocale('en'));
 
@@ -154,5 +166,56 @@ describe('the own-limit dialog', () => {
   ])('names the current default %s in its hint', async (memberDefault, text) => {
     const dialog = await openDialog(memberDefault);
     expect(within(dialog).getByText(new RegExp(text.replace(/[()（）]/g, '.')))).toBeInTheDocument();
+  });
+});
+
+describe('editing the two limits', () => {
+  /**
+   * Show the section and type an amount into the Studio's total.
+   * @param text - What the admin types.
+   * @returns The total's input.
+   */
+  async function typeStudioTotal(text: string): Promise<HTMLElement> {
+    spendLimits.mockResolvedValue(LIMITS);
+    renderTab(<CreditsTab slug='acme' />);
+    await screen.findByText('花费上限');
+    const [total] = screen.getAllByRole('textbox');
+    await userEvent.clear(total!);
+    if (text !== '') await userEvent.type(total!, text);
+    return total!;
+  }
+
+  it.each(['-1', '1e3', '0x10', '10.001', '1,000', '1000000001', ''])('says why %j cannot be saved and sends nothing', async (text) => {
+    await typeStudioTotal(text);
+    const save = screen.getByRole('button', { name: '保存' });
+    expect(save).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.click(save);
+    expect(put).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledWith('请填写 0 到 1,000,000,000 之间的积分，最多两位小数。');
+  });
+
+  it('sends an amount with two decimals as it shows', async () => {
+    put.mockResolvedValue({});
+    await typeStudioTotal('10.05');
+    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(put).toHaveBeenCalledWith('/studio/acme/spend-limits', { studioMonthly: 10.05, memberDefault: 300 }));
+  });
+
+  it('says the server\'s own sentence when the server refuses the save', async () => {
+    put.mockRejectedValue(new ApiException({ status: 422, message: 'The server says no.', fromServer: true }));
+    await typeStudioTotal('500');
+    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('The server says no.'));
+  });
+
+  it('keeps an unsaved Studio total when a person\'s own limit is restored meanwhile', async () => {
+    const total = await typeStudioTotal('500');
+    remove.mockResolvedValue({});
+    spendLimits.mockResolvedValue({ ...LIMITS, members: LIMITS.members.map((m) => (m.userId === 'u3' ? { ...m, override: null, effective: '300.000000' } : m)) });
+    const [restore] = screen.getAllByRole('button', { name: '恢复默认' });
+    await userEvent.click(restore!);
+    await waitFor(() => expect(spendLimits).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: '恢复默认' })).toHaveLength(2));
+    expect(total).toHaveValue('500');
   });
 });

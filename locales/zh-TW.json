@@ -3049,6 +3049,7 @@
           "resetsAt": "重置於",
           "saved": "花費上限已儲存。",
           "saveFailed": "花費上限沒能儲存，請重試。",
+          "invalidAmount": "請填寫 0 到 {max} 之間的點數，最多兩位小數。",
           "save": "儲存",
           "colMember": "成員",
           "colRelation": "關係",

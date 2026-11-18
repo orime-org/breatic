@@ -3049,6 +3049,7 @@
           "resetsAt": "Resets",
           "saved": "Spend limits saved.",
           "saveFailed": "The spend limits could not be saved. Try again.",
+          "invalidAmount": "Enter 0 to {max} credits, up to two decimal places.",
           "save": "Save",
           "colMember": "Member",
           "colRelation": "Relation",

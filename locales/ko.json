@@ -3049,6 +3049,7 @@
           "resetsAt": "초기화",
           "saved": "사용 한도를 저장했습니다.",
           "saveFailed": "사용 한도를 저장하지 못했습니다. 다시 시도하세요.",
+          "invalidAmount": "0~{max} 크레딧 사이로, 소수점 둘째 자리까지 입력하세요.",
           "save": "저장",
           "colMember": "멤버",
           "colRelation": "관계",
