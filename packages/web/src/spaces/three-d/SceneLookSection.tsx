@@ -253,8 +253,10 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
     <ul className='flex flex-col gap-1'>
       {parts.map((part, index) => {
         const fields = look[part.key] ?? {};
-        const picture = isPicture(fields.map) ? pictureUrl?.(fields.map) : fields.map === undefined ? part.thumbnail : undefined;
-        const color = fields.color ?? (isPicture(fields.map) && showingPictures.has(fields.map) ? SCENE_LOOK_PICTURE_COLOR : part.color);
+        // The row shows what the scene shows: a user picture that is not shown leaves the part's own picture (design 5.2).
+        const shown = isPicture(fields.map) && showingPictures.has(fields.map);
+        const picture = shown ? pictureUrl?.(fields.map!) : fields.map === undefined || isPicture(fields.map) ? part.thumbnail : undefined;
+        const color = fields.color ?? (shown ? SCENE_LOOK_PICTURE_COLOR : part.color);
         const active = part.key === selectedPart;
         const uploading = uploadPercentOf?.(part.key);
         return <li key={part.key}>

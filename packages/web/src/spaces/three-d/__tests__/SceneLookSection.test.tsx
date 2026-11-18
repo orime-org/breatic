@@ -188,6 +188,17 @@ describe('SceneLookSection', () => {
     expect(screen.getByTestId('scene-look-part-fields').querySelector('img')).toBeNull();
   });
 
+  it('shows a stored user picture on the part row only while the scene shows it, and the part\'s own picture otherwise', () => {
+    const own = [{ ...PARTS[0]!, thumbnail: 'data:image/png;base64,own' }, ...PARTS.slice(1)] as typeof PARTS;
+    const swatch = (): HTMLElement => screen.getByTestId('scene-look-part-0').querySelector('span') as HTMLElement;
+    const pictureUrl = (): string => 'https://assets.example.test/user.png';
+    renderSection({ parts: own, look: { 0: { map: IMAGE } }, pictureUrl, showingPictures: new Set() });
+    expect(swatch().style.backgroundImage).toContain('data:image/png;base64,own');
+    cleanup();
+    renderSection({ parts: own, look: { 0: { map: IMAGE } }, pictureUrl, showingPictures: new Set([IMAGE]) });
+    expect(swatch().style.backgroundImage).toContain('https://assets.example.test/user.png');
+  });
+
   it('starts a user picture\'s tiling at one', () => {
     renderSection({ selectedPart: '0', look: { 0: { map: IMAGE } } });
     expect((screen.getByTestId('scene-look-repeat-0') as HTMLInputElement).value).toBe('1');
