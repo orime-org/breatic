@@ -14,9 +14,9 @@
  *
  * Enterprise plan presentation keeps its negotiated-agreement branch, and an
  * active agreement's storage_bytes caps storage. A legacy enterprise account
- * whose negotiated record is absent keeps uncapped storage and the 10
- * running tasks of the column default; its other quota checks name it
- * explicitly.
+ * whose negotiated record is absent keeps uncapped storage and the
+ * MISSING_AGREEMENT_RUNNING_TASKS running tasks `runningTasksPerUserOf` gives
+ * it; its other quota checks name it explicitly.
  */
 
 import { and, eq, isNull, getTableColumns, sql } from "drizzle-orm";
