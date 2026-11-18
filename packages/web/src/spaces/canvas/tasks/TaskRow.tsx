@@ -243,21 +243,21 @@ export const TaskRow = React.memo(function TaskRow({
       ) : null}
 
       <div className='flex items-center gap-2 pl-5'>
-        {instant !== null ? (
-          <span
-            data-testid='task-instant'
-            className='flex-1 text-2xs tabular-nums text-muted-foreground'
-          >
-            {t(instantKey, {
-              when: new Date(instant).toLocaleString(getLocale(), {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              }),
-            })}
-          </span>
-        ) : null}
+        {/* The cell stays when it says nothing, so the buttons keep to the right end. */}
+        <span className='flex-1 text-2xs tabular-nums text-muted-foreground'>
+          {instant !== null ? (
+            <span data-testid='task-instant'>
+              {t(instantKey, {
+                when: new Date(instant).toLocaleString(getLocale(), {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+              })}
+            </span>
+          ) : null}
+        </span>
         {waiting && !readOnly && onCancel !== undefined ? (
           <Button
             type='button'
