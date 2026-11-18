@@ -45,7 +45,7 @@ export class SceneMiniMapRuntime {
   private readonly camera = new OrthographicCamera();
   private readonly renderer: WebGLRenderer;
   /** The same neutral room the main view reflects (inner#1693 design 5.7). */
-  private readonly environment: Texture;
+  private environment: Texture;
   private readonly marker = new Mesh(new RingGeometry(0.3, 0.4, 32), new MeshBasicMaterial({ side: DoubleSide }));
   private readonly items = new Map<string, OverviewItem>();
   /** A small flat icon per camera and light, drawn from the record alone. */
@@ -81,6 +81,7 @@ export class SceneMiniMapRuntime {
     this.scene.environment = this.environment;
     this.scene.environmentIntensity = SCENE_ENVIRONMENT_INTENSITY;
     this.renderer.domElement.addEventListener('click', this.onClick);
+    this.renderer.domElement.addEventListener('webglcontextrestored', this.onContextRestored);
     this.resize = new ResizeObserver(() => this.render()); this.resize.observe(host);
   }
 
@@ -160,6 +161,17 @@ export class SceneMiniMapRuntime {
   }
 
   /**
+   * A restored context keeps image textures but empties the environment the GPU drew: it is made again and drawn.
+   */
+  private readonly onContextRestored = (): void => {
+    this.environment.dispose();
+    this.environment = createSceneEnvironment(this.renderer);
+    this.scene.environment = this.environment;
+    this.renderKey = '';
+    this.render();
+  };
+
+  /**
    * Render on content, target, theme or size changes using actual model bounds.
    * @throws {never} Never directly.
    */
@@ -225,6 +237,7 @@ export class SceneMiniMapRuntime {
     if (this.disposed) return;
     this.disposed = true; this.resize.disconnect();
     this.renderer.domElement.removeEventListener('click', this.onClick);
+    this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
     for (const id of this.items.keys()) this.remove(id);
     for (const icon of this.icons.values()) icon.material.dispose();
     this.icons.clear(); this.iconGeometry.dispose();

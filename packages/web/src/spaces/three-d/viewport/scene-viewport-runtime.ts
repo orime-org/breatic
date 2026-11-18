@@ -252,7 +252,7 @@ export class SceneViewportRuntime {
   private readonly keyLight = new DirectionalLight(0xffffff, 3);
   private readonly ambient = new HemisphereLight(0xffffff, 0x666666, SCENE_AMBIENT_INTENSITY_DEFAULT);
   /** What metal and glass reflect; main view, monitors and stills all draw this scene (inner#1693 design 5.7). */
-  private readonly environment: Texture;
+  private environment: Texture;
   private readonly ground = new Mesh(new PlaneGeometry(GROUND_SIZE, GROUND_SIZE), new ShadowMaterial({ opacity: GROUND_SHADOW_OPACITY }));
   /** Camera and light figures by record id; their roots are also in `items`. */
   private readonly figures = new Map<string, DirectorFigure>();
@@ -295,6 +295,7 @@ export class SceneViewportRuntime {
     this.renderer.shadowMap.needsUpdate = true;
     this.environment = createSceneEnvironment(this.renderer);
     this.scene.environment = this.environment;
+    canvas.addEventListener('webglcontextrestored', this.onContextRestored);
     this.camera.layers.enable(DISPLAY_PICK_LAYER);
     this.camera.layers.enable(DISPLAY_LINE_LAYER);
     this.camera.position.fromArray(props.view.position);
@@ -1601,6 +1602,17 @@ export class SceneViewportRuntime {
   }
 
   /**
+   * A restored context keeps image textures but empties what the GPU drew: the environment and the shadow maps are made
+   * again (model-viewer regenerates its environment the same way).
+   */
+  private readonly onContextRestored = (): void => {
+    this.environment.dispose();
+    this.environment = createSceneEnvironment(this.renderer);
+    this.scene.environment = this.environment;
+    this.renderer.shadowMap.needsUpdate = true;
+  };
+
+  /**
    * Expose actual rendered tuples for browser assertions without a second scene model.
    * @throws {never} Never.
    */
@@ -1655,6 +1667,7 @@ export class SceneViewportRuntime {
     this.items.clear();
     this.ground.geometry.dispose();
     this.ground.material.dispose();
+    this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
     this.environment.dispose();
     for (const outline of this.outlines) {
       outline.geometry.dispose();

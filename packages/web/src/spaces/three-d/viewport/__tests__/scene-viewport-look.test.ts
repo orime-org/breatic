@@ -6,9 +6,10 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Object3D, Scene } from 'three';
+import type { Object3D, Scene, Texture, WebGLRenderer } from 'three';
 import type { SceneObject } from '@breatic/shared';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
+import { createSceneEnvironment } from '@web/spaces/three-d/viewport/scene-environment';
 import { SceneViewportRuntime } from '@web/spaces/three-d/viewport/scene-viewport-runtime';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
@@ -27,7 +28,7 @@ vi.mock('three', async (importOriginal) => {
 });
 vi.mock('@web/spaces/three-d/viewport/scene-environment', async () => {
   const { Texture } = await import('three');
-  return { SCENE_ENVIRONMENT_INTENSITY: 0.4, createSceneEnvironment: () => new Texture() };
+  return { SCENE_ENVIRONMENT_INTENSITY: 0.4, createSceneEnvironment: vi.fn(() => new Texture()) };
 });
 
 const BOX: SceneObject = { id: 'box', model: { kind: 'builtin', id: 'box' }, name: 'Box', position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false };
@@ -86,5 +87,28 @@ describe('pre-compiling a changed part (inner#1693 design 5.2)', () => {
     expect(compiles.length).toBeGreaterThan(0);
     const scene = (runtime as unknown as { scene: Scene }).scene;
     for (const call of compiles) expect(call.target).toBe(scene);
+  });
+});
+
+describe('a restored GPU context (inner#1693 design 5.7)', () => {
+  it('generates the environment again and redraws the shadows, since a restore empties GPU-made textures', async () => {
+    const initial = props();
+    const { runtime } = await open(initial, '#969696');
+    const { scene, renderer } = runtime as unknown as { scene: Scene; renderer: WebGLRenderer };
+    const before = scene.environment as Texture;
+    const dispose = vi.spyOn(before, 'dispose');
+    renderer.shadowMap.needsUpdate = false;
+    renderer.domElement.dispatchEvent(new Event('webglcontextrestored'));
+    expect(vi.mocked(createSceneEnvironment)).toHaveBeenLastCalledWith(renderer);
+    expect(scene.environment).not.toBe(before);
+    expect(dispose).toHaveBeenCalled();
+    expect(renderer.shadowMap.needsUpdate).toBe(true);
+    const restored = scene.environment as Texture;
+    const disposeRestored = vi.spyOn(restored, 'dispose');
+    runtime.dispose();
+    expect(disposeRestored).toHaveBeenCalled();
+    const calls = vi.mocked(createSceneEnvironment).mock.calls.length;
+    renderer.domElement.dispatchEvent(new Event('webglcontextrestored'));
+    expect(vi.mocked(createSceneEnvironment).mock.calls.length).toBe(calls);
   });
 });

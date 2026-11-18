@@ -136,6 +136,23 @@ describe('environment reflection in the overview (inner#1693 design 5.7)', () =>
     map.dispose();
     expect(dispose).toHaveBeenCalledTimes(1);
   });
+
+  it('generates the environment again and redraws once the GPU context is restored', () => {
+    const cache = new ModelResourceCache(async () => model()); owners.push(() => cache.dispose());
+    const host = document.createElement('div'); document.body.append(host);
+    Object.defineProperties(host, { clientWidth: { value: 200 }, clientHeight: { value: 140 } });
+    const map = new SceneMiniMapRuntime(host, cache, vi.fn()); owners.push(() => map.dispose());
+    map.update([], new Set(), new Vector3(), new Set());
+    const scene = renders.at(-1)?.[0] as Scene;
+    const before = environments.at(-1)!;
+    const dispose = vi.spyOn(before, 'dispose');
+    const count = renders.length;
+    host.querySelector('canvas')!.dispatchEvent(new Event('webglcontextrestored'));
+    expect(scene.environment).toBe(environments.at(-1));
+    expect(scene.environment).not.toBe(before);
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(renders).toHaveLength(count + 1);
+  });
 });
 
 describe('cameras and lights in the overview (inner#1694 design 3.3)', () => {
