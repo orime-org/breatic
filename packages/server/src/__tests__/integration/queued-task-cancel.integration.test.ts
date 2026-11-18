@@ -11,9 +11,11 @@
  * `DELETE /canvas/node-tasks/:taskId` (a project editor, the project read from
  * the task row). Under the person's `running-tasks:<user_id>` lock it moves the
  * task `pending → cancelled` and, in the same transaction, releases the credit
- * hold and ends the node task row with the failure reason `cancelled`; it
+ * hold; after that commit its node task rows end with the failure reason
+ * `cancelled`; it
  * answers `200 { data: { cancelled: true, counts } }`, `counts` being the
- * node's `NodeTaskCounts` (null for a 3D Space's own row). A task that already
+ * `NodeTaskCounts` of the node whose row was named (null when the task's own
+ * id was named, or for a 3D Space's own row). A task that already
  * started answers 409 and goes on. A Timeline execution's cancel runs through
  * `timelineExecutionRepo.transition` and holds no credits, so it touches no hold.
  *
@@ -57,10 +59,10 @@ afterAll(async () => {
  * Start a canvas generation that writes over one node, so it opens a node task row.
  * @param a - Where.
  * @param who - Who starts it.
+ * @param nodeId - The node it writes over.
  * @returns The task id and its node.
  */
-async function generate(a: Account, who: Actor = a): Promise<{ taskId: string; nodeId: string }> {
-  const nodeId = crypto.randomUUID();
+async function generate(a: Account, who: Actor = a, nodeId: string = crypto.randomUUID()): Promise<{ taskId: string; nodeId: string }> {
   const res = await request(app, who.cookie, "POST", "/canvas/tasks", {
     project_id: a.projectId,
     space_id: a.spaceId,
@@ -97,17 +99,59 @@ async function standing(taskId: string): Promise<{ task?: string; hold?: string;
   return { task: task?.status, hold: hold?.status, node };
 }
 
+/**
+ * The id of a task's node task row on one node.
+ * @param taskId - The task.
+ * @param nodeId - The node.
+ * @returns The row's id.
+ */
+async function rowOn(taskId: string, nodeId: string): Promise<string> {
+  const [row] = await sql<{ id: string }[]>`select id from node_tasks where task_id = ${taskId} and node_id = ${nodeId}`;
+  if (row === undefined) throw new Error(`task ${taskId} has no row on ${nodeId}`);
+  return row.id;
+}
+
 describe("G-25 cancelling a task that has not started", () => {
   it("cancels it, releases its hold, ends its node row as cancelled and answers the node's counts", async () => {
     const a = await seedAccount(sql);
-    const { taskId } = await generate(a);
+    const { taskId, nodeId } = await generate(a);
     expect(await standing(taskId)).toMatchObject({ task: "pending", hold: "held", node: { status: "running" } });
-    const res = await cancel(a, taskId);
+    const res = await cancel(a, await rowOn(taskId, nodeId));
     expect(res.status, await res.clone().text()).toBe(200);
     const body = (await res.json()) as { data: { cancelled: boolean; counts: Record<string, number> | null } };
     expect(body.data.cancelled).toBe(true);
     expect(body.data.counts).toMatchObject({ running: 0, waiting: 0, failed: 1 });
     expect(await standing(taskId)).toEqual({ task: "cancelled", hold: "released", node: { status: "failed", error_message: "cancelled" } });
+  });
+
+  it("answers no node counts when the task's own id is named", async () => {
+    const a = await seedAccount(sql);
+    const { taskId } = await generate(a);
+    const res = await cancel(a, taskId);
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(((await res.json()) as { data: unknown }).data).toEqual({ cancelled: true, counts: null });
+    expect(await standing(taskId)).toMatchObject({ task: "cancelled", node: { status: "failed", error_message: "cancelled" } });
+  });
+
+  // One run can fill several nodes (a grid mini-tool), each with its own row,
+  // and each node's task list closes on its own counts. Two cases, one per
+  // node, so whichever row the task lists first, one of them names the other.
+  it.each(["first", "second"] as const)("answers the counts of the node whose row was named (%s node of the run)", async (named) => {
+    const a = await seedAccount(sql);
+    const second = crypto.randomUUID();
+    const other = await generate(a, a, second);
+    const { taskId, nodeId: first } = await generate(a);
+    await sql`
+      insert into node_tasks
+      select (jsonb_populate_record(null::node_tasks, to_jsonb(n) || jsonb_build_object('id', gen_random_uuid(), 'node_id', ${second}::text))).*
+      from node_tasks n where task_id = ${taskId}`;
+    const nodeId = named === "first" ? first : second;
+    const res = await cancel(a, await rowOn(taskId, nodeId));
+    expect(res.status, await res.clone().text()).toBe(200);
+    const body = (await res.json()) as { data: { counts: Record<string, number> } };
+    expect(body.data.counts).toEqual(await nodeTaskService.countsFor({ projectId: a.projectId, nodeId }));
+    expect(body.data.counts.running).toBe(named === "first" ? 0 : 1);
+    expect((await standing(other.taskId)).task).toBe("pending");
   });
 
   // The node and 3D task lists hold only their rows' ids, which differ from
@@ -245,7 +289,7 @@ describe("G-40 cancelling a task the gate has not judged yet (F8 fresh × T7)", 
     const runningBefore = (await nodeTaskService.countsFor({ projectId: a.projectId, nodeId })).running;
     const eventsBefore = (await countsEvents(a, nodeId)).length;
 
-    const res = await cancel(a, taskId);
+    const res = await cancel(a, await rowOn(taskId, nodeId));
     expect(res.status, await res.clone().text()).toBe(200);
     const body = (await res.json()) as { data: { cancelled: boolean; counts: Record<string, number> } };
     expect(body.data.cancelled).toBe(true);
@@ -257,7 +301,7 @@ describe("G-40 cancelling a task the gate has not judged yet (F8 fresh × T7)", 
 
     // The worker's pickup reads an ended row and returns: no start, no wait recorded.
     const after = await rowsOf(taskId);
-    const picked = (await runningSlotService.startWithinLimit({ table: "tasks", id: taskId, jobId: `job-${taskId}` })) as { outcome: string };
+    const picked = await runningSlotService.startWithinLimit({ id: taskId, jobId: `job-${taskId}` });
     expect(picked.outcome).toBe("ended");
     expect(await rowsOf(taskId)).toEqual(after);
   });

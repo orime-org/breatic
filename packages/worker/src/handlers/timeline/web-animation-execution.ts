@@ -249,10 +249,11 @@ async function take(row: TimelineExecution): Promise<TimelineExecution | null> {
     }
     // The running-task gate claims it when its person runs fewer than their
     // limit; otherwise it throws StillRunning and the job goes back to the
-    // queue (inner#1968).
-    let gate: Awaited<ReturnType<typeof runningSlotService.startWithinLimit>>;
+    // queue (inner#1968). A row another pickup claimed first answers ended,
+    // and is read again and taken as it stands.
+    let gate: Awaited<ReturnType<typeof runningSlotService.claimWithinLimit>>;
     try {
-      gate = await runningSlotService.startWithinLimit({ table: "timeline_executions", id: row.id, jobId: "" });
+      gate = await runningSlotService.claimWithinLimit(row.id);
     } catch (err) {
       if (err instanceof StillRunning) {
         for (const failure of err.publishFailures) logger.error({ err: failure, executionId: row.id }, "running_slot_publish_failed");
@@ -260,9 +261,9 @@ async function take(row: TimelineExecution): Promise<TimelineExecution | null> {
       throw err;
     }
     for (const err of gate.publishFailures) logger.error({ err, executionId: row.id }, "running_slot_publish_failed");
+    if (gate.outcome === "started") return gate.started;
     const after = await timelineExecutionRepo.findById(row.id);
-    if (after === undefined) return null;
-    return gate.outcome === "started" && after.status === "running" ? after : take(after);
+    return after === undefined ? null : take(after);
   }
   if (row.status === "running") {
     // A new attempt changes nothing the user sees, so it does not signal the Space; a phase change does.

@@ -442,6 +442,7 @@ export interface GateTaskRow {
   /** Full-precision text, so a comparison against another row's creation loses no microseconds. */
   createdAt: string;
   slotWaitSince: Date | null;
+  startedAt: Date | null;
 }
 
 /**
@@ -481,6 +482,7 @@ export async function findForGate(id: string, tx?: DbTx): Promise<GateTaskRow | 
       errorMessage: tasks.errorMessage,
       createdAt: sql<string>`${tasks.createdAt}::text`,
       slotWaitSince: tasks.slotWaitSince,
+      startedAt: tasks.startedAt,
     })
     .from(tasks)
     .where(eq(tasks.id, id));

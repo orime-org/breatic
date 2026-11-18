@@ -4,8 +4,8 @@
 /**
  * How many tasks one person may run at once (inner#1968, design 3.9).
  *
- * The worker asks {@link startWithinLimit} before a task or a Timeline
- * execution first runs. Under the person's `running-tasks:<user_id>` advisory
+ * The worker asks {@link startWithinLimit} before a task first runs and
+ * {@link claimWithinLimit} before a Timeline execution does. Under the person's `running-tasks:<user_id>` advisory
  * lock it counts what they run within the budget and the report grace (`R`)
  * and the earlier waiters under the same limit that were judged recently
  * (`W`): `R + W` below the limit of the studio the task runs in starts it,
@@ -31,7 +31,7 @@ import {
   timelineExecutionRepo,
   type DbTx,
 } from "@breatic/core";
-import { canvasSpaceDocName, type TaskFailureReason } from "@breatic/shared";
+import { canvasSpaceDocName, type TaskFailureReason, type TimelineExecution } from "@breatic/shared";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as nodeTaskRepo from "@domain/node-task/node-task.repo.js";
 import * as nodeTaskService from "@domain/node-task/node-task.service.js";
@@ -42,29 +42,27 @@ import { StillRunning } from "@domain/task/still-running.js";
 
 import type { NodeTaskCounts, TaskRowPlace } from "@domain/node-task/node-task.repo.js";
 
-/** Which row the gate judges. */
-export interface GateInput {
-  table: "tasks" | "timeline_executions";
-  id: string;
-  /** The job picking it up, written on the task it starts. */
-  jobId: string;
-}
-
-/** What the gate came to when the row does not wait. */
-export interface GateOutcome {
-  /** `started`: it runs now (or already ran); `ended`: it reached its end before this pickup. */
-  outcome: "started" | "ended";
-  /** On a task the old code failed and left open: true once its holdings and rows are closed here. */
-  failed?: boolean;
-  /** Signals to the canvas that did not go out, for the caller to log. */
-  publishFailures: unknown[];
-}
+/**
+ * What the gate came to when the row does not wait. `started` carries what
+ * the start gave this pickup: a task's start, or a Timeline execution as its
+ * claim wrote it.
+ */
+export type GateOutcome<S> =
+  | { outcome: "started"; started: S; publishFailures: unknown[] }
+  | {
+      /** It reached its end before this pickup, or (a Timeline execution) another pickup holds it. */
+      outcome: "ended";
+      /** On a task the old code failed and left open: true once its holdings and rows are closed here. */
+      failed?: boolean;
+      /** Signals to the canvas that did not go out, for the caller to log. */
+      publishFailures: unknown[];
+    };
 
 /** What one judgement under the lock came to. */
-type Judged =
+type Judged<S> =
   | { kind: "busy" }
   | { kind: "ended" }
-  | { kind: "started"; places: TaskRowPlace[]; space: boolean }
+  | { kind: "started"; started: S; places: TaskRowPlace[]; space: boolean }
   | { kind: "waiting"; delayMs: number; places: TaskRowPlace[]; space: boolean };
 
 /**
@@ -176,11 +174,11 @@ async function publish(places: readonly TaskRowPlace[], space: { projectId: stri
  * @param errorMessage - What a node's rows show.
  * @param sceneReason - What a 3D Space's own row shows: always one of our codes, which each member reads in their
  *   own language.
- * @returns The first node's counts (null when none) and the signals that failed.
+ * @returns Each settled node's counts, by node id, and the signals that failed.
  */
-async function failRows(taskId: string, errorMessage: string, sceneReason: TaskFailureReason): Promise<{ counts: NodeTaskCounts | null; publishFailures: unknown[] }> {
+async function failRows(taskId: string, errorMessage: string, sceneReason: TaskFailureReason): Promise<{ counts: Map<string, NodeTaskCounts>; publishFailures: unknown[] }> {
   const failures: unknown[] = [];
-  let counts: NodeTaskCounts | null = null;
+  const counts = new Map<string, NodeTaskCounts>();
   for (const place of await nodeTaskRepo.listRunningForTask(taskId)) {
     if (place.nodeId === null) {
       await sceneTaskService.settleById(place.id, { outcome: "failed", errorMessage: sceneReason });
@@ -188,7 +186,7 @@ async function failRows(taskId: string, errorMessage: string, sceneReason: TaskF
       continue;
     }
     const settled = await nodeTaskService.settle({ taskId: place.id, outcome: "failed", errorMessage });
-    counts ??= settled.counts;
+    counts.set(place.nodeId, settled.counts);
     try {
       await emitNodeTaskCounts(getStreamRedis(), canvasSpaceDocName(place.projectId, place.spaceId), place.nodeId, settled.counts, undefined);
     } catch (err) {
@@ -203,17 +201,18 @@ async function failRows(taskId: string, errorMessage: string, sceneReason: TaskF
  * @param row - The task.
  * @param jobId - The job picking it up.
  * @param limit - Its limit.
- * @returns What the judgement came to.
+ * @returns What the judgement came to; a start carries the task's start.
  */
-async function judgeTask(row: taskRepo.GateTaskRow, jobId: string, limit: number): Promise<Judged> {
-  return db.transaction(async (tx): Promise<Judged> => {
+async function judgeTask(row: taskRepo.GateTaskRow, jobId: string, limit: number): Promise<Judged<Date>> {
+  return db.transaction(async (tx): Promise<Judged<Date>> => {
     if (!(await takeLock(row.userId, tx))) return { kind: "busy" };
     const { running, ahead } = await standing(row.userId, limit, row.createdAt, tx);
     if (running + ahead < limit) {
-      if ((await taskRepo.startPending(row.id, jobId, tx)) === null) return { kind: "ended" };
+      const startedAt = await taskRepo.startPending(row.id, jobId, tx);
+      if (startedAt === null) return { kind: "ended" };
       const places = row.slotWaitSince === null ? [] : await nodeTaskRepo.startWaiting(row.id, tx);
       await renewHoldings(row.id, true, tx);
-      return { kind: "started", places, space: false };
+      return { kind: "started", started: startedAt, places, space: false };
     }
     await taskRepo.markSlotWait(row.id, jobId, tx);
     await taskRepo.noteSlotCheck(row.id, limit, getWorkerConfig().slot_wait_stale_ms, tx);
@@ -230,17 +229,17 @@ async function judgeTask(row: taskRepo.GateTaskRow, jobId: string, limit: number
  * @param row.actorUserId - Who runs it.
  * @param row.createdAt - Its creation, full-precision text.
  * @param limit - Its limit.
- * @returns What the judgement came to.
+ * @returns What the judgement came to; a start carries the execution as the claim wrote it.
  */
-async function judgeExecution(row: { id: string; actorUserId: string; createdAt: string }, limit: number): Promise<Judged> {
-  return db.transaction(async (tx): Promise<Judged> => {
+async function judgeExecution(row: { id: string; actorUserId: string; createdAt: string }, limit: number): Promise<Judged<TimelineExecution>> {
+  return db.transaction(async (tx): Promise<Judged<TimelineExecution>> => {
     if (!(await takeLock(row.actorUserId, tx))) return { kind: "busy" };
     const { running, ahead } = await standing(row.actorUserId, limit, row.createdAt, tx);
     if (running + ahead < limit) {
       const budgetMs = getNodeTaskConfig().default_budget_ms;
       const claimed = await timelineExecutionRepo.transition({ id: row.id, event: { type: "claim", budgetMs } }, tx);
       if (!claimed.applied) return { kind: "ended" };
-      return { kind: "started", places: [], space: true };
+      return { kind: "started", started: claimed.row, places: [], space: true };
     }
     const first = await timelineExecutionRepo.markSlotWait(row.id, tx);
     await timelineExecutionRepo.noteSlotCheck(row.id, limit, getWorkerConfig().slot_wait_stale_ms, tx);
@@ -261,29 +260,44 @@ async function closeFailed(row: taskRepo.GateTaskRow): Promise<unknown[]> {
 }
 
 /**
- * Start a row nobody has run yet when its person runs fewer tasks than its
+ * Start a task nobody has run yet when its person runs fewer tasks than its
  * limit allows, or make it wait.
- * @param input - The row and the job picking it up.
- * @returns `started` when it runs now, `ended` when it already reached its end.
+ * @param input - The task and the job picking it up.
+ * @param input.id - The task.
+ * @param input.jobId - The job, written on the task it starts.
+ * @returns `started` with its start when it runs now or already ran, `ended` when it already reached its end.
  * @throws {StillRunning} When it waits: the caller puts the job back until `resumeAt`.
- * @throws {Error} When the row does not exist, or a read or write fails.
+ * @throws {Error} When the task does not exist or runs without a start, or a read or write fails.
  */
-export async function startWithinLimit(input: GateInput): Promise<GateOutcome> {
-  if (input.table === "timeline_executions") {
-    const row = await timelineExecutionRepo.findById(input.id);
-    if (row === undefined) throw new Error(`Timeline execution ${input.id} does not exist`);
-    if (row.status === "running" || row.status === "cancelling") return { outcome: "started", publishFailures: [] };
-    if (row.status !== "queued") return { outcome: "ended", publishFailures: [] };
-    const judged = await judgeExecution(row, await limitFor(row.projectId, row.actorUserId));
-    return settleJudgement(judged, { projectId: row.projectId, spaceId: row.spaceId });
-  }
+export async function startWithinLimit(input: { id: string; jobId: string }): Promise<GateOutcome<Date>> {
   const row = await taskRepo.findForGate(input.id);
   if (row === null) throw new Error(`task ${input.id} does not exist`);
-  if (row.status === "running") return { outcome: "started", publishFailures: [] };
+  if (row.status === "running") {
+    if (row.startedAt === null) throw new Error(`running task ${row.id} has no start`);
+    return { outcome: "started", started: row.startedAt, publishFailures: [] };
+  }
   if (row.status === "failed") return { outcome: "ended", failed: true, publishFailures: await closeFailed(row) };
   if (row.status !== "pending") return { outcome: "ended", publishFailures: [] };
   const judged = await judgeTask(row, input.jobId, await limitFor(row.projectId, row.userId));
   return settleJudgement(judged, null);
+}
+
+/**
+ * Claim a queued Timeline execution when its person runs fewer tasks than its
+ * limit allows, or make it wait. Only a queued row is judged: one in any other
+ * state answers `ended`, and the caller reads it again and handles it as it
+ * stands, so a pickup never runs under another pickup's claim.
+ * @param executionId - The execution.
+ * @returns `started` with the execution as this claim wrote it, `ended` when it is not queued.
+ * @throws {StillRunning} When it waits: the caller puts the job back until `resumeAt`.
+ * @throws {Error} When the execution does not exist, or a read or write fails.
+ */
+export async function claimWithinLimit(executionId: string): Promise<GateOutcome<TimelineExecution>> {
+  const row = await timelineExecutionRepo.findById(executionId);
+  if (row === undefined) throw new Error(`Timeline execution ${executionId} does not exist`);
+  if (row.status !== "queued") return { outcome: "ended", publishFailures: [] };
+  const judged = await judgeExecution(row, await limitFor(row.projectId, row.actorUserId));
+  return settleJudgement(judged, { projectId: row.projectId, spaceId: row.spaceId });
 }
 
 /**
@@ -293,20 +307,20 @@ export async function startWithinLimit(input: GateInput): Promise<GateOutcome> {
  * @returns The outcome when the row does not wait.
  * @throws {StillRunning} When it waits.
  */
-async function settleJudgement(judged: Judged, space: { projectId: string; spaceId: string } | null): Promise<GateOutcome> {
+async function settleJudgement<S>(judged: Judged<S>, space: { projectId: string; spaceId: string } | null): Promise<GateOutcome<S>> {
   if (judged.kind === "busy") throw new StillRunning(Date.now() + getWorkerConfig().poll_interval);
   if (judged.kind === "ended") return { outcome: "ended", publishFailures: [] };
   const failures = await publish(judged.places, judged.space ? space : null);
   if (judged.kind === "waiting") throw new StillRunning(Date.now() + judged.delayMs, failures);
-  return { outcome: "started", publishFailures: failures };
+  return { outcome: "started", started: judged.started, publishFailures: failures };
 }
 
 /** What cancelling came to. */
 export interface CancelOutcome {
   /** False when the task had started or ended already. */
   cancelled: boolean;
-  /** The node's counts after it; null for a 3D Space's own row or no row. */
-  counts: NodeTaskCounts | null;
+  /** Each node's counts after it, by node id; a 3D Space's own row has none. */
+  counts: Map<string, NodeTaskCounts>;
   /** Signals to the canvas that did not go out, for the caller to log. */
   publishFailures: unknown[];
 }
@@ -316,7 +330,7 @@ export interface CancelOutcome {
  * hold in one commit under the person's lock, then its rows
  * end as failed with the reason `cancelled`.
  * @param taskId - The task.
- * @returns Whether it was cancelled, and the node's counts.
+ * @returns Whether it was cancelled, and each of its nodes' counts.
  * @throws {Error} When the task does not exist, or a write fails.
  */
 export async function cancelQueued(taskId: string): Promise<CancelOutcome> {
@@ -328,7 +342,7 @@ export async function cancelQueued(taskId: string): Promise<CancelOutcome> {
     await creditHoldRepo.releaseHold(taskId, tx);
     return true;
   });
-  if (!cancelled) return { cancelled: false, counts: null, publishFailures: [] };
+  if (!cancelled) return { cancelled: false, counts: new Map(), publishFailures: [] };
   return { cancelled: true, ...(await failRows(taskId, "cancelled", "cancelled")) };
 }
 

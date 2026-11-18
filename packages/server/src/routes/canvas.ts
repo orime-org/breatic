@@ -828,7 +828,8 @@ canvas.delete(
  * commit under its person's running-slot lock; its rows on the
  * canvas end failed with the reason `cancelled`, and their counts go out.
  * @param c - Hono context; the task id in the path.
- * @returns `{ data: { cancelled: true, counts } }`; `counts` is the node's, null for a 3D Space's own row.
+ * @returns `{ data: { cancelled: true, counts } }`; `counts` is the node's whose row was named, null when the task's
+ *   own id was named or for a 3D Space's own row.
  * @throws {NotFoundError} When there is no such task in a project.
  * @throws {AppError} 403 when the caller may not write that project.
  * @throws {ConflictError} When the task has started or ended already.
@@ -842,7 +843,8 @@ canvas.post(
     // The task lists name their rows, so a row of the node task list stands
     // for the task it runs as (inner#1968).
     const direct = await taskService.getByIdInternal(named);
-    const rowTaskId = direct === null ? ((await nodeTaskService.findById(named))?.taskId ?? null) : null;
+    const namedRow = direct === null ? await nodeTaskService.findById(named) : null;
+    const rowTaskId = namedRow?.taskId ?? null;
     const task = direct ?? (rowTaskId === null ? null : await taskService.getByIdInternal(rowTaskId));
     if (task === null || task.projectId === null) throw new NotFoundError(t("server.error.not_found"));
     const taskId = task.id;
@@ -851,7 +853,9 @@ canvas.post(
     for (const err of result.publishFailures) logger.error({ err, taskId }, "running_slot_publish_failed");
     if (!result.cancelled) throw new ConflictError(t("canvas.task.alreadyStarted"));
     logger.info({ taskId, projectId: task.projectId, userId: user.id }, "queued_task_cancelled");
-    return c.json({ data: { cancelled: true, counts: result.counts } });
+    // One run can fill several nodes; the list that asked shows the named row's node.
+    const nodeId = namedRow?.nodeId ?? null;
+    return c.json({ data: { cancelled: true, counts: nodeId === null ? null : (result.counts.get(nodeId) ?? null) } });
   },
 );
 

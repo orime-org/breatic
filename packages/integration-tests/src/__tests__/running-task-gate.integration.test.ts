@@ -6,8 +6,8 @@
  * G-01 to G-21, G-23, G-24, G-30 to G-33, the F8 waiting and fresh cells
  * G-43 to G-45; invariants K1 to K4; PT-4).
  *
- * The worker calls the domain gate `runningSlotService.startWithinLimit` for a
- * row nobody has taken yet (`tasks.status = 'pending'`, Timeline `queued`).
+ * The worker calls the domain gate (`runningSlotService.startWithinLimit` for a
+ * task, `claimWithinLimit` for a Timeline execution) for a row nobody has taken yet (`tasks.status = 'pending'`, Timeline `queued`).
  * Under `pg_try_advisory_xact_lock(hashtext('running-tasks:' || user_id))` it
  * counts what the person runs (`R`: `tasks` running within
  * `default_budget_ms + reportGraceMs()` of their start, plus Timeline
@@ -22,10 +22,11 @@
  * team, 9999 self-hosted, the agreement's number on an enterprise and 10 for
  * an enterprise without one.
  *
- * Shapes this suite chose where the design names none: the gate takes
- * `{ table: "tasks" | "timeline_executions", id, jobId }` and resolves
- * `{ outcome: "started" }` or, for a row already ended, `{ outcome: "ended" }`;
- * waiting is the thrown error named `StillRunning` carrying `resumeAt` (epoch
+ * Shapes this suite chose where the design names none: the gate is
+ * `startWithinLimit({ id, jobId })` for a task and `claimWithinLimit(id)` for a
+ * Timeline execution; each resolves `{ outcome: "started", started }` (the
+ * task's start, or the execution as its claim wrote it) or, for a row it did
+ * not start, `{ outcome: "ended" }`; waiting is the thrown error named `StillRunning` carrying `resumeAt` (epoch
  * ms). The stale-waiter sweep is `sweepSlotWaiters(queue)` in
  * `@worker/handlers/slot-wait-sweep.js`, with the same `getJob` queue shape as
  * the Timeline sweep.
@@ -222,7 +223,7 @@ type Picked = { started: true } | { ended: true } | { waiting: true; resumeAt: n
  */
 async function pick(id: string, table: "tasks" | "timeline_executions" = "tasks"): Promise<Picked> {
   try {
-    const out = (await runningSlotService.startWithinLimit({ table, id, jobId: `job-${id}` })) as { outcome: string };
+    const out = table === "tasks" ? await runningSlotService.startWithinLimit({ id, jobId: `job-${id}` }) : await runningSlotService.claimWithinLimit(id);
     return out.outcome === "started" ? { started: true } : { ended: true };
   } catch (err) {
     if (err instanceof Error && err.name === "StillRunning") return { waiting: true, resumeAt: (err as Error & { resumeAt: number }).resumeAt };
@@ -886,6 +887,48 @@ describe("G F8 a waiting Timeline execution has no deadline until it starts", ()
     const moved = await timelineExecutionRepo.transition({ id, event: { type: "deadline" } });
     expect(moved.applied).toBe(false);
     expect((await executionRow(id)).status).toBe("running");
+  });
+});
+
+// Two pickups of one execution can meet (a stalled worker, a redelivered job):
+// the later one must not run under the earlier one's claim. The gate starts
+// only a queued row and hands back what its own claim wrote; for any other it
+// answers ended, and the take reads the row again and retries it with a fresh
+// fence (inner#1968).
+// The worker times the task's budget from the start the gate answers, so it
+// must be the stored one, whether this pickup started the task or another did.
+describe("G the gate answers the task's stored start", () => {
+  it("answers the start it wrote, and the stored start of a task another pickup started", async () => {
+    const p = await person();
+    const { taskId } = await seedTask(p);
+    const first = await runningSlotService.startWithinLimit({ id: taskId, jobId: "job-a" });
+    if (first.outcome !== "started") throw new Error("expected the gate to start it");
+    const stored = (await taskRow(taskId)).started_at;
+    expect(first.started).toEqual(stored);
+    const again = await runningSlotService.startWithinLimit({ id: taskId, jobId: "job-b" });
+    if (again.outcome !== "started") throw new Error("expected a running task to answer started");
+    expect(again.started).toEqual(stored);
+  });
+});
+
+describe("G a Timeline pickup that finds the execution claimed by another", () => {
+  it.each(["running", "cancelling"] as const)("answers ended for a %s execution and changes nothing", async (state) => {
+    const p = await person();
+    const id = await execution(p, state);
+    const before = await executionRow(id);
+    expect(await pick(id, "timeline_executions")).toEqual({ ended: true });
+    expect(await executionRow(id)).toEqual(before);
+  });
+
+  it("hands back the execution as its own claim wrote it, with that claim's fence", async () => {
+    const p = await person();
+    const id = await execution(p, "queued");
+    const out = await runningSlotService.claimWithinLimit(id);
+    if (out.outcome !== "started") throw new Error("expected the claim to start it");
+    const row = await executionRow(id);
+    expect(row.status).toBe("running");
+    expect(out.started.fence).toBe(row.fence);
+    expect(out.started.attempt).toBe(row.attempt);
   });
 });
 
