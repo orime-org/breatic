@@ -33,16 +33,15 @@
  * matters most.
  */
 
-import { and, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, studioTransfers } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { mintShareToken } from "@breatic/core";
+import { mintShareToken } from "@server/utils/share-token.js";
 import type { RequestFailedReason } from "@breatic/shared";
 
 /** Where a transfer sits in its lifecycle. */
 export type StudioTransferStatus =
   | "pending"
-  | "accepting"
   | "accepted"
   | "declined"
   | "failed"
@@ -262,8 +261,7 @@ export async function settleIfPending(
 }
 
 /**
- * End a still-open offer (pending, or accepting when the global region
- * refused the admin change) nobody can answer any more, and record why.
+ * End a still-pending offer nobody can answer any more, and record why.
  *
  * Nobody decided it, so no `decided_at` is written; the deadline
  * stays the one it was filed with.
@@ -284,7 +282,7 @@ export async function failIfPending(
     .where(
       and(
         eq(studioTransfers.id, id),
-        inArray(studioTransfers.status, ["pending", "accepting"]),
+        eq(studioTransfers.status, "pending"),
         isNull(studioTransfers.deletedAt),
       ),
     )
@@ -359,96 +357,5 @@ export async function findLiveForContainer(
         gt(studioTransfers.expiresAt, sql`now()`),
       ),
     );
-  return rows[0] ?? null;
-}
-
-/**
- * Move an offer whose checks passed into the window between the global admin
- * change and this region's role swap (inner#1955). The roles hold still while
- * it is there.
- * @param id - The offer, locked by the caller.
- * @param tx - The deciding transaction.
- * @returns Whether a pending offer moved.
- */
-export async function markAccepting(id: string, tx: DbTx): Promise<boolean> {
-  const rows = await tx
-    .update(studioTransfers)
-    .set({ status: "accepting" })
-    .where(and(eq(studioTransfers.id, id), eq(studioTransfers.status, "pending"), isNull(studioTransfers.deletedAt)))
-    .returning({ id: studioTransfers.id });
-  return rows.length > 0;
-}
-
-/**
- * Settle an accepting offer as accepted, once the roles have been swapped.
- * @param id - The offer, locked by the caller.
- * @param tx - The swapping transaction.
- * @returns Whether an accepting offer settled.
- */
-export async function settleAccepting(id: string, tx: DbTx): Promise<boolean> {
-  const rows = await tx
-    .update(studioTransfers)
-    .set({ status: "accepted", decidedAt: new Date() })
-    .where(and(eq(studioTransfers.id, id), eq(studioTransfers.status, "accepting"), isNull(studioTransfers.deletedAt)))
-    .returning({ id: studioTransfers.id });
-  return rows.length > 0;
-}
-
-/**
- * Whether a Studio's transfer is in the accepting window.
- * @param studioId - The Studio.
- * @param tx - The transaction to read in, when there is one.
- * @returns True while an offer of it is accepting.
- */
-export async function isAccepting(studioId: string, tx?: DbTx): Promise<boolean> {
-  const rows = await (tx ?? db)
-    .select({ id: studioTransfers.id })
-    .from(studioTransfers)
-    .where(
-      and(
-        eq(studioTransfers.studioId, studioId),
-        eq(studioTransfers.status, "accepting"),
-        isNull(studioTransfers.deletedAt),
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
-}
-
-/**
- * Offers left in the accepting window for longer than a sweep waits.
- * @param olderThanMs - How long an offer may stay accepting before the sweep finishes it.
- * @returns Their ids.
- */
-export async function listStaleAccepting(olderThanMs: number): Promise<string[]> {
-  const rows = await db
-    .select({ id: studioTransfers.id })
-    .from(studioTransfers)
-    .where(
-      and(
-        eq(studioTransfers.status, "accepting"),
-        isNull(studioTransfers.deletedAt),
-        lte(studioTransfers.updatedAt, new Date(Date.now() - olderThanMs)),
-      ),
-    );
-  return rows.map((row) => row.id);
-}
-
-/**
- * The Studio an offer belongs to, read without a lock: it never changes, so a
- * caller can lock the Studio row before the offer's.
- * @param id - The offer.
- * @param tx - The transaction to read in.
- * @returns The Studio id and the two members, or null when there is no such offer.
- */
-export async function findParties(
-  id: string,
-  tx?: DbTx,
-): Promise<{ studioId: string; fromUserId: string; toUserId: string } | null> {
-  const rows = await (tx ?? db)
-    .select({ studioId: studioTransfers.studioId, fromUserId: studioTransfers.fromUserId, toUserId: studioTransfers.toUserId })
-    .from(studioTransfers)
-    .where(and(eq(studioTransfers.id, id), isNull(studioTransfers.deletedAt)))
-    .limit(1);
   return rows[0] ?? null;
 }

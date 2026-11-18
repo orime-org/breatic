@@ -12,7 +12,7 @@ import * as conversationRepo from "@server/modules/conversation/conversation.rep
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import { globalApi } from "@breatic/domain";
+import * as userRepo from "@server/modules/auth/user.repo.js";
 import { answersMismatch, readQuestionnaire, spaceRequestInputSchema, t } from "@breatic/shared";
 import { spaceAnswerMismatch } from "@server/modules/conversation/space-answer-mismatch.js";
 import { db, NotFoundError, ForbiddenError, getAgentConfig, ValidationError } from "@breatic/core";
@@ -99,7 +99,7 @@ export async function openChat(
   };
 }> {
   await projectService.assertAccess(projectId, userId, "editor");
-  const userModel = await globalApi().getAgentModel(userId);
+  const userModel = await userRepo.getAgentModel(userId);
 
   // Two locks, each covering a race the other cannot see, taken in this order
   // everywhere. Nothing else in the codebase takes the advisory lock, so no
@@ -256,7 +256,7 @@ export async function createConversation(
 ): Promise<ChatConversation> {
   await projectService.assertAccess(projectId, userId, "editor");
   // A new conversation starts on the model the user last picked.
-  const model = resolveAgentModel(null, await globalApi().getAgentModel(userId));
+  const model = resolveAgentModel(null, await userRepo.getAgentModel(userId));
 
   return db.transaction(async (tx) => {
     // Same reason as in `openChat`: without holding the project row, this
@@ -397,7 +397,7 @@ export async function getWithMessages(
   hasMore: boolean;
 }> {
   const conversation = await validateOwnership(conversationId, userId);
-  const [page, userModel] = await Promise.all([messageRepo.getMessages(conversationId), globalApi().getAgentModel(userId)]);
+  const [page, userModel] = await Promise.all([messageRepo.getMessages(conversationId), userRepo.getAgentModel(userId)]);
   return {
     conversation: { ...conversation, agentModel: resolveAgentModel(conversation.agentModel, userModel) },
     messages: page.messages,
@@ -558,7 +558,7 @@ export function resolveAgentModel(conversationModel: string | null, userModel: s
  */
 export async function listChatModels(userId: string): Promise<{ models: AgentModelChoice[]; lastUsed: string }> {
   const models = getAgentConfig().chat_models.map(({ id, name }) => ({ id, name }));
-  return { models, lastUsed: resolveAgentModel(null, await globalApi().getAgentModel(userId)).id };
+  return { models, lastUsed: resolveAgentModel(null, await userRepo.getAgentModel(userId)).id };
 }
 
 /**
@@ -597,9 +597,10 @@ export async function setConversationModel(
   const picked = assertListed(model);
   await projectService.assertAccess(projectId, userId, "editor");
   const conversation = await assertWritable(conversationId, userId, projectId);
-  await conversationRepo.setAgentModel(conversationId, picked.id);
-  // The account's last pick lives with the account in the global region (inner#1955).
-  await globalApi().setAgentModel(userId, picked.id);
+  await db.transaction(async (tx) => {
+    await conversationRepo.setAgentModel(conversationId, picked.id, { tx });
+    await userRepo.setAgentModel(userId, picked.id, tx);
+  });
   return { ...conversation, agentModel: picked };
 }
 
@@ -622,7 +623,7 @@ export async function modelForMessage(
 ): Promise<string> {
   const model =
     requested === undefined
-      ? resolveAgentModel(conversation.agentModel, await globalApi().getAgentModel(userId))
+      ? resolveAgentModel(conversation.agentModel, await userRepo.getAgentModel(userId))
       : assertListed(requested);
   if (listedModel(conversation.agentModel) === undefined) {
     await conversationRepo.setAgentModel(conversation.id, model.id, { ifStill: { agentModel: conversation.agentModel } });

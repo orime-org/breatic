@@ -24,9 +24,18 @@ vi.mock("@breatic/domain", async () => {
   return domainMock();
 });
 
-// These tests stay about the ROUTE (auth, status codes, envelope); resolving
-// names and merging regions are proven against a real database in
-// notification-id-refs and cross-region-reads integration tests.
+// The route resolves ids to current identities before responding; that hits
+// the studio / project repos, which this suite deliberately does not stand up.
+// Stub the resolver so these tests stay about the ROUTE (auth, status codes,
+// envelope) — resolution itself is proven against a real database in
+// notification-id-refs.integration.test.ts.
+vi.mock("@server/modules/notification/notification-refs.js", () => ({
+  withResolvedRefs: vi.fn(async (items: unknown[]) => ({
+    items,
+    resolved: { users: {}, studios: {}, projects: {} },
+  })),
+}));
+
 vi.mock("@server/modules", async (importOriginal) => {
   const { serverModulesMock } = await import("../helpers/mock-core.js");
   return serverModulesMock(importOriginal);
@@ -47,24 +56,19 @@ beforeEach(() => {
 
 describe("GET /users/me/notifications", () => {
   it("returns 200 + unread list by default", async () => {
-    mocks.notificationService.listFeed.mockResolvedValueOnce({
-      items: [
-        {
-          id: NID,
-          userId: "u-1",
-          type: "access.role_upgrade_request",
-          payload: { requesterUserId: "u-2" },
-          projectId: "p-1",
-          readAt: null,
-          deletedAt: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          region: null,
-        },
-      ],
-      resolved: { users: {}, studios: {}, projects: {} },
-      unavailableRegions: [],
-    });
+    mocks.notificationService.listUnread.mockResolvedValueOnce([
+      {
+        id: NID,
+        userId: "u-1",
+        type: "access.role_upgrade_request",
+        payload: { requesterUserId: "u-2" },
+        projectId: "p-1",
+        readAt: null,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
     const app = createApp();
     const res = await app.request(`/api/v1/users/me/notifications`, {
       headers: AUTH,
@@ -76,17 +80,20 @@ describe("GET /users/me/notifications", () => {
     // The envelope now carries the page plus the identities its ids resolve to.
     expect(body.data.items).toHaveLength(1);
     expect(body.data.resolved).toBeDefined();
-    expect(mocks.notificationService.listFeed).toHaveBeenCalledWith(expect.any(String), true);
+    expect(mocks.notificationService.listUnread).toHaveBeenCalled();
+    expect(mocks.notificationService.listAll).not.toHaveBeenCalled();
   });
 
   it("returns the full history when ?unread=false", async () => {
+    mocks.notificationService.listAll.mockResolvedValueOnce([]);
     const app = createApp();
     const res = await app.request(
       `/api/v1/users/me/notifications?unread=false`,
       { headers: AUTH },
     );
     expect(res.status).toBe(200);
-    expect(mocks.notificationService.listFeed).toHaveBeenCalledWith(expect.any(String), false);
+    expect(mocks.notificationService.listAll).toHaveBeenCalled();
+    expect(mocks.notificationService.listUnread).not.toHaveBeenCalled();
   });
 
   it("returns 401 when no auth cookie", async () => {
@@ -98,7 +105,7 @@ describe("GET /users/me/notifications", () => {
 
 describe("GET /users/me/notifications/count", () => {
   it("returns 200 + unread count", async () => {
-    mocks.notificationService.countFeed.mockResolvedValueOnce({ count: 7, unavailableRegions: [] });
+    mocks.notificationService.countUnread.mockResolvedValueOnce(7);
     const app = createApp();
     const res = await app.request(`/api/v1/users/me/notifications/count`, {
       headers: AUTH,
@@ -117,27 +124,16 @@ describe("PATCH /users/me/notifications/:id/read", () => {
       { method: "PATCH", headers: AUTH },
     );
     expect(res.status).toBe(200);
-    expect(mocks.notificationService.markReadIn).toHaveBeenCalledWith(
+    expect(mocks.notificationService.markRead).toHaveBeenCalledWith(
       NID,
       expect.any(String),
-      null,
     );
-  });
-
-  it("marks it in the region the bell named", async () => {
-    const app = createApp();
-    const res = await app.request(
-      `/api/v1/users/me/notifications/${NID}/read?region=sg`,
-      { method: "PATCH", headers: AUTH },
-    );
-    expect(res.status).toBe(200);
-    expect(mocks.notificationService.markReadIn).toHaveBeenCalledWith(NID, expect.any(String), "sg");
   });
 });
 
 describe("POST /users/me/notifications/read-all", () => {
   it("returns 200 + count from service", async () => {
-    mocks.notificationService.markAllReadEverywhere.mockResolvedValueOnce(3);
+    mocks.notificationService.markAllRead.mockResolvedValueOnce(3);
     const app = createApp();
     const res = await app.request(`/api/v1/users/me/notifications/read-all`, {
       method: "POST",

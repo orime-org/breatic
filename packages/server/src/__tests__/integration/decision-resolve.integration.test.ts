@@ -46,7 +46,7 @@ import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations
 import * as projectInvitationsRepo from "@server/modules/project-invite/projectInvitations.repo.js";
 import * as roleUpgradeRequestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
 import * as projectTransfersRepo from "@server/modules/project/projectTransfers.repo.js";
-import { studioTransfersRepo as studioTransfersRepo } from "@breatic/domain";
+import * as studioTransfersRepo from "@server/modules/studio/studioTransfers.repo.js";
 import * as projectJoinRequestsRepo from "@server/modules/project-join-request/projectJoinRequests.repo.js";
 
 let sql: ReturnType<typeof postgres>;

@@ -406,47 +406,6 @@ export async function findCoverUnderKey(storageKey: string): Promise<StudioAsset
 }
 
 /**
- * The live row each storage key names, and the cover row under each key that
- * names a video, in two queries.
- * @param keys - The storage keys.
- * @returns Per key found, its live row and cover row.
- * @throws {Error} When the database query fails.
- */
-export async function findByStorageKeys(
-  keys: readonly string[],
-): Promise<Map<string, { asset: StudioAssetEntity | null; cover: StudioAssetEntity | null }>> {
-  const found = new Map<string, { asset: StudioAssetEntity | null; cover: StudioAssetEntity | null }>();
-  if (keys.length === 0) return found;
-  const unique = [...new Set(keys)];
-  const rows = await db
-    .select()
-    .from(studioAssets)
-    .where(and(inArray(studioAssets.storageKey, unique), isNull(studioAssets.deletedAt)));
-  for (const row of rows) {
-    if (!found.has(row.storageKey)) found.set(row.storageKey, { asset: toEntity(row), cover: null });
-  }
-  const cover = alias(studioAssets, "cover");
-  const covers = await db
-    .select({ videoKey: studioAssets.storageKey, cover })
-    .from(studioAssets)
-    .innerJoin(cover, eq(cover.id, studioAssets.coverAssetId))
-    .where(
-      and(
-        inArray(studioAssets.storageKey, unique),
-        eq(studioAssets.kind, "video"),
-        isNull(studioAssets.deletedAt),
-        inArray(cover.storageKey, unique.map(coverKeyFor)),
-        isNull(cover.deletedAt),
-      ),
-    );
-  for (const { videoKey, cover: row } of covers) {
-    const entry = found.get(videoKey);
-    if (entry !== undefined && entry.cover === null && row.storageKey === coverKeyFor(videoKey)) entry.cover = toEntity(row);
-  }
-  return found;
-}
-
-/**
  * Total live storage a studio uses, in bytes (sum of its assets' sizes).
  * @param studioId - Studio to sum.
  * @returns The byte total (0 when the studio owns no live assets).
@@ -486,24 +445,6 @@ export async function usageByStudios(studioIds: string[]): Promise<number> {
       and(inArray(studioAssets.studioId, studioIds), isNull(studioAssets.deletedAt)),
     );
   return Number(rows[0]?.total ?? 0);
-}
-
-/**
- * What each Studio in this region uses, for the report sent to the global
- * region (inner#1955). Every Studio that ever held an asset is listed, with
- * zero once all of them are deleted, so the global row drops back too.
- * @returns Live asset bytes per Studio.
- * @throws {Error} When the database query fails.
- */
-export async function usagePerStudio(): Promise<{ studioId: string; bytes: number }[]> {
-  const rows = await db
-    .select({
-      studioId: studioAssets.studioId,
-      bytes: sql<string>`COALESCE(SUM(${studioAssets.sizeBytes}) FILTER (WHERE ${studioAssets.deletedAt} IS NULL), 0)`,
-    })
-    .from(studioAssets)
-    .groupBy(studioAssets.studioId);
-  return rows.map((row) => ({ studioId: row.studioId, bytes: Number(row.bytes) }));
 }
 
 /**

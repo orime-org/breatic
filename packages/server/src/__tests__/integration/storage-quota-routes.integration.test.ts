@@ -53,7 +53,6 @@ import {
 } from "@breatic/core";
 import { assetRepo } from "@breatic/domain";
 import type { Hono } from "hono";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -157,7 +156,6 @@ async function fullAccount(filledBytes: number): Promise<{
 
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
-  await mirrorAllInDirectory(sql);
   return {
     userId,
     studioId,

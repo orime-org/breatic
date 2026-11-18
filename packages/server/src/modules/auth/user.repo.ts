@@ -4,8 +4,7 @@
 /**
  * User repository — data access for the users table.
  *
- * Reads and writes account rows: identity, password, recovery codes, the
- * Stripe customer and the Agent model last picked.
+ * Handles CRUD operations and atomic credit modifications.
  */
 
 import { eq, and, or, isNull, inArray, sql } from "drizzle-orm";
@@ -14,6 +13,7 @@ import { users } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { normalizeEmail } from "@breatic/shared";
 import type { Attribution, UserEntity } from "@breatic/shared";
+import { getLegalConfig } from "@server/config/legal.js";
 
 /**
  * Convert a Drizzle row to a UserEntity (strips hashed_password).
@@ -135,7 +135,6 @@ export async function getHashedPassword(userId: string): Promise<string | null> 
  * @param data.locale - The account's language: the one the sign-up request was negotiated in
  * @param data.emailVerified - Whether the address was proven at sign-up (a matched sign-up code)
  * @param data.attribution - Campaign source to keep, already cleared when the browser gave no consent
- * @param data.termsVersion - The terms version the sign-up card showed
  * @param tx - The transaction that also binds a referral code, when there is one
  * @returns The created UserEntity
  * @throws {z.ZodError} if `config/membership.yaml` is malformed — the file is
@@ -149,7 +148,6 @@ export async function createUser(data: {
   locale: string;
   emailVerified?: boolean;
   attribution?: Attribution | null;
-  termsVersion: string;
 }, tx?: DbTx): Promise<UserEntity> {
   const rows = await (tx ?? db)
     .insert(users)
@@ -161,7 +159,9 @@ export async function createUser(data: {
       emailVerified: data.emailVerified ?? false,
       attribution: data.attribution ?? null,
       membershipTier: getDefaultMembershipTier(),
-      termsVersion: data.termsVersion,
+      // Every account is created by continuing from the sign-in or sign-up
+      // card, which carries the terms line (#302).
+      termsVersion: getLegalConfig().terms_version,
       termsAcceptedAt: sql`now()`,
     })
     .returning();

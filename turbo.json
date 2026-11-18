@@ -53,10 +53,6 @@
       "dependsOn": ["build"],
       "cache": false
     },
-    "test:region": {
-      "dependsOn": ["build"],
-      "cache": false
-    },
     "lint": {
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/config/provider/upstreams.yaml"]
     },

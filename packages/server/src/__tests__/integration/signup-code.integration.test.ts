@@ -444,9 +444,9 @@ describe("two-step sign-up with a referral code (inner#1868)", () => {
     const { code } = await activeCode();
     const email = freshEmail();
     const first = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code, source: "signup_typed" } });
+    const firstCode = lastCode();
     await startSignup({ ticket: first.ticket, email, password: "password1", locale: "en" });
-    // The resubmission mails a new code once the one-second resend wait has run out.
-    const verified = await verifySignupCode(first.ticket, lastCode());
+    const verified = await verifySignupCode(first.ticket, firstCode);
     expect(verified.referral).toBeNull();
     expect(await sourceOf(email)).toBeNull();
   });

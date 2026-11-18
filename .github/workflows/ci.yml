@@ -261,23 +261,6 @@ jobs:
       - name: Integration tests
         run: pnpm turbo run test:integration
 
-  region-tests:
-    name: Region tests
-    runs-on: ubuntu-latest
-    # The server as a region outside the global one (inner#1955): the services
-    # connect as the role migrate grants there, which cannot read the global
-    # tables, so a region path that reaches a global table fails here instead
-    # of reading that region's empty copy.
-    env:
-      TESTCONTAINERS_RYUK_DISABLED: "true"
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: ./.github/actions/setup-workspace
-
-      - name: Region tests
-        run: pnpm turbo run test:region
-
   consent-network-audit:
     name: Consent network audit
     runs-on: ubuntu-latest
@@ -346,7 +329,7 @@ jobs:
   docker:
     name: Docker Build (${{ matrix.image }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    needs: [lint-typecheck-test, integration-tests, region-tests, consent-network-audit, dev-proxy-guard, auth-bypass-residue]
+    needs: [lint-typecheck-test, integration-tests, consent-network-audit, dev-proxy-guard, auth-bypass-residue]
     strategy:
       fail-fast: false
       matrix:

@@ -20,14 +20,11 @@ import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { authService, invitationService, signupCodeService, studioService } from "@server/modules";
-import { askRegion } from "@server/modules/region/fanout.js";
 import { randomUUID } from "node:crypto";
-import { env, NotFoundError, regionOfShareToken, UnauthorizedError, trackServerEvent } from "@breatic/core";
-import { isKnownRegion } from "@breatic/domain";
+import { env, NotFoundError, UnauthorizedError, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, t } from "@breatic/shared";
 import type { PersonalStudioRef, SignupReferralSource } from "@breatic/shared";
-import { clearIdentityCookie, writeIdentityCookie, type IdentitySubject } from "@server/middleware/identity-cookie.js";
 import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
   setSessionCookie,
@@ -47,26 +44,9 @@ const invitationPreviewSchema = z.object({ token: z.string().min(1).max(64) });
 
 auth.get("/invitation", rateLimitFor("invite-preview"), validate("query", invitationPreviewSchema), async (c) => {
   const { token } = c.req.valid("query");
-  // A token issued in another region names it; that region answers (inner#1955).
-  const region = regionOfShareToken(token);
-  // A prefix that names no region of this deployment names no invitation.
-  if (region !== null && !isKnownRegion(region)) throw new NotFoundError(t("server.error.not_found"));
-  const data = region === null || region === env.REGION
-    ? await invitationService.getInvitationPreview(token)
-    : await previewInRegion(region, token);
+  const data = await invitationService.getInvitationPreview(token);
   return c.json({ data });
 });
-
-/**
- * Ask the region that issued an invitation token for its preview.
- * @param region - The region the token names.
- * @param token - The token.
- * @returns The region's preview.
- * @throws {AppError} 503 `region_unavailable` when the region has no address or does not answer in time.
- */
-async function previewInRegion(region: string, token: string): Promise<unknown> {
-  return askRegion(region, "previewInvitation", [token], t("server.auth.invitation_region_unavailable"));
-}
 
 /**
  * Project a studio row onto the wire shape every `/auth/*` response uses
@@ -211,10 +191,6 @@ auth.post("/register", rateLimitFor("register"), validate("json", registerSchema
   const { user, recoveryCode } = registered;
   const { token } = await authService.loginEmail(email, password);
   setSessionCookie(c, token);
-  // Every session opened here comes with its identity token, so another
-  // region answers the very next request (inner#1955).
-  // A new account holds no subscription yet, so its stored tier is the one in force.
-  await writeIdentityCookie(c, identitySubject(user, null), token);
   // Audit log moved here from auth.service.ts per
   // AGENTS.md#library-packages-do-not-log. The route handler is
   // the application boundary that owns request context.
@@ -279,10 +255,8 @@ auth.post(
       parseAttribution(attribution),
     );
     clearSignupTicketCookie(c);
-    await invitationService.claimEmailInvitationsOnSignIn(user);
-    const sessionToken = await authService.createSession(user.id);
-    setSessionCookie(c, sessionToken);
-    await writeIdentityCookie(c, identitySubject(user, null), sessionToken);
+    if (user.emailVerified) await invitationService.claimEmailInvitations(user);
+    setSessionCookie(c, await authService.createSession(user.id));
     logger.info({ userId: user.id, email: user.email }, "user_registered");
     logger.info({ userId: user.id, method: "email" }, "user_logged_in");
     // Same shape as the created branch of `/register`: the personal studio
@@ -296,11 +270,11 @@ auth.post(
  *
  * The authenticated-but-studio-less user picks their slug. The slug
  * format is validated by `setupStudioSchema` (lowercase handle, 6–39
- * chars); the service checks the slug in the global directory under the
- * slug's lock and creates `studios` (slug = name = chosen slug,
- * type='personal') + the creator's admin `studio_members` row atomically. A
- * slug already held, including by a concurrent setup that took the lock
- * first, is a `ConflictError` → 409 (never 500).
+ * chars); the service re-checks uniqueness against `studios.slug` and
+ * creates `studios` (slug = name = chosen slug, type='personal') + the
+ * creator's admin `studio_members` row atomically. A concurrent
+ * duplicate slug that loses the pre-check race is caught by the
+ * `studios_slug_idx` unique index → `ConflictError` → 409 (never 500).
  * @param c - Hono context with validated `setupStudioSchema` body + authed user
  * @returns `201` with `{ personalStudio: { name, slug } }`
  * @throws {AppError} `409` if the slug is already taken (or the user
@@ -308,16 +282,9 @@ auth.post(
  */
 auth.post("/setup-studio", requireAuth, validate("json", setupStudioSchema), async (c) => {
   const user = c.get("user");
-  const { slug, studioId, region } = c.req.valid("json");
-  const studio = await studioService.createPersonalStudio(user.id, slug, { studioId, region });
+  const { slug } = c.req.valid("json");
+  const studio = await studioService.createPersonalStudio(user.id, slug);
   logger.info({ userId: user.id, studioId: studio.id, slug }, "personal_studio_created");
-  // The identity token names the personal Studio, so it is signed again now
-  // that there is one (inner#1955).
-  const token = readSessionCookie(c);
-  if (token) {
-    const shown = await authService.withTierInForce(user);
-    await writeIdentityCookie(c, identitySubject(shown, studio), token);
-  }
   return c.json({ data: { personalStudio: toPersonalStudioRef(studio) } }, 201);
 });
 
@@ -346,7 +313,6 @@ auth.post(
       authService.withTierInForce(user),
       studioService.getPersonalStudio(user.id),
     ]);
-    await writeIdentityCookie(c, identitySubject(shown, studio), token);
     // Audit log moved from auth.service.ts (17B mandate).
     logger.info({ userId: user.id, method: "email" }, "user_logged_in");
     trackServerEvent("login_completed", {
@@ -448,7 +414,6 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
     authService.withTierInForce(user),
     studioService.getPersonalStudio(user.id),
   ]);
-  await writeIdentityCookie(c, identitySubject(shown, studio), token);
   // Audit log moved from auth.service.ts (17B mandate).
   logger.info({ userId: user.id, method: "google" }, "user_logged_in");
   // A first Google sign-in is a sign-up, already counted as `signup_completed`.
@@ -484,49 +449,8 @@ auth.get("/me", requireAuth, async (c) => {
     authService.withTierInForce(user),
     studioService.getPersonalStudio(user.id),
   ]);
-  const token = readSessionCookie(c);
-  if (token) await writeIdentityCookie(c, identitySubject(shown, studio), token);
   return c.json({ data: { ...shown, personalStudio: toPersonalStudioRef(studio) } });
 });
-
-/**
- * `POST /auth/identity` — sign a fresh identity token for the page's session
- * (inner#1955). A build with several regions calls it every 45 seconds, and
- * again when a region answers 401 `identity_expired`.
- * @param c - Hono context with authenticated user
- * @returns `200` with `{ data: { ok: true } }` and the `breatic_identity_<ENV>`
- *   cookie; `401` without a session
- */
-auth.post("/identity", requireAuth, async (c) => {
-  const user = c.get("user");
-  const token = readSessionCookie(c);
-  if (!token) throw new UnauthorizedError(t("server.auth.not_authenticated"));
-  const [shown, studio] = await Promise.all([
-    authService.withTierInForce(user),
-    studioService.getPersonalStudio(user.id),
-  ]);
-  await writeIdentityCookie(c, identitySubject(shown, studio), token);
-  return c.json({ data: { ok: true } });
-});
-
-/** A personal Studio as the identity token carries it. */
-type PersonalStudioRow = { id: string; name: string; slug: string; avatarUrl?: string | null } | null;
-
-/**
- * Who the identity token says the user is.
- * @param user - The account, with the tier in force.
- * @param studio - Their personal Studio, if set up.
- * @returns The token subject.
- */
-function identitySubject(user: AuthVariables["user"], studio: PersonalStudioRow): IdentitySubject {
-  return {
-    userId: user.id,
-    email: user.email,
-    tier: user.membershipTier,
-    locale: user.locale,
-    personalStudio: studio ? { id: studio.id, slug: studio.slug, name: studio.name, avatarUrl: studio.avatarUrl ?? null } : null,
-  };
-}
 
 /**
  * `POST /auth/logout` - invalidate the current session.
@@ -542,7 +466,6 @@ auth.post("/logout", requireAuth, async (c) => {
     logRevocationSignalFailure(signalFailure, c.get("user").id);
   }
   clearSessionCookie(c);
-  clearIdentityCookie(c);
   return c.json({ message: t("server.auth.logout_success") });
 });
 

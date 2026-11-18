@@ -5,14 +5,13 @@
  * Studio repository — `studios` table data access.
  *
  * A studio is `personal` (one per user, created at the slug-setup
- * onboarding step) or `team`. The slug (URL handle) is chosen by the user and
- * unique across every region, and a user has one personal studio in any
- * region; the global directory enforces both (`studio_directory_slug_live`,
- * `studio_directory_one_personal`, inner#1955). `studios_owner_personal_idx`
- * and `studios_slug_idx` hold the same rules within this region's database.
+ * onboarding step) or `team`. The slug (URL handle) is globally unique and
+ * chosen by the user. "One personal studio per user" is enforced by the
+ * `studios_owner_personal_idx` partial unique index; a taken handle by
+ * `studios_slug_idx`.
  */
 
-import { and, desc, eq, isNull, inArray, sql } from "drizzle-orm";
+import { and, eq, ne, isNull, inArray, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { studios, studioMembers } from "@breatic/core";
@@ -64,15 +63,14 @@ export async function getPersonalByCreator(
  * Insert a personal studio (slug = name = the chosen handle).
  *
  * Caller must ensure no active personal studio exists for the user (the
- * `studios_owner_personal_idx` partial unique index rejects duplicates in
- * this region; `studios_slug_idx` rejects a handle taken in this region). Accepts an optional Drizzle
+ * `studios_owner_personal_idx` partial unique index rejects duplicates;
+ * `studios_slug_idx` rejects a taken handle). Accepts an optional Drizzle
  * transaction so setup-studio can create the studio + the creator's admin
  * member row in one atomic operation.
  * @param createdByUserId - The creator's user UUID
  * @param slug - The user's URL handle; also the studio's slug
  * @param name - Display name (initially the slug)
  * @param tx - Optional transaction handle
- * @param id - The id to create it under, when the caller chose one (inner#1955)
  * @returns The freshly created studio entity
  */
 export async function createPersonalStudio(
@@ -80,12 +78,11 @@ export async function createPersonalStudio(
   slug: string,
   name: string,
   tx?: DbTx,
-  id?: string,
 ): Promise<Studio> {
   const runner = tx ?? db;
   const rows = await runner
     .insert(studios)
-    .values({ ...(id ? { id } : {}), createdByUserId, slug, name, type: "personal" })
+    .values({ createdByUserId, slug, name, type: "personal" })
     .returning();
   return toEntity(rows[0]!);
 }
@@ -96,14 +93,13 @@ export async function createPersonalStudio(
  * Unlike a personal studio (one per user), a user may own many team studios —
  * the `studios_owner_personal_idx` partial unique index is scoped to
  * `type='personal'`, so team rows are unconstrained on creator. The
- * slug index (`studios_slug_idx`) still rejects a handle taken in this region.
+ * global-unique slug index (`studios_slug_idx`) still rejects a taken handle.
  * Accepts an optional transaction so the service can create the studio + the
  * creator's admin member row atomically.
  * @param createdByUserId - The creator's user UUID (becomes the studio admin)
- * @param slug - The URL handle, unique across regions
+ * @param slug - The globally-unique URL handle
  * @param name - The display name (independent of the slug)
  * @param tx - Optional transaction handle
- * @param id - The id to create it under, when the caller chose one (inner#1955)
  * @returns The freshly created team studio entity
  */
 export async function createTeamStudio(
@@ -111,12 +107,11 @@ export async function createTeamStudio(
   slug: string,
   name: string,
   tx?: DbTx,
-  id?: string,
 ): Promise<Studio> {
   const runner = tx ?? db;
   const rows = await runner
     .insert(studios)
-    .values({ ...(id ? { id } : {}), createdByUserId, slug, name, type: "team" })
+    .values({ createdByUserId, slug, name, type: "team" })
     .returning();
   return toEntity(rows[0]!);
 }
@@ -131,8 +126,9 @@ export async function createTeamStudio(
  * set fills up. This honours the project rule that mutable ownership is decided
  * by `studio_members.role`, never by the immutable audit field. Personal studios
  * and soft-deleted rows (studio or membership) are excluded. This is the single
- * source of truth for "administered team studios" in this region; the account
- * storage roll-up (#1826 §5.3) derives from it. Accepts an
+ * source of truth for "administered team studios" — {@link countTeamStudiosAdministeredBy}
+ * (the per-user creation quota) and the account storage roll-up (#1826 §5.3)
+ * both derive from it, so their predicates can never drift apart. Accepts an
  * optional transaction so it can run inside a create transaction.
  * @param userId - The user UUID whose administered team studios to enumerate
  * @param tx - Optional transaction handle
@@ -157,6 +153,23 @@ export async function listTeamStudioIdsAdministeredBy(
       ),
     );
   return rows.map((r) => r.id);
+}
+
+/**
+ * Count the team studios a user **currently administers** (for the per-user
+ * creation limit). Delegates to {@link listTeamStudioIdsAdministeredBy} so the
+ * quota and the account roll-up share one ownership predicate (the count can
+ * never diverge from the enumeration). The administered set is bounded by the
+ * per-user cap, so materialising the ids to count them is negligible.
+ * @param userId - The user UUID whose administered team studios to count
+ * @param tx - Optional transaction handle
+ * @returns The number of active team studios the user currently administers
+ */
+export async function countTeamStudiosAdministeredBy(
+  userId: string,
+  tx?: DbTx,
+): Promise<number> {
+  return (await listTeamStudioIdsAdministeredBy(userId, tx)).length;
 }
 
 /**
@@ -199,6 +212,102 @@ export async function lockStudio(studioId: string, tx: DbTx): Promise<boolean> {
 }
 
 /**
+ * Batch-resolve each user's active personal studio identity (`name` +
+ * `avatarUrl`).
+ *
+ * Backs the `/users` batch display-info endpoint — the display name and
+ * avatar both live on the personal studio (pointer model; avatar moved off
+ * `users` 2026-07-22, #1808). Users with no active personal studio are
+ * absent from the map; callers fall back to the email local-part (and a
+ * null avatar).
+ * @param createdByUserIds - User UUIDs to resolve (empty input → empty map)
+ * @returns Map of `userId → { name, avatarUrl }`
+ */
+export async function getPersonalIdentitiesByCreators(
+  createdByUserIds: string[],
+): Promise<Map<string, { name: string; avatarUrl: string | null }>> {
+  if (createdByUserIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      createdByUserId: studios.createdByUserId,
+      name: studios.name,
+      avatarUrl: studios.avatarUrl,
+    })
+    .from(studios)
+    .where(
+      and(
+        inArray(studios.createdByUserId, createdByUserIds),
+        eq(studios.type, "personal"),
+        isNull(studios.deletedAt),
+      ),
+    );
+  return new Map(
+    rows.map((r) => [r.createdByUserId, { name: r.name, avatarUrl: r.avatarUrl }]),
+  );
+}
+
+/**
+ * Batch-resolve each user's personal studio `name` + URL `slug` (handle).
+ *
+ * Backs the bell notification actor identity: the slug is both the `@handle`
+ * shown beside the name and the `/studio/{slug}` link target.
+ *
+ * Soft-deleted studios ARE returned, flagged `deleted`, because a notification
+ * is a record of something that happened and "someone invited you" with the
+ * someone missing is not a usable record. Callers keep the name and drop only
+ * the link. Users with no personal studio at all (mid-onboarding) are absent
+ * from the map; callers fall back.
+ *
+ * A live row always wins over a soft-deleted one. Without the active-only
+ * filter a user can match more than one row, and the query has no ordering —
+ * so building the map by last-write-wins would pick an arbitrary row and could
+ * show a stale name for someone who is perfectly present.
+ * A caller inside a transaction MUST pass the handle. Both `confirmInvite`
+ * transactions call this while holding a `studios` / `projects` row lock, and a
+ * read issued without the handle reaches for a second pooled connection while
+ * the first is still held — which is how a pool exhausts itself under
+ * concurrent writes, in a shape that does not recover: the connection the lock
+ * holder cannot get is the one it needs before it can commit and let go.
+ * @param createdByUserIds - User UUIDs to resolve (empty input → empty map)
+ * @param tx - Enclosing transaction, when the caller is inside one
+ * @returns Map of `userId → { name, slug, deleted }`
+ */
+export async function getPersonalProfilesByCreators(
+  createdByUserIds: string[],
+  tx?: DbTx,
+): Promise<Map<string, { name: string; slug: string; deleted: boolean }>> {
+  if (createdByUserIds.length === 0) return new Map();
+  const rows = await (tx ?? db)
+    .select({
+      createdByUserId: studios.createdByUserId,
+      name: studios.name,
+      slug: studios.slug,
+      deletedAt: studios.deletedAt,
+    })
+    .from(studios)
+    .where(
+      and(
+        inArray(studios.createdByUserId, createdByUserIds),
+        eq(studios.type, "personal"),
+      ),
+    );
+  const byUser = new Map<
+    string,
+    { name: string; slug: string; deleted: boolean }
+  >();
+  for (const row of rows) {
+    const held = byUser.get(row.createdByUserId);
+    if (held !== undefined && !held.deleted) continue;
+    byUser.set(row.createdByUserId, {
+      name: row.name,
+      slug: row.slug,
+      deleted: row.deletedAt !== null,
+    });
+  }
+  return byUser;
+}
+
+/**
  * Resolve studio ids to their CURRENT name + slug, in one query.
  *
  * The read half of storing ids instead of names. Notifications keep the id
@@ -238,10 +347,10 @@ export async function getIdentitiesByStudioIds(
 /**
  * Look up an active studio (personal or team) by its URL handle.
  *
- * Backs the container shell (`GET /studio/:slug`). The slug is unique among
- * this region's active studios (`studios_slug_idx`), so at most one row
+ * Backs the container shell (`GET /studio/:slug`). The slug is globally
+ * unique among active studios (`studios_slug_idx`), so at most one row
  * matches.
- * @param slug - The studio's slug
+ * @param slug - The studio's globally-unique slug
  * @returns The studio entity, or `null` if no active studio has that slug
  */
 export async function getBySlug(slug: string): Promise<Studio | null> {
@@ -251,6 +360,39 @@ export async function getBySlug(slug: string): Promise<Studio | null> {
     .where(and(eq(studios.slug, slug), isNull(studios.deletedAt)))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * Is this slug claimed by an active studio OTHER than the given one?
+ *
+ * The exclusion is what makes the rename form usable: a studio's current slug
+ * is of course "taken" — by itself — so a check without it tells an admin
+ * their own handle is unavailable the moment they focus the field. Creation
+ * passes no exclusion and behaves exactly as before.
+ *
+ * Advisory only. The authoritative guard is the `studios_slug_idx` unique
+ * index at write time, so a slug reported free here can still lose a
+ * concurrent race and surface as a conflict on submit.
+ * @param slug - The candidate slug
+ * @param excludeStudioId - A studio whose own claim on the slug does not count
+ * @returns true when some other active studio already holds it
+ */
+export async function isSlugTaken(
+  slug: string,
+  excludeStudioId?: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: studios.id })
+    .from(studios)
+    .where(
+      and(
+        eq(studios.slug, slug),
+        isNull(studios.deletedAt),
+        excludeStudioId ? ne(studios.id, excludeStudioId) : undefined,
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
 }
 
 /**
@@ -307,19 +449,6 @@ export async function getById(
     .where(and(eq(studios.id, id), isNull(studios.deletedAt)))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
-}
-
-/**
- * The ids of every live Studio this region holds, newest first.
- * @returns Them.
- */
-export async function listLiveIds(): Promise<string[]> {
-  const rows = await db
-    .select({ id: studios.id })
-    .from(studios)
-    .where(isNull(studios.deletedAt))
-    .orderBy(desc(studios.createdAt));
-  return rows.map((row) => row.id);
 }
 
 /**
@@ -391,13 +520,24 @@ export async function countMembersByStudioIds(
   return new Map(rows.map((r) => [r.studioId, r.count]));
 }
 
+
 /**
- * Whether a Studio row exists under an id, deleted or not.
- * @param studioId - The id.
- * @param tx - The transaction to read in.
- * @returns True when a row has the id.
+ * Lock and recheck the account's personal Studio for one grant decision.
+ * @param userId - The target product account UUID.
+ * @param tx - The transaction holding the identity and funding locks.
+ * @returns Its current personal Studio, or null when unavailable.
+ * @throws {Error} When the identity lock cannot be acquired.
  */
-export async function existsById(studioId: string, tx: DbTx): Promise<boolean> {
-  const rows = await tx.select({ id: studios.id }).from(studios).where(eq(studios.id, studioId)).limit(1);
-  return rows.length > 0;
+export async function lockPersonalForGrant(userId: string, tx: DbTx): Promise<Studio | null> {
+  const candidates = await tx.select({ id: studios.id }).from(studios)
+    .where(and(eq(studios.createdByUserId, userId), eq(studios.type, "personal"), isNull(studios.deletedAt))).limit(1);
+  const candidate = candidates[0];
+  if (!candidate) return null;
+  // Select the candidate first, then lock only immutable identity columns.
+  // A type change while this waits is judged on the returned current row.
+  const rows = await tx.select().from(studios)
+    .where(and(eq(studios.id, candidate.id), isNull(studios.deletedAt)))
+    .for("no key update").limit(1);
+  const row = rows[0];
+  return row && row.type === "personal" && row.createdByUserId === userId ? toEntity(row) : null;
 }

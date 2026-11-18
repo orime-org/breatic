@@ -53,8 +53,6 @@ export interface Notification {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
-  /** The region that holds it; null or absent is the global region (inner#1955). */
-  region?: string | null;
 }
 
 /**
@@ -93,8 +91,6 @@ export interface NotificationResolved {
 export interface NotificationListView {
   items: Notification[];
   resolved: NotificationResolved;
-  /** Regions that did not answer in time; their notifications are missing. */
-  unavailableRegions: string[];
 }
 
 /** A resolved map with nothing in it — for callers with no page loaded yet. */
@@ -121,21 +117,19 @@ export const notificationsApi = {
    * Unread count — drives the red-dot badge on the bell icon.
    * @returns The number of unread notifications for the caller.
    */
-  count(): Promise<{ count: number; unavailableRegions: string[] }> {
-    return apiGet<{ count: number; unavailableRegions: string[] }>('/users/me/notifications/count');
+  count(): Promise<{ count: number }> {
+    return apiGet<{ count: number }>('/users/me/notifications/count');
   },
 
   /**
-   * Mark a single notification as read, in the region that holds it.
+   * Mark a single notification as read.
    * @param id - The notification to mark as read.
-   * @param region - The region the list named for it; null or absent is the global region.
    * @returns An acknowledgement once the notification is marked read.
    */
-  markRead(id: string, region?: string | null): Promise<{ ok: true }> {
+  markRead(id: string): Promise<{ ok: true }> {
     return apiPatch<{ ok: true }, undefined>(
       `/users/me/notifications/${id}/read`,
       undefined,
-      region ? { params: { region } } : undefined,
     );
   },
 

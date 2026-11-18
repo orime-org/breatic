@@ -18,10 +18,9 @@
 
 import { accountActivityRepo, getStorageAdapter, logger } from "@breatic/core";
 import type { CanvasPasteAnswer, NodeMediaFields, PasteHistoryItem, PastePair, StudioAssetEntity } from "@breatic/shared";
-import { assetRepo, assetService, ingestReportService, lookupKeysHere, materialFacts, nodeHistoryService } from "@breatic/domain";
+import { assetRepo, assetService, ingestReportService, materialFacts, nodeHistoryService } from "@breatic/domain";
 
 import { assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
-import { findElsewhereByKeys } from "@server/modules/region/asset-lookup.js";
 
 /** What a paste asks for. */
 export interface PasteInput {
@@ -54,28 +53,14 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   const storage = await getStorageAdapter();
   const map: Record<string, string | null> = {};
 
-  // Every key the paste names is read from this region's ledger in one
-  // answer, and the ones it does not hold are asked elsewhere in one call per
-  // region: the global region asks every other region, any other region asks
-  // the global region (inner#1955).
-  const addresses = new Set([...input.urls, ...input.pairs.flatMap((pair) => [pair.url, pair.cover])]);
-  const here = await lookupKeysHere([...addresses].map((address) => storage.keyFromUrl(address)).filter((key) => key !== null));
-  const local = new Map(Object.entries(here).map(([key, answer]) => [key, answer.asset]));
-  const elsewhere = await findElsewhereByKeys([...local].filter(([, row]) => row === null).map(([key]) => key));
-
-  // Cover rows found under a video's key, by the cover's own key.
-  const covers = new Map<string, StudioAssetEntity>();
-
   /**
-   * The live row an address names, from this region or a region asked.
+   * The live row an address names, from any Studio.
    * @param address - A storage address.
    * @returns The row, or null.
    */
-  const sourceOf = (address: string): StudioAssetEntity | null => {
+  const sourceOf = async (address: string): Promise<StudioAssetEntity | null> => {
     const key = storage.keyFromUrl(address);
-    if (key === null) return null;
-    if (local.has(key)) return local.get(key) ?? elsewhere.get(key)?.asset ?? null;
-    return covers.get(key) ?? null;
+    return key === null ? null : assetRepo.findLiveByStorageKey(key);
   };
 
   // Read everything first; nothing is written until the storage gate passed.
@@ -88,20 +73,13 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   const paired = new Set(pairs.flatMap((pair) => [pair.url, pair.cover]));
   for (const address of new Set(input.urls)) {
     const key = paired.has(address) ? null : storage.keyFromUrl(address);
-    // A cover lives in its video's region: another region answers only for
-    // an address this region's ledger does not hold.
-    const cover =
-      key === null ? null : (here[key]?.cover ?? (local.get(key) === null ? (elsewhere.get(key)?.cover ?? null) : null));
-    if (cover !== null) {
-      pairs.push({ url: address, cover: cover.fileUrl });
-      const coverKey = storage.keyFromUrl(cover.fileUrl);
-      if (coverKey !== null) covers.set(coverKey, cover);
-    }
+    const cover = key === null ? null : await assetRepo.findCoverUnderKey(key);
+    if (cover !== null) pairs.push({ url: address, cover: cover.fileUrl });
   }
   for (const pair of pairs) {
-    const video = sourceOf(pair.url);
+    const video = await sourceOf(pair.url);
     if (video === null) continue;
-    const cover = sourceOf(pair.cover);
+    const cover = await sourceOf(pair.cover);
     const hit = await assetRepo.findByStudioAndHash(studioId, video.contentHash);
     videos.push({ pair, video, hit });
     if (hit === null) misses.push({ address: pair.url, source: video, as: "upload" });
@@ -122,7 +100,7 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   }
   for (const address of new Set(input.urls)) {
     if (address in map || misses.some((miss) => miss.address === address)) continue;
-    const source = sourceOf(address);
+    const source = await sourceOf(address);
     if (source === null) continue;
     const hit = await assetRepo.findByStudioAndHash(studioId, source.contentHash);
     if (hit === null) misses.push({ address, source, as: "upload" });

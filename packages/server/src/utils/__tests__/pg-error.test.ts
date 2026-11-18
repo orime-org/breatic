@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { isDeadlock, isUniqueViolation } from "@core/db/pg-error.js";
+import { isUniqueViolation } from "@server/utils/pg-error.js";
 
 describe("isUniqueViolation", () => {
   it("detects a top-level SQLSTATE 23505", () => {
@@ -39,16 +39,5 @@ describe("isUniqueViolation", () => {
     const b: { cause?: unknown } = { cause: a };
     a.cause = b;
     expect(isUniqueViolation(a)).toBe(false);
-  });
-});
-
-describe("isDeadlock", () => {
-  it("detects SQLSTATE 40P01 on .cause", () => {
-    expect(isDeadlock({ name: "DrizzleQueryError", cause: { code: "40P01" } })).toBe(true);
-  });
-
-  it("returns false for any other code", () => {
-    expect(isDeadlock({ code: "23505" })).toBe(false);
-    expect(isDeadlock(new Error("boom"))).toBe(false);
   });
 });

@@ -25,7 +25,6 @@
     "clean": "turbo run clean",
     "prepare": "git config core.hooksPath .husky || true",
     "db:activity-coverage": "turbo run build --filter=@breatic/core... && tsx scripts/activity-coverage.ts",
-    "db:reconcile-directory": "turbo run build --filter=@breatic/domain... && tsx scripts/reconcile-directory.ts",
     "db:journal-add": "tsx scripts/db-journal-add.ts",
     "db:journal-repair": "tsx scripts/db-journal-repair.ts",
     "db:check-watermark": "tsx scripts/db-check-watermark.ts",

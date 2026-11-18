@@ -27,7 +27,6 @@ import type {
 } from "@breatic/shared";
 import { t, parseCreditDecimal, serializeCreditMicro, type CreditDecimal } from "@breatic/shared";
 import { getCreditPageLimits } from "@server/config/limits.js";
-import { projectNamesEverywhere, projectNamesHere } from "@server/modules/region/project-names.js";
 
 /**
  * Decode a cursor, treating anything unusable as "start from the beginning".
@@ -103,10 +102,9 @@ function toStudioLotView(lot: creditLotRepo.StudioLot): StudioLotView {
 /**
  * Map a ledger row to its display shape.
  * @param row - One generation's grouped row.
- * @param names - Project names by id, read in each Project's region.
  * @returns The view.
  */
-function toLedgerView(row: PayerLedgerRow, names: Record<string, string>): CreditLedgerView {
+function toLedgerView(row: PayerLedgerRow): CreditLedgerView {
   return {
     id: row.id,
     kind: row.kind,
@@ -115,7 +113,7 @@ function toLedgerView(row: PayerLedgerRow, names: Record<string, string>): Credi
     studioId: row.studioId,
     studioName: row.studioName,
     projectId: row.projectId,
-    projectName: row.projectId === null ? null : (names[row.projectId] ?? null),
+    projectName: row.projectName,
     model: row.model,
     provider: row.provider,
     amount: toDecimal(row.amount),
@@ -202,9 +200,7 @@ export async function listLedger(
     cursor,
     studioId,
   );
-  // The Projects may live in any region; each name comes from its own (inner#1955).
-  const names = await projectNamesEverywhere(projectIdsOf(rows.slice(0, size)));
-  return toPage(rows, size, (row) => toLedgerView(row, names), (row) => ({
+  return toPage(rows, size, toLedgerView, (row) => ({
     cursorAt: row.cursorAt,
     id: row.id,
   }));
@@ -227,23 +223,12 @@ export async function getProjectCredits(projectId: string): Promise<ProjectCredi
 }
 
 /**
- * The Projects a page of ledger lines names.
- * @param rows - The lines.
- * @returns Their Project ids.
- */
-function projectIdsOf(rows: readonly { projectId: string | null }[]): string[] {
-  return rows.flatMap((row) => (row.projectId === null ? [] : [row.projectId]));
-}
-
-/**
  * Map one grouped ledger line to its display shape.
  * @param row - The grouped row.
- * @param names - Project names by id; a Studio's Projects live in its own region.
  * @returns The view model.
  */
 function toStudioLedgerView(
   row: creditLotRepo.StudioLedgerRow,
-  names: Record<string, string>,
 ): StudioLedgerView {
   return {
     id: row.id,
@@ -251,7 +236,7 @@ function toStudioLedgerView(
     actorUserId: row.actorUserId,
     actorName: row.actorName,
     projectId: row.projectId,
-    projectName: row.projectId === null ? null : (names[row.projectId] ?? null),
+    projectName: row.projectName,
     model: row.model,
     provider: row.provider,
     charged: toDecimal(row.charged),
@@ -307,21 +292,23 @@ export async function getStudioCredits(
   const cursor = readCursor(rawCursor);
 
   if (cursor) {
-    const rows = await creditLotService.listStudioLedger(studioId, size + 1, cursor);
-    const names = await projectNamesHere(projectIdsOf(rows.slice(0, size)));
+    const rows = await creditLotRepo.listLedgerByStudio(
+      studioId,
+      size + 1,
+      cursor,
+    );
     return {
-      ledger: toPage(rows, size, (row) => toStudioLedgerView(row, names), studioLedgerKey),
+      ledger: toPage(rows, size, toStudioLedgerView, studioLedgerKey),
     };
   }
 
   const snapshot = await creditLotService.readStudioCredits(studioId, size + 1);
-  const names = await projectNamesHere(projectIdsOf(snapshot.ledger.slice(0, size)));
   return {
     spendable: snapshot.spendable,
     debt: snapshot.debt,
     held: snapshot.held,
     available: snapshot.available,
     lots: snapshot.lots.map(toStudioLotView),
-    ledger: toPage(snapshot.ledger, size, (row) => toStudioLedgerView(row, names), studioLedgerKey),
+    ledger: toPage(snapshot.ledger, size, toStudioLedgerView, studioLedgerKey),
   };
 }

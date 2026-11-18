@@ -57,7 +57,6 @@ import { MINI_TOOLS, mostOutputsOf } from "@breatic/shared/mini-tools";
 import { openCalls, opensByKey, resetOpenDouble, setOpenMode } from "../helpers/ingest-open-double.js";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import type { Hono } from "hono";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -132,7 +131,6 @@ async function account(filledBytes = 0): Promise<{
   if (filledBytes > 0) await register(studioId, userId, crypto.randomBytes(32).toString("hex"), filledBytes);
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
-  await mirrorAllInDirectory(sql);
   return { userId, studioId, projectId, cookie: `${sessionCookieName()}=${token}` };
 }
 
