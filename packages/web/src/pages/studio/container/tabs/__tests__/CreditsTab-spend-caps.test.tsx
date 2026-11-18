@@ -212,6 +212,11 @@ describe('editing the two limits', () => {
     await waitFor(() => expect(put).toHaveBeenCalledWith('/studio/acme/spend-limits', { studioMonthly: 10.05, memberDefault: 300 }));
   });
 
+  it('counts a total typed as the same amount as unchanged', async () => {
+    await typeStudioTotal('2000.0');
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
+  });
+
   it('says the server\'s own sentence when the server refuses the save', async () => {
     put.mockRejectedValue(new ApiException({ status: 422, message: 'The server says no.', fromServer: true }));
     await typeStudioTotal('500');

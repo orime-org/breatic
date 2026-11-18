@@ -169,10 +169,14 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
   const studioValue = valueOf(studioDraft);
   const memberValue = valueOf(memberDraft);
   const invalid = studioValue === undefined || memberValue === undefined;
-  const dirty = view !== undefined && (
-    JSON.stringify(studioDraft) !== JSON.stringify(draftOf(view.studioMonthly)) ||
-    JSON.stringify(memberDraft) !== JSON.stringify(draftOf(view.memberDefault))
-  );
+  // Changed by value: "100.0" for a stored 100 is no change; an unusable entry is one.
+  /**
+   * A stored limit as the number a draft is compared with.
+   * @param value - The stored limit, or null for none.
+   * @returns The number, or null.
+   */
+  const stored = (value: string | null): number | null => (value === null ? null : Number(value));
+  const dirty = view !== undefined && (studioValue !== stored(view.studioMonthly) || memberValue !== stored(view.memberDefault));
   const save = React.useCallback(async (): Promise<void> => {
     if (studioValue === undefined || memberValue === undefined) {
       toast.warning(invalidLine);
