@@ -598,4 +598,12 @@ describe('a 3D generation waiting for a slot', () => {
       setLocale('en');
     }
   });
+  it('says the sentence the server wrote when it refuses the cancel', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'queued', startedAt: new Date(NOW - 180_000).toISOString(), waitingSince: new Date(NOW - 180_000).toISOString(), slotWaitLimit: 2 })));
+    request.post.mockRejectedValue(new ApiException({ status: 403, message: 'You can only view this project.', fromServer: true }));
+    renderList();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(within(await rowOf('queued')).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('You can only view this project.'));
+  });
 });

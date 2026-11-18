@@ -36,6 +36,8 @@ vi.mock('@web/i18n/use-translation', () => ({
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { canvasApi } from '@web/data/api/canvas';
+import { toast } from '@web/lib/toast';
+import { ApiException } from '@web/data/api/types';
 import { NodeTaskPanelContainer } from '@web/spaces/canvas/tasks/NodeTaskPanelContainer';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { useTaskActionsInFlight } from '@web/stores/task-actions-in-flight';
@@ -229,6 +231,32 @@ describe('NodeTaskPanelContainer', () => {
       await waitFor(() => expect(canvasApi.listNodeTasks).toHaveBeenCalledTimes(2));
       await act(async () => { answer(cancelled(1)); await Promise.resolve(); });
       expect(canvasSessions.of('').getState().panelHostId).toBe('target');
+    });
+
+    it('takes the cancelled row out of the queued list at once, without reading the list again', async () => {
+      canvasSessions.of('').getState().openTaskPanel('target', 'waiting');
+      vi.mocked(canvasApi.listNodeTasks).mockResolvedValue([queued('first'), queued('second')]);
+      vi.mocked(canvasApi.cancelTask).mockResolvedValue(cancelled(1));
+      mount(waitingHost(2));
+      fireEvent.click((await screen.findAllByTestId('task-action-cancel'))[0]!);
+      await waitFor(() => expect(screen.getAllByTestId('task-action-cancel')).toHaveLength(1));
+      expect(canvasApi.listNodeTasks).toHaveBeenCalledTimes(1);
+    });
+
+    // A task that started meanwhile is a rule stopping the press, not a failure.
+    it('warns with the server\'s sentence when the task started meanwhile, and says anything else the server wrote as an error', async () => {
+      canvasSessions.of('').getState().openTaskPanel('target', 'waiting');
+      vi.mocked(canvasApi.listNodeTasks).mockResolvedValue([queued('first'), queued('second')]);
+      vi.mocked(canvasApi.cancelTask)
+        .mockRejectedValueOnce(new ApiException({ status: 409, message: 'It has started.', fromServer: true }))
+        .mockRejectedValueOnce(new ApiException({ status: 403, message: 'You can only view this project.', fromServer: true }));
+      mount(waitingHost(2));
+      const [first, second] = await screen.findAllByTestId('task-action-cancel');
+      fireEvent.click(first!);
+      await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('It has started.'));
+      fireEvent.click(second!);
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith('You can only view this project.'));
+      expect(toast.error).toHaveBeenCalledTimes(1);
     });
 
     it('leaves another panel the user opened meanwhile alone when the cancel answers', async () => {

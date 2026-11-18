@@ -17,10 +17,10 @@ import type { NodeRef } from '@web/data/yjs/node-view';
 import type { NodeTaskCounts, NodeTaskEntry } from '@breatic/shared';
 
 import { canvasApi } from '@web/data/api/canvas';
-import { ApiException } from '@web/data/api/types';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
+import { toastCancelFailure } from '@web/spaces/canvas/tasks/cancel-failure';
 import { NodeTaskPanel, countInList, inTaskList } from '@web/spaces/canvas/tasks/NodeTaskPanel';
 import type { TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { useTickingClock } from '@web/spaces/canvas/tasks/use-ticking-clock';
@@ -198,16 +198,13 @@ function OpenNodeTaskPanel({
   // first moves it to a key not read yet. An answer that lands after the user
   // opened another panel leaves that panel alone.
   const rowLeft = React.useCallback(
-    (taskId: string, counts: NodeTaskCounts, keepRow: boolean): void => {
-      if (!keepRow) {
-        queryClient.setQueryData<NodeTaskEntry[]>(queryKey, (rows) => rows?.filter((row) => row.id !== taskId));
-      }
+    (taskId: string, counts: NodeTaskCounts): void => {
+      queryClient.setQueryData<NodeTaskEntry[]>(queryKey, (rows) => rows?.filter((row) => row.id !== taskId));
       const open = session.getState();
       if (open.panelKind !== 'tasks' || open.panelHostId !== nodeId || open.taskPanelStatus !== status) return;
       if (countInList(counts, status) === 0) closeActivePanel();
-      else if (keepRow) void query.refetch();
     },
-    [queryClient, queryKey, session, nodeId, status, closeActivePanel, query],
+    [queryClient, queryKey, session, nodeId, status, closeActivePanel],
   );
   // Finish and Clear are the same request (§7.4). The row leaves this list as
   // soon as the server takes it — the list is this user's own fetch, not the
@@ -218,7 +215,7 @@ function OpenNodeTaskPanel({
         .dismissNodeTask(taskId, { projectId, spaceId, nodeId })
         .then(({ counts }) => {
           clearRetryFile(projectId, spaceId, taskId);
-          rowLeft(taskId, counts, false);
+          rowLeft(taskId, counts);
         })
         .catch(() => {
           toast.error(t('canvas.task.dismissFailed'));
@@ -229,18 +226,18 @@ function OpenNodeTaskPanel({
   );
 
   // Cancel a task that waits for a free slot (inner#1968). The row ends as a
-  // failed one and stays on the node, so the list is read again to show it
-  // there. One that started meanwhile answers 409 with the server's sentence.
+  // failed one, so it leaves the queued list, the only one that offers Cancel.
+  // One that started meanwhile answers 409 with the server's sentence.
   const cancel = React.useCallback(
     (taskId: string): void => {
       const request = canvasApi
         .cancelTask(taskId, projectId)
         .then(({ counts }) => {
           // A 3D Space's own row answers no node counts; this list is a node's.
-          if (counts !== null) rowLeft(taskId, counts, true);
+          if (counts !== null) rowLeft(taskId, counts);
         })
         .catch((err: unknown) => {
-          toast.error(err instanceof ApiException && err.fromServer ? err.message : t('canvas.task.cancelFailed'));
+          toastCancelFailure(err, t('canvas.task.cancelFailed'));
         });
       trackTaskAction(taskActionKey(projectId, spaceId, taskId, 'cancel'), request);
     },

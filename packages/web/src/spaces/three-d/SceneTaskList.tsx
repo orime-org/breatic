@@ -18,6 +18,7 @@ import { Skeleton } from '@web/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { useTranslation } from '@web/i18n/use-translation';
+import { toastCancelFailure } from '@web/spaces/canvas/tasks/cancel-failure';
 import { waitReason } from '@web/spaces/canvas/tasks/wait-reason';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
@@ -206,8 +207,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
       try {
         await canvasApi.cancelTask(task.id, projectId);
       } catch (error) {
-        if (error instanceof ApiException && error.status === 409 && error.fromServer) toast.warning(error.message);
-        else toast.error(cancelFailed);
+        toastCancelFailure(error, cancelFailed);
       }
       await queryClient.invalidateQueries({ queryKey });
     });
