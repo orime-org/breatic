@@ -67,7 +67,8 @@ const POINT_OFFSET = 18;
  * card and the annotation write box. It opens beside the point and stays inside the preview area, flipping or sliding
  * near an edge, and no taller than the room there, scrolling what does not fit; pressing outside does not close it, Esc
  * does, and so does its close button, which stays in the corner while the content scrolls. One Esc closes only this card,
- * not the panel behind it. The content scrolls edge to edge, so its 8px rail runs along the card's right edge.
+ * not the panel behind it. The card has no padding and the content scrolls edge to edge, so its 8px rail runs along the
+ * card's right edge.
  * @param props - The card.
  * @param props.testId - Its test hook.
  * @param props.point - Its point.
@@ -90,7 +91,7 @@ export function MotionFrameCard({ testId, point, boundary, container, onClose, c
     <PopoverContent data-testid={testId} container={container} side='right' align='start' sideOffset={point === null ? 8 : POINT_OFFSET}
       collisionBoundary={boundary} collisionPadding={8} onInteractOutside={keepOpen} onEscapeKeyDown={leaveWordsToTheBox} onOpenAutoFocus={focusCard}
       onClick={stopAtCard} updatePositionStrategy='always'
-      className={cn('relative grid max-h-[var(--radix-popover-content-available-height)] grid-rows-[minmax(0,1fr)] overflow-hidden', className)}>
+      className={cn('relative grid max-h-[var(--radix-popover-content-available-height)] grid-rows-[minmax(0,1fr)] overflow-hidden bg-card p-0', className)}>
       <ScrollArea scrollbars='vertical' className='min-h-0'>{children}</ScrollArea>
       {/* 10px in from the right edge, clear of the 8px rail. */}
       <Button type='button' variant='ghost' size='compact' className='absolute right-2.5 top-1 z-10 bg-card px-1' aria-label={t('spaces.webAnimation.closePanel')}

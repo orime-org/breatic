@@ -745,6 +745,21 @@ describe('the thread card over the frame', () => {
     expect(screen.getByTestId('motion-action-add-annotation')).not.toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('asks before its close button throws words away, and puts the user back in the box on Keep writing', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('motion-action-add-annotation'));
+    const surface = await screen.findByTestId('motion-annotation-draft');
+    await user.type(screen.getByTestId('doc-comment-motion-annotation-input'), 'Logo too small');
+    await user.click(within(surface).getByRole('button', { name: t('spaces.webAnimation.closePanel') }));
+    await user.click(await screen.findByRole('button', { name: t('spaces.webAnimation.keepWriting') }));
+    const input = screen.getByTestId('doc-comment-motion-annotation-input');
+    expect(input).toHaveValue('Logo too small');
+    await waitFor(() => expect(input).toHaveFocus());
+  });
+
   it('stays open when the user presses outside it', async () => {
     await openCard();
     await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
