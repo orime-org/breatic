@@ -913,8 +913,9 @@ export function renderProductGuide(): string {
     `  - ${quoted(t("canvas.generatePanel.errorUnavailable"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorFailed"))}`,
     "  - when a monthly spend limit the Studio's admin set is reached, with no button, since adding credits does " +
-      "not lift a limit (see the When something is wrong section); the message names the limit and the day it " +
-      `resets, or says only ${quoted(t("credits.refusal.spendCap"))}`,
+      "not lift a limit (see the When something is wrong section); for the person's own limit the message names " +
+      "its amount and the day it resets, for the Studio's total only the day it resets; rarely it says only " +
+      `${quoted(t("credits.refusal.spendCap"))}`,
     "When the run finishes, its result replaces what the node held. A run makes one result; there is no count. " +
       "To get another, open the panel again and press the arrow: it can start while an earlier task is still " +
       "running, each finished result replaces what the node holds in turn, and the earlier ones stay in its " +
@@ -940,8 +941,8 @@ export function renderProductGuide(): string {
       `result so you can restore it, and ${quoted(t("canvas.task.action.clear"))}.`,
     "Each person runs only so many tasks at once, a number that comes with the membership of the Studio's admin; " +
       "a task past it waits its turn and starts by itself when an earlier one ends, and the time it waits does " +
-      "not count against its two hours. A node with a waiting task shows an hourglass in that column, just below " +
-      `the spinning circle; hovering it shows ${quoted(t("canvas.task.status.waiting"))} with how many, and why: ` +
+      "not count against its two hours. A node with a waiting task shows an hourglass in that column (below the " +
+      `spinning circle when some of its tasks already run); hovering it shows ${quoted(t("canvas.task.status.waiting"))} with how many, and why: ` +
       `${quoted(t("canvas.task.waitReasonLimit", { limit: 2 }))} — clicking it opens the ${quoted(t("canvas.task.status.waiting"))} ` +
       `list, which holds only the waiting tasks (the ${quoted(t("canvas.task.status.running"))} list holds only those already running); each row there says ${quoted(t("canvas.task.status.waiting"))}, shows no running time and ` +
       `offers ${quoted(t("common.cancel"))}, which ends it as ${quoted(t("canvas.task.failure.cancelled"))} A task ` +
@@ -2103,8 +2104,9 @@ export function renderProductGuide(): string {
       "Deleting a snapshot asks first and cannot be undone.",
     "",
     "## When something is wrong",
-    "- A monthly spend limit is reached, the person's own or the Studio's total: the message names the limit " +
-      `and the day it resets, or says only ${quoted(t("credits.refusal.spendCap"))} — work that spends credits is refused ` +
+    "- A monthly spend limit is reached, the person's own or the Studio's total: for the person's own limit the " +
+      "message names its amount and the day it resets, for the Studio's total only the day it resets; rarely it " +
+      `says only ${quoted(t("credits.refusal.spendCap"))} — work that spends credits is refused ` +
       "until the month resets (on the first of the month, UTC); work already running finishes. Adding credits " +
       "does not lift it, so the message has no button; only the Studio's admin can change the limits. They are " +
       `on the Studio page's ${quoted(t("studio.container.tabs.credits"))} tab, under ${quoted(t("studio.container.credits.spendCap.title"))}: ` +
