@@ -374,6 +374,16 @@ describe('the mouse on the menu (A3)', () => {
     expect(screen.getByTestId('doc-slash-row-heading-1').hasAttribute('data-highlighted')).toBe(true);
   });
 
+  it('counts the no-match characters of a menu opened by a second trigger from its own start', () => {
+    const { editor } = open([para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/heading ');
+    type(editor, '/zzz');
+    expect(screen.getByTestId('doc-slash-empty')).not.toBeNull();
+    type(editor, 'z');
+    expect(menu()).toBeNull();
+  });
+
   it('starts on the first row again when the query changes and comes back', () => {
     const { editor } = open([para('')]);
     const id = read(editor)[0]!.id;
@@ -581,6 +591,21 @@ describe('a space right after the trigger (design 5.3)', () => {
     type(editor, '/ ');
     expect(menu()).toBeNull();
     expect(textOf(editor, id)).toBe('/ ');
+  });
+
+  it('opens a fresh menu on a slash typed after it', () => {
+    const { editor } = open([para('')]);
+    const id = read(editor)[0]!.id;
+    caretAtEnd(editor, id);
+    type(editor, '/ ');
+    expect(menu()).toBeNull();
+    type(editor, '/');
+    expect(textOf(editor, id)).toBe('/ /');
+    expect(rows()).toEqual([
+      'heading-1', 'heading-2', 'heading-3', 'code-block', 'bullet-list', 'task-list', 'ordered-list', 'quote',
+      'divider', 'table', 'columns', 'formula',
+    ]);
+    expect(screen.getByTestId('doc-slash-row-heading-1').hasAttribute('data-highlighted')).toBe(true);
   });
 
   it('lets Enter break the line after a slash typed between words', () => {
