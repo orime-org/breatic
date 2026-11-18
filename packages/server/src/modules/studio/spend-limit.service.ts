@@ -89,12 +89,13 @@ export async function readSpendLimits(slug: string): Promise<SpendLimitsView> {
     nextResetAt: spent.month.next.toISOString(),
     studioSpent: serializeCreditMicro(spent.total),
     members: people.map(({ userId, relation }) => {
-      const override = overrides.has(userId) ? { monthlyCredits: wire(overrides.get(userId)!) } : null;
+      const own = overrides.get(userId);
+      const override = own === undefined ? null : { monthlyCredits: own };
       return {
         userId,
         relation,
-        override,
-        effective: override === null ? wire(limits.memberDefault) : override.monthlyCredits,
+        override: override === null ? null : { monthlyCredits: wire(override.monthlyCredits) },
+        effective: wire(creditHoldService.effectiveMemberLimit(limits, override)),
         spent: serializeCreditMicro(spent.byActor.get(userId) ?? 0n),
       };
     }),

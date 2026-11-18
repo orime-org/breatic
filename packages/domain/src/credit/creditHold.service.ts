@@ -95,21 +95,34 @@ export async function monthSpent(studioId: string, tx?: DbTx): Promise<MonthSpen
 }
 
 /**
- * The limit an admission would pass, judged under the studio's debt lock the
- * caller holds. With an estimate, spent plus the estimate must stay within
- * each limit; without one (work admitted on a balance above zero), spent must
- * be below it. The studio's total is named when both are passed: raising one
+ * The monthly limit that applies to one person: their own when an admin set
+ * one (which may be no limit at all), otherwise the studio's per-person default.
+ * @param limits - The studio's limits.
+ * @param limits.memberDefault - The per-person default; null when unset.
+ * @param override - The person's own limit, if an admin set one.
+ * @param override.monthlyCredits - Its amount; null for no limit.
+ * @returns The amount, or null when no limit applies.
+ */
+export function effectiveMemberLimit(limits: { memberDefault: string | null }, override: { monthlyCredits: string | null } | null): string | null {
+  return override === null ? limits.memberDefault : override.monthlyCredits;
+}
+
+/**
+ * The limit an admission would pass. With an estimate, spent plus the estimate
+ * must stay within each limit, judged under the studio's debt lock the caller
+ * holds, since the admission then writes its hold; without one (work admitted
+ * on a balance above zero, which writes nothing), spent must be below it, read
+ * once. The studio's total is named when both are passed: raising one
  * person's limit would not let it through.
  * @param studioId - The studio.
  * @param actorUserId - Who starts the work.
  * @param estimate - What it will hold, in millionths; null when it holds nothing.
- * @param tx - The admission's transaction.
+ * @param tx - The admission's transaction, when it holds the lock.
  * @returns The limit passed, or null when the work fits.
  */
-async function spendCapHit(studioId: string, actorUserId: string, estimate: bigint | null, tx: DbTx): Promise<SpendCapHit | null> {
+async function spendCapHit(studioId: string, actorUserId: string, estimate: bigint | null, tx?: DbTx): Promise<SpendCapHit | null> {
   const limits = await spendLimitRepo.getStudioLimits(studioId, tx);
-  const override = await spendLimitRepo.findOverride(studioId, actorUserId, tx);
-  const memberLimit = override === null ? limits.memberDefault : override.monthlyCredits;
+  const memberLimit = effectiveMemberLimit(limits, await spendLimitRepo.findOverride(studioId, actorUserId, tx));
   if (memberLimit === null && limits.studioMonthly === null) return null;
   const spent = await monthSpent(studioId, tx);
   /**
@@ -135,21 +148,15 @@ async function spendCapHit(studioId: string, actorUserId: string, estimate: bigi
 /**
  * Judge work admitted on a balance above zero (Agent messages, text tools,
  * Timeline executions) against the studio's spend limits: it holds nothing and
- * passes while spent is below each limit. A studio that sets no limit passes
- * without its debt lock; one that sets any is judged under it.
+ * passes while spent is below each limit. It writes nothing, so it reads the
+ * limits and this month's spending once, with no lock.
  * @param studioId - The studio that pays for the work.
  * @param actorUserId - Who starts it.
  * @returns The limit passed, or null when it may start; null with payments off.
  */
 export async function spendCapFor(studioId: string, actorUserId: string): Promise<SpendCapHit | null> {
   if (!env.PAYMENT_ENABLED) return null;
-  const limits = await spendLimitRepo.getStudioLimits(studioId);
-  const override = await spendLimitRepo.findOverride(studioId, actorUserId);
-  if (limits.studioMonthly === null && (override === null ? limits.memberDefault : override.monthlyCredits) === null) return null;
-  return db.transaction(async (tx) => {
-    await creditLotRepo.lockDebt(studioId, tx);
-    return spendCapHit(studioId, actorUserId, null, tx);
-  });
+  return spendCapHit(studioId, actorUserId, null);
 }
 
 /**
