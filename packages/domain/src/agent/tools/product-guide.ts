@@ -1876,31 +1876,40 @@ export function renderProductGuide(): string {
       `menu has a ${quoted(t("spaces.document.commands.textColor"))} row, a ` +
       `${quoted(t("spaces.document.commands.fillColor"))} row and ` +
       `${quoted(t("spaces.document.commands.colorReset"))}.`,
+    `- The insert menus (the plus menu, the slash menu and ${quoted(t("spaces.document.blockHandle.insertBelow"))}) ` +
+      `grey out: on a line in a table cell, ${quoted(t("spaces.document.commands.table"))}, since a table does not go inside a ` +
+      "cell; when the pick turns the line itself into it (the plus, or the slash menu on a line holding nothing but " +
+      `the slash and the letters after it), also ${quoted(t("spaces.document.commands.quote"))} on a line already ` +
+      `in a quote and ${quoted(t("spaces.document.commands.table"))} on a line with lines nested under it; ` +
+      `${quoted(t("spaces.document.commands.columns"))} is greyed where the Document columns section says.`,
     "- Hovering an empty paragraph, with no text selected, shows a plus at its left; clicking it lists the " +
       `same entries as ${quoted(t("spaces.document.blockHandle.insertBelow"))}, and the one picked turns that ` +
       "line itself into it (a divider, or the files picked for an image, audio or video entry, go above the line, " +
       "which stays empty). " +
-      `${quoted(t("spaces.document.commands.quote"))} is greyed there on a line already in a quote, and ` +
-      `${quoted(t("spaces.document.commands.table"))} on a line with lines nested under it. ` +
+      "Its greyed entries are as the insert menus' line says. " +
       `The menu ends with ${quoted(t("spaces.document.blockHandle.delete"))}, which removes that line; it is greyed ` +
       "when that line is the document's only block. Empty " +
       "paragraphs have no six-dot handle, so its menu and dragging are not offered on them; a selection that takes " +
       "in an empty paragraph acts on it as on any other paragraph.",
-    "- Typing a slash at the start of a line or after a space opens, under the caret, the same entries as that " +
-      "plus (with a Chinese or Japanese input method on, the full-width slash or the ideographic comma the slash key " +
-      "types does the same). Letters typed after it narrow the list by an entry's name in the interface language or " +
-      `in English; when nothing matches it says ${quoted(t("spaces.document.slashMenu.empty"))}, and it closes once ` +
-      "three more characters still match nothing. The up and down arrows move through it and Enter or a click picks; " +
-      "the slash and the letters after it are removed, a line left with no text turns into the pick and a line with " +
-      "text gets it below. Entries are greyed as in the plus menu on a line left with no text and as in " +
-      `${quoted(t("spaces.document.blockHandle.insertBelow"))} on a line with text, and what follows a pick (the ` +
-      "file picker, the formula box) works as in those menus. " +
-      `${quoted(t("spaces.document.commands.table"))} puts in an empty table of three rows and three columns at ` +
-      "once; picking a size first is done from the plus on an empty line or from " +
+    "- Typing a slash at the start of a line or after a space opens, under the caret, the same entries as " +
+      `${quoted(t("spaces.document.blockHandle.insertBelow"))} (with a Chinese or Japanese input method on, the ` +
+      "full-width slash or the ideographic comma the slash key types does the same). Letters typed after it narrow " +
+      "the list by an entry's name in the interface language or in English; when nothing matches it says " +
+      `${quoted(t("spaces.document.slashMenu.empty"))}, and it closes once three more characters still match ` +
+      "nothing. A space right after the slash closes it and keeps what was typed. The up and down arrows move " +
+      "through it and Enter or a click picks. A line holding nothing but the slash and the letters after it counts " +
+      "as a line with no text: there the pick goes where the plus puts it, and on a line with text where " +
+      `${quoted(t("spaces.document.blockHandle.insertBelow"))} puts it; its greyed entries are as the insert menus' ` +
+      "line says. " +
+      "Picking a block type, the divider, the table, columns or the formula removes the slash and its letters at " +
+      "once; picking an image, audio or video opens the file picker and removes them when the files land, and " +
+      "closing the picker keeps them. The file picker and the formula box that follow a pick work as in those " +
+      `menus. ${quoted(t("spaces.document.commands.table"))} puts in an empty table of three rows and three ` +
+      "columns at once; picking a size first is done from the plus on a line with no text or from " +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} on a line with text, and rows and columns are added ` +
       "later from the table's own handles. Esc, clicking elsewhere or moving the caret off the line closes it and " +
-      "keeps what was typed; one undo after a pick brings the slash and its letters back. It does not open in a code " +
-      "block.",
+      "keeps what was typed; one undo after a pick brings the slash and its letters back. It does not open in a " +
+      "code block.",
     "- Hovering any other line, with no text selected, shows a handle of six dots at its left. Drag it to move the " +
       `block; click it for a menu with ${quoted(t("spaces.document.commands.blockType"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ` +
@@ -1924,8 +1933,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.media.image"))}, ${quoted(t("spaces.document.media.audio"))} and ` +
       `${quoted(t("spaces.document.media.video"))}, and puts a new line of the one picked ` +
       "below; the divider, the table and the formula each come with an empty line under them, a new table puts the caret " +
-      `in its first cell, and a new formula opens its box. On a line in a table cell, ${quoted(t("spaces.document.commands.table"))} is greyed: a ` +
-      "table does not go inside a cell. " +
+      "in its first cell, and a new formula opens its box. Its greyed entries are as the insert menus' line says. " +
       "The last three open the computer's file picker for that kind; the files chosen go " +
       "under the line, above an empty line made for the caret. " +
       `${quoted(t("spaces.document.commands.table"))} opens a grid of squares, nine across and nine down, with ` +

@@ -679,6 +679,28 @@ describe("what the guide says", () => {
     expect(doc).toMatch(/Shift\+Tab moves it back out/);
   });
 
+  it("names in one sentence every entry the insert menus can grey", () => {
+    const entries = webSource("spaces/document/document-insert-entries.ts");
+    const reach = entries.split("export function insertReach")[1]?.split("\n}\n")[0] ?? "";
+    const greyed = [...reach.matchAll(/out\.add\(([\w']+)\)/g)].map((m) => m[1] ?? "");
+    expect(greyed.length).toBeGreaterThan(0);
+    // An entry's name: the other entries' own table, else its block type row.
+    const blockTypes = webSource("spaces/document/document-block-type.ts");
+    const keyOf = (added: string): string => {
+      const id = added.replaceAll("'", "");
+      const own = new RegExp(`^\\s*(?:\\[${id}\\]|${id}): \\{ Icon: \\w+, labelKey: '([\\w.]+)'`, "m").exec(entries);
+      if (own?.[1] !== undefined) return own[1];
+      const row = new RegExp(`id: '${id}',\\s*labelKey: '([\\w.]+)'`).exec(blockTypes);
+      if (row?.[1] === undefined) throw new Error(`no name for ${added}`);
+      return row[1];
+    };
+    const doc = section("Document spaces");
+    const opening = "- The insert menus (the plus menu, the slash menu and";
+    const sentences = doc.split("\n").filter((line) => line.startsWith(opening));
+    expect(sentences).toHaveLength(1);
+    for (const added of greyed) expect(sentences[0]).toContain(`"${t(keyOf(added))}"`);
+  });
+
   it("lists the block menu rows in the order the menu shows them", () => {
     const handle = section("Document spaces").split("Hovering any other line")[1]?.split("\n")[0] ?? "";
     // The rows in the order the menu's own table lists them.
