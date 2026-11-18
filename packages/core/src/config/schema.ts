@@ -98,7 +98,7 @@ function numeric<T extends z.ZodTypeAny>(
  * closed for numerics; enum and URL fields still carry it. That is a
  * pre-existing gap, not something #1831 introduced — tracked as #1834.
  */
-export const coreConfigSchema = z.object({
+export const coreEnvSchema = z.object({
   // ── App ───────────────────────────────────────────
   ENV: z.enum(["dev", "staging", "prod"]).default("dev"),
   DEBUG: z
@@ -370,7 +370,14 @@ export const coreConfigSchema = z.object({
   // Verified sender address, optionally with a display name. Empty preserves
   // the legacy SMTP_USER sender; authentication always uses SMTP_USER.
   SMTP_FROM: z.string().trim().default(""),
-})
+});
+
+/**
+ * {@link coreEnvSchema} with the values derived from others filled in. The
+ * MCP service picks the variables it reads from `coreEnvSchema`, so a
+ * variable both read is defined once.
+ */
+export const coreConfigSchema = coreEnvSchema
   // Resolve `REDIS_KEY_PREFIX` here rather than at each call site: a
   // fallback repeated at every consumer is a fallback that eventually
   // disagrees with itself. Downstream code reads a plain `string`.

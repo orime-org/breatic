@@ -16,7 +16,7 @@
  * Contract:
  *
  * - `GET /healthz` - 200 `{status: 'ok', checks: {...}}` when every
- *   registered check resolves truthy in under {@link CHECK_TIMEOUT_MS};
+ *   registered check resolves truthy in under {@link HEALTH_CHECK_TIMEOUT_MS};
  *   503 `{status: 'fail', checks: {...}}` otherwise.
  *   Per-check `ms` field shows latency so dashboards can graph
  *   trends (a slowly-drifting connection often shows up as
@@ -38,7 +38,7 @@ import { createServer, type Server } from "node:http";
  * recovering" from "stuck", short enough that a misbehaving probe
  * doesn't pile up if the LB hammers it every second.
  */
-const CHECK_TIMEOUT_MS = 2000;
+export const HEALTH_CHECK_TIMEOUT_MS = 2000;
 
 /**
  * A single health check. `name` is the JSON key the response
@@ -120,7 +120,7 @@ export type HealthServerEvent =
     };
 
 /**
- * Run one health check, racing it against {@link CHECK_TIMEOUT_MS}.
+ * Run one health check, racing it against {@link HEALTH_CHECK_TIMEOUT_MS}.
  * @param check - the dependency probe to run
  * @returns the check outcome with latency, marking it failed on throw or timeout
  */
@@ -133,8 +133,8 @@ async function runCheck(
       check.check(),
       new Promise<boolean>((_, reject) =>
         setTimeout(
-          () => reject(new Error(`timeout after ${CHECK_TIMEOUT_MS}ms`)),
-          CHECK_TIMEOUT_MS,
+          () => reject(new Error(`timeout after ${HEALTH_CHECK_TIMEOUT_MS}ms`)),
+          HEALTH_CHECK_TIMEOUT_MS,
         ),
       ),
     ]);

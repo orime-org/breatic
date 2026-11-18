@@ -58,7 +58,7 @@ export { env, MONOREPO_ROOT } from "@core/config/env.js";
 // read process.env once at startup and call initCore to inject the
 // validated config. Library code reads it via the `env` Proxy above.
 export { initCore, getConfig, getRawEnvVar } from "@core/config/runtime.js";
-export type { CoreConfig } from "@core/config/schema.js";
+export { coreEnvSchema, type CoreConfig } from "@core/config/schema.js";
 export { errorMonitoringOptions, type ErrorMonitoringStart } from "@core/config/error-monitoring.js";
 export { assertKnownQueues, getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
@@ -147,6 +147,7 @@ export {
 export type { Redis } from "ioredis";
 export { checkRateLimit, type RateLimitQuota, type RateLimitVerdict } from "@core/infra/rate-limiter.js";
 export {
+  HEALTH_CHECK_TIMEOUT_MS,
   startHealthServer,
   type HealthCheck,
   type HealthServerOptions,
