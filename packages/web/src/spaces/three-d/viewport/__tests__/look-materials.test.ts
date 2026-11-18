@@ -85,6 +85,52 @@ describe('buildPartTable', () => {
 });
 
 describe('applyLook', () => {
+  it('asks for a new shader program when the picture shown reads another UV set', () => {
+    const { root, meshes } = model();
+    materialOf(meshes[0]!).map!.channel = 1;
+    const table = exported<Build>('buildPartTable')(root, partOf, { builtin: false });
+    const apply = (look: Record<string, Record<string, unknown>>): void => {
+      exported<Apply>('applyLook')(root, table, look as never, { themeColor: THEME, picture: () => new Texture() });
+    };
+    apply({});
+    let last = materialOf(meshes[0]!).version;
+    apply({ 0: { map: IMAGE } });
+    expect(materialOf(meshes[0]!).map!.channel).toBe(0);
+    expect(materialOf(meshes[0]!).version).toBeGreaterThan(last);
+    last = materialOf(meshes[0]!).version;
+    apply({});
+    expect(materialOf(meshes[0]!).map!.channel).toBe(1);
+    expect(materialOf(meshes[0]!).version).toBeGreaterThan(last);
+  });
+
+  it('keeps the shader program of a glass part made from a standard one while only its values change', () => {
+    const { root, meshes } = model();
+    const table = exported<Build>('buildPartTable')(root, partOf, { builtin: false });
+    const apply = (look: Record<string, Record<string, unknown>>): void => {
+      exported<Apply>('applyLook')(root, table, look as never, { themeColor: THEME, picture: () => null });
+    };
+    apply({ 0: { transmission: 1, roughness: 0.2 } });
+    const glass = materialOf(meshes[0]!);
+    const last = glass.version;
+    apply({ 0: { transmission: 1, roughness: 0.5 } });
+    expect(materialOf(meshes[0]!)).toBe(glass);
+    expect(glass.version).toBe(last);
+  });
+
+  it('keeps the shader program of a glass part whose transmission was turned off while only its values change', () => {
+    const { root, meshes } = model();
+    const table = exported<Build>('buildPartTable')(root, partOf, { builtin: false });
+    const apply = (look: Record<string, Record<string, unknown>>): void => {
+      exported<Apply>('applyLook')(root, table, look as never, { themeColor: THEME, picture: () => null });
+    };
+    apply({ 1: { transmission: 0, roughness: 0.2 } });
+    const glass = materialOf(meshes[1]!);
+    const last = glass.version;
+    apply({ 1: { transmission: 0, roughness: 0.5 } });
+    expect(materialOf(meshes[1]!)).toBe(glass);
+    expect(glass.version).toBe(last);
+  });
+
   it('disposes the material a transmission change replaces, both ways', () => {
     const { root, meshes } = model();
     const table = exported<Build>('buildPartTable')(root, partOf, { builtin: false });

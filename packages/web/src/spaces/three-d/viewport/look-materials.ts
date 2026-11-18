@@ -242,9 +242,20 @@ function resetMaterial(current: Material, original: Material, physical: boolean)
     MeshStandardMaterial.prototype.copy.call(material as MeshStandardMaterial, original as MeshStandardMaterial);
     // MeshStandardMaterial.copy leaves only STANDARD; the physical program needs both.
     (material as MeshPhysicalMaterial).defines = { STANDARD: '', PHYSICAL: '' };
-    (material as MeshPhysicalMaterial).transmission = 0;
   } else material.copy(original);
   return material;
+}
+
+/**
+ * The inputs a look can change that choose a material's shader program in three r173 (WebGLPrograms: `map`, `mapUv`
+ * from the picture's UV channel, transmission, and the OPAQUE define from `transparent`); colour, roughness and the
+ * other values a look writes are uniforms.
+ * @param material - The material.
+ * @returns A key that changes exactly when those inputs change.
+ */
+function programInputs(material: Material): string {
+  const lit = material as Lit;
+  return `${lit.map ? lit.map.channel : -1}|${(lit.transmission ?? 0) > 0}|${material.transparent}`;
 }
 
 /**
@@ -254,7 +265,7 @@ function resetMaterial(current: Material, original: Material, physical: boolean)
  * @param table - The model's part table.
  * @param look - The object's stored look.
  * @param options - The theme colour and the usable pictures.
- * @returns Whether any material's shader program inputs changed (class, picture presence, transmission past 0).
+ * @returns Whether any material's shader program inputs changed (class, or what programInputs reads).
  */
 export function applyLook(root: Object3D, table: LookPartTable, look: SceneLook, options: ApplyLookOptions): { programChanged: boolean } {
   let programChanged = false;
@@ -274,8 +285,7 @@ export function applyLook(root: Object3D, table: LookPartTable, look: SceneLook,
     const line = isLineMaterial(original);
     const lit = original.type !== 'MeshBasicMaterial' && !line;
     const physical = lit && ((fields.transmission ?? 0) > 0 || original.type === 'MeshPhysicalMaterial');
-    const before = { type: current.constructor, map: Boolean((current as Lit).map), transmission: ((current as Lit).transmission ?? 0) > 0,
-      transparent: current.transparent };
+    const before = { type: current.constructor, inputs: programInputs(current), version: current.version };
     const kept = clones.get(current) ?? [];
     clones.delete(current);
     const material = resetMaterial(current, original, physical) as Lit;
@@ -314,10 +324,12 @@ export function applyLook(root: Object3D, table: LookPartTable, look: SceneLook,
         material.depthWrite = false;
       }
     }
-    const after = { type: material.constructor, map: Boolean(material.map), transmission: (material.transmission ?? 0) > 0 };
-    // Values such as colour or roughness are uniforms; only these inputs choose a different shader program.
-    if (material === current && (before.map !== after.map || before.transmission !== after.transmission || before.transparent !== material.transparent)) {
-      material.needsUpdate = true;
+    const after = { type: material.constructor, inputs: programInputs(material) };
+    if (material === current) {
+      // three's transmission setter counts every crossing of 0, the reset's own included; with the same inputs the
+      // program is the same, so the count goes back to where it was.
+      if (before.inputs !== after.inputs) material.needsUpdate = true;
+      else material.version = before.version;
     }
     for (const texture of kept) texture.dispose();
     if (made.length > 0) clones.set(material, made);
@@ -326,7 +338,7 @@ export function applyLook(root: Object3D, table: LookPartTable, look: SceneLook,
       replace(material);
       current.dispose();
     }
-    if (before.type !== after.type || before.map !== after.map || before.transmission !== after.transmission) programChanged = true;
+    if (before.type !== after.type || before.inputs !== after.inputs) programChanged = true;
   });
   return { programChanged };
 }
