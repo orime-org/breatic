@@ -9,11 +9,25 @@
  */
 
 import type * as Y from "yjs";
-import { SPACE_TASKS_KEY, SPACE_TASKS_VERSION, type DocKind } from "@breatic/shared";
+import { parseDocName, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, timelineSpaceDocName, type DocKind } from "@breatic/shared";
 import { isNewerStreamId } from "@collab/services/stream-id.js";
+import { liveDocNamesStartingWith } from "@collab/services/yjs-documents.repo.js";
 
 /** The Space types whose documents take a change version; another type joins by being listed here. */
 export const SPACE_TASKS_DOC_KINDS: ReadonlySet<DocKind> = new Set<DocKind>(["web_animation", "timeline"]);
+
+/**
+ * The other Space documents a change passes on to: a Motion run can sit in any Timeline of its Project as a
+ * placeholder waiting for its result (#1490 design §8), so a Motion Space's change reaches every live Timeline too.
+ * @param docName - The Space document the change was written into.
+ * @returns The documents that take the same change.
+ * @throws {Error} When the Yjs database read fails.
+ */
+export async function docsFollowingChange(docName: string): Promise<string[]> {
+  const parsed = parseDocName(docName);
+  if (parsed?.kind !== "web_animation") return [];
+  return liveDocNamesStartingWith(timelineSpaceDocName(parsed.projectId, ""));
+}
 
 /**
  * Write a change's stream id into the Space document unless it already holds a newer one.

@@ -10,6 +10,10 @@
  *   per-document lease → one direct connection per round → applyNodeTaskCounts
  *   (canvas) or applySpaceTasksVersion (the Space types in SPACE_TASKS_DOC_KINDS)
  *
+ * A change version is written only into a live Space document, and a Motion
+ * Space's change is then published again for every live Timeline of its
+ * Project (`docsFollowingChange`), each written on its own round.
+ *
  * Collab executes; it does not judge. Which task moved, what the counts now
  * are, whether a result rides along — the server decided all of it.
  *
@@ -34,9 +38,10 @@ import * as Y from "yjs";
 import { ExecutionError, Redlock, ResourceLockedError } from "@sesamecare-oss/redlock";
 import type { NodeTaskCountsEvent, SpaceTasksVersionEvent } from "@breatic/shared";
 import { parseDocName } from "@breatic/shared";
-import { createLogger, type Redis } from "@breatic/core";
+import { createLogger, publishToStream, type Redis } from "@breatic/core";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
-import { applySpaceTasksVersion, SPACE_TASKS_DOC_KINDS } from "@collab/services/space-tasks-version.js";
+import { applySpaceTasksVersion, docsFollowingChange, SPACE_TASKS_DOC_KINDS } from "@collab/services/space-tasks-version.js";
+import { isLiveDoc } from "@collab/services/yjs-documents.repo.js";
 import {
   startGroupConsumer,
   type EntryOutcome,
@@ -79,6 +84,8 @@ export interface TaskListenerDeps {
   streamUrl: string;
   /** Task-events stream key. */
   streamKey: string;
+  /** Stream database client (DB2), which passes a Space's change on to the Space documents that follow it. */
+  stream: Redis;
   /** Where the single-instance reader kept its position. */
   legacyCursorKey: string;
   /** `REDIS_KEY_PREFIX`, namespacing every coordination key. */
@@ -263,8 +270,15 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
         logger.error({ err, docName: batch.docName }, "task_doc_disconnect_failed");
       }
     };
+    const spaceTasks = batch.items[0]!.event.type === "space-tasks-version";
     try {
       const doc = connection.document!;
+      // Checked after the load: a Space deleted before it loaded reads as empty, and a version written into that
+      // empty document would be stored over the deleted row's content; a doc with no row would gain one.
+      if (spaceTasks && !(await isLiveDoc(batch.docName))) {
+        logger.info({ docName: batch.docName }, "task_doc_not_live_skipped");
+        return outcomeForAll(batch, "done");
+      }
       if (!(await awaitHandOver(doc, keys.handoff, stopping))) {
         if (!stopping()) logger.warn({ docName: batch.docName }, "task_doc_handoff_not_reached");
         return outcomeForAll(batch, "wait");
@@ -306,6 +320,18 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
         await coordination.expire(keys.versions, COUNTS_VERSION_TTL_SECONDS);
       }
       await coordination.set(keys.handoff, Buffer.from(vector).toString("base64"), "PX", settings.docLeaseMs * 2);
+      if (spaceTasks) {
+        try {
+          for (const name of await docsFollowingChange(batch.docName)) {
+            const follow: SpaceTasksVersionEvent = { type: "space-tasks-version", docName: name };
+            await publishToStream(deps.stream, deps.streamKey, { ...follow });
+          }
+        } catch (err) {
+          // The retry writes the same version again, which changes nothing, and passes the change on once more.
+          logger.error({ err, docName: batch.docName }, "task_doc_follow_publish_failed");
+          return outcomeForAll(batch, { failed: err });
+        }
+      }
       logger.info(
         { docName: batch.docName, events: batch.items.length, applied: [...outcomes.values()].filter((o) => o === "done").length },
         "task_doc_batch_written",

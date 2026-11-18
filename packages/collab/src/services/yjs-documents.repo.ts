@@ -166,7 +166,7 @@ export async function softDeleteByName(name: string): Promise<boolean> {
  * `meta.spaces` CRDT, which lags behind cross-instance deletes by the
  * pub/sub propagation window. The project's meta doc (`project-{id}/meta`)
  * is excluded — it is not a Space. Rows are matched with
- * `spaceContentRowPattern` (`^project-{id}/(canvas|document|timeline)-[^/]+$`),
+ * `spaceContentRowPattern` (`^project-{id}/(canvas|document|timeline|3d|web_animation)-[^/]+$`),
  * which leaves out the meta doc and any other name under the project.
  *
  * Pattern safety relies on an IMPLICIT upstream guarantee: a
@@ -194,6 +194,35 @@ export async function countLiveSpaceDocs(projectId: string): Promise<number> {
       ),
     );
   return rows[0]?.count ?? 0;
+}
+
+/**
+ * Whether a document is a live Space or meta document: its row exists and is not soft-deleted.
+ * @param name - Full doc name.
+ * @returns True when a live row holds it.
+ * @throws {Error} When the Yjs database read fails.
+ */
+export async function isLiveDoc(name: string): Promise<boolean> {
+  const rows = await yjsDb
+    .select({ name: yjsDocuments.name })
+    .from(yjsDocuments)
+    .where(and(eq(yjsDocuments.name, name), isNull(yjsDocuments.deletedAt)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * The live documents whose names start with a prefix, such as every Timeline of one Project.
+ * @param prefix - The name prefix, built by a doc-name helper with an empty id (`project-{id}/timeline-`).
+ * @returns Their names.
+ * @throws {Error} When the Yjs database read fails.
+ */
+export async function liveDocNamesStartingWith(prefix: string): Promise<string[]> {
+  const rows = await yjsDb
+    .select({ name: yjsDocuments.name })
+    .from(yjsDocuments)
+    .where(and(sql`starts_with(${yjsDocuments.name}, ${prefix})`, isNull(yjsDocuments.deletedAt)));
+  return rows.map((row) => row.name);
 }
 
 /**

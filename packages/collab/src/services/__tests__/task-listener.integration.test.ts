@@ -19,7 +19,7 @@ import * as encoding from "lib0/encoding";
 import { ExecutionError, Redlock, type ExecutionStats } from "@sesamecare-oss/redlock";
 
 import { createRedisClient, db, initCore, schema, type Redis } from "@breatic/core";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { CANVAS_NODES_KEY, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, timelineSpaceDocName, webAnimationSpaceDocName, type NodeTaskCountsEvent } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
@@ -35,6 +35,8 @@ import { startTaskListener, type TaskListenerSettings } from "@collab/services/t
 import { isNewerStreamId } from "@collab/services/stream-id.js";
 
 const PID = "77777777-7777-4777-8777-777777777777";
+/** A Project of its own for the cases that write into every Timeline of a Project. */
+const PID2 = randomUUID();
 const OWNER_ID = randomUUID();
 const STUDIO_ID = randomUUID();
 
@@ -123,10 +125,10 @@ beforeAll(async () => {
     id: STUDIO_ID, createdByUserId: OWNER_ID, slug: `tl-${STUDIO_ID}`,
     type: "personal", name: "Task listener Studio",
   });
-  await db.insert(schema.projects).values({
-    id: PID, studioId: STUDIO_ID, createdByUserId: OWNER_ID,
-    name: "Task listener Project", slug: `tl-${PID}`,
-  });
+  await db.insert(schema.projects).values([
+    { id: PID, studioId: STUDIO_ID, createdByUserId: OWNER_ID, name: "Task listener Project", slug: `tl-${PID}` },
+    { id: PID2, studioId: STUDIO_ID, createdByUserId: OWNER_ID, name: "Task listener fan-out Project", slug: `tl-${PID2}` },
+  ]);
   stream = createRedisClient(process.env.REDIS_STREAM_URL!, { name: "itest-task-stream" });
   coordination = createRedisClient(process.env.REDIS_COLLAB_URL!, { name: "itest-task-coord" });
   instanceA = await startInstance("itest-task-a");
@@ -142,7 +144,7 @@ afterAll(async () => {
   await Promise.all(servers.map((s) => s.destroy()));
   await stream.quit();
   await coordination.quit();
-  await db.update(schema.projects).set({ deletedAt: new Date() }).where(eq(schema.projects.id, PID));
+  await db.update(schema.projects).set({ deletedAt: new Date() }).where(inArray(schema.projects.id, [PID, PID2]));
   await db.update(schema.studios).set({ deletedAt: new Date() }).where(eq(schema.studios.id, STUDIO_ID));
   await db.update(schema.users).set({ deletedAt: new Date() }).where(eq(schema.users.id, OWNER_ID));
 });
@@ -177,13 +179,44 @@ async function newCase(nodes: Record<string, string>): Promise<Case> {
 /**
  * A fresh stream, key prefix and empty Space document of a type that takes a change version.
  * @param docNameOf - Builds the Space's document name; a Motion Space by default.
+ * @param projectId - The Project the Space belongs to.
  * @returns The case's names.
  */
-async function newMotionCase(docNameOf: (projectId: string, spaceId: string) => string = webAnimationSpaceDocName): Promise<Case> {
+async function newSpaceTasksCase(docNameOf: (projectId: string, spaceId: string) => string = webAnimationSpaceDocName, projectId = PID): Promise<Case> {
+  const c = bareCase(docNameOf(projectId, randomUUID()));
+  await yjsRepo.seedInitialState(c.docName, Y.encodeStateAsUpdate(new Y.Doc()));
+  return c;
+}
+
+/**
+ * A fresh stream and key prefix for a document this function leaves unwritten.
+ * @param docName - The document.
+ * @returns The case's names.
+ */
+function bareCase(docName: string): Case {
   const id = randomUUID();
-  const docName = docNameOf(PID, randomUUID());
-  await yjsRepo.seedInitialState(docName, Y.encodeStateAsUpdate(new Y.Doc()));
   return { streamKey: `itest:stream:task:${id}`, keyPrefix: `itest-${id}`, docName };
+}
+
+/**
+ * Seed a Space document holding one note, so a later read tells its content apart from an empty document.
+ * @param docName - The document.
+ * @param note - The note.
+ * @returns Nothing.
+ */
+async function seedNote(docName: string, note: string): Promise<void> {
+  const doc = new Y.Doc();
+  doc.getMap("probe").set("note", note);
+  await yjsRepo.seedInitialState(docName, Y.encodeStateAsUpdate(doc));
+}
+
+/**
+ * Wait until a document has left the instance's memory, so whatever its unload stores has been stored.
+ * @param docName - The document.
+ * @returns Nothing.
+ */
+async function untilUnloaded(docName: string): Promise<void> {
+  await until(() => !instanceA.documents.has(docName));
 }
 
 /**
@@ -193,7 +226,7 @@ async function newMotionCase(docNameOf: (projectId: string, spaceId: string) => 
  * @param extra - Extra stream fields on every entry.
  * @returns Their stream ids.
  */
-async function publishExecutionsChanged(c: Case, count = 1, extra: string[] = []): Promise<string[]> {
+async function publishSpaceTasksVersion(c: Case, count = 1, extra: string[] = []): Promise<string[]> {
   const ids: string[] = [];
   for (let i = 0; i < count; i++) {
     ids.push((await stream.xadd(c.streamKey, "*", "payload", JSON.stringify({ type: "space-tasks-version", docName: c.docName }), ...extra))!);
@@ -202,14 +235,29 @@ async function publishExecutionsChanged(c: Case, count = 1, extra: string[] = []
 }
 
 /**
- * The executions change version a Space document holds, as stored and synced.
- * @param c - The case.
+ * The change version a Space document holds, as stored and synced.
+ * @param docName - The document.
  * @returns The version, or undefined when none was written.
  */
-async function readExecutionsVersion(c: Case): Promise<unknown> {
-  const conn = await instanceA.openDirectConnection(c.docName, { context: { user: { id: "test" } } });
+async function readSpaceTasksVersion(docName: string): Promise<unknown> {
+  const conn = await instanceA.openDirectConnection(docName, { context: { user: { id: "test" } } });
   try {
     return conn.document!.getMap(SPACE_TASKS_KEY).get(SPACE_TASKS_VERSION);
+  } finally {
+    await conn.disconnect();
+  }
+}
+
+/**
+ * A document's note and change version, read after restoring its soft-deleted row.
+ * @param docName - The document.
+ * @returns What the restored document holds.
+ */
+async function readRestored(docName: string): Promise<{ note: unknown; version: unknown }> {
+  expect(await yjsRepo.restoreByName(docName)).toBe(true);
+  const conn = await instanceA.openDirectConnection(docName, { context: { user: { id: "test" } } });
+  try {
+    return { note: conn.document!.getMap("probe").get("note"), version: conn.document!.getMap(SPACE_TASKS_KEY).get(SPACE_TASKS_VERSION) };
   } finally {
     await conn.disconnect();
   }
@@ -233,6 +281,7 @@ function listen(
     hocuspocus,
     streamUrl: process.env.REDIS_STREAM_URL!,
     streamKey: c.streamKey,
+    stream,
     legacyCursorKey: `${c.keyPrefix}:cursor`,
     keyPrefix: c.keyPrefix,
     instanceId,
@@ -758,39 +807,82 @@ describe("task events across two collab instances", () => {
   });
 
   it("writes the stream id of a Motion Space's latest execution change into its document", async () => {
-    const c = await newMotionCase();
-    const ids = await publishExecutionsChanged(c, 3);
+    const c = await newSpaceTasksCase();
+    const ids = await publishSpaceTasksVersion(c, 3);
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, ids));
-    expect(await readExecutionsVersion(c)).toBe(ids[2]);
+    expect(await readSpaceTasksVersion(c.docName)).toBe(ids[2]);
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 
   it("keeps a Motion Space's newer executions version when an older change is replayed from the dead-letter stream", async () => {
-    const c = await newMotionCase();
-    const [olderId, newerId] = await publishExecutionsChanged(c, 2);
+    const c = await newSpaceTasksCase();
+    const [olderId, newerId] = await publishSpaceTasksVersion(c, 2);
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, [olderId!, newerId!]));
-    const replayed = await publishExecutionsChanged(c, 1, ["originId", olderId!]);
+    const replayed = await publishSpaceTasksVersion(c, 1, ["originId", olderId!]);
     await until(() => handled(c.streamKey, replayed));
-    expect(await readExecutionsVersion(c)).toBe(newerId);
+    expect(await readSpaceTasksVersion(c.docName)).toBe(newerId);
   });
 
   it("writes the stream id of a Timeline Space's latest change into its document", async () => {
-    const c = await newMotionCase(timelineSpaceDocName);
-    const ids = await publishExecutionsChanged(c, 2);
+    const c = await newSpaceTasksCase(timelineSpaceDocName);
+    const ids = await publishSpaceTasksVersion(c, 2);
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, ids));
-    expect(await readExecutionsVersion(c)).toBe(ids[1]);
+    expect(await readSpaceTasksVersion(c.docName)).toBe(ids[1]);
   });
 
-  it("acknowledges and skips an executions change for a document that is not a Motion Space", async () => {
+  it("acknowledges and skips a space-tasks version for a document whose type takes none (a canvas)", async () => {
     const c = await newCase({});
-    const ids = await publishExecutionsChanged(c);
+    const ids = await publishSpaceTasksVersion(c);
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, ids));
-    expect(await readExecutionsVersion(c)).toBeUndefined();
+    expect(await readSpaceTasksVersion(c.docName)).toBeUndefined();
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("writes a Motion Space's change into every live Timeline of its Project, where a placeholder may wait for the run", async () => {
+    const c = await newSpaceTasksCase(webAnimationSpaceDocName, PID2);
+    const timelines = [timelineSpaceDocName(PID2, randomUUID()), timelineSpaceDocName(PID2, randomUUID())];
+    for (const name of timelines) await yjsRepo.seedInitialState(name, Y.encodeStateAsUpdate(new Y.Doc()));
+    const deletedTimeline = timelineSpaceDocName(PID2, randomUUID());
+    await seedNote(deletedTimeline, "kept");
+    expect(await yjsRepo.softDeleteByName(deletedTimeline)).toBe(true);
+    const otherProject = timelineSpaceDocName(PID, randomUUID());
+    await yjsRepo.seedInitialState(otherProject, Y.encodeStateAsUpdate(new Y.Doc()));
+
+    const ids = await publishSpaceTasksVersion(c);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    for (const name of timelines) await until(async () => (await readSpaceTasksVersion(name)) !== undefined);
+    expect(await readSpaceTasksVersion(c.docName)).toBe(ids[0]);
+    expect(await readSpaceTasksVersion(otherProject)).toBeUndefined();
+    await untilUnloaded(deletedTimeline);
+    expect(await readRestored(deletedTimeline)).toEqual({ note: "kept", version: undefined });
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("leaves a deleted Motion Space's stored content as it was, so restoring it brings the content back", async () => {
+    const c = bareCase(webAnimationSpaceDocName(PID, randomUUID()));
+    await seedNote(c.docName, "annotations");
+    expect(await yjsRepo.softDeleteByName(c.docName)).toBe(true);
+    const ids = await publishSpaceTasksVersion(c);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    await untilUnloaded(c.docName);
+    expect(await readRestored(c.docName)).toEqual({ note: "annotations", version: undefined });
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("creates no document for a Space that has none", async () => {
+    const c = bareCase(webAnimationSpaceDocName(PID, randomUUID()));
+    const ids = await publishSpaceTasksVersion(c);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    await untilUnloaded(c.docName);
+    expect(await yjsRepo.fetchDocData(c.docName)).toBeNull();
+    expect(await yjsRepo.restoreByName(c.docName)).toBe(false);
   });
 });
 
