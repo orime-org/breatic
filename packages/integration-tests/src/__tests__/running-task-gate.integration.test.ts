@@ -1261,14 +1261,14 @@ describe("PT-4 the gate with cancels, failures, limit changes and lost jobs (K1,
         fc.boolean(),
         fc.constantFrom(1, 2, 3, 10),
         fc.constantFrom(1, 2, 3, 10),
-        fc.integer({ min: 1, max: 15 }),
+        fc.integer({ min: 1, max: 10 }),
         fc.array(fc.record({
           workers: fc.integer({ min: 1, max: 4 }),
           event: fc.constantFrom("finish", "fail", "cancel", "advance", "limit", "lose"),
           pickIndex: fc.nat(),
           advanceMs: fc.integer({ min: 1, max: 4 * 3_600_000 }),
           limit: fc.constantFrom(1, 2, 3, 10),
-        }), { minLength: 1, maxLength: 10 }),
+        }), { minLength: 1, maxLength: 8 }),
         async (twoPeople, ownLimit, otherLimit, n, rounds: Pt4Round[]) => {
           const people = [await person("enterprise", ownLimit)];
           if (twoPeople) people.push(await person("enterprise", ownLimit));
@@ -1431,9 +1431,9 @@ describe("PT-4 the gate with cancels, failures, limit changes and lost jobs (K1,
           }
         },
       ),
-      { numRuns: 60 },
+      { numRuns: 100 },
     );
-    // Sixty runs of up to fifteen rows, each round harvesting every node: about twelve seconds alone, many
-    // times that beside every other suite.
+    // A hundred runs of up to ten rows and eight rounds, each round harvesting every node: the slowest case of
+    // this suite, many times its time alone beside every other suite.
   }, 600_000);
 });
