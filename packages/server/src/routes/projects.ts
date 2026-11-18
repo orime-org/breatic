@@ -90,8 +90,8 @@ projects.get(
 );
 
 /**
- * `GET /projects/:id/three-d/assets/:assetId` — resolve a registered scene model.
- * @returns The registered model URL, MIME type and registered size in the standard data envelope.
+ * `GET /projects/:id/three-d/assets/:assetId` — resolve a registered scene model or part picture.
+ * @returns The registered asset URL, MIME type and registered size in the standard data envelope.
  */
 projects.get(
   "/:id/three-d/assets/:assetId",
