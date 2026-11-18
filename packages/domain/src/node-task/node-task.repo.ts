@@ -11,7 +11,7 @@
  * a refusal.
  */
 
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 import { db, type DbTx } from "@breatic/core";
 import { nodeHistory, nodeTasks, tasks } from "@breatic/core";
 import type { NodeTaskAction, SceneGenerationOrigin, SceneTaskNotice } from "@breatic/shared";
@@ -216,8 +216,11 @@ export async function settleRunning(
  * deadline until its task starts; once the task ended without its rows being
  * settled (a cancel or a stale-waiter sweep that committed and then failed),
  * the row is judged by its budget like any other.
+ * @returns The condition.
  */
-const notWaitingForSlot = sql`(${nodeTasks.waitingSince} is null or not exists (select 1 from ${tasks} where ${tasks.id} = ${nodeTasks.taskId} and ${tasks.status} = 'pending'))`;
+function notWaitingForSlot(): SQL {
+  return sql`(${nodeTasks.waitingSince} is null or not exists (select 1 from ${tasks} where ${tasks.id} = ${nodeTasks.taskId} and ${tasks.status} = 'pending'))`;
+}
 
 /**
  * Move every row on one node that outran its budget to `expired`.
@@ -252,7 +255,7 @@ export async function harvestExpired(
         eq(nodeTasks.nodeId, nodeId),
         isNull(nodeTasks.deletedAt),
         eq(nodeTasks.status, "running"),
-        notWaitingForSlot,
+        notWaitingForSlot(),
         sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
       ),
     )
@@ -570,7 +573,7 @@ export async function harvestExpiredInSpace(projectId: string, spaceId: string):
         isNull(nodeTasks.nodeId),
         isNull(nodeTasks.deletedAt),
         eq(nodeTasks.status, "running"),
-        notWaitingForSlot,
+        notWaitingForSlot(),
         sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
       ),
     )
