@@ -6,14 +6,15 @@ import * as React from 'react';
 /**
  * Keeps a value's identity while its CONTENT is unchanged.
  *
- * Every Generate panel's view model rebuilds on every canvas mutation — every
- * frame of any node drag — so the arrays and objects it returns are new each
- * time. Handed straight to a `React.memo` child, that defeats the memo, which
- * is the same as not having one.
+ * A view model built from collaborative data is rebuilt on every change: a
+ * Generate panel's on every canvas mutation, a 3D inspector's on every scene
+ * refresh, each frame of a drag included. The arrays and objects it returns are
+ * new each time; handed straight to a `React.memo` child, that defeats the
+ * memo, which is the same as not having one.
  *
  * Keyed on a serialization of the value: the things this is used for are short
  * (a handful of reference rows, a slot object of a few URLs, one model's
- * params), so stringifying them each render is cheap and exact. It is exact
+ * params, one 3D object's look), so stringifying them each render is cheap and exact. It is exact
  * only for JSON-shaped data — the callers pass plain objects and arrays of
  * strings, numbers and nulls, which is what a view model is made of.
  *

@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
 
-import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
+import { useContentStable } from '@web/lib/use-content-stable';
 
 describe('useContentStable', () => {
   it('keeps the identity when a new object carries the same content', () => {

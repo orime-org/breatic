@@ -76,7 +76,7 @@ import { mentionedReferenceUrls, poolCounts, poolKindOf, poolParams } from '@web
 import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
-import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
+import { useContentStable } from '@web/lib/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import {
   isGenerating,
