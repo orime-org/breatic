@@ -55,8 +55,6 @@ vi.mock("@domain/credit/creditCharge.repo.js", () => ({
     actorUserId: "22222222-2222-4222-8222-222222222222",
     referenceId: "task-1",
     projectId: "11111111-1111-4111-8111-111111111111",
-    // Filed without its studio, so the settlement resolves it from the project.
-    studioId: null,
     amount: "10.000000",
     description: null,
     model: null,
@@ -68,11 +66,6 @@ vi.mock("@domain/credit/creditCharge.repo.js", () => ({
   markSettled: (...args: unknown[]) => markSettled(...args),
   insertPending: async () => null,
   recordFailure: (...args: unknown[]) => recordFailure(...args),
-}));
-
-vi.mock("@domain/credit/creditChargeSettlement.repo.js", () => ({
-  claim: async () => ({ claimed: true }),
-  recordOutcome: async () => undefined,
 }));
 
 vi.mock("@domain/asset/asset.service.js", () => ({

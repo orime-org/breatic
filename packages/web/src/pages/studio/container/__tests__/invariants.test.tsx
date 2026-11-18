@@ -28,7 +28,6 @@ const TEAM_DETAIL: StudioDetail = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'admin',
-  region: null,
 };
 
 beforeEach(() => {
@@ -43,7 +42,6 @@ beforeEach(() => {
       avatarUrl: null,
       bio: null,
       myStudioRole: 'guest',
-      region: null,
     },
   ]);
 });

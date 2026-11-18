@@ -29,16 +29,15 @@
  *   - confirm / decline: caller owns the invite (the `invited_user_id` CAS guard)
  */
 
-import { studioRepo } from "@breatic/domain";
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as invitesRepo from "@server/modules/studio/studioInvitations.repo.js";
 import { createInvitation } from "@server/modules/invitation/invitation.service.js";
 import { notificationRepo } from "@breatic/core";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import { db, trackServerEvent } from "@breatic/core";
+import { db, getLimitsForStudio, trackServerEvent } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
-import { directoryWrites, globalApi, studioMembersRepo } from "@breatic/domain";
+import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
-import { profilesService } from "@breatic/domain";
 
 /** Roles an admin may invite a user as — admin is granted via transfer only. */
 type InvitableRole = "maintainer" | "guest";
@@ -124,19 +123,16 @@ async function acceptInTransaction(
   invitationId: string,
   receiverUserId: string,
 ): Promise<{ studioId: string; role: string }> {
-  // Which studio this invite is for, read WITHOUT a lock. The id is only
-  // reachable through the invitation row, and the row lock below has to come
-  // before the accept CAS, so it has to be read first. Safe: an invitation's
-  // `studio_id` never changes, and whether this invite may still be accepted
-  // is decided by the CAS, not by this read. Its member ceiling comes from the
-  // global region before the transaction opens (inner#1955).
-  const targetStudioId = await invitesRepo.getTargetStudioId(invitationId);
-  if (targetStudioId === null) {
-    throw new NotFoundError(t("server.error.not_found"));
-  }
-  const { studio_members: memberLimit } = await globalApi().getLimitsForStudio(targetStudioId);
-  const inviteeProfiles = await profilesService.personalProfiles([receiverUserId]);
   return db.transaction(async (tx) => {
+    // Which studio this invite is for, read WITHOUT a lock. The id is only
+    // reachable through the invitation row, and the row lock below has to come
+    // before the accept CAS, so it has to be read first. Safe: an invitation's
+    // `studio_id` never changes, and whether this invite may still be accepted
+    // is decided by the CAS, not by this read.
+    const targetStudioId = await invitesRepo.getTargetStudioId(invitationId, tx);
+    if (targetStudioId === null) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
 
     // Taken BEFORE the CAS, matching the order the project side has to use
     // against `archiveProject` (`projects` first, its invitations second).
@@ -169,6 +165,10 @@ async function acceptInTransaction(
     // The REAL gate. Between sending and accepting the studio may have filled
     // up, and unlike the invite-time hint this one runs behind the row lock
     // above, so two simultaneous confirms cannot both see the same last seat.
+    const { studio_members: memberLimit } = await getLimitsForStudio(
+      accepted.studioId,
+      tx,
+    );
     const memberCount =
       (await studioRepo.countMembersByStudioIds([accepted.studioId], tx)).get(
         accepted.studioId,
@@ -189,7 +189,6 @@ async function acceptInTransaction(
       tx,
     );
     if (!inserted) throw new ConflictError(t("server.studio.already_member"));
-    await directoryWrites.memberUpserted(accepted.studioId, accepted.invitedUserId, accepted.role, tx);
 
     let studioName = "";
     let studioId = "";
@@ -204,7 +203,11 @@ async function acceptInTransaction(
       await notificationRepo.markRead(accepted.notificationId, receiverUserId, tx);
     }
 
-    const invitee = inviteeProfiles.get(accepted.invitedUserId);
+    const profiles = await studioRepo.getPersonalProfilesByCreators(
+      [accepted.invitedUserId],
+      tx,
+    );
+    const invitee = profiles.get(accepted.invitedUserId);
     await notificationService.createStudioInviteAccepted({
       userId: accepted.invitedBy,
       payload: {

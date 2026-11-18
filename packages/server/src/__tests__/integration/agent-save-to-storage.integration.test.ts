@@ -21,7 +21,6 @@ import type { createApp } from "@server/app.js";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import { saveToStorageFor } from "@server/agent/save-to-storage.js";
 import { picturePreparerFor } from "@server/agent/prepare-pictures.js";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -84,7 +83,6 @@ async function seedEditor(): Promise<{ userId: string; studioId: string; project
   `;
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
-  await mirrorAllInDirectory(sql);
   return { userId, studioId, projectId, cookie: `${sessionCookieName()}=${token}` };
 }
 

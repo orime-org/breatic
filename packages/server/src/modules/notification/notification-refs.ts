@@ -22,14 +22,13 @@
  * returns the anonymised value with no special case of its own.
  */
 
-import { studioRepo } from "@breatic/domain";
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import type {
   NotificationEntity,
   NotificationListView,
   NotificationRef,
 } from "@breatic/shared";
-import { profilesService } from "@breatic/domain";
 
 /**
  * Payload keys that hold a user id, a studio id, and a project id.
@@ -110,7 +109,7 @@ export async function withResolvedRefs(
   }
 
   const [users, studios, projects] = await Promise.all([
-    profilesService.personalProfiles(userIds),
+    studioRepo.getPersonalProfilesByCreators(userIds),
     studioRepo.getIdentitiesByStudioIds(studioIds),
     projectRepo.getIdentitiesByProjectIds([...projectIds]),
   ]);

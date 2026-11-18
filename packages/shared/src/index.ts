@@ -52,15 +52,12 @@ export type {
   NotificationEntity,
   NotificationRef,
   NotificationListView,
-  NotificationFeed,
-  NotificationCount,
   ProjectEntity,
   ProjectDetail,
   ProjectSummary,
   StudioProjectSort,
   StudioProjectPage,
   RecentItem,
-  RecentFeed,
   MemoryContext,
   AgentMemoryEntity,
   AgentModelChoice,
@@ -650,7 +647,6 @@ export type {
   AgentCommandType,
   AgentReply,
 } from "@shared/agent-command.js";
-export { GLOBAL_API_PATHS } from "@shared/global-api-paths.js";
 
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,

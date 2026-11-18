@@ -7,7 +7,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type postgres from "postgres";
 import { maintenanceRepo, rawPg } from "@breatic/core";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 type Sql = ReturnType<typeof postgres>;
 
@@ -43,7 +42,6 @@ export async function maintenanceWorld(sql: Sql, source = "upload"): Promise<Mai
     VALUES(${userId},${studioId},${storageKey},128,now()-interval '2 days',${assetId},now()-interval '1 day',now()-interval '2 days') RETURNING id`;
   const [candidate] = await sql<{ id: string }[]>`INSERT INTO storage_reclaim_queue(storage_key,content_hash,studio_id,kept_storage_key,source,created_at)
     VALUES(${storageKey},${contentHash},${studioId},${keptStorageKey},${source},now()-interval '2 days') RETURNING id`;
-  await mirrorAllInDirectory(sql);
   return { userId, studioId, assetId, grantId: grant!.id, id: candidate!.id, contentHash, storageKey, keptStorageKey };
 }
 

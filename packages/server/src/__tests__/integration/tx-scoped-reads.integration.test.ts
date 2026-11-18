@@ -35,8 +35,7 @@ vi.mock("ai", () => ({
 import postgres from "postgres";
 import { and, eq } from "drizzle-orm";
 import { initCore, db, schema, projectMembersRepo } from "@breatic/core";
-import { profilesService, studioRepo } from "@breatic/domain";
-import { mirrorInDirectory } from "./directory-fixtures.js";
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
 
 try {
   initCore(process.env);
@@ -75,11 +74,10 @@ async function seedScene(): Promise<{
     INSERT INTO users (email, email_verified, membership_tier)
     VALUES (${`${tag}@example.test`}, true, 'pro') RETURNING id
   `;
-  const [personal] = await sql<{ id: string }[]>`
+  await sql`
     INSERT INTO studios (created_by_user_id, slug, type, name)
-    VALUES (${user!.id}, ${`${tag}-personal`}, 'personal', ${`${tag} before`}) RETURNING id
+    VALUES (${user!.id}, ${`${tag}-personal`}, 'personal', ${`${tag} before`})
   `;
-  await mirrorInDirectory(sql, personal!.id);
   const [team] = await sql<{ id: string }[]>`
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${user!.id}, ${`${tag}-team`}, 'team', 'Team') RETURNING id
@@ -96,20 +94,23 @@ async function seedScene(): Promise<{
 }
 
 describe("reads inside the confirm transactions run inside them", () => {
-  it("personalProfiles sees a rename this transaction has not committed", async () => {
+  it("getPersonalProfilesByCreators sees a rename this transaction has not committed", async () => {
     const { userId } = await seedScene();
 
     await db.transaction(async (tx) => {
       await tx
-        .update(schema.studioDirectory)
+        .update(schema.studios)
         .set({ name: "renamed in flight" })
         .where(
           and(
-            eq(schema.studioDirectory.createdByUserId, userId),
-            eq(schema.studioDirectory.type, "personal"),
+            eq(schema.studios.createdByUserId, userId),
+            eq(schema.studios.type, "personal"),
           ),
         );
-      const profiles = await profilesService.personalProfiles([userId]);
+      const profiles = await studioRepo.getPersonalProfilesByCreators(
+        [userId],
+        tx,
+      );
       expect(profiles.get(userId)?.name).toBe("renamed in flight");
     });
   });

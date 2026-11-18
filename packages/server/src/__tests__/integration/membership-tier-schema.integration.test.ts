@@ -44,7 +44,7 @@ vi.mock("ai", () => ({
 
 import postgres from "postgres";
 import { initCore, getDefaultMembershipTier } from "@breatic/core";
-import { usersRepo as userRepo } from "@breatic/domain";
+import * as userRepo from "@server/modules/auth/user.repo.js";
 
 try {
   initCore(process.env);
@@ -152,7 +152,7 @@ describe("users.membership_tier", () => {
     ).not.toBe("base");
 
     const email = `tier-reg-${Date.now()}-${Math.random()}@example.test`;
-    const user = await userRepo.createUser({ termsVersion: "test-terms", email, locale: "en" });
+    const user = await userRepo.createUser({ email, locale: "en" });
     try {
       const [row] = await sql<{ membership_tier: string }[]>`
         SELECT membership_tier FROM users WHERE id = ${user.id}

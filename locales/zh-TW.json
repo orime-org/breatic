@@ -49,8 +49,7 @@
       "signup_code_exhausted": "這個驗證碼已失效，請重新取得。",
       "signup_expired": "本次註冊已過期。",
       "signup_resend_cooldown": "請 {seconds, plural, other {# 秒}}後再取得驗證碼。",
-      "signup_code_send_failed": "驗證碼傳送失敗，請重試。",
-      "invitation_region_unavailable": "暫時無法開啟這則邀請，請稍後再試。"
+      "signup_code_send_failed": "驗證碼傳送失敗，請重試。"
     },
     "studio": {
       "slug_taken": "該 Slug 已被使用，請換一個。",
@@ -66,10 +65,6 @@
       "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。",
       "transfer_credits_designated": "還有點數包指定給這個 Studio。請先在頭像選單 →「點數」→「指定」裡取消指定，再發起轉讓。",
       "designation_during_transfer": "這個 Studio 有待接受的轉讓，撤回或轉讓結束後才能再為它指定點數包。",
-      "transfer_processing": "Studio 轉讓正在處理，請稍後再試。",
-      "region_unavailable": "所選區域暫時無法建立 Studio，請稍後再試，或改選其他區域。",
-      "creation_in_progress": "上一次建立還在處理，請稍後再試。",
-      "creation_abandoned": "這個 Studio 沒有建立成功，請重試。",
       "email_not_registered_no_mail": "此信箱尚未註冊。這個部署未啟用電子郵件，無法邀請尚未註冊的信箱。",
       "invite_mail_failed": "郵件未能寄出，請重試。"
     },
@@ -374,9 +369,6 @@
       "capture_too_large": "截圖太大，無法傳送。",
       "capture_answered": "這次截圖請求已經有了回覆。",
       "oauth_request_expired": "這次授權請求已失效，請回到你的 Agent 重新發起連線。"
-    },
-    "region": {
-      "unavailable": "這個 Studio 暫時無法存取，請稍後再試。"
     }
   },
   "chat": {
@@ -2095,8 +2087,7 @@
       "helper": "你的首頁將位於 /studio/…。{min}–{max} 個字元，以小寫字母開頭，只能使用小寫字母、數字和連字號；必須唯一。",
       "submit": "繼續",
       "submitting": "設定中...",
-      "failed": "無法設定你的 Studio,請重試。",
-      "unavailable": "暫時無法完成註冊，請稍後再試。"
+      "failed": "無法設定你的 Studio,請重試。"
     },
     "recovery": {
       "title": "保存你的復原碼",
@@ -3273,11 +3264,7 @@
         "slugRequired": "請填寫 Slug。",
         "emailRequired": "請填寫電子郵件。",
         "slugUnverified": "暫時無法檢查，送出時由伺服器判斷。",
-        "slugLabelOptional": "Slug（選填）",
-        "regionLabel": "區域",
-        "regionUnavailable": "所選區域暫時無法建立 Studio，請稍後再試，或改選其他區域。",
-        "creationInProgress": "上一次建立仍在處理中，請稍後再試。",
-        "regionHelper": "內容存放在這個區域，建立後無法變更。"
+        "slugLabelOptional": "Slug（選填）"
       },
       "toolbar": {
         "sortLabel": "排序",
@@ -4002,18 +3989,6 @@
       "playBlocked": "瀏覽器阻止了有聲播放，請按播放開始。",
       "videoLoading": "{track}：影片載入中…",
       "videoUnavailable": "{track}：影片不可用"
-    }
-  },
-  "regions": {
-    "usWest": "美國西部",
-    "sg": "新加坡",
-    "unavailable": {
-      "studioTitle": "這個 Studio 暫時無法存取",
-      "projectTitle": "這個 Project 暫時無法存取",
-      "body": "你的內容沒有遺失。",
-      "recents": "部分 Studio 暫時無法存取，相關內容稍後會恢復顯示。",
-      "bell": "部分 Studio 暫時無法存取，相關通知稍後會恢復顯示。",
-      "badge": "暫時無法存取"
     }
   }
 }

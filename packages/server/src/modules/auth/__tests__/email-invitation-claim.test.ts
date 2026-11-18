@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type * as MockModule0 from "@breatic/core";
-import type * as MockModule1 from "@breatic/domain";
+import type * as MockModule1 from "@server/modules/auth/user.repo.js";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserEntity } from "@breatic/shared";
@@ -21,10 +21,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@server/modules/invitation/claim-email-invitations.js", () => ({
   claimEmailInvitations: mocks.claimEmailInvitations,
-  // Signing in claims this region's invitations for a verified mailbox.
-  claimEmailInvitationsOnSignIn: async (user: { emailVerified: boolean }) => {
-    if (user.emailVerified) await mocks.claimEmailInvitations(user);
-  },
 }));
 
 vi.mock("bcryptjs", () => ({
@@ -40,21 +36,15 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   enqueueAdsConversion: vi.fn().mockResolvedValue(false),
 }));
 
-vi.mock("@breatic/domain", async (importOriginal) => {
-  const actual = await importOriginal<typeof MockModule1>();
-  return {
-    ...actual,
-    usersRepo: {
-      ...actual.usersRepo,
-      getUserByEmail: mocks.getUserByEmail,
-      getUserByGoogleId: mocks.getUserByGoogleId,
-      createUser: mocks.createUser,
-      updateUser: mocks.updateUser,
-      linkGoogleIdentity: mocks.linkGoogleIdentity,
-      getHashedPassword: mocks.getHashedPassword,
-    },
-  };
-});
+vi.mock("@server/modules/auth/user.repo.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof MockModule1>()),
+  getUserByEmail: mocks.getUserByEmail,
+  getUserByGoogleId: mocks.getUserByGoogleId,
+  createUser: mocks.createUser,
+  updateUser: mocks.updateUser,
+  linkGoogleIdentity: mocks.linkGoogleIdentity,
+  getHashedPassword: mocks.getHashedPassword,
+}));
 
 import { createAccount, loginEmail, loginOrCreateGoogle } from "@server/modules/auth/auth.service.js";
 

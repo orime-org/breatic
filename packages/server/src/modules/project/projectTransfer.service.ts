@@ -41,11 +41,12 @@
 
 import { accountActivityRepo } from "@breatic/core";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import { studioRepo } from "@breatic/domain";
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { notificationRepo } from "@breatic/core";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as transfersRepo from "@server/modules/project/projectTransfers.repo.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
+import * as userRepo from "@server/modules/auth/user.repo.js";
 import { buildProjectTransferMail } from "@server/utils/notification-mail.js";
 import { decisionLink } from "@server/utils/decision-link.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
@@ -62,7 +63,7 @@ import { t } from "@breatic/shared";
 import {
   getDecisionWindowMs,
 } from "@server/config/limits.js";
-import { isUniqueViolation } from "@breatic/core";
+import { isUniqueViolation } from "@server/utils/pg-error.js";
 import {
   isRefused,
   refusalError,
@@ -70,7 +71,6 @@ import {
 import type { Refused } from "@server/utils/deferred-decision.js";
 import { onProjectOwnerChanged } from "@server/modules/project/projectOwnerChange.service.js";
 import type { RequestFailedReason } from "@breatic/shared";
-import { profilesService } from "@breatic/domain";
 
 /**
  * The current owner offers the project to another collaborator.
@@ -142,7 +142,7 @@ export async function requestProjectTransfer(
   }
 
   const expiresAt = new Date(Date.now() + getDecisionWindowMs());
-  const profiles = await profilesService.personalProfiles([fromUserId]);
+  const profiles = await studioRepo.getPersonalProfilesByCreators([fromUserId]);
   const from = profiles.get(fromUserId);
   // Bound out here because the mail is built after the transaction closes.
   let shareToken = "";
@@ -206,8 +206,8 @@ export async function requestProjectTransfer(
       async () => {
         // Resolve the recipient INSIDE the best-effort boundary — a DB read blip
         // must not fail this request (the offer already committed).
-        const recipient = (await profilesService.accountsOf([toUserId])).get(toUserId);
-        if (recipient === undefined) return null;
+        const recipient = await userRepo.getUserById(toUserId);
+        if (!recipient) return null;
         return buildProjectTransferMail({
           locale: recipient.locale,
           recipientEmail: recipient.email,
@@ -247,7 +247,7 @@ export async function confirmProjectTransfer(
   // inside a transaction reaches for a SECOND pooled connection while the first
   // is still held, which is how a pool exhausts itself under concurrent
   // decisions.
-  const accepterProfiles = await profilesService.personalProfiles([
+  const accepterProfiles = await studioRepo.getPersonalProfilesByCreators([
     receiverUserId,
   ]);
   const outcome = await db.transaction<

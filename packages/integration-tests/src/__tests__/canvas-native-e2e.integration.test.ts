@@ -305,7 +305,6 @@ import { canvasSpaceDocName } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
-import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 
 initCore(process.env);
 initConfiguredProvider();
@@ -554,7 +553,6 @@ beforeAll(async () => {
     type: "personal",
     name: "Integration Test Studio",
   }).onConflictDoNothing();
-  await mirrorInDirectory(pgClient, FIXTURE_STUDIO_ID);
 
   await db.insert(schema.projects).values({
     id: FIXTURE_PROJECT_ID,

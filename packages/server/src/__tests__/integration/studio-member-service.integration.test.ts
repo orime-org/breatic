@@ -32,7 +32,6 @@ import { initCore } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { projectMembersRepo } from "@breatic/core";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
-import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -78,7 +77,6 @@ async function insertStudioWithAdmin(
   `;
   const id = rows[0]!.id;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${id}, ${adminUserId}, 'admin')`;
-  await mirrorInDirectory(sql, id);
   return { id, slug };
 }
 

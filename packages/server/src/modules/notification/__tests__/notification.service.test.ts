@@ -15,12 +15,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
 
-// Which region the recipient now has data in is recorded through the
-// directory writer, which reads the deployment's region settings.
-vi.mock("@breatic/domain", () => ({
-  directoryWrites: { userRegionTouched: vi.fn(async () => undefined) },
-}));
-
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<typeof CoreModule>()),
   notificationRepo: {

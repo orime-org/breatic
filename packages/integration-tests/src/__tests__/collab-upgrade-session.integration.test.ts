@@ -22,7 +22,6 @@ import { createSession, logout } from "@server/modules/auth/auth.service.js";
 import { createAuthHook } from "@collab/hooks/auth.js";
 import { createConnectionRegistry } from "@collab/services/connection-registry.js";
 import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
-import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 
 /** An actual protocol response, decoded by the installed server library. */
 interface Reply {
@@ -132,7 +131,6 @@ async function projectFixture(): Promise<ProjectFixture> {
   `;
   const studioId = studio!.id;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${ownerId}, 'admin')`;
-  await mirrorInDirectory(sql, studioId);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug)
     VALUES (${studioId}, ${ownerId}, 'Session project', ${`session-${tag}`}) RETURNING id

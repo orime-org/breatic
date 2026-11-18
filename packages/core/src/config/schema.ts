@@ -24,7 +24,6 @@
 
 import { z } from "zod";
 import { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT, REDIS_KEY_PREFIX_PATTERN, resolveRedisKeyPrefix } from "@breatic/shared";
-import { isGlobalRegion, isMultiRegion } from "@core/region/placement.js";
 
 /**
  * Normalise a blank env value to undefined so `.default()` / `.optional()` fire.
@@ -73,36 +72,6 @@ function numeric<T extends z.ZodTypeAny>(
   schema: T,
 ): ReturnType<typeof z.preprocess<unknown, T, unknown>> {
   return z.preprocess(blankToUndefined, schema);
-}
-
-/** Letters, digits and '-': a region code goes into URLs, ids and token prefixes. */
-const REGION_CODE = /^[A-Za-z0-9-]+$/;
-
-/**
- * The refusal for a malformed region code.
- * @param key - The variable that held it.
- * @returns The message naming the variable.
- */
-function regionCodeMessage(key: string): string {
-  return `${key} may contain only letters, digits and '-'`;
-}
-
-/**
- * A variable holding a JSON object of strings; blank means an empty object.
- * @param key - The variable, named in the refusal.
- * @returns The schema yielding the parsed object.
- */
-function jsonRecord(key: string): z.ZodType<Record<string, string>, unknown> {
-  return z.preprocess((value) => {
-    const blank = blankToUndefined(value);
-    if (blank === undefined) return {};
-    if (typeof blank !== "string") return blank;
-    try {
-      return JSON.parse(blank) as unknown;
-    } catch {
-      return blank;
-    }
-  }, z.record(z.string(), z.string(), { error: `${key} must be a JSON object of strings` }));
 }
 
 /**
@@ -326,40 +295,6 @@ export const coreConfigSchema = z.object({
   OAUTH_ISSUER: z.string().url().default("http://localhost:3000"),
   MCP_API_BASE_URL: z.string().url().default("http://localhost:3000/api/v1"),
   MCP_CLIENT_SECRET: z.string().default(""),
-  // ── Regions (inner#1955) ─────────────────────────
-  // A deployment that sets none of these is one region that also holds the
-  // global data, exactly as before regions existed. Region codes become URL
-  // segments, the internal admin id (`region-<code>`) and token prefixes
-  // (`sg.`), so the character set is enforced.
-  REGION: z.preprocess(blankToUndefined, z.string().regex(REGION_CODE, regionCodeMessage("REGION")).default("default")),
-  // Unset means this region holds the global data.
-  GLOBAL_REGION: z.preprocess(blankToUndefined, z.string().regex(REGION_CODE, regionCodeMessage("GLOBAL_REGION")).optional()),
-  // The global region's internal listener; required outside the global region.
-  GLOBAL_API_URL: z.string().default("").transform((value) => value.trim().replace(/\/+$/, "")),
-  // `{ "<region>": "<internal listener URL>" }` for every other region the
-  // global region calls (cross-region reads, forwarding).
-  REGION_API_URLS: jsonRecord("REGION_API_URLS"),
-  // Identity tokens: only the global region signs; every region verifies with
-  // the public keys by kid, so a rotated key keeps verifying until removed.
-  IDENTITY_SIGNING_KEY: z.string().default(""),
-  IDENTITY_SIGNING_KEY_ID: z.string().default(""),
-  IDENTITY_PUBLIC_KEYS: jsonRecord("IDENTITY_PUBLIC_KEYS"),
-  // Parent domain the identity cookie is set on, so every region's API host
-  // receives it; empty sets it on the API host alone.
-  IDENTITY_COOKIE_DOMAIN: z.string().default(""),
-  // The global region's worker aligns the Studio directory once at start.
-  // Only for a deployment that starts it after every process of the previous
-  // release has stopped, as the bundled docker-compose.yml does; elsewhere
-  // the operator runs `pnpm db:reconcile-directory` after the rollout.
-  DIRECTORY_RECONCILE_ON_START: z
-    .string()
-    .default("false")
-    .transform((v) => v === "true"),
-  // The role the services connect as outside the global region. Migrate,
-  // run as the owning role, grants it every table and takes the global
-  // ones back, so a stray global query fails there instead of reading the
-  // empty copy.
-  DATABASE_APP_ROLE: z.string().default(""),
 
   // ── Storage ──────────────────────────────────────
   // UPLOAD_BASE_URL is the public read base. On R2 it is the r2.dev
@@ -447,7 +382,6 @@ export const coreConfigSchema = z.object({
   .transform((c) => ({
     ...c,
     REDIS_KEY_PREFIX: resolveRedisKeyPrefix(c.REDIS_KEY_PREFIX, c.ENV),
-    GLOBAL_REGION: c.GLOBAL_REGION ?? c.REGION,
   }));
 
 /** Validated, typed core configuration. */
@@ -461,9 +395,8 @@ export type CoreConfig = z.infer<typeof coreConfigSchema>;
  * @returns The validated, typed, default-applied configuration.
  * @throws {z.ZodError} if a required variable is missing / malformed.
  * @throws {Error} if payments are enabled without Stripe secrets, the
- *   internal API is enabled without its secret, `MCP_CLIENT_SECRET` is only
- *   whitespace, or a region outside the global region lacks the global API
- *   address or public keys, or signs.
+ *   internal API is enabled without its secret, or `MCP_CLIENT_SECRET` is only
+ *   whitespace.
  */
 export function parseConfig(rawEnv: Record<string, string | undefined>): CoreConfig {
   const config = coreConfigSchema.parse(rawEnv);
@@ -473,9 +406,7 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
   // app boots with PAYMENT_ENABLED=false; if enabled and empty,
   // webhook signature verification fails confusingly at runtime.
   // Fail fast at init with a clear message instead.
-  // Payments are taken in the global region alone (inner#1955); a region
-  // keeps PAYMENT_ENABLED for holding credits and needs no Stripe secret.
-  if (config.PAYMENT_ENABLED && isGlobalRegion(config)) {
+  if (config.PAYMENT_ENABLED) {
     if (!config.STRIPE_SECRET_KEY.trim()) {
       throw new Error(
         "FATAL: PAYMENT_ENABLED=true requires STRIPE_SECRET_KEY to be set " +
@@ -507,50 +438,6 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
     throw new Error(
       "FATAL: INTERNAL_API_SECRET_PREVIOUS is only whitespace; leave it empty " +
       "when there is no previous key. Refusing to start.",
-    );
-  }
-
-  // A region without the global data reaches it only over the global API
-  // and only verifies identity tokens; signing stays with the global region.
-  if (!isGlobalRegion(config)) {
-    if (config.GLOBAL_API_URL === "") {
-      throw new Error(
-        `FATAL: REGION=${config.REGION} is not GLOBAL_REGION=${config.GLOBAL_REGION}, so GLOBAL_API_URL ` +
-        "must name the global region's internal API. Refusing to start.",
-      );
-    }
-    if (Object.keys(config.IDENTITY_PUBLIC_KEYS).length === 0) {
-      throw new Error(
-        "FATAL: a region outside the global region needs IDENTITY_PUBLIC_KEYS to verify identity " +
-        "tokens. Refusing to start.",
-      );
-    }
-    if (config.IDENTITY_SIGNING_KEY.trim() !== "") {
-      throw new Error(
-        "FATAL: IDENTITY_SIGNING_KEY is set outside the global region; only the global region " +
-        "signs identity tokens. Refusing to start.",
-      );
-    }
-  }
-  // Every call between regions is signed with the internal API secret.
-  if (isMultiRegion(config) && !config.INTERNAL_API_SECRET.trim()) {
-    throw new Error(
-      "FATAL: a deployment with more than one region signs its calls between regions with " +
-      "INTERNAL_API_SECRET; set it. Refusing to start.",
-    );
-  }
-  // The global region with other regions must issue identity tokens they can
-  // read. A blank cookie domain stays allowed: regions on one host share it.
-  if (isGlobalRegion(config) && isMultiRegion(config) && config.IDENTITY_SIGNING_KEY.trim() === "") {
-    throw new Error(
-      "FATAL: the global region of a deployment with other regions needs IDENTITY_SIGNING_KEY to " +
-      "issue identity tokens. Refusing to start.",
-    );
-  }
-  if (config.IDENTITY_SIGNING_KEY.trim() !== "" && config.IDENTITY_SIGNING_KEY_ID.trim() === "") {
-    throw new Error(
-      "FATAL: IDENTITY_SIGNING_KEY needs IDENTITY_SIGNING_KEY_ID, the kid the tokens are signed " +
-      "under. Refusing to start.",
     );
   }
 

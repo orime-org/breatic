@@ -7,7 +7,6 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { db, initCore, getHonouredTierForUser, getEnterpriseMembershipProfile, getMembershipReadingForUser, getMembershipForUser, getLimitsForStudio, getStudioStorageQuota, getMembershipLimits, getMembershipConfig, lockLimitsForUser } from "@breatic/core";
 import { tierLimitsSchema } from "@breatic/shared";
 import { waitUntilBlockedOn } from "./lock-probe.js";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 let sql: ReturnType<typeof postgres>;
 const limits = { team_studios: 8, projects_per_studio: 20, concurrent_editors: 30, studio_members: 200, project_members: 80, storage_bytes: 1099511627776 };
@@ -22,7 +21,6 @@ async function account(tier: string): Promise<{ userId: string; studioId: string
   await sql`insert into users(id,email,membership_tier) values(${userId},${`${userId}@example.test`},${tier})`;
   await sql`insert into studios(id,created_by_user_id,slug,name,type) values(${studioId},${userId},${studioId},'Enterprise test','team')`;
   await sql`insert into studio_members(studio_id,user_id,role) values(${studioId},${userId},'admin')`;
-  await mirrorAllInDirectory(sql);
   return { userId, studioId };
 }
 
@@ -75,7 +73,6 @@ describe("enterprise membership unified reads", () => {
     await sql`insert into users(id,email,membership_tier) values(${userId},${`${userId}@example.test`},'pro')`;
     await sql`insert into studios(id,created_by_user_id,slug,name,type) values(${studioId},${userId},${studioId},'Legacy identity test','team')`;
     await sql`insert into studio_members(studio_id,user_id,role) values(${studioId},${userId},'admin')`;
-    await mirrorAllInDirectory(sql);
     const configured = getMembershipLimits("pro");
     expect(await getMembershipReadingForUser(userId)).toMatchObject({ subject: { accountId: userId }, storedTier: "pro", effectiveTier: "pro", limits: configured, enterpriseState: "ordinary", revision: null, expiresAt: null, settlementProtected: false });
     expect(await getHonouredTierForUser(userId)).toBe("pro");
@@ -168,7 +165,6 @@ describe("enterprise membership unified reads", () => {
     await enterprise(from.userId, "2070-01-01T00:00:00Z");
     await sql`update studio_members set role='maintainer' where studio_id=${from.studioId} and user_id=${from.userId}`;
     await sql`insert into studio_members(studio_id,user_id,role) values(${from.studioId},${to.userId},'admin')`;
-    await sql`update studio_directory set admin_user_id=${to.userId} where studio_id=${from.studioId}`;
     expect(await getLimitsForStudio(from.studioId)).toEqual(getMembershipLimits("pro"));
     const legacy = await account("enterprise");
     expect(await getHonouredTierForUser(legacy.userId)).toBe("enterprise");

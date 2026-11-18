@@ -35,7 +35,6 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 import {
   initCore,
   getRedis,
@@ -108,7 +107,6 @@ async function insertStudio(
   `;
   const id = rows[0]!.id;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${id}, ${adminUserId}, 'admin')`;
-  await mirrorInDirectory(sql, id);
   return { id, slug };
 }
 

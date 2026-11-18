@@ -35,8 +35,6 @@ export type UploadFailurePlan =
       readonly kind: 'reportToServer';
       /** The row to report against, and to keep the File under for its Retry. */
       readonly taskId: string;
-      /** The API base of the region that holds the row, when the ticket named one. */
-      readonly apiBase?: string;
     }
   | {
       readonly kind: 'toastOnly';
@@ -153,11 +151,7 @@ export function resolveUploadFailure(
     // nothing to report against, which reads the same as any failure before
     // the ticket.
     return outcome.taskId !== undefined
-      ? {
-        kind: 'reportToServer',
-        taskId: outcome.taskId,
-        ...(outcome.apiBase !== undefined && { apiBase: outcome.apiBase }),
-      }
+      ? { kind: 'reportToServer', taskId: outcome.taskId }
       : {
         kind: 'toastOnly',
         toastKey: uploadFailureMessageKey(outcome.reason),

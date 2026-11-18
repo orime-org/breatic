@@ -84,15 +84,11 @@ studios.get("/", async (c) => {
  * Mounted on the plural `studios` app (a cross-studio read, alongside the
  * `GET /studios` switcher) — NOT under `/studio/:slug`, so there is no
  * collision with the `:slug` param route.
- *
- * Projects in other regions are merged in from each region the user is
- * recorded in; a region that does not answer in time is named in
- * `unavailableRegions` (inner#1955).
- * @returns `200` with `{ data: { items: RecentItem[], unavailableRegions } }`
+ * @returns `200` with `{ data: RecentItem[] }`
  */
 studios.get("/recent", async (c) => {
   const user = c.get("user");
-  const data = await recentService.listRecentEverywhere(user.id);
+  const data = await recentService.listRecent(user.id);
   return c.json({ data });
 });
 
@@ -147,8 +143,8 @@ studios.post(
   validate("json", createTeamStudioSchema),
   async (c) => {
     const user = c.get("user");
-    const { name, slug, studioId, region } = c.req.valid("json");
-    const data = await studioService.createTeamStudio(user.id, name, slug, { studioId, region });
+    const { name, slug } = c.req.valid("json");
+    const data = await studioService.createTeamStudio(user.id, name, slug);
     return c.json({ data }, 201);
   },
 );

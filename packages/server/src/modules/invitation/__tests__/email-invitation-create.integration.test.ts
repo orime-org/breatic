@@ -22,7 +22,6 @@ import {
   type Scope,
   type Sql,
 } from "./email-invitation.fixture.js";
-import { withPendingDisplay } from "@server/modules/invitation/pending-display.js";
 
 let sql: Sql;
 
@@ -74,7 +73,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
       const created = await createInvitation(scope, fixture);
       const listed = scope === "project"
         ? await projectInvites.listPending(fixture.projectId)
-        : await withPendingDisplay(await studioInvitesRepo.listPendingByStudio(fixture.studioId));
+        : await studioInvitesRepo.listPendingByStudio(fixture.studioId);
       expect(listed).toHaveLength(1);
       expect(listed[0]).toMatchObject({ invitationId: created.invitationId, email: fixture.email, awaitingSignup: true });
     });

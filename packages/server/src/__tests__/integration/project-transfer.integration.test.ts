@@ -60,7 +60,6 @@ import { initCore, projectMembersRepo } from "@breatic/core";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import * as projectMembersService from "@server/modules/project/projectMembers.service.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -99,7 +98,6 @@ async function insertPersonalStudio(userId: string, name: string): Promise<strin
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${userId}, ${slug}, 'personal', ${name})
   `;
-  await mirrorAllInDirectory(sql);
   return slug;
 }
 
@@ -116,7 +114,6 @@ async function insertTeamStudio(
   `;
   const id = rows[0]!.id;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${id}, ${adminUserId}, 'admin')`;
-  await mirrorAllInDirectory(sql);
   return { id, slug };
 }
 
@@ -126,7 +123,6 @@ async function insertStudioMember(
   role: "admin" | "maintainer" | "guest",
 ): Promise<void> {
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${userId}, ${role})`;
-  await mirrorAllInDirectory(sql);
 }
 
 let projectSeq = 0;

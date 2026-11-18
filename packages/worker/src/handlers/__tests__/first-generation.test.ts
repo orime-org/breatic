@@ -16,14 +16,8 @@ const h = vi.hoisted(() => ({
   warn: vi.fn(),
 }));
 
-// The milestone is claimed in the global region (inner#1955).
-vi.mock("@breatic/domain", () => ({
-  globalApi: () => ({
-    claimAccountMilestone: async (kind: string, userId: string) => ({ claimed: await h.claimFirstMilestone(kind, userId) }),
-  }),
-}));
-
 vi.mock("@breatic/core", () => ({
+  claimFirstMilestone: h.claimFirstMilestone,
   serverAnalyticsWanted: h.serverAnalyticsWanted,
   trackServerEvent: h.trackServerEvent,
   projectsRepo: { findOwnerStudioId: h.findOwnerStudioId },

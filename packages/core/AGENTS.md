@@ -16,15 +16,6 @@ The backend shared kernel. These rules apply when you change anything under `pac
 
 **There are two databases: the product database (`db/schema.ts`, `db/migrations/`, clients `db` / `rawPg`) and the Yjs database (`db/yjs-schema.ts`, `db/migrations-yjs/` with its own journal, clients `yjsDb` / `yjsRawPg`, URL `YJS_DATABASE_URL`).** Every migration belongs to exactly one of them, so name which one, and pass `--yjs` to `pnpm db:journal-add` for the Yjs database.
 
-### Global rows go through the global API
-
-**Every table is placed in `TABLE_PLACEMENT` (`src/db/table-placement.ts`) as `global`, `regional` or `both`, and code that can run outside the global region reaches global rows only through `globalApi`, never through SQL.** Outside the global region the services' role has no rights on global tables, so a direct query passes every single-region test and fails only in a second region; `table-placement.test.ts` fails on a table nobody placed. How regions fit together: [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#regions-and-the-global-region).
-Check: can this code run in a Studio's region while it reads accounts, credits or the directory? Yes → the global API.
-
-### A migration changes data on one side
-
-**A migration fills global tables only from global tables and regional tables only from regional tables; a backfill that crosses the two is a one-off task driven through the global API.** Every region runs the same migrations and the global tables are empty outside the global region, so a crossing `INSERT ... SELECT` silently writes nothing there.
-
 ### Migrations are hand-written
 
 **Since `0018` every migration is a hand-written `NNNN_name.sql`; never run `drizzle-kit generate`.** drizzle-kit's snapshot is frozen at `0017`, so generating diffs `schema.ts` against it and emits every later change again as new.
