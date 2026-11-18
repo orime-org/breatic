@@ -27,7 +27,7 @@
 
 import { and, desc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { db, projectInvitations, projects, studios, users } from "@breatic/core";
+import { db, projectInvitations, studios, users } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type {
   InvitableProjectRole,
@@ -376,68 +376,6 @@ export async function listPendingByProject(
     expiresAt: r.expiresAt.toISOString(),
   }));
 }
-
-/**
- * Resolve a pending invite's landing-page detail by id (the email-link page
- * shows it before the invitee confirms). Joins the project (name + slug + id)
- * and the inviter's personal studio (name). Includes EXPIRED pendings (the page
- * renders an "expired" state) — only non-pending / soft-deleted rows return
- * null.
- * @param invitationId - Invitation id (resolved from the email-link token)
- * @returns Landing detail (incl. `invitedUserId` for the own-invite guard +
- *   `expiresAt` for the expiry check), or null if gone / no longer pending
- */
-export async function findLandingById(invitationId: string): Promise<{
-  projectName: string;
-  projectSlug: string;
-  projectId: string;
-  inviterName: string;
-  role: InvitableProjectRole;
-  invitedUserId: string | null;
-  expiresAt: Date;
-} | null> {
-  const inviterStudio = alias(studios, "inviter_studio_landing");
-  const rows = await db
-    .select({
-      projectName: projects.name,
-      projectSlug: projects.slug,
-      projectId: projects.id,
-      inviterName: inviterStudio.name,
-      role: projectInvitations.role,
-      invitedUserId: projectInvitations.invitedUserId,
-      expiresAt: projectInvitations.expiresAt,
-    })
-    .from(projectInvitations)
-    .innerJoin(projects, eq(projects.id, projectInvitations.projectId))
-    .leftJoin(
-      inviterStudio,
-      and(
-        eq(inviterStudio.createdByUserId, projectInvitations.invitedBy),
-        eq(inviterStudio.type, "personal"),
-        isNull(inviterStudio.deletedAt),
-      ),
-    )
-    .where(
-      and(
-        eq(projectInvitations.id, invitationId),
-        eq(projectInvitations.status, "pending"),
-        isNull(projectInvitations.deletedAt),
-      ),
-    )
-    .limit(1);
-  const row = rows[0];
-  if (!row) return null;
-  return {
-    projectName: row.projectName,
-    projectSlug: row.projectSlug,
-    projectId: row.projectId,
-    inviterName: row.inviterName ?? "",
-    role: row.role as InvitableProjectRole,
-    invitedUserId: row.invitedUserId,
-    expiresAt: row.expiresAt,
-  };
-}
-
 
 /** Fields shared by recipient arbitration and delivery settlement. */
 const recipientFields = {
