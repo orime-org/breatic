@@ -35,17 +35,17 @@ In Breatic, you can revise the script, try different visuals, stage scenes, and 
 
 | Feature | **Breatic** | Higgsfield | TapNow | LibTV | Luma | LTX Studio |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Collaborative documents** | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **Collaborative canvas** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Collaborative 3D** | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **Collaborative timeline** | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 3D previs | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
-| Timeline editing | ✓ | ✗ | ✓ | ✓ | ✗ | ✓ |
-| Project agent | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
-| Review suggested rewrites | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Team sharing | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Collaborative documents** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Collaborative canvas** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Collaborative 3D** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Collaborative timeline** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 3D previs | ✅ | ✅ | ✅ | ✅ | ✗ | ✗ |
+| Timeline editing | ✅ | ✗ | ✅ | ✅ | ✗ | ✅ |
+| Project agent | ✅ | ✅ | ✅ | ✅ | ✅ | ✗ |
+| Review suggested rewrites | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Team sharing | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-Collaboration means multiple people can edit the same workspace in real time. Reviewing suggested rewrites means you can inspect an agent's proposed change before deciding whether to apply it to the original text. This comparison is based on public product information as of November 18, 2026. ✓ means support is confirmed. ✗ means support could not be confirmed from public information.
+Collaboration means multiple people can edit the same workspace in real time. Reviewing suggested rewrites means you can inspect an agent's proposed change before deciding whether to apply it to the original text. This comparison is based on public product information as of November 18, 2026. ✅ means support is confirmed. ✗ means support could not be confirmed from public information.
 
 ![Coffee-shop image candidates on a Breatic canvas beside the project chat](docs/images/readme/workspace-en.png)
 
