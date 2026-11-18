@@ -5,7 +5,10 @@
  * Highlighting a selected part and picking a part from a hit (inner#1693 design 5.5, 5.6).
  */
 
-import { Bone, Box3, BoxGeometry, Float32BufferAttribute, Group, Mesh, MeshStandardMaterial, Skeleton, SkinnedMesh, Uint16BufferAttribute, type Intersection } from 'three';
+import {
+  Bone, Box3, BoxGeometry, Float32BufferAttribute, Group, LineBasicMaterial, LineSegments, Mesh, MeshStandardMaterial, Points, PointsMaterial, Skeleton, SkinnedMesh,
+  Uint16BufferAttribute, type Intersection,
+} from 'three';
 import { describe, expect, it } from 'vitest';
 
 import * as highlight from '@web/spaces/three-d/viewport/look-highlight';
@@ -50,6 +53,33 @@ describe('part highlight', () => {
     expect(meshes[2]!.children).toHaveLength(0);
     shown.remove();
     meshes.forEach((mesh) => expect(mesh.children).toHaveLength(0));
+  });
+
+  it('covers a line and a points part with an overlay of the same kind and point size', () => {
+    const root = new Group();
+    const lineMaterial = new LineBasicMaterial(); lineMaterial.userData.lookPart = '0';
+    const pointsMaterial = new PointsMaterial({ size: 4, sizeAttenuation: false }); pointsMaterial.userData.lookPart = '0';
+    const line = new LineSegments(new BoxGeometry(), lineMaterial);
+    const points = new Points(new BoxGeometry(), pointsMaterial);
+    root.add(line, points);
+    const shown = exported<(root: Group, part: string) => { remove: () => void; overlays: Array<LineSegments | Points> }>('addPartHighlight')(root, '0');
+    expect(shown.overlays).toHaveLength(2);
+    const [lineOverlay, pointsOverlay] = shown.overlays as [LineSegments, Points];
+    expect(lineOverlay.isLineSegments).toBe(true);
+    expect(lineOverlay.geometry).toBe(line.geometry);
+    expect(lineOverlay.parent).toBe(line);
+    expect(pointsOverlay.isPoints).toBe(true);
+    expect((pointsOverlay.material as PointsMaterial).size).toBe(4);
+    expect((pointsOverlay.material as PointsMaterial).sizeAttenuation).toBe(false);
+    for (const overlay of shown.overlays) {
+      const hits: unknown[] = [];
+      overlay.raycast({} as never, hits as never);
+      expect(hits).toEqual([]);
+      expect(overlay.userData.lookHighlight).toBe(true);
+    }
+    shown.remove();
+    expect(line.children).toHaveLength(0);
+    expect(points.children).toHaveLength(0);
   });
 });
 
