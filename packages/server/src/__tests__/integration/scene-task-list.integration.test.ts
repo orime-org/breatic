@@ -483,7 +483,10 @@ describe("reading the Space's task list", () => {
   it("gives a row that waits for a free running slot no deadline, and keeps it running past the budget of its opening", async () => {
     const { owner, projectId, spaceId } = await seedProject();
     const { taskId } = await ticket(owner.cookie, sceneBody(projectId, spaceId, { label: "Waiting" }));
-    await sql`UPDATE node_tasks SET started_at = now() - (budget_ms + 60000) * interval '1 millisecond', waiting_since = now() - (budget_ms + 60000) * interval '1 millisecond' WHERE id = ${String(taskId)}`;
+    // A row waits only while its task does: the gate holds a pending task back.
+    const [task] = await sql<{ id: string }[]>`INSERT INTO tasks (user_id, project_id, space_id, task_type, mode, model, status, params, slot_wait_since, slot_checked_at, slot_wait_limit)
+      VALUES (${owner.userId}, ${projectId}, ${spaceId}, 'three_d', 'append', 'tripo-h3.1-t23d', 'pending', '{}'::jsonb, now(), now(), 2) RETURNING id`;
+    await sql`UPDATE node_tasks SET task_id = ${task!.id}, started_at = now() - (budget_ms + 60000) * interval '1 millisecond', waiting_since = now() - (budget_ms + 60000) * interval '1 millisecond' WHERE id = ${String(taskId)}`;
 
     const res = await call("GET", `/projects/${projectId}/three-d/${spaceId}/tasks`, owner.cookie);
     const { data } = (await res.json()) as { data: { tasks: { id: string; status: string; deadlineAt: string | null }[] } };
