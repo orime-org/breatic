@@ -114,12 +114,10 @@ describe('assetsApi.requestUploadTicket', () => {
       hash: 'a'.repeat(64),
     });
 
-    // Stamped with the API base it was asked of (inner#1955).
     expect(res).toEqual({
       alreadyExists: true,
       fileUrl: 'https://cdn/x.png',
       kind: 'image',
-      apiBase: '/api/v1',
     });
   });
 });
@@ -253,7 +251,7 @@ describe('assetsApi.requestUploadTicketBatch', () => {
       tool_name: 'image.grid',
       items: [{ filename: 'GRID.png', content_type: 'image/png', size: 9, client_hash: 'c'.repeat(64), node_id: 'n1' }],
     }, expect.objectContaining({ timeout: 0 }));
-    expect(answers).toEqual([{ refused: { reason: 'storage' }, apiBase: '/api/v1' }]);
+    expect(answers).toEqual([{ refused: { reason: 'storage' } }]);
   });
 });
 

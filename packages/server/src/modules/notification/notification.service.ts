@@ -21,29 +21,10 @@
  */
 
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
-import { env, NotFoundError } from "@breatic/core";
-import { directoryWrites } from "@breatic/domain";
+import { NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { DbTx } from "@server/modules/notification/notification.repo.js";
-import type { BillingPeriod, DecisionGrantRole, NotificationCount, NotificationEntity, NotificationFeed, NotificationListView } from "@breatic/shared";
-import { withResolvedRefs } from "@server/modules/notification/notification-refs.js";
-import { askRegion, askUserRegions } from "@server/modules/region/fanout.js";
-
-/**
- * Write a notification, and record that its recipient now has something in
- * this region, so the global region's bell asks it (inner#1955).
- * @param input - The notification.
- * @param tx - The business transaction, when there is one.
- * @returns The notification.
- */
-async function insertNotification(
-  input: Parameters<typeof notificationRepo.create>[0],
-  tx?: DbTx,
-): Promise<NotificationEntity> {
-  const created = await notificationRepo.create(input, tx);
-  await directoryWrites.userRegionTouched(input.userId, tx);
-  return created;
-}
+import type { BillingPeriod, DecisionGrantRole, NotificationEntity } from "@breatic/shared";
 
 export type { NotificationEntity };
 
@@ -121,7 +102,7 @@ export async function createRoleUpgradeRequest(input: {
   expiresAt: Date;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.ownerUserId,
       type: "access.role_upgrade_request",
@@ -149,7 +130,7 @@ export async function createRoleUpgradeApproved(input: {
   payload: RoleUpgradeDecisionPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.requesterUserId,
       type: "access.role_upgrade_approved",
@@ -176,7 +157,7 @@ export async function createRoleUpgradeRejected(input: {
   payload: RoleUpgradeDecisionPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.requesterUserId,
       type: "access.role_upgrade_rejected",
@@ -327,7 +308,7 @@ export async function createStudioTransferRequest(input: {
   expiresAt: Date;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.userId,
       type: "studio.transfer_request",
@@ -366,7 +347,7 @@ export async function createMembershipEnded(input: {
   payload: MembershipEndedPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.userId,
       type: "membership.ended",
@@ -409,7 +390,7 @@ export async function createMembershipUpgradeIncomplete(input: {
   payload: MembershipUpgradeIncompletePayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.userId,
       type: "membership.upgrade_incomplete",
@@ -433,7 +414,7 @@ export async function createStudioTransferApproved(input: {
   payload: StudioTransferApprovedPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.userId,
       type: "studio.transfer_approved",
@@ -459,7 +440,7 @@ export async function createProjectTransferRequest(input: {
   expiresAt: Date;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.userId,
       type: "project.transfer_request",
@@ -488,7 +469,7 @@ export async function createProjectTransferApproved(input: {
   payload: ProjectTransferApprovedPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.userId,
       type: "project.transfer_approved",
@@ -520,7 +501,7 @@ export async function createStudioInviteRequest(input: {
   expiresAt: Date;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.userId,
       type: "studio.invite_request",
@@ -545,7 +526,7 @@ export async function createStudioInviteAccepted(input: {
   payload: StudioInviteAcceptedPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.userId,
       type: "studio.invite_accepted",
@@ -616,7 +597,7 @@ export async function createProjectInviteRequest(input: {
   expiresAt: Date;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.userId,
       type: "project.invite_request",
@@ -644,7 +625,7 @@ export async function createProjectInviteAccepted(input: {
   payload: ProjectInviteAcceptedPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.userId,
       type: "project.invite_accepted",
@@ -698,52 +679,6 @@ export async function countUnread(userId: string): Promise<number> {
   return notificationRepo.countUnread(userId);
 }
 
-/**
- * The bell's list across regions (inner#1955): this region's notifications
- * merged with those of every other region the user is recorded in, newest
- * first, each naming its region (null here), and the regions that did not
- * answer.
- * @param userId - The user.
- * @param unreadOnly - Only the unread ones.
- * @returns The merged list with every region's resolved names.
- */
-export async function listFeed(userId: string, unreadOnly: boolean): Promise<NotificationFeed> {
-  const [here, elsewhere] = await Promise.all([
-    unreadOnly ? listUnread(userId) : listAll(userId),
-    askUserRegions<NotificationListView>(userId, "listNotifications", [userId, unreadOnly]),
-  ]);
-  const local = await withResolvedRefs(here);
-  const items: NotificationFeed["items"] = [
-    ...local.items.map((item) => ({ ...item, region: null })),
-    ...elsewhere.answers.flatMap((answer) => answer.result.items.map((item) => ({ ...item, region: answer.region }))),
-  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const resolved = elsewhere.answers.reduce(
-    (merged, answer) => ({
-      users: { ...merged.users, ...answer.result.resolved.users },
-      studios: { ...merged.studios, ...answer.result.resolved.studios },
-      projects: { ...merged.projects, ...answer.result.resolved.projects },
-    }),
-    local.resolved,
-  );
-  return { items, resolved, unavailableRegions: elsewhere.unavailableRegions };
-}
-
-/**
- * The bell's unread count across regions, and the regions that did not answer.
- * @param userId - The user.
- * @returns The summed count.
- */
-export async function countFeed(userId: string): Promise<NotificationCount> {
-  const [here, elsewhere] = await Promise.all([
-    countUnread(userId),
-    askUserRegions<number>(userId, "countUnread", [userId]),
-  ]);
-  return {
-    count: elsewhere.answers.reduce((sum, answer) => sum + answer.result, here),
-    unavailableRegions: elsewhere.unavailableRegions,
-  };
-}
-
 // ── Mutations ───────────────────────────────────────────────────────
 
 /**
@@ -759,35 +694,6 @@ export async function markRead(id: string, userId: string): Promise<void> {
   if (!ok) {
     throw new NotFoundError(t("server.error.not_found"));
   }
-}
-
-/**
- * Mark a notification read in the region that holds it (inner#1955).
- * @param id - The notification.
- * @param userId - Its owner.
- * @param region - The region the bell listed it under; null is this region.
- * @returns Once marked.
- * @throws {NotFoundError} When the region has no such unread notification for the user.
- * @throws {AppError} `503` `region_unavailable` when the region does not answer.
- */
-export async function markReadIn(id: string, userId: string, region: string | null): Promise<void> {
-  if (region === null || region === env.REGION) return markRead(id, userId);
-  const ok = await askRegion<boolean>(region, "markNotificationRead", [id, userId], t("server.region.unavailable"));
-  if (!ok) throw new NotFoundError(t("server.error.not_found"));
-}
-
-/**
- * Mark the user's unread news read here and in every other region they are
- * in; a region that does not answer keeps its notifications unread.
- * @param userId - The user.
- * @returns How many were marked, across the regions that answered.
- */
-export async function markAllReadEverywhere(userId: string): Promise<number> {
-  const [here, elsewhere] = await Promise.all([
-    markAllRead(userId),
-    askUserRegions<number>(userId, "markAllNotificationsRead", [userId]),
-  ]);
-  return elsewhere.answers.reduce((sum, answer) => sum + answer.result, here);
 }
 
 /** Payload for `storage.quota_exceeded` — where the refusal happened. */
@@ -828,7 +734,7 @@ export async function createStorageQuotaExceeded(input: {
   payload: StorageQuotaExceededPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.userId,
       type: "storage.quota_exceeded",
@@ -871,7 +777,7 @@ export async function createCreditRefundCompleted(input: {
   payload: CreditRefundCompletedPayload;
   tx: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.userId,
       type: "credit.refund_completed",
@@ -894,7 +800,7 @@ export async function createCreditRefundRejected(input: {
   payload: CreditRefundRejectedPayload;
   tx: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.userId,
       type: "credit.refund_rejected",
@@ -926,7 +832,7 @@ export async function createCreditRefundRestored(input: {
   payload: CreditRefundRestoredPayload;
   tx: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.userId,
       type: "credit.refund_restored",
@@ -982,7 +888,7 @@ export async function createProjectJoinRequest(input: {
   expiresAt: Date;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.ownerUserId,
       type: "project.join_request",
@@ -1011,7 +917,7 @@ export async function createProjectJoinDecision(input: {
   payload: ProjectJoinDecisionPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return insertNotification(
+  return notificationRepo.create(
     {
       userId: input.requesterUserId,
       type: input.outcome === "approved" ? "project.join_approved" : "project.join_rejected",

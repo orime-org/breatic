@@ -17,7 +17,7 @@
 
 import crypto from "node:crypto";
 
-import { usersRepo as userRepo } from "@breatic/domain";
+import * as userRepo from "@server/modules/auth/user.repo.js";
 import { SignupReferralRefused, createAccount, hashPassword } from "@server/modules/auth/auth.service.js";
 import type { SignupReferral, SignupReferralOutcome } from "@server/modules/auth/auth.service.js";
 import { findActiveCode } from "@server/modules/referral/referral-binding.service.js";

@@ -94,7 +94,6 @@ import { FINISHED_ASKING_FOR_A_TOOL } from "../helpers/model-double.js";
 import { stopChannel } from "@server/agent/chat-run.js";
 import { markShuttingDown, resetShutdownFlagForTests } from "@server/agent/shutdown-flag.js";
 import { openPaymentSource } from "./payment-source.js";
-import { mirrorInDirectory } from "./directory-fixtures.js";
 import { attach, keysOf, send, stop, sync, until, untilIdle, type Seeded } from "./chat-run-harness.js";
 
 let sql: ReturnType<typeof postgres>;
@@ -151,8 +150,6 @@ async function seedPaying(): Promise<Seeded> {
     INSERT INTO studios (created_by_user_id, slug, type, name) VALUES (${user!.id}, ${`${tag}-s`}, 'team', ${tag}) RETURNING id
   `;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${user!.id}, 'admin')`;
-  // The directory holds every Studio's admin; charges read it (inner#1955).
-  await mirrorInDirectory(sql, studio!.id);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug) VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}) RETURNING id
   `;

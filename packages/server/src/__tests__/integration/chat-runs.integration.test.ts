@@ -14,14 +14,17 @@
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
 
-const faults = vi.hoisted(() => ({ historyFails: false, leaseFails: false }));
+const faults = vi.hoisted(() => ({ historyFailure: undefined as Promise<void> | undefined, leaseFails: false }));
 
 vi.mock("@server/agent/turn-context.js", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
     buildTurnContext: async (...args: unknown[]) => {
-      if (faults.historyFails) throw new Error("history read failed");
+      if (faults.historyFailure) {
+        await faults.historyFailure;
+        throw new Error("history read failed");
+      }
       return (actual.buildTurnContext as (...a: unknown[]) => Promise<unknown>)(...args);
     },
   };
@@ -110,7 +113,7 @@ afterAll(async () => {
 });
 
 afterEach(() => {
-  faults.historyFails = false;
+  faults.historyFailure = undefined;
   faults.leaseFails = false;
   script.calls = [];
   script.prompts = [];
@@ -564,21 +567,22 @@ describe("a run on its own", () => {
 
   it("says it failed on the stream when it fails before the model is asked (ST-04 through the routes)", async () => {
     const who = await seedOwner(sql, app);
-    faults.historyFails = true;
     let release!: () => void;
-    const gate = new Promise<void>((r) => {
-      release = r;
+    faults.historyFailure = new Promise<void>((resolve) => {
+      release = resolve;
     });
-    await send(app, who, { message: "first" });
-    const reading = attach(app, who);
-    release();
-    await gate;
-    const { frames } = await reading;
-    const types = turnFrames(frames).map((f) => f.type);
-    expect(types).toContain("data-failed");
-    expect(types.at(-1)).toBe("error");
-    await untilIdle(who.conversationId);
-    expect(script.count).toBe(0);
+    try {
+      await send(app, who, { message: "first" });
+      const { status, frames } = await attach(app, who, release);
+      expect(status).toBe(200);
+      const types = turnFrames(frames).map((f) => f.type);
+      expect(types).toContain("data-failed");
+      expect(types.at(-1)).toBe("error");
+      await untilIdle(who.conversationId);
+      expect(script.count).toBe(0);
+    } finally {
+      release();
+    }
   });
 
   it("still answers when its place in the running list cannot be written (LS-06)", async () => {

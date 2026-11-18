@@ -49,8 +49,7 @@
       "signup_code_exhausted": "This code can no longer be used. Request a new one.",
       "signup_expired": "This sign-up has expired.",
       "signup_resend_cooldown": "Wait {seconds, plural, one {# second} other {# seconds}} before requesting another code.",
-      "signup_code_send_failed": "The verification code could not be sent. Try again.",
-      "invitation_region_unavailable": "This invitation can't be opened right now. Please try again in a moment."
+      "signup_code_send_failed": "The verification code could not be sent. Try again."
     },
     "studio": {
       "slug_taken": "That Slug is already in use. Please choose another.",
@@ -66,10 +65,6 @@
       "leave_last_admin": "Transfer the admin role before leaving this Studio.",
       "transfer_credits_designated": "A credit pack is still assigned to this Studio. Unassign it under avatar menu → Credits → Assign, then start the transfer.",
       "designation_during_transfer": "This Studio has a pending transfer. Credit packs can be assigned to it again once the transfer is withdrawn or ends.",
-      "transfer_processing": "This Studio's transfer is being processed. Please try again later.",
-      "region_unavailable": "Studios can't be created in this region right now. Please try again later, or pick another region.",
-      "creation_in_progress": "Your last Studio is still being created. Please try again later.",
-      "creation_abandoned": "This Studio couldn't be created. Please try again.",
       "email_not_registered_no_mail": "That email is not registered. This deployment has email disabled, so it cannot invite unregistered addresses.",
       "invite_mail_failed": "The email could not be sent. Please try again."
     },
@@ -367,9 +362,6 @@
     },
     "document": {
       "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
-    },
-    "region": {
-      "unavailable": "This Studio can't be reached right now. Please try again later."
     }
   },
   "chat": {
@@ -2197,8 +2189,7 @@
       "helper": "Your home will live at /studio/…. {min}–{max} characters, starting with a lowercase letter; lowercase letters, numbers and hyphens only; it must be unique.",
       "submit": "Continue",
       "submitting": "Setting up...",
-      "failed": "Could not set up your Studio. Please try again.",
-      "unavailable": "We can't finish signing you up right now. Please try again later."
+      "failed": "Could not set up your Studio. Please try again."
     },
     "recovery": {
       "title": "Save your recovery code",
@@ -2359,7 +2350,11 @@
     "popover": {
       "title": "Project members",
       "manage": "Manage collaborators",
-      "isMe": "(you)"
+      "isMe": "(you)",
+      "online": "Online",
+      "offline": "Offline",
+      "follow": "View",
+      "unfollow": "Stop"
     },
     "modal": {
       "title": "Collaborators",
@@ -2391,6 +2386,17 @@
     },
     "stack": {
       "triggerAria": "Project members ({count})"
+    },
+    "follow": {
+      "bar": "Following {name}",
+      "stop": "Stop",
+      "stoppedViewport": "You moved the view. Stopped following",
+      "stoppedSpace": "You switched Space. Stopped following",
+      "stoppedOffline": "{name} went offline. Stopped following",
+      "stoppedLeaderFollows": "{name} started following {other}. Stopped following",
+      "stoppedLeaderFollowsYou": "{name} started following you. Stopped following",
+      "busy": "{name} is following {other}",
+      "busyYou": "{name} is following you"
     }
   },
   "spaces": {
@@ -3360,11 +3366,7 @@
         "slugRequired": "Enter a Slug.",
         "emailRequired": "Enter an email address.",
         "slugUnverified": "Couldn't check right now. The server decides when you submit.",
-        "slugLabelOptional": "Slug (optional)",
-        "regionLabel": "Region",
-        "regionUnavailable": "Studios can't be created in this region right now. Please try again later, or pick another region.",
-        "creationInProgress": "Your last Studio is still being created. Please try again later.",
-        "regionHelper": "Content is stored in this region and can't be moved later."
+        "slugLabelOptional": "Slug (optional)"
       },
       "toolbar": {
         "sortLabel": "Sort",
@@ -4089,18 +4091,6 @@
       "playBlocked": "The browser blocked playback with sound. Press play to start.",
       "videoLoading": "{track}: video loading…",
       "videoUnavailable": "{track}: video unavailable"
-    }
-  },
-  "regions": {
-    "usWest": "US West",
-    "sg": "Singapore",
-    "unavailable": {
-      "studioTitle": "This Studio can't be reached right now",
-      "projectTitle": "This Project can't be reached right now",
-      "body": "Your content is safe.",
-      "recents": "Some Studios can't be reached right now. Their items will show again later.",
-      "bell": "Some Studios can't be reached right now. Their notifications will show again later.",
-      "badge": "Unavailable"
     }
   }
 }

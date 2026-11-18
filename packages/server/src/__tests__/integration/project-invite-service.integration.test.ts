@@ -87,7 +87,6 @@ loadLocales();
 import * as inviteService from "../../modules/project-invite/projectInvite.service.js";
 import * as invitesRepo from "../../modules/project-invite/projectInvitations.repo.js";
 import * as membersService from "../../modules/project/projectMembers.service.js";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 const OWNER = "00000000-0000-0000-0000-0000000c0001";
 const INVITEE = "00000000-0000-0000-0000-0000000c0002";
@@ -128,7 +127,6 @@ beforeAll(async () => {
     userId: OWNER,
     role: "admin",
   });
-  await mirrorAllInDirectory(pgClient);
   await db.insert(schema.projects).values({
     id: PROJECT,
     studioId: STUDIO,

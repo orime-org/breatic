@@ -36,6 +36,7 @@ import { landProposal, landedAt } from '@web/spaces/document/document-proposal-l
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import { useDocumentProposalPickup } from '@web/spaces/document/use-document-proposal-pickup';
 import { useDocumentProposals } from '@web/stores/document-proposals';
+import { useFollowStore } from '@web/stores/follow';
 
 const connection = vi.hoisted(() => ({ read: vi.fn() }));
 vi.mock('@web/data/yjs/collab-socket', async (readActual) => ({
@@ -239,6 +240,68 @@ describe('an explicit Agent comment View', () => {
     await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
     expect(scroll).toHaveBeenCalledWith({ top: 1320, behavior: 'instant' });
     expect(selectedThreadsIn(handle.editor.prosemirrorState)).toEqual([threadId]);
+  });
+
+  /**
+   * Show the card being read, then make it taller the way a reply does,
+   * reporting the new height through the card's own size observer.
+   * @param following - Whether this user follows a member when the card grows.
+   * @returns The body's scroll calls made for the growth.
+   */
+  async function growTheCardBeingRead(following: boolean): Promise<ReturnType<typeof vi.fn>> {
+    const observed = new Map<Element,(entries: Array<{ target: Element }>) => void>();
+    vi.stubGlobal('ResizeObserver', class {
+      private readonly callback: (entries: Array<{ target: Element }>) => void;
+      constructor(callback: (entries: Array<{ target: Element }>) => void) {
+        this.callback = callback;
+      }
+      observe(target: Element): void {
+        observed.set(target, this.callback);
+      }
+      unobserve(target: Element): void {
+        observed.delete(target);
+      }
+      disconnect(): void {}
+    });
+    const { proposal } = await fixture();
+    const viewport = document.querySelector<HTMLElement>('.doc-body-scroller [data-radix-scroll-area-viewport]')!;
+    vi.spyOn(handle.editor.prosemirrorView!, 'coordsAtPos').mockReturnValue({ top: 600, bottom: 620, left: 0, right: 10 });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement): DOMRect {
+      if (this.dataset.testid === 'doc-comment-rail-header') return new DOMRect(0, 0, 300, 40);
+      if (this.dataset.testid === 'doc-comment-rail-column') return new DOMRect(0, 40, 300, 1000);
+      if (this === viewport) return new DOMRect(0, 0, 900, 300);
+      return new DOMRect(0, 0, 300, 120);
+    });
+    const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(120);
+    const scroll = vi.spyOn(viewport, 'scrollTo').mockImplementation((options: number | ScrollToOptions): void => {
+      if (typeof options === 'object' && options.top !== undefined) viewport.scrollTop = options.top;
+    });
+    await view(proposal);
+    await waitFor(() => expect(scroll).toHaveBeenCalled());
+    scroll.mockClear();
+    if (following) act(() => useFollowStore.getState().start('leader', 'Leader'));
+    height.mockReturnValue(400);
+    act(() => {
+      for (const [target, callback] of observed) {
+        if ((target as HTMLElement).dataset.thread !== undefined) callback([{ target }]);
+      }
+    });
+    return scroll as unknown as ReturnType<typeof vi.fn>;
+  }
+
+  it('shows the card being read again when it grows', async () => {
+    useFollowStore.getState().reset();
+    const scroll = await growTheCardBeingRead(false);
+    await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
+  });
+
+  it('leaves the body where it is while following when the card being read grows', async () => {
+    useFollowStore.getState().reset();
+    const scroll = await growTheCardBeingRead(true);
+    await new Promise((settle) => setTimeout(settle, 50));
+    expect(scroll).not.toHaveBeenCalled();
+    expect(useFollowStore.getState().targetUserId).toBe('leader');
+    useFollowStore.getState().reset();
   });
 
   it('does not restore an old View selection after the user opens a draft', async () => {

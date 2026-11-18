@@ -90,6 +90,17 @@ async function open(): Promise<{ runtime: SceneViewportRuntime; capture: SceneFr
   return { runtime, capture, camera: inner.camera };
 }
 
+describe('reporting the personal view (#920)', () => {
+  it('reports the opening view with the field of view once it is built, so the editor can publish it', async () => {
+    const { runtime } = await open();
+    const initial = (runtime as unknown as { props: SceneViewportProps }).props;
+    const [view, fov] = vi.mocked(initial.onViewChange).mock.calls[0]!;
+    view.position.forEach((value, index) => expect(value).toBeCloseTo([7, 5, 8][index]!));
+    view.target.forEach((value, index) => expect(value).toBeCloseTo([0, 1, 0][index]!));
+    expect(fov).toBe(45);
+  });
+});
+
 describe('capturing the viewfinder frame (#1411 design 4)', () => {
   it('renders the frame once into a 4-sample sRGB target at the output size, with every helper hidden', async () => {
     const { capture } = await open();

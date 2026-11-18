@@ -59,12 +59,9 @@ vi.mock("@server/config/limits.js", async (importOriginal) => ({
 }));
 
 import postgres from "postgres";
-import { mirrorInDirectory } from "./directory-fixtures.js";
 import { initCore } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
-import { openPaymentSource } from "./payment-source.js";
 
 try {
   initCore(process.env);
@@ -107,7 +104,6 @@ async function insertPersonalStudio(
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${userId}, ${slug}, 'personal', ${name})
   `;
-  await mirrorAllInDirectory(sql);
   return slug;
 }
 
@@ -125,8 +121,6 @@ async function insertStudioWithAdmin(
   `;
   const id = rows[0]!.id;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${id}, ${adminUserId}, 'admin')`;
-  await mirrorInDirectory(sql, id);
-  await mirrorAllInDirectory(sql);
   return { id, slug };
 }
 
@@ -140,7 +134,6 @@ async function insertMemberRaw(
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${userId}, ${role})
   `;
-  await mirrorAllInDirectory(sql);
 }
 
 /** Count active admins on a studio — the transfer invariant. */
@@ -284,18 +277,6 @@ describe("requestTransfer", () => {
     });
     expect(reqPayload!.payload).not.toHaveProperty("fromHandle");
     expect(reqPayload!.payload).not.toHaveProperty("studioSlug");
-  });
-
-  it("refuses while a pack the admin bought still points at the Studio", async () => {
-    const { studioId, slug, adminId, memberId } = await seedStudio();
-    const source = await openPaymentSource(sql);
-    await sql`
-      INSERT INTO credit_lots (source_id, source_kind, user_id, purchased_credits, remaining_credits, lifecycle, designated_studio_id)
-      VALUES (${source}, 'payment', ${adminId}, 100, 100, 'active', ${studioId})
-    `;
-
-    await expect(studioTransferService.requestTransfer(slug, adminId, memberId)).rejects.toMatchObject({ statusCode: 409 });
-    expect(await transferRequestsFor(memberId)).toHaveLength(0);
   });
 
   it("rejects transferring to a non-member with NotFound", async () => {

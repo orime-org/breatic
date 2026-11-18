@@ -141,9 +141,11 @@ describe("account activity database contracts (inner#1893)", () => {
     expect(row?.count).toBe(2);
   });
 
-  it("P01 rejects a nonexistent Project foreign key", async () => {
+  it("P01 rejects nonexistent account and Project foreign keys", async () => {
     await requireEvents();
     const account = await seedActivityUser(sql);
+    await expect(sql`INSERT INTO account_activity_events (user_id, kind, occurred_at)
+      VALUES (${randomUUID()}, 'agent_started', now())`).rejects.toMatchObject({ code: "23503" });
     await expect(sql`INSERT INTO account_activity_events (user_id, project_id, kind, occurred_at)
       VALUES (${account.userId}, ${randomUUID()}, 'project_edit', now())`).rejects.toMatchObject({ code: "23503" });
   });

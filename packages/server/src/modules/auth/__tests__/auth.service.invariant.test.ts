@@ -61,9 +61,13 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
   };
 });
 
+// Mocked EXPLICITLY (no importOriginal) so loading @breatic/domain never
+// pulls the real agent llm and the `ai` SDK behind it.
+vi.mock("@breatic/domain", () => ({
+}));
+
 vi.mock("@server/modules/invitation/claim-email-invitations.js", () => ({
   claimEmailInvitations: vi.fn().mockResolvedValue(undefined),
-  claimEmailInvitationsOnSignIn: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockSendMail = vi.fn().mockResolvedValue(true);
@@ -72,9 +76,7 @@ const mockGetUserByEmail = vi.fn();
 const mockCreateUser = vi.fn();
 const mockUpdatePassword = vi.fn();
 const mockSetRecoveryCode = vi.fn().mockResolvedValue(undefined);
-// Mocked EXPLICITLY (no importOriginal) so loading @breatic/domain never
-// pulls the real agent llm and the `ai` SDK behind it.
-vi.mock("@breatic/domain", () => ({ usersRepo: {
+vi.mock("@server/modules/auth/user.repo.js", () => ({
   getUserByEmail: mockGetUserByEmail,
   getUserById: vi.fn(),
   getUserByGoogleId: vi.fn(),
@@ -86,7 +88,7 @@ vi.mock("@breatic/domain", () => ({ usersRepo: {
   setRecoveryCode: mockSetRecoveryCode,
   getRecoveryCode: vi.fn(),
   markRecoveryCodeUsed: vi.fn(),
-} }));
+}));
 
 // register no longer creates a personal studio (that is the explicit
 // setup-studio step). The studio.service mock is still declared so a
@@ -96,6 +98,7 @@ const mockCreatePersonalStudio = vi.fn();
 vi.mock("@server/modules/studio/studio.service.js", () => ({
   createPersonalStudio: mockCreatePersonalStudio,
   getPersonalStudio: vi.fn(),
+  getPersonalStudioIdentitiesByUserIds: vi.fn(),
 }));
 
 vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, unknown>>) => ({
@@ -141,7 +144,7 @@ describe("auth.service invariant — BCRYPT_ROUNDS = 12 (锁现状回归)", () =
 
     expect(captured).toBeDefined();
     // `attribution` is the campaign source (inner#1442), null without consent.
-    expect(Object.keys(captured!).sort()).toEqual(["attribution", "email", "hashedPassword", "locale", "termsVersion"]);
+    expect(Object.keys(captured!).sort()).toEqual(["attribution", "email", "hashedPassword", "locale"]);
     expect(captured!.attribution).toBeNull();
     expect(captured).not.toHaveProperty("username");
   });
@@ -291,7 +294,7 @@ describe("auth.service invariant — Google OAuth is pure auth (#1808, INV-4)", 
       updatedAt: new Date(),
       deletedAt: null,
     };
-    const { usersRepo: userRepo } = await import("@breatic/domain");
+    const userRepo = await import("@server/modules/auth/user.repo.js");
     vi.mocked(userRepo.getUserByGoogleId).mockResolvedValue(existing);
     let capturedUpdate: Record<string, unknown> | undefined;
     vi.mocked(userRepo.updateUser).mockImplementation(async (_id, data) => {
@@ -314,12 +317,12 @@ describe("auth.service invariant — Google OAuth is pure auth (#1808, INV-4)", 
 describe('Google account binding', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
-    const { usersRepo: repo } = await import('@breatic/domain');
+    const repo = await import('../user.repo.js');
     vi.mocked(repo.getUserByGoogleId).mockResolvedValue(null);
   });
 
   it('rejects automatic linking for a third-party email', async () => {
-    const { usersRepo: repo } = await import('@breatic/domain');
+    const repo = await import('../user.repo.js');
     const core = await import('@breatic/core');
     vi.mocked(repo.getUserByEmail).mockResolvedValue({ id: 'victim', email: 'owner@example.com', googleId: null } as never);
     const { loginOrCreateGoogle } = await import('../auth.service.js');
@@ -329,7 +332,7 @@ describe('Google account binding', () => {
   });
 
   it('never replaces a different linked Google identity', async () => {
-    const { usersRepo: repo } = await import('@breatic/domain');
+    const repo = await import('../user.repo.js');
     const core = await import('@breatic/core');
     vi.mocked(repo.getUserByEmail).mockResolvedValue({ id: 'victim', email: 'owner@gmail.com', googleId: 'old-google' } as never);
     const { loginOrCreateGoogle } = await import('../auth.service.js');
@@ -339,7 +342,7 @@ describe('Google account binding', () => {
   });
 
   it('does not mark an old address verified when the linked Google email changes', async () => {
-    const { usersRepo: repo } = await import('@breatic/domain');
+    const repo = await import('../user.repo.js');
     vi.mocked(repo.getUserByGoogleId).mockResolvedValue({ id: 'bound', email: 'old@example.com', googleId: 'google-1', emailVerified: false } as never);
     const { loginOrCreateGoogle } = await import('../auth.service.js');
     await loginOrCreateGoogle('google-1', 'new@gmail.com', true);
@@ -352,7 +355,7 @@ describe('Google identity session success boundaries', () => {
   beforeEach(() => vi.resetAllMocks());
 
   it('links a Google-authoritative email and issues a session', async () => {
-    const { usersRepo: repo } = await import('@breatic/domain');
+    const repo = await import('../user.repo.js');
     const core = await import('@breatic/core');
     const user = { id: 'existing', email: 'owner@gmail.com', googleId: null };
     vi.mocked(repo.getUserByGoogleId).mockResolvedValue(null);
@@ -367,7 +370,7 @@ describe('Google identity session success boundaries', () => {
   });
 
   it('does not issue a session if concurrent linking wins', async () => {
-    const { usersRepo: repo } = await import('@breatic/domain');
+    const repo = await import('../user.repo.js');
     const core = await import('@breatic/core');
     vi.mocked(repo.getUserByGoogleId).mockResolvedValue(null);
     vi.mocked(repo.getUserByEmail).mockResolvedValue({ id: 'existing', email: 'owner@gmail.com', googleId: null } as never);
@@ -378,7 +381,7 @@ describe('Google identity session success boundaries', () => {
   });
 
   it('creates an unverified third-party-email account without claiming an existing user', async () => {
-    const { usersRepo: repo } = await import('@breatic/domain');
+    const repo = await import('../user.repo.js');
     vi.mocked(repo.getUserByGoogleId).mockResolvedValue(null);
     vi.mocked(repo.getUserByEmail).mockResolvedValue(null);
     vi.mocked(repo.createUser).mockResolvedValue({ id: 'new', email: 'new@example.com', googleId: 'subject', emailVerified: false } as never);
@@ -390,7 +393,6 @@ describe('Google identity session success boundaries', () => {
       emailVerified: false,
       locale: 'en',
       attribution: null,
-      termsVersion: expect.any(String),
     });
     expect(repo.updateUser).not.toHaveBeenCalled();
     expect(result.user.emailVerified).toBe(false);
@@ -399,7 +401,7 @@ describe('Google identity session success boundaries', () => {
 
 
 it('never issues a session for any conflicting Google subject', async () => {
-  const { usersRepo: repo } = await import('@breatic/domain');
+  const repo = await import('./../user.repo.js');
   const core = await import('@breatic/core');
   const { loginOrCreateGoogle } = await import('../auth.service.js');
   await fc.assert(fc.asyncProperty(

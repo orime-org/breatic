@@ -40,7 +40,6 @@ import * as roleUpgradeService from "@server/modules/role-upgrade-request/roleUp
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import * as joinService from "@server/modules/project-join-request/projectJoinRequest.service.js";
 import * as projectInviteService from "@server/modules/project-invite/projectInvite.service.js";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -115,7 +114,6 @@ async function seedScene(): Promise<Scene> {
     VALUES (${project!.id}, ${admin.id}, 'owner', ${admin.id}),
            (${project!.id}, ${member.id}, 'viewer', ${admin.id})
   `;
-  await mirrorAllInDirectory(sql);
   return {
     adminId: admin.id,
     memberId: member.id,

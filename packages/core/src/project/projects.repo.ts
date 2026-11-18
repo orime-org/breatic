@@ -64,17 +64,3 @@ export async function findCreatorAndStudio(
     .limit(1);
   return rows[0];
 }
-
-/**
- * The ids of a Studio's live Projects.
- * @param studioId - The Studio.
- * @param tx - The transaction to read in.
- * @returns The Project ids.
- */
-export async function listIdsInStudio(studioId: string, tx: DbTx): Promise<string[]> {
-  const rows = await tx
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.studioId, studioId), isNull(projects.deletedAt)));
-  return rows.map((row) => row.id);
-}

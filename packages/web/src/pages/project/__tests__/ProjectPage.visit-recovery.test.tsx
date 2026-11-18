@@ -34,7 +34,7 @@ vi.mock('@web/data/api/projects', async (original) => {
 vi.mock('@web/data/yjs/project-meta', async (original) => ({
   ...await original<typeof import('@web/data/yjs/project-meta')>(),
   useProjectMeta: (): ReturnType<typeof import('@web/data/yjs/project-meta').useProjectMeta> => ({
-    spaces: [], users: new Map(), synced: true, status: 'connected',
+    spaces: [], users: new Map(), following: new Map(), synced: true, status: 'connected',
     provider: boundary.provider as unknown as HocuspocusProvider, authFailedReason: null,
   }),
 }));

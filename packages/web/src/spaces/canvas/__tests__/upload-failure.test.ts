@@ -66,14 +66,6 @@ describe('resolveUploadFailure', () => {
     });
   });
 
-  it('reports at the region that opened the upload (inner#1955)', () => {
-    expect(resolveUploadFailure({ reason: 'transfer', taskId: 't-1', apiBase: 'https://sg.example.test/api/v1' })).toEqual({
-      kind: 'reportToServer',
-      taskId: 't-1',
-      apiBase: 'https://sg.example.test/api/v1',
-    });
-  });
-
   it('keeps no File when the ticket was never granted', () => {
     const plan = resolveUploadFailure({ reason: 'upload' });
 

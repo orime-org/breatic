@@ -19,22 +19,17 @@
  * a second consumer actually needs it.
  */
 
-import { profilesService, studioRepo } from "@breatic/domain";
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations.repo.js";
-import { withPendingDisplay } from "@server/modules/invitation/pending-display.js";
-import { isGlobalRegion, isMultiRegion, isUniqueViolation } from "@breatic/core";
-import { randomUUID } from "node:crypto";
-import { db, studioDirectoryRepo } from "@breatic/core";
-import { ConflictError, NotFoundError, ValidationError } from "@breatic/core";
+import { isUniqueViolation } from "@server/utils/pg-error.js";
+import { db } from "@breatic/core";
+import { ConflictError, NotFoundError } from "@breatic/core";
+import { lockLimitsForUser } from "@breatic/core";
 import { env } from "@breatic/core";
 import {
-  directoryWrites,
-  globalApi,
-  isKnownRegion,
-  regionClient,
-  studioAuthService,
-  studioCreationService,
   studioMembersRepo,
+  studioAuthService,
+  creditLotService,
 } from "@breatic/domain";
 import { getTrialGrantCredits } from "@server/config/pricing.js";
 import {
@@ -47,105 +42,121 @@ import type {
   Studio,
   StudioDetail,
   StudioMembersView,
-  StudioRole,
   StudioSummary,
 } from "@breatic/shared";
 
-
 /**
- * Create the user's personal studio with the slug they chose at onboarding,
- * in the region the page placed it (inner#1955), with its trial credits.
+ * Create the user's personal studio with the slug they chose at
+ * onboarding, plus the creator's admin `studio_members` row, atomically.
  *
- * `slug = name = slug` and `type = 'personal'`; the slug's format is
- * validated by the route (`setupStudioSchema`). The global directory decides
- * whether the slug is free and keeps one personal Studio per user, in every
- * region (`studioCreationService.createStudio`).
+ * `slug = name = slug` and `type = 'personal'`. The slug's format must
+ * already be validated by the caller (route layer via `setupStudioSchema`)
+ * and uniqueness pre-checked; this method still wraps the insert so a
+ * concurrent duplicate slug (lost the pre-check race) surfaces as a typed
+ * `ConflictError` instead of a raw 500. Both the global-unique slug index
+ * (`studios_slug_idx`) and the one-personal-per-user index
+ * (`studios_owner_personal_idx`) back the conflict.
  * @param userId - The authenticated user's UUID (becomes the studio creator + admin)
  * @param slug - The validated, lowercased URL handle the user chose
- * @param placement - The page's Studio id and region.
  * @returns The freshly created personal studio
- * @throws {ConflictError} `slug_taken`, `studio_creation_in_progress` or `studio_creation_abandoned`
- * @throws {AppError} 503 `region_unavailable`
- * @throws {ValidationError} the deployment has no such region
+ * @throws {ConflictError} if the slug is already taken, or the user
+ *   already has a personal studio (unique-index violation)
  */
 export async function createPersonalStudio(
   userId: string,
   slug: string,
-  placement: StudioPlacement = {},
 ): Promise<Studio> {
-  return studioCreationService.createStudio(
-    {
-      studioId: placement.studioId ?? randomUUID(),
-      userId,
-      type: "personal",
-      slug,
-      name: slug,
-      region: placementRegion(placement.region),
-    },
-    // How many to give is read here because the file it comes from is this
-    // package's to read. The read itself is behind the same flag the grant
-    // checks: a deployment that charges nobody has no `config/pricing.yaml`
-    // to open.
-    { regionClient, trialCredits: env.PAYMENT_ENABLED ? getTrialGrantCredits() : 0 },
-  );
+  try {
+    return await db.transaction(async (tx) => {
+      const studio = await studioRepo.createPersonalStudio(userId, slug, slug, tx);
+      await studioMembersRepo.insertAdmin(studio.id, userId, tx);
+      // In the same transaction, so a grant cannot commit alongside a studio
+      // that did not. How many to give is read here because the file it comes
+      // from is this package's to read; whether to give any at all is the
+      // grant's own question, and it answers silently.
+      //
+      // The read itself is behind the same flag the grant checks, because an
+      // argument is evaluated before the call that discards it: a deployment
+      // that charges nobody has no `config/pricing.yaml` to open, and reading
+      // it anyway would fail registration over a figure about to be thrown
+      // away.
+      await creditLotService.grantTrialCredits(
+        {
+          userId,
+          studioId: studio.id,
+          credits: env.PAYMENT_ENABLED ? getTrialGrantCredits() : 0,
+        },
+        tx,
+      );
+      return studio;
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new ConflictError(t("server.studio.slug_taken"));
+    }
+    throw err;
+  }
 }
 
 
 
 /**
- * Create a team studio in the region the page placed it (inner#1955). The
- * creator becomes its admin. The team quota counts the user's team Studios in
- * every region, live and still being created, under the account lock, so two
- * requests arriving together cannot both take the last place.
+ * Create a team studio with the creator as its sole admin, atomically.
+ *
+ * Unlike a personal studio, how many active team studios a user may administer
+ * comes from their complete membership reading: configured or negotiated
+ * limits, with expiry resolved at read time. The studio row +
+ * the creator's admin `studio_members` row are written in one transaction
+ * (mirrors `createPersonalStudio`); the limit is checked inside the same
+ * transaction, on that same handle so the check does not reach for a second
+ * pooled connection. Base is zero, so an account on that tier is refused
+ * before anything is written.
+ *
+ * `lockLimitsForUser` takes the account's row for the rest of the
+ * transaction, which is what makes the ceiling hold when two requests arrive
+ * together: without it both count, both see room, and both insert. That was
+ * tolerable while the number was an internal cap of 50; it is not now that it
+ * is what somebody paid for. Different accounts lock different rows and never
+ * wait on each other.
+ *
+ * A taken slug (lost the `studios_slug_idx` race) surfaces as a typed
+ * `ConflictError` — that one stays a race by design, since global slug
+ * uniqueness is the index's job, not this function's.
  * @param userId - The authenticated user's UUID (becomes the studio admin)
  * @param name - The display name (independent of the slug)
  * @param slug - The validated, globally-unique URL handle
- * @param placement - The page's Studio id and region.
  * @returns The freshly created team studio
- * @throws {ConflictError} `slug_taken`, `team_limit_reached`,
- *   `studio_creation_in_progress` or `studio_creation_abandoned`
- * @throws {AppError} 503 `region_unavailable`
- * @throws {ValidationError} the deployment has no such region
+ * @throws {ConflictError} if the slug is already taken, or the user has
+ *   reached the per-user team-studio limit
  */
 export async function createTeamStudio(
   userId: string,
   name: string,
   slug: string,
-  placement: StudioPlacement = {},
 ): Promise<Studio> {
-  return studioCreationService.createStudio(
-    {
-      studioId: placement.studioId ?? randomUUID(),
-      userId,
-      type: "team",
-      slug,
-      name,
-      region: placementRegion(placement.region),
-    },
-    { regionClient },
-  );
-}
-
-/** Where the page asked a new Studio to go (inner#1955). */
-export interface StudioPlacement {
-  /** The id the page generated; one is generated here when absent. */
-  studioId?: string;
-  /** The region the user chose; absent means the global region. */
-  region?: string;
-}
-
-/**
- * The region a new Studio goes to. A deployment with one region ignores
- * whatever the page sent; one with several takes only a region it has an
- * address for.
- * @param requested - The region the page sent.
- * @returns The region code.
- * @throws {ValidationError} When the deployment has no such region.
- */
-function placementRegion(requested: string | undefined): string {
-  if (requested === undefined || !isMultiRegion(env)) return env.GLOBAL_REGION;
-  if (!isKnownRegion(requested)) throw new ValidationError(t("server.error.validation"));
-  return requested;
+  try {
+    return await db.transaction(async (tx) => {
+      const { team_studios: limit } = await lockLimitsForUser(userId, tx);
+      const count = await studioRepo.countTeamStudiosAdministeredBy(userId, tx);
+      if (count >= limit) {
+        // The number goes INTO the sentence. It used to be written into the
+        // catalogs ("the limit of 50 team studios"), which was true while the
+        // cap was a constant and became false for every tier the moment it
+        // stopped being one.
+        throw new ConflictError(
+          t("server.studio.team_limit_reached", { limit }),
+        );
+      }
+      const studio = await studioRepo.createTeamStudio(userId, slug, name, tx);
+      await studioMembersRepo.insertAdmin(studio.id, userId, tx);
+      return studio;
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw new ConflictError(t("server.studio.slug_taken"));
+    }
+    throw err;
+  }
 }
 
 /**
@@ -154,10 +165,8 @@ function placementRegion(requested: string | undefined): string {
  *
  * A UX helper only — it tells the user early what the write would say. The
  * authoritative guards are the schema (shape, length, reserved words) and the
- * global directory, which the write checks under the slug's lock
- * (`studio_directory_slug_live`, `slug_reservations_slug_live`; inner#1955),
- * so a slug reported available here can still lose a concurrent race and
- * surface as `409` on submit. Checks run in the
+ * `studios_slug_idx` unique index, so a slug reported available here can still
+ * lose a concurrent race and surface as `409` on submit. Checks run in the
  * order the user would hit them, so the reason names the first real problem.
  *
  * `excludeStudioId` is what makes this usable while renaming: a studio's
@@ -188,8 +197,7 @@ export async function checkStudioSlug(
   if (RESERVED_STUDIO_SLUGS.has(slug)) {
     return { available: false, reason: "reserved" };
   }
-  // Slugs are unique across regions, so the global directory answers.
-  const taken = await studioDirectoryRepo.isSlugHeld(slug, undefined, excludeStudioId);
+  const taken = await studioRepo.isSlugTaken(slug, excludeStudioId);
   return taken ? { available: false, reason: "taken" } : { available: true };
 }
 
@@ -206,12 +214,9 @@ export async function checkStudioSlug(
  * profile. What a personal studio has no meaningful version of is being
  * transferred, left, or having members — not being renamed.
  *
- * Slug uniqueness is decided by the global directory, under the slug's lock
- * (inner#1955): in the global region inside the rename's own transaction, and
- * elsewhere by holding the slug there before the rename; the slug sweep lets
- * that hold go once the region has delivered the Studio's events and no
- * longer needs it. A slug already held is a
- * conflict, so a lost race reads the same as a slug that was already taken.
+ * Slug uniqueness is left to the `studios_slug_idx` unique index rather than a
+ * pre-check: a pre-check races, the index does not. The violation is mapped to
+ * a conflict so a lost race reads the same as a slug that was already taken.
  *
  * Changing the slug frees the old one immediately — no alias, no redirect
  * (rule 7). Every existing link to the old address stops working, which is why
@@ -234,37 +239,17 @@ export async function updateStudio(
   if (!studio) {
     throw new NotFoundError(t("server.error.not_found"));
   }
-  const newSlug = patch.slug !== undefined && patch.slug !== studio.slug ? patch.slug : undefined;
-  // Slugs are unique across regions (inner#1955). Outside the global region
-  // the new slug is held there first; the slug sweep settles the hold.
-  const remote = !isGlobalRegion(env);
-  if (newSlug !== undefined && remote && !(await globalApi().reserveSlug(newSlug, studio.id))) {
-    throw new ConflictError(t("server.studio.slug_taken"));
-  }
   try {
-    return await db.transaction(async (tx) => {
-      await studioRepo.lockStudio(studio.id, tx);
-      if (newSlug !== undefined && !remote && !(await directoryWrites.slugFreeHere(newSlug, tx))) {
-        throw new ConflictError(t("server.studio.slug_taken"));
-      }
-      const updated = await studioRepo.updateStudio(studio.id, {
-        ...(patch.name !== undefined ? { name: patch.name } : {}),
-        ...(patch.slug !== undefined ? { slug: patch.slug } : {}),
-        ...(patch.bio !== undefined ? { bio: patch.bio === "" ? null : patch.bio } : {}),
-      });
-      if (!updated) {
-        throw new NotFoundError(t("server.error.not_found"));
-      }
-      const changed = {
-        ...(patch.name !== undefined && patch.name !== studio.name ? { name: patch.name } : {}),
-        ...(newSlug !== undefined ? { slug: newSlug } : {}),
-      };
-      if (Object.keys(changed).length > 0) await directoryWrites.profileChanged(studio.id, changed, tx);
-      return updated;
+    const updated = await studioRepo.updateStudio(studio.id, {
+      ...(patch.name !== undefined ? { name: patch.name } : {}),
+      ...(patch.slug !== undefined ? { slug: patch.slug } : {}),
+      ...(patch.bio !== undefined ? { bio: patch.bio === "" ? null : patch.bio } : {}),
     });
+    if (!updated) {
+      throw new NotFoundError(t("server.error.not_found"));
+    }
+    return updated;
   } catch (err) {
-    // A reservation the rename took is settled by the slug sweep, whether or
-    // not the rename committed.
     if (isUniqueViolation(err)) {
       throw new ConflictError(t("server.studio.slug_taken"));
     }
@@ -273,9 +258,7 @@ export async function updateStudio(
 }
 
 /**
- * Look up a user's personal studio without creating one, from the global
- * directory, which holds it whichever region the Studio lives in
- * (inner#1955). Served by the global region's sign-in and `/auth/me`.
+ * Look up a user's personal studio without creating one.
  *
  * Returns `null` when the user has registered but not yet completed the
  * slug-setup step. Callers that require a studio to exist (project
@@ -284,11 +267,42 @@ export async function updateStudio(
  * @param userId - User UUID
  * @returns The user's personal studio, or `null` if none exists
  */
-export async function getPersonalStudio(
-  userId: string,
-): Promise<{ id: string; name: string; slug: string; avatarUrl: string | null } | null> {
-  const row = await studioDirectoryRepo.findPersonalByCreator(userId);
-  return row === null ? null : { id: row.studioId, name: row.name, slug: row.slug, avatarUrl: row.avatarUrl };
+export async function getPersonalStudio(userId: string): Promise<Studio | null> {
+  return studioRepo.getPersonalByCreator(userId);
+}
+
+/**
+ * Resolve the display `name` + `avatarUrl` of each user's personal studio in
+ * one query.
+ *
+ * Backs the `/users` batch display-info endpoint — name and avatar both live
+ * on the personal studio now (pointer model; avatar moved off `users`
+ * 2026-07-22, #1808). Users without a personal studio (mid-onboarding) are
+ * simply absent from the returned map; callers fall back to the email
+ * local-part (and a null avatar).
+ * @param userIds - User UUIDs to resolve (deduped + capped by the caller)
+ * @returns Map of `userId → { name, avatarUrl }` (missing for users with no studio)
+ */
+export async function getPersonalStudioIdentitiesByUserIds(
+  userIds: string[],
+): Promise<Map<string, { name: string; avatarUrl: string | null }>> {
+  return studioRepo.getPersonalIdentitiesByCreators(userIds);
+}
+
+/**
+ * Resolve the display `name` + URL `slug` (handle) of each user's personal
+ * studio in one query.
+ *
+ * The bell notification actor-identity source: the slug is the `@handle` shown
+ * beside the name and the `/studio/{slug}` link target. Users mid-onboarding
+ * (no personal studio) are absent from the map; callers fall back.
+ * @param userIds - User UUIDs to resolve (deduped + capped by the caller)
+ * @returns Map of `userId → { name, slug }` (missing for users with no studio)
+ */
+export async function getPersonalStudioProfilesByUserIds(
+  userIds: string[],
+): Promise<Map<string, { name: string; slug: string }>> {
+  return studioRepo.getPersonalProfilesByCreators(userIds);
 }
 
 /**
@@ -338,40 +352,36 @@ export async function getStudioDetail(
     bio: studio.bio,
     memberCount: counts.get(studio.id) ?? 0,
     myStudioRole,
-    region: isGlobalRegion(env) ? null : env.REGION,
   };
 }
 
 /**
- * List every studio the user is an active member of, for the switcher, from
- * the global directory, which holds every region's Studios and names the
- * region of each (inner#1955); the bio comes from the studios this region
- * holds.
+ * List every studio the user is an active member of, for the switcher.
  *
  * The user's personal studio is always returned first; the remaining
  * studios follow in creation order (the repo orders by `created_at`, and
  * `Array.prototype.sort` is stable, so equal-type entries keep that order).
+ * `memberCount` is resolved in a single grouped query (no N+1).
  * @param userId - The authenticated user's UUID
  * @returns The user's studios as summaries, personal-first
  */
 export async function listUserStudios(
   userId: string,
 ): Promise<StudioSummary[]> {
-  const [rows, local] = await Promise.all([
-    studioDirectoryRepo.listStudiosOfUser(userId),
-    studioRepo.listByUser(userId),
-  ]);
-  const bios = new Map(local.map((s) => [s.id, s.bio]));
-  const summaries: StudioSummary[] = rows.map((row) => ({
-    id: row.studioId,
-    slug: row.slug,
-    name: row.name,
-    type: row.type,
-    avatarUrl: row.avatarUrl,
-    bio: bios.get(row.studioId) ?? null,
-    memberCount: row.memberCount,
-    myStudioRole: row.role as StudioRole,
-    region: row.region,
+  const userStudios = await studioRepo.listByUser(userId);
+  if (userStudios.length === 0) return [];
+  const counts = await studioRepo.countMembersByStudioIds(
+    userStudios.map((s) => s.id),
+  );
+  const summaries: StudioSummary[] = userStudios.map((s) => ({
+    id: s.id,
+    slug: s.slug,
+    name: s.name,
+    type: s.type,
+    avatarUrl: s.avatarUrl,
+    bio: s.bio,
+    memberCount: counts.get(s.id) ?? 0,
+    myStudioRole: s.myStudioRole,
   }));
   return summaries.sort((a, b) =>
     a.type === b.type ? 0 : a.type === "personal" ? -1 : 1,
@@ -401,30 +411,21 @@ export async function getStudioMembers(
     throw new NotFoundError(t("server.error.not_found"));
   }
   const rows = await studioMembersRepo.listByStudio(studio.id);
-  // Who each member is comes from the global profiles (inner#1955); a member
-  // whose account is gone is left out, and one with no personal Studio shows
-  // their address.
-  const profiles = await profilesService.profilesOf(rows.map((m) => m.userId));
-  const members = rows.flatMap((m) => {
-    const profile = profiles.get(m.userId);
-    if (profile === undefined || profile.email === null) return [];
-    const shown = profile.name !== null && !profile.deleted;
-    return [{
-      userId: m.userId,
-      name: shown ? profile.name! : profile.email,
-      email: profile.email,
-      avatarUrl: shown ? profile.avatarUrl : null,
-      role: m.role,
-      addedAt: m.addedAt.toISOString(),
-    }];
-  });
+  const members = rows.map((m) => ({
+    userId: m.userId,
+    name: m.name,
+    email: m.email,
+    avatarUrl: m.avatarUrl,
+    role: m.role,
+    addedAt: m.addedAt.toISOString(),
+  }));
   const viewerRole = await studioAuthService.loadStudioRole(
     viewerUserId,
     studio.id,
   );
   const pendingInvitations =
     viewerRole === "admin"
-      ? await withPendingDisplay(await studioInvitationsRepo.listPendingByStudio(studio.id))
+      ? await studioInvitationsRepo.listPendingByStudio(studio.id)
       : [];
   return { members, pendingInvitations };
 }

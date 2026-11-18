@@ -13,7 +13,6 @@ import { useNavigate } from 'react-router-dom';
 import { isRequestNotification } from '@breatic/shared';
 import { expiresInLabel } from '@web/lib/expires-in';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
-import { cn } from '@web/lib/utils';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
 import { Button } from '@web/components/ui/button';
@@ -33,7 +32,6 @@ import { EMPTY_RESOLVED } from '@web/data/api/notifications';
 import type { NotificationResolved } from '@web/data/api/notifications';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCurrentUserStore } from '@web/stores/current-user';
-import { useRegionHealthStore } from '@web/stores/region-health';
 
 /** Groups single-row mark-read requests so each row can find its own. */
 const MARK_READ_KEY = ['notifications', 'mark-read'] as const;
@@ -107,18 +105,9 @@ export function BellMenu(): React.JSX.Element {
   const resolved = inboxQuery.data?.resolved ?? EMPTY_RESOLVED;
   const count = notifications.length;
 
-  const unavailableRegions = inboxQuery.data?.unavailableRegions;
-  // An empty list may hide what an unreachable region holds.
-  const regionsMissing = unavailableRegions !== undefined && unavailableRegions.length > 0;
-  const reportRegions = useRegionHealthStore((s) => s.report);
-  React.useEffect(() => {
-    if (unavailableRegions !== undefined) reportRegions('bell', unavailableRegions);
-  }, [unavailableRegions, reportRegions]);
-
   const markReadMutation = useMutation({
     mutationKey: MARK_READ_KEY,
-    mutationFn: (id: string) =>
-      notificationsApi.markRead(id, notifications.find((n) => n.id === id)?.region),
+    mutationFn: (id: string) => notificationsApi.markRead(id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ['notifications', 'unread'],
@@ -203,11 +192,9 @@ export function BellMenu(): React.JSX.Element {
             {t('notifications.loading')}
           </div>
         ) : count === 0 ? (
-          regionsMissing ? null : (
-            <div className='px-3 py-2 text-sm text-muted-foreground'>
-              {t('notifications.empty')}
-            </div>
-          )
+          <div className='px-3 py-2 text-sm text-muted-foreground'>
+            {t('notifications.empty')}
+          </div>
         ) : (
           <ScrollArea scrollbars='vertical' className='min-h-0'>
             <ul className='flex flex-col gap-1'>
@@ -228,14 +215,6 @@ export function BellMenu(): React.JSX.Element {
             </ul>
           </ScrollArea>
         )}
-        {regionsMissing ? (
-          <p
-            className={cn('px-3 py-2 text-muted-foreground', count === 0 ? 'text-sm' : 'text-2xs')}
-            data-testid='bell-regions-unavailable'
-          >
-            {t('regions.unavailable.bell')}
-          </p>
-        ) : null}
       </PopoverContent>
     </Popover>
   );

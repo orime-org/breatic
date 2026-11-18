@@ -4,7 +4,7 @@
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import postgres from "postgres";
 import { initCore, loadLocales, NotFoundError } from "@breatic/core";
-import { usersRepo as usersRepo } from "@breatic/domain";
+import * as usersRepo from "@server/modules/auth/user.repo.js";
 import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
 import { getInvitationPreview } from "@server/modules/invitation/invitation.service.js";
 import {
@@ -60,7 +60,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
     it.each(["pending", "accepted", "declined", "revoked", "expired"] as const)("returns only claimed for a converted %s invitation", async (status) => {
       const fixture = await seedInvitationFixture(sql);
       const invitation = await seedEmailInvitation(sql, scope, fixture);
-      const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
+      const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
       await claimEmailInvitations(user);
       if (status === "accepted") await answerInvitation(scope, invitation.id, user.id, true);
       else if (status === "declined") await answerInvitation(scope, invitation.id, user.id, false);

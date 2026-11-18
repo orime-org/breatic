@@ -279,37 +279,6 @@ describe("releaseHold", () => {
   });
 });
 
-describe("abandonHold", () => {
-  it("releases a hold the reserve already took", async () => {
-    const fx = await studioWith(100);
-    const reference = ref("abandon-taken");
-    await creditHoldService.reserveCredits(req(fx, reference, 10));
-
-    await creditHoldService.abandonHold({ projectId: fx.projectId, actorUserId: fx.userId, referenceId: reference });
-
-    expect(await holdRows(reference)).toEqual([{ status: "released", amount: "10.000000" }]);
-  });
-
-  // inner#1955: the region gave up on a reserve the global region is still
-  // waiting to take; the late reserve must hold nothing.
-  it("leaves a reserve that arrives after it holding nothing", async () => {
-    const fx = await studioWith(100);
-    const reference = ref("abandon-late");
-    const letGo = await holdDebtLock(fx.studioId);
-    const late = creditHoldService.reserveCredits(req(fx, reference, 10)).then(
-      () => "admitted",
-      () => "refused",
-    );
-    await waitUntilBlockedOn(sql, ["studio_credit_debts", "for update"]);
-
-    await creditHoldService.abandonHold({ projectId: fx.projectId, actorUserId: fx.userId, referenceId: reference });
-    await letGo();
-
-    expect(await late).toBe("refused");
-    expect(await holdRows(reference)).toEqual([{ status: "released", amount: "0.000000" }]);
-  });
-});
-
 describe("settleCharge with a hold", () => {
   it("releases the hold and charges the actual amount in one commit, beyond the hold if needed", async () => {
     const fx = await studioWith(100);

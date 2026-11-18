@@ -5,9 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vi
 import { randomUUID } from 'node:crypto';
 import postgres from 'postgres';
 import { initCore } from '@breatic/core';
-import { usersRepo } from "@breatic/domain";
-
-const { linkGoogleIdentity } = usersRepo;
+import { linkGoogleIdentity } from '../user.repo.js';
 
 initCore(process.env);
 let sql: ReturnType<typeof postgres>;

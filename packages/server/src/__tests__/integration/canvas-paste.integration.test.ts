@@ -37,7 +37,6 @@ import {
   coverKeyFor,
 } from "@breatic/core";
 import type { Hono } from "hono";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -95,7 +94,6 @@ async function seedEditor(): Promise<{ userId: string; studioId: string; project
   await sql`INSERT INTO project_members (project_id, user_id, role, added_by) VALUES (${projectId}, ${userId}, 'owner', null)`;
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
-  await mirrorAllInDirectory(sql);
   return { userId, studioId, projectId, cookie: `${sessionCookieName()}=${token}` };
 }
 
@@ -424,6 +422,29 @@ describe("POST /canvas/paste", () => {
     const rows = await ledger(b.studioId);
     expect(rows.find((r) => r.content_hash === planted.hash)).toBeUndefined();
     expect(rows.find((r) => r.content_hash === hash)?.cover_asset_id).toBeNull();
+  });
+
+  // One paste reads every video's cover in one query; a row pairing one
+  // pasted video with another pasted video's frame must not hand that frame over.
+  it("takes no other pasted video's frame as a video's cover", async () => {
+    const victim = await seedEditor();
+    const other = await seedEditor();
+    const b = await seedEditor();
+    const firstKey = key("video");
+    const firstHash = crypto.randomBytes(32).toString("hex");
+    const first = await asset(victim.studioId, victim.userId, { key: firstKey, kind: "video", hash: firstHash });
+    const secondKey = key("video");
+    const secondCover = await asset(victim.studioId, victim.userId, { key: coverKeyFor(secondKey), source: "cover" });
+    const second = await asset(victim.studioId, victim.userId, { key: secondKey, kind: "video", coverAssetId: secondCover.id });
+    const pairRes = await paste(other.cookie, other.projectId, { pairs: [{ url: first.url, cover: secondCover.url }] });
+    expect(pairRes.status).toBe(200);
+
+    const res = await paste(b.cookie, b.projectId, { urls: [first.url, second.url] });
+    expect(res.status).toBe(200);
+    const rows = await ledger(b.studioId);
+    const coverRow = rows.find((r) => r.content_hash === secondCover.hash);
+    expect(rows.find((r) => r.content_hash === second.hash)?.cover_asset_id).toBe(coverRow?.id);
+    expect(rows.find((r) => r.content_hash === firstHash)?.cover_asset_id).toBeNull();
   });
 
   it("keeps the numbers a copy carries in its history row", async () => {

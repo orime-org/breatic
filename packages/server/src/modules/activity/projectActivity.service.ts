@@ -23,7 +23,7 @@ import {
   decodeActivityCursor,
   type NewProjectActivity,
 } from "@breatic/core";
-import { appendProjectActivity, profilesService } from "@breatic/domain";
+import { appendProjectActivity } from "@breatic/domain";
 import type { ProjectActivityPage } from "@breatic/shared";
 import { getActivityFeedPageLimits } from "@server/config/limits.js";
 
@@ -84,17 +84,7 @@ export async function listProjectActivities(
     rows.length > limit && last
       ? encodeActivityCursor(last.cursorAt, last.entry.id)
       : null;
-  // Who did each thing is a display name from the global profiles (inner#1955).
-  const names = await profilesService.personalIdentities(
-    page.flatMap((row) => (row.entry.actorUserId === null ? [] : [row.entry.actorUserId])),
-  );
-  return {
-    items: page.map((row) => ({
-      ...row.entry,
-      actorName: row.entry.actorUserId === null ? null : (names.get(row.entry.actorUserId)?.name ?? null),
-    })),
-    nextCursor,
-  };
+  return { items: page.map((row) => row.entry), nextCursor };
 }
 
 /**

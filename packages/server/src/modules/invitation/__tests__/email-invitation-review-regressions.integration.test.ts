@@ -15,7 +15,7 @@ import { ConflictError, db, initCore, loadLocales, NotFoundError } from "@breati
 import { enqueueMail } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
-import { usersRepo as usersRepo } from "@breatic/domain";
+import * as usersRepo from "@server/modules/auth/user.repo.js";
 import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import * as projectJoins from "@server/modules/project-join-request/projectJoinRequest.service.js";
@@ -124,7 +124,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
     it("does not convert a mailbox invitation whose deadline passed while waiting", async () => {
       const fixture = await seedInvitationFixture(sql);
       const original = await seedEmailInvitation(sql, scope, fixture);
-      const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
+      const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
       await setUpcomingExpiry(scope, original.id);
       const held = await holdTarget(sql, scope, fixture);
       const claiming = claimEmailInvitations(user);
@@ -155,7 +155,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
 
     it("refuses acceptance when an ordinary invitation expires behind the object lock", async () => {
       const fixture = await seedInvitationFixture(sql);
-      const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
+      const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
       await createInvitation(scope, fixture);
       const original = (await invitationRows(sql, scope, fixture))[0]!;
       await setUpcomingExpiry(scope, original.id);
@@ -193,7 +193,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
       it(`reclaims an expired ${registered ? "user" : "mailbox"} pending row after a create request waits`, async () => {
         const fixture = await seedInvitationFixture(sql);
         const user = registered
-          ? await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true })
+          ? await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true })
           : null;
         await createInvitation(scope, fixture);
         const original = (await invitationRows(sql, scope, fixture))[0]!;
@@ -252,7 +252,7 @@ describe("Project delivery after a decided invitation is archived", () => {
         const attempt = await beginProjectDelivery(fixture);
         try {
           const original = (await invitationRows(sql, "project", fixture))[0]!;
-          const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
+          const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
           await claimEmailInvitations(user);
           const converted = (await invitationRows(sql, "project", fixture))[0]!;
           const committedNotifications = await sql<{ id: string; user_id: string }[]>`
@@ -304,7 +304,7 @@ describe("Project delivery after a decided invitation is archived", () => {
 
 it("reports already_member after a real approved join request leaves an older invitation pending", async () => {
   const fixture = await seedInvitationFixture(sql);
-  const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
+  const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
   await sql`
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${fixture.studioId}, ${user.id}, 'guest')

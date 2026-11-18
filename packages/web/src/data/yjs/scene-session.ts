@@ -7,6 +7,7 @@ import type { Awareness } from 'y-protocols/awareness';
 
 import { SceneObjectSchema, type SceneObject, type ScenePose, type SceneRotation, type SceneVector } from '@breatic/shared';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import type { FollowFieldValue } from '@web/data/yjs/follow-presence';
 import { runHistoryStep } from '@web/data/yjs/history-step';
 import {
   applySceneCommand, createSceneHistory, readSceneDocument,
@@ -15,6 +16,9 @@ import {
 import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle } from '@web/lib/publish-throttle';
 import { userPaletteColor } from '@web/lib/user-color';
 import type { WriteAccess } from '@web/data/yjs/use-socket';
+
+/** This page's personal 3D camera as published in `camera3d` for followers (#920); `fov` is in degrees. */
+export type SceneCamera = Omit<FollowFieldValue<'camera3d'>, 'at'>;
 
 /** A gesture draft: the transform fields a drag previews, or the whole pose a joint drag shows. */
 type SceneGestureDraft = ScenePatch & { pose?: ScenePose };
@@ -71,6 +75,8 @@ export class SceneSession {
   /** Drag previews reach awareness at most once per frame and per interval, as the canvas publishes its own. */
   private readonly previewPublish = createPublishThrottle(() => this.publishNow(), PRESENCE_WRITE_INTERVAL_MS);
   private cancelRevision = 0;
+  /** The personal camera to publish as `camera3d`, or null to publish none. */
+  private camera: SceneCamera | null = null;
   private visible = false;
   private focused = false;
   private destroyed = false;
@@ -222,20 +228,46 @@ export class SceneSession {
     this.publishNow();
   }
 
-  /** Publish one complete presence snapshot; ineligible views withdraw synchronously. */
+  /**
+   * Publish one complete presence snapshot; ineligible views withdraw synchronously.
+   * `camera3d` goes out while the body is visible and connected whatever the
+   * window focus, so a leader who clicked away still publishes it.
+   */
   private publishNow(): void {
     const awareness = this.environment.awareness;
     if (!awareness) return;
-    const eligible = this.visible && this.focused && this.environment.connected && !this.destroyed;
+    const shown = this.visible && this.environment.connected && !this.destroyed;
+    const eligible = shown && this.focused;
     const pilot = this.pilot;
     const piloted = pilot ? this.snapshot.objects.find((object) => object.id === pilot.id) : undefined;
     const gesture = this.gesture ? this.snapshot.objects.filter((object) => this.selectedIds.includes(object.id))
       : pilot && piloted ? [{ ...piloted, position: pilot.position, rotation: pilot.rotation }] : null;
     const scenePresence = eligible ? { selectedIds: this.selectedIds, gesture } : { selectedIds: [], gesture: null };
     const state = awareness.getLocalState();
-    if (state !== null && JSON.stringify(state.scenePresence) !== JSON.stringify(scenePresence)) {
-      awareness.setLocalState({ ...state, scenePresence });
+    if (state === null) return;
+    const { camera3d: published, ...rest } = state;
+    const camera = shown ? this.camera : null;
+    const { at: _at, ...publishedCamera } = (published ?? {}) as { at?: unknown };
+    const cameraSame = camera === null ? published === undefined || published === null
+      : JSON.stringify(publishedCamera) === JSON.stringify(camera);
+    if (cameraSame && JSON.stringify(state.scenePresence) === JSON.stringify(scenePresence)) return;
+    awareness.setLocalState({ ...rest, scenePresence,
+      ...(camera === null ? {} : { camera3d: cameraSame ? published : { ...camera, at: Date.now() } }) });
+  }
+
+  /**
+   * Set the personal camera published as `camera3d`; it goes out through the presence throttle.
+   * @param camera - The camera, or null to withdraw it.
+   */
+  setCamera(camera: SceneCamera | null): void {
+    if (this.destroyed) return;
+    this.camera = camera === null ? null : { position: [...camera.position], target: [...camera.target], fov: camera.fov };
+    if (camera === null) {
+      this.previewPublish.cancel();
+      this.publishNow();
+      return;
     }
+    this.previewPublish.schedule();
   }
 
   /**

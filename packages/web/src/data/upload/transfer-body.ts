@@ -20,7 +20,6 @@ import {
   requestBodyLimitOf,
   type UploadConfig,
 } from '@web/data/api/assets';
-import { apiBaseForProject, getRegionConfig } from '@web/data/api/regions';
 import { apiPost } from '@web/data/api/request';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 import type { UploadTicket } from '@web/data/upload/ingest-upload';
@@ -83,17 +82,14 @@ async function transfer(
 
   const file = new Blob([encodeTransferBody(json)]);
   const config = signal === undefined ? NO_CLIENT_TIMEOUT : { signal, ...NO_CLIENT_TIMEOUT };
-  // The Project's region opens the transfer, finishes it and reads it (inner#1955).
-  const apiBase = apiBaseForProject(projectId, getRegionConfig());
-  const opened = await apiPost<UploadTicket>(
+  const ticket = await apiPost<UploadTicket>(
     '/assets/transfer-ticket',
     { project_id: projectId, size: file.size },
-    { ...config, baseURL: apiBase },
+    config,
   );
-  const ticket: UploadTicket = { ...opened, apiBase };
   signal?.throwIfAborted();
   const queued = await sendFileAndFinish(file, ticket, cfg, undefined, signal);
-  const ending = await untilStopped(waitForUploadEnding(queued.storageKey, undefined, apiBase), signal);
+  const ending = await untilStopped(waitForUploadEnding(queued.storageKey), signal);
   signal?.throwIfAborted();
   if (ending.state !== 'transferred') {
     throw new Error(`the transfer upload ended ${ending.state}`);
