@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { decide, type Failure } from "../decide.js";
+import { accountFailureOf, decide, type Failure } from "../decide.js";
 
 describe("decide — media submit", () => {
   it.each<[string, Failure, "switch" | "stop"]>([
@@ -95,3 +95,19 @@ function failureArb(): fc.Arbitrary<Failure> {
     fc.integer({ min: 400, max: 599 }).map<Failure>((status) => ({ kind: "http_status", status })),
   );
 }
+
+describe("accountFailureOf — a failure on an account's key (inner#1953)", () => {
+  it.each<[string, Failure | null, ReturnType<typeof accountFailureOf>]>([
+    ["no failure class", null, undefined],
+    ["a missing model", { kind: "model_not_found" }, { kind: "account_key_failed", reason: "model_not_found", lasting: true }],
+    ["no balance", { kind: "insufficient_balance" }, { kind: "account_key_failed", reason: "no_balance", lasting: true }],
+    ["a 401", { kind: "http_status", status: 401 }, { kind: "account_key_failed", reason: "invalid", lasting: true }],
+    ["a 429", { kind: "http_status", status: 429 }, { kind: "account_key_failed", reason: "rate_limited", lasting: false }],
+    ["a request that never left", { kind: "not_sent" }, { kind: "upstream_unavailable", lasting: false }],
+    ["a 503", { kind: "http_status", status: 503 }, { kind: "upstream_unavailable", lasting: false }],
+    ["a 400, a refusal of the request", { kind: "http_status", status: 400 }, undefined],
+    ["a lost answer", { kind: "no_answer" }, undefined],
+  ])("reads %s", (_name, failure, reading) => {
+    expect(accountFailureOf(failure, "media_submit")).toEqual(reading);
+  });
+});
