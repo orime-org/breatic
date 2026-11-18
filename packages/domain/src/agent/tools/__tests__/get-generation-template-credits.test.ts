@@ -82,12 +82,15 @@ describe("the cost of one apply when not every node is exactly priced", () => {
     PRICES.set(VIDEO, { credits: 1200.25, bound: "exact" });
     const answer = await read("carried-object-transition");
     expect(answer).toContain(`At its settings this template costs ${formatCredits(1225.25, "en-US")} credits.`);
-    // Priced the same at every setting, so a take would cost what the final does: no take is offered.
+    // Priced the same at every setting, so a take would cost what the final does: a take of it is its final.
     expect(answer).not.toContain("A take costs");
+    expect(answer).toContain(`At its settings this template costs ${formatCredits(1225.25, "en-US")} credits. A take of it is made keeping its mode, model and length, at these settings, which are already its cheapest, so a take of it is already its final.`);
   });
 
   it("says nothing of cost when no node has a price", async () => {
-    expect(await read("carried-object-transition")).not.toContain("this template costs");
+    const answer = await read("carried-object-transition");
+    expect(answer).not.toContain("this template costs");
+    expect(answer).not.toContain("A take of it");
   });
 });
 
@@ -100,6 +103,7 @@ describe("the take of a template", () => {
     expect(answer).toContain(`At its settings this template costs ${formatCredits(1225.25, "en-US")} credits.`);
     expect(answer).toContain('write these cheaper settings in its generate nodes\' params: {"result":{"generate_audio":false}}.');
     expect(answer).toContain(`A take costs at least ${formatCredits(1025, "en-US")} credits;`);
+    expect(answer).not.toContain("already its final");
   });
 
   it("is not offered when a setting cheaper on its own costs no less beside the template's other settings", async () => {
@@ -110,7 +114,7 @@ describe("the take of a template", () => {
       bound: "exact",
     }));
     const answer = await read("product-ad-15s");
-    expect(answer).toContain(`At its settings this template costs ${formatCredits(1212.75, "en-US")} credits.`);
+    expect(answer).toContain(`At its settings this template costs ${formatCredits(1212.75, "en-US")} credits. A take of it is made keeping its mode, model and length, at these settings, which are already its cheapest, so a take of it is already its final.`);
     expect(answer).not.toContain("A take costs");
   });
 });

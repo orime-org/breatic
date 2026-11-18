@@ -268,9 +268,19 @@ describe("a take of a template (inner#1811)", () => {
     expect(credits(take?.[2])).toBeLessThan(credits(final?.[1]));
   });
 
-  it("says nothing of a take when no setting makes the template cheaper, so an apply is its final", async () => {
+  it("makes a take before the final, on the template's mode, model and length even once its words are the user's, and the final straight away when asked", async () => {
+    const out = await read("product-ad-15s");
+    expect(out).toContain(
+      "A take of it is made this way, and comes before its final: apply it keeping its mode, model and length, which its prompts and wiring are written for, " +
+        "even once its prompts are in the user's words and its tweak segments filled, and write these cheaper settings in its generate nodes' params: ",
+    );
+    expect(out).toContain("the final is made at its settings from the take they pick, keeping it as it is, or straight away when they ask for a final.");
+    expect(out).not.toContain("still deciding");
+  });
+
+  it("says a take of a template with nothing cheaper keeps its mode, model and length and is already its final", async () => {
     const out = await read("character-bible");
-    expect(out).toMatch(/At its settings this template costs [\d.,]+ credits\./);
+    expect(out).toMatch(/At its settings this template costs [\d.,]+ credits\. A take of it is made keeping its mode, model and length, at these settings, which are already its cheapest, so a take of it is already its final\./);
     expect(out).not.toContain("A take costs");
     expect(out).not.toContain("cheaper settings");
   });
