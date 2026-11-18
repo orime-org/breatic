@@ -151,12 +151,13 @@ export async function holdRowedRun<T>(opts: {
   credits: () => Promise<number>;
   create: () => Promise<T>;
 }): Promise<T> {
+  await reserveForRun(opts.projectId, opts.userId, opts.taskId, await opts.credits());
   try {
-    await reserveForRun(opts.projectId, opts.userId, opts.taskId, await opts.credits());
     return await opts.create();
   } catch (err) {
-    // A refused admission held nothing, and releasing it does nothing.
-    await creditHoldService.releaseHold(opts.taskId);
+    await creditHoldService.releaseHold(opts.taskId).catch((releaseErr: unknown) =>
+      logger.error({ err: releaseErr, taskId: opts.taskId, projectId: opts.projectId }, "credit_hold_release_failed"),
+    );
     throw err;
   }
 }
@@ -214,9 +215,8 @@ export async function startRowedRun(opts: {
     await recordJobId(taskId, job.id, projectId, opts.logTag);
     return "pending";
   } catch (err) {
-    const reason: TaskFailureReason = "internal";
-    await settleUnqueuedRun(taskId, projectId, reason, () => failOpenedTasks(projectId, spaceId, rows, reason), opts.logTag);
-    logger.warn({ err, taskId, projectId, reason, ...opts.logContext }, `${opts.logTag}_run_failed`);
+    await settleUnqueuedRun(taskId, projectId, "internal", () => failOpenedTasks(projectId, spaceId, rows, "internal"), opts.logTag);
+    logger.error({ err, taskId, projectId, ...opts.logContext }, `${opts.logTag}_run_failed`);
     // An open row is the answer — it holds the cause and the node shows it.
     // With none, opening it is what failed, and the rejection carries the cause.
     if (rows.length > 0) return "failed";
