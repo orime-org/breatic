@@ -43,12 +43,20 @@ const VALUES: Record<string, fc.Arbitrary<unknown>> = {
 const fields = fc.record(Object.fromEntries(SCENE_LOOK_FIELDS.map((name) => [name, VALUES[name]!])), { requiredKeys: [] })
   .filter((set) => Object.keys(set).length > 0);
 const side = fc.constantFrom(0 as const, 1 as const);
+// Weighted toward writes, syncs and undos, so a member undoing after the other member's write reached them is common.
 const step: fc.Arbitrary<Step> = fc.oneof(
-  fc.record({ side, kind: fc.constant('look' as const), part, set: fields }),
-  fc.record({ side, kind: fc.constant('look' as const), part: fc.constant(null), set: fc.constant({}) }),
-  fc.record({ side, kind: fc.constant('resetPart' as const), part }),
-  fc.record({ side, kind: fc.constantFrom('undo' as const, 'redo' as const, 'sync' as const) }),
+  { arbitrary: fc.record({ side, kind: fc.constant('look' as const), part, set: fields }), weight: 4 },
+  { arbitrary: fc.record({ side, kind: fc.constant('look' as const), part: fc.constant(null), set: fc.constant({}) }), weight: 1 },
+  { arbitrary: fc.record({ side, kind: fc.constant('resetPart' as const), part }), weight: 1 },
+  { arbitrary: fc.record({ side, kind: fc.constant('sync' as const) }), weight: 3 },
+  { arbitrary: fc.record({ side, kind: fc.constantFrom('undo' as const, 'redo' as const) }), weight: 3 },
 );
+
+/** The object's look keys on a replica, with their values. */
+function lookKeys(doc: Y.Doc): string {
+  const record = doc.getMap('objects').get(ID) as Y.Map<unknown>;
+  return JSON.stringify([...record.entries()].filter(([key]) => key.startsWith('look.')).sort(([a], [b]) => a.localeCompare(b)));
+}
 
 /**
  * The look keys of the object on a replica that the other replica wrote last, with their values.
@@ -77,7 +85,7 @@ function merge(left: Y.Doc, right: Y.Doc): void {
 
 describe('look commands under concurrent editing (property)', () => {
   it('converges, keeps every record valid or reported, undoes only its own writes and leaves a reset part without keys', () => {
-    fc.assert(fc.property(fc.array(step, { maxLength: 30 }), (steps) => {
+    fc.assert(fc.property(fc.array(step, { minLength: 10, maxLength: 40 }), (steps) => {
       const docs = [new Y.Doc(), new Y.Doc()] as const;
       docs[0].getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
       applySceneCommand(docs[0], { type: 'create', objects: [BASE] }, Symbol(), true, NAME);
@@ -99,8 +107,17 @@ describe('look commands under concurrent editing (property)', () => {
             expect([...record.keys()].some((key) => key.startsWith(prefix))).toBe(false);
           } else if (current.kind === 'look') {
             const command = { type: 'look', id: ID, part: current.part, set: current.set } as unknown as SceneCommand;
+            const before = lookKeys(doc);
             const result = applySceneCommand(doc, command, origins[current.side], true, NAME);
             expect(result.ok, JSON.stringify(current)).toBe(true);
+            // Undo takes back exactly this write, and redo puts it back.
+            const after = lookKeys(doc);
+            if (after !== before) {
+              histories[current.side].undo();
+              expect(lookKeys(doc), 'undo restores the look before the write').toBe(before);
+              histories[current.side].redo();
+              expect(lookKeys(doc), 'redo puts the write back').toBe(after);
+            }
             if (current.part !== null && Object.values(current.set).every((value) => value === null)) {
               const record = doc.getMap('objects').get(ID) as Y.Map<unknown>;
               for (const key of Object.keys(current.set)) expect(record.has(`look.${current.part}.${key}`)).toBe(false);

@@ -82,10 +82,13 @@ describe('pre-compiling a changed part (inner#1693 design 5.2)', () => {
   it('compiles the object for the scene it draws in, with its lights and environment', async () => {
     const initial = props();
     const { runtime } = await open(initial, '#969696');
+    const scene = (runtime as unknown as { scene: Scene }).scene;
+    // The load compiled the box for the scene too, before it joined it.
+    expect(compiles.some((call) => call.scene !== scene)).toBe(true);
+    for (const call of compiles) expect(call.target).toBe(scene);
     compiles.length = 0;
     runtime.update(props({ objects: [{ ...BOX, look: { 0: { transmission: 1 } } }], onLookReport: initial.onLookReport, onModelStateChange: initial.onModelStateChange }));
     expect(compiles.length).toBeGreaterThan(0);
-    const scene = (runtime as unknown as { scene: Scene }).scene;
     for (const call of compiles) expect(call.target).toBe(scene);
   });
 });

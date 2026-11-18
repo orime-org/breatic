@@ -16,6 +16,13 @@ import { SCENE_FORMAT_VERSION } from '@breatic/shared';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
 import * as uploadsModule from '@web/spaces/three-d/scene-look-uploads';
+import { uploadMedia } from '@web/data/upload/media-upload';
+
+vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@web/data/upload/media-upload')>(),
+  // The page holder's upload never answers here; the arguments it was given are what is checked.
+  uploadMedia: vi.fn(() => new Promise(() => undefined)),
+}));
 
 const NAME = 'project-p1/3d-s1';
 const PROJECT = 'p1';
@@ -268,6 +275,25 @@ describe('SceneLookUploads', () => {
     await first;
     expect(lookOf(doc)).toEqual({ 0: { map: UPLOADED } });
     expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
+  });
+
+  it('hands the page upload the check that runs before any byte is sent', async () => {
+    const page = (uploadsModule as Record<string, unknown>).pageSceneLookUploads as () => Harness['uploads'];
+    const header = new Uint8Array(33);
+    header.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+    new DataView(header.buffer).setUint32(16, 64);
+    new DataView(header.buffer).setUint32(20, 64);
+    // jsdom's File has no stream(); a browser's does.
+    const file = Object.assign(new File([header], 'pattern.png', { type: 'image/png' }), {
+      stream: () => new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(header); controller.close(); } }),
+    });
+    void page().start({ ...startFor(file), objectId: '99999999-9999-4999-8999-999999999999' });
+    await vi.waitFor(() => expect(uploadMedia).toHaveBeenCalledTimes(1));
+    const [, , , signal, onRegistering, beforeSend] = vi.mocked(uploadMedia).mock.calls[0]!;
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(onRegistering).toBeUndefined();
+    expect(beforeSend).toBeTypeOf('function');
+    await expect((beforeSend as () => Promise<void>)()).resolves.toBeUndefined();
   });
 
   it('is one holder for the page', () => {
