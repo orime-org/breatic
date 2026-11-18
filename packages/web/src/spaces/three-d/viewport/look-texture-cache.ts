@@ -7,6 +7,7 @@ import { RepeatWrapping, SRGBColorSpace, Texture } from 'three';
 import { httpRequest, isSceneLookImageMediaType } from '@breatic/shared';
 
 import { resolveSceneAsset } from '@web/data/api/scene';
+import type { LookPictureDimensions } from '@web/spaces/three-d/look-texture-budget';
 
 /** A picture's size and type as its file header declares them. */
 export interface LookPictureSize {
@@ -101,21 +102,29 @@ export class LookTextureCache {
   }
 
   /**
-   * A picture's size from its file header, stopping the download there; an asset's content never changes, so it is kept.
+   * A picture's size from its file header, stopping the download there.
    * @param assetId - The picture asset.
-   * @returns The size and type, or null when the header cannot be read or the request failed; a failure is not kept.
+   * @returns The size and type, or null when the bytes are not a picture header or the read failed.
    */
   size(assetId: string): Promise<LookPictureSize | null> {
+    return this.read(assetId).catch(() => null);
+  }
+
+  /**
+   * A picture's size from its file header, telling a read that failed apart from bytes that are not a picture.
+   * @param assetId - The picture asset.
+   * @returns The size and type, or null when the bytes are not a picture header; an asset's content never changes, so
+   * the answer is kept.
+   * @throws {Error} When the picture could not be reached or read; the failure is not kept, so a later read tries again.
+   */
+  read(assetId: string): Promise<LookPictureSize | null> {
     let pending = this.sizes.get(assetId);
     if (!pending) {
-      pending = this.deps.resolve(assetId)
+      const started = this.deps.resolve(assetId)
         .then((url) => this.deps.open(url))
-        .then((stream) => readPictureSize(stream))
-        .catch(() => null)
-        .then((size) => {
-          if (!size) this.sizes.delete(assetId);
-          return size;
-        });
+        .then((stream) => readPictureSize(stream));
+      pending = started;
+      started.catch(() => { if (this.sizes.get(assetId) === started) this.sizes.delete(assetId); });
       this.sizes.set(assetId, pending);
     }
     return pending;
@@ -124,13 +133,14 @@ export class LookTextureCache {
   /**
    * Hold a picture, decoding it on the first hold.
    * @param assetId - The picture asset.
+   * @param scaledTo - The size to decode a picture over the edge limit to; this page's limit is one for every hold.
    * @returns A clone of the shared texture for this holder.
    * @throws {Error} When the picture cannot be downloaded or decoded; the hold is dropped.
    */
-  async acquire(assetId: string): Promise<Texture> {
+  async acquire(assetId: string, scaledTo?: LookPictureDimensions): Promise<Texture> {
     let entry = this.entries.get(assetId);
     if (!entry) {
-      const created: Entry = { refs: 0, ready: this.load(assetId), base: null };
+      const created: Entry = { refs: 0, ready: this.load(assetId, scaledTo), base: null };
       created.ready.then((base) => {
         created.base = base;
         // Every hold was released while it decoded.
@@ -168,13 +178,15 @@ export class LookTextureCache {
   /**
    * Download and decode one picture into the shared texture.
    * @param assetId - The picture asset.
+   * @param scaledTo - The size to decode it to, when it is over the edge limit.
    * @returns The texture, not flipped, in sRGB, repeating.
    * @throws {Error} When the download or the decode fails.
    */
-  private async load(assetId: string): Promise<Texture> {
+  private async load(assetId: string, scaledTo?: LookPictureDimensions): Promise<Texture> {
     const url = await this.deps.resolve(assetId);
     const blob = await this.deps.download(url);
-    const bitmap = await this.deps.decode(blob, DECODE);
+    const bitmap = await this.deps.decode(blob, scaledTo
+      ? { ...DECODE, resizeWidth: scaledTo.width, resizeHeight: scaledTo.height, resizeQuality: 'high' } : DECODE);
     const texture = new Texture(bitmap as unknown as ImageBitmap);
     texture.flipY = false;
     texture.colorSpace = SRGBColorSpace;

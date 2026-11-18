@@ -5,7 +5,7 @@ import type { Group, Object3D, Texture } from 'three';
 
 import type { SceneLook, SceneObject } from '@breatic/shared';
 
-import { checkLookTextures, lookPartRank, type LookTextureInput, type LookTextureVerdict } from '@web/spaces/three-d/look-texture-budget';
+import { checkLookTextures, fittedLookSize, lookPartRank, type LookTextureInput, type LookTextureVerdict } from '@web/spaces/three-d/look-texture-budget';
 import { addPartHighlight, type PartHighlight } from '@web/spaces/three-d/viewport/look-highlight';
 import { applyLook, releaseLook, type LookPartTable } from '@web/spaces/three-d/viewport/look-materials';
 import type { LookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
@@ -284,7 +284,8 @@ export class SceneLookRuntime {
     this.apply(id, state);
     const sizes = new Map(await Promise.all(wanted.map(async (assetId) => [assetId, stillFailed(assetId) ? null : await textures.size(assetId)] as const)));
     if (run !== state.run || this.objects.get(id) !== state) return;
-    const input: LookTextureInput = { ownBytes: model.ownBytes, look: state.look, sizes, limits: this.deps.limits(),
+    const limits = this.deps.limits();
+    const input: LookTextureInput = { ownBytes: model.ownBytes, look: state.look, sizes, limits,
       clampBytes: Object.fromEntries([...model.table].map(([key, entry]) => [key, entry.clampBytes])) };
     const verdicts = new Map<string, LookTextureVerdict>();
     for (const [part, verdict] of checkLookTextures(input)) {
@@ -312,7 +313,9 @@ export class SceneLookRuntime {
     }
     await Promise.all(toLoad.map(async (assetId) => {
       try {
-        const texture = await textures.acquire(assetId);
+        const size = sizes.get(assetId);
+        const fitted = size ? fittedLookSize(size, limits.maxTextureEdge) : undefined;
+        const texture = await textures.acquire(assetId, size && fitted && fitted.width !== size.width ? fitted : undefined);
         if (run !== state.run || this.objects.get(id) !== state) {
           textures.release(assetId, texture);
           return;

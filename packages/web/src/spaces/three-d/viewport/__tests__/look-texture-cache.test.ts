@@ -47,7 +47,7 @@ function deps(width = 512, height = 256): Deps & { cancelled: () => boolean } {
 
 type Cache = {
   size: (assetId: string) => Promise<{ width: number; height: number; type: string } | null>;
-  acquire: (assetId: string) => Promise<Texture>;
+  acquire: (assetId: string, scaledTo?: { width: number; height: number }) => Promise<Texture>;
   release: (assetId: string, clone: Texture) => void;
 };
 
@@ -92,6 +92,12 @@ describe('LookTextureCache', () => {
     expect(first.source).toBe(second.source);
     expect(first.flipY).toBe(false);
     expect(first.wrapS).toBe(1000);
+  });
+
+  it('decodes a picture over the edge limit straight to the size it is scaled down to', async () => {
+    const d = deps(9000, 100);
+    await create(d).acquire(A, { width: 8192, height: 91 });
+    expect(d.decode.mock.calls[0]?.[1]).toEqual({ premultiplyAlpha: 'none', imageOrientation: 'from-image', resizeWidth: 8192, resizeHeight: 91, resizeQuality: 'high' });
   });
 
   it('disposes each part clone on release and closes the picture after the last one', async () => {

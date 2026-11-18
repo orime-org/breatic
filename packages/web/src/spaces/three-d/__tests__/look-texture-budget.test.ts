@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 
 import * as budget from '@web/spaces/three-d/look-texture-budget';
+import { uploadBytes } from '@web/spaces/three-d/model-texture-metadata';
 
 const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -23,7 +24,7 @@ type Check = (input: {
   look: Readonly<Record<string, { map?: string; mapRepeat?: number[]; mapOffset?: number[]; mapRotation?: number }>>;
   sizes: ReadonlyMap<string, { width: number; height: number } | null>;
   limits: { maxTextureEdge: number; maxTextureBytes: number };
-}) => ReadonlyMap<string, { usable: true } | { usable: false; reason: 'edge' | 'bytes' | 'unknown' }>;
+}) => ReadonlyMap<string, { usable: true } | { usable: false; reason: 'bytes' | 'unknown' }>;
 
 /**
  * The budget function under test.
@@ -48,9 +49,14 @@ describe('checkLookTextures', () => {
     expect(result.get('1')).toEqual({ usable: true });
   });
 
-  it('refuses a picture whose longest edge is over the limit, by edge', () => {
-    const result = check()({ ownBytes: 0, clampBytes: {}, look: { 0: { map: A } }, sizes: new Map([[A, { width: 9000, height: 100 }]]), limits: LIMITS });
-    expect(result.get('0')).toEqual({ usable: false, reason: 'edge' });
+  it('shows a picture whose longest edge is over the limit scaled down to it, and counts it at that size', () => {
+    const input = { ownBytes: 0, clampBytes: {}, look: { 0: { map: A } }, sizes: new Map([[A, { width: 9000, height: 100 }]]), limits: LIMITS };
+    expect(check()(input).get('0')).toEqual({ usable: true });
+    const fitted = (budget as Record<string, unknown>).fittedLookSize as (size: { width: number; height: number }, edge: number) => { width: number; height: number };
+    expect(fitted({ width: 9000, height: 100 }, 8192)).toEqual({ width: 8192, height: 91 });
+    expect(fitted({ width: 100, height: 20_000 }, 8192)).toEqual({ width: 41, height: 8192 });
+    expect(fitted({ width: 64, height: 32 }, 8192)).toEqual({ width: 64, height: 32 });
+    expect(budget.lookTextureTotal(input)).toBe(uploadBytes({ width: 8192, height: 91 }, true));
   });
 
   it('counts parts in numeric order with d last, so the later part is the one over', () => {
@@ -115,7 +121,7 @@ describe('refusing a write that would make a picture unusable', () => {
    * @returns lookWriteIssue.
    * @throws {AssertionError} When it is not exported.
    */
-  function issue(): (before: Parameters<Check>[0], after: Parameters<Check>[0], part: string) => { reason: 'edge' | 'bytes' | 'unknown' } | null {
+  function issue(): (before: Parameters<Check>[0], after: Parameters<Check>[0], part: string) => { reason: 'bytes' | 'unknown' } | null {
     const candidate = (budget as Record<string, unknown>).lookWriteIssue;
     expect(candidate, 'lookWriteIssue must be exported').toBeTypeOf('function');
     return candidate as never;

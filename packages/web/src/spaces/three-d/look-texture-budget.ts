@@ -6,7 +6,7 @@ import { SCENE_LOOK_DEFAULT_PART, type SceneLook } from '@breatic/shared';
 import { uploadBytes } from '@web/spaces/three-d/model-texture-metadata';
 
 /** Why a part picture cannot be shown. */
-export type LookTextureReason = 'edge' | 'bytes' | 'unknown';
+export type LookTextureReason = 'bytes' | 'unknown';
 export type LookTextureVerdict = { usable: true } | { usable: false; reason: LookTextureReason };
 
 /** Everything one budget check reads. */
@@ -20,6 +20,26 @@ export interface LookTextureInput {
   sizes: ReadonlyMap<string, { width: number; height: number } | null>;
   /** The configured limits, the edge already capped by this device's largest texture. */
   limits: { maxTextureEdge: number; maxTextureBytes: number };
+}
+
+/** A picture's width and height in pixels. */
+export interface LookPictureDimensions {
+  width: number;
+  height: number;
+}
+
+/**
+ * The size a picture is shown at: scaled down, keeping its proportions, until its longest edge is within the limit
+ * (Figma, PlayCanvas and three.js scale an oversized image the same way).
+ * @param size - The picture's own size.
+ * @param maxEdge - The longest edge allowed.
+ * @returns The size it is decoded and counted at.
+ */
+export function fittedLookSize(size: LookPictureDimensions, maxEdge: number): LookPictureDimensions {
+  const longest = Math.max(size.width, size.height);
+  if (longest <= maxEdge) return { width: size.width, height: size.height };
+  const scale = maxEdge / longest;
+  return { width: Math.max(1, Math.round(size.width * scale)), height: Math.max(1, Math.round(size.height * scale)) };
 }
 
 /**
@@ -41,8 +61,9 @@ function partOrder(look: SceneLook): string[] {
 }
 
 /**
- * Judge every look picture of one object against the texture limits (inner#1693 design 7): parts in order, each
- * distinct picture judged and counted once, a picture over a limit or of unknown size left out of the total.
+ * Judge every look picture of one object against the texture budget (inner#1693 design 7): parts in order, each
+ * distinct picture counted once at the size it is shown, a picture over the budget or of unknown size left out of the
+ * total.
  * @param input - The object's own bytes, clamp bytes, look, picture sizes and limits.
  * @returns A verdict per part that names a picture; parts with `none` or no picture have none.
  */
@@ -63,9 +84,8 @@ export function checkLookTextures(input: LookTextureInput): Map<string, LookText
     let verdict = judged.get(map);
     if (!verdict) {
       const size = sizes.get(map) ?? null;
-      const bytes = size ? uploadBytes(size, true) : 0;
+      const bytes = size ? uploadBytes(fittedLookSize(size, limits.maxTextureEdge), true) : 0;
       if (!size) verdict = { usable: false, reason: 'unknown' };
-      else if (Math.max(size.width, size.height) > limits.maxTextureEdge) verdict = { usable: false, reason: 'edge' };
       else if (total + bytes > limits.maxTextureBytes) verdict = { usable: false, reason: 'bytes' };
       else {
         verdict = { usable: true };
@@ -115,7 +135,7 @@ export function lookTextureTotal(input: LookTextureInput): number {
   }
   for (const map of pictures) {
     const size = input.sizes.get(map);
-    if (size) total += uploadBytes(size, true);
+    if (size) total += uploadBytes(fittedLookSize(size, input.limits.maxTextureEdge), true);
   }
   return total;
 }
