@@ -16,7 +16,6 @@ const PROJECT = "11111111-1111-4111-8111-111111111111";
 
 const h = vi.hoisted(() => ({
   prepare: vi.fn(),
-  resolveKeys: vi.fn(),
   handOffLookups: vi.fn(async (..._args: unknown[]) => undefined),
   chargeOnce: vi.fn(async (..._args: unknown[]) => ({ billed: true, charged: "2000.000000", shortfall: "0.000000", studioId: null, lotIds: [] })),
   opened: [] as Array<Record<string, unknown>>,
@@ -31,7 +30,6 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 vi.mock("@breatic/domain", async () => ({
   handOffLookups: h.handOffLookups,
-  resolveKeys: h.resolveKeys,
   provider: () => ({
     llm: {
       prepare: h.prepare.mockImplementation(() => ({
@@ -79,13 +77,17 @@ vi.mock("@server/config/text-tools.js", async (importOriginal) => ({
 
 const { executeTextTool } = await import("@server/modules/text-tool/text-tool.service.js");
 
+/** The keys the route settles for a payer with an OpenRouter key. */
+const ON_ACCOUNT = { keys: ACCOUNT, keyId: "key-1", route: { mode: "default" } } as const;
+
 /**
  * Read one run to its end.
+ * @param resolved - The keys the route settled for it.
  * @returns Its events.
  */
-async function run(): Promise<Array<{ type: string }>> {
+async function run(resolved: Parameters<typeof executeTextTool>[6] = ON_ACCOUNT): Promise<Array<{ type: string }>> {
   const events: Array<{ type: string }> = [];
-  for await (const event of executeTextTool("u-1", PROJECT, "generate", { instructions: "write" }, new AbortController().signal, "op-1")) {
+  for await (const event of executeTextTool("u-1", PROJECT, "generate", { instructions: "write" }, new AbortController().signal, "op-1", resolved)) {
     events.push(event);
   }
   return events;
@@ -95,14 +97,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.opened = [];
   h.cutOff.value = false;
-  h.resolveKeys.mockResolvedValue({ keys: ACCOUNT, keyId: "key-1", route: { mode: "default" } });
 });
 
 describe("a text-tool run on the payer's OpenRouter key", () => {
-  it("asks for the payer's language-model keys and runs on them", async () => {
+  it("runs on the keys the route settled for the payer", async () => {
     await run();
 
-    expect(h.resolveKeys).toHaveBeenCalledWith({ projectId: PROJECT }, { kind: "llm" });
     expect(h.prepare.mock.calls[0]?.[3]).toBe(ACCOUNT);
   });
 
@@ -122,8 +122,7 @@ describe("a text-tool run on the payer's OpenRouter key", () => {
   });
 
   it("is charged, naming no key row, on the deployment's keys", async () => {
-    h.resolveKeys.mockResolvedValue({ keys: DEPLOYMENT, keyId: null, route: { mode: "default" } });
-    await run();
+    await run({ keys: DEPLOYMENT, keyId: null, route: { mode: "default" } });
 
     expect(h.chargeOnce).toHaveBeenCalledTimes(1);
     expect(h.opened[0]?.keyId ?? null).toBeNull();

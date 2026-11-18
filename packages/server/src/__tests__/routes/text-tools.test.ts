@@ -503,6 +503,8 @@ describe("the model call", () => {
     expect(vi.mocked(provider().llm.prepare)).toHaveBeenCalledWith(
       "google/gemini-3.8-flash",
       { thinking: true, thinkingLevel: "low", cache: false },
+      undefined,
+      expect.objectContaining({ owner: "deployment" }),
     );
     expect(model.calls[0]).toMatchObject({ providerOptions: {}, maxRetries: 0 });
     expect(model.calls[0]).not.toHaveProperty("temperature");

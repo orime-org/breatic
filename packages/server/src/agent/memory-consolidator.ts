@@ -352,10 +352,7 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
     const resolved = await resolveKeys({ projectId }, { kind: "llm" });
     keyId = resolved.keyId;
     const wants = { thinking: false, cache: false, temperature: 0 } as const;
-    // Our keys are provider's own default, so a fold on them hands provider none.
-    prepared = keyId === null
-      ? provider().llm.prepare(config.consolidation_model, wants)
-      : provider().llm.prepare(config.consolidation_model, wants, undefined, resolved.keys);
+    prepared = provider().llm.prepare(config.consolidation_model, wants, undefined, resolved.keys);
   } catch (err) {
     if (userLeft(err)) return "aborted";
     logger.error({ err, ...where }, "memory_consolidation_untouched");

@@ -177,6 +177,7 @@ async function run(): Promise<{ type: string }[]> {
     { instructions: "写点什么" },
     new AbortController().signal,
     "key-1",
+    { keys: { owner: "deployment", keyOf: () => undefined }, route: { mode: "default" }, keyId: null },
   )) {
     events.push(event);
   }
@@ -323,6 +324,7 @@ describe("一次跑到一半就死掉的运行", () => {
       { instructions: "写点什么" },
       new AbortController().signal,
       "key-1",
+      { keys: { owner: "deployment", keyOf: () => undefined }, route: { mode: "default" }, keyId: null },
     );
     await gen.next();
     await gen.next();

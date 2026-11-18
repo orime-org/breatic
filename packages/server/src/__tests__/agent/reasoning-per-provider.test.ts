@@ -141,6 +141,7 @@ describe("a turn that asks for the model's working", () => {
       "deepseek/deepseek-v4-pro",
       expect.objectContaining({ thinking: true, session: "c1" }),
       undefined,
+      undefined,
     );
   });
 

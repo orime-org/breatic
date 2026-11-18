@@ -980,10 +980,7 @@ export class MainAgent {
       // later turn resends it -- so it is the one that asks for caching.
       const wants = { thinking: true, cache: agentCfg.prompt_cache_ttl, session: conversationId };
       const route = resumeOn === undefined ? undefined : { mode: "upstream" as const, upstream: resumeOn };
-      // On our keys provider uses its own default; only the payer's key set is handed over (inner#1953).
-      const prepared = keys === undefined
-        ? provider().llm.prepare(agentConfig.modelId, wants, route)
-        : provider().llm.prepare(agentConfig.modelId, wants, route, keys);
+      const prepared = provider().llm.prepare(agentConfig.modelId, wants, route, keys);
       const watch = watchModelCalls(usage, { model: agentConfig.modelId, description: "Agent chat", keyId }, prepared.pendingCosts);
       calls = watch;
 

@@ -30,10 +30,7 @@ type AdmitArgs = [
 export async function admitGeneration(...args: AdmitArgs): Promise<TaskEntity> {
   return db.transaction(async (tx) => {
     const [userId, projectId, spaceId, taskType, mode, params, model, source, id, keys] = args;
-    // A task on our keys alone records no key rows, and is created as it always was.
-    const task = keys === undefined || (keys.keyId === null && keys.llmKeyId === null)
-      ? await taskService.create(userId, projectId, spaceId, taskType, mode, params, model, source, id, tx)
-      : await taskService.create(userId, projectId, spaceId, taskType, mode, params, model, source, id, tx, keys);
+    const task = await taskService.create(userId, projectId, spaceId, taskType, mode, params, model, source, id, tx, keys);
     await accountActivityRepo.recordActivity({ userId, projectId: projectId ?? null, kind: "generation_started" }, tx);
     return task;
   });

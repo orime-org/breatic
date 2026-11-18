@@ -22,7 +22,7 @@ import type { EstimateInput } from "@breatic/shared/pricing";
  * @throws {ValidationError} When the route names an upstream the model is not offered through.
  */
 export function assertServable(model: string, displayName: string, route?: Route, keys?: KeySet): void {
-  refuseUnservable(keys === undefined ? servability(model, route) : servability(model, route, keys), displayName);
+  refuseUnservable(servability(model, route, keys), displayName);
 }
 
 /**
@@ -35,7 +35,7 @@ export function assertServable(model: string, displayName: string, route?: Route
  * @throws {ValidationError} When the route names an upstream the model has no route on.
  */
 export function assertLlmServable(model: string, use: "call" | "understand", route?: Route, keys?: KeySet): void {
-  refuseUnservable(keys === undefined ? llmServability(model, use, route) : llmServability(model, use, route, keys), model);
+  refuseUnservable(llmServability(model, use, route, keys), model);
 }
 
 /**
@@ -73,7 +73,7 @@ export async function assertTakesInput(
   context: Record<string, unknown>,
   keys?: KeySet,
 ): Promise<void> {
-  const refusal = await (keys === undefined ? inputRefusalFor(model, input, route) : inputRefusalFor(model, input, route, keys));
+  const refusal = await inputRefusalFor(model, input, route, keys);
   if (refusal === null) return;
   logger.warn({ ...context, model, reason: "input_refused", refusal }, "execute_gate_rejected");
   throw new ValidationError(inputRefusalText(refusal, displayName));

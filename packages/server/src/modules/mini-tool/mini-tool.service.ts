@@ -170,7 +170,7 @@ async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promi
     model,
     params,
     sourceKey: undefined,
-    credits: await (onAccount === undefined ? estimateTaskCredits(model, input, route) : estimateTaskCredits(model, input, route, onAccount)),
+    credits: await estimateTaskCredits(model, input, route, onAccount),
     keys,
   };
 }
