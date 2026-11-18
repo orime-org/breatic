@@ -897,6 +897,19 @@ describe("G F8 a waiting Timeline execution has no deadline until it starts", ()
 // fence (inner#1968).
 // The worker times the task's budget from the start the gate answers, so it
 // must be the stored one, whether this pickup started the task or another did.
+// Two pickups of one task can judge it at once: one marks it waiting (task and
+// node row) while the other, which read the task before that, starts it. The
+// start must release the node row whatever its own read of the task said.
+describe("G a start releases the node row another pickup marked waiting", () => {
+  it("clears the node row's waiting mark although this pickup read the task as never waiting", async () => {
+    const p = await person();
+    const { taskId, nodeTaskId } = await seedTask(p, { node: true });
+    await sql`update node_tasks set waiting_since = now() where id = ${nodeTaskId}`;
+    expect(await pick(taskId)).toEqual({ started: true });
+    expect((await nodeRow(nodeTaskId!)).waiting_since).toBeNull();
+  });
+});
+
 describe("G the gate answers the task's stored start", () => {
   it("answers the start it wrote, and the stored start of a task another pickup started", async () => {
     const p = await person();
