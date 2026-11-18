@@ -57,6 +57,7 @@ const LIMITS = {
   studio_members: 10,
   project_members: 12,
   storage_bytes: 200 * 1024 ** 3,
+  running_tasks_per_user: 5,
 };
 
 const USER = "u-1";
