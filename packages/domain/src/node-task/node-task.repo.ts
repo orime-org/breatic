@@ -211,6 +211,15 @@ export async function settleRunning(
 }
 
 /**
+ * A running row that does not wait for a free running slot: one that never
+ * waited, or whose task no longer waits (inner#1968). A waiting row has no
+ * deadline until its task starts; once the task ended without its rows being
+ * settled (a cancel or a stale-waiter sweep that committed and then failed),
+ * the row is judged by its budget like any other.
+ */
+const notWaitingForSlot = sql`(${nodeTasks.waitingSince} is null or not exists (select 1 from ${tasks} where ${tasks.id} = ${nodeTasks.taskId} and ${tasks.status} = 'pending'))`;
+
+/**
  * Move every row on one node that outran its budget to `expired`.
  *
  * This is the whole of judging a task dead (#186, design §4.6): there is no
@@ -243,8 +252,7 @@ export async function harvestExpired(
         eq(nodeTasks.nodeId, nodeId),
         isNull(nodeTasks.deletedAt),
         eq(nodeTasks.status, "running"),
-        // A row waiting for a free running slot has no deadline yet (inner#1968).
-        isNull(nodeTasks.waitingSince),
+        notWaitingForSlot,
         sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
       ),
     )
@@ -562,7 +570,7 @@ export async function harvestExpiredInSpace(projectId: string, spaceId: string):
         isNull(nodeTasks.nodeId),
         isNull(nodeTasks.deletedAt),
         eq(nodeTasks.status, "running"),
-        isNull(nodeTasks.waitingSince),
+        notWaitingForSlot,
         sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
       ),
     )

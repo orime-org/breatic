@@ -886,6 +886,23 @@ describe("G F8 a task the gate has not judged keeps its node row's deadline", ()
     expect((await nodeRow(waitNode.nodeTaskId!)).status).toBe("running");
     expect((await nodeRow(waitScene.nodeTaskId!)).status).toBe("running");
   });
+
+  it("both harvests expire an overdue waiting row whose task already ended, so a cancel that committed before its rows settled leaves none behind", async () => {
+    const p = await person();
+    const now = await dbNow();
+    const overdue = new Date(now.getTime() - B - 1);
+    const waiting = { since: now, checkedAt: now, limit: 2 };
+    const onNode = await seedTask(p, { node: true, nodeStartedAt: overdue, waiting });
+    const onScene = await seedTask(p, { scene: true, nodeStartedAt: overdue, waiting });
+    // The cancel's own commit, with the step that ends its rows never run.
+    await sql`update tasks set status = 'cancelled' where id in (${onNode.taskId}, ${onScene.taskId})`;
+
+    await nodeTaskService.harvestAndList({ projectId: p.projectId, nodeId: onNode.nodeId! });
+    await sceneTaskService.harvestAndList(p.projectId, p.spaceId);
+
+    expect(await nodeRow(onNode.nodeTaskId!)).toMatchObject({ status: "expired", error_message: "expired" });
+    expect(await nodeRow(onScene.nodeTaskId!)).toMatchObject({ status: "expired", error_message: "expired" });
+  });
 });
 
 /**
