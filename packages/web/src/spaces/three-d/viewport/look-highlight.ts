@@ -105,21 +105,20 @@ export function partAtHit(hit: Intersection): string | null {
 }
 
 /** What a click on the scene does. */
-export type ScenePick = { kind: 'joint' } | { kind: 'select'; id: string | null; additive: boolean } | { kind: 'part'; part: string };
+export type ScenePick = { kind: 'select'; id: string | null; additive: boolean } | { kind: 'part'; part: string };
 
 /**
- * Decide a click (inner#1693 design 5.6): a pose target in pose mode keeps its joints, Shift adds or removes, a plain
- * click on the only selected object picks the part under the pointer, anything else selects what was hit.
+ * Decide a click past the joint dots and the pose target, which the viewport handles first (inner#1693 design 5.6):
+ * Shift adds or removes, a plain click on the only selected object picks the part under the pointer, anything else
+ * selects what was hit.
  * @param input - The click's facts.
- * @param input.poseTarget - Whether pose mode is on the hit object.
  * @param input.shift - Whether Shift was held.
  * @param input.hitId - The hit object, or null.
  * @param input.onlySelected - The object when exactly one is selected, or null.
  * @param input.part - The part under the pointer, or null.
  * @returns The action.
  */
-export function decideScenePick(input: { poseTarget: boolean; shift: boolean; hitId: string | null; onlySelected: string | null; part: string | null }): ScenePick {
-  if (input.poseTarget) return { kind: 'joint' };
+export function decideScenePick(input: { shift: boolean; hitId: string | null; onlySelected: string | null; part: string | null }): ScenePick {
   if (input.shift) return { kind: 'select', id: input.hitId, additive: true };
   if (input.hitId !== null && input.hitId === input.onlySelected && input.part !== null) return { kind: 'part', part: input.part };
   return { kind: 'select', id: input.hitId, additive: false };

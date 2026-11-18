@@ -64,13 +64,12 @@ describe('picking a part', () => {
   });
 
   it('decides a click: joints first in pose mode, shift toggles, a second plain click picks a part', () => {
-    const decide = exported<(input: { poseTarget: boolean; shift: boolean; hitId: string | null; onlySelected: string | null; part: string | null }) =>
-      { kind: 'joint' } | { kind: 'select'; id: string | null; additive: boolean } | { kind: 'part'; part: string }>('decideScenePick');
-    expect(decide({ poseTarget: true, shift: false, hitId: 'a', onlySelected: 'a', part: '0' })).toEqual({ kind: 'joint' });
-    expect(decide({ poseTarget: false, shift: true, hitId: 'a', onlySelected: 'a', part: '0' })).toEqual({ kind: 'select', id: 'a', additive: true });
-    expect(decide({ poseTarget: false, shift: false, hitId: 'a', onlySelected: 'a', part: '0' })).toEqual({ kind: 'part', part: '0' });
-    expect(decide({ poseTarget: false, shift: false, hitId: 'b', onlySelected: 'a', part: '0' })).toEqual({ kind: 'select', id: 'b', additive: false });
-    expect(decide({ poseTarget: false, shift: false, hitId: null, onlySelected: 'a', part: null })).toEqual({ kind: 'select', id: null, additive: false });
+    const decide = exported<(input: { shift: boolean; hitId: string | null; onlySelected: string | null; part: string | null }) =>
+      { kind: 'select'; id: string | null; additive: boolean } | { kind: 'part'; part: string }>('decideScenePick');
+    expect(decide({ shift: true, hitId: 'a', onlySelected: 'a', part: '0' })).toEqual({ kind: 'select', id: 'a', additive: true });
+    expect(decide({ shift: false, hitId: 'a', onlySelected: 'a', part: '0' })).toEqual({ kind: 'part', part: '0' });
+    expect(decide({ shift: false, hitId: 'b', onlySelected: 'a', part: '0' })).toEqual({ kind: 'select', id: 'b', additive: false });
+    expect(decide({ shift: false, hitId: null, onlySelected: 'a', part: null })).toEqual({ kind: 'select', id: null, additive: false });
   });
 });
 

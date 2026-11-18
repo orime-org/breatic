@@ -1364,10 +1364,10 @@ export class SceneViewportRuntime {
     }
     if (typeof root.userData.sceneObjectId !== 'string') return;
     const selected = this.props.selectedIds;
-    const pick = decideScenePick({ poseTarget: false, shift: event.shiftKey, hitId: root.userData.sceneObjectId,
+    const pick = decideScenePick({ shift: event.shiftKey, hitId: root.userData.sceneObjectId,
       onlySelected: selected.length === 1 ? selected[0] ?? null : null, part: partAtHit(hit) });
     if (pick.kind === 'part') this.props.onSelectPart?.(pick.part);
-    else if (pick.kind === 'select') this.props.onSelect(pick.id, pick.additive);
+    else this.props.onSelect(pick.id, pick.additive);
   };
 
   /**
