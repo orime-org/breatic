@@ -4,7 +4,7 @@
 /**
  * The task list's own lifecycle (#186 §7.1).
  *
- * The list is one user's fetch; the four counts beside it come off the canvas
+ * The list is one user's fetch; the counts beside it come off the canvas
  * document and move on their own. So the two can disagree, and what keeps them
  * from disagreeing on screen is when this panel asks again.
  */

@@ -12,7 +12,7 @@
  * would carry a row that says `running` beside a count that says `expired`.
  *
  * The cost of judging only on a read is a stated boundary (design §4.6.4):
- * nobody reads, nothing moves, and the four numbers on the node stay stale.
+ * nobody reads, nothing moves, and the counts on the node stay stale.
  * The way out is the same action — open the list.
  */
 

@@ -208,7 +208,7 @@ export const mocks = {
     recordUpload: vi.fn(),
     recordSnapshot: vi.fn(),
   },
-  // #186 — the task table behind a node's four counts.
+  // #186 — the task table behind a node's task counts.
   emitNodeTaskCounts: vi.fn(),
   nodeTaskService: {
     // Shaped like the real one returns. A bare `vi.fn()` hands back

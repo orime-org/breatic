@@ -5,9 +5,9 @@
  * The two endpoints the task list needs (#186, design §7.4 / §7.5).
  *
  * `GET /canvas/nodes/:nodeId/tasks` — the panel pulls its rows from here, not
- * from the canvas document. The document carries four numbers; the detail is
+ * from the canvas document. The document carries the counts; the detail is
  * fetched when the user asks to see it. Asking is also the one moment a task
- * that outran its budget is judged dead (design §4.6), and the four numbers
+ * that outran its budget is judged dead (design §4.6), and the counts
  * that judgement produced are republished (design §4.6.4): the document and
  * the table are not kept in lock step, and this is how a node showing a count
  * the table no longer holds gets back to the truth.

@@ -6,7 +6,7 @@
  *
  * Each project has one Yjs document containing nodesMap (Y.Map<nodeId, Y.Map>)
  * + edgesMap (Y.Map<edgeId, Y.Map>). A node carries no task state of its own:
- * its four task counts are the whole of what the document says about its
+ * its task counts are the whole of what the document says about its
  * tasks (#186).
  */
 
@@ -673,7 +673,7 @@ export type NodeMediaNumbers = Omit<NodeTaskResult, 'content' | 'coverUrl'>;
  * The server recounted a node's tasks (#186).
  *
  * One event type covers every state change, because the document holds only
- * the four counts: which task moved is not on the wire, so nothing here can
+ * the counts: which task moved is not on the wire, so nothing here can
  * be applied to the wrong row. Repeating an event lands the same numbers.
  *
  * `result` rides on the transition that reached `done` and on no other, so a
@@ -687,7 +687,7 @@ export interface NodeTaskCountsEvent {
   docName: string;
   /** The node whose counts these are. */
   nodeId: string;
-  /** All four, freshly counted from the table. */
+  /** All of them, freshly counted from the table. */
   counts: NodeTaskCounts;
   /** Present only on the transition into `done`. */
   result?: NodeTaskResult;

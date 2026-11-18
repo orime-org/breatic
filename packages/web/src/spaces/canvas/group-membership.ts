@@ -101,7 +101,7 @@ export function lockedNodeIds(
  * {@link lockedNodeIds} so the move-freeze (draggable) path stays lock-only.
  *
  * Reads the DERIVED view field `data.handling`, which `deriveHandling` reads
- * off the node's four task counts: `running > 0` is what makes a node resist
+ * off the node's task counts: `running > 0` is what makes a node resist
  * deletion. A task past its deadline keeps
  * counting as running until somebody opens the node's task list and the server
  * judges it (§4.6). The delete guards feed this the ReactFlow render buffer,

@@ -4,7 +4,7 @@
 /**
  * What collab does with a task-counts event (#186, design §3.4).
  *
- * The canvas document holds four numbers about tasks and nothing else, so
+ * The canvas document holds the node's task counts and nothing else, so
  * this event carries the whole of them, recounted by the server after every
  * state change. There is no task id on the wire and no per-entry update.
  * Each write happens only when the event is newer than what it replaces: the
@@ -66,7 +66,7 @@ function docWithNode(
 }
 
 describe("a counts event replaces what the node holds about tasks", () => {
-  it("writes the four numbers", () => {
+  it("writes the counts", () => {
     const nodeId = crypto.randomUUID();
     const { doc, data } = docWithNode(nodeId);
 
