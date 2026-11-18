@@ -3,8 +3,8 @@
 -- 0126 stays in the journal because databases may have run it. This returns
 -- the schema to the single-region shape it had before: the region tables and
 -- column go, the Studio transfer status and its one-live-offer index lose
--- 'accepting', and every foreign key 0126 dropped comes back under its
--- original name and delete rule.
+-- 'accepting', and every foreign key 0126 dropped comes back under the name
+-- and delete rule it had before 0126.
 
 -- ── 1. Pending constraint checks ─────────────────────────────────────
 -- ALTER TABLE refuses a table with deferred checks still pending.
@@ -46,7 +46,7 @@ DROP TABLE "studio_directory_members";--> statement-breakpoint
 DROP TABLE "studio_directory";--> statement-breakpoint
 
 -- ── 5. Foreign keys 0126 dropped ─────────────────────────────────────
--- Each as the migration that first created it had it.
+-- Each as it stood after 0125: same name, column and delete rule.
 ALTER TABLE "account_activity_events" ADD CONSTRAINT "account_activity_events_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "agent_memories" ADD CONSTRAINT "agent_memories_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "agent_usage_records" ADD CONSTRAINT "agent_usage_records_actor_user_id_users_id_fk" FOREIGN KEY ("actor_user_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
