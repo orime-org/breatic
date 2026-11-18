@@ -128,7 +128,7 @@ test('an OpenRouter key OpenRouter turns down is refused inline and nothing is s
   expect(await saveOpenRouterKey(page, dialog, `sk-or-v1-${'0'.repeat(64)}`)).toEqual({ status: 422, reason: 'invalid' });
 
   const detail = dialog.getByTestId('byok-detail-openrouter');
-  await expect(detail.getByText('This key could not connect. Check it and try again.', { exact: true })).toBeVisible();
+  await expect(detail.getByText('The key is invalid or has been revoked.', { exact: true })).toBeVisible();
   await expect(detail.getByText('Connected', { exact: true })).toHaveCount(0);
   await expect(dialog.getByTestId('byok-status-dot')).toHaveCount(0);
   await expect(dialog.getByText('None added yet', { exact: true })).toBeVisible();
