@@ -843,6 +843,22 @@ describe('MembershipPanel', () => {
     expect(screen.getByTestId('over-limit-storage')).toBeInTheDocument();
   });
 
+  it('企业存储超出协议上限时也说明已有内容仍可用、新内容传不上，不提升级 (inner#1968)', async () => {
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'enterprise',
+        limits: null,
+        storageLimitBytes: 5 * GIB,
+        usage: { teamStudios: 0, storageBytes: 38 * GIB },
+      }),
+    );
+    setup();
+
+    const note = await screen.findByTestId('over-limit-storage');
+    expect(note).toHaveTextContent('Storage is over your agreement. What is already there works as before, but nothing new can be uploaded or generated.');
+    expect(note).not.toHaveTextContent('Upgrade');
+  });
+
   it('加载失败显示一行错误文案', async () => {
     membershipMock.mockRejectedValue(new Error('network'));
     setup();

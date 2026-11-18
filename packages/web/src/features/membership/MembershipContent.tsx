@@ -156,7 +156,7 @@ export function MembershipContent({
   // Storage against the account's ceiling: its tier's, an agreement's, or
   // used against no cap for an enterprise account with no agreement on file
   // (inner#1968, design 3.6).
-  const storageRow = storageLimitBytes === null ? (
+  const storageQuota = storageLimitBytes === null ? (
     <div className='flex items-baseline justify-between gap-3' data-testid='quota-storage'>
       <span className='text-sm'>{t('membership.quota.storage')}</span>
       <span className='text-sm tabular-nums text-foreground-secondary'>
@@ -175,6 +175,21 @@ export function MembershipContent({
       limit={storageLimitBytes}
       overLabel={t('membership.overLimitTag')}
     />
+  );
+  // Past its ceiling the account keeps what it has but stores nothing new; an
+  // enterprise agreement is changed with us, not by an upgrade (inner#1968).
+  const storageRow = (
+    <>
+      {storageQuota}
+      {storageLimitBytes !== null && usage.storageBytes > storageLimitBytes ? (
+        <p
+          className='text-sm text-foreground-secondary'
+          data-testid='over-limit-storage'
+        >
+          {t(tier === 'enterprise' ? 'membership.overLimit.storageEnterprise' : 'membership.overLimit.storage')}
+        </p>
+      ) : null}
+    </>
   );
 
   return (
@@ -250,14 +265,6 @@ export function MembershipContent({
                   </p>
                 ) : null}
                 {storageRow}
-                {usage.storageBytes > limits.storage_bytes ? (
-                  <p
-                    className='text-sm text-foreground-secondary'
-                    data-testid='over-limit-storage'
-                  >
-                    {t('membership.overLimit.storage')}
-                  </p>
-                ) : null}
                 {tier === 'self_hosted' ? (
                 // The five ceilings the table carries, listed here only for this tier:
                 // it is not on the price list, so the comparison table below —
