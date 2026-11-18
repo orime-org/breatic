@@ -452,6 +452,7 @@
         "noConnection": "連不上服務，稍後可以再試",
         "refused": "服務沒有接受這次請求",
         "unavailable": "這項功能暫時無法使用",
+        "accountKey": "BYOK 設定裡儲存的 key 無法使用",
         "badAnswer": "服務回傳的內容無法使用",
         "linkUnreachable": "這個網址打不開，可以換一個連結",
         "fileTooLarge": "檔案太大",

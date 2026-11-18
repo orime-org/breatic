@@ -13,6 +13,7 @@
  *
  * Catching is fine. Answering is not.
  */
+import { accountKeyFailureIn } from "@breatic/provider";
 import { carrying, FAILURE_LINES } from "@breatic/shared";
 import type { FailureLine, ToolFailure } from "@breatic/shared";
 
@@ -31,6 +32,33 @@ export function toolFailed(forModel: string, userKey: FailureLine, cause?: unkno
     forModel,
     userKey,
   } satisfies ToolFailure);
+}
+
+/** What each way the payer's own key failed means, and whether asking again can help. */
+const ACCOUNT_KEY_FACTS: Readonly<Record<string, string>> = {
+  invalid: "refused the key as invalid; asking again will not help until the key is replaced in BYOK settings",
+  no_balance: "says the key's account has no balance left; asking again will not help until that account is topped up",
+  model_not_found: "says this key cannot use the model this step needs, which that account's own settings decide; asking again will not help",
+  rate_limited: "is rate-limiting the key; asking again after a short wait may work",
+};
+
+/**
+ * The failure of a call that ran on the key the Studio's payer saved in BYOK settings, when that is why it failed: no
+ * other key is ever used instead, so the model is told whose key, which upstream and why.
+ * @param err - What the call threw.
+ * @returns The error to throw, or undefined when the payer's key is not why it failed.
+ */
+export function accountKeyFailed(err: unknown): Error | undefined {
+  const facts = accountKeyFailureIn(err);
+  if (facts === undefined) return undefined;
+  const upstream = facts.upstream === undefined || facts.upstream === "" ? "the upstream" : facts.upstream;
+  const what =
+    facts.kind === "account_key_missing"
+      ? `The key the Studio's payer saved for ${upstream} in BYOK settings was replaced or deleted, so this call ran on no key and no other key is used; asking again will not help`
+      : facts.kind === "upstream_unavailable"
+        ? `${upstream} could not be reached on the key the Studio's payer saved in BYOK settings; asking again after a short wait may work`
+        : `${upstream} ${ACCOUNT_KEY_FACTS[facts.reason ?? ""] ?? "refused the key the Studio's payer saved in BYOK settings"}`;
+  return toolFailed(`${what}. This call runs on the key the Studio's payer saved in BYOK settings, never on another key. Tell the user.`, FAILURE_LINES.accountKey, err);
 }
 
 /**

@@ -183,6 +183,15 @@ describe("judge_likelihood is in the agent's hands", () => {
     const { userKey } = await failureOf(askAll);
     expect(userKey).toBe(FAILURE_LINES.unavailable);
   });
+
+  it("says the payer's own key failed, which upstream and why, when the key in BYOK settings is refused", async () => {
+    const { AccountKeyFailure } = await import("@breatic/provider");
+    judge.mockRejectedValueOnce(new AccountKeyFailure("typesafe/jev-1.13", "account_key_failed", { upstream: "openrouter", reason: "no_balance" }));
+    const { forModel, userKey } = await failureOf(askAll);
+    expect(userKey).toBe(FAILURE_LINES.accountKey);
+    expect(forModel).toContain("openrouter");
+    expect(forModel.toLowerCase()).toContain("no balance");
+  });
 });
 
 describe("the model composes the request", () => {

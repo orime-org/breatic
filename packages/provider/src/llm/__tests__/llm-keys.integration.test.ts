@@ -110,6 +110,26 @@ describe("an account's key set on LLM calls", () => {
     expect(deploymentKeys).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["invalid", 401, { error: { message: "No auth credentials found" } }],
+    ["no_balance", 402, { error: { message: "Insufficient credits" } }],
+    ["rate_limited", 429, { error: { message: "slow down" } }],
+  ] as const)("judge: a refusal of the account's key as %s is the account's key failure, naming the upstream", async (reason, status, body) => {
+    const { provider } = started();
+    fakes.openrouter.answer(({ path }) => (path === "/api/alpha/decisions" ? { status, body } : undefined));
+    const request = { state: { a: 1 }, questions: { likely: { kind: "probability" } }, budgetMs: 5_000 };
+    const asked = (provider.llm.judge as (...args: unknown[]) => ReturnType<Provider["llm"]["judge"]>)(request, DEFAULT, accountKeys({ openrouter: "acct-or" }));
+    await expect(asked).rejects.toMatchObject({ kind: "account_key_failed", upstream: "openrouter", reason });
+  });
+
+  it("judge: an upstream error on the account's key stays the answer's status, as on ours", async () => {
+    const { provider } = started();
+    fakes.openrouter.answer(({ path }) => (path === "/api/alpha/decisions" ? { status: 500, body: { error: { message: "boom" } } } : undefined));
+    const request = { state: { a: 1 }, questions: { likely: { kind: "probability" } }, budgetMs: 5_000 };
+    const answer = await (provider.llm.judge as (...args: unknown[]) => ReturnType<Provider["llm"]["judge"]>)(request, DEFAULT, accountKeys({ openrouter: "acct-or" }));
+    expect(answer.status).toBe(500);
+  });
+
   it("availability: counts only the set's upstreams as configured", () => {
     const { provider, deploymentKeys } = started();
     const availability = (provider.llm.availability as (...args: unknown[]) => ReturnType<Provider["llm"]["availability"]>)("deepseek/deepseek-v4-pro", "call", accountKeys({ openrouter: "acct-or" }));

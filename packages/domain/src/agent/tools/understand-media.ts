@@ -19,7 +19,7 @@ import { z } from "zod";
 import { budgetDeadlineFrom, getAgentConfig, getUnderstandConfig } from "@breatic/core";
 import type { Cost, KeySet } from "@breatic/provider";
 import { FAILURE_LINES, type FailureLine, type LongMediaSourceReference } from "@breatic/shared";
-import { isStop, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
+import { accountKeyFailed, isStop, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import type { SaveToStorage } from "@domain/agent/tools/save-image.js";
@@ -427,8 +427,7 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean; keys?
         }
         if (err instanceof MediaUnavailable) throw unavailableFailure(err);
         if (err instanceof UnderstandRefused) throw refusedFailure(err);
-        // Our own request failing outright, before any answer to judge.
-        throw serviceSilent(err, FAILURE_LINES.noConnection);
+        throw accountKeyFailed(err) ?? serviceSilent(err, FAILURE_LINES.noConnection);
       } finally {
         running = false;
       }

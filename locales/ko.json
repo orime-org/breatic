@@ -452,6 +452,7 @@
         "noConnection": "서비스에 연결할 수 없습니다. 잠시 후 다시 시도하세요",
         "refused": "서비스가 이 요청을 받지 않았습니다",
         "unavailable": "지금은 이 기능을 사용할 수 없습니다",
+        "accountKey": "BYOK 설정에 저장한 키를 사용할 수 없습니다",
         "badAnswer": "서비스가 사용할 수 없는 결과를 보냈습니다",
         "linkUnreachable": "이 주소를 열 수 없습니다. 다른 링크를 사용해 보세요",
         "fileTooLarge": "파일이 너무 큽니다",

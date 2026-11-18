@@ -452,6 +452,7 @@
         "noConnection": "couldn't reach the service, try again later",
         "refused": "the service didn't accept this request",
         "unavailable": "this feature is unavailable right now",
+        "accountKey": "the key saved in BYOK settings couldn't be used",
         "badAnswer": "the service returned something unusable",
         "linkUnreachable": "this address can't be opened, try another link",
         "fileTooLarge": "the file is too large",

@@ -18,6 +18,7 @@ import { stripUnicodeTagsDeep } from "@domain/agent/strip-unicode-tags.js";
 import { provider } from "@domain/provider/instance.js";
 import type { FailureVoice } from "@domain/agent/tools/failure.js";
 import {
+  accountKeyFailed,
   clip,
   failedWith,
   isStop,
@@ -241,6 +242,8 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     const lost = lostAnswerOf(err);
     if (lost?.served !== undefined) onBilled({ cost: lost.costs[0]!, ...lost.served });
     if (isStop(err, abortSignal)) throw stoppedByUser();
+    const keyFailure = accountKeyFailed(err);
+    if (keyFailure !== undefined) throw keyFailure;
     if (err instanceof NoUpstreamAvailable) {
       throw toolFailed(
         "Judgement is not available on this deployment: it has no credentials. Tell the user, and do not try again.",

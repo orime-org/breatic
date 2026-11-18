@@ -24,7 +24,7 @@ import { assertAccountReaches, deploymentKeySet, hasKey, keyFor, keysOr, llmFail
 import { cacheMark, hasLlmAdapter, isClaude, messageOf, optionsFor, vendorOf, type ModelV4, type Vendor, type VendorOptions } from "@provider/llm/vendors.js";
 import type { MessagesPlan } from "@provider/messages/relay.js";
 import type { ProviderOptions } from "@provider/provider.js";
-import type { Failure } from "@provider/routing/decide.js";
+import { accountFailureOf, type Failure } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
 import { tryInOrder } from "@provider/routing/try-in-order.js";
 
@@ -662,7 +662,13 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         // A 2xx was billed though its body was lost; a refusal's lost body reads as no words.
         throw new NoAnswer(url, new BilledAnswerLost(`the decisions endpoint answered ${response.status} and its body could not be read`, error, served));
       }
-      if (!isSuccess(response.status)) return { status: response.status, body: text, ...served };
+      if (!isSuccess(response.status)) {
+        // On the payer's own key a refusal of that key is the payer's to act on, never a refusal of the question.
+        const refusal = used.owner === "account" ? vendorOf(kindOf(upstream)).refusal(response.status, parsed(text)) : undefined;
+        const turned = used.owner === "account" ? accountFailureOf(refusal === undefined ? { kind: "http_status", status: response.status } : { kind: refusal }, "llm_before_content") : undefined;
+        if (turned?.kind === "account_key_failed") throw new AccountKeyFailure(decisions.model, turned.kind, { upstream, ...(turned.reason === undefined ? {} : { reason: turned.reason }) });
+        return { status: response.status, body: text, ...served };
+      }
       const reported = vendorOf(kindOf(upstream)).costs?.ofBody(parsed(text)).cost;
       const cost: Cost = reported === undefined ? { state: "missing", reason: "the decisions endpoint reported no cost" } : { state: "known", usd: reported, source: "reported" };
       return { status: response.status, body: text, cost: paidOn(used)(cost), ...served };
