@@ -8,6 +8,7 @@ import { t as translate, type SceneImportLimits, type SceneLook, type SceneObjec
 import { resolveSceneAsset } from '@web/data/api/scene';
 import { peekSceneSession, type SceneSession } from '@web/data/yjs/scene-session';
 import { toast } from '@web/lib/toast';
+import type { SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
 import { SceneImagePickerDialog } from '@web/spaces/three-d/SceneImagePickerDialog';
 import { SceneLookSection, type SceneLookGesture } from '@web/spaces/three-d/SceneLookSection';
 import { checkLookWrite } from '@web/spaces/three-d/look-texture-budget';
@@ -32,6 +33,9 @@ export interface SceneLookPanelProps {
   onSelectPart: (part: string | null) => void;
   /** The user pictures the scene shows for this object now. */
   showing: readonly string[];
+  /** The properties panel's number-field drafts. */
+  fieldDrafts: SceneFieldDraftOwner['fieldDrafts'];
+  onFieldDraftChange: SceneFieldDraftOwner['onFieldDraftChange'];
 }
 
 /**
@@ -112,7 +116,7 @@ function openObject(name: string, objectId: string): SceneObject | undefined {
  * @returns The section and its picker.
  */
 export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLookPanelProps): React.JSX.Element {
-  const { session, objectId, look, report, projectId, spaceId, limits, mutable, selectedPart, onSelectPart, showing } = props;
+  const { session, objectId, look, report, projectId, spaceId, limits, mutable, selectedPart, onSelectPart, showing, fieldDrafts, onFieldDraftChange } = props;
   const showingPictures = React.useMemo(() => new Set(showing), [showing]);
   const queryClient = useQueryClient();
   const uploads = React.useMemo(() => pageSceneLookUploads(queryClient), [queryClient]);
@@ -225,7 +229,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
     <SceneLookSection objectId={objectId} parts={ready ? ready.parts : report === 'failed' ? 'failed' : 'loading'} look={look}
       selectedPart={selectedPart} mutable={mutable} onSelectPart={onSelectPart} onCommand={onCommand} onChoosePicture={setPickerPart}
       gesture={gesture} spaceId={spaceId} uploadPercentOf={uploadPercentOf} checking={checking} pictureUrl={urlOf}
-      showingPictures={showingPictures} />
+      showingPictures={showingPictures} fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} />
     <SceneImagePickerDialog projectId={projectId} open={pickerPart !== null} onOpenChange={openChange} onPick={pick} onPickFile={pickFile} />
   </>;
 });

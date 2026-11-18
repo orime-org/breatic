@@ -18,6 +18,7 @@ import { SCENE_FORMAT_VERSION, getLocale, t, type SceneObject } from '@breatic/s
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { evictSceneSession, getSceneSession, type SceneSession } from '@web/data/yjs/scene-session';
 import { SceneLookPanel } from '@web/spaces/three-d/SceneLookPanel';
+import type { SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { uploadBytes } from '@web/spaces/three-d/model-texture-metadata';
 
@@ -49,6 +50,7 @@ const REPORT = { parts: [{ key: '0', name: null, color: '#969696', hasMap: false
   ownBytes: 0, clampBytes: { 0: 0, 1: 0 }, deviceMaxEdge: 16_384 };
 const cleanups: (() => void)[] = [];
 const NO_PICTURES: readonly string[] = [];
+const NO_DRAFTS: ReadonlyMap<string, SceneFieldDraft> = new Map<string, SceneFieldDraft>();
 afterEach(() => { cleanup(); cleanups.splice(0).forEach((done) => done()); sizes.clear(); vi.clearAllMocks(); });
 
 /** A panel on a scene with one figure, and its document; it can show another part or be opened again. */
@@ -65,7 +67,7 @@ function panel(): { doc: Y.Doc; session: SceneSession; rerender: () => void; sel
   /** The panel for the object as it is now. */
   const view = (): React.JSX.Element => <QueryClientProvider client={client}>
     <SceneLookPanel session={session} objectId={ID} look={(session.getSnapshot().objects[0] as SceneObject).look ?? {}} report={REPORT as never} projectId='p1' spaceId='s1'
-      limits={IMPORT_LIMITS} mutable selectedPart={selected} onSelectPart={vi.fn()} showing={NO_PICTURES} />
+      limits={IMPORT_LIMITS} mutable selectedPart={selected} onSelectPart={vi.fn()} showing={NO_PICTURES} fieldDrafts={NO_DRAFTS} onFieldDraftChange={vi.fn()} />
   </QueryClientProvider>;
   let result = render(view());
   return {

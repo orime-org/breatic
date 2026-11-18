@@ -197,7 +197,7 @@ export const SceneInspector = React.memo(function SceneInspector({ session, snap
         fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} />
       {look && isSceneModelFile(object.model) ? <SceneLookPanel key={object.id} session={session} objectId={object.id} look={objectLook} report={look.reports.get(object.id) ?? 'loading'}
         projectId={look.projectId} spaceId={spaceId} limits={look.limits} mutable={mutable} selectedPart={look.selectedPart} onSelectPart={look.onSelectPart}
-        showing={look.pictures.get(object.id)?.shown ?? NO_PICTURES} /> : null}
+        showing={look.pictures.get(object.id)?.shown ?? NO_PICTURES} fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} /> : null}
       {skeleton ? <PoseSection objectId={object.id} state={skeleton} mutable={mutable} session={session}
         jointMode={jointMode} onJointModeChange={onJointModeChange} /> : null}</> : <><p className='text-xs font-medium'>{t('spaces.threeD.selectedCount', { count: selected.length })}</p><p className='text-xs text-muted-foreground'>{t('spaces.threeD.multiTransform')}</p>
         {(['position', 'rotation', 'scale'] as const).map((field) => <p key={field} className='text-xs'>{geometryLabels[field]}: {geometries.every((item) => JSON.stringify(item[field]) === JSON.stringify(geometries[0]?.[field])) ? geometries[0]?.[field].map(numberText).join(', ') : t('spaces.threeD.mixed')}</p>)}</>}

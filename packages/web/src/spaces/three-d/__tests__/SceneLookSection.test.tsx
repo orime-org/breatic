@@ -6,11 +6,14 @@
  */
 
 import * as React from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+
+import { t } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import * as sectionModule from '@web/spaces/three-d/SceneLookSection';
+import type { SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const IMAGE = '66666666-6666-4666-8666-666666666666';
@@ -32,10 +35,27 @@ type Props = {
   showingPictures?: ReadonlySet<string>;
   uploadPercentOf?: (part: string) => number | null;
   pictureUrl?: (assetId: string) => string | undefined;
+  fieldDrafts?: ReadonlyMap<string, SceneFieldDraft>;
+  onFieldDraftChange?: (key: string, draft: SceneFieldDraft | undefined) => void;
   gesture?: { begin: () => number; preview: () => boolean; commit: () => void; cancel: () => void; stepKey: () => void };
 };
 
-afterEach(() => cleanup());
+// jsdom clears its focused element before dispatching blur, unlike the browser.
+beforeEach(() => { vi.spyOn(document, 'hasFocus').mockReturnValue(true); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+/**
+ * Type a value into a number box and leave it, as the user does.
+ * @param testId - The box.
+ * @param value - The typed text.
+ */
+async function enter(testId: string, value: string): Promise<void> {
+  const box = screen.getByTestId(testId);
+  fireEvent.focus(box);
+  fireEvent.change(box, { target: { value } });
+  fireEvent.blur(box);
+  await act(async () => { await Promise.resolve(); });
+}
 
 /**
  * Renders the section.
@@ -48,8 +68,21 @@ function renderSection(props: Partial<Props> = {}): { onCommand: ReturnType<type
   expect(Section, 'SceneLookSection must be exported').toBeDefined();
   const Mounted = Section as React.ComponentType<Props>;
   const onCommand = vi.fn(); const onSelectPart = vi.fn(); const onChoosePicture = vi.fn();
-  render(<TooltipProvider><Mounted objectId={ID} parts={PARTS} look={{}} selectedPart={null} mutable
-    onSelectPart={onSelectPart} onCommand={onCommand} onChoosePicture={onChoosePicture} {...props} /></TooltipProvider>);
+  /** Keeps the number boxes' drafts as the properties panel does. */
+  function DraftOwner(): React.JSX.Element {
+    const [fieldDrafts, setFieldDrafts] = React.useState<ReadonlyMap<string, SceneFieldDraft>>(new Map());
+    const onFieldDraftChange = React.useCallback((key: string, draft: SceneFieldDraft | undefined): void => {
+      setFieldDrafts((previous) => {
+        const next = new Map(previous);
+        if (draft) next.set(key, draft);
+        else next.delete(key);
+        return next;
+      });
+    }, []);
+    return <Mounted objectId={ID} parts={PARTS} look={{}} selectedPart={null} mutable fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
+      onSelectPart={onSelectPart} onCommand={onCommand} onChoosePicture={onChoosePicture} {...props} />;
+  }
+  render(<TooltipProvider><DraftOwner /></TooltipProvider>);
   return { onCommand, onSelectPart, onChoosePicture };
 }
 
@@ -142,43 +175,39 @@ describe('SceneLookSection', () => {
     expect(onCommand).toHaveBeenCalledWith({ type: 'look', id: ID, part: null, set: {} });
   });
 
-  it('starts the own picture\'s tiling, offset and rotation from the model and keeps the other axis when one box changes', () => {
+  it('starts the own picture\'s tiling, offset and rotation from the model and keeps the other axis when one box changes', async () => {
     const { onCommand } = renderSection({ selectedPart: '0' });
     expect((screen.getByTestId('scene-look-repeat-0') as HTMLInputElement).value).toBe('3');
     expect((screen.getByTestId('scene-look-repeat-1') as HTMLInputElement).value).toBe('4');
     expect((screen.getByTestId('scene-look-offset-0') as HTMLInputElement).value).toBe('0.5');
-    const box = screen.getByTestId('scene-look-repeat-0') as HTMLInputElement;
-    fireEvent.change(box, { target: { value: '2' } });
-    fireEvent.blur(box);
+    await enter('scene-look-repeat-0', '2');
     expect(onCommand).toHaveBeenCalledWith({ type: 'look', id: ID, part: '0', set: { mapRepeat: [2, 4] } });
   });
 
-  it('changes one axis of a mirrored model picture and takes a mirrored count, refusing counts and offsets out of range', () => {
+  it('changes one axis of a mirrored model picture and takes a mirrored count', async () => {
     const mirrored = [{ ...PARTS[0]!, mapRepeat: [-1, 1] as [number, number], mapOffset: [60, 0] as [number, number] }, ...PARTS.slice(1)] as typeof PARTS;
     const { onCommand } = renderSection({ selectedPart: '0', parts: mirrored });
-    const across = screen.getByTestId('scene-look-repeat-0') as HTMLInputElement;
-    const down = screen.getByTestId('scene-look-repeat-1') as HTMLInputElement;
-    expect(across.value).toBe('-1');
-    fireEvent.change(down, { target: { value: '2' } });
-    fireEvent.blur(down);
+    expect((screen.getByTestId('scene-look-repeat-0') as HTMLInputElement).value).toBe('-1');
+    await enter('scene-look-repeat-1', '2');
     expect(onCommand).toHaveBeenLastCalledWith({ type: 'look', id: ID, part: '0', set: { mapRepeat: [-1, 2] } });
-    for (const value of ['-0.00001', '20000', '0']) {
-      fireEvent.change(across, { target: { value } });
-      fireEvent.blur(across);
-    }
-    expect(onCommand).toHaveBeenCalledTimes(1);
-    expect(across.value).toBe('-1');
-    fireEvent.change(across, { target: { value: '-0.001' } });
-    fireEvent.blur(across);
+    await enter('scene-look-repeat-0', '-0.001');
     expect((onCommand.mock.lastCall?.[0] as { set: { mapRepeat: number[] } }).set.mapRepeat[0]).toBe(-0.001);
-    const along = screen.getByTestId('scene-look-offset-0') as HTMLInputElement;
-    fireEvent.change(along, { target: { value: '101' } });
-    fireEvent.blur(along);
-    expect(onCommand).toHaveBeenCalledTimes(2);
-    const offset = screen.getByTestId('scene-look-offset-1') as HTMLInputElement;
-    fireEvent.change(offset, { target: { value: '80' } });
-    fireEvent.blur(offset);
+    await enter('scene-look-offset-1', '80');
     expect(onCommand).toHaveBeenLastCalledWith({ type: 'look', id: ID, part: '0', set: { mapOffset: [60, 80] } });
+  });
+
+  it.each([
+    ['a count nearer 0 than the smallest', 'scene-look-repeat-0', '-0.00001'],
+    ['a count past the largest', 'scene-look-repeat-0', '20000'],
+    ['a count of 0', 'scene-look-repeat-1', '0'],
+    ['an offset past 100', 'scene-look-offset-0', '101'],
+    ['text that is not a number', 'scene-look-offset-1', 'abc'],
+  ])('keeps %s in its box and says it was not applied', async (_name, testId, value) => {
+    const { onCommand } = renderSection({ selectedPart: '0' });
+    await enter(testId, value);
+    expect(onCommand).not.toHaveBeenCalled();
+    expect((screen.getByTestId(testId) as HTMLInputElement).value).toBe(value);
+    expect(screen.getByText(t('spaces.threeD.valueFailed'))).toBeTruthy();
   });
 
   it('shows a stored user picture\'s part at white only while the scene shows the picture, and in the model colour otherwise', () => {

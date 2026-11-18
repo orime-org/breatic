@@ -34,9 +34,9 @@ export interface SceneFieldDraftOwner {
  * @param root0.onFieldDraftChange - Updates or ends this field's temporary edit.
  * @returns A labelled input retaining unaccepted drafts.
  */
-export const SceneField = React.memo(function SceneField({ label, value, disabled, numeric = false, spaceId, maxLength, onCommit, draftKey, draft, onFieldDraftChange }: {
+export const SceneField = React.memo(function SceneField({ label, value, disabled, numeric = false, spaceId, maxLength, onCommit, draftKey, draft, onFieldDraftChange, testId }: {
   label: string; value: string; disabled: boolean; numeric?: boolean; spaceId: string; maxLength?: number; onCommit: (value: string) => boolean;
-  draftKey: string; draft: SceneFieldDraft | undefined; onFieldDraftChange: SceneFieldDraftOwner['onFieldDraftChange'];
+  draftKey: string; draft: SceneFieldDraft | undefined; onFieldDraftChange: SceneFieldDraftOwner['onFieldDraftChange']; testId?: string;
 }): React.JSX.Element {
   const t = useTranslation();
   const id = React.useId();
@@ -73,7 +73,7 @@ export const SceneField = React.memo(function SceneField({ label, value, disable
   return <div className='min-w-0 space-y-1'>
     <Label htmlFor={id} className='text-xs text-muted-foreground'>{label}</Label>
     <Input ref={input} id={id} autoComplete='off' inputMode={numeric ? 'decimal' : 'text'} value={text} disabled={disabled} maxLength={maxLength}
-      className='h-8 min-w-0 text-xs' aria-invalid={failed}
+      className='h-8 min-w-0 text-xs' aria-invalid={failed} data-testid={testId}
       onFocus={() => { focused.current = true; onFieldDraftChange(draftKey, { text, failed, editing: true }); }}
       onChange={(event) => { onFieldDraftChange(draftKey, { text: event.target.value, failed: false, editing: true }); }}
       onBlur={() => whenBlurLeaves(spaceId, commit)}

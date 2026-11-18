@@ -8,12 +8,12 @@ import {
   type SceneLookPart,
 } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
-import { Input } from '@web/components/ui/input';
 import { Slider } from '@web/components/ui/slider';
 import type { SceneCommand, SceneLookSet } from '@web/data/yjs/scene-document';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { SceneColorField } from '@web/spaces/three-d/SceneDirectorFields';
+import { SceneField, type SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
 
 /** One part as its model loaded it, from the viewport's part table. */
 export interface SceneLookPartRow {
@@ -67,6 +67,9 @@ export interface SceneLookSectionProps {
   pictureUrl?: (assetId: string) => string | undefined;
   /** The user pictures the scene shows now; one still loading, failed or over the budget shows the model's own colour. */
   showingPictures?: ReadonlySet<string>;
+  /** The properties panel's number-field drafts, which keep a value the part does not take in its box. */
+  fieldDrafts: SceneFieldDraftOwner['fieldDrafts'];
+  onFieldDraftChange: SceneFieldDraftOwner['onFieldDraftChange'];
 }
 
 /**
@@ -158,36 +161,41 @@ const acceptsRepeat = (value: number): boolean => Math.abs(value) >= SCENE_LOOK_
 const acceptsOffset = (value: number): boolean => value >= -100 && value <= 100;
 
 /**
- * Two numbers written on Enter or on leaving the box.
+ * Two numbers, each in the properties panel's own number field: written on Enter or on leaving the box, and a value the
+ * part does not take stays in its box with the field's notice, as the position and director boxes do.
  * @param root0 - Props.
  * @param root0.label - Its name.
  * @param root0.labelId - Its label id.
  * @param root0.value - The shown pair.
  * @param root0.accepts - Whether a typed number is in the field's range.
  * @param root0.disabled - Whether it is unavailable.
- * @param root0.testId - Its test id.
+ * @param root0.testId - Its test id; each box adds its index.
+ * @param root0.draftKey - The prefix of its boxes' draft keys.
+ * @param root0.spaceId - The Space it is in.
+ * @param root0.drafts - The panel's field drafts.
+ * @param root0.onFieldDraftChange - Keeps a box's draft.
  * @param root0.onCommit - Writes the pair.
  * @returns The row.
  */
-function LookPair({ label, labelId, value, accepts, disabled, testId, onCommit }: {
+function LookPair({ label, labelId, value, accepts, disabled, testId, draftKey, spaceId, drafts, onFieldDraftChange, onCommit }: {
   label: string; labelId: string; value: readonly [number, number]; accepts: (value: number) => boolean; disabled: boolean; testId: string;
+  draftKey: string; spaceId: string; drafts: SceneFieldDraftOwner['fieldDrafts']; onFieldDraftChange: SceneFieldDraftOwner['onFieldDraftChange'];
   onCommit: (pair: [number, number]) => void;
 }): React.JSX.Element {
-  return <Row label={label} labelId={labelId}>
-    {[0, 1].map((index) => <Input key={`${index}:${value[index]}`} aria-labelledby={labelId} autoComplete='off' className='h-[var(--btn-inline)] w-16 px-2 text-xs tabular-nums'
-      defaultValue={String(value[index])} disabled={disabled} data-testid={`${testId}-${index}`}
-      onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }}
-      onBlur={(event) => {
-        const next = Number(event.currentTarget.value);
-        if (event.currentTarget.value.trim() === '' || !Number.isFinite(next) || !accepts(next)) {
-          event.currentTarget.value = String(value[index]);
-          return;
-        }
+  return <div className='space-y-1'>
+    <span id={labelId} className='text-xs text-muted-foreground'>{label}</span>
+    <div className='grid grid-cols-2 gap-1'>{(['X', 'Y'] as const).map((axis, index) => <SceneField key={`${draftKey}:${index}`} label={axis} numeric
+      value={String(value[index])} disabled={disabled} spaceId={spaceId} testId={`${testId}-${index}`}
+      draftKey={`${draftKey}:${index}`} draft={drafts.get(`${draftKey}:${index}`)} onFieldDraftChange={onFieldDraftChange}
+      onCommit={(text) => {
+        const next = Number(text);
+        if (text.trim() === '' || !Number.isFinite(next) || !accepts(next)) return false;
         const pair: [number, number] = [value[0], value[1]];
         pair[index] = next;
-        if (pair[index] !== value[index]) onCommit(pair);
-      }} />)}
-  </Row>;
+        onCommit(pair);
+        return true;
+      }} />)}</div>
+  </div>;
 }
 
 /** No user picture is shown. */
@@ -201,7 +209,7 @@ const NO_PICTURES: ReadonlySet<string> = new Set();
  */
 export const SceneLookSection = React.memo(function SceneLookSection(props: SceneLookSectionProps): React.JSX.Element {
   const { objectId, parts, look, selectedPart, mutable, onSelectPart, onCommand, onChoosePicture, gesture, spaceId = '', uploadPercentOf, checking, pictureUrl,
-    showingPictures = NO_PICTURES } = props;
+    showingPictures = NO_PICTURES, fieldDrafts, onFieldDraftChange } = props;
   const t = useTranslation();
   const ids = React.useId();
   const write = React.useCallback((part: string | null, set: SceneLookSet): void => {
@@ -296,9 +304,11 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
       </Row>
       {shownPicture && !row.line ? <>
         <LookPair label={t('spaces.threeD.look.repeat')} labelId={`${ids}-repeat`} value={stored.mapRepeat ?? ownTransform?.mapRepeat ?? [1, 1]} accepts={acceptsRepeat} disabled={disabled}
-          testId='scene-look-repeat' onCommit={(mapRepeat) => write(row.key, { mapRepeat })} />
+          testId='scene-look-repeat' draftKey={`${objectId}:look:${row.key}:repeat`} spaceId={spaceId} drafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
+          onCommit={(mapRepeat) => write(row.key, { mapRepeat })} />
         <LookPair label={t('spaces.threeD.look.offset')} labelId={`${ids}-offset`} value={stored.mapOffset ?? ownTransform?.mapOffset ?? [0, 0]} accepts={acceptsOffset} disabled={disabled}
-          testId='scene-look-offset' onCommit={(mapOffset) => write(row.key, { mapOffset })} />
+          testId='scene-look-offset' draftKey={`${objectId}:look:${row.key}:offset`} spaceId={spaceId} drafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
+          onCommit={(mapOffset) => write(row.key, { mapOffset })} />
         <LookSlider label={t('spaces.threeD.look.rotation')} labelId={`${ids}-rotation`} value={stored.mapRotation ?? ownTransform?.mapRotation ?? 0} min={-180} max={180} step={1} suffix='°'
           disabled={disabled} testId='scene-look-rotation' gesture={gesture} onPreview={(mapRotation) => preview({ mapRotation })} />
       </> : null}
