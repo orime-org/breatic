@@ -138,6 +138,25 @@ describe('SceneLookSection', () => {
     expect(onCommand).toHaveBeenCalledWith({ type: 'look', id: ID, part: '0', set: { mapRepeat: [2, 4] } });
   });
 
+  it('changes one axis of a mirrored model picture and takes a mirrored count, refusing one nearer 0 than 0.01', () => {
+    const mirrored = [{ ...PARTS[0]!, mapRepeat: [-1, 1] as [number, number], mapOffset: [60, 0] as [number, number] }, ...PARTS.slice(1)];
+    const { onCommand } = renderSection({ selectedPart: '0', parts: mirrored });
+    const across = screen.getByTestId('scene-look-repeat-0') as HTMLInputElement;
+    const down = screen.getByTestId('scene-look-repeat-1') as HTMLInputElement;
+    expect(across.value).toBe('-1');
+    fireEvent.change(down, { target: { value: '2' } });
+    fireEvent.blur(down);
+    expect(onCommand).toHaveBeenLastCalledWith({ type: 'look', id: ID, part: '0', set: { mapRepeat: [-1, 2] } });
+    fireEvent.change(across, { target: { value: '-0.001' } });
+    fireEvent.blur(across);
+    expect(onCommand).toHaveBeenCalledTimes(1);
+    expect(across.value).toBe('-1');
+    const offset = screen.getByTestId('scene-look-offset-1') as HTMLInputElement;
+    fireEvent.change(offset, { target: { value: '80' } });
+    fireEvent.blur(offset);
+    expect(onCommand).toHaveBeenLastCalledWith({ type: 'look', id: ID, part: '0', set: { mapOffset: [60, 80] } });
+  });
+
   it('starts a user picture\'s tiling at one', () => {
     renderSection({ selectedPart: '0', look: { 0: { map: IMAGE } } });
     expect((screen.getByTestId('scene-look-repeat-0') as HTMLInputElement).value).toBe('1');

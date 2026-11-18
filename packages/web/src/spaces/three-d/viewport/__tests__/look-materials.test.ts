@@ -270,4 +270,16 @@ describe('buildPartTable picture transform', () => {
     expect(entry.mapOffset).toEqual([0.1, 0.2]);
     expect(entry.mapRotation).toBeCloseTo(90);
   });
+
+  it('brings a model rotation past 180 degrees and an offset past 100 into the ranges a part takes, drawing the same', () => {
+    const root = new Group();
+    const map = new Texture();
+    map.offset.set(120.25, -0.5); map.rotation = Math.PI * 1.5;
+    const material = new MeshStandardMaterial({ map });
+    material.userData.lookPart = '0';
+    root.add(new Mesh(new BoxGeometry(), material));
+    const entry = exported<Build>('buildPartTable')(root, partOf, { builtin: false }).get('0') as unknown as Record<string, number[] | number>;
+    expect(entry.mapOffset).toEqual([0.25, -0.5]);
+    expect(entry.mapRotation).toBeCloseTo(-90);
+  });
 });

@@ -139,20 +139,33 @@ function LookSlider({ label, labelId, value, min = 0, max = 1, step = 0.01, disa
 }
 
 /**
+ * Whether a tiling count is one a part takes: 0.01 to 100 either way, a negative count mirroring the picture.
+ * @param value - The typed count.
+ * @returns True when it is in range.
+ */
+const acceptsRepeat = (value: number): boolean => Math.abs(value) >= 0.01 && Math.abs(value) <= 100;
+
+/**
+ * Whether an offset is one a part takes.
+ * @param value - The typed offset.
+ * @returns True from -100 to 100.
+ */
+const acceptsOffset = (value: number): boolean => value >= -100 && value <= 100;
+
+/**
  * Two numbers written on Enter or on leaving the box.
  * @param root0 - Props.
  * @param root0.label - Its name.
  * @param root0.labelId - Its label id.
  * @param root0.value - The shown pair.
- * @param root0.min - Lowest value.
- * @param root0.max - Highest value.
+ * @param root0.accepts - Whether a typed number is in the field's range.
  * @param root0.disabled - Whether it is unavailable.
  * @param root0.testId - Its test id.
  * @param root0.onCommit - Writes the pair.
  * @returns The row.
  */
-function LookPair({ label, labelId, value, min, max, disabled, testId, onCommit }: {
-  label: string; labelId: string; value: readonly [number, number]; min: number; max: number; disabled: boolean; testId: string;
+function LookPair({ label, labelId, value, accepts, disabled, testId, onCommit }: {
+  label: string; labelId: string; value: readonly [number, number]; accepts: (value: number) => boolean; disabled: boolean; testId: string;
   onCommit: (pair: [number, number]) => void;
 }): React.JSX.Element {
   return <Row label={label} labelId={labelId}>
@@ -161,7 +174,7 @@ function LookPair({ label, labelId, value, min, max, disabled, testId, onCommit 
       onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }}
       onBlur={(event) => {
         const next = Number(event.currentTarget.value);
-        if (event.currentTarget.value.trim() === '' || !Number.isFinite(next) || next < min || next > max) {
+        if (event.currentTarget.value.trim() === '' || !Number.isFinite(next) || !accepts(next)) {
           event.currentTarget.value = String(value[index]);
           return;
         }
@@ -270,9 +283,9 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
             </>}
       </Row>
       {shownPicture && !row.line ? <>
-        <LookPair label={t('spaces.threeD.look.repeat')} labelId={`${ids}-repeat`} value={stored.mapRepeat ?? ownTransform?.mapRepeat ?? [1, 1]} min={0.01} max={100} disabled={disabled}
+        <LookPair label={t('spaces.threeD.look.repeat')} labelId={`${ids}-repeat`} value={stored.mapRepeat ?? ownTransform?.mapRepeat ?? [1, 1]} accepts={acceptsRepeat} disabled={disabled}
           testId='scene-look-repeat' onCommit={(mapRepeat) => write(row.key, { mapRepeat })} />
-        <LookPair label={t('spaces.threeD.look.offset')} labelId={`${ids}-offset`} value={stored.mapOffset ?? ownTransform?.mapOffset ?? [0, 0]} min={-10} max={10} disabled={disabled}
+        <LookPair label={t('spaces.threeD.look.offset')} labelId={`${ids}-offset`} value={stored.mapOffset ?? ownTransform?.mapOffset ?? [0, 0]} accepts={acceptsOffset} disabled={disabled}
           testId='scene-look-offset' onCommit={(mapOffset) => write(row.key, { mapOffset })} />
         <LookSlider label={t('spaces.threeD.look.rotation')} labelId={`${ids}-rotation`} value={stored.mapRotation ?? ownTransform?.mapRotation ?? 0} min={-180} max={180} step={1} suffix='°'
           disabled={disabled} testId='scene-look-rotation' gesture={gesture} onPreview={(mapRotation) => preview({ mapRotation })} />

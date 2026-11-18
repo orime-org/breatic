@@ -88,6 +88,15 @@ function isLineMaterial(material: Material): boolean {
 }
 
 /**
+ * An offset brought into the range a part takes by whole picture widths, which a repeating picture draws the same.
+ * @param offset - The model's own offset.
+ * @returns It, or its fraction when it is past 100 either way.
+ */
+function inOffsetRange(offset: number): number {
+  return Math.abs(offset) <= 100 ? offset : offset - Math.trunc(offset);
+}
+
+/**
  * Record each part's own state and put the part key on its material, so object clones carry it (inner#1693 design 5.1).
  * @param root - The model template root.
  * @param partOf - The part a template material belongs to.
@@ -128,8 +137,8 @@ export function buildPartTable(root: Object3D, partOf: (material: Material) => s
       depthWrite: material.depthWrite,
       alphaTest: material.alphaTest,
       hasMap: map !== null,
-      ...(map ? { mapRepeat: [map.repeat.x, map.repeat.y] as [number, number], mapOffset: [map.offset.x, map.offset.y] as [number, number],
-        mapRotation: MathUtils.radToDeg(map.rotation) } : {}),
+      ...(map ? { mapRepeat: [map.repeat.x, map.repeat.y] as [number, number], mapOffset: [inOffsetRange(map.offset.x), inOffsetRange(map.offset.y)] as [number, number],
+        mapRotation: MathUtils.euclideanModulo(MathUtils.radToDeg(map.rotation) + 180, 360) - 180 } : {}),
       unlit: material.type === 'MeshBasicMaterial',
       line: isLineMaterial(material),
       builtin: options.builtin,

@@ -165,6 +165,12 @@ const LOOK_PART_KEY = /^(?:0|[1-9]\d{0,3}|d)$/u;
 
 const unit = z.number().finite().min(0).max(1);
 
+/** One tiling count: a negative count mirrors the picture, as glTF's KHR_texture_transform allows. */
+const LOOK_REPEAT = z.number().finite().refine((value) => Math.abs(value) >= 0.01 && Math.abs(value) <= 100);
+
+/** One offset, in picture widths. */
+const LOOK_OFFSET = z.number().finite().min(-100).max(100);
+
 /** The fields one part may change; each is optional and absent means the model's own value. */
 const SceneLookPartSchema = z.object({
   color: SceneColorSchema,
@@ -175,8 +181,8 @@ const SceneLookPartSchema = z.object({
   emissive: SceneColorSchema,
   emissiveIntensity: z.number().finite().min(0).max(10),
   map: z.union([z.string().uuid(), z.literal('none')]),
-  mapRepeat: z.tuple([z.number().finite().min(0.01).max(100), z.number().finite().min(0.01).max(100)]),
-  mapOffset: z.tuple([z.number().finite().min(-10).max(10), z.number().finite().min(-10).max(10)]),
+  mapRepeat: z.tuple([LOOK_REPEAT, LOOK_REPEAT]),
+  mapOffset: z.tuple([LOOK_OFFSET, LOOK_OFFSET]),
   mapRotation: z.number().finite().min(-180).max(180),
 }).partial().strict();
 
