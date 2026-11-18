@@ -3053,6 +3053,8 @@
           "saved": "花费上限已保存。",
           "saveFailed": "花费上限没能保存，请重试。",
           "invalidAmount": "请填写 0 到 {max} 之间的积分，最多两位小数。",
+          "loadError": "无法读取花费上限。",
+          "retry": "再试一次",
           "save": "保存",
           "colMember": "成员",
           "colRelation": "关系",

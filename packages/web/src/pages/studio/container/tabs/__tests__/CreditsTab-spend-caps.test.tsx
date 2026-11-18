@@ -138,6 +138,17 @@ describe('H-34 the spend caps section', () => {
   });
 });
 
+describe('the spend caps section when it cannot be read', () => {
+  it('says so and reads again on Try again, for an answer other than 403 or 404', async () => {
+    spendLimits.mockRejectedValueOnce(new ApiException({ status: 502, message: 'bad gateway', fromServer: false }));
+    spendLimits.mockResolvedValueOnce(LIMITS);
+    renderTab(<CreditsTab slug='acme' />);
+    expect(await screen.findByText('无法读取花费上限。')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: '再试一次' }));
+    expect(await screen.findByText('Studio 每月总额上限')).toBeInTheDocument();
+  });
+});
+
 describe('the own-limit dialog', () => {
   /**
    * Open one member's own-limit dialog.

@@ -3043,7 +3043,7 @@
         "spendCap": {
           "title": "Spend limits",
           "studioMonthly": "Studio monthly total",
-          "studioMonthlyHint": "Everyone together, apart from each person’s limit",
+          "studioMonthlyHint": "Everyone together, separate from each person’s limit",
           "memberDefault": "Default monthly limit per person",
           "memberDefaultHint": "Applies to everyone without a limit of their own",
           "notSet": "Not set",
@@ -3053,6 +3053,8 @@
           "saved": "Spend limits saved.",
           "saveFailed": "The spend limits could not be saved. Try again.",
           "invalidAmount": "Enter 0 to {max} credits, up to two decimal places.",
+          "loadError": "Could not read the spend limits.",
+          "retry": "Try again",
           "save": "Save",
           "colMember": "Member",
           "colRelation": "Relation",

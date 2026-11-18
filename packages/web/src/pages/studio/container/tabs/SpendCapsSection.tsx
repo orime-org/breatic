@@ -202,7 +202,17 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
     }
   }, [slug, queryClient, queryKey, saveFailed]);
 
-  if (view === undefined) return null;
+  if (view === undefined) {
+    // A personal Studio (404) or a reader who is not its admin (403) has no such section; any other failure says so.
+    const absent = query.error instanceof ApiException && (query.error.status === 403 || query.error.status === 404);
+    if (!query.isError || absent) return null;
+    return (
+      <section className='flex items-center justify-between gap-4 rounded-content-md border border-border p-4' data-testid='studio-spend-caps-error'>
+        <p className='text-sm text-muted-foreground'>{t(`${KEY}.loadError`)}</p>
+        <Button variant='outline' loading={query.isFetching} onClick={() => void query.refetch()}>{t(`${KEY}.retry`)}</Button>
+      </section>
+    );
+  }
   const resetsAt = new Date(view.nextResetAt).toLocaleString(getLocale(), { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const studioCapped = view.studioMonthly !== null && Number(view.studioSpent) >= Number(view.studioMonthly);
 
