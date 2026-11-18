@@ -699,9 +699,21 @@ importers:
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared
+      '@hono/node-server':
+        specifier: ^2.1.0
+        version: 2.1.0(hono@4.13.1)
+      '@modelcontextprotocol/hono':
+        specifier: 2.0.2
+        version: 2.0.2(@modelcontextprotocol/server@2.4.0)(hono@4.13.1)
+      '@modelcontextprotocol/server':
+        specifier: 2.4.0
+        version: 2.4.0
       dotenv:
         specifier: 'catalog:'
         version: 16.6.1
+      hono:
+        specifier: ^4.13.1
+        version: 4.13.1
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -3840,6 +3852,21 @@ packages:
 
   '@mixmark-io/domino@2.2.0':
     resolution: {integrity: sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw==}
+
+  '@modelcontextprotocol/core@2.4.0':
+    resolution: {integrity: sha512-z8QBKqdfXLPzkLQuG4xp8hrVEMm1PZ1IgxMN2sMbJiFiAKOWXnAzogXn2W4aqIBlP1ea6U5yiqVquvUNM1Cj6Q==}
+    engines: {node: '>=20'}
+
+  '@modelcontextprotocol/hono@2.0.2':
+    resolution: {integrity: sha512-hXtSVm0S6d0EJWMVoaeAWevATQLzHrHiPuPBLxW5vM5OQJG+SFlm7D9iJT5cG3p84DDahCD4bAuqcCPdgNFAEw==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@modelcontextprotocol/server': ^2.3.0
+      hono: ^4.11.4
+
+  '@modelcontextprotocol/server@2.4.0':
+    resolution: {integrity: sha512-rgR9yxSaAJ+bcsi/XroT/S2AfPiIWloXAnrdfYSCms9ivVju0ishu/wW0J21Ho6+ZOR1r7RyeRbjiRuF87ix5Q==}
+    engines: {node: '>=20'}
 
   '@monogrid/gainmap-js@3.4.0':
     resolution: {integrity: sha512-2Z0FATFHaoYJ8b+Y4y4Hgfn3FRFwuU5zRrk+9dFWp4uGAdHGqVEdP7HP+gLA3X469KXHmfupJaUbKo1b/aDKIg==}
@@ -13888,6 +13915,20 @@ snapshots:
   '@microsoft/fetch-event-source@2.0.1': {}
 
   '@mixmark-io/domino@2.2.0': {}
+
+  '@modelcontextprotocol/core@2.4.0':
+    dependencies:
+      zod: 4.4.3
+
+  '@modelcontextprotocol/hono@2.0.2(@modelcontextprotocol/server@2.4.0)(hono@4.13.1)':
+    dependencies:
+      '@modelcontextprotocol/server': 2.4.0
+      hono: 4.13.1
+
+  '@modelcontextprotocol/server@2.4.0':
+    dependencies:
+      '@modelcontextprotocol/core': 2.4.0
+      zod: 4.4.3
 
   '@monogrid/gainmap-js@3.4.0(three@0.173.0)':
     dependencies:
