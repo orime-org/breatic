@@ -366,12 +366,14 @@ describe("personal access tokens", () => {
 
   it("finds a token by its plaintext while it is active, and not by a wrong one", async () => {
     const user = await insertUser();
-    const created = await agentAccessService.createPersonalAccessToken({ userId: user, name: "Harness", expiresAt: inSeconds(3600) });
+    const expiresAt = inSeconds(3600);
+    const created = await agentAccessService.createPersonalAccessToken({ userId: user, name: "Harness", expiresAt });
     if (!created.ok) throw new Error("expected the token to be created");
     expect(await agentAccessService.findPersonalAccessToken(created.token)).toEqual({
       tokenId: created.tokenId,
       userId: user,
       connectionId: created.connectionId,
+      expiresAt,
     });
     expect(await agentAccessService.findPersonalAccessToken(`${created.token}x`)).toBeNull();
     expect(await agentAccessService.findPersonalAccessToken(created.token, inSeconds(7200))).toBeNull();

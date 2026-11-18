@@ -26,15 +26,21 @@ import postgres from "postgres";
 import {
   initCore,
   getRedis,
+  getStreamRedis,
   getMcpConfig,
   setSession,
   sessionCookieName,
+  sessionsRevokedChannelName,
   loadLocales,
   agentAccessService,
+  type Redis,
 } from "@breatic/core";
+import type { SessionsRevokedEvent } from "@breatic/shared";
 
 const MCP_SECRET = "test-mcp-client-secret-0123456789abcdef";
 const MCP_CLIENT_ID = "breatic-mcp";
+/** The web origin, on another host than the API as in production. */
+const WEB = "http://web.test";
 
 /**
  * A free loopback port, so the issuer can be configured before the app exists.
@@ -55,12 +61,14 @@ let sql: ReturnType<typeof postgres>;
 let base: string;
 let resource: string;
 let close: () => Promise<void>;
+let subscriber: Redis;
+const heard: SessionsRevokedEvent[] = [];
 
 beforeAll(async () => {
   const port = await freePort();
   base = `http://127.0.0.1:${port}`;
   resource = `${base}/mcp`;
-  initCore({ ...process.env, OAUTH_ISSUER: base, MCP_PUBLIC_URL: resource, MCP_CLIENT_SECRET: MCP_SECRET });
+  initCore({ ...process.env, OAUTH_ISSUER: base, MCP_PUBLIC_URL: resource, MCP_CLIENT_SECRET: MCP_SECRET, ALLOWED_ORIGINS: WEB });
   loadLocales();
   sql = postgres(inject("DATABASE_URL"), { max: 4, prepare: false });
   const { createApp } = await import("@server/app.js");
@@ -69,9 +77,15 @@ beforeAll(async () => {
     const s = serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, () => resolve(s));
   });
   close = () => new Promise((resolve) => server.close(() => resolve()));
+  subscriber = getStreamRedis().duplicate();
+  subscriber.on("message", (_channel: string, message: string) => {
+    heard.push(JSON.parse(message) as SessionsRevokedEvent);
+  });
+  await subscriber.subscribe(sessionsRevokedChannelName());
 });
 
 afterAll(async () => {
+  await subscriber?.quit();
   await close?.();
   await sql?.end({ timeout: 1 });
 });
@@ -221,6 +235,7 @@ async function authorize(jar: Jar, params: Record<string, string>): Promise<Resp
 function interactionUid(res: Response): string {
   expect(res.status).toBe(303);
   const location = new URL(res.headers.get("location")!, base);
+  expect(location.origin).toBe(WEB);
   const match = /^\/connect\/([^/]+)$/.exec(location.pathname);
   expect(match, location.pathname).not.toBeNull();
   return match![1]!;
@@ -312,6 +327,32 @@ async function grantsOf(userId: string, clientId: string): Promise<string[]> {
     SELECT record_id FROM oauth_records
     WHERE model = 'Grant' AND account_id = ${userId} AND client_id = ${clientId} AND deleted_at IS NULL`;
   return rows.map((r) => r.record_id);
+}
+
+/**
+ * The announcements on `sessions:revoked` naming a user, once the publishes
+ * in flight have arrived.
+ * @param userId - The user.
+ * @returns Those announcements.
+ */
+async function announcedFor(userId: string): Promise<SessionsRevokedEvent[]> {
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  return heard.filter((event) => event.userId === userId);
+}
+
+/**
+ * Move the expiry of a grant's records of one model to `seconds` from now,
+ * in the stored payload the library reads and in the column we filter on.
+ * @param grantId - The grant.
+ * @param model - `Grant` or `AccessToken`.
+ * @param seconds - The new lifetime from now.
+ */
+async function expireIn(grantId: string, model: "Grant" | "AccessToken", seconds: number): Promise<void> {
+  const exp = Math.floor(Date.now() / 1000) + seconds;
+  const idColumn = model === "Grant" ? sql`record_id` : sql`grant_id`;
+  await sql`
+    UPDATE oauth_records SET payload = jsonb_set(payload, '{exp}', to_jsonb(${exp}::bigint)), expires_at = to_timestamp(${exp})
+    WHERE model = ${model} AND ${idColumn} = ${grantId} AND deleted_at IS NULL`;
 }
 
 describe("discovery", () => {
@@ -516,6 +557,54 @@ describe("revocation", () => {
       expect(await agentAccessService.listConnections(userId)).toEqual([]);
     },
   );
+
+  it("announces the connection on sessions:revoked once the client revokes its last grant", async () => {
+    const { userId, jar } = await seedUser();
+    const clientId = await registerClient();
+    const tokens = await codeFlow(jar, clientId);
+    const [row] = await agentAccessService.listConnections(userId);
+    const [grantId] = await grantsOf(userId, clientId);
+    await postForm("/oauth/revoke", { token: tokens.refresh_token, client_id: clientId });
+    const [event, ...more] = await announcedFor(userId);
+    expect(more).toEqual([]);
+    expect(event?.sessionIds).toEqual(expect.arrayContaining([grantId, row!.id]));
+  });
+
+  it("announces nothing while another grant keeps the connection usable, and keeps the agent online", async () => {
+    const { userId, jar } = await seedUser();
+    const clientId = await registerClient();
+    const laptop = await codeFlow(jar, clientId);
+    const desktop = await codeFlow(jar, clientId);
+    await postForm("/oauth/revoke", { token: laptop.refresh_token, client_id: clientId });
+    expect(await announcedFor(userId)).toEqual([]);
+    expect((await exchange(desktop.access_token)).status).toBe(200);
+  });
+
+  it("announces the connection when a reused refresh token voids its only grant", async () => {
+    const { userId, jar } = await seedUser();
+    const clientId = await registerClient();
+    const tokens = await codeFlow(jar, clientId);
+    await refresh(clientId, tokens.refresh_token);
+    const [grantId] = await grantsOf(userId, clientId);
+    const [row] = await agentAccessService.listConnections(userId);
+    await sql`
+      UPDATE oauth_records SET consumed_at = now() - make_interval(secs => ${getMcpConfig().oauth.refresh_reuse_grace_seconds + 1})
+      WHERE model = 'RefreshToken' AND grant_id = ${grantId!} AND consumed_at IS NOT NULL`;
+    await refresh(clientId, tokens.refresh_token);
+    const [event] = await announcedFor(userId);
+    expect(event?.sessionIds).toEqual(expect.arrayContaining([grantId, row!.id]));
+  });
+
+  it("announces the connection when the user disconnects it in settings", async () => {
+    const { userId, jar } = await seedUser();
+    const clientId = await registerClient();
+    await codeFlow(jar, clientId);
+    const [row] = await agentAccessService.listConnections(userId);
+    const res = await browse(jar, `/api/v1/agent-access/connections/${row!.id}`, { method: "DELETE" });
+    expect(res.status).toBe(200);
+    const [event] = await announcedFor(userId);
+    expect(event?.sessionIds).toContain(row!.id);
+  });
 });
 
 describe("token exchange", () => {
@@ -542,6 +631,36 @@ describe("token exchange", () => {
     expect(await downstreamWorks(((await res.json()) as { access_token: string }).access_token, userId)).toBe(true);
     const [row] = await agentAccessService.listConnections(userId);
     expect(row!.lastUsedAt).not.toBeNull();
+  });
+
+  it("ends a downstream token when the personal access token it stands for expires", async () => {
+    const { userId } = await seedUser();
+    const created = await agentAccessService.createPersonalAccessToken({ userId, name: "short", expiresAt: new Date(Date.now() + 120_000) });
+    if (!created.ok) throw new Error("cap");
+    const body = (await (await exchange(created.token)).json()) as { expires_in: number };
+    expect(body.expires_in).toBeLessThanOrEqual(120);
+    expect(body.expires_in).toBeGreaterThan(110);
+  });
+
+  it.each(["AccessToken", "Grant"] as const)("ends a downstream token when the agent's %s expires", async (model) => {
+    const { userId, jar } = await seedUser();
+    const clientId = await registerClient();
+    const tokens = await codeFlow(jar, clientId);
+    const [grantId] = await grantsOf(userId, clientId);
+    await expireIn(grantId!, model, 120);
+    const body = (await (await exchange(tokens.access_token)).json()) as { expires_in: number };
+    expect(body.expires_in).toBeLessThanOrEqual(120);
+    expect(body.expires_in).toBeGreaterThan(110);
+  });
+
+  it("answers invalid_grant when the credential has less than one call left", async () => {
+    const { userId } = await seedUser();
+    const left = getMcpConfig().call_timeout_ms - 5_000;
+    const created = await agentAccessService.createPersonalAccessToken({ userId, name: "ending", expiresAt: new Date(Date.now() + left) });
+    if (!created.ok) throw new Error("cap");
+    const res = await exchange(created.token);
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe("invalid_grant");
   });
 
   it("refuses an agent's own token on the API: only a downstream token passes the whitelist", async () => {
@@ -607,7 +726,7 @@ describe("token exchange", () => {
 function expectConsentError(res: Response, reason: "client_invalid" | "redirect_mismatch" | "request_expired"): void {
   expect(res.status).toBe(303);
   const location = new URL(res.headers.get("location")!, base);
-  expect(location.origin).toBe(base);
+  expect(location.origin).toBe(WEB);
   expect(location.pathname).toBe("/connect/error");
   expect(location.searchParams.get("reason")).toBe(reason);
 }

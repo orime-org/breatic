@@ -146,7 +146,7 @@ async function seedAgent(userId: string, name = "Claude Code"): Promise<Agent> {
     credential: { type: "pat", tokenId: created.tokenId },
     connectionId: created.connectionId,
     clientName: name,
-  });
+  }, getMcpConfig().downstream_token_ttl_seconds);
   return { connectionId: created.connectionId, tokenId: created.tokenId, plaintext: created.token, downstream };
 }
 
@@ -209,7 +209,7 @@ describe("downstream tokens", () => {
       credential: { type: "pat", tokenId: created.tokenId },
       connectionId: created.connectionId,
       clientName: "t",
-    });
+    }, getMcpConfig().downstream_token_ttl_seconds);
     const added = (await allKeys(getRedis())).filter((k) => !before.has(k));
     expect(added.length).toBeGreaterThan(0);
     for (const key of added) {
@@ -227,7 +227,7 @@ describe("downstream tokens", () => {
       credential: { type: "pat", tokenId: first.tokenId },
       connectionId: first.connectionId,
       clientName: "Claude Code",
-    });
+    }, getMcpConfig().downstream_token_ttl_seconds);
     const other = await seedAgent(owner.userId, "Codex");
     await tokens.revokeDownstreamTokens({ type: "pat", tokenId: first.tokenId });
     expect(await tokens.findDownstreamToken(first.downstream)).toBeNull();
