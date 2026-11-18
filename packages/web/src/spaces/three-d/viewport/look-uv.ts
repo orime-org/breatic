@@ -70,8 +70,25 @@ function gather(source: BufferAttribute | InterleavedBufferAttribute, items: Uin
 }
 
 /**
- * Generate UVs on one mesh without them: each triangle projected along its face axis, a vertex shared by triangles on
- * different axes split into one copy per axis with every attribute and morph attribute copied.
+ * Give a geometry built for a mesh the source's groups, draw range, user data and bounds.
+ * @param geometry - The new geometry.
+ * @param source - The mesh's geometry it replaces.
+ * @returns The new geometry.
+ */
+function finish(geometry: BufferGeometry, source: BufferGeometry): BufferGeometry {
+  geometry.morphTargetsRelative = source.morphTargetsRelative;
+  for (const group of source.groups) geometry.addGroup(group.start, group.count, group.materialIndex);
+  geometry.setDrawRange(source.drawRange.start, source.drawRange.count);
+  geometry.userData = { ...source.userData };
+  geometry.boundingBox = source.boundingBox?.clone() ?? null;
+  geometry.boundingSphere = source.boundingSphere?.clone() ?? null;
+  return geometry;
+}
+
+/**
+ * Generate UVs on one mesh without them: each triangle projected along its face axis. In an indexed geometry a vertex
+ * shared by triangles on different axes is split into one copy per axis with every attribute and morph attribute
+ * copied; in a non-indexed one every vertex already belongs to one triangle, so its attributes are kept as they are.
  * @param mesh - A triangle mesh whose geometry has no `uv`.
  * @param toRoot - Mesh space to template-root space.
  */
@@ -81,16 +98,28 @@ function generateMeshUvs(mesh: Mesh, toRoot: Matrix4): void {
   const rest = new Float32Array(count * 3);
   const point = new Vector3();
   for (let i = 0; i < count; i++) mesh.getVertexPosition(i, point).applyMatrix4(toRoot).toArray(rest, i * 3);
-  const corners = source.index ? (source.index.array as ArrayLike<number>) : null;
-  const cornerCount = corners ? corners.length : count;
-  const triangles = Math.floor(cornerCount / 3) * 3;
+  const geometry = new BufferGeometry();
+  if (!source.index) {
+    const uvs = new Float32Array(count * 2);
+    for (let t = 0; t + 2 < count; t += 3) {
+      const axis = faceAxis(rest, t, t + 1, t + 2);
+      for (let k = 0; k < 3; k++) project(rest, t + k, axis, uvs, t + k);
+    }
+    for (const [name, attribute] of Object.entries(source.attributes)) geometry.setAttribute(name, attribute);
+    for (const [name, targets] of Object.entries(source.morphAttributes)) geometry.morphAttributes[name] = targets;
+    geometry.setAttribute('uv', new BufferAttribute(uvs, 2));
+    mesh.geometry = finish(geometry, source);
+    return;
+  }
+  const corners = source.index.array as ArrayLike<number>;
+  const triangles = Math.floor(corners.length / 3) * 3;
   const copies = new Int32Array(count * AXES).fill(-1);
   const items = new Uint32Array(triangles);
   const uvs = new Float32Array(triangles * 2);
   const index = new Uint32Array(triangles);
   let made = 0;
   for (let t = 0; t < triangles; t += 3) {
-    const a = corners ? corners[t]! : t; const b = corners ? corners[t + 1]! : t + 1; const c = corners ? corners[t + 2]! : t + 2;
+    const a = corners[t]!; const b = corners[t + 1]!; const c = corners[t + 2]!;
     const axis = faceAxis(rest, a, b, c);
     for (let k = 0; k < 3; k++) {
       const vertex = k === 0 ? a : k === 1 ? b : c;
@@ -106,20 +135,13 @@ function generateMeshUvs(mesh: Mesh, toRoot: Matrix4): void {
     }
   }
   const used = items.subarray(0, made);
-  const geometry = new BufferGeometry();
   for (const [name, attribute] of Object.entries(source.attributes)) geometry.setAttribute(name, gather(attribute, used));
   for (const [name, targets] of Object.entries(source.morphAttributes)) {
     geometry.morphAttributes[name] = targets.map((target) => gather(target, used));
   }
-  geometry.morphTargetsRelative = source.morphTargetsRelative;
   geometry.setAttribute('uv', new BufferAttribute(uvs.slice(0, made * 2), 2));
   geometry.setIndex(new BufferAttribute(index, 1));
-  for (const group of source.groups) geometry.addGroup(group.start, group.count, group.materialIndex);
-  geometry.setDrawRange(source.drawRange.start, source.drawRange.count);
-  geometry.userData = { ...source.userData };
-  geometry.boundingBox = source.boundingBox?.clone() ?? null;
-  geometry.boundingSphere = source.boundingSphere?.clone() ?? null;
-  mesh.geometry = geometry;
+  mesh.geometry = finish(geometry, source);
 }
 
 /**

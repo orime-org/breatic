@@ -148,6 +148,32 @@ describe('generateLookUvs', () => {
     }
   });
 
+  it('projects a non-indexed mesh per triangle on its own attributes, adding no index', () => {
+    const root = new Group();
+    const source = withoutUv(new BoxGeometry(1, 2, 3).toNonIndexed());
+    const mesh = new Mesh(source, new MeshStandardMaterial());
+    mesh.position.set(0.5, 0, 0);
+    root.add(mesh);
+    const position = source.attributes.position;
+    const normal = source.attributes.normal;
+    generate()(root);
+    const made = mesh.geometry;
+    expect(made.index).toBeNull();
+    expect(made.attributes.position).toBe(position);
+    expect(made.attributes.normal).toBe(normal);
+    const points = restPoints(mesh, root);
+    const uv = made.attributes.uv!;
+    expect(uv.count).toBe(position.count);
+    for (const [a, b, c] of triangles(made)) {
+      const face = faceAxis([points[a!]!, points[b!]!, points[c!]!]);
+      for (const vertex of [a!, b!, c!]) {
+        const [u, v] = expectedUv(points[vertex]!, face);
+        expect(uv.getX(vertex)).toBeCloseTo(u);
+        expect(uv.getY(vertex)).toBeCloseTo(v);
+      }
+    }
+  });
+
   it('gives each of two meshes sharing one geometry its own UVs', () => {
     const root = new Group();
     const shared = withoutUv(new BoxGeometry(1, 1, 1));
