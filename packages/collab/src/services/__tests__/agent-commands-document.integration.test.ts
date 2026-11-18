@@ -23,6 +23,7 @@ import {
   documentSpaceDocName,
   projectMetaDocName,
 } from "@breatic/shared";
+import { readCommentAssignments } from "@breatic/shared/space-content";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
 import { getCollabConfig } from "@collab/config.js";
@@ -365,6 +366,25 @@ describe("comment_on_document", () => {
     expect(await call(world, "comment_on_document", { threadId, text: "Tightened." })).toMatchObject({ status: "done", result: { answered: true } });
     const thread = (await readDocument(world)).threads.find((t) => t.threadId === threadId)!;
     expect(thread.comments.at(-1)).toMatchObject({ text: "Tightened.", via: world.connectionId, answers: assignedAt });
+  });
+
+  it("leaves a thread readCommentAssignments reads as pending, then answered once the agent replies", async () => {
+    const world = await seedDocumentWorld([paragraph("b0", "Hello world.")]);
+    consumeOn(world, harness.instanceA);
+    const { threadId } = resultOf<{ threadId: string }>(await call(world, "comment_on_document", { blockId: "b0", find: "world", text: "Tighten" }));
+    const assignment = { connectionId: world.connectionId, assignedBy: world.userId, assignedAt: 1_700_000_000_000 };
+    const name = documentSpaceDocName(world.projectId, world.spaceId);
+    const conn = await harness.instanceA.openDirectConnection(name, {});
+    try {
+      await conn.transact((doc) => {
+        (documentCommentThreads(doc).get(threadId) as Y.Map<unknown>).set("metadata", { assignment });
+      });
+      expect(readCommentAssignments("document", conn.document!)).toEqual([{ threadId, ...assignment, status: "pending" }]);
+      await call(world, "comment_on_document", { threadId, text: "Tightened." });
+      expect(readCommentAssignments("document", conn.document!)).toEqual([{ threadId, ...assignment, status: "answered" }]);
+    } finally {
+      await conn.disconnect();
+    }
   });
 
   it("answers not_found for a reply to a thread that is gone and for words that are not there", async () => {
