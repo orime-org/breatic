@@ -29,8 +29,7 @@ export type AnnotationDraftEvent =
   | { type: 'cancel'; confirmed: boolean }
   | { type: 'switch_result'; confirmed: boolean }
   | { type: 'disconnect' }
-  | { type: 'reconnect' }
-  | { type: 'leave' };
+  | { type: 'reconnect' };
 
 /** What the Space does after a transition. */
 export type AnnotationDraftEffect =
@@ -80,7 +79,7 @@ export function transitionAnnotationDraft(state: AnnotationDraftState, event: An
       switch (event.type) {
         case 'click_frame': return { state: { ...base, point: event.point, text: '' }, effects: [] };
         case 'type': return { state: { ...base, point: null, text: event.text }, effects: [] };
-        case 'cancel': case 'switch_result': case 'leave': return IDLE;
+        case 'cancel': case 'switch_result': return IDLE;
         case 'disconnect': return { state: ANNOTATION_DRAFT_IDLE, effects: [{ type: 'toast_disconnected' }] };
         default: return stay;
       }
@@ -100,7 +99,6 @@ export function transitionAnnotationDraft(state: AnnotationDraftState, event: An
         case 'cancel': case 'switch_result': return closeWriting(state, event.confirmed);
         case 'disconnect': return state.disconnected ? stay : { state: { ...state, disconnected: true }, effects: [] };
         case 'reconnect': return state.disconnected ? { state: { ...state, disconnected: false }, effects: [] } : stay;
-        case 'leave': return IDLE;
         default: return stay;
       }
     case 'sending':

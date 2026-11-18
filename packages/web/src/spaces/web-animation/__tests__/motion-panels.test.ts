@@ -25,7 +25,6 @@ const FROM_CLOSED: Row[] = [
   ['a thread opened (marker, pin, panel, Modified from)', { type: 'open_thread' }, annotations()],
   ['a locate request', { type: 'locate' }, closed()],
   ['Esc', { type: 'escape' }, closed()],
-  ['leaving', { type: 'leave' }, closed()],
 ];
 
 const FROM_EXECUTIONS: Row[] = [
@@ -37,7 +36,6 @@ const FROM_EXECUTIONS: Row[] = [
   ['a thread opened (marker, pin, panel, Modified from)', { type: 'open_thread' }, annotations()],
   ['a locate request', { type: 'locate' }, executions()],
   ['Esc', { type: 'escape' }, closed()],
-  ['leaving', { type: 'leave' }, closed()],
 ];
 
 const FROM_ANNOTATIONS: Row[] = [
@@ -49,7 +47,6 @@ const FROM_ANNOTATIONS: Row[] = [
   ['a thread opened (marker, pin, panel, Modified from)', { type: 'open_thread' }, annotations()],
   ['a locate request', { type: 'locate' }, annotations()],
   ['Esc', { type: 'escape' }, closed()],
-  ['leaving', { type: 'leave' }, closed()],
 ];
 
 describe('transitionMotionPanels', () => {

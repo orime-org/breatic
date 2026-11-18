@@ -114,7 +114,6 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
         const name = canvases.find((canvas) => canvas.id === effect.canvasId)?.name ?? '';
         toast.success(t('spaces.webAnimation.placed', { name }), { action: { label: t('spaces.webAnimation.viewPlaced'), onClick: () => useCanvasRevealStore.getState().reveal(effect.canvasId, effect.nodeId) } });
       }
-      if (effect.type === 'warn_in_progress') toast.warning(t('spaces.webAnimation.placing'));
     }
   }, [canvases, t]);
   React.useEffect(() => () => {

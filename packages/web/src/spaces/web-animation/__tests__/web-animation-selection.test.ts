@@ -52,14 +52,13 @@ describe('transitionWebAnimationSelection — nothing selected', () => {
     });
   });
 
-  it('ignores a fetch answer, a row change and a tab switch, and stays empty on leave', () => {
+  it('ignores a fetch answer, a row change and a tab switch', () => {
     for (const event of [
       { type: 'fetched', requestId: 1, row: { id: C, status: 'succeeded' } },
       { type: 'fetch_failed', requestId: 1 },
       { type: 'row_changed', row: { id: C, status: 'failed' } },
       { type: 'focused', threadId: T },
       { type: 'tab' },
-      { type: 'leave' },
     ] as SelectionEvent[]) {
       expect(transitionWebAnimationSelection(NONE, event)).toEqual({ state: NONE, effects: [] });
     }
@@ -94,10 +93,9 @@ describe('transitionWebAnimationSelection — fetching', () => {
     expect(transitionWebAnimationSelection(FETCHING, { type: 'fetch_failed', requestId: 1 })).toEqual({ state: NONE, effects: [{ type: 'toast_not_found' }] });
   });
 
-  it('keeps fetching through a row change and a tab switch, and clears on leave', () => {
+  it('keeps fetching through a row change and a tab switch', () => {
     expect(transitionWebAnimationSelection(FETCHING, { type: 'row_changed', row: { id: A, status: 'failed' } }).state).toEqual(FETCHING);
     expect(transitionWebAnimationSelection(FETCHING, { type: 'tab' }).state).toEqual(FETCHING);
-    expect(transitionWebAnimationSelection(FETCHING, { type: 'leave' }).state).toEqual(NONE);
   });
 });
 
@@ -135,10 +133,6 @@ describe('transitionWebAnimationSelection — a row selected', () => {
 
   it('keeps the preview on the selected result when the tab is switched', () => {
     expect(transitionWebAnimationSelection(SELECTED, { type: 'tab' })).toEqual({ state: SELECTED, effects: [] });
-  });
-
-  it('clears on leave', () => {
-    expect(transitionWebAnimationSelection(SELECTED, { type: 'leave' }).state).toEqual(NONE);
   });
 });
 

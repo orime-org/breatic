@@ -26,14 +26,13 @@ const timeout: CanvasPlacementEvent = { type: 'sync_timeout' };
 const refused: CanvasPlacementEvent = { type: 'size_refused' };
 const written: CanvasPlacementEvent = { type: 'written', nodeId: NODE };
 const receipt: CanvasPlacementEvent = { type: 'receipt' };
-const leave: CanvasPlacementEvent = { type: 'leave' };
 
 describe('transitionCanvasPlacement', () => {
   it('connects to the chosen canvas from idle', () => {
     expect(transitionCanvasPlacement(IDLE, choose)).toEqual({ state: CONNECTING, effects: [{ type: 'connect', canvasId: CANVAS }] });
   });
 
-  it.each([synced, timeout, refused, written, receipt, leave])('stays idle on %o', (event) => {
+  it.each([synced, timeout, refused, written, receipt])('stays idle on %o', (event) => {
     expect(transitionCanvasPlacement(IDLE, event)).toEqual({ state: IDLE, effects: [] });
   });
 
@@ -47,10 +46,6 @@ describe('transitionCanvasPlacement', () => {
 
   it.each([CONNECTING, WRITING, AWAITING])('ignores a second choice while busy (%o)', (state) => {
     expect(transitionCanvasPlacement(state, choose)).toEqual({ state, effects: [] });
-  });
-
-  it.each([CONNECTING, WRITING, AWAITING])('warns that a placement is in progress when the user leaves (%o)', (state) => {
-    expect(transitionCanvasPlacement(state, leave)).toEqual({ state, effects: [{ type: 'warn_in_progress' }] });
   });
 
   it('gives up and says the canvas is full when the size gate refuses the node', () => {

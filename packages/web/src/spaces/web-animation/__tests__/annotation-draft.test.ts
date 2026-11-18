@@ -37,7 +37,7 @@ describe('transitionAnnotationDraft — idle', () => {
     expect(step(IDLE, add)).toEqual({ state: PICKING, effects: [{ type: 'pause' }] });
   });
 
-  it.each([click, { type: 'type', text: 'x' }, { type: 'send' }, { type: 'written' }, { type: 'write_failed', reason: 'full' }, { type: 'cancel', confirmed: false }, { type: 'switch_result', confirmed: false }, { type: 'disconnect' }, { type: 'leave' }] as AnnotationDraftEvent[])(
+  it.each([click, { type: 'type', text: 'x' }, { type: 'send' }, { type: 'written' }, { type: 'write_failed', reason: 'full' }, { type: 'cancel', confirmed: false }, { type: 'switch_result', confirmed: false }, { type: 'disconnect' }] as AnnotationDraftEvent[])(
     'stays idle on %o',
     (event) => {
       expect(step(IDLE, event)).toEqual({ state: IDLE, effects: [] });
@@ -62,10 +62,9 @@ describe('transitionAnnotationDraft — picking a point', () => {
     expect(step(PICKING, { type: 'send' })).toEqual({ state: PICKING, effects: [] });
   });
 
-  it('goes back to idle on cancel, a switch of result and leaving', () => {
+  it('goes back to idle on cancel and a switch of result', () => {
     expect(step(PICKING, { type: 'cancel', confirmed: false }).state).toEqual(IDLE);
     expect(step(PICKING, { type: 'switch_result', confirmed: false }).state).toEqual(IDLE);
-    expect(step(PICKING, { type: 'leave' }).state).toEqual(IDLE);
   });
 
   it('goes back to idle and says the connection dropped', () => {
@@ -118,14 +117,10 @@ describe('transitionAnnotationDraft — writing', () => {
     const offline = writing('A', { disconnected: true });
     expect(step(offline, { type: 'disconnect' }).state).toBe(offline);
   });
-
-  it('drops the draft on leaving', () => {
-    expect(step(writing('A'), { type: 'leave' }).state).toEqual(IDLE);
-  });
 });
 
 describe('transitionAnnotationDraft — sending', () => {
-  it.each([add, click, { type: 'type', text: 'x' }, { type: 'send' }, { type: 'cancel', confirmed: true }, { type: 'switch_result', confirmed: true }, { type: 'disconnect' }, { type: 'leave' }] as AnnotationDraftEvent[])(
+  it.each([add, click, { type: 'type', text: 'x' }, { type: 'send' }, { type: 'cancel', confirmed: true }, { type: 'switch_result', confirmed: true }, { type: 'disconnect' }] as AnnotationDraftEvent[])(
     'ignores %o',
     (event) => {
       expect(step(SENDING, event)).toEqual({ state: SENDING, effects: [] });

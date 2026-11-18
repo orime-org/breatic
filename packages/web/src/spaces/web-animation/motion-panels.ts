@@ -25,7 +25,6 @@ export type MotionPanelsEvent =
   | { type: 'open_thread' }
   | { type: 'locate' }
   | { type: 'escape' }
-  | { type: 'leave' }
   | { type: 'show_tab'; tab: MotionTab }
   | { type: 'pick_tab'; tab: MotionTab };
 
@@ -50,7 +49,6 @@ export function transitionMotionPanels(state: MotionPanelsState, event: MotionPa
     case 'open_thread':
       return { ...state, panel: 'annotations' };
     case 'escape':
-    case 'leave':
       return { ...state, panel: 'none' };
     case 'show_tab':
     case 'pick_tab':

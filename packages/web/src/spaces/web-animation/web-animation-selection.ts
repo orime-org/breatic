@@ -38,8 +38,7 @@ export type SelectionEvent<R extends SelectionRow = SelectionRow> =
   | { type: 'row_changed'; row: R }
   /** The playhead reached the focused thread's time. */
   | { type: 'focused'; threadId: string }
-  | { type: 'tab' }
-  | { type: 'leave' };
+  | { type: 'tab' };
 
 /** What the page does after a transition. */
 export type SelectionEffect =
@@ -109,7 +108,5 @@ export function transitionWebAnimationSelection<R extends SelectionRow>(state: S
       return { state: { ...state, focusThreadId: null }, effects: [] };
     case 'tab':
       return stay;
-    case 'leave':
-      return { state: SELECTION_NONE, effects: [] };
   }
 }

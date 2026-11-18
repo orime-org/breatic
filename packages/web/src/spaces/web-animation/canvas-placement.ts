@@ -20,8 +20,7 @@ export type CanvasPlacementEvent =
   | { type: 'sync_timeout' }
   | { type: 'size_refused' }
   | { type: 'written'; nodeId: string }
-  | { type: 'receipt' }
-  | { type: 'leave' };
+  | { type: 'receipt' };
 
 /** What the Space does after a transition. */
 export type CanvasPlacementEffect =
@@ -30,8 +29,7 @@ export type CanvasPlacementEffect =
   | { type: 'release' }
   | { type: 'toast_unreachable' }
   | { type: 'toast_canvas_full' }
-  | { type: 'toast_placed'; canvasId: string; nodeId: string }
-  | { type: 'warn_in_progress' };
+  | { type: 'toast_placed'; canvasId: string; nodeId: string };
 
 /** A transition's outcome. */
 export interface CanvasPlacementTransition {
@@ -54,7 +52,6 @@ export function transitionCanvasPlacement(state: CanvasPlacementState, event: Ca
     if (event.type !== 'choose') return stay;
     return { state: { status: 'connecting', canvasId: event.canvasId }, effects: [{ type: 'connect', canvasId: event.canvasId }] };
   }
-  if (event.type === 'leave') return { state, effects: [{ type: 'warn_in_progress' }] };
   switch (state.status) {
     case 'connecting':
       if (event.type === 'synced') return { state: { status: 'writing', canvasId: state.canvasId }, effects: [{ type: 'write' }] };
