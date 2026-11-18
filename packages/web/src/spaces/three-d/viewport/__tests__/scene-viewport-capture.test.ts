@@ -50,7 +50,10 @@ vi.mock('three', async (importOriginal) => {
 vi.mock('@web/spaces/three-d/viewport/model-resources', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@web/spaces/three-d/viewport/model-resources')>();
   const { Group: G, Mesh, BoxGeometry, MeshStandardMaterial } = await import('three');
-  return { ...actual, loadSceneModel: vi.fn(async () => { const g = new G(); g.add(new Mesh(new BoxGeometry(), new MeshStandardMaterial())); return g; }) };
+  return { ...actual, loadSceneModel: vi.fn(async () => {
+    const g = new G(); const material = new MeshStandardMaterial(); material.userData.lookPart = '0';
+    g.add(new Mesh(new BoxGeometry(), material)); return g;
+  }) };
 });
 
 const CUBE: SceneObject = { id: 'cube', model: { kind: 'builtin', id: 'box' }, name: 'Cube', position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false };
@@ -128,6 +131,20 @@ describe('capturing the viewfinder frame (#1411 design 4)', () => {
     expect(camera.view?.enabled ?? false).toBe(false);
     expect(disposed).toBe(1);
     expect((runtime as unknown as { renderer: { getRenderTarget: () => unknown } }).renderer.getRenderTarget()).toBeNull();
+  });
+
+  it('leaves the selected part\'s highlight out of the frame and shows it again afterwards (inner#1693 design 5.5)', async () => {
+    const { runtime, capture } = await open();
+    runtime.update({ ...props(() => undefined), selectedPart: '0' });
+    const overlays = (runtime as unknown as { looks: { overlays: () => Object3D[] } }).looks.overlays();
+    expect(overlays.length).toBeGreaterThan(0);
+    observeHelpers = () => overlays.map((overlay) => overlay.visible);
+    renders.length = 0;
+    await capture({ x: 0, y: 0, width: 300, height: 300 }, { width: 2048, height: 2048 });
+    const offscreen = renders.filter((call) => call.target !== null);
+    expect(offscreen).toHaveLength(1);
+    expect(offscreen[0]?.helpers.every((visible) => !visible)).toBe(true);
+    expect(overlays.every((overlay) => overlay.visible)).toBe(true);
   });
 
   it('withdraws the capture function before the runtime is disposed', async () => {

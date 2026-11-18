@@ -14,6 +14,9 @@ import { openSmokeProject, smokeProjectId, smokeProjectUrl } from '../helpers/pr
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { liveModuleUrl } from '../helpers/live-module';
 import { roomForUploads } from '../helpers/upload-budget';
+import { cleanMembership, inviteMember } from '../helpers/project-members';
+import { credentialsFor } from '../helpers/credentials';
+import { dataOf } from '../helpers/api';
 import { uniquePicture } from '../helpers/upload';
 import type * as ManagerModule from '../../src/data/yjs/manager';
 import type * as SceneSessionModule from '../../src/data/yjs/scene-session';
@@ -186,9 +189,11 @@ test('a copy keeps the look and changes on its own; reset part and reset all wri
 
 test('a second member sees a part change at once, and a locked object keeps its part list but greys every setting', async ({ page, browser, baseURL }) => {
   const id = await sceneWithBox(page, 'scene-look-peer');
-  const peerContext = await browser.newContext({ baseURL, storageState: stateFile('A') });
-  const peer = await peerContext.newPage();
+  const peerContext = await browser.newContext({ baseURL, storageState: stateFile('B') });
+  const projectId = smokeProjectId();
+  const memberId = (await dataOf<{ id: string }>(await peerContext.request.get('/api/v1/auth/me'), 'peer identity')).id;
   try {
+    const peer = await inviteMember(page, peerContext, projectId, credentialsFor('B').email, 'editor');
     await peer.goto(smokeProjectUrl());
     await peer.getByTestId('space-drawer-trigger').click();
     await peer.getByTestId(`space-drawer-row-${id}`).getByRole('button').first().click();
@@ -208,6 +213,7 @@ test('a second member sees a part change at once, and a locked object keeps its 
   } finally {
     await peerContext.close();
     await deleteSpace(page, id);
+    await cleanMembership(page, projectId, memberId);
   }
 });
 
@@ -230,9 +236,19 @@ test('a picture from the computer uploads onto the part it was chosen for @needs
     await expect.poll(async () => (await rendered(page))[0].parts['0'], { timeout: 60_000 }).toMatchObject({ map: true, color: '#ffffff' });
     await expect(page.getByTestId('scene-look-remove-image')).toBeVisible();
 
+    const [uploaded] = await committedLooks(page, id);
+    const assetId = uploaded?.['0']?.map as string;
+
     await page.getByTestId('scene-look-remove-image').click();
     await expect.poll(() => committedLooks(page, id)).toEqual([{}]);
     await expect.poll(async () => (await rendered(page))[0].parts['0'].map).toBe(false);
+
+    // The uploaded picture is now one of the Project's pictures, and picking it puts it back.
+    await page.getByTestId('scene-look-choose-image').click();
+    await page.getByTestId('scene-image-picker-project').click();
+    await page.getByTestId(`scene-image-picker-item-${assetId}`).click();
+    await expect.poll(() => committedLooks(page, id), { timeout: 30_000 }).toEqual([{ 0: { map: assetId } }]);
+    await expect.poll(async () => (await rendered(page))[0].parts['0'], { timeout: 60_000 }).toMatchObject({ map: true, color: '#ffffff' });
   } finally {
     await deleteSpace(page, id);
   }

@@ -8,7 +8,7 @@ import * as Y from 'yjs';
 import { Unlock } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { t, SCENE_FORMAT_VERSION, type SceneObject } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -169,4 +169,24 @@ describe('registered model load failures (inner#1690)', () => {
     act(() => { props.onModelStateChange?.(ID, 'failed', new Error('Scene model request failed (503)')); });
     expect(await screen.findByRole('button', { name: t('spaces.threeD.retry') })).toBeInTheDocument();
   });
+
+  it('says when a part picture failed or went over the limit, and offers Retry only for a failure (inner#1693 design 5.4)', async () => {
+    const { session, client } = fixture();
+    render(editorTree(session, client, 'visible'));
+    await screen.findByTestId('scene-viewport-boundary');
+    const props = viewportInputs.mock.calls.at(-1)![0] as SceneViewportProps;
+    act(() => { props.onLookFailure?.(ID, { retry: true, over: false }); });
+    expect(await screen.findByTestId('scene-look-image-failed')).toHaveTextContent(t('spaces.threeD.look.imageFailed'));
+    const retry = screen.getByRole('button', { name: t('spaces.threeD.retry') });
+    const revision = (viewportInputs.mock.calls.at(-1)![0] as SceneViewportProps).modelRetryRevision ?? 0;
+    fireEvent.click(retry);
+    await waitFor(() => expect((viewportInputs.mock.calls.at(-1)![0] as SceneViewportProps).modelRetryRevision).toBe(revision + 1));
+    act(() => { props.onLookFailure?.(ID, { retry: false, over: true }); });
+    expect(await screen.findByTestId('scene-look-image-over-limit')).toHaveTextContent(t('spaces.threeD.look.imageOverLimit'));
+    expect(screen.queryByTestId('scene-look-image-failed')).toBeNull();
+    expect(screen.queryByRole('button', { name: t('spaces.threeD.retry') })).toBeNull();
+    act(() => { props.onLookFailure?.(ID, null); });
+    await waitFor(() => expect(screen.queryByTestId('scene-model-notice')).toBeNull());
+  });
 });
+
