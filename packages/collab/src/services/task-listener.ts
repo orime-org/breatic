@@ -10,9 +10,9 @@
  *   per-document lease → one direct connection per round → applyNodeTaskCounts
  *   (canvas) or applySpaceTasksVersion (the Space types in SPACE_TASKS_TYPES)
  *
- * A change version is written only into a live Space document, and a Motion
- * Space's change is then published again for every live Timeline of its
- * Project (`docsFollowingChange`), each written on its own round.
+ * A change version is written only into a live Space document, and the change
+ * is then published again for every live Timeline of the Projects the event
+ * names (`docsFollowingChange`), each written on its own round.
  *
  * Collab executes; it does not judge. Which task moved, what the counts now
  * are, whether a result rides along — the server decided all of it.
@@ -129,7 +129,7 @@ function namedProjects(batch: DocBatch): string[] | undefined {
   let named: string[] | undefined;
   for (const { event } of batch.items) {
     if (event.type !== "space-tasks-version" || !Array.isArray(event.projects)) continue;
-    named = [...(named ?? []), ...event.projects.filter((id): id is string => typeof id === "string")];
+    named = [...(named ?? []), ...event.projects];
   }
   return named;
 }

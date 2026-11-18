@@ -197,8 +197,7 @@ export interface CreditsChangedSignal {
 
 /**
  * Stateless WS signal broadcast on the project meta doc when a Space's tasks
- * changed (3D tasks, inner#1690; Timeline and Motion executions, #1490) -
- * members with that Space open read them again.
+ * changed (3D tasks, inner#1690) - members with that Space open read them again.
  */
 export const SPACE_TASKS_CHANGED_SIGNAL = "space-tasks:changed" as const;
 

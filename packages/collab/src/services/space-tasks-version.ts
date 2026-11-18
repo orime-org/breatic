@@ -13,6 +13,7 @@ import { parseDocName, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, timelineSpaceDocNam
 import { isNewerStreamId } from "@collab/services/stream-id.js";
 import { liveDocNamesStartingWith } from "@collab/services/yjs-documents.repo.js";
 
+/** A Project id as the stream may carry it; every named id is checked here before it builds a document name. */
 const PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
