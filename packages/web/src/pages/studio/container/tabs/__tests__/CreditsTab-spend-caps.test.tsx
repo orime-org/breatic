@@ -20,7 +20,7 @@
 import type { CreditDecimal, StudioCreditsView } from '@breatic/shared';
 
 import type { ReactElement } from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
@@ -231,6 +231,23 @@ describe('editing the two limits', () => {
     await typeStudioTotal('500');
     await userEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('The server says no.'));
+  });
+
+  it('keeps each row\'s Restore default waiting until that row\'s own answer is in', async () => {
+    spendLimits.mockResolvedValue(LIMITS);
+    renderTab(<CreditsTab slug='acme' />);
+    await screen.findByText('花费上限');
+    const answers: Array<() => void> = [];
+    remove.mockImplementation(() => new Promise<void>((resolve) => { answers.push(resolve); }));
+    const [first, second] = screen.getAllByRole('button', { name: '恢复默认' });
+    await userEvent.click(first!);
+    await userEvent.click(second!);
+    await waitFor(() => expect(remove).toHaveBeenCalledTimes(2));
+    expect(first).toHaveAttribute('aria-busy', 'true');
+    expect(second).toHaveAttribute('aria-busy', 'true');
+    await act(async () => { answers[0]!(); await Promise.resolve(); });
+    await waitFor(() => expect(first).not.toHaveAttribute('aria-busy'));
+    expect(second).toHaveAttribute('aria-busy', 'true');
   });
 
   it('keeps an unsaved Studio total when a person\'s own limit is restored meanwhile', async () => {

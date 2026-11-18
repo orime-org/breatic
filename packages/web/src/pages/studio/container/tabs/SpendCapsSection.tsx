@@ -23,6 +23,7 @@ import { ApiException } from '@web/data/api/types';
 import { usersApi } from '@web/data/api/users';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
+import { usePendingKeys } from '@web/lib/use-pending-keys';
 import { toast } from '@web/lib/toast';
 
 const KEY = 'studio.container.credits.spendCap';
@@ -142,7 +143,7 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
   const [memberDraft, setMemberDraft] = React.useState<Draft>({ kind: 'none' });
   const [saving, setSaving] = React.useState(false);
   const [editing, setEditing] = React.useState<SpendLimitMember | null>(null);
-  const [restoring, setRestoring] = React.useState<string | null>(null);
+  const restoring = usePendingKeys();
   // The drafts follow the two stored limits only: a person's own limit saved
   // or restored reads the view again and leaves unsaved drafts as they are.
   const storedStudio = view?.studioMonthly;
@@ -186,16 +187,12 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
   }, [slug, studioValue, memberValue, queryClient, queryKey, savedLine, saveFailed, invalidLine]);
 
   const restore = React.useCallback(async (userId: string): Promise<void> => {
-    setRestoring(userId);
     try {
-      await removeMemberSpendLimit(slug, userId);
-      await queryClient.invalidateQueries({ queryKey });
+      await restoring.track(userId, removeMemberSpendLimit(slug, userId).then(() => queryClient.invalidateQueries({ queryKey })));
     } catch (err) {
       toast.error(serverMessage(err, saveFailed));
-    } finally {
-      setRestoring(null);
     }
-  }, [slug, queryClient, queryKey, saveFailed]);
+  }, [restoring, slug, queryClient, queryKey, saveFailed]);
 
   if (view === undefined) {
     // A personal Studio (404) or a user who is not its admin (403) has no such section; any other failure says so.
@@ -273,7 +270,7 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
                     <span className='inline-flex gap-1'>
                       <Button size='compact' variant='outline' onClick={() => setEditing(member)}>{t(`${KEY}.override`)}</Button>
                       {member.override === null ? null : (
-                        <Button size='compact' variant='ghost' loading={restoring === member.userId} onClick={() => void restore(member.userId)}>
+                        <Button size='compact' variant='ghost' loading={restoring.isPending(member.userId)} onClick={() => void restore(member.userId)}>
                           {t(`${KEY}.restoreDefault`)}
                         </Button>
                       )}
