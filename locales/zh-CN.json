@@ -1171,7 +1171,9 @@
       "cancelFailed": "这个任务没能取消。",
       "waitReasonLimit": "你同时运行的任务已达上限（{limit} 个），前面的任务结束后自动开始。",
       "waitReasonOther": "发起人同时运行的任务已达上限，等发起人前面的任务结束后自动开始。",
-      "waitReasonOtherLimit": "发起人同时运行的任务已达上限（{limit} 个），等发起人前面的任务结束后自动开始。"
+      "waitReasonOtherLimit": "发起人同时运行的任务已达上限（{limit} 个），等发起人前面的任务结束后自动开始。",
+      "waitReasonEach": "每条排队任务会在它的发起人同时运行的任务少于上限后自动开始。",
+      "waitReasonEachLimit": "每条排队任务会在它的发起人同时运行的任务少于上限（{limit} 个）后自动开始。"
     },
     "panel": {
       "hostDeletedByPeer": "协作者删除了节点。"

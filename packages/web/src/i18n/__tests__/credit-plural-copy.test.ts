@@ -27,8 +27,9 @@ describe('one of a thing in English', () => {
     ['the server\'s own spend limit refusal', (n) => t('server.spend_cap.member', { limit: formatCredits(n, 'en') }), /\(1 credit\)/, /\(2 credits\)/],
     ['a limit on the spend limits section', (n) => t(`${KEY}.amount`, { amount: formatCreditAmount(n) }), /^1 credit$/, /^2 credits$/],
     ['spent against a limit', (n) => t(`${KEY}.spentOfLimit`, { spent: formatCreditAmount('0.5'), limit: formatCreditAmount(n) }), /^0\.5 \/ 1 credit$/, /^0\.5 \/ 2 credits$/],
-    ['the running-task limit', (n) => waitReason(t, Number(n), true), /limit of 1 task running/, /limit of 2 tasks running/],
-    ['someone else\'s running-task limit', (n) => waitReason(t, Number(n), false), /limit of 1 task running/, /limit of 2 tasks running/],
+    ['the running-task limit', (n) => waitReason(t, Number(n), 'own'), /limit of 1 task running/, /limit of 2 tasks running/],
+    ['someone else\'s running-task limit', (n) => waitReason(t, Number(n), 'other'), /limit of 1 task running/, /limit of 2 tasks running/],
+    ['the counts column\'s running-task limit', (n) => waitReason(t, Number(n), 'each'), /fewer than 1 task\./, /fewer than 2 tasks\./],
   ];
 
   it.each(cases)('%s says one in the singular and more in the plural', (_name, render, one, two) => {

@@ -4,9 +4,10 @@
 /**
  * Where the queued tip's number comes from (inner#1968 design 21 row 22): the
  * counts' `waitingLimit`, a task row's and a Timeline execution's
- * `slotWaitLimit`. Without one the tip names no number. A row the reader
- * started says "you"; a row someone else started, and the counts column that
- * may hold several people's tasks, name the person who started it.
+ * `slotWaitLimit`. Without one the tip names no number. A row the user
+ * started says "you"; a row someone else started names the person who started
+ * it; the counts column, which may hold several tasks from several people,
+ * says it of each queued task.
  */
 
 import * as React from 'react';
@@ -28,7 +29,8 @@ import { useCurrentUserStore } from '@web/stores/current-user';
 
 const WITH_LIMIT = '你同时运行的任务已达上限（5 个），前面的任务结束后自动开始';
 const OTHER_WITH_LIMIT = '发起人同时运行的任务已达上限（5 个），等发起人前面的任务结束后自动开始';
-const OTHER_WITHOUT = '发起人同时运行的任务已达上限，等发起人前面的任务结束后自动开始';
+const EACH_WITH_LIMIT = '每条排队任务会在它的发起人同时运行的任务少于上限（5 个）后自动开始';
+const EACH_WITHOUT = '每条排队任务会在它的发起人同时运行的任务少于上限后自动开始';
 
 beforeEach(() => {
   setLocale('zh-CN');
@@ -41,8 +43,8 @@ afterEach(() => {
 
 describe('the queued cell of the counts column', () => {
   it.each<[NodeTaskCounts, string]>([
-    [{ running: 2, waiting: 1, waitingLimit: 5, done: 0, failed: 0, expired: 0 }, OTHER_WITH_LIMIT],
-    [{ running: 2, waiting: 1, done: 0, failed: 0, expired: 0 }, OTHER_WITHOUT],
+    [{ running: 2, waiting: 3, waitingLimit: 5, done: 0, failed: 0, expired: 0 }, EACH_WITH_LIMIT],
+    [{ running: 2, waiting: 3, done: 0, failed: 0, expired: 0 }, EACH_WITHOUT],
   ])('says why with the limit the counts carry: %o', async (counts, said) => {
     render(<TooltipProvider><TaskCountColumn counts={counts} endedShown openFor={null} onOpen={vi.fn()} /></TooltipProvider>);
     await userEvent.hover(screen.getByTestId('task-count-waiting'));

@@ -363,7 +363,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
               {`${task.model.displayName} · ${starter} · ${task.origin === 'agent' ? t('spaces.threeD.taskList.originAgent') : t('spaces.threeD.taskList.originSpace')}`}
             </p>
             <p className='mt-0.5 text-xs text-muted-foreground'>{state}</p>
-            {waiting ? <p className='mt-0.5 text-pretty text-xs text-muted-foreground'>{waitReason(t, task.slotWaitLimit, task.startedByUserId === userId)}</p> : null}
+            {waiting ? <p className='mt-0.5 text-pretty text-xs text-muted-foreground'>{waitReason(t, task.slotWaitLimit, task.startedByUserId === userId ? 'own' : 'other')}</p> : null}
             {rigNote === null ? null : <p data-testid='scene-task-rig-note'
               className={cn('mt-0.5 text-pretty text-xs', rigNote === 'rigFailed' ? 'text-status-warning-foreground' : 'text-muted-foreground')}>
               {t(`spaces.threeD.taskList.${rigNote}`)}</p>}

@@ -216,7 +216,7 @@ export const TaskRow = React.memo(function TaskRow({
       {waiting ? (
         <div data-testid='task-waiting' className='flex flex-col gap-0.5 pl-5 text-2xs text-muted-foreground'>
           <span className='font-medium text-foreground-secondary'>{t('canvas.task.status.waiting')}</span>
-          <span>{waitReason(t, entry.slotWaitLimit, entry.startedByUserId === selfId)}</span>
+          <span>{waitReason(t, entry.slotWaitLimit, entry.startedByUserId === selfId ? 'own' : 'other')}</span>
         </div>
       ) : entry.status === 'running' ? (
         <div className='flex items-center gap-3 pl-5 text-2xs tabular-nums text-muted-foreground'>

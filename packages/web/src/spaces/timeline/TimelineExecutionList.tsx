@@ -143,7 +143,7 @@ const ExecutionRow = React.memo(function ExecutionRow({ projectId, row, open, re
       </span>
     </div>
     {open && <div data-testid={`timeline-execution-detail-${row.id}`} className='flex flex-col gap-3 px-3 pb-3 text-xs'>
-      {waiting && <p className='text-pretty text-muted-foreground'>{waitReason(t, row.slotWaitLimit, row.actorUserId === selfId)}</p>}
+      {waiting && <p className='text-pretty text-muted-foreground'>{waitReason(t, row.slotWaitLimit, row.actorUserId === selfId ? 'own' : 'other')}</p>}
       <ol className='flex flex-col gap-1'>
         {steps.map((key, index) => {
           const mark = stepMark(row, index);

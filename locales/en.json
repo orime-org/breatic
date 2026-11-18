@@ -1171,7 +1171,9 @@
       "cancelFailed": "That task could not be cancelled.",
       "waitReasonLimit": "You've reached your limit of {limit, plural, one {# task} other {# tasks}} running at once. This one starts by itself when an earlier one ends.",
       "waitReasonOther": "The person who started it has reached the number of tasks they can run at once. It starts by itself when one of theirs ends.",
-      "waitReasonOtherLimit": "The person who started it has reached their limit of {limit, plural, one {# task} other {# tasks}} running at once. It starts by itself when one of theirs ends."
+      "waitReasonOtherLimit": "The person who started it has reached their limit of {limit, plural, one {# task} other {# tasks}} running at once. It starts by itself when one of theirs ends.",
+      "waitReasonEach": "Each one starts by itself once the person who started it is running fewer tasks than their limit.",
+      "waitReasonEachLimit": "Each one starts by itself once the person who started it is running fewer than {limit, plural, one {# task} other {# tasks}}."
     },
     "panel": {
       "hostDeletedByPeer": "A collaborator deleted the node."
