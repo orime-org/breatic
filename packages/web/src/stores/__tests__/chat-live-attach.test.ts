@@ -466,7 +466,7 @@ describe('the sync of the conversation on screen', () => {
       chatLive.show('p1', 'c1');
       await settle();
       expect(useChatWaiting.getState().byConversation.c1?.capNote).toBe(
-        '你本月在这个 Studio 的花费已到上限（10 积分），2026年12月1日 重置。需要更多请联系 Studio Admin',
+        '你本月在这个 Studio 的花费已到上限（10 积分），2026年12月1日 重置。需要更多请联系 Studio Admin。',
       );
     } finally {
       setLocale('en');

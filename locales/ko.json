@@ -350,8 +350,8 @@
       "versions_full": "{limit, plural, other {이 Document의 스냅샷이 최대 #개로 가득 찼습니다. 오래된 스냅샷을 삭제한 뒤 저장하세요.}}"
     },
     "spend_cap": {
-      "member": "이 Studio에서 이번 달 사용 한도({limit} 크레딧)에 도달했습니다. 더 필요하면 Studio Admin에게 문의하세요",
-      "studio": "이 Studio의 이번 달 사용 한도에 도달했습니다. Studio Admin에게 문의하세요"
+      "member": "이 Studio에서 이번 달 사용 한도({limit} 크레딧)에 도달했습니다. 더 필요하면 Studio Admin에게 문의하세요.",
+      "studio": "이 Studio의 이번 달 사용 한도에 도달했습니다. Studio Admin에게 문의하세요."
     }
   },
   "chat": {
@@ -1167,9 +1167,9 @@
         "understand": "내용 읽기",
         "transcribe": "받아쓰기"
       },
-      "waitReason": "동시에 실행할 수 있는 작업 수에 도달했습니다. 앞의 작업이 끝나면 자동으로 시작됩니다",
+      "waitReason": "동시에 실행할 수 있는 작업 수에 도달했습니다. 앞의 작업이 끝나면 자동으로 시작됩니다.",
       "cancelFailed": "이 작업을 취소하지 못했습니다.",
-      "waitReasonLimit": "동시에 실행할 수 있는 작업 한도({limit}개)에 도달했습니다. 앞의 작업이 끝나면 자동으로 시작됩니다"
+      "waitReasonLimit": "동시에 실행할 수 있는 작업 한도({limit}개)에 도달했습니다. 앞의 작업이 끝나면 자동으로 시작됩니다."
     },
     "panel": {
       "hostDeletedByPeer": "공동 작업자가 노드를 삭제했습니다."
@@ -3683,11 +3683,11 @@
       "assigned": "지정을 해제하면 환불을 신청할 수 있습니다"
     },
     "refusal": {
-      "spendCap": "이번 달 사용 한도에 도달했습니다. Studio Admin에게 문의하세요"
+      "spendCap": "이번 달 사용 한도에 도달했습니다. Studio Admin에게 문의하세요."
     },
     "spendCap": {
-      "member": "이 Studio에서 이번 달 사용 한도({limit} 크레딧)에 도달했습니다. {date}에 초기화됩니다. 더 필요하면 Studio Admin에게 문의하세요",
-      "studio": "이 Studio의 이번 달 사용 한도에 도달했습니다. {date}에 초기화됩니다. Studio Admin에게 문의하세요"
+      "member": "이 Studio에서 이번 달 사용 한도({limit} 크레딧)에 도달했습니다. {date}에 초기화됩니다. 더 필요하면 Studio Admin에게 문의하세요.",
+      "studio": "이 Studio의 이번 달 사용 한도에 도달했습니다. {date}에 초기화됩니다. Studio Admin에게 문의하세요."
     }
   },
   "notFound": {

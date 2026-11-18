@@ -37,14 +37,14 @@ describe('spendCapMessage', () => {
   it('H-31 says the member cap with its limit and the reset day, and offers no top-up', () => {
     process.env.TZ = 'UTC';
     const said = spendCapMessage('member', '10', '2026-12-01T00:00:00.000Z');
-    expect(said).toBe('你本月在这个 Studio 的花费已到上限（10 积分），2026年12月1日 重置。需要更多请联系 Studio Admin');
+    expect(said).toBe('你本月在这个 Studio 的花费已到上限（10 积分），2026年12月1日 重置。需要更多请联系 Studio Admin。');
     expect(said).not.toContain('充值');
   });
 
   it('H-32 says the studio cap with the reset day in the local time zone', () => {
     process.env.TZ = 'America/New_York';
     const said = spendCapMessage('studio', '100', '2026-12-01T00:00:00.000Z');
-    expect(said).toBe('这个 Studio 本月的花费已到上限，2026年11月30日 重置。请联系 Studio Admin');
+    expect(said).toBe('这个 Studio 本月的花费已到上限，2026年11月30日 重置。请联系 Studio Admin。');
     expect(said).not.toContain('充值');
   });
 

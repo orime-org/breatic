@@ -350,8 +350,8 @@
       "versions_full": "{limit, plural, other {この Document のスナップショットは上限の # 件に達しています。古いスナップショットを削除してから保存してください。}}"
     },
     "spend_cap": {
-      "member": "このStudioでの今月の利用額が上限（{limit} クレジット）に達しました。追加が必要な場合はStudioのAdminに連絡してください",
-      "studio": "このStudioの今月の利用額が上限に達しました。StudioのAdminに連絡してください"
+      "member": "このStudioでの今月の利用額が上限（{limit} クレジット）に達しました。追加が必要な場合はStudioのAdminに連絡してください。",
+      "studio": "このStudioの今月の利用額が上限に達しました。StudioのAdminに連絡してください。"
     }
   },
   "chat": {
@@ -1167,9 +1167,9 @@
         "understand": "内容を読み取る",
         "transcribe": "文字起こし"
       },
-      "waitReason": "同時に実行できるタスク数の上限に達しています。前のタスクが終わると自動で開始します",
+      "waitReason": "同時に実行できるタスク数の上限に達しています。前のタスクが終わると自動で開始します。",
       "cancelFailed": "このタスクをキャンセルできませんでした。",
-      "waitReasonLimit": "同時に実行できるタスクの上限（{limit} 件）に達しています。前のタスクが終わると自動で開始します"
+      "waitReasonLimit": "同時に実行できるタスクの上限（{limit} 件）に達しています。前のタスクが終わると自動で開始します。"
     },
     "panel": {
       "hostDeletedByPeer": "コラボレーターがノードを削除しました。"
@@ -3683,11 +3683,11 @@
       "assigned": "割り当てを解除すると返金を申請できます"
     },
     "refusal": {
-      "spendCap": "今月の利用額が上限に達しました。StudioのAdminに連絡してください"
+      "spendCap": "今月の利用額が上限に達しました。StudioのAdminに連絡してください。"
     },
     "spendCap": {
-      "member": "このStudioでの今月の利用額が上限（{limit} クレジット）に達しました。{date} にリセットされます。追加が必要な場合はStudioのAdminに連絡してください",
-      "studio": "このStudioの今月の利用額が上限に達しました。{date} にリセットされます。StudioのAdminに連絡してください"
+      "member": "このStudioでの今月の利用額が上限（{limit} クレジット）に達しました。{date} にリセットされます。追加が必要な場合はStudioのAdminに連絡してください。",
+      "studio": "このStudioの今月の利用額が上限に達しました。{date} にリセットされます。StudioのAdminに連絡してください。"
     }
   },
   "notFound": {

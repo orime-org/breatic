@@ -350,8 +350,8 @@
       "versions_full": "{limit, plural, other {这个 Document 的快照已满 # 张。删掉旧的快照后再保存。}}"
     },
     "spend_cap": {
-      "member": "你本月在这个 Studio 的花费已到上限（{limit} 积分）。需要更多请联系 Studio Admin",
-      "studio": "这个 Studio 本月的花费已到上限。请联系 Studio Admin"
+      "member": "你本月在这个 Studio 的花费已到上限（{limit} 积分）。需要更多请联系 Studio Admin。",
+      "studio": "这个 Studio 本月的花费已到上限。请联系 Studio Admin。"
     }
   },
   "chat": {
@@ -1167,9 +1167,9 @@
         "understand": "理解",
         "transcribe": "转写"
       },
-      "waitReason": "你同时运行的任务已达上限，前面的任务结束后自动开始",
+      "waitReason": "你同时运行的任务已达上限，前面的任务结束后自动开始。",
       "cancelFailed": "这个任务没能取消。",
-      "waitReasonLimit": "你同时运行的任务已达上限（{limit} 个），前面的任务结束后自动开始"
+      "waitReasonLimit": "你同时运行的任务已达上限（{limit} 个），前面的任务结束后自动开始。"
     },
     "panel": {
       "hostDeletedByPeer": "协作者删除了节点。"
@@ -3683,11 +3683,11 @@
       "assigned": "解除指定后可以申请退款"
     },
     "refusal": {
-      "spendCap": "本月花费已到上限。请联系 Studio Admin"
+      "spendCap": "本月花费已到上限。请联系 Studio Admin。"
     },
     "spendCap": {
-      "member": "你本月在这个 Studio 的花费已到上限（{limit} 积分），{date} 重置。需要更多请联系 Studio Admin",
-      "studio": "这个 Studio 本月的花费已到上限，{date} 重置。请联系 Studio Admin"
+      "member": "你本月在这个 Studio 的花费已到上限（{limit} 积分），{date} 重置。需要更多请联系 Studio Admin。",
+      "studio": "这个 Studio 本月的花费已到上限，{date} 重置。请联系 Studio Admin。"
     }
   },
   "notFound": {
