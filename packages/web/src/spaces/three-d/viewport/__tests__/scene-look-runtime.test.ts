@@ -116,6 +116,14 @@ describe('SceneLookRuntime', () => {
     expect(material.map).not.toBeNull();
   });
 
+  it('decodes a picture with the edge limit of this device', async () => {
+    const fake = fakeCache(async () => ({ width: 1, height: 20000, type: 'png' }));
+    const { runtime, root } = await open(fake);
+    runtime.sync(withLook({ 0: { map: A } }), root);
+    await settle();
+    expect(fake.acquire).toHaveBeenCalledWith(A, 8192);
+  });
+
   it('tells a picture over the limits apart from one that failed to load', async () => {
     const over = fakeCache(async () => ({ width: 9000, height: 9000, type: 'png' }));
     const first = await open(over);

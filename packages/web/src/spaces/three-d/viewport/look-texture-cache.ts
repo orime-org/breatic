@@ -7,7 +7,7 @@ import { RepeatWrapping, SRGBColorSpace, Texture } from 'three';
 import { httpRequest, isSceneLookImageMediaType } from '@breatic/shared';
 
 import { resolveSceneAsset } from '@web/data/api/scene';
-import type { LookPictureDimensions } from '@web/spaces/three-d/look-texture-budget';
+import { fittedLookSize } from '@web/spaces/three-d/look-texture-budget';
 
 /** A picture's size and type as its file header declares them. */
 export interface LookPictureSize {
@@ -31,8 +31,8 @@ export interface LookTextureCacheDeps {
   open: (url: string) => Promise<ReadableStream<Uint8Array>>;
   /** The whole file. */
   download: (url: string) => Promise<Blob>;
-  /** `createImageBitmap` in the browser. */
-  decode: (blob: Blob, options: ImageBitmapOptions) => Promise<Decoded>;
+  /** `createImageBitmap` in the browser: the file, or an already decoded picture to scale. */
+  decode: (source: Blob | Decoded, options: ImageBitmapOptions) => Promise<Decoded>;
 }
 
 interface Entry {
@@ -133,14 +133,14 @@ export class LookTextureCache {
   /**
    * Hold a picture, decoding it on the first hold.
    * @param assetId - The picture asset.
-   * @param scaledTo - The size to decode a picture over the edge limit to; this page's limit is one for every hold.
+   * @param maxEdge - The longest edge a picture is shown at; this page's limit is one for every hold.
    * @returns A clone of the shared texture for this holder.
    * @throws {Error} When the picture cannot be downloaded or decoded; the hold is dropped.
    */
-  async acquire(assetId: string, scaledTo?: LookPictureDimensions): Promise<Texture> {
+  async acquire(assetId: string, maxEdge = Number.POSITIVE_INFINITY): Promise<Texture> {
     let entry = this.entries.get(assetId);
     if (!entry) {
-      const created: Entry = { refs: 0, ready: this.load(assetId, scaledTo), base: null };
+      const created: Entry = { refs: 0, ready: this.load(assetId, maxEdge), base: null };
       created.ready.then((base) => {
         created.base = base;
         // Every hold was released while it decoded.
@@ -176,17 +176,27 @@ export class LookTextureCache {
   }
 
   /**
-   * Download and decode one picture into the shared texture.
+   * Download and decode one picture into the shared texture, then scale it down when its longest edge is over the
+   * limit. The scale follows the decoded picture, whose orientation the file's EXIF has already applied (three.js,
+   * Figma and PlayCanvas likewise scale the decoded image).
    * @param assetId - The picture asset.
-   * @param scaledTo - The size to decode it to, when it is over the edge limit.
+   * @param maxEdge - The longest edge it is shown at.
    * @returns The texture, not flipped, in sRGB, repeating.
-   * @throws {Error} When the download or the decode fails.
+   * @throws {Error} When the download, the decode or the scale fails.
    */
-  private async load(assetId: string, scaledTo?: LookPictureDimensions): Promise<Texture> {
+  private async load(assetId: string, maxEdge: number): Promise<Texture> {
     const url = await this.deps.resolve(assetId);
     const blob = await this.deps.download(url);
-    const bitmap = await this.deps.decode(blob, scaledTo
-      ? { ...DECODE, resizeWidth: scaledTo.width, resizeHeight: scaledTo.height, resizeQuality: 'high' } : DECODE);
+    let bitmap = await this.deps.decode(blob, DECODE);
+    const fitted = fittedLookSize(bitmap, maxEdge);
+    if (fitted.width !== bitmap.width || fitted.height !== bitmap.height) {
+      const decoded = bitmap;
+      try {
+        bitmap = await this.deps.decode(decoded, { premultiplyAlpha: 'none', resizeWidth: fitted.width, resizeHeight: fitted.height, resizeQuality: 'high' });
+      } finally {
+        decoded.close();
+      }
+    }
     const texture = new Texture(bitmap as unknown as ImageBitmap);
     texture.flipY = false;
     texture.colorSpace = SRGBColorSpace;
@@ -237,7 +247,7 @@ export function pageLookTextureCache(projectId: string): LookTextureCache {
         return body;
       },
       download: async (url) => (await fetchPicture(url)).blob(),
-      decode: (blob, options) => createImageBitmap(blob, options),
+      decode: (source, options) => createImageBitmap(source as ImageBitmapSource, options),
     });
     pageCaches.set(projectId, cache);
   }

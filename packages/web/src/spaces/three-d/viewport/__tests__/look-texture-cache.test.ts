@@ -47,7 +47,8 @@ function deps(width = 512, height = 256): Deps & { cancelled: () => boolean } {
 
 type Cache = {
   size: (assetId: string) => Promise<{ width: number; height: number; type: string } | null>;
-  acquire: (assetId: string, scaledTo?: { width: number; height: number }) => Promise<Texture>;
+  read: (assetId: string) => Promise<{ width: number; height: number; type: string } | null>;
+  acquire: (assetId: string, maxEdge?: number) => Promise<Texture>;
   release: (assetId: string, clone: Texture) => void;
 };
 
@@ -81,6 +82,15 @@ describe('LookTextureCache', () => {
     expect(await create(d).size(A)).toBeNull();
   });
 
+  it('rejects a read that failed and reads again next time', async () => {
+    const d = deps(512, 256);
+    d.open.mockRejectedValueOnce(new Error('network'));
+    const cache = create(d);
+    await expect(cache.read(A)).rejects.toThrow('network');
+    expect(await cache.read(A)).toEqual({ width: 512, height: 256, type: 'png' });
+    expect(d.open).toHaveBeenCalledTimes(2);
+  });
+
   it('decodes with premultiplied alpha off and the file orientation, once per asset', async () => {
     const d = deps();
     const cache = create(d);
@@ -94,10 +104,32 @@ describe('LookTextureCache', () => {
     expect(first.wrapS).toBe(1000);
   });
 
-  it('decodes a picture over the edge limit straight to the size it is scaled down to', async () => {
+  it('scales a picture whose shown longest edge is over the limit from its decoded, oriented copy', async () => {
     const d = deps(9000, 100);
-    await create(d).acquire(A, { width: 8192, height: 91 });
-    expect(d.decode.mock.calls[0]?.[1]).toEqual({ premultiplyAlpha: 'none', imageOrientation: 'from-image', resizeWidth: 8192, resizeHeight: 91, resizeQuality: 'high' });
+    const oriented = { width: 100, height: 9000, close: vi.fn() };
+    const scaled = { width: 91, height: 8192, close: vi.fn() };
+    d.decode.mockResolvedValueOnce(oriented).mockResolvedValueOnce(scaled);
+    const texture = await create(d).acquire(A, 8192);
+    expect(d.decode).toHaveBeenCalledTimes(2);
+    expect(d.decode.mock.calls[0]?.[1]).toEqual({ premultiplyAlpha: 'none', imageOrientation: 'from-image' });
+    expect(d.decode.mock.calls[1]?.[0]).toBe(oriented);
+    expect(d.decode.mock.calls[1]?.[1]).toEqual({ premultiplyAlpha: 'none', resizeWidth: 91, resizeHeight: 8192, resizeQuality: 'high' });
+    expect(oriented.close).toHaveBeenCalledTimes(1);
+    expect(texture.image).toBe(scaled);
+  });
+
+  it('keeps a picture within the limit as decoded', async () => {
+    const d = deps(512, 256);
+    await create(d).acquire(A, 8192);
+    expect(d.decode).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the oriented copy when scaling it fails', async () => {
+    const d = deps(9000, 100);
+    const oriented = { width: 9000, height: 100, close: vi.fn() };
+    d.decode.mockResolvedValueOnce(oriented).mockRejectedValueOnce(new Error('scale failed'));
+    await expect(create(d).acquire(A, 8192)).rejects.toThrow('scale failed');
+    expect(oriented.close).toHaveBeenCalledTimes(1);
   });
 
   it('disposes each part clone on release and closes the picture after the last one', async () => {

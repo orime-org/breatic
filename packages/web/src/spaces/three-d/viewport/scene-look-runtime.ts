@@ -5,7 +5,7 @@ import type { Group, Object3D, Texture } from 'three';
 
 import type { SceneLook, SceneObject } from '@breatic/shared';
 
-import { checkLookTextures, fittedLookSize, lookPartRank, type LookTextureInput, type LookTextureVerdict } from '@web/spaces/three-d/look-texture-budget';
+import { checkLookTextures, lookPartRank, type LookTextureInput, type LookTextureVerdict } from '@web/spaces/three-d/look-texture-budget';
 import { addPartHighlight, type PartHighlight } from '@web/spaces/three-d/viewport/look-highlight';
 import { applyLook, releaseLook, type LookPartTable } from '@web/spaces/three-d/viewport/look-materials';
 import type { LookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
@@ -319,9 +319,7 @@ export class SceneLookRuntime {
     }
     await Promise.all(toLoad.map(async (assetId) => {
       try {
-        const size = sizes.get(assetId);
-        const fitted = size ? fittedLookSize(size, limits.maxTextureEdge) : undefined;
-        const texture = await textures.acquire(assetId, size && fitted && fitted.width !== size.width ? fitted : undefined);
+        const texture = await textures.acquire(assetId, limits.maxTextureEdge);
         if (run !== state.run || this.objects.get(id) !== state) {
           textures.release(assetId, texture);
           return;
