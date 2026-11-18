@@ -133,23 +133,20 @@ async function spendCapHit(studioId: string, actorUserId: string, estimate: bigi
 }
 
 /**
- * Judge work against the studio's spend limits, under its debt lock: work
- * admitted on a balance above zero (Agent messages, text tools, Timeline
- * executions) holds nothing and passes while spent is below each limit; an
- * estimate is judged as {@link reserveCredits} judges it, which a route may
- * ask before it writes anything else.
+ * Judge work admitted on a balance above zero (Agent messages, text tools,
+ * Timeline executions) against the studio's spend limits, under its debt
+ * lock: it holds nothing and passes while spent is below each limit.
  * @param projectId - The project the work runs in.
  * @param actorUserId - Who starts it.
- * @param estimate - What it will hold, in credits; null when it holds nothing.
  * @returns The limit passed, or null when it may start; null with payments off.
  * @throws {NotFoundError} When the project has no live studio.
  */
-export async function spendCapFor(projectId: string, actorUserId: string, estimate: number | null): Promise<SpendCapHit | null> {
+export async function spendCapFor(projectId: string, actorUserId: string): Promise<SpendCapHit | null> {
   if (!env.PAYMENT_ENABLED) return null;
   const studioId = await resolveOwnerStudioId(projectId);
   return db.transaction(async (tx) => {
     await creditLotRepo.lockDebt(studioId, tx);
-    return spendCapHit(studioId, actorUserId, estimate === null ? null : toChargeMicro(estimate), tx);
+    return spendCapHit(studioId, actorUserId, null, tx);
   });
 }
 

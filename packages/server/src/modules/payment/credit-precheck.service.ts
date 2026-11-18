@@ -172,7 +172,7 @@ export async function precheckCredits(
 ): Promise<void> {
   if (!env.PAYMENT_ENABLED) return;
   // Judged before the balance, as every admission judges it (design 3.10).
-  const cap = await creditHoldService.spendCapFor(projectId, userId, null);
+  const cap = await creditHoldService.spendCapFor(projectId, userId);
   if (cap !== null) throw new SpendCapReachedError(cap);
 
   const studioId = await assetService.resolveOwnerStudioId(projectId);
