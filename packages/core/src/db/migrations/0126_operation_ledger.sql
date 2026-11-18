@@ -9,7 +9,7 @@ ALTER TABLE "credit_charge_requests" ADD COLUMN "studio_id" uuid
 --> statement-breakpoint
 UPDATE "credit_charge_requests" AS r SET "studio_id" = p."studio_id" FROM "projects" AS p WHERE p."id" = r."project_id";
 --> statement-breakpoint
-CREATE INDEX "credit_charge_requests_studio_actor_idx" ON "credit_charge_requests" ("studio_id", "actor_user_id", "created_at");
+CREATE INDEX "credit_charge_requests_studio_created_idx" ON "credit_charge_requests" ("studio_id", "created_at");
 --> statement-breakpoint
 CREATE INDEX "credit_charge_requests_release_hold_idx" ON "credit_charge_requests" ("release_hold") WHERE "status" = 'pending' AND "release_hold" IS NOT NULL;
 --> statement-breakpoint

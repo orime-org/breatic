@@ -2182,7 +2182,7 @@ export const creditChargeRequests = pgTable(
     index("credit_charge_requests_pending_idx")
       .on(table.updatedAt)
       .where(sql`${table.status} = 'pending'`),
-    index("credit_charge_requests_studio_actor_idx").on(table.studioId, table.actorUserId, table.createdAt),
+    index("credit_charge_requests_studio_created_idx").on(table.studioId, table.createdAt),
     index("credit_charge_requests_release_hold_idx")
       .on(table.releaseHold)
       .where(sql`${table.status} = 'pending' AND ${table.releaseHold} IS NOT NULL`),
