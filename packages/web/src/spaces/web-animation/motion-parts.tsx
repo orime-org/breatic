@@ -31,6 +31,8 @@ interface BarButtonProps {
   count?: number;
   disabled?: boolean;
   loading?: boolean;
+  /** Drawn as a filled circle, for the bar's main control (Play). */
+  filled?: boolean;
 }
 
 /**
@@ -44,18 +46,19 @@ interface BarButtonProps {
  * @param props.count - A count at its top right.
  * @param props.disabled - Whether it is unavailable.
  * @param props.loading - Whether its press is waiting.
+ * @param props.filled - Whether it is drawn as a filled circle.
  * @returns The button.
  * @throws {never} Never.
  */
 export const BarButton = React.memo(React.forwardRef<HTMLButtonElement, BarButtonProps>(function BarButton(
-  { testId, label, icon, onClick, pressed, count = 0, disabled = false, loading = false, ...rest },
+  { testId, label, icon, onClick, pressed, count = 0, disabled = false, loading = false, filled = false, ...rest },
   ref,
 ): React.JSX.Element {
   return <Tooltip>
     <TooltipTrigger asChild>
       <span className='relative inline-flex'>
-        <Button ref={ref} {...rest} data-testid={testId} type='button' variant='ghost' size='icon' aria-label={label} aria-pressed={pressed} disabled={disabled} loading={loading}
-          onClick={onClick} icon={icon} className='size-8 aria-pressed:bg-accent-strong aria-pressed:hover-enabled:bg-accent-strong' />
+        <Button ref={ref} {...rest} data-testid={testId} type='button' variant={filled ? 'default' : 'ghost'} size='icon' aria-label={label} aria-pressed={pressed} disabled={disabled} loading={loading}
+          onClick={onClick} icon={icon} className={filled ? 'size-8 rounded-full' : 'size-8 aria-pressed:bg-accent-strong aria-pressed:hover-enabled:bg-accent-strong'} />
         {count > 0 && <CountChip count={count} className='pointer-events-none absolute -right-1.5 -top-1.5 min-w-[18px] text-center text-2xs' />}
       </span>
     </TooltipTrigger>
@@ -84,7 +87,7 @@ interface MotionPanelProps {
  */
 export function MotionPanel({ testId, title, onClose, children }: MotionPanelProps): React.JSX.Element {
   const t = useTranslation();
-  return <section data-testid={testId} className='absolute bottom-[4.5rem] right-3 top-3 z-10 flex w-80 flex-col overflow-hidden rounded-chrome border border-border bg-card shadow-md'>
+  return <section data-testid={testId} className='absolute bottom-[4.5rem] right-3 top-3 z-10 flex w-80 flex-col overflow-hidden rounded-chrome border border-border bg-popover shadow'>
     <header className='flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border px-3'>
       <h3 className='truncate text-sm font-semibold'>{title}</h3>
       <Button type='button' variant='ghost' size='compact' className='px-1' aria-label={t('spaces.webAnimation.closePanel')} onClick={onClose} icon={<X className='size-4' />} />

@@ -116,12 +116,13 @@ export function TimelineWebAnimationPicker({ projectId, making, onPick, onGoMake
   const changeOpen = React.useCallback((open: boolean): void => { if (!open) onClose(); }, [onClose]);
   const retry = React.useCallback((): void => { void refetch(); }, [refetch]);
   return <Dialog open onOpenChange={changeOpen}>
-    <DialogContent data-testid='timeline-web-animation-picker' onCloseAutoFocus={returnFocus} className='flex h-[min(36rem,85vh)] flex-col gap-0 p-0'>
+    <DialogContent data-testid='timeline-web-animation-picker' onCloseAutoFocus={returnFocus} className='grid max-h-[min(36rem,85vh)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 p-0'>
       <DialogHeader className='shrink-0 border-b border-border p-4'>
         <DialogTitle>{t('timeline.webAnimation.picker.title')}</DialogTitle>
         <DialogDescription>{t('timeline.webAnimation.picker.description')}</DialogDescription>
       </DialogHeader>
-      <ScrollArea className='min-h-0 flex-1' viewportClassName='p-4'>
+      {/* The body grows with the rows and scrolls at the cap; grid tracks keep the cap definite for the scroller. */}
+      <ScrollArea className='min-h-0' viewportClassName='p-4'>
         {shows === 'pending' && <div className='flex flex-col gap-2'>{[0, 1, 2].map((index) => <Skeleton key={index} className='h-12 w-full' />)}</div>}
         {shows === 'failed' && <ListLoadError message={t('timeline.webAnimation.picker.error')} onRetry={retry} testId='timeline-web-animation-picker-retry' />}
         {shows === 'ready' && rows.length === 0 && <p className='py-6 text-sm text-muted-foreground'>{t('timeline.webAnimation.picker.empty')}</p>}
@@ -134,7 +135,7 @@ export function TimelineWebAnimationPicker({ projectId, making, onPick, onGoMake
         <LoadMoreButton query={list} className='mt-3' />
       </ScrollArea>
       <DialogFooter className='shrink-0 border-t border-border p-4 sm:justify-between'>
-        <Button type='button' data-testid='timeline-web-animation-go-make' variant='outline' loading={making} onClick={onGoMake} icon={<Clapperboard className='size-4' />}>{t('timeline.webAnimation.goMake')}</Button>
+        <Button type='button' data-testid='timeline-web-animation-go-make' variant='outline' className='gap-1.5' loading={making} onClick={onGoMake} icon={<Clapperboard className='size-4' />}>{t('timeline.webAnimation.goMake')}</Button>
         <Button type='button' variant='outline' onClick={onClose}>{t('timeline.cancel')}</Button>
       </DialogFooter>
     </DialogContent>

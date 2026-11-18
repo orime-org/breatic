@@ -1169,3 +1169,122 @@ describe('putting an export on a Canvas', () => {
     expect(vi.mocked(toast.success).mock.calls[0]?.[1]).toMatchObject({ action: { label: t('spaces.webAnimation.viewPlaced') } });
   });
 });
+
+describe('annotation marks on the frame and the play bar', () => {
+  /**
+   * Show NEWER (4 s) with these threads on it.
+   * @param anchors - The threads.
+   * @returns The thread ids and the user.
+   */
+  async function onNewer(anchors: Parameters<typeof seedThreads>[0]): Promise<{ ids: string[]; user: ReturnType<typeof userEvent.setup> }> {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    const ids = await seedThreads(anchors);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    return { ids, user: userEvent.setup() };
+  }
+
+  it('puts a marker under the slider thumb at its time, which Radix keeps 6px in from either end', async () => {
+    const { ids: [id] } = await onNewer([{ text: 'Halfway', executionId: NEWER, timeSeconds: 2 }]);
+    const marker = await screen.findByTestId(`motion-marker-${id}`);
+    // jsdom normalises the calc() order.
+    expect(marker.style.left).toBe('calc(6px + 0.5 * (100% - 12px))');
+  });
+
+  it('gives a marker a hit area 24px wide around its 6x10 mark, above the track', async () => {
+    const { ids: [id] } = await onNewer([{ text: 'Halfway', executionId: NEWER, timeSeconds: 2 }]);
+    const marker = await screen.findByTestId(`motion-marker-${id}`);
+    expect(marker).toHaveClass('w-6', 'top-0');
+    expect(marker.querySelector('span')).toHaveClass('h-2.5', 'w-1.5');
+  });
+
+  it('draws open annotations in the comment colour and resolved ones muted, on the marker and the pin', async () => {
+    const { ids: [open, settled] } = await onNewer([
+      { text: 'Open note', executionId: NEWER, timeSeconds: 0, point: { x: 0.25, y: 0.5 } },
+      { text: 'Settled note', executionId: NEWER, timeSeconds: 0, point: { x: 0.75, y: 0.5 }, resolved: true },
+    ]);
+    expect((await screen.findByTestId(`motion-marker-${open}`)).querySelector('span')).toHaveClass('bg-comment-outline');
+    expect(screen.getByTestId(`motion-marker-${settled}`).querySelector('span')).toHaveClass('bg-muted-foreground');
+    expect(screen.getByTestId(`motion-pin-${open}`)).toHaveClass('bg-comment-outline');
+    expect(screen.getByTestId(`motion-pin-${settled}`)).toHaveClass('bg-muted-foreground');
+  });
+
+  it('anchors a saved pin by its tip, the bottom-left corner, on the point', async () => {
+    const { ids: [id] } = await onNewer([{ text: 'Point note', executionId: NEWER, timeSeconds: 0, point: { x: 0.25, y: 0.5 } }]);
+    const pin = await screen.findByTestId(`motion-pin-${id}`);
+    expect(pin).toHaveClass('rounded-bl-none', '-translate-y-full');
+    expect(pin).not.toHaveClass('-translate-x-1/2');
+    expect(pin.style.left).toBe('25%');
+    expect(pin.style.top).toBe('50%');
+  });
+
+  it('draws the point being written as the same pin, and opens the write box 8px clear of it', async () => {
+    const { user } = await onNewer([]);
+    await user.click(screen.getByTestId('motion-action-add-annotation'));
+    const preview = screen.getByTestId('motion-preview');
+    vi.spyOn(preview, 'getBoundingClientRect').mockReturnValue(DOMRect.fromRect({ x: 0, y: 0, width: 400, height: 200 }));
+    fireEvent.click(preview, { clientX: 100, clientY: 100 });
+    const draft = await screen.findByTestId('motion-draft-pin');
+    expect(draft).toHaveClass('size-5', 'rounded-bl-none', '-translate-y-full', 'bg-comment-outline');
+    expect(draft).not.toHaveClass('-translate-x-1/2');
+    expect(draft.style.left).toBe('25%');
+    const props = popoverContentProps.filter((item) => item['data-testid'] === 'motion-annotation-draft').at(-1)!;
+    expect(props).toMatchObject({ side: 'right', align: 'start', sideOffset: 28 });
+  });
+});
+
+describe('the bar\'s own look', () => {
+  it('draws Play as a filled round button', async () => {
+    show();
+    expect(await screen.findByTestId('motion-play')).toHaveClass('rounded-full', 'bg-primary');
+  });
+
+  it('floats the bar and the panels at the viewport toolbars\' height', async () => {
+    show();
+    const bar = await screen.findByTestId('motion-bottom-bar');
+    expect(bar).toHaveClass('bg-popover', 'shadow');
+    expect(bar).not.toHaveClass('bg-card', 'shadow-md');
+    await userEvent.setup().click(screen.getByTestId('motion-open-executions'));
+    const panel = await screen.findByTestId('motion-panel-executions');
+    expect(panel).toHaveClass('bg-popover', 'shadow');
+    expect(panel).not.toHaveClass('bg-card', 'shadow-md');
+  });
+});
+
+describe('the details popover', () => {
+  it('names a create by its prompt once, in its heading', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    await userEvent.setup().click(screen.getByTestId('motion-details'));
+    await screen.findByText(t('spaces.webAnimation.statusLabel'));
+    expect(screen.getAllByText('Newer logo')).toHaveLength(1);
+    expect(screen.queryByText(t('timeline.webAnimation.dialog.prompt'))).toBeNull();
+  });
+
+  it('keeps an export\'s Source row', async () => {
+    const source = { ...done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z'), export: { executionId: EXPORT, status: 'succeeded' } };
+    listing([source, exported(source)]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('motion-action-view-video'));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
+    await user.click(screen.getByTestId('motion-details'));
+    expect(await screen.findByText(t('spaces.webAnimation.sourceLabel'))).toBeInTheDocument();
+  });
+});
+
+describe('discarding an annotation', () => {
+  it('asks with a destructive Discard', async () => {
+    const source = { ...done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z'), export: { executionId: EXPORT, status: 'succeeded' } };
+    listing([source, exported(source)]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('motion-action-add-annotation'));
+    await user.type(await screen.findByTestId('doc-comment-motion-annotation-input'), 'Logo too small');
+    await user.click(screen.getByTestId('motion-action-view-video'));
+    expect(await screen.findByTestId('motion-discard-annotation')).toHaveClass('text-status-error-foreground');
+  });
+});

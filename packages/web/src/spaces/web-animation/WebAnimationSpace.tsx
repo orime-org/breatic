@@ -204,8 +204,11 @@ function Details({ row, open, onOpenChange, unresolvedOnBase, readOnly, onCancel
       <dl className='grid grid-cols-[auto_1fr] gap-x-3 gap-y-1'>
         <dt className='text-muted-foreground'>{t('spaces.webAnimation.statusLabel')}</dt>
         <dd>{t(`timeline.webAnimation.status.${row.status}`)}</dd>
-        <dt className='text-muted-foreground'>{t(row.kind === 'web_animation_export' ? 'spaces.webAnimation.sourceLabel' : row.kind === 'web_animation_modify' ? 'spaces.webAnimation.dialog.instruction' : 'timeline.webAnimation.dialog.prompt')}</dt>
-        <dd className='min-w-0 break-words'>{row.kind === 'web_animation_export' ? requestTitle(row.source, t) : row.request}</dd>
+        {/* A create or modification is headed by its prompt or instruction already; an export's heading is not its source. */}
+        {row.kind === 'web_animation_export' && <>
+          <dt className='text-muted-foreground'>{t('spaces.webAnimation.sourceLabel')}</dt>
+          <dd className='min-w-0 break-words'>{requestTitle(row.source, t)}</dd>
+        </>}
         <dt className='text-muted-foreground'>{t('timeline.webAnimation.usageLabel')}</dt>
         <dd className={cn(unfinished && 'text-muted-foreground')}>
           {unfinished ? t('timeline.webAnimation.usagePending') : t('timeline.webAnimation.usage', { credits: formatCredits(row.usageCredits, getLocale()) })}
@@ -229,7 +232,7 @@ function Details({ row, open, onOpenChange, unresolvedOnBase, readOnly, onCancel
         })}
       </ol>
       {row.status === 'failed' && <p className='text-status-error-foreground'>{t(failureSentenceKey(row.failureReason))}</p>}
-      {unfinished && !readOnly && row.ownProject && row.status !== 'cancelling' && <Button type='button' data-testid='motion-cancel' variant='outline' size='sm' className='self-start'
+      {unfinished && !readOnly && row.ownProject && row.status !== 'cancelling' && <Button type='button' data-testid='motion-cancel' variant='outline' size='sm' className='gap-1.5 self-start'
         loading={cancelling} onClick={cancel} icon={<X className='size-4' />}>{t('timeline.webAnimation.cancel')}</Button>}
       {unfinished && !row.ownProject && <span className='text-muted-foreground'>{t('spaces.webAnimation.foreignCancel')}</span>}
     </PopoverContent>
@@ -569,7 +572,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
             ? <ListLoadError message={t('spaces.webAnimation.listError')} onRetry={retryDone} />
             : <div data-testid='motion-empty' className='flex flex-col items-center gap-3 text-sm text-muted-foreground'>
               <span>{t('spaces.webAnimation.empty')}</span>
-              {!readOnly && <Button data-testid='motion-empty-new' size='sm' onClick={openNew} icon={<Plus className='size-4' />}>{t('spaces.webAnimation.new')}</Button>}
+              {!readOnly && <Button data-testid='motion-empty-new' size='sm' className='gap-1.5' onClick={openNew} icon={<Plus className='size-4' />}>{t('spaces.webAnimation.new')}</Button>}
             </div>
         // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a point on the frame is marked with the mouse only
         : <div data-testid='motion-preview' data-execution-id={row.id} className={cn('relative', annotation.status === 'picking' && 'cursor-crosshair')} style={frameStyle} onClick={clickFrame}>
@@ -581,7 +584,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
               ? <span className='text-status-error-foreground'>{t(endedSentenceKey(row.status, row.failureReason))}</span>
               : <span className='flex items-center gap-1.5'><LoaderCircle className='size-3.5 animate-spin' />
                 {`${t(`timeline.webAnimation.status.${row.status}`)}${row.phase !== null ? ` · ${t(phaseKey(row.kind, row.phase))}` : ''}`}</span>}
-            {failed && !readOnly && <Button data-testid='motion-retry' variant='outline' size='sm' loading={exporting} onClick={retry} icon={<RotateCcw className='size-4' />}>
+            {failed && !readOnly && <Button data-testid='motion-retry' variant='outline' size='sm' className='gap-1.5' loading={exporting} onClick={retry} icon={<RotateCcw className='size-4' />}>
               {t(row.kind === 'web_animation_export' ? 'spaces.webAnimation.reexport' : 'timeline.webAnimation.retry')}</Button>}
           </div>}
           {finished && playable(row) && resultThreads.filter(({ anchor }) => anchor.point !== null && Math.abs(anchor.timeSeconds - clock.time) < PIN_WINDOW_SECONDS).map(({ thread, anchor }) =>
@@ -609,17 +612,14 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
             </MotionFrameCard>}
         </div>}
     </div>
-    <div data-testid='motion-bottom-bar' className='absolute inset-x-3 bottom-3 z-10 flex h-12 items-center gap-1 rounded-chrome border border-border bg-card px-2 shadow-md'>
-      <BarButton testId='motion-play' label={t(clock.playing ? 'timeline.pause' : 'timeline.play')} icon={clock.playing ? <Pause className='size-4' /> : <Play className='size-4' />}
+    <div data-testid='motion-bottom-bar' className='absolute inset-x-3 bottom-3 z-10 flex h-12 items-center gap-1 rounded-chrome border border-border bg-popover px-2 shadow'>
+      <BarButton testId='motion-play' filled label={t(clock.playing ? 'timeline.pause' : 'timeline.play')} icon={clock.playing ? <Pause className='size-4' /> : <Play className='size-4' />}
         onClick={clock.toggle} disabled={!finished} />
       <span className='mx-2 shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground'>
         {row === undefined ? '—' : `${formatAnnotationTime(clock.time)} / ${formatAnnotationTime(durationSeconds)}`}
       </span>
       <div className='relative mr-2 flex h-8 min-w-24 flex-1 items-center'>
         <Slider aria-label={t('timeline.seek')} value={seekValue} onValueChange={seekTo} min={0} max={Math.max(0.01, durationSeconds)} step={0.01} disabled={!finished} className='w-full' />
-        {finished && playable(row) && docReady && resultThreads.map(({ thread, anchor }) => <Button key={thread.id} type='button' variant={null} size={null} data-testid={`motion-marker-${thread.id}`}
-          aria-label={bodyPreview(thread)} onClick={() => openThread(thread.id)}
-          className={cn('absolute top-0 h-2.5 w-1.5 -translate-x-1/2 rounded-sm', thread.resolved ? 'bg-muted-foreground' : 'bg-status-selected')}
         {/* A 24px-wide transparent hit area above the track around the 6x10 mark, placed where the Slider puts its thumb
             for that time: Radix keeps the 12px thumb inside the track, so its centre runs from 6px to the width less 6px. */}
         {finished && playable(row) && docReady && resultThreads.map(({ thread, anchor }) => <Button key={thread.id} type='button' variant={null} size={null} data-testid={`motion-marker-${thread.id}`}
@@ -658,7 +658,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         <AlertDialogHeader><AlertDialogTitle>{t('spaces.webAnimation.discardAnnotation')}</AlertDialogTitle></AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>{t('spaces.webAnimation.keepWriting')}</AlertDialogCancel>
-          <AlertDialogAction data-testid='motion-discard-annotation' onClick={discard}>{t('spaces.webAnimation.discard')}</AlertDialogAction>
+          <AlertDialogAction data-testid='motion-discard-annotation' variant='destructive' onClick={discard}>{t('spaces.webAnimation.discard')}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
