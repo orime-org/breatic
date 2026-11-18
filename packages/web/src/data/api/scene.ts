@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { noteCreditsChanged } from '@web/data/api/credits';
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 import type { ProjectAssetPage, SceneControlsConfig, SceneGenerationAnswer, SceneGenerationBody, SceneGenerationOrigin, SceneTaskNotice } from '@breatic/shared';
 
@@ -130,7 +131,10 @@ export async function reportSpaceTaskFailure(projectId: string, spaceId: string,
  * @returns The run and its row.
  */
 export function submitSceneGeneration(projectId: string, spaceId: string, body: SceneGenerationBody, key: string): Promise<SceneGenerationAnswer> {
-  return apiPost(`/projects/${projectId}/three-d/${spaceId}/generations`, body, runOnceRequest(key));
+  // The submission holds its estimate, admitted or refused (inner#1968).
+  return apiPost<SceneGenerationAnswer>(`/projects/${projectId}/three-d/${spaceId}/generations`, body, runOnceRequest(key)).finally(() => {
+    noteCreditsChanged(projectId);
+  });
 }
 
 /**
