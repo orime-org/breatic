@@ -805,7 +805,8 @@ describe('MembershipPanel', () => {
     expect(await screen.findByTestId('current-tier-name')).toHaveTextContent(
       'Enterprise',
     );
-    expect(screen.getByTestId('enterprise-quota-note')).toBeInTheDocument();
+    // The storage row above it is the agreement's, so the note speaks only of the rest (inner#1968).
+    expect(screen.getByTestId('enterprise-quota-note')).toHaveTextContent('Your other allowances are set by a separate agreement and are not shown here.');
     // Storage is drawn against the agreement since inner#1968 (design 3.6);
     // the other ceilings stay out.
     expect(screen.queryByTestId('quota-team-studios')).toBeNull();

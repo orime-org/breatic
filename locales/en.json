@@ -3438,7 +3438,7 @@
       "storage": "Storage is over the limit. What is already there works as before, but nothing new can be uploaded or generated. Upgrade for more space.",
       "teamStudios": "You are over the team Studio limit. The ones you have work as before, but no new ones can be created. Upgrade for more."
     },
-    "enterpriseQuota": "Your allowances are set by a separate agreement and are not shown here.",
+    "enterpriseQuota": "Your other allowances are set by a separate agreement and are not shown here.",
     "compare": "Compare tiers",
     "contactEnterprise": "Need a bigger scale or separate commercial terms? Email us:",
     "contactSelfHosted": "Need a commercial licence or separate support terms? Email us:",
