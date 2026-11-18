@@ -34,6 +34,11 @@ function overlayOf(mesh: Mesh, material: Material | Material[]): Mesh {
     const copy = new SkinnedMesh(mesh.geometry, material);
     copy.bindMode = skinned.bindMode;
     copy.bind(skinned.skeleton, skinned.bindMatrix);
+    // The same box and sphere objects: a pose recomputes the source's in place, and the overlay follows.
+    if (!skinned.boundingBox) skinned.computeBoundingBox();
+    if (!skinned.boundingSphere) skinned.computeBoundingSphere();
+    copy.boundingBox = skinned.boundingBox;
+    copy.boundingSphere = skinned.boundingSphere;
     overlay = copy;
   } else if ((mesh as InstancedMesh).isInstancedMesh) {
     const instanced = mesh as InstancedMesh;

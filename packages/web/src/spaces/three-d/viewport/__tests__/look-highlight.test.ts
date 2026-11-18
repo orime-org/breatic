@@ -5,7 +5,7 @@
  * Highlighting a selected part and picking a part from a hit (inner#1693 design 5.5, 5.6).
  */
 
-import { BoxGeometry, Group, Mesh, MeshStandardMaterial, type Intersection } from 'three';
+import { Bone, Box3, BoxGeometry, Float32BufferAttribute, Group, Mesh, MeshStandardMaterial, Skeleton, SkinnedMesh, Uint16BufferAttribute, type Intersection } from 'three';
 import { describe, expect, it } from 'vitest';
 
 import * as highlight from '@web/spaces/three-d/viewport/look-highlight';
@@ -73,3 +73,23 @@ describe('picking a part', () => {
     expect(decide({ poseTarget: false, shift: false, hitId: null, onlySelected: 'a', part: null })).toEqual({ kind: 'select', id: null, additive: false });
   });
 });
+
+describe('highlight bounds (inner#1693 design 5.5)', () => {
+  it('shares the skinned mesh\'s bounds, so a pose change leaves the object\'s bounds on the posed shape', () => {
+    const geometry = new BoxGeometry();
+    const count = geometry.attributes.position!.count;
+    geometry.setAttribute('skinIndex', new Uint16BufferAttribute(new Array(count * 4).fill(0), 4));
+    geometry.setAttribute('skinWeight', new Float32BufferAttribute(new Array(count).fill(0).flatMap(() => [1, 0, 0, 0]), 4));
+    const material = new MeshStandardMaterial(); material.userData.lookPart = '0';
+    const mesh = new SkinnedMesh(geometry, material);
+    const bone = new Bone(); mesh.add(bone); mesh.bind(new Skeleton([bone]));
+    const root = new Group(); root.add(mesh); root.updateMatrixWorld(true);
+    exported<(root: Group, part: string) => unknown>('addPartHighlight')(root, '0');
+    new Box3().expandByObject(root);
+    bone.position.x = 10; root.updateMatrixWorld(true); mesh.skeleton.update(); mesh.computeBoundingBox();
+    const box = new Box3().expandByObject(root);
+    expect(box.min.x).toBeCloseTo(mesh.boundingBox!.min.x);
+    expect(box.max.x).toBeCloseTo(mesh.boundingBox!.max.x);
+  });
+});
+
