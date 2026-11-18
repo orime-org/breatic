@@ -8,7 +8,7 @@
  */
 
 import {
-  Bone, BoxGeometry, BufferAttribute, BufferGeometry, Group, InstancedMesh, Line, LineBasicMaterial, Matrix4, Mesh,
+  Bone, BoxGeometry, BufferAttribute, BufferGeometry, Group, InstancedMesh, InterleavedBuffer, InterleavedBufferAttribute, Line, LineBasicMaterial, Matrix4, Mesh,
   MeshStandardMaterial, Points, PointsMaterial, Skeleton, SkinnedMesh, SphereGeometry, Vector3,
 } from 'three';
 import { describe, expect, it } from 'vitest';
@@ -185,5 +185,33 @@ describe('generateLookUvs', () => {
     expect(line.geometry.attributes.normal).toBeUndefined();
     expect(points.geometry.attributes.uv).toBeUndefined();
     expect(points.geometry.attributes.normal).toBeUndefined();
+  });
+  it('keeps the stored values of quantized and interleaved attributes it copies (meshopt and KHR_mesh_quantization output)', () => {
+    // Three triangles on two axes, so the shared vertex 0 is split and every attribute is gathered.
+    const position = new BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]), 3);
+    const normals = new InterleavedBuffer(new Int8Array([0, 0, 127, 0, 0, 0, 127, 0, 76, 102, 0, 0, -128, 0, 0, 0]), 4);
+    const colours = new Uint8Array([255, 128, 0, 1, 2, 3, 200, 100, 50, 7, 8, 9]);
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', position);
+    geometry.setAttribute('normal', new InterleavedBufferAttribute(normals, 3, 0, true));
+    geometry.setAttribute('color', new BufferAttribute(colours, 3, true));
+    geometry.setIndex([0, 1, 2, 0, 3, 1]);
+    const mesh = new Mesh(geometry, new MeshStandardMaterial());
+    const root = new Group().add(mesh);
+    generate()(root);
+    const made = mesh.geometry;
+    const index = made.index!;
+    const stored = (attribute: BufferAttribute, vertex: number): number[] =>
+      Array.from(attribute.array.slice(vertex * attribute.itemSize, (vertex + 1) * attribute.itemSize));
+    const source = [0, 1, 2, 0, 3, 1];
+    for (let corner = 0; corner < source.length; corner++) {
+      const copy = index.getX(corner);
+      const from = source[corner]!;
+      expect(stored(made.attributes.normal as BufferAttribute, copy), `normal of corner ${corner}`)
+        .toEqual(Array.from(normals.array.slice(from * 4, from * 4 + 3)));
+      expect(stored(made.attributes.color as BufferAttribute, copy), `colour of corner ${corner}`).toEqual(Array.from(colours.slice(from * 3, from * 3 + 3)));
+    }
+    expect(made.attributes.normal!.normalized).toBe(true);
+    expect((made.attributes.normal as BufferAttribute).array).toBeInstanceOf(Int8Array);
   });
 });

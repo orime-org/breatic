@@ -57,16 +57,13 @@ function gather(source: BufferAttribute | InterleavedBufferAttribute, items: Uin
   const size = source.itemSize;
   const Typed = source.array.constructor as new (length: number) => TypedArray;
   const target = new BufferAttribute(new Typed(items.length * size), size, source.normalized);
-  if ((source as InterleavedBufferAttribute).isInterleavedBufferAttribute) {
-    // getComponent reads interleaved storage; the copy keeps the stored (possibly normalized) values as they are.
-    for (let index = 0; index < items.length; index++) {
-      for (let k = 0; k < size; k++) target.array[index * size + k] = source.getComponent(items[index]!, k);
-    }
-    return target;
-  }
-  const from = source.array;
+  // Stored values are copied as they are: getComponent would decode normalized integers into fractions.
+  const interleaved = (source as InterleavedBufferAttribute).isInterleavedBufferAttribute ? source as InterleavedBufferAttribute : null;
+  const from = interleaved ? interleaved.data.array : source.array;
+  const stride = interleaved ? interleaved.data.stride : size;
+  const offset = interleaved ? interleaved.offset : 0;
   for (let index = 0; index < items.length; index++) {
-    const item = items[index]! * size;
+    const item = items[index]! * stride + offset;
     for (let k = 0; k < size; k++) target.array[index * size + k] = from[item + k]!;
   }
   return target;
