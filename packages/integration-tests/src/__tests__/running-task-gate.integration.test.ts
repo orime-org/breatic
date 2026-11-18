@@ -1269,8 +1269,9 @@ describe("PT-4 the gate with cancels, failures, limit changes and lost jobs (K1,
                 between(t.started_at, before, after);
                 const node = await nodeRow(rows.find((x) => x.taskId === id)!.nodeTaskId!);
                 expect(node.waiting_since).toBeNull();
-                // K2: a row that waited starts its node row's budget where the task starts.
-                if (waitingBefore.some((w) => w.id === id)) expect(node.started_at.getTime()).toBe(t.started_at!.getTime());
+                // K2: a row that waited starts its node row's budget where the task starts (a node row a fresh
+                // task's overdue budget already expired, G-45, stays as it was).
+                if (waitingBefore.some((w) => w.id === id) && node.status === "running") expect(node.started_at.getTime()).toBe(t.started_at!.getTime());
               }
               if ("started" in got) {
                 expect(startedOnce.has(id)).toBe(false);
