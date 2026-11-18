@@ -6,9 +6,10 @@
  */
 
 import {
-  BoxGeometry, Color, Group, LineBasicMaterial, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, Texture,
+  BoxGeometry, BufferGeometry, Color, Float32BufferAttribute, Group, LineBasicMaterial, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial,
+  Points, PointsMaterial, Texture,
 } from 'three';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import * as looks from '@web/spaces/three-d/viewport/look-materials';
 
@@ -178,5 +179,73 @@ describe('applyLook', () => {
     expect(apply(root, table, { 0: { color: '#111111', transmission: 1 }, 1: { transmission: 0 } }, options).programChanged).toBe(true);
     expect(apply(root, table, { 0: { color: '#111111', transmission: 1 }, 1: { transmission: 0 }, 2: { map: IMAGE } }, options).programChanged).toBe(true);
     expect(apply(root, table, { 0: { color: '#222222', transmission: 1 }, 1: { transmission: 0 }, 2: { map: IMAGE } }, options).programChanged).toBe(false);
+  });
+
+  it('resets each of a part\'s materials to its own loaded state, as GLTFLoader splits one glTF material per primitive', () => {
+    const root = new Group();
+    const plain = new MeshStandardMaterial({ color: '#ffffff' });
+    const coloured = plain.clone();
+    coloured.vertexColors = true;
+    coloured.flatShading = true;
+    coloured.normalScale.y = -1;
+    const dots = new PointsMaterial({ color: '#ffffff', size: 3 });
+    for (const material of [plain, coloured, dots]) material.userData.lookPart = '0';
+    const first = new Mesh(new BoxGeometry(), plain);
+    const second = new Mesh(new BoxGeometry(), coloured);
+    const cloud = new Points(new BufferGeometry().setAttribute('position', new Float32BufferAttribute([0, 0, 0], 3)), dots);
+    root.add(first, second, cloud);
+    const apply = exported<Apply>('applyLook');
+    const table = exported<Build>('buildPartTable')(root, partOf, { builtin: false });
+    apply(root, table, {}, { themeColor: THEME, picture: () => null });
+    expect(second.material).toMatchObject({ vertexColors: true, flatShading: true });
+    expect((second.material as MeshStandardMaterial).normalScale.y).toBe(-1);
+    expect(cloud.material).toBeInstanceOf(PointsMaterial);
+    expect((cloud.material as PointsMaterial).size).toBe(3);
+    apply(root, table, { 0: { transmission: 1, color: '#112233' } }, { themeColor: THEME, picture: () => null });
+    expect(first.material).toBeInstanceOf(MeshPhysicalMaterial);
+    expect(second.material).toBeInstanceOf(MeshPhysicalMaterial);
+    expect(second.material).toMatchObject({ vertexColors: true });
+    expect(cloud.material).toBeInstanceOf(PointsMaterial);
+    expect(`#${(cloud.material as PointsMaterial).color.getHexString()}`).toBe('#112233');
+    apply(root, table, {}, { themeColor: THEME, picture: () => null });
+    expect(first.material).toBeInstanceOf(MeshStandardMaterial);
+    expect(first.material).not.toBeInstanceOf(MeshPhysicalMaterial);
+    expect(second.material).toMatchObject({ vertexColors: true, flatShading: true });
+  });
+
+  it('keeps a part\'s picture clone across applies and only retiles it, so a slider tick uploads nothing', () => {
+    const { root, meshes } = model();
+    const apply = exported<Apply>('applyLook');
+    const table = exported<Build>('buildPartTable')(root, partOf, { builtin: false });
+    const picture = new Texture();
+    const options = { themeColor: THEME, picture: () => picture };
+    apply(root, table, { 0: { map: IMAGE, roughness: 0.2 } }, options);
+    const shown = materialOf(meshes[0]!).map!;
+    const dispose = vi.spyOn(shown, 'dispose');
+    const version = shown.version;
+    apply(root, table, { 0: { map: IMAGE, roughness: 0.4, mapRepeat: [2, 3] } }, options);
+    expect(materialOf(meshes[0]!).map).toBe(shown);
+    expect(shown.repeat.toArray()).toEqual([2, 3]);
+    expect(shown.version).toBe(version);
+    expect(dispose).not.toHaveBeenCalled();
+    apply(root, table, { 0: { map: IMAGE, roughness: 0.4 } }, options);
+    expect(shown.repeat.toArray()).toEqual([1, 1]);
+    apply(root, table, { 0: { map: 'none' } }, options);
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('buildPartTable picture transform', () => {
+  it('records the own picture\'s tiling, offset and rotation in degrees as the default the panel shows', () => {
+    const root = new Group();
+    const map = new Texture();
+    map.repeat.set(3, 4); map.offset.set(0.1, 0.2); map.rotation = Math.PI / 2;
+    const material = new MeshStandardMaterial({ map });
+    material.userData.lookPart = '0';
+    root.add(new Mesh(new BoxGeometry(), material));
+    const entry = exported<Build>('buildPartTable')(root, partOf, { builtin: false }).get('0') as unknown as Record<string, unknown>;
+    expect(entry.mapRepeat).toEqual([3, 4]);
+    expect(entry.mapOffset).toEqual([0.1, 0.2]);
+    expect(entry.mapRotation).toBeCloseTo(90);
   });
 });

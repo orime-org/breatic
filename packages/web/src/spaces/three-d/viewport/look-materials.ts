@@ -25,6 +25,10 @@ export interface LookPartEntry {
   depthWrite: boolean;
   alphaTest: number;
   hasMap: boolean;
+  /** The own picture's tiling, offset and rotation in degrees, when it has one. */
+  mapRepeat?: [number, number];
+  mapOffset?: [number, number];
+  mapRotation?: number;
   /** A basic material: only colour, picture and opacity apply. */
   unlit: boolean;
   /** A line or points material: only colour and opacity are offered. */
@@ -33,8 +37,12 @@ export interface LookPartEntry {
   builtin: boolean;
   /** Extra upload bytes when the own picture gets its own tiling; 0 when its sampler already repeats or it has none. */
   clampBytes: number;
-  /** A copy of the material as loaded, written back on every apply before the stored fields. */
-  original: Material;
+  /**
+   * A copy of each of the part's materials as loaded, written back on every apply before the stored fields; GLTFLoader
+   * splits one glTF material into variants per primitive (vertex colours, flat shading, points, lines), and each
+   * material's `userData.lookOriginal` says which copy is its own.
+   */
+  originals: Material[];
 }
 
 export type LookPartTable = ReadonlyMap<string, LookPartEntry>;
@@ -71,6 +79,15 @@ function eachMaterial(root: Object3D, visit: (material: Material, replace: (next
 type Lit = MeshStandardMaterial & Partial<Pick<MeshPhysicalMaterial, 'transmission'>> & { map?: Texture | null; color?: Color };
 
 /**
+ * Whether a material draws lines or points, which take only colour and opacity.
+ * @param material - The material.
+ * @returns True for line and points materials.
+ */
+function isLineMaterial(material: Material): boolean {
+  return material.type === 'LineBasicMaterial' || material.type === 'LineDashedMaterial' || material.type === 'PointsMaterial';
+}
+
+/**
  * Record each part's own state and put the part key on its material, so object clones carry it (inner#1693 design 5.1).
  * @param root - The model template root.
  * @param partOf - The part a template material belongs to.
@@ -80,10 +97,21 @@ type Lit = MeshStandardMaterial & Partial<Pick<MeshPhysicalMaterial, 'transmissi
  */
 export function buildPartTable(root: Object3D, partOf: (material: Material) => string, options: { builtin: boolean }): Map<string, LookPartEntry> {
   const table = new Map<string, LookPartEntry>();
+  const copies = new Map<Material, number>();
   eachMaterial(root, (material) => {
     const part = partOf(material);
     material.userData.lookPart = part;
-    if (table.has(part)) return;
+    const known = table.get(part);
+    if (known) {
+      // Set before cloning: every reset copies the clone's userData back onto the material.
+      if (!copies.has(material)) {
+        material.userData.lookOriginal = known.originals.length;
+        copies.set(material, known.originals.push(material.clone()) - 1);
+      } else material.userData.lookOriginal = copies.get(material);
+      return;
+    }
+    copies.set(material, 0);
+    material.userData.lookOriginal = 0;
     const lit = material as Lit;
     const map = lit.map ?? null;
     const image = map?.image as { width?: number; height?: number } | undefined;
@@ -100,43 +128,53 @@ export function buildPartTable(root: Object3D, partOf: (material: Material) => s
       depthWrite: material.depthWrite,
       alphaTest: material.alphaTest,
       hasMap: map !== null,
+      ...(map ? { mapRepeat: [map.repeat.x, map.repeat.y] as [number, number], mapOffset: [map.offset.x, map.offset.y] as [number, number],
+        mapRotation: MathUtils.radToDeg(map.rotation) } : {}),
       unlit: material.type === 'MeshBasicMaterial',
-      line: material.type === 'LineBasicMaterial' || material.type === 'LineDashedMaterial' || material.type === 'PointsMaterial',
+      line: isLineMaterial(material),
       builtin: options.builtin,
       clampBytes: map !== null && !repeats && image?.width && image.height ? uploadBytes({ width: image.width, height: image.height }, true) : 0,
-      original: material.clone(),
+      originals: [material.clone()],
     });
   });
   return table;
 }
 
 /**
- * A per-part texture with this tiling, from glTF's KHR_texture_transform origin.
- * @param base - The texture to clone.
+ * A per-part texture with this tiling, from glTF's KHR_texture_transform origin. A clone of the same image kept from
+ * the last apply is retiled in place: tiling is a uniform, while a new clone uploads the whole image again.
+ * @param base - The texture the part shows.
  * @param fields - The stored tiling; unset values keep the base's own.
- * @returns The clone.
+ * @param kept - Clones from the last apply still free to reuse; the one taken is removed.
+ * @returns The texture to show.
  */
-function tiled(base: Texture, fields: SceneLookPart): Texture {
-  const texture = base.clone();
-  texture.wrapS = RepeatWrapping;
-  texture.wrapT = RepeatWrapping;
-  texture.center.set(0, 0);
+function tiled(base: Texture, fields: SceneLookPart, kept: Texture[]): Texture {
+  const index = kept.findIndex((texture) => texture.source === base.source);
+  const reused = index >= 0 ? kept.splice(index, 1)[0] : undefined;
+  const texture = reused ?? base.clone();
+  if (!reused) {
+    texture.wrapS = RepeatWrapping;
+    texture.wrapT = RepeatWrapping;
+    texture.center.set(0, 0);
+    texture.needsUpdate = true;
+  }
+  texture.repeat.copy(base.repeat);
+  texture.offset.copy(base.offset);
+  texture.rotation = base.rotation;
   if (fields.mapRepeat) texture.repeat.fromArray(fields.mapRepeat);
   if (fields.mapOffset) texture.offset.fromArray(fields.mapOffset);
   if (fields.mapRotation !== undefined) texture.rotation = MathUtils.degToRad(fields.mapRotation);
-  texture.needsUpdate = true;
   return texture;
 }
 
 /**
- * The material a part shows: its own class, or a physical one while it lets light through.
- * @param current - The object's current material for the part.
- * @param entry - The part's own state.
- * @param physical - Whether the part needs the physical class.
- * @returns A material reset to the part's own values, `current` itself when its class fits.
+ * The material a slot shows: its own class, or a physical one while it lets light through.
+ * @param current - The object's current material in the slot.
+ * @param original - The slot's material as loaded.
+ * @param physical - Whether the slot needs the physical class.
+ * @returns A material reset to the slot's own values, `current` itself when its class fits.
  */
-function resetMaterial(current: Material, entry: LookPartEntry, physical: boolean): Material {
-  const original = entry.original;
+function resetMaterial(current: Material, original: Material, physical: boolean): Material {
   const fromStandard = physical && original.type !== 'MeshPhysicalMaterial';
   const Target = fromStandard ? MeshPhysicalMaterial : (original.constructor as new () => Material);
   const material = current.constructor === Target ? current : new Target();
@@ -165,25 +203,27 @@ export function applyLook(root: Object3D, table: LookPartTable, look: SceneLook,
     const entry = part === undefined ? undefined : table.get(part);
     if (!part || !entry) return;
     const fields: SceneLookPart = look[part] ?? {};
-    const lit = !entry.unlit && !entry.line;
-    const physical = lit && ((fields.transmission ?? 0) > 0 || entry.materialType === 'MeshPhysicalMaterial');
+    const original = entry.originals[current.userData.lookOriginal as number] ?? entry.originals[0]!;
+    const line = isLineMaterial(original);
+    const lit = original.type !== 'MeshBasicMaterial' && !line;
+    const physical = lit && ((fields.transmission ?? 0) > 0 || original.type === 'MeshPhysicalMaterial');
     const before = { type: current.constructor, map: Boolean((current as Lit).map), transmission: ((current as Lit).transmission ?? 0) > 0 };
-    for (const texture of clones.get(current) ?? []) texture.dispose();
+    const kept = clones.get(current) ?? [];
     clones.delete(current);
-    const material = resetMaterial(current, entry, physical) as Lit;
+    const material = resetMaterial(current, original, physical) as Lit;
     const made: Texture[] = [];
 
     let showingUser = false;
-    if (!entry.line && 'map' in material) {
+    if (!line && 'map' in material) {
       const userPicture = fields.map && fields.map !== 'none' ? options.picture(fields.map) : null;
       if (fields.map === 'none') material.map = null;
       else if (userPicture) {
-        material.map = tiled(userPicture, fields);
+        material.map = tiled(userPicture, fields, kept);
         made.push(material.map);
         showingUser = true;
       } else if (!fields.map && material.map
         && (fields.mapRepeat !== undefined || fields.mapOffset !== undefined || fields.mapRotation !== undefined)) {
-        material.map = tiled(material.map, fields);
+        material.map = tiled(material.map, fields, kept);
         made.push(material.map);
       }
     }
@@ -197,7 +237,7 @@ export function applyLook(root: Object3D, table: LookPartTable, look: SceneLook,
       if (fields.metalness !== undefined) material.metalness = fields.metalness;
       if (fields.emissive !== undefined) material.emissive.set(fields.emissive);
       if (fields.emissiveIntensity !== undefined) material.emissiveIntensity = fields.emissiveIntensity;
-      if (physical) material.transmission = fields.transmission ?? entry.transmission;
+      if (physical) material.transmission = fields.transmission ?? (original as Lit).transmission ?? 0;
     }
     if (fields.opacity !== undefined) {
       material.opacity = fields.opacity;
@@ -207,6 +247,7 @@ export function applyLook(root: Object3D, table: LookPartTable, look: SceneLook,
       }
     }
     material.needsUpdate = true;
+    for (const texture of kept) texture.dispose();
     if (made.length > 0) clones.set(material, made);
     if (material !== current) {
       replace(material);
