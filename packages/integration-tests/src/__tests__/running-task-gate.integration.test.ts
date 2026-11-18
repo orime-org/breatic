@@ -1251,7 +1251,7 @@ describe("PT-4 the gate with cancels, failures, limit changes and lost jobs (K1,
           for (const round of rounds) {
             const pending = await sql<{ id: string }[]>`select id from tasks where id = any(${ids}) and status = 'pending' order by created_at`;
             const batch = pending.slice(0, round.workers).map((r) => r.id);
-            const waitingBefore = await sql<{ id: string }[]>`select id from tasks where id = any(${ids}) and status = 'pending' and slot_wait_since is not null`;
+            const waitingBefore = await sql<{ id: string }[]>`select id from tasks where id = any(${ids}) and status = 'pending' and slot_wait_since is not null order by created_at`;
 
             if (batch.length === 1) {
               // One pickup: the gate's own arithmetic is checkable exactly (K1, K3).
@@ -1350,7 +1350,8 @@ describe("PT-4 the gate with cancels, failures, limit changes and lost jobs (K1,
             for (const { id } of waitingBefore) {
               const t = await taskRow(id);
               if (t.status === "pending" || startedOnce.has(id)) continue;
-              expect(t.status, `waiter ${id} ended as ${t.status}`).toBe(mayEnd.get(id));
+              // A lost job stays lost: the sweep may end its task in any later round once it is stale again.
+              expect(t.status, `waiter ${id} ended as ${t.status}`).toBe(mayEnd.get(id) ?? (lost.has(`job-${id}`) ? "failed" : undefined));
             }
             for (const { id, node_status } of waitingNodes) {
               if ((await taskRow(id)).status !== "pending") continue;
