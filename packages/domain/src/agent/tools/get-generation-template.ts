@@ -98,7 +98,7 @@ interface NodeSettings {
   key: string;
   model: string;
   own: Record<string, unknown>;
-  /** Each setting that moves the model's price, at a cheaper value than the node runs at; never the length. */
+  /** Each setting that moves the model's price, at the value lowestValues finds cheapest on its own where that differs from the final's; never the length. */
   cheaper: Record<string, unknown>;
   /** The value each of those settings has on the final: the template's, else the model's default. */
   final: Record<string, unknown>;
@@ -106,8 +106,9 @@ interface NodeSettings {
 
 /**
  * Each generate node of a template with the settings a take of it changes:
- * every setting that moves its model's price, set cheaper than the template
- * or the model's default sets it, but the length, which the template's timed
+ * every setting that moves its model's price, at the value lowestValues
+ * finds cheapest on its own where that differs from the template's or the
+ * model's default, but the length, which the template's timed
  * parts are written for, and the value each has on the final, so a take the
  * user brings up to those values is known to be the final (inner#1811).
  * @param template - The template.
