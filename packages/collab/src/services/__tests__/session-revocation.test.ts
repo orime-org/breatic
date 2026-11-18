@@ -16,7 +16,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
 import type { Hocuspocus } from "@hocuspocus/server";
 import type { Redis } from "@breatic/core";
-import { COLLAB_REAUTH_REASONS, type SessionsRevokedEvent } from "@breatic/shared";
+import * as Y from "yjs";
+import { COLLAB_REAUTH_REASONS, projectMetaDocName, type SessionsRevokedEvent } from "@breatic/shared";
 
 const { CHANNEL, logged } = vi.hoisted(() => ({
   CHANNEL: "test-deploy:sessions:revoked",
@@ -42,6 +43,7 @@ import {
   startSessionRevocation,
 } from "@collab/services/session-revocation.js";
 import type { AuthContext } from "@collab/hooks/auth.js";
+import { listAgentPresence, markAgentActive } from "@collab/hooks/presence.js";
 
 type FakeSubscriber = EventEmitter & {
   subscribe: ReturnType<typeof vi.fn>;
@@ -351,5 +353,78 @@ describe("closeIfSessionEnded outside the global region", () => {
     const open = regionConnection("u1", "sid-1");
     await closeIfSessionEnded(open, async () => null, async () => false);
     expect(open.close).not.toHaveBeenCalled();
+  });
+});
+
+describe("external agents' presence (breatic#1488 §19.2)", () => {
+  const META = projectMetaDocName("11111111-1111-4111-8111-111111111111");
+
+  /**
+   * A Hocuspocus holding one loaded meta document with two of u1's agents
+   * and one of u2's online in it.
+   * @returns The server and its meta document.
+   */
+  function withAgents(): { hocuspocus: Hocuspocus; meta: Y.Doc } {
+    const meta = Object.assign(new Y.Doc(), { connections: new Map() });
+    for (const [userId, connectionId] of [["u1", "c1"], ["u1", "c2"], ["u2", "c3"]] as const) {
+      markAgentActive({ document: meta, userId, connectionId, spaceId: null, focus: undefined, now: 0 });
+    }
+    return { hocuspocus: { documents: new Map([[META, meta]]) } as unknown as Hocuspocus, meta };
+  }
+
+  /**
+   * Which agent connections the meta document shows online.
+   * @param meta - The meta document.
+   * @returns Their connection ids, sorted.
+   */
+  function online(meta: Y.Doc): string[] {
+    return listAgentPresence(meta).filter((a) => a.online).map((a) => a.connectionId).sort();
+  }
+
+  it("marks offline the agent connections an announcement names, and only those", async () => {
+    const { source, subscriber } = buildRedis();
+    const { hocuspocus, meta } = withAgents();
+    const revocation = await startSessionRevocation(hocuspocus, {
+      source,
+      readSession: async () => null,
+      isAgentConnectionUsable: async () => true,
+      recheckIntervalMs: 60_000,
+    });
+    await flush();
+    const event: SessionsRevokedEvent = { type: "sessions:revoked", userId: "u1", sessionIds: ["grant-1", "c1"], ts: 1 };
+    subscriber.emit("message", CHANNEL, JSON.stringify(event));
+    expect(online(meta)).toEqual(["c2", "c3"]);
+    await revocation.stop();
+  });
+
+  it("marks offline once subscribed the agents whose connection can no longer be used", async () => {
+    const { source } = buildRedis();
+    const { hocuspocus, meta } = withAgents();
+    const revocation = await startSessionRevocation(hocuspocus, {
+      source,
+      readSession: async () => null,
+      isAgentConnectionUsable: async (connectionId) => connectionId !== "c2",
+      recheckIntervalMs: 60_000,
+    });
+    await flush();
+    expect(online(meta)).toEqual(["c1", "c3"]);
+    await revocation.stop();
+  });
+
+  it("leaves agents online when their connections cannot be checked, and logs it", async () => {
+    const { source } = buildRedis();
+    const { hocuspocus, meta } = withAgents();
+    const revocation = await startSessionRevocation(hocuspocus, {
+      source,
+      readSession: async () => null,
+      isAgentConnectionUsable: async () => {
+        throw new Error("database down");
+      },
+      recheckIntervalMs: 60_000,
+    });
+    await flush();
+    expect(online(meta)).toEqual(["c1", "c2", "c3"]);
+    expect(logged.error).toContain("agent_presence_recheck_failed");
+    await revocation.stop();
   });
 });
