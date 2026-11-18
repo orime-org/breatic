@@ -77,8 +77,11 @@ export const SCENE_OBJECT_NAME_MAX = 256;
 /** Every pose entry is its own key on the object record, behind this prefix (inner#1692). */
 export const SCENE_POSE_KEY_PREFIX = 'pose.';
 
-/** The most bones one object's pose may hold. */
-const SCENE_POSE_MAX_KEYS = 256;
+/**
+ * The most bones a command may give one object's pose. A record is judged by its entries alone, since two members'
+ * concurrent writes merge into the union of their keys.
+ */
+export const SCENE_POSE_MAX_KEYS = 256;
 
 /** The longest pose key, counted without {@link SCENE_POSE_KEY_PREFIX}. */
 export const SCENE_POSE_KEY_MAX_LENGTH = 128;
@@ -109,12 +112,11 @@ function isPoseEntry(key: string, value: unknown): boolean {
 /**
  * Check a whole pose; own keys are read as given, so `__proto__` is judged like any other key.
  * @param value - The candidate pose.
- * @returns Whether it is a pose of at most {@link SCENE_POSE_MAX_KEYS} well-formed entries.
+ * @returns Whether every entry is well formed.
  */
 function isScenePose(value: unknown): value is ScenePose {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const entries = Object.entries(value);
-  return entries.length <= SCENE_POSE_MAX_KEYS && entries.every(([key, entry]) => isPoseEntry(key, entry));
+  return Object.entries(value).every(([key, entry]) => isPoseEntry(key, entry));
 }
 
 /** A pose as one value: the projection and commands carry it, the record stores it flat. */
@@ -146,7 +148,7 @@ export function expandScenePose(pose: ScenePose): Record<string, unknown> {
 /** Every changed field of a part's look is its own key on the object record: `look.<part>.<field>` (inner#1693). */
 export const SCENE_LOOK_KEY_PREFIX = 'look.';
 
-/** The most parts one object's look may hold. */
+/** The most parts a command may give one object's look; a record is judged by its parts alone, as for the pose. */
 export const SCENE_LOOK_MAX_PARTS = 256;
 
 /** The colour a part shows a user picture at while no colour is stored, so the picture keeps its own colours. */
@@ -189,13 +191,11 @@ export const SCENE_LOOK_FIELDS = Object.keys(SceneLookPartSchema.shape) as reado
 /**
  * Check a whole look; own keys are read as given, so `__proto__` is judged like any other key.
  * @param value - The candidate look.
- * @returns Whether it holds at most {@link SCENE_LOOK_MAX_PARTS} well-formed parts.
+ * @returns Whether every part is well formed.
  */
 function isSceneLook(value: unknown): value is SceneLook {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const entries = Object.entries(value);
-  return entries.length <= SCENE_LOOK_MAX_PARTS
-    && entries.every(([part, fields]) => LOOK_PART_KEY.test(part) && SceneLookPartSchema.safeParse(fields).success);
+  return Object.entries(value).every(([part, fields]) => LOOK_PART_KEY.test(part) && SceneLookPartSchema.safeParse(fields).success);
 }
 
 /** A look as one value: the projection and commands carry it, the record stores it flat. */

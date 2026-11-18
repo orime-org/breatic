@@ -255,6 +255,30 @@ describe('look command (inner#1693 design 4.2)', () => {
     expect(applySceneCommand(doc, look('300', { opacity: 0.5 }), Symbol(), true, NAME)).toEqual({ ok: false, reason: 'invalid' });
     expect(applySceneCommand(doc, look('3', { opacity: 0.2 }), Symbol(), true, NAME)).toEqual({ ok: true, ids: [ID] });
   });
+
+  it('refuses to create an object carrying more than 256 parts', () => {
+    const doc = sceneDoc();
+    const over = { ...BASE, look: Object.fromEntries(Array.from({ length: 257 }, (_, index) => [String(index), { opacity: 0.5 }])) };
+    expect(applySceneCommand(doc, { type: 'create', objects: [over] }, Symbol(), true, NAME)).toEqual({ ok: false, reason: 'invalid' });
+  });
+
+  it('keeps an object readable when two members each add a part at 255 and the merge passes 256', () => {
+    const left = sceneDoc();
+    const almost = { ...BASE, look: Object.fromEntries(Array.from({ length: 255 }, (_, index) => [String(index), { opacity: 0.5 }])) };
+    applySceneCommand(left, { type: 'create', objects: [almost] }, Symbol(), true, NAME);
+    const right = replica(left);
+    expect(applySceneCommand(left, look('400', { opacity: 0.1 }), Symbol(), true, NAME).ok).toBe(true);
+    expect(applySceneCommand(right, look('401', { opacity: 0.2 }), Symbol(), true, NAME).ok).toBe(true);
+    merge(left, right);
+    for (const replicaDoc of [left, right]) {
+      const scene = readSceneDocument(replicaDoc);
+      expect(scene.invalidObjects).toEqual([]);
+      expect(Object.keys((scene.objects[0] as { look: object }).look)).toHaveLength(257);
+    }
+    // Parts it has can still change; a further part cannot be added.
+    expect(applySceneCommand(left, look('400', { opacity: 0.3 }), Symbol(), true, NAME)).toEqual({ ok: true, ids: [ID] });
+    expect(applySceneCommand(left, look('402', { opacity: 0.3 }), Symbol(), true, NAME)).toEqual({ ok: false, reason: 'invalid' });
+  });
 });
 
 describe('look collaboration with real Yjs replicas (inner#1693 acceptance 6)', () => {

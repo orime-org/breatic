@@ -7,7 +7,7 @@ import { z } from 'zod';
 import {
   DEFAULT_VIEWFINDER_RATIO, SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, SCENE_AMBIENT_INTENSITY_MAX,
   SCENE_FOCAL_LENGTH_DEFAULT, SCENE_FORMAT_VERSION, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY, SCENE_LOOK_FIELDS, SCENE_LOOK_KEY_PREFIX,
-  SCENE_POSE_KEY_PREFIX, SCENE_SPOT_ANGLE_DEFAULT, SceneColorSchema, SceneLookSchema, SceneObjectSchema, SceneObjectValuesSchema,
+  SCENE_LOOK_MAX_PARTS, SCENE_POSE_KEY_PREFIX, SCENE_POSE_MAX_KEYS, SCENE_SPOT_ANGLE_DEFAULT, SceneColorSchema, SceneLookSchema, SceneObjectSchema, SceneObjectValuesSchema,
   ScenePoseSchema, expandSceneLook, expandScenePose, gatherSceneLook, gatherScenePose, getSceneRootMap, isSceneModelFile, nextDirectorNumber,
   type SceneEditableField, type SceneLook, type SceneLookField, type SceneLookPart, type SceneModel, type SceneObject, type SceneObjectValues, type ScenePose,
 } from '@breatic/shared';
@@ -268,6 +268,9 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
     for (const creation of creations) {
       const parsed = SceneObjectSchema.safeParse(creation);
       if (!parsed.success || parsed.data.locked) return { ok: false, reason: 'invalid' };
+      // A copy keeps what its source holds; a new object comes within the caps a command writes to.
+      if (command.type === 'create' && (Object.keys(parsed.data.pose ?? {}).length > SCENE_POSE_MAX_KEYS
+        || Object.keys(parsed.data.look ?? {}).length > SCENE_LOOK_MAX_PARTS)) return { ok: false, reason: 'invalid' };
       const { id, ...values } = parsed.data;
       plan.creates.push({ id, values });
     }
@@ -287,7 +290,7 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
     const current: ScenePose = object.pose ?? {};
     const cleared = command.replace ? Object.keys(current).filter((key) => !(key in set.data)) : [];
     const next = command.replace ? set.data : { ...current, ...set.data };
-    if (!ScenePoseSchema.safeParse(next).success) return { ok: false, reason: 'invalid' };
+    if (!ScenePoseSchema.safeParse(next).success || grows(current, next, SCENE_POSE_MAX_KEYS)) return { ok: false, reason: 'invalid' };
     for (const [key, value] of Object.entries(set.data)) {
       if (JSON.stringify(current[key]) !== JSON.stringify(value)) plan.keyWrites.push({ id: command.id, key: `${SCENE_POSE_KEY_PREFIX}${key}`, value });
     }
@@ -350,6 +353,19 @@ function lookKey(part: string, field: string): string {
 }
 
 /**
+ * Whether a write would take a record past a cap on how many entries it holds. A record already past it, after two
+ * members' concurrent additions merged, can still change the entries it has.
+ * @param current - The entries before the write.
+ * @param next - The entries after it.
+ * @param cap - The most entries a command may leave.
+ * @returns True when the write adds entries beyond the cap.
+ */
+function grows(current: object, next: object, cap: number): boolean {
+  const count = Object.keys(next).length;
+  return count > cap && count > Object.keys(current).length;
+}
+
+/**
  * The flat keys a look command writes: changed values set, null fields deleted, or with a null part every key deleted.
  * @param current - The object's current look.
  * @param part - The part to write, or null to reset every part.
@@ -371,7 +387,7 @@ function lookWrites(current: SceneLook, part: string | null, set: SceneLookSet):
   const after = Object.fromEntries(Object.entries({ ...before, ...values }).filter(([field]) => set[field as SceneLookField] !== null));
   const others = Object.entries(current).filter(([at]) => at !== part);
   const next = Object.fromEntries(Object.keys(after).length > 0 ? [...others, [part, after]] : others);
-  if (!SceneLookSchema.safeParse(next).success) return null;
+  if (!SceneLookSchema.safeParse(next).success || grows(current, next, SCENE_LOOK_MAX_PARTS)) return null;
   const record = before as Record<string, unknown>;
   return entries.flatMap(([field, value]) => {
     if (value === null) return field in record ? [{ key: lookKey(part, field) }] : [];

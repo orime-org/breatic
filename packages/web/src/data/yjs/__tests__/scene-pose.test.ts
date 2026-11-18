@@ -425,3 +425,32 @@ describe('pose collaboration with real Yjs replicas (inner#1692 acceptance 10 an
     history.destroy();
   });
 });
+
+describe('the 256-bone cap under concurrent posing (inner#1693 round 2)', () => {
+  /** A pose of this many distinct node bones. */
+  const bones = (count: number, from = 0): Record<string, number[]> =>
+    Object.fromEntries(Array.from({ length: count }, (_, index) => [`n:Bone_${from + index}`, Q_IDENTITY]));
+
+  it('keeps an object readable when two members each pose a new bone at 255 and the merge passes 256', () => {
+    const left = sceneDoc();
+    applySceneCommand(left, { type: 'create', objects: [{ ...BASE, pose: bones(255) }] }, Symbol(), true, NAME);
+    const right = replica(left);
+    expect(applySceneCommand(left, pose({ 'n:Left': Q_Y90 }), Symbol(), true, NAME).ok).toBe(true);
+    expect(applySceneCommand(right, pose({ 'n:Right': Q_Y90 }), Symbol(), true, NAME).ok).toBe(true);
+    merge(left, right);
+    for (const replicaDoc of [left, right]) {
+      expect(readSceneDocument(replicaDoc).invalidObjects).toEqual([]);
+      expect(Object.keys(poseOf(replicaDoc) as object)).toHaveLength(257);
+    }
+    expect(applySceneCommand(left, pose({ 'n:Left': Q_X180 }), Symbol(), true, NAME)).toEqual({ ok: true, ids: [ID] });
+    expect(applySceneCommand(left, pose({ 'n:Third': Q_X180 }), Symbol(), true, NAME)).toEqual({ ok: false, reason: 'invalid' });
+  });
+
+  it('refuses a command or a new object that would hold more than 256 bones', () => {
+    const doc = sceneDoc();
+    expect(applySceneCommand(doc, { type: 'create', objects: [{ ...BASE, pose: bones(257) }] }, Symbol(), true, NAME)).toEqual({ ok: false, reason: 'invalid' });
+    applySceneCommand(doc, { type: 'create', objects: [BASE] }, Symbol(), true, NAME);
+    expect(applySceneCommand(doc, pose(bones(257), true), Symbol(), true, NAME)).toEqual({ ok: false, reason: 'invalid' });
+    expect(applySceneCommand(doc, pose(bones(256), true), Symbol(), true, NAME)).toEqual({ ok: true, ids: [ID] });
+  });
+});

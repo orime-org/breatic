@@ -120,12 +120,11 @@ describe("scene look keys", () => {
     expect(lookSchema().safeParse(look).success).toBe(false);
   });
 
-  it("caps the parts one object may carry at 256", () => {
+  it("judges a look by its parts, not by how many there are: the 256-part cap is where a command writes", () => {
     const parts = (count: number): Record<string, unknown> =>
       Object.fromEntries(Array.from({ length: count }, (_, index) => [String(index), { opacity: 0.5 }]));
     expect(exported<number>("SCENE_LOOK_MAX_PARTS")).toBe(256);
-    expect(lookSchema().safeParse(parts(256)).success).toBe(true);
-    expect(lookSchema().safeParse(parts(257)).success).toBe(false);
+    expect(lookSchema().safeParse(parts(257)).success).toBe(true);
   });
 });
 
