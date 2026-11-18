@@ -40,14 +40,14 @@ import {
 /** The media a refusal can name formats for. */
 const LISTED_MEDIA = ['image', 'video', 'audio'] as const;
 
-/** What this panel reads off its host: that it exists, and its four counts. */
+/** What this panel reads off its host: that it exists, and its counts. */
 type TaskHostNode = NodeRef;
 
 /** What {@link NodeTaskPanelContainer} needs from the canvas around it. */
 export interface NodeTaskPanelContainerProps {
   /**
    * The canvas's nodes, Yjs-observed. Two things are read off the host: that
-   * it still exists, and its four task counts — which move on their own while
+   * it still exists, and its task counts — which move on their own while
    * this list stays the snapshot one fetch returned.
    */
   nodes: ReadonlyArray<TaskHostNode>;

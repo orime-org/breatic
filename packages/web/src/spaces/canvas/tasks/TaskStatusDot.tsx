@@ -38,9 +38,10 @@ export type TaskStatus = 'running' | 'done' | 'failed' | 'expired';
 export type TaskListKind = TaskStatus | 'waiting';
 
 /**
- * The shape per state. All four are round outlines so a column of them reads
+ * The shape per state. The four states are round outlines so a column of them reads
  * as one kind of thing, and the running one turns — the way this product
- * already says "working" everywhere else.
+ * already says "working" everywhere else; a task waiting for a free running
+ * slot shows an hourglass, which neither turns nor reads as an end.
  */
 export const TASK_SHAPE: Readonly<Record<TaskListKind, typeof Clock>> = {
   running: Loader2,

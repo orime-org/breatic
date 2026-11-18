@@ -5,7 +5,8 @@
  * The counts outside a node's top-right corner (#186 §7.1).
  *
  * They are the whole of what the shared document says about this node's
- * tasks: four numbers, no entries, no ids. The rows behind a number are
+ * tasks: its counts (running, and how many of those wait for a free running
+ * slot, then the three ways a task ends), no entries, no ids. The rows behind a number are
  * fetched only when the user asks for them by clicking it.
  *
  * A state this node has nothing in draws nothing, and a node with no task at
@@ -17,10 +18,9 @@
  *
  * `endedShown` is the second half of what gets drawn: the three ways a task
  * can end may give up their cells when the canvas has taken them below the
- * size a target may be, and the running one keeps its cell at every zoom
+ * size a target may be, and the running and waiting ones keep their cells at every zoom
  * (user 2026-09-13). Reading a board zoomed out is when "this node is working
- * right now" matters most, and it is the one of the four that is still
- * happening.
+ * right now" matters most, and those two are what is still happening.
  */
 
 import type { JSX } from 'react';
@@ -47,7 +47,7 @@ const OPEN_BORDER: Readonly<Record<TaskListKind, string>> = {
 
 /** What {@link TaskCountColumn} renders and reports. */
 export interface TaskCountColumnProps {
-  /** The node's four numbers, straight off the shared document. */
+  /** The node's counts, straight off the shared document. */
   counts: NodeTaskCounts;
   /**
    * Whether the three ways a task can end are drawn. The running one is drawn
@@ -138,7 +138,7 @@ const TaskCountMemo = React.memo(TaskCount);
 /**
  * Render the states this node has tasks in as a column of buttons.
  * @param props - The column inputs.
- * @param props.counts - The four numbers from the shared document.
+ * @param props.counts - The counts from the shared document.
  * @param props.endedShown - Whether the three ended states are drawn.
  * @param props.openFor - Which state's list is open, `null` when none is.
  * @param props.onOpen - Called with the state to open, or `null` to close.

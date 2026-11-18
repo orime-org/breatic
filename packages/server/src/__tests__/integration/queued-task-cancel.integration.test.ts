@@ -15,7 +15,7 @@
  * answers `200 { data: { cancelled: true, counts } }`, `counts` being the
  * node's `NodeTaskCounts` (null for a 3D Space's own row). A task that already
  * started answers 409 and goes on. A Timeline execution's cancel runs through
- * `timelineSettlement.transition` and holds no credits, so it touches no hold.
+ * `timelineExecutionRepo.transition` and holds no credits, so it touches no hold.
  *
  * The account is a pro admin of a team studio (five running tasks), so a fresh
  * task stays `pending` here: no worker runs in this suite.
