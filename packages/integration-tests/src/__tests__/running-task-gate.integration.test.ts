@@ -605,7 +605,9 @@ describe("G waiting for a free slot", () => {
     const t = await seedTask(p, { createdAt: new Date(now.getTime() - 3_600_000), waiting: { since: now, checkedAt: now, limit: 2 } });
     expect(await pick(t.taskId)).toEqual({ started: true });
     const row = await taskRow(t.taskId);
-    expect(await taskDeadline(t.taskId, new Date(now.getTime() - 3_600_000))).toBe(row.started_at!.getTime() + B);
+    // The start the worker reads off the row after the gate lets the task go, an hour after its creation.
+    expect(row.started_at!.getTime()).toBeGreaterThanOrEqual(now.getTime());
+    expect(await taskDeadline(t.taskId, row.started_at!)).toBe(row.started_at!.getTime() + B);
   });
 
   it("G-18 a retryable failure leaves the task running and holding its slot; the retry keeps its first start", async () => {
@@ -664,6 +666,15 @@ describe("G waiting for a free slot", () => {
     }, "job stalled more than allowable limit");
     expect((await taskRow(doomed.taskId)).status).toBe("failed");
     expect(await nodeRow(doomed.nodeTaskId!)).toMatchObject({ status: "failed", error_message: "internal" });
+  });
+
+  it("a waiter whose job id was never recorded gets the id of the job that judged it, so the sweep can end it once that job is gone", async () => {
+    const p = await person("enterprise", 1);
+    await running(p, 1);
+    const t = await seedTask(p, { node: true, jobId: null });
+    expect(await pick(t.taskId)).toMatchObject({ waiting: true });
+    const [row] = await sql<{ arq_job_id: string | null }[]>`select arq_job_id from tasks where id = ${t.taskId}`;
+    expect(row!.arq_job_id).toBe(`job-${t.taskId}`);
   });
 
   it("G-20 the sweep fails a stale waiter whose job is gone, releasing its holdings and its node row", async () => {
