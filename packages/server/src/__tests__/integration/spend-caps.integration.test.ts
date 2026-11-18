@@ -715,3 +715,115 @@ describe("PT-5 caps under concurrent admissions (L1, L3)", () => {
   });
 });
 
+
+/** One step of PT-5's serial run. */
+interface Pt5Step {
+  /** Which person, modulo how many. */
+  who: number;
+  /** What happens. */
+  kind: "reserve" | "balance" | "takeover" | "release" | "cap";
+  /** A held run's estimate. */
+  estimate: number;
+  /** A taken-over run's actual cost, as a share of its estimate. */
+  actualShare: number;
+  /** The new per-person default, for `cap`. */
+  memberDefault: number | null;
+}
+
+describe("PT-5 caps judged against a model of spent (L1, L2, L4, scope)", () => {
+  it("admits, refuses and names the scope exactly as spent this month says, counts a taken-over hold once, ignores last month and lets a cap change interrupt nothing admitted", async () => {
+    const MICRO = 1_000_000;
+    await fc.assert(
+      fc.asyncProperty(
+        fc.option(fc.constantFrom(0, 1, 5, 10), { nil: null }),
+        fc.option(fc.constantFrom(0, 1, 5, 10), { nil: null }),
+        fc.array(fc.record({
+          override: fc.option(fc.option(fc.constantFrom(0, 1, 5, 10), { nil: null }), { nil: undefined }),
+          spent: fc.integer({ min: 0, max: 12 }),
+          lastMonth: fc.integer({ min: 0, max: 12 }),
+        }), { minLength: 2, maxLength: 4 }),
+        fc.array(fc.record({
+          who: fc.nat(),
+          kind: fc.constantFrom("reserve", "reserve", "balance", "takeover", "release", "cap"),
+          estimate: fc.constantFrom(0.5, 1, 2, 3),
+          actualShare: fc.constantFrom(0.5, 1, 2),
+          memberDefault: fc.option(fc.constantFrom(0, 1, 5, 10), { nil: null }),
+        }), { minLength: 1, maxLength: 10 }),
+        async (memberDefault, studioMonthly, people, steps: Pt5Step[]) => {
+          const a = await seedAccount(sql, { credits: 1000 });
+          const { start } = await month();
+          const lastMonth = new Date(start.getTime() - 24 * 3_600_000);
+          const ids: string[] = [];
+          /** What each person spent this month, in millionths, as the model keeps it. */
+          const spentBy = new Map<string, number>();
+          for (const [i, p] of people.entries()) {
+            // The last of them is a project collaborator, the others studio members.
+            const who = i === people.length - 1 ? await collaborator(a) : await seedMember(sql, a);
+            ids.push(who.userId);
+            spentBy.set(who.userId, p.spent * MICRO);
+            if (p.spent > 0) await spend(a, who.userId, p.spent);
+            if (p.lastMonth > 0) await spend(a, who.userId, p.lastMonth, lastMonth);
+            if (p.override !== undefined) await override(a, who.userId, p.override);
+          }
+          await caps(a, memberDefault, studioMonthly);
+          let defaultCap = memberDefault;
+          /** Holds admitted and not yet taken over or released. */
+          const open: { reference: string; userId: string; amount: number }[] = [];
+          const capOf = (i: number): number | null => (people[i]!.override !== undefined ? people[i]!.override! : defaultCap);
+          const total = (): number => [...spentBy.values()].reduce((s, v) => s + v, 0);
+
+          for (const step of steps) {
+            const i = step.who % ids.length;
+            const userId = ids[i]!;
+            const mine = spentBy.get(userId)!;
+            if (step.kind === "reserve" || step.kind === "balance") {
+              const e = step.kind === "reserve" ? step.estimate * MICRO : null;
+              const fails = (spent: number, cap: number | null): boolean => cap !== null && (e === null ? spent >= cap * MICRO : spent + e > cap * MICRO);
+              const studioFails = fails(total(), studioMonthly);
+              const memberFails = fails(mine, capOf(i));
+              const reference = crypto.randomUUID();
+              const got = step.kind === "reserve"
+                ? await outcome(reserveForRun(a.projectId, userId, reference, step.estimate))
+                : await outcome(precheckCredits(a.projectId, userId, SMALLEST_CREDIT));
+              if (!studioFails && !memberFails) {
+                // L1: what fits is admitted.
+                expect(got).toBe("ok");
+                if (e !== null) {
+                  open.push({ reference, userId, amount: e });
+                  spentBy.set(userId, mine + e);
+                }
+              } else {
+                // The scope names the limit passed, the studio's when both are.
+                expect(got).toMatchObject({ scope: studioFails ? "studio" : "member" });
+              }
+            } else if (step.kind === "takeover" && open.length > 0) {
+              // L2: an admitted run is charged what it really cost, whatever spent or the caps did since.
+              const run = open.splice(step.who % open.length, 1)[0]!;
+              const actual = run.amount * step.actualShare;
+              await spend(a, run.userId, actual / MICRO, undefined, run.reference);
+              spentBy.set(run.userId, spentBy.get(run.userId)! - run.amount + actual);
+            } else if (step.kind === "release" && open.length > 0) {
+              const run = open.splice(step.who % open.length, 1)[0]!;
+              await creditHoldService.releaseHold(run.reference);
+              spentBy.set(run.userId, spentBy.get(run.userId)! - run.amount);
+            } else if (step.kind === "cap") {
+              defaultCap = step.memberDefault;
+              await sql`update studio_spend_limits set member_default_credits = ${defaultCap} where studio_id = ${a.studioId} and deleted_at is null`;
+            }
+
+            // L4: spent as read is spent as the model counts it, a taken-over hold once, last month never.
+            const read = await creditHoldService.monthSpent(a.studioId);
+            expect(Number(read.total)).toBe(total());
+            for (const id of ids) expect(Number(read.byActor.get(id) ?? 0n), `spent of ${id}`).toBe(spentBy.get(id));
+          }
+          // L2: a cap change released nothing admitted.
+          for (const run of open) {
+            const [row] = await sql<{ status: string }[]>`select status from credit_holds where reference_id = ${run.reference}`;
+            expect(row!.status).toBe("held");
+          }
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+});
