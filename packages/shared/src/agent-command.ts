@@ -21,6 +21,9 @@ import { promptSegmentSchema } from "@shared/types/canvas-proposal.js";
  */
 export const AGENT_COMMAND_STREAM_MAXLEN = 10_000;
 
+/** Stream field a command's JSON is written under. */
+export const AGENT_COMMAND_FIELD = "command";
+
 /**
  * Stream the MCP service appends commands to and collab consumes.
  * @param prefix - The deployment's Redis key prefix

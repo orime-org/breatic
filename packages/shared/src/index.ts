@@ -622,6 +622,7 @@ export type {
 export { newId, deriveId } from "@shared/ids.js";
 export { REDIS_KEY_PREFIX_PATTERN, resolveRedisKeyPrefix } from "@shared/redis-key-prefix.js";
 export {
+  AGENT_COMMAND_FIELD,
   AGENT_COMMAND_REFUSALS,
   AGENT_COMMAND_STREAM_MAXLEN,
   agentCommandParamsSchemas,

@@ -22,6 +22,7 @@ import { agentAccessService, createRedisClient, db, getMcpConfig, initCore, type
 import {
   agentReplySchema,
   canvasSpaceDocName,
+  AGENT_COMMAND_FIELD,
   mcpCommandStreamKey,
   mcpReplyKey,
   projectMetaDocName,
@@ -251,7 +252,7 @@ export async function send(world: World, type: string, params: unknown, over: Pa
     deadlineAt: now + getMcpConfig().call_timeout_ms,
     ...over,
   };
-  await harness.mcp.xadd(mcpCommandStreamKey(world.prefix), "MAXLEN", "~", "10000", "*", "command", JSON.stringify(command));
+  await harness.mcp.xadd(mcpCommandStreamKey(world.prefix), "MAXLEN", "~", "10000", "*", AGENT_COMMAND_FIELD, JSON.stringify(command));
   return command;
 }
 

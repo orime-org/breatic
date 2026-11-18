@@ -47,6 +47,7 @@ import {
   isAgentCommandType,
   mcpCaptureRequestKey,
   mcpCommandStreamKey,
+  AGENT_COMMAND_FIELD,
   mcpDoneChannel,
   mcpReplyKey,
   projectMetaDocName,
@@ -73,9 +74,6 @@ const logger = createLogger("agent-commands");
 
 /** Consumer group every collab instance that takes commands joins. */
 export const AGENT_COMMANDS_GROUP = "collab-agent-commands";
-
-/** Stream field the MCP service writes a command's JSON under. */
-const COMMAND_FIELD = "command";
 
 /** Names the writer in a direct connection's context. */
 const SOURCE = "agent-commands";
@@ -517,7 +515,7 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
     streamKey: mcpCommandStreamKey(prefix),
     group: AGENT_COMMANDS_GROUP,
     consumer: deps.instanceId,
-    payloadField: COMMAND_FIELD,
+    payloadField: AGENT_COMMAND_FIELD,
     failuresKey: `${prefix}:mcp:command-failures`,
     coordination: mcp,
     settings,
