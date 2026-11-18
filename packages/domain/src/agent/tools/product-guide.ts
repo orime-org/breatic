@@ -1717,6 +1717,7 @@ export function renderProductGuide(): string {
       "Clearing the selection closes its properties panel. The properties button is available with a selection. " +
       `For one object it shows ${quoted(t("spaces.threeD.name"))}, ${quoted(t("spaces.threeD.position"))}, ` +
       `${quoted(t("spaces.threeD.rotation"))} and ${quoted(t("spaces.threeD.scale"))}, with X, Y and Z boxes. ` +
+      `For one person, box or imported model it also has an ${quoted(t("spaces.threeD.look.title"))} section; the 3D appearance section of this guide covers it. ` +
       "Position is in metres, rotation in degrees, and scale values must be positive. Enter or leaving a box applies it; " +
       "switching to another Space keeps unfinished input and validation errors. Return and reopen Properties to continue. " +
       "Closing the panel, opening another panel or overlay, or changing the selection ends that temporary input. " +
