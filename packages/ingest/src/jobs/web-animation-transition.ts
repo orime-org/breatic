@@ -59,6 +59,11 @@ export interface WebAnimationJobRecord {
   /** The upstream a refused key read named and why it refused the key (inner#1953); absent from a record stored before them. */
   failureUpstream?: string | null;
   failureKeyReason?: KeyReason | null;
+  /**
+   * The last passing failure of the payer's own key (a 429, a 5xx, the upstream unreachable) since a call last
+   * completed (inner#1953); a runner that gives up after it fails with it. Absent from a record stored before it.
+   */
+  keyPassing?: ({ reason: string } & FailureNames) | null;
 }
 
 /** Something that happened to a job; the object's RPC methods map onto these one to one. */
@@ -78,6 +83,8 @@ export type WebAnimationJobEvent =
    * the payer's own key for good. The job fails with that reason.
    */
   | { type: "keyFailed"; reason: string; upstream?: string; keyReason?: KeyReason }
+  /** A call on the payer's own key failed in a way the runner may ask again after; the job keeps running. */
+  | { type: "keyPassing"; reason: string; upstream: string; keyReason?: KeyReason }
   | { type: "containerGone" };
 
 /** What the object does after a transition: start the container, stop it, or bound the drain of an open call. */
@@ -115,7 +122,7 @@ function stay(record: WebAnimationJobRecord | null): WebAnimationTransition {
 function blank(state: WebAnimationJobState, request: WebAnimationJobRequest | null): WebAnimationJobRecord {
   return {
     state, request, markerUntil: null, endAs: null, phase: null, steps: [], calls: [], outputs: [],
-    startedAt: null, endedAt: null, cpuUsec: null, failureReason: null, failureUpstream: null, failureKeyReason: null,
+    startedAt: null, endedAt: null, cpuUsec: null, failureReason: null, failureUpstream: null, failureKeyReason: null, keyPassing: null,
   };
 }
 
@@ -219,12 +226,16 @@ export function transitionWebAnimationJob(
       return running ? stop(record, "expired", null, now) : stay(record);
     case "keyFailed":
       return running ? stop(record, "failed", event.reason, now, { failureUpstream: event.upstream ?? null, failureKeyReason: event.keyReason ?? null }) : stay(record);
+    case "keyPassing":
+      return running ? stay({ ...record, keyPassing: { reason: event.reason, failureUpstream: event.upstream, failureKeyReason: event.keyReason ?? null } }) : stay(record);
     case "finished": {
       const withCpu = { ...record, cpuUsec: event.cpuUsec };
       if (!running) return stay(withCpu);
       const keys = [record.request?.packageKey, record.request?.manifestKey];
       const complete = keys.every((key) => record.outputs.some((output) => output.key === key));
       if (event.ok && complete) return stop(withCpu, "done", null, now);
+      const keyPassing = record.keyPassing;
+      if (!event.ok && keyPassing != null) return stop(withCpu, "failed", keyPassing.reason, now, keyPassing);
       return stop(withCpu, "failed", event.ok ? "output_missing" : (event.failureReason ?? "container_failed"), now);
     }
     case "containerGone":
@@ -248,6 +259,7 @@ export function transitionWebAnimationJob(
       // A call whose end names no upstream keeps the one its start recorded.
       const ended = {
         ...record,
+        ...(outcome === "completed" ? { keyPassing: null } : {}),
         calls: record.calls.map((call) => (call.seq === event.seq ? { ...call, outcome, upstream: event.upstream ?? call.upstream, tokens, cost } : call)),
       };
       return record.endAs === null ? stay(ended) : end(ended, record.endAs.state, record.endAs.failureReason, now, record.endAs);

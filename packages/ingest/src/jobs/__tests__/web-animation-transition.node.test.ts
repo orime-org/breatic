@@ -429,6 +429,36 @@ describe("a key failure (inner#1953)", () => {
   });
 });
 
+describe("a passing failure of the payer's own key (inner#1953)", () => {
+  const passing: WebAnimationJobEvent = { type: "keyPassing", reason: "account_key_failed", upstream: "openrouter", keyReason: "rate_limited" };
+  const harnessGaveUp: WebAnimationJobEvent = { type: "finished", ok: false, failureReason: "harness_failed", cpuUsec: 1 };
+
+  it("keeps the job running, and names the key's last failure when the runner then gives up", () => {
+    const [noted, failed] = run(after([begin, started(1), ended(1, "upstream_error")]), [passing, harnessGaveUp]);
+
+    expect(report(noted!.record).state).toBe("running");
+    expect(report(failed!.record)).toMatchObject({ state: "failed", failureReason: "account_key_failed", failureUpstream: "openrouter", failureKeyReason: "rate_limited" });
+  });
+
+  it("names the upstream for a failure of the upstream itself", () => {
+    const [, failed] = run(after([]), [{ type: "keyPassing", reason: "upstream_unavailable", upstream: "openrouter" }, harnessGaveUp]);
+
+    expect(report(failed!.record)).toMatchObject({ failureReason: "upstream_unavailable", failureUpstream: "openrouter", failureKeyReason: null });
+  });
+
+  it("forgets it once a later call completes, so a later failure is the runner's own", () => {
+    const [, , , , failed] = run(after([]), [passing, begin, started(1), ended(1), harnessGaveUp]);
+
+    expect(report(failed!.record)).toMatchObject({ failureReason: "harness_failed", failureUpstream: null });
+  });
+
+  it("does not stand in the way of a run that finishes", () => {
+    const [, , , done] = run(after([]), [passing, writtenPackage, writtenManifest, { type: "finished", ok: true, failureReason: null, cpuUsec: 1 }]);
+
+    expect(report(done!.record).state).toBe("done");
+  });
+});
+
 describe("after the end", () => {
   const ends: Array<[string, WebAnimationJobEvent[]]> = [
     ["done", [writtenPackage, writtenManifest, { type: "finished", ok: true, failureReason: null, cpuUsec: 5 }]],

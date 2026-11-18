@@ -123,6 +123,7 @@ interface Harness {
   recordModelCallStart: Mock<(seq: number, upstream: string, messageId: string) => Promise<void>>;
   endModelCall: Mock<(seq: number, end: MessagesCallEnd) => Promise<void>>;
   failJob: Mock<(reason: string, upstream?: string, keyReason?: string) => Promise<void>>;
+  notePassingKeyFailure: Mock<(reason: string, upstream: string, keyReason?: string) => Promise<void>>;
   readKeys: Mock<() => Promise<Readonly<Record<string, string>> | null>>;
   fetch: Mock<(url: string, init: RequestInit) => Promise<Response>>;
 }
@@ -145,6 +146,7 @@ function harness(
   const recordModelCallStart = vi.fn(async (_seq: number, _upstream: string, _messageId: string): Promise<void> => undefined);
   const endModelCall = vi.fn(async (_seq: number, _end: MessagesCallEnd): Promise<void> => undefined);
   const failJob = vi.fn(async (_reason: string, _upstream?: string, _keyReason?: string): Promise<void> => undefined);
+  const notePassingKeyFailure = vi.fn(async (_reason: string, _upstream: string, _keyReason?: string): Promise<void> => undefined);
   const readKeys = vi.fn(async (): Promise<Readonly<Record<string, string>> | null> => (overrides.keys === undefined ? { openrouter: API_KEY } : overrides.keys));
   const fetch = vi.fn(upstream);
   vi.stubGlobal("fetch", fetch);
@@ -153,6 +155,7 @@ function harness(
     recordModelCallStart,
     endModelCall,
     failJob,
+    notePassingKeyFailure,
     readKeys,
     fetch,
     deps: {
@@ -160,7 +163,7 @@ function harness(
       readKeys,
       maxTokens: MAX_TOKENS,
       callTimeoutMs: overrides.callTimeoutMs ?? 60_000,
-      registry: { beginModelCall, recordModelCallStart, endModelCall, failJob },
+      registry: { beginModelCall, recordModelCallStart, endModelCall, failJob, notePassingKeyFailure },
     },
   };
 }
@@ -292,6 +295,19 @@ describe("relayModelCall: the job's keys (inner#1953)", () => {
     await drain(res);
     expect(h.failJob).toHaveBeenCalledWith("account_key_failed", "openrouter", keyReason);
     await vi.waitFor(() => expect(h.endModelCall).toHaveBeenCalledTimes(1));
+  });
+
+  it.each([
+    [429, "account_key_failed", "rate_limited"],
+    [503, "upstream_unavailable", undefined],
+  ] as const)("notes a %i on the payer's own key as passing, leaving the job running for the harness to ask again", async (status, reason, keyReason) => {
+    const h = harness(async () => new Response(JSON.stringify({ error: { message: "later" } }), { status, headers: { "content-type": "application/json" } }));
+    const res = await relayModelCall(harnessRequest(BODY), { ...h.deps, plan: { ...PLAN, keysOwner: "account" } });
+
+    expect(res.status).toBe(status);
+    await drain(res);
+    expect(h.failJob).not.toHaveBeenCalled();
+    expect(h.notePassingKeyFailure).toHaveBeenCalledWith(reason, "openrouter", keyReason);
   });
 
   it("does not end the job when the upstream refuses our key: the refusal reaches the harness as before", async () => {

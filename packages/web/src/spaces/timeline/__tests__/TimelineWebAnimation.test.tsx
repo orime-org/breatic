@@ -666,6 +666,15 @@ describe('execution list', () => {
     expect(await expand(EXEC_FAILED)).toHaveTextContent('The openrouter key failed. Check it in BYOK settings.');
   });
 
+  it('names the upstream a run on the payer\'s own key could not reach (inner#1953)', async () => {
+    rows = [row(EXEC_FAILED, 'failed', { failureReason: 'upstream_unavailable', failureUpstream: 'openrouter' })];
+    seed();
+    showTimeline();
+    await openList();
+    await view('completed');
+    expect(await expand(EXEC_FAILED)).toHaveTextContent('Couldn\'t reach openrouter. Try again later.');
+  });
+
   it('lets a Viewer open rows and read their details but offers no action', async () => {
     seed();
     showTimeline(true);

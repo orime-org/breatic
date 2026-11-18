@@ -211,17 +211,20 @@ export class AccountKeyFailure extends Error {
   /** The upstream that failed, or whose key is gone; absent when not known. */
   readonly upstream?: string;
   readonly reason?: AccountKeyFailureReason;
+  /** True when asking again cannot change it; a passing failure (a 429, the upstream unreachable or a 5xx) is false. */
+  readonly lasting: boolean;
 
   /**
    * Record what the error carries.
    * @param model - Our model id.
    * @param kind - How it failed.
-   * @param detail - The upstream, the reason and the upstream's own error.
+   * @param detail - The upstream, the reason, whether it lasts and the upstream's own error.
    * @param detail.upstream - The upstream that failed.
    * @param detail.reason - Why it turned the key down.
+   * @param detail.lasting - Whether asking again cannot change it; true when not given.
    * @param detail.cause - The upstream's own error.
    */
-  constructor(model: string, kind: AccountKeyFailureKind, detail: { upstream?: string; reason?: AccountKeyFailureReason; cause?: unknown } = {}) {
+  constructor(model: string, kind: AccountKeyFailureKind, detail: { upstream?: string; reason?: AccountKeyFailureReason; lasting?: boolean; cause?: unknown } = {}) {
     const what = kind === "account_key_missing"
       ? `The account's keys reach no upstream of ${model}`
       : `${detail.upstream ?? "The upstream"} failed ${model} on the account's key: ${detail.reason ?? kind}`;
@@ -229,6 +232,7 @@ export class AccountKeyFailure extends Error {
     this.name = "AccountKeyFailure";
     this.kind = kind;
     this.model = model;
+    this.lasting = detail.lasting ?? true;
     if (detail.upstream !== undefined) this.upstream = detail.upstream;
     if (detail.reason !== undefined) this.reason = detail.reason;
   }
@@ -241,6 +245,8 @@ export interface AccountKeyFailureFacts {
   kind: AccountKeyFailureKind;
   upstream?: string;
   reason?: AccountKeyFailureReason;
+  /** True when asking again cannot change it; an error that does not say is read as lasting. */
+  lasting: boolean;
 }
 
 /**
@@ -253,12 +259,13 @@ export function accountKeyFailureIn(error: unknown): AccountKeyFailureFacts | un
   const seen = new Set<unknown>();
   for (let at = error; typeof at === "object" && at !== null && !seen.has(at); at = (at as { cause?: unknown }).cause) {
     seen.add(at);
-    const { kind, upstream, reason } = at as { kind?: unknown; upstream?: unknown; reason?: unknown };
+    const { kind, upstream, reason, lasting } = at as { kind?: unknown; upstream?: unknown; reason?: unknown; lasting?: unknown };
     if (typeof kind === "string" && ACCOUNT_KEY_FAILURE_KINDS.includes(kind)) {
       return {
         kind: kind as AccountKeyFailureKind,
         ...(typeof upstream === "string" ? { upstream } : {}),
         ...(typeof reason === "string" ? { reason: reason as AccountKeyFailureReason } : {}),
+        lasting: lasting !== false,
       };
     }
   }

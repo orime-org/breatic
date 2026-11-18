@@ -293,19 +293,37 @@ describe("relayMessages: a plan on the payer's own keys (inner#1953)", () => {
     fakes.openrouter.answer(() => reply);
     const { response, keyRefused, ended, order } = await relay(onAccount(candidates().openrouter, candidates().anthropic));
 
-    expect(keyRefused).toEqual([{ upstream: "openrouter", reason }]);
+    expect(keyRefused).toEqual([{ upstream: "openrouter", kind: "account_key_failed", reason, lasting: true }]);
     expect(response.status).toBe(reply.status);
     expect(fakes.anthropic.seen).toHaveLength(0);
     expect(ended).toEqual([{ outcome: "upstream_error", upstream: null, tokens: null, cost: null }]);
     expect(order).toEqual(["keyRefused", "ended", "closed"]);
   });
 
-  it("reports nothing for a rate limit, which the harness may ask again on the same key", async () => {
+  it("reports a rate limit as passing, which the harness may ask again on the same key", async () => {
     fakes.openrouter.answer(() => ({ status: 429, body: { error: { message: "slow down" } } }));
     const { response, keyRefused } = await relay(onAccount(candidates().openrouter));
 
     expect(response.status).toBe(429);
-    expect(keyRefused).toEqual([]);
+    expect(keyRefused).toEqual([{ upstream: "openrouter", kind: "account_key_failed", reason: "rate_limited", lasting: false }]);
+  });
+
+  it("reports the upstream's own 503 as passing, naming it", async () => {
+    fakes.openrouter.answer(() => ({ status: 503, body: { error: { message: "overloaded" } } }));
+    const { keyRefused } = await relay(onAccount(candidates().openrouter));
+
+    expect(keyRefused).toEqual([{ upstream: "openrouter", kind: "upstream_unavailable", lasting: false }]);
+  });
+
+  it("reports an upstream it could not reach as passing, naming it", async () => {
+    const closed = createServer();
+    await new Promise<void>((done) => closed.listen(0, "127.0.0.1", () => done()));
+    const { port } = closed.address() as AddressInfo;
+    await new Promise<void>((done) => closed.close(() => done()));
+    const { keyRefused, response } = await relay(onAccount({ ...candidates().openrouter, baseUrl: `http://127.0.0.1:${port}/api/v1` }));
+
+    expect(response.status).toBe(502);
+    expect(keyRefused).toEqual([{ upstream: "openrouter", kind: "upstream_unavailable", lasting: false }]);
   });
 
   it("reports nothing for a refusal of the request itself", async () => {

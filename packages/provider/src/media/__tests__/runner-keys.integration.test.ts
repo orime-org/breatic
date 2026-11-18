@@ -362,6 +362,26 @@ describe("a failure of an account's key (critical path)", () => {
     expect(deploymentKeys).not.toHaveBeenCalled();
   });
 
+  it("fails a run whose poll the upstream refuses with 401 (the key revoked while it ran) as account_key_failed/invalid", async () => {
+    const { runner, deploymentKeys } = started();
+    ws.answer(({ method }) => (method === "POST" ? accepted("p-1") : { status: 401, body: { code: 401, message: "Unauthorized" } }));
+    const keys = accountKeys({ wavespeed: "acct-ws" });
+    const planned = expectState(await runner.plan("m", { prompt: "a fox", params: {} }, { mode: "default" }, planOptions(keys) as never), "send");
+    const running = expectState(await runner.send(stored(planned.ticket), { ...live(), keys }), "running");
+    const answer = await runner.poll(stored(running.ticket), { ...live(), keys });
+    expect(keyFailureOf(answer)).toMatchObject({ kind: "account_key_failed", reason: "invalid", upstream: "wavespeed" });
+    expect(deploymentKeys).not.toHaveBeenCalled();
+  });
+
+  it("asks again after a 429 on a poll of the account's key", async () => {
+    const { runner } = started();
+    ws.answer(({ method }) => (method === "POST" ? accepted("p-1") : { status: 429, body: { code: 429, message: "Too many requests" } }));
+    const keys = accountKeys({ wavespeed: "acct-ws" });
+    const planned = expectState(await runner.plan("m", { prompt: "a fox", params: {} }, { mode: "default" }, planOptions(keys) as never), "send");
+    const running = expectState(await runner.send(stored(planned.ticket), { ...live(), keys }), "running");
+    expectState(await runner.poll(stored(running.ticket), { ...live(), keys }), "running");
+  });
+
   it("keeps another 403 (a content refusal) a refused request, not a key failure", async () => {
     const { runner } = started();
     fal.answer(({ method }) => (method === "POST" ? { status: 403, body: { detail: "Content policy violation" } } : undefined));

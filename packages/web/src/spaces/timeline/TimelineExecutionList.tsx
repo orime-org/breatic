@@ -31,8 +31,8 @@ const FAILURE_SENTENCE: Readonly<Record<string, 'feature_disabled' | 'check' | '
   harness_failed: 'stopped', container_failed: 'stopped', internal: 'stopped',
 };
 
-/** The failures of the payer's own key, told with the canvas task sentence that names the upstream (inner#1953). */
-const KEY_FAILURES: ReadonlySet<string> = new Set(['account_key_missing', 'account_key_failed']);
+/** The failures of the payer's own key or its upstream, told with the canvas task sentence that names the upstream (inner#1953). */
+const KEY_FAILURES: ReadonlySet<string> = new Set(['account_key_missing', 'account_key_failed', 'upstream_unavailable']);
 
 /**
  * The sentence a failed execution is told with.
@@ -48,7 +48,7 @@ export function executionFailureSentence(
   keys: KeyFailureWords | undefined,
 ): string {
   if (row.failureReason !== null && KEY_FAILURES.has(row.failureReason)) {
-    const reason = row.failureReason as 'account_key_missing' | 'account_key_failed';
+    const reason = row.failureReason as 'account_key_missing' | 'account_key_failed' | 'upstream_unavailable';
     const about = {
       ...(row.failureUpstream === null ? {} : { upstream: row.failureUpstream }),
       ...(row.failureKeyReason === null ? {} : { keyReason: row.failureKeyReason }),

@@ -16,7 +16,7 @@ import { answerText, isSuccess, parsed, send } from "@provider/http/request.js";
 import type { PriceEntries } from "@provider/llm/prices.js";
 import { counter, type MessagesSpeaker } from "@provider/llm/upstreams/common.js";
 import { messagesSpeakerOf } from "@provider/llm/upstreams/messages.js";
-import { accountFailureOf, decide, type AccountKeyFailureReason, type Failure } from "@provider/routing/decide.js";
+import { accountFailureOf, decide, type AccountKeyFailureKind, type AccountKeyFailureReason, type Failure } from "@provider/routing/decide.js";
 
 /** The Messages fields a call may carry upstream; everything else the caller sends is dropped. */
 const ALLOWED_FIELDS = [
@@ -53,7 +53,10 @@ export interface MessagesPlan {
 /** A refusal of the payer's own key that asking again cannot change, read by the upstream's own reader (inner#1953). */
 export interface AccountKeyRefusal {
   upstream: string;
-  reason: AccountKeyFailureReason;
+  kind: AccountKeyFailureKind;
+  reason?: AccountKeyFailureReason;
+  /** True when asking again cannot change it; a 429, a 5xx or an upstream never reached is false. */
+  lasting: boolean;
 }
 
 /** The counters of a completed call, as its usage stated them. */
@@ -87,8 +90,9 @@ export interface RelayOptions {
   /** Awaited exactly once per call, before the answer's stream closes or errors. */
   onEnded: (end: MessagesCallEnd) => Promise<void>;
   /**
-   * Awaited before the call ends when a plan on the payer's own keys was refused for good: its key is invalid, out of
-   * balance or does not reach the model. No other upstream is tried, and the deployment's keys are never used.
+   * Awaited before the call ends when a plan on the payer's own keys failed on its key or upstream, with the last such
+   * failure: one that lasts (the key invalid, out of balance or not reaching the model) or a passing one the caller may
+   * ask again after (a 429, a 5xx, the upstream never reached). The deployment's keys are never used.
    */
   onAccountKeyRefused?: (refusal: AccountKeyRefusal) => Promise<void>;
 }
@@ -161,7 +165,10 @@ export async function relayMessages(plan: MessagesPlan, asked: Record<string, un
       response = await send({ url, method: "POST", headers, body: JSON.stringify(body) }, bounds);
     } catch (error) {
       // A request that never left moves on; one that left without an answer, or was stopped, ends the call there.
-      if (error instanceof NotSent) continue;
+      if (error instanceof NotSent) {
+        if (plan.keysOwner === "account") keyRefused = { upstream: candidate.upstream, kind: "upstream_unavailable", lasting: false };
+        continue;
+      }
       break;
     }
     const contentType = response.headers.get("content-type") ?? "application/json";
@@ -171,9 +178,9 @@ export async function relayMessages(plan: MessagesPlan, asked: Record<string, un
     refused = { status: response.status, text, contentType };
     const failure: Failure = refusal === undefined ? { kind: "http_status", status: response.status } : { kind: refusal };
     const turned = plan.keysOwner === "account" ? accountFailureOf(failure, "llm_before_content") : undefined;
-    if (turned?.kind === "account_key_failed" && turned.lasting && turned.reason !== undefined) {
-      keyRefused = { upstream: candidate.upstream, reason: turned.reason };
-      break;
+    if (turned !== undefined) {
+      keyRefused = { upstream: candidate.upstream, kind: turned.kind, ...(turned.reason === undefined ? {} : { reason: turned.reason }), lasting: turned.lasting };
+      if (turned.lasting) break;
     }
     if (decide(failure, "llm_before_content", 0, 0) !== "switch") break;
   }

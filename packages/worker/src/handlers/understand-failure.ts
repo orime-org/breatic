@@ -145,9 +145,10 @@ export function verdictStands(err: unknown): boolean {
   // provider answered the run failed: an upstream refused or failed it, or none can take it. A redelivery reads the
   // same answer.
   if (err instanceof MediaRunFailed) return true;
-  // An account's key failed, or its row is gone (inner#1953): another attempt runs on the same key or the same missing
-  // row, and our key is never tried instead.
-  if (accountKeyFailureIn(err) !== undefined) return true;
+  // An account's key failed, or its row is gone (inner#1953): our key is never tried instead, so a lasting failure
+  // reads the same on the next attempt, and a passing one (a 429, the upstream unreachable or a 5xx) may not.
+  const keyFailure = accountKeyFailureIn(err);
+  if (keyFailure !== undefined) return keyFailure.lasting;
   // A redelivery reads the same job, which has already ended.
   if (err instanceof ContainerJobFailed) return true;
   // The task's two hours do not come back.

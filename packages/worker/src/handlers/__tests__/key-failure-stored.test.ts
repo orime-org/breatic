@@ -3,9 +3,9 @@
 
 /**
  * A run that failed on an account's own key (inner#1953), as its task row stores it and as the queue treats it:
- * every lane (a generation, a mini-tool, a reading) stores the key's own code naming the upstream and why, and the
- * verdict stands at once, because another attempt would use the same key (or the same missing key row) and our key
- * is never tried instead. A key failure is recognised by its `kind` wherever it sits on the cause chain.
+ * every lane (a generation, a mini-tool, a reading) stores the key's own code naming the upstream and why. Our key is
+ * never tried instead, so a lasting failure settles at once and a passing one is left to the queue's next attempt on
+ * the same key. A key failure is recognised by its `kind` wherever it sits on the cause chain.
  */
 
 import { describe, expect, it } from "vitest";
@@ -35,10 +35,22 @@ const CASES = [
   ["upstream_unavailable", { upstream: "sandbase" }],
 ] as const;
 
-describe("a key failure's verdict stands", () => {
-  it.each(CASES)("%s %j settles at once, wrapped or not", (kind, extra) => {
-    expect(verdictStands(keyFailure(kind, extra))).toBe(true);
-    expect(verdictStands(keyFailure(kind, extra, true))).toBe(true);
+describe("a key failure's verdict stands when it lasts", () => {
+  it.each(CASES)("%s %j that lasts settles at once, wrapped or not", (kind, extra) => {
+    expect(verdictStands(keyFailure(kind, { ...extra, lasting: true }))).toBe(true);
+    expect(verdictStands(keyFailure(kind, { ...extra, lasting: true }, true))).toBe(true);
+  });
+
+  it.each([
+    ["account_key_failed", { reason: "rate_limited", upstream: "openrouter" }],
+    ["upstream_unavailable", { upstream: "openrouter" }],
+  ] as const)("%s %j that passes leaves the queue to try again on the same key, wrapped or not", (kind, extra) => {
+    expect(verdictStands(keyFailure(kind, { ...extra, lasting: false }))).toBe(false);
+    expect(verdictStands(keyFailure(kind, { ...extra, lasting: false }, true))).toBe(false);
+  });
+
+  it("reads a key failure that does not say whether it lasts as lasting", () => {
+    expect(verdictStands(keyFailure("account_key_missing"))).toBe(true);
   });
 });
 

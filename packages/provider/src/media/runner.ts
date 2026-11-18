@@ -8,7 +8,7 @@ import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js
 import { fetchMedia, MediaRefused } from "@provider/http/fetch-media.js";
 import { boundSignal, sideBounds } from "@provider/http/request.js";
 import { outputUrls, type MediaAdapter, type Reach, type RequestBounds, type StepCodec, type StepContext, type StepOutput } from "@provider/media/adapter.js";
-import { assertAccountReaches, keyFor, keysOr, paidInRun, recordedKeys, ticketOwners, triedOn, type KeySet, type TicketOwners } from "@provider/keys.js";
+import { assertAccountReaches, keyFailureOf, keyFor, keysOr, paidInRun, recordedKeys, ticketOwners, triedOn, type KeySet, type TicketOwners } from "@provider/keys.js";
 import { adapterOf } from "@provider/media/adapters.js";
 import { buildBody } from "@provider/media/body.js";
 import { assess, cloneKeyOf, heldClone, isPresent, stepCalls, stepSource, type CloneKind, type HeldClone } from "@provider/pricing/estimate.js";
@@ -951,8 +951,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       // On an account's LLM keys, as for a media submit: a lasting failure of the key, or any on the caller's last
       // try, fails the run; a passing one (429, the upstream unreachable or 5xx) has the caller retry the same key.
       if (error instanceof AccountKeyFailure) {
-        const lasting = error.kind === "account_key_missing" || (error.kind === "account_key_failed" && error.reason !== "rate_limited");
-        if (lasting || bounds.final === true) return failed({ ...ticket, costs: [...ticket.costs, ...costsOf(error).map(paid)] }, error);
+        if (error.lasting || bounds.final === true) return failed({ ...ticket, costs: [...ticket.costs, ...costsOf(error).map(paid)] }, error);
         throw new SendNotAccepted(ticket.upstream, error);
       }
       // UnderstandInterrupted and anything else go as they are: costsOf reads what they carry.
@@ -1000,7 +999,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         // caller's last try, ends the step; a passing one has the caller retry the same ticket and key.
         const turned = bounds.keys.owner === "account" ? accountFailureOf(failure, "media_submit") : undefined;
         if (turned !== undefined) {
-          const keyFailure = new AccountKeyFailure(ticket.model, turned.kind, { upstream: ticket.upstream, ...(turned.reason === undefined ? {} : { reason: turned.reason }), cause: error });
+          const keyFailure = keyFailureOf(ticket.model, ticket.upstream, turned, error);
           if (turned.lasting || bounds.final === true) return endStep(ticket, at.index, bounds, keyFailure);
           throw new SendNotAccepted(ticket.upstream, error);
         }
@@ -1061,6 +1060,10 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       } catch (error) {
         const resendable = error instanceof NoAnswer || error instanceof NotSent || (error instanceof HttpStatus && passingStatus(error.status, "media_submit"));
         if (error instanceof Aborted && pollOptions.finalAsk !== true && cutAtDeadline(pollOptions)) throw new DeadlinePassed(pollOptions.deadlineAt);
+        // On an account's keys a lasting refusal of the key (revoked while the run went on) ends the step as a key
+        // failure; a passing one is asked again, as any other passing answer is.
+        const turned = bounds.keys.owner === "account" && error instanceof HttpStatus ? accountFailureOf(classify(error, adapterFor(ticket.upstream)), "media_submit") : undefined;
+        if (turned?.lasting === true) return endStep(ticket, at.index, bounds, keyFailureOf(ticket.model, ticket.upstream, turned, error));
         // An answer that says the same next time ends an optional step, as the worker's step runner read it: a 4xx other than
         // 408 and 429, or a 2xx that is not JSON.
         const lastingAnswer = (error instanceof HttpStatus && !resendable && error.status >= 400 && error.status < 500 && error.status !== 408)

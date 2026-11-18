@@ -242,6 +242,18 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
   }
 
   /**
+   * Note a passing failure of the payer's own key (inner#1953); the job keeps running, and fails with it only if the
+   * runner gives up before a later call completes.
+   * @param reason - `account_key_failed` (a rate limit) or `upstream_unavailable`.
+   * @param upstream - The upstream that failed.
+   * @param keyReason - Why it refused the key, for `account_key_failed`.
+   * @returns Nothing.
+   */
+  async notePassingKeyFailure(reason: string, upstream: string, keyReason?: AccountKeyRefusal["reason"]): Promise<void> {
+    await this.apply({ type: "keyPassing", reason, upstream, ...(keyReason === undefined ? {} : { keyReason }) });
+  }
+
+  /**
    * One output the container wrote.
    * @param output - What the edge measured.
    * @returns Nothing.
@@ -453,6 +465,7 @@ async function modelCall(request: Request, env: WebAnimationEnv, ctx: OutboundHa
         recordModelCallStart: (seq, upstream, messageId) => job.recordModelCallStart(seq, upstream, messageId),
         endModelCall: (seq, end) => job.endModelCall(seq, end),
         failJob: (reason, upstream, keyReason) => job.failForKeys(reason, upstream, keyReason),
+        notePassingKeyFailure: (reason, upstream, keyReason) => job.notePassingKeyFailure(reason, upstream, keyReason),
       },
     });
   } catch (err) {

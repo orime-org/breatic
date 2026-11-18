@@ -20,7 +20,7 @@ import { classifyLlm, costRefOf, InBandError, pauseBeforeRetry, SwitchingModel }
 import { AnswerUnread, assertSucceeded, MediaReadFailed, StepRefused, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
 import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
 import { messagesSpeakerOf } from "@provider/llm/upstreams/messages.js";
-import { assertAccountReaches, hasKey, keyFor, keysOr, llmFailureOn, paidAsMarked, paidOn, payerMark, triedOn, type KeySet } from "@provider/keys.js";
+import { assertAccountReaches, hasKey, keyFailureOf, keyFor, keysOr, llmFailureOn, paidAsMarked, paidOn, payerMark, triedOn, type KeySet } from "@provider/keys.js";
 import { cacheMark, hasLlmAdapter, isClaude, messageOf, optionsFor, vendorOf, type ModelV4, type Vendor, type VendorOptions } from "@provider/llm/vendors.js";
 import type { MessagesPlan } from "@provider/messages/relay.js";
 import type { ProviderOptions } from "@provider/provider.js";
@@ -174,7 +174,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions, depl
     assertAccountReaches(modelId, keys, candidates);
     const plan = planRoute(modelId, chosen.mode === "cheapest" ? DEFAULT_ROUTE : chosen, candidates);
     const order = chosen.mode === "cheapest" ? byUnitPrice(modelId, plan.order) : plan.order;
-    return { ...plan, order: triedOn(keys, order) };
+    return { ...plan, order: triedOn(keys, order), ...(keys.owner === "account" ? { heldToOne: true as const } : {}) };
   };
 
   /**
@@ -666,7 +666,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions, depl
         // On the payer's own key a refusal of that key is the payer's to act on, never a refusal of the question.
         const refusal = used.owner === "account" ? vendorOf(kindOf(upstream)).refusal(response.status, parsed(text)) : undefined;
         const turned = used.owner === "account" ? accountFailureOf(refusal === undefined ? { kind: "http_status", status: response.status } : { kind: refusal }, "llm_before_content") : undefined;
-        if (turned?.kind === "account_key_failed") throw new AccountKeyFailure(decisions.model, turned.kind, { upstream, ...(turned.reason === undefined ? {} : { reason: turned.reason }) });
+        if (turned?.kind === "account_key_failed") throw keyFailureOf(decisions.model, upstream, turned);
         return { status: response.status, body: text, ...served };
       }
       const reported = vendorOf(kindOf(upstream)).costs?.ofBody(parsed(text)).cost;

@@ -38,6 +38,7 @@ export interface ModelRelayDeps {
     endModelCall: (seq: number, end: MessagesCallEnd) => Promise<void>;
     /** Ends the job failed for this reason, naming the upstream and why it refused the payer's own key. */
     failJob: (reason: string, upstream?: string, keyReason?: AccountKeyRefusal["reason"]) => Promise<void>;
+    notePassingKeyFailure: (reason: string, upstream: string, keyReason?: AccountKeyRefusal["reason"]) => Promise<void>;
   };
 }
 
@@ -92,8 +93,11 @@ export async function relayModelCall(request: Request, deps: ModelRelayDeps): Pr
     signal: abort.signal,
     ...(version === null ? {} : { anthropicVersion: version }),
     onStarted: (upstream, messageId) => deps.registry.recordModelCallStart(seq, upstream, messageId),
-    // On the payer's own keys, a key the upstream refused for good ends the job; ours never stands in (inner#1953).
-    onAccountKeyRefused: (refusal) => deps.registry.failJob("account_key_failed", refusal.upstream, refusal.reason),
+    // On the payer's own keys a key the upstream refused for good ends the job, and a passing failure is noted for the
+    // job to fail with if the runner gives up; ours never stands in (inner#1953).
+    onAccountKeyRefused: (refusal) => (refusal.lasting
+      ? deps.registry.failJob(refusal.kind, refusal.upstream, refusal.reason)
+      : deps.registry.notePassingKeyFailure(refusal.kind, refusal.upstream, refusal.reason)),
     onEnded: async (end) => {
       clearTimeout(timer);
       request.signal.removeEventListener("abort", abandon);

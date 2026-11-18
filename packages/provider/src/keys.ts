@@ -11,7 +11,7 @@
 import type { ProviderConfig } from "@provider/config/schema.js";
 import { paidBy, type Cost, type CostLookup, type Payer } from "@provider/cost.js";
 import { AccountKeyFailure, NoUpstreamAvailable, UpstreamRequestRejected } from "@provider/errors.js";
-import { accountFailureOf, type Failure } from "@provider/routing/decide.js";
+import { accountFailureOf, type Failure, type Turned } from "@provider/routing/decide.js";
 
 /** The keys one call may use, by upstream name, and whose they are. */
 export interface KeySet {
@@ -198,6 +198,23 @@ function endedFailure(error: unknown, classify: (error: unknown) => Failure | nu
 }
 
 /**
+ * The error a failure of an account's key is thrown as, carrying the reading accountFailureOf gave.
+ * @param model - Our model id.
+ * @param upstream - The upstream that failed.
+ * @param turned - How the failure reads.
+ * @param cause - The upstream's own error.
+ * @returns The error.
+ */
+export function keyFailureOf(model: string, upstream: string, turned: Turned, cause?: unknown): AccountKeyFailure {
+  return new AccountKeyFailure(model, turned.kind, {
+    upstream,
+    ...(turned.reason === undefined ? {} : { reason: turned.reason }),
+    lasting: turned.lasting,
+    ...(cause === undefined ? {} : { cause }),
+  });
+}
+
+/**
  * What an LLM call on a key set throws when it ends with an error: on an account's keys, a failure of the key or its
  * upstream becomes an AccountKeyFailure with the call's own error as its cause; anything else, and every error on the
  * deployment's keys, is thrown as it is.
@@ -212,7 +229,7 @@ export function llmFailureOn(keys: KeySet, model: string, upstream: string, clas
   return (error) => {
     if (error instanceof AccountKeyFailure) return error;
     const turned = accountFailureOf(endedFailure(error, classify), "llm_before_content");
-    return turned === undefined ? error : new AccountKeyFailure(model, turned.kind, { upstream, ...(turned.reason === undefined ? {} : { reason: turned.reason }), cause: error });
+    return turned === undefined ? error : keyFailureOf(model, upstream, turned, error);
   };
 }
 
