@@ -248,11 +248,11 @@ export async function saveKey(userId: string, upstream: string, raw: string): Pr
  */
 export async function recheckKey(userId: string, upstream: string): Promise<ByokSavedKey> {
   const masterKeys = ringOrRefuse();
-  const live = (await accountProviderKeysRepo.liveKeysFor(userId)).find((k) => k.upstream === upstream);
-  const sealed = live === undefined ? null : await accountProviderKeysRepo.sealedKeyById(live.id);
+  const sealed = await accountProviderKeysRepo.sealedLiveKeyFor(userId, upstream);
   if (sealed === null) throw new NotFoundError(t("server.error.not_found"));
   const check = await provider().checkKey(upstream, openProviderKey(sealed.ciphertext, masterKeys));
-  const recorded = await accountProviderKeysRepo.recordCheck(userId, upstream, checkRecord(check));
+  // Recorded on the row that was checked: a key replaced meanwhile keeps its own check.
+  const recorded = await accountProviderKeysRepo.recordCheck(sealed.id, checkRecord(check));
   if (recorded === null) throw new NotFoundError(t("server.error.not_found"));
   return savedKeyView(recorded);
 }

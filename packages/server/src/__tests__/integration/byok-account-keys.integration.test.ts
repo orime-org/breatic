@@ -148,6 +148,35 @@ describe("account_provider_keys", () => {
     expect(await accountProviderKeysRepo.sealedKeyById(newId)).toMatchObject({ id: newId, userId, upstream: "fal", ciphertext: newText });
   });
 
+  it("records a check on the row it checked, never on the row that replaced it meanwhile", async () => {
+    const userId = await seedUser();
+    const oldId = await save(userId, "fal", sealedText("old"));
+    await accountProviderKeysRepo.saveKey({ userId, upstream: "fal", ciphertext: sealedText("new"), displayHint: "x", check: { connected: true, balanceState: null, balanceAmount: null, balanceCurrency: null, failure: null } });
+
+    expect(await accountProviderKeysRepo.recordCheck(oldId, { connected: false, balanceState: null, balanceAmount: null, balanceCurrency: null, failure: "invalid" })).toBeNull();
+    expect((await accountProviderKeysRepo.liveKeysFor(userId))[0]).toMatchObject({ lastConnected: true, lastFailure: null });
+  });
+
+  it("reads the live sealed key of an account and upstream, and nothing once it is deleted or the account is gone", async () => {
+    const userId = await seedUser();
+    const text = sealedText("live");
+    const id = await save(userId, "fal", text);
+
+    expect(await accountProviderKeysRepo.sealedLiveKeyFor(userId, "fal")).toEqual({ id, userId, upstream: "fal", ciphertext: text });
+    expect(await accountProviderKeysRepo.sealedLiveKeyFor(userId, "wavespeed")).toBeNull();
+    await sql`UPDATE users SET deleted_at = now() WHERE id = ${userId}`;
+    expect(await accountProviderKeysRepo.sealedLiveKeyFor(userId, "fal")).toBeNull();
+  });
+
+  it("keeps the sealed text out of the error a failed save throws", async () => {
+    const text = sealedText("leak");
+    const thrown = await accountProviderKeysRepo.saveKey({ userId: crypto.randomUUID(), upstream: "fal", ciphertext: text, displayHint: "x" }).then(() => null, (err: unknown) => err);
+
+    expect(thrown).toBeInstanceOf(Error);
+    const seen = JSON.stringify(thrown, Object.getOwnPropertyNames(thrown)) + String(thrown) + (thrown as Error).stack;
+    expect(seen).not.toContain(text);
+  });
+
   it("deletes a key by clearing its sealed text and soft-deleting the row", async () => {
     const userId = await seedUser();
     const id = await save(userId, "wavespeed", sealedText("gone"));

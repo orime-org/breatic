@@ -14,6 +14,7 @@ import type { AccountProviderKey, ProviderKeyBalanceState } from "@breatic/share
 import { db, type DbTx } from "@core/db/client.js";
 import { accountProviderKeys, users } from "@core/db/schema.js";
 import { dropChoicesForUpstream } from "@core/byok/account-model-upstreams.repo.js";
+import { redactSessionError } from "@core/infra/session-error.js";
 
 /** What a check of the key found, stored beside it. */
 export interface ProviderKeyCheckRecord {
@@ -107,38 +108,42 @@ async function lockAccount(tx: DbTx, userId: string): Promise<void> {
  * @throws {Error} When the account does not exist (foreign key).
  */
 export async function saveKey(input: NewAccountProviderKey): Promise<AccountProviderKey> {
-  return db.transaction(async (tx) => {
-    await lockAccount(tx, input.userId);
-    await tx
-      .update(accountProviderKeys)
-      .set({ ciphertext: null, deletedAt: sql`now()` })
-      .where(and(eq(accountProviderKeys.userId, input.userId), eq(accountProviderKeys.upstream, input.upstream), isNull(accountProviderKeys.deletedAt)));
-    const rows = await tx
-      .insert(accountProviderKeys)
-      .values({
-        userId: input.userId,
-        upstream: input.upstream,
-        ciphertext: input.ciphertext,
-        displayHint: input.displayHint,
-        ...(input.check === undefined ? {} : checkColumns(input.check)),
-      })
-      .returning(entityColumns);
-    return toEntity(rows[0]!);
-  });
+  try {
+    return await db.transaction(async (tx) => {
+      await lockAccount(tx, input.userId);
+      await tx
+        .update(accountProviderKeys)
+        .set({ ciphertext: null, deletedAt: sql`now()` })
+        .where(and(eq(accountProviderKeys.userId, input.userId), eq(accountProviderKeys.upstream, input.upstream), isNull(accountProviderKeys.deletedAt)));
+      const rows = await tx
+        .insert(accountProviderKeys)
+        .values({
+          userId: input.userId,
+          upstream: input.upstream,
+          ciphertext: input.ciphertext,
+          displayHint: input.displayHint,
+          ...(input.check === undefined ? {} : checkColumns(input.check)),
+        })
+        .returning(entityColumns);
+      return toEntity(rows[0]!);
+    });
+  } catch (err) {
+    // A failed query's error repeats its parameters, the sealed key among them; only the redacted copy leaves here.
+    throw redactSessionError(err, [input.ciphertext]);
+  }
 }
 
 /**
- * Store what a later check of a live key found.
- * @param userId - The account.
- * @param upstream - The upstream.
+ * Record what checking a key found on the row that was checked, while it is live.
+ * @param id - The row that was checked.
  * @param check - What the check found.
- * @returns The key as now stored, or null when the account has no live key there.
+ * @returns The key as now stored, or null when the row was replaced or deleted meanwhile.
  */
-export async function recordCheck(userId: string, upstream: string, check: ProviderKeyCheckRecord): Promise<AccountProviderKey | null> {
+export async function recordCheck(id: string, check: ProviderKeyCheckRecord): Promise<AccountProviderKey | null> {
   const rows = await db
     .update(accountProviderKeys)
     .set(checkColumns(check))
-    .where(and(eq(accountProviderKeys.userId, userId), eq(accountProviderKeys.upstream, upstream), isNull(accountProviderKeys.deletedAt)))
+    .where(and(eq(accountProviderKeys.id, id), isNull(accountProviderKeys.deletedAt)))
     .returning(entityColumns);
   return rows[0] === undefined ? null : toEntity(rows[0]);
 }
@@ -168,6 +173,23 @@ export async function sealedKeyById(id: string): Promise<SealedProviderKey | nul
     .from(accountProviderKeys)
     .innerJoin(users, and(eq(users.id, accountProviderKeys.userId), isNull(users.deletedAt)))
     .where(and(eq(accountProviderKeys.id, id), isNull(accountProviderKeys.deletedAt), isNotNull(accountProviderKeys.ciphertext)))
+    .limit(1);
+  const row = rows[0];
+  return row === undefined || row.ciphertext === null ? null : { ...row, ciphertext: row.ciphertext };
+}
+
+/**
+ * The live sealed key an account holds for an upstream, in one read.
+ * @param userId - The account.
+ * @param upstream - The upstream.
+ * @returns The sealed key, or null when the account holds none there or is gone.
+ */
+export async function sealedLiveKeyFor(userId: string, upstream: string): Promise<SealedProviderKey | null> {
+  const rows = await db
+    .select({ id: accountProviderKeys.id, userId: accountProviderKeys.userId, upstream: accountProviderKeys.upstream, ciphertext: accountProviderKeys.ciphertext })
+    .from(accountProviderKeys)
+    .innerJoin(users, and(eq(users.id, accountProviderKeys.userId), isNull(users.deletedAt)))
+    .where(and(eq(accountProviderKeys.userId, userId), eq(accountProviderKeys.upstream, upstream), isNull(accountProviderKeys.deletedAt)))
     .limit(1);
   const row = rows[0];
   return row === undefined || row.ciphertext === null ? null : { ...row, ciphertext: row.ciphertext };

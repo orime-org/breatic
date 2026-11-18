@@ -54,8 +54,7 @@ export async function studioProviderKey(studioId: string, purpose: KeyPurpose): 
   if (payerUserId === null) return null;
   const upstream = purpose.kind === "llm" ? ACCOUNT_LLM_UPSTREAM : await accountModelUpstreamsRepo.modelUpstreamFor(payerUserId, purpose.model);
   if (upstream === null) return null;
-  const live = (await accountProviderKeysRepo.liveKeysFor(payerUserId)).find((key) => key.upstream === upstream);
-  const sealed = live === undefined ? null : await accountProviderKeysRepo.sealedKeyById(live.id);
+  const sealed = await accountProviderKeysRepo.sealedLiveKeyFor(payerUserId, upstream);
   return sealed === null ? null : { payerUserId, keyId: sealed.id, upstream, ciphertext: sealed.ciphertext };
 }
 
