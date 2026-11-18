@@ -604,9 +604,13 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       send: (key, body) => timelineApi.acceptExecution(body, key),
     }).then((outcome) => {
       if (outcome.kind !== 'done') {
-        // A spend limit says its limit and reset day (inner#1968).
         const failed = outcome.kind === 'failed' ? outcome.error : null;
-        dispatchDraft({ type: 'refused', error: refusalSentence(failed) ?? serverMessage(failed, t('common.runOnce.unknownResult')) });
+        // A spend limit is told in a toast with its limit and reset day, as
+        // at every other entry (inner#1968, design 3.3a); the dialog comes
+        // back with the input either way.
+        const capped = refusalSentence(failed);
+        if (capped !== null) toast.error(capped);
+        dispatchDraft({ type: 'refused', error: capped === null ? serverMessage(failed, t('common.runOnce.unknownResult')) : null });
         return;
       }
       const execution = outcome.result;
