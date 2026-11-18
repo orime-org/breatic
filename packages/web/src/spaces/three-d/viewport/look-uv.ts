@@ -91,8 +91,9 @@ function finish(geometry: BufferGeometry, source: BufferGeometry): BufferGeometr
  * copied; in a non-indexed one every vertex already belongs to one triangle, so its attributes are kept as they are.
  * @param mesh - A triangle mesh whose geometry has no `uv`.
  * @param toRoot - Mesh space to template-root space.
+ * @returns The geometry with UVs, for this mesh and every other one drawing the same geometry.
  */
-function generateMeshUvs(mesh: Mesh, toRoot: Matrix4): void {
+function generateMeshUvs(mesh: Mesh, toRoot: Matrix4): BufferGeometry {
   const source = mesh.geometry;
   const count = source.attributes.position!.count;
   const rest = new Float32Array(count * 3);
@@ -108,8 +109,7 @@ function generateMeshUvs(mesh: Mesh, toRoot: Matrix4): void {
     for (const [name, attribute] of Object.entries(source.attributes)) geometry.setAttribute(name, attribute);
     for (const [name, targets] of Object.entries(source.morphAttributes)) geometry.morphAttributes[name] = targets;
     geometry.setAttribute('uv', new BufferAttribute(uvs, 2));
-    mesh.geometry = finish(geometry, source);
-    return;
+    return finish(geometry, source);
   }
   const corners = source.index.array as ArrayLike<number>;
   const triangles = Math.floor(corners.length / 3) * 3;
@@ -140,14 +140,15 @@ function generateMeshUvs(mesh: Mesh, toRoot: Matrix4): void {
     geometry.morphAttributes[name] = targets.map((target) => gather(target, used));
   }
   geometry.setAttribute('uv', new BufferAttribute(uvs.slice(0, made * 2), 2));
-  geometry.setIndex(new BufferAttribute(index, 1));
-  mesh.geometry = finish(geometry, source);
+  geometry.setIndex(new BufferAttribute(made <= 0xffff ? new Uint16Array(index) : index, 1));
+  return finish(geometry, source);
 }
 
 /**
  * Give every triangle mesh without UVs under a template root UVs a look picture can tile on (inner#1693 design 5.1):
- * rest positions in root metres, one projection per triangle, a hard seam where the projection changes. Each mesh gets
- * its own geometry, so meshes that shared one get UVs from their own place. Lines, points and meshes with UVs are left alone.
+ * rest positions in root metres, one projection per triangle, a hard seam where the projection changes. Meshes drawing
+ * one geometry are instances of it and share one generated geometry, projected where the first of them stands, as
+ * Blender, Maya, 3ds Max and Unity share an instance's mesh and UVs. Lines, points and meshes with UVs are left alone.
  * @param root - The template root, before any instance clones it.
  */
 export function generateLookUvs(root: Object3D): void {
@@ -158,5 +159,14 @@ export function generateLookUvs(root: Object3D): void {
     const mesh = object as Mesh;
     if (mesh.isMesh && !mesh.geometry.attributes.uv && mesh.geometry.attributes.position) meshes.push(mesh);
   });
-  for (const mesh of meshes) generateMeshUvs(mesh, new Matrix4().multiplyMatrices(fromRoot, mesh.matrixWorld));
+  const generated = new Map<BufferGeometry, BufferGeometry>();
+  for (const mesh of meshes) {
+    const source = mesh.geometry;
+    let made = generated.get(source);
+    if (!made) {
+      made = generateMeshUvs(mesh, new Matrix4().multiplyMatrices(fromRoot, mesh.matrixWorld));
+      generated.set(source, made);
+    }
+    mesh.geometry = made;
+  }
 }

@@ -174,17 +174,37 @@ describe('generateLookUvs', () => {
     }
   });
 
-  it('gives each of two meshes sharing one geometry its own UVs', () => {
+  it('gives the meshes sharing one geometry one generated geometry, projected where the first of them stands', () => {
     const root = new Group();
     const shared = withoutUv(new BoxGeometry(1, 1, 1));
     const near = new Mesh(shared, new MeshStandardMaterial());
     const far = new Mesh(shared, new MeshStandardMaterial());
     far.position.set(10, 0, 0);
-    root.add(near, far);
+    const third = new Mesh(shared, new MeshStandardMaterial());
+    third.position.set(0, 0, -10);
+    root.add(near, far, third);
     generate()(root);
-    expect(near.geometry).not.toBe(far.geometry);
-    const uMax = (mesh: Mesh): number => Math.max(...Array.from({ length: mesh.geometry.attributes.uv!.count }, (_, i) => Math.abs(mesh.geometry.attributes.uv!.getX(i))));
-    expect(uMax(far)).toBeGreaterThan(uMax(near) + 5);
+    expect(near.geometry).not.toBe(shared);
+    expect(far.geometry).toBe(near.geometry);
+    expect(third.geometry).toBe(near.geometry);
+    const made = near.geometry;
+    const points = restPoints(near, root);
+    for (const [a, b, c] of triangles(made)) {
+      const face = faceAxis([points[a!]!, points[b!]!, points[c!]!]);
+      for (const vertex of [a!, b!, c!]) {
+        const [u, v] = expectedUv(points[vertex]!, face);
+        expect(made.attributes.uv!.getX(vertex)).toBeCloseTo(u);
+        expect(made.attributes.uv!.getY(vertex)).toBeCloseTo(v);
+      }
+    }
+  });
+
+  it('indexes a generated geometry with 16-bit indices while its vertices fit', () => {
+    const root = new Group();
+    const mesh = new Mesh(withoutUv(new BoxGeometry(1, 1, 1)), new MeshStandardMaterial());
+    root.add(mesh);
+    generate()(root);
+    expect(mesh.geometry.index!.array).toBeInstanceOf(Uint16Array);
   });
 
   it('projects an instanced mesh in its own coordinates without the instance matrices', () => {
