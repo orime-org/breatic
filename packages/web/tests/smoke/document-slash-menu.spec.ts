@@ -142,6 +142,17 @@ test.describe('the slash menu in the document body', () => {
     await expect.poll(() => lines(page)).toEqual(['paragraph:abc/ ', '>paragraph:']);
   });
 
+  test('closes on a space right after the slash, so Enter breaks the line', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('1 /');
+    await expect(page.locator(MENU)).toBeVisible();
+    await page.keyboard.type(' 2');
+    await expect(page.locator(MENU)).toBeHidden();
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('next');
+    await expect.poll(() => lines(page)).toEqual(['paragraph:1 / 2', 'paragraph:next']);
+  });
+
   test('says nothing matches, then closes; Esc and a click away close it with the text kept', async () => {
     await openFreshDocument(page);
     await page.keyboard.type('/zzz');
