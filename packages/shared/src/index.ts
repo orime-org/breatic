@@ -630,6 +630,7 @@ export {
   agentCommandSchema,
   agentCredentialSchema,
   agentReplySchema,
+  agentTokenExchangeResponseSchema,
   isAgentCommandType,
   callScopedId,
   mcpCaptureRequestKey,
@@ -647,6 +648,7 @@ export type {
   AgentCommandRefusal,
   AgentCommandType,
   AgentReply,
+  AgentTokenExchangeResponse,
 } from "@shared/agent-command.js";
 
 // The three gates on a capped list param — the panel while picking, the server

@@ -104,6 +104,22 @@ export const agentCredentialSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("pat"), tokenId: z.string().min(1) }),
 ]);
 
+/**
+ * The server's answer to the MCP service's token exchange (RFC 8693), with the
+ * identity the MCP service writes into every command: the user, the
+ * connection and the credential the downstream token stands for.
+ */
+export const agentTokenExchangeResponseSchema = z.object({
+  access_token: z.string().min(1),
+  issued_token_type: z.literal("urn:ietf:params:oauth:token-type:access_token"),
+  token_type: z.literal("Bearer"),
+  expires_in: z.number().int().positive(),
+  user_id: z.uuid(),
+  connection_id: z.uuid(),
+  credential: agentCredentialSchema,
+});
+export type AgentTokenExchangeResponse = z.infer<typeof agentTokenExchangeResponseSchema>;
+
 /** One command the MCP service sends collab. Times are epoch milliseconds. */
 export const agentCommandSchema = z.object({
   callId: z.uuid(),

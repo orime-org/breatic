@@ -22,7 +22,7 @@ import Provider, {
 } from "oidc-provider";
 import { agentAccessService, env, getMcpConfig, isLoopbackIp, logger, type AgentCredential } from "@breatic/core";
 import { reachable } from "@breatic/domain";
-import { httpRequest } from "@breatic/shared";
+import { httpRequest, type AgentTokenExchangeResponse } from "@breatic/shared";
 import { authService } from "@server/modules";
 import { OAuthRecordsAdapter } from "@server/modules/agent-access/oauth-adapter.js";
 import { frontendOrigin } from "@server/utils/frontend-origin.js";
@@ -169,7 +169,16 @@ async function exchangeToken(provider: Provider, ctx: KoaContextWithOIDC): Promi
     { userId: subject.userId, connectionId: subject.connectionId, credentialId: credentialId(subject.credential), credentialType: subject.credential.type },
     "mcp_token_exchanged",
   );
-  ctx.body = { access_token: token, issued_token_type: ACCESS_TOKEN_TYPE, token_type: "Bearer", expires_in: lifetimeSeconds };
+  const body: AgentTokenExchangeResponse = {
+    access_token: token,
+    issued_token_type: ACCESS_TOKEN_TYPE,
+    token_type: "Bearer",
+    expires_in: lifetimeSeconds,
+    user_id: subject.userId,
+    connection_id: subject.connectionId,
+    credential: subject.credential,
+  };
+  ctx.body = body;
 }
 
 /**
