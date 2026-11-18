@@ -14,11 +14,12 @@ import * as Y from "yjs";
 import { sql as dsql } from "drizzle-orm";
 
 import { env, getStreamRedis } from "@breatic/core";
-import { assignmentsChangedChannel, canvasSpaceDocName, projectMetaDocName } from "@breatic/shared";
+import { assignmentsChangedChannel, canvasSpaceDocName, projectMetaDocName, type SpaceRpcRequest } from "@breatic/shared";
 import { canvasNodesMap } from "@breatic/shared/canvas-model";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import { storeDoc } from "@collab/services/persistence.js";
-import { run, seedWorld, useAgentCommandHarness, type World } from "@collab/services/__tests__/agent-command-harness.js";
+import { handleSpaceRpc } from "@collab/services/space-rpc.js";
+import { harness, run, seedWorld, useAgentCommandHarness, type World } from "@collab/services/__tests__/agent-command-harness.js";
 
 useAgentCommandHarness();
 
@@ -176,5 +177,49 @@ describe("a Space the project no longer lists", () => {
     const assignment = { connectionId: world.connectionId, assignedBy: world.userId, assignedAt: 5_000 };
     await storeCanvas(world, (c) => annotate(c, randomUUID(), { createdBy: world.ownerId, assignment }));
     expect(await rows("comment_assignments", world)).toEqual([]);
+  });
+});
+
+describe("deleting and restoring a Space", () => {
+  it("voids a deleted Space's records and brings them back on restore, notifying nobody again", async () => {
+    const world = await seedWorld("editor");
+    // A second Space, so the first one may be deleted.
+    const metaName = projectMetaDocName(world.projectId);
+    const meta = new Y.Doc();
+    Y.applyUpdate(meta, (await yjsRepo.fetchDocData(metaName))!);
+    const other = new Y.Map<unknown>();
+    const otherId = randomUUID();
+    meta.getMap("spaces").set(otherId, other);
+    await yjsRepo.upsertDocData(canvasSpaceDocName(world.projectId, otherId), Y.encodeStateAsUpdate(new Y.Doc()));
+    other.set("type", "canvas");
+    other.set("name", "Other");
+    other.set("order", 1);
+    await yjsRepo.upsertDocData(metaName, Y.encodeStateAsUpdate(meta));
+    const id = randomUUID();
+    await storeCanvas(world, (c) =>
+      annotate(c, id, {
+        createdBy: world.ownerId,
+        mentions: [{ userId: world.userId, projectId: world.projectId, mentionedAt: 1, label: "@m" }],
+        assignment: { connectionId: world.connectionId, assignedBy: world.userId, assignedAt: 5_000 },
+      }),
+    );
+    /**
+     * Ask for a Space change as the project's owner.
+     * @param type - Delete or restore.
+     * @returns Whether it went through.
+     */
+    const rpc = async (type: "space:delete" | "space:restore"): Promise<boolean> =>
+      (await handleSpaceRpc({ hocuspocus: harness.instanceA }, world.projectId, { userId: world.ownerId, role: "owner" }, {
+        id: randomUUID(),
+        type,
+        payload: { spaceId: world.spaceId },
+      } as SpaceRpcRequest)).ok;
+    expect(await rpc("space:delete")).toBe(true);
+    expect((await rows("comment_mentions", world))[0]).toMatchObject({ deleted_at: expect.any(String) });
+    expect((await rows("comment_assignments", world))[0]).toMatchObject({ deleted_at: expect.any(String) });
+    expect(await rpc("space:restore")).toBe(true);
+    expect((await rows("comment_mentions", world))[0]).toMatchObject({ deleted_at: null });
+    expect((await rows("comment_assignments", world))[0]).toMatchObject({ deleted_at: null, status: "pending" });
+    expect(await notified(world.userId, "comment.mentioned")).toHaveLength(1);
   });
 });
