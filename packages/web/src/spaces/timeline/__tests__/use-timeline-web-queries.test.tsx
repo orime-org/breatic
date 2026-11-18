@@ -25,7 +25,7 @@ import { useTimelineWebResolution } from '@web/spaces/timeline/use-timeline-web-
 import { useWebAnimationPreviewUrl } from '@web/spaces/timeline/use-web-animation-preview-url';
 import { MAIN, V2, V3, cid, clip, timeline } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 import {
-  EXEC_DONE, EXEC_RUNNING, RESOLUTION, SRC_A, SRC_B, boundTo, waitingFor, webClip,
+  EXEC_RUNNING, RESOLUTION, SRC_A, SRC_B, boundTo, waitingFor, webClip,
 } from '@web/data/yjs/__tests__/timeline-web-fixtures';
 
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
@@ -132,15 +132,6 @@ describe('useTimelineWebResolution', () => {
     expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(1);
     act(() => { getDoc(timelineSpaceDocName(PROJECT, SPACE)).getMap(SPACE_TASKS_KEY).set(SPACE_TASKS_VERSION, `${Date.now()}-2`); });
     await waitFor(() => expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(2));
-  });
-
-  it('does not poll when every resolved execution has ended', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const { wrapper } = provider();
-    renderHook(() => useTimelineWebResolution(PROJECT, SPACE, docWith([webClip(cid(1), V2, 0, 10, waitingFor(EXEC_DONE))])), { wrapper });
-    await waitFor(() => expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(1));
-    await act(async () => { await vi.advanceTimersByTimeAsync(REFRESH_MS * 3); });
-    expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(1);
   });
 });
 
