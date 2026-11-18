@@ -653,6 +653,19 @@ describe("G waiting for a free slot", () => {
     expect(await pick(next.taskId)).toEqual({ started: true });
   });
 
+  it("G-19 a 3D Space's own row of a task whose job fails for good ends with our code, read in each member's language", async () => {
+    const p = await person("enterprise", 1);
+    const now = await dbNow();
+    const doomed = await seedTask(p, { scene: true, taskType: "three_d", waiting: { since: now, checkedAt: now, limit: 1 } });
+    await inFlight(p, doomed.taskId, new Date(now.getTime() + B));
+    await cleanupFailedJobNodes(getStreamRedis(), {
+      data: { taskId: doomed.taskId, taskType: "three_d", userId: p.userId, projectId: p.projectId, spaceId: p.spaceId, sceneRowId: doomed.nodeTaskId!, params: {}, model: "tripo-h3.1-t23d", mode: "append" },
+      finishedOn: Date.now(),
+    }, "job stalled more than allowable limit");
+    expect((await taskRow(doomed.taskId)).status).toBe("failed");
+    expect(await nodeRow(doomed.nodeTaskId!)).toMatchObject({ status: "failed", error_message: "internal" });
+  });
+
   it("G-20 the sweep fails a stale waiter whose job is gone, releasing its holdings and its node row", async () => {
     const { sweepSlotWaiters } = (await import("@worker/handlers/slot-wait-sweep.js")) as { sweepSlotWaiters: (queue: unknown) => Promise<void> };
     const p = await person();

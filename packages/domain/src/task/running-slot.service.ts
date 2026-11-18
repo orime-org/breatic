@@ -30,7 +30,7 @@ import {
   timelineExecutionRepo,
   type DbTx,
 } from "@breatic/core";
-import { canvasSpaceDocName } from "@breatic/shared";
+import { canvasSpaceDocName, type TaskFailureReason } from "@breatic/shared";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as nodeTaskRepo from "@domain/node-task/node-task.repo.js";
 import * as nodeTaskService from "@domain/node-task/node-task.service.js";
@@ -173,15 +173,17 @@ async function publish(places: readonly TaskRowPlace[], space: { projectId: stri
 /**
  * Settle every row of a task still running as failed and tell the canvas.
  * @param taskId - The task.
- * @param errorMessage - What the rows show.
+ * @param errorMessage - What a node's rows show.
+ * @param sceneReason - What a 3D Space's own row shows: always one of our codes, which each member reads in their
+ *   own language.
  * @returns The first node's counts (null when none) and the signals that failed.
  */
-async function failRows(taskId: string, errorMessage: string): Promise<{ counts: NodeTaskCounts | null; publishFailures: unknown[] }> {
+async function failRows(taskId: string, errorMessage: string, sceneReason: TaskFailureReason): Promise<{ counts: NodeTaskCounts | null; publishFailures: unknown[] }> {
   const failures: unknown[] = [];
   let counts: NodeTaskCounts | null = null;
   for (const place of await nodeTaskRepo.listRunningForTask(taskId)) {
     if (place.nodeId === null) {
-      await sceneTaskService.settleById(place.id, { outcome: "failed", errorMessage });
+      await sceneTaskService.settleById(place.id, { outcome: "failed", errorMessage: sceneReason });
       failures.push(...(await publish([], { projectId: place.projectId, spaceId: place.spaceId })));
       continue;
     }
@@ -255,7 +257,7 @@ async function judgeExecution(row: { id: string; actorUserId: string; createdAt:
  */
 async function closeFailed(row: taskRepo.GateTaskRow): Promise<unknown[]> {
   await creditHoldRepo.releaseHold(row.id);
-  return (await failRows(row.id, row.errorMessage ?? "internal")).publishFailures;
+  return (await failRows(row.id, row.errorMessage ?? "internal", "internal")).publishFailures;
 }
 
 /**
@@ -327,7 +329,7 @@ export async function cancelQueued(taskId: string): Promise<CancelOutcome> {
     return true;
   });
   if (!cancelled) return { cancelled: false, counts: null, publishFailures: [] };
-  return { cancelled: true, ...(await failRows(taskId, "cancelled")) };
+  return { cancelled: true, ...(await failRows(taskId, "cancelled", "cancelled")) };
 }
 
 /**
@@ -335,7 +337,7 @@ export async function cancelQueued(taskId: string): Promise<CancelOutcome> {
  * the stale-waiter sweep): the task fails and its credit hold is released
  * in one commit under the person's lock, then its open rows end as failed.
  * @param taskId - The task.
- * @param errorMessage - What the task and its rows show.
+ * @param errorMessage - What the task and its nodes' rows show; a 3D Space's own row shows `internal`.
  * @returns Whether this call failed the task, and the signals that failed.
  * @throws {Error} When a write fails.
  */
@@ -348,7 +350,7 @@ export async function failTask(taskId: string, errorMessage: string): Promise<{ 
     await creditHoldRepo.releaseHold(taskId, tx);
     return moved;
   });
-  return { failed, publishFailures: (await failRows(taskId, errorMessage)).publishFailures };
+  return { failed, publishFailures: (await failRows(taskId, errorMessage, "internal")).publishFailures };
 }
 
 /**
