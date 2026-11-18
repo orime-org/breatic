@@ -69,6 +69,7 @@ export type {
   AttachRef,
   FocusImage,
   AnnotationAssignment,
+  CommentMention,
   AnnotationReply,
   CanvasNodeFields,
   NodeTaskCounts,

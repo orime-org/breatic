@@ -213,6 +213,25 @@ export interface AnnotationReply {
   via?: string;
   /** The hand-over this reply answers: the thread's `assignment.assignedAt` when it was written. */
   answers?: number;
+  /** The members this reply mentions (breatic#1488 §11.6). */
+  mentions?: CommentMention[];
+}
+
+/**
+ * One member a comment mentions (breatic#1488 §11.6): an annotation body or
+ * reply on the canvas, or a document comment's metadata. Only ids are kept;
+ * `label` is the words the mention put in the text, an anchor for editing,
+ * and the name shown is read from the roster.
+ */
+export interface CommentMention {
+  /** Who is mentioned. */
+  userId: string;
+  /** The project the mention was written in. */
+  projectId: string;
+  /** When this member was first mentioned in this entry, epoch milliseconds. */
+  mentionedAt: number;
+  /** The words inserted in the text, such as "@Alice". */
+  label: string;
 }
 
 /**
@@ -620,6 +639,8 @@ export interface CanvasNodeFields {
     replies?: AnnotationReply[];
     /** Who the thread is handed to, when it is handed to an external agent. */
     assignment?: AnnotationAssignment;
+    /** The members the annotation's body mentions (breatic#1488 §11.6). */
+    mentions?: CommentMention[];
 
     // ─── Group (Group) node fields ──────────────────────────
     // A Group's authoritative size lives in `width`/`height` above; its members
