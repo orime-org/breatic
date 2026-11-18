@@ -376,7 +376,7 @@ export async function findCoverOf(
 }
 
 /**
- * The live row each storage key names, and the cover row under each key that
+ * One live row for each storage key, and the cover row under each key that
  * names a video, in two queries.
  * @param keys - The storage keys.
  * @returns Per key found, its live row and cover row.
@@ -384,17 +384,17 @@ export async function findCoverOf(
  */
 export async function findByStorageKeys(
   keys: readonly string[],
-): Promise<Map<string, { asset: StudioAssetEntity | null; cover: StudioAssetEntity | null }>> {
-  const found = new Map<string, { asset: StudioAssetEntity | null; cover: StudioAssetEntity | null }>();
+): Promise<Map<string, { asset: StudioAssetEntity; cover: StudioAssetEntity | null }>> {
+  const found = new Map<string, { asset: StudioAssetEntity; cover: StudioAssetEntity | null }>();
   if (keys.length === 0) return found;
   const unique = [...new Set(keys)];
+  // Rows under one key describe the same bytes, so one per key is enough.
   const rows = await db
-    .select()
+    .selectDistinctOn([studioAssets.storageKey])
     .from(studioAssets)
-    .where(and(inArray(studioAssets.storageKey, unique), isNull(studioAssets.deletedAt)));
-  for (const row of rows) {
-    if (!found.has(row.storageKey)) found.set(row.storageKey, { asset: toEntity(row), cover: null });
-  }
+    .where(and(inArray(studioAssets.storageKey, unique), isNull(studioAssets.deletedAt)))
+    .orderBy(studioAssets.storageKey);
+  for (const row of rows) found.set(row.storageKey, { asset: toEntity(row), cover: null });
   const cover = alias(studioAssets, "cover");
   const covers = await db
     .select({ videoKey: studioAssets.storageKey, cover })

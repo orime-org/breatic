@@ -86,8 +86,7 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
     const cover = key === null ? null : (found.get(key)?.cover ?? null);
     if (cover !== null) {
       pairs.push({ url: address, cover: cover.fileUrl });
-      const coverKey = storage.keyFromUrl(cover.fileUrl);
-      if (coverKey !== null) covers.set(coverKey, cover);
+      covers.set(cover.storageKey, cover);
     }
   }
   for (const pair of pairs) {
