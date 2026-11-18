@@ -292,7 +292,7 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
 
   // WebKit sends a move where the pointer already was when the list or the
   // body scrolls under a pointer at rest; it must not light the row that
-  // scrolled under it. Dropped at the capture phase of each menu surface.
+  // scrolled under it. Dropped at the capture phase of the menu surface.
   const ignoreStillPointer = React.useCallback(
     (event: React.MouseEvent): void => {
       const at = pointer.current;
