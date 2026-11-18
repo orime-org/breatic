@@ -468,11 +468,10 @@ export async function lockRunningSlots(userId: string, tx: DbTx): Promise<void> 
 /**
  * Read a task as the gate judges it.
  * @param id - The task.
- * @param tx - Optional transaction.
  * @returns The row, or null when there is none.
  */
-export async function findForGate(id: string, tx?: DbTx): Promise<GateTaskRow | null> {
-  const [row] = await (tx ?? db)
+export async function findForGate(id: string): Promise<GateTaskRow | null> {
+  const [row] = await db
     .select({
       id: tasks.id,
       userId: tasks.userId,
