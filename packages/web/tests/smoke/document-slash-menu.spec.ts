@@ -6,8 +6,8 @@
  *
  * What jsdom cannot show: the menu opening under the real caret from real
  * typing, a real input method committing the ideographic comma, the real
- * Cmd/Ctrl+Z after a pick, the formula box taking focus, the size grid's
- * pick, a code block and a table cell as the browser lays them out, and a
+ * Cmd/Ctrl+Z after a pick, the formula box taking focus, the 3x3 table Table
+ * puts in, a code block and a table cell as the browser lays them out, and a
  * click away from the menu.
  *
  * Wants dev running:
@@ -87,18 +87,15 @@ async function lines(p: Page): Promise<string[]> {
 }
 
 /**
- * Rests the pointer on the Table row, then moves it diagonally to a cell of
- * the size grid, across the rows below Table.
+ * The first table in the body as its row count and its first row's cell count.
  * @param p - The page.
- * @param cell - The cell's test id.
+ * @returns The shape, or null with no table.
  */
-async function crossToCell(p: Page, cell: string): Promise<void> {
-  const table = await p.getByTestId('doc-slash-row-table').boundingBox();
-  await p.mouse.move(table!.x + 20, table!.y + table!.height / 2, { steps: 4 });
-  const target = p.getByTestId(cell);
-  await expect(target).toBeVisible();
-  const box = await target.boundingBox();
-  await p.mouse.move(box!.x + 4, box!.y + 4, { steps: 25 });
+async function tableShape(p: Page): Promise<number[] | null> {
+  return p.evaluate((selector) => {
+    const table = document.querySelector(`${selector} table`);
+    return table === null ? null : [table.querySelectorAll('tr').length, table.querySelector('tr')?.children.length ?? 0];
+  }, EDITOR);
 }
 
 /**
@@ -174,19 +171,24 @@ test.describe('the slash menu in the document body', () => {
     await expect.poll(() => lines(page)).toEqual(['mathBlock']);
   });
 
-  test('opens the size grid and puts a table of the size picked', async () => {
+  test('turns an empty line into a 3x3 table on Enter', async () => {
     await openFreshDocument(page);
     await page.keyboard.type('/table');
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('doc-slash-table-grid')).toBeVisible();
-    await page.getByTestId('doc-slash-table-size-2-3').click();
     await expect(page.locator(MENU)).toBeHidden();
     await expect.poll(() => lines(page)).toContain('docTable');
-    const shape = await page.evaluate((selector) => {
-      const table = document.querySelector(`${selector} table`);
-      return table === null ? null : [table.querySelectorAll('tr').length, table.querySelector('tr')?.children.length ?? 0];
-    }, EDITOR);
-    expect(shape).toEqual([2, 3]);
+    expect(await lines(page)).not.toContain('paragraph:/table');
+    expect(await tableShape(page)).toEqual([3, 3]);
+  });
+
+  test('puts a 3x3 table below a line with text on a click of Table', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('abc /tab');
+    await page.getByTestId('doc-slash-row-table').click();
+    await expect(page.locator(MENU)).toBeHidden();
+    await expect.poll(() => lines(page)).toEqual(expect.arrayContaining(['paragraph:abc ', 'docTable']));
+    expect((await lines(page))[0]).toBe('paragraph:abc ');
+    expect(await tableShape(page)).toEqual([3, 3]);
   });
 
   test('stays shut in a code block', async () => {
@@ -203,7 +205,6 @@ test.describe('the slash menu in the document body', () => {
     await openFreshDocument(page);
     await page.keyboard.type('/table');
     await page.keyboard.press('Enter');
-    await page.getByTestId('doc-slash-table-size-2-2').click();
     await expect.poll(() => lines(page)).toContain('docTable');
     await page.keyboard.type('/');
     await expect(page.locator(MENU)).toBeVisible();
@@ -222,54 +223,6 @@ test.describe('the slash menu in the document body', () => {
     await expect.poll(() => lines(page)).toEqual(['paragraph:、']);
   });
 
-  test('keeps the size grid open while the pointer crosses the rows below Table toward it', async () => {
-    await openFreshDocument(page);
-    await page.keyboard.type('/');
-    const table = await page.getByTestId('doc-slash-row-table').boundingBox();
-    expect(table).not.toBeNull();
-    await page.mouse.move(table!.x + 20, table!.y + table!.height / 2);
-    const far = page.getByTestId('doc-slash-table-size-6-6');
-    await expect(far).toBeVisible();
-    const cell = await far.boundingBox();
-    await page.mouse.move(cell!.x + 5, cell!.y + 5, { steps: 25 });
-    await expect(page.getByTestId('doc-slash-table-grid')).toBeVisible();
-    await page.mouse.down();
-    await page.mouse.up();
-    await expect.poll(() => lines(page)).toContain('docTable');
-  });
-
-  test('keeps a grid opened from the keyboard open while the pointer crosses the rows toward it', async () => {
-    await openFreshDocument(page);
-    await page.keyboard.type('/');
-    const table = page.getByTestId('doc-slash-row-table');
-    for (let step = 0; step < 20 && (await table.getAttribute('data-highlighted')) === null; step += 1) {
-      await page.keyboard.press('ArrowDown');
-    }
-    await page.keyboard.press('ArrowRight');
-    const grid = page.getByTestId('doc-slash-table-grid');
-    await expect(grid).toBeVisible();
-    await crossToCell(page, 'doc-slash-table-size-6-6');
-    await expect(grid).toBeVisible();
-    await page.mouse.down();
-    await page.mouse.up();
-    await expect.poll(() => lines(page)).toContain('docTable');
-  });
-
-  test('keeps the grace on a second trip from Table to the grid', async () => {
-    await openFreshDocument(page);
-    await page.keyboard.type('/');
-    const grid = page.getByTestId('doc-slash-table-grid');
-    await crossToCell(page, 'doc-slash-table-size-2-2');
-    await expect(grid).toBeVisible();
-    const box = await grid.boundingBox();
-    await page.mouse.move(box!.x + box!.width + 15, box!.y + 10, { steps: 5 });
-    await crossToCell(page, 'doc-slash-table-size-6-6');
-    await expect(grid).toBeVisible();
-    await page.mouse.down();
-    await page.mouse.up();
-    await expect.poll(() => lines(page)).toContain('docTable');
-  });
-
   test('keeps the keyboard highlight when the list scrolls under a pointer that has not moved', async () => {
     await page.setViewportSize({ width: 1680, height: 640 });
     await openFreshDocument(page);
@@ -286,23 +239,6 @@ test.describe('the slash menu in the document body', () => {
     await expect(page.getByTestId('doc-slash-row-video')).toHaveAttribute('data-highlighted', '');
     await page.waitForTimeout(300);
     await expect(page.getByTestId('doc-slash-row-video')).toHaveAttribute('data-highlighted', '');
-    await expect(page.getByTestId('doc-slash-table-grid')).toHaveCount(0);
-  });
-
-  test('keeps the size grid open when the pointer leaves it sideways, as the insert menu does', async () => {
-    await openFreshDocument(page);
-    await page.keyboard.type('/');
-    const table = await page.getByTestId('doc-slash-row-table').boundingBox();
-    await page.mouse.move(table!.x + 20, table!.y + table!.height / 2);
-    const grid = page.getByTestId('doc-slash-table-grid');
-    await expect(grid).toBeVisible();
-    const cell = await page.getByTestId('doc-slash-table-size-3-3').boundingBox();
-    await page.mouse.move(cell!.x + 4, cell!.y + 4, { steps: 8 });
-    const box = await grid.boundingBox();
-    await page.mouse.move(box!.x + box!.width + 15, cell!.y + 4, { steps: 5 });
-    await page.waitForTimeout(400);
-    await expect(grid).toBeVisible();
-    expect(await page.evaluate(() => document.body.style.pointerEvents)).toBe('');
   });
 
   test('stays under the trigger when the window narrows', async () => {
@@ -364,11 +300,10 @@ test.describe('the slash menu in the document body', () => {
       await cdp.send('Input.insertText', { text: '表格' });
       await expect.poll(() => rowIds(page)).toEqual(['table']);
       await page.keyboard.press('Enter');
-      await expect(page.getByTestId('doc-slash-table-grid')).toBeVisible();
-      await page.keyboard.press('Escape');
-      await page.keyboard.press('Escape');
       await expect(page.locator(MENU)).toBeHidden();
-      await expect.poll(() => lines(page)).toEqual(['paragraph:/表格']);
+      await expect.poll(() => lines(page)).toContain('docTable');
+      expect(await lines(page)).not.toContain('paragraph:/表格');
+      expect(await tableShape(page)).toEqual([3, 3]);
     } finally {
       await switchLanguage(page, 'en');
     }
@@ -420,18 +355,5 @@ test.describe('the slash menu in the document body', () => {
     await page.keyboard.type('!');
     await expect.poll(() => lines(page)).toEqual(['paragraph:keep!']);
     expect(errors).toEqual([]);
-  });
-
-  test('lights the first cell on Enter in a grid the pointer opened, and inserts it on the next Enter', async () => {
-    await openFreshDocument(page);
-    await page.keyboard.type('/table');
-    const table = await page.getByTestId('doc-slash-row-table').boundingBox();
-    await page.mouse.move(table!.x + 20, table!.y + table!.height / 2, { steps: 3 });
-    await expect(page.getByTestId('doc-slash-table-grid')).toBeVisible();
-    await page.keyboard.press('Enter');
-    await expect(page.getByTestId('doc-slash-table-size-1-1')).toHaveAttribute('data-on', '');
-    await page.keyboard.press('Enter');
-    await expect(page.locator(MENU)).toBeHidden();
-    await expect.poll(() => lines(page)).toContain('docTable');
   });
 });
