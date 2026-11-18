@@ -100,7 +100,7 @@ export function userIdOf(payload: {
  * @param documentName - Name of the document a hook fired for.
  * @returns True for a meta document.
  */
-function isMetaDoc(documentName: string): boolean {
+export function isMetaDoc(documentName: string): boolean {
   const parsed = parseDocName(documentName);
   return parsed !== null && parsed.kind === "meta";
 }

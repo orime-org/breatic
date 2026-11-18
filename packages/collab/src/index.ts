@@ -14,6 +14,7 @@
 import "@collab/bootstrap-config.js";
 import { exitProcess, initSentry } from "@collab/sentry.js";
 import {
+  agentAccessService,
   env,
   createLogger,
   createRedisClient,
@@ -302,6 +303,7 @@ async function main(): Promise<void> {
     sessionRevocation = await startSessionRevocation(hocuspocus, {
       source: controlRedis,
       readSession: (token) => getSession(getRedis(), token),
+      isAgentConnectionUsable: (connectionId) => agentAccessService.isConnectionUsable(connectionId),
       ...(!isGlobalRegion(env) ? { checkSessionIds: (sids: readonly string[]) => collabGlobalApi().checkSessions(sids) } : {}),
       recheckIntervalMs: getCollabConfig().session_recheck_interval_ms,
     });

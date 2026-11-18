@@ -28,6 +28,9 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import { createLogger, sessionsRevokedChannelName, type Redis } from "@breatic/core";
 import { COLLAB_REAUTH_REASONS, type SessionsRevokedEvent } from "@breatic/shared";
 import type { AuthContext } from "@collab/hooks/auth.js";
+import { listAgentPresence, markAgentsOffline } from "@collab/hooks/presence.js";
+import { isMetaDoc } from "@collab/hooks/presence-wiring.js";
+import type * as Y from "yjs";
 
 const logger = createLogger("session-revocation");
 
@@ -59,6 +62,12 @@ export interface SessionRevocationDeps {
   checkSessionIds?: CheckSessionIds;
   /** How often every connection's session is read again. */
   recheckIntervalMs: number;
+  /**
+   * Whether an external agent's connection can still be used (core
+   * `agentAccessService.isConnectionUsable`); its presence goes offline when
+   * not (breatic#1488 §19.2).
+   */
+  isAgentConnectionUsable?: (connectionId: string) => Promise<boolean>;
 }
 
 /** The running service. */
@@ -109,6 +118,45 @@ function closeAnnounced(hocuspocus: Hocuspocus, raw: string): void {
     }
   }
   if (closed > 0) logger.info({ userId: event.userId, closed }, "session_connections_closed");
+  // An agent's credential is announced with its connection id (§19.2).
+  let agents = 0;
+  for (const meta of loadedMetaDocs(hocuspocus)) {
+    agents += markAgentsOffline({ document: meta, matches: (a) => a.userId === event.userId && ended.has(a.connectionId) }).length;
+  }
+  if (agents > 0) logger.info({ userId: event.userId, agents }, "agent_presence_ended");
+}
+
+/**
+ * The project meta documents loaded on this instance, where external agents'
+ * presence lives.
+ * @param hocuspocus - The server.
+ * @returns The documents.
+ */
+function loadedMetaDocs(hocuspocus: Hocuspocus): Y.Doc[] {
+  const found: Y.Doc[] = [];
+  for (const [name, doc] of hocuspocus.documents ?? []) if (isMetaDoc(name)) found.push(doc);
+  return found;
+}
+
+/**
+ * Check every online external agent in the loaded meta documents against its
+ * connection and mark offline the ones whose connection can no longer be
+ * used: what an announcement missed while the subscription was down.
+ * @param hocuspocus - The server.
+ * @param isUsable - Whether a connection can still be used.
+ */
+async function recheckAgents(hocuspocus: Hocuspocus, isUsable: (connectionId: string) => Promise<boolean>): Promise<void> {
+  const metas = loadedMetaDocs(hocuspocus);
+  const ids = [...new Set(metas.flatMap((meta) => listAgentPresence(meta).filter((a) => a.online).map((a) => a.connectionId)))];
+  if (ids.length === 0) return;
+  let ended: Set<string>;
+  try {
+    ended = new Set((await Promise.all(ids.map(async (id) => [id, await isUsable(id)] as const))).filter(([, ok]) => !ok).map(([id]) => id));
+  } catch (err) {
+    logger.error({ err, connections: ids.length }, "agent_presence_recheck_failed");
+    return;
+  }
+  for (const meta of metas) markAgentsOffline({ document: meta, matches: (a) => ended.has(a.connectionId) });
 }
 
 /**
@@ -191,6 +239,11 @@ export async function startSessionRevocation(
     recheckAll(hocuspocus, deps.readSession, deps.checkSessionIds).catch((err: unknown) => {
       logger.error({ err }, "session_recheck_failed");
     });
+    if (deps.isAgentConnectionUsable) {
+      recheckAgents(hocuspocus, deps.isAgentConnectionUsable).catch((err: unknown) => {
+        logger.error({ err }, "agent_presence_recheck_failed");
+      });
+    }
   };
 
   subscriber.on("message", (from: string, raw: string) => {
