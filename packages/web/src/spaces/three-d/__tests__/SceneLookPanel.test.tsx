@@ -146,6 +146,18 @@ describe('picking a Project picture for a part', () => {
 });
 
 describe('showing a part as checking', () => {
+  it('still shows a part checking after the panel was opened again', async () => {
+    const { reopen } = panel();
+    let release: () => void = () => undefined;
+    sizes.set(NEW, () => new Promise((resolve) => { release = () => resolve({ width: 64, height: 64, type: 'gif' }); }));
+    await pick('0', NEW);
+    reopen();
+    expect(captured.section!.checking).toBe(true);
+    release();
+    await flush();
+    expect(captured.section!.checking).toBe(false);
+  });
+
   it('keeps a part checking while its later pick runs after an earlier one ended', async () => {
     panel();
     let releaseLater: () => void = () => undefined;

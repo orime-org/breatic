@@ -49,23 +49,48 @@ function notify(notice: LookUploadNotice): void {
   toast[notice.severity](translate(notice.key, notice.params));
 }
 
+/** Numbers every pick on the page, so a number is never given twice. */
+let picks = 0;
+
+/**
+ * The latest Project picture pick still being checked, per Space, object and part. It lives outside the panel, which is
+ * mounted again for each selected object while an earlier pick may still be checking; a part is shown as checking
+ * while it has an entry.
+ */
+const latestPicks = new Map<string, number>();
+const pickListeners = new Set<() => void>();
+
+/**
+ * Tell mounted panels the checking picks changed.
+ */
+function picksChanged(): void {
+  pickListeners.forEach((listener) => listener());
+}
+
+/**
+ * Follow the checking picks.
+ * @param listener - Called after each change.
+ * @returns The unsubscribe.
+ */
+function subscribePicks(listener: () => void): () => void {
+  pickListeners.add(listener);
+  return () => { pickListeners.delete(listener); };
+}
+
+/**
+ * The key a part's picks are kept under.
+ * @param name - The Space document name.
+ * @param objectId - The object.
+ * @param part - The part.
+ * @returns The key.
+ */
+const pickKey = (name: string, objectId: string, part: string): string => `${name}\n${objectId}\n${part}`;
+
 /**
  * The appearance section wired to the session, the picture picker, uploads and the texture limits (inner#1693 design 3).
  * @param props - The object, its parts, the Space and the selected part.
  * @returns The section and its picker.
  */
-/** No part is being checked. */
-const NO_PARTS: ReadonlySet<string> = new Set();
-
-/** Numbers every pick on the page, so a number is never given twice. */
-let picks = 0;
-
-/**
- * The latest pick per Space, object and part; it lives outside the panel, which is mounted again for each selected
- * object while an earlier pick may still be checking.
- */
-const latestPicks = new Map<string, number>();
-
 export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLookPanelProps): React.JSX.Element {
   const { session, object, report, projectId, spaceId, limits, mutable, selectedPart, onSelectPart, showing } = props;
   const showingPictures = React.useMemo(() => new Set(showing), [showing]);
@@ -74,8 +99,9 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   const textures = React.useMemo(() => pageLookTextureCache(projectId), [projectId]);
   const uploadVersion = React.useSyncExternalStore(uploads.subscribe, uploads.getVersion);
   const [pickerPart, setPickerPart] = React.useState<string | null>(null);
-  // Parts with a Project picture still being checked; the last pick of a part is the one written.
-  const [checking, setChecking] = React.useState<ReadonlySet<string>>(NO_PARTS);
+  const isChecking = React.useCallback(
+    (): boolean => selectedPart !== null && latestPicks.has(pickKey(session.name, object.id, selectedPart)), [selectedPart, session.name, object.id]);
+  const checking = React.useSyncExternalStore(subscribePicks, isChecking);
   const look = React.useMemo(() => object.look ?? {}, [object.look]);
   const ready = typeof report === 'object' ? report : null;
   const textureLimits = React.useMemo(() => ({
@@ -119,16 +145,16 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   const pick = React.useCallback((image: SceneViewImage): void => {
     const part = pickerPart;
     if (part === null || !ready) return;
-    const key = `${session.name}\n${object.id}\n${part}`;
+    const key = pickKey(session.name, object.id, part);
     const pickNumber = ++picks;
     latestPicks.set(key, pickNumber);
+    picksChanged();
     /**
      * Whether no later pick for the part has started since this one.
      * @returns True while this is the part's latest pick.
      */
     const isLatest = (): boolean => latestPicks.get(key) === pickNumber;
     const name = image.displayName || translate('spaces.threeD.picker.unnamed');
-    setChecking((shown) => new Set(shown).add(part));
     void (async () => {
       try {
         let size: Awaited<ReturnType<typeof textures.read>>;
@@ -157,11 +183,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
       } finally {
         if (isLatest()) {
           latestPicks.delete(key);
-          setChecking((shown) => {
-            const next = new Set(shown);
-            next.delete(part);
-            return next;
-          });
+          picksChanged();
         }
       }
     })();
@@ -182,7 +204,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   return <>
     <SceneLookSection objectId={object.id} parts={ready ? ready.parts : report === 'failed' ? 'failed' : 'loading'} look={look}
       selectedPart={selectedPart} mutable={mutable} onSelectPart={onSelectPart} onCommand={onCommand} onChoosePicture={setPickerPart}
-      gesture={gesture} spaceId={spaceId} uploadPercentOf={uploadPercentOf} checking={selectedPart !== null && checking.has(selectedPart)} pictureUrl={urlOf}
+      gesture={gesture} spaceId={spaceId} uploadPercentOf={uploadPercentOf} checking={checking} pictureUrl={urlOf}
       showingPictures={showingPictures} />
     <SceneImagePickerDialog projectId={projectId} open={pickerPart !== null} onOpenChange={openChange} onPick={pick} onPickFile={pickFile} />
   </>;
