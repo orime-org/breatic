@@ -266,6 +266,7 @@ async function main(): Promise<void> {
     memberChanges = await startMemberChangeSync(hocuspocus, {
       listen: listenProjectMemberChanges,
       loadRole: projectAuthService.loadProjectRole,
+      isAgentConnectionUsable: (connectionId) => agentAccessService.isConnectionUsable(connectionId),
     });
   } catch (err) {
     logger.error({ err }, "member_change_listen_failed");

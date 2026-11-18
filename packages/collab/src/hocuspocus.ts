@@ -30,6 +30,7 @@ import {
   getCollabRedis,
   isIdentityRevoked,
   projectAuthService,
+  agentAccessService,
   sendMail,
   MONOREPO_ROOT,
 } from "@breatic/core";
@@ -45,6 +46,7 @@ import {
   type OwnSeat,
   type SeatRefreshResult,
 } from "@collab/services/connection-registry.js";
+import { recheckAgentsInMeta } from "@collab/services/agent-presence-recheck.js";
 import { recheckRoleOnConnect } from "@collab/services/role-recheck.js";
 import { closeIfSessionEnded } from "@collab/services/session-revocation.js";
 import { shouldTrackConnection } from "@collab/services/connection-tracking.js";
@@ -684,6 +686,20 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         await closeIfSessionEnded(connection, (token) => getSession(authRedis, token), (sid) => isIdentityRevoked(authRedis, sid));
       } catch (err) {
         logger.error({ err, documentName, userId: auth.user.id }, "session_recheck_failed");
+      }
+
+      // External agents whose credential or owner ended while no instance
+      // held this meta document heard no announcement (breatic#1488 §19.2).
+      const loadedMeta = parsedName?.kind === "meta" ? instance.documents.get(documentName) : undefined;
+      if (parsedName && loadedMeta) {
+        try {
+          await recheckAgentsInMeta(loadedMeta, parsedName.projectId, {
+            isConnectionUsable: (connectionId) => agentAccessService.isConnectionUsable(connectionId),
+            loadRole: projectAuthService.loadProjectRole,
+          });
+        } catch (err) {
+          logger.error({ err, documentName, userId: auth.user.id }, "agent_presence_recheck_failed");
+        }
       }
     },
 

@@ -26,6 +26,7 @@ import { COLLAB_REAUTH_REASONS } from "@breatic/shared";
 import { forEachProjectConnection } from "@collab/services/project-connections.js";
 import { recheckRoleOnConnect, type LoadRole } from "@collab/services/role-recheck.js";
 import type { AuthContext } from "@collab/hooks/auth.js";
+import { endOwnerAgents, recheckLoadedAgents } from "@collab/services/agent-presence-recheck.js";
 
 const logger = createLogger("member-change-sync");
 
@@ -35,6 +36,8 @@ export interface MemberChangeSyncDeps {
   listen: (handlers: MemberChangeHandlers) => Promise<MemberChangeListener>;
   /** The current-role reader (core `projectAuthService.loadProjectRole`). */
   loadRole: LoadRole;
+  /** Whether an external agent's connection can still be used, for its presence (breatic#1488 §19.2). */
+  isAgentConnectionUsable: (connectionId: string) => Promise<boolean>;
 }
 
 /**
@@ -102,10 +105,20 @@ export async function startMemberChangeSync(
     onChange: ({ projectId, userId }) => {
       kickUserFromProject(hocuspocus, projectId, userId);
       logger.info({ projectId, userId }, "member_change_applied");
+      // A role change keeps the owner's agents; leaving the project ends them.
+      deps.loadRole(userId, projectId).then(
+        (role) => {
+          if (role === null) endOwnerAgents(hocuspocus, projectId, userId);
+        },
+        (err: unknown) => logger.error({ err, projectId, userId }, "agent_presence_recheck_failed"),
+      );
     },
     onListening: () => {
       logger.info("member_change_listening");
       void recheckAllConnections(hocuspocus, deps.loadRole);
+      recheckLoadedAgents(hocuspocus, { isConnectionUsable: deps.isAgentConnectionUsable, loadRole: deps.loadRole }).catch((err: unknown) => {
+        logger.error({ err }, "agent_presence_recheck_failed");
+      });
     },
     onInvalid: (raw) => {
       logger.error({ raw }, "member_change_payload_invalid");
