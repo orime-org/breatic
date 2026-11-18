@@ -574,9 +574,39 @@ describe('ByokDialog', () => {
         expect(screen.getByRole('dialog', { name: 'Replace the WaveSpeed key' })).toBeInTheDocument();
         expect(screen.getByTestId('byok-detail-wavespeed')).toHaveTextContent('wsk_3f…9d0e');
       });
+
+      it('opens again with an empty field and no refusal under it', async () => {
+        const user = userEvent.setup();
+        api.put.mockRejectedValue(refused('Could not connect: the key is invalid.'));
+        const replace = await openReplace(user);
+        await user.type(within(replace).getByLabelText('API key'), 'wsk_bad');
+        await user.click(within(replace).getByRole('button', { name: 'Save' }));
+        await within(replace).findByText('Could not connect: the key is invalid.');
+        await user.click(within(replace).getByRole('button', { name: 'Cancel' }));
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Replace the WaveSpeed key' })).toBeNull());
+
+        await user.click(within(screen.getByTestId('byok-detail-wavespeed')).getByRole('button', { name: 'Replace' }));
+        const again = await screen.findByRole('dialog', { name: 'Replace the WaveSpeed key' });
+
+        expect(within(again).queryByText('Could not connect: the key is invalid.')).toBeNull();
+      });
     });
 
     describe('deleting a key', () => {
+      it('reads the keys again after a delete that failed, so a key gone meanwhile leaves the list', async () => {
+        const user = userEvent.setup();
+        api.delete.mockImplementation(() => {
+          serve(view({ keys: [WAVESPEED_KEY], models: [], choices: {} }));
+          return Promise.reject(new Error('network'));
+        });
+        const dialog = await mount();
+        await user.click(await within(dialog).findByTestId('byok-upstream-fal'));
+        await user.click(within(within(dialog).getByTestId('byok-detail-fal')).getByRole('button', { name: 'Delete' }));
+        await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
+
+        await waitFor(() => expect(rowOrder(dialog).indexOf('fal')).toBeGreaterThan(rowOrder(dialog).indexOf('google')));
+      });
+
       it('warns that tasks using it will be interrupted and lists the models that go back to the platform key', async () => {
         const user = userEvent.setup();
         const dialog = await mount();

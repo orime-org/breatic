@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
-import { useIsMutating, useMutation, useMutationState, useQueryClient } from '@tanstack/react-query';
+import { useIsMutating, useMutation, useMutationState, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { getLocale, modelLabel, type ModelEntry, type ModelModality } from '@breatic/shared';
 
 import {
@@ -267,6 +267,19 @@ function saveKeyOf(upstream: string): readonly ['byok', 'save', string] {
 }
 
 /**
+ * Forget an upstream's finished saves, so a form started afresh (the replace dialog opened, the add form after a
+ * delete) shows no earlier refusal; a save still waiting stays. Switching to another upstream and back keeps them.
+ * @param client - The query client.
+ * @param upstream - The upstream.
+ */
+function forgetFinishedSaves(client: QueryClient, upstream: string): void {
+  const cache = client.getMutationCache();
+  for (const save of cache.findAll({ mutationKey: saveKeyOf(upstream) })) {
+    if (save.state.status !== 'pending') cache.remove(save);
+  }
+}
+
+/**
  * Why a save was refused, in the user's language: the check's reason when it has a sentence of its own.
  * @param err - What the save threw.
  * @param t - The translator.
@@ -298,10 +311,9 @@ function useSaveKey(upstream: ByokUpstream, onSaved?: () => void): {
   const [clearedAt, setClearedAt] = React.useState(0);
   const { mutate } = useMutation({
     mutationKey,
-    mutationFn: async (key: string): Promise<void> => {
-      await byokApi.saveKey(upstream.upstream, key);
-      await rereadByok(client);
-    },
+    mutationFn: (key: string): Promise<ByokSavedKey> => byokApi.saveKey(upstream.upstream, key),
+    // Read again either way: a refusal can follow a change made in another tab.
+    onSettled: () => rereadByok(client),
     onSuccess: () => {
       toast.success(t('byok.saved', { upstream: upstream.name }));
       onSaved?.();
@@ -552,20 +564,18 @@ function SavedKeyActions({
   const checkKey = ['byok', 'check', id] as const;
   const check = useMutation({
     mutationKey: checkKey,
-    mutationFn: async (): Promise<void> => {
-      await byokApi.checkKey(id);
-      await rereadByok(client);
-    },
+    mutationFn: () => byokApi.checkKey(id),
+    // Read again either way: a key deleted in another tab fails the check and leaves the list.
+    onSettled: () => rereadByok(client),
     onError: () => toast.error(t('byok.checkFailed')),
   });
   const refreshing = useIsMutating({ mutationKey: checkKey }) > 0;
 
   const remove = useMutation({
-    mutationFn: async (): Promise<void> => {
-      await byokApi.deleteKey(id);
-      await rereadByok(client);
-    },
+    mutationFn: () => byokApi.deleteKey(id),
+    onSettled: () => rereadByok(client),
     onSuccess: () => {
+      forgetFinishedSaves(client, id);
       setDeleting(false);
       toast.success(t('byok.deleted', { upstream: upstream.name }));
     },
@@ -585,7 +595,10 @@ function SavedKeyActions({
       <Button type='button' variant='outline' size='sm' loading={refreshing} onClick={() => check.mutate()}>
         {t('byok.refresh')}
       </Button>
-      <Button type='button' variant='outline' size='sm' disabled={refreshing} onClick={() => setReplacing(true)}>
+      <Button type='button' variant='outline' size='sm' disabled={refreshing} onClick={() => {
+        forgetFinishedSaves(client, id);
+        setReplacing(true);
+      }}>
         {t('byok.replace')}
       </Button>
       <Button type='button' variant='outline' size='sm' disabled={refreshing} onClick={() => setDeleting(true)}>
