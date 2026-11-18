@@ -25,6 +25,7 @@ import {
   projectsRepo,
   publishSpaceTasksChanged,
   reportGraceMs,
+  timelineReportGraceMs,
   runningTaskLimitForStudio,
   runningTasksPerUserOf,
   timelineExecutionRepo,
@@ -115,10 +116,9 @@ async function limitFor(projectId: string | null, userId: string): Promise<numbe
  * @returns `R` and `W`.
  */
 async function standing(userId: string, limit: number, createdAt: string, tx: DbTx): Promise<{ running: number; ahead: number }> {
-  const grace = reportGraceMs();
   const stale = getWorkerConfig().slot_wait_stale_ms;
-  const running = (await taskRepo.countRunningForUser(userId, getNodeTaskConfig().default_budget_ms + grace, tx))
-    + (await timelineExecutionRepo.countRunningForActor(userId, grace, tx));
+  const running = (await taskRepo.countRunningForUser(userId, getNodeTaskConfig().default_budget_ms + reportGraceMs(), tx))
+    + (await timelineExecutionRepo.countRunningForActor(userId, timelineReportGraceMs(), tx));
   const ahead = (await taskRepo.countWaitingBefore(userId, limit, createdAt, stale, tx))
     + (await timelineExecutionRepo.countWaitingBefore(userId, limit, createdAt, stale, tx));
   return { running, ahead };
@@ -358,6 +358,6 @@ export async function failTask(taskId: string, errorMessage: string): Promise<{ 
  * @param limit - How many at most.
  * @returns Each task, its owner and its job.
  */
-export async function staleWaiters(limit: number): Promise<Array<{ id: string; userId: string; arqJobId: string | null }>> {
+export async function staleWaiters(limit: number): Promise<Array<{ id: string; userId: string; arqJobId: string }>> {
   return taskRepo.listStaleWaiters(getWorkerConfig().slot_wait_stale_ms, limit);
 }

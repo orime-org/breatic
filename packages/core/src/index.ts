@@ -63,7 +63,7 @@ export { errorMonitoringOptions, type ErrorMonitoringStart } from "@core/config/
 export { assertKnownQueues, getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
-export { getTimelineConfig, type TimelineConfig } from "@core/config/timeline.js";
+export { getTimelineConfig, timelineReportGraceMs, type TimelineConfig } from "@core/config/timeline.js";
 export { runProjectMediaBackfill } from "@core/asset/project-media-backfill.js";
 export type {
   ProjectMediaBackfillCandidate,

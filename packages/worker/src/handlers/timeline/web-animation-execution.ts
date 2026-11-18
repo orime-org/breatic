@@ -27,6 +27,7 @@ import {
   getWorkerConfig,
   logger,
   timelineExecutionRepo,
+  timelineReportGraceMs,
   type TimelineExecutionEvent,
   type TimelineExecutionJobData,
 } from "@breatic/core";
@@ -589,7 +590,7 @@ async function pickUp(job: Job<TimelineExecutionJobData>, token: string | undefi
     token,
     row,
     step,
-    endsAt: step.request.deadlineAt + 2 * getTimelineConfig().web_animation.poll_interval_ms,
+    endsAt: step.request.deadlineAt + timelineReportGraceMs(),
   };
   if (row.status === "cancelling") return cancelling(pickup);
   return running(pickup);
