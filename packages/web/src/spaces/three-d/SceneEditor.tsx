@@ -663,6 +663,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const onSelectPart = React.useCallback((part: string): void => {
     setSelectedPart(part);
     if (viewfinderPhase.current !== 'off' || (panel === 'director' && rightOpen)) return;
+    // Opened from the scene like a selection: focus stays on the scene and returns there.
+    automaticPanel.current = true;
+    returnTarget.current = stage.current?.querySelector('canvas') ?? null;
     setPanel('properties'); setRightOpen(true);
   }, [panel, rightOpen, setRightOpen]);
   const lookInputs = React.useMemo(() => (controls.data ? { reports: lookReports, selectedPart, onSelectPart: setSelectedPart, projectId, limits: controls.data.import } : undefined),
