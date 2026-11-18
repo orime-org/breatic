@@ -115,6 +115,20 @@ describe("the keys a model run uses", () => {
     expect(h.rewrittenPrompt.mock.calls[0]).toContain(LLM_KEYS);
   });
 
+  it("still runs when only the LLM key row is gone, and fails only when a step asks for that key", async () => {
+    h.keysById.mockImplementation(async (id: string | null) => {
+      if (id === MEDIA_KEY_ID) return { keys: MEDIA_KEYS, accountId: "admin-1" };
+      throw Object.assign(new Error("account key gone"), { kind: "account_key_missing", upstream: "openrouter" });
+    });
+
+    await runModelTask(TASK);
+
+    const [run] = h.runMedia.mock.calls[0] as [{ keys: KeySet; llmKeys: KeySet }];
+    expect(run.keys).toBe(MEDIA_KEYS);
+    expect(run.llmKeys.owner).toBe("account");
+    expect(() => run.llmKeys.keyOf("openrouter")).toThrow(expect.objectContaining({ kind: "account_key_missing" }));
+  });
+
   it("ends the run as account_key_missing, sending nothing, when a key row was replaced or deleted", async () => {
     h.keysById.mockImplementation(async (id: string | null) => {
       if (id === MEDIA_KEY_ID) throw Object.assign(new Error("account key gone"), { kind: "account_key_missing" });

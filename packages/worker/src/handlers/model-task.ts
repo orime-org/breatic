@@ -14,7 +14,7 @@
 import { getStorageAdapter, getUnderstandConfig, getWorkerConfig } from "@breatic/core";
 import { assetRepo, assetService, keysById, provider, taskRepo, taskService, upstreamCloneRepo, upstreamStepRepo } from "@breatic/domain";
 import { paramsToSend, routeSchema, type SendableModel } from "@breatic/shared";
-import type { Cost, Route } from "@breatic/provider";
+import { accountKeyFailureIn, type Cost, type KeySet, type Route } from "@breatic/provider";
 import { createMediaRunner, type LegacyRows, type LegacyStep, type MediaInput, type MediaRunner } from "@breatic/provider/media";
 
 import { runMedia, type MediaRunDeps, type MediaRunDone } from "@worker/handlers/media-run.js";
@@ -120,9 +120,10 @@ export async function runModelTask(task: ModelTask): Promise<MediaRunDone> {
   const entry = declared as unknown as SendableModel;
   const route: Route = task.params.route === undefined ? { mode: "default" } : routeSchema.parse(task.params.route);
   const studioId = task.projectId === undefined ? null : await assetService.resolveOwnerStudioId(task.projectId);
-  // Read before anything is sent: a row replaced or deleted since submit ends the run here.
+  // Read before anything is sent: a media key row replaced or deleted since submit ends the run here. The language-model
+  // row serves only the prompt rewrite and the description step, so one gone ends the run only when a step asks for it.
   const media = task.keyId == null ? null : await keysById(task.keyId);
-  const llm = task.llmKeyId == null ? null : await keysById(task.llmKeyId);
+  const llm = task.llmKeyId == null ? null : await keysWhenAsked(task.llmKeyId);
 
   /**
    * The run as provider takes it.
@@ -169,4 +170,20 @@ export async function runModelTask(task: ModelTask): Promise<MediaRunDone> {
 export async function abandonedCosts(taskId: string): Promise<Cost[]> {
   const { ticket } = await taskRepo.getProviderTicket(taskId);
   return ticket === null ? [] : mediaRunner().abandon(ticket).costs;
+}
+
+/**
+ * The keys of an account key row, read now; a row replaced or deleted since submit gives a set whose every key read
+ * fails as that row's `account_key_missing`, so only a step that asks for the key ends the run.
+ * @param keyId - The row.
+ * @returns The keys.
+ * @throws {Error} Whatever reading the row throws other than `account_key_missing`.
+ */
+async function keysWhenAsked(keyId: string): Promise<{ keys: KeySet }> {
+  try {
+    return (await keysById(keyId))!;
+  } catch (err) {
+    if (accountKeyFailureIn(err)?.kind !== "account_key_missing") throw err;
+    return { keys: { owner: "account", keyOf: () => { throw err; } } };
+  }
 }
