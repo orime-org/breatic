@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Box3, CircleGeometry, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, type Object3D, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, type Texture, Vector2, Vector3, WebGLRenderer } from 'three';
+import { Box3, CircleGeometry, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, type Object3D, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer, type WebGLRenderTarget } from 'three';
 import { SCENE_ENVIRONMENT_INTENSITY, createSceneEnvironment } from '@web/spaces/three-d/viewport/scene-environment';
 import { isSceneLight, isSceneModelFile, type SceneObject } from '@breatic/shared';
 import { lookModelOf, type ModelResourceCache, type SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
@@ -45,7 +45,7 @@ export class SceneMiniMapRuntime {
   private readonly camera = new OrthographicCamera();
   private readonly renderer: WebGLRenderer;
   /** The same neutral room the main view reflects (inner#1693 design 5.7). */
-  private environment: Texture;
+  private environment: WebGLRenderTarget;
   private readonly marker = new Mesh(new RingGeometry(0.3, 0.4, 32), new MeshBasicMaterial({ side: DoubleSide }));
   private readonly items = new Map<string, OverviewItem>();
   /** A small flat icon per camera and light, drawn from the record alone. */
@@ -78,7 +78,7 @@ export class SceneMiniMapRuntime {
     this.marker.rotation.x = -Math.PI / 2;
     this.scene.add(new HemisphereLight(0xffffff, 0x666666, 3), this.marker);
     this.environment = createSceneEnvironment(this.renderer);
-    this.scene.environment = this.environment;
+    this.scene.environment = this.environment.texture;
     this.scene.environmentIntensity = SCENE_ENVIRONMENT_INTENSITY;
     this.renderer.domElement.addEventListener('click', this.onClick);
     this.renderer.domElement.addEventListener('webglcontextrestored', this.onContextRestored);
@@ -166,7 +166,7 @@ export class SceneMiniMapRuntime {
   private readonly onContextRestored = (): void => {
     this.environment.dispose();
     this.environment = createSceneEnvironment(this.renderer);
-    this.scene.environment = this.environment;
+    this.scene.environment = this.environment.texture;
     this.renderKey = '';
     this.render();
   };

@@ -4,7 +4,7 @@
 import { Box3, BoxHelper, Color, DirectionalLight, GridHelper, Group, HemisphereLight, Mesh, MeshBasicMaterial, OrthographicCamera, PCFSoftShadowMap, PerspectiveCamera, PlaneGeometry, Quaternion, Raycaster, Scene, ShadowMaterial, SkinnedMesh, SphereGeometry, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControlsGizmo } from 'three/addons/controls/TransformControls.js';
-import type { Bone, Intersection, Object3D, Texture } from 'three';
+import type { Bone, Intersection, Object3D } from 'three';
 import {
   SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, isSceneCamera, isSceneLight, isSceneModelFile,
   type SceneCameraObject, type SceneModelFile, type SceneObject, type ScenePose,
@@ -259,7 +259,7 @@ export class SceneViewportRuntime {
   private readonly keyLight = new DirectionalLight(0xffffff, 3);
   private readonly ambient = new HemisphereLight(0xffffff, 0x666666, SCENE_AMBIENT_INTENSITY_DEFAULT);
   /** What metal and glass reflect; main view, monitors and stills all draw this scene (inner#1693 design 5.7). */
-  private environment: Texture;
+  private environment: WebGLRenderTarget;
   private readonly ground = new Mesh(new PlaneGeometry(GROUND_SIZE, GROUND_SIZE), new ShadowMaterial({ opacity: GROUND_SHADOW_OPACITY }));
   /** Camera and light figures by record id; their roots are also in `items`. */
   private readonly figures = new Map<string, DirectorFigure>();
@@ -301,7 +301,7 @@ export class SceneViewportRuntime {
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.shadowMap.needsUpdate = true;
     this.environment = createSceneEnvironment(this.renderer);
-    this.scene.environment = this.environment;
+    this.scene.environment = this.environment.texture;
     canvas.addEventListener('webglcontextrestored', this.onContextRestored);
     this.camera.layers.enable(DISPLAY_PICK_LAYER);
     this.camera.layers.enable(DISPLAY_LINE_LAYER);
@@ -1623,7 +1623,7 @@ export class SceneViewportRuntime {
   private readonly onContextRestored = (): void => {
     this.environment.dispose();
     this.environment = createSceneEnvironment(this.renderer);
-    this.scene.environment = this.environment;
+    this.scene.environment = this.environment.texture;
     this.renderer.shadowMap.needsUpdate = true;
   };
 

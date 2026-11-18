@@ -16,10 +16,10 @@ vi.mock('three', async (importOriginal) => {
     render(scene: Scene): void { scenes.push(scene); }
   } };
 });
-const environments = vi.hoisted(() => [] as Array<{ dispose: () => void }>);
+const environments = vi.hoisted(() => [] as Array<{ dispose: () => void; texture: unknown }>);
 vi.mock('@web/spaces/three-d/viewport/scene-environment', async () => {
-  const { Texture } = await import('three');
-  return { SCENE_ENVIRONMENT_INTENSITY: 0.4, createSceneEnvironment: vi.fn(() => { const texture = new Texture(); environments.push(texture); return texture; }) };
+  const { WebGLRenderTarget } = await import('three');
+  return { SCENE_ENVIRONMENT_INTENSITY: 0.4, createSceneEnvironment: vi.fn(() => { const target = new WebGLRenderTarget(1, 1); environments.push(target); return target; }) };
 });
 
 afterEach(() => { cleanup(); scenes.length = 0; environments.length = 0; });
@@ -32,7 +32,7 @@ describe('model import preview (inner#1693 design 5.7)', () => {
     const scene = scenes.at(-1);
     const environment = environments.at(-1);
     if (!scene || !environment) throw new Error('no preview render');
-    expect(scene.environment).toBe(environment);
+    expect(scene.environment).toBe(environment.texture);
     expect(scene.environmentIntensity).toBe(0.4);
     const dispose = vi.spyOn(environment, 'dispose');
     view.unmount();

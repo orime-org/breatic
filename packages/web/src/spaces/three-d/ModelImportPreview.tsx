@@ -39,7 +39,7 @@ export const ModelImportPreview = React.memo(function ModelImportPreview({ root 
     const scene = new Scene();
     // Metal and glass parts reflect the same neutral room as in the scene (inner#1693 design 5.7).
     const environment = createSceneEnvironment(renderer);
-    scene.environment = environment;
+    scene.environment = environment.texture;
     scene.environmentIntensity = SCENE_ENVIRONMENT_INTENSITY;
     const camera = new PerspectiveCamera(45, 1, 0.01, 2000);
     const orbit = new OrbitControls(camera, renderer.domElement);

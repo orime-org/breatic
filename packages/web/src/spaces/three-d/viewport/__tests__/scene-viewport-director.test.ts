@@ -63,10 +63,10 @@ vi.mock('three', async (importOriginal) => {
     getContext(): unknown { return { isContextLost: () => false, getParameter: () => 'test', RENDERER: 0, VERSION: 0 }; }
   } };
 });
-const environments = vi.hoisted(() => [] as Array<{ dispose: () => void }>);
+const environments = vi.hoisted(() => [] as Array<{ dispose: () => void; texture: unknown }>);
 vi.mock('@web/spaces/three-d/viewport/scene-environment', async () => {
-  const { Texture } = await import('three');
-  return { SCENE_ENVIRONMENT_INTENSITY: 0.4, createSceneEnvironment: vi.fn(() => { const texture = new Texture(); environments.push(texture); return texture; }) };
+  const { WebGLRenderTarget } = await import('three');
+  return { SCENE_ENVIRONMENT_INTENSITY: 0.4, createSceneEnvironment: vi.fn(() => { const target = new WebGLRenderTarget(1, 1); environments.push(target); return target; }) };
 });
 vi.mock('@web/spaces/three-d/viewport/model-resources', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@web/spaces/three-d/viewport/model-resources')>();
@@ -448,7 +448,7 @@ describe('lights, ambient and shadows (design 3.6, 6.4)', () => {
     opened.frame();
     const scene = (opened.runtime as unknown as { scene: Scene }).scene;
     expect(environments).toHaveLength(1);
-    expect(scene.environment).toBe(environments[0]);
+    expect(scene.environment).toBe(environments[0]!.texture);
     expect(scene.background).not.toBe(scene.environment);
     expect(scene.environmentIntensity).toBeCloseTo(0.4);
     opened.runtime.update({ ...opened.initial, environment: { ambientColor: '#ffffff', ambientIntensity: 0 } } as SceneViewportProps);
