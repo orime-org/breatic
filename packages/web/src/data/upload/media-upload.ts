@@ -192,6 +192,11 @@ export interface MediaUploadDeps {
   /** The accepted finish is now awaiting authoritative registration. */
   onRegistering?: () => void;
   /**
+   * Called once the server has opened an upload for content it does not hold yet, before any byte is sent; a caller
+   * that decides against the new content aborts the upload's signal here.
+   */
+  beforeSend?: () => Promise<void>;
+  /**
    * An upload with a task row registered: its row now holds the result. Told
    * only for such uploads, whose content reaches its place through the server.
    */
@@ -300,7 +305,7 @@ export async function runMediaUpload(
 type UploadSinks = Pick<MediaUploadDeps, 'onProgress' | 'onAnswered' | 'onRegistering' | 'onRegistered' | 'onSuccess' | 'onFailure'>;
 
 /** What the delivery half calls out to. */
-type DeliveryDeps = Pick<MediaUploadDeps, 'sendToIngest' | 'waitForEnding'>;
+type DeliveryDeps = Pick<MediaUploadDeps, 'sendToIngest' | 'waitForEnding' | 'beforeSend'>;
 
 /**
  * The half after the ticket: settle a dedup hit or an open our server could
@@ -348,6 +353,10 @@ async function deliverTicket(
     return;
   }
 
+  if (deps.beforeSend) {
+    await deps.beforeSend();
+    signal?.throwIfAborted();
+  }
   let queued: QueuedFinish;
   try {
     const { onProgress } = sinks;
@@ -494,6 +503,7 @@ export class UploadFailedError extends Error {
  * @param onProgress - Told the share of the file that has landed, after each part.
  * @param signal - Cancellation owned by this upload and its status observer.
  * @param onRegistering - Called when transferred bytes await registration.
+ * @param beforeSend - Called before the bytes of content the server does not hold yet are sent.
  * @returns What the server filed the upload under.
  * @throws {UploadFailedError} When the upload does not complete.
  * @throws {DOMException} When the caller cancels the upload.
@@ -504,6 +514,7 @@ export function uploadMedia(
   onProgress?: (fraction: number) => void,
   signal?: AbortSignal,
   onRegistering?: () => void,
+  beforeSend?: () => Promise<void>,
 ): Promise<StoredUpload> {
   return new Promise((resolve, reject) => {
     void runMediaUpload(file, context, {
@@ -513,6 +524,7 @@ export function uploadMedia(
       sendToIngest: sendFileAndFinish,
       ...(onProgress !== undefined && { onProgress }),
       ...(onRegistering !== undefined && { onRegistering }),
+      ...(beforeSend !== undefined && { beforeSend }),
       onSuccess: resolve,
       onFailure: (outcome) => reject(new UploadFailedError(outcome.reason)),
     }, signal).catch(reject);
