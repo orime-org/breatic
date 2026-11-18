@@ -18,6 +18,10 @@ const renders: RenderCall[] = [];
 const reads: Array<{ target: WebGLRenderTarget; width: number; height: number }> = [];
 let observeHelpers: () => boolean[] = () => [];
 
+vi.mock('@web/spaces/three-d/viewport/scene-environment', async () => {
+  const { Texture } = await import('three');
+  return { SCENE_ENVIRONMENT_INTENSITY: 0.4, createSceneEnvironment: () => new Texture() };
+});
 vi.mock('three', async (importOriginal) => {
   const actual = await importOriginal<typeof import('three')>();
   return { ...actual, WebGLRenderer: class {

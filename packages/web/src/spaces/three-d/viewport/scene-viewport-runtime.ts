@@ -4,7 +4,7 @@
 import { Box3, BoxHelper, Color, DirectionalLight, GridHelper, Group, HemisphereLight, Mesh, MeshBasicMaterial, OrthographicCamera, PCFSoftShadowMap, PerspectiveCamera, PlaneGeometry, Quaternion, Raycaster, Scene, ShadowMaterial, SkinnedMesh, SphereGeometry, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControlsGizmo } from 'three/addons/controls/TransformControls.js';
-import type { Bone, Intersection, Object3D } from 'three';
+import type { Bone, Intersection, Object3D, Texture } from 'three';
 import {
   SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, isSceneCamera, isSceneLight, isSceneModelFile,
   type SceneCameraObject, type SceneModelFile, type SceneObject, type ScenePose,
@@ -18,6 +18,7 @@ import { ScenePilot, pilotPivotDistance } from '@web/spaces/three-d/viewport/sce
 import { displayedObjects, previewedObjectIds } from '@web/spaces/three-d/viewport/scene-display';
 import { applyPose, poseRigOf, type PoseRig } from '@web/spaces/three-d/viewport/pose-rig';
 import { SceneMiniMapRuntime } from '@web/spaces/three-d/viewport/scene-mini-map';
+import { SCENE_ENVIRONMENT_INTENSITY, createSceneEnvironment } from '@web/spaces/three-d/viewport/scene-environment';
 import { SceneLookRuntime, lookReportOf } from '@web/spaces/three-d/viewport/scene-look-runtime';
 import { decideScenePick, partAtHit } from '@web/spaces/three-d/viewport/look-highlight';
 import { applySceneGridTheme } from '@web/spaces/three-d/viewport/scene-grid-theme';
@@ -250,6 +251,8 @@ export class SceneViewportRuntime {
   private readonly theme: MutationObserver;
   private readonly keyLight = new DirectionalLight(0xffffff, 3);
   private readonly ambient = new HemisphereLight(0xffffff, 0x666666, SCENE_AMBIENT_INTENSITY_DEFAULT);
+  /** What metal and glass reflect; main view, monitors and stills all draw this scene (inner#1693 design 5.7). */
+  private readonly environment: Texture;
   private readonly ground = new Mesh(new PlaneGeometry(GROUND_SIZE, GROUND_SIZE), new ShadowMaterial({ opacity: GROUND_SHADOW_OPACITY }));
   /** Camera and light figures by record id; their roots are also in `items`. */
   private readonly figures = new Map<string, DirectorFigure>();
@@ -288,6 +291,8 @@ export class SceneViewportRuntime {
     // Shadow maps are drawn again only when a display value changes.
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.shadowMap.needsUpdate = true;
+    this.environment = createSceneEnvironment(this.renderer);
+    this.scene.environment = this.environment;
     this.camera.layers.enable(DISPLAY_PICK_LAYER);
     this.camera.layers.enable(DISPLAY_LINE_LAYER);
     this.camera.position.fromArray(props.view.position);
@@ -732,6 +737,7 @@ export class SceneViewportRuntime {
     const environment = this.props.environment;
     this.ambient.color.setStyle(environment?.ambientColor ?? SCENE_AMBIENT_COLOR_DEFAULT);
     this.ambient.intensity = environment?.ambientIntensity ?? SCENE_AMBIENT_INTENSITY_DEFAULT;
+    this.scene.environmentIntensity = SCENE_ENVIRONMENT_INTENSITY * this.ambient.intensity / SCENE_AMBIENT_INTENSITY_DEFAULT;
     const style = { ink: this.token('--color-muted-foreground'), director };
     for (const light of lights) {
       if (!this.localGestureIds().has(light.id)) this.figures.get(light.id)?.update(light, style, this.lightPlan.lights[light.id]);
@@ -1632,6 +1638,7 @@ export class SceneViewportRuntime {
     this.items.clear();
     this.ground.geometry.dispose();
     this.ground.material.dispose();
+    this.environment.dispose();
     for (const outline of this.outlines) {
       outline.geometry.dispose();
       outline.material.dispose();

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, OrthographicCamera, Vector3 } from 'three';
+import { Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, OrthographicCamera, Vector3, type Scene } from 'three';
 import { ModelResourceCache } from '@web/spaces/three-d/viewport/model-resources';
 import { SceneMiniMapRuntime, fitSceneOverview } from '@web/spaces/three-d/viewport/scene-mini-map';
 import type { SceneObject } from '@breatic/shared';
@@ -15,6 +15,11 @@ vi.mock('three', async (importOriginal) => {
     setPixelRatio(): void {} setSize(): void {} dispose(): void {}
     render(...args: unknown[]): void { renders.push(args); }
   } };
+});
+const environments = vi.hoisted(() => [] as Array<{ dispose: () => void }>);
+vi.mock('@web/spaces/three-d/viewport/scene-environment', async () => {
+  const { Texture } = await import('three');
+  return { SCENE_ENVIRONMENT_INTENSITY: 0.4, createSceneEnvironment: vi.fn(() => { const texture = new Texture(); environments.push(texture); return texture; }) };
 });
 const OBJECT = { id: 'one', model: { kind: 'builtin', id: 'box' }, name: 'Box', position: [40, 8, -30], rotation: [0, Math.SQRT1_2, 0, Math.SQRT1_2], scale: [2, 3, 4], locked: false } satisfies SceneObject;
 const owners: Array<() => void> = [];
@@ -78,6 +83,24 @@ describe('native scene overview (inner#1724)', () => {
     expect(renders).toHaveLength(count + 1);
   });
 
+});
+
+describe('environment reflection in the overview (inner#1693 design 5.7)', () => {
+  it('lights its scene with its own neutral environment at the default strength and releases it on close', () => {
+    const cache = new ModelResourceCache(async () => model()); owners.push(() => cache.dispose());
+    const host = document.createElement('div'); document.body.append(host);
+    Object.defineProperties(host, { clientWidth: { value: 200 }, clientHeight: { value: 140 } });
+    const map = new SceneMiniMapRuntime(host, cache, vi.fn());
+    map.update([], new Set(), new Vector3(), new Set());
+    const scene = renders.at(-1)?.[0] as Scene;
+    const environment = environments.at(-1);
+    if (!environment) throw new Error('no environment');
+    expect(scene.environment).toBe(environment);
+    expect(scene.environmentIntensity).toBe(0.4);
+    const dispose = vi.spyOn(environment, 'dispose');
+    map.dispose();
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('cameras and lights in the overview (inner#1694 design 3.3)', () => {

@@ -9,6 +9,10 @@ import { SceneMiniMapRuntime } from '@web/spaces/three-d/viewport/scene-mini-map
 import { applyPose } from '@web/spaces/three-d/viewport/pose-rig';
 
 const renders: unknown[][] = [];
+vi.mock('@web/spaces/three-d/viewport/scene-environment', async () => {
+  const { Texture } = await import('three');
+  return { SCENE_ENVIRONMENT_INTENSITY: 0.4, createSceneEnvironment: () => new Texture() };
+});
 vi.mock('three', async (importOriginal) => {
   const actual = await importOriginal<typeof import('three')>();
   return { ...actual, WebGLRenderer: class {

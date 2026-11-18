@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Box3, CircleGeometry, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
+import { Box3, CircleGeometry, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, type Texture, Vector2, Vector3, WebGLRenderer } from 'three';
+import { SCENE_ENVIRONMENT_INTENSITY, createSceneEnvironment } from '@web/spaces/three-d/viewport/scene-environment';
 import { isSceneLight, isSceneModelFile, type SceneObject } from '@breatic/shared';
 import { lookModelOf, type ModelResourceCache, type SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 import { applyLook, releaseLook } from '@web/spaces/three-d/viewport/look-materials';
@@ -43,6 +44,8 @@ export class SceneMiniMapRuntime {
   private readonly scene = new Scene();
   private readonly camera = new OrthographicCamera();
   private readonly renderer: WebGLRenderer;
+  /** The same neutral room the main view reflects (inner#1693 design 5.7). */
+  private readonly environment: Texture;
   private readonly marker = new Mesh(new RingGeometry(0.3, 0.4, 32), new MeshBasicMaterial({ side: DoubleSide }));
   private readonly items = new Map<string, OverviewItem>();
   /** A small flat icon per camera and light, drawn from the record alone. */
@@ -72,6 +75,9 @@ export class SceneMiniMapRuntime {
     this.host.append(this.renderer.domElement);
     this.marker.rotation.x = -Math.PI / 2;
     this.scene.add(new HemisphereLight(0xffffff, 0x666666, 3), this.marker);
+    this.environment = createSceneEnvironment(this.renderer);
+    this.scene.environment = this.environment;
+    this.scene.environmentIntensity = SCENE_ENVIRONMENT_INTENSITY;
     this.renderer.domElement.addEventListener('click', this.onClick);
     this.resize = new ResizeObserver(() => this.render()); this.resize.observe(host);
   }
@@ -216,6 +222,6 @@ export class SceneMiniMapRuntime {
     for (const id of this.items.keys()) this.remove(id);
     for (const icon of this.icons.values()) icon.material.dispose();
     this.icons.clear(); this.iconGeometry.dispose();
-    this.marker.geometry.dispose(); this.marker.material.dispose(); this.renderer.dispose(); this.renderer.domElement.remove();
+    this.marker.geometry.dispose(); this.marker.material.dispose(); this.environment.dispose(); this.renderer.dispose(); this.renderer.domElement.remove();
   }
 }
