@@ -37,7 +37,6 @@ import {
   getNodeHistoryPageSize,
 } from "@server/config/limits.js";
 import {
-  creditHoldService,
   taskService,
   estimateTaskCredits,
   sendsUntakenPrompt,
@@ -53,7 +52,10 @@ import { nodeTaskService, runningSlotService } from "@breatic/domain";
 import {
   holdRowedRun,
   holdRun,
+  failOpenedTasks,
   openGenerationTasks,
+  settleUnqueuedRun,
+  type OpenedTaskRow,
   startRowedRun,
 } from "@server/modules/task/generation-task.js";
 import { startUrlIngest } from "@server/modules/asset/url-ingest.js";
@@ -321,6 +323,7 @@ canvas.post(
 
   let task: Awaited<ReturnType<typeof taskService.create>>;
   let job: Awaited<ReturnType<ReturnType<typeof tasksQueue>["add"]>>;
+  let rows: OpenedTaskRow[] = [];
   try {
     // #89: storage gate, the other soft pre-check. AFTER credits, because
     // refusing for storage tells the studio's admin about it — and a request
@@ -361,7 +364,7 @@ canvas.post(
     // bill the user for a result nothing can deliver. An append-mode run names
     // no node: its result lands on one the browser creates, so there is no
     // corner to count in yet.
-    await openGenerationTasks({
+    rows = await openGenerationTasks({
       projectId,
       spaceId,
       nodeIds: targetNodeId ? [targetNodeId] : [],
@@ -396,9 +399,9 @@ canvas.post(
       defaultJobOpts(),
     );
   } catch (err) {
-    await creditHoldService.releaseHold(taskId).catch((releaseErr: unknown) =>
-      logger.error({ err: releaseErr, taskId, projectId }, "credit_hold_release_failed"),
-    );
+    // The hold, the task row and any node row opened end here together, as
+    // every other rowed entry ends them (inner#1968, design 3.10 L5).
+    await settleUnqueuedRun(taskId, projectId, "internal", () => failOpenedTasks(projectId, spaceId, rows, "internal"), "canvas_task");
     throw err;
   }
 

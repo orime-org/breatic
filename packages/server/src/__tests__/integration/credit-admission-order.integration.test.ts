@@ -127,7 +127,7 @@ afterAll(async () => {
 });
 
 /** The rowed entries, the two-node mini-tool and the 3D generation. */
-const ENTRIES = ["understand", "transcribe", "mini-tool", "mini-tool-2", "three-d"] as const;
+const ENTRIES = ["understand", "transcribe", "mini-tool", "mini-tool-2", "three-d", "generate"] as const;
 type Entry = (typeof ENTRIES)[number];
 /** The three rowed entries the spec names, each with one result node. */
 const ROWED: readonly Entry[] = ["understand", "transcribe", "mini-tool"];
@@ -179,6 +179,10 @@ function press(a: Account, who: Actor, entry: Entry, nodeIds: string[]): Promise
       });
     case "mini-tool-2":
       return request(app, who.cookie, "POST", "/mini-tools", { ...at, tool: "audio.separate", source: { url: "https://assets.invalid/audio/a.m4a" }, params: {}, slots: {} });
+    case "generate":
+      return request(app, who.cookie, "POST", "/canvas/tasks", {
+        project_id: a.projectId, space_id: a.spaceId, source: "task", mode: "overwrite", target_node_id: nodeIds[0], task_type: "image", model: "flux-schnell", params: { prompt: "a cat" },
+      });
     case "three-d":
       return request(app, who.cookie, "POST", `/projects/${a.projectId}/three-d/${a.spaceId}/generations`, {
         mode: "t23d", model: "tripo-h3.1-t23d", prompt: "a red barn lamp", params: { ...TEXT_SETTINGS, negative_prompt: "blurry" }, origin: "space",
