@@ -9,12 +9,10 @@
  * test file keeps the real catalog.
  */
 
-import { isDeepStrictEqual } from "node:util";
-
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { formatCredits, GENERATION_TEMPLATES, setLocale } from "@breatic/shared";
+import { formatCredits, setLocale } from "@breatic/shared";
 import type { CreditEstimate } from "@breatic/shared/pricing";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
@@ -67,19 +65,6 @@ async function read(id: string): Promise<string> {
 const VIDEO = "seedance-2.5-image-to-video";
 const SCENE = "nano-banana-pro-edit-ultra";
 
-/**
- * Price a model one way at the template's own settings and another way at any other.
- * @param model - The model, as one or more of carried-object-transition's generate nodes use it.
- * @param atOwn - Its price at the template's settings.
- * @param otherwise - Its price at any other settings, a take's among them.
- */
-function priceBySettings(model: string, atOwn: CreditEstimate, otherwise: CreditEstimate): void {
-  const template = GENERATION_TEMPLATES.find((one) => one.id === "carried-object-transition");
-  const owns = (template?.nodes ?? []).flatMap((node) => (node.role === "generate" && node.model === model ? [node.params ?? {}] : []));
-  if (owns.length === 0) throw new Error(`carried-object-transition has no generate node on ${model}`);
-  PRICED_BY_SETTINGS.set(model, (params) => (owns.some((own) => isDeepStrictEqual(own, params)) ? atOwn : otherwise));
-}
-
 describe("the cost of one apply when not every node is exactly priced", () => {
   it("says at least the sum of the priced nodes when one node has no price", async () => {
     PRICES.set(SCENE, { credits: 12.5, bound: "exact" });
@@ -107,24 +92,25 @@ describe("the cost of one apply when not every node is exactly priced", () => {
 });
 
 describe("the take of a template", () => {
-  it("is offered, priced as a floor, when its cheaper settings cost less and one node's estimate is not exact", async () => {
-    priceBySettings(SCENE, { credits: 12.5, bound: "exact" }, { credits: 5, bound: "exact" });
-    // The video node has no price setting to lower on a take, so it runs at its own.
-    PRICES.set(VIDEO, { credits: 1200.25, bound: "at_least" });
+  it("is offered with the cheaper settings, priced exactly or as a floor on its own, when they cost less", async () => {
+    // Exact at the template's settings, a floor once silent: the two sentences must each keep their own bound.
+    PRICES.set(SCENE, { credits: 12.5, bound: "exact" });
+    PRICED_BY_SETTINGS.set(VIDEO, (params) => (params.generate_audio === false ? { credits: 1000, bound: "at_least" } : { credits: 1200.25, bound: "exact" }));
     const answer = await read("carried-object-transition");
-    expect(answer).toContain(`At its settings this template costs at least ${formatCredits(1225.25, "en-US")} credits.`);
-    expect(answer).toContain(`A take costs at least ${formatCredits(1210.25, "en-US")} credits;`);
+    expect(answer).toContain(`At its settings this template costs ${formatCredits(1225.25, "en-US")} credits.`);
+    expect(answer).toContain('write these cheaper settings in its generate nodes\' params: {"result":{"generate_audio":false}}.');
+    expect(answer).toContain(`A take costs at least ${formatCredits(1025, "en-US")} credits;`);
   });
 
   it("is not offered when a setting cheaper on its own costs no less beside the template's other settings", async () => {
+    // product-ad-15s: "result" on seedance-2.5-text-to-video runs 15 seconds with sound, the model's default length being shorter.
     PRICES.set(SCENE, { credits: 12.5, bound: "exact" });
-    // Silent is cheaper at the default length, but costs the same at the template's 5 seconds.
-    PRICED_BY_SETTINGS.set(VIDEO, (params) => {
-      if (params.generate_audio !== false) return { credits: 1200.25, bound: "exact" };
-      return { credits: params.duration === 5 ? 1200.25 : 100, bound: "exact" };
-    });
-    const answer = await read("carried-object-transition");
-    expect(answer).toContain(`At its settings this template costs ${formatCredits(1225.25, "en-US")} credits.`);
+    PRICED_BY_SETTINGS.set("seedance-2.5-text-to-video", (params) => ({
+      credits: params.generate_audio === false && (params.duration ?? 5) !== 15 ? 100 : 1200.25,
+      bound: "exact",
+    }));
+    const answer = await read("product-ad-15s");
+    expect(answer).toContain(`At its settings this template costs ${formatCredits(1212.75, "en-US")} credits.`);
     expect(answer).not.toContain("A take costs");
   });
 });
