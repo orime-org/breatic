@@ -57,6 +57,15 @@ function notify(notice: LookUploadNotice): void {
 /** No part is being checked. */
 const NO_PARTS: ReadonlySet<string> = new Set();
 
+/** Numbers every pick on the page, so a number is never given twice. */
+let picks = 0;
+
+/**
+ * The latest pick per Space, object and part; it lives outside the panel, which is mounted again for each selected
+ * object while an earlier pick may still be checking.
+ */
+const latestPicks = new Map<string, number>();
+
 export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLookPanelProps): React.JSX.Element {
   const { session, object, report, projectId, spaceId, limits, mutable, selectedPart, onSelectPart, showing } = props;
   const showingPictures = React.useMemo(() => new Set(showing), [showing]);
@@ -67,7 +76,6 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   const [pickerPart, setPickerPart] = React.useState<string | null>(null);
   // Parts with a Project picture still being checked; the last pick of a part is the one written.
   const [checking, setChecking] = React.useState<ReadonlySet<string>>(NO_PARTS);
-  const latestPick = React.useRef(new Map<string, number>());
   const look = React.useMemo(() => object.look ?? {}, [object.look]);
   const ready = typeof report === 'object' ? report : null;
   const textureLimits = React.useMemo(() => ({
@@ -111,13 +119,14 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   const pick = React.useCallback((image: SceneViewImage): void => {
     const part = pickerPart;
     if (part === null || !ready) return;
-    const pickNumber = (latestPick.current.get(part) ?? 0) + 1;
-    latestPick.current.set(part, pickNumber);
+    const key = `${session.name}\n${object.id}\n${part}`;
+    const pickNumber = ++picks;
+    latestPicks.set(key, pickNumber);
     /**
      * Whether no later pick for the part has started since this one.
      * @returns True while this is the part's latest pick.
      */
-    const isLatest = (): boolean => latestPick.current.get(part) === pickNumber;
+    const isLatest = (): boolean => latestPicks.get(key) === pickNumber;
     const name = image.displayName || translate('spaces.threeD.picker.unnamed');
     setChecking((shown) => new Set(shown).add(part));
     void (async () => {
@@ -147,6 +156,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
         session.execute({ type: 'look', id: object.id, part, set: { map: image.assetId } });
       } finally {
         if (isLatest()) {
+          latestPicks.delete(key);
           setChecking((shown) => {
             const next = new Set(shown);
             next.delete(part);

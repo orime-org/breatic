@@ -51,8 +51,8 @@ const cleanups: (() => void)[] = [];
 const NO_PICTURES: readonly string[] = [];
 afterEach(() => { cleanup(); cleanups.splice(0).forEach((done) => done()); sizes.clear(); vi.clearAllMocks(); });
 
-/** A panel on a scene with one figure, and its document. */
-function panel(): { doc: Y.Doc; session: SceneSession; rerender: () => void } {
+/** A panel on a scene with one figure, and its document; it can show another part or be opened again. */
+function panel(): { doc: Y.Doc; session: SceneSession; rerender: () => void; select: (part: string) => void; reopen: () => void } {
   const doc = new Y.Doc();
   doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true, NAME);
@@ -61,19 +61,30 @@ function panel(): { doc: Y.Doc; session: SceneSession; rerender: () => void } {
   session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness });
   cleanups.push(() => { session.destroy(); awareness.destroy(); doc.destroy(); });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  let selected = '0';
   /** The panel for the object as it is now. */
   const view = (): React.JSX.Element => <QueryClientProvider client={client}>
     <SceneLookPanel session={session} object={session.getSnapshot().objects[0] as SceneObject} report={REPORT as never} projectId='p1' spaceId='s1'
-      limits={IMPORT_LIMITS} mutable selectedPart='0' onSelectPart={vi.fn()} showing={NO_PICTURES} />
+      limits={IMPORT_LIMITS} mutable selectedPart={selected} onSelectPart={vi.fn()} showing={NO_PICTURES} />
   </QueryClientProvider>;
-  const result = render(view());
-  return { doc, session, rerender: () => result.rerender(view()) };
+  let result = render(view());
+  return {
+    doc, session,
+    rerender: () => result.rerender(view()),
+    select: (part) => { selected = part; result.rerender(view()); },
+    reopen: () => { result.unmount(); result = render(view()); },
+  };
 }
 
 /** Choose a picture for a part through the picker. */
 async function pick(part: string, assetId: string, displayName: string | null = 'pattern.png'): Promise<void> {
   act(() => { (captured.section!.onChoosePicture as (part: string) => void)(part); });
   await act(async () => { (captured.picker!.onPick as (image: unknown) => void)({ assetId, displayName }); await Promise.resolve(); });
+}
+
+/** Lets every pending check step run. */
+async function flush(): Promise<void> {
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 }
 
 /** The object's look. */
@@ -134,6 +145,41 @@ describe('picking a Project picture for a part', () => {
   });
 });
 
+describe('showing a part as checking', () => {
+  it('keeps a part checking while its later pick runs after an earlier one ended', async () => {
+    panel();
+    let releaseLater: () => void = () => undefined;
+    sizes.set(OTHER, () => new Promise((resolve) => { releaseLater = () => resolve({ width: 64, height: 64, type: 'png' }); }));
+    let releaseEarlier: () => void = () => undefined;
+    const earlier = new Promise<{ width: number; height: number; type: string }>((resolve) => { releaseEarlier = () => resolve({ width: 64, height: 64, type: 'gif' }); });
+    sizes.set(NEW, () => earlier);
+    await pick('0', NEW);
+    await pick('0', OTHER);
+    releaseEarlier();
+    await flush();
+    expect(captured.section!.checking).toBe(true);
+    releaseLater();
+    await flush();
+    expect(captured.section!.checking).toBe(false);
+  });
+
+  it('shows a part checking when it is selected while its check runs and another part finished', async () => {
+    const { select } = panel();
+    let release: () => void = () => undefined;
+    sizes.set(NEW, () => new Promise((resolve) => { release = () => resolve({ width: 64, height: 64, type: 'png' }); }));
+    sizes.set(OTHER, async () => ({ width: 64, height: 64, type: 'gif' }));
+    await pick('1', NEW);
+    await pick('0', OTHER);
+    await flush();
+    expect(captured.section!.checking).toBe(false);
+    select('1');
+    expect(captured.section!.checking).toBe(true);
+    release();
+    await flush();
+    expect(captured.section!.checking).toBe(false);
+  });
+});
+
 describe('telling why a Project picture was not put on', () => {
   it('says the picture could not be read when reading it failed, and writes nothing', async () => {
     const { doc } = panel();
@@ -165,6 +211,20 @@ describe('picking twice for one part', () => {
     // The part's latest pick is done, so it offers a picture again.
     expect(captured.section!.checking).toBe(false);
     await act(async () => { releaseFirst(); await Promise.resolve(); await Promise.resolve(); });
+    expect(lookOf(doc)).toEqual({ 0: { map: OTHER } });
+  });
+
+  it('keeps a pick made after the panel was opened again over an earlier one still checking', async () => {
+    const { doc, reopen } = panel();
+    let releaseFirst: () => void = () => undefined;
+    sizes.set(NEW, () => new Promise((resolve) => { releaseFirst = () => resolve({ width: 64, height: 64, type: 'png' }); }));
+    sizes.set(OTHER, async () => ({ width: 64, height: 64, type: 'png' }));
+    await pick('0', NEW);
+    reopen();
+    await pick('0', OTHER);
+    await vi.waitFor(() => expect(lookOf(doc)).toEqual({ 0: { map: OTHER } }));
+    releaseFirst();
+    await flush();
     expect(lookOf(doc)).toEqual({ 0: { map: OTHER } });
   });
 });
