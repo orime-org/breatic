@@ -64,6 +64,7 @@ import {
 } from "@breatic/core";
 import { recordProjectEdit } from "@collab/services/project-edit-recorder.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
+import { recomputeCommentRecords, voidCommentRecords } from "@collab/services/comment-record-acceptance.js";
 import {
   withSpaceCountLock,
   SpaceCountLockBusyError,
@@ -924,6 +925,14 @@ async function runDelete(
       return settled.response;
     }
 
+    // ── Comment records, allowed to fail ────────────────────────────
+    // A store landing later finds the Space unlisted and leaves these void.
+    try {
+      await voidCommentRecords(projectId, spaceId);
+    } catch (e) {
+      logger.error({ err: e, ...logCtx }, "comment_records_void_failed");
+    }
+
     // ── Audit, allowed to fail ──────────────────────────────────────
     // This row carries the snapshot `space:restore` consumes to rebuild the
     // entry, so losing it is what makes a Space unrecoverable — hence the
@@ -1243,6 +1252,14 @@ async function runRestore(
         );
       }
       return settled.response;
+    }
+
+    // ── Comment records, allowed to fail ────────────────────────────
+    // The next store of the Space recomputes them again.
+    try {
+      await recomputeCommentRecords(projectId, spaceId, kind.data, spaceContentDocName(projectId, spaceId, kind.data));
+    } catch (e) {
+      logger.error({ err: e, ...logCtx }, "comment_records_recompute_failed");
     }
 
     // ── Audit, allowed to fail ──────────────────────────────────────
