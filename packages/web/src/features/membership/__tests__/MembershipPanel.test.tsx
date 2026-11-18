@@ -766,6 +766,7 @@ describe('MembershipPanel', () => {
           project_members: 9999,
           concurrent_editors: 9999,
           storage_bytes: 100 * 1024 ** 4,
+          running_tasks_per_user: 3,
         }),
       }),
     );
@@ -774,6 +775,8 @@ describe('MembershipPanel', () => {
     expect(await screen.findByTestId('current-tier-name')).toHaveTextContent(
       'Self-hosted',
     );
+    // A deployment that lowers how many tasks one person runs at once can read it here (inner#1968).
+    expect(screen.getByTestId('quota-running-tasks-per-user')).toHaveTextContent('3');
     expect(screen.getByTestId('quota-projects-per-studio')).toHaveTextContent(
       '9999',
     );

@@ -77,9 +77,8 @@ function ContactLine({
  *
  *   - The tier it is on. Priced tiers also get a price and an upgrade button.
  *   - Its allowances. Only the two counted account-wide are listed; the other
- *     four are per-studio, and their values are read off the comparison table
- *     below — which is why `self_hosted`, which has ceilings but no table,
- *     lists them here instead.
+ *     five are read off the comparison table below — which is why
+ *     `self_hosted`, which has ceilings but no table, lists them here instead.
  *   - The comparison table, for accounts that could move between the tiers on
  *     it. `self_hosted` is a deployment shape and `enterprise` is negotiated,
  *     so for those two there is nothing to compare against.
@@ -267,7 +266,7 @@ export function MembershipContent({
                   </p>
                 ) : null}
                 {tier === 'self_hosted' ? (
-                // The four per-studio ceilings, listed here only for this tier:
+                // The five ceilings the table carries, listed here only for this tier:
                 // it is not on the price list, so the comparison table below —
                 // where every other tier reads them — is not shown to it.
                   <div className='flex flex-col gap-3 pt-2'>
@@ -297,6 +296,13 @@ export function MembershipContent({
                       label={t('membership.quota.concurrentEditors')}
                       value={t('membership.countConnections', {
                         count: String(limits.concurrent_editors),
+                      })}
+                    />
+                    <SelfHostedRow
+                      testId='quota-running-tasks-per-user'
+                      label={t('membership.quota.runningTasksPerUser')}
+                      value={t('membership.countItems', {
+                        count: String(limits.running_tasks_per_user),
                       })}
                     />
                     <ContactLine
