@@ -19,7 +19,7 @@ import { Loader2, RotateCw } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import type { NodeTaskEntry } from '@breatic/shared';
+import type { NodeTaskCounts, NodeTaskEntry } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
 import type { TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
@@ -50,6 +50,19 @@ export function inTaskList(task: NodeTaskEntry, list: TaskListKind): boolean {
   const waiting = task.status === 'running' && task.waitingSince != null;
   if (list === 'waiting') return waiting;
   return task.status === list && !waiting;
+}
+
+/**
+ * How many tasks one list holds by a node's counts: the running list without
+ * the waiting ones, which have their own (inner#1968).
+ * @param counts - The node's counts.
+ * @param list - The list.
+ * @returns Its count.
+ */
+export function countInList(counts: NodeTaskCounts, list: TaskListKind): number {
+  const waiting = counts.waiting ?? 0;
+  if (list === 'waiting') return waiting;
+  return list === 'running' ? counts.running - waiting : counts[list];
 }
 
 /** What {@link NodeTaskPanel} renders and reports. */

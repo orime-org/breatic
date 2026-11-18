@@ -14,14 +14,14 @@ import { NodeToolbar, Position, useStore } from '@xyflow/react';
 import * as React from 'react';
 
 import type { NodeRef } from '@web/data/yjs/node-view';
-import type { NodeTaskEntry } from '@breatic/shared';
+import type { NodeTaskCounts, NodeTaskEntry } from '@breatic/shared';
 
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { NodeTaskPanel, inTaskList } from '@web/spaces/canvas/tasks/NodeTaskPanel';
+import { NodeTaskPanel, countInList, inTaskList } from '@web/spaces/canvas/tasks/NodeTaskPanel';
 import type { TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { useTickingClock } from '@web/spaces/canvas/tasks/use-ticking-clock';
 import {
@@ -29,7 +29,7 @@ import {
   hasRetryFile,
 } from '@web/spaces/canvas/upload-retry-files';
 import { countsColumnOffset } from '@web/spaces/canvas/overlay-scale';
-import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
+import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import {
   taskActionKey,
   trackTaskAction,
@@ -94,6 +94,7 @@ function OpenNodeTaskPanel({
   const t = useTranslation();
   const zoom = useStore((s) => s.transform[2]);
   const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
+  const session = useCanvasSessionStore();
   const openHistoryPanel = useCanvasSession((s) => s.openHistoryPanel);
   // Each row's first line names a model by what the catalog calls it. The
   // catalog is already cached by the time a list opens on a canvas.
@@ -192,18 +193,21 @@ function OpenNodeTaskPanel({
   // A row leaves the state this panel shows: cleared, or cancelled and ended.
   // The count cell this panel opened from is drawn only while its own state
   // holds a task, so the last row of THAT state leaving takes the cell with it.
-  // This list holds every state the node has, so what remains in it says
-  // nothing about the one on screen; left open, the panel would sit on a
-  // generic empty line with nothing naming the state that emptied.
+  // Whether any is left is read from the counts the server answered with: the
+  // list's cache is keyed on the node's counts, and a counts event that lands
+  // first moves it to a key not read yet. An answer that lands after the user
+  // opened another panel leaves that panel alone.
   const rowLeft = React.useCallback(
-    (taskId: string, keepRow: boolean): void => {
-      const rows = queryClient.getQueryData<NodeTaskEntry[]>(queryKey) ?? [];
-      const left = rows.filter((row) => row.id !== taskId);
-      if (!keepRow) queryClient.setQueryData<NodeTaskEntry[]>(queryKey, left);
-      if (!left.some((row) => inTaskList(row, status))) closeActivePanel();
+    (taskId: string, counts: NodeTaskCounts, keepRow: boolean): void => {
+      if (!keepRow) {
+        queryClient.setQueryData<NodeTaskEntry[]>(queryKey, (rows) => rows?.filter((row) => row.id !== taskId));
+      }
+      const open = session.getState();
+      if (open.panelKind !== 'tasks' || open.panelHostId !== nodeId || open.taskPanelStatus !== status) return;
+      if (countInList(counts, status) === 0) closeActivePanel();
       else if (keepRow) void query.refetch();
     },
-    [queryClient, queryKey, status, closeActivePanel, query],
+    [queryClient, queryKey, session, nodeId, status, closeActivePanel, query],
   );
   // Finish and Clear are the same request (§7.4). The row leaves this list as
   // soon as the server takes it — the list is this user's own fetch, not the
@@ -212,9 +216,9 @@ function OpenNodeTaskPanel({
     (taskId: string): void => {
       const request = canvasApi
         .dismissNodeTask(taskId, { projectId, spaceId, nodeId })
-        .then(() => {
+        .then(({ counts }) => {
           clearRetryFile(projectId, spaceId, taskId);
-          rowLeft(taskId, false);
+          rowLeft(taskId, counts, false);
         })
         .catch(() => {
           toast.error(t('canvas.task.dismissFailed'));
@@ -231,8 +235,9 @@ function OpenNodeTaskPanel({
     (taskId: string): void => {
       const request = canvasApi
         .cancelTask(taskId, projectId)
-        .then(() => {
-          rowLeft(taskId, true);
+        .then(({ counts }) => {
+          // A 3D Space's own row answers no node counts; this list is a node's.
+          if (counts !== null) rowLeft(taskId, counts, true);
         })
         .catch((err: unknown) => {
           toast.error(err instanceof ApiException && err.fromServer ? err.message : t('canvas.task.cancelFailed'));
