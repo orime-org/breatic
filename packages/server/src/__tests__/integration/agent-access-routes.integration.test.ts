@@ -306,6 +306,7 @@ describe("the downstream token whitelist", () => {
     "POST /api/v1/assets/ingest-url",
     "POST /api/v1/assets/deleted",
     "GET /api/v1/agent-access/connections/names",
+    "GET /api/v1/agent/assignments",
   ];
 
   it("names exactly the routes the MCP tools and uploads use", () => {
@@ -716,6 +717,93 @@ describe("POST /agent/view-captures/:requestId", () => {
     const agent = await seedAgent(owner.userId);
     const { requestId } = await register(owner.userId);
     const res = await call(`/api/v1/agent/view-captures/${requestId}`, { method: "POST", bearer: agent.downstream, body: captureBody({ imageBytes: 16 }) });
+    expect(res.status).toBe(401);
+  });
+});
+
+/**
+ * A hand-over record, as collab syncs one.
+ * @param row - Its fields.
+ * @param row.projectId - The project.
+ * @param row.connectionId - The agent connection it is handed to.
+ * @param row.assignedBy - Who handed it over.
+ * @param row.status - Where it stands.
+ * @param row.voided - Whether a store no longer reads it.
+ * @param row.spaceId - The Space.
+ * @returns Its thread id.
+ */
+async function handOver(row: {
+  projectId: string;
+  connectionId: string;
+  assignedBy: string;
+  status?: "pending" | "answered" | "resolved";
+  voided?: boolean;
+  spaceId?: string;
+}): Promise<string> {
+  const threadId = crypto.randomUUID();
+  await sql`
+    INSERT INTO comment_assignments (project_id, space_id, thread_id, connection_id, assigned_by, assigned_at, status, deleted_at)
+    VALUES (${row.projectId}, ${row.spaceId ?? crypto.randomUUID()}, ${threadId}, ${row.connectionId}, ${row.assignedBy}, 5000,
+      ${row.status ?? "pending"}, ${row.voided ? new Date() : null})`;
+  return threadId;
+}
+
+describe("GET /agent/assignments", () => {
+  it("lists the pending threads its owner handed this connection, in projects the owner can still edit", async () => {
+    const owner = await seedOwner();
+    const agent = await seedAgent(owner.userId);
+    const other = await seedAgent(owner.userId, "Codex");
+    const archived = await seedProject(owner.userId, owner.studioId);
+    await sql`UPDATE projects SET archived_at = now(), archived_by_user_id = ${owner.userId} WHERE id = ${archived}`;
+    const colleague = await seedOwner();
+    await sql`INSERT INTO project_members (project_id, user_id, role, added_by) VALUES (${colleague.projectId}, ${owner.userId}, 'viewer', ${colleague.userId})`;
+    const listed = await handOver({ projectId: owner.projectId, connectionId: agent.connectionId, assignedBy: owner.userId });
+    await handOver({ projectId: owner.projectId, connectionId: agent.connectionId, assignedBy: owner.userId, status: "answered" });
+    await handOver({ projectId: owner.projectId, connectionId: agent.connectionId, assignedBy: owner.userId, voided: true });
+    await handOver({ projectId: owner.projectId, connectionId: other.connectionId, assignedBy: owner.userId });
+    await handOver({ projectId: owner.projectId, connectionId: agent.connectionId, assignedBy: colleague.userId });
+    await handOver({ projectId: archived, connectionId: agent.connectionId, assignedBy: owner.userId });
+    await handOver({ projectId: colleague.projectId, connectionId: agent.connectionId, assignedBy: owner.userId });
+    const res = await call("/api/v1/agent/assignments", { bearer: agent.downstream });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: unknown[] }).data).toEqual([
+      { projectId: owner.projectId, spaceId: expect.any(String), threadId: listed, assignedAt: 5000 },
+    ]);
+  });
+
+  it("answers 403 to a browser session: it is for external agents", async () => {
+    const owner = await seedOwner();
+    expect((await call("/api/v1/agent/assignments", { cookie: owner.cookie })).status).toBe(403);
+  });
+});
+
+describe("GET /comment-assignments", () => {
+  it("lists what the user handed over in one Space, voided records left out", async () => {
+    const owner = await seedOwner();
+    const agent = await seedAgent(owner.userId);
+    const spaceId = crypto.randomUUID();
+    const pending = await handOver({ projectId: owner.projectId, spaceId, connectionId: agent.connectionId, assignedBy: owner.userId });
+    const answered = await handOver({ projectId: owner.projectId, spaceId, connectionId: agent.connectionId, assignedBy: owner.userId, status: "answered" });
+    await handOver({ projectId: owner.projectId, spaceId, connectionId: agent.connectionId, assignedBy: owner.userId, voided: true });
+    await handOver({ projectId: owner.projectId, connectionId: agent.connectionId, assignedBy: owner.userId });
+    const res = await call(`/api/v1/comment-assignments?project_id=${owner.projectId}&space_id=${spaceId}`, { cookie: owner.cookie });
+    expect(res.status).toBe(200);
+    const { data } = (await res.json()) as { data: Array<{ threadId: string; status: string; connectionId: string; assignedAt: number }> };
+    expect(data.map((r) => [r.threadId, r.status]).sort()).toEqual([[answered, "answered"], [pending, "pending"]].sort());
+    expect(data[0]).toMatchObject({ connectionId: agent.connectionId, assignedAt: 5000 });
+  });
+
+  it("answers 404 to someone who is not a member of the project", async () => {
+    const owner = await seedOwner();
+    const stranger = await seedOwner();
+    const res = await call(`/api/v1/comment-assignments?project_id=${owner.projectId}&space_id=${crypto.randomUUID()}`, { cookie: stranger.cookie });
+    expect(res.status).toBe(404);
+  });
+
+  it("is not open to a downstream token", async () => {
+    const owner = await seedOwner();
+    const agent = await seedAgent(owner.userId);
+    const res = await call(`/api/v1/comment-assignments?project_id=${owner.projectId}&space_id=${crypto.randomUUID()}`, { bearer: agent.downstream });
     expect(res.status).toBe(401);
   });
 });
