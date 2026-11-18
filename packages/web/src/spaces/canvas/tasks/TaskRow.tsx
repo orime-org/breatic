@@ -173,7 +173,8 @@ export const TaskRow = React.memo(function TaskRow({
   // time and the moment it started. One slot carrying two different facts
   // needs the word too, or the user cannot tell which one they are looking
   // at (user 2026-09-06).
-  const instant = entry.settledAt ?? entry.startedAt;
+  // A waiting row has not started, so it names no instant (inner#1968).
+  const instant = waiting ? null : entry.settledAt ?? entry.startedAt;
   const instantKey =
     entry.settledAt !== null ? 'canvas.task.endedAt' : 'canvas.task.startedAt';
 

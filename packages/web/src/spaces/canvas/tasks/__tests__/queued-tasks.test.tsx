@@ -205,6 +205,8 @@ describe('G-38 a waiting row of the task list', () => {
     const row = screen.getByTestId('node-task-row');
     expect(row).toHaveTextContent('排队中');
     expect(row).not.toHaveTextContent('已运行');
+    // It has not started, so it names no start time either (demo, waiting row).
+    expect(screen.queryByTestId('task-instant')).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: '取消' }));
     expect(onCancel).toHaveBeenCalledWith('t-wait');
   });
