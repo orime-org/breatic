@@ -691,6 +691,34 @@ importers:
         specifier: 'catalog:'
         version: 13.6.33
 
+  packages/mcp:
+    dependencies:
+      '@breatic/core':
+        specifier: workspace:*
+        version: link:../core
+      '@breatic/shared':
+        specifier: workspace:*
+        version: link:../shared
+      dotenv:
+        specifier: 'catalog:'
+        version: 16.6.1
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.1
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.23.12)(typescript@5.8.3)(yaml@2.9.0)
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.12
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(@vitest/ui@4.1.10)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0)
+
   packages/provider:
     dependencies:
       '@ai-sdk/anthropic':

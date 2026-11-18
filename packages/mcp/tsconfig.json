@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["../shared/src/*"],
+      "@core/*": ["../core/src/*"],
+      "@mcp/*": ["../mcp/src/*"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "vitest.config.ts"
+  ]
+}
