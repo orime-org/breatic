@@ -85,6 +85,34 @@ describe('buildPartTable', () => {
 });
 
 describe('applyLook', () => {
+  it('disposes the material a transmission change replaces, both ways', () => {
+    const { root, meshes } = model();
+    const table = exported<Build>('buildPartTable')(root, partOf, { builtin: false });
+    const apply = (look: Record<string, Record<string, unknown>>): void => {
+      exported<Apply>('applyLook')(root, table, look, { themeColor: THEME, picture: () => null });
+    };
+    const standard = materialOf(meshes[0]!);
+    const standardDispose = vi.spyOn(standard, 'dispose');
+    apply({ 0: { transmission: 1 } });
+    const physical = materialOf(meshes[0]!);
+    expect(physical).not.toBe(standard);
+    expect(standardDispose).toHaveBeenCalledTimes(1);
+    const physicalDispose = vi.spyOn(physical, 'dispose');
+    apply({});
+    expect(materialOf(meshes[0]!)).not.toBe(physical);
+    expect(physicalDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('disposes the user picture clone it made when the object is released', () => {
+    const { root, meshes } = model();
+    const table = exported<Build>('buildPartTable')(root, partOf, { builtin: false });
+    exported<Apply>('applyLook')(root, table, { 0: { map: IMAGE } }, { themeColor: THEME, picture: () => new Texture() });
+    const clone = materialOf(meshes[0]!).map!;
+    const dispose = vi.spyOn(clone, 'dispose');
+    exported<(root: Group) => void>('releaseLook')(root);
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
   it('asks for a new shader program only when picture presence, transmission past 0 or transparency changes', () => {
     const { root, meshes } = model();
     const table = exported<Build>('buildPartTable')(root, partOf, { builtin: false });

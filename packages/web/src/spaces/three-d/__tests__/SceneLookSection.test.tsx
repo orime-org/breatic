@@ -32,6 +32,7 @@ type Props = {
   showingPictures?: ReadonlySet<string>;
   uploadPercentOf?: (part: string) => number | null;
   pictureUrl?: (assetId: string) => string | undefined;
+  gesture?: { begin: () => number; preview: () => boolean; commit: () => void; cancel: () => void; stepKey: () => void };
 };
 
 afterEach(() => cleanup());
@@ -91,6 +92,18 @@ describe('SceneLookSection', () => {
     renderSection({ selectedPart: 'd' });
     expect((screen.getByTestId('scene-look-preset-metal') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId('scene-look-unlit-note')).toBeTruthy();
+  });
+
+  it('offers only colour and opacity on a line or points part and says why', () => {
+    const lines = [...PARTS, { key: '2', name: null, color: '#00ff00', hasMap: false, unlit: false, line: true }] as unknown as typeof PARTS;
+    const gesture = { begin: () => 1, preview: () => true, commit: vi.fn(), cancel: vi.fn(), stepKey: vi.fn() };
+    renderSection({ parts: lines, selectedPart: '2', gesture });
+    const off = (testId: string): boolean => screen.getByTestId(testId).hasAttribute('data-disabled');
+    for (const testId of ['scene-look-gloss', 'scene-look-metalness', 'scene-look-transmission', 'scene-look-emission-intensity']) expect(off(testId), testId).toBe(true);
+    expect(off('scene-look-opacity')).toBe(false);
+    expect((screen.getByTestId('scene-look-preset-metal') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('scene-look-choose-image') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('scene-look-line-note')).toBeTruthy();
   });
 
   it('disables every control without a note on a locked object or for a Viewer', () => {

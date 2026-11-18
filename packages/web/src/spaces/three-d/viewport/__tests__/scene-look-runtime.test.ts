@@ -49,16 +49,17 @@ const runtimes: SceneLookRuntime[] = [];
 afterEach(() => { runtimes.splice(0).forEach((runtime) => runtime.dispose()); });
 
 /** A runtime over a fake cache, with a loaded built-in box. */
-async function open(fake: FakeCache): Promise<{ runtime: SceneLookRuntime; root: Group; failures: Array<SceneLookPictures | null>; programs: ReturnType<typeof vi.fn> }> {
+async function open(fake: FakeCache): Promise<{ runtime: SceneLookRuntime; root: Group; failures: Array<SceneLookPictures | null>; programs: ReturnType<typeof vi.fn>; changed: ReturnType<typeof vi.fn> }> {
   const root = await loadSceneModel(BOX.model as never, new AbortController().signal, vi.fn(), '#969696', IMPORT_LIMITS);
   const failures: Array<SceneLookPictures | null> = [];
   const programs = vi.fn();
+  const changed = vi.fn();
   const runtime = new SceneLookRuntime({
     textures: () => fake.cache, limits: () => ({ maxTextureEdge: 8192, maxTextureBytes: 268_435_456 }), themeColor: () => '#969696',
-    highlightColor: () => '#3b6fd8', onProgramChanged: programs, onChanged: vi.fn(), onPictures: (_id, pictures) => failures.push(pictures),
+    highlightColor: () => '#3b6fd8', onProgramChanged: programs, onChanged: changed, onPictures: (_id, pictures) => failures.push(pictures),
   });
   runtimes.push(runtime);
-  return { runtime, root, failures, programs };
+  return { runtime, root, failures, programs, changed };
 }
 
 /** Lets pending promises settle. */
@@ -122,6 +123,21 @@ describe('SceneLookRuntime', () => {
     runtime.sync(withLook({ 0: { map: A } }), root);
     await settle();
     expect(fake.acquire).toHaveBeenCalledWith(A, 8192);
+  });
+
+  it.each([['loads', true], ['fails', false]] as const)('tells the scene it changed when a picture %s after the look was applied', async (_name, loads) => {
+    let finish: () => void = () => undefined;
+    const fake = fakeCache(async () => SMALL, () => new Promise<Texture>((resolve, reject) => {
+      finish = () => (loads ? resolve(new Texture()) : reject(new Error('decode failed')));
+    }));
+    const { runtime, root, changed } = await open(fake);
+    runtime.sync(withLook({ 0: { map: A } }), root);
+    await settle();
+    expect(fake.acquire).toHaveBeenCalled();
+    const before = changed.mock.calls.length;
+    finish();
+    await settle();
+    expect(changed.mock.calls.length).toBeGreaterThan(before);
   });
 
   it('tells a picture over the limits apart from one that failed to load', async () => {
