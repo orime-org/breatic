@@ -147,7 +147,7 @@ name. Without it every request except a CORS preflight answers 500.
 The optional `KEY_UNSEAL_PRIVATE_KEY` is what web-animation runs need. The
 Worker holds no model key of its own: our worker reads the keys a run uses
 (ours, or the paying account's own) and sends them with each submit, sealed to
-the Worker's public key (the server's `INGEST_KEY_SEAL_PUBLIC_KEY`). This
+the Worker's public key (our worker's `INGEST_KEY_SEAL_PUBLIC_KEY`). This
 secret is the private half (PKCS#8 PEM); it opens them into the job object's
 memory only, and the Worker's `model.local` relay sends each call with them;
 the container never sees them. See [Web animation](#web-animation).
@@ -206,7 +206,7 @@ Without the binding the web-animation job routes answer 501 `feature_disabled`,
 and so does a submit without that secret; everything else works. To develop it,
 uncomment those blocks, make a key pair (`.env.dev` shows how), put the private
 half in `.dev.vars` as `KEY_UNSEAL_PRIVATE_KEY` and the public half in the
-repo-root `.env` as `INGEST_KEY_SEAL_PUBLIC_KEY`, and give the server the model
+repo-root `.env` as `INGEST_KEY_SEAL_PUBLIC_KEY`, and give our worker the model
 key (for example `OPENROUTER_API_KEY`). A job object that restarts mid-run
 loses the keys it held, and the run fails as `key_lost_on_restart`. Its image (`web-animation.Dockerfile`: Node, Chromium,
 the DeepSeek Harness, the HyperFrames runtime and the font set) is large, so

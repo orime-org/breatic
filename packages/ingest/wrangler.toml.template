@@ -368,7 +368,7 @@ storage = "sqlite"
 # Web-animation execution, as at the top level; uncomment to deploy it, and set
 # the private key that opens the keys each submit carries,
 # `wrangler secret put KEY_UNSEAL_PRIVATE_KEY --env production` (its public half
-# is the server's INGEST_KEY_SEAL_PUBLIC_KEY). The Worker holds no model key.
+# is our worker's INGEST_KEY_SEAL_PUBLIC_KEY). The Worker holds no model key.
 # Serve previews from a domain of their own (WEB_ANIMATION_PREVIEW_BASE_URL on
 # the server side), and keep the R2 `web-animation/` prefix off the public
 # asset domain.
