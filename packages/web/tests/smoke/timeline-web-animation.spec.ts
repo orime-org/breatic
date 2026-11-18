@@ -953,16 +953,16 @@ test('a run cancelled in Motion reads Cancelled, is not offered by Add web anima
     const motion = visibleSpace(page);
     await motion.getByTestId('motion-details').click();
     await motionDetails(page).getByTestId('motion-cancel').click();
-    // Esc closes the details and the execution list.
+    // One Esc closes only the details; the execution list behind them stays open.
     await page.keyboard.press('Escape');
     await expect(motionDetails(page)).toHaveCount(0);
+    const list = motion.getByTestId('motion-panel-executions');
+    await expect(list).toBeVisible();
     await expect(motion.getByTestId('motion-retry')).toBeVisible({ timeout: RUN_MS });
     await expect(motion.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', id);
     await expect(motion.getByTestId('motion-preview')).toContainText('Cancelled');
     await expect(motion.getByTestId('motion-action-modify')).toHaveCount(0);
     await expect(motion.getByTestId('motion-action-export')).toHaveCount(0);
-    await motion.getByTestId('motion-open-executions').click();
-    const list = motion.getByTestId('motion-panel-executions');
     // The row crossed into Completed and the list followed it.
     await expect(list.getByRole('tab', { name: /^Completed/ })).toHaveAttribute('aria-selected', 'true');
     await expect(list.getByRole('tab', { name: /^Completed/ })).toHaveText(/Completed\s*1/);
@@ -998,7 +998,8 @@ test('a run cancelled in Motion reads Cancelled, is not offered by Add web anima
     await expect(dialog.getByTestId('web-animation-duration')).toHaveValue(String(SECONDS));
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    await motion.getByTestId('motion-open-executions').click();
+    // The execution list was left open, and a hidden Space keeps it open while another tab is in front.
+    await expect(list).toBeVisible();
     await expect(list.getByRole('tab', { name: /^In progress/ })).toHaveText(/In progress\s*0/);
     await expect(list.locator('[data-testid^="motion-row-"]')).toHaveCount(1);
     expect(errors.unexpected).toEqual([]);
