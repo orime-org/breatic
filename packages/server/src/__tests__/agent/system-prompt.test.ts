@@ -478,8 +478,9 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(tryCheaply()).not.toContain("made at the lowest cost: every setting that sets the price at its cheapest value, on a fast and cheap model.");
   });
 
-  it("keeps on a take the one model a step's prompt came already written for, with its price settings at their cheapest", () => {
-    expect(tryCheaply()).toContain("A step that comes with its prompt already written for one model keeps that model on its takes, so a take shows what its final will be; its other settings stay as above.");
+  it("keeps on a take the one model and the length of a prompt the agent was given rather than wrote, with its price settings at their cheapest", () => {
+    expect(tryCheaply()).toContain("A step that comes with a prompt you were given ready-written for one model, rather than one you wrote yourself, keeps that model and the length the prompt is written for on its takes, so a take shows what its final will be; its other settings stay as above.");
+    expect(tryCheaply()).not.toContain("A step that comes with its prompt already written for one model keeps that model on its takes");
     expect(tryCheaply()).not.toContain("A step whose prompt is written for one model");
   });
 
@@ -588,9 +589,10 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     expect(reach).toContain("a timeline holds video clips from the Project's videos and web animations it makes from a typed request, shown on top of the video below them.");
   });
 
-  it("makes Video trial shots before the final shot as takes on a fast, cheap model or the one model their prompt came already written for", () => {
+  it("makes Video trial shots before the final shot as takes on a fast, cheap model or on the model and length of a prompt the agent was given", () => {
     const para = paragraphs().get("Video") ?? "";
-    expect(para).toContain("trial shots before the final shot, made as takes on a fast, cheap model, or, for a prompt that came already written for one model, on that model;");
+    expect(para).toContain("trial shots before the final shot, made as takes on a fast, cheap model, or, for a prompt you were given ready-written for one model, rather than one you wrote yourself, on that model at the length it is written for;");
+    expect(para).not.toContain("for a prompt that came already written for one model, on that model;");
     expect(para).not.toContain("or on the one model their prompt is written for;");
     expect(para).not.toContain("trial shots short unless they named the length");
     expect(para).not.toContain("trial shots short and on a fast model");
