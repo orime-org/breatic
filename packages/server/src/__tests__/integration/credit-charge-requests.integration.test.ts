@@ -27,7 +27,6 @@ vi.mock("ai", () => ({
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { db, initCore, loadLocales } from "@breatic/core";
-import { sql as sql_ } from "drizzle-orm";
 import { creditHoldService, creditLotService, taskService } from "@breatic/domain";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 import {
@@ -263,25 +262,6 @@ describe("credit_charge_requests schema", () => {
 });
 
 describe("requestCharge", () => {
-  // inner#1955: the request names its Studio, read inside the delivery's
-  // own transaction, so a Project written in it is seen.
-  it("reads the Project's Studio inside the delivery's transaction", async () => {
-    const fx = await studioWith(100);
-    const reference = ref("in-tx");
-    await expect(
-      db.transaction(async (tx) => {
-        const [project] = await tx.execute<{ id: string }>(sql_`
-          INSERT INTO projects (studio_id, created_by_user_id, name, slug)
-          VALUES (${fx.studioId}, ${fx.userId}, 'Unseen', ${`unseen-${randomUUID()}`}) RETURNING id
-        `);
-        await creditLotService.requestCharge(taskCharge(fx, reference, 10, { projectId: project!.id }), tx);
-        const [row] = await tx.execute<{ studio_id: string | null }>(sql_`SELECT studio_id FROM credit_charge_requests WHERE reference_id = ${reference}`);
-        expect(row!.studio_id).toBe(fx.studioId);
-        throw new Error("roll back the probe");
-      }),
-    ).rejects.toThrow("roll back the probe");
-  });
-
   it("leaves no row when its transaction rolls back", async () => {
     const fx = await studioWith(100);
     const reference = ref("rollback");
@@ -364,18 +344,16 @@ describe("settleCharge", () => {
     expect(await readRequest(id)).toMatchObject({ status: "settled" });
   });
 
-  it("charges the studio a request was recorded in, even after its project is deleted", async () => {
-    // The studio is fixed when the delivery is recorded (inner#1955): the
-    // global region settles without reading the region's projects.
+  it("settles a request whose project was deleted as having no studio", async () => {
     const fx = await studioWith(100);
     const reference = ref("gone");
     const id = (await request(taskCharge(fx, reference, 15)))!;
     await sql`UPDATE projects SET deleted_at = now() WHERE id = ${fx.projectId}`;
     const outcome = await creditLotService.settleCharge(id);
-    expect(outcome).toMatchObject({ billed: true, charged: "15.000000", shortfall: "0.000000", studioId: fx.studioId });
+    expect(outcome).toMatchObject({ billed: false, charged: "0.000000", shortfall: "15.000000", studioId: null, lotIds: [] });
     expect(await readRequest(id)).toMatchObject({ status: "settled" });
     expect(await ledgerFor(reference)).toEqual([{ entry_type: "spend", amount: "-15.000000" }]);
-    expect(await remaining(fx.lotId)).toBe("85.000000");
+    expect(await remaining(fx.lotId)).toBe("100.000000");
   });
 
   it("settles a request with no project as standalone usage", async () => {
@@ -616,11 +594,11 @@ describe("markCompletedAndBill with a charge", () => {
   it("rolls the completion back when the request cannot be written", async () => {
     const fx = await studioWith(100);
     const taskId = await seedTask(fx);
-    // A Project that does not exist fails the request's foreign key.
+    // An actor that does not exist fails the request's foreign key.
     await expect(
       taskService.markCompletedAndBill(taskId, { url: "https://example.test/b.png" }, 12, 900, {
-        actorUserId: fx.userId,
-        projectId: randomUUID(),
+        actorUserId: randomUUID(),
+        projectId: fx.projectId,
         amount: 12,
       }),
     ).rejects.toMatchObject({ cause: expect.objectContaining({ message: expect.stringMatching(/foreign key/) }) });

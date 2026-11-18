@@ -7,8 +7,7 @@
  * Its own module so the report can be tested without driving a whole task run.
  */
 
-import { logger, projectsRepo, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
-import { globalApi } from "@breatic/domain";
+import { claimFirstMilestone, logger, projectsRepo, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 
 /**
  * Send `first_generation_completed` when this is the account's first
@@ -27,7 +26,7 @@ export async function reportFirstGeneration(task: {
   projectId?: string;
 }): Promise<void> {
   try {
-    if (!(await globalApi().claimAccountMilestone("first-generation", task.userId)).claimed) return;
+    if (!(await claimFirstMilestone("first-generation", task.userId))) return;
     if (!serverAnalyticsWanted()) return;
     const studioId = task.projectId ? await projectsRepo.findOwnerStudioId(task.projectId) : undefined;
     trackServerEvent("first_generation_completed", {

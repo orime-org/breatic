@@ -45,7 +45,6 @@ import {
 } from "@breatic/shared";
 import type { ActivityCursor } from "@breatic/core";
 import type { Hono } from "hono";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -96,7 +95,6 @@ async function insertUserWithStudio(
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studios[0]!.id}, ${userId}, 'admin')
   `;
-  await mirrorAllInDirectory(sql);
   return { userId, studioId: studios[0]!.id };
 }
 
@@ -123,7 +121,6 @@ async function insertProject(ownerUserId: string): Promise<string> {
     INSERT INTO project_members (project_id, user_id, role, added_by)
     VALUES (${projectId}, ${ownerUserId}, 'owner', null)
   `;
-  await mirrorAllInDirectory(sql);
   return projectId;
 }
 

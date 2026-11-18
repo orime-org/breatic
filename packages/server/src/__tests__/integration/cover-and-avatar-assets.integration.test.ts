@@ -48,7 +48,6 @@ import {
   loadLocales,
 } from "@breatic/core";
 import type { Hono } from "hono";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -114,7 +113,6 @@ async function seedStudio(adminId: string): Promise<{
     INSERT INTO project_members (project_id, user_id, role, added_by)
     VALUES (${projectId}, ${adminId}, 'owner', null)
   `;
-  await mirrorAllInDirectory(sql);
   return { studioId, slug, projectId };
 }
 
@@ -136,7 +134,6 @@ async function addMember(
       VALUES (${projectId}, ${userId}, ${projectRole}, null)
     `;
   }
-  await mirrorAllInDirectory(sql);
 }
 
 /** A ledger row in `studioId`; returns its id and URL. */

@@ -165,18 +165,12 @@ services:
     image: ghcr.io/orime-org/breatic:v0.0.33
     command: ["node", "packages/worker/dist/index.js"]
     env_file: .env
-    # Started after the new server is healthy, so the previous release no
-    # longer writes Studios when the worker aligns the directory once.
-    environment:
-      DIRECTORY_RECONCILE_ON_START: "true"
     volumes:
       - ./logs:/app/logs
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
-        condition: service_healthy
-      server:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + (process.env.WORKER_HEALTH_PORT || 9101) + '/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]

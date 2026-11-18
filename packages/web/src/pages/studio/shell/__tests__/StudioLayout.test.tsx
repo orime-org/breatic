@@ -26,7 +26,7 @@ import { notificationsApi , EMPTY_RESOLVED } from '@web/data/api/notifications';
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(studiosApi.listUserStudios).mockResolvedValue([]);
-  vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED, unavailableRegions: [] });
+  vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED });
 });
 
 function setup() {

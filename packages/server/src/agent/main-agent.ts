@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
 import { parseCreditDecimal } from "@breatic/shared";
 
 import { createUIMessageStream, stepCountIs, wrapLanguageModel } from "ai";
-import { globalApi, provider, streamTextRetry } from "@breatic/domain";
+import { provider, streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, Tool, ToolSet, UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
 import type { PreparedCall } from "@breatic/provider";
 import {
@@ -48,7 +48,7 @@ import * as conversationService from "@server/modules/conversation/conversation.
 import { foldIfTooLong } from "@server/agent/turn-fold.js";
 import { knownTokensAtStart, requestTokens } from "@server/agent/request-size.js";
 import type { Assembly, FoldResult, FoldTrigger, TurnIdentity } from "@server/agent/turn-fold.js";
-import { currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
+import { claimFirstMilestone, currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { readContextOverflow, unrecognised400, type ContextOverflow } from "@breatic/provider";
 import { lastFullSnapshotKey, pictureFactsOfRows, prefixHash, replayRows, stripThinking } from "@server/agent/history-replay.js";
@@ -1637,7 +1637,7 @@ export class MainAgent {
    */
   private async reportFirstFinishedTurn(turn: { consent: ConsentSnapshot; studioId: string }): Promise<void> {
     const { userId, projectId } = this.ctx;
-    if (!(await globalApi().claimAccountMilestone("first-agent", userId)).claimed) return;
+    if (!(await claimFirstMilestone("first-agent", userId))) return;
     if (!serverAnalyticsWanted(turn.consent)) return;
     trackServerEvent(
       "first_agent_action_completed",

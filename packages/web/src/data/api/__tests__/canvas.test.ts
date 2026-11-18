@@ -183,7 +183,6 @@ describe('canvasApi node tasks — the rows behind a node\'s four counts (#186)'
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith(
       '/canvas/node-tasks/t-1/failure',
       { reason: 'aborted' },
-      undefined,
     );
   });
 });

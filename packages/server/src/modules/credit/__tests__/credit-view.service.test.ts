@@ -12,7 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const readStudioCredits = vi.fn();
-const listStudioLedger = vi.fn();
+const listLedgerByStudio = vi.fn();
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const { coreMock } = await import("../../../__tests__/helpers/mock-core.js");
@@ -21,12 +21,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 vi.mock("@breatic/domain", () => ({
   assetService: { resolveOwnerStudioId: vi.fn() },
-  creditLotService: { readStudioCredits, listStudioLedger },
-}));
-
-vi.mock("@server/modules/region/project-names.js", () => ({
-  projectNamesHere: vi.fn(async () => ({})),
-  projectNamesEverywhere: vi.fn(async () => ({})),
+  creditLotRepo: { listLedgerByStudio },
+  creditLotService: { readStudioCredits },
 }));
 
 vi.mock("@server/config/limits.js", () => ({
@@ -62,6 +58,7 @@ function ledgerRow(
     actorUserId: null,
     actorName: null,
     projectId: null,
+    projectName: null,
     model: null,
     provider: null,
     charged: "-10.000000",
@@ -79,7 +76,7 @@ beforeEach(() => {
     lots: [],
     ledger: [],
   });
-  listStudioLedger.mockResolvedValue([]);
+  listLedgerByStudio.mockResolvedValue([]);
 });
 
 describe("GET a studio's credits", () => {
@@ -88,7 +85,7 @@ describe("GET a studio's credits", () => {
 
     // One row over the page size is what tells a full page from a last one.
     expect(readStudioCredits).toHaveBeenCalledWith("s-1", 21);
-    expect(listStudioLedger).not.toHaveBeenCalled();
+    expect(listLedgerByStudio).not.toHaveBeenCalled();
   });
 
   it("reads only the ledger once the client is scrolling", async () => {
@@ -101,7 +98,7 @@ describe("GET a studio's credits", () => {
     expect(readStudioCredits).not.toHaveBeenCalled();
     // The decoded cursor reaches the query. Dropping it here would serve the
     // first page forever, silently, to a client that is scrolling.
-    expect(listStudioLedger).toHaveBeenCalledWith("s-1", 21, {
+    expect(listLedgerByStudio).toHaveBeenCalledWith("s-1", 21, {
       createdAt: "2026-08-22 10:00:00.123456+00",
       id: "0b8f8a52-9f1c-4f6e-9a52-1c2d3e4f5a6b",
     });
@@ -111,7 +108,7 @@ describe("GET a studio's credits", () => {
     // Two rows for a page of one: the extra says there is more. The cursor is
     // built from the last row the client actually receives, so the next page
     // continues from there rather than skipping the one held back.
-    listStudioLedger.mockResolvedValue([
+    listLedgerByStudio.mockResolvedValue([
       ledgerRow("0b8f8a52-9f1c-4f6e-9a52-1c2d3e4f5a6b", "10:00:00.123456"),
       ledgerRow("1c9f9b63-af2d-5f7f-ab63-2d3e4f5a6b7c", "09:00:00.654321"),
     ]);
@@ -145,7 +142,7 @@ describe("GET a studio's credits", () => {
     await getStudioCredits("s-1", undefined, unusable);
 
     expect(readStudioCredits).toHaveBeenCalledTimes(1);
-    expect(listStudioLedger).not.toHaveBeenCalled();
+    expect(listLedgerByStudio).not.toHaveBeenCalled();
   });
 });
 

@@ -25,8 +25,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { ReportedConsentSchema, USER_LOOKUP_MAX_IDS } from "@breatic/shared";
 import { SUPPORTED } from "@server/middleware/i18n.js";
 
-import { authService } from "@server/modules";
-import { profilesService } from "@breatic/domain";
+import { authService, studioService } from "@server/modules";
 
 const users = new Hono<{ Variables: AuthVariables }>();
 
@@ -61,19 +60,19 @@ users.get("/", validate("query", querySchema), async (c) => {
     .filter((s) => s.length > 0)
     .slice(0, USER_LOOKUP_MAX_IDS);
 
-  // Read from the global directory and accounts, whichever region serves
-  // this request (inner#1955); an account that is gone has no address.
-  const profiles = await profilesService.profilesOf(idList);
+  const rows = await authService.getUsersByIds(idList);
+  const identities = await studioService.getPersonalStudioIdentitiesByUserIds(
+    rows.map((u) => u.id),
+  );
   return c.json({
-    data: [...profiles].flatMap(([id, profile]) => {
-      if (profile.email === null) return [];
-      const shown = profile.name !== null && !profile.deleted;
-      return [{
-        id,
-        email: profile.email,
-        username: shown ? profile.name : null,
-        avatar_url: shown ? profile.avatarUrl : null,
-      }];
+    data: rows.map((u) => {
+      const identity = identities.get(u.id);
+      return {
+        id: u.id,
+        email: u.email,
+        username: identity?.name ?? null,
+        avatar_url: identity?.avatarUrl ?? null,
+      };
     }),
   });
 });

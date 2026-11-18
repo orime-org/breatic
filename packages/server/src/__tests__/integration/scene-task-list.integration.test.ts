@@ -46,7 +46,6 @@ import { resetOpenDouble } from "../helpers/ingest-open-double.js";
 import { workerAnswers } from "@server/__tests__/integration/transfer-grant-fixtures.js";
 import { closeFinishQueue, runQueuedFinish } from "@server/__tests__/helpers/queued-finish.js";
 import type { Hono } from "hono";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -115,7 +114,6 @@ async function seedUser(): Promise<{ userId: string; studioId: string }> {
     VALUES (${userId}, ${`stl-s-${crypto.randomBytes(8).toString("hex")}`}, 'personal', 'Personal') RETURNING id
   `;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studios[0]!.id}, ${userId}, 'admin')`;
-  await mirrorAllInDirectory(sql);
   return { userId, studioId: studios[0]!.id };
 }
 

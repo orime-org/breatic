@@ -54,15 +54,8 @@ describe('the API prefix has one definition', () => {
     expect(API_BASE_PATH).toBe('/api/v1');
   });
 
-  it('axios sends every ordinary call through it', async () => {
-    const seen: string[] = [];
-    await request.get('/projects/p1', {
-      adapter: async (config) => {
-        seen.push(`${config.baseURL ?? ''}${config.url ?? ''}`);
-        return { data: { data: {} }, status: 200, statusText: '200', headers: {}, config };
-      },
-    });
-    expect(seen).toEqual([`${API_BASE_PATH}/projects/p1`]);
+  it('axios sends every ordinary call through it', () => {
+    expect(request.defaults.baseURL).toBe(API_BASE_PATH);
   });
 
   it('the agent chat stream opens under it', async () => {

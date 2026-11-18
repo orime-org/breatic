@@ -199,7 +199,7 @@ describe('SlugSetupPage', () => {
     setAvailability({ state: 'valid' });
     refresh();
     expect(await screen.findByTestId('studio-page')).toBeInTheDocument();
-    expect(authApi.setupStudio).toHaveBeenCalledWith({ slug: 'my-handle', studioId: expect.any(String) });
+    expect(authApi.setupStudio).toHaveBeenCalledWith({ slug: 'my-handle' });
   });
 
   it('reports a running check that comes back taken instead of sending (inner#1652)', async () => {
@@ -241,7 +241,7 @@ describe('SlugSetupPage', () => {
       expect(screen.getByTestId('studio-page')).toBeInTheDocument(),
     );
     expect(authApi.setupStudio).toHaveBeenCalledTimes(1);
-    expect(authApi.setupStudio).toHaveBeenCalledWith({ slug: 'my-handle', studioId: expect.any(String) });
+    expect(authApi.setupStudio).toHaveBeenCalledWith({ slug: 'my-handle' });
     const stored = useCurrentUserStore.getState().user;
     expect(stored?.personalStudio).toEqual({
       name: 'my-handle',

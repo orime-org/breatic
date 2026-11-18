@@ -34,7 +34,6 @@ import {
   WIRE,
   type ServerFrame,
 } from "@collab/__tests__/helpers/live-hocuspocus.js";
-import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 
 /** Records owned by one case, including real API-issued Redis sessions. */
 interface Fixture {
@@ -142,7 +141,6 @@ async function createFixture(tier: MembershipTier = "base", memberCount = 4): Pr
     await sql`INSERT INTO project_members (project_id, user_id, role)
       VALUES (${fixture.projectId}, ${userId}, ${index === 0 ? "owner" : "editor"})`;
   }
-  await mirrorInDirectory(sql, fixture.studioId);
   return fixture;
 }
 
@@ -425,8 +423,6 @@ describe("persisted enterprise membership in real collab handshakes", () => {
     await sql.begin(async (tx) => {
       await tx`UPDATE studio_members SET role = 'maintainer' WHERE studio_id = ${fixture.studioId} AND user_id = ${fixture.userIds[0]!}`;
       await tx`UPDATE studio_members SET role = 'admin' WHERE studio_id = ${fixture.studioId} AND user_id = ${fixture.userIds[1]!}`;
-      // A transfer moves the directory's admin too, which the ceilings follow (inner#1955).
-      await tx`UPDATE studio_directory SET admin_user_id = ${fixture.userIds[1]!} WHERE studio_id = ${fixture.studioId}`;
     });
     const next = await connect(active, fixture, 2, "readonly");
     await write(active, next, "new-admin-zero-cap", false);

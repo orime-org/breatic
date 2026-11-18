@@ -731,29 +731,6 @@ export interface NotificationListView {
   };
 }
 
-/**
- * The bell's list across regions (inner#1955): every region's notifications,
- * each naming the region that holds it (null for the global region), and the
- * regions that did not answer in time.
- */
-export interface NotificationFeed {
-  items: Array<NotificationEntity & { region: string | null }>;
-  resolved: NotificationListView["resolved"];
-  unavailableRegions: string[];
-}
-
-/** The bell's unread count across regions, and the regions that did not answer. */
-export interface NotificationCount {
-  count: number;
-  unavailableRegions: string[];
-}
-
-/** The recent Projects across regions, and the regions that did not answer. */
-export interface RecentFeed {
-  items: RecentItem[];
-  unavailableRegions: string[];
-}
-
 /** Project entity (v10 schema). */
 export interface ProjectEntity {
   id: string;

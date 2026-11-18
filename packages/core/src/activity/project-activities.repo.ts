@@ -21,7 +21,7 @@
 import { and, eq, gt, inArray, isNull, lt, or, desc, sql, type SQL } from "drizzle-orm";
 import { db } from "@core/db/client.js";
 import type { DbTx } from "@core/db/client.js";
-import { projectActivities } from "@core/db/schema.js";
+import { projectActivities, studios } from "@core/db/schema.js";
 import { CANONICAL_UUID } from "@core/db/canonical-uuid.js";
 import type {
   ProjectActivityEntry,
@@ -133,17 +133,20 @@ export function decodeActivityCursor(cursor: string): ActivityCursor | null {
 }
 
 /**
- * Map a raw row to the shared entry. The actor's display name lives in the
- * global directory, so the feed's service fills `actorName` in.
+ * Map a raw row (+ optionally joined actor name) to the shared entry.
  * @param row - Selected `project_activities` row from drizzle.
- * @returns The shared `ProjectActivityEntry`, `actorName` null.
+ * @param actorName - Actor display name from the users join, if any.
+ * @returns The shared `ProjectActivityEntry`.
  */
-function toEntity(row: typeof projectActivities.$inferSelect): ProjectActivityEntry {
+function toEntity(
+  row: typeof projectActivities.$inferSelect,
+  actorName: string | null,
+): ProjectActivityEntry {
   return {
     id: row.id,
     projectId: row.projectId,
     actorUserId: row.actorUserId,
-    actorName: null,
+    actorName,
     type: row.type as ProjectActivityType,
     spaceId: row.spaceId,
     nodeId: row.nodeId,
@@ -181,7 +184,7 @@ export const projectActivitiesRepo = {
       inArray(projectActivities.type, ["asset:uploaded", "generation:succeeded"]), isNull(projectActivities.deletedAt),
       cursor === null ? undefined : gt(projectActivities.id, cursor),
     )).orderBy(projectActivities.id).limit(limit);
-    return rows.map((row) => toEntity(row));
+    return rows.map((row) => toEntity(row, null));
   },
   /**
    * Append one activity row. Threads an optional transaction so
@@ -328,15 +331,25 @@ export const projectActivitiesRepo = {
             ),
           )
         : undefined;
-    // Actor names live on personal Studios in the global directory; the
-    // feed's service fills them in (inner#1955).
+    // Display names live on the personal studio (`users` is the pure
+    // auth table - email-registration rewrite 2026-06-06), so the
+    // actor join targets studios(type='personal').
     const rows = await db
       .select({
         row: projectActivities,
+        actorName: studios.name,
         // The cursor is built from this, not from the mapped `Date`.
         cursorAt: sql<string>`${projectActivities.createdAt}::text`,
       })
       .from(projectActivities)
+      .leftJoin(
+        studios,
+        and(
+          eq(studios.createdByUserId, projectActivities.actorUserId),
+          eq(studios.type, "personal"),
+          isNull(studios.deletedAt),
+        ),
+      )
       .where(
         and(
           ...feedConditions(projectId, opts.spaceIds),
@@ -346,7 +359,7 @@ export const projectActivitiesRepo = {
       .orderBy(desc(projectActivities.createdAt), desc(projectActivities.id))
       .limit(limit);
     return rows.map((r) => ({
-      entry: toEntity(r.row),
+      entry: toEntity(r.row, r.actorName),
       cursorAt: r.cursorAt,
     }));
   },
@@ -393,7 +406,7 @@ export const projectActivitiesRepo = {
       )
       .orderBy(desc(projectActivities.createdAt), desc(projectActivities.id))
       .limit(1);
-    return rows[0] ? toEntity(rows[0]) : null;
+    return rows[0] ? toEntity(rows[0], null) : null;
   },
 
   /**

@@ -21,8 +21,6 @@ import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
 interface CreditsTabProps {
   /** The studio being viewed. */
   slug: string;
-  /** The Studio's region, when it is not the global one; a slug that moved region names other credits. */
-  region?: string | null;
 }
 
 /**
@@ -191,14 +189,13 @@ const LedgerRow = React.memo(function LedgerRow({
  * overlay; this tab reports.
  * @param props - The studio being viewed.
  * @param props.slug - The studio being viewed.
- * @param props.region - The studio's region, when it is not the global one.
  * @returns The Credits tab content.
  */
-export function CreditsTab({ slug, region }: CreditsTabProps): React.JSX.Element {
+export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
   const t = useTranslation();
 
   const query = useInfiniteQuery({
-    queryKey: region ? ['studio-credits', slug, region] : ['studio-credits', slug],
+    queryKey: ['studio-credits', slug],
     queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
       fetchStudioCredits(slug, pageParam),
     initialPageParam: undefined as string | undefined,

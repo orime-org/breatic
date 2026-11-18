@@ -5,7 +5,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { Server } from "@hocuspocus/server";
 import WebSocket from "ws";
 import * as Y from "yjs";
-import { db, getRedis, getCollabRedis, getProjectConcurrentEditorLimit, rawPg as sql, setSession, sessionCookieName, studioDirectoryRepo, writeSpaceEntry } from "@breatic/core";
+import { getRedis, getCollabRedis, getProjectConcurrentEditorLimit, rawPg as sql, setSession, sessionCookieName, writeSpaceEntry } from "@breatic/core";
 import { projectMetaDocName, spaceContentDocName } from "@breatic/shared";
 import type { SpaceType } from "@breatic/shared";
 import { createAuthHook } from "@collab/hooks/auth.js";
@@ -40,14 +40,6 @@ export async function seedCollabActivity(): Promise<ActivityCollabFixture> {
   const userId = user!.id;
   const [studio] = await sql<{ id: string }[]>`INSERT INTO studios(created_by_user_id,slug,type,name) VALUES(${userId},${`ca-s-${tag}`},'personal','Activity') RETURNING id`;
   await sql`INSERT INTO studio_members(studio_id,user_id,role) VALUES(${studio!.id},${userId},'admin')`;
-  // Its global directory row, as product code writes it with a new Studio (inner#1955).
-  await db.transaction(async (tx) => {
-    await studioDirectoryRepo.insertRow(
-      { studioId: studio!.id, slug: `ca-s-${tag}`, region: null, type: "personal", name: "Activity", adminUserId: userId, createdByUserId: userId, state: "live" },
-      tx,
-    );
-    await studioDirectoryRepo.upsertMember(studio!.id, userId, "admin", tx);
-  });
   const [project] = await sql<{ id: string }[]>`INSERT INTO projects(studio_id,created_by_user_id,slug,name) VALUES(${studio!.id},${userId},${`ca-p-${tag}`},'Activity') RETURNING id`;
   const projectId = project!.id;
   await sql`INSERT INTO project_members(project_id,user_id,role) VALUES(${projectId},${userId},'owner')`;

@@ -11,15 +11,15 @@
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 
-import { usersRepo as userRepo } from "@breatic/domain";
-import { claimEmailInvitationsOnSignIn } from "@server/modules/invitation/claim-email-invitations.js";
+import * as userRepo from "@server/modules/auth/user.repo.js";
+import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
 import {
   generateRecoveryCode,
   hashRecoveryCode,
   verifyRecoveryCode,
 } from "@server/modules/auth/recovery-code.service.js";
 import { buildPasswordResetMail } from "@server/modules/auth/auth-mail.js";
-import { isUniqueViolation } from "@breatic/core";
+import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
 import {
@@ -45,7 +45,6 @@ import {
   db,
 } from "@breatic/core";
 import { bindReferral } from "@server/modules/referral/referral-binding.service.js";
-import { getLegalConfig } from "@server/config/legal.js";
 import { adClickFrom, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
 import type { Attribution, ReportedConsent, SignupReferralSource, UserEntity } from "@breatic/shared";
 
@@ -88,8 +87,7 @@ export function hashPassword(password: string): Promise<string> {
  * a consent category (inner#1442 design §4.5).
  * A referral code is bound in the same transaction as the account is created.
  * While payments are off the code is ignored: the program does not exist.
- * @param data - The account to create, as `userRepo.createUser` takes it,
- *   less the terms version, which is the deployment's current one.
+ * @param data - The account to create, as `userRepo.createUser` takes it.
  * @param referral - The code the sign-up carried, and what to do when it is
  *   refused: `reject` creates nothing, `skip` creates the account unbound.
  * @returns The created account and what became of the code.
@@ -97,7 +95,7 @@ export function hashPassword(password: string): Promise<string> {
  * @throws {SignupReferralRefused} When the code is refused and `onRefused` is `reject`.
  */
 export async function createAccount(
-  data: Omit<Parameters<typeof userRepo.createUser>[0], "termsVersion">,
+  data: Parameters<typeof userRepo.createUser>[0],
   referral?: SignupReferral & { onRefused: "reject" | "skip" },
 ): Promise<{ user: UserEntity; referral: SignupReferralOutcome }> {
   const consent = currentConsent();
@@ -105,14 +103,11 @@ export async function createAccount(
   const wanted = referral !== undefined && env.PAYMENT_ENABLED ? referral : undefined;
   let outcome: SignupReferralOutcome = null;
   let user: UserEntity;
-  // Every account is created by continuing from the sign-in or sign-up card,
-  // which carries the terms line (#302).
-  const fields = { ...data, attribution, termsVersion: getLegalConfig().terms_version };
   try {
     user = wanted === undefined
-      ? await userRepo.createUser(fields)
+      ? await userRepo.createUser({ ...data, attribution })
       : await db.transaction(async (tx) => {
-        const created = await userRepo.createUser(fields, tx);
+        const created = await userRepo.createUser({ ...data, attribution }, tx);
         const bound = await bindReferral({ userId: created.id, code: wanted.code, source: wanted.source }, tx);
         if (!bound.ok && wanted.onRefused === "reject") throw new SignupReferralRefused();
         outcome = bound.ok ? "applied" : "not_applied";
@@ -135,7 +130,7 @@ export async function createAccount(
   }).catch((err: unknown) => {
     logger.error({ err, userId: user.id }, "ads_conversion_enqueue_failed");
   });
-  await claimEmailInvitationsOnSignIn(user);
+  if (user.emailVerified) await claimEmailInvitations(user);
   return { user, referral: outcome };
 }
 
@@ -247,7 +242,7 @@ export async function loginEmail(
     throw new UnauthorizedError(t("server.auth.invalid_credentials"));
   }
 
-  await claimEmailInvitationsOnSignIn(user);
+  if (user.emailVerified) await claimEmailInvitations(user);
   const token = await createSession(user.id);
   // Caller logs `user_logged_in` (method=email) audit line.
   return { user, token };
@@ -311,7 +306,7 @@ export async function loginOrCreateGoogle(
     user = (await userRepo.updateUser(user.id, { emailVerified: true })) ?? user;
   }
 
-  await claimEmailInvitationsOnSignIn(user);
+  if (user.emailVerified) await claimEmailInvitations(user);
   const token = await createSession(user.id);
   // Caller logs `user_logged_in` (method=google) audit line.
   return { user, token, created, referral: referralOutcome };

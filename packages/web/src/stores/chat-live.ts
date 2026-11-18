@@ -251,7 +251,7 @@ async function sendOne(sending: Sending): Promise<SendOutcome> {
           attached_chips: chips,
           ...(model === undefined ? {} : { model }),
         }),
-      send: (key, body) => chatApi.sendMessage(body, key, projectId),
+      send: (key, body) => chatApi.sendMessage(body, key),
       onDone: (answer) => {
         // The server holds the message now, so it leaves the box, and the
         // items it carried leave with it (an item attached after the press is
@@ -383,7 +383,7 @@ export const chatLive = {
     const { projectId, conversationId, toolCallId, card, spaces } = answering;
     try {
       const body = await chatBody(projectId, conversationId, spaces, { ...card, message: '' });
-      const answered = await chatApi.sendMessage(body, newId(), projectId);
+      const answered = await chatApi.sendMessage(body, newId());
       if (answered.running) {
         if (isShowing(conversationId) && !isReadingRun(conversationId)) void attach(conversationId);
         return;

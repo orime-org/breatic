@@ -30,23 +30,7 @@ import {
   applyPersonalStudio,
   useCurrentUserStore,
 } from '@web/stores/current-user';
-import type { Studio, StudioDetail, StudioSummary, UpdateStudioInput } from '@breatic/shared';
-
-/** The switcher's list of the user's Studios. */
-const SWITCHER_KEY = ['studios', 'user'] as const;
-
-/**
- * Whether a query is the switcher's list. It is read from the global
- * directory, which hears of a change made in another region only once that
- * region's outbox delivers it (inner#1955), so a refetch right after the
- * change would bring the old row back; the change is written into it instead.
- * @param query - The query.
- * @param query.queryKey - Its key.
- * @returns True for the switcher's list.
- */
-function isSwitcher({ queryKey }: { queryKey: readonly unknown[] }): boolean {
-  return queryKey[0] === SWITCHER_KEY[0] && queryKey[1] === SWITCHER_KEY[1];
-}
+import type { Studio, StudioDetail, UpdateStudioInput } from '@breatic/shared';
 
 /** One studio edit, with the slug field's check when it changes the slug. */
 interface StudioSave {
@@ -151,12 +135,7 @@ export function useStudioSettings(
       // next mount. Only the studio read is waited on: it is what the settings
       // fields and the avatar are drawn from. `cancelRefetch: false` joins the
       // refetch the invalidation just started instead of restarting it.
-      queryClient.setQueryData<StudioSummary[]>(SWITCHER_KEY, (list) =>
-        list?.map((s) =>
-          s.id === next.id ? { ...s, slug: next.slug, name: next.name, avatarUrl: next.avatarUrl ?? null, bio: next.bio ?? null } : s,
-        ),
-      );
-      void queryClient.invalidateQueries({ predicate: (query) => !isSwitcher(query) });
+      void queryClient.invalidateQueries();
       const refetched = queryClient.refetchQueries(
         { queryKey: ['studio', next.slug], exact: true, type: 'active' },
         { cancelRefetch: false },
@@ -262,8 +241,7 @@ export function useStudioSettings(
       queryClient.removeQueries({ queryKey: ['studio', studio.slug] });
       // Its projects also sit in reads keyed elsewhere (recent projects, the
       // credits overlay's lists).
-      queryClient.setQueryData<StudioSummary[]>(SWITCHER_KEY, (list) => list?.filter((s) => s.id !== studio.id));
-      void queryClient.invalidateQueries({ predicate: (query) => !isSwitcher(query) });
+      void queryClient.invalidateQueries();
       const home = useCurrentUserStore.getState().user?.personalStudio?.slug;
       navigate(home === undefined ? '/studio' : `/studio/${home}`, {
         replace: true,

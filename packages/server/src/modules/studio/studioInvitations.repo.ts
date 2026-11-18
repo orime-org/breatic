@@ -19,16 +19,17 @@
  * expired / revoked invitee can be re-invited (a fresh pending row).
  *
  * Drizzle row types never leak past this repo (prohibition #3 /
- * breatic/no-drizzle-type-leak): callers see the hand-written shapes below.
+ * breatic/no-drizzle-type-leak): callers see the hand-written shapes below and
+ * `PendingInvitationSummary` (a `@breatic/shared` entity).
  */
 
 import { and, desc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
-import { db, studioInvitations } from "@breatic/core";
+import { alias } from "drizzle-orm/pg-core";
+import { db, studioInvitations, studios, users } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import type { StudioRole } from "@breatic/shared";
+import type { PendingInvitationSummary, StudioRole } from "@breatic/shared";
 import type { RecipientInvitation, EmailInvitationCandidate } from "@server/modules/invitation/invitation.types.js";
-import type { PendingInvitationRow } from "@server/modules/invitation/pending-display.js";
-import { mintShareToken } from "@breatic/core";
+import { mintShareToken } from "@server/utils/share-token.js";
 
 /** Roles an invite may grant — admin is granted via transfer, never invite. */
 type InvitableRole = "maintainer" | "guest";
@@ -305,25 +306,50 @@ export async function revokeIfPending(
 }
 
 /**
- * List a studio's LIVE pending invitations, newest first: only
- * `status = 'pending'`, non-expired, non-deleted rows. Display fields come from
- * `withPendingDisplay`.
+ * List a studio's LIVE pending invitations with display fields, for the
+ * Members tab's "invited (pending)" section.
+ *
+ * Mirrors `studioMembers.listByStudio`: joins the invitee to `users` for
+ * `email` and to their personal studio for the display `name` + `avatar`, plus
+ * the inviter's personal studio for `invitedByName` (two `studios` aliases).
+ * Only `status = 'pending'` and non-expired, non-deleted rows; newest first.
  * @param studioId - Studio UUID
- * @returns The invitations (empty when none)
+ * @returns Pending invitations with display fields (empty when none)
  */
 export async function listPendingByStudio(
   studioId: string,
-): Promise<PendingInvitationRow<StudioRole>[]> {
+): Promise<PendingInvitationSummary[]> {
+  const inviteeStudio = alias(studios, "invitee_studio");
+  const inviterStudio = alias(studios, "inviter_studio");
   const rows = await db
     .select({
       invitationId: studioInvitations.id,
       invitedUserId: studioInvitations.invitedUserId,
-      invitedEmail: studioInvitations.invitedEmail,
-      invitedBy: studioInvitations.invitedBy,
+      name: inviteeStudio.name,
+      email: sql<string>`coalesce(${users.email}, ${studioInvitations.invitedEmail})`,
+      avatarUrl: inviteeStudio.avatarUrl,
       role: studioInvitations.role,
+      invitedByName: inviterStudio.name,
       expiresAt: studioInvitations.expiresAt,
     })
     .from(studioInvitations)
+    .leftJoin(users, eq(users.id, studioInvitations.invitedUserId))
+    .leftJoin(
+      inviteeStudio,
+      and(
+        eq(inviteeStudio.createdByUserId, studioInvitations.invitedUserId),
+        eq(inviteeStudio.type, "personal"),
+        isNull(inviteeStudio.deletedAt),
+      ),
+    )
+    .leftJoin(
+      inviterStudio,
+      and(
+        eq(inviterStudio.createdByUserId, studioInvitations.invitedBy),
+        eq(inviterStudio.type, "personal"),
+        isNull(inviterStudio.deletedAt),
+      ),
+    )
     .where(
       and(
         eq(studioInvitations.studioId, studioId),
@@ -333,7 +359,17 @@ export async function listPendingByStudio(
       ),
     )
     .orderBy(desc(studioInvitations.createdAt));
-  return rows.map((r) => ({ ...r, role: r.role as StudioRole }));
+  return rows.map((r) => ({
+    invitationId: r.invitationId,
+    invitedUserId: r.invitedUserId,
+    awaitingSignup: r.invitedUserId === null,
+    name: r.name ?? r.email,
+    email: r.email,
+    avatarUrl: r.avatarUrl,
+    role: r.role as StudioRole,
+    invitedByName: r.invitedByName ?? "",
+    expiresAt: r.expiresAt.toISOString(),
+  }));
 }
 
 /** Fields shared by recipient arbitration and delivery settlement. */

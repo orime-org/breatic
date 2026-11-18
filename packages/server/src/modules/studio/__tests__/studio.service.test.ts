@@ -4,7 +4,7 @@
 /**
  * studio.service unit tests — personal-studio creation + lookup.
  *
- * Mocks studioRepo + studioMembersRepo + the db transaction so the test
+ * Mocks studio.repo + studioMembersRepo + the db transaction so the test
  * runs without Postgres. The atomicity guarantee (studio + admin row in
  * one tx) and the partial-unique-index conflict mapping are covered for
  * real against Postgres in the setup-studio integration suite; these unit
@@ -14,8 +14,11 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const studioRepoMock = vi.hoisted(() => ({
+vi.mock("../studio.repo.js", () => ({
   createPersonalStudio: vi.fn(),
+  getPersonalByCreator: vi.fn(),
+  getPersonalIdentitiesByCreators: vi.fn(),
+  getPersonalProfilesByCreators: vi.fn(),
   getBySlug: vi.fn(),
   listByUser: vi.fn(),
   countMembersByStudioIds: vi.fn(),
@@ -25,18 +28,15 @@ const studioRepoMock = vi.hoisted(() => ({
 // Whether this deployment sells anything decides whether the trial grant's
 // figure is read at all, so the flag is a knob here rather than whatever the
 // developer's own .env happens to say.
-const { envRef, mockTrialGrantCredits, mockFindPersonalByCreator, mockListStudiosOfUser } = vi.hoisted(() => ({
-  envRef: { PAYMENT_ENABLED: true, REGION: "us-west", GLOBAL_REGION: "us-west", REGION_API_URLS: { sg: "http://sg.invalid" } },
+const { envRef, mockTrialGrantCredits } = vi.hoisted(() => ({
+  envRef: { PAYMENT_ENABLED: true },
   mockTrialGrantCredits: vi.fn(() => 100),
-  mockFindPersonalByCreator: vi.fn(),
-  mockListStudiosOfUser: vi.fn(),
 }));
 vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unknown>>) => {
   const actual = await importOriginal();
   return {
     ...actual,
     env: envRef,
-    studioDirectoryRepo: { findPersonalByCreator: mockFindPersonalByCreator, listStudiosOfUser: mockListStudiosOfUser },
     db: {
       transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
         cb({ TX: true }),
@@ -55,20 +55,16 @@ vi.mock("@server/config/pricing.js", () => ({
 // Explicit (no importOriginal) so loading @breatic/domain never pulls the
 // real agent llm and the `ai` SDK behind it.
 // `vi.hoisted` keeps the spy reference valid inside the hoisted factory.
-const { mockInsertAdmin, mockLoadStudioRole, mockCreateStudio, regionClientRef } =
+const { mockInsertAdmin, mockLoadStudioRole, mockGrantTrialCredits } =
   vi.hoisted(() => ({
     mockInsertAdmin: vi.fn().mockResolvedValue(undefined),
     mockLoadStudioRole: vi.fn(),
-    mockCreateStudio: vi.fn(),
-    regionClientRef: () => ({}),
+    mockGrantTrialCredits: vi.fn().mockResolvedValue(null),
   }));
 vi.mock("@breatic/domain", () => ({
-  studioRepo: studioRepoMock,
   studioMembersRepo: { insertAdmin: mockInsertAdmin, getRole: vi.fn() },
   studioAuthService: { loadStudioRole: mockLoadStudioRole },
-  studioCreationService: { createStudio: mockCreateStudio },
-  regionClient: regionClientRef,
-  isKnownRegion: (region: string) => region === "us-west" || region === "sg",
+  creditLotService: { grantTrialCredits: mockGrantTrialCredits },
 }));
 
 vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, unknown>>) => ({
@@ -76,10 +72,12 @@ vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, u
   t: (k: string) => k,
 }));
 
-const studioRepo = studioRepoMock;
+import * as studioRepo from "../studio.repo.js";
 import {
   createPersonalStudio,
   getPersonalStudio,
+  getPersonalStudioIdentitiesByUserIds,
+  getPersonalStudioProfilesByUserIds,
   getStudioDetail,
   listUserStudios,
 } from "../studio.service.js";
@@ -98,6 +96,19 @@ const STUDIO: Studio = {
   deletedAt: null,
 };
 
+const TEAM_STUDIO: Studio = {
+  id: "studio-team",
+  createdByUserId: "user-9",
+  slug: "acme",
+  type: "team",
+  name: "Acme",
+  avatarUrl: null,
+  bio: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  deletedAt: null,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   envRef.PAYMENT_ENABLED = true;
@@ -105,81 +116,119 @@ beforeEach(() => {
 });
 
 describe("createPersonalStudio", () => {
-  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-  it("creates a personal Studio named by its slug, in the global region, with the price file's trial credits", async () => {
-    mockCreateStudio.mockResolvedValueOnce(STUDIO);
+  it("creates the studio with slug = name = the chosen slug, type personal, + admin row in one tx", async () => {
+    vi.mocked(studioRepo.createPersonalStudio).mockResolvedValueOnce(STUDIO);
 
     const result = await createPersonalStudio("user-1", "alice-handle");
 
     expect(result).toBe(STUDIO);
+    // slug AND name are both the chosen slug (display name initially = slug).
+    expect(studioRepo.createPersonalStudio).toHaveBeenCalledWith(
+      "user-1",
+      "alice-handle",
+      "alice-handle",
+      { TX: true },
+    );
+    // Admin member row written in the SAME tx (atomic with the studio insert).
+    expect(mockInsertAdmin).toHaveBeenCalledWith("studio-1", "user-1", { TX: true });
+    // And the trial grant in that same tx, aimed at the studio just made: a
+    // grant that committed beside a studio that did not would point nowhere.
     // How much comes from the price file, so it is read from there rather
     // than written here.
-    expect(mockCreateStudio).toHaveBeenCalledWith(
-      {
-        studioId: expect.stringMatching(UUID),
-        userId: "user-1",
-        type: "personal",
-        slug: "alice-handle",
-        name: "alice-handle",
-        region: "us-west",
-      },
-      { regionClient: regionClientRef, trialCredits: 100 },
+    expect(mockGrantTrialCredits).toHaveBeenCalledWith(
+      { userId: "user-1", studioId: "studio-1", credits: 100 },
+      { TX: true },
     );
   });
 
   it("never opens the price file when this deployment sells nothing", async () => {
-    // The file belongs to a deployment that charges. Reading it anyway would
-    // fail every registration on a self-hosted install over a number that
-    // grants nothing.
+    // The grant discards the figure with payments off, and the file it comes
+    // from belongs to a deployment that charges. Reading it anyway would fail
+    // every registration on a self-hosted install over a number about to be
+    // thrown away.
     envRef.PAYMENT_ENABLED = false;
-    mockCreateStudio.mockResolvedValueOnce(STUDIO);
+    vi.mocked(studioRepo.createPersonalStudio).mockResolvedValueOnce(STUDIO);
 
     await createPersonalStudio("user-1", "alice-handle");
 
     expect(mockTrialGrantCredits).not.toHaveBeenCalled();
-    expect(mockCreateStudio.mock.calls[0]![1]).toMatchObject({ trialCredits: 0 });
+    expect(mockGrantTrialCredits).toHaveBeenCalledWith(
+      { userId: "user-1", studioId: "studio-1", credits: 0 },
+      { TX: true },
+    );
   });
 
-  it("creates under the page's id in the region the page named", async () => {
-    mockCreateStudio.mockResolvedValueOnce(STUDIO);
+  it("maps a unique-violation (SQLSTATE 23505) slug collision to ConflictError, not a raw 500", async () => {
+    const dbErr = Object.assign(new Error("duplicate key"), { code: "23505" });
+    vi.mocked(studioRepo.createPersonalStudio).mockRejectedValueOnce(dbErr);
 
-    await createPersonalStudio("user-1", "alice-handle", { studioId: "11111111-1111-4111-8111-111111111111", region: "sg" });
-
-    expect(mockCreateStudio.mock.calls[0]![0]).toMatchObject({
-      studioId: "11111111-1111-4111-8111-111111111111",
-      region: "sg",
+    await expect(createPersonalStudio("user-1", "taken-slug")).rejects.toMatchObject({
+      name: "ConflictError",
+      statusCode: 409,
     });
   });
 
-  it("refuses a region this deployment has no address for", async () => {
-    await expect(createPersonalStudio("user-1", "alice-handle", { region: "mars" })).rejects.toMatchObject({
-      statusCode: 422,
-    });
-    expect(mockCreateStudio).not.toHaveBeenCalled();
+  it("rethrows a non-unique-violation DB error unchanged (no silent swallow)", async () => {
+    const dbErr = Object.assign(new Error("connection reset"), { code: "08006" });
+    vi.mocked(studioRepo.createPersonalStudio).mockRejectedValueOnce(dbErr);
+
+    await expect(createPersonalStudio("user-1", "some-slug")).rejects.toBe(dbErr);
   });
 });
 
 describe("getPersonalStudio", () => {
-  it("returns the user's personal studio from the directory when present", async () => {
-    mockFindPersonalByCreator.mockResolvedValueOnce({
-      studioId: "studio-1",
-      name: "Alice",
-      slug: "alice-handle",
-      avatarUrl: null,
-    });
-    expect(await getPersonalStudio("user-1")).toEqual({
-      id: "studio-1",
-      name: "Alice",
-      slug: "alice-handle",
-      avatarUrl: null,
-    });
-    expect(mockFindPersonalByCreator).toHaveBeenCalledWith("user-1");
+  it("returns the user's personal studio when present", async () => {
+    vi.mocked(studioRepo.getPersonalByCreator).mockResolvedValueOnce(STUDIO);
+    expect(await getPersonalStudio("user-1")).toBe(STUDIO);
   });
 
   it("returns null when the user has not completed onboarding (no studio)", async () => {
-    mockFindPersonalByCreator.mockResolvedValueOnce(null);
+    vi.mocked(studioRepo.getPersonalByCreator).mockResolvedValueOnce(null);
     expect(await getPersonalStudio("user-1")).toBeNull();
+  });
+});
+
+describe("getPersonalStudioIdentitiesByUserIds", () => {
+  it("delegates to the repo's batch identity lookup (name + avatar)", async () => {
+    const identities = new Map([
+      ["user-1", { name: "alice-handle", avatarUrl: "https://cdn/a.png" }],
+    ]);
+    vi.mocked(studioRepo.getPersonalIdentitiesByCreators).mockResolvedValueOnce(
+      identities,
+    );
+
+    const result = await getPersonalStudioIdentitiesByUserIds([
+      "user-1",
+      "user-2",
+    ]);
+
+    expect(result).toBe(identities);
+    expect(studioRepo.getPersonalIdentitiesByCreators).toHaveBeenCalledWith([
+      "user-1",
+      "user-2",
+    ]);
+  });
+});
+
+describe("getPersonalStudioProfilesByUserIds", () => {
+  it("delegates to the repo's batch profile lookup (name + slug)", async () => {
+    const profiles = new Map([
+      ["user-1", { name: "Alice", slug: "alice-handle", deleted: false }],
+    ]);
+    vi.mocked(studioRepo.getPersonalProfilesByCreators).mockResolvedValueOnce(
+      profiles,
+    );
+
+    const result = await getPersonalStudioProfilesByUserIds([
+      "user-1",
+      "user-2",
+    ]);
+
+    expect(result).toBe(profiles);
+    expect(studioRepo.getPersonalProfilesByCreators).toHaveBeenCalledWith([
+      "user-1",
+      "user-2",
+    ]);
   });
 });
 
@@ -202,7 +251,6 @@ describe("getStudioDetail", () => {
       bio: null,
       memberCount: 3,
       myStudioRole: "admin",
-      region: null,
     });
     expect(studioRepo.getBySlug).toHaveBeenCalledWith("alice-handle");
     // loadStudioRole(userId, studioId) — service flips to the repo's order.
@@ -241,80 +289,75 @@ describe("getStudioDetail", () => {
   });
 });
 
-/**
- * A Studio the user belongs to, as the directory lists it.
- * @param studioId - The Studio.
- * @param type - Personal or team.
- * @param role - The user's role.
- * @param region - Where it lives.
- * @returns The directory row.
- */
-function directoryStudio(
-  studioId: string,
-  type: "personal" | "team",
-  role: string,
-  region: string | null = null,
-): Record<string, unknown> {
-  return {
-    studioId,
-    slug: `${studioId}-slug`,
-    name: studioId,
-    type,
-    avatarUrl: null,
-    region,
-    role,
-    memberCount: type === "personal" ? 1 : 4,
-    createdAt: new Date(),
-  };
-}
-
 describe("listUserStudios", () => {
-  it("maps the directory's Studios to summaries with memberCount, role, region and the local bio", async () => {
-    mockListStudiosOfUser.mockResolvedValueOnce([directoryStudio("studio-1", "personal", "admin")]);
-    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([{ ...STUDIO, bio: "Hello", myStudioRole: "admin" }]);
+  it("maps the user's studios to summaries with memberCount + myStudioRole", async () => {
+    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([
+      { ...STUDIO, myStudioRole: "admin" },
+    ]);
+    vi.mocked(studioRepo.countMembersByStudioIds).mockResolvedValueOnce(
+      new Map([["studio-1", 1]]),
+    );
 
     const result = await listUserStudios("user-1");
 
     expect(result).toEqual([
       {
         id: "studio-1",
-        slug: "studio-1-slug",
-        name: "studio-1",
+        slug: "alice-handle",
+        name: "alice-handle",
         type: "personal",
         avatarUrl: null,
-        bio: "Hello",
+        bio: null,
         memberCount: 1,
         myStudioRole: "admin",
-        region: null,
       },
     ]);
   });
 
-  it("lists a Studio another region holds, with its region and no bio", async () => {
-    mockListStudiosOfUser.mockResolvedValueOnce([directoryStudio("studio-far", "team", "guest", "sg")]);
-    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([]);
-
-    const [far] = await listUserStudios("user-1");
-
-    expect(far).toMatchObject({ id: "studio-far", region: "sg", bio: null, myStudioRole: "guest" });
-  });
-
-  it("returns the personal studio first even when the directory lists a team studio earlier", async () => {
-    mockListStudiosOfUser.mockResolvedValueOnce([
-      directoryStudio("studio-team", "team", "guest"),
-      directoryStudio("studio-1", "personal", "admin"),
+  it("returns the personal studio first even when the repo lists a team studio earlier", async () => {
+    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([
+      { ...TEAM_STUDIO, myStudioRole: "guest" },
+      { ...STUDIO, myStudioRole: "admin" },
     ]);
-    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([]);
+    vi.mocked(studioRepo.countMembersByStudioIds).mockResolvedValueOnce(
+      new Map([
+        ["studio-team", 4],
+        ["studio-1", 1],
+      ]),
+    );
 
     const result = await listUserStudios("user-1");
 
     expect(result.map((s) => s.id)).toEqual(["studio-1", "studio-team"]);
   });
 
-  it("returns [] when the user belongs to no studios", async () => {
-    mockListStudiosOfUser.mockResolvedValueOnce([]);
+  it("carries each studio's myStudioRole through for the rail ④⑤ split", async () => {
+    // user-1 is admin of their personal STUDIO and only a member of TEAM_STUDIO
+    // — the rail splits 我的 (admin) vs 我加入的 (maintainer/guest) on this role.
+    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([
+      { ...STUDIO, myStudioRole: "admin" },
+      { ...TEAM_STUDIO, myStudioRole: "guest" },
+    ]);
+    vi.mocked(studioRepo.countMembersByStudioIds).mockResolvedValueOnce(
+      new Map([
+        ["studio-1", 1],
+        ["studio-team", 4],
+      ]),
+    );
+
+    const result = await listUserStudios("user-1");
+    const roleById = new Map(result.map((s) => [s.id, s.myStudioRole]));
+
+    expect(roleById.get("studio-1")).toBe("admin");
+    expect(roleById.get("studio-team")).toBe("guest");
+  });
+
+  it("returns [] (no count query) when the user belongs to no studios", async () => {
     vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([]);
 
-    expect(await listUserStudios("user-1")).toEqual([]);
+    const result = await listUserStudios("user-1");
+
+    expect(result).toEqual([]);
+    expect(studioRepo.countMembersByStudioIds).not.toHaveBeenCalled();
   });
 });

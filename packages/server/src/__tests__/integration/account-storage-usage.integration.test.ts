@@ -5,11 +5,14 @@
  * Account-level storage roll-up (#1826 §5.3) — real-PG integration.
  *
  * An account's storage usage is the RAW SUM over every studio it owns —
- * its personal studio ∪ every team studio it CURRENTLY administers (current
+ * its personal studio ∪ every team studio it CURRENTLY administers. The
+ * studio set mirrors `countTeamStudiosAdministeredBy` exactly (current
  * `admin` role, never the immutable `created_by`), so this is the auth /
  * data-integrity critical path (#6). Pins:
  *
- *   - `listTeamStudioIdsAdministeredBy` is scoped to current admin role: excludes personal studios,
+ *   - `listTeamStudioIdsAdministeredBy` enumerates the SAME studios the
+ *     count counts (its length === the count — one predicate, one truth);
+ *   - it is scoped to current admin role: excludes personal studios,
  *     non-admin memberships, and soft-deleted studios/memberships;
  *   - `accountStorageUsage` = personal + every administered team studio,
  *     summed raw (cross-studio duplicates double-counted);
@@ -34,7 +37,7 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import { initCore, loadLocales } from "@breatic/core";
 import { assetRepo } from "@breatic/domain";
-import { studioRepo } from "@breatic/domain";
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { accountStorageUsage } from "@server/modules/asset/assetUsage.service.js";
 
 try {
@@ -167,6 +170,16 @@ describe("studio repo — listTeamStudioIdsAdministeredBy", () => {
     expect(await studioRepo.listTeamStudioIdsAdministeredBy(userId)).toEqual([]);
   });
 
+  it("its length equals countTeamStudiosAdministeredBy (one predicate, one truth)", async () => {
+    const { userId } = await insertUserWithPersonalStudio();
+    await insertTeamStudioAdministeredBy(userId);
+    await insertTeamStudioAdministeredBy(userId);
+    await insertTeamStudioAdministeredBy(userId);
+    const ids = await studioRepo.listTeamStudioIdsAdministeredBy(userId);
+    const count = await studioRepo.countTeamStudiosAdministeredBy(userId);
+    expect(ids.length).toBe(count);
+    expect(count).toBe(3);
+  });
 });
 
 describe("accountStorageUsage (#1826 §5.3 raw account roll-up)", () => {

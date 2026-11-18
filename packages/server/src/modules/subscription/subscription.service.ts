@@ -58,7 +58,7 @@ import {
   t,
 } from "@breatic/shared";
 import { getStripeClient } from "@server/infra/stripe.js";
-import { usersRepo as userRepo } from "@breatic/domain";
+import * as userRepo from "@server/modules/auth/user.repo.js";
 import { applySubscriptionWrite } from "@server/modules/subscription/apply-subscription.js";
 import { readStripeSubscription } from "@server/modules/subscription/read-stripe-subscription.js";
 import { ensureFirstPeriodCoupon } from "@server/modules/referral/referral-coupon.js";
