@@ -766,7 +766,7 @@ describe("PT-5 caps judged against a model of spent (L1, L2, L4, scope)", () => 
             if (p.override !== undefined) await override(a, who.userId, p.override);
           }
           await caps(a, memberDefault, studioMonthly);
-          let defaultCap = memberDefault;
+          let defaultCap: number | null = memberDefault;
           /** Holds admitted and not yet taken over or released. */
           const open: { reference: string; userId: string; amount: number }[] = [];
           const capOf = (i: number): number | null => (people[i]!.override !== undefined ? people[i]!.override! : defaultCap);
