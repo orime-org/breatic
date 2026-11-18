@@ -57,6 +57,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     runWithLocale: actual.runWithLocale,
     getMailLayout: actual.getMailLayout,
     isUniqueViolation: actual.isUniqueViolation,
+    notificationRepo: { create: vi.fn(), findById: vi.fn(), markRead: vi.fn(), retire: vi.fn() },
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     db: {
       transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
@@ -91,12 +92,6 @@ vi.mock("../roleUpgradeRequests.repo.js", () => ({
   cancelIfPending: vi.fn(),
   findLiveForRequester: vi.fn(),
 }));
-vi.mock("../../notification/notification.repo.js", () => ({
-  create: vi.fn(),
-  findById: vi.fn(),
-  markRead: vi.fn(),
-  retire: vi.fn(),
-}));
 vi.mock("../../notification/notification.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof NotificationServiceModule>();
   return {
@@ -126,7 +121,7 @@ vi.mock("@server/config/limits.js", () => ({
 // visible in the payload assertions, a mail that is never sent is visible
 // nowhere.
 
-import * as notificationRepo from "../../notification/notification.repo.js";
+import { notificationRepo } from "@breatic/core";
 import * as notificationService from "../../notification/notification.service.js";
 import * as projectRepo from "../../project/project.repo.js";
 import * as requestsRepo from "../roleUpgradeRequests.repo.js";

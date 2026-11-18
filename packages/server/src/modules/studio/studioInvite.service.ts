@@ -32,7 +32,7 @@
 import { studioRepo } from "@breatic/domain";
 import * as invitesRepo from "@server/modules/studio/studioInvitations.repo.js";
 import { createInvitation } from "@server/modules/invitation/invitation.service.js";
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import { notificationRepo } from "@breatic/core";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { db, trackServerEvent } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";

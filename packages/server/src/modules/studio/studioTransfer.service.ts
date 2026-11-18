@@ -33,7 +33,7 @@
  */
 
 import { studioRepo } from "@breatic/domain";
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import { notificationRepo } from "@breatic/core";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { studioTransfersRepo as transfersRepo } from "@breatic/domain";
 import { buildStudioTransferMail } from "@server/utils/notification-mail.js";

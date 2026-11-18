@@ -18,10 +18,9 @@
  */
 
 import { and, desc, eq, gt, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
-import { db } from "@breatic/core";
-import { notifications } from "@breatic/core";
+import { db, type DbTx } from "@core/db/client.js";
+import { notifications } from "@core/db/schema.js";
 import { REQUEST_NOTIFICATION_TYPES, type NotificationEntity } from "@breatic/shared";
-import type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 
 /**
  * Allowed notification types. Mirrors the SQL CHECK constraint on
@@ -51,7 +50,6 @@ export type NotificationType =
 
 REQUEST_NOTIFICATION_TYPES satisfies readonly NotificationType[];
 
-export type { DbTx } from "@server/modules/conversation/conversation.repo.js";
 
 /**
  * Input for {@link create} — the fields a caller supplies. The repo

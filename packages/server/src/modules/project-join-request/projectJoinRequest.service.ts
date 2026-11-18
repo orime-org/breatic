@@ -39,7 +39,7 @@ import type { DbTx } from "@breatic/core";
 import { globalApi, studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import type { DecisionGrantRole, RequestFailedReason } from "@breatic/shared";
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import { notificationRepo } from "@breatic/core";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { studioRepo } from "@breatic/domain";

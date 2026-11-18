@@ -255,6 +255,8 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // @breatic/domain — collab never touches it.
 export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
 export * as projectsRepo from "@core/project/projects.repo.js";
+export * as notificationRepo from "@core/notification/notification.repo.js";
+export type { NotificationType, NewNotificationInput } from "@core/notification/notification.repo.js";
 export { isDeadlock, isUniqueViolation } from "@core/db/pg-error.js";
 export { mintShareToken, regionOfShareToken } from "@core/infra/share-token.js";
 export * as studioDirectoryRepo from "@core/region/studioDirectory.repo.js";

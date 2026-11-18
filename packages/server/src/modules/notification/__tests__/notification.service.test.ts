@@ -13,6 +13,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type * as CoreModule from "@breatic/core";
 
 // Which region the recipient now has data in is recorded through the
 // directory writer, which reads the deployment's region settings.
@@ -20,19 +21,21 @@ vi.mock("@breatic/domain", () => ({
   directoryWrites: { userRegionTouched: vi.fn(async () => undefined) },
 }));
 
-vi.mock("../notification.repo.js", () => ({
-  create: vi.fn(),
-  listUnreadByUser: vi.fn(),
-  listAllByUser: vi.fn(),
-  countUnread: vi.fn(),
-  markRead: vi.fn(),
-  markAllRead: vi.fn(),
-  findById: vi.fn(),
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof CoreModule>()),
+  notificationRepo: {
+    create: vi.fn(),
+    listUnreadByUser: vi.fn(),
+    listAllByUser: vi.fn(),
+    countUnread: vi.fn(),
+    markRead: vi.fn(),
+    markAllRead: vi.fn(),
+    findById: vi.fn(),
+  },
 }));
 
-import * as notificationRepo from "../notification.repo.js";
 import * as notificationService from "../notification.service.js";
-import { NotFoundError } from "@breatic/core";
+import { NotFoundError, notificationRepo } from "@breatic/core";
 
 const OWNER = "u-owner";
 const REQUESTER = "u-viewer";

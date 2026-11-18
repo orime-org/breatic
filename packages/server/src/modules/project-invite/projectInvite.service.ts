@@ -37,7 +37,7 @@ import { globalApi } from "@breatic/domain";
 import * as invitesRepo from "@server/modules/project-invite/projectInvitations.repo.js";
 import { createInvitation } from "@server/modules/invitation/invitation.service.js";
 import { withPendingDisplay } from "@server/modules/invitation/pending-display.js";
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import { notificationRepo } from "@breatic/core";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { accountActivityRepo, db, projectsRepo, trackServerEvent } from "@breatic/core";

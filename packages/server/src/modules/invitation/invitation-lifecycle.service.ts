@@ -13,7 +13,7 @@ import { profilesService, type Account } from "@breatic/domain";
 import * as projectInvites from "@server/modules/project-invite/projectInvitations.repo.js";
 import * as studioInvites from "@server/modules/studio/studioInvitations.repo.js";
 import * as notifications from "@server/modules/notification/notification.service.js";
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import { notificationRepo } from "@breatic/core";
 import { emailVerificationEnabled } from "@server/config/auth.js";
 import { getDecisionWindowMs } from "@server/config/limits.js";
 import type { InvitationKind, InvitationRole, RecipientInvitation } from "@server/modules/invitation/invitation.types.js";
