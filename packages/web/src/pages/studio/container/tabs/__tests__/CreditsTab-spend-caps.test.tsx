@@ -196,7 +196,7 @@ describe('editing the two limits', () => {
     return total!;
   }
 
-  it.each(['-1', '1e3', '0x10', '10.001', '1,000', '1000000001', ''])('says why %j cannot be saved and sends nothing', async (text) => {
+  it.each(['-1', '1e3', '0x10', '10.001', '1,0,0', '10,00', '1000000001', ''])('says why %j cannot be saved and sends nothing', async (text) => {
     await typeStudioTotal(text);
     const save = screen.getByRole('button', { name: '保存' });
     expect(save).toHaveAttribute('aria-disabled', 'true');
@@ -210,6 +210,15 @@ describe('editing the two limits', () => {
     await typeStudioTotal('10.05');
     await userEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(put).toHaveBeenCalledWith('/studio/acme/spend-limits', { studioMonthly: 10.05, memberDefault: 300 }));
+  });
+
+  // The page shows every amount with thousands separators, so an amount typed
+  // the same way is the same amount.
+  it.each([['1,000', 1000], ['1,234.5', 1234.5], ['1,000,000,000', 1000000000]])('sends %j typed with thousands separators as %d', async (text, credits) => {
+    put.mockResolvedValue({});
+    await typeStudioTotal(text);
+    await userEvent.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(put).toHaveBeenCalledWith('/studio/acme/spend-limits', { studioMonthly: credits, memberDefault: 300 }));
   });
 
   it('counts a total typed as the same amount as unchanged', async () => {

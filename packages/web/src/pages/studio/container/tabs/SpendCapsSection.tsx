@@ -47,9 +47,10 @@ function valueOf(draft: Draft): number | null | undefined {
   if (draft.kind === 'none') return null;
   const text = draft.text.trim();
   // Digits with at most two decimals, the cents a limit is kept in, so what
-  // is saved is what the box shows.
-  if (!/^\d+(\.\d{1,2})?$/.test(text)) return undefined;
-  const credits = Number(text);
+  // is saved is what the box shows; thousands separators as the page shows
+  // amounts are accepted when they group by three.
+  if (!/^(\d+|\d{1,3}(,\d{3})+)(\.\d{1,2})?$/.test(text)) return undefined;
+  const credits = Number(text.replace(/,/g, ''));
   return credits <= SPEND_LIMIT_MAX_CREDITS ? credits : undefined;
 }
 
