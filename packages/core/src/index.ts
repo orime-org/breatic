@@ -185,6 +185,7 @@ export {
   publishProjectConnectionsClose,
   projectControlChannelPattern,
   sessionsRevokedChannelName,
+  publishSessionsRevoked,
 } from "@core/infra/control-events.js";
 export {
   PROJECT_MEMBER_CHANGED_CHANNEL,

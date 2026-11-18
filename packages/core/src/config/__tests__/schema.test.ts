@@ -621,6 +621,9 @@ describe("parseConfig — external-agent access", () => {
     expect(parseConfig(baseEnv({ ENV: "prod", MCP_CLIENT_SECRET: "a-long-random-secret" })).MCP_CLIENT_SECRET).toBe(
       "a-long-random-secret",
     );
+  });
+});
+
 describe("parseConfig — variables left from the multi-region release", () => {
   // A deployment upgraded from a multi-region release (#1556) may keep them.
   it("starts with them set and carries none of them into the config", () => {
