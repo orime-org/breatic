@@ -342,13 +342,12 @@ export async function listForSpace(
  * running-task gate judged within the stale window is left out, so waiters do not fill the page (inner#1968).
  * @param options - The page.
  * @param options.limit - The most rows to return.
- * @param options.staleMs - The gate's stale window; `slot_wait_stale_ms` when absent.
  * @param tx - The transaction to read in.
  * @returns The rows.
  * @throws {Error} When the read fails.
  */
-export async function listForSweep(options: { limit: number; staleMs?: number }, tx?: DbTx): Promise<TimelineExecution[]> {
-  const staleMs = options.staleMs ?? getWorkerConfig().slot_wait_stale_ms;
+export async function listForSweep(options: { limit: number }, tx?: DbTx): Promise<TimelineExecution[]> {
+  const staleMs = getWorkerConfig().slot_wait_stale_ms;
   const rows = await (tx ?? db)
     .select(columns)
     .from(t)

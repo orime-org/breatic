@@ -436,12 +436,10 @@ export interface GateTaskRow {
   id: string;
   userId: string;
   projectId: string | null;
-  spaceId: string;
   status: string;
   errorMessage: string | null;
   /** Full-precision text, so a comparison against another row's creation loses no microseconds. */
   createdAt: string;
-  slotWaitSince: Date | null;
   startedAt: Date | null;
 }
 
@@ -476,11 +474,9 @@ export async function findForGate(id: string): Promise<GateTaskRow | null> {
       id: tasks.id,
       userId: tasks.userId,
       projectId: tasks.projectId,
-      spaceId: tasks.spaceId,
       status: tasks.status,
       errorMessage: tasks.errorMessage,
       createdAt: sql<string>`${tasks.createdAt}::text`,
-      slotWaitSince: tasks.slotWaitSince,
       startedAt: tasks.startedAt,
     })
     .from(tasks)
@@ -551,15 +547,12 @@ export async function noteSlotCheck(id: string, limit: number, staleMs: number, 
  * @param id - The task.
  * @param jobId - The job judging it.
  * @param tx - The gate's transaction.
- * @returns True when this is its first wait.
  */
-export async function markSlotWait(id: string, jobId: string, tx: DbTx): Promise<boolean> {
-  const rows = await tx
+export async function markSlotWait(id: string, jobId: string, tx: DbTx): Promise<void> {
+  await tx
     .update(tasks)
     .set({ slotWaitSince: sql`now()`, arqJobId: sql`coalesce(${tasks.arqJobId}, ${jobId})` })
-    .where(and(eq(tasks.id, id), eq(tasks.status, "pending"), isNull(tasks.slotWaitSince)))
-    .returning({ id: tasks.id });
-  return rows.length > 0;
+    .where(and(eq(tasks.id, id), eq(tasks.status, "pending"), isNull(tasks.slotWaitSince)));
 }
 
 /**

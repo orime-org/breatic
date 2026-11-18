@@ -210,7 +210,7 @@ async function judgeTask(row: taskRepo.GateTaskRow, jobId: string, limit: number
     if (running + ahead < limit) {
       const startedAt = await taskRepo.startPending(row.id, jobId, tx);
       if (startedAt === null) return { kind: "ended" };
-      const places = row.slotWaitSince === null ? [] : await nodeTaskRepo.startWaiting(row.id, tx);
+      const places = await nodeTaskRepo.startWaiting(row.id, tx);
       await renewHoldings(row.id, true, tx);
       return { kind: "started", started: startedAt, places, space: false };
     }
