@@ -151,6 +151,23 @@ describe('a restored GPU context (inner#1693 design 5.7)', () => {
 });
 
 describe('the parts the page exposes for inspection (inner#1693)', () => {
+  it('reads an object\'s drawn parts again only when a look applied to that object', async () => {
+    const OTHER: SceneObject = { ...BOX, id: 'other', position: [3, 0, 0] };
+    const initial = props({ objects: [BOX, OTHER] });
+    const { runtime } = await open(initial, '#969696');
+    await vi.waitFor(() => expect(initial.onModelStateChange).toHaveBeenCalledWith('other', 'ready'));
+    const { items } = runtime as unknown as { items: Map<string, { root: Object3D }> };
+    const box = vi.spyOn(items.get('box')!.root, 'traverse');
+    const other = vi.spyOn(items.get('other')!.root, 'traverse');
+    const keep = { onLookReport: initial.onLookReport, onModelStateChange: initial.onModelStateChange };
+    runtime.update(props({ objects: [{ ...BOX, position: [1, 0, 0] }, OTHER], ...keep }));
+    expect(box).not.toHaveBeenCalled();
+    expect(other).not.toHaveBeenCalled();
+    runtime.update(props({ objects: [{ ...BOX, position: [1, 0, 0], look: { 0: { color: '#ff0000' } } }, OTHER], ...keep }));
+    expect(box).toHaveBeenCalled();
+    expect(other).not.toHaveBeenCalled();
+  });
+
   it('reads them when a look applies, not on every orbit frame', async () => {
     const initial = props();
     const { runtime } = await open(initial, '#969696');

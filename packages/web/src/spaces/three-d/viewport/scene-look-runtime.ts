@@ -62,8 +62,8 @@ export interface SceneLookRuntimeDeps {
   highlightColor: () => string;
   /** A material's shader inputs changed: compile it before it draws, then recount lights and shadows. */
   onProgramChanged: (root: Group) => void;
-  /** Something on screen changed. */
-  onChanged: () => void;
+  /** Something on screen changed: a look applied to the object named, or the highlight when none is. */
+  onChanged: (id?: string) => void;
   onPictures: (id: string, pictures: SceneLookPictures | null) => void;
 }
 
@@ -254,7 +254,7 @@ export class SceneLookRuntime {
       retry: states.some(([, status]) => status === 'failed'), over: states.some(([, status]) => status === 'over'),
       shown: states.filter(([, status]) => status === 'ready').map(([assetId]) => assetId),
     });
-    this.deps.onChanged();
+    this.deps.onChanged(id);
   }
 
   /**
