@@ -171,7 +171,9 @@ beforeEach(() => {
   vi.restoreAllMocks();
   h.markFailed.mockResolvedValue(true);
   h.slotFull.value = false;
+  // A task these pickups come back to is already running: the running-task gate is behind it.
   h.getByIdInternal.mockResolvedValue({
+    status: "running",
     createdAt: CREATED,
     billedAt: null,
     providerResultUrl: null,
