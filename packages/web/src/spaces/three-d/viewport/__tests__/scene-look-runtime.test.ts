@@ -6,13 +6,19 @@
  * when replaced or removed, a stale check leaving no trace, and failures told apart from limits.
  */
 
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MeshPhysicalMaterial, Texture, type Group, type Mesh } from 'three';
-import type { SceneObject } from '@breatic/shared';
+import { MeshPhysicalMaterial, Texture, type Group, type Material, type Mesh } from 'three';
+import { httpRequest, type SceneObject } from '@breatic/shared';
+import type * as SharedModule from '@breatic/shared';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { loadSceneModel } from '@web/spaces/three-d/viewport/model-resources';
 import { SceneLookRuntime, type SceneLookFailure } from '@web/spaces/three-d/viewport/scene-look-runtime';
 import type { LookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
+
+vi.mock('@breatic/shared', async (importOriginal) => ({ ...await importOriginal<typeof SharedModule>(), httpRequest: vi.fn() }));
+// jsdom never decodes the format probe images.
+vi.mock('@web/spaces/three-d/model-texture-format', () => ({ detectTextureFormatSupport: vi.fn(async () => ({ webp: true, avif: true })) }));
 
 const A = '11111111-1111-4111-8111-11111111111a';
 const B = '11111111-1111-4111-8111-11111111111b';
@@ -131,5 +137,43 @@ describe('SceneLookRuntime', () => {
     runtime.sync(withLook({ 0: { transmission: 1 } }), root);
     expect((root.children[0] as Mesh).material).toBeInstanceOf(MeshPhysicalMaterial);
     expect(programs).toHaveBeenCalledWith(root);
+  });
+  it('takes a picture pushed over the budget off its part before releasing it', async () => {
+    vi.mocked(httpRequest).mockImplementation(async () => new Response(Uint8Array.from(readFileSync('src/spaces/three-d/viewport/assets/figure.glb'))));
+    const C = '11111111-1111-4111-8111-11111111111c';
+    const root = await loadSceneModel({ kind: 'builtin', id: 'figure' }, new AbortController().signal, vi.fn(), '#969696', IMPORT_LIMITS);
+    /** The first material of a part. */
+    const partMaterial = (part: string): Material & { map: Texture | null } => {
+      let found: Material | undefined;
+      root.traverse((object) => {
+        const material = (object as Mesh).material as Material | undefined;
+        if (!found && material && !Array.isArray(material) && material.userData.lookPart === part) found = material;
+      });
+      return found as Material & { map: Texture | null };
+    };
+    const held = new Map<string, Texture>();
+    const shownAtRelease: boolean[] = [];
+    const big = { width: 2048, height: 2048, type: 'png' };
+    const fake = fakeCache(async (assetId) => (assetId === C ? SMALL : big), (assetId) => {
+      // C never finishes loading, so nothing else applies the look meanwhile.
+      if (assetId === C) return new Promise<Texture>(() => undefined);
+      const texture = new Texture();
+      held.set(assetId, texture);
+      return Promise.resolve(texture);
+    });
+    fake.release.mockImplementation((assetId: string) => { if (assetId === A) shownAtRelease.push(partMaterial('1').map?.source === held.get(A)!.source); });
+    const runtime = new SceneLookRuntime({
+      textures: () => fake.cache, limits: () => ({ maxTextureEdge: 8192, maxTextureBytes: 30 * 1024 * 1024 }), themeColor: () => '#969696',
+      highlightColor: () => '#3b6fd8', onProgramChanged: vi.fn(), onChanged: vi.fn(), onFailure: vi.fn(),
+    });
+    runtimes.push(runtime);
+    const figure = { ...BOX, id: 'figure', model: { kind: 'builtin', id: 'figure' } } as SceneObject;
+    runtime.sync({ ...figure, look: { 1: { map: A } } } as SceneObject, root);
+    await settle();
+    expect(partMaterial('1').map?.source).toBe(held.get(A)!.source);
+    // A part earlier in the list takes the budget, so A is over it now.
+    runtime.sync({ ...figure, look: { 0: { map: B }, 1: { map: A }, 2: { map: C } } } as SceneObject, root);
+    await settle();
+    expect(shownAtRelease).toEqual([false]);
   });
 });

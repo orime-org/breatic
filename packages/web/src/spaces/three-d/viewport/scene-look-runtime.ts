@@ -291,21 +291,26 @@ export class SceneLookRuntime {
       const map = state.look[part]?.map;
       if (map) verdicts.set(map, verdict);
     }
-    await Promise.all(wanted.map(async (assetId) => {
+    // An unusable picture leaves its part first and is released after, so no material shows a closed image.
+    const dropped: Array<[string, Texture]> = [];
+    const toLoad: string[] = [];
+    for (const assetId of wanted) {
       const verdict = verdicts.get(assetId);
       if (!verdict || !verdict.usable) {
         const held = state.held.get(assetId);
         if (held) {
           state.held.delete(assetId);
-          textures.release(assetId, held);
+          dropped.push([assetId, held]);
         }
         state.states.set(assetId, verdict && !verdict.usable && verdict.reason !== 'unknown' ? 'over' : 'failed');
-        return;
-      }
-      if (state.held.has(assetId)) {
-        state.states.set(assetId, 'ready');
-        return;
-      }
+      } else if (state.held.has(assetId)) state.states.set(assetId, 'ready');
+      else toLoad.push(assetId);
+    }
+    if (dropped.length > 0) {
+      this.apply(id, state);
+      for (const [assetId, held] of dropped) textures.release(assetId, held);
+    }
+    await Promise.all(toLoad.map(async (assetId) => {
       try {
         const texture = await textures.acquire(assetId);
         if (run !== state.run || this.objects.get(id) !== state) {
