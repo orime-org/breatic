@@ -350,10 +350,11 @@ test('an annotation with a point is seen, answered and resolved by another Edito
       await expect(marker).toHaveCount(1);
       threadId = ((await marker.getAttribute('data-testid')) ?? '').replace('motion-marker-', '');
       await expect(motion.getByTestId('motion-thread-card')).toContainText(note);
-      // The pin stands where the frame was clicked.
+      // The pin's tip, its bottom-left corner, stands where the frame was clicked.
       const pin = await motion.getByTestId(`motion-pin-${threadId}`).boundingBox();
       if (pin === null) throw new Error('The pin has no geometry');
-      expect(Math.abs(pin.x + pin.width / 2 - (box.x + box.width * 0.25))).toBeLessThanOrEqual(3);
+      expect(Math.abs(pin.x - (box.x + box.width * 0.25))).toBeLessThanOrEqual(3);
+      expect(Math.abs(pin.y + pin.height - (box.y + box.height * 0.3))).toBeLessThanOrEqual(3);
       // The open-annotation count sits on the Annotations button's corner, beside the button itself.
       await expect(motion.getByTestId('motion-open-annotations').locator('..')).toHaveText('1');
     });
