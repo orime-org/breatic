@@ -6,14 +6,12 @@ import type { NotificationEntity } from "@breatic/shared";
 
 const asked = vi.hoisted(() => ({ users: [] as string[][] }));
 
-vi.mock("@breatic/domain", () => ({
-  profilesService: {
-    personalProfiles: vi.fn(async (ids: string[]) => {
-      asked.users.push(ids);
-      return new Map(ids.map((id) => [id, { id, name: `name-${id}` }]));
-    }),
-  },
-  studioRepo: { getIdentitiesByStudioIds: vi.fn(async () => new Map()) },
+vi.mock("@server/modules/studio/studio.repo.js", () => ({
+  getPersonalProfilesByCreators: vi.fn(async (ids: string[]) => {
+    asked.users.push(ids);
+    return new Map(ids.map((id) => [id, { id, name: `name-${id}` }]));
+  }),
+  getIdentitiesByStudioIds: vi.fn(async () => new Map()),
 }));
 vi.mock("@server/modules/project/project.repo.js", () => ({ getIdentitiesByProjectIds: vi.fn(async () => new Map()) }));
 
