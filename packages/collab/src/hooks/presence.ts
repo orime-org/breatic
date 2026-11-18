@@ -55,7 +55,13 @@
  * bug) — but none of that reaches this module.
  */
 
-import { FOLLOWING_TABLE, followingEntrySchema, type FollowingEntry } from "@breatic/shared";
+import {
+  FOLLOWING_TABLE,
+  agentPresenceKey,
+  followingEntrySchema,
+  parseAgentPresenceKey,
+  type FollowingEntry,
+} from "@breatic/shared";
 import type { Doc as YDoc, Map as YMap } from "yjs";
 import * as Y from "yjs";
 
@@ -215,6 +221,8 @@ export function sweepStalePresence(args: {
   args.document.transact(() => {
     users.forEach((value, userId) => {
       if (!(value instanceof Y.Map)) return;
+      // An agent acts in calls, not on a socket; `sweepAgentPresence` judges it.
+      if (parseAgentPresenceKey(userId) !== null) return;
       if (value.get("online") !== true) return;
       const lastSeenAt = value.get("lastSeenAt");
       if (typeof lastSeenAt !== "number") return;
@@ -320,4 +328,118 @@ export function touchFollowing(args: { document: YDoc; socketId: string; heardAt
   if (typeof previous === "number" && previous >= args.heardAt) return true;
   entry.set("lastSeenAt", args.heardAt);
   return true;
+}
+
+/** One external agent's record, as the rechecks read it. */
+export interface AgentPresenceRef {
+  key: string;
+  userId: string;
+  connectionId: string;
+  online: boolean;
+}
+
+/**
+ * Record that an external agent acted in this project (breatic#1488 §19.2):
+ * it is online, and where it works. Its record sits under
+ * `{userId}.agent.{connectionId}`, beside its owner's, so the owner is not
+ * marked online by it.
+ * @param args - Whose agent, where and when.
+ * @param args.document - The meta document.
+ * @param args.userId - The connection's owner.
+ * @param args.connectionId - The agent connection.
+ * @param args.spaceId - The Space the command named; null keeps the last one.
+ * @param args.focus - The nodes or blocks it named; undefined keeps the last focus.
+ * @param args.now - Current time in ms.
+ */
+export function markAgentActive(args: {
+  document: YDoc;
+  userId: string;
+  connectionId: string;
+  spaceId: string | null;
+  focus: readonly string[] | undefined;
+  now: number;
+}): void {
+  const users = args.document.getMap(USERS_KEY);
+  const key = agentPresenceKey(args.userId, args.connectionId);
+  args.document.transact(() => {
+    const existing = users.get(key);
+    const entry: YMap<unknown> = existing instanceof Y.Map ? existing : new Y.Map<unknown>();
+    // Attached before it is filled, for the reason `markOnline` gives.
+    if (!(existing instanceof Y.Map)) users.set(key, entry);
+    const previous = entry.get("agent") instanceof Y.Map ? (entry.get("agent") as YMap<unknown>).toJSON() : {};
+    const agent = new Y.Map<unknown>();
+    entry.set("agent", agent);
+    agent.set("connectionId", args.connectionId);
+    agent.set("spaceId", args.spaceId ?? (typeof previous.spaceId === "string" ? previous.spaceId : null));
+    agent.set("focus", args.focus ? [...args.focus] : Array.isArray(previous.focus) ? previous.focus : []);
+    agent.set("focusAt", args.focus ? args.now : typeof previous.focusAt === "number" ? previous.focusAt : null);
+    entry.set("id", args.userId);
+    entry.set("online", true);
+    entry.set("lastSeenAt", args.now);
+    entry.delete("idle");
+  });
+}
+
+/**
+ * Every external agent's record in this document.
+ * @param document - The meta document.
+ * @returns Each record's key, owner, connection and online flag.
+ */
+export function listAgentPresence(document: YDoc): AgentPresenceRef[] {
+  const out: AgentPresenceRef[] = [];
+  document.getMap(USERS_KEY).forEach((value, key) => {
+    const ids = parseAgentPresenceKey(key);
+    if (!ids || !(value instanceof Y.Map)) return;
+    out.push({ key, ...ids, online: value.get("online") === true });
+  });
+  return out;
+}
+
+/**
+ * Mark offline the agents whose credential or owner no longer lets them act:
+ * a revoked connection, an owner removed from the project.
+ * @param args - Which records.
+ * @param args.document - The meta document.
+ * @param args.matches - Picks the records to end, by owner and connection.
+ * @returns The keys flipped to offline.
+ */
+export function markAgentsOffline(args: {
+  document: YDoc;
+  matches: (agent: { userId: string; connectionId: string }) => boolean;
+}): string[] {
+  const users = args.document.getMap(USERS_KEY);
+  const ended = listAgentPresence(args.document).filter((a) => a.online && args.matches(a));
+  if (ended.length === 0) return [];
+  args.document.transact(() => {
+    for (const { key } of ended) (users.get(key) as YMap<unknown>).set("online", false);
+  });
+  return ended.map((a) => a.key);
+}
+
+/**
+ * Age external agents' records: idle once nothing has been run for `idleMs`
+ * (its focus stays, for following), offline after `onlineMs`. An agent has
+ * no socket, so its calls are the only sign of life.
+ * @param args - Which document, when, and the two spans.
+ * @param args.document - The meta document.
+ * @param args.now - Current time in ms.
+ * @param args.idleMs - Silence before it counts as idle.
+ * @param args.onlineMs - Silence before it counts as offline.
+ */
+export function sweepAgentPresence(args: { document: YDoc; now: number; idleMs: number; onlineMs: number }): void {
+  const users = args.document.getMap(USERS_KEY);
+  const changes: Array<{ entry: YMap<unknown>; offline: boolean }> = [];
+  for (const { key, online } of listAgentPresence(args.document)) {
+    if (!online) continue;
+    const entry = users.get(key) as YMap<unknown>;
+    const lastSeenAt = entry.get("lastSeenAt");
+    if (typeof lastSeenAt !== "number") continue;
+    const silent = args.now - lastSeenAt;
+    if (silent >= args.onlineMs) changes.push({ entry, offline: true });
+    else if (silent >= args.idleMs && entry.get("idle") !== true) changes.push({ entry, offline: false });
+  }
+  if (changes.length === 0) return;
+  args.document.transact(() => {
+    for (const { entry, offline } of changes) entry.set(offline ? "online" : "idle", offline ? false : true);
+  });
 }

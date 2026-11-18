@@ -160,6 +160,12 @@ event_forget_idle_consumer_ms: 86400000
 agent_commands:
   consume: true
 
+# How long an external agent counts as online after its last command, and
+# after how long without one it shows as idle (its focus stays for following).
+presence:
+  agent_online_seconds: 1800
+  agent_idle_seconds: 300
+
 # ── Unload store retry (inner#1497) ──────────────
 # Another instance holding the same document can hold its store lock while
 # this one unloads it; the Redis extension then skips our store. That lock

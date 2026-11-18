@@ -42,6 +42,7 @@ import {
   touchFollowing,
   touchLastSeen,
   sweepStalePresence,
+  sweepAgentPresence,
   writeFollowing,
 } from "@collab/hooks/presence.js";
 
@@ -110,6 +111,10 @@ export interface PresencePolicy {
   now: () => number;
   /** How long without a sign of life before an online record is disbelieved. */
   staleAfterMs: number;
+  /** How long an external agent may run no command before it counts as idle. */
+  agentIdleMs: number;
+  /** How long an external agent may run no command before it counts as offline. */
+  agentOnlineMs: number;
 }
 
 /**
@@ -147,10 +152,13 @@ export function recordPresenceOnConnect(
     | undefined;
   if (!document) return;
   const now = policy.now();
-  markOnline({ document, userId, now });
-  // Someone arriving is the earliest chance to clean up after a server that
-  // went away, and it costs one pass over a small map.
-  sweepStalePresence({ document, now, staleAfterMs: policy.staleAfterMs });
+  document.transact(() => {
+    markOnline({ document, userId, now });
+    // Someone arriving is the earliest chance to clean up after a server that
+    // went away, and it costs one pass over a small map.
+    sweepStalePresence({ document, now, staleAfterMs: policy.staleAfterMs });
+    sweepAgentPresence({ document, now, idleMs: policy.agentIdleMs, onlineMs: policy.agentOnlineMs });
+  });
 }
 
 /**
@@ -224,7 +232,9 @@ export function refreshPresenceForSocket(
     document.transact(() => {
       touchFollowing({ document, socketId, heardAt });
       if (!userId || !touchLastSeen({ document, userId, heardAt })) return;
-      sweepStalePresence({ document, now: policy.now(), staleAfterMs: policy.staleAfterMs });
+      const now = policy.now();
+      sweepStalePresence({ document, now, staleAfterMs: policy.staleAfterMs });
+      sweepAgentPresence({ document, now, idleMs: policy.agentIdleMs, onlineMs: policy.agentOnlineMs });
     });
     return;
   }

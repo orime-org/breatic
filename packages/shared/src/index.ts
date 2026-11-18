@@ -454,6 +454,8 @@ export { DOC_SIZE_ACK_PARAM, DOC_SIZE_EVENT_BYTES, DocSizeSeenSchema, DocSizeSta
 export type { DocSizeSeen, DocSizeStatus } from "@shared/doc-size.js";
 export { READ_ONLY_COLLAB_TOKEN } from "@shared/collab-read-only-token.js";
 export { FOLLOWING_TABLE, followingDeclarationSchema, followingEntrySchema } from "@shared/following-table.js";
+export { agentPresenceKey, agentPresenceRecordSchema, parseAgentPresenceKey } from "@shared/agent-presence.js";
+export type { AgentPresenceRecord } from "@shared/agent-presence.js";
 export type { FollowingDeclaration, FollowingEntry } from "@shared/following-table.js";
 export { COLLAB_CHUNK_ACK, COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema, sendInChunks } from "@shared/collab-frame-chunks.js";
 

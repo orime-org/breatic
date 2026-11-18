@@ -198,6 +198,8 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       presencePolicy: {
         now: Date.now,
         staleAfterMs: timings.presenceStaleAfterMs,
+        agentIdleMs: timings.agentIdleMs,
+        agentOnlineMs: timings.agentOnlineMs,
       },
     }),
     pingIntervalMs: timings.pingIntervalMs,
@@ -660,6 +662,8 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       recordPresenceOnConnect({ documentName, context, instance }, {
         now: Date.now,
         staleAfterMs: timings.presenceStaleAfterMs,
+        agentIdleMs: timings.agentIdleMs,
+        agentOnlineMs: timings.agentOnlineMs,
       });
 
       // Last, once this connection can be found: an archive, restore or role
@@ -695,6 +699,8 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       recordFollowingFromAwareness({ states, connection, context, socketId, documentName, document }, {
         now: Date.now,
         staleAfterMs: timings.presenceStaleAfterMs,
+        agentIdleMs: timings.agentIdleMs,
+        agentOnlineMs: timings.agentOnlineMs,
       });
     },
 

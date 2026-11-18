@@ -109,6 +109,15 @@ const collabConfigSchema = z.object({
   // consumer settings above; `consume` decides whether this instance takes
   // them at all, so commands can move to instances serving no browsers.
   agent_commands: z.object({ consume: z.boolean().default(true) }).prefault({}),
+  // An external agent has no socket, so it counts as online for this long
+  // after its last command, and idle after the shorter span (breatic#1488 §19.2).
+  presence: z
+    .object({
+      agent_online_seconds: z.number().int().positive().default(1800),
+      agent_idle_seconds: z.number().int().positive().default(300),
+    })
+    .refine((p) => p.agent_idle_seconds < p.agent_online_seconds, { message: "agent_idle_seconds must be below agent_online_seconds" })
+    .prefault({}),
   unload_store_retry_ms: z.number().int().positive().default(1200),
   unload_store_retry_interval_ms: z.number().int().positive().default(200),
   unload_rescue_reserve_ms: z.number().int().nonnegative().default(1000),
@@ -182,6 +191,10 @@ export interface ConnectionTimings {
   seatExpiryMs: number;
   /** How long an "online" presence record is believed. */
   presenceStaleAfterMs: number;
+  /** How long after its last command an external agent counts as idle. */
+  agentIdleMs: number;
+  /** How long after its last command an external agent counts as online. */
+  agentOnlineMs: number;
 }
 
 /**
@@ -194,15 +207,17 @@ export interface ConnectionTimings {
  * terminates the sockets that showed no sign of life since the previous one
  * and pings the rest, so the last pong can be almost a whole period old when
  * the sweep that arms a socket runs.
- * @returns The declared interval and the two expiries.
+ * @returns The declared interval, the two expiries derived from it, and the external-agent spans.
  * @throws {Error} When the YAML is missing / unreadable or fails validation.
  */
 export function getConnectionTimings(): ConnectionTimings {
-  const pingIntervalMs = getCollabConfig().connection_ping_interval_ms;
+  const { connection_ping_interval_ms: pingIntervalMs, presence } = getCollabConfig();
   return {
     pingIntervalMs,
     seatExpiryMs: pingIntervalMs * 2,
     presenceStaleAfterMs: pingIntervalMs * 2,
+    agentIdleMs: presence.agent_idle_seconds * 1000,
+    agentOnlineMs: presence.agent_online_seconds * 1000,
   };
 }
 
