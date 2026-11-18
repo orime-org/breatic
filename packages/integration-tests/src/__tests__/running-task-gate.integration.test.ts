@@ -1219,7 +1219,8 @@ describe("PT-4 the gate with cancels, failures, limit changes and lost jobs (K1,
           }
           const ids = rows.map((r) => r.taskId);
           const lost = new Set<string>();
-          const queue = { getJob: async (id: string) => (lost.has(id) ? undefined : { getState: async () => "delayed" }) };
+          // A job still waits unless the case lost it.
+          const queue = { getJob: async (id: string) => (lost.has(id) ? undefined : { getState: async () => "delayed" }) } as unknown as Parameters<typeof sweepSlotWaiters>[0];
           const startedOnce = new Set<string>();
           const cancelledOnce = new Set<string>();
           /** Why a waiter may end in this round, by task id. */
