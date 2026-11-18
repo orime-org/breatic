@@ -3926,7 +3926,7 @@
       },
       "phase": {
         "writing": "ページを作成",
-        "validating": "フレームとマニフェストを検証",
+        "validating": "フレームを確認",
         "saving": "ソースを保存",
         "rendering": "動画をレンダリング"
       },

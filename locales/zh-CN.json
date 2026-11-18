@@ -3926,7 +3926,7 @@
       },
       "phase": {
         "writing": "编写网页",
-        "validating": "校验定位与清单",
+        "validating": "检查画面",
         "saving": "保存源包",
         "rendering": "渲染视频"
       },

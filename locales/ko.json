@@ -3926,7 +3926,7 @@
       },
       "phase": {
         "writing": "페이지 작성",
-        "validating": "프레임과 매니페스트 검증",
+        "validating": "프레임 확인",
         "saving": "소스 저장",
         "rendering": "동영상 렌더링"
       },

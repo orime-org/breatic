@@ -3926,7 +3926,7 @@
       },
       "phase": {
         "writing": "Write the page",
-        "validating": "Check frames and manifest",
+        "validating": "Check the frames",
         "saving": "Save the source",
         "rendering": "Render the video"
       },

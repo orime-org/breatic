@@ -3926,7 +3926,7 @@
       },
       "phase": {
         "writing": "編寫網頁",
-        "validating": "校驗定位與清單",
+        "validating": "檢查畫面",
         "saving": "儲存源包",
         "rendering": "算繪影片"
       },
