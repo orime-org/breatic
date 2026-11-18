@@ -71,13 +71,13 @@ export async function releaseHold(referenceId: string, tx?: DbTx): Promise<void>
  * @param referenceId - Its key.
  * @param until - The new expiry.
  * @param tx - Optional transaction handle.
- * @param dueBefore - Extend only a hold expiring before this moment; `until` when absent.
+ * @param dueBefore - Extend only a hold expiring before this moment, never later than `until`; `until` when absent.
  */
 export async function extendHold(referenceId: string, until: Date, tx?: DbTx, dueBefore: Date = until): Promise<void> {
   await (tx ?? db)
     .update(creditHolds)
     .set({ expiresAt: until, updatedAt: new Date() })
-    .where(and(eq(creditHolds.referenceId, referenceId), eq(creditHolds.status, "held"), lt(creditHolds.expiresAt, dueBefore), lt(creditHolds.expiresAt, until)));
+    .where(and(eq(creditHolds.referenceId, referenceId), eq(creditHolds.status, "held"), lt(creditHolds.expiresAt, dueBefore)));
 }
 
 /**
