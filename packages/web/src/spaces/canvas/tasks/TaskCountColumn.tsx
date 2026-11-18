@@ -25,7 +25,6 @@
 
 import type { JSX } from 'react';
 import React from 'react';
-import { CircleCheck, CircleX, Clock, Hourglass, Loader2 } from 'lucide-react';
 import type { NodeTaskCounts } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -33,60 +32,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tool
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 import { waitReason } from '@web/spaces/canvas/tasks/wait-reason';
-import { TASK_COUNT_ORDER } from '@web/spaces/canvas/overlay-scale';
-import type { TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
-
-/**
- * The mark's colour per state. The state rides on the mark rather than on the
- * number: light theme measures these four against the cell's fills at 3.4 to
- * 4.6, under the 4.5 an 11px number needs (WCAG 1.4.3), while a graphic
- * clears its own 3:1 floor at every one of them. So the cell draws the mark
- * alone and the count travels in its tooltip and accessible name
- * (user 2026-09-06).
- */
-/**
- * A cell of the column: a task state, or the running tasks that wait for a
- * free slot (inner#1968, design 3.9), which `running` counts among its own.
- */
-type CountCell = TaskListKind;
-
-const MARK_TONE: Readonly<Record<CountCell, string>> = {
-  running: 'text-status-info-foreground',
-  waiting: 'text-muted-foreground',
-  done: 'text-status-success-foreground',
-  failed: 'text-status-error-foreground',
-  expired: 'text-status-warning-foreground',
-};
-
-/**
- * The mark's shape per state, the same four the rows use. Two of the colours
- * read as one thing at this size, so shape is what separates them
- * (see `TaskStatusDot`).
- */
-const MARK_SHAPE: Readonly<Record<CountCell, typeof Clock>> = {
-  running: Loader2,
-  waiting: Hourglass,
-  done: CircleCheck,
-  failed: CircleX,
-  expired: Clock,
-};
+import { TASK_COUNT_CELLS } from '@web/spaces/canvas/overlay-scale';
+import { countInList } from '@web/spaces/canvas/tasks/NodeTaskPanel';
+import { TASK_LABEL_KEY, TASK_SHAPE, TASK_TONE, type TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
 
 /** The open cell's border, so which list is showing reads without the fill. */
-const OPEN_BORDER: Readonly<Record<CountCell, string>> = {
+const OPEN_BORDER: Readonly<Record<TaskListKind, string>> = {
   running: 'border-status-info-foreground',
   waiting: 'border-active-border',
   done: 'border-status-success-foreground',
   failed: 'border-status-error-foreground',
   expired: 'border-status-warning-foreground',
-};
-
-/** i18n key for the button's accessible name, one per state. */
-const LABEL_KEY: Readonly<Record<CountCell, string>> = {
-  running: 'canvas.task.status.running',
-  waiting: 'canvas.task.status.waiting',
-  done: 'canvas.task.status.done',
-  failed: 'canvas.task.status.failed',
-  expired: 'canvas.task.status.expired',
 };
 
 /** What {@link TaskCountColumn} renders and reports. */
@@ -121,14 +77,14 @@ function TaskCount({
   onOpen,
   waitingLimit,
 }: {
-  status: CountCell;
+  status: TaskListKind;
   value: number;
   isOpen: boolean;
   onOpen: (status: TaskListKind | null) => void;
   waitingLimit?: number;
 }): JSX.Element {
   const t = useTranslation();
-  const Mark = MARK_SHAPE[status];
+  const Mark = TASK_SHAPE[status];
   const handleClick = React.useCallback(() => {
     onOpen(isOpen ? null : status);
   }, [isOpen, onOpen, status]);
@@ -137,7 +93,7 @@ function TaskCount({
   // user meeting it for the first time, and it is where the number the cell
   // used to print now lives (user 2026-09-06).
   const tip = t('canvas.task.countTip', {
-    status: t(LABEL_KEY[status]),
+    status: t(TASK_LABEL_KEY[status]),
     count: value,
   });
 
@@ -165,7 +121,7 @@ function TaskCount({
         >
           <Mark
             aria-hidden='true'
-            className={cn('size-3 flex-none', MARK_TONE[status], status === 'running' && 'animate-spin')}
+            className={cn('size-3 flex-none', TASK_TONE[status], status === 'running' && 'animate-spin')}
           />
         </Button>
       </TooltipTrigger>
@@ -179,9 +135,6 @@ function TaskCount({
 
 const TaskCountMemo = React.memo(TaskCount);
 
-/** The column's cells top to bottom: running, then waiting, then the three ways a task ends. */
-const TASK_COUNT_CELLS: readonly CountCell[] = [TASK_COUNT_ORDER[0]!, 'waiting', ...TASK_COUNT_ORDER.slice(1)];
-
 /**
  * Render the states this node has tasks in as a column of buttons.
  * @param props - The column inputs.
@@ -192,15 +145,12 @@ const TASK_COUNT_CELLS: readonly CountCell[] = [TASK_COUNT_ORDER[0]!, 'waiting',
  * @returns The column element, or null when this node has nothing to draw.
  */
 export function TaskCountColumn({ counts, endedShown, openFor, onOpen }: TaskCountColumnProps): JSX.Element | null {
-  // A document written before inner#1968 has no `waiting`; it reads as none.
-  const waiting = counts.waiting ?? 0;
   /**
-   * How many tasks one cell counts: running without the waiting ones.
+   * How many tasks one cell counts.
    * @param cell - The cell.
    * @returns Its count.
    */
-  const value = (cell: CountCell): number =>
-    cell === 'waiting' ? waiting : cell === 'running' ? counts.running - waiting : counts[cell];
+  const value = (cell: TaskListKind): number => countInList(counts, cell);
   const shown = TASK_COUNT_CELLS.filter(
     (cell) => value(cell) > 0 && (endedShown || cell === 'running' || cell === 'waiting'),
   );

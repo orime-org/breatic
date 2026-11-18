@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
+import type { TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
 
 /**
  * Canvas zoom at and above which screen-anchored overlays keep a constant
@@ -58,12 +58,13 @@ const COUNTS_COLUMN_WIDTH =
 
 /**
  * The counts column, top to bottom. The order is the task's own lifecycle:
- * what is happening now, then the three ways it can end.
+ * what is happening now and what waits to (inner#1968), then the three ways
+ * it can end.
  */
-export const TASK_COUNT_ORDER: readonly TaskStatus[] = ['running', 'done', 'failed', 'expired'];
+export const TASK_COUNT_CELLS: readonly TaskListKind[] = ['running', 'waiting', 'done', 'failed', 'expired'];
 
-/** Cells the column can stack: every state, plus the waiting ones (inner#1968). */
-const COUNTS_CELLS = TASK_COUNT_ORDER.length + 1;
+/** Cells the column can stack. */
+const COUNTS_CELLS = TASK_COUNT_CELLS.length;
 
 /** The screen gap between two cells of the column (`gap-1`). */
 const COUNTS_CELL_GAP = 4;

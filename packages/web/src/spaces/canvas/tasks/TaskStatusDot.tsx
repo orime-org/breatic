@@ -42,7 +42,7 @@ export type TaskListKind = TaskStatus | 'waiting';
  * as one kind of thing, and the running one turns — the way this product
  * already says "working" everywhere else.
  */
-const SHAPE: Readonly<Record<TaskStatus | 'waiting', typeof Clock>> = {
+export const TASK_SHAPE: Readonly<Record<TaskListKind, typeof Clock>> = {
   running: Loader2,
   waiting: Hourglass,
   done: CircleCheck,
@@ -50,8 +50,14 @@ const SHAPE: Readonly<Record<TaskStatus | 'waiting', typeof Clock>> = {
   expired: Clock,
 };
 
-/** Semantic colour per state. */
-const TONE: Readonly<Record<TaskStatus | 'waiting', string>> = {
+/**
+ * Semantic colour per state. On the counts column the state rides on the
+ * mark rather than on the number: light theme measures these against the
+ * cell's fills at 3.4 to 4.6, under the 4.5 an 11px number needs (WCAG 1.4.3),
+ * while a graphic clears its own 3:1 floor at every one of them, so the cell
+ * draws the mark alone and the count travels in its tooltip (user 2026-09-06).
+ */
+export const TASK_TONE: Readonly<Record<TaskListKind, string>> = {
   running: 'text-status-info-foreground',
   waiting: 'text-muted-foreground',
   done: 'text-status-success-foreground',
@@ -59,8 +65,8 @@ const TONE: Readonly<Record<TaskStatus | 'waiting', string>> = {
   expired: 'text-status-warning-foreground',
 };
 
-/** i18n key per state. */
-const LABEL_KEY: Readonly<Record<TaskStatus | 'waiting', string>> = {
+/** i18n key per state: the name every task surface gives it. */
+export const TASK_LABEL_KEY: Readonly<Record<TaskListKind, string>> = {
   running: 'canvas.task.status.running',
   waiting: 'canvas.task.status.waiting',
   done: 'canvas.task.status.done',
@@ -71,7 +77,7 @@ const LABEL_KEY: Readonly<Record<TaskStatus | 'waiting', string>> = {
 /** What {@link TaskStatusDot} renders. */
 export interface TaskStatusDotProps {
   /** A state, or a running task that waits for a free slot (inner#1968). */
-  status: TaskStatus | 'waiting';
+  status: TaskListKind;
 }
 
 /**
@@ -85,17 +91,17 @@ export interface TaskStatusDotProps {
  */
 export function TaskStatusDot({ status }: TaskStatusDotProps): JSX.Element {
   const t = useTranslation();
-  const Icon = SHAPE[status];
+  const Icon = TASK_SHAPE[status];
   return (
     <span
       data-testid='task-status-dot'
-      className={cn('relative flex-none', TONE[status])}
+      className={cn('relative flex-none', TASK_TONE[status])}
     >
       <Icon
         aria-hidden='true'
         className={cn('size-3', status === 'running' && 'animate-spin')}
       />
-      <span className='sr-only'>{t(LABEL_KEY[status])}</span>
+      <span className='sr-only'>{t(TASK_LABEL_KEY[status])}</span>
     </span>
   );
 }

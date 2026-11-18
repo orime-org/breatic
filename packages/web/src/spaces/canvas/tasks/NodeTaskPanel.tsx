@@ -22,21 +22,8 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import type { NodeTaskCounts, NodeTaskEntry } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
-import type { TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
+import { TASK_LABEL_KEY, type TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import type { TaskActionRequest } from '@web/stores/task-actions-in-flight';
-
-/**
- * The heading, one per state. The rows below carry their state as a colour and
- * nothing else, so this is the one place on screen the word appears — without
- * it colour is the only thing saying which list this is (WCAG 1.4.1).
- */
-const TITLE_KEY: Readonly<Record<TaskListKind, string>> = {
-  running: 'canvas.task.status.running',
-  waiting: 'canvas.task.status.waiting',
-  done: 'canvas.task.status.done',
-  failed: 'canvas.task.status.failed',
-  expired: 'canvas.task.status.expired',
-};
 
 /**
  * Whether one task belongs in one list. A waiting task is a running one on the
@@ -154,12 +141,15 @@ export function NodeTaskPanel({
     // same way the history panel does: the ScrollArea scrolls on wheel, and
     // dragging the panel never moves the node behind it.
     <CanvasPanel
+      // The heading names the state: the rows carry it as a colour and
+      // nothing else, so without the word colour alone says which list this
+      // is (WCAG 1.4.1).
       title={
         <span
           data-testid='node-task-panel-title'
           className='text-2xs text-muted-foreground'
         >
-          {t(TITLE_KEY[status])}
+          {t(TASK_LABEL_KEY[status])}
         </span>
       }
       aside={
