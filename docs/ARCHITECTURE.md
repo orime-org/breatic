@@ -65,7 +65,7 @@ config/ locales/ (git-tracked)
 
 三个 healthz 端口(3001 / 1235 / 9101)同样从 env 读(`SERVER_HEALTH_PORT` / `COLLAB_HEALTH_PORT` / `WORKER_HEALTH_PORT`)。**同一台机器上跑多个 worktree 时这些默认值会互撞**,尤其 BullMQ 队列共享会让一个 worktree 的任务被另一个的 worker 执行 —— 整套偏移方式见 `.env.dev` 顶部的 "Running several worktrees at once"。
 
-**后台内部接口是 API 进程里的第二个监听**:`INTERNAL_API_ENABLED=true` 才开(默认关),绑 `INTERNAL_API_HOST:INTERNAL_API_PORT`(默认 `127.0.0.1:3002`),跑 `internal-app.ts` 建的第二个 Hono app,它的路由一条也不挂在公开 app 上。调用方只有后台:每个请求带 HMAC 签名(`INTERNAL_API_SECRET`,轮换期间 `INTERNAL_API_SECRET_PREVIOUS` 签的也认)和一次性随机数,授权表没列的方法与路径一律 403;谁连得到这个端口,由端口发布到哪里决定。开着它时,同一进程里还跑积分包退款的定时循环(`startRefundLoop`)。
+**后台内部接口是 API 进程里的第二个监听**:`INTERNAL_API_ENABLED=true` 才开(默认关),绑 `INTERNAL_API_HOST:INTERNAL_API_PORT`(默认 `127.0.0.1:3002`),跑 `internal-app.ts` 建的第二个 Hono app,它的路由一条也不挂在公开 app 上。调用方只有后台:每个请求带 HMAC 签名(`INTERNAL_API_SECRET`,轮换期间 `INTERNAL_API_SECRET_PREVIOUS` 签的也认)和一次性随机数,授权表没列的方法与路径一律 403;谁连得到这个端口,由端口发布到哪里决定。开着它时,同一进程里还跑积分包退款的定时循环(`startRefundLoop`)和存储维护循环(`startMaintenanceLoop`);维护循环另由 `config/maintenance.yaml` 的 `enabled` 控制，仓库里默认关。
 
 ### Explicit offline maintenance
 
