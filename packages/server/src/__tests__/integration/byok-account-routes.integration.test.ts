@@ -3,8 +3,7 @@
 
 /**
  * The account's bring-your-own-key settings over HTTP (inner#1953): `GET /api/v1/account/byok`, saving, re-checking
- * and deleting a key under `/keys/:upstream`, and pointing a media model at an upstream under `/models/:model`. They
- * run in the global region, where the browser sends every `/account/...` request.
+ * and deleting a key under `/keys/:upstream`, and pointing a media model at an upstream under `/models/:model`.
  *
  * The pins: every route is behind auth and acts on the caller's own account; a key is checked before it is saved and
  * a refused or malformed one saves nothing; no answer and no log line ever carries the key or its sealed text, only

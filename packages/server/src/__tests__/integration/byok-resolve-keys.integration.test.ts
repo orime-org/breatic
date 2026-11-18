@@ -69,7 +69,7 @@ async function seedUser(): Promise<string> {
 }
 
 /**
- * A Studio administered by an account, with its directory rows and a project.
+ * A Studio administered by an account, with a project.
  * @param adminUserId - Its admin.
  * @param type - Personal or team.
  * @returns The Studio's and the project's ids.
@@ -87,18 +87,17 @@ async function seedStudio(adminUserId: string, type: "personal" | "team"): Promi
 }
 
 /**
- * Add a member to a team Studio, in the region and in the directory.
+ * Add a member to a team Studio.
  * @param studioId - The Studio.
  * @param userId - The member.
  * @returns Once added.
  */
 async function addMember(studioId: string, userId: string): Promise<void> {
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${userId}, 'maintainer')`;
-  await sql`INSERT INTO studio_directory_members (studio_id, user_id, role) VALUES (${studioId}, ${userId}, 'maintainer')`;
 }
 
 /**
- * The state an accepted transfer leaves: the new admin in the region and in the directory, the old one a maintainer.
+ * The state an accepted transfer leaves: the new admin, the old one a maintainer.
  * @param studioId - The Studio.
  * @param from - The admin until now.
  * @param to - The new admin.
@@ -108,9 +107,6 @@ async function transferAdmin(studioId: string, from: string, to: string): Promis
   await sql.begin(async (tx) => {
     await tx`UPDATE studio_members SET role = 'maintainer' WHERE studio_id = ${studioId} AND user_id = ${from}`;
     await tx`UPDATE studio_members SET role = 'admin' WHERE studio_id = ${studioId} AND user_id = ${to}`;
-    await tx`UPDATE studio_directory_members SET role = 'maintainer' WHERE studio_id = ${studioId} AND user_id = ${from}`;
-    await tx`UPDATE studio_directory_members SET role = 'admin' WHERE studio_id = ${studioId} AND user_id = ${to}`;
-    await tx`UPDATE studio_directory SET admin_user_id = ${to} WHERE studio_id = ${studioId}`;
   });
 }
 

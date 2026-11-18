@@ -77,7 +77,7 @@ async function signedIn(): Promise<{ userId: string; cookie: string }> {
 }
 
 /**
- * A Studio administered by an account, with its directory rows and one Project the admin owns.
+ * A Studio administered by an account, with one Project the admin owns.
  * @param adminUserId - Its admin.
  * @param type - Personal or team.
  * @returns The Studio's and the Project's ids.
@@ -104,7 +104,6 @@ async function seedStudio(adminUserId: string, type: "personal" | "team"): Promi
  */
 async function addMember(studioId: string, userId: string, projectId?: string): Promise<void> {
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${userId}, 'maintainer')`;
-  await sql`INSERT INTO studio_directory_members (studio_id, user_id, role) VALUES (${studioId}, ${userId}, 'maintainer')`;
   if (projectId !== undefined) {
     await sql`INSERT INTO project_members (project_id, user_id, role, added_by) VALUES (${projectId}, ${userId}, 'editor', null)`;
   }
