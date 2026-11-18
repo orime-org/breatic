@@ -50,6 +50,7 @@ import { CellSelection, __pastedCells as pastedCells } from '@tiptap/pm/tables';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import { bodyEdgeAt, bodyEdgePos } from '@web/spaces/document/document-body-edge-pos';
+import { slashTakesTrigger } from '@web/spaces/document/document-slash-trigger';
 import { DOC_TABLE, isTableCell, tableAround, type TableAt } from '@web/spaces/document/document-table-nodes';
 
 /** The class every cell of a table in such a selection carries. */
@@ -364,7 +365,7 @@ export const documentTableLeaveSelectionExtension = createExtension(() => ({
         // none unless the user picked some.
         handleTextInput: (view, _from, _to, text) => {
           const tables = heldTables(view.state.selection);
-          if (tables === null) return false;
+          if (tables === null || slashTakesTrigger(view.state, text)) return false;
           const tr = view.state.tr;
           if (tables.from !== null && tr.storedMarks === null) tr.setStoredMarks([]);
           view.dispatch(tr.insertText(text).scrollIntoView());

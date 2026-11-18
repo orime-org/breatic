@@ -26,6 +26,7 @@ import { Plugin, PluginKey, Selection, TextSelection, type EditorState, type Tra
 import type { EditorView } from '@tiptap/pm/view';
 
 import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { slashTakesTrigger } from '@web/spaces/document/document-slash-trigger';
 import { heldRange, heldTables, TableSpanSelection, tableEdgeText } from '@web/spaces/document/document-table-leave-selection';
 
 /** A range taken out of the document. */
@@ -211,6 +212,7 @@ export const documentColumnSpanSelectionExtension = createExtension(() => ({
       props: {
         handleTextInput: (view, _from, _to, text) => {
           if (!(view.state.selection instanceof ColumnSpanSelection)) return false;
+          if (slashTakesTrigger(view.state, text)) return false;
           view.dispatch(view.state.tr.insertText(text).scrollIntoView());
           return true;
         },

@@ -23,7 +23,7 @@ import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote
 import { pendingBlock, type FileUploads } from '@web/spaces/document/document-uploads';
 import { DocumentMediaPicker } from '@web/spaces/document/DocumentMediaPicker';
 import { DocumentSlashMenu } from '@web/spaces/document/DocumentSlashMenu';
-import { para } from '@web/spaces/document/__tests__/column-fixtures';
+import { columnsBlock, para } from '@web/spaces/document/__tests__/column-fixtures';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 vi.mock('@web/lib/is-mac', async (importOriginal) => ({
@@ -648,7 +648,54 @@ describe('a line break made by Shift+Enter (design 5.7)', () => {
   });
 });
 
+/** The position `offset` characters into the text node that reads `words`. */
+function textAt(editor: Editor, words: string, offset: number): number {
+  let found = -1;
+  editor.prosemirrorState.doc.descendants((node: PMNode, pos: number) => {
+    if (found < 0 && node.isText && node.text === words) found = pos + offset;
+    return found < 0;
+  });
+  if (found < 0) throw new Error(`no text reads "${words}"`);
+  return found;
+}
+
+/** Selects from one position to another, as a drag does. */
+function selectBetween(editor: Editor, anchor: number, head: number): void {
+  const view = editor.prosemirrorView!;
+  act(() => {
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, anchor, head)));
+  });
+}
+
 describe('a trigger typed over a selection (design 5.1)', () => {
+  it('opens the menu over a selection run across columns from a line start', () => {
+    const { editor } = open([columnsBlock(['hello'], ['world'])]);
+    selectBetween(editor, textAt(editor, 'hello', 0), textAt(editor, 'world', 3));
+    type(editor, '/');
+    expect(menu()).not.toBeNull();
+  });
+
+  it('types the slash over a selection run across columns from inside a word, with no menu', () => {
+    const { editor } = open([columnsBlock(['hello'], ['world'])]);
+    selectBetween(editor, textAt(editor, 'hello', 2), textAt(editor, 'world', 3));
+    type(editor, '/');
+    expect(menu()).toBeNull();
+    let typed = '';
+    editor.prosemirrorState.doc.descendants((node: PMNode) => {
+      if (node.isText) typed += node.text;
+      return true;
+    });
+    expect(typed).toBe('he/ld');
+  });
+
+  it('opens the menu over a selection that takes a table whole, from a line start', () => {
+    const { editor } = open([para('lead'), tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }), para('below')]);
+    selectBetween(editor, textAt(editor, 'lead', 0), textAt(editor, 'a2', 1));
+    type(editor, '/');
+    expect(read(editor).some((block) => block.type === 'docTable')).toBe(false);
+    expect(menu()).not.toBeNull();
+  });
+
   it('opens the menu where the replaced words began after a space', () => {
     const { editor } = open([para('say hello')]);
     const id = read(editor)[0]!.id;

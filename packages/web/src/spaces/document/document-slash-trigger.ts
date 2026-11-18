@@ -43,6 +43,18 @@ export function slashMayOpen(tr: Transaction): boolean {
 }
 
 /**
+ * Whether typed text is a trigger that opens the slash menu where it is
+ * typed. Plugins that take typed text over their own selections leave such
+ * a trigger to the menu, which inserts it through the same selection.
+ * @param state - The editor state the text is typed into.
+ * @param text - The typed text.
+ * @returns True when the menu takes it.
+ */
+export function slashTakesTrigger(state: EditorState, text: string): boolean {
+  return SLASH_TRIGGERS.includes(text) && slashMayOpen(state.tr);
+}
+
+/**
  * Whether a Shift+Enter line break stands between the start of the query and
  * the caret, so the caret has left the line the menu opened on.
  * @param state - The editor state.
