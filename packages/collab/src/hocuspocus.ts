@@ -249,7 +249,8 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // edit from the store tracker, and it owns dropping a document's
     // bookkeeping once the document has actually left memory.
     createChangeTrackingExtension(),
-    createPersistenceExtension(),
+    // The server is built below; stores run only once it exists.
+    createPersistenceExtension({ loadedDoc: (name) => wsServer.hocuspocus.documents.get(name) }),
     new RedisExtension({
       // Hocuspocus extension-redis supports an explicit `createClient`
       // factory; when present it bypasses the bare `new RedisClient(

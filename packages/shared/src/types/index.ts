@@ -247,6 +247,7 @@ export {
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
   SPACE_TASKS_CHANGED_SIGNAL,
+  ASSIGNMENTS_CHANGED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -263,6 +264,7 @@ export type {
   ActivityNewSignal,
   CreditsChangedSignal,
   SpaceTasksChangedSignal,
+  AssignmentsChangedSignal,
 } from "@shared/types/project-activity.js";
 
 export {
@@ -292,6 +294,7 @@ export {
   activityNewChannel,
   creditsChangedChannel,
   spaceTasksChangedChannel,
+  assignmentsChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
@@ -300,6 +303,7 @@ export type {
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
   SpaceTasksChangedControlEvent,
+  AssignmentsChangedControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
   ProjectConnectionsCloseReason,

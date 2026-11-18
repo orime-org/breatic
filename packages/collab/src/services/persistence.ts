@@ -32,6 +32,7 @@ import { encodeInitialSpaceContent, parseDocName } from "@breatic/shared";
 import { recordProjectEdit } from "@collab/services/project-edit-recorder.js";
 import { acceptSpaceMediaReferences } from "@collab/services/space-media-acceptance.js";
 import { acceptTimelineReceipts } from "@collab/services/timeline-receipt-acceptance.js";
+import { acceptCommentRecords, type LoadedDoc } from "@collab/services/comment-record-acceptance.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 import { lazySeedMeta, type SeedOpener } from "@collab/services/lazy-seed.js";
 import {
@@ -88,14 +89,17 @@ export async function fetchDoc({
  * @param args - Store payload.
  * @param args.documentName - Full Yjs doc name (the `yjs_documents.name` key).
  * @param args.state - Encoded Yjs update bytes to persist.
+ * @param args.loadedDoc - Documents loaded on this instance, for the comment records' meta check.
  * @throws {Error} When media acceptance or the Yjs write fails.
  */
 export async function storeDoc({
   documentName,
   state,
+  loadedDoc,
 }: {
   documentName: string;
   state: Uint8Array;
+  loadedDoc?: LoadedDoc;
 }): Promise<void> {
   await acceptSpaceMediaReferences(documentName, state);
   await yjsDocumentsRepo.upsertDocData(documentName, state);
@@ -105,6 +109,11 @@ export async function storeDoc({
     await acceptTimelineReceipts(documentName, state);
   } catch (err) {
     logger.error({ err, documentName }, "timeline_receipt_acceptance_failed");
+  }
+  try {
+    await acceptCommentRecords(documentName, state, loadedDoc);
+  } catch (err) {
+    logger.error({ err, documentName }, "comment_record_acceptance_failed");
   }
 }
 
@@ -222,14 +231,15 @@ export interface PersistenceExtension {
 
 /**
  * Build the persistence extension.
- * @param deps - Overridable collaborators; defaults hit the real repo.
+ * @param deps - Overridable collaborators; defaults hit the real repo. `loadedDoc` finds documents loaded on this instance.
  * @returns The hooks to register on the Hocuspocus server.
  */
 export function createPersistenceExtension(
-  deps: Partial<PersistenceDeps> = {},
+  deps: Partial<PersistenceDeps> & { loadedDoc?: LoadedDoc } = {},
 ): PersistenceExtension {
   const fetch = deps.fetch ?? fetchDoc;
-  const store = deps.store ?? storeDoc;
+  const { loadedDoc } = deps;
+  const store = deps.store ?? ((args: { documentName: string; state: Uint8Array }): Promise<void> => storeDoc({ ...args, loadedDoc }));
   const encode = deps.encode ?? ((document: Y.Doc): Uint8Array => encodeStateAsUpdate(document));
   const recordEdit = deps.recordEdit ?? recordProjectEdit;
 

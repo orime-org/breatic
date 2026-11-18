@@ -56,12 +56,14 @@ import {
   activityNewChannel,
   creditsChangedChannel,
   spaceTasksChangedChannel,
+  assignmentsChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
   type ActivityNewControlEvent,
   type CreditsChangedControlEvent,
   type SpaceTasksChangedControlEvent,
+  type AssignmentsChangedControlEvent,
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
   type SessionsRevokedEvent,
@@ -136,6 +138,18 @@ export async function publishSpaceTasksChanged(projectId: string, spaceId: strin
     ts: Date.now(),
   };
   await getStreamRedis().publish(spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+}
+
+/**
+ * Announce that a Space's hand-overs to external agents changed (breatic#1488
+ * §11.7), for collab to relay to the project's members.
+ * @param projectId - Project the Space belongs to.
+ * @param spaceId - The Space.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function publishAssignmentsChanged(projectId: string, spaceId: string): Promise<void> {
+  const event: AssignmentsChangedControlEvent = { type: "project-assignments:changed", projectId, spaceId, ts: Date.now() };
+  await getStreamRedis().publish(assignmentsChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
 }
 
 /**

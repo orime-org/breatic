@@ -203,6 +203,7 @@ export {
   publishActivityNew,
   publishCreditsChanged,
   publishSpaceTasksChanged,
+  publishAssignmentsChanged,
   publishProjectConnectionsClose,
   publishSessionsRevoked,
   projectControlChannelPattern,
@@ -256,6 +257,10 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
 export * as projectsRepo from "@core/project/projects.repo.js";
 export * as notificationRepo from "@core/notification/notification.repo.js";
+export * as commentRecordService from "@core/comment-record/comment-record.service.js";
+export * as commentAssignmentsRepo from "@core/comment-record/comment-assignments.repo.js";
+export type { MentionRow } from "@core/comment-record/comment-mentions.repo.js";
+export type { AssignmentRow, AssignmentStatus } from "@core/comment-record/comment-assignments.repo.js";
 export type { NotificationType, NewNotificationInput } from "@core/notification/notification.repo.js";
 export { isDeadlock, isUniqueViolation } from "@core/db/pg-error.js";
 export { mintShareToken, regionOfShareToken } from "@core/infra/share-token.js";

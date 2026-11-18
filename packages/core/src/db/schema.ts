@@ -2517,6 +2517,8 @@ export const notifications = pgTable(
      *   account is out of storage (0060)
      * - 'credit.refund_completed' / 'credit.refund_rejected' / 'credit.refund_restored' -
      *   a credit-pack refund's outcome for the buyer (0094)
+     * - 'comment.mentioned' - a comment mentions the user (0128)
+     * - 'comment.assignment_answered' - the user's external agent answered a thread they handed it (0128)
      */
     type: varchar("type", { length: 64 }).notNull(),
     /**
@@ -3673,6 +3675,55 @@ export const agentConnections = pgTable(
       .where(sql`${table.deletedAt} IS NULL AND ${table.kind} IN ('cimd', 'dcr')`),
     index("agent_connections_user_idx").on(table.userId).where(sql`${table.deletedAt} IS NULL`),
     check("agent_connections_kind_check", sql`${table.kind} IN ('cimd', 'dcr', 'pat')`),
+  ],
+);
+
+// ── Comment records (#1488 §11.6, §11.7) ──────────────────────────
+//
+// Derived by collab from a Space document's bytes after each store: the
+// members each comment entry mentions, and the threads handed to an external
+// agent. A row a store no longer reads is voided and comes back with its
+// content.
+
+export const commentMentions = pgTable(
+  "comment_mentions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "restrict" }),
+    spaceId: uuid("space_id").notNull(),
+    entryId: text("entry_id").notNull(),
+    threadId: text("thread_id").notNull(),
+    userId: uuid("user_id").notNull(),
+    authorId: uuid("author_id").notNull(),
+    mentionedAt: timestamp("mentioned_at", { withTimezone: true }).notNull(),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [uniqueIndex("comment_mentions_entry_user_key").on(table.projectId, table.spaceId, table.entryId, table.userId)],
+);
+
+export const commentAssignments = pgTable(
+  "comment_assignments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "restrict" }),
+    spaceId: uuid("space_id").notNull(),
+    threadId: text("thread_id").notNull(),
+    connectionId: uuid("connection_id").notNull(),
+    assignedBy: uuid("assigned_by").notNull(),
+    // Epoch milliseconds, compared for equality with the `answers` replies carry.
+    assignedAt: bigint("assigned_at", { mode: "number" }).notNull(),
+    status: text("status").$type<"pending" | "answered" | "resolved">().notNull(),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("comment_assignments_thread_key").on(table.projectId, table.spaceId, table.threadId),
+    index("comment_assignments_connection_idx").on(table.connectionId, table.status).where(sql`${table.deletedAt} IS NULL`),
+    index("comment_assignments_space_giver_idx").on(table.projectId, table.spaceId, table.assignedBy).where(sql`${table.deletedAt} IS NULL`),
+    check("comment_assignments_status_check", sql`${table.status} IN ('pending', 'answered', 'resolved')`),
   ],
 );
 

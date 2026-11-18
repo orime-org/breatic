@@ -52,13 +52,16 @@ import {
   type ActivityNewControlEvent,
   type CreditsChangedControlEvent,
   type SpaceTasksChangedControlEvent,
+  type AssignmentsChangedControlEvent,
   type ProjectConnectionsCloseEvent,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
   SPACE_TASKS_CHANGED_SIGNAL,
+  ASSIGNMENTS_CHANGED_SIGNAL,
   type ActivityNewSignal,
   type CreditsChangedSignal,
   type SpaceTasksChangedSignal,
+  type AssignmentsChangedSignal,
 } from "@breatic/shared";
 import { closeProjectConnections } from "@collab/services/project-connections.js";
 
@@ -68,6 +71,7 @@ type ProjectControlEvent =
   | ActivityNewControlEvent
   | CreditsChangedControlEvent
   | SpaceTasksChangedControlEvent
+  | AssignmentsChangedControlEvent
   | ProjectConnectionsCloseEvent;
 
 /**
@@ -81,7 +85,7 @@ type ProjectControlEvent =
 function relayOnMetaDoc(
   hocuspocus: Hocuspocus,
   projectId: string,
-  signal: ActivityNewSignal | CreditsChangedSignal | SpaceTasksChangedSignal,
+  signal: ActivityNewSignal | CreditsChangedSignal | SpaceTasksChangedSignal | AssignmentsChangedSignal,
 ): void {
   const docName = projectMetaDocName(projectId);
   const doc = hocuspocus.documents?.get(docName);
@@ -139,6 +143,13 @@ async function handleEvent(
       projectId: event.projectId,
       spaceId: event.spaceId,
     });
+    return;
+  }
+
+  if (event.type === "project-assignments:changed") {
+    // A Space's hand-overs changed; the hand-giver's thread labels read
+    // their records again (breatic#1488 §11.7).
+    relayOnMetaDoc(hocuspocus, event.projectId, { t: ASSIGNMENTS_CHANGED_SIGNAL, projectId: event.projectId, spaceId: event.spaceId });
     return;
   }
 

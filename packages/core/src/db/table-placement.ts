@@ -82,6 +82,9 @@ export const TABLE_PLACEMENT: Readonly<Record<string, TablePlacement>> = {
   analytics_milestones: "both",
   // Studios, members and their Projects
   studios: "regional",
+  // Comment records (#1488): derived from a Space's document, beside it
+  comment_mentions: "regional",
+  comment_assignments: "regional",
   studio_members: "regional",
   studio_invitations: "regional",
   studio_transfers: "regional",

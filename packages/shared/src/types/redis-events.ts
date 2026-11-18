@@ -154,6 +154,31 @@ export function spaceTasksChangedChannel(prefix: string, projectId: string): str
   return `${prefix}:project:${projectId}:space-tasks:changed`;
 }
 
+/**
+ * Control event announcing that a Space's hand-overs to external agents
+ * changed (breatic#1488 §11.7): a record was added, changed or voided after a
+ * store. Collab relays it as the `assignments:changed` stateless signal on
+ * the project meta doc, and the hand-giver's thread labels read their records
+ * again.
+ */
+export interface AssignmentsChangedControlEvent {
+  type: "project-assignments:changed";
+  projectId: string;
+  spaceId: string;
+  ts: number;
+}
+
+/**
+ * Pub/sub channel for {@link AssignmentsChangedControlEvent}. Matched by
+ * {@link allProjectChannelsPattern}.
+ * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
+ * @param projectId - Project the Space belongs to.
+ * @returns The channel name `{prefix}:project:{projectId}:assignments:changed`.
+ */
+export function assignmentsChangedChannel(prefix: string, projectId: string): string {
+  return `${prefix}:project:${projectId}:assignments:changed`;
+}
+
 /** Why every collab instance closes a project's connections. */
 export type ProjectConnectionsCloseReason = "content-updated" | "archived" | "restored";
 

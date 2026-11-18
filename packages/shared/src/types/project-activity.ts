@@ -206,3 +206,16 @@ export interface SpaceTasksChangedSignal {
   projectId: string;
   spaceId: string;
 }
+
+/**
+ * Stateless WS signal broadcast on the project meta doc when a Space's
+ * hand-overs to external agents changed (breatic#1488 §11.7): the hand-giver
+ * reads that Space's records again.
+ */
+export const ASSIGNMENTS_CHANGED_SIGNAL = "assignments:changed" as const;
+
+export interface AssignmentsChangedSignal {
+  t: typeof ASSIGNMENTS_CHANGED_SIGNAL;
+  projectId: string;
+  spaceId: string;
+}

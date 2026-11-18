@@ -46,7 +46,9 @@ export type NotificationType =
   | "storage.quota_exceeded"
   | "credit.refund_completed"
   | "credit.refund_rejected"
-  | "credit.refund_restored";
+  | "credit.refund_restored"
+  | "comment.mentioned"
+  | "comment.assignment_answered";
 
 REQUEST_NOTIFICATION_TYPES satisfies readonly NotificationType[];
 
