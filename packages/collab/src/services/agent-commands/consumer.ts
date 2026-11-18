@@ -296,13 +296,15 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
   async function runRead(item: Item): Promise<EntryOutcome> {
     const spec = commandSpec(item.type);
     try {
+      // Past the deadline the answer is settled whatever the credential says
+      // (§6, credential revocation row).
+      if (Date.now() >= item.command.deadlineAt) {
+        await reply(item.command.callId, { status: "unfinished" }, item);
+        return "done";
+      }
       const verdict = await refusalOf(item);
       if ("refused" in verdict) {
         await reply(item.command.callId, verdict.refused, item);
-        return "done";
-      }
-      if (Date.now() >= item.command.deadlineAt) {
-        await reply(item.command.callId, { status: "unfinished" }, item);
         return "done";
       }
       const answer = await readDoc(docNameOf(item), item.command.userId, (doc) =>
@@ -345,8 +347,10 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
       for (const item of items) {
         if (stopping() || signal.aborted) break;
         try {
-          const verdict = await refusalOf(item);
-          if ("refused" in verdict) {
+          // Past the deadline only `late` answers, whatever the credential
+          // says (§6, credential revocation row).
+          const verdict = Date.now() >= item.command.deadlineAt ? null : await refusalOf(item);
+          if (verdict !== null && "refused" in verdict) {
             answers.set(item.entry.id, verdict.refused);
             continue;
           }
@@ -357,7 +361,7 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
           // The deadline is compared inside the transaction, on every
           // delivery: past it, nothing is written (§6, gRPC deadlines).
           await connection.transact((doc) => {
-            if (Date.now() >= item.command.deadlineAt) answer = spec.late(doc, item.params, item.command);
+            if (verdict === null || Date.now() >= item.command.deadlineAt) answer = spec.late(doc, item.params, item.command);
             else if (spec.size !== null && refusedBySize(docName, doc, typeof spec.size === "string" ? spec.size : spec.size(doc, item.params))) {
               answer = { status: "rejected", reason: "space_full" };
             }
