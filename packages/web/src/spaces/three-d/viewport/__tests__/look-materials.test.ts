@@ -85,6 +85,26 @@ describe('buildPartTable', () => {
 });
 
 describe('applyLook', () => {
+  it('asks for a new shader program only when picture presence, transmission past 0 or transparency changes', () => {
+    const { root, meshes } = model();
+    const table = exported<Build>('buildPartTable')(root, partOf, { builtin: false });
+    const apply = (look: Record<string, Record<string, unknown>>): void => {
+      exported<Apply>('applyLook')(root, table, look as never, { themeColor: THEME, picture: () => new Texture() });
+    };
+    apply({ 0: { roughness: 0.2 } });
+    const version = (): number => materialOf(meshes[0]!).version;
+    let last = version();
+    apply({ 0: { roughness: 0.5, color: '#112233', metalness: 1 } });
+    expect(version()).toBe(last);
+    apply({ 0: { roughness: 0.5, opacity: 0.4 } });
+    expect(version()).toBeGreaterThan(last);
+    last = version();
+    apply({ 0: { roughness: 0.5, opacity: 0.6 } });
+    expect(version()).toBe(last);
+    apply({ 0: { roughness: 0.5, opacity: 0.6, map: 'none' } });
+    expect(version()).toBeGreaterThan(last);
+  });
+
   it('writes stored fields onto this object\'s own material and keeps the others', () => {
     const { root, meshes } = model();
     const table = exported<Build>('buildPartTable')(root, partOf, { builtin: false });

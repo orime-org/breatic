@@ -274,7 +274,8 @@ export function applyLook(root: Object3D, table: LookPartTable, look: SceneLook,
     const line = isLineMaterial(original);
     const lit = original.type !== 'MeshBasicMaterial' && !line;
     const physical = lit && ((fields.transmission ?? 0) > 0 || original.type === 'MeshPhysicalMaterial');
-    const before = { type: current.constructor, map: Boolean((current as Lit).map), transmission: ((current as Lit).transmission ?? 0) > 0 };
+    const before = { type: current.constructor, map: Boolean((current as Lit).map), transmission: ((current as Lit).transmission ?? 0) > 0,
+      transparent: current.transparent };
     const kept = clones.get(current) ?? [];
     clones.delete(current);
     const material = resetMaterial(current, original, physical) as Lit;
@@ -313,7 +314,11 @@ export function applyLook(root: Object3D, table: LookPartTable, look: SceneLook,
         material.depthWrite = false;
       }
     }
-    material.needsUpdate = true;
+    const after = { type: material.constructor, map: Boolean(material.map), transmission: (material.transmission ?? 0) > 0 };
+    // Values such as colour or roughness are uniforms; only these inputs choose a different shader program.
+    if (material === current && (before.map !== after.map || before.transmission !== after.transmission || before.transparent !== material.transparent)) {
+      material.needsUpdate = true;
+    }
     for (const texture of kept) texture.dispose();
     if (made.length > 0) clones.set(material, made);
     replaced.set(current, material);
@@ -321,7 +326,6 @@ export function applyLook(root: Object3D, table: LookPartTable, look: SceneLook,
       replace(material);
       current.dispose();
     }
-    const after = { type: material.constructor, map: Boolean(material.map), transmission: (material.transmission ?? 0) > 0 };
     if (before.type !== after.type || before.map !== after.map || before.transmission !== after.transmission) programChanged = true;
   });
   return { programChanged };
