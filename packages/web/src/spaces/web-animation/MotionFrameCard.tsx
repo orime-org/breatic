@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
+import { X } from 'lucide-react';
 
+import { Button } from '@web/components/ui/button';
 import { Popover, PopoverAnchor, PopoverContent } from '@web/components/ui/popover';
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import type { FramePoint } from '@web/spaces/web-animation/annotation-draft';
 
@@ -19,6 +22,8 @@ interface MotionFrameCardProps {
   container: HTMLElement | null;
   /** Esc, unless a text box with words in it takes the press first. */
   onClose: () => void;
+  /** Whether it draws its own close button, which stays in the corner while the content scrolls. */
+  closable?: boolean;
   className?: string;
   children: React.ReactNode;
 }
@@ -63,19 +68,21 @@ const POINT_OFFSET = 18;
  * A card anchored to a point on the Motion frame, or to the frame's bottom centre (#1490 design §7.1, §7.3): the thread
  * card and the annotation write box. It opens beside the point and stays inside the preview area, flipping or sliding
  * near an edge, and no taller than the room there, scrolling what does not fit; pressing outside does not close it, Esc
- * does. One Esc closes only this card, not the panel behind it.
+ * does, and so does its close button when it has one. One Esc closes only this card, not the panel behind it.
  * @param props - The card.
  * @param props.testId - Its test hook.
  * @param props.point - Its point.
  * @param props.boundary - The preview area.
  * @param props.container - The Space element.
  * @param props.onClose - Closes it.
+ * @param props.closable - Whether it has a close button.
  * @param props.className - Its surface.
  * @param props.children - Its content.
  * @returns The card.
  * @throws {never} Never.
  */
-export function MotionFrameCard({ testId, point, boundary, container, onClose, className, children }: MotionFrameCardProps): React.JSX.Element {
+export function MotionFrameCard({ testId, point, boundary, container, onClose, closable = false, className, children }: MotionFrameCardProps): React.JSX.Element {
+  const t = useTranslation();
   const changeOpen = React.useCallback((open: boolean): void => { if (!open) onClose(); }, [onClose]);
   const anchorStyle = React.useMemo((): React.CSSProperties => (point === null
     ? { left: '50%', top: '100%' }
@@ -85,8 +92,10 @@ export function MotionFrameCard({ testId, point, boundary, container, onClose, c
     <PopoverContent data-testid={testId} container={container} side='right' align='start' sideOffset={point === null ? 8 : POINT_OFFSET}
       collisionBoundary={boundary} collisionPadding={8} onInteractOutside={keepOpen} onEscapeKeyDown={leaveWordsToTheBox} onOpenAutoFocus={focusCard}
       onClick={stopAtCard} updatePositionStrategy='always'
-      className={cn('grid max-h-[var(--radix-popover-content-available-height)] grid-rows-[minmax(0,1fr)] overflow-hidden', className)}>
+      className={cn('relative grid max-h-[var(--radix-popover-content-available-height)] grid-rows-[minmax(0,1fr)] overflow-hidden', className)}>
       <ScrollArea scrollbars='vertical' className='min-h-0'>{children}</ScrollArea>
+      {closable && <Button type='button' variant='ghost' size='compact' className='absolute right-1 top-1 z-10 bg-card px-1' aria-label={t('spaces.webAnimation.closePanel')}
+        onClick={onClose} icon={<X className='size-4' />} />}
     </PopoverContent>
   </Popover>;
 }

@@ -707,6 +707,32 @@ describe('the thread card over the frame', () => {
     }
   });
 
+  it('gives each thread opened on the same result a card of its own, scrolled from its top', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    await seedThreads([{ text: 'First note', executionId: NEWER, timeSeconds: 0 }, { text: 'Second note', executionId: NEWER, timeSeconds: 1 }]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('motion-open-annotations'));
+    const panel = await screen.findByTestId('motion-panel-annotations');
+    await user.click(within(panel).getByRole('button', { name: /First note/ }));
+    const first = (await screen.findByTestId('motion-thread-card-popover')).querySelector('[data-radix-scroll-area-viewport]');
+    await user.click(within(panel).getByRole('button', { name: /Second note/ }));
+    await waitFor(() => expect(within(screen.getByTestId('motion-thread-card')).getByText('Second note')).toBeInTheDocument());
+    const second = screen.getByTestId('motion-thread-card-popover').querySelector('[data-radix-scroll-area-viewport]');
+    expect(second).not.toBeNull();
+    expect(second).not.toBe(first);
+  });
+
+  it('keeps the close button outside what scrolls, so a long thread still closes with the mouse', async () => {
+    const user = await openCard();
+    const surface = screen.getByTestId('motion-thread-card-popover');
+    const close = within(surface).getByRole('button', { name: t('spaces.webAnimation.closePanel') });
+    expect(surface.querySelector('[data-radix-scroll-area-viewport]')!.contains(close)).toBe(false);
+    await user.click(close);
+    expect(screen.queryByTestId('motion-thread-card')).toBeNull();
+  });
+
   it('stays open when the user presses outside it', async () => {
     await openCard();
     await act(() => new Promise((resolve) => setTimeout(resolve, 10)));

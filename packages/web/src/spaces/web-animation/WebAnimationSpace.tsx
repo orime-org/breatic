@@ -587,14 +587,11 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
             <DocumentCommentWriteBox name='motion-annotation' autoFocus value={annotation.status === 'picking' ? '' : annotation.text} placeholder={t('spaces.webAnimation.annotationPlaceholder')}
               onChange={typeAnnotation} onSave={sendAnnotation} onCancel={cancelAnnotation} />
           </MotionFrameCard>}
-          {activeThread !== null && activeThread.anchor.executionId === row.id && annotation.status === 'idle'
-            && <MotionFrameCard testId='motion-thread-card-popover' point={activeThread.anchor.point} boundary={previewArea} container={spaceElement} onClose={closeThread}
-              className='w-auto border-0 bg-transparent p-0 shadow-none'>
-              <div className='relative'>
-                <MotionThreadCard thread={activeThread.thread} timeSeconds={activeThread.anchor.timeSeconds} store={store} myRole={myRole} viewerId={viewerId} canWrite={annotationsWritable}
-                  draft={activeDraft} onDraft={annotations.setDraft} />
-                <Button type='button' variant='ghost' size='compact' className='absolute right-1 top-1 px-1' aria-label={t('spaces.webAnimation.closePanel')} onClick={closeThread} icon={<X className='size-4' />} />
-              </div>
+          {activeThread !== null && annotation.status === 'idle'
+            && <MotionFrameCard key={activeThread.thread.id} testId='motion-thread-card-popover' point={activeThread.anchor.point} boundary={previewArea} container={spaceElement}
+              onClose={closeThread} closable className='w-auto border-0 bg-transparent p-0 shadow-none'>
+              <MotionThreadCard thread={activeThread.thread} timeSeconds={activeThread.anchor.timeSeconds} store={store} myRole={myRole} viewerId={viewerId} canWrite={annotationsWritable}
+                draft={activeDraft} onDraft={annotations.setDraft} />
             </MotionFrameCard>}
         </div>}
     </div>
