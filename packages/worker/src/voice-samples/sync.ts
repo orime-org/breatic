@@ -227,6 +227,7 @@ export function ticketedPredict(runner: MediaRunner, waiting: PredictionWaiting)
         const done = await runMedia({
           taskId: job.key,
           studioId: null,
+          cloneOwner: "deployment",
           model: job.model,
           displayName: job.model,
           input: async () => job.input,

@@ -36,7 +36,7 @@ export interface LiveClone {
  * @param keyOwner - Whose keys the run uses; only that owner's clones are answered.
  * @returns The clones; none for no sources.
  */
-export async function liveClonesFor(studioId: string, sha256s: readonly string[], keyOwner: CloneKeyOwner = "deployment"): Promise<LiveClone[]> {
+export async function liveClonesFor(studioId: string, sha256s: readonly string[], keyOwner: CloneKeyOwner): Promise<LiveClone[]> {
   if (sha256s.length === 0) return [];
   const rows = await db
     .select({
@@ -77,7 +77,7 @@ export async function recordClone(
   kind: UpstreamCloneKind,
   sourceKey: string,
   upstreamId: string,
-  keyOwner: CloneKeyOwner = "deployment",
+  keyOwner: CloneKeyOwner,
 ): Promise<boolean> {
   const rows = await db
     .insert(studioUpstreamClones)
@@ -110,7 +110,7 @@ export async function retireClone(
   upstream: string,
   kind: UpstreamCloneKind,
   upstreamId: string,
-  keyOwner: CloneKeyOwner = "deployment",
+  keyOwner: CloneKeyOwner,
 ): Promise<void> {
   await db
     .update(studioUpstreamClones)

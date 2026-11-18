@@ -123,6 +123,7 @@ function setup(held: Partial<Held> = {}, runner: Partial<MediaRunner> = {}, lega
   const run: MediaRun = {
     taskId: "task-1",
     studioId: "studio-1",
+    cloneOwner: "deployment",
     model: "voice-model",
     displayName: "Voice Model",
     input: vi.fn(async () => INPUT),

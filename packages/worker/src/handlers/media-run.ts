@@ -54,8 +54,8 @@ export interface MediaRun {
   keys?: KeySet;
   /** The account's keys a language-model step inside the run runs on; absent on our keys. */
   llmKeys?: KeySet;
-  /** Whose keys make and reuse the run's clones: the account's id, or `deployment` (the default) for ours. */
-  cloneOwner?: upstreamCloneRepo.CloneKeyOwner;
+  /** Whose keys make and reuse the run's clones: the account's id, or `deployment` for ours. */
+  cloneOwner: upstreamCloneRepo.CloneKeyOwner;
 }
 
 /** What the run reads and writes besides provider. */
@@ -188,15 +188,6 @@ function keyBounds(run: MediaRun): { keys?: KeySet; llmKeys?: KeySet } {
 }
 
 /**
- * The clone cache's owner argument: the run's, or none for the cache's default, our keys.
- * @param run - The run.
- * @returns The argument list.
- */
-function ownerArg(run: MediaRun): [] | [upstreamCloneRepo.CloneKeyOwner] {
-  return run.cloneOwner === undefined ? [] : [run.cloneOwner];
-}
-
-/**
  * The first answer of a task with no ticket: a ticket from what an older task left, or a fresh plan.
  * @param run - The run.
  * @param deps - Its dependencies.
@@ -214,7 +205,7 @@ async function open(run: MediaRun, deps: MediaRunDeps): Promise<MediaAnswer> {
     if (source.durationSeconds !== null) lengths.set(url, source.durationSeconds);
   }
   const shas = [...new Set(Object.values(sourceKeys))];
-  const clones = run.studioId === null ? [] : await deps.clones.liveClonesFor(run.studioId, shas, ...ownerArg(run));
+  const clones = run.studioId === null ? [] : await deps.clones.liveClonesFor(run.studioId, shas, run.cloneOwner);
   const options = { idempotencyKey: run.taskId, sourceKeys, clones, durations: durationsOf(input.params, lengths), ...keyBounds(run) };
   const left = (legacy.providerTaskId ?? null) !== null || (legacy.steps ?? []).length > 0;
   return left
@@ -247,8 +238,8 @@ async function resume(run: MediaRun, deps: MediaRunDeps, held: taskRepo.StoredTi
 async function absorb(run: MediaRun, deps: MediaRunDeps, answer: MediaAnswer): Promise<void> {
   for (const warning of answer.warnings) logger.warn({ taskId: run.taskId, ...warning.detail }, warning.code);
   if (run.studioId === null) return;
-  for (const clone of answer.clones) await deps.clones.recordClone(run.studioId, clone.upstream, clone.kind, clone.sourceKey, clone.upstreamId, ...ownerArg(run));
-  for (const clone of answer.retiredClones) await deps.clones.retireClone(run.studioId, clone.upstream, clone.kind, clone.upstreamId, ...ownerArg(run));
+  for (const clone of answer.clones) await deps.clones.recordClone(run.studioId, clone.upstream, clone.kind, clone.sourceKey, clone.upstreamId, run.cloneOwner);
+  for (const clone of answer.retiredClones) await deps.clones.retireClone(run.studioId, clone.upstream, clone.kind, clone.upstreamId, run.cloneOwner);
 }
 
 /**
