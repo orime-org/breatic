@@ -1364,5 +1364,7 @@ describe("PT-4 the gate with cancels, failures, limit changes and lost jobs (K1,
       ),
       { numRuns: 60 },
     );
-  });
+    // Sixty runs of up to fifteen rows, each round harvesting every node: about twelve seconds alone, many
+    // times that beside every other suite.
+  }, 600_000);
 });

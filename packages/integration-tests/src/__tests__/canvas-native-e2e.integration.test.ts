@@ -554,6 +554,13 @@ beforeAll(async () => {
     name: "Integration Test Studio",
   }).onConflictDoNothing();
 
+  // Every studio has its admin; the running-task gate reads the limit from them.
+  await db.insert(schema.studioMembers).values({
+    studioId: FIXTURE_STUDIO_ID,
+    userId: FIXTURE_USER_ID,
+    role: "admin",
+  }).onConflictDoNothing();
+
   await db.insert(schema.projects).values({
     id: FIXTURE_PROJECT_ID,
     studioId: FIXTURE_STUDIO_ID,
