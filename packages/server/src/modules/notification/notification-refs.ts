@@ -47,6 +47,8 @@ const USER_ID_KEYS = [
   "accepterUserId",
   "inviterUserId",
   "inviteeUserId",
+  // The comment's author, on a mention (#1488 §11.6).
+  "authorId",
 ] as const;
 const STUDIO_ID_KEYS = ["studioId"] as const;
 const PROJECT_ID_KEYS = ["projectId"] as const;
