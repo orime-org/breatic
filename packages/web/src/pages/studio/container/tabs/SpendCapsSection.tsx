@@ -127,7 +127,7 @@ function limitText(value: string | null, t: ReturnType<typeof useTranslation>): 
 export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element | null {
   const t = useTranslation();
   const queryClient = useQueryClient();
-  const queryKey = spendLimitsQueryKey(slug);
+  const queryKey = React.useMemo(() => spendLimitsQueryKey(slug), [slug]);
   const query = useQuery({ queryKey, queryFn: () => fetchSpendLimits(slug), retry: false });
   const view = query.data;
   const ids = React.useMemo(() => view?.members.map((member) => member.userId) ?? [], [view]);
