@@ -19,9 +19,9 @@ export function filterInsertEntries<Id extends string>(
   query: string,
   namesOf: (id: Id) => readonly string[],
 ): Id[] {
-  const wanted = query.toLocaleLowerCase();
+  const wanted = query.toLowerCase();
   if (wanted === '') return [...ids];
-  return ids.filter((id) => namesOf(id).some((name) => name.toLocaleLowerCase().includes(wanted)));
+  return ids.filter((id) => namesOf(id).some((name) => name.toLowerCase().includes(wanted)));
 }
 
 /** What the close rule reads. */
@@ -37,13 +37,16 @@ interface NoMatchState {
 }
 
 /**
- * Whether the menu closes because the query has run past every name: more
- * than three characters beyond the last query that matched, as BlockNote's
- * own menu does. Never while composing.
+ * Whether the menu closes: on a query that starts with a space, as TipTap,
+ * Outline, AFFiNE and Lexical close theirs, or once the query has run past
+ * every name, more than three characters beyond the last query that matched,
+ * as BlockNote's own menu does. Never while composing.
  * @param state - The query and what it matched.
  * @returns True when the menu closes.
  */
 export function closesForNoMatch(state: NoMatchState): boolean {
-  if (state.composing || state.matched) return false;
+  if (state.composing) return false;
+  if (/^\s/u.test(state.query)) return true;
+  if (state.matched) return false;
   return state.query.length - state.lastUsefulLength > 3;
 }

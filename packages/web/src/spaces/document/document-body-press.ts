@@ -135,7 +135,7 @@ export function pressTargetOf(view: EditorView, event: MouseEvent): PressTarget 
  * @param event - The press.
  * @returns True for such a press.
  */
-function contextPress(event: MouseEvent): boolean {
+export function contextPress(event: MouseEvent): boolean {
   return event.button === 2 || (event.button === 0 && event.ctrlKey && isMac());
 }
 

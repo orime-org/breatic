@@ -60,6 +60,36 @@ describe('filtering by what is typed after the trigger', () => {
   it('finds nothing for a query no name holds', () => {
     expect(filterInsertEntries(ids, 'zzz', namesOf)).toEqual([]);
   });
+
+  it('lowercases the same way whatever language the browser runs in', () => {
+    const toLocaleLowerCase = String.prototype.toLocaleLowerCase;
+    // A Turkish browser turns a capital I into a dotless i.
+    const turkish = vi
+      .spyOn(String.prototype, 'toLocaleLowerCase')
+      .mockImplementation(function (this: string) {
+        return toLocaleLowerCase.call(this, 'tr-TR');
+      });
+    try {
+      const image = (id: string): readonly string[] => (id === 'image' ? ['Image'] : []);
+      expect(filterInsertEntries(['image'], 'image', image)).toEqual(['image']);
+      expect(filterInsertEntries(['image'], 'IMAGE', image)).toEqual(['image']);
+    } finally {
+      turkish.mockRestore();
+    }
+  });
+});
+
+describe('a query that starts with a space', () => {
+  it('closes the menu, whatever the space and whatever it matches', () => {
+    for (const query of [' ', ' 2', ' or', '\t2', '\u30002']) {
+      expect(closesForNoMatch({ query, matched: true, lastUsefulLength: query.length, composing: false })).toBe(true);
+    }
+  });
+
+  it('keeps it open while composing, and for a space inside the query', () => {
+    expect(closesForNoMatch({ query: ' 2', matched: true, lastUsefulLength: 2, composing: true })).toBe(false);
+    expect(closesForNoMatch({ query: 'heading 2', matched: true, lastUsefulLength: 9, composing: false })).toBe(false);
+  });
 });
 
 describe('typing through an input method', () => {

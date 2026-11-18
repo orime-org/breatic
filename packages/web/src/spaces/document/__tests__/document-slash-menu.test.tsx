@@ -16,6 +16,7 @@ import * as Y from 'yjs';
 
 import { documentBodyFragment, encodeInitialSpaceContent, setLocale, t } from '@breatic/shared';
 
+import { isMac } from '@web/lib/is-mac';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
@@ -24,6 +25,11 @@ import { DocumentMediaPicker } from '@web/spaces/document/DocumentMediaPicker';
 import { DocumentSlashMenu } from '@web/spaces/document/DocumentSlashMenu';
 import { para } from '@web/spaces/document/__tests__/column-fixtures';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
+
+vi.mock('@web/lib/is-mac', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/lib/is-mac')>()),
+  isMac: vi.fn(() => false),
+}));
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -57,6 +63,7 @@ afterEach(() => {
   _resetDocumentEditorCacheForTests();
   document.body.innerHTML = '';
   setLocale('en');
+  vi.mocked(isMac).mockReturnValue(false);
   if (rectDescriptor) Object.defineProperty(Element.prototype, 'getBoundingClientRect', rectDescriptor);
 });
 
@@ -313,6 +320,7 @@ describe('the mouse on the menu (A3)', () => {
   });
 
   it('picks nothing on a press with Control held, the secondary click on a Mac', () => {
+    vi.mocked(isMac).mockReturnValue(true);
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);
     type(editor, '/');
@@ -320,6 +328,14 @@ describe('the mouse on the menu (A3)', () => {
     expect(read(editor)[0]?.type).toBe('paragraph');
     fireEvent.mouseDown(screen.getByTestId('doc-slash-row-table'), { button: 0, ctrlKey: true });
     expect(read(editor).some((block) => block.type === 'docTable')).toBe(false);
+  });
+
+  it('picks on a press with Ctrl held off a Mac, where it is no secondary click', () => {
+    const { editor } = open([para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/');
+    fireEvent.mouseDown(screen.getByTestId('doc-slash-row-heading-3'), { button: 0, ctrlKey: true });
+    expect(read(editor)[0]?.props?.['level']).toBe(3);
   });
 
   it('lights nothing when a row only comes under a pointer that has not moved', () => {
@@ -350,10 +366,11 @@ describe('the mouse on the menu (A3)', () => {
   it('starts a menu opened by a second trigger on its first row', () => {
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);
+    // A query with a space in it that still matches keeps the first menu open.
+    type(editor, '/heading ');
+    press(editor, 'ArrowDown');
+    press(editor, 'ArrowDown');
     type(editor, '/');
-    press(editor, 'ArrowDown');
-    press(editor, 'ArrowDown');
-    type(editor, ' /');
     expect(screen.getByTestId('doc-slash-row-heading-1').hasAttribute('data-highlighted')).toBe(true);
   });
 
@@ -556,6 +573,32 @@ describe('undo after a pick (A8)', () => {
   });
 });
 
+describe('a space right after the trigger (design 5.3)', () => {
+  it('closes the menu and leaves what was typed', () => {
+    const { editor } = open([para('')]);
+    const id = read(editor)[0]!.id;
+    caretAtEnd(editor, id);
+    type(editor, '/ ');
+    expect(menu()).toBeNull();
+    expect(textOf(editor, id)).toBe('/ ');
+  });
+
+  it('lets Enter break the line after a slash typed between words', () => {
+    for (const words of ['1 / 2', 'and / or']) {
+      const { editor } = open([para(words.slice(0, words.indexOf('/') - 1))]);
+      const id = read(editor)[0]!.id;
+      caretAtEnd(editor, id);
+      type(editor, words.slice(words.indexOf('/') - 1));
+      expect(menu()).toBeNull();
+      press(editor, 'Enter');
+      expect(textOf(editor, id)).toBe(words);
+      expect(read(editor)).toHaveLength(2);
+      for (const editorShown of mounted.splice(0)) editorShown.unmount();
+      document.body.innerHTML = '';
+    }
+  });
+});
+
 describe('a trigger an input method commits (design 5.1)', () => {
   it('opens the menu once the composition ends, with one trigger in the line', async () => {
     const { editor } = open([para('')]);
@@ -594,5 +637,29 @@ describe('a trigger an input method commits (design 5.1)', () => {
       manager.undo();
     });
     expect(textOf(editor, id)).toBe('ab ');
+  });
+
+  it('opens a new menu for a trigger committed while another menu is open', async () => {
+    const { editor } = open([para('')]);
+    const id = read(editor)[0]!.id;
+    caretAtEnd(editor, id);
+    const view = editor.prosemirrorView!;
+    const commit = async (): Promise<void> => {
+      act(() => {
+        view.dispatch(view.state.tr.insertText('、'));
+      });
+      await act(async () => {
+        view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '、' }));
+        for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+      });
+    };
+    await commit();
+    // A query with a space in it that still matches keeps this menu open.
+    type(editor, 'heading ');
+    expect(rows()).toContain('heading-1');
+    await commit();
+    expect(textOf(editor, id)).toBe('、heading 、');
+    expect(screen.queryByTestId('doc-slash-empty')).toBeNull();
+    expect(rows()).toContain('table');
   });
 });

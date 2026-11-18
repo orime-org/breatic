@@ -40,6 +40,7 @@ import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import { isFreeEscape } from '@web/spaces/canvas/use-escape-in-space';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
+import { contextPress } from '@web/spaces/document/document-body-press';
 import { domElementOf, viewOf } from '@web/spaces/document/document-editor-view';
 import { compositionEndOf } from '@web/spaces/document/document-enter';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
@@ -138,7 +139,8 @@ function claim(event: KeyboardEvent): void {
  * here once the composition ends. The menu opens the way `handleTextInput`
  * opens it, with the extension's meta on a transaction that writes nothing,
  * so the line and the undo history stay as the input method left them
- * (design 5.1).
+ * (design 5.1). A menu open from another trigger gives way to the new one,
+ * as it does for a typed trigger.
  * @param editor - The editor.
  * @param menu - The suggestion extension.
  * @param trigger - The trigger the composition ended with.
@@ -150,9 +152,12 @@ function openAfterComposition(
 ): void {
   const view = viewOf(editor);
   const plugin = menu.prosemirrorPlugins?.[0];
-  if (view === null || plugin === undefined || slashMenuShown(menu.store.state)) return;
+  if (view === null || plugin === undefined) return;
   const { from, empty } = view.state.selection;
   if (!empty || from < trigger.length) return;
+  // The menu open now came from this very trigger.
+  const opened = plugin.getState(view.state) as { queryStartPos?: () => number } | undefined;
+  if (slashMenuShown(menu.store.state) && opened?.queryStartPos?.() === from) return;
   if (view.state.doc.textBetween(from - trigger.length, from) !== trigger) return;
   if (!slashMayOpen(view.state.tr.delete(from - trigger.length, from))) return;
   view.dispatch(view.state.tr.setMeta(plugin, { triggerCharacter: trigger }).scrollIntoView());
@@ -526,9 +531,8 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
               const handlers = {
                 onMouseMove: hover,
                 onMouseDown: (event: React.MouseEvent): void => {
-                  // Only the main button picks, as in the insert menu;
-                  // Control with it is the secondary click on a Mac.
-                  if (event.button !== 0 || event.ctrlKey) return;
+                  // Only the main button picks, as in the insert menu.
+                  if (event.button !== 0 || contextPress(event.nativeEvent)) return;
                   pick(id);
                 },
               };
