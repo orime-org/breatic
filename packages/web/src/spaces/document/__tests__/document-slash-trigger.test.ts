@@ -8,7 +8,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { TextSelection } from '@tiptap/pm/state';
+import { AllSelection, TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -73,11 +73,21 @@ describe('where a trigger may open the menu', () => {
     expect(slashMayOpen(caretIn('苹果', 2).prosemirrorView.state.tr)).toBe(false);
   });
 
-  it('stays closed while a selection spans text', () => {
-    const editor = caretIn('words', 0);
-    const view = editor.prosemirrorView;
-    const from = view.state.selection.from;
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, from + 3)));
+  it('reads a selection the trigger replaces by what stands before it', () => {
+    const select = (text: string, start: number, end: number): boolean => {
+      const view = caretIn(text, 0).prosemirrorView;
+      const from = view.state.selection.from;
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from + start, from + end)));
+      return slashMayOpen(view.state.tr);
+    };
+    expect(select('words', 0, 3)).toBe(true);
+    expect(select('say hello', 4, 9)).toBe(true);
+    expect(select('words', 2, 4)).toBe(false);
+  });
+
+  it('stays closed while the whole document is selected', () => {
+    const view = caretIn('words', 0).prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
     expect(slashMayOpen(view.state.tr)).toBe(false);
   });
 });

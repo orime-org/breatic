@@ -7,7 +7,8 @@
  * The full-width slash and the ideographic comma open the same menu.
  */
 
-import type { Transaction } from '@tiptap/pm/state';
+import type { Node as PMNode } from '@tiptap/pm/model';
+import { TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 
 /**
  * The characters that open the slash menu: the slash, the full-width slash
@@ -16,21 +17,42 @@ import type { Transaction } from '@tiptap/pm/state';
 export const SLASH_TRIGGERS: readonly string[] = ['/', '\uFF0F', '\u3001'];
 
 /**
- * Whether a trigger typed at the caret may open the menu: at the start of a
- * line or after whitespace, with nothing selected. Read before the trigger is
- * inserted.
+ * Reads a Shift+Enter line break as a newline and any other inline leaf as
+ * an object character.
+ * @param leaf - An inline leaf node.
+ * @returns Its text.
+ */
+function leafText(leaf: PMNode): string {
+  return leaf.type.name === 'hardBreak' ? '\n' : '\ufffc';
+}
+
+/**
+ * Whether a trigger typed into a text selection may open the menu: where the
+ * caret, or the start of the words the trigger replaces, is at the start of a
+ * line or after whitespace. Read before the trigger is inserted.
  * @param tr - A transaction on the state the trigger is typed into.
  * @returns True when the menu may open.
  */
 export function slashMayOpen(tr: Transaction): boolean {
-  const { $from, empty } = tr.selection;
-  if (!empty) return false;
+  if (!(tr.selection instanceof TextSelection)) return false;
+  const { $from } = tr.selection;
   if ($from.parentOffset === 0) return true;
   // A line break made by Shift+Enter starts a line as a block start does.
-  const before = $from.parent.textBetween($from.parentOffset - 1, $from.parentOffset, undefined, (leaf) =>
-    leaf.type.name === 'hardBreak' ? '\n' : '\ufffc',
-  );
+  const before = $from.parent.textBetween($from.parentOffset - 1, $from.parentOffset, undefined, leafText);
   return /\s/u.test(before);
+}
+
+/**
+ * Whether a Shift+Enter line break stands between the start of the query and
+ * the caret, so the caret has left the line the menu opened on.
+ * @param state - The editor state.
+ * @param queryStart - Where the query starts, just past the trigger.
+ * @returns True when the caret is past a line break.
+ */
+export function slashCrossesLineBreak(state: EditorState, queryStart: number): boolean {
+  const caret = state.selection.from;
+  if (caret <= queryStart) return false;
+  return state.doc.textBetween(queryStart, caret, undefined, leafText).includes('\n');
 }
 
 /** What the slash menu reads of the suggestion extension's state. */

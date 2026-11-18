@@ -624,6 +624,46 @@ describe('a space right after the trigger (design 5.3)', () => {
   });
 });
 
+describe('a line break made by Shift+Enter (design 5.7)', () => {
+  it('closes the menu once the caret crosses it, and Enter breaks the line again', () => {
+    const { editor } = open([para('abc ')]);
+    const id = read(editor)[0]!.id;
+    caretAtEnd(editor, id);
+    const view = editor.prosemirrorView!;
+    act(() => {
+      const end = view.state.selection.from;
+      const tr = view.state.tr.insert(end, [view.state.schema.nodes['hardBreak']!.create(), view.state.schema.text('tail')]);
+      tr.setSelection(TextSelection.create(tr.doc, end));
+      view.dispatch(tr);
+    });
+    type(editor, '/');
+    expect(menu()).not.toBeNull();
+    act(() => {
+      const at = view.state.selection.from + 1;
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
+    });
+    expect(menu()).toBeNull();
+    press(editor, 'Enter');
+    expect(read(editor)).toHaveLength(2);
+  });
+});
+
+describe('a trigger typed over a selection (design 5.1)', () => {
+  it('opens the menu where the replaced words began after a space', () => {
+    const { editor } = open([para('say hello')]);
+    const id = read(editor)[0]!.id;
+    caretAtEnd(editor, id);
+    const view = editor.prosemirrorView!;
+    act(() => {
+      const end = view.state.selection.from;
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end - 5, end)));
+    });
+    type(editor, '/');
+    expect(textOf(editor, id)).toBe('say /');
+    expect(menu()).not.toBeNull();
+  });
+});
+
 describe('a trigger an input method commits (design 5.1)', () => {
   it('opens the menu once the composition ends, with one trigger in the line', async () => {
     const { editor } = open([para('')]);

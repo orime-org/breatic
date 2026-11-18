@@ -60,7 +60,12 @@ import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { asOneUndoStep, undoOf } from '@web/spaces/document/document-proposal-landing';
 import { filterInsertEntries, closesForNoMatch } from '@web/spaces/document/document-slash-filter';
 import { landSlashMedia, pickInSlashMenu, slashTyped } from '@web/spaces/document/document-slash-pick';
-import { SLASH_TRIGGERS, slashMayOpen, slashMenuShown } from '@web/spaces/document/document-slash-trigger';
+import {
+  SLASH_TRIGGERS,
+  slashCrossesLineBreak,
+  slashMayOpen,
+  slashMenuShown,
+} from '@web/spaces/document/document-slash-trigger';
 import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 
 
@@ -329,16 +334,26 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
     [filterQuery],
   );
 
-  // Closes three characters past the last query that matched (5.3).
+  // Closes three characters past the last query that matched (5.3), and
+  // once the caret crosses a Shift+Enter line break, which the extension's
+  // query leaves out (5.7).
   const lastUseful = React.useRef(0);
   const matched = items.length > 0;
+  const opened = menu.prosemirrorPlugins?.[0]?.getState(editor.prosemirrorState) as
+    | { queryStartPos?: () => number }
+    | undefined;
+  const pastLineBreak =
+    opened?.queryStartPos !== undefined && slashCrossesLineBreak(editor.prosemirrorState, opened.queryStartPos());
   React.useEffect(() => {
-    if (closesForNoMatch({ query: filterQuery, matched, lastUsefulLength: lastUseful.current, composing })) {
+    if (
+      pastLineBreak ||
+      closesForNoMatch({ query: filterQuery, matched, lastUsefulLength: lastUseful.current, composing })
+    ) {
       menu.closeMenu();
     } else if (matched && !composing) {
       lastUseful.current = filterQuery.length;
     }
-  }, [composing, filterQuery, matched, menu]);
+  }, [composing, filterQuery, matched, menu, pastLineBreak]);
 
   const pick = React.useCallback(
     (id: InsertEntryId): void => {
