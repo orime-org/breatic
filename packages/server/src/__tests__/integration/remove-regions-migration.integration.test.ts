@@ -45,17 +45,20 @@ async function run(tx: Tx, statements: string[]): Promise<void> {
 }
 
 /**
- * The migrations folder cut at 0125, the last migration before regions.
+ * The migrations folder cut after one migration.
+ * @param last - The idx of the last migration it keeps.
  * @returns The folder's path.
  */
-async function beforeRegionsFolder(): Promise<string> {
-  const cache = resolve(migrationDir, "../../../../../node_modules/.cache");
-  await mkdir(cache, { recursive: true });
-  fixtureRoot = await mkdtemp(resolve(cache, "remove-regions-"));
-  const folder = resolve(fixtureRoot, "before-regions");
+async function migrationsUpTo(last: number): Promise<string> {
+  if (fixtureRoot === undefined) {
+    const cache = resolve(migrationDir, "../../../../../node_modules/.cache");
+    await mkdir(cache, { recursive: true });
+    fixtureRoot = await mkdtemp(resolve(cache, "remove-regions-"));
+  }
+  const folder = resolve(fixtureRoot, `up-to-${String(last)}`);
   await cp(migrationDir, folder, { recursive: true });
   const journal = JSON.parse(await readFile(resolve(migrationDir, "meta/_journal.json"), "utf8")) as { entries: { idx: number }[] };
-  await writeFile(resolve(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter((e) => e.idx <= 125) }));
+  await writeFile(resolve(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter((e) => e.idx <= last) }));
   return folder;
 }
 
@@ -149,9 +152,10 @@ async function rowsOf(tx: Tx, studioId: string): Promise<unknown> {
 }
 
 describe("migration 0127 removes regions", () => {
-  it("leaves a fully migrated database with the schema it had before 0126", async () => {
-    const beforeRegions = await migratedSchema(await beforeRegionsFolder());
-    expect(await migratedSchema()).toEqual(beforeRegions);
+  // Through 0127, so migrations added after it do not count as a difference.
+  it("leaves a database migrated through 0127 with the schema it had before 0126", async () => {
+    const beforeRegions = await migratedSchema(await migrationsUpTo(125));
+    expect(await migratedSchema(await migrationsUpTo(127))).toEqual(beforeRegions);
   });
 
   it("refuses a Studio transfer in the accepting state", async () => {
