@@ -545,7 +545,10 @@ describe('one owner for opening an annotation', () => {
     await user.click(await screen.findByTestId(`motion-marker-${id}`));
     const panel = await screen.findByTestId('motion-panel-annotations');
     expect(within(panel).getByTestId(`motion-annotation-${id}`)).toHaveAttribute('aria-current', 'true');
-    expect(within(panel).getByRole('button', { name: new RegExp(t('spaces.webAnimation.annotationsAll', { count: 1 })) })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(panel).getByTestId('motion-annotations-filter-all')).toHaveAttribute('aria-pressed', 'true');
+    expect(within(panel).getByTestId('motion-annotations-filter-all-count')).toHaveTextContent('1');
+    // Open has nothing to count, so it shows no chip, as Document's comment filter does.
+    expect(within(panel).queryByTestId('motion-annotations-filter-open-count')).toBeNull();
   });
 
   it('scrolls the panel to a thread below the fold opened from its marker', async () => {

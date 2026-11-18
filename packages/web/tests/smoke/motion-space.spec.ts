@@ -401,7 +401,7 @@ test('an annotation with a point is seen, answered and resolved by another Edito
         }
         await press(peer, 'motion-open-annotations');
         const panel = view.getByTestId('motion-panel-annotations');
-        await panel.getByRole('button', { name: 'All 1', exact: true }).click();
+        await panel.getByTestId('motion-annotations-filter-all').click();
         await panel.getByTestId(`motion-annotation-${threadId}`).click();
         const card = view.getByTestId('motion-thread-card');
         await expect(card.getByTestId('doc-comment-entry')).toHaveCount(2);

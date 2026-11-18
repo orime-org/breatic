@@ -5,6 +5,7 @@ import * as React from 'react';
 import type { ThreadData } from '@blocknote/core/comments';
 import type { WebAnimationRowView } from '@breatic/shared/space-content';
 
+import { FilterButton } from '@web/components/FilterButton';
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useUserProfiles } from '@web/data/use-user-profiles';
@@ -57,9 +58,9 @@ const AnnotationItem = React.memo(function AnnotationItem({ item, author, active
     comments.length > 1 ? t('spaces.webAnimation.replies', { count: comments.length - 1 }) : null,
     item.anchor.point !== null ? t('spaces.webAnimation.hasPoint') : null,
   ].filter((part): part is string => part !== null).join(' · ');
-  return <Button type='button' variant={null} size={null} data-testid={`motion-annotation-${item.id}`} data-thread-id={item.id} aria-current={active ? 'true' : undefined} onClick={open}
   // Recessive text one step stronger on the hovered or chosen fill, where muted-foreground falls under 4.5:1.
   const secondary = active ? 'text-row-foreground-muted' : 'text-muted-foreground group-hover/row:text-row-foreground-muted';
+  return <Button type='button' variant={null} size={null} data-testid={`motion-annotation-${item.id}`} data-thread-id={item.id} aria-current={active ? 'true' : undefined} onClick={open}
     className={cn('group/row flex w-full gap-2 px-3 py-2 text-left hover-enabled:bg-accent', active && 'bg-accent-strong hover-enabled:bg-accent-strong')}>
     <span className={cn('mt-0.5 w-10 shrink-0 text-2xs tabular-nums', secondary)}>{formatAnnotationTime(item.anchor.timeSeconds)}</span>
     <span className='flex min-w-0 flex-1 flex-col gap-0.5'>
@@ -112,13 +113,9 @@ export function MotionAnnotationsPanel({ threads, order, rowOf, activeThreadId, 
   const authorIds = React.useMemo(() => groups.flatMap((group) => group.threads.map((item) => item.thread.comments[0]?.userId ?? '')).filter(Boolean), [groups]);
   const profiles = useUserProfiles(authorIds);
   return <MotionPanel testId='motion-panel-annotations' title={t('spaces.webAnimation.annotations')} onClose={onClose}>
-    <div className='flex h-9 shrink-0 items-center gap-1 border-b border-border px-2'>
-      <Button type='button' variant='ghost' size='compact' aria-pressed={filter === 'open'} onClick={showOpen} className='aria-pressed:bg-accent-strong'>
-        {t('spaces.webAnimation.annotationsOpen', { count: openCount })}
-      </Button>
-      <Button type='button' variant='ghost' size='compact' aria-pressed={filter === 'all'} onClick={showAll} className='aria-pressed:bg-accent-strong'>
-        {t('spaces.webAnimation.annotationsAll', { count: live.length })}
-      </Button>
+    <div className='flex h-9 shrink-0 items-center gap-0.5 border-b border-border px-2'>
+      <FilterButton testId='motion-annotations-filter-open' on={filter === 'open'} label={t('spaces.webAnimation.annotationsOpen')} count={openCount} onPress={showOpen} />
+      <FilterButton testId='motion-annotations-filter-all' on={filter === 'all'} label={t('spaces.webAnimation.annotationsAll')} count={live.length} onPress={showAll} />
     </div>
     <ScrollArea className='min-h-0 flex-1' viewportRef={viewportRef}>
       {groups.length === 0

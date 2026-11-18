@@ -26,7 +26,7 @@ import * as React from 'react';
 
 import type { ProjectRole } from '@breatic/shared';
 
-import { CountChip } from '@web/components/CountChip';
+import { FilterButton } from '@web/components/FilterButton';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
@@ -704,14 +704,14 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
         </span>
         <div className='ml-auto flex shrink-0 gap-0.5'>
           <FilterButton
-            id='open'
+            testId='doc-comment-rail-filter-open'
             on={filter === 'open'}
             label={t('spaces.document.comment.filterOpen')}
             count={cards.unresolved.length}
             onPress={showOpen}
           />
           <FilterButton
-            id='all'
+            testId='doc-comment-rail-filter-all'
             on={filter === 'all'}
             label={t('spaces.document.comment.filterAll')}
             count={cards.unresolved.length + cards.resolved.length}
@@ -1057,54 +1057,5 @@ function PlacedCard({
         {...handling}
       />
     </div>
-  );
-}
-
-/**
- * One of the two filter buttons.
- * @param root0 - Button props.
- * @param root0.id - Which filter, for the test id.
- * @param root0.on - Whether this one is in force.
- * @param root0.label - What it says.
- * @param root0.count - How many cards it shows; none shows no chip.
- * @param root0.onPress - Switches to it.
- * @returns The button.
- */
-function FilterButton({
-  id,
-  on,
-  label,
-  count,
-  onPress,
-}: {
-  id: Filter;
-  on: boolean;
-  label: string;
-  count: number;
-  onPress: () => void;
-}): React.JSX.Element {
-  return (
-    <Button
-      variant={null}
-      size={null}
-      aria-pressed={on}
-      data-testid={`doc-comment-rail-filter-${id}`}
-      onClick={onPress}
-      className={cn(
-        'gap-1 rounded-chrome px-2 py-0.5 text-2xs',
-        on
-          ? 'bg-accent-strong text-foreground'
-          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-      )}
-    >
-      {label}
-      {count === 0 ? null : (
-        <CountChip
-          count={count}
-          className='px-1 text-2xs leading-4'
-          data-testid={`doc-comment-rail-filter-${id}-count`}
-        />
-      )}
-    </Button>
   );
 }
