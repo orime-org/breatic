@@ -9,12 +9,9 @@
  */
 
 import type * as Y from "yjs";
-import { parseDocName, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, timelineSpaceDocName, type DocKind } from "@breatic/shared";
+import { parseDocName, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, timelineSpaceDocName } from "@breatic/shared";
 import { isNewerStreamId } from "@collab/services/stream-id.js";
 import { liveDocNamesStartingWith } from "@collab/services/yjs-documents.repo.js";
-
-/** The Space types whose documents take a change version; another type joins by being listed here. */
-export const SPACE_TASKS_DOC_KINDS: ReadonlySet<DocKind> = new Set<DocKind>(["web_animation", "timeline"]);
 
 /**
  * The other Space documents a change passes on to: a Motion run can sit in any Timeline of its Project as a

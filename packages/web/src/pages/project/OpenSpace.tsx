@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import { type ProjectRole, type SpaceType } from '@breatic/shared';
+import { SPACE_TASKS_TYPES, type ProjectRole, type SpaceType } from '@breatic/shared';
 
 import { useDocGeneration } from '@web/data/yjs/doc-size';
 import { getDoc } from '@web/data/yjs/manager';
@@ -18,9 +18,6 @@ import { CanvasActivityPublisher } from '@web/spaces/canvas/use-publish-activity
 import { SceneUploadProgressPublisher } from '@web/spaces/three-d/scene-upload-progress';
 import { DocumentInterceptGuard } from '@web/spaces/document/DocumentInterceptGuard';
 import { SpaceTasksWatcher } from '@web/pages/project/SpaceTasksWatcher';
-
-/** The Space types whose background work reaches the tab through their document; another type joins by being listed here. */
-const SPACE_TASKS_TYPES: ReadonlySet<SpaceType> = new Set<SpaceType>(['web_animation', 'timeline']);
 
 interface OpenSpaceProps {
   projectId: string;

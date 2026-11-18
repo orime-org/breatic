@@ -7,6 +7,11 @@
  * them, which collab writes and every open tab of the Space watches to read its lists again.
  */
 
+import type { SpaceType } from "@shared/types/space.js";
+
+/** The Space types whose documents take a change version: collab writes it and web watches it, from this one list. */
+export const SPACE_TASKS_TYPES: ReadonlySet<SpaceType> = new Set<SpaceType>(["web_animation", "timeline"]);
+
 /** The root map of a Space document that holds its background work's change version. */
 export const SPACE_TASKS_KEY = "spaceTasks";
 

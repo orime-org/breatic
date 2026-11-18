@@ -8,7 +8,7 @@
  * Data path:
  *   server / worker → Redis stream → consumer group (one round per document) →
  *   per-document lease → one direct connection per round → applyNodeTaskCounts
- *   (canvas) or applySpaceTasksVersion (the Space types in SPACE_TASKS_DOC_KINDS)
+ *   (canvas) or applySpaceTasksVersion (the Space types in SPACE_TASKS_TYPES)
  *
  * A change version is written only into a live Space document, and a Motion
  * Space's change is then published again for every live Timeline of its
@@ -28,7 +28,7 @@
  * document holds.
  *
  * Doc layout: `project-{pid}/canvas-{spaceId}` for node counts and the
- * content document of a Space type in `SPACE_TASKS_DOC_KINDS` for change
+ * content document of a Space type in `SPACE_TASKS_TYPES` for change
  * versions, one doc per Space. Any other doc name is skipped.
  */
 
@@ -37,10 +37,10 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import { ExecutionError, Redlock, ResourceLockedError } from "@sesamecare-oss/redlock";
 import type { NodeTaskCountsEvent, SpaceTasksVersionEvent } from "@breatic/shared";
-import { parseDocName } from "@breatic/shared";
+import { parseDocName, SPACE_TASKS_TYPES } from "@breatic/shared";
 import { createLogger, publishToStream, type Redis } from "@breatic/core";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
-import { applySpaceTasksVersion, docsFollowingChange, SPACE_TASKS_DOC_KINDS } from "@collab/services/space-tasks-version.js";
+import { applySpaceTasksVersion, docsFollowingChange } from "@collab/services/space-tasks-version.js";
 import { isLiveDoc } from "@collab/services/yjs-documents.repo.js";
 import {
   startGroupConsumer,
@@ -170,7 +170,7 @@ async function leaseHeldElsewhere(err: unknown): Promise<boolean> {
 
 /**
  * Read one entry as a task event: a node's counts for a canvas document, or a change version for a document of a
- * Space type listed in `SPACE_TASKS_DOC_KINDS`.
+ * Space type listed in `SPACE_TASKS_TYPES`.
  * @param entry - The stream entry.
  * @returns The event, or why it is skipped.
  */
@@ -185,7 +185,7 @@ function readItem(entry: StreamEntry): NodeTaskCountsEvent | SpaceTasksVersionEv
   if (type !== "node-task-counts" && type !== "space-tasks-version") return { skip: "task_event_unknown_type_skipped" };
   const docName = (event as { docName?: unknown }).docName;
   const parsed = typeof docName === "string" ? parseDocName(docName) : null;
-  const fits = parsed !== null && (type === "node-task-counts" ? parsed.kind === "canvas" : SPACE_TASKS_DOC_KINDS.has(parsed.kind));
+  const fits = parsed !== null && (type === "node-task-counts" ? parsed.kind === "canvas" : parsed.kind !== "meta" && SPACE_TASKS_TYPES.has(parsed.kind));
   if (!fits) return { skip: "task_event_unknown_doc_skipped" };
   return event as NodeTaskCountsEvent | SpaceTasksVersionEvent;
 }

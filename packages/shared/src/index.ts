@@ -166,6 +166,7 @@ export {
   canGenerate,
   CANVAS_NODES_KEY,
   SPACE_TASKS_KEY,
+  SPACE_TASKS_TYPES,
   SPACE_TASKS_VERSION,
   activityNewChannel,
   creditsChangedChannel,

@@ -72,7 +72,7 @@ export {
   canGenerate,
   CANVAS_NODES_KEY,
 } from "@shared/types/canvas-node.js";
-export { SPACE_TASKS_KEY, SPACE_TASKS_VERSION } from "@shared/types/space-tasks.js";
+export { SPACE_TASKS_KEY, SPACE_TASKS_TYPES, SPACE_TASKS_VERSION } from "@shared/types/space-tasks.js";
 export type { SpaceTasksVersionEvent } from "@shared/types/space-tasks.js";
 export type {
   NodeType,
