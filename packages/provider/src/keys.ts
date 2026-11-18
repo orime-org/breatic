@@ -9,7 +9,7 @@
  */
 
 import type { ProviderConfig } from "@provider/config/schema.js";
-import type { Cost, CostLookup, Payer } from "@provider/cost.js";
+import { paidBy, type Cost, type CostLookup, type Payer } from "@provider/cost.js";
 import { AccountKeyFailure, NoUpstreamAvailable, UpstreamRequestRejected } from "@provider/errors.js";
 import { accountFailureOf, type Failure } from "@provider/routing/decide.js";
 
@@ -160,16 +160,6 @@ export function triedOn<T>(keys: KeySet, order: readonly T[]): T[] {
  */
 export function assertAccountReaches(model: string, keys: KeySet, candidates: readonly { configured: boolean }[]): void {
   if (keys.owner === "account" && !candidates.some((c) => c.configured)) throw new AccountKeyFailure(model, "account_key_missing");
-}
-
-/**
- * A cost marked with whose keys paid it: an account's pending lookup also records the owner it is looked up with.
- * @param payer - Who paid, or undefined to leave the cost as it is (the deployment, with nothing else beside it).
- * @returns The marking.
- */
-export function paidBy(payer: Payer | undefined): (cost: Cost) => Cost {
-  if (payer === undefined) return (cost) => cost;
-  return (cost) => (cost.state === "pending" && payer === "account" ? { ...cost, lookup: { ...cost.lookup, payer }, payer } : { ...cost, payer });
 }
 
 /**

@@ -10,7 +10,7 @@
  * Worker, so it imports nothing that needs Node beyond `AsyncLocalStorage`.
  */
 
-import type { Cost } from "@provider/cost.js";
+import { paidBy, type Cost } from "@provider/cost.js";
 import { NotSent } from "@provider/http/errors.js";
 import { answerText, isSuccess, parsed, send } from "@provider/http/request.js";
 import type { PriceEntries } from "@provider/llm/prices.js";
@@ -165,7 +165,7 @@ export async function relayMessages(plan: MessagesPlan, asked: Record<string, un
       break;
     }
     const contentType = response.headers.get("content-type") ?? "application/json";
-    if (isSuccess(response.status) && response.body !== null) return relayed(candidate, speaker, response, sentAt, contentType, options);
+    if (isSuccess(response.status) && response.body !== null) return relayed(candidate, speaker, response, sentAt, contentType, options, plan.keysOwner);
     const text = await answerText(url, response, MAX_REFUSAL_BYTES, REFUSAL_IDLE_MS, bounds).catch(() => "");
     const refusal = speaker.refusal(response.status, parsed(text));
     refused = { status: response.status, text, contentType };
@@ -193,9 +193,10 @@ export async function relayMessages(plan: MessagesPlan, asked: Record<string, un
  * @param sentAt - When the request was sent.
  * @param contentType - The answer's type.
  * @param options - The caller's callbacks.
+ * @param payer - `account` when the plan runs on the payer's keys.
  * @returns The answer to hand the caller.
  */
-function relayed(candidate: MessagesCandidate, speaker: MessagesSpeaker, upstream: Response, sentAt: number, contentType: string, options: RelayOptions): Response {
+function relayed(candidate: MessagesCandidate, speaker: MessagesSpeaker, upstream: Response, sentAt: number, contentType: string, options: RelayOptions, payer: "account" | undefined): Response {
   const reader = upstream.body!.getReader();
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -223,7 +224,8 @@ function relayed(candidate: MessagesCandidate, speaker: MessagesSpeaker, upstrea
       await options.onEnded(FAILED);
       return;
     }
-    const cost = speaker.cost({ upstream: candidate.upstream, messageId, usage, sentAt, prices: candidate.prices });
+    // A call on the payer's keys is the payer's, and so is the lookup of a cost still pending.
+    const cost = paidBy(payer)(speaker.cost({ upstream: candidate.upstream, messageId, usage, sentAt, prices: candidate.prices }));
     if (usage === undefined) {
       await options.onEnded({ outcome: "interrupted", upstream: candidate.upstream, tokens: null, cost });
       return;

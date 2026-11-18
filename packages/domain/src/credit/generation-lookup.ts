@@ -13,11 +13,12 @@ import { createHash } from "node:crypto";
 import { createQueue, getAgentConfig } from "@breatic/core";
 import type { CostLookup } from "@breatic/provider";
 
-import type {
-  AwaitedLookup,
-  RecordedOperation,
-  UsageFeature,
-  UsageSource,
+import {
+  paidByAccount,
+  type AwaitedLookup,
+  type RecordedOperation,
+  type UsageFeature,
+  type UsageSource,
 } from "@domain/credit/usage-recorder.js";
 
 /** The queue the later lookup travels on. */
@@ -87,7 +88,7 @@ export async function handOffLookups(
 ): Promise<void> {
   const { keyId, ...rest } = call;
   for (const { lookup, source, model, payer } of lookups) {
-    const onAccount = keyId != null && payer !== "deployment";
+    const onAccount = keyId != null && paidByAccount(keyId, payer);
     const job = { ...operation, ...rest, model, source, lookup, upstream: lookup.upstream };
     await enqueueUsageLookup(onAccount ? { ...job, charge: false, keyId } : job);
   }

@@ -99,12 +99,13 @@ describe("an account's key set on LLM calls", () => {
     expect(deploymentKeys).not.toHaveBeenCalled();
   });
 
-  it("judge: asks the decisions endpoint with the account's key", async () => {
+  it("judge: asks the decisions endpoint with the account's key, and marks its cost as the account's", async () => {
     const { provider, deploymentKeys } = started();
     fakes.openrouter.answer(({ path }) => (path === "/api/alpha/decisions" ? { status: 200, body: { likely: { p: 0.7 }, usage: { cost: 0.002 } } } : undefined));
     const request = { state: { a: 1 }, questions: { likely: { kind: "probability" } }, budgetMs: 5_000 };
     const answer = await (provider.llm.judge as (...args: unknown[]) => ReturnType<Provider["llm"]["judge"]>)(request, DEFAULT, accountKeys({ openrouter: "acct-or" }));
     expect(answer.status).toBe(200);
+    expect("cost" in answer ? answer.cost : null).toEqual(expect.objectContaining({ state: "known", payer: "account" }));
     expect(auths(fakes.openrouter)).toEqual(["Bearer acct-or"]);
     expect(deploymentKeys).not.toHaveBeenCalled();
   });

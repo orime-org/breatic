@@ -200,6 +200,17 @@ const SOURCE_OF: Readonly<Record<Extract<Cost, { state: "known" }>["source"], Co
 };
 
 /**
+ * Whether a call's cost is the account's: marked so, or unmarked in an operation that runs on an account key row.
+ * Provider marks a deployment-paid cost `deployment` whenever it sits beside an account's.
+ * @param keyId - The operation's account key row; null or undefined on the deployment's keys.
+ * @param payer - The payer the cost carries.
+ * @returns True when no credits are charged for it and its row names the key row.
+ */
+export function paidByAccount(keyId: string | null | undefined, payer: Payer | undefined): boolean {
+  return payer === "account" || (keyId != null && payer !== "deployment");
+}
+
+/**
  * Open a recorder for one operation.
  * @param options - The operation and, for tests, where prices and rows come from.
  * @returns A recorder.
@@ -245,7 +256,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
    */
   const appendCall = (call: { source: UsageSource; model: string; upstream: string }, cost: Exclude<Cost, { state: "pending" }>, requestCount: number | null, costIdentity: string | null): void => {
     const costUsd = cost.state === "known" ? cost.usd : 0;
-    const onAccount = cost.payer === "account";
+    const onAccount = paidByAccount(options.keyId, cost.payer);
     append({
       ...base,
       source: call.source,
@@ -295,7 +306,9 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
     },
     recordLookedUpCall(call) {
       // A lookup answers only after its last attempt, so a pending answer is one that never came: missing.
-      const cost = call.cost.state === "pending" ? { state: "missing" as const, reason: "the lookup never answered" } : call.cost;
+      const cost = call.cost.state === "pending"
+        ? { state: "missing" as const, reason: "the lookup never answered", ...(call.cost.payer === undefined ? {} : { payer: call.cost.payer }) }
+        : call.cost;
       appendCall(call, cost, 1, null);
     },
     awaitingLookup() {

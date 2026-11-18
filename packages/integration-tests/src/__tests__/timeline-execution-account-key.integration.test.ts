@@ -89,7 +89,9 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await createQueue(USAGE_LOOKUP_QUEUE).remove(createHash("sha256").update(JSON.stringify(LOOKUP)).digest("hex"));
+  for (const lookup of [LOOKUP, { ...LOOKUP, payer: "account" }]) {
+    await createQueue(USAGE_LOOKUP_QUEUE).remove(createHash("sha256").update(JSON.stringify(lookup)).digest("hex"));
+  }
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   if (owned.length > 0) await sql`UPDATE timeline_executions SET deleted_at = now() WHERE id = ANY(${owned}::uuid[])`;
@@ -175,8 +177,9 @@ describe("an execution accepted on the payer's OpenRouter key", () => {
   it("records its model calls under the key row at no credits, leaves them out of the charge, and queues the lookup uncharged", async () => {
     const { fx, keyId } = await seedOnAccountKey("running");
     const ingest = installFakeIngest(fx);
+    // Marked as the relay marks a call on the payer's keys: the cost, and a pending cost's lookup too.
     const onAccount = { ...CALLS.completed, cost: { ...CALLS.completed.cost, payer: "account" } };
-    const pending = { ...CALLS.interrupted, cost: { ...CALLS.interrupted.cost, payer: "account" } };
+    const pending = { ...CALLS.interrupted, cost: { ...CALLS.interrupted.cost, payer: "account", lookup: { ...LOOKUP, payer: "account" } } };
     ingest.read = () => json(report(fx, "done", { calls: [onAccount, CALLS.upstreamError, pending] }));
     await serveManifest(fx, manifest());
 
@@ -190,8 +193,9 @@ describe("an execution accepted on the payer's OpenRouter key", () => {
     const charged = await sql<{ amount: string }[]>`SELECT amount::text AS amount FROM credit_charge_requests WHERE reference_id = ${fx.execution.id}`;
     const others = rows.filter((row) => row.source !== "model").reduce((sum, row) => sum + Number(row.credits), 0);
     expect(charged.reduce((sum, row) => sum + Number(row.amount), 0)).toBeLessThanOrEqual(Math.ceil(others * 100) / 100);
-    const job = await createQueue(USAGE_LOOKUP_QUEUE).getJob(createHash("sha256").update(JSON.stringify(LOOKUP)).digest("hex"));
-    expect(job?.data).toEqual(expect.objectContaining({ lookup: LOOKUP, keyId, charge: false }));
+    const lookup = { ...LOOKUP, payer: "account" };
+    const job = await createQueue(USAGE_LOOKUP_QUEUE).getJob(createHash("sha256").update(JSON.stringify(lookup)).digest("hex"));
+    expect(job?.data).toEqual(expect.objectContaining({ lookup, keyId, charge: false }));
     expect(JSON.stringify(job?.data)).not.toContain(ACCOUNT_KEY);
   });
 

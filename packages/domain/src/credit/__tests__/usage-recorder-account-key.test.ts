@@ -59,6 +59,27 @@ describe("a call paid with an account's key", () => {
     expect(rows[0]).toMatchObject({ costUsd: 0.25, credits: 0, keyId: KEY_ID });
   });
 
+  it("reads an unmarked cost in an operation on the account's key as the account's, as the lookup queue does", async () => {
+    const { recorder, rows } = recorderOn(KEY_ID);
+    recorder.recordModelCall({ source: "model", model: "m", upstream: "openrouter", cost: { state: "known", usd: 0.5, source: "reported" } as never });
+
+    expect((await recorder.settleForCharge()).credits).toBe(0);
+    expect(rows[0]).toMatchObject({ credits: 0, keyId: KEY_ID });
+  });
+
+  it("keeps the key row on a looked-up call whose lookup never answered", async () => {
+    const { recorder, rows } = recorderOn(KEY_ID);
+    recorder.recordLookedUpCall({
+      source: "model",
+      model: "m",
+      upstream: "openrouter",
+      cost: { state: "pending", payer: "account", lookup: { upstream: "openrouter", generationId: "gen-1", payer: "account" } } as never,
+    });
+
+    expect((await recorder.settleForCharge()).credits).toBe(0);
+    expect(rows[0]).toMatchObject({ costSource: "missing", credits: 0, keyId: KEY_ID });
+  });
+
   it("charges the call our key paid for in the same operation, and only that one", async () => {
     const { recorder, rows } = recorderOn(KEY_ID);
     recorder.recordModelCall({ source: "model", model: "video", upstream: "wavespeed", cost: { state: "known", usd: 1, source: "billing", payer: "account" } as never });

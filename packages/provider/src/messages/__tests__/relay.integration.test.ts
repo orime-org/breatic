@@ -315,6 +315,24 @@ describe("relayMessages: a plan on the payer's own keys (inner#1953)", () => {
     expect(keyRefused).toEqual([]);
   });
 
+  it("marks a completed call's cost as the account's", async () => {
+    fakes.openrouter.answer(() => stream(COMPLETE));
+    const { ended } = await relay(onAccount(candidates().openrouter));
+
+    expect(ended[0]!.cost).toEqual(expect.objectContaining({ state: "known", payer: "account" }));
+  });
+
+  it("marks a pending cost and its lookup as the account's, so the lookup runs on the account's keys", async () => {
+    fakes.openrouter.answer(() => stream([MESSAGE_START, CONTENT_DELTA], "cut"));
+    const { ended } = await relay(onAccount(candidates().openrouter));
+
+    expect(ended[0]!.cost).toEqual({
+      state: "pending",
+      payer: "account",
+      lookup: { upstream: "openrouter", generationId: "gen-1762500000-abc", payer: "account" },
+    });
+  });
+
   it("reports nothing on the deployment's keys, which move on to the next upstream as before", async () => {
     fakes.openrouter.answer(() => ({ status: 401, body: { error: { message: "No auth credentials found" } } }));
     fakes.openrouter.answer(() => ({ status: 402, body: { error: { message: "Insufficient credits" } } }));

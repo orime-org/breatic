@@ -59,3 +59,13 @@ export const costSchema: z.ZodType<Cost> = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("pending"), lookup: z.looseObject({ upstream: z.string().min(1) }), payer }),
   z.strictObject({ state: z.literal("missing"), reason: z.string(), tokens: tokenBucketsSchema.optional(), payer, upstream }),
 ]);
+
+/**
+ * A cost marked with whose keys paid it: an account's pending lookup also records the owner it is looked up with.
+ * @param payer - Who paid, or undefined to leave the cost as it is (the deployment, with nothing else beside it).
+ * @returns The marking.
+ */
+export function paidBy(payer: Payer | undefined): (cost: Cost) => Cost {
+  if (payer === undefined) return (cost) => cost;
+  return (cost) => (cost.state === "pending" && payer === "account" ? { ...cost, lookup: { ...cost.lookup, payer }, payer } : { ...cost, payer });
+}

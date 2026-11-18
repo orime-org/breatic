@@ -641,7 +641,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     },
 
     async judge(request, chosen = DEFAULT_ROUTE, keys) {
-      const { upstream, key, decisions } = decisionsUpstream(chosen, keysOr(keys, deploymentKeys));
+      const used = keysOr(keys, deploymentKeys);
+      const { upstream, key, decisions } = decisionsUpstream(chosen, used);
       const served = { upstream, model: decisions.model };
       const url = decisions.url(config.upstreams[upstream]!);
       const body = JSON.stringify({
@@ -664,7 +665,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       if (!isSuccess(response.status)) return { status: response.status, body: text, ...served };
       const reported = vendorOf(kindOf(upstream)).costs?.ofBody(parsed(text)).cost;
       const cost: Cost = reported === undefined ? { state: "missing", reason: "the decisions endpoint reported no cost" } : { state: "known", usd: reported, source: "reported" };
-      return { status: response.status, body: text, cost, ...served };
+      return { status: response.status, body: text, cost: paidOn(used)(cost), ...served };
     },
 
     availability(modelId, use, keys) {
