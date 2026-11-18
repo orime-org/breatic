@@ -222,6 +222,8 @@ export class SceneViewportRuntime {
     themeColor: () => this.token('--color-muted-foreground'),
     highlightColor: () => this.token('--color-status-selected'),
     onProgramChanged: (root) => {
+      // A loading object is not in the scene yet; its load compiles it once its look is on.
+      if (root.parent === null) return;
       // As a model load does: its programs compile first, so the shadow budget counts their samplers (design 5.2).
       this.renderer.compile(root, this.camera, this.scene);
       this.syncLights();
@@ -957,8 +959,6 @@ export class SceneViewportRuntime {
       item.state = 'ready';
       root.userData.sceneObjectId = object.id;
       root.traverse((child) => { if (child instanceof Mesh) { child.castShadow = true; child.receiveShadow = true; } });
-      // Its programs are compiled before it joins the scene, so the shadow budget counts its samplers first (design 3.6).
-      this.renderer.compile(root, this.camera, this.scene);
       // The rig is measured first, while the fresh instance is still at rest.
       const rig = poseRigOf(root);
       applyObject(root, latest);
@@ -969,6 +969,9 @@ export class SceneViewportRuntime {
       } finally {
         this.syncing = false;
       }
+      // Its programs, look included, are compiled before it joins the scene, so the shadow budget counts its samplers
+      // first (design 3.6).
+      this.renderer.compile(root, this.camera, this.scene);
       this.scene.add(root);
       this.syncLights();
       this.markShadows(true);

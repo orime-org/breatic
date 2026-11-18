@@ -6,14 +6,14 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Object3D, Scene, Texture, WebGLRenderer } from 'three';
+import { Texture, type Object3D, type Scene, type WebGLRenderer } from 'three';
 import type { SceneObject } from '@breatic/shared';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { createSceneEnvironment } from '@web/spaces/three-d/viewport/scene-environment';
 import { SceneViewportRuntime } from '@web/spaces/three-d/viewport/scene-viewport-runtime';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
-const compiles: Array<{ scene: Object3D; target: Scene | null | undefined }> = [];
+const compiles: Array<{ scene: Object3D; target: Scene | null | undefined; types: string[] }> = [];
 vi.mock('three', async (importOriginal) => {
   const actual = await importOriginal<typeof import('three')>();
   return { ...actual, WebGLRenderer: class {
@@ -22,7 +22,11 @@ vi.mock('three', async (importOriginal) => {
     capabilities = { maxTextures: 16, maxTextureSize: 4096 };
     info = { render: { calls: 0, triangles: 0 }, memory: { geometries: 0, textures: 0 }, programs: [] };
     setPixelRatio(): void {} setSize(): void {} render(): void {} dispose(): void {} getPixelRatio(): number { return 1; }
-    compile(scene: Object3D, _camera: unknown, target?: Scene | null): void { compiles.push({ scene, target }); }
+    compile(scene: Object3D, _camera: unknown, target?: Scene | null): void {
+      const types: string[] = [];
+      scene.traverse((child) => { const material = (child as { material?: { type: string } }).material; if (material) types.push(material.type); });
+      compiles.push({ scene, target, types });
+    }
     getContext(): unknown { return { isContextLost: () => false, getParameter: () => 'test', RENDERER: 0, VERSION: 0 }; }
   } };
 });
@@ -90,6 +94,32 @@ describe('pre-compiling a changed part (inner#1693 design 5.2)', () => {
     runtime.update(props({ objects: [{ ...BOX, look: { 0: { transmission: 1 } } }], onLookReport: initial.onLookReport, onModelStateChange: initial.onModelStateChange }));
     expect(compiles.length).toBeGreaterThan(0);
     for (const call of compiles) expect(call.target).toBe(scene);
+  });
+});
+
+describe('compiling a loading object (inner#1693 design 5.2)', () => {
+  it('compiles it once, with its look already on', async () => {
+    const initial = props({ objects: [{ ...BOX, look: { 0: { transmission: 1 } } }] });
+    const { runtime } = await open(initial, '#969696');
+    const scene = (runtime as unknown as { scene: Scene }).scene;
+    const loads = compiles.filter((call) => call.scene !== scene);
+    expect(loads).toHaveLength(1);
+    expect(loads[0]!.types).toEqual(['MeshPhysicalMaterial']);
+  });
+});
+
+describe('releasing part pictures (inner#1693 design 5.3)', () => {
+  it('releases a deleted object\'s pictures', async () => {
+    const picture = '11111111-1111-4111-8111-11111111111a';
+    const texture = new Texture();
+    const cache = { size: vi.fn(async () => ({ width: 64, height: 64, type: 'png' })), acquire: vi.fn(async () => texture), release: vi.fn() };
+    const initial = props({ objects: [{ ...BOX, look: { 0: { map: picture } } }], lookTextures: cache as never });
+    const { runtime } = await open(initial, '#969696');
+    await vi.waitFor(() => expect(cache.acquire).toHaveBeenCalledWith(picture, 4096));
+    // The decoded picture is held once its acquire settles.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    runtime.update(props({ objects: [], lookTextures: cache as never, onLookReport: initial.onLookReport, onModelStateChange: initial.onModelStateChange }));
+    expect(cache.release).toHaveBeenCalledWith(picture, texture);
   });
 });
 
