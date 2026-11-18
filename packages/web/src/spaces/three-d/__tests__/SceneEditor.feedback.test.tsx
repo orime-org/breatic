@@ -192,6 +192,22 @@ describe('registered model load failures (inner#1690)', () => {
     await waitFor(() => expect(screen.queryByTestId('scene-model-notice')).toBeNull());
   });
 
+  it('gives the look panel the same look while a document change leaves it as it was (inner#1693 design 3.5)', async () => {
+    const { doc, session, client } = fixture();
+    act(() => { (doc.getMap('objects').get(ID) as Y.Map<unknown>).set('look.0.color', '#ff0000'); });
+    render(editorTree(session, client, 'visible'));
+    await screen.findByTestId('scene-viewport-boundary');
+    const panelLook = (): unknown => (lookPanelInputs.mock.calls.at(-1)![0] as { look: unknown }).look;
+    await waitFor(() => expect(panelLook()).toEqual({ 0: { color: '#ff0000' } }));
+    const first = panelLook();
+    act(() => {
+      applySceneCommand(doc, { type: 'lock', ids: [ID], locked: false }, Symbol('peer-unlock'), true, NAME);
+      applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer name' }] }, Symbol('peer'), true, NAME);
+    });
+    await waitFor(() => expect((lookPanelInputs.mock.calls.at(-1)![0] as { mutable: boolean }).mutable).toBe(true));
+    expect(panelLook()).toBe(first);
+  });
+
   it('gives the look panel the pictures the scene shows for the selected object (inner#1693 design 3.5)', async () => {
     const { session, client } = fixture();
     render(editorTree(session, client, 'visible'));

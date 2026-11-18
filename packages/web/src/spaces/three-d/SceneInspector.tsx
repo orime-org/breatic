@@ -3,11 +3,12 @@
 
 import * as React from 'react';
 import { Euler, Quaternion } from 'three';
-import { SceneObjectValuesSchema, isSceneLight, isSceneModelFile, type SceneImportLimits, type SceneObject } from '@breatic/shared';
+import { SceneObjectValuesSchema, isSceneLight, isSceneModelFile, type SceneImportLimits, type SceneLook, type SceneObject } from '@breatic/shared';
 import type { SceneEditorProps } from '@web/spaces/three-d/SceneEditor';
 import type { SceneField, SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
 import type { SceneDirectorFields } from '@web/spaces/three-d/SceneDirectorFields';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useContentStable } from '@web/lib/use-content-stable';
 import { cn } from '@web/lib/utils';
 import { Button } from '@web/components/ui/button';
 import { Switch } from '@web/components/ui/switch';
@@ -108,6 +109,9 @@ function transformFields(object: SceneObject): readonly ('position' | 'rotation'
 /** No user picture is shown. */
 const NO_PICTURES: readonly string[] = [];
 
+/** An object without a look. */
+const NO_LOOK: SceneLook = {};
+
 /**
  * Present committed geometry and existing draft controls for the current selection.
  * @param root0 - Scene controls and their current owner bindings.
@@ -158,6 +162,8 @@ export const SceneInspector = React.memo(function SceneInspector({ session, snap
 
   const object = selected.length === 1 ? selected[0] : undefined;
   const objectId = object?.id;
+  // The snapshot reads every record again on each refresh; the panel gets the look again only when it changed.
+  const objectLook = useContentStable(object?.look ?? NO_LOOK);
   /** Build stable commits for the selected identity, reading peer geometry at action time. */
   const commits = React.useMemo(() => {
     /**
@@ -190,7 +196,7 @@ export const SceneInspector = React.memo(function SceneInspector({ session, snap
       </fieldset>)}
       <DirectorFields object={object} session={session} canEdit={snapshot.canEdit} spaceId={spaceId} Field={Field} compact={false}
         fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} />
-      {look && isSceneModelFile(object.model) ? <SceneLookPanel key={object.id} session={session} object={object} report={look.reports.get(object.id) ?? 'loading'}
+      {look && isSceneModelFile(object.model) ? <SceneLookPanel key={object.id} session={session} objectId={object.id} look={objectLook} report={look.reports.get(object.id) ?? 'loading'}
         projectId={look.projectId} spaceId={spaceId} limits={look.limits} mutable={mutable} selectedPart={look.selectedPart} onSelectPart={look.onSelectPart}
         showing={look.pictures.get(object.id)?.shown ?? NO_PICTURES} /> : null}
       {skeleton ? <PoseSection objectId={object.id} state={skeleton} mutable={mutable} session={session}

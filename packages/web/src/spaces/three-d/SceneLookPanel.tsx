@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 
-import { t as translate, type SceneImportLimits, type SceneObject } from '@breatic/shared';
+import { t as translate, type SceneImportLimits, type SceneLook } from '@breatic/shared';
 import { resolveSceneAsset } from '@web/data/api/scene';
 import { peekSceneSession, type SceneSession } from '@web/data/yjs/scene-session';
 import { toast } from '@web/lib/toast';
@@ -19,7 +19,9 @@ import type { SceneViewImage } from '@web/stores/scene-proposals';
 
 export interface SceneLookPanelProps {
   session: SceneSession;
-  object: SceneObject;
+  objectId: string;
+  /** The object's look, the same object while its content is unchanged. */
+  look: SceneLook;
   /** The model's parts as the viewport reported them. */
   report: SceneLookReport | 'loading' | 'failed';
   projectId: string;
@@ -88,11 +90,11 @@ const pickKey = (name: string, objectId: string, part: string): string => `${nam
 
 /**
  * The appearance section wired to the session, the picture picker, uploads and the texture limits (inner#1693 design 3).
- * @param props - The object, its parts, the Space and the selected part.
+ * @param props - The object and its look, its parts, the Space and the selected part.
  * @returns The section and its picker.
  */
 export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLookPanelProps): React.JSX.Element {
-  const { session, object, report, projectId, spaceId, limits, mutable, selectedPart, onSelectPart, showing } = props;
+  const { session, objectId, look, report, projectId, spaceId, limits, mutable, selectedPart, onSelectPart, showing } = props;
   const showingPictures = React.useMemo(() => new Set(showing), [showing]);
   const queryClient = useQueryClient();
   const uploads = React.useMemo(() => pageSceneLookUploads(queryClient), [queryClient]);
@@ -100,9 +102,8 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   const uploadVersion = React.useSyncExternalStore(uploads.subscribe, uploads.getVersion);
   const [pickerPart, setPickerPart] = React.useState<string | null>(null);
   const isChecking = React.useCallback(
-    (): boolean => selectedPart !== null && latestPicks.has(pickKey(session.name, object.id, selectedPart)), [selectedPart, session.name, object.id]);
+    (): boolean => selectedPart !== null && latestPicks.has(pickKey(session.name, objectId, selectedPart)), [selectedPart, session.name, objectId]);
   const checking = React.useSyncExternalStore(subscribePicks, isChecking);
-  const look = React.useMemo(() => object.look ?? {}, [object.look]);
   const ready = typeof report === 'object' ? report : null;
   const textureLimits = React.useMemo(() => ({
     maxTextureEdge: Math.min(limits.maxTextureEdge, ready?.deviceMaxEdge ?? limits.maxTextureEdge), maxTextureBytes: limits.maxTextureBytes,
@@ -121,14 +122,14 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
       begin,
       preview: (part, fields) => {
         if (!session.getSnapshot().gestureActive) return false;
-        session.previewGesture([{ id: object.id, look: { [part]: fields } }]);
+        session.previewGesture([{ id: objectId, look: { [part]: fields } }]);
         return true;
       },
       commit,
       cancel: (press) => { if (press === undefined || press === session.getSnapshot().cancelRevision) session.endGesture(false); },
       stepKey: (event) => { takeStepKey(event, begin, commit); },
     };
-  }, [session, object.id]);
+  }, [session, objectId]);
   const onCommand = React.useCallback((command: Parameters<SceneSession['execute']>[0]): void => { session.execute(command); }, [session]);
 
   const pictures = React.useMemo(() => [...new Set(Object.values(look).flatMap((fields) => (fields.map && fields.map !== 'none' ? [fields.map] : [])))], [look]);
@@ -145,7 +146,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   const pick = React.useCallback((image: SceneViewImage): void => {
     const part = pickerPart;
     if (part === null || !ready) return;
-    const key = pickKey(session.name, object.id, part);
+    const key = pickKey(session.name, objectId, part);
     const pickNumber = ++picks;
     latestPicks.set(key, pickNumber);
     picksChanged();
@@ -170,7 +171,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
           return;
         }
         // Judged against the look as it is now: the size read above may have taken a while.
-        const current = session.getSnapshot().objects.find((item) => item.id === object.id);
+        const current = session.getSnapshot().objects.find((item) => item.id === objectId);
         if (!current) return;
         const issue = await checkLookWrite({ ownBytes: ready.ownBytes, clampBytes: ready.clampBytes, limits: textureLimits,
           look: current.look ?? {}, part, map: image.assetId, mapSize: size, size: (assetId) => textures.size(assetId) });
@@ -184,7 +185,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
           notify({ key: 'spaces.threeD.look.spaceClosed', severity: 'warning' });
           return;
         }
-        session.execute({ type: 'look', id: object.id, part, set: { map: image.assetId } });
+        session.execute({ type: 'look', id: objectId, part, set: { map: image.assetId } });
       } finally {
         if (isLatest()) {
           latestPicks.delete(key);
@@ -192,22 +193,22 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
         }
       }
     })();
-  }, [pickerPart, ready, textures, textureLimits, session, object.id]);
+  }, [pickerPart, ready, textures, textureLimits, session, objectId]);
   const pickFile = React.useCallback((file: File): void => {
     const part = pickerPart;
     if (part === null || !ready) return;
-    void uploads.start({ projectId, spaceId, name: session.name, objectId: object.id, part, file,
+    void uploads.start({ projectId, spaceId, name: session.name, objectId: objectId, part, file,
       ownBytes: ready.ownBytes, clampBytes: ready.clampBytes, limits: textureLimits });
-  }, [pickerPart, ready, uploads, projectId, spaceId, session.name, object.id, textureLimits]);
+  }, [pickerPart, ready, uploads, projectId, spaceId, session.name, objectId, textureLimits]);
   const openChange = React.useCallback((open: boolean): void => { if (!open) setPickerPart(null); }, []);
 
   const uploadPercentOf = React.useMemo(() => {
     // A new lookup per progress step, so the memoized section draws it.
     void uploadVersion;
-    return (part: string): number | null => uploads.get(spaceId, object.id, part)?.percent ?? null;
-  }, [uploads, spaceId, object.id, uploadVersion]);
+    return (part: string): number | null => uploads.get(spaceId, objectId, part)?.percent ?? null;
+  }, [uploads, spaceId, objectId, uploadVersion]);
   return <>
-    <SceneLookSection objectId={object.id} parts={ready ? ready.parts : report === 'failed' ? 'failed' : 'loading'} look={look}
+    <SceneLookSection objectId={objectId} parts={ready ? ready.parts : report === 'failed' ? 'failed' : 'loading'} look={look}
       selectedPart={selectedPart} mutable={mutable} onSelectPart={onSelectPart} onCommand={onCommand} onChoosePicture={setPickerPart}
       gesture={gesture} spaceId={spaceId} uploadPercentOf={uploadPercentOf} checking={checking} pictureUrl={urlOf}
       showingPictures={showingPictures} />

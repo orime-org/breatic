@@ -64,7 +64,7 @@ function panel(): { doc: Y.Doc; session: SceneSession; rerender: () => void; sel
   let selected = '0';
   /** The panel for the object as it is now. */
   const view = (): React.JSX.Element => <QueryClientProvider client={client}>
-    <SceneLookPanel session={session} object={session.getSnapshot().objects[0] as SceneObject} report={REPORT as never} projectId='p1' spaceId='s1'
+    <SceneLookPanel session={session} objectId={ID} look={(session.getSnapshot().objects[0] as SceneObject).look ?? {}} report={REPORT as never} projectId='p1' spaceId='s1'
       limits={IMPORT_LIMITS} mutable selectedPart={selected} onSelectPart={vi.fn()} showing={NO_PICTURES} />
   </QueryClientProvider>;
   let result = render(view());
