@@ -813,8 +813,8 @@ export const tasks = pgTable(
     billedCredits: doublePrecision("billed_credits"),
     /**
      * The `account_provider_keys` row the task's media runs on, fixed when the
-     * task is accepted (inner#1953); null is the deployment's keys. No foreign
-     * key: the key rows are global and this table regional.
+     * task is accepted (inner#1953); null is the deployment's keys. A key row is
+     * retired, never removed, so this keeps naming its upstream.
      */
     keyId: uuid("key_id").references(() => accountProviderKeys.id, { onDelete: "restrict" }),
     /** The key row of a language-model step inside the task, as `keyId`; null when none or on our keys. */
@@ -2087,7 +2087,7 @@ export const agentUsageRecords = pgTable(
     settlementReceiptId: uuid("settlement_receipt_id").references(() => creditSettlementReceipts.id, { onDelete: "restrict" }),
     costIdentity: varchar("cost_identity", { length: 255 }),
     // The `account_provider_keys` row that paid for the call (inner#1953);
-    // null is the deployment's keys. No foreign key across regions.
+    // null is the deployment's keys.
     keyId: uuid("key_id").references(() => accountProviderKeys.id, { onDelete: "restrict" }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

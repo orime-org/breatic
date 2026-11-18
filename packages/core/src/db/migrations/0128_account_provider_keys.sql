@@ -1,5 +1,5 @@
--- Accounts' own upstream keys (inner#1953). Both new tables are global, with
--- the accounts they belong to.
+-- Accounts' own upstream keys (inner#1953), kept with the accounts they belong
+-- to.
 --
 -- account_provider_keys holds the only copy of a saved key, sealed. A live row
 -- always has its sealed text; replacing, deleting or erasing a key clears the

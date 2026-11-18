@@ -150,7 +150,10 @@ Worker holds no model key of its own: our worker reads the keys a run uses
 the Worker's public key (our worker's `INGEST_KEY_SEAL_PUBLIC_KEY`). This
 secret is the private half (PKCS#8 PEM); it opens them into the job object's
 memory only, and the Worker's `model.local` relay sends each call with them;
-the container never sees them. See [Web animation](#web-animation).
+the container never sees them. Store the whole PEM file by piping it in:
+`wrangler secret put KEY_UNSEAL_PRIVATE_KEY --env production < unseal.pem`
+(the one-line form with `\n` for each line break, as `.dev.vars` holds it,
+reads the same). See [Web animation](#web-animation).
 
 ### If a setting is missing
 

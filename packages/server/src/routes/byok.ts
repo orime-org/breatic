@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Bring-your-own-key routes (inner#1953). `/account/byok` is the caller's own settings, served in the global region
- * like every `/account/...` path: reading them, saving, re-checking and deleting a key under `/keys/:upstream`, and
+ * Bring-your-own-key routes (inner#1953). `/account/byok` is the caller's own settings: reading them, saving, re-checking and deleting a key under `/keys/:upstream`, and
  * pointing a media model at an upstream under `/models/:model`. `/projects/:projectId/key-plan` tells a Project's
  * panels whose keys its runs use. Translation only; `byokService` decides. No request or answer here is logged with
  * its body: a saved key's body is the key.
