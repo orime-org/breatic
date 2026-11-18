@@ -88,7 +88,7 @@ function cleanDeep(value: unknown, clean: (text: string) => string): unknown {
  * @returns The LLM API.
  */
 export function createLlm(config: ProviderConfig, options: ProviderOptions, deploymentKeys: KeySet): LlmApi {
-  /** Each upstream's model factory by the key it was built with (hashed): one client per key, never shared across keys. */
+  /** Each upstream's model factory on the deployment's keys, by the key it was built with (hashed). */
   const factories = new Map<string, (modelId: string) => ModelV4>();
   let refreshing: Promise<void> | undefined;
   let catalog: { pictures: ReadonlyMap<string, boolean>; freshUntil: number; retryAfter: number } = {
@@ -126,15 +126,18 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions, depl
   };
 
   /**
-   * The model an upstream serves our model id as.
+   * The model an upstream serves our model id as. An account's client is built for the call and kept nowhere else
+   * (inner#1953), so a key the user replaced or deleted leaves no copy in the process; the deployment's is reused.
    * @param route - The route that matched.
    * @param upstream - The upstream.
    * @param modelId - Our model id.
-   * @param key - The key the call is sent with.
+   * @param keys - The key set the call is sent on.
    * @returns Its model.
    */
-  const modelOn = (route: LlmRoute, upstream: string, modelId: string, key: string): ModelV4 => {
+  const modelOn = (route: LlmRoute, upstream: string, modelId: string, keys: KeySet): ModelV4 => {
     const decl = config.upstreams[upstream]!;
+    const key = keyFor(keys, upstream);
+    if (keys.owner === "account") return vendorOf(decl.kind).build(decl, key)(vendorModelId(route, upstream, modelId));
     const cacheKey = `${upstream}\u0000${createHash("sha256").update(key).digest("hex")}`;
     let factory = factories.get(cacheKey);
     if (factory === undefined) {
@@ -480,10 +483,16 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions, depl
       const plan = planFor(route, modelId, chosen, keys);
       const pending = new Map<string, PendingCost>();
       const first = plan.order[0]!.upstream;
+      // Built once per upstream for this call, and dropped with it.
+      const models = new Map<string, ModelV4>();
       const model = new SwitchingModel({
         modelId,
         plan,
-        modelFor: (c) => modelOn(route, c.upstream, modelId, keyFor(keys, c.upstream)),
+        modelFor: (c) => {
+          const built = models.get(c.upstream) ?? modelOn(route, c.upstream, modelId, keys);
+          models.set(c.upstream, built);
+          return built;
+        },
         vendorFor: (upstream) => vendorOf(kindOf(upstream)),
         maxRetries: options.llmMaxRetries,
         pending,

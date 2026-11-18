@@ -213,14 +213,22 @@ describe("an account's pending cost", () => {
 });
 
 describe("the LLM client cache", () => {
-  it("builds one client per key of an upstream and reuses it for the same key", async () => {
+  it("builds an account's client for each call and keeps none, so a replaced key leaves nothing in the process", async () => {
     const { provider } = started();
     const build = vi.spyOn(openrouter, "build");
     await chat(provider, accountKeys({ openrouter: "acct-a" }));
     await chat(provider, accountKeys({ openrouter: "acct-b" }));
     await chat(provider, accountKeys({ openrouter: "acct-a" }));
-    expect(build.mock.calls.map(([, key]) => key)).toEqual(["acct-a", "acct-b"]);
+    expect(build.mock.calls.map(([, key]) => key)).toEqual(["acct-a", "acct-b", "acct-a"]);
     expect(auths(fakes.openrouter)).toEqual(["Bearer acct-a", "Bearer acct-b", "Bearer acct-a"]);
+  });
+
+  it("builds the deployment's client once and reuses it", async () => {
+    const { provider } = started();
+    const build = vi.spyOn(openrouter, "build");
+    await chat(provider, undefined, "some/model");
+    await chat(provider, undefined, "some/model");
+    expect(build.mock.calls.map(([, key]) => key)).toEqual(["dep-or"]);
   });
 
   it("keeps the deployment's client apart from an account's on the same upstream", async () => {
