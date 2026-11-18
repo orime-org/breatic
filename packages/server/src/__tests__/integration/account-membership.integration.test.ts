@@ -12,7 +12,7 @@
  *
  * The pins:
  *
- *   1. A configured tier yields its six ceilings and both usage numbers.
+ *   1. A configured tier yields its seven ceilings and both usage numbers.
  *   2. `enterprise` yields `limits: null` rather than throwing. Its ceilings
  *      are negotiated per customer and have no source to read (#105 made
  *      `limitsFor` throw for exactly that reason) — but the account is a
@@ -139,7 +139,7 @@ async function insertAsset(studioId: string, sizeBytes: number): Promise<void> {
 }
 
 describe("readAccountMembership", () => {
-  it("returns the tier, its six ceilings, and both usage numbers", async () => {
+  it("returns the tier, its seven ceilings, and both usage numbers", async () => {
     const { userId, personalStudioId } = await insertUser("pro");
     await insertAsset(personalStudioId, 1024);
     const team = await insertTeamStudio(userId);

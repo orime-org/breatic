@@ -453,8 +453,9 @@ interface SelfHostedRowProps {
 /**
  * A ceiling with no usage beside it: a number, not a bar.
  *
- * These four are per-studio, and this panel answers account-level questions —
- * how much of one is spent is a question for the studio it belongs to.
+ * These five apply within one studio, and this panel answers account-level
+ * questions — how much of one is spent is a question for the studio it
+ * belongs to.
  * @param props - The ceiling to draw.
  * @param props.label - What the ceiling is called.
  * @param props.value - The ceiling, with its unit.
