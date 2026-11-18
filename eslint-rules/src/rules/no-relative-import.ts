@@ -26,6 +26,7 @@ export const PACKAGE_ROOTS: ReadonlyArray<readonly [string, string]> = [
   ["packages/server/src/", "@server"],
   ["packages/worker/src/", "@worker"],
   ["packages/collab/src/", "@collab"],
+  ["packages/mcp/src/", "@mcp"],
   ["packages/integration-tests/src/", "@integration-tests"],
   ["packages/provider/src/", "@provider"],
   ["packages/web/src/", "@web"],

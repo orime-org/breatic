@@ -140,12 +140,27 @@ module.exports = {
         "Modular-monolith dependency direction (ADR 2026-05-31 + " +
         "AGENTS.md#backend-package-boundaries): library packages (@breatic/core, @breatic/shared, " +
         "@breatic/domain) must NOT import an application package " +
-        "(@server / @worker / @collab / @web / @ingest). The direction is " +
+        "(@server / @worker / @collab / @mcp / @web / @ingest). The direction is " +
         "app → domain → core/shared, never the reverse. Migrated from " +
         "lint-no-app-import-in-core.sh.",
       severity: "error",
       from: { path: "^packages/(core|shared|domain)/src/" },
-      to: { path: "^@(server|worker|collab|web|ingest)/" },
+      to: { path: "^@(server|worker|collab|mcp|web|ingest)/" },
+    },
+    {
+      name: "mcp-no-app-or-domain-import",
+      comment:
+        "The MCP service (breatic#1488 §13) talks to server over HTTP and to " +
+        "collab through Redis DB 4, so it imports neither, nor worker or " +
+        "@breatic/domain; it builds on core and shared only. Core's " +
+        "configuration singletons are kept out by ESLint, which sees import names.",
+      severity: "error",
+      from: { path: "^packages/mcp/src/" },
+      to: {
+        path:
+          "@breatic/(server|worker|collab|domain)|^@(server|worker|collab|domain)/" +
+          "|^packages/(server|worker|collab|domain)/",
+      },
     },
     {
       name: "shared-no-ui-import",

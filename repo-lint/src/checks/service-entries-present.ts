@@ -12,6 +12,7 @@ const SERVICE_ENTRIES: ReadonlyMap<string, string> = new Map([
   ["server", "packages/server/src/index.ts"],
   ["worker", "packages/worker/src/index.ts"],
   ["collab", "packages/collab/src/index.ts"],
+  ["mcp", "packages/mcp/src/index.ts"],
 ]);
 
 /**

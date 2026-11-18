@@ -8,10 +8,11 @@ const ALL = {
   "packages/server/src/index.ts": "x",
   "packages/worker/src/index.ts": "x",
   "packages/collab/src/index.ts": "x",
+  "packages/mcp/src/index.ts": "x",
 };
 
 describe("service-entries-present", () => {
-  it("passes when all three exist", () => {
+  it("passes when all four exist", () => {
     expect(serviceEntriesPresent.run(fakeContext(ALL))).toEqual([]);
   });
 
@@ -27,7 +28,7 @@ describe("service-entries-present", () => {
   it("reports each missing entry separately", () => {
     expect(
       serviceEntriesPresent.run(fakeContext({ "unrelated.ts": "x" })),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
   });
 
   it("is not satisfied by an entry that merely moved", () => {

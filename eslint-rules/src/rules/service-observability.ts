@@ -5,7 +5,7 @@ import { createRule } from "#rules/create-rule";
 import { isLoggerLevelAccess } from "#rules/logger-shape";
 
 /** The long-running services, each with one entry point. */
-const SERVICE_ENTRY = /packages\/(server|worker|collab)\/src\/index\.ts$/;
+const SERVICE_ENTRY = /packages\/(server|worker|collab|mcp)\/src\/index\.ts$/;
 
 /**
  * The two ways a logger is constructed here.
@@ -43,7 +43,7 @@ const HEALTH_SERVER = "startHealthServer";
  *
  * The other half of this invariant cannot live in a rule. If an entry file
  * is deleted or renamed, no file gets linted and a rule has nothing to say;
- * that the three entries exist is asserted by the repo-wide checks.
+ * that the four entries exist is asserted by the repo-wide checks.
  */
 export const serviceObservability = createRule<
   [],
