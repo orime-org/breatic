@@ -137,6 +137,18 @@ describe("deadlines", () => {
     expect(await nodeName(harness.instanceA, world, world.nodeId)).not.toBe("Too late");
   });
 
+  it.each([
+    ["read_canvas", {}],
+    ["update_canvas_node", { name: "Late and revoked" }],
+  ] as const)("answers %s past its deadline as unfinished even when its credential was revoked", async (type, params) => {
+    const world = await seedWorld();
+    const command = await send(world, type, type === "read_canvas" ? params : { nodeId: world.nodeId, ...params }, { deadlineAt: Date.now() - 1 });
+    await agentAccessService.disconnect(world.connectionId, world.userId);
+    consumeOn(world, harness.instanceA);
+    expect(await replyOf(world, command.callId)).toEqual({ callId: command.callId, status: "unfinished" });
+    expect(await nodeName(harness.instanceA, world, world.nodeId)).not.toBe("Late and revoked");
+  });
+
   it("answers done for a late create whose nodes the first run already wrote", async () => {
     const world = await seedWorld();
     consumeOn(world, harness.instanceA);
