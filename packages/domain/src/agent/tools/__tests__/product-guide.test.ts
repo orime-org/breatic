@@ -679,6 +679,19 @@ describe("what the guide says", () => {
     expect(doc).toMatch(/Shift\+Tab moves it back out/);
   });
 
+  it("says the slash menu reads the whole block, with its Shift+Enter lines, to place the pick", () => {
+    expect(webSource("spaces/document/DocumentSlashMenu.tsx")).toContain("bare: $from.parent.content.size === typed.length");
+    const lines = section("Document spaces").split("\n");
+    const slash = lines.find((line) => line.startsWith("- Typing a slash")) ?? "";
+    const greying = lines.find((line) => line.startsWith("- The insert menus (the plus menu, the slash menu and")) ?? "";
+    for (const sentence of [slash, greying]) {
+      expect(sentence).toMatch(/a block holding nothing but the slash and the letters after it/u);
+      expect(sentence).not.toMatch(/a line holding nothing but the slash/u);
+    }
+    expect(slash).toMatch(/lines made with Shift\+Enter count with the rest of the block/u);
+    expect(slash).toMatch(/crossing a Shift\+Enter line break/u);
+  });
+
   it("names the slash menu's triggers by character and its place by the slash it hangs from", () => {
     const slash = section("Document spaces").split("\n").find((line) => line.startsWith("- Typing a slash")) ?? "";
     const triggers = /SLASH_TRIGGERS[^=]*= \[([^\]]*)\]/u.exec(webSource("spaces/document/document-slash-trigger.ts"))?.[1] ?? "";

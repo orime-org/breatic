@@ -1878,7 +1878,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.commands.colorReset"))}.`,
     `- The insert menus (the plus menu, the slash menu and ${quoted(t("spaces.document.blockHandle.insertBelow"))}) ` +
       `grey out: on a line in a table cell, ${quoted(t("spaces.document.commands.table"))}, since a table does not go inside a ` +
-      "cell; when the pick turns the line itself into it (the plus, or the slash menu on a line holding nothing but " +
+      "cell; when the pick turns the line itself into it (the plus, or the slash menu on a block holding nothing but " +
       `the slash and the letters after it), also ${quoted(t("spaces.document.commands.quote"))} on a line already ` +
       `in a quote and ${quoted(t("spaces.document.commands.table"))} on a line with lines nested under it; ` +
       `${quoted(t("spaces.document.commands.columns"))} is greyed where the Document columns section says.`,
@@ -1897,17 +1897,18 @@ export function renderProductGuide(): string {
       "the list by an entry's name in the interface language or in English; when nothing matches it says " +
       `${quoted(t("spaces.document.slashMenu.empty"))}, and it closes once three more characters still match ` +
       "nothing. A space right after the slash closes it and keeps what was typed. The up and down arrows move " +
-      "through it and Enter or a click picks. A line holding nothing but the slash and the letters after it counts " +
-      "as a line with no text: there the pick turns the line itself into it, as the plus does, and on a line with text where " +
-      `${quoted(t("spaces.document.blockHandle.insertBelow"))} puts it; its greyed entries are as the insert menus' ` +
-      "line says. " +
+      "through it and Enter or a click picks. On a block holding nothing but the slash and the letters after it the " +
+      "pick turns that block itself into it, as the plus does; on any other block it goes where " +
+      `${quoted(t("spaces.document.blockHandle.insertBelow"))} puts it; lines made with Shift+Enter count with the ` +
+      "rest of the block. Its greyed entries are as the insert menus' line says. " +
       "Picking a block type, the divider, the table, columns or the formula removes the slash and its letters at " +
       "once; picking an image, audio or video opens the file picker and removes them when the files land, and " +
       "closing the picker keeps them. The file picker and the formula box that follow a pick work as in those " +
       `menus. ${quoted(t("spaces.document.commands.table"))} puts in an empty table of three rows and three ` +
       "columns at once; picking a size first is done from the plus on an empty paragraph or from " +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} elsewhere, and rows and columns are added ` +
-      "later from the table's own handles. Esc, clicking elsewhere or moving the caret off the line closes it and " +
+      "later from the table's own handles. Esc, clicking elsewhere, moving the caret off the line or crossing a " +
+      "Shift+Enter line break closes it and " +
       "keeps what was typed; one undo after a pick brings the slash and its letters back. It does not open in a " +
       "code block.",
     "- Hovering any other line, with no text selected, shows a handle of six dots at its left. Drag it to move the " +
