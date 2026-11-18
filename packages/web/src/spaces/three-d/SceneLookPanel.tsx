@@ -6,7 +6,7 @@ import { useQueries, useQueryClient } from '@tanstack/react-query';
 
 import { t as translate, type SceneImportLimits, type SceneObject } from '@breatic/shared';
 import { resolveSceneAsset } from '@web/data/api/scene';
-import type { SceneSession } from '@web/data/yjs/scene-session';
+import { peekSceneSession, type SceneSession } from '@web/data/yjs/scene-session';
 import { toast } from '@web/lib/toast';
 import { SceneImagePickerDialog } from '@web/spaces/three-d/SceneImagePickerDialog';
 import { SceneLookSection, type SceneLookGesture } from '@web/spaces/three-d/SceneLookSection';
@@ -177,6 +177,11 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
         if (!isLatest()) return;
         if (issue) {
           notify(lookLimitNotice(issue, textureLimits));
+          return;
+        }
+        // The Space tab may have closed while the picture was checked, as an upload's completion also finds (design 6.3).
+        if (peekSceneSession(session.name) !== session) {
+          notify({ key: 'spaces.threeD.look.spaceClosed', severity: 'warning' });
           return;
         }
         session.execute({ type: 'look', id: object.id, part, set: { map: image.assetId } });

@@ -16,7 +16,7 @@ import { Awareness } from 'y-protocols/awareness';
 import { SCENE_FORMAT_VERSION, getLocale, t, type SceneObject } from '@breatic/shared';
 
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
-import { SceneSession } from '@web/data/yjs/scene-session';
+import { evictSceneSession, getSceneSession, type SceneSession } from '@web/data/yjs/scene-session';
 import { SceneLookPanel } from '@web/spaces/three-d/SceneLookPanel';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { uploadBytes } from '@web/spaces/three-d/model-texture-metadata';
@@ -57,9 +57,9 @@ function panel(): { doc: Y.Doc; session: SceneSession; rerender: () => void; sel
   doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true, NAME);
   const awareness = new Awareness(doc);
-  const session = new SceneSession(doc, NAME);
+  const session = getSceneSession(doc, NAME);
   session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness });
-  cleanups.push(() => { session.destroy(); awareness.destroy(); doc.destroy(); });
+  cleanups.push(() => { evictSceneSession(NAME); awareness.destroy(); doc.destroy(); });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   let selected = '0';
   /** The panel for the object as it is now. */
@@ -208,6 +208,20 @@ describe('telling why a Project picture was not put on', () => {
     await pick('0', NEW, null);
     await vi.waitFor(() => expect(toast.warning).toHaveBeenCalledWith(t('canvas.upload.unsupportedType', {
       filename: t('spaces.threeD.picker.unnamed'), kind: 'image', formats: 'PNG, JPEG, WebP' })));
+  });
+});
+
+describe('a pick that ends after its Space closed', () => {
+  it('writes nothing and says the Space was closed', async () => {
+    const { doc } = panel();
+    let release: () => void = () => undefined;
+    sizes.set(NEW, () => new Promise((resolve) => { release = () => resolve({ width: 64, height: 64, type: 'png' }); }));
+    await pick('0', NEW);
+    evictSceneSession(NAME);
+    release();
+    await flush();
+    expect(lookOf(doc)).toBeUndefined();
+    expect(toast.warning).toHaveBeenCalledWith(t('spaces.threeD.look.spaceClosed'));
   });
 });
 
