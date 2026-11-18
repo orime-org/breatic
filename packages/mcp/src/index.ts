@@ -9,6 +9,7 @@
 
 import { mcpEnv } from "@mcp/bootstrap-config.js";
 import { createLogger, createRedisClient, getMcpConfig, runGracefulShutdown, startHealthServer, type HealthCheck } from "@breatic/core";
+import { createCommandChannel } from "@mcp/command-channel.js";
 import { redisAnswers, serverAnswers } from "@mcp/probes.js";
 
 const logger = createLogger("main");
@@ -66,6 +67,16 @@ async function main(): Promise<void> {
     }
   }
 
+  const mcpConfig = getMcpConfig();
+  const doneSubscriber = createRedisClient(mcpEnv.REDIS_MCP_URL, { name: "mcp-done" });
+  doneSubscriber.on("error", (err) => logger.error({ err }, "mcp_done_subscriber_error"));
+  const commands = await createCommandChannel({
+    redis: commandRedis,
+    subscriber: doneSubscriber,
+    prefix: mcpEnv.REDIS_KEY_PREFIX,
+    operationTtlSeconds: Math.ceil(mcpConfig.call_timeout_ms / 1000) + mcpConfig.reply_ttl_seconds,
+  });
+
   const healthServer = startHealthServer({
     port: mcpEnv.MCP_HEALTH_PORT,
     serviceName: "mcp",
@@ -89,9 +100,12 @@ async function main(): Promise<void> {
     logger.info({ signal }, "Shutting down...");
     await runGracefulShutdown({
       releaseListenSocket: () => {},
-      drains: [() => healthServer.stop(), () => commandRedis.quit()],
+      drains: [() => healthServer.stop(), async () => {
+        await commands.close();
+        await commandRedis.quit();
+      }],
       // A call in flight lasts at most this long.
-      deadlineMs: getMcpConfig().call_timeout_ms,
+      deadlineMs: mcpConfig.call_timeout_ms,
     });
     logger.info("Shutdown complete");
     await exit(0);
