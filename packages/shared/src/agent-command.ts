@@ -81,6 +81,12 @@ export function mcpCaptureRequestKey(prefix: string, requestId: string): string 
 }
 
 /**
+ * One capture request as collab registers it under {@link mcpCaptureRequestKey}
+ * and the server reads it when the owner's browser uploads (breatic#1488 §19.1).
+ */
+export const mcpCaptureRequestSchema = z.object({ userId: z.string(), callId: z.string() });
+
+/**
  * Largest on-screen data one capture upload carries, in bytes. Together with
  * `view_capture.max_bytes` it must fit under the request body limit.
  */
@@ -225,6 +231,8 @@ export const agentCommandParamsSchemas = {
   // a Project, so the agent's presence stays fresh (§19.2); `focus` is the
   // node a task result is on.
   touch_presence: z.object({ focus: z.array(nodeIdSchema).min(1).optional() }),
+  // A screenshot of what the connection's owner has on screen (§19.1).
+  view_user_screen: z.object({}),
   list_spaces: z.object({}),
   read_canvas: z.object({ nodeIds: z.array(nodeIdSchema).optional() }),
   create_canvas_nodes: z

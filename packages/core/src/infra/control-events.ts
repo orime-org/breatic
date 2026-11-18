@@ -57,6 +57,7 @@ import {
   creditsChangedChannel,
   spaceTasksChangedChannel,
   assignmentsChangedChannel,
+  viewCaptureRequestedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
@@ -64,6 +65,7 @@ import {
   type CreditsChangedControlEvent,
   type SpaceTasksChangedControlEvent,
   type AssignmentsChangedControlEvent,
+  type ViewCaptureRequestedControlEvent,
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
   type SessionsRevokedEvent,
@@ -150,6 +152,19 @@ export async function publishSpaceTasksChanged(projectId: string, spaceId: strin
 export async function publishAssignmentsChanged(projectId: string, spaceId: string): Promise<void> {
   const event: AssignmentsChangedControlEvent = { type: "project-assignments:changed", projectId, spaceId, ts: Date.now() };
   await getStreamRedis().publish(assignmentsChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+}
+
+/**
+ * Ask the collab instance holding a member's meta connections for a capture
+ * of their screen (breatic#1488 §19.1).
+ * @param projectId - The project.
+ * @param userId - The member whose screen it is.
+ * @param requestId - The capture request.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function publishViewCaptureRequested(projectId: string, userId: string, requestId: string): Promise<void> {
+  const event: ViewCaptureRequestedControlEvent = { type: "project-view-capture:requested", projectId, userId, requestId, ts: Date.now() };
+  await getStreamRedis().publish(viewCaptureRequestedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
 }
 
 /**

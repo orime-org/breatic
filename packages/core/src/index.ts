@@ -204,6 +204,7 @@ export {
   publishCreditsChanged,
   publishSpaceTasksChanged,
   publishAssignmentsChanged,
+  publishViewCaptureRequested,
   publishProjectConnectionsClose,
   publishSessionsRevoked,
   projectControlChannelPattern,

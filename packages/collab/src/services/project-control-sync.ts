@@ -53,6 +53,9 @@ import {
   type CreditsChangedControlEvent,
   type SpaceTasksChangedControlEvent,
   type AssignmentsChangedControlEvent,
+  type ViewCaptureRequestedControlEvent,
+  VIEW_CAPTURE_REQUEST_SIGNAL,
+  type ViewCaptureRequestSignal,
   type ProjectConnectionsCloseEvent,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
@@ -72,6 +75,7 @@ type ProjectControlEvent =
   | CreditsChangedControlEvent
   | SpaceTasksChangedControlEvent
   | AssignmentsChangedControlEvent
+  | ViewCaptureRequestedControlEvent
   | ProjectConnectionsCloseEvent;
 
 /**
@@ -98,10 +102,34 @@ function relayOnMetaDoc(
 }
 
 /**
+ * Send a capture request to one member's meta connections on this instance
+ * only (breatic#1488 §19.1): their screen is theirs, so no other member's
+ * browser hears it.
+ * @param hocuspocus - The server.
+ * @param event - The request.
+ */
+export function relayViewCaptureRequest(hocuspocus: Hocuspocus, event: ViewCaptureRequestedControlEvent): void {
+  const doc = hocuspocus.documents?.get(projectMetaDocName(event.projectId));
+  if (!doc) return;
+  const signal: ViewCaptureRequestSignal = { t: VIEW_CAPTURE_REQUEST_SIGNAL, requestId: event.requestId, userId: event.userId };
+  for (const [connection] of doc.connections) {
+    if ((connection.context as { user?: { id?: string } } | undefined)?.user?.id !== event.userId) continue;
+    try {
+      connection.sendStateless(JSON.stringify(signal));
+    } catch (err) {
+      logger.warn({ err, projectId: event.projectId, requestId: event.requestId }, "view_capture_relay_failed");
+    }
+  }
+}
+
+/**
  * Decode one raw control-plane pub/sub message and dispatch it:
  * `project-activity:new` relays the activity signal on the meta doc;
  * `project-credits:changed` relays the credits signal on the meta doc;
  * `project-space-tasks:changed` relays a Space's task list signal on it;
+ * `project-assignments:changed` relays a Space's hand-over signal on it;
+ * `project-view-capture:requested` sends a capture request to one member's
+ * meta connections;
  * `project-connections:close` closes this instance's connections to the
  * project. Unknown / unparseable messages are logged and ignored.
  * @param hocuspocus - Running Hocuspocus server passed through to the relay and close handlers.
@@ -150,6 +178,11 @@ async function handleEvent(
     // A Space's hand-overs changed; the hand-giver's thread labels read
     // their records again (breatic#1488 §11.7).
     relayOnMetaDoc(hocuspocus, event.projectId, { t: ASSIGNMENTS_CHANGED_SIGNAL, projectId: event.projectId, spaceId: event.spaceId });
+    return;
+  }
+
+  if (event.type === "project-view-capture:requested") {
+    relayViewCaptureRequest(hocuspocus, event);
     return;
   }
 

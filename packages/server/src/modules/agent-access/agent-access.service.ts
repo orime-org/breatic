@@ -13,7 +13,6 @@
  * capture reply.
  */
 
-import { z } from "zod";
 import {
   AppError,
   ConflictError,
@@ -32,6 +31,7 @@ import {
 import {
   VIEW_CAPTURE_VIEW_MAX_BYTES,
   mcpCaptureRequestKey,
+  mcpCaptureRequestSchema,
   mcpDoneChannel,
   mcpReplyKey,
   t,
@@ -149,7 +149,6 @@ export async function endGrant(grantId: string, source: "client_revoked" | "reus
 }
 
 /** A capture request as collab registers it. */
-const captureRequestSchema = z.object({ userId: z.string(), callId: z.string() });
 
 /** A JSON value, as a reply's result holds it. */
 export type JsonValue = Extract<AgentReply, { status: "done" }>["result"];
@@ -180,7 +179,7 @@ export async function submitViewCapture(requestId: string, userId: string, uploa
   const prefix = env.REDIS_KEY_PREFIX;
   const raw = await redis.get(mcpCaptureRequestKey(prefix, requestId));
   if (raw === null) throw new AppError(410, t("server.agent_access.capture_expired"));
-  const request = captureRequestSchema.parse(JSON.parse(raw));
+  const request = mcpCaptureRequestSchema.parse(JSON.parse(raw));
   if (request.userId !== userId) throw new ForbiddenError(t("server.error.forbidden"));
   const config = getMcpConfig();
   if ((upload.image?.size ?? 0) > config.view_capture.max_bytes || Buffer.byteLength(upload.view.raw) > VIEW_CAPTURE_VIEW_MAX_BYTES) {

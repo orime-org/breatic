@@ -20,6 +20,7 @@
  * stream order; reads each run on their own key.
  */
 
+import { randomUUID } from "node:crypto";
 import type { Hocuspocus } from "@hocuspocus/server";
 import type * as Y from "yjs";
 import {
@@ -32,6 +33,7 @@ import {
   getMcpConfig,
   listedContentDocNames,
   projectAuthService,
+  publishViewCaptureRequested,
   projectsRepo,
   type Redis,
 } from "@breatic/core";
@@ -43,6 +45,7 @@ import {
   documentSchemaDiffers,
   documentSpaceDocName,
   isAgentCommandType,
+  mcpCaptureRequestKey,
   mcpCommandStreamKey,
   mcpDoneChannel,
   mcpReplyKey,
@@ -290,6 +293,38 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
     return verdict.allowed ? { role } : { refused: { status: "rejected", reason: "rate_limited" } };
   }
 
+  /** Timers that answer a capture nobody uploaded, cleared on stop. */
+  const captureTimers = new Set<NodeJS.Timeout>();
+
+  /**
+   * Ask the owner's browser for a capture (§19.1): register the request for
+   * the upload route, ask the instance holding the owner's meta connections,
+   * and answer "not watching" once `view_capture.timeout_ms` passes, unless
+   * the upload answered first (both write the reply with SET NX).
+   * @param item - The `view_user_screen` command.
+   * @throws {Error} When Redis rejects the registration or the publish.
+   */
+  async function requestCapture(item: Item): Promise<void> {
+    const { userId, projectId, callId } = item.command;
+    const requestId = randomUUID();
+    const { timeout_ms: timeoutMs } = getMcpConfig().view_capture;
+    await mcp.set(mcpCaptureRequestKey(prefix, requestId), JSON.stringify({ userId, callId }), "PX", timeoutMs + 5000);
+    await publishViewCaptureRequested(projectId, userId, requestId);
+    const timer = setTimeout(() => {
+      captureTimers.delete(timer);
+      const body: AgentReply = { callId, status: "done", result: { watching: false } };
+      mcp
+        .set(mcpReplyKey(prefix, callId), JSON.stringify(body), "EX", getMcpConfig().reply_ttl_seconds, "NX")
+        .then(async (written) => {
+          if (written !== null) await mcp.publish(mcpDoneChannel(prefix), callId);
+        })
+        .catch((err: unknown) => logger.error({ err, ctx: { callId, requestId, projectId } }, "agent_capture_timeout_failed"));
+    }, timeoutMs);
+    timer.unref();
+    captureTimers.add(timer);
+    logger.info({ callId, requestId, userId, projectId }, "agent_capture_requested");
+  }
+
   /**
    * Show the agent in the Project after a command it ran (§19.2): online, in
    * the command's Space, on the nodes or blocks the command named. A failure
@@ -340,7 +375,9 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
       const answer = await readDoc(docNameOf(item), item.command.userId, (doc) =>
         spec.run(doc, item.params, item.command, verdict),
       );
-      await reply(item.command.callId, answer, item);
+      const watching = item.type === "view_user_screen" && answer.status === "done" && (answer.result as { watching?: unknown }).watching === true;
+      if (watching) await requestCapture(item);
+      else await reply(item.command.callId, answer, item);
       await recordPresence(item, answer);
       return "done";
     } catch (err) {
@@ -496,6 +533,8 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
 
   return {
     stop: async (): Promise<void> => {
+      for (const timer of captureTimers) clearTimeout(timer);
+      captureTimers.clear();
       await consumer.stop();
       await mcp.quit().catch(() => mcp.disconnect());
     },

@@ -10,6 +10,7 @@
  * `document-commands.ts`.
  */
 
+import { readPresence } from "@collab/hooks/presence.js";
 import * as Y from "yjs";
 import type { z } from "zod";
 import {
@@ -141,6 +142,18 @@ const COMMANDS: CommandTable = {
     late: unfinished,
     focus: ({ focus }) => focus,
     counted: false,
+  },
+  // Answers whether the owner is in the project at all; when they are, the
+  // consumer asks their browser for the capture (§19.1).
+  view_user_screen: {
+    params: agentCommandParamsSchemas.view_user_screen,
+    write: false,
+    size: null,
+    space: null,
+    run: (meta, _params, command) => ({ status: "done", result: { watching: readPresence(meta, command.userId)?.online === true } }),
+    late: unfinished,
+    focus: keepFocus,
+    counted: true,
   },
   list_spaces: {
     params: agentCommandParamsSchemas.list_spaces,

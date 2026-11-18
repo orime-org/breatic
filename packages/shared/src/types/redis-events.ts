@@ -179,6 +179,30 @@ export function assignmentsChangedChannel(prefix: string, projectId: string): st
   return `${prefix}:project:${projectId}:assignments:changed`;
 }
 
+/**
+ * Control event asking for a capture of what one member has on screen
+ * (breatic#1488 §19.1): the instance holding that member's meta connections
+ * sends them the `view-capture:request` signal, and the browser uploads.
+ */
+export interface ViewCaptureRequestedControlEvent {
+  type: "project-view-capture:requested";
+  projectId: string;
+  userId: string;
+  requestId: string;
+  ts: number;
+}
+
+/**
+ * Pub/sub channel for {@link ViewCaptureRequestedControlEvent}. Matched by
+ * {@link allProjectChannelsPattern}.
+ * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
+ * @param projectId - The project.
+ * @returns The channel name `{prefix}:project:{projectId}:view-capture:requested`.
+ */
+export function viewCaptureRequestedChannel(prefix: string, projectId: string): string {
+  return `${prefix}:project:${projectId}:view-capture:requested`;
+}
+
 /** Why every collab instance closes a project's connections. */
 export type ProjectConnectionsCloseReason = "content-updated" | "archived" | "restored";
 

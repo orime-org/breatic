@@ -214,6 +214,19 @@ export interface SpaceTasksChangedSignal {
  */
 export const ASSIGNMENTS_CHANGED_SIGNAL = "assignments:changed" as const;
 
+/**
+ * Stateless WS signal sent to one member's meta connections only, asking for
+ * a capture of their screen (breatic#1488 §19.1); the browser checks
+ * `userId` is its own and uploads to `POST /agent/view-captures/:requestId`.
+ */
+export const VIEW_CAPTURE_REQUEST_SIGNAL = "view-capture:request" as const;
+
+export interface ViewCaptureRequestSignal {
+  t: typeof VIEW_CAPTURE_REQUEST_SIGNAL;
+  requestId: string;
+  userId: string;
+}
+
 export interface AssignmentsChangedSignal {
   t: typeof ASSIGNMENTS_CHANGED_SIGNAL;
   projectId: string;
