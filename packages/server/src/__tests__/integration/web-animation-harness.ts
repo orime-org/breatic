@@ -68,8 +68,8 @@ export interface WebAnimationHarness {
   holdsOf(studioId: string): Promise<{ reference_id: string; status: string; amount: number }[]>;
   grantedProjects(executionId: string): Promise<string[]>;
   signalsFor(projectId: string, spaceId: string): Promise<Record<string, unknown>[]>;
-  /** Execution changes published for a Motion Space's document since the case began. */
-  executionChangesFor(projectId: string, spaceId: string): Promise<Record<string, unknown>[]>;
+  /** Change versions published for a Space's document since the case began; a Motion Space's unless named. */
+  executionChangesFor(projectId: string, spaceId: string, docNameOf?: (projectId: string, spaceId: string) => string): Promise<Record<string, unknown>[]>;
   expectNotFound(res: Response): Promise<void>;
   fillStorage(studioId: string, userId: string): Promise<void>;
 }
@@ -246,8 +246,8 @@ export function useWebAnimationHarness(appName: string): WebAnimationHarness {
       return signals.filter((s) => s.channel.includes(projectId) && s.message.spaceId === spaceId).map((s) => s.message);
     },
 
-    async executionChangesFor(projectId, spaceId) {
-      const docName = webAnimationSpaceDocName(projectId, spaceId);
+    async executionChangesFor(projectId, spaceId, docNameOf = webAnimationSpaceDocName) {
+      const docName = docNameOf(projectId, spaceId);
       const entries = await getStreamRedis().xrange(taskEventsStreamKey(), streamFrom, "+");
       return entries
         .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)

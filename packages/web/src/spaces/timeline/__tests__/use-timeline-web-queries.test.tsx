@@ -4,10 +4,10 @@
 /**
  * The reads behind web-clip resolution and preview (inner#1711 design §7.3 "address", §9 read table).
  *
- * The web-source resolution lives under `spaceTasksQueryKey(projectId, spaceId)`, so the page's Space-task signal
- * (`use-space-tasks-refresh.ts`) refetches it. The resolution asks only for the ids the
- * document's web copies reference, refetches when that set changes, and polls while an execution it resolved is
- * unfinished. A preview address is fetched once per mount, outside that key, and never on window focus.
+ * The web-source resolution lives under `spaceTasksQueryKey(projectId, spaceId)`, so a change version collab writes
+ * into the Timeline Space's document (`SpaceTasksWatcher`) reads it again. The resolution asks only for the ids the
+ * document's web copies reference, refetches when that set changes, and never polls, even while an execution it
+ * resolved is unfinished. A preview address is fetched once per mount, outside that key, and never on window focus.
  */
 
 import * as React from 'react';
@@ -15,9 +15,11 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { TimelineClip, TimelineDocumentV1 } from '@breatic/shared';
+import { SPACE_TASKS_KEY, SPACE_TASKS_VERSION, timelineSpaceDocName, type TimelineClip, type TimelineDocumentV1 } from '@breatic/shared';
 import { spaceTasksQueryKey } from '@web/data/api/scene';
 import { timelineApi } from '@web/data/api/timeline';
+import { getDoc } from '@web/data/yjs/manager';
+import { SpaceTasksWatcher } from '@web/pages/project/SpaceTasksWatcher';
 import type * as TimelineApiModule from '@web/data/api/timeline';
 import { useTimelineWebResolution } from '@web/spaces/timeline/use-timeline-web-resolution';
 import { useWebAnimationPreviewUrl } from '@web/spaces/timeline/use-web-animation-preview-url';
@@ -47,7 +49,13 @@ const clients: QueryClient[] = [];
 function provider(): { client: QueryClient; wrapper: (props: { children: React.ReactNode }) => React.JSX.Element } {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   clients.push(client);
-  return { client, wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> };
+  return {
+    client,
+    wrapper: ({ children }) => <QueryClientProvider client={client}>
+      <SpaceTasksWatcher projectId={PROJECT} spaceId={SPACE} name={timelineSpaceDocName(PROJECT, SPACE)} />
+      {children}
+    </QueryClientProvider>,
+  };
 }
 
 /**
@@ -75,7 +83,7 @@ describe('useTimelineWebResolution', () => {
   it('asks only for the ids the document web copies reference, without duplicates', async () => {
     const { wrapper } = provider();
     const doc = docWith([clip(cid(9), MAIN, 0, 10), webClip(cid(1), V2, 0, 10, boundTo(SRC_A)), webClip(cid(2), V3, 0, 10, boundTo(SRC_A)), webClip(cid(3), V2, 20, 10, waitingFor(EXEC_RUNNING))]);
-    const hook = renderHook(() => useTimelineWebResolution(PROJECT, SPACE, doc, REFRESH_MS), { wrapper });
+    const hook = renderHook(() => useTimelineWebResolution(PROJECT, SPACE, doc), { wrapper });
     await waitFor(() => expect(hook.result.current).toEqual(RESOLUTION));
     expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(1);
     const [projectId, ids] = vi.mocked(timelineApi.resolveWebSources).mock.calls[0] ?? [];
@@ -85,7 +93,7 @@ describe('useTimelineWebResolution', () => {
 
   it('asks nothing and resolves nothing when the document has no web copy', () => {
     const { wrapper } = provider();
-    const hook = renderHook(() => useTimelineWebResolution(PROJECT, SPACE, docWith([clip(cid(9), MAIN, 0, 10)]), REFRESH_MS), { wrapper });
+    const hook = renderHook(() => useTimelineWebResolution(PROJECT, SPACE, docWith([clip(cid(9), MAIN, 0, 10)])), { wrapper });
     expect(hook.result.current).toEqual({ sources: {}, executions: {} });
     expect(timelineApi.resolveWebSources).not.toHaveBeenCalled();
   });
@@ -93,7 +101,7 @@ describe('useTimelineWebResolution', () => {
   it('refetches when the referenced set changes, and not when copies only move', async () => {
     const { wrapper } = provider();
     const first = docWith([webClip(cid(1), V2, 0, 10, boundTo(SRC_A))]);
-    const hook = renderHook(({ doc }) => useTimelineWebResolution(PROJECT, SPACE, doc, REFRESH_MS), { wrapper, initialProps: { doc: first } });
+    const hook = renderHook(({ doc }) => useTimelineWebResolution(PROJECT, SPACE, doc), { wrapper, initialProps: { doc: first } });
     await waitFor(() => expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(1));
     hook.rerender({ doc: docWith([webClip(cid(1), V2, 30, 10, boundTo(SRC_A))]) });
     hook.rerender({ doc: docWith([webClip(cid(1), V2, 30, 10, boundTo(SRC_A)), webClip(cid(2), V3, 0, 10, boundTo(SRC_A))]) });
@@ -104,32 +112,32 @@ describe('useTimelineWebResolution', () => {
     expect(vi.mocked(timelineApi.resolveWebSources).mock.calls[1]?.[1]).toEqual({ sourceIds: [SRC_A, SRC_B].sort(), executionIds: [] });
   });
 
-  it('is refetched by the page Space-task signal', async () => {
-    const { client, wrapper } = provider();
-    renderHook(() => useTimelineWebResolution(PROJECT, SPACE, docWith([webClip(cid(1), V2, 0, 10)]), REFRESH_MS), { wrapper });
+  it('is read again when the Timeline Space\'s document records a change', async () => {
+    const { wrapper } = provider();
+    renderHook(() => useTimelineWebResolution(PROJECT, SPACE, docWith([webClip(cid(1), V2, 0, 10)])), { wrapper });
     await waitFor(() => expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(1));
-    await act(async () => { await client.invalidateQueries({ queryKey: spaceTasksQueryKey(PROJECT, SPACE) }); });
-    expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(2);
+    act(() => { getDoc(timelineSpaceDocName(PROJECT, SPACE)).getMap(SPACE_TASKS_KEY).set(SPACE_TASKS_VERSION, `${Date.now()}-1`); });
+    await waitFor(() => expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(2));
   });
 
-  it('polls while a resolved execution is unfinished and stops once every one has ended', async () => {
+  it('waits for the document, not a timer, while a resolved execution is unfinished', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.mocked(timelineApi.resolveWebSources)
       .mockResolvedValueOnce({ sources: {}, executions: { [EXEC_RUNNING]: RESOLUTION.executions[EXEC_RUNNING]! } })
       .mockResolvedValue({ sources: {}, executions: { [EXEC_RUNNING]: { ...RESOLUTION.executions[EXEC_RUNNING]!, status: 'failed' } } });
     const { wrapper } = provider();
-    renderHook(() => useTimelineWebResolution(PROJECT, SPACE, docWith([webClip(cid(1), V2, 0, 10, waitingFor(EXEC_RUNNING))]), REFRESH_MS), { wrapper });
+    renderHook(() => useTimelineWebResolution(PROJECT, SPACE, docWith([webClip(cid(1), V2, 0, 10, waitingFor(EXEC_RUNNING))])), { wrapper });
     await waitFor(() => expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(1));
-    await act(async () => { await vi.advanceTimersByTimeAsync(REFRESH_MS); });
-    await waitFor(() => expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(2));
     await act(async () => { await vi.advanceTimersByTimeAsync(REFRESH_MS * 3); });
-    expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(2);
+    expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(1);
+    act(() => { getDoc(timelineSpaceDocName(PROJECT, SPACE)).getMap(SPACE_TASKS_KEY).set(SPACE_TASKS_VERSION, `${Date.now()}-2`); });
+    await waitFor(() => expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(2));
   });
 
   it('does not poll when every resolved execution has ended', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { wrapper } = provider();
-    renderHook(() => useTimelineWebResolution(PROJECT, SPACE, docWith([webClip(cid(1), V2, 0, 10, waitingFor(EXEC_DONE))]), REFRESH_MS), { wrapper });
+    renderHook(() => useTimelineWebResolution(PROJECT, SPACE, docWith([webClip(cid(1), V2, 0, 10, waitingFor(EXEC_DONE))])), { wrapper });
     await waitFor(() => expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(1));
     await act(async () => { await vi.advanceTimersByTimeAsync(REFRESH_MS * 3); });
     expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(1);

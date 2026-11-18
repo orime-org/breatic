@@ -13,7 +13,7 @@ import { SPACE_TASKS_KEY, SPACE_TASKS_VERSION, type DocKind } from "@breatic/sha
 import { isNewerStreamId } from "@collab/services/stream-id.js";
 
 /** The Space types whose documents take a change version; another type joins by being listed here. */
-export const SPACE_TASKS_DOC_KINDS: ReadonlySet<DocKind> = new Set<DocKind>(["web_animation"]);
+export const SPACE_TASKS_DOC_KINDS: ReadonlySet<DocKind> = new Set<DocKind>(["web_animation", "timeline"]);
 
 /**
  * Write a change's stream id into the Space document unless it already holds a newer one.

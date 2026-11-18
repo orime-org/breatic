@@ -20,7 +20,7 @@ import { DocumentInterceptGuard } from '@web/spaces/document/DocumentInterceptGu
 import { SpaceTasksWatcher } from '@web/pages/project/SpaceTasksWatcher';
 
 /** The Space types whose background work reaches the tab through their document; another type joins by being listed here. */
-const SPACE_TASKS_TYPES: ReadonlySet<SpaceType> = new Set<SpaceType>(['web_animation']);
+const SPACE_TASKS_TYPES: ReadonlySet<SpaceType> = new Set<SpaceType>(['web_animation', 'timeline']);
 
 interface OpenSpaceProps {
   projectId: string;

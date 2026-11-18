@@ -20,7 +20,7 @@ import { ExecutionError, Redlock, type ExecutionStats } from "@sesamecare-oss/re
 
 import { createRedisClient, db, initCore, schema, type Redis } from "@breatic/core";
 import { eq } from "drizzle-orm";
-import { CANVAS_NODES_KEY, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, webAnimationSpaceDocName, type NodeTaskCountsEvent } from "@breatic/shared";
+import { CANVAS_NODES_KEY, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, timelineSpaceDocName, webAnimationSpaceDocName, type NodeTaskCountsEvent } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import {
@@ -175,12 +175,13 @@ async function newCase(nodes: Record<string, string>): Promise<Case> {
 }
 
 /**
- * A fresh stream, key prefix and empty Motion Space document.
+ * A fresh stream, key prefix and empty Space document of a type that takes a change version.
+ * @param docNameOf - Builds the Space's document name; a Motion Space by default.
  * @returns The case's names.
  */
-async function newMotionCase(): Promise<Case> {
+async function newMotionCase(docNameOf: (projectId: string, spaceId: string) => string = webAnimationSpaceDocName): Promise<Case> {
   const id = randomUUID();
-  const docName = webAnimationSpaceDocName(PID, randomUUID());
+  const docName = docNameOf(PID, randomUUID());
   await yjsRepo.seedInitialState(docName, Y.encodeStateAsUpdate(new Y.Doc()));
   return { streamKey: `itest:stream:task:${id}`, keyPrefix: `itest-${id}`, docName };
 }
@@ -773,6 +774,14 @@ describe("task events across two collab instances", () => {
     const replayed = await publishExecutionsChanged(c, 1, ["originId", olderId!]);
     await until(() => handled(c.streamKey, replayed));
     expect(await readExecutionsVersion(c)).toBe(newerId);
+  });
+
+  it("writes the stream id of a Timeline Space's latest change into its document", async () => {
+    const c = await newMotionCase(timelineSpaceDocName);
+    const ids = await publishExecutionsChanged(c, 2);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await readExecutionsVersion(c)).toBe(ids[1]);
   });
 
   it("acknowledges and skips an executions change for a document that is not a Motion Space", async () => {

@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, act } from '@testing-library/react';
 import * as React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import type { SpaceType } from '@breatic/shared';
 
@@ -54,13 +55,18 @@ interface Tab {
 /** Render the open-tab attachment list inside a shared-socket provider. */
 function tree(tabs: ReadonlyArray<Tab>): React.JSX.Element {
   return (
-    <CollabSocketProvider userId='u1'>
-      {tabs.map((t) => (
-        <OpenSpace key={t.id} projectId='p1' spaceId={t.id} type={t.type} active={false} visited={false} />
-      ))}
-    </CollabSocketProvider>
+    <QueryClientProvider client={queryClient}>
+      <CollabSocketProvider userId='u1'>
+        {tabs.map((t) => (
+          <OpenSpace key={t.id} projectId='p1' spaceId={t.id} type={t.type} active={false} visited={false} />
+        ))}
+      </CollabSocketProvider>
+    </QueryClientProvider>
   );
 }
+
+/** The page's query cache, which the tabs of Space types that watch their background work read. */
+const queryClient = new QueryClient();
 
 describe('OpenSpace — attach lifecycle follows OPEN tabs, not the active tab', () => {
   beforeEach(() => {

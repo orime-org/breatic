@@ -30,7 +30,7 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
 import { env, getNodeTaskConfig, getTimelineConfig, timelineExecutionRepo } from "@breatic/core";
-import { extractPromptText, readSignedPayload, t } from "@breatic/shared";
+import { extractPromptText, readSignedPayload, t, timelineSpaceDocName } from "@breatic/shared";
 import { decodePreviewToken } from "@breatic/shared/space-content";
 import type { TimelineExecution } from "@breatic/shared";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
@@ -40,7 +40,7 @@ const APP = "timeline-routes-test-driver";
 const h = useWebAnimationHarness(APP);
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
-const { seedUser, seedProject, holdsOf, grantedProjects, grant, step, succeed, signalsFor, expectNotFound } = h;
+const { seedUser, seedProject, holdsOf, grantedProjects, grant, step, succeed, signalsFor, executionChangesFor, expectNotFound } = h;
 const signals = h.signals;
 
 beforeAll(() => {
@@ -422,19 +422,21 @@ describe("POST /timeline/executions/:id/cancel", () => {
   }
 
   it.each(["awaiting_landing", "queued"] as const)(
-    "cancels a %s execution, with no hold to release, and signals the Space once",
+    "cancels a %s execution, with no hold to release, and tells its Timeline Space's document once",
     async (state) => {
       const fx = await seedProject();
       const row = state === "queued" ? await accepted(fx) : await insertAsPreviousServer(fx);
       signals.length = 0;
+      const before = await executionChangesFor(fx.projectId, fx.spaceId, timelineSpaceDocName);
       const res = await cancel(fx.editor.cookie, row.id);
       expect(res.status, await res.clone().text()).toBe(200);
       expect(((await res.json()) as { data: TimelineExecution }).data).toMatchObject({ id: row.id, status: "cancelled" });
       expect((await timelineExecutionRepo.findById(row.id))?.status).toBe("cancelled");
       expect(await holdsOf(fx.studioId)).toEqual([]);
-      expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([
-        { type: "project-space-tasks:changed", projectId: fx.projectId, spaceId: fx.spaceId, ts: expect.any(Number) },
+      expect(await executionChangesFor(fx.projectId, fx.spaceId, timelineSpaceDocName)).toEqual([
+        ...before, { type: "space-tasks-version", docName: timelineSpaceDocName(fx.projectId, fx.spaceId) },
       ]);
+      expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
     },
   );
 
@@ -453,12 +455,12 @@ describe("POST /timeline/executions/:id/cancel", () => {
     const row = await accepted(fx);
     await cancel(fx.editor.cookie, row.id);
     const ended = await timelineExecutionRepo.findById(row.id);
-    await signalsFor(fx.projectId, fx.spaceId);
-    signals.length = 0;
+    const told = (await executionChangesFor(fx.projectId, fx.spaceId, timelineSpaceDocName)).length;
     const again = await cancel(fx.editor.cookie, row.id);
     expect(again.status).toBe(200);
     expect(((await again.json()) as { data: TimelineExecution }).data).toEqual(ended);
     expect(await timelineExecutionRepo.findById(row.id)).toEqual(ended);
+    expect(await executionChangesFor(fx.projectId, fx.spaceId, timelineSpaceDocName)).toHaveLength(told);
     expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
   });
 
