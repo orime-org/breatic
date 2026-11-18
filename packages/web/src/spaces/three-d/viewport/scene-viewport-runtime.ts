@@ -218,7 +218,7 @@ export class SceneViewportRuntime {
     highlightColor: () => this.token('--color-status-selected'),
     onProgramChanged: (root) => {
       // As a model load does: its programs compile first, so the shadow budget counts their samplers (design 5.2).
-      this.renderer.compile(root, this.camera);
+      this.renderer.compile(root, this.camera, this.scene);
       this.syncLights();
       this.markShadows(true);
     },
@@ -269,6 +269,8 @@ export class SceneViewportRuntime {
   private readonly cardVisibility: IntersectionObserver | null;
   private readonly cardSize: ResizeObserver;
   private monitorDrawnAt = 0;
+  /** The theme colour the part reports last carried. */
+  private reportedTheme = '';
 
   /**
    * Construct resources only within the React view's effect lifetime.
@@ -943,7 +945,7 @@ export class SceneViewportRuntime {
       root.userData.sceneObjectId = object.id;
       root.traverse((child) => { if (child instanceof Mesh) { child.castShadow = true; child.receiveShadow = true; } });
       // Its programs are compiled before it joins the scene, so the shadow budget counts its samplers first (design 3.6).
-      this.renderer.compile(root, this.camera);
+      this.renderer.compile(root, this.camera, this.scene);
       // The rig is measured first, while the fresh instance is still at rest.
       const rig = poseRigOf(root);
       applyObject(root, latest);
@@ -960,7 +962,7 @@ export class SceneViewportRuntime {
       this.monitorEvent({ type: 'changed' });
       this.props.onModelStateChange?.(object.id, 'ready');
       this.props.onSkeletonState(object.id, rig === null ? 'none' : rig.kind);
-      this.props.onLookReport?.(object.id, lookReportOf(root, this.renderer.capabilities.maxTextureSize) ?? 'failed');
+      this.props.onLookReport?.(object.id, lookReportOf(root, this.renderer.capabilities.maxTextureSize, this.token('--color-muted-foreground')) ?? 'failed');
       this.syncHighlight();
       this.syncControls();
       if (this.pendingFocus) this.focus();
@@ -1498,14 +1500,29 @@ export class SceneViewportRuntime {
   };
 
   /**
+   * Report every loaded object's parts again once the theme colour changed, so a built-in part's swatch shows the colour
+   * on screen (inner#1693 design 5.1).
+   */
+  private reportThemeColor(): void {
+    const theme = this.token('--color-muted-foreground');
+    if (theme === this.reportedTheme) return;
+    this.reportedTheme = theme;
+    for (const [id, item] of this.items) {
+      const report = item.root ? lookReportOf(item.root, this.renderer.capabilities.maxTextureSize, theme) : null;
+      if (report) this.props.onLookReport?.(id, report);
+    }
+  }
+
+  /**
    * Resolve theme tokens for canvas content as well as surrounding React chrome.
    * @throws {never} Never directly.
    */
   private restyle = (): void => {
     this.scene.background = new Color(this.token('--color-background'));
     applySceneGridTheme(this.grid, this.token('--color-muted-foreground'));
-    // Built-in models take the theme colour through their look (inner#1693 design 5.2).
+    // Built-in models take the theme colour through their look (inner#1693 design 5.2), and the panel shows it.
     this.looks.restyle();
+    this.reportThemeColor();
     this.looks.restyleHighlight();
     this.syncMarkers(this.jointTarget());
     this.rebuildOutlines();

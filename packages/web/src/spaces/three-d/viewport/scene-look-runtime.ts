@@ -25,6 +25,10 @@ export interface SceneLookPartReport {
   transmission?: number;
   emissive?: string;
   emissiveIntensity?: number;
+  /** The own picture's tiling, offset and rotation in degrees, when it has one. */
+  mapRepeat?: [number, number];
+  mapOffset?: [number, number];
+  mapRotation?: number;
 }
 
 /** What the editor needs to show and change an object's look. */
@@ -82,15 +86,18 @@ function picturesOf(look: SceneLook): string[] {
 }
 
 /**
- * The part rows a part table shows, in panel order.
+ * The part rows a part table shows, in panel order: built-in parts are named by number and take the current theme
+ * colour (design 3.1, 5.1).
  * @param table - The model's part table.
+ * @param themeColor - The current theme's built-in model colour.
  * @returns The rows.
  */
-function partRows(table: LookPartTable): SceneLookPartReport[] {
+function partRows(table: LookPartTable, themeColor: string): SceneLookPartReport[] {
   return [...table].sort(([a], [b]) => lookPartRank(a) - lookPartRank(b)).map(([key, entry]) => ({
-    key, name: entry.name, color: entry.color, hasMap: entry.hasMap, unlit: entry.unlit, line: entry.line,
-    roughness: entry.roughness, metalness: entry.metalness, opacity: entry.opacity, transmission: entry.transmission,
-    emissive: entry.emissive, emissiveIntensity: entry.emissiveIntensity,
+    key, name: entry.builtin ? null : entry.name, color: entry.builtin ? themeColor : entry.color, hasMap: entry.hasMap,
+    unlit: entry.unlit, line: entry.line, roughness: entry.roughness, metalness: entry.metalness, opacity: entry.opacity,
+    transmission: entry.transmission, emissive: entry.emissive, emissiveIntensity: entry.emissiveIntensity,
+    mapRepeat: entry.mapRepeat, mapOffset: entry.mapOffset, mapRotation: entry.mapRotation,
   }));
 }
 
@@ -98,12 +105,13 @@ function partRows(table: LookPartTable): SceneLookPartReport[] {
  * What an object's model reports for its look.
  * @param root - The loaded instance.
  * @param deviceMaxEdge - This device's largest texture edge.
+ * @param themeColor - The current theme's built-in model colour.
  * @returns The part rows and byte counts, or null when the model has no look model.
  */
-export function lookReportOf(root: Group, deviceMaxEdge: number): SceneLookReport | null {
+export function lookReportOf(root: Group, deviceMaxEdge: number, themeColor: string): SceneLookReport | null {
   const model = lookModelOf(root);
   if (!model) return null;
-  return { parts: partRows(model.table), ownBytes: model.ownBytes, deviceMaxEdge,
+  return { parts: partRows(model.table, themeColor), ownBytes: model.ownBytes, deviceMaxEdge,
     clampBytes: Object.fromEntries([...model.table].map(([key, entry]) => [key, entry.clampBytes])) };
 }
 
