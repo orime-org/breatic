@@ -66,12 +66,12 @@ interface Harness {
 /**
  * A holder over controllable dependencies.
  * @param session - What the Space's name resolves to at completion.
- * @param localSize - The local file header's answer.
+ * @param localSize - The local file header's answer, or the error reading it.
  * @param size - Sizes of pictures already in use.
  * @returns The harness.
  * @throws {AssertionError} When createSceneLookUploads is not exported.
  */
-function harness(session: () => SceneSession | undefined, localSize: { width: number; height: number; type: string } | null = { width: 64, height: 64, type: 'png' },
+function harness(session: () => SceneSession | undefined, localSize: { width: number; height: number; type: string } | null | Error = { width: 64, height: 64, type: 'png' },
   size: (assetId: string) => Promise<{ width: number; height: number; type: string } | null> = async () => ({ width: 64, height: 64, type: 'png' }),
   uploadImpl?: (file: File, context: unknown, onProgress: (fraction: number) => void, signal: AbortSignal, beforeSend: () => Promise<void>) => Promise<{ assetId: string }>): Harness {
   const factory = (uploadsModule as Record<string, unknown>).createSceneLookUploads as ((deps: unknown) => Harness['uploads']) | undefined;
@@ -85,7 +85,7 @@ function harness(session: () => SceneSession | undefined, localSize: { width: nu
   const notify = vi.fn(); const register = vi.fn(); const unregister = vi.fn(); const invalidateImages = vi.fn();
   const uploads = factory!({
     upload, notify, register, unregister, invalidateImages,
-    readLocalSize: async () => localSize,
+    readLocalSize: async () => { if (localSize instanceof Error) throw localSize; return localSize; },
     size: (_projectId: string, assetId: string) => size(assetId), session,
   });
   return { uploads, upload, notify, register, unregister, invalidateImages, finish: (id) => finish(id), fail: (error) => fail(error) };
@@ -127,12 +127,15 @@ describe('SceneLookUploads', () => {
     }
   });
 
-  it('refuses a file over the edge limit without uploading', async () => {
-    const { session } = editor();
+  it('uploads a file over the edge limit, which is shown scaled down (inner#1693 design 7)', async () => {
+    const { doc, session } = editor();
     const h = harness(() => session, { width: 9000, height: 10, type: 'png' });
-    await h.uploads.start(startFor());
-    expect(h.upload).not.toHaveBeenCalled();
-    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.importModel.limit.textureEdge' }));
+    const done = h.uploads.start(startFor());
+    await settle();
+    expect(h.upload).toHaveBeenCalledTimes(1);
+    h.finish();
+    await done;
+    expect(lookOf(doc)).toEqual({ 0: { map: UPLOADED } });
   });
 
   it('does not write when the Space is closed at completion, without creating a session', async () => {
@@ -271,5 +274,33 @@ describe('SceneLookUploads', () => {
     const page = (uploadsModule as Record<string, unknown>).pageSceneLookUploads as (() => unknown) | undefined;
     expect(page, 'pageSceneLookUploads must be exported').toBeTypeOf('function');
     expect(page!()).toBe(page!());
+  });
+});
+
+describe('reading the local file first (inner#1693 design 3.5)', () => {
+  it('tells the user a file that cannot be read, and uploads nothing', async () => {
+    const { doc, session } = editor();
+    const h = harness(() => session, Object.assign(new Error('The file changed'), { name: 'NotReadableError' }));
+    await expect(h.uploads.start(startFor())).resolves.toBeUndefined();
+    expect(h.notify).toHaveBeenCalledWith({ key: 'spaces.threeD.look.pictureReadFailed', params: { filename: 'pattern.png' }, severity: 'error' });
+    expect(h.upload).not.toHaveBeenCalled();
+    expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
+    expect(lookOf(doc)).toBeUndefined();
+  });
+
+  it('holds the Space from the moment the row shows progress', async () => {
+    const { session } = editor();
+    let read: (size: { width: number; height: number; type: string }) => void = () => undefined;
+    const factory = (uploadsModule as Record<string, unknown>).createSceneLookUploads as (deps: unknown) => Harness['uploads'];
+    const register = vi.fn(); const unregister = vi.fn();
+    const uploads = factory({ upload: vi.fn(), notify: vi.fn(), register, unregister, invalidateImages: vi.fn(),
+      readLocalSize: () => new Promise((resolve) => { read = resolve; }), size: async () => null, session: () => session });
+    const done = uploads.start(startFor());
+    expect(uploads.get(SPACE, ID, '0')).toBeDefined();
+    expect(register).toHaveBeenCalledTimes(1);
+    read({ width: 64, height: 64, type: 'gif' });
+    await done;
+    expect(unregister).toHaveBeenCalledTimes(1);
+    expect(uploads.get(SPACE, ID, '0')).toBeUndefined();
   });
 });

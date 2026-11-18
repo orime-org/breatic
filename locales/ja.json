@@ -2630,6 +2630,7 @@
         "resetPart": "このパーツをリセット",
         "imageFailed": "一部のパーツの画像を読み込めませんでした。",
         "imageOverLimit": "一部のパーツの画像がサイズ上限を超えているため表示されていません。",
+        "pictureReadFailed": "{filename} を読み込めませんでした。もう一度お試しください。",
         "objectTexturesTooLarge": "このオブジェクトの画像は合計 {actual} MiB を使用します。上限は {allowed} MiB です。小さい画像を使うか、ほかのパーツの画像を削除してください。",
         "objectGone": "画像はアップロードされましたが、オブジェクトは削除またはロックされています",
         "noLongerEditable": "画像はアップロードされましたが、この Space はもう編集できません",

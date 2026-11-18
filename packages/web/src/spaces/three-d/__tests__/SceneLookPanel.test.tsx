@@ -27,7 +27,10 @@ type SizeOf = () => Promise<{ width: number; height: number; type: string } | nu
 const sizes = vi.hoisted(() => new Map<string, SizeOf>());
 vi.mock('@web/spaces/three-d/viewport/look-texture-cache', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/spaces/three-d/viewport/look-texture-cache')>()),
-  pageLookTextureCache: () => ({ size: (assetId: string) => sizes.get(assetId)?.() ?? Promise.resolve(null) }),
+  pageLookTextureCache: () => {
+    const read = (assetId: string): ReturnType<SizeOf> => sizes.get(assetId)?.() ?? Promise.resolve(null);
+    return { read, size: (assetId: string) => read(assetId).catch(() => null) };
+  },
 }));
 const captured = vi.hoisted(() => ({ section: null as null | Record<string, unknown>, picker: null as null | Record<string, unknown> }));
 vi.mock('@web/spaces/three-d/SceneLookSection', () => ({ SceneLookSection: (props: Record<string, unknown>) => { captured.section = props; return null; } }));
@@ -67,7 +70,7 @@ function panel(): { doc: Y.Doc; session: SceneSession; rerender: () => void } {
 }
 
 /** Choose a picture for a part through the picker. */
-async function pick(part: string, assetId: string, displayName = 'pattern.png'): Promise<void> {
+async function pick(part: string, assetId: string, displayName: string | null = 'pattern.png'): Promise<void> {
   act(() => { (captured.section!.onChoosePicture as (part: string) => void)(part); });
   await act(async () => { (captured.picker!.onPick as (image: unknown) => void)({ assetId, displayName }); await Promise.resolve(); });
 }
@@ -127,5 +130,40 @@ describe('picking a Project picture for a part', () => {
     expect(captured.section!.checking).toBe(true);
     await act(async () => { releaseSecond(); await Promise.resolve(); });
     await vi.waitFor(() => expect(captured.section!.checking).toBe(false));
+  });
+});
+
+describe('telling why a Project picture was not put on', () => {
+  it('says the picture could not be read when reading it failed, and writes nothing', async () => {
+    const { doc } = panel();
+    sizes.set(NEW, async () => { throw new Error('network'); });
+    await pick('0', NEW, 'pattern.png');
+    await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(t('spaces.threeD.look.pictureReadFailed', { filename: 'pattern.png' })));
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(lookOf(doc)).toBeUndefined();
+  });
+
+  it('names a picture without a name the way the picker shows it', async () => {
+    panel();
+    sizes.set(NEW, async () => ({ width: 64, height: 64, type: 'gif' }));
+    await pick('0', NEW, null);
+    await vi.waitFor(() => expect(toast.warning).toHaveBeenCalledWith(t('canvas.upload.unsupportedType', {
+      filename: t('spaces.threeD.picker.unnamed'), kind: 'image', formats: 'PNG, JPEG, WebP' })));
+  });
+});
+
+describe('picking twice for one part', () => {
+  it('keeps the later pick when the earlier one finishes checking last', async () => {
+    const { doc } = panel();
+    let releaseFirst: () => void = () => undefined;
+    sizes.set(NEW, () => new Promise((resolve) => { releaseFirst = () => resolve({ width: 64, height: 64, type: 'png' }); }));
+    sizes.set(OTHER, async () => ({ width: 64, height: 64, type: 'png' }));
+    await pick('0', NEW);
+    await pick('0', OTHER);
+    await vi.waitFor(() => expect(lookOf(doc)).toEqual({ 0: { map: OTHER } }));
+    // The part's latest pick is done, so it offers a picture again.
+    expect(captured.section!.checking).toBe(false);
+    await act(async () => { releaseFirst(); await Promise.resolve(); await Promise.resolve(); });
+    expect(lookOf(doc)).toEqual({ 0: { map: OTHER } });
   });
 });

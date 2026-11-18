@@ -2630,6 +2630,7 @@
         "resetPart": "Reset this part",
         "imageFailed": "Some part images did not load.",
         "imageOverLimit": "Some part images are over the size limit and are not shown.",
+        "pictureReadFailed": "{filename} could not be read. Try again.",
         "objectTexturesTooLarge": "This object's images would use {actual} MiB together; the limit is {allowed} MiB. Use a smaller image or remove another part's image.",
         "objectGone": "The image was uploaded, but the object was deleted or locked",
         "noLongerEditable": "The image was uploaded, but you can no longer edit this Space",

@@ -2630,6 +2630,7 @@
         "resetPart": "이 파트 초기화",
         "imageFailed": "일부 파트의 이미지를 불러오지 못했습니다.",
         "imageOverLimit": "일부 파트의 이미지가 크기 한도를 넘어 표시되지 않습니다.",
+        "pictureReadFailed": "{filename}을(를) 읽을 수 없습니다. 다시 시도하세요.",
         "objectTexturesTooLarge": "이 오브젝트의 이미지는 합계 {actual} MiB를 사용합니다. 한도는 {allowed} MiB입니다. 더 작은 이미지를 쓰거나 다른 파트의 이미지를 제거하세요.",
         "objectGone": "이미지는 업로드되었지만 오브젝트가 삭제되었거나 잠겼습니다",
         "noLongerEditable": "이미지는 업로드되었지만 이 Space를 더 이상 편집할 수 없습니다",

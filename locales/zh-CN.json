@@ -2630,6 +2630,7 @@
         "resetPart": "恢复这个部位",
         "imageFailed": "有部位的图片没有加载出来。",
         "imageOverLimit": "有部位的图片超出了能显示的上限，没有显示。",
+        "pictureReadFailed": "无法读取 {filename}，请重试。",
         "objectTexturesTooLarge": "这个对象的图片加起来要用 {actual} MiB，上限是 {allowed} MiB。请换一张小一点的图，或先移除其他部位的图。",
         "objectGone": "图片已上传，但对象已被删除或锁定",
         "noLongerEditable": "图片已上传，但你已不能编辑这个 Space",

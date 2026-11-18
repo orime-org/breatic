@@ -111,6 +111,15 @@ export function unsupportedPictureNotice(filename: string): LookUploadNotice {
 }
 
 /**
+ * The notice for a picture whose bytes could not be read: it changed or moved, or the network failed.
+ * @param filename - The file's or the asset's name.
+ * @returns The notice.
+ */
+export function pictureReadFailedNotice(filename: string): LookUploadNotice {
+  return { key: 'spaces.threeD.look.pictureReadFailed', params: { filename }, severity: 'error' };
+}
+
+/**
  * Whether a header's type is a picture a part may use.
  * @param type - The type `image-dimensions` read.
  * @returns True for PNG, JPEG and WebP.
@@ -130,18 +139,12 @@ function mib(bytes: number, round: (value: number) => number): string {
 }
 
 /**
- * Why a picture cannot go on a part: its edge over this device's or the scene's limit, or the object's pictures over
- * the texture budget together (inner#1693 design 7).
+ * Why a picture cannot go on a part: the object's pictures over the texture budget together (inner#1693 design 7).
  * @param issue - The refusal and the object's texture total.
- * @param size - The new picture's size.
  * @param limits - The limits it was judged against.
  * @returns The notice.
  */
-export function lookLimitNotice(issue: LookLimitIssue, size: LookImageSize | { width: number; height: number }, limits: LookTextureLimits): LookUploadNotice {
-  if (issue.reason === 'edge') {
-    return { key: 'spaces.threeD.importModel.limit.textureEdge',
-      params: { actual: String(Math.max(size.width, size.height)), allowed: String(limits.maxTextureEdge) }, severity: 'warning' };
-  }
+export function lookLimitNotice(issue: LookLimitIssue, limits: LookTextureLimits): LookUploadNotice {
   return { key: 'spaces.threeD.look.objectTexturesTooLarge',
     params: { actual: mib(issue.total, Math.ceil), allowed: mib(limits.maxTextureBytes, Math.floor) }, severity: 'warning' };
 }
@@ -219,7 +222,7 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       const issue = await overLimit(input, (session ? lookOf(session, input.objectId) : undefined) ?? startLook ?? {}, 'local', local);
       if (!issue) return;
       refused = true;
-      deps.notify(lookLimitNotice(issue, local, input.limits));
+      deps.notify(lookLimitNotice(issue, input.limits));
       controller.abort();
     };
     try {
@@ -253,29 +256,28 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       // One upload per part: its row shows the progress and offers no picture choice until it ends.
       if (entries.has(key)) return;
       const operationId = crypto.randomUUID();
+      // The row shows progress and the Space stays open from the same moment (design 6.3).
       entries.set(key, { spaceId: input.spaceId, objectId: input.objectId, part: input.part, percent: 0, operationId });
+      deps.register(input.spaceId, operationId);
       changed();
-      let registered = false;
       try {
-        const local = await deps.readLocalSize(input.file);
+        let local: LookImageSize | null;
+        try {
+          local = await deps.readLocalSize(input.file);
+        } catch {
+          deps.notify(pictureReadFailedNotice(input.file.name));
+          return;
+        }
         if (!local || !isLookImageType(local.type)) {
           deps.notify(unsupportedPictureNotice(input.file.name));
           return;
         }
         const opened = deps.session(input.name);
-        const startLook = opened ? lookOf(opened, input.objectId) : undefined;
-        // The edge is judged now; the object total once the server says whether it already holds this picture.
-        const edge = await overLimit(input, startLook ?? {}, 'local', local);
-        if (edge?.reason === 'edge') {
-          deps.notify(lookLimitNotice(edge, local, input.limits));
-          return;
-        }
-        deps.register(input.spaceId, operationId);
-        registered = true;
-        await upload(input, local, opened, startLook, key);
+        // The object total is judged once the server says whether it already holds this picture.
+        await upload(input, local, opened, opened ? lookOf(opened, input.objectId) : undefined, key);
       } finally {
         if (entries.get(key)?.operationId === operationId) entries.delete(key);
-        if (registered) deps.unregister(input.spaceId, operationId);
+        deps.unregister(input.spaceId, operationId);
         changed();
       }
     },

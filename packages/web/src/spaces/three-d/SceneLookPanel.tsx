@@ -11,7 +11,7 @@ import { toast } from '@web/lib/toast';
 import { SceneImagePickerDialog } from '@web/spaces/three-d/SceneImagePickerDialog';
 import { SceneLookSection, type SceneLookGesture } from '@web/spaces/three-d/SceneLookSection';
 import { checkLookWrite } from '@web/spaces/three-d/look-texture-budget';
-import { isLookImageType, lookLimitNotice, pageSceneLookUploads, unsupportedPictureNotice, type LookUploadNotice } from '@web/spaces/three-d/scene-look-uploads';
+import { isLookImageType, lookLimitNotice, pageSceneLookUploads, pictureReadFailedNotice, unsupportedPictureNotice, type LookUploadNotice } from '@web/spaces/three-d/scene-look-uploads';
 import { takeStepKey } from '@web/spaces/three-d/slider-step-key';
 import { pageLookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
 import type { SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
@@ -52,6 +52,9 @@ function notify(notice: LookUploadNotice): void {
  * @param props - The object, its parts, the Space and the selected part.
  * @returns The section and its picker.
  */
+/** No part is being checked. */
+const NO_PARTS: ReadonlySet<string> = new Set();
+
 export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLookPanelProps): React.JSX.Element {
   const { session, object, report, projectId, spaceId, limits, mutable, selectedPart, onSelectPart } = props;
   const queryClient = useQueryClient();
@@ -59,7 +62,9 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   const textures = React.useMemo(() => pageLookTextureCache(projectId), [projectId]);
   const uploadVersion = React.useSyncExternalStore(uploads.subscribe, uploads.getVersion);
   const [pickerPart, setPickerPart] = React.useState<string | null>(null);
-  const [checking, setChecking] = React.useState<string | null>(null);
+  // Parts with a Project picture still being checked; the last pick of a part is the one written.
+  const [checking, setChecking] = React.useState<ReadonlySet<string>>(NO_PARTS);
+  const latestPick = React.useRef(new Map<string, number>());
   const look = React.useMemo(() => object.look ?? {}, [object.look]);
   const ready = typeof report === 'object' ? report : null;
   const textureLimits = React.useMemo(() => ({
@@ -103,12 +108,27 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   const pick = React.useCallback((image: SceneViewImage): void => {
     const part = pickerPart;
     if (part === null || !ready) return;
-    setChecking(part);
+    const pickNumber = (latestPick.current.get(part) ?? 0) + 1;
+    latestPick.current.set(part, pickNumber);
+    /**
+     * Whether no later pick for the part has started since this one.
+     * @returns True while this is the part's latest pick.
+     */
+    const isLatest = (): boolean => latestPick.current.get(part) === pickNumber;
+    const name = image.displayName || translate('spaces.threeD.picker.unnamed');
+    setChecking((shown) => new Set(shown).add(part));
     void (async () => {
       try {
-        const size = await textures.size(image.assetId);
+        let size: Awaited<ReturnType<typeof textures.read>>;
+        try {
+          size = await textures.read(image.assetId);
+        } catch {
+          if (isLatest()) notify(pictureReadFailedNotice(name));
+          return;
+        }
+        if (!isLatest()) return;
         if (!size || !isLookImageType(size.type)) {
-          notify(unsupportedPictureNotice(image.displayName ?? ''));
+          notify(unsupportedPictureNotice(name));
           return;
         }
         // Judged against the look as it is now: the size read above may have taken a while.
@@ -116,13 +136,20 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
         if (!current) return;
         const issue = await checkLookWrite({ ownBytes: ready.ownBytes, clampBytes: ready.clampBytes, limits: textureLimits,
           look: current.look ?? {}, part, map: image.assetId, mapSize: size, size: (assetId) => textures.size(assetId) });
+        if (!isLatest()) return;
         if (issue) {
-          notify(lookLimitNotice(issue, size, textureLimits));
+          notify(lookLimitNotice(issue, textureLimits));
           return;
         }
         session.execute({ type: 'look', id: object.id, part, set: { map: image.assetId } });
       } finally {
-        setChecking((shown) => (shown === part ? null : shown));
+        if (isLatest()) {
+          setChecking((shown) => {
+            const next = new Set(shown);
+            next.delete(part);
+            return next;
+          });
+        }
       }
     })();
   }, [pickerPart, ready, textures, textureLimits, session, object.id]);
@@ -142,7 +169,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   return <>
     <SceneLookSection objectId={object.id} parts={ready ? ready.parts : report === 'failed' ? 'failed' : 'loading'} look={look}
       selectedPart={selectedPart} mutable={mutable} onSelectPart={onSelectPart} onCommand={onCommand} onChoosePicture={setPickerPart}
-      gesture={gesture} spaceId={spaceId} uploadPercentOf={uploadPercentOf} checking={checking !== null && checking === selectedPart} pictureUrl={urlOf} />
+      gesture={gesture} spaceId={spaceId} uploadPercentOf={uploadPercentOf} checking={selectedPart !== null && checking.has(selectedPart)} pictureUrl={urlOf} />
     <SceneImagePickerDialog projectId={projectId} open={pickerPart !== null} onOpenChange={openChange} onPick={pick} onPickFile={pickFile} />
   </>;
 });
