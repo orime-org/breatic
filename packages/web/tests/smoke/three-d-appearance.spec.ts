@@ -3,7 +3,7 @@
 
 /**
  * Part appearance in a 3D Space (inner#1693): presets and colours on a part, undo, reload, picking a part in the
- * scene, copies, resets, a second member and a locked object.
+ * scene, copies, resets, the figure's parts, a Viewer and a locked object.
  */
 
 import { readFileSync } from 'node:fs';
@@ -187,13 +187,30 @@ test('a copy keeps the look and changes on its own; reset part and reset all wri
   }
 });
 
-test('a second member sees a part change at once, and a locked object keeps its part list but greys every setting', async ({ page, browser, baseURL }) => {
+test('a figure lists its three parts and one of them takes a preset', async ({ page }) => {
+  await openSmokeProject(page);
+  const id = await createSpace(page, '3d', `scene-look-figure-${Date.now()}`);
+  try {
+    await visibleSpace(page).getByRole('button', { name: 'Add', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Add figure', exact: true }).click();
+    for (const part of ['0', '1', '2']) await expect(page.getByTestId(`scene-look-part-${part}`)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('scene-look-part-3')).toHaveCount(0);
+    await page.getByTestId('scene-look-part-1').click();
+    await page.getByTestId('scene-look-preset-metal').click();
+    await expect.poll(() => committedLooks(page, id)).toEqual([{ 1: METAL }]);
+    await expect.poll(async () => Object.keys((await rendered(page))[0]?.parts ?? {}).sort()).toEqual(['0', '1', '2']);
+  } finally {
+    await deleteSpace(page, id);
+  }
+});
+
+test('a Viewer sees a part change at once and can read the parts with every setting greyed; a locked object greys them too', async ({ page, browser, baseURL }) => {
   const id = await sceneWithBox(page, 'scene-look-peer');
   const peerContext = await browser.newContext({ baseURL, storageState: stateFile('B') });
   const projectId = smokeProjectId();
   const memberId = (await dataOf<{ id: string }>(await peerContext.request.get('/api/v1/auth/me'), 'peer identity')).id;
   try {
-    const peer = await inviteMember(page, peerContext, projectId, credentialsFor('B').email, 'editor');
+    const peer = await inviteMember(page, peerContext, projectId, credentialsFor('B').email, 'viewer');
     await peer.goto(smokeProjectUrl());
     await peer.getByTestId('space-drawer-trigger').click();
     await peer.getByTestId(`space-drawer-row-${id}`).getByRole('button').first().click();
@@ -204,6 +221,15 @@ test('a second member sees a part change at once, and a locked object keeps its 
     await setPartColor(page, '#00ff00');
     await expect.poll(() => committedLooks(peer, id)).toEqual([{ 0: { color: '#00ff00' } }]);
     await expect.poll(async () => (await rendered(peer))[0].parts['0'].color).toBe('#00ff00');
+
+    // The Viewer selects the box from the object list and reads its parts; nothing can be changed.
+    const [box] = await rendered(peer);
+    await peer.getByTestId('scene-objects-trigger').click();
+    await peer.getByTestId(`scene-object-${box!.id}`).click();
+    await peer.getByTestId('scene-look-part-0').click();
+    await expect(peer.getByTestId('scene-look-part-fields')).toBeVisible();
+    await expect(peer.getByTestId('scene-look-preset-metal')).toBeDisabled();
+    await expect(peer.getByTestId('scene-look-reset-all')).toBeDisabled();
 
     await page.getByRole('button', { name: 'Lock', exact: true }).click();
     await expect(page.getByTestId('scene-look-part-0')).toBeEnabled();
