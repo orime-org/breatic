@@ -92,7 +92,7 @@ function subscription(
  * @returns 完整的答案。
  */
 function answer(over: Partial<AccountMembership> = {}): AccountMembership {
-  return {
+  const merged: AccountMembership = {
     tier: 'pro',
     limits: limits(),
     usage: { teamStudios: 1, storageBytes: 38 * GIB },
@@ -128,9 +128,11 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
       },
     ],
     subscription: null,
-    storageLimitBytes: 200 * GIB,
+    storageLimitBytes: null,
     ...over,
   };
+  // As the server answers: an ordinary tier's storage ceiling is its limits' own.
+  return 'storageLimitBytes' in over ? merged : { ...merged, storageLimitBytes: merged.limits?.storage_bytes ?? null };
 }
 
 /**

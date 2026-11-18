@@ -61,7 +61,7 @@ describe("enterprise membership unified reads", () => {
     expect(await getMembershipReadingForUser(userId)).toMatchObject({ storedTier: "enterprise", effectiveTier: "base", enterpriseState: "expired", expiresAt: timestamps.expiresAt, limits: configured, storageBytes: configured.storage_bytes, revision: 1, settlementProtected: false });
     expect(await getEnterpriseMembershipProfile(userId)).toMatchObject({ snapshot: { enterprise: { ...timestamps, entryTimezone: "UTC", revision: 1 } } });
     expect(await getHonouredTierForUser(userId)).toBe("base");
-    expect(await getMembershipForUser(userId)).toEqual({ tier: "base", limits: configured });
+    expect(await getMembershipForUser(userId)).toEqual({ tier: "base", limits: configured, storageLimitBytes: configured.storage_bytes });
     expect(await getLimitsForStudio(studioId)).toEqual(configured);
     expect(await db.transaction((tx) => lockLimitsForUser(userId, tx))).toEqual(configured);
     expect(await getStudioStorageQuota(studioId)).toEqual({ adminUserId: userId, storageBytes: configured.storage_bytes, enterprise: false });
@@ -84,7 +84,7 @@ describe("enterprise membership unified reads", () => {
   it("does not impose management mailbox validation on ordinary entitlements", async () => {
     const { userId, studioId } = await account("pro");
     await sql`update users set email=${`legacy-mailbox-${userId}`} where id=${userId}`;
-    expect(await getMembershipForUser(userId)).toEqual({ tier: "pro", limits: getMembershipLimits("pro") });
+    expect(await getMembershipForUser(userId)).toEqual({ tier: "pro", limits: getMembershipLimits("pro"), storageLimitBytes: getMembershipLimits("pro").storage_bytes });
     expect(await getLimitsForStudio(studioId)).toEqual(getMembershipLimits("pro"));
   });
 
@@ -101,7 +101,7 @@ describe("enterprise membership unified reads", () => {
     config.tiers[effectiveTier] = configured;
     try {
       expect(await getMembershipReadingForUser(userId)).toMatchObject({ storedTier, effectiveTier, enterpriseState, limits: configured, storageBytes: configured.storage_bytes, settlementProtected: effectiveTier === "self_hosted" });
-      expect(await getMembershipForUser(userId)).toEqual({ tier: effectiveTier, limits: configured });
+      expect(await getMembershipForUser(userId)).toEqual({ tier: effectiveTier, limits: configured, storageLimitBytes: configured.storage_bytes });
       expect(await getLimitsForStudio(studioId)).toEqual(configured);
       expect(await db.transaction((tx) => lockLimitsForUser(userId, tx))).toEqual(configured);
       expect(await getStudioStorageQuota(studioId)).toEqual({ adminUserId: userId, storageBytes: configured.storage_bytes, enterprise: false });
@@ -136,7 +136,7 @@ describe("enterprise membership unified reads", () => {
     expect(await getHonouredTierForUser(userId)).toBe("enterprise");
     expect(await getLimitsForStudio(studioId)).toEqual(agreed);
     expect(await db.transaction((tx) => lockLimitsForUser(userId, tx))).toEqual(agreed);
-    expect(await getMembershipForUser(userId)).toEqual({ tier: "enterprise", limits: null });
+    expect(await getMembershipForUser(userId)).toEqual({ tier: "enterprise", limits: null, storageLimitBytes: limits.storage_bytes });
     expect(await getStudioStorageQuota(studioId)).toEqual({ adminUserId: userId, storageBytes: limits.storage_bytes, enterprise: true });
   });
   it.each(["base", "self_hosted"])("restores expired %s origin", async (fallback) => {

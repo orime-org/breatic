@@ -19,7 +19,7 @@ const { envRef } = vi.hoisted(() => ({ envRef: { PAYMENT_ENABLED: true } }));
 
 vi.mock("@breatic/core", () => ({
   env: envRef,
-  getMembershipReadingForUser: vi.fn(),
+  getMembershipForUser: vi.fn(),
   getSubscriptionPlan: (tier: string, period: string) => ({
     priceCents:
       (tier === "pro" ? 1999 : 7999) * (period === "year" ? 10 : 1),
@@ -43,7 +43,7 @@ vi.mock("@server/modules/studio/studio.repo.js", () => ({
 }));
 
 import {
-  getMembershipReadingForUser,
+  getMembershipForUser,
 } from "@breatic/core";
 import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
@@ -64,7 +64,7 @@ const USER = "u-1";
 beforeEach(() => {
   vi.clearAllMocks();
   envRef.PAYMENT_ENABLED = true;
-  vi.mocked(getMembershipReadingForUser).mockResolvedValue({ effectiveTier: "pro", limits: LIMITS, storageBytes: LIMITS.storage_bytes } as unknown as Awaited<ReturnType<typeof getMembershipReadingForUser>>);
+  vi.mocked(getMembershipForUser).mockResolvedValue({ tier: "pro", limits: LIMITS, storageLimitBytes: LIMITS.storage_bytes });
   vi.mocked(readStoredSubscriptionSummary).mockResolvedValue({
     state: "active",
     tier: "pro",

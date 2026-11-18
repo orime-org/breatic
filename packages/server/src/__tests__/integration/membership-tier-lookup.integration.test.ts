@@ -374,6 +374,7 @@ describe("getMembershipForUser", () => {
     await expect(getMembershipForUser(userId)).resolves.toEqual({
       tier: "pro",
       limits: getMembershipLimits("pro"),
+      storageLimitBytes: getMembershipLimits("pro").storage_bytes,
     });
   });
 
@@ -382,6 +383,7 @@ describe("getMembershipForUser", () => {
     await expect(getMembershipForUser(userId)).resolves.toEqual({
       tier: "enterprise",
       limits: null,
+      storageLimitBytes: null,
     });
   });
 

@@ -201,6 +201,8 @@ export interface AccountMembershipReading {
   readonly tier: MembershipTier;
   /** Its seven ceilings; null for `enterprise`, whose ceilings are negotiated. */
   readonly limits: MembershipLimits | null;
+  /** Its storage ceiling in bytes: an agreement's for `enterprise`, null for one without an agreement (inner#1968). */
+  readonly storageLimitBytes: number | null;
 }
 
 /**
@@ -211,7 +213,7 @@ export interface AccountMembershipReading {
  * receives the stored negotiated limits through the quota lookups.
  * @param userId - The account.
  * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
- * @returns Its tier in force and that tier's ceilings.
+ * @returns Its tier in force, that tier's ceilings and its storage ceiling.
  * @throws {Error} if no live account has that id, or its stored tier is not
  *   one this build knows
  */
@@ -220,7 +222,11 @@ export async function getMembershipForUser(
   tx?: DbTx,
 ): Promise<AccountMembershipReading> {
   const reading = await getMembershipReadingForUser(userId, tx);
-  return { tier: reading.effectiveTier, limits: reading.effectiveTier === "enterprise" ? null : reading.limits };
+  return {
+    tier: reading.effectiveTier,
+    limits: reading.effectiveTier === "enterprise" ? null : reading.limits,
+    storageLimitBytes: reading.storageBytes,
+  };
 }
 
 /**

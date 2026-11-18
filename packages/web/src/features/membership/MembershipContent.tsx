@@ -153,6 +153,30 @@ export function MembershipContent({
     [choose],
   );
 
+  // Storage against the account's ceiling: its tier's, an agreement's, or
+  // used against no cap for an enterprise account with no agreement on file
+  // (inner#1968, design 3.6).
+  const storageRow = storageLimitBytes === null ? (
+    <div className='flex items-baseline justify-between gap-3' data-testid='quota-storage'>
+      <span className='text-sm'>{t('membership.quota.storage')}</span>
+      <span className='text-sm tabular-nums text-foreground-secondary'>
+        {t('membership.quotaUnlimited', { used: formatBytes(usage.storageBytes) })}
+      </span>
+    </div>
+  ) : (
+    <QuotaRow
+      testId='quota-storage'
+      label={t('membership.quota.storage')}
+      value={t('membership.quotaValue', {
+        used: formatBytes(usage.storageBytes),
+        limit: formatBytes(storageLimitBytes),
+      })}
+      used={usage.storageBytes}
+      limit={storageLimitBytes}
+      overLabel={t('membership.overLimitTag')}
+    />
+  );
+
   return (
     // Two rows of the panel's grid, so a fragment rather than one wrapper:
     // the current tier stays in place, and everything under it scrolls.
@@ -188,32 +212,11 @@ export function MembershipContent({
           <section className='flex flex-col gap-4'>
             <SectionHeading>{t('membership.myQuota')}</SectionHeading>
             {limits === null ? (
-            // Enterprise. Its ceilings are agreed per customer and live only in
-            // that agreement, so the panel cannot print them — which makes the
-            // address the one thing it can usefully offer.
+            // Enterprise. Its ceilings besides storage are agreed per customer
+            // and live only in that agreement, so the panel cannot print them —
+            // which makes the address the one thing it can usefully offer.
               <>
-                {/* Storage against the agreement, or used against no cap when
-                    the account has no agreement on file (inner#1968, 3.6). */}
-                {storageLimitBytes === null ? (
-                  <div className='flex items-baseline justify-between gap-3' data-testid='quota-storage'>
-                    <span className='text-sm'>{t('membership.quota.storage')}</span>
-                    <span className='text-sm tabular-nums text-foreground-secondary'>
-                      {t('membership.quotaUnlimited', { used: formatBytes(usage.storageBytes) })}
-                    </span>
-                  </div>
-                ) : (
-                  <QuotaRow
-                    testId='quota-storage'
-                    label={t('membership.quota.storage')}
-                    value={t('membership.quotaValue', {
-                      used: formatBytes(usage.storageBytes),
-                      limit: formatBytes(storageLimitBytes),
-                    })}
-                    used={usage.storageBytes}
-                    limit={storageLimitBytes}
-                    overLabel={t('membership.overLimitTag')}
-                  />
-                )}
+                {storageRow}
                 <p
                   className='text-sm text-foreground-secondary'
                   data-testid='enterprise-quota-note'
@@ -246,17 +249,7 @@ export function MembershipContent({
                     {t('membership.overLimit.teamStudios')}
                   </p>
                 ) : null}
-                <QuotaRow
-                  testId='quota-storage'
-                  label={t('membership.quota.storage')}
-                  value={t('membership.quotaValue', {
-                    used: formatBytes(usage.storageBytes),
-                    limit: formatBytes(limits.storage_bytes),
-                  })}
-                  used={usage.storageBytes}
-                  limit={limits.storage_bytes}
-                  overLabel={t('membership.overLimitTag')}
-                />
+                {storageRow}
                 {usage.storageBytes > limits.storage_bytes ? (
                   <p
                     className='text-sm text-foreground-secondary'
