@@ -273,10 +273,13 @@ export function startWorker(): void {
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
 
+  // The read side of the tasks queue: the stale-waiter sweep below and the
+  // failed-job cleanup further down look jobs up through it.
+  const tasksQueue = createQueue("tasks");
+
   // Tasks waiting for a running slot whose job was lost end as failed (inner#1968).
-  const slotWaitTasksQueue = createQueue("tasks");
   const slotWaitSweepQueue = createQueue(SLOT_WAIT_SWEEP_QUEUE);
-  const slotWaitSweep = createWorker<Record<string, never>>(SLOT_WAIT_SWEEP_QUEUE, () => sweepSlotWaiters(slotWaitTasksQueue));
+  const slotWaitSweep = createWorker<Record<string, never>>(SLOT_WAIT_SWEEP_QUEUE, () => sweepSlotWaiters(tasksQueue));
   slotWaitSweep.on("failed", (job, err) => {
     logger.error({ err, jobId: job?.id }, "slot_wait_sweep_failed");
   });
@@ -487,7 +490,6 @@ export function startWorker(): void {
   // re-fetch the job (retained by `removeOnFail` age) via a read-side Queue
   // for its data + terminal `finishedOn`. Runs once per instance (idempotent
   // #1580 #7); past that, the row waits to be judged against its budget.
-  const tasksQueue = createQueue("tasks");
   const queueEvents = createQueueEvents("tasks");
   queueEvents.on("failed", ({ jobId, failedReason }) => {
     void reclaimFailedJobById(tasksQueue, getStreamRedis(), jobId, failedReason)
