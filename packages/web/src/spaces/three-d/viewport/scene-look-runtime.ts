@@ -178,7 +178,7 @@ export class SceneLookRuntime {
   /** Check again every object whose pictures failed to load. */
   retry(): void {
     for (const [id, state] of this.objects) {
-      if ([...state.states.values()].includes('failed')) void this.checkPictures(id, state);
+      if ([...state.states.values()].includes('failed')) void this.checkPictures(id, state, true);
     }
   }
 
@@ -253,10 +253,12 @@ export class SceneLookRuntime {
 
   /**
    * Judge the object's pictures together from their headers, then hold the usable ones and drop the rest (design 5.3).
+   * A picture that failed to load stays failed until the user retries (design 6.2).
    * @param id - The object.
    * @param state - Its look state.
+   * @param retrying - Whether the user asked to load failed pictures again.
    */
-  private async checkPictures(id: string, state: ObjectLook): Promise<void> {
+  private async checkPictures(id: string, state: ObjectLook, retrying = false): Promise<void> {
     const run = ++state.run;
     const textures = this.deps.textures();
     const model = lookModelOf(state.root);
@@ -272,9 +274,15 @@ export class SceneLookRuntime {
       this.apply(id, state);
       return;
     }
-    for (const assetId of wanted) if (!state.held.has(assetId)) state.states.set(assetId, 'loading');
+    /**
+     * Whether a picture keeps its failure without a new request.
+     * @param assetId - The picture.
+     * @returns True for a failed picture outside a retry.
+     */
+    const stillFailed = (assetId: string): boolean => !retrying && state.states.get(assetId) === 'failed';
+    for (const assetId of wanted) if (!state.held.has(assetId) && !stillFailed(assetId)) state.states.set(assetId, 'loading');
     this.apply(id, state);
-    const sizes = new Map(await Promise.all(wanted.map(async (assetId) => [assetId, await textures.size(assetId)] as const)));
+    const sizes = new Map(await Promise.all(wanted.map(async (assetId) => [assetId, stillFailed(assetId) ? null : await textures.size(assetId)] as const)));
     if (run !== state.run || this.objects.get(id) !== state) return;
     const input: LookTextureInput = { ownBytes: model.ownBytes, look: state.look, sizes, limits: this.deps.limits(),
       clampBytes: Object.fromEntries([...model.table].map(([key, entry]) => [key, entry.clampBytes])) };
