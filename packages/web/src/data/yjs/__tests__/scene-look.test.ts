@@ -113,6 +113,15 @@ describe('scene look storage (inner#1693 design 4.1)', () => {
     expect(lookOf(doc)).toEqual(LOOKED.look);
   });
 
+  it.each(['look', 'pose'])('treats a record storing a whole %s under one key as invalid', (key) => {
+    const doc = sceneDoc();
+    applySceneCommand(doc, { type: 'create', objects: [BASE] }, Symbol(), true, NAME);
+    record(doc).set(key, key === 'look' ? { 0: { color: '#ff0000' } } : {});
+    const scene = readSceneDocument(doc);
+    expect(scene.objects).toHaveLength(0);
+    expect(scene.invalidObjects.map((object) => object.id)).toEqual([ID]);
+  });
+
   it('treats a record carrying a malformed look key as invalid', () => {
     const doc = sceneDoc();
     applySceneCommand(doc, { type: 'create', objects: [BASE] }, Symbol(), true, NAME);

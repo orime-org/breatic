@@ -123,11 +123,13 @@ function readEnvironment(scene: Y.Map<unknown>): SceneEnvironmentValues {
  * @param id - Stable scene object identity.
  * @param value - Stored scene value to validate.
  * @returns Validated plain object.
- * @throws {Error} When the record is not a shared map.
+ * @throws {Error} When the record is not a shared map, or stores a whole look or pose under one key.
  * @throws {z.ZodError} When the model or a stored value does not match the scene format.
  */
 function readRecord(id: string, value: unknown): SceneObject {
   if (!(value instanceof Y.Map)) throw new Error('Object must be a shared map');
+  // A look and a pose are stored only as flat keys; a whole value under one key is outside the format.
+  if (value.has('look') || value.has('pose')) throw new Error('Look and pose are stored as flat keys');
   const model = SceneObjectValuesSchema.shape.model.parse(value.get('model'));
   const stored: Record<string, unknown> = Object.fromEntries(value.entries());
   return SceneObjectSchema.parse({ ...editableDefaults(model), ...gatherSceneLook(gatherScenePose(stored)), model, id });
