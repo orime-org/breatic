@@ -10,7 +10,8 @@
     "test": "vitest run",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@breatic/core": "workspace:*",
@@ -19,7 +20,10 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@breatic/integration-tests": "workspace:*",
+    "@testcontainers/postgresql": "catalog:",
     "@types/node": "catalog:",
+    "testcontainers": "catalog:",
     "tsup": "catalog:",
     "tsx": "catalog:",
     "vitest": "catalog:"

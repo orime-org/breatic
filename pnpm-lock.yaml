@@ -706,9 +706,18 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
+      '@breatic/integration-tests':
+        specifier: workspace:*
+        version: link:../integration-tests
+      '@testcontainers/postgresql':
+        specifier: 'catalog:'
+        version: 11.14.0
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.1
+      testcontainers:
+        specifier: 'catalog:'
+        version: 11.14.0
       tsup:
         specifier: 'catalog:'
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.23.12)(typescript@5.8.3)(yaml@2.9.0)
