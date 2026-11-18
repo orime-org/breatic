@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 
-import { SCENE_FORMAT_VERSION } from '@breatic/shared';
+import { SCENE_FORMAT_VERSION, uploadableFormatList } from '@breatic/shared';
 
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
@@ -130,7 +130,7 @@ describe('SceneLookUploads', () => {
       await h.uploads.start(startFor(new File(['x'], 'clip.gif')));
       expect(h.upload).not.toHaveBeenCalled();
       expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'canvas.upload.unsupportedType',
-        params: { filename: 'clip.gif', kind: 'image', formats: 'PNG, JPEG, WebP' } }));
+        params: { filename: 'clip.gif', kind: 'image', formats: uploadableFormatList('image') } }));
     }
   });
 
@@ -242,7 +242,7 @@ describe('SceneLookUploads', () => {
     const { UploadFailedError } = await import('@web/data/upload/media-upload');
     h.fail(reason === null ? new Error('network') : new UploadFailedError(reason));
     await done;
-    expect(h.notify).toHaveBeenCalledWith({ key: 'canvas.upload.failed', params: { filename: 'pattern.png', kind: 'image', formats: 'PNG, JPEG, WebP' }, severity: 'error' });
+    expect(h.notify).toHaveBeenCalledWith({ key: 'canvas.upload.failed', params: { filename: 'pattern.png', kind: 'image', formats: uploadableFormatList('image') }, severity: 'error' });
   });
 
   it('names the picture formats when the server refuses the file type', async () => {
@@ -252,7 +252,7 @@ describe('SceneLookUploads', () => {
     await settle();
     h.fail(new (await import('@web/data/upload/media-upload')).UploadFailedError('unsupportedType'));
     await done;
-    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'canvas.upload.unsupportedType', params: { filename: 'pattern.png', kind: 'image', formats: 'PNG, JPEG, WebP' } }));
+    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'canvas.upload.unsupportedType', params: { filename: 'pattern.png', kind: 'image', formats: uploadableFormatList('image') } }));
   });
 
   it('puts the same picture already on another part on this one too, as picking it from the Project would', async () => {

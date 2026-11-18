@@ -3,7 +3,7 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 
-import { getLocale, t, type SceneLook } from '@breatic/shared';
+import { getLocale, t, uploadableFormatList, type SceneLook } from '@breatic/shared';
 
 import { projectImagesQueryKey } from '@web/data/api/scene';
 import { UploadFailedError, uploadMedia } from '@web/data/upload/media-upload';
@@ -85,16 +85,13 @@ export interface SceneLookUploads {
 }
 
 const LOOK_IMAGE_TYPES = new Set(['png', 'jpeg', 'webp']);
-/** The formats a part picture may be, as the unsupported-format notice names them. */
-const LOOK_IMAGE_FORMATS = 'PNG, JPEG, WebP';
-
 /**
  * The notice for a file that is not a picture a part may use.
  * @param filename - The file's or the asset's name.
  * @returns The notice.
  */
 export function unsupportedPictureNotice(filename: string): LookUploadNotice {
-  return { key: 'canvas.upload.unsupportedType', params: { filename, kind: 'image', formats: LOOK_IMAGE_FORMATS }, severity: 'warning' };
+  return { key: 'canvas.upload.unsupportedType', params: { filename, kind: 'image', formats: uploadableFormatList('image') }, severity: 'warning' };
 }
 
 /**
@@ -106,7 +103,7 @@ export function unsupportedPictureNotice(filename: string): LookUploadNotice {
 export function pictureUploadFailedNotice(error: unknown, filename: string): LookUploadNotice {
   const reason = error instanceof UploadFailedError ? error.reason : 'upload';
   if (reason === 'unsupportedType') return unsupportedPictureNotice(filename);
-  return { key: uploadFailureMessageKey(reason), params: { filename, kind: 'image', formats: LOOK_IMAGE_FORMATS }, severity: 'error' };
+  return { key: uploadFailureMessageKey(reason), params: { filename, kind: 'image', formats: uploadableFormatList('image') }, severity: 'error' };
 }
 
 /**

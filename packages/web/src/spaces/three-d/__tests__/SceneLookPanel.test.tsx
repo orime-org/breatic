@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 
-import { SCENE_FORMAT_VERSION, getLocale, t, type SceneObject } from '@breatic/shared';
+import { SCENE_FORMAT_VERSION, getLocale, t, type SceneObject, uploadableFormatList } from '@breatic/shared';
 
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { evictSceneSession, getSceneSession, type SceneSession } from '@web/data/yjs/scene-session';
@@ -97,7 +97,7 @@ describe('picking a Project picture for a part', () => {
     const { doc } = panel();
     sizes.set(NEW, async () => ({ width: 64, height: 64, type: 'gif' }));
     await pick('0', NEW, 'clip.gif');
-    await vi.waitFor(() => expect(toast.warning).toHaveBeenCalledWith(t('canvas.upload.unsupportedType', { filename: 'clip.gif', kind: 'image', formats: 'PNG, JPEG, WebP' })));
+    await vi.waitFor(() => expect(toast.warning).toHaveBeenCalledWith(t('canvas.upload.unsupportedType', { filename: 'clip.gif', kind: 'image', formats: uploadableFormatList('image') })));
     expect(lookOf(doc)).toBeUndefined();
   });
 
@@ -209,7 +209,7 @@ describe('telling why a Project picture was not put on', () => {
     sizes.set(NEW, async () => ({ width: 64, height: 64, type: 'gif' }));
     await pick('0', NEW, null);
     await vi.waitFor(() => expect(toast.warning).toHaveBeenCalledWith(t('canvas.upload.unsupportedType', {
-      filename: t('spaces.threeD.picker.unnamed'), kind: 'image', formats: 'PNG, JPEG, WebP' })));
+      filename: t('spaces.threeD.picker.unnamed'), kind: 'image', formats: uploadableFormatList('image') })));
   });
 });
 
