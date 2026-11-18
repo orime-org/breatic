@@ -33,7 +33,7 @@ import {
   type AgentCommandParams,
   type AgentCommandRefusal,
 } from "@breatic/shared";
-import { UNSUPPORTED_BLOCK, asCommentBody, documentPmSchema } from "@breatic/shared/document-model";
+import { UNSUPPORTED_BLOCK, appendThreadComment, documentPmSchema, startCommentThread } from "@breatic/shared/document-model";
 import type { Answer, Json } from "@collab/services/agent-commands/commands.js";
 
 /** The node type of one block, wrapping its content and any nested blocks. */
@@ -213,53 +213,6 @@ function commentText(body: unknown): string {
       Array.isArray(block.content) ? block.content.map((run: { text?: unknown }) => (typeof run.text === "string" ? run.text : "")).join("") : "",
     )
     .join("\n");
-}
-
-/**
- * Append one comment, as `YjsThreadStore` stores it (`commentToYMap`). The
- * map is attached before it is written
- * (packages/collab/AGENTS.md#attach-a-ymap-before-using-it).
- * @param comments - The thread's comments.
- * @param id - Its id.
- * @param userId - Its author.
- * @param text - Its words.
- * @param metadata - What it carries beside them.
- */
-function appendComment(comments: Y.Array<Y.Map<unknown>>, id: string, userId: string, text: string, metadata: Record<string, unknown>): void {
-  // BlockNote's `YjsThreadStore` layout; the document integration test reads it back through `YjsThreadStore.getThreads()`, so a layout change in an upgrade turns it red.
-  const now = Date.now();
-  const map = new Y.Map<unknown>();
-  comments.push([map]);
-  map.set("id", id);
-  map.set("userId", userId);
-  map.set("createdAt", now);
-  map.set("updatedAt", now);
-  map.set("body", asCommentBody(text));
-  map.set("reactionsByUser", new Y.Map());
-  map.set("metadata", metadata);
-}
-
-/**
- * Start a thread, as `YjsThreadStore` stores one (`threadToYMap`), with no comment yet.
- * @param threads - The document's threads.
- * @param id - Its id.
- * @returns Its comments, to append the first one to.
- */
-function startThread(threads: Y.Map<unknown>, id: string): Y.Array<Y.Map<unknown>> {
-  // BlockNote's `YjsThreadStore` layout; the document integration test reads it back through `YjsThreadStore.getThreads()`, so a layout change in an upgrade turns it red.
-  const now = Date.now();
-  const map = new Y.Map<unknown>();
-  threads.set(id, map);
-  map.set("id", id);
-  map.set("createdAt", now);
-  map.set("updatedAt", now);
-  const comments = new Y.Array<Y.Map<unknown>>();
-  map.set("comments", comments);
-  map.set("resolved", false);
-  map.set("resolvedUpdatedAt", undefined);
-  map.set("resolvedBy", undefined);
-  map.set("metadata", undefined);
-  return comments;
 }
 
 /**
@@ -449,7 +402,7 @@ export function commentOnDocument(ydoc: Y.Doc, params: AgentCommandParams<"comme
     const comments = thread.get("comments");
     if (!(comments instanceof Y.Array)) return refuse("invalid_command");
     if (!comments.toArray().some((c: unknown) => c instanceof Y.Map && c.get("id") === commentId)) {
-      appendComment(comments as Y.Array<Y.Map<unknown>>, commentId, command.userId, params.text, {
+      appendThreadComment(comments as Y.Array<Y.Map<unknown>>, commentId, command.userId, params.text, {
         via: command.connectionId,
         ...(answers === undefined ? {} : { answers }),
       });
@@ -473,7 +426,7 @@ export function commentOnDocument(ydoc: Y.Doc, params: AgentCommandParams<"comme
     ranges = range === "not_found" ? [] : [range];
   }
   if (ranges.length === 0) return refuse("not_found");
-  appendComment(startThread(threads, threadId), commentId, command.userId, params.text, { via: command.connectionId });
+  appendThreadComment(startCommentThread(threads, threadId), commentId, command.userId, params.text, { via: command.connectionId });
   const mark = body.doc.type.schema.marks[CommentMark.name]!.create({ threadId, orphan: false });
   const tr = new Transform(body.doc);
   for (const { from, to } of ranges) tr.addMark(from, to, mark);
