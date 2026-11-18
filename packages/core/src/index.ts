@@ -210,6 +210,7 @@ export * as assetRepo from "@core/asset/asset.repo.js";
 export { StorageKeyRetiredError, type RegisterAssetInput } from "@core/asset/asset.repo.js";
 export * as projectEditsRepo from "@core/project/project-edits.repo.js";
 export * as timelineExecutionRepo from "@core/timeline/timeline-execution.repo.js";
+export * as executionGrantRepo from "@core/timeline/execution-grant.repo.js";
 export { announceExecutionChange } from "@core/timeline/execution-change.js";
 export {
   TIMELINE_QUEUE,

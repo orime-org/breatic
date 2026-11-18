@@ -3,12 +3,14 @@
 
 /**
  * Data access for `timeline_execution_grants` (inner#1711 design §3.4): which Projects may resolve and preview what
- * an execution made. Only the server reads and writes it: acceptance grants the accepting Project, duplicating a
- * Project copies its source's grants, and the web-source and preview routes answer through them.
+ * an execution made. Acceptance grants the accepting Project, duplicating a Project copies its source's grants, the
+ * web-source and preview routes answer through them, and a change to an execution reaches the Timelines of every
+ * granted Project (#1490 design §4.7).
  */
 
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { db, timelineExecutionGrants as g, type DbTx } from "@breatic/core";
+import { db, type DbTx } from "@core/db/client.js";
+import { timelineExecutionGrants as g } from "@core/db/schema.js";
 
 /**
  * Grant an execution to a Project.

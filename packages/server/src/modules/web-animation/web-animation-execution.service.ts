@@ -24,6 +24,7 @@ import {
   budgetDeadlineFrom,
   db,
   env,
+  executionGrantRepo as grantRepo,
   getStorageConfig,
   getTimelineConfig,
   logger,
@@ -59,7 +60,6 @@ import { assertStorageAllowance } from "@server/modules/asset/storageQuota.servi
 import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import { timelineQueue } from "@server/modules/web-animation/timeline-queue.js";
-import * as grantRepo from "@server/modules/web-animation/execution-grant.repo.js";
 import * as listRepo from "@server/modules/web-animation/web-animation-list.repo.js";
 
 /** What accepting answered: the row, and whether this request created it. */
