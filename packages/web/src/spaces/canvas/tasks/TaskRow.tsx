@@ -26,6 +26,7 @@ import type { TaskRowAction } from '@web/spaces/canvas/tasks/task-row-actions';
 import { taskRowActions } from '@web/spaces/canvas/tasks/task-row-actions';
 import { taskRowKind } from '@web/spaces/canvas/tasks/task-row-kind';
 import { KindBadge } from '@web/spaces/canvas/_shared/KindBadge';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 /**
  * Used when no catalog is at hand: every model shows as its id.
@@ -145,6 +146,7 @@ export const TaskRow = React.memo(function TaskRow({
   // A person who left the project is gone from the roster while their tasks
   // remain, so an unresolved id drops the name and keeps the row.
   const starter = names?.resolve(entry.startedByUserId) ?? null;
+  const selfId = useCurrentUserStore((s) => s.user?.id);
   const status = entry.status;
   // Waiting for a free running slot (inner#1968): queued, not yet timed.
   const waiting = status === 'running' && entry.waitingSince != null;
@@ -214,7 +216,7 @@ export const TaskRow = React.memo(function TaskRow({
       {waiting ? (
         <div data-testid='task-waiting' className='flex flex-col gap-0.5 pl-5 text-2xs text-muted-foreground'>
           <span className='font-medium text-foreground-secondary'>{t('canvas.task.status.waiting')}</span>
-          <span>{waitReason(t, entry.slotWaitLimit)}</span>
+          <span>{waitReason(t, entry.slotWaitLimit, entry.startedByUserId === selfId)}</span>
         </div>
       ) : entry.status === 'running' ? (
         <div className='flex items-center gap-3 pl-5 text-2xs tabular-nums text-muted-foreground'>

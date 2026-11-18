@@ -1169,7 +1169,9 @@
       },
       "waitReason": "你同時執行的任務已達上限，前面的任務結束後自動開始。",
       "cancelFailed": "這個任務沒能取消。",
-      "waitReasonLimit": "你同時執行的任務已達上限（{limit} 個），前面的任務結束後自動開始。"
+      "waitReasonLimit": "你同時執行的任務已達上限（{limit} 個），前面的任務結束後自動開始。",
+      "waitReasonOther": "發起人同時執行的任務已達上限，等發起人前面的任務結束後自動開始。",
+      "waitReasonOtherLimit": "發起人同時執行的任務已達上限（{limit} 個），等發起人前面的任務結束後自動開始。"
     },
     "panel": {
       "hostDeletedByPeer": "協作者刪除了節點。"

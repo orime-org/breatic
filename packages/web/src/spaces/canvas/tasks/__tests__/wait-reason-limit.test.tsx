@@ -4,7 +4,9 @@
 /**
  * Where the queued tip's number comes from (inner#1968 design 21 row 22): the
  * counts' `waitingLimit`, a task row's and a Timeline execution's
- * `slotWaitLimit`. Without one the tip names no number.
+ * `slotWaitLimit`. Without one the tip names no number. A row the reader
+ * started says "you"; a row someone else started, and the counts column that
+ * may hold several people's tasks, name the person who started it.
  */
 
 import * as React from 'react';
@@ -22,11 +24,16 @@ import { CollaboratorNamesProvider } from '@web/features/collab-editor/collabora
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
 import { TimelineExecutionList } from '@web/spaces/timeline/TimelineExecutionList';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 const WITH_LIMIT = '你同时运行的任务已达上限（5 个），前面的任务结束后自动开始';
-const WITHOUT = '你同时运行的任务已达上限，前面的任务结束后自动开始';
+const OTHER_WITH_LIMIT = '发起人同时运行的任务已达上限（5 个），等发起人前面的任务结束后自动开始';
+const OTHER_WITHOUT = '发起人同时运行的任务已达上限，等发起人前面的任务结束后自动开始';
 
-beforeEach(() => setLocale('zh-CN'));
+beforeEach(() => {
+  setLocale('zh-CN');
+  useCurrentUserStore.getState().setUser({ id: 'u', name: 'u', email: 'u@x.test', personalStudio: null, membershipTier: 'base' });
+});
 afterEach(() => {
   cleanup();
   setLocale('en');
@@ -34,8 +41,8 @@ afterEach(() => {
 
 describe('the queued cell of the counts column', () => {
   it.each<[NodeTaskCounts, string]>([
-    [{ running: 2, waiting: 1, waitingLimit: 5, done: 0, failed: 0, expired: 0 }, WITH_LIMIT],
-    [{ running: 2, waiting: 1, done: 0, failed: 0, expired: 0 }, WITHOUT],
+    [{ running: 2, waiting: 1, waitingLimit: 5, done: 0, failed: 0, expired: 0 }, OTHER_WITH_LIMIT],
+    [{ running: 2, waiting: 1, done: 0, failed: 0, expired: 0 }, OTHER_WITHOUT],
   ])('says why with the limit the counts carry: %o', async (counts, said) => {
     render(<TooltipProvider><TaskCountColumn counts={counts} endedShown openFor={null} onOpen={vi.fn()} /></TooltipProvider>);
     await userEvent.hover(screen.getByTestId('task-count-waiting'));
@@ -44,10 +51,10 @@ describe('the queued cell of the counts column', () => {
 });
 
 describe('a waiting row of the task list', () => {
-  it('says why with the limit its task waits under', () => {
+  it.each([['u', WITH_LIMIT], ['someone-else', OTHER_WITH_LIMIT]])('says why with the limit its task waits under, for a row started by %s', (startedByUserId, said) => {
     const entry = {
       id: 't', projectId: 'p', spaceId: 's', nodeId: 'n', kind: 'generation', action: 'generate', status: 'running',
-      startedByUserId: 'u', startedAt: '2026-11-15T10:00:00.000Z', settledAt: null, budgetMs: 7_200_000, label: 'm',
+      startedByUserId, startedAt: '2026-11-15T10:00:00.000Z', settledAt: null, budgetMs: 7_200_000, label: 'm',
       errorMessage: null, nodeHistoryId: null, content: null, coverUrl: null, mediaWidth: null, mediaHeight: null,
       duration: null, mimeType: null, size: null, waitingSince: '2026-11-15T10:00:00.000Z', slotWaitLimit: 5,
     } as NodeTaskEntry;
@@ -59,7 +66,7 @@ describe('a waiting row of the task list', () => {
         </CollaboratorNamesProvider>
       </TooltipProvider>,
     );
-    expect(screen.getByTestId('node-task-row')).toHaveTextContent(WITH_LIMIT);
+    expect(screen.getByTestId('node-task-row')).toHaveTextContent(said);
   });
 });
 

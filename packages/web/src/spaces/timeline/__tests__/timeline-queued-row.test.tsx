@@ -17,10 +17,15 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import { setLocale, type TimelineExecutionRow } from '@breatic/shared';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { TimelineExecutionList } from '@web/spaces/timeline/TimelineExecutionList';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 const ID = '90000000-0000-4000-8000-0000000000q1';
 
-beforeEach(() => setLocale('zh-CN'));
+beforeEach(() => {
+  setLocale('zh-CN');
+  // The reader started the execution, so its reason says "you".
+  useCurrentUserStore.getState().setUser({ id: 'u', name: 'u', email: 'u@x.test', personalStudio: null, membershipTier: 'base' });
+});
 afterEach(() => {
   cleanup();
   setLocale('en');

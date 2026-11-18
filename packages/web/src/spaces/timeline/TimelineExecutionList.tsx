@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tool
 import { useTranslation } from '@web/i18n/use-translation';
 import { waitReason } from '@web/spaces/canvas/tasks/wait-reason';
 import { cn } from '@web/lib/utils';
+import { useCurrentUserStore } from '@web/stores/current-user';
 import { useRunning } from '@web/stores/task-actions-in-flight';
 import { WEB_ANIMATION_ENGINE_NAMES } from '@web/spaces/timeline/TimelineWebAnimationDialog';
 import { TimelineWebResultPreview } from '@web/spaces/timeline/TimelineWebResultPreview';
@@ -108,6 +109,7 @@ const ExecutionRow = React.memo(function ExecutionRow({ projectId, row, open, re
   const unfinished = !timelineExecutionEnded(row.status);
   // Waiting for a free running slot (inner#1968): queued, nothing working yet.
   const waiting = row.status === 'queued' && row.slotWaitSince != null;
+  const selfId = useCurrentUserStore((s) => s.user?.id);
   const cancelling = useRunning(timelineCancelIntent(row.id)) !== undefined;
   const toggle = React.useCallback((): void => onToggle(row.id), [onToggle, row.id]);
   const cancel = React.useCallback((): void => onCancel(row), [onCancel, row]);
@@ -141,7 +143,7 @@ const ExecutionRow = React.memo(function ExecutionRow({ projectId, row, open, re
       </span>
     </div>
     {open && <div data-testid={`timeline-execution-detail-${row.id}`} className='flex flex-col gap-3 px-3 pb-3 text-xs'>
-      {waiting && <p className='text-pretty text-muted-foreground'>{waitReason(t, row.slotWaitLimit)}</p>}
+      {waiting && <p className='text-pretty text-muted-foreground'>{waitReason(t, row.slotWaitLimit, row.actorUserId === selfId)}</p>}
       <ol className='flex flex-col gap-1'>
         {steps.map((key, index) => {
           const mark = stepMark(row, index);

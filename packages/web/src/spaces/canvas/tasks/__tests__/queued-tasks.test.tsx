@@ -7,7 +7,7 @@
  *
  * The counts carry `waiting`, a subset of `running`. The column draws
  * "running − waiting" as running and `waiting` as its own cell, whose tip says
- * how many wait and why: "你同时运行的任务已达上限（{limit} 个），前面的任务结束后自动开始".
+ * how many wait and why: "发起人同时运行的任务已达上限（{limit} 个），等发起人前面的任务结束后自动开始".
  * A waiting row of the task list says "排队中", shows no running time and
  * offers "取消". A node whose only task waits is still busy: it cannot be
  * deleted or filled by a template.
@@ -37,7 +37,7 @@ import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
 import { standsEmpty } from '@web/spaces/canvas/use-node-creation';
 
-const WAIT_TIP = /你同时运行的任务已达上限（\d+ 个），前面的任务结束后自动开始/;
+const WAIT_TIP = /发起人同时运行的任务已达上限（\d+ 个），等发起人前面的任务结束后自动开始/;
 const OPENED = '2026-11-15T10:00:00.000Z';
 const NOW = Date.parse(OPENED) + 10 * 60 * 1000;
 

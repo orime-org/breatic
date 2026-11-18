@@ -127,7 +127,7 @@ function TaskCount({
       </TooltipTrigger>
       <TooltipContent side='right'>
         {tip}
-        {status === 'waiting' ? <span className='block'>{waitReason(t, waitingLimit)}</span> : null}
+        {status === 'waiting' ? <span className='block'>{waitReason(t, waitingLimit, false)}</span> : null}
       </TooltipContent>
     </Tooltip>
   );
