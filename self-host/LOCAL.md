@@ -382,6 +382,8 @@ Repeat section 6. If rollback requires database recovery, stop the application a
 | Image missing or no matching platform | Confirm both tags exist and support the host CPU; do not mix releases or assume an unpublished architecture is supported |
 | Web fails or returns 502 | Read `docker compose logs --tail=100 web server collab`; check that the API service is `server` and the image matches the checked-out source version |
 | Migration exits nonzero | Read migration logs; check both databases, credentials, versions and migration files; do not bypass it |
+| Migration stops with `Studio transfers still accepting` | Start the previous release's `server` until it finishes those transfers (it checks every minute), stop it again and rerun the upgrade |
+| `0127_remove_regions` fails adding a foreign key | The database once ran as a global region beside other regions; delete the rows that name Studios, Projects or users held only in those regions, then rerun the upgrade |
 | Works locally but not from another device | Check the host IP, `WEB_BIND_ADDRESS`, firewall, host sleep and client certificate trust |
 | HTTPS login loops | Use a trusted certificate, `ENV=prod`, an empty `COOKIE_DOMAIN` and one consistent address |
 | Upload returns 401 | Match the application and Cloudflare shared secrets, then recreate application containers |
