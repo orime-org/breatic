@@ -138,6 +138,12 @@ vi.mock("@server/modules", async (importOriginal) => {
       await gate.credits?.(n);
       return actual.precheckCredits(...args);
     },
+    // A send's own balance check, counted with the others.
+    precheckAgentTurn: async (...args: Parameters<typeof actual.precheckAgentTurn>) => {
+      const n = gate.creditCalls++;
+      await gate.credits?.(n);
+      return actual.precheckAgentTurn(...args);
+    },
   };
 });
 
