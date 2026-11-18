@@ -878,16 +878,16 @@ describe("a run with describe steps: every billed answer reaches the caller once
         const provider = createProvider({ config: config(), keyOf: (name) => ({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" })[name], llmMaxRetries: 1, cleanText: (t) => t });
         const r = createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 });
         const reached: Cost[] = [];
-        let answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: Array.from({ length: images }, () => imageUrl) } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {}, ...sets } as never);
+        let answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: Array.from({ length: images }, () => imageUrl) } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {}, ...sets });
         let ended = false;
         for (let turn = 0; turn < 24 && !ended && (answer.state === "send" || answer.state === "running"); turn++) {
           const ticket = stored((answer as { ticket: MediaTicket }).ticket);
           if (answer.state === "running") {
-            answer = await r.poll(ticket, { ...live(), ...sets } as never);
+            answer = await r.poll(ticket, { ...live(), ...sets });
             continue;
           }
           try {
-            answer = await r.send(ticket, { deadlineAt: Date.now() + 600, ...sets } as never);
+            answer = await r.send(ticket, { deadlineAt: Date.now() + 600, ...sets });
           } catch (error) {
             // SendNotAccepted leaves the ticket to send again; any other throw ends the task.
             reached.push(...costsOf(error));

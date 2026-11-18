@@ -55,11 +55,11 @@ CREATE UNIQUE INDEX account_model_upstreams_live_key ON account_model_upstreams 
 
 -- Which account key row a run used; null is the deployment's keys. A key row
 -- is retired, never removed, so the reference keeps naming its upstream.
-ALTER TABLE tasks ADD COLUMN key_id uuid REFERENCES account_provider_keys (id) ON DELETE RESTRICT;
+ALTER TABLE tasks ADD COLUMN key_id uuid CONSTRAINT tasks_key_id_fk REFERENCES account_provider_keys (id) ON DELETE RESTRICT;
 --> statement-breakpoint
-ALTER TABLE tasks ADD COLUMN llm_key_id uuid REFERENCES account_provider_keys (id) ON DELETE RESTRICT;
+ALTER TABLE tasks ADD COLUMN llm_key_id uuid CONSTRAINT tasks_llm_key_id_fk REFERENCES account_provider_keys (id) ON DELETE RESTRICT;
 --> statement-breakpoint
-ALTER TABLE timeline_executions ADD COLUMN llm_key_id uuid REFERENCES account_provider_keys (id) ON DELETE RESTRICT;
+ALTER TABLE timeline_executions ADD COLUMN llm_key_id uuid CONSTRAINT timeline_executions_llm_key_id_fk REFERENCES account_provider_keys (id) ON DELETE RESTRICT;
 --> statement-breakpoint
 -- The upstream a failure of the payer's own key names, so the page can say
 -- whose key failed where; null for any other failure.
@@ -68,7 +68,7 @@ ALTER TABLE timeline_executions ADD COLUMN failure_upstream text;
 -- Why that upstream refused the payer's own key (account_key_failed).
 ALTER TABLE timeline_executions ADD COLUMN failure_key_reason text;
 --> statement-breakpoint
-ALTER TABLE agent_usage_records ADD COLUMN key_id uuid REFERENCES account_provider_keys (id) ON DELETE RESTRICT;
+ALTER TABLE agent_usage_records ADD COLUMN key_id uuid CONSTRAINT agent_usage_records_key_id_fk REFERENCES account_provider_keys (id) ON DELETE RESTRICT;
 --> statement-breakpoint
 
 -- A clone lives on the upstream account whose key made it: 'deployment' for

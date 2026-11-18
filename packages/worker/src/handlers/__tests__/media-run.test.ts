@@ -437,8 +437,8 @@ describe("how a run ends", () => {
 
     await runMedia(run, deps);
 
-    expect(recorded).toEqual([["studio-1", "fal", "voice", "sha-a", "fv-1"]]);
-    expect(retired).toEqual([["studio-1", "wavespeed", "voice", "v-1"]]);
+    expect(recorded).toEqual([["studio-1", "fal", "voice", "sha-a", "fv-1", "deployment"]]);
+    expect(retired).toEqual([["studio-1", "wavespeed", "voice", "v-1", "deployment"]]);
     expect(logger.warn).toHaveBeenCalledWith({ taskId: "task-1", to: "fal" }, "upstream_switched");
   });
 
