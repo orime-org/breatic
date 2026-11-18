@@ -899,7 +899,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @throws {AccountKeyFailure} When the description ran on an account's key and the key or its upstream failed.
    * @throws {Error} When the caller handed another owner's LLM keys than the step was planned on.
    */
-  const describe = async (ticket: Ticket, index: number, bounds: CallBounds): Promise<MediaAnswer> => {
+  const describe = async (ticket: Ticket, index: number, bounds: SendOptions): Promise<MediaAnswer> => {
     const llmKeys = recordedKeys(ticket.llmKeysOwner, bounds.llmKeys, deploymentKeys, `description step of ${ticket.model}`);
     const paid = paidInRun(ticket, "llm");
     const step = ticket.steps[index]!;
@@ -948,6 +948,13 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         return failed({ ...ticket, costs: [...ticket.costs, ...error.costs.map(paid)] }, error);
       }
       if (cutByDeadline(error)) throw new DeadlinePassed(bounds.deadlineAt, error);
+      // On an account's LLM keys, as for a media submit: a lasting failure of the key, or any on the caller's last
+      // try, fails the run; a passing one (429, the upstream unreachable or 5xx) has the caller retry the same key.
+      if (error instanceof AccountKeyFailure) {
+        const lasting = error.kind === "account_key_missing" || (error.kind === "account_key_failed" && error.reason !== "rate_limited");
+        if (lasting || bounds.final === true) return failed({ ...ticket, costs: [...ticket.costs, ...costsOf(error).map(paid)] }, error);
+        throw new SendNotAccepted(ticket.upstream, error);
+      }
       // UnderstandInterrupted and anything else go as they are: costsOf reads what they carry.
       throw error;
     }

@@ -393,6 +393,19 @@ describe("a failure of an account's key (critical path)", () => {
     expect(deploymentKeys).not.toHaveBeenCalled();
   });
 
+  it("retries a 503 in the description step on the account's LLM key, and on the caller's last try fails it as upstream_unavailable", async () => {
+    const { runner } = started();
+    wavespeedServes();
+    or.answer(() => ({ status: 503, body: { error: { message: "busy" } } }));
+    const keys = accountKeys({ wavespeed: "acct-ws" });
+    const llmKeys = accountKeys({ openrouter: "acct-or" });
+    const planned = expectState(await runner.plan("kling-elements", { prompt: "{{ref:elements:1}} walks", params: { elements: [imageUrl] } }, { mode: "default" }, planOptions(keys, llmKeys) as never), "send");
+    await expect(runner.send(stored(planned.ticket), { ...live(), keys, llmKeys })).rejects.toBeInstanceOf(SendNotAccepted);
+    const last = await runner.send(stored(planned.ticket), { ...live(), keys, llmKeys, final: true });
+    expect(keyFailureOf(last)).toMatchObject({ kind: "upstream_unavailable", upstream: "openrouter" });
+    expect(new Set(auths(or))).toEqual(new Set(["Bearer acct-or"]));
+  });
+
   it("fails an upstream it cannot connect to as upstream_unavailable on the caller's last try, naming it", async () => {
     const closed = await fakeUpstream();
     const url = closed.url;
