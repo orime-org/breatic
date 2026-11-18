@@ -19,7 +19,7 @@
  * the server cannot see — whatever is on their screen, "clear this" means
  * clear it.
  *
- * Every answer carries the node's four counts, freshly recomputed. That is
+ * Every answer carries the node's counts, freshly recomputed. That is
  * the whole of what the canvas document holds about tasks, so the caller
  * always has what the next event needs.
  */
@@ -256,7 +256,7 @@ export async function findByStorageKey(
 }
 
 /**
- * Read the four numbers the node's corner shows.
+ * Read the counts the node's corner shows.
  * @param opts - Project and node.
  * @param opts.projectId - Owning project.
  * @param opts.nodeId - The node.

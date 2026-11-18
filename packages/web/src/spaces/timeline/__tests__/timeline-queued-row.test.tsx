@@ -23,7 +23,7 @@ const ID = '90000000-0000-4000-8000-0000000000q1';
 
 beforeEach(() => {
   setLocale('zh-CN');
-  // The reader started the execution, so its reason says "you".
+  // The user started the execution, so its reason says "you".
   useCurrentUserStore.getState().setUser({ id: 'u', name: 'u', email: 'u@x.test', personalStudio: null, membershipTier: 'base' });
 });
 afterEach(() => {

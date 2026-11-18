@@ -366,13 +366,13 @@ export const canvasApi = {
   },
 
   /**
-   * List the tasks behind a node's four counts (#186).
+   * List the tasks behind a node's task counts (#186).
    *
    * The document carries the numbers; this carries the rows they were counted
    * from, and only when the user opens the list. Each row already holds what
    * that task landed on the node, so "replace" needs no second request.
    *
-   * Asking also republishes the node's four numbers from the rows the server
+   * Asking also republishes the node's counts from the rows the server
    * just read (design §4.6.7). The two are not kept in lock step, and this is
    * the way back for a node whose count says something the table no longer
    * holds — which is why the space travels along: the counts are published to

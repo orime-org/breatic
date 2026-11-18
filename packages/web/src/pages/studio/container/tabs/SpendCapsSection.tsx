@@ -207,7 +207,7 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
   }, [slug, queryClient, queryKey, saveFailed]);
 
   if (view === undefined) {
-    // A personal Studio (404) or a reader who is not its admin (403) has no such section; any other failure says so.
+    // A personal Studio (404) or a user who is not its admin (403) has no such section; any other failure says so.
     const absent = query.error instanceof ApiException && (query.error.status === 403 || query.error.status === 404);
     if (!query.isError || absent) return null;
     return (

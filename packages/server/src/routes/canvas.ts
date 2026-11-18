@@ -695,15 +695,15 @@ canvas.get(
 );
 
 /**
- * `GET /canvas/nodes/:nodeId/tasks` — the rows behind a node's four counts.
+ * `GET /canvas/nodes/:nodeId/tasks` — the rows behind a node's task counts.
  *
- * The canvas document carries four numbers (#186 design §3.3); the detail
+ * The canvas document carries only the counts (#186 design §3.3); the detail
  * comes from here, and only when the user opens the panel. Same cross-tenant
  * guard as the history endpoint above: the rows name who started each task
  * and why one failed.
  *
  * Opening the list also republishes the node's counts (design §4.6.7). The
- * four numbers on the node and the rows in this table are not kept in lock
+ * counts on the node and the rows in this table are not kept in lock
  * step — a dropped `node-task:counts` leaves the node showing a number the
  * table no longer holds, and a node that still reads as running cannot be
  * deleted. This is the way back: the user who noticed asks for the truth,

@@ -16,7 +16,7 @@ import { db, type DbTx } from "@breatic/core";
 import { nodeHistory, nodeTasks, tasks } from "@breatic/core";
 import type { NodeTaskAction, SceneGenerationOrigin, SceneTaskNotice } from "@breatic/shared";
 
-/** The four states a task can be in, and the four numbers the node shows. */
+/** The four states a task can be in. */
 export type NodeTaskStatus = "running" | "done" | "failed" | "expired";
 
 /** What the node's corner shows: one number per state, and how many of the running wait for a slot. */
@@ -391,7 +391,7 @@ export async function findByTaskAndNode(
  * @param projectId - Owning project.
  * @param nodeId - The node.
  * @param tx - Optional transaction reading its own newly opened row.
- * @returns The four counts, zeros included.
+ * @returns The counts, zeros included.
  */
 export async function countsFor(
   projectId: string,

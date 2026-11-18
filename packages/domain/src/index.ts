@@ -214,7 +214,7 @@ export { typeFromAddress } from "@domain/understand/fetch-media.js";
 export type { VoiceSampleConfig } from "@domain/model-catalog/voice-sample-config.js";
 export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-catalog.js";
 
-// ── Node tasks (one row per task on a node; the four counts the node shows) ──
+// ── Node tasks (one row per task on a node; the counts the node shows) ──
 export * as nodeTaskService from "@domain/node-task/node-task.service.js";
 export * as sceneTaskService from "@domain/node-task/scene-task.service.js";
 export type { SceneTaskRow } from "@domain/node-task/node-task.repo.js";

@@ -13,11 +13,10 @@
  * ConfiguredMembershipTier values whose limits belong in the YAML file.
  *
  * Lives in core rather than beside the other business limits in server,
- * because two services need it: server enforces five of the ceilings (storage
- * among them since #89) and collab enforces the concurrency one. Worker
- * enforces none — a generation that has already started is never re-checked,
- * so every ceiling is read before the work is queued. Collab may not import
- * server.
+ * because all three services read it: server enforces the ceilings checked
+ * when work is asked for (storage among them since #89), collab enforces the
+ * concurrency one, and worker enforces the running-task limit when it picks a
+ * task up (inner#1968). Collab may not import server.
  *
  * Unlike the sibling loaders in this directory, **no field has a default**. A
  * quota that silently falls back to a number we invented would leave the

@@ -4,8 +4,10 @@
 /**
  * Apply a task-counts event to a canvas document (#186, design §3.4).
  *
- * The document holds four numbers about tasks and nothing else, so the event
- * carries all four, recounted on the server after every state change. Collab
+ * The document holds the node's task counts and nothing else about tasks (one
+ * per state, how many of the running wait for a free slot and the limit they
+ * wait under), so the event carries all of them, recounted on the server after
+ * every state change. Collab
  * writes what it is told, but only when the event is newer than what the node
  * holds: the result version sits in the node, the counts version in DB3
  * (inner#1497). Counts and result are versioned apart: an event older than
@@ -48,7 +50,7 @@ export const TASK_RESULT_EVENT_ID_KEY = "taskResultEventId";
  * @param doc - The canvas document.
  * @param event - What the server recounted.
  * @param event.nodeId - The node these counts belong to.
- * @param event.counts - All four, freshly counted from the table.
+ * @param event.counts - All of them, freshly counted from the table.
  * @param event.result - The content fields, present only on the transition
  *   that reached `done`.
  * @param at - Versions.

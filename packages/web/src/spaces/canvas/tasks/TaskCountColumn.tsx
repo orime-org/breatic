@@ -12,7 +12,7 @@
  * A state this node has nothing in draws nothing, and a node with no task at
  * all draws no column: zero is not a value this column renders, it is the
  * absence of that count (user 2026-09-06). Most nodes on a canvas have never
- * been uploaded to, and four dimmed zeroes on each of them is the loudest
+ * been uploaded to, and a column of dimmed zeroes on each of them is the loudest
  * thing on the board while saying nothing. The counts that are there keep
  * their lifecycle order, so the column reads the same way every time.
  *
@@ -112,7 +112,7 @@ function TaskCount({
             'flex items-center justify-center rounded-chrome p-1.5',
             // The open cell keeps the fill its neighbours have, and the coloured
             // rim is what says it is open: a darker fill made the cell the
-            // user had picked read as the least present of the four. The base
+            // user had picked read as the least present of the column. The base
             // fill is repeated under `hover-enabled:` so this one does not take
             // the variant's `hover-enabled:bg-accent` like any other cell — the
             // two share a modifier, so the merge keeps only this one.

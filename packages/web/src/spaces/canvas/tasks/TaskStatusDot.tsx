@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The mark saying which of the four states a task is in (#186).
+ * The mark saying which state a task is in (#186), or that it waits for a
+ * free running slot (inner#1968).
  *
  * Each state gets its own shape as well as its own colour. Colour alone did
  * not carry it: dark theme measures failed at rgb(255,149,146) against
@@ -10,7 +11,7 @@
  * and the rest of the difference in blue, the channel the eye weighs least.
  * At the size this mark is drawn the two read as one thing (user 2026-09-06).
  * Shape separates them, and it is also what keeps colour from being the only
- * carrier for a user who does not see the four apart (WCAG 1.4.1).
+ * carrier for a user who does not see them apart (WCAG 1.4.1).
  *
  * The state's name stays in the accessible tree, so a user landing on a row
  * rather than on the panel's heading still hears which list they are in.
