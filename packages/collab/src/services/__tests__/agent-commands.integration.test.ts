@@ -13,9 +13,21 @@ import { describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { sql as dsql } from "drizzle-orm";
 
-import { agentAccessService, db, getMcpConfig } from "@breatic/core";
+import { agentAccessService, db, env, getMcpConfig, getStreamRedis } from "@breatic/core";
 import * as Y from "yjs";
-import { agentPresenceKey, agentPresenceRecordSchema, callScopedId, mcpCommandStreamKey, mcpDoneChannel, mcpReplyKey, projectMetaDocName } from "@breatic/shared";
+import {
+  agentPresenceKey,
+  agentPresenceRecordSchema,
+  callScopedId,
+  mcpCaptureRequestKey,
+  mcpCaptureRequestSchema,
+  mcpCommandStreamKey,
+  mcpDoneChannel,
+  mcpReplyKey,
+  projectMetaDocName,
+  viewCaptureRequestedChannel,
+} from "@breatic/shared";
+import { markOnline } from "@collab/hooks/presence.js";
 import { getCollabConfig } from "@collab/config.js";
 import {
   call,
@@ -293,3 +305,57 @@ describe("presence (§19.2)", () => {
     expect(await agentPresence(outsider)).toBeUndefined();
   });
 });
+
+describe("view_user_screen (§19.1)", () => {
+  /**
+   * Mark the owner online in the project's meta document, as a browser connecting does.
+   * @param world - Whose project.
+   */
+  async function ownerOnline(world: World): Promise<void> {
+    const conn = await harness.instanceA.openDirectConnection(projectMetaDocName(world.projectId), {});
+    try {
+      await conn.transact((meta) => markOnline({ document: meta, userId: world.userId, now: Date.now() }));
+    } finally {
+      await conn.disconnect();
+    }
+  }
+
+  it("answers not watching at once when the owner has the project open nowhere", async () => {
+    const world = await seedWorld();
+    consumeOn(world, harness.instanceA);
+    expect(await call(world, "view_user_screen", {})).toMatchObject({ status: "done", result: { watching: false } });
+  });
+
+  it("asks the owner's browser for a capture, and answers not watching once view_capture.timeout_ms passes with no upload", async () => {
+    const world = await seedWorld();
+    await ownerOnline(world);
+    const subscriber = getStreamRedis().duplicate();
+    const heard: Array<Record<string, unknown>> = [];
+    subscriber.on("message", (_channel: string, message: string) => heard.push(JSON.parse(message) as Record<string, unknown>));
+    await subscriber.subscribe(viewCaptureRequestedChannel(env.REDIS_KEY_PREFIX, world.projectId));
+    try {
+      consumeOn(world, harness.instanceA);
+      const command = await send(world, "view_user_screen", {});
+      await waitUntil(() => heard.length > 0);
+      const requestId = heard[0]!.requestId as string;
+      expect(heard[0]).toMatchObject({ type: "project-view-capture:requested", projectId: world.projectId, userId: world.userId, requestId });
+      expect(mcpCaptureRequestSchema.parse(JSON.parse((await harness.mcp.get(mcpCaptureRequestKey(world.prefix, requestId)))!))).toEqual({ userId: world.userId, callId: command.callId });
+      expect(await harness.mcp.get(mcpReplyKey(world.prefix, command.callId))).toBeNull();
+      expect(await replyOf(world, command.callId, getMcpConfig().view_capture.timeout_ms + 3000)).toMatchObject({ status: "done", result: { watching: false } });
+    } finally {
+      await subscriber.quit();
+    }
+  }, 30_000);
+});
+
+/**
+ * Wait until a check holds.
+ * @param check - The check.
+ */
+async function waitUntil(check: () => boolean): Promise<void> {
+  const deadline = Date.now() + 5000;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error("timed out");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
