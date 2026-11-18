@@ -332,6 +332,23 @@ describe("E-09 payments off", () => {
     expect(await reserve(a, a.userId, 1)).toBe("ok");
     expect(await outcome(precheckCredits(a.projectId, a.userId, SMALLEST_CREDIT))).toBe("ok");
   });
+
+  // A limit nothing judges is a setting with no effect, so a deployment that
+  // charges nothing has no spend-limit surface, as it has no subscription one.
+  it("answers 404 on every spend-limit route, so the Studio's credits tab shows no spend-limit section", async () => {
+    const a = await seedAccount(sql);
+    const y = await seedMember(sql, a);
+    const slug = slugOf(a);
+    const answers = [
+      await request(app, a.cookie, "GET", `/studio/${slug}/spend-limits`, undefined),
+      await request(app, a.cookie, "PUT", `/studio/${slug}/spend-limits`, { memberDefault: 1, studioMonthly: null }),
+      await request(app, a.cookie, "PUT", `/studio/${slug}/members/${y.userId}/spend-limit`, { monthlyCredits: 0 }),
+      await request(app, a.cookie, "DELETE", `/studio/${slug}/members/${y.userId}/spend-limit`, undefined),
+    ];
+    expect(answers.map((r) => r.status)).toEqual([404, 404, 404, 404]);
+    const [stored] = await sql<{ n: number }[]>`select count(*)::int as n from studio_spend_limits where studio_id = ${a.studioId}`;
+    expect(stored!.n).toBe(0);
+  });
 });
 
 describe("H counting what was spent this month", () => {
