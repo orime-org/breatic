@@ -63,6 +63,7 @@ import {
 import { commandSpec, type Answer } from "@collab/services/agent-commands/commands.js";
 import { measure, readDocSizeRecord } from "@collab/services/document-size.js";
 import { getCollabConfig } from "@collab/config.js";
+import { markAgentActive } from "@collab/hooks/presence.js";
 import { sizeRefusalOf, type SpaceWriteKind } from "@breatic/shared/canvas-model";
 
 const logger = createLogger("agent-commands");
@@ -278,6 +279,7 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
         return { refused: { status: "rejected", reason: "schema_mismatch" } };
       }
     }
+    if (!spec.counted) return { role };
     const verdict = await checkRateLimit(mcp, [
       {
         key: `mcp:rate:${command.userId}:${studioId}`,
@@ -286,6 +288,34 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
       },
     ]);
     return verdict.allowed ? { role } : { refused: { status: "rejected", reason: "rate_limited" } };
+  }
+
+  /**
+   * Show the agent in the Project after a command it ran (§19.2): online, in
+   * the command's Space, on the nodes or blocks the command named. A failure
+   * is logged and does not fail the command, whose answer is already given.
+   * @param item - The command that ran.
+   * @param answer - Its answer, for the ids a create made.
+   */
+  async function recordPresence(item: Item, answer: Answer): Promise<void> {
+    const { userId, connectionId, projectId, spaceId, callId } = item.command;
+    try {
+      const focus = commandSpec(item.type).focus(item.params, answer);
+      const connection = await hocuspocus.openDirectConnection(projectMetaDocName(projectId), {
+        context: { user: { id: userId }, source: SOURCE },
+      });
+      try {
+        await connection.transact((meta) => markAgentActive({ document: meta, userId, connectionId, spaceId, focus, now: Date.now() }));
+      } finally {
+        // Not awaited, as in `readDoc`: the unload behind it waits about a
+        // second for peers, and the record is already in the document.
+        void connection.disconnect().catch((err: unknown) => {
+          logger.warn({ err, projectId }, "agent_presence_disconnect_failed");
+        });
+      }
+    } catch (err) {
+      logger.error({ err, ctx: { operation: "record_agent_presence", callId, type: item.type, userId, projectId } }, "agent_presence_write_failed");
+    }
   }
 
   /**
@@ -311,6 +341,7 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
         spec.run(doc, item.params, item.command, verdict),
       );
       await reply(item.command.callId, answer, item);
+      await recordPresence(item, answer);
       return "done";
     } catch (err) {
       logger.error({ err, ctx: { callId: item.command.callId, type: item.type, projectId: item.command.projectId } }, "agent_command_failed");
@@ -342,6 +373,8 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
    */
   async function runWrites(docName: string, items: Item[], stopping: () => boolean): Promise<Map<string, EntryOutcome>> {
     const outcomes = new Map<string, EntryOutcome>();
+    // The commands that ran, as opposed to refused or past their deadline.
+    const ran = new Set<string>();
     const written = await lease.write(docName, stopping, async (connection, signal) => {
       const answers = new Map<string, Answer | { failed: unknown }>();
       for (const item of items) {
@@ -365,7 +398,10 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
             else if (spec.size !== null && refusedBySize(docName, doc, typeof spec.size === "string" ? spec.size : spec.size(doc, item.params))) {
               answer = { status: "rejected", reason: "space_full" };
             }
-            else answer = spec.run(doc, item.params, item.command, verdict);
+            else {
+              answer = spec.run(doc, item.params, item.command, verdict);
+              ran.add(item.entry.id);
+            }
           });
           answers.set(item.entry.id, answer);
         } catch (err) {
@@ -392,6 +428,7 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
           await reply(item.command.callId, answer, item);
           outcomes.set(item.entry.id, "done");
           if (answer.status === "done") await recordEdit(item);
+          if (ran.has(item.entry.id)) await recordPresence(item, answer);
         } catch (err) {
           logger.error({ err, ctx: { callId: item.command.callId, type: item.type, docName } }, "agent_command_reply_failed");
           outcomes.set(item.entry.id, { failed: err });

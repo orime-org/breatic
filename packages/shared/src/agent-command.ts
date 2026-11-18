@@ -221,6 +221,10 @@ const nodeIdsSchema = z.array(nodeIdSchema).min(1);
  * listed here is not a command collab executes.
  */
 export const agentCommandParamsSchemas = {
+  // Sent by the MCP service beside a tool call that runs no command but names
+  // a Project, so the agent's presence stays fresh (§19.2); `focus` is the
+  // node a task result is on.
+  touch_presence: z.object({ focus: z.array(nodeIdSchema).min(1).optional() }),
   list_spaces: z.object({}),
   read_canvas: z.object({ nodeIds: z.array(nodeIdSchema).optional() }),
   create_canvas_nodes: z

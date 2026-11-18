@@ -80,6 +80,13 @@ interface CommandSpec<T extends AgentCommandType> {
   run: (doc: Y.Doc, params: AgentCommandParams<T>, command: AgentCommand, actor: Actor) => Answer;
   /** A write's answer once its deadline has passed; writes nothing. */
   late: (doc: Y.Doc, params: AgentCommandParams<T>, command: AgentCommand) => Answer;
+  /**
+   * The nodes or blocks the agent's presence shows it working on (§19.2);
+   * undefined keeps the last focus.
+   */
+  focus: (params: AgentCommandParams<T>, answer: Answer) => readonly string[] | undefined;
+  /** Whether it counts against `commands_per_minute`; only the presence refresh does not. */
+  counted: boolean;
 }
 
 /** The command table, by type. */
@@ -93,6 +100,8 @@ export interface AnyCommandSpec {
   space: "canvas" | "document" | null;
   run: (doc: Y.Doc, params: unknown, command: AgentCommand, actor: Actor) => Answer;
   late: (doc: Y.Doc, params: unknown, command: AgentCommand) => Answer;
+  focus: (params: unknown, answer: Answer) => readonly string[] | undefined;
+  counted: boolean;
 }
 
 /**
@@ -103,7 +112,36 @@ function unfinished(): Answer {
   return { status: "unfinished" };
 }
 
+/**
+ * The ids a done answer's result lists under one key.
+ * @param answer - The answer.
+ * @param key - `nodeIds`, `nodeId` or `blockIds`.
+ * @returns The ids, or undefined when it holds none.
+ */
+function resultIds(answer: Answer, key: "nodeIds" | "nodeId" | "blockIds"): string[] | undefined {
+  if (answer.status !== "done" || answer.result === null || typeof answer.result !== "object" || Array.isArray(answer.result)) return undefined;
+  const value = answer.result[key];
+  if (typeof value === "string") return [value];
+  return Array.isArray(value) && value.every((id) => typeof id === "string") && value.length > 0 ? value : undefined;
+}
+
+/**
+ * Keeps the last focus: the command names no node or block.
+ * @returns Nothing, which keeps the last focus.
+ */
+const keepFocus = (): undefined => undefined;
+
 const COMMANDS: CommandTable = {
+  touch_presence: {
+    params: agentCommandParamsSchemas.touch_presence,
+    write: false,
+    size: null,
+    space: null,
+    run: () => ({ status: "done", result: {} }),
+    late: unfinished,
+    focus: ({ focus }) => focus,
+    counted: false,
+  },
   list_spaces: {
     params: agentCommandParamsSchemas.list_spaces,
     write: false,
@@ -123,6 +161,8 @@ const COMMANDS: CommandTable = {
       return { status: "done", result: { spaces: spaces.map(({ id, type, name }) => ({ id, type, name })) } };
     },
     late: unfinished,
+    focus: keepFocus,
+    counted: true,
   },
   read_canvas: {
     params: agentCommandParamsSchemas.read_canvas,
@@ -131,6 +171,8 @@ const COMMANDS: CommandTable = {
     space: "canvas",
     run: (doc, { nodeIds }) => readCanvas(doc, nodeIds),
     late: unfinished,
+    focus: ({ nodeIds }) => nodeIds,
+    counted: true,
   },
   create_canvas_nodes: {
     params: agentCommandParamsSchemas.create_canvas_nodes,
@@ -139,6 +181,8 @@ const COMMANDS: CommandTable = {
     space: "canvas",
     run: (doc, params, command) => createNodes(doc, params, command),
     late: createLate,
+    focus: (_p, answer) => resultIds(answer, "nodeIds"),
+    counted: true,
   },
   update_canvas_node: {
     params: agentCommandParamsSchemas.update_canvas_node,
@@ -151,6 +195,8 @@ const COMMANDS: CommandTable = {
     space: "canvas",
     run: (doc, params) => updateNode(doc, params),
     late: unfinished,
+    focus: ({ nodeId }) => [nodeId],
+    counted: true,
   },
   lock_canvas_nodes: {
     params: agentCommandParamsSchemas.lock_canvas_nodes,
@@ -159,6 +205,8 @@ const COMMANDS: CommandTable = {
     space: "canvas",
     run: (doc, { nodeIds }) => setLocked(doc, nodeIds, true),
     late: unfinished,
+    focus: ({ nodeIds }) => nodeIds,
+    counted: true,
   },
   unlock_canvas_nodes: {
     params: agentCommandParamsSchemas.unlock_canvas_nodes,
@@ -168,6 +216,8 @@ const COMMANDS: CommandTable = {
     space: "canvas",
     run: (doc, { nodeIds }) => setLocked(doc, nodeIds, false),
     late: unfinished,
+    focus: ({ nodeIds }) => nodeIds,
+    counted: true,
   },
   delete_canvas_nodes: {
     params: agentCommandParamsSchemas.delete_canvas_nodes,
@@ -176,6 +226,8 @@ const COMMANDS: CommandTable = {
     space: "canvas",
     run: (doc, { nodeIds }, command, actor) => deleteNodes(doc, nodeIds, command, actor),
     late: unfinished,
+    focus: ({ nodeIds }) => nodeIds,
+    counted: true,
   },
   connect_nodes: {
     params: agentCommandParamsSchemas.connect_nodes,
@@ -184,6 +236,8 @@ const COMMANDS: CommandTable = {
     space: "canvas",
     run: (doc, { edges }) => connectNodes(doc, edges),
     late: unfinished,
+    focus: ({ edges }) => [...new Set(edges.flatMap((e) => [e.source, e.target]))],
+    counted: true,
   },
   disconnect_nodes: {
     params: agentCommandParamsSchemas.disconnect_nodes,
@@ -192,6 +246,8 @@ const COMMANDS: CommandTable = {
     space: "canvas",
     run: (doc, { edgeIds }) => disconnectNodes(doc, edgeIds),
     late: unfinished,
+    focus: keepFocus,
+    counted: true,
   },
   comment_on_canvas: {
     params: agentCommandParamsSchemas.comment_on_canvas,
@@ -200,6 +256,8 @@ const COMMANDS: CommandTable = {
     space: "canvas",
     run: (doc, params, command) => comment(doc, params, command),
     late: unfinished,
+    focus: ({ nodeId }) => (nodeId === undefined ? undefined : [nodeId]),
+    counted: true,
   },
   restore_node_version: {
     params: agentCommandParamsSchemas.restore_node_version,
@@ -209,6 +267,8 @@ const COMMANDS: CommandTable = {
     space: "canvas",
     run: (doc, params) => restore(doc, params),
     late: unfinished,
+    focus: ({ nodeId }) => [nodeId],
+    counted: true,
   },
   read_generation_inputs: {
     params: agentCommandParamsSchemas.read_generation_inputs,
@@ -217,6 +277,8 @@ const COMMANDS: CommandTable = {
     space: "canvas",
     run: (doc, { nodeId }) => readGenerationInputs(doc, nodeId),
     late: unfinished,
+    focus: ({ nodeId }) => [nodeId],
+    counted: true,
   },
   create_mini_tool_results: {
     params: agentCommandParamsSchemas.create_mini_tool_results,
@@ -225,6 +287,8 @@ const COMMANDS: CommandTable = {
     space: "canvas",
     run: (doc, params, command) => createMiniToolResults(doc, params, command),
     late: (doc, _params, command) => placedLate(doc, command, (i) => `result:${String(i)}`, (nodeIds) => ({ nodeIds })),
+    focus: (_p, answer) => resultIds(answer, "nodeIds"),
+    counted: true,
   },
   create_reading_node: {
     params: agentCommandParamsSchemas.create_reading_node,
@@ -233,6 +297,8 @@ const COMMANDS: CommandTable = {
     space: "canvas",
     run: (doc, params, command) => createReadingNode(doc, params, command),
     late: (doc, _params, command) => placedLate(doc, command, ["reading"], ([nodeId]) => ({ nodeId: nodeId! })),
+    focus: (_p, answer) => resultIds(answer, "nodeId"),
+    counted: true,
   },
   create_upload_nodes: {
     params: agentCommandParamsSchemas.create_upload_nodes,
@@ -245,6 +311,8 @@ const COMMANDS: CommandTable = {
       const slots = [...files.map((_, i) => `upload:${String(i)}`), ...(grouped ? ["group"] : [])];
       return placedLate(doc, command, slots, (ids): Json => (grouped ? { nodeIds: ids.slice(0, -1), groupId: ids.at(-1)! } : { nodeIds: ids }));
     },
+    focus: (_p, answer) => resultIds(answer, "nodeIds"),
+    counted: true,
   },
   check_upload_target: {
     params: agentCommandParamsSchemas.check_upload_target,
@@ -253,6 +321,8 @@ const COMMANDS: CommandTable = {
     space: "canvas",
     run: (doc, params) => checkUploadTarget(doc, params),
     late: unfinished,
+    focus: ({ nodeId }) => [nodeId],
+    counted: true,
   },
   read_document: {
     params: agentCommandParamsSchemas.read_document,
@@ -261,6 +331,8 @@ const COMMANDS: CommandTable = {
     space: "document",
     run: (doc, _params, command) => readDocument(doc, command),
     late: unfinished,
+    focus: keepFocus,
+    counted: true,
   },
   // The document kinds are those collab's size gate gives the editor's own
   // updates: new blocks and comments add, a text change edits, and removing
@@ -272,6 +344,8 @@ const COMMANDS: CommandTable = {
     space: "document",
     run: (doc, params, command) => insertBlocks(doc, params, command),
     late: insertLate,
+    focus: (_p, answer) => resultIds(answer, "blockIds"),
+    counted: true,
   },
   edit_document_text: {
     params: agentCommandParamsSchemas.edit_document_text,
@@ -280,6 +354,8 @@ const COMMANDS: CommandTable = {
     space: "document",
     run: (doc, params) => editText(doc, params),
     late: unfinished,
+    focus: ({ blockId }) => [blockId],
+    counted: true,
   },
   delete_document_blocks: {
     params: agentCommandParamsSchemas.delete_document_blocks,
@@ -288,6 +364,8 @@ const COMMANDS: CommandTable = {
     space: "document",
     run: (doc, { blockIds }) => deleteBlocks(doc, blockIds),
     late: unfinished,
+    focus: ({ blockIds }) => blockIds,
+    counted: true,
   },
   comment_on_document: {
     params: agentCommandParamsSchemas.comment_on_document,
@@ -296,6 +374,8 @@ const COMMANDS: CommandTable = {
     space: "document",
     run: (doc, params, command) => commentOnDocument(doc, params, command),
     late: unfinished,
+    focus: ({ blockId }) => (blockId === undefined ? undefined : [blockId]),
+    counted: true,
   },
 };
 
