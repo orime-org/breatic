@@ -7,7 +7,7 @@
  * The MCP service and the hand-giver's thread labels read it.
  */
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { db, type DbTx } from "@core/db/client.js";
 import { commentAssignments } from "@core/db/schema.js";
 
@@ -119,4 +119,51 @@ export async function voidSpace(projectId: string, spaceId: string, tx?: DbTx): 
     .where(and(eq(commentAssignments.projectId, projectId), eq(commentAssignments.spaceId, spaceId), isNull(commentAssignments.deletedAt)))
     .returning({ id: commentAssignments.id });
   return voided.length > 0;
+}
+
+/**
+ * The live pending hand-overs one person gave one agent connection, oldest first.
+ * @param connectionId - The agent connection.
+ * @param assignedBy - Its owner.
+ * @returns Where each thread is and when it was handed over.
+ * @throws {Error} When the database read fails.
+ */
+export async function listPendingForConnection(
+  connectionId: string,
+  assignedBy: string,
+): Promise<Array<{ projectId: string; spaceId: string; threadId: string; assignedAt: number }>> {
+  return db
+    .select({ projectId: commentAssignments.projectId, spaceId: commentAssignments.spaceId, threadId: commentAssignments.threadId, assignedAt: commentAssignments.assignedAt })
+    .from(commentAssignments)
+    .where(and(
+      eq(commentAssignments.connectionId, connectionId),
+      eq(commentAssignments.assignedBy, assignedBy),
+      eq(commentAssignments.status, "pending"),
+      isNull(commentAssignments.deletedAt),
+    ))
+    .orderBy(asc(commentAssignments.assignedAt));
+}
+
+/**
+ * The live hand-overs one person gave in one Space.
+ * @param projectId - The project.
+ * @param spaceId - The Space.
+ * @param assignedBy - Who handed them over.
+ * @returns Each thread, the connection it went to, when, and where it stands.
+ * @throws {Error} When the database read fails.
+ */
+export async function listForSpace(
+  projectId: string,
+  spaceId: string,
+  assignedBy: string,
+): Promise<Array<{ threadId: string; connectionId: string; assignedAt: number; status: AssignmentStatus }>> {
+  return db
+    .select({ threadId: commentAssignments.threadId, connectionId: commentAssignments.connectionId, assignedAt: commentAssignments.assignedAt, status: commentAssignments.status })
+    .from(commentAssignments)
+    .where(and(
+      eq(commentAssignments.projectId, projectId),
+      eq(commentAssignments.spaceId, spaceId),
+      eq(commentAssignments.assignedBy, assignedBy),
+      isNull(commentAssignments.deletedAt),
+    ));
 }

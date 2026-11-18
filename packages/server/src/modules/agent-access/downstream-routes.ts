@@ -43,6 +43,7 @@ export const DOWNSTREAM_TOKEN_ROUTES: readonly DownstreamRoute[] = [
   { method: "POST", path: "/api/v1/assets/ingest-url", project: "json" },
   { method: "POST", path: "/api/v1/assets/deleted", project: "json" },
   { method: "GET", path: "/api/v1/agent-access/connections/names" },
+  { method: "GET", path: "/api/v1/agent/assignments" },
 ];
 
 /**

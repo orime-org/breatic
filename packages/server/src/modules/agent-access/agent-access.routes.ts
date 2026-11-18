@@ -16,8 +16,8 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { agentAccessService, logger } from "@breatic/core";
-import { REQUEST_SHAPE_PARAMS } from "@breatic/shared";
+import { ForbiddenError, agentAccessService, logger } from "@breatic/core";
+import { REQUEST_SHAPE_PARAMS, t } from "@breatic/shared";
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { validate } from "@server/middleware/validate.js";
@@ -169,4 +169,36 @@ agent.post(
   },
 );
 
-export { agentAccess as agentAccessRoute, agent as agentRoute };
+/**
+ * `GET /agent/assignments` — the threads its owner handed this external agent
+ * that still wait for it (#1488 §11.7, `list_assignments`); downstream
+ * tokens only.
+ * @returns `{ data: [{ projectId, spaceId, threadId, assignedAt }] }`.
+ * @throws {ForbiddenError} 403 to a browser session.
+ */
+agent.get("/assignments", rateLimitFor("agent-assignments", "user"), async (c) => {
+  const agentCaller = c.get("agent");
+  if (!agentCaller) throw new ForbiddenError(t("server.error.forbidden"));
+  return c.json({ data: await service.listAgentAssignments(c.get("user").id, agentCaller.connectionId) });
+});
+
+const commentAssignments = new Hono<{ Variables: AuthVariables }>();
+commentAssignments.use("*", requireAuth);
+
+/**
+ * `GET /comment-assignments?project_id=&space_id=` — what the signed-in member
+ * handed over in one Space, for the labels on those threads (#1488 §11.7).
+ * @returns `{ data: [{ threadId, connectionId, assignedAt, status }] }`.
+ * @throws {NotFoundError} 404 to someone who is not a member of the project.
+ */
+commentAssignments.get(
+  "/",
+  rateLimitFor("comment-assignments", "user"),
+  validate("query", z.object({ project_id: z.string().uuid(), space_id: z.string().uuid() })),
+  async (c) => {
+    const { project_id: projectId, space_id: spaceId } = c.req.valid("query");
+    return c.json({ data: await service.listSpaceAssignments(c.get("user").id, projectId, spaceId) });
+  },
+);
+
+export { agentAccess as agentAccessRoute, agent as agentRoute, commentAssignments as commentAssignmentsRoute };

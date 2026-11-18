@@ -45,7 +45,7 @@ import { studiosRoute, studioRoute } from "@server/routes/studios.js";
 import { decisionsRoute } from "@server/routes/decisions.js";
 import { projectInvitesRoute } from "@server/routes/project-invitations.js";
 import { notificationsRoute } from "@server/routes/notifications.js";
-import { agentAccessRoute, agentRoute } from "@server/modules/agent-access/agent-access.routes.js";
+import { agentAccessRoute, agentRoute, commentAssignmentsRoute } from "@server/modules/agent-access/agent-access.routes.js";
 import { oauthInteractionsRoute, oauthServerRoute } from "@server/modules/agent-access/oauth.routes.js";
 import {
   projectRoleUpgradeRequestsRoute,
@@ -125,6 +125,7 @@ export function createApp(): Hono {
   // External agents (#1488): the settings page's connections and the capture upload.
   app.route("/api/v1/agent-access", agentAccessRoute);
   app.route("/api/v1/agent", agentRoute);
+  app.route("/api/v1/comment-assignments", commentAssignmentsRoute);
   // The OAuth authorization server external agents sign in through, and its consent API.
   app.route("/", oauthServerRoute);
   app.route("/api/v1/oauth/interactions", oauthInteractionsRoute);

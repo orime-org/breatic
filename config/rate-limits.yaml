@@ -179,6 +179,10 @@ promoter-apply: { max: 5, window_seconds: 3600 }
 pat-create: { max: 10, window_seconds: 3600 }
 agent-connection-rename: { max: 30, window_seconds: 3600 }
 agent-connection-names: { max: 120, window_seconds: 60 }
+# An external agent listing what was handed to it, and a member reading the
+# hand-overs they gave in one Space for the thread labels (#1488 §11.7).
+agent-assignments: { max: 120, window_seconds: 60 }
+comment-assignments: { max: 120, window_seconds: 60 }
 # An external agent reading a node's history with a downstream token, per user
 # per Studio, counted in Redis DB 4 (#1488 §6); people reading it are not counted.
 agent-node-history: { max: 120, window_seconds: 60 }

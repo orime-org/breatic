@@ -20,10 +20,12 @@ import {
   ForbiddenError,
   NotFoundError,
   agentAccessService,
+  commentAssignmentsRepo,
   env,
   getMcpConfig,
   getMcpRedis,
   oauthRecordsRepo,
+  projectAuthService,
   publishSessionsRevoked,
   type AgentCredential,
 } from "@breatic/core";
@@ -195,4 +197,44 @@ export async function submitViewCapture(requestId: string, userId: string, uploa
   const written = await redis.set(mcpReplyKey(prefix, request.callId), JSON.stringify(reply), "EX", config.reply_ttl_seconds, "NX");
   if (written === null) throw new ConflictError(t("server.agent_access.capture_answered"));
   await redis.publish(mcpDoneChannel(prefix), request.callId);
+}
+
+/**
+ * The threads a user handed to one of their external-agent connections that
+ * still wait for it (#1488 §11.7, `list_assignments`): pending, in projects
+ * the user can still edit, so archived projects and ones where they are a
+ * viewer drop out.
+ * @param userId - The connection's owner.
+ * @param connectionId - The connection asking.
+ * @returns Where each thread is and when it was handed over.
+ * @throws {Error} When the database read fails.
+ */
+export async function listAgentAssignments(
+  userId: string,
+  connectionId: string,
+): Promise<Array<{ projectId: string; spaceId: string; threadId: string; assignedAt: number }>> {
+  const rows = await commentAssignmentsRepo.listPendingForConnection(connectionId, userId);
+  const projects = [...new Set(rows.map((r) => r.projectId))];
+  const roles = new Map(await Promise.all(projects.map(async (id) => [id, await projectAuthService.loadProjectRole(userId, id)] as const)));
+  return rows.filter((r) => {
+    const role = roles.get(r.projectId);
+    return role !== null && role !== undefined && role !== "viewer";
+  });
+}
+
+/**
+ * What a member handed over in one Space, for the labels on those threads.
+ * @param userId - The member.
+ * @param projectId - The project.
+ * @param spaceId - The Space.
+ * @returns Each thread, the connection it went to, when, and where it stands.
+ * @throws {NotFoundError} When the user is not a member of the project.
+ */
+export async function listSpaceAssignments(
+  userId: string,
+  projectId: string,
+  spaceId: string,
+): Promise<Array<{ threadId: string; connectionId: string; assignedAt: number; status: string }>> {
+  if ((await projectAuthService.loadProjectRole(userId, projectId)) === null) throw new NotFoundError(t("server.error.not_found"));
+  return commentAssignmentsRepo.listForSpace(projectId, spaceId, userId);
 }
