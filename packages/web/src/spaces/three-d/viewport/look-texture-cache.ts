@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { imageDimensionsFromStream } from 'image-dimensions';
+import { imageDimensionsFromData } from 'image-dimensions';
 import { RepeatWrapping, SRGBColorSpace, Texture } from 'three';
 
 import { httpRequest, isSceneLookImageMediaType } from '@breatic/shared';
@@ -53,6 +53,36 @@ function close(base: Texture): void {
 /** The decode options three's ImageBitmapLoader uses for glTF textures. */
 const DECODE: ImageBitmapOptions = { premultiplyAlpha: 'none', imageOrientation: 'from-image' };
 
+/** Enough of a file to reach a picture's size: a JPEG may put megabytes of metadata before it. */
+const PICTURE_HEADER_BYTES = 4 * 1024 * 1024;
+
+/**
+ * A picture's size and type read from the start of its bytes, stopping as soon as they are known or once the header
+ * budget is read; the rest of the stream is cancelled.
+ * @param stream - The file's or the response's bytes.
+ * @returns The size and type, or null when the start is not a picture header.
+ */
+export async function readPictureSize(stream: ReadableStream<Uint8Array>): Promise<LookPictureSize | null> {
+  const buffer = new Uint8Array(PICTURE_HEADER_BYTES);
+  let length = 0;
+  const reader = stream.getReader();
+  try {
+    while (length < buffer.length) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const taken = value.subarray(0, buffer.length - length);
+      buffer.set(taken, length);
+      length += taken.length;
+      const size = imageDimensionsFromData(buffer.subarray(0, length));
+      if (size) return size;
+    }
+    return null;
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+}
+
 /**
  * Part pictures for the scene (inner#1693 design 5.3): header sizes cached per asset for the page, decoded pictures
  * shared by reference count, each holder given its own clone so its tiling is its own.
@@ -80,7 +110,7 @@ export class LookTextureCache {
     if (!pending) {
       pending = this.deps.resolve(assetId)
         .then((url) => this.deps.open(url))
-        .then(async (stream) => (await imageDimensionsFromStream(stream)) ?? null)
+        .then((stream) => readPictureSize(stream))
         .catch(() => null)
         .then((size) => {
           if (!size) this.sizes.delete(assetId);

@@ -121,3 +121,44 @@ describe('LookTextureCache', () => {
     expect(d.open).toHaveBeenCalledTimes(0);
   });
 });
+
+describe('readPictureSize', () => {
+  /**
+   * A stream handing out the given chunks, counting the bytes pulled.
+   * @param chunks - What it hands out, in order; a function makes an endless stream.
+   * @returns The stream and the count.
+   */
+  function streamOf(chunks: Uint8Array[] | (() => Uint8Array)): { stream: ReadableStream<Uint8Array>; pulled: () => number } {
+    let pulled = 0; let index = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const next = typeof chunks === 'function' ? chunks() : chunks[index++];
+        if (!next) { controller.close(); return; }
+        pulled += next.length;
+        controller.enqueue(next);
+      },
+    });
+    return { stream, pulled: () => pulled };
+  }
+  const read = (): ((stream: ReadableStream<Uint8Array>) => Promise<{ width: number; height: number; type: string } | null>) => {
+    const candidate = (cacheModule as Record<string, unknown>).readPictureSize;
+    expect(candidate, 'readPictureSize must be exported').toBeTypeOf('function');
+    return candidate as never;
+  };
+
+  it('reads a JPEG whose metadata before its size runs past half a megabyte', async () => {
+    const segment = (length: number): number[] => [0xff, 0xe2, (length + 2) >> 8, (length + 2) & 0xff, ...new Array<number>(length).fill(0)];
+    const bytes = [0xff, 0xd8];
+    for (let i = 0; i < 10; i++) bytes.push(...segment(60_000));
+    bytes.push(0xff, 0xc0, 0x00, 0x11, 0x08, 0x02, 0x58, 0x03, 0x20, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01);
+    const all = new Uint8Array(bytes);
+    const chunks = Array.from({ length: Math.ceil(all.length / 65_536) }, (_, i) => all.subarray(i * 65_536, (i + 1) * 65_536));
+    expect(await read()(streamOf(chunks).stream)).toMatchObject({ width: 800, height: 600, type: 'jpeg' });
+  });
+
+  it('stops reading a stream that is not a picture after a bounded amount', async () => {
+    const endless = streamOf(() => new Uint8Array(65_536).fill(7));
+    expect(await read()(endless.stream)).toBeNull();
+    expect(endless.pulled()).toBeLessThanOrEqual(8 * 1024 * 1024);
+  });
+});

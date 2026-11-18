@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { QueryClient } from '@tanstack/react-query';
-import { imageDimensionsFromData } from 'image-dimensions';
 
 import { getLocale, t, type SceneLook } from '@breatic/shared';
 
@@ -13,7 +12,7 @@ import { peekSceneSession, type SceneSession } from '@web/data/yjs/scene-session
 import { toast } from '@web/lib/toast';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { checkLookWrite, type LookTextureReason } from '@web/spaces/three-d/look-texture-budget';
-import { pageLookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
+import { pageLookTextureCache, readPictureSize } from '@web/spaces/three-d/viewport/look-texture-cache';
 import { modelUploadFailure } from '@web/spaces/three-d/model-upload-failure';
 
 /** A picture's header size and type. */
@@ -31,8 +30,12 @@ export interface LookUploadNotice {
 }
 
 export interface SceneLookUploadDeps {
-  /** Send the file through the common upload pipeline. */
-  upload: (file: File, context: UploadContext, onProgress: (fraction: number) => void) => Promise<{ assetId: string }>;
+  /**
+   * Send the file through the common upload pipeline; `beforeSend` runs once the server opened an upload for content it
+   * does not hold yet, and aborting `signal` there stops the upload before any byte is sent.
+   */
+  upload: (file: File, context: UploadContext, onProgress: (fraction: number) => void, signal: AbortSignal,
+    beforeSend: () => Promise<void>) => Promise<{ assetId: string }>;
   notify: (notice: LookUploadNotice) => void;
   /** Hold a Space busy (closing its tab is held back). */
   register: (spaceId: string, operationId: string) => void;
@@ -82,6 +85,8 @@ export interface SceneLookUploadEntry {
   objectId: string;
   part: string;
   percent: number;
+  /** The upload that owns the entry. */
+  operationId: string;
 }
 
 export interface SceneLookUploads {
@@ -93,6 +98,17 @@ export interface SceneLookUploads {
 }
 
 const LOOK_IMAGE_TYPES = new Set(['png', 'jpeg', 'webp']);
+/** The formats a part picture may be, as the unsupported-format notice names them. */
+const LOOK_IMAGE_FORMATS = 'PNG, JPEG, WebP';
+
+/**
+ * The notice for a file that is not a picture a part may use.
+ * @param filename - The file's or the asset's name.
+ * @returns The notice.
+ */
+export function unsupportedPictureNotice(filename: string): LookUploadNotice {
+  return { key: 'canvas.upload.unsupportedType', params: { filename, kind: 'image', formats: LOOK_IMAGE_FORMATS }, severity: 'warning' };
+}
 
 /**
  * Whether a header's type is a picture a part may use.
@@ -102,8 +118,6 @@ const LOOK_IMAGE_TYPES = new Set(['png', 'jpeg', 'webp']);
 export function isLookImageType(type: string): boolean {
   return LOOK_IMAGE_TYPES.has(type);
 }
-/** Enough of a file to hold its image header; a JPEG may put large metadata before its size. */
-const LOCAL_HEADER_BYTES = 512 * 1024;
 
 /**
  * Format bytes as MiB with one decimal, rounded the way that keeps the comparison true.
@@ -179,57 +193,89 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
     checkLookWrite({ ownBytes: input.ownBytes, clampBytes: input.clampBytes, limits: input.limits, look, part: input.part, map, mapSize,
       size: (assetId) => deps.size(input.projectId, assetId) });
 
+  /**
+   * Upload the file and write it on completion when everything still allows (design 6.3).
+   * @param input - The upload's start record.
+   * @param local - The local file's header size.
+   * @param opened - The Space's session when the upload started, if open.
+   * @param startLook - The object's look when the upload started.
+   * @param key - The part's entry key.
+   */
+  const upload = async (input: SceneLookUploadStart, local: LookImageSize, opened: SceneSession | undefined,
+    startLook: SceneLook | undefined, key: string): Promise<void> => {
+    // Another explicit picture set on the part meanwhile blocks the write; a reset that deletes the key does not.
+    let partChanged = false;
+    let seen = startLook?.[input.part]?.map;
+    const unwatch = opened?.subscribe(() => {
+      const map = lookOf(opened, input.objectId)?.[input.part]?.map;
+      if (map !== undefined && map !== seen) partChanged = true;
+      seen = map;
+    });
+    const controller = new AbortController();
+    let refused = false;
+    /** A picture the server does not hold yet is a new picture on the object: judge the total before sending it. */
+    const beforeSend = async (): Promise<void> => {
+      const session = deps.session(input.name);
+      const issue = await overLimit(input, (session ? lookOf(session, input.objectId) : undefined) ?? startLook ?? {}, 'local', local);
+      if (!issue) return;
+      refused = true;
+      deps.notify(lookLimitNotice(issue, local, input.limits));
+      controller.abort();
+    };
+    try {
+      const stored = await deps.upload(input.file, { projectId: input.projectId, spaceId: input.spaceId }, (fraction) => {
+        const entry = entries.get(key);
+        if (entry) entries.set(key, { ...entry, percent: Math.round(fraction * 100) });
+        changed();
+      }, controller.signal, beforeSend);
+      deps.invalidateImages(input.projectId);
+      const session = deps.session(input.name);
+      const look = session ? lookOf(session, input.objectId) : undefined;
+      const object = session?.getSnapshot().objects.find((item) => item.id === input.objectId);
+      if (!session) deps.notify({ key: 'spaces.threeD.look.spaceClosed', severity: 'warning' });
+      else if (!object || object.locked || look === undefined) deps.notify({ key: 'spaces.threeD.look.objectGone', severity: 'warning' });
+      else if (!session.getSnapshot().canEdit) deps.notify({ key: 'spaces.threeD.look.noLongerEditable', severity: 'warning' });
+      else if (partChanged) deps.notify({ key: 'spaces.threeD.look.partChanged', severity: 'warning' });
+      else if (await overLimit(input, look, stored.assetId, local)) deps.notify({ key: 'spaces.threeD.look.uploadedOverLimit', severity: 'warning' });
+      else session.execute({ type: 'look', id: input.objectId, part: input.part, set: { map: stored.assetId } });
+    } catch (error) {
+      if (refused) return;
+      const failure = modelUploadFailure(error, input.file.name);
+      deps.notify({ key: failure.key, params: failure.params, severity: 'error' });
+    } finally {
+      unwatch?.();
+    }
+  };
+
   return {
     async start(input) {
-      const local = await deps.readLocalSize(input.file);
-      if (!local || !isLookImageType(local.type)) {
-        deps.notify({ key: 'canvas.upload.unsupportedType', params: { filename: input.file.name }, severity: 'warning' });
-        return;
-      }
-      const opened = deps.session(input.name);
-      const startLook = opened ? lookOf(opened, input.objectId) : undefined;
-      const issue = await overLimit(input, startLook ?? {}, 'local', local);
-      if (issue) {
-        deps.notify(lookLimitNotice(issue, local, input.limits));
-        return;
-      }
-
       const key = keyOf(input.spaceId, input.objectId, input.part);
+      // One upload per part: its row shows the progress and offers no picture choice until it ends.
+      if (entries.has(key)) return;
       const operationId = crypto.randomUUID();
-      entries.set(key, { spaceId: input.spaceId, objectId: input.objectId, part: input.part, percent: 0 });
+      entries.set(key, { spaceId: input.spaceId, objectId: input.objectId, part: input.part, percent: 0, operationId });
       changed();
-      deps.register(input.spaceId, operationId);
-      // Another explicit picture set on the part meanwhile blocks the write; a reset that deletes the key does not.
-      let partChanged = false;
-      let seen = startLook?.[input.part]?.map;
-      const unwatch = opened?.subscribe(() => {
-        const map = lookOf(opened, input.objectId)?.[input.part]?.map;
-        if (map !== undefined && map !== seen) partChanged = true;
-        seen = map;
-      });
+      let registered = false;
       try {
-        const stored = await deps.upload(input.file, { projectId: input.projectId, spaceId: input.spaceId }, (fraction) => {
-          const entry = entries.get(key);
-          if (entry) entries.set(key, { ...entry, percent: Math.round(fraction * 100) });
-          changed();
-        });
-        deps.invalidateImages(input.projectId);
-        const session = deps.session(input.name);
-        const look = session ? lookOf(session, input.objectId) : undefined;
-        const object = session?.getSnapshot().objects.find((item) => item.id === input.objectId);
-        if (!session) deps.notify({ key: 'spaces.threeD.look.spaceClosed', severity: 'warning' });
-        else if (!object || object.locked || look === undefined) deps.notify({ key: 'spaces.threeD.look.objectGone', severity: 'warning' });
-        else if (!session.getSnapshot().canEdit) deps.notify({ key: 'spaces.threeD.look.noLongerEditable', severity: 'warning' });
-        else if (partChanged) deps.notify({ key: 'spaces.threeD.look.partChanged', severity: 'warning' });
-        else if (await overLimit(input, look, stored.assetId, local)) deps.notify({ key: 'spaces.threeD.look.uploadedOverLimit', severity: 'warning' });
-        else session.execute({ type: 'look', id: input.objectId, part: input.part, set: { map: stored.assetId } });
-      } catch (error) {
-        const failure = modelUploadFailure(error, input.file.name);
-        deps.notify({ key: failure.key, params: failure.params, severity: 'error' });
+        const local = await deps.readLocalSize(input.file);
+        if (!local || !isLookImageType(local.type)) {
+          deps.notify(unsupportedPictureNotice(input.file.name));
+          return;
+        }
+        const opened = deps.session(input.name);
+        const startLook = opened ? lookOf(opened, input.objectId) : undefined;
+        // The edge is judged now; the object total once the server says whether it already holds this picture.
+        const edge = await overLimit(input, startLook ?? {}, 'local', local);
+        if (edge?.reason === 'edge') {
+          deps.notify(lookLimitNotice(edge, local, input.limits));
+          return;
+        }
+        deps.register(input.spaceId, operationId);
+        registered = true;
+        await upload(input, local, opened, startLook, key);
       } finally {
-        unwatch?.();
-        entries.delete(key);
-        deps.unregister(input.spaceId, operationId);
+        if (entries.get(key)?.operationId === operationId) entries.delete(key);
+        if (registered) deps.unregister(input.spaceId, operationId);
         changed();
       }
     },
@@ -251,12 +297,12 @@ let pageUploads: SceneLookUploads | null = null;
  */
 export function pageSceneLookUploads(queryClient: QueryClient): SceneLookUploads {
   pageUploads ??= createSceneLookUploads({
-    upload: (file, context, onProgress) => uploadMedia(file, context, onProgress),
+    upload: (file, context, onProgress, signal, beforeSend) => uploadMedia(file, context, onProgress, signal, undefined, beforeSend),
     notify: ({ key, params, severity }) => { toast[severity](t(key, params)); },
     register: (spaceId, operationId) => useSpaceOperationsStore.getState().register(spaceId, operationId),
     unregister: (spaceId, operationId) => useSpaceOperationsStore.getState().unregister(spaceId, operationId),
     invalidateImages: (projectId) => { void queryClient.invalidateQueries({ queryKey: projectImagesQueryKey(projectId) }); },
-    readLocalSize: async (file) => imageDimensionsFromData(new Uint8Array(await file.slice(0, LOCAL_HEADER_BYTES).arrayBuffer())) ?? null,
+    readLocalSize: (file) => readPictureSize(file.stream()),
     size: (projectId, assetId) => pageLookTextureCache(projectId).size(assetId),
     session: peekSceneSession,
   });

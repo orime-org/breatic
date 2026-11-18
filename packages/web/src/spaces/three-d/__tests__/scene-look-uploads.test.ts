@@ -52,7 +52,8 @@ function lookOf(doc: Y.Doc): unknown {
 }
 
 interface Harness {
-  uploads: { start: (input: { projectId: string; spaceId: string; name: string; objectId: string; part: string; file: File; ownBytes: number; clampBytes: Record<string, number>; limits: { maxTextureEdge: number; maxTextureBytes: number } }) => Promise<void> };
+  uploads: { start: (input: { projectId: string; spaceId: string; name: string; objectId: string; part: string; file: File; ownBytes: number; clampBytes: Record<string, number>; limits: { maxTextureEdge: number; maxTextureBytes: number } }) => Promise<void>;
+    get: (spaceId: string, objectId: string, part: string) => { percent: number } | undefined };
   upload: ReturnType<typeof vi.fn>;
   notify: ReturnType<typeof vi.fn>;
   register: ReturnType<typeof vi.fn>;
@@ -71,15 +72,16 @@ interface Harness {
  * @throws {AssertionError} When createSceneLookUploads is not exported.
  */
 function harness(session: () => SceneSession | undefined, localSize: { width: number; height: number; type: string } | null = { width: 64, height: 64, type: 'png' },
-  size: (assetId: string) => Promise<{ width: number; height: number; type: string } | null> = async () => ({ width: 64, height: 64, type: 'png' })): Harness {
+  size: (assetId: string) => Promise<{ width: number; height: number; type: string } | null> = async () => ({ width: 64, height: 64, type: 'png' }),
+  uploadImpl?: (file: File, context: unknown, onProgress: (fraction: number) => void, signal: AbortSignal, beforeSend: () => Promise<void>) => Promise<{ assetId: string }>): Harness {
   const factory = (uploadsModule as Record<string, unknown>).createSceneLookUploads as ((deps: unknown) => Harness['uploads']) | undefined;
   expect(factory, 'createSceneLookUploads must be exported').toBeTypeOf('function');
   let finish: (assetId?: string) => void = () => {};
   let fail: (error: unknown) => void = () => {};
-  const upload = vi.fn(() => new Promise((resolve, reject) => {
+  const upload = vi.fn(uploadImpl ?? (() => new Promise((resolve, reject) => {
     finish = (assetId = UPLOADED) => resolve({ assetId, url: 'https://assets.example.test/u.png' });
     fail = reject;
-  }));
+  })));
   const notify = vi.fn(); const register = vi.fn(); const unregister = vi.fn(); const invalidateImages = vi.fn();
   const uploads = factory!({
     upload, notify, register, unregister, invalidateImages,
@@ -120,7 +122,8 @@ describe('SceneLookUploads', () => {
       const h = harness(() => session, local);
       await h.uploads.start(startFor(new File(['x'], 'clip.gif')));
       expect(h.upload).not.toHaveBeenCalled();
-      expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'canvas.upload.unsupportedType' }));
+      expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'canvas.upload.unsupportedType',
+        params: { filename: 'clip.gif', kind: 'image', formats: 'PNG, JPEG, WebP' } }));
     }
   });
 
@@ -216,6 +219,52 @@ describe('SceneLookUploads', () => {
     expect(lookOf(doc)).toBeUndefined();
     expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'canvas.upload.storageFull' }));
     expect(h.unregister).toHaveBeenCalled();
+  });
+
+  it('puts the same picture already on another part on this one too, as picking it from the Project would', async () => {
+    const { doc, session } = editor();
+    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
+    // 6000 px alone fits the 256 MiB budget; counted twice it would not.
+    const big = { width: 6000, height: 6000, type: 'png' };
+    const h = harness(() => session, big, async () => big, async () => ({ assetId: OTHER_IMAGE }));
+    await h.uploads.start(startFor());
+    expect(lookOf(doc)).toEqual({ 0: { map: OTHER_IMAGE }, 1: { map: OTHER_IMAGE } });
+    expect(h.notify).not.toHaveBeenCalled();
+  });
+
+  it('stops a new picture that would take the object over its budget before any byte is sent', async () => {
+    const { doc, session } = editor();
+    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
+    const big = { width: 6000, height: 6000, type: 'png' };
+    let sent = false;
+    const h = harness(() => session, big, async () => big, async (_file, _context, _progress, signal, beforeSend) => {
+      await beforeSend();
+      signal.throwIfAborted();
+      sent = true;
+      return { assetId: UPLOADED };
+    });
+    await h.uploads.start(startFor());
+    expect(sent).toBe(false);
+    expect(lookOf(doc)).toEqual({ 1: { map: OTHER_IMAGE } });
+    expect(h.notify).toHaveBeenCalledTimes(1);
+    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.objectTexturesTooLarge' }));
+    expect(h.unregister).toHaveBeenCalled();
+  });
+
+  it('shows a part\'s upload from the moment it starts and runs one upload per part at a time', async () => {
+    const { doc, session } = editor();
+    const h = harness(() => session);
+    const first = h.uploads.start(startFor());
+    expect(h.uploads.get(SPACE, ID, '0')).toBeDefined();
+    const second = h.uploads.start(startFor(new File(['y'], 'other.png', { type: 'image/png' })));
+    await settle();
+    await second;
+    expect(h.upload).toHaveBeenCalledTimes(1);
+    expect(h.uploads.get(SPACE, ID, '0')).toBeDefined();
+    h.finish();
+    await first;
+    expect(lookOf(doc)).toEqual({ 0: { map: UPLOADED } });
+    expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
   });
 
   it('is one holder for the page', () => {
