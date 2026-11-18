@@ -120,8 +120,7 @@ export async function publishCreditsChanged(projectId: string): Promise<void> {
 }
 
 /**
- * Announce that a Space's tasks changed (a 3D task, inner#1690; a Timeline or
- * Motion execution, #1490); collab relays it
+ * Announce that a Space's tasks changed (a 3D task, inner#1690); collab relays it
  * to connected members as the `space-tasks:changed` stateless signal.
  * Fire-and-forget like {@link publishActivityNew}.
  * @param projectId - Project the Space belongs to.

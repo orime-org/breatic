@@ -8,9 +8,10 @@ import { SPACE_TASKS_CHANGED_SIGNAL } from '@breatic/shared';
 import { spaceTasksQueryKey } from '@web/data/api/scene';
 
 /**
- * Read a Space's task and execution lists again whenever the meta-doc socket
- * says they changed (3D tasks, inner#1690; Timeline and Motion executions,
- * #1490): a row opened, moved, settled, expired on read, or was removed.
+ * Read a Space's task lists again whenever the meta-doc socket says they
+ * changed (3D tasks, inner#1690): a row opened, moved, settled, expired on
+ * read, or was removed. Motion and Timeline executions are read again from
+ * the Space's own document instead (`SpaceTasksWatcher`).
  * Every such list is a query keyed under its Space, so a panel that is not open reads
  * the fresh list when it next opens.
  * @param projectId - The project whose signals count.

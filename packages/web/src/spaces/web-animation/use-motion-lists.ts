@@ -29,7 +29,8 @@ export interface MotionLists {
 }
 
 /**
- * The key one list is cached under: inside the Space-task key, so the page's Space-task signal refetches it.
+ * The key one list is cached under: inside the Space-task key, so a change version in the Space's document
+ * (`SpaceTasksWatcher`) reads it again.
  * @param projectId - The Project.
  * @param spaceId - The Motion Space.
  * @param scope - Which list.

@@ -28,7 +28,7 @@ export function useSpaceTaskStatus(projectId: string, spaceId: string, type: Spa
   const provider = useDocProvider(canvas ? docName.canvasSpace(projectId, spaceId) : null);
   const tasks = useCanvasTaskState(projectId, spaceId, canvas, provider?.document);
   const peers = useSpacePeerTaskStatus(provider?.awareness ?? null, tasks.contentNodeIds);
-  // The tab bar outlives the hidden Space body, so it holds a Motion Space's one polling subscription to its count.
+  // The tab bar outlives the hidden Space body, so it holds a Motion Space's one subscription to its count.
   const executing = useMotionRunning(projectId, spaceId, type === 'web_animation');
   return operations || waiting || requests || tasks.running || peers || executing;
 }

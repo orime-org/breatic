@@ -42,7 +42,7 @@ const webAnimationSchema = z.object({
   sweep_batch_size: positiveInt.default(200),
   /** How long a pickup waits before asking the container job again. */
   poll_interval_ms: positiveInt.default(5_000),
-  /** How often web refetches web-source resolution while it references another Project's unfinished execution. */
+  /** Sent only to web pages from before #1490, which still poll web-source resolution; current web never reads it. */
   source_refresh_interval_ms: positiveInt.default(10_000),
   /** The container instance the cost of a run is computed for, priced by `config/mini-tools.yaml`. */
   container: z.object({
