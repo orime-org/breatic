@@ -690,7 +690,8 @@ describe('the thread card over the frame', () => {
     await userEvent.setup().click(screen.getByTestId('motion-action-add-annotation'));
     const props = popoverContentProps.filter((item) => item['data-testid'] === 'motion-annotation-draft').at(-1)!;
     expect(props.collisionBoundary).toBe(screen.getByTestId('motion-preview-area'));
-    expect(props).toMatchObject({ side: 'right', align: 'start' });
+    // Centred inside the frame's bottom, as the approved demo draws it.
+    expect(props).toMatchObject({ side: 'top', align: 'center', sideOffset: 8 });
     expect(screen.getByTestId('motion-annotation-draft')).toContainElement(screen.getByTestId('doc-comment-motion-annotation-input'));
   });
 

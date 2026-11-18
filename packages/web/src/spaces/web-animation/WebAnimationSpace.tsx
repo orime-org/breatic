@@ -63,6 +63,8 @@ import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-fli
 /** How close to the playhead an annotation's point shows on the frame, in seconds. */
 const PIN_WINDOW_SECONDS = 0.15;
 const CLOSED_DRAFT: CreationDraftState = { status: 'closed' };
+/** An annotation's pin on the frame, saved or being written: a 20px drop whose tip, its bottom-left corner, is the point. */
+const PIN_CLASS = 'absolute size-5 -translate-y-full rounded-full rounded-bl-none border border-background';
 
 /**
  * The frame ratio a row is shown at.
@@ -585,11 +587,11 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
           {finished && playable(row) && resultThreads.filter(({ anchor }) => anchor.point !== null && Math.abs(anchor.timeSeconds - clock.time) < PIN_WINDOW_SECONDS).map(({ thread, anchor }) =>
             <Button key={thread.id} type='button' variant={null} size={null} data-testid={`motion-pin-${thread.id}`} aria-label={t('spaces.webAnimation.annotations')}
               onClick={(event) => { event.stopPropagation(); openThread(thread.id); }}
-              className={cn('absolute size-5 -translate-x-1/2 -translate-y-full rounded-full rounded-bl-none border border-background', thread.resolved ? 'bg-muted-foreground' : 'bg-status-selected')}
+              className={cn(PIN_CLASS, thread.resolved ? 'bg-muted-foreground' : 'bg-comment-outline')}
               style={{ left: `${(anchor.point?.x ?? 0) * 100}%`, top: `${(anchor.point?.y ?? 0) * 100}%` }} />)}
           {annotation.status === 'picking' && <div className='pointer-events-none absolute inset-x-0 top-2 flex justify-center'>
             <span className='rounded-full bg-popover px-3 py-1 text-xs text-popover-foreground shadow-md'>{t('spaces.webAnimation.pickPoint')}</span></div>}
-          {draftPoint !== null && <span className='pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-status-selected'
+          {draftPoint !== null && <span data-testid='motion-draft-pin' className={cn(PIN_CLASS, 'pointer-events-none bg-comment-outline')}
             style={{ left: `${draftPoint.x * 100}%`, top: `${draftPoint.y * 100}%` }} />}
           {annotation.status !== 'idle' && <MotionFrameCard testId='motion-annotation-draft' point={draftPoint} boundary={previewArea} container={spaceElement} onClose={cancelAnnotation}>
             <div ref={writeBox} className='p-3'>
@@ -618,7 +620,13 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         {finished && playable(row) && docReady && resultThreads.map(({ thread, anchor }) => <Button key={thread.id} type='button' variant={null} size={null} data-testid={`motion-marker-${thread.id}`}
           aria-label={bodyPreview(thread)} onClick={() => openThread(thread.id)}
           className={cn('absolute top-0 h-2.5 w-1.5 -translate-x-1/2 rounded-sm', thread.resolved ? 'bg-muted-foreground' : 'bg-status-selected')}
-          style={{ left: `${(anchor.timeSeconds / Math.max(0.01, durationSeconds)) * 100}%` }} />)}
+        {/* A 24px-wide transparent hit area above the track around the 6x10 mark, placed where the Slider puts its thumb
+            for that time: Radix keeps the 12px thumb inside the track, so its centre runs from 6px to the width less 6px. */}
+        {finished && playable(row) && docReady && resultThreads.map(({ thread, anchor }) => <Button key={thread.id} type='button' variant={null} size={null} data-testid={`motion-marker-${thread.id}`}
+          aria-label={bodyPreview(thread)} onClick={() => openThread(thread.id)} className='absolute top-0 flex h-3 w-6 -translate-x-1/2 justify-center'
+          style={{ left: `calc(6px + (100% - 12px) * ${anchor.timeSeconds / Math.max(0.01, durationSeconds)})` }}>
+          <span className={cn('h-2.5 w-1.5 rounded-sm', thread.resolved ? 'bg-muted-foreground' : 'bg-comment-outline')} />
+        </Button>)}
       </div>
       {row !== undefined && <>
         <Separator orientation='vertical' className='mx-1 h-5' />

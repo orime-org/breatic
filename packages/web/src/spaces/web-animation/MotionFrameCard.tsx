@@ -59,12 +59,14 @@ function stopAtCard(event: React.MouseEvent): void {
   event.stopPropagation();
 }
 
-// The pin is 20px wide and centred on its point, so 18px leaves the same 8px gap a popover keeps from its trigger.
-const POINT_OFFSET = 18;
+// The pin is 20px wide and its tip, the bottom-left corner, is on the point, so 28px leaves the same 8px gap a
+// popover keeps from its trigger.
+const POINT_OFFSET = 28;
 
 /**
  * A card anchored to a point on the Motion frame, or to the frame's bottom centre (#1490 design §7.1, §7.3): the thread
- * card and the annotation write box. It opens beside the point and stays inside the preview area, flipping or sliding
+ * card and the annotation write box. It opens beside the point, or centred just inside the frame's bottom when there is
+ * none (the approved demo's `cardAt(null)`), and stays inside the preview area, flipping or sliding
  * near an edge, and no taller than the room there, scrolling what does not fit; pressing outside does not close it, Esc
  * does, and so does its close button, which stays in the corner while the content scrolls. One Esc closes only this card,
  * not the panel behind it. The card has no padding and the content scrolls edge to edge, so its 8px rail runs along the
@@ -88,7 +90,7 @@ export function MotionFrameCard({ testId, point, boundary, container, onClose, c
     : { left: `${point.x * 100}%`, top: `${point.y * 100}%` }), [point]);
   return <Popover open onOpenChange={changeOpen}>
     <PopoverAnchor asChild><span className='pointer-events-none absolute size-0' style={anchorStyle} /></PopoverAnchor>
-    <PopoverContent data-testid={testId} container={container} side='right' align='start' sideOffset={point === null ? 8 : POINT_OFFSET}
+    <PopoverContent data-testid={testId} container={container} side={point === null ? 'top' : 'right'} align={point === null ? 'center' : 'start'} sideOffset={point === null ? 8 : POINT_OFFSET}
       collisionBoundary={boundary} collisionPadding={8} onInteractOutside={keepOpen} onEscapeKeyDown={leaveWordsToTheBox} onOpenAutoFocus={focusCard}
       onClick={stopAtCard} updatePositionStrategy='always'
       className={cn('relative grid max-h-[var(--radix-popover-content-available-height)] grid-rows-[minmax(0,1fr)] overflow-hidden bg-card p-0', className)}>
