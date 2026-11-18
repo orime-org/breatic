@@ -50,7 +50,7 @@ vi.mock("@breatic/domain", () => ({
   assetService: { resolveOwnerStudioId: (...a: unknown[]) => resolveOwnerStudioId(...a) },
 }));
 
-const { CreditsHeldError, precheckCredits, reserveForRun } = await import("@server/modules/payment/credit-precheck.service.js");
+const { precheckCredits, reserveForRun } = await import("@server/modules/payment/credit-precheck.service.js");
 
 const PROJECT = "p1";
 const USER = "u1";
@@ -116,7 +116,6 @@ describe("reserveForRun", () => {
   it("says the credits are held by running work when the balance covers the run but its holds do not", async () => {
     refuseWith(100, 80);
     const err = await reserveForRun(PROJECT, USER, "t", 60).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(CreditsHeldError);
     expect(err).toMatchObject({
       statusCode: 402,
       message: 'server.credit.held_by_running {"held":"80","available":"20"}',
@@ -127,8 +126,6 @@ describe("reserveForRun", () => {
     refuseWith(100, 80);
     getUnassignedCredits.mockResolvedValue("500.000000");
     const err = await reserveForRun(PROJECT, USER, "t", 60).catch((e: unknown) => e);
-    // Still a hold refusal, so a lane that stores the cause on its node names it.
-    expect(err).toBeInstanceOf(CreditsHeldError);
     expect(err).toMatchObject({ statusCode: 402, message: 'server.credit.unassigned {"available":"500"}' });
   });
 
@@ -178,7 +175,6 @@ describe("reserveForRun", () => {
     // The balance covers 7 unheld, so the holds are what stops it.
     refuseWith(7, 0.5);
     const err = await reserveForRun(PROJECT, USER, "t", 7.000000000000001).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(CreditsHeldError);
     expect(err).toMatchObject({ message: 'server.credit.held_by_running {"held":"0.5","available":"6.5"}' });
   });
 

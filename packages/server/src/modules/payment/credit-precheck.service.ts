@@ -25,20 +25,6 @@ import { assetService, creditHoldService, creditLotService } from "@breatic/doma
 import { SpendCapReachedError } from "@server/modules/payment/spend-cap-error.js";
 import { parseCreditDecimal, quantizeQuotedCredits, serializeCreditMicro, ceilToCreditCent, formatCredits, getActiveLocale, t, type ProjectCreditsView } from "@breatic/shared";
 
-/**
- * A run refused because running work holds what it needs, so a lane that
- * stores the refusal on its node can name that cause.
- */
-export class CreditsHeldError extends AppError {
-  /**
-   * Build the refusal.
-   * @param message - The refusal, already translated.
-   */
-  constructor(message: string) {
-    super(402, message);
-  }
-}
-
 /** The figures a refusal is explained with: the studio and its position. */
 type RefusalFigures = { studioId: string } & ProjectCreditsView;
 
@@ -72,8 +58,7 @@ type RefusalFigures = { studioId: string } & ProjectCreditsView;
  * @param required - Credits the run needs.
  * @param figures - The studio's position at the moment it was refused.
  * @returns Never.
- * @throws {CreditsHeldError} 402, when running work holds what the run needs.
- * @throws {AppError} 402, for every other cause.
+ * @throws {AppError} 402, for every cause.
  */
 async function refuse(userId: string, required: number, figures: RefusalFigures): Promise<never> {
   const { studioId, spendable, held, available } = figures;
@@ -92,10 +77,9 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
 
   if (parseCreditDecimal(held) > 0n && parseCreditDecimal(spendable) >= quantizeQuotedCredits(required)) {
     const unassigned = await creditLotService.getUnassignedCredits(userId);
-    // Still a hold refusal: the sentence points at the step that certainly
-    // works, and a lane that stores the cause on its node names the hold.
-    if (parseCreditDecimal(unassigned) > 0n) throw new CreditsHeldError(t("server.credit.unassigned", { available: shown(unassigned) }));
-    throw new CreditsHeldError(t("server.credit.held_by_running", { held: shown(held), available: shown(available) }));
+    // The sentence points at the step that certainly works.
+    if (parseCreditDecimal(unassigned) > 0n) throw new AppError(402, t("server.credit.unassigned", { available: shown(unassigned) }));
+    throw new AppError(402, t("server.credit.held_by_running", { held: shown(held), available: shown(available) }));
   }
 
   if (parseCreditDecimal(available) > 0n) {
@@ -133,8 +117,7 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
  * @param referenceId - The run's task id, which the worker releases by.
  * @param required - The run's estimate.
  * @throws {SpendCapReachedError} 402 when a monthly spend limit cannot take the estimate.
- * @throws {CreditsHeldError} 402 when running work holds what it needs.
- * @throws {AppError} 402 when the studio cannot cover it for another cause.
+ * @throws {AppError} 402 when the studio cannot cover it, running work holding what it needs among the causes.
  * @throws {RangeError} When the estimate is negative or not a number.
  */
 export async function reserveForRun(
