@@ -58,11 +58,13 @@ const AnnotationItem = React.memo(function AnnotationItem({ item, author, active
     item.anchor.point !== null ? t('spaces.webAnimation.hasPoint') : null,
   ].filter((part): part is string => part !== null).join(' · ');
   return <Button type='button' variant={null} size={null} data-testid={`motion-annotation-${item.id}`} data-thread-id={item.id} aria-current={active ? 'true' : undefined} onClick={open}
-    className={cn('flex w-full gap-2 px-3 py-2 text-left hover-enabled:bg-accent', active && 'bg-accent-strong hover-enabled:bg-accent-strong')}>
-    <span className='mt-0.5 w-10 shrink-0 text-2xs tabular-nums text-muted-foreground'>{formatAnnotationTime(item.anchor.timeSeconds)}</span>
+  // Recessive text one step stronger on the hovered or chosen fill, where muted-foreground falls under 4.5:1.
+  const secondary = active ? 'text-row-foreground-muted' : 'text-muted-foreground group-hover/row:text-row-foreground-muted';
+    className={cn('group/row flex w-full gap-2 px-3 py-2 text-left hover-enabled:bg-accent', active && 'bg-accent-strong hover-enabled:bg-accent-strong')}>
+    <span className={cn('mt-0.5 w-10 shrink-0 text-2xs tabular-nums', secondary)}>{formatAnnotationTime(item.anchor.timeSeconds)}</span>
     <span className='flex min-w-0 flex-1 flex-col gap-0.5'>
-      <span className={cn('line-clamp-2 text-xs', item.thread.resolved && 'text-muted-foreground line-through')}>{first === undefined ? '' : bodyText(first.body)}</span>
-      {details !== '' && <span className='truncate text-2xs text-muted-foreground'>{details}</span>}
+      <span className={cn('line-clamp-2 text-xs', item.thread.resolved && cn('line-through', secondary))}>{first === undefined ? '' : bodyText(first.body)}</span>
+      {details !== '' && <span className={cn('truncate text-2xs', secondary)}>{details}</span>}
     </span>
   </Button>;
 });
