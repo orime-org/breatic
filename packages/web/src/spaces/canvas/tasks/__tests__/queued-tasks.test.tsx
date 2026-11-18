@@ -37,7 +37,8 @@ import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
 import { standsEmpty } from '@web/spaces/canvas/use-node-creation';
 
-const WAIT_TIP = /每条排队任务会在它的发起人同时运行的任务少于上限（\d+ 个）后自动开始/;
+// One task waits on this node, so the tip speaks of that one.
+const WAIT_TIP = /这条排队任务会在它的发起人同时运行的任务少于上限（\d+ 个）后自动开始/;
 const OPENED = '2026-11-15T10:00:00.000Z';
 const NOW = Date.parse(OPENED) + 10 * 60 * 1000;
 

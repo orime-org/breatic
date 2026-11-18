@@ -11,14 +11,17 @@
  * queued task.
  * @param t - The translate function.
  * @param limit - The limit, or null or undefined when unknown.
- * @param who - `own` for the user's own task, `other` for someone else's, `each` for a node's queued tasks.
+ * @param who - `own` for the user's own task, `other` for someone else's, `{ each }` for a node's queued tasks and how many there are.
  * @returns The sentence.
  */
 export function waitReason(
   t: (key: string, params?: Record<string, string | number>) => string,
   limit: number | null | undefined,
-  who: 'own' | 'other' | 'each',
+  who: 'own' | 'other' | { each: number },
 ): string {
-  const key = { own: 'canvas.task.waitReason', other: 'canvas.task.waitReasonOther', each: 'canvas.task.waitReasonEach' }[who];
+  if (typeof who === 'object') {
+    return limit == null ? t('canvas.task.waitReasonEach', { count: who.each }) : t('canvas.task.waitReasonEachLimit', { count: who.each, limit });
+  }
+  const key = who === 'own' ? 'canvas.task.waitReason' : 'canvas.task.waitReasonOther';
   return limit == null ? t(key) : t(`${key}Limit`, { limit });
 }

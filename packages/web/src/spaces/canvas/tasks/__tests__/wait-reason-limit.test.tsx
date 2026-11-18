@@ -31,6 +31,7 @@ const WITH_LIMIT = '你同时运行的任务已达上限（5 个），前面的�
 const OTHER_WITH_LIMIT = '发起人同时运行的任务已达上限（5 个），等发起人前面的任务结束后自动开始';
 const EACH_WITH_LIMIT = '每条排队任务会在它的发起人同时运行的任务少于上限（5 个）后自动开始';
 const EACH_WITHOUT = '每条排队任务会在它的发起人同时运行的任务少于上限后自动开始';
+const ONE_WITH_LIMIT = '这条排队任务会在它的发起人同时运行的任务少于上限（5 个）后自动开始';
 
 beforeEach(() => {
   setLocale('zh-CN');
@@ -45,6 +46,7 @@ describe('the queued cell of the counts column', () => {
   it.each<[NodeTaskCounts, string]>([
     [{ running: 2, waiting: 3, waitingLimit: 5, done: 0, failed: 0, expired: 0 }, EACH_WITH_LIMIT],
     [{ running: 2, waiting: 3, done: 0, failed: 0, expired: 0 }, EACH_WITHOUT],
+    [{ running: 2, waiting: 1, waitingLimit: 5, done: 0, failed: 0, expired: 0 }, ONE_WITH_LIMIT],
   ])('says why with the limit the counts carry: %o', async (counts, said) => {
     render(<TooltipProvider><TaskCountColumn counts={counts} endedShown openFor={null} onOpen={vi.fn()} /></TooltipProvider>);
     await userEvent.hover(screen.getByTestId('task-count-waiting'));
