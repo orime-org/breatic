@@ -8,7 +8,7 @@
  * What an account's key pays for is neither held nor checked against the Studio's credits.
  */
 
-import { SMALLEST_CREDIT, resolveKeys, runCallsLlm, type ResolvedKeys } from "@breatic/domain";
+import { SMALLEST_CREDIT, resolveKeys, runCallsLlm, runDescribesInput, type ResolvedKeys } from "@breatic/domain";
 import type { KeySet, Route } from "@breatic/provider";
 import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
 
@@ -18,6 +18,8 @@ export interface RunKeys {
   media: ResolvedKeys;
   /** The keys of the run's language-model step; null when the run has none. */
   llm: ResolvedKeys | null;
+  /** True when that step is charged on our keys (a description); a prompt rewrite never is. */
+  llmCharged: boolean;
 }
 
 /** The key rows a task records. */
@@ -37,7 +39,7 @@ export interface TaskKeyRows {
 export async function mediaRunKeys(projectId: string, model: string, params: Readonly<Record<string, unknown>>): Promise<RunKeys> {
   const media = await resolveKeys({ projectId }, { kind: "media", model });
   const llm = runCallsLlm(model, params) ? await resolveKeys({ projectId }, { kind: "llm" }) : null;
-  return { media, llm };
+  return { media, llm, llmCharged: runDescribesInput(model, params) };
 }
 
 /**
@@ -69,17 +71,17 @@ export function taskKeyRows(keys: RunKeys): TaskKeyRows {
 }
 
 /**
- * What a run is held for: its estimate on our keys; nothing on the payer's, where a language-model step on our keys
- * only needs a balance above zero, as every language-model call does.
+ * What a run is held for: its estimate on our keys; nothing on the payer's, where a charged language-model step on our
+ * keys only needs a balance above zero, as every charged language-model call does.
  * @param keys - The run's keys.
  * @param projectId - The Project; its Studio pays.
  * @param userId - Who submits it.
  * @param estimate - The run's estimate.
  * @returns The credits to hold, or null to hold nothing.
- * @throws {AppError} 402 when a language-model step on our keys meets a balance at zero.
+ * @throws {AppError} 402 when a charged language-model step on our keys meets a balance at zero.
  */
 export async function creditsToHold(keys: RunKeys, projectId: string, userId: string, estimate: () => Promise<number>): Promise<number | null> {
   if (keys.media.keyId === null) return estimate();
-  if (keys.llm !== null && keys.llm.keyId === null) await precheckCredits(projectId, userId, SMALLEST_CREDIT);
+  if (keys.llmCharged && keys.llm?.keyId === null) await precheckCredits(projectId, userId, SMALLEST_CREDIT);
   return null;
 }

@@ -27,7 +27,8 @@
       "refund_still_designated": "This purchase is assigned to a Studio. Unassign it first.",
       "refund_already_spent": "Credits from this purchase have been spent, so it cannot be refunded.",
       "refund_window_closed": "The refund window for this purchase has closed.",
-      "refund_state_changed": "This purchase's refund status has changed. Refresh and try again."
+      "refund_state_changed": "This purchase's refund status has changed. Refresh and try again.",
+      "agent_tools_need_credits": "{refusal} Your own OpenRouter key pays for the Agent's model, but web search, image search and page reading run on our services and are paid in credits."
     },
     "auth": {
       "invalid_credentials": "Invalid email or password",

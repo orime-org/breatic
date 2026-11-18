@@ -30,17 +30,6 @@ export interface ModelCallWatch {
 }
 
 /**
- * How a later lookup of an operation's costs is charged (inner#1953): on the payer's own key it names the key row, so
- * the cost is asked with that key and no other, and is never charged; on our keys it is charged.
- * @param description - What the ledger row says the charge was for.
- * @param keyId - The account key row the operation ran on, or null for our keys.
- * @returns What `handOffLookups` is handed.
- */
-export function lookupCharge(description: string, keyId: string | null | undefined): { description: string; charge: boolean; keyId?: string } {
-  return keyId == null ? { description, charge: true } : { description, charge: false, keyId };
-}
-
-/**
  * Watch one stream's model calls.
  * @param usage - The operation's recorder; rows and lookups go under its operation.
  * @param call - The model the stream calls, what a ledger row says the charge was for, and the key row it runs on.
@@ -78,7 +67,8 @@ export function watchModelCalls(
       }
       const lookups = [...usage.awaitingLookup(), ...cutOff];
       if (lookups.length === 0) return;
-      await handOffLookups(lookups, usage.operation, lookupCharge(call.description, call.keyId));
+      // handOffLookups decides by each lookup's payer which run uncharged on the key row (inner#1953).
+      await handOffLookups(lookups, usage.operation, { description: call.description, charge: true, keyId: call.keyId });
     },
   };
 }

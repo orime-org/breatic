@@ -606,6 +606,7 @@ export const domainMock = async () => ({
   resolveKeys: async () => ({ keys: { owner: "deployment", keyOf: () => undefined }, route: { mode: "default" }, keyId: null }),
   keysById: async () => null,
   runCallsLlm: () => false,
+  runDescribesInput: () => false,
   // The same shape as the real one: every tool in the set gets the recorder.
   usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
     Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),

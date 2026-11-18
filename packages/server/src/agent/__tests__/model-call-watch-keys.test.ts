@@ -3,8 +3,8 @@
 
 /**
  * A stream's calls whose cost is not in hand, on an account's key (inner#1953): the later lookup is handed the key
- * row's id, so it asks with that key and no other, and is never charged; on the deployment's keys it is charged as
- * before and names no key row.
+ * row's id, and handOffLookups alone decides by each lookup's payer which go uncharged on that key and which are
+ * charged on ours; on the deployment's keys it names no key row.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -45,12 +45,12 @@ beforeEach(() => {
 });
 
 describe("handing off a cut-off call's lookup", () => {
-  it("names the account's key row and asks for no charge", async () => {
+  it("names the account's key row and leaves each lookup's charge to its payer", async () => {
     const watch = watchModelCalls(recorder(), { model: "m", description: "Agent chat", keyId: "key-1" }, () => [CUT_OFF]);
 
     await watch.handOff();
 
-    expect(handOffLookups).toHaveBeenCalledWith(expect.any(Array), OPERATION, { description: "Agent chat", charge: false, keyId: "key-1" });
+    expect(handOffLookups).toHaveBeenCalledWith(expect.any(Array), OPERATION, { description: "Agent chat", charge: true, keyId: "key-1" });
   });
 
   it("is charged and names no key row on the deployment's keys", async () => {

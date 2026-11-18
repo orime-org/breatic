@@ -391,7 +391,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @param keys - The key set the call runs on.
    * @returns Its declaration and key.
    */
-  const reach = (upstream: string, keys: KeySet): Reach => ({ name: upstream, decl: config.upstreams[upstream]!, key: keyFor(keys, upstream) });
+  const reach = (upstream: string, keys: KeySet): Reach => ({ name: upstream, decl: config.upstreams[upstream]!, key: keyFor(keys, upstream), owner: keys.owner });
 
   /**
    * The media steps' keys of a later call on a ticket, checked against the owner it recorded.

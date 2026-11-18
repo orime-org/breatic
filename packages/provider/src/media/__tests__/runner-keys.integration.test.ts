@@ -314,6 +314,20 @@ describe("every cost says who paid it", () => {
   });
 });
 
+describe("a fal key that cannot read billing (inner#1953)", () => {
+  it.each([
+    ["the account's", accountKeys({ fal: "acct-fal" }), "This key", "FAL_KEY"],
+    ["the deployment's", undefined, "FAL_KEY", "This key"],
+  ] as const)("names %s key in the missing cost's reason", async (_, keys, says, saysNot) => {
+    const { provider } = started();
+    fal.answer(({ path }) => (path === "/v1/models/billing-events" ? { status: 403, body: { detail: "forbidden" } } : undefined));
+    const cost = await provider.cost.lookup({ upstream: "fal", predictionId: "r7", ...(keys === undefined ? {} : { payer: "account" as const }) }, { lastAttempt: false, ...(keys === undefined ? {} : { keys }) });
+    expect(cost.state).toBe("missing");
+    expect((cost as { reason: string }).reason).toContain(says);
+    expect((cost as { reason: string }).reason).not.toContain(saysNot);
+  });
+});
+
 describe("an account-paid description names its upstream", () => {
   it("marks the description's cost on the account's LLM keys with the upstream that billed it, so the caller records it under that key", async () => {
     const { runner } = started();

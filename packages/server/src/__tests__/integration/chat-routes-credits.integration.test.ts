@@ -57,7 +57,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 import type * as DomainModule from "@breatic/domain";
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { getRedis, initCore, loadLocales, sessionCookieName, setSession } from "@breatic/core";
+import { accountProviderKeysRepo, getRedis, initCore, loadLocales, sealProviderKey, sessionCookieName, setSession } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import type { Hono } from "hono";
 import { openPaymentSource } from "./payment-source.js";
@@ -65,6 +65,7 @@ import { keysOf, send, sync, until, untilIdle, type Seeded } from "./chat-run-ha
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
+const SECRET = crypto.randomBytes(32);
 
 beforeAll(async () => {
   // Placeholders satisfy the config's check; nothing here reaches Stripe.
@@ -73,6 +74,8 @@ beforeAll(async () => {
     PAYMENT_ENABLED: "true",
     STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
     STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+    PROVIDER_KEY_SECRET_ID: "t1",
+    PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }),
   });
   loadLocales();
   sql = postgres(inject("DATABASE_URL"), { max: 6, prepare: false });
@@ -209,6 +212,34 @@ describe("a send the balance cannot pay for", () => {
     expect(body.pending.map((p) => p.id)).toEqual([m1]);
     release();
     await untilIdle(who.conversationId);
+  });
+});
+
+describe("a send on the payer's own OpenRouter key the balance cannot pay for (inner#1953)", () => {
+  /**
+   * Save an OpenRouter key on the payer's account.
+   * @param who - The payer.
+   */
+  async function ownKey(who: Seeded): Promise<void> {
+    await accountProviderKeysRepo.saveKey({ userId: who.userId, upstream: "openrouter", ciphertext: sealProviderKey("sk-or-own", { current: "t1", keys: { t1: SECRET } }), displayHint: "hint" });
+  }
+
+  it("is refused 402 at the start, saying the Agent's search and reading tools need credits", async () => {
+    const who = await seedOwner(0);
+    await ownKey(who);
+    const before = await snapshotOf(who.conversationId);
+    const res = await send(app, who, { id: crypto.randomUUID(), message: "hello" });
+    expect(res.status).toBe(402);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain("web search, image search and page reading");
+    expect(await snapshotOf(who.conversationId)).toEqual(before);
+  });
+
+  it("says the balance is why no run opened for what is queued", async () => {
+    const who = await seedOwner(0);
+    await ownKey(who);
+    await getRedis().rpush(keysOf(who.conversationId).queue, itemOf(who, crypto.randomUUID()));
+    expect((await synced(who)).blocked).toBe("credits");
   });
 });
 

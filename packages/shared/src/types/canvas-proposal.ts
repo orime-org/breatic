@@ -486,5 +486,8 @@ export interface ProposalRefused {
   reason: string;
 }
 
-/** What the tool answers with: the proposal itself, or why it was refused. */
-export type ProposalAnswer = (CanvasProposal & { placed: true }) | ProposalRefused;
+/**
+ * What the tool answers with: the proposal itself, or why it was refused. A placed one names the models the Studio's
+ * payer ran on their own key when it was proposed (inner#1953), which cost no credits.
+ */
+export type ProposalAnswer = (CanvasProposal & { placed: true; onPayerKey?: string[] }) | ProposalRefused;

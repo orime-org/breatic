@@ -103,15 +103,25 @@ function asksForStep(value: unknown): boolean {
 }
 
 /**
- * Whether a media run makes a language-model call of its own (inner#1953): its prompt is rewritten, or a step on one
- * of its bindings describes an input first (Kling O3's elements). That call runs on the payer's language-model keys.
+ * Whether a step on one of a media run's bindings describes an input first (Kling O3's elements): a language-model call
+ * the run is charged for when it runs on our keys.
+ * @param model - The catalog model.
+ * @param params - The run's params, in our names.
+ * @returns True when the run has a description step.
+ */
+export function runDescribesInput(model: string, params: Readonly<Record<string, unknown>>): boolean {
+  return (provider().config.models[model] ?? []).some((binding) =>
+    (binding.extra_steps ?? []).some((step) => step.describe !== undefined && (step.for_param === undefined || asksForStep(params[step.for_param]))),
+  );
+}
+
+/**
+ * Whether a media run makes a language-model call of its own (inner#1953): its prompt is rewritten, which is never
+ * charged, or it describes an input first. That call runs on the payer's language-model keys.
  * @param model - The catalog model.
  * @param params - The run's params, in our names.
  * @returns True when the run has a language-model step.
  */
 export function runCallsLlm(model: string, params: Readonly<Record<string, unknown>>): boolean {
-  if (PROMPT_REWRITTEN_MODELS.has(model)) return true;
-  return (provider().config.models[model] ?? []).some((binding) =>
-    (binding.extra_steps ?? []).some((step) => step.describe !== undefined && (step.for_param === undefined || asksForStep(params[step.for_param]))),
-  );
+  return PROMPT_REWRITTEN_MODELS.has(model) || runDescribesInput(model, params);
 }

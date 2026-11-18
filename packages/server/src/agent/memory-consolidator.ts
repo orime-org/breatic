@@ -42,7 +42,7 @@ import { getAgentConfig, logger, MEMORY_CONTENT_MAX_CHARS, MEMORY_TITLE_MAX_CHAR
 import { memoryService } from "@server/modules";
 import type { ConsolidationInput } from "@server/modules/memory/memory.service.js";
 import { readConsolidationAnswer } from "@server/agent/consolidation-answer.js";
-import { lookupCharge, watchModelCalls } from "@server/agent/model-call-watch.js";
+import { watchModelCalls } from "@server/agent/model-call-watch.js";
 
 const CONSOLIDATION_PROMPT = `\
 You are the memory consolidator for an AI creative assistant. The turns below are leaving the assistant's context. You are given them, the memory entries the assistant keeps about this user, and where the conversation has got to. Record what the turns add as changes to single entries.
@@ -257,7 +257,7 @@ async function bill(input: ConsolidationBill): Promise<void> {
     }
     // A call whose cost is not in hand is looked up and charged later, under
     // a key of its own.
-    await handOffLookups(usage.awaitingLookup(), usage.operation, lookupCharge("Memory consolidation", keyId)).catch((err: unknown) =>
+    await handOffLookups(usage.awaitingLookup(), usage.operation, { description: "Memory consolidation", charge: true, keyId }).catch((err: unknown) =>
       logger.error({ err, userId, conversationId, watermarkBefore }, "usage_lookup_enqueue_failed"),
     );
     if (amount === 0) return;

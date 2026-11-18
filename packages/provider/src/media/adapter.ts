@@ -8,7 +8,7 @@
  */
 
 import type { MediaBinding, UpstreamDecl } from "@provider/config/schema.js";
-import type { Cost } from "@provider/cost.js";
+import type { Cost, Payer } from "@provider/cost.js";
 import { BilledAnswerLost } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
 import { answerText, isSuccess, send, type ReadOptions } from "@provider/http/request.js";
@@ -20,6 +20,8 @@ export interface Reach {
   name: string;
   decl: UpstreamDecl;
   key: string;
+  /** Whose key it is: an account's, or the deployment's (inner#1953). */
+  owner: Payer;
 }
 
 /** The bounds of one request. */

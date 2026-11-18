@@ -46,7 +46,7 @@ import { attachmentService } from "@server/modules";
 import { agentInstructionsService } from "@server/modules";
 import { runningTurnsService } from "@server/modules";
 import { projectService } from "@server/modules";
-import { precheckCredits } from "@server/modules";
+import { precheckAgentTurn, precheckCredits } from "@server/modules";
 import { SMALLEST_CREDIT, keysById, resolveKeys } from "@breatic/domain";
 import type { KeySet } from "@breatic/provider";
 import { startRun, stopChannel } from "@server/agent/chat-run.js";
@@ -275,9 +275,9 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
       keys = null;
     }
   }
-  // A turn needs a balance above zero to start (#296), unless the payer's own key pays for it. Payments off: no
+  // A turn needs a balance above zero to start (#296), on the payer's own key too (inner#1953). Payments off: no
   // check. Checked before an answer is taken, so a refused answer leaves the card waiting.
-  if (keys === undefined) await precheckCredits(body.project_id, user.id, SMALLEST_CREDIT);
+  await precheckAgentTurn(body.project_id, user.id, keys !== undefined);
 
   // A message in the project's Agent chat is a collaboration action (inner#1442
   // §4.8). Reported alongside the turn; it never rejects.
@@ -409,8 +409,7 @@ chat.post(
     const seen = await queue.peek(conversation.id);
     if (seen.active === null && !seen.awaiting && seen.work && !isShuttingDown()) {
       try {
-        // The payer's own OpenRouter key asks no balance (inner#1953).
-        if ((await resolveKeys({ projectId }, { kind: "llm" })).keyId === null) await precheckCredits(projectId, user.id, SMALLEST_CREDIT);
+        await precheckCredits(projectId, user.id, SMALLEST_CREDIT);
       } catch (err) {
         if (!(err instanceof AppError) || err.statusCode !== 402) throw err;
         return c.json({

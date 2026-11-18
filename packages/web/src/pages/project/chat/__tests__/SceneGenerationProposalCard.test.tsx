@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { SceneGenerationProposal } from '@breatic/shared';
 
 import { SceneGenerationProposalCard } from '@web/pages/project/chat/SceneGenerationProposalCard';
@@ -90,6 +91,43 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+});
+
+describe('a model the Studio\'s payer runs on their own key (inner#1953)', () => {
+  const PROJECT = '11111111-1111-4111-8111-111111111111';
+
+  /**
+   * Draws the card inside a project route whose key plan runs the proposal's model on the payer's key.
+   * @param payer - Whose key it is to the viewer.
+   */
+  function drawOnKey(payer: 'self' | 'admin'): void {
+    api.get.mockImplementation(async (url: string) => {
+      if (url === '/models') return RAW_CATALOG;
+      if (url === `/projects/${PROJECT}/key-plan`) {
+        return { payer, llm: { usesAccountKey: false }, models: { [TEXT_TO_3D.model]: { upstream: 'wavespeed', availability: {} } }, upstreamNames: {} };
+      }
+      throw new Error(`unexpected GET ${url}`);
+    });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={[`/project/demo-${PROJECT}`]}>
+          <Routes>
+            <Route path='/project/:projectId' element={<SceneGenerationProposalCard proposal={TEXT_TO_3D} />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it.each([
+    ['self', 'Uses your key, no credits'],
+    ['admin', 'Uses the Studio\'s key, no credits'],
+  ] as const)('says whose key runs it for a %s payer, with no credit figure', async (payer, words) => {
+    drawOnKey(payer);
+
+    expect(await screen.findByText(words)).toBeInTheDocument();
+    expect(screen.queryByText(/\b36\b/)).toBeNull();
+  });
 });
 
 describe('what the card shows', () => {

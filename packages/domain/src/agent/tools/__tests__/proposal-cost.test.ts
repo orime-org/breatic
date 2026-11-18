@@ -18,7 +18,7 @@ import { formatCredits, setLocale, type ProposalAnswer, type ProposalNode } from
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 
-import { answerFor, makeProposeCanvasAction, renderProposalForModel, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
+import { answerFor, checkedAnswerFor, makeProposeCanvasAction, renderProposalForModel, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
 
 beforeEach(() => {
@@ -113,6 +113,30 @@ describe("the cost of a placed proposal, read back to the model", () => {
 
   it("still says the proposal is on screen and the user decides", async () => {
     expect(await readBack()).toContain("The proposal is on screen as a card.");
+  });
+});
+
+describe("a generation the Studio's payer runs on their own key (inner#1953)", () => {
+  /**
+   * The keys of each model as the payer's key plan gives them: nano-banana-2 on the payer's WaveSpeed key, the rest
+   * on ours.
+   * @param model - The model.
+   * @returns Its keys.
+   */
+  const keysFor = async (model: string): Promise<{ keyId: string | null; route: { mode: "default" } | { mode: "upstream"; upstream: string }; keys?: undefined }> =>
+    model === "nano-banana-2" ? { keyId: "key-row-1", route: { mode: "upstream", upstream: "wavespeed" } } : { keyId: null, route: { mode: "default" } };
+
+  it("marks the models the payer runs on their own key in the placed answer", async () => {
+    const answer = await checkedAnswerFor(inputSchema.parse(TAKES), undefined, undefined, keysFor);
+    expect(answer.placed && answer.onPayerKey).toEqual(["nano-banana-2"]);
+  });
+
+  it("says such a generation costs no credits and leaves it out of the total", async () => {
+    const said = await renderProposalForModel({ ...placed(), onPayerKey: ["nano-banana-2"] } as ProposalAnswer);
+    const ink = said.split("\n").find((line) => line.includes('"Ink wash"')) ?? "";
+    expect(ink).toContain("no credits");
+    const [, cel] = await sentPrices();
+    expect(said).toContain(`Total: ${formatCredits(cel!, "en-US")} credits.`);
   });
 });
 

@@ -27,7 +27,8 @@
       "refund_still_designated": "这笔已指定给某个 Studio，请先解除指定。",
       "refund_already_spent": "这笔的积分已经用过，不能退款。",
       "refund_window_closed": "这笔的退款期限已过。",
-      "refund_state_changed": "这笔的退款状态已经变了，请刷新后再试。"
+      "refund_state_changed": "这笔的退款状态已经变了，请刷新后再试。",
+      "agent_tools_need_credits": "{refusal}你自己的 OpenRouter key 只支付 Agent 的模型；联网搜索、图片搜索和网页读取走我们的服务，要用积分支付。"
     },
     "text_tool": {
       "selection_too_long": "选中的内容太长，AI 处理不了：{actual} 个字符，上限是 {limit}。",

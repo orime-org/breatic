@@ -284,6 +284,16 @@ describe("a canvas generation", () => {
     expect(await taskRowText(taskId)).not.toContain(OPENROUTER_KEY);
   });
 
+  it("admits a model whose prompt is rewritten on the payer's media key with no credits in the Studio, since the rewrite on our keys is never charged", async () => {
+    const fx = await seed(0);
+    const keyId = await pointAt(fx.userId, REWRITTEN, "wavespeed", WAVESPEED_KEY);
+
+    const { taskId } = await acceptedTask(await SUBMIT.generate(fx, REWRITTEN));
+
+    expect(await keyColumns(taskId)).toEqual({ key_id: keyId, llm_key_id: null });
+    expect(await holdsFor(taskId)).toEqual([]);
+  });
+
   it("holds the estimate on our keys, as before", async () => {
     const fx = await seed(100_000);
 
@@ -360,6 +370,13 @@ describe("Kling O3 with elements, whose description step runs on a language mode
 
     expect(await keyColumns(taskId)).toEqual({ key_id: keyId, llm_key_id: llmKeyId });
     expect(await holdsFor(taskId)).toEqual([]);
+  });
+
+  it("is refused with no credits in the Studio when the media runs on the payer's key and the charged description on ours", async () => {
+    const fx = await seed(0);
+    await pointAt(fx.userId, KLING_O3, "wavespeed", WAVESPEED_KEY);
+
+    expect((await submitKling(fx)).status).toBe(402);
   });
 
   it("on our keys holds only the media's estimate, nothing for the description, as before", async () => {

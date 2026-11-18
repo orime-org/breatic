@@ -133,12 +133,13 @@ describe("a consolidation on the payer's OpenRouter key", () => {
     expect(h.llm.prepare.mock.calls[0]?.[3]).toBe(ACCOUNT);
   });
 
-  it("records the call under the key row, charges nothing and hands any lookup over uncharged", async () => {
+  it("records the call under the key row, charges nothing and hands any lookup over under the key row", async () => {
     expect(await consolidate()).toBe("written");
 
     expect(h.createUsageRecorder).toHaveBeenCalledWith(expect.objectContaining({ feature: "memory_consolidation", keyId: "key-1" }));
     expect(h.chargeOnce).not.toHaveBeenCalled();
-    for (const call of h.handOffLookups.mock.calls) expect(call[2]).toMatchObject({ charge: false, keyId: "key-1" });
+    // handOffLookups leaves a lookup the key row paid for uncharged.
+    for (const call of h.handOffLookups.mock.calls) expect(call[2]).toMatchObject({ keyId: "key-1" });
   });
 
   it("ends failed on a refused account key, preparing no second call on other keys", async () => {

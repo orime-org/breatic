@@ -27,7 +27,8 @@
       "refund_still_designated": "이 구매는 Studio에 배정되어 있습니다. 먼저 배정을 해제하세요.",
       "refund_already_spent": "이 구매의 크레딧을 사용했으므로 환불할 수 없습니다.",
       "refund_window_closed": "이 구매의 환불 기간이 종료되었습니다.",
-      "refund_state_changed": "이 구매의 환불 상태가 바뀌었습니다. 새로 고친 뒤 다시 시도하세요."
+      "refund_state_changed": "이 구매의 환불 상태가 바뀌었습니다. 새로 고친 뒤 다시 시도하세요.",
+      "agent_tools_need_credits": "{refusal} 직접 등록한 OpenRouter 키는 Agent의 모델 비용만 지불합니다. 웹 검색, 이미지 검색, 페이지 읽기는 저희 서비스에서 실행되어 크레딧으로 결제됩니다."
     },
     "auth": {
       "invalid_credentials": "이메일 또는 비밀번호가 올바르지 않습니다",

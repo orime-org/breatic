@@ -348,7 +348,7 @@ describe("a run cut off before the model reported its cost", () => {
     expect(handOffLookups).toHaveBeenCalledWith(
       [{ lookup: { upstream: "openrouter", generationId: "gen-42" }, source: "model", model: "openai/gpt-4o-mini" }],
       { operationKey: "texttool:key-1", feature: "text_tool", actorUserId: "u-1", projectId: PROJECT },
-      { description: "Text tool: generate", charge: true },
+      { description: "Text tool: generate", charge: true, keyId: null },
     );
   });
 

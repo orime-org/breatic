@@ -39,8 +39,11 @@ import type { MediaWarning } from "@provider/media/runner.js";
 /** How far back a billing lookup reaches; a task's lookups all fall within two hours and the cost wait after it. */
 const BILLING_WINDOW_MS = 30 * 24 * 3600 * 1000;
 
-/** What a billing permission refusal costs a lookup: it cannot change by asking again. */
-const NO_BILLING_PERMISSION = "FAL_KEY cannot read billing events; it needs the FULL preset or a policy with billing:usage:read, auth:keys:read and account:users:read";
+/** What a billing permission refusal costs a lookup, by whose key was refused: it cannot change by asking again. */
+const NO_BILLING_PERMISSION: Record<Reach["owner"], string> = {
+  deployment: "FAL_KEY cannot read billing events; it needs the FULL preset or a policy with billing:usage:read, auth:keys:read and account:users:read",
+  account: "This key has no billing permission; a key made with the FULL preset, or a policy with billing:usage:read, auth:keys:read and account:users:read, can read it",
+};
 
 /**
  * The headers of every request.
@@ -180,7 +183,7 @@ async function billed(reach: Reach, predictionId: string, bounds: RequestBounds,
   } catch (error) {
     const detail = { upstream: reach.name, predictionId, error: String(error) };
     if (error instanceof HttpStatus && (error.status === 401 || error.status === 403)) {
-      return { cost: { state: "missing", reason: NO_BILLING_PERMISSION }, warnings: [{ code: "billing_query_rejected", detail }] };
+      return { cost: { state: "missing", reason: NO_BILLING_PERMISSION[reach.owner] }, warnings: [{ code: "billing_query_rejected", detail }] };
     }
     const code = billingFailure(error);
     return { cost: unbilled(reach, predictionId, lastAttempt, code), warnings: [{ code, detail }] };

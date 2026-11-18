@@ -198,7 +198,7 @@ async function lookupCost(config: ProviderConfig, keys: KeySet, lookup: CostLook
   const key = keyFor(keys, lookup.upstream);
   const media = mediaAdapter(decl.kind);
   if (media !== undefined && typeof lookup.predictionId === "string") {
-    return (await media.billed({ name: lookup.upstream, decl, key }, lookup.predictionId, sideBounds(), lastAttempt)).cost;
+    return (await media.billed({ name: lookup.upstream, decl, key, owner: keys.owner }, lookup.predictionId, sideBounds(), lastAttempt)).cost;
   }
   const costs = hasLlmAdapter(decl.kind) ? vendorOf(decl.kind).costs : undefined;
   if (costs === undefined || typeof lookup.generationId !== "string") return { state: "missing", reason: "the lookup names nothing to ask" };

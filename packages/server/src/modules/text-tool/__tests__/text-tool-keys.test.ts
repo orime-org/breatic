@@ -114,11 +114,11 @@ describe("a text-tool run on the payer's OpenRouter key", () => {
     expect(events.at(-1)).toMatchObject({ type: "done" });
   });
 
-  it("hands a cut-off call's lookup over with the key row, uncharged", async () => {
+  it("hands a cut-off call's lookup over with the key row, for handOffLookups to leave uncharged", async () => {
     h.cutOff.value = true;
     await run();
 
-    expect(h.handOffLookups).toHaveBeenCalledWith(expect.any(Array), expect.anything(), expect.objectContaining({ charge: false, keyId: "key-1" }));
+    expect(h.handOffLookups).toHaveBeenCalledWith(expect.any(Array), expect.anything(), expect.objectContaining({ keyId: "key-1" }));
   });
 
   it("is charged, naming no key row, on the deployment's keys", async () => {

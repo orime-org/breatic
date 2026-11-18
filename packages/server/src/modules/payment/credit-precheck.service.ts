@@ -19,7 +19,7 @@
  */
 
 import { AppError, env, getNodeTaskConfig } from "@breatic/core";
-import { assetService, creditHoldService, creditLotService } from "@breatic/domain";
+import { assetService, creditHoldService, creditLotService, SMALLEST_CREDIT } from "@breatic/domain";
 import { parseCreditDecimal, quantizeQuotedCredits, serializeCreditMicro, ceilToCreditCent, formatCredits, getActiveLocale, t, type ProjectCreditsView } from "@breatic/shared";
 
 /**
@@ -115,6 +115,24 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
   }
 
   throw new AppError(402, t("server.credit.none"));
+}
+
+/**
+ * Admit an Agent turn on a balance above zero (#296), on the payer's own OpenRouter key too (inner#1953): the key pays
+ * for the model, while web search, image search and page reading run on our services and are charged in credits, so a
+ * turn that could not pay for them is refused before it starts. The refusal then says why the own key is not enough.
+ * @param projectId - The turn's project.
+ * @param userId - The authenticated caller.
+ * @param onOwnKey - Whether the turn's model runs on the payer's own key.
+ * @throws {AppError} 402 when the balance is not above zero.
+ */
+export async function precheckAgentTurn(projectId: string, userId: string, onOwnKey: boolean): Promise<void> {
+  try {
+    await precheckCredits(projectId, userId, SMALLEST_CREDIT);
+  } catch (err) {
+    if (!onOwnKey || !(err instanceof AppError) || err.statusCode !== 402) throw err;
+    throw new AppError(402, t("server.credit.agent_tools_need_credits", { refusal: err.message }), err.reason);
+  }
 }
 
 /**
