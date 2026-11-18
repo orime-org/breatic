@@ -77,6 +77,8 @@ interface RenderedObject {
   lease: SceneModelLease;
   root: Group | null;
   state: 'loading' | 'ready' | 'failed';
+  /** Its parts as last drawn, read again only when a look applies. */
+  parts?: Record<string, { type: string; color: string | null; map: boolean }>;
 }
 /** One joint drag: its rig, the dragged bone's key and the committed pose it started from. */
 interface JointGesture {
@@ -226,7 +228,7 @@ export class SceneViewportRuntime {
     onChanged: () => {
       if (this.syncing) return;
       this.monitorEvent({ type: 'changed' });
-      this.inspect();
+      this.inspect(true);
     },
     onFailure: (id, failure) => this.props.onLookFailure?.(id, failure),
   });
@@ -605,7 +607,7 @@ export class SceneViewportRuntime {
     this.monitorEvent({ type: 'changed' });
     this.showCameraView();
     this.restyle();
-    this.inspect();
+    this.inspect(true);
   }
 
   /**
@@ -968,7 +970,7 @@ export class SceneViewportRuntime {
       this.syncControls();
       if (this.pendingFocus) this.focus();
       this.restyle();
-      this.inspect();
+      this.inspect(true);
     }).catch((error: unknown) => {
       if (this.disposed || this.items.get(object.id) !== item) return;
       item.lease.release();
@@ -1614,14 +1616,16 @@ export class SceneViewportRuntime {
 
   /**
    * Expose actual rendered tuples for browser assertions without a second scene model.
+   * @param looksApplied - Whether looks may have changed since the last call, so each object's parts are read again.
    * @throws {never} Never.
    */
-  private inspect(): void {
+  private inspect(looksApplied = false): void {
     const canvas = this.renderer.domElement;
     canvas.dataset.gestureActive = String(this.dragging);
     canvas.dataset.view = JSON.stringify({ position: this.camera.position.toArray(), target: this.orbit.target.toArray() });
+    for (const item of this.items.values()) if (item.root && (looksApplied || !item.parts)) item.parts = renderedParts(item.root);
     canvas.dataset.objects = JSON.stringify([...this.items].flatMap(([id, item]) => item.root ? [{ id, position: item.root.position.toArray(), rotation: item.root.quaternion.toArray(), scale: item.root.scale.toArray(),
-      parts: renderedParts(item.root) }] : []));
+      parts: item.parts }] : []));
     canvas.dataset.partHighlight = String(this.looks.overlays().length);
   }
 

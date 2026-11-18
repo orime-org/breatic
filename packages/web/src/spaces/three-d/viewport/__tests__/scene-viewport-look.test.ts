@@ -112,3 +112,21 @@ describe('a restored GPU context (inner#1693 design 5.7)', () => {
     expect(vi.mocked(createSceneEnvironment).mock.calls.length).toBe(calls);
   });
 });
+
+describe('the parts the page exposes for inspection (inner#1693)', () => {
+  it('reads them when a look applies, not on every orbit frame', async () => {
+    const initial = props();
+    const { runtime } = await open(initial, '#969696');
+    const { orbit, items } = runtime as unknown as { orbit: { dispatchEvent: (event: { type: 'change' }) => void }; items: Map<string, { root: Object3D }> };
+    const root = items.get('box')!.root;
+    const traverse = vi.spyOn(root, 'traverse');
+    orbit.dispatchEvent({ type: 'change' });
+    orbit.dispatchEvent({ type: 'change' });
+    expect(traverse).not.toHaveBeenCalled();
+    const canvas = document.querySelector('canvas')!;
+    const drawn = (): unknown => (JSON.parse(canvas.dataset.objects ?? '[]') as Array<{ parts: Record<string, { type: string }> }>)[0]?.parts['0']?.type;
+    expect(drawn()).toBe('MeshStandardMaterial');
+    runtime.update(props({ objects: [{ ...BOX, look: { 0: { transmission: 1 } } }], onLookReport: initial.onLookReport, onModelStateChange: initial.onModelStateChange }));
+    expect(drawn()).toBe('MeshPhysicalMaterial');
+  });
+});
