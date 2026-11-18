@@ -29,6 +29,24 @@ Bringe Briefing, Szenen und Medien in einem Project zusammen. Schreibe in Docume
 
 Der gehostete Dienst bietet einen kostenlosen Starter-Tarif. Credits für die KI-Generierung werden separat gekauft und sind nicht in Mitgliedschaften enthalten. Siehe [Preise und Credits][hosted-pricing].
 
+## Ein Projekt, vier kreative Arbeitsbereiche für die Zusammenarbeit
+
+In Breatic kannst du beim Arbeiten das Skript überarbeiten, Bildideen ausprobieren, Szenen arrangieren und Einstellungen anordnen. Im Team können alle gleichzeitig im selben Projekt arbeiten.
+
+| Funktion | **Breatic** | Higgsfield | TapNow | LibTV | Luma | LTX Studio |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Gemeinsame Dokumentbearbeitung** | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Gemeinsamer Canvas** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Gemeinsame 3D-Bearbeitung** | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Gemeinsame Zeitleiste** | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 3D-Previsualisierung | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
+| Zeitleistenbearbeitung | ✓ | ✗ | ✓ | ✓ | ✗ | ✓ |
+| Projekt-Agent | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| Textvorschläge prüfen | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Mit dem Team teilen | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+Zusammenarbeit bedeutet, dass mehrere Personen denselben Arbeitsbereich in Echtzeit bearbeiten können. Bei Textvorschlägen kannst du die Änderung des Agenten prüfen, bevor du entscheidest, ob du sie in den Originaltext übernimmst. Der Vergleich basiert auf öffentlich zugänglichen Produktinformationen mit Stand vom 18. November 2026. ✓ steht für bestätigte Unterstützung, ✗ für anhand öffentlicher Informationen nicht bestätigte Unterstützung.
+
 ![Bildvarianten eines Cafés auf dem Breatic-Canvas neben dem Projektchat; englische Oberfläche](docs/images/readme/workspace-en.png)
 
 ## Was du damit machen kannst

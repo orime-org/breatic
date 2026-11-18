@@ -29,6 +29,24 @@ Réunissez le brief, les scènes et les médias dans un même Project. Rédigez 
 
 Le service hébergé propose une formule Starter gratuite. Les crédits de génération IA s’achètent séparément et ne sont pas inclus dans les abonnements. Consultez les [tarifs et crédits][hosted-pricing].
 
+## Un projet, quatre espaces de création collaboratifs
+
+Dans Breatic, vous pouvez revoir le scénario, explorer des pistes visuelles, mettre en place les scènes et agencer les plans au fil du projet. En équipe, chacun peut travailler en même temps dans le même projet.
+
+| Fonctionnalité | **Breatic** | Higgsfield | TapNow | LibTV | Luma | LTX Studio |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Documents collaboratifs** | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Canevas collaboratif** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Édition 3D collaborative** | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Timeline collaborative** | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Prévisualisation 3D | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
+| Montage sur timeline | ✓ | ✗ | ✓ | ✓ | ✗ | ✓ |
+| Agent de projet | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| Relecture des reformulations | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Partage avec l’équipe | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+La collaboration permet à plusieurs personnes de modifier le même espace en temps réel. Vous pouvez examiner les changements proposés par l’agent avant de décider de les appliquer au texte d’origine. La comparaison s’appuie sur les informations publiques disponibles au 18 novembre 2026. ✓ indique une prise en charge confirmée et ✗ indique qu’elle n’a pas pu être confirmée à partir des informations publiques.
+
 ![Variantes d’images de café sur le canevas Breatic à côté du chat du projet ; interface en anglais](docs/images/readme/workspace-en.png)
 
 ## Ce que vous pouvez faire
