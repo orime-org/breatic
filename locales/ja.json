@@ -2687,6 +2687,8 @@
         "uploadedOverLimit": "画像はアップロードされましたが、このオブジェクトの上限を超えています。画像は Project の画像にあります",
         "partChanged": "画像はアップロードされましたが、アップロード中にこのパーツの画像が変更されました。画像は Project の画像にあります",
         "spaceClosed": "画像はアップロードされましたが、この Space は閉じられています。画像は Project の画像にあります",
+        "pickSpaceClosed": "Space が閉じられたため、画像は適用されませんでした",
+        "pickObjectGone": "オブジェクトが削除されたため、画像は適用されませんでした",
         "checking": "確認中"
       },
       "pose": {

@@ -2687,6 +2687,8 @@
         "uploadedOverLimit": "图片已上传，但超出了这个对象的上限；图片在 Project 图片里",
         "partChanged": "图片已上传，但这个部位的图片在上传期间被换了；图片在 Project 图片里",
         "spaceClosed": "图片已上传，但这个 Space 已关闭；图片在 Project 图片里",
+        "pickSpaceClosed": "Space 已关闭，图片没有放上去",
+        "pickObjectGone": "对象已被删除，图片没有放上去",
         "checking": "正在检查"
       },
       "pose": {

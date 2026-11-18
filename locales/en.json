@@ -2687,6 +2687,8 @@
         "uploadedOverLimit": "The image was uploaded but is over this object's limit; it is in the Project images",
         "partChanged": "The image was uploaded, but this part's image was changed meanwhile; it is in the Project images",
         "spaceClosed": "The image was uploaded, but this Space is closed; it is in the Project images",
+        "pickSpaceClosed": "This Space was closed before the image was put on",
+        "pickObjectGone": "The object was deleted before the image was put on",
         "checking": "Checking"
       },
       "pose": {

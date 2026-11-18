@@ -1372,6 +1372,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.threeD.look.uploadedOverLimit": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.threeD.look.partChanged": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.threeD.look.spaceClosed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "spaces.threeD.look.pickSpaceClosed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "spaces.threeD.look.pickObjectGone": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.threeD.submit": { excluded: REASONS.SCREEN_READER, look: /the round button with an upward arrow, which generates/ },
   "spaces.threeD.readOnlyCreate": { excluded: REASONS.VIEWERS_ONLY },
   "spaces.threeD.taskList.generatingFor": { excluded: REASONS.FILLS_A_VALUE },

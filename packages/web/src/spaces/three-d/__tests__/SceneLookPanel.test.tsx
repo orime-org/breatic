@@ -211,17 +211,46 @@ describe('telling why a Project picture was not put on', () => {
   });
 });
 
-describe('a pick that ends after its Space closed', () => {
-  it('writes nothing and says the Space was closed', async () => {
-    const { doc } = panel();
+describe('a pick that ends after its Space or object changed', () => {
+  /** A pick for part 0 whose header read waits for the returned release. */
+  async function slowPick(): Promise<() => void> {
     let release: () => void = () => undefined;
     sizes.set(NEW, () => new Promise((resolve) => { release = () => resolve({ width: 64, height: 64, type: 'png' }); }));
     await pick('0', NEW);
+    return () => release();
+  }
+
+  it('writes nothing and says the Space was closed', async () => {
+    const { doc } = panel();
+    const release = await slowPick();
     evictSceneSession(NAME);
     release();
     await flush();
     expect(lookOf(doc)).toBeUndefined();
-    expect(toast.warning).toHaveBeenCalledWith(t('spaces.threeD.look.spaceClosed'));
+    expect(toast.warning).toHaveBeenCalledWith(t('spaces.threeD.look.pickSpaceClosed'));
+  });
+
+  it('puts the picture on through the Space opened again meanwhile', async () => {
+    const { doc, session } = panel();
+    const release = await slowPick();
+    const environment = { readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted' as const, refused: false, awareness: null };
+    evictSceneSession(NAME);
+    getSceneSession(doc, NAME).setEnvironment(environment);
+    expect(getSceneSession(doc, NAME)).not.toBe(session);
+    release();
+    await flush();
+    expect(lookOf(doc)).toEqual({ 0: { map: NEW } });
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing and says so when the object was deleted meanwhile', async () => {
+    const { doc } = panel();
+    const release = await slowPick();
+    applySceneCommand(doc, { type: 'delete', ids: [ID] }, Symbol('peer'), true, NAME);
+    release();
+    await flush();
+    expect(readSceneDocument(doc).objects).toHaveLength(0);
+    expect(toast.warning).toHaveBeenCalledWith(t('spaces.threeD.look.pickObjectGone'));
   });
 });
 

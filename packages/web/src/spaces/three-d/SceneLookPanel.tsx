@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 
-import { t as translate, type SceneImportLimits, type SceneLook } from '@breatic/shared';
+import { t as translate, type SceneImportLimits, type SceneLook, type SceneObject } from '@breatic/shared';
 import { resolveSceneAsset } from '@web/data/api/scene';
 import { peekSceneSession, type SceneSession } from '@web/data/yjs/scene-session';
 import { toast } from '@web/lib/toast';
@@ -89,6 +89,24 @@ function subscribePicks(listener: () => void): () => void {
 const pickKey = (name: string, objectId: string, part: string): string => `${name}\n${objectId}\n${part}`;
 
 /**
+ * The object a Project pick writes to, in the Space as it is open now: the tab may have closed, or closed and opened
+ * again, and the object may have been deleted while the picture was checked; each case is told (design 6.3).
+ * @param name - The Space document name.
+ * @param objectId - The object.
+ * @returns The object, or undefined when there is none, after telling why.
+ */
+function openObject(name: string, objectId: string): SceneObject | undefined {
+  const open = peekSceneSession(name);
+  if (!open) {
+    notify({ key: 'spaces.threeD.look.pickSpaceClosed', severity: 'warning' });
+    return undefined;
+  }
+  const object = open.getSnapshot().objects.find((item) => item.id === objectId);
+  if (!object) notify({ key: 'spaces.threeD.look.pickObjectGone', severity: 'warning' });
+  return object;
+}
+
+/**
  * The appearance section wired to the session, the picture picker, uploads and the texture limits (inner#1693 design 3).
  * @param props - The object and its look, its parts, the Space and the selected part.
  * @returns The section and its picker.
@@ -170,8 +188,8 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
           notify(unsupportedPictureNotice(name));
           return;
         }
-        // Judged against the look as it is now: the size read above may have taken a while.
-        const current = session.getSnapshot().objects.find((item) => item.id === objectId);
+        // Judged against the look as it is now, through the Space as it is now: the size read above may have taken a while.
+        const current = openObject(session.name, objectId);
         if (!current) return;
         const issue = await checkLookWrite({ ownBytes: ready.ownBytes, clampBytes: ready.clampBytes, limits: textureLimits,
           look: current.look ?? {}, part, map: image.assetId, mapSize: size, size: (assetId) => textures.size(assetId) });
@@ -180,12 +198,8 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
           notify(lookLimitNotice(issue, textureLimits));
           return;
         }
-        // The Space tab may have closed while the picture was checked, as an upload's completion also finds (design 6.3).
-        if (peekSceneSession(session.name) !== session) {
-          notify({ key: 'spaces.threeD.look.spaceClosed', severity: 'warning' });
-          return;
-        }
-        session.execute({ type: 'look', id: objectId, part, set: { map: image.assetId } });
+        if (!openObject(session.name, objectId)) return;
+        peekSceneSession(session.name)!.execute({ type: 'look', id: objectId, part, set: { map: image.assetId } });
       } finally {
         if (isLatest()) {
           latestPicks.delete(key);

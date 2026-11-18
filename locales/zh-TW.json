@@ -2687,6 +2687,8 @@
         "uploadedOverLimit": "圖片已上傳，但超出這個物件的上限；圖片在 Project 圖片中",
         "partChanged": "圖片已上傳，但這個部位的圖片在上傳期間被更換；圖片在 Project 圖片中",
         "spaceClosed": "圖片已上傳，但這個 Space 已關閉；圖片在 Project 圖片中",
+        "pickSpaceClosed": "Space 已關閉，圖片沒有放上去",
+        "pickObjectGone": "物件已被刪除，圖片沒有放上去",
         "checking": "正在檢查"
       },
       "pose": {

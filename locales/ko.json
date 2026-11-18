@@ -2687,6 +2687,8 @@
         "uploadedOverLimit": "이미지는 업로드되었지만 이 오브젝트의 한도를 넘었습니다. 이미지는 Project 이미지에 있습니다",
         "partChanged": "이미지는 업로드되었지만 업로드 중에 이 파트의 이미지가 변경되었습니다. 이미지는 Project 이미지에 있습니다",
         "spaceClosed": "이미지는 업로드되었지만 이 Space가 닫혔습니다. 이미지는 Project 이미지에 있습니다",
+        "pickSpaceClosed": "Space가 닫혀 이미지가 적용되지 않았습니다",
+        "pickObjectGone": "오브젝트가 삭제되어 이미지가 적용되지 않았습니다",
         "checking": "확인 중"
       },
       "pose": {
