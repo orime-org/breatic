@@ -190,3 +190,87 @@ test('the generation panel prices a run in credits when the account holds no key
   expect(plans.length).toBeGreaterThan(0);
   expect(plans.every((plan) => plan.status === 200 && Object.keys(plan.body.data?.models ?? {}).length === 0)).toBe(true);
 });
+
+/** The account's team Studio this spec opens BYOK from, made the first time; a Studio is never deleted. */
+const TEAM_STUDIO_NAME = 'BYOK smoke team';
+
+test('a team Studio\'s account menu opens the same BYOK settings', async ({ page }) => {
+  const studios = async (): Promise<{ name: string; slug: string; type: string }[]> =>
+    ((await (await page.request.get('/api/v1/studios')).json()) as { data: { name: string; slug: string; type: string }[] }).data;
+  let team = (await studios()).find((studio) => studio.type === 'team' && studio.name === TEAM_STUDIO_NAME);
+  if (team === undefined) {
+    const made = await page.request.post('/api/v1/studios', { data: { name: TEAM_STUDIO_NAME, slug: `byok-smoke-${Date.now().toString(36)}` } });
+    expect(made.ok(), await made.text()).toBe(true);
+    team = (await studios()).find((studio) => studio.type === 'team' && studio.name === TEAM_STUDIO_NAME)!;
+  }
+  await page.goto(`/studio/${team.slug}/projects`);
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
+  await page.getByTestId('account-menu-byok').click();
+  const dialog = page.getByTestId('byok-dialog');
+  await expect(dialog.getByRole('heading', { name: 'BYOK settings' })).toBeVisible();
+  await expect(dialog.getByRole('tab', { name: 'Upstream keys' })).toHaveAttribute('aria-selected', 'true');
+});
+
+/**
+ * The first image model the catalog binds on fal, with its availability.
+ * @param page - The signed-in page.
+ * @returns Its name and availability.
+ */
+async function falImageModel(page: Page): Promise<{ name: string; availability: { upstreams: { upstream: string }[] } }> {
+  const catalog = (await (await page.request.get('/api/v1/models')).json()) as { data: { image: { name: string; availability: { upstreams: { upstream: string }[] } }[] } };
+  const model = catalog.data.image.find((entry) => entry.availability.upstreams.some((u) => u.upstream === 'fal'));
+  if (model === undefined) throw new Error('the catalog binds no image model on fal');
+  return model;
+}
+
+test('the models tab points a model at an upstream the account holds a key for', async ({ page }) => {
+  // A key that connects needs a real upstream, so the account's settings are answered here with a fal key held.
+  const model = await falImageModel(page);
+  const real = ((await (await page.request.get('/api/v1/account/byok')).json()) as { data: Record<string, unknown> }).data;
+  let chosen: { model: string; upstream: string }[] = [];
+  const settings = (): Record<string, unknown> => ({
+    ...real,
+    keys: [{ upstream: 'fal', displayHint: 'fal-…beef', lastConnected: true, lastCheckedAt: new Date().toISOString(), lastBalanceState: null, lastBalanceAmount: null, lastBalanceCurrency: null, lastFailure: null, costsReadable: true }],
+    models: chosen,
+    choices: { [model.name]: ['fal'] },
+  });
+  const put: string[] = [];
+  await page.route('**/api/v1/account/byok', (route) => route.fulfill({ json: { data: settings() } }));
+  await page.route(`**/api/v1/account/byok/models/${model.name}`, async (route) => {
+    put.push(route.request().postData() ?? '');
+    chosen = [{ model: model.name, upstream: 'fal' }];
+    await route.fulfill({ json: { data: null } });
+  });
+
+  const dialog = await openByok(page);
+  await dialog.getByRole('tab', { name: 'Models' }).click();
+  const row = dialog.getByTestId(`byok-model-${model.name}`);
+  await expect(row.getByRole('combobox')).toHaveText('Platform key (uses credits)');
+  await row.getByRole('combobox').click();
+  await page.getByRole('option', { name: 'fal', exact: true }).click();
+
+  await expect.poll(() => put).toEqual([JSON.stringify({ upstream: 'fal' })]);
+  await expect(row.getByRole('combobox')).toHaveText('fal');
+});
+
+test('the generation panel says a model on the payer\'s own key uses no credits', async ({ page }) => {
+  // The Project's key plan is answered here with every image model on the payer's own key.
+  const catalog = (await (await page.request.get('/api/v1/models')).json()) as { data: { image: { name: string; availability: { upstreams: { upstream: string }[] } }[] } };
+  const models = Object.fromEntries(catalog.data.image.map((entry) => [entry.name, { upstream: entry.availability.upstreams[0]?.upstream ?? 'fal', availability: entry.availability }]));
+  await page.route(/\/api\/v1\/projects\/[^/]+\/key-plan$/, (route) =>
+    route.fulfill({ json: { data: { payer: 'self', llm: { usesAccountKey: false }, models, upstreamNames: {} } } }));
+  await openSmokeProject(page);
+  const spaceId = await createSpace(page, 'canvas', `byok-own-key-${Date.now()}`);
+  made = { page, spaceId };
+  await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
+  const nodeId = randomUUID();
+  await seedNode(page, { projectId: smokeProjectId(), spaceId }, nodeId, 'image', 0);
+
+  await visibleSpace(page)
+    .locator(`.react-flow__node[data-id="${nodeId}"]`)
+    .click({ button: 'right', position: { x: 4, y: 4 } });
+  await page.getByTestId('node-menu-generate').click();
+  await expect(visibleSpace(page).getByTestId('generate-prompt-editor')).toBeVisible({ timeout: 15_000 });
+
+  await expect(visibleSpace(page).getByTestId('generate-credit')).toHaveText('Uses your key, no credits', { timeout: 15_000 });
+});
