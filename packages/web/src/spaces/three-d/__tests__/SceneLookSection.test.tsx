@@ -169,6 +169,14 @@ describe('SceneLookSection', () => {
     expect(onChoosePicture).toHaveBeenCalledWith('1');
   });
 
+  it('resets a part by clearing every field it stores, picture tiling and glow included, in one command', () => {
+    const { onCommand } = renderSection({ selectedPart: '0',
+      look: { 0: { color: '#112233', map: IMAGE, mapRepeat: [2, 2], emissive: '#ff0000' }, 1: { roughness: 0.3 } } });
+    fireEvent.click(screen.getByTestId('scene-look-reset-part'));
+    expect(onCommand).toHaveBeenCalledTimes(1);
+    expect(onCommand).toHaveBeenCalledWith({ type: 'look', id: ID, part: '0', set: { color: null, map: null, mapRepeat: null, emissive: null } });
+  });
+
   it('resets every part with one null-part command', () => {
     const { onCommand } = renderSection({ look: { 1: { color: '#ff0000' } } });
     fireEvent.click(screen.getByTestId('scene-look-reset-all'));

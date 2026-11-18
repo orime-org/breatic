@@ -130,14 +130,19 @@ describe('SceneLookRuntime', () => {
     const fake = fakeCache(async () => SMALL, () => new Promise<Texture>((resolve, reject) => {
       finish = () => (loads ? resolve(new Texture()) : reject(new Error('decode failed')));
     }));
-    const { runtime, root, changed } = await open(fake);
+    const { runtime, root, changed, programs } = await open(fake);
     runtime.sync(withLook({ 0: { map: A } }), root);
     await settle();
     expect(fake.acquire).toHaveBeenCalled();
     const before = changed.mock.calls.length;
+    programs.mockClear();
     finish();
     await settle();
     expect(changed.mock.calls.length).toBeGreaterThan(before);
+    expect(changed).toHaveBeenLastCalledWith(BOX.id);
+    // The box part has no picture of its own, so a loaded one needs a new program and a failed one does not.
+    if (loads) expect(programs).toHaveBeenCalledWith(root);
+    else expect(programs).not.toHaveBeenCalled();
   });
 
   it('tells a picture over the limits apart from one that failed to load', async () => {

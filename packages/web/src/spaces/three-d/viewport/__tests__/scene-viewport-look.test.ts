@@ -14,6 +14,7 @@ import { SceneViewportRuntime } from '@web/spaces/three-d/viewport/scene-viewpor
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
 const compiles: Array<{ scene: Object3D; target: Scene | null | undefined; types: string[] }> = [];
+const steps: string[] = [];
 vi.mock('three', async (importOriginal) => {
   const actual = await importOriginal<typeof import('three')>();
   return { ...actual, WebGLRenderer: class {
@@ -26,6 +27,7 @@ vi.mock('three', async (importOriginal) => {
       const types: string[] = [];
       scene.traverse((child) => { const material = (child as { material?: { type: string } }).material; if (material) types.push(material.type); });
       compiles.push({ scene, target, types });
+      steps.push('compile');
     }
     getContext(): unknown { return { isContextLost: () => false, getParameter: () => 'test', RENDERER: 0, VERSION: 0 }; }
   } };
@@ -37,7 +39,7 @@ vi.mock('@web/spaces/three-d/viewport/scene-environment', async () => {
 
 const BOX: SceneObject = { id: 'box', model: { kind: 'builtin', id: 'box' }, name: 'Box', position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false };
 const owners: Array<() => void> = [];
-afterEach(() => { owners.splice(0).forEach((dispose) => dispose()); document.body.replaceChildren(); compiles.length = 0; });
+afterEach(() => { owners.splice(0).forEach((dispose) => dispose()); document.body.replaceChildren(); compiles.length = 0; steps.length = 0; });
 
 /** Props for a scene holding one built-in box. */
 function props(extra: Partial<SceneViewportProps> = {}): SceneViewportProps {
@@ -120,6 +122,30 @@ describe('releasing part pictures (inner#1693 design 5.3)', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     runtime.update(props({ objects: [], lookTextures: cache as never, onLookReport: initial.onLookReport, onModelStateChange: initial.onModelStateChange }));
     expect(cache.release).toHaveBeenCalledWith(picture, texture);
+  });
+});
+
+describe('a part picture that loads after the look applied (inner#1693 design 5.2, 5.4)', () => {
+  it('marks the monitors stale and compiles the object for its scene before recounting the lights', async () => {
+    const picture = '11111111-1111-4111-8111-11111111111a';
+    let finish: () => void = () => undefined;
+    const cache = { size: vi.fn(async () => ({ width: 64, height: 64, type: 'png' })), release: vi.fn(),
+      acquire: vi.fn(() => new Promise<Texture>((resolve) => { finish = () => resolve(new Texture()); })) };
+    const initial = props({ objects: [{ ...BOX, look: { 0: { map: picture } } }], lookTextures: cache as never });
+    const { runtime } = await open(initial, '#969696');
+    await vi.waitFor(() => expect(cache.acquire).toHaveBeenCalled());
+    const scene = (runtime as unknown as { scene: Scene }).scene;
+    const internals = runtime as unknown as { monitorEvent: (event: { type: string }) => void; syncLights: () => void };
+    const monitor = vi.spyOn(internals, 'monitorEvent');
+    const lights = internals.syncLights.bind(runtime);
+    vi.spyOn(internals, 'syncLights').mockImplementation(() => { steps.push('lights'); lights(); });
+    compiles.length = 0; steps.length = 0;
+    finish();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(monitor.mock.calls.filter(([event]) => event.type === 'changed')).toHaveLength(1);
+    expect(compiles).toHaveLength(1);
+    expect(compiles[0]!.target).toBe(scene);
+    expect(steps.slice(0, 2)).toEqual(['compile', 'lights']);
   });
 });
 
