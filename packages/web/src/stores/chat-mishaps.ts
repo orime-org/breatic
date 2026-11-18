@@ -26,10 +26,11 @@ import { ourSentence } from '@web/stores/credit-refusals';
  * from us repeating it later.
  *
  * The four kinds are not a matter of wording. What tells them apart is what
- * came back: `server` carries the sentence the server wrote for the user --
- * out of credits, too many requests, not allowed -- `turn` is an answer that
- * came back with none of ours in it, so there is nothing to quote and this
- * end has to supply the words, `network` is no answer at all, and `gone` is
+ * came back: `server` carries our sentence for the user -- the server's own
+ * (out of credits, too many requests, not allowed), or, past a spend limit,
+ * the one this end builds with the limit and its local reset day -- `turn`
+ * is an answer that came back with none of ours in it, so there is nothing
+ * to quote and this end has to supply the words, `network` is no answer at all, and `gone` is
  * our own 404, where the server did answer and what it said is that the
  * conversation is not there any more. That last one is not a failure, which
  * is why it is its own kind rather than a `server` sentence about a resource.
@@ -91,16 +92,16 @@ export function tell(mishap: ChatMishap): void {
  *
  * For every request that fetches rather than runs a turn -- opening the
  * chat, reaching further back, switching, starting, renaming, removing, and
- * re-reading the list. Either the server wrote a sentence about it or nothing
- * did.
+ * re-reading the list. Either we have a sentence about it (the server's own,
+ * or the spend-limit one built here from the server's answer) or nothing
+ * does.
  *
  * A third case exists and is not told apart here: something answered, but
  * with nothing of ours in it. Saying "network error" for that is not right --
  * the network worked -- and there is no sentence yet that fits, so one has to
  * be written before this can tell the difference (todo #119).
  * @param err - Whatever the call threw.
- * @returns Which kind of mishap it is, and the server's own words when it
- *   answered with any.
+ * @returns Which kind of mishap it is, and our sentence when there is one.
  */
 export function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'; message: string } {
   const said = ourSentence(err);
@@ -111,8 +112,8 @@ export function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'
  * The sentence a mishap is told with, in the user's language at the moment
  * it is told (inner#1530: a toast, said once).
  *
- * The server's own sentence passes through -- it was written for the user,
- * in their language. A conversation that is gone is not an error, so it says
+ * Our sentence passes through -- the server's own, or the spend-limit one
+ * built from its answer, both written for the user in their language. A conversation that is gone is not an error, so it says
  * that. A turn that answered with nothing of ours says the reply is not
  * coming; no answer at all says only that the network failed.
  * @param mishap - What happened.

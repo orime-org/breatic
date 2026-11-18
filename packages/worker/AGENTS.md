@@ -12,7 +12,7 @@ Check: does this failure fall before or after the vendor-returned fact is writte
 
 ### Waiting on upstream throws StillRunning
 
-**A handler that must wait for an upstream result throws `StillRunning` (`handlers/still-running.ts`); it never polls or sleeps.** The running-task gate throws the same class, and `dispatch.ts` answers either by moving the job back to the delayed queue with `moveToDelayed`, which frees the slot and consumes no retry.
+**A handler that must wait for an upstream result throws `StillRunning` (`handlers/still-running.ts`); it never polls or sleeps.** The running-task gate throws the same class; `dispatch.ts`, and `runTimelineExecution` (`handlers/timeline/web-animation-execution.ts`) for a Timeline execution, answer either by moving the job back to the delayed queue with `moveToDelayed`, which frees the slot and consumes no retry.
 
 ### No local media processing
 
