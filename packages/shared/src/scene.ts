@@ -165,8 +165,14 @@ const LOOK_PART_KEY = /^(?:0|[1-9]\d{0,3}|d)$/u;
 
 const unit = z.number().finite().min(0).max(1);
 
+/** The smallest tiling count a part takes either way; Blender, Unity, Godot and Babylon set no bound, this one only keeps the value finite. */
+export const SCENE_LOOK_REPEAT_MIN = 0.0001;
+
+/** The largest tiling count a part takes either way. */
+export const SCENE_LOOK_REPEAT_MAX = 10000;
+
 /** One tiling count: a negative count mirrors the picture, as glTF's KHR_texture_transform allows. */
-const LOOK_REPEAT = z.number().finite().refine((value) => Math.abs(value) >= 0.01 && Math.abs(value) <= 100);
+const LOOK_REPEAT = z.number().finite().refine((value) => Math.abs(value) >= SCENE_LOOK_REPEAT_MIN && Math.abs(value) <= SCENE_LOOK_REPEAT_MAX);
 
 /** One offset, in picture widths. */
 const LOOK_OFFSET = z.number().finite().min(-100).max(100);

@@ -4,7 +4,8 @@
 import * as React from 'react';
 
 import {
-  SCENE_LOOK_DEFAULT_PART, SCENE_LOOK_EMISSIVE_DEFAULT, SCENE_LOOK_PICTURE_COLOR, type SceneLook, type SceneLookPart,
+  SCENE_LOOK_DEFAULT_PART, SCENE_LOOK_EMISSIVE_DEFAULT, SCENE_LOOK_PICTURE_COLOR, SCENE_LOOK_REPEAT_MAX, SCENE_LOOK_REPEAT_MIN, type SceneLook,
+  type SceneLookPart,
 } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
@@ -143,11 +144,11 @@ function LookSlider({ label, labelId, value, min = 0, max = 1, step = 0.01, disa
 }
 
 /**
- * Whether a tiling count is one a part takes: 0.01 to 100 either way, a negative count mirroring the picture.
+ * Whether a tiling count is one a part takes, either way, a negative count mirroring the picture.
  * @param value - The typed count.
  * @returns True when it is in range.
  */
-const acceptsRepeat = (value: number): boolean => Math.abs(value) >= 0.01 && Math.abs(value) <= 100;
+const acceptsRepeat = (value: number): boolean => Math.abs(value) >= SCENE_LOOK_REPEAT_MIN && Math.abs(value) <= SCENE_LOOK_REPEAT_MAX;
 
 /**
  * Whether an offset is one a part takes.

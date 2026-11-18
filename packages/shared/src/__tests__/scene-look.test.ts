@@ -87,9 +87,9 @@ describe("scene look keys", () => {
       0: {
         color: "#ff0000", roughness: 0, metalness: 1, opacity: 0, transmission: 1,
         emissive: "#000000", emissiveIntensity: 10, map: ASSET_ID,
-        mapRepeat: [0.01, 100], mapOffset: [-100, 100], mapRotation: -180,
+        mapRepeat: [0.0001, 10000], mapOffset: [-100, 100], mapRotation: -180,
       },
-      9999: { roughness: 1, opacity: 1, transmission: 0, emissiveIntensity: 0, mapRotation: 180, mapRepeat: [-100, -0.01] },
+      9999: { roughness: 1, opacity: 1, transmission: 0, emissiveIntensity: 0, mapRotation: 180, mapRepeat: [-10000, -0.0001] },
       d: { map: "none" },
     };
     expect(lookSchema().safeParse(look).success).toBe(true);
@@ -112,9 +112,9 @@ describe("scene look keys", () => {
     ["a non-finite value", { 0: { roughness: Number.NaN } }],
     ["a map that is neither a uuid nor none", { 0: { map: "img.png" } }],
     ["a tiling of 0", { 0: { mapRepeat: [0, 1] } }],
-    ["a tiling above 100", { 0: { mapRepeat: [1, 100.5] } }],
-    ["a mirrored tiling below -100", { 0: { mapRepeat: [-100.5, 1] } }],
-    ["a mirrored tiling nearer 0 than -0.01", { 0: { mapRepeat: [-0.005, 1] } }],
+    ["a tiling above 10000", { 0: { mapRepeat: [1, 10000.5] } }],
+    ["a mirrored tiling below -10000", { 0: { mapRepeat: [-10000.5, 1] } }],
+    ["a mirrored tiling nearer 0 than -0.0001", { 0: { mapRepeat: [-0.00005, 1] } }],
     ["a tiling with one value", { 0: { mapRepeat: [1] } }],
     ["an offset beyond 100", { 0: { mapOffset: [100.5, 0] } }],
     ["a rotation beyond 180", { 0: { mapRotation: 181 } }],

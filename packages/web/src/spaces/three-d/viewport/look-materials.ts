@@ -5,7 +5,7 @@ import {
   Color, MathUtils, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, type Material, type Mesh, type Object3D, type Texture,
 } from 'three';
 
-import { SCENE_LOOK_PICTURE_COLOR, type SceneLook, type SceneLookPart } from '@breatic/shared';
+import { SCENE_LOOK_PICTURE_COLOR, SCENE_LOOK_REPEAT_MAX, SCENE_LOOK_REPEAT_MIN, type SceneLook, type SceneLookPart } from '@breatic/shared';
 
 import { uploadBytes } from '@web/spaces/three-d/model-texture-metadata';
 
@@ -127,6 +127,15 @@ function inOffsetRange(offset: number): number {
 }
 
 /**
+ * A tiling count brought to the nearest one a part takes, keeping its mirroring.
+ * @param repeat - The model's own count.
+ * @returns It, or the bound it is past.
+ */
+function inRepeatRange(repeat: number): number {
+  return (repeat < 0 ? -1 : 1) * MathUtils.clamp(Math.abs(repeat), SCENE_LOOK_REPEAT_MIN, SCENE_LOOK_REPEAT_MAX);
+}
+
+/**
  * Record each part's own state and put the part key on its material, so object clones carry it (inner#1693 design 5.1).
  * @param root - The model template root.
  * @param partOf - The part a template material belongs to.
@@ -167,7 +176,7 @@ export function buildPartTable(root: Object3D, partOf: (material: Material) => s
       depthWrite: material.depthWrite,
       alphaTest: material.alphaTest,
       hasMap: map !== null,
-      ...(map ? { mapRepeat: [map.repeat.x, map.repeat.y] as [number, number], mapOffset: [inOffsetRange(map.offset.x), inOffsetRange(map.offset.y)] as [number, number],
+      ...(map ? { mapRepeat: [inRepeatRange(map.repeat.x), inRepeatRange(map.repeat.y)] as [number, number], mapOffset: [inOffsetRange(map.offset.x), inOffsetRange(map.offset.y)] as [number, number],
         mapRotation: MathUtils.euclideanModulo(MathUtils.radToDeg(map.rotation) + 180, 360) - 180, thumbnail: thumbnailOf(map.image) } : {}),
       unlit: material.type === 'MeshBasicMaterial',
       line: isLineMaterial(material),

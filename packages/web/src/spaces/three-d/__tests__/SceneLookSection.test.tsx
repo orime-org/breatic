@@ -139,7 +139,7 @@ describe('SceneLookSection', () => {
     expect(onCommand).toHaveBeenCalledWith({ type: 'look', id: ID, part: '0', set: { mapRepeat: [2, 4] } });
   });
 
-  it('changes one axis of a mirrored model picture and takes a mirrored count, refusing one nearer 0 than 0.01', () => {
+  it('changes one axis of a mirrored model picture and takes a mirrored count, refusing counts and offsets out of range', () => {
     const mirrored = [{ ...PARTS[0]!, mapRepeat: [-1, 1] as [number, number], mapOffset: [60, 0] as [number, number] }, ...PARTS.slice(1)] as typeof PARTS;
     const { onCommand } = renderSection({ selectedPart: '0', parts: mirrored });
     const across = screen.getByTestId('scene-look-repeat-0') as HTMLInputElement;
@@ -148,10 +148,19 @@ describe('SceneLookSection', () => {
     fireEvent.change(down, { target: { value: '2' } });
     fireEvent.blur(down);
     expect(onCommand).toHaveBeenLastCalledWith({ type: 'look', id: ID, part: '0', set: { mapRepeat: [-1, 2] } });
-    fireEvent.change(across, { target: { value: '-0.001' } });
-    fireEvent.blur(across);
+    for (const value of ['-0.00001', '20000', '0']) {
+      fireEvent.change(across, { target: { value } });
+      fireEvent.blur(across);
+    }
     expect(onCommand).toHaveBeenCalledTimes(1);
     expect(across.value).toBe('-1');
+    fireEvent.change(across, { target: { value: '-0.001' } });
+    fireEvent.blur(across);
+    expect((onCommand.mock.lastCall?.[0] as { set: { mapRepeat: number[] } }).set.mapRepeat[0]).toBe(-0.001);
+    const along = screen.getByTestId('scene-look-offset-0') as HTMLInputElement;
+    fireEvent.change(along, { target: { value: '101' } });
+    fireEvent.blur(along);
+    expect(onCommand).toHaveBeenCalledTimes(2);
     const offset = screen.getByTestId('scene-look-offset-1') as HTMLInputElement;
     fireEvent.change(offset, { target: { value: '80' } });
     fireEvent.blur(offset);
