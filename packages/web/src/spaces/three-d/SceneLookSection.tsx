@@ -190,15 +190,15 @@ function LookPair({ label, labelId, value, accepts, disabled, testId, onCommit }
   </Row>;
 }
 
+/** No user picture is shown. */
+const NO_PICTURES: ReadonlySet<string> = new Set();
+
 /**
  * The appearance section of the properties panel (inner#1693 design 3.1-3.6): the object's parts, and the selected
  * part's finish, colour, picture and tiling.
  * @param props - The object, its parts and look, the selected part and the writers.
  * @returns The section.
  */
-/** No user picture is shown. */
-const NO_PICTURES: ReadonlySet<string> = new Set();
-
 export const SceneLookSection = React.memo(function SceneLookSection(props: SceneLookSectionProps): React.JSX.Element {
   const { objectId, parts, look, selectedPart, mutable, onSelectPart, onCommand, onChoosePicture, gesture, spaceId = '', uploadPercentOf, checking, pictureUrl,
     showingPictures = NO_PICTURES } = props;
