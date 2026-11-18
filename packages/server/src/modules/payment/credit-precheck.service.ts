@@ -171,11 +171,11 @@ export async function precheckCredits(
   required: number,
 ): Promise<void> {
   if (!env.PAYMENT_ENABLED) return;
+  const studioId = await assetService.resolveOwnerStudioId(projectId);
   // Judged before the balance, as every admission judges it (design 3.10).
-  const cap = await creditHoldService.spendCapFor(projectId, userId);
+  const cap = await creditHoldService.spendCapFor(studioId, userId);
   if (cap !== null) throw new SpendCapReachedError(cap);
 
-  const studioId = await assetService.resolveOwnerStudioId(projectId);
   const spendable = await creditLotService.getSpendableCredits(studioId);
   if (parseCreditDecimal(spendable) >= quantizeQuotedCredits(required)) return;
   await refuse(userId, required, { studioId, spendable, held: serializeCreditMicro(0n), available: spendable });
