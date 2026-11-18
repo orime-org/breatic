@@ -58,7 +58,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   // inner#1968: waiting for a running-task slot, and the spend-limit refusals.
   "canvas.task.waitReason": { described: /starts by itself when an earlier one ends|waits its turn/ },
   "canvas.task.waitReasonOther": { described: /a row someone else started says so of that person/ },
-  "canvas.task.waitReasonEach": { described: /the limit is that of whoever started the task/ },
+  "canvas.task.waitReasonEach": { described: /counts the running tasks of whoever started each one, against the Studio's limit/ },
   "canvas.task.cancelFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "credits.spendCap.member": { described: /for the person's own limit the message names its amount and the day it resets/ },
   "credits.spendCap.studio": { described: /for the Studio's total only the day it resets/ },
