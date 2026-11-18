@@ -25,6 +25,7 @@ import { reachable } from "@breatic/domain";
 import { httpRequest } from "@breatic/shared";
 import { authService } from "@server/modules";
 import { OAuthRecordsAdapter } from "@server/modules/agent-access/oauth-adapter.js";
+import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { issueDownstreamToken, credentialId } from "@server/modules/agent-access/agent-token-store.js";
 import { takeFromUserTotal } from "@server/modules/agent-access/downstream-rate-limit.js";
 
@@ -65,6 +66,28 @@ interface ResolvedSubject {
   credential: AgentCredential;
   connectionId: string;
   clientName: string;
+  /** When the credential stops working: the earliest expiry among it and what it rests on; null never. */
+  expiresAt: Date | null;
+}
+
+/**
+ * The earlier of two expiries, where null never expires.
+ * @param a - One expiry.
+ * @param b - The other.
+ * @returns The earlier one.
+ */
+function earlier(a: Date | null, b: Date | null): Date | null {
+  if (a === null) return b;
+  return b === null || a < b ? a : b;
+}
+
+/**
+ * An expiry the library keeps in epoch seconds.
+ * @param exp - Its `exp`, absent when it never expires.
+ * @returns The expiry, or null.
+ */
+function fromEpochSeconds(exp: number | undefined): Date | null {
+  return exp === undefined ? null : new Date(exp * 1000);
 }
 
 /**
@@ -88,6 +111,7 @@ async function resolveSubject(provider: Provider, subject: string, now: Date): P
       credential: { type: "pat", tokenId: pat.tokenId },
       connectionId: pat.connectionId,
       clientName: named?.name ?? "",
+      expiresAt: pat.expiresAt,
     };
   }
   const accessToken = await provider.AccessToken.find(subject);
@@ -95,11 +119,13 @@ async function resolveSubject(provider: Provider, subject: string, now: Date): P
   if (accessToken.aud !== env.MCP_PUBLIC_URL) return null;
   const row = await agentAccessService.findUsableOAuthConnection(accessToken.grantId, now);
   if (!row || row.userId !== accessToken.accountId) return null;
+  const grant = await provider.Grant.find(accessToken.grantId);
   return {
     userId: row.userId,
     credential: { type: "oauth", grantId: accessToken.grantId },
     connectionId: row.id,
     clientName: row.displayName,
+    expiresAt: earlier(fromEpochSeconds(accessToken.exp), fromEpochSeconds(grant?.exp)),
   };
 }
 
@@ -122,6 +148,11 @@ async function exchangeToken(provider: Provider, ctx: KoaContextWithOIDC): Promi
   const now = new Date();
   const subject = await resolveSubject(provider, params.subject_token, now);
   if (!subject) throw new errors.InvalidGrant("subject token is not usable");
+  // RFC 8693: the downstream token never outlives the credential it stands
+  // for, and one that would end inside a call is not issued (§5.5).
+  const { downstream_token_ttl_seconds: ttl, call_timeout_ms: callMs } = getMcpConfig();
+  const lifetimeMs = Math.min(ttl * 1000, subject.expiresAt === null ? Infinity : subject.expiresAt.getTime() - now.getTime());
+  if (lifetimeMs < callMs) throw new errors.InvalidGrant("subject token ends before one call could finish");
   const verdict = await takeFromUserTotal(subject.userId);
   if (!verdict.allowed) {
     logger.warn({ userId: subject.userId, connectionId: subject.connectionId }, "mcp_rate_limit_hit");
@@ -130,14 +161,15 @@ async function exchangeToken(provider: Provider, ctx: KoaContextWithOIDC): Promi
     ctx.body = { error: "temporarily_unavailable", error_description: "too many requests; retry later" };
     return;
   }
-  const ttl = getMcpConfig().downstream_token_ttl_seconds;
-  const token = await issueDownstreamToken(subject);
+  const lifetimeSeconds = Math.floor(lifetimeMs / 1000);
+  const { expiresAt: _expiresAt, ...payload } = subject;
+  const token = await issueDownstreamToken(payload, lifetimeSeconds);
   await agentAccessService.recordUse(subject.connectionId, now);
   logger.info(
     { userId: subject.userId, connectionId: subject.connectionId, credentialId: credentialId(subject.credential), credentialType: subject.credential.type },
     "mcp_token_exchanged",
   );
-  ctx.body = { access_token: token, issued_token_type: ACCESS_TOKEN_TYPE, token_type: "Bearer", expires_in: ttl };
+  ctx.body = { access_token: token, issued_token_type: ACCESS_TOKEN_TYPE, token_type: "Bearer", expires_in: lifetimeSeconds };
 }
 
 /**
@@ -201,14 +233,14 @@ function configuration(): Configuration {
     // Our consent routes live under /api/v1/oauth/interactions and the page
     // under /connect/:uid; the interaction cookie must reach both.
     cookies: { short: { path: "/" } },
-    interactions: { url: (_ctx, interaction) => `/connect/${interaction.uid}` },
+    interactions: { url: (_ctx, interaction) => `${frontendOrigin()}/connect/${interaction.uid}` },
     findAccount: async (_ctx, sub) => {
       const user = await authService.getUserById(sub);
       return user ? { accountId: user.id, claims: () => ({ sub: user.id }) } : undefined;
     },
     renderError: (ctx, out) => {
       ctx.status = 303;
-      ctx.redirect(`/connect/error?reason=${consentErrorReason(out.error)}`);
+      ctx.redirect(`${frontendOrigin()}/connect/error?reason=${consentErrorReason(out.error)}`);
     },
     issueRefreshToken: (_ctx, client) => client.grantTypeAllowed("refresh_token"),
     expiresWithSession: () => false,

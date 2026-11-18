@@ -237,17 +237,17 @@ export async function createPersonalAccessToken(
  * Finds the active token a plaintext names.
  * @param plaintext - What the agent presented.
  * @param now - The caller's clock.
- * @returns The token, its user and its row, or null unless the token and its row are both live.
+ * @returns The token, its user, its row and its expiry (null never), or null unless the token and its row are both live.
  * @throws {Error} When the database read fails.
  */
 export async function findPersonalAccessToken(
   plaintext: string,
   now: Date = new Date(),
-): Promise<{ tokenId: string; userId: string; connectionId: string } | null> {
+): Promise<{ tokenId: string; userId: string; connectionId: string; expiresAt: Date | null } | null> {
   const token = await tokensRepo.findActiveByHash(hashToken(plaintext), now);
   if (!token) return null;
   const row = await connectionsRepo.findLivePat(token.id);
-  return row ? { tokenId: token.id, userId: token.userId, connectionId: row.id } : null;
+  return row ? { tokenId: token.id, userId: token.userId, connectionId: row.id, expiresAt: token.expiresAt } : null;
 }
 
 /**

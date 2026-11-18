@@ -87,7 +87,8 @@ export interface DisconnectOutcome {
 /**
  * Disconnect one of the user's own connections: end every credential under
  * it and every downstream token traded for them, then announce the
- * credentials on `sessions:revoked` so collab marks the agent offline.
+ * credentials and the connection on `sessions:revoked` so collab marks the
+ * agent offline (§5.5).
  * @param connectionId - The connection.
  * @param userId - The user asking.
  * @returns The credentials ended, and whether announcing them failed.
@@ -99,7 +100,7 @@ export async function disconnect(connectionId: string, userId: string): Promise<
   for (const credential of outcome.revoked) await revokeDownstreamTokens(credential);
   if (outcome.revoked.length === 0) return { revoked: [] };
   try {
-    await publishSessionsRevoked(userId, outcome.revoked.map(credentialId));
+    await publishSessionsRevoked(userId, [...outcome.revoked.map(credentialId), connectionId]);
     return { revoked: outcome.revoked };
   } catch (err) {
     return { revoked: outcome.revoked, signalFailure: err };
@@ -121,8 +122,10 @@ export interface EndGrantOutcome {
 /**
  * End one OAuth grant the authorization server revoked (#1488 §5.2): its
  * tokens and record, its connection row as `agentAccessService.revokeGrant`
- * decides by `source`, every downstream token traded for it, and then the
- * announcement on `sessions:revoked`, as {@link disconnect} does.
+ * decides by `source`, and every downstream token traded for it. The grant
+ * and its connection are announced on `sessions:revoked`, as
+ * {@link disconnect} does, only once the connection can no longer be used:
+ * while another grant keeps it usable the agent stays online (§5.5).
  * @param grantId - The grant.
  * @param source - `client_revoked` from `/oauth/revoke`, `reuse_detected` from the token endpoint.
  * @returns Who it belonged to, what happened to its row, and whether announcing it failed.
@@ -133,9 +136,10 @@ export async function endGrant(grantId: string, source: "client_revoked" | "reus
   const { connectionId, connectionDeleted } = await agentAccessService.revokeGrant(grantId, source);
   await revokeDownstreamTokens({ type: "oauth", grantId });
   const userId = owner?.accountId ?? null;
-  if (userId === null) return { userId, connectionId, connectionDeleted };
+  if (userId === null || connectionId === null) return { userId, connectionId, connectionDeleted };
+  if (!connectionDeleted && (await agentAccessService.isConnectionUsable(connectionId))) return { userId, connectionId, connectionDeleted };
   try {
-    await publishSessionsRevoked(userId, [grantId]);
+    await publishSessionsRevoked(userId, [grantId, connectionId]);
     return { userId, connectionId, connectionDeleted };
   } catch (err) {
     return { userId, connectionId, connectionDeleted, signalFailure: err };

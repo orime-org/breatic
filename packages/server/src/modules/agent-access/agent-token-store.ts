@@ -11,8 +11,8 @@
  * `{ENV}:` prefix scheme. Only the token's SHA-256 is a key; the plaintext
  * exists only in the MCP service's hands. Each credential keeps an index of
  * the tokens traded for it, so revoking the credential ends them all at once;
- * the index expires with the newest of them, so nothing outlives
- * `downstream_token_ttl_seconds`.
+ * every issue pushes the index's expiry to `downstream_token_ttl_seconds`,
+ * the longest any token lives.
  */
 
 import crypto from "node:crypto";
@@ -76,17 +76,18 @@ function indexKey(credential: AgentCredential): string {
 /**
  * Issue a downstream token.
  * @param payload - Who it stands for.
+ * @param lifetimeSeconds - How long it lives, at most `downstream_token_ttl_seconds`.
  * @returns The plaintext token; only its hash is stored.
  * @throws {Error} When Redis rejects the write.
  */
-export async function issueDownstreamToken(payload: DownstreamTokenPayload): Promise<string> {
+export async function issueDownstreamToken(payload: DownstreamTokenPayload, lifetimeSeconds: number): Promise<string> {
   const ttl = getMcpConfig().downstream_token_ttl_seconds;
   const token = crypto.randomBytes(32).toString("base64url");
   const hash = hashOf(token);
   const index = indexKey(payload.credential);
   const results = await getRedis()
     .multi()
-    .set(tokenKey(hash), JSON.stringify(payload), "EX", ttl)
+    .set(tokenKey(hash), JSON.stringify(payload), "EX", Math.min(lifetimeSeconds, ttl))
     .sadd(index, hash)
     .expire(index, ttl)
     .exec();
