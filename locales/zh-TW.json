@@ -232,7 +232,8 @@
       "storage_full": {
         "subject": "你的儲存空間已滿",
         "lead": "你的儲存空間已滿，<b>{studio}</b> 中的上傳和生成被拒絕了。儲存空間按你管理的所有 Studio 合計，不只是這一個。",
-        "footer": "升級會員可以取得更多空間。"
+        "footer": "升級會員可以取得更多空間。",
+        "footer_enterprise": "你的儲存額度由協議約定，聯絡我們調整。"
       },
       "password_reset": {
         "subject": "重設密碼",

@@ -232,7 +232,8 @@
       "storage_full": {
         "subject": "Your storage is full",
         "lead": "Your storage is full, so uploads and generations were refused in <b>{studio}</b>. Storage is counted across every studio you administer, not just this one.",
-        "footer": "Raise your membership to get more room."
+        "footer": "Raise your membership to get more room.",
+        "footer_enterprise": "Your storage is set by your agreement. Contact us to change it."
       },
       "password_reset": {
         "subject": "Reset your password",

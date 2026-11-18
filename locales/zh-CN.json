@@ -232,7 +232,8 @@
       "storage_full": {
         "subject": "你的存储空间已满",
         "lead": "你的存储空间已满，<b>{studio}</b> 中的上传和生成被拒绝了。存储按你管理的所有 Studio 合计，不只是这一个。",
-        "footer": "升级会员可以获得更多空间。"
+        "footer": "升级会员可以获得更多空间。",
+        "footer_enterprise": "你的存储额度由协议约定，联系我们调整。"
       },
       "password_reset": {
         "subject": "重置密码",
