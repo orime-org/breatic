@@ -145,6 +145,7 @@ export {
   TEMPLATE_GUIDE_KEY,
   markReadsBack,
   markText,
+  promptLines,
   writtenMark,
   markedSegments,
   marksTypedIn,

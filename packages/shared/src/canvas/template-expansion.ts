@@ -561,8 +561,8 @@ export function templateGuideNode(template: GenerationTemplate, anchorIndex: num
  * The panel's expansion of a template around an anchor: every template node
  * and input the caller does not already have, wired as the template wires
  * them, with each generate node's prompt from the locale and every reference
- * mark bound by name to the node it stands for. An input that goes into a
- * slot is wired there, or, when the caller's node for it holds material,
+ * mark bound by name to the node it stands for, a mark of an optional input
+ * marked optional (inner#1811). An input that goes into a slot is wired there, or, when the caller's node for it holds material,
  * fills that slot instead with no edge and no note; a standalone node carries
  * the anchor's index in its tag.
  * @param template - The template.
@@ -667,6 +667,8 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
     return fills === undefined ? {} : { fills };
   };
 
+  // A mark of an optional input is marked optional (inner#1811).
+  const optionalInputs = new Set(template.inputs.flatMap((one) => (one.optional === true ? [one.key] : [])));
   // A mark names its target in the user's language: an input feeding the
   // node, or a template node wired into its pool.
   /**
@@ -690,7 +692,8 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
       markedSegments(text(rest)).map((segment): PromptSegment => {
         const target = segment.slot?.kind === "asset" ? targets.get(segment.slot.label) : undefined;
         const index = target === undefined ? undefined : "input" in target ? inputAt.get(target.input)?.get(key) : indexOf.get(target.node);
-        return index === undefined ? segment : { ref: index };
+        if (index === undefined) return segment;
+        return target !== undefined && "input" in target && optionalInputs.has(target.input) ? { ref: index, optional: true } : { ref: index };
       });
     const words = templateNodeWords(template, key);
     if ("prompt" in words) return { prompt: [...notes, ...bound(words.prompt)] };

@@ -44,13 +44,17 @@ import { FISHEYE_CLONE_POV } from "@shared/canvas/templates/fisheye-clone-pov.js
 import { FLASH_PHOTO_DUMP_GRID } from "@shared/canvas/templates/flash-photo-dump-grid.js";
 import { FOOD_MONEY_SHOT } from "@shared/canvas/templates/food-money-shot.js";
 import { GAME_UI_LIVESTREAM } from "@shared/canvas/templates/game-ui-livestream.js";
+import { HYPE_THEN_TWIST_AD } from "@shared/canvas/templates/hype-then-twist-ad.js";
 import { IDENTITY_LOCKED_SEQUENCE } from "@shared/canvas/templates/identity-locked-sequence.js";
+import { LIVESTREAM_PITCH } from "@shared/canvas/templates/livestream-pitch.js";
 import { MUSIC_MOOD_FROM_IMAGE } from "@shared/canvas/templates/music-mood-from-image.js";
 import { NAME_AS_WORLD_TYPOGRAPHY } from "@shared/canvas/templates/name-as-world-typography.js";
 import { PET_SELFIE_VLOG } from "@shared/canvas/templates/pet-selfie-vlog.js";
 import { PHONE_VLOG_REALISM } from "@shared/canvas/templates/phone-vlog-realism.js";
 import { PHOTO_PAPER_DIORAMA } from "@shared/canvas/templates/photo-paper-diorama.js";
 import { POV_CONTINUOUS_SHOT } from "@shared/canvas/templates/pov-continuous-shot.js";
+import { PRODUCT_AD_15S } from "@shared/canvas/templates/product-ad-15s.js";
+import { PRODUCT_COMMERCIAL_SHOTLIST } from "@shared/canvas/templates/product-commercial-shotlist.js";
 import { RECIPE_PROCESS_MONTAGE } from "@shared/canvas/templates/recipe-process-montage.js";
 import { RETRO_FOUND_FOOTAGE } from "@shared/canvas/templates/retro-found-footage.js";
 import { SCORE_FOR_MY_VIDEO } from "@shared/canvas/templates/score-for-my-video.js";
@@ -63,7 +67,10 @@ import { TIME_FREEZE_REWIND } from "@shared/canvas/templates/time-freeze-rewind.
 import { TRAVEL_CITY_WALK } from "@shared/canvas/templates/travel-city-walk.js";
 import { TWIST_COMEDY_SKIT } from "@shared/canvas/templates/twist-comedy-skit.js";
 import { TWO_VOICE_DIALOGUE } from "@shared/canvas/templates/two-voice-dialogue.js";
+import { UGC_CREATOR_REVIEW } from "@shared/canvas/templates/ugc-creator-review.js";
+import { UNBOXING_AD } from "@shared/canvas/templates/unboxing-ad.js";
 import { UNDERSCORE_BGM } from "@shared/canvas/templates/underscore-bgm.js";
+import { VARIANT_CAROUSEL_AD } from "@shared/canvas/templates/variant-carousel-ad.js";
 import { VEHICLE_SPEED_CUTLIST } from "@shared/canvas/templates/vehicle-speed-cutlist.js";
 import { VERTICAL_15S_QUICK_TIP } from "@shared/canvas/templates/vertical-15s-quick-tip.js";
 import { VOICE_CLONE_LINE } from "@shared/canvas/templates/voice-clone-line.js";
@@ -72,7 +79,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "food", "social-hooks", "posters", "speed", "sound"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "ecommerce", "food", "social-hooks", "posters", "speed", "sound"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -142,6 +149,12 @@ export interface TemplateInput {
    * marks it.
    */
   into?: string;
+  /**
+   * The user may leave it empty (inner#1811, CAP-9): every reference to it
+   * stands in a paragraph of its own, which is not sent while its node holds
+   * nothing. Only a pool input can be optional.
+   */
+  optional?: true;
 }
 
 /** Wiring between two template nodes, `into` as in a proposal edge. */
@@ -187,6 +200,13 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   IDENTITY_LOCKED_SEQUENCE,
   CHARACTER_SHOWCASE_ORBIT,
   STORYBOARD_GRID_25,
+  PRODUCT_AD_15S,
+  UGC_CREATOR_REVIEW,
+  LIVESTREAM_PITCH,
+  HYPE_THEN_TWIST_AD,
+  PRODUCT_COMMERCIAL_SHOTLIST,
+  UNBOXING_AD,
+  VARIANT_CAROUSEL_AD,
   FOOD_MONEY_SHOT,
   RECIPE_PROCESS_MONTAGE,
   DISH_HERO_STILL,

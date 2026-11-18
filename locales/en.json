@@ -882,6 +882,7 @@
       "errorNoDrivingVideo": "Pick a driving video",
       "errorNoDrivingAudio": "Pick a driving audio track",
       "promptNotUsed": "This mode does not need a prompt.",
+      "optionalParagraphHint": "Sent once {name} holds a picture",
       "refuseInsertNoPrompt": "This mode has no prompt to insert into",
       "errorStorageFull": "Studio storage is full. Generating is unavailable.",
       "refAudio": "Voice sample",
@@ -1529,6 +1530,7 @@
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
+        "ecommerce": "E-commerce ads",
         "food": "Food",
         "social-hooks": "Social hooks",
         "posters": "Posters & graphics",
@@ -1543,6 +1545,109 @@
           "reference": {
             "name": "Character or scene",
             "note": "Add the character or scene reference first, then generate."
+          }
+        }
+      },
+      "product-ad-15s": {
+        "name": "15-second product ad",
+        "description": "A lifestyle still, then a 15-second ad built on it",
+        "prompt": "(💡 Generate Lifestyle still first)A 15-second vertical product ad with sound. The product is [📎 Product]: its shape, colours, materials, label and logo exactly as in the picture in every shot, no words on it changed or added, nothing else taken from the picture.\nThe person in the ad looks like [📎 Person]: face, hair, skin tone and clothes as in the picture, nothing else taken from it.\nThe place, light and colours follow [📎 Lifestyle still]; take nothing else from it. 0–2 s: {✏️ the hook, e.g. a hand sets the product down hard on the counter}, the first frame already moving. 2–8 s: the product in 3 cuts, each a different close angle with one physical effect: a slow turn, light sliding over its surface, a drop of water running down it. 8–12 s: someone uses it in {✏️ the scene, e.g. a sunlit kitchen} and the result shows on their face. 12–15 s: a clean end frame, the product alone in the centre with the top third left empty for text added later. Only one claim is made about it: {✏️ your selling point, e.g. keeps coffee hot for 12 hours}, said once by a warm voice-over. One main camera move per shot. Sound: a track with a clear beat under it, the product's own sounds in front, the music stops on the end frame. No text on screen.",
+        "node": {
+          "still": {
+            "name": "Lifestyle still",
+            "prompt": "A vertical lifestyle photo of [📎 Product] being used in {✏️ the scene, e.g. a sunlit kitchen}: its shape, colours, materials, label and logo exactly as in the picture, no words on it changed or added, nothing else taken from the picture.\nThe person using it looks like [📎 Person]: face, hair, skin tone and clothes as in the picture, nothing else taken from it.\nOne soft window light from the side, the product sharp in the foreground, a real lived-in place. No text in the picture."
+          }
+        },
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, its label and logo in view, then generate."
+          },
+          "person": {
+            "name": "Person",
+            "note": "Optional: add a photo of the person to appear; leave it empty and the video casts someone who fits."
+          }
+        }
+      },
+      "ugc-creator-review": {
+        "name": "Creator review",
+        "description": "A creator talks up your product on a hand-held phone",
+        "prompt": "A 15-second vertical video filmed on a phone the creator holds, as if they posted it themselves. The creator is [📎 Creator]: face, hair, skin tone and clothes as in the picture, nothing else taken from it. The product is [📎 Product]: its shape, colours, label and logo exactly as in the picture, no words on it changed or added; the label reads the right way round in every shot, never mirrored. 0–2 s: the creator already looks into the lens mid-sentence and says \"{✏️ the first line, at most 8 words, e.g. Okay, I did not expect this}\". 2–7 s: they hold the product up close and show {✏️ what they point out, e.g. how the lid clicks shut}, saying \"{✏️ the second line, at most 8 words}\". 7–12 s: they use it and react, saying \"{✏️ the third line, at most 8 words}\". 12–13 s: the product alone on the table, sharp, in daylight. 13–15 s: the creator holds the product next to their face and looks into the lens. Real phone footage: a small hand shake, the focus hunting once, window light, a slightly messy room. Sound: only the creator's voice close to the phone and the room around it, no music. No text on screen.",
+        "input": {
+          "creator": {
+            "name": "Creator",
+            "note": "Add a clear photo of the creator first, face and upper body in view, then generate."
+          },
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, its label and logo in view, then generate."
+          }
+        }
+      },
+      "livestream-pitch": {
+        "name": "Livestream pitch",
+        "description": "A host pitches your product live, close to the lens",
+        "prompt": "A 12-second vertical clip from a live shopping stream. The host is [📎 Host]: face, hair, skin tone and clothes as in the picture, nothing else taken from it. The product is [📎 Product]: its shape, colours, label and logo exactly as in the picture, no words on it changed or added. A bright live-stream room: a ring light in front of the host, a soft light from the left, shelves of products out of focus behind. The host sits at a desk facing the fixed camera, chest up, and talks straight to the viewers in a {✏️ tone, e.g. excited and fast} voice. 0–3 s: the host already holds the product up and calls out to the viewers. 3–9 s: they bring it close to the lens and show {✏️ the selling points, e.g. the soft fabric and the hidden pocket}, turning it in their hands. 9–12 s: they hold it next to their face, smile and point down at the screen. Sound: the host's voice close and clear, a quiet upbeat track under it. No text, captions or interface on screen.",
+        "input": {
+          "host": {
+            "name": "Host",
+            "note": "Add a clear photo of the host first, face and upper body in view, then generate."
+          },
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, its label and logo in view, then generate."
+          }
+        }
+      },
+      "hype-then-twist-ad": {
+        "name": "Luxury hype, plain twist",
+        "description": "Built up like a luxury ad, then the plain reveal",
+        "prompt": "A 12-second vertical funny ad that starts like a luxury commercial. The product is [📎 Product]: its shape, colours, label and logo exactly as in the picture, no words on it changed or added. 0–2 s: in darkness a thin line of gold light already slides across a curved surface, too close to tell what it is. 2–4 s: a slow-motion macro of a glossy edge with a lens flare. 4–6 s: smoke drifting past a shape on a black marble stand, lit from behind. 6–8 s: the camera slowly pulls back as the light swells. 8–10 s: the reveal: {✏️ the reveal, e.g. the plain product sits on a cluttered kitchen table under a bare bulb}, and at that cut the music stops dead. 10–12 s: the product in flat everyday light, held still, a beat of silence, then {✏️ one ordinary sound, e.g. a fridge hums}. Sound: a deep orchestral build and a whispered voice-over up to the reveal, then silence. No text on screen.",
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, its label and logo in view, then generate."
+          }
+        }
+      },
+      "product-commercial-shotlist": {
+        "name": "Premium product film",
+        "description": "A widescreen high-end product film, shot by shot",
+        "prompt": "{✏️ the look, e.g. cool, minimal, soft grey and steel}. A 12-second widescreen premium commercial for [📎 Product]: its shape, colours, materials, label and logo exactly as in the picture in every shot, no words on it changed or added, nothing else taken from the picture. A studio set, one soft light from above left, a dark seamless background.\n0–3s: macro, the camera glides along one edge of the product while a line of light slides over it.\n3–5s: top-down, the product turns slowly on a plinth and stops with its label facing the camera.\n5–8s: low angle, a slow push in as {✏️ one detail in slow motion, e.g. the cap lifts off}.\n8–12s: the hero frame: the product in the centre at eye level, the camera settles and holds still.\nSound: a low synth pad, one crisp sound on each cut, no voice. No text on screen. Keywords: premium, precise, clean reflections, shallow depth of field, slow motion.",
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, its label and logo in view, then generate."
+          }
+        }
+      },
+      "unboxing-ad": {
+        "name": "Unboxing ad",
+        "description": "From the closed package to your product in hand",
+        "prompt": "A 25-second vertical unboxing video of [📎 Product]: its shape, colours, label and logo exactly as in the picture, no words on it changed or added. Close and from above, on a clean wooden table, soft daylight from a window. 0–4 s: the closed package already slides into the frame: {✏️ what the package looks like, e.g. a matte black box with a gold ribbon}. 4–9 s: hands open it slowly, the lid lifts, tissue paper rustles. 9–14 s: the hands lift the product out and turn it once toward the camera. 14–20 s: close-ups of {✏️ two details, e.g. the stitching and the metal clasp}, one main camera move each. 20–25 s: the hands use it once and set it down beside the open box, and the camera holds still. Sound: crisp close sounds of paper, the lid and the product, a soft light beat under them, no voice. No text on screen.",
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, its label and logo in view, then generate."
+          }
+        }
+      },
+      "variant-carousel-ad": {
+        "name": "Every colour in one ad",
+        "description": "Your product in three colours or styles, one by one",
+        "prompt": "A 20-second vertical ad showing one product in three colours or styles, one after another. The same camera position, the same light and the same plain {✏️ backdrop colour, e.g. warm beige} backdrop in every part; only the product changes. 0–6 s: [📎 Variant 1], its colour, shape, label and logo exactly as in its picture, already turning slowly on a small plinth. 6–7 s: {✏️ one transition, e.g. a quick spin} carries it into the next. 7–13 s: [📎 Variant 2], exactly as in its picture, turning the same way. 13–14 s: the same transition. 14–20 s: [📎 Variant 3], exactly as in its picture, turning the same way, then all three stand side by side for the last 2 seconds. The shape and size stay the same in every part; each part takes its colour only from its own picture. Sound: one upbeat track with a soft whoosh on each transition. No text on screen.",
+        "input": {
+          "variant-1": {
+            "name": "Variant 1",
+            "note": "Add a clear photo of the product in its first colour or style first, then generate."
+          },
+          "variant-2": {
+            "name": "Variant 2",
+            "note": "Add a clear photo of the product in its second colour or style first, then generate."
+          },
+          "variant-3": {
+            "name": "Variant 3",
+            "note": "Add a clear photo of the product in its third colour or style first, then generate."
           }
         }
       },
@@ -1673,11 +1778,15 @@
       "pet-selfie-vlog": {
         "name": "Pet steals the selfie vlog",
         "description": "A selfie vlog the pet takes over, ending nose to lens",
-        "prompt": "A vertical phone selfie vlog. The only animal in the video is [📎 Pet]: exactly one, its breed, coat colour and markings, eye colour and size as in the picture, nothing else taken from the picture. 0–3 s: the phone is held at arm's length, someone starts talking to the camera in {✏️ where, e.g. a sunny living room}, and the pet already walks into the frame behind them. 3–7 s: the pet {✏️ what it does to steal the shot, e.g. jumps onto the sofa and sniffs the phone}, its ears, tail and paws moving the way this animal really moves. 7–10 s: the pet comes right up to the lens until its nose fills the frame and the picture goes soft. The camera is the hand-held phone the whole time, small wobbles, no cuts. Daylight from a window. Sound: the person's surprised laugh and the pet's own sounds, no music. No text on screen.",
+        "prompt": "A vertical phone selfie vlog. The only animal in the video is [📎 Pet]: exactly one, its breed, coat colour and markings, eye colour and size as in the picture, nothing else taken from the picture.\nThe person holding the phone looks like [📎 Person]: face, hair, skin tone and clothes as in the picture, nothing else taken from it.\n0–3 s: the phone is held at arm's length, someone starts talking to the camera in {✏️ where, e.g. a sunny living room}, and the pet already walks into the frame behind them. 3–7 s: the pet {✏️ what it does to steal the shot, e.g. jumps onto the sofa and sniffs the phone}, its ears, tail and paws moving the way this animal really moves. 7–10 s: the pet comes right up to the lens until its nose fills the frame and the picture goes soft. The camera is the hand-held phone the whole time, small wobbles, no cuts. Daylight from a window. Sound: the person's surprised laugh and the pet's own sounds, no music. No text on screen.",
         "input": {
           "pet": {
             "name": "Pet",
             "note": "Add a clear photo of your pet first, the whole animal in view, then generate."
+          },
+          "person": {
+            "name": "Person",
+            "note": "Optional: add a photo of the person filming; leave it empty and the video casts someone who fits."
           }
         }
       },

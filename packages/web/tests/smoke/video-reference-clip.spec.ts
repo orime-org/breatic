@@ -277,7 +277,7 @@ test('sends a mentioned clip and a mentioned picture under their own params', as
   const params = (body as { params: Record<string, unknown> }).params;
   expect(params.videos).toEqual([CLIP]);
   expect(params.images).toEqual([PIXEL]);
-  // Each chip is written the way this model's prompt guide names a file,
-  // counted within its own kind's list, so the words point at what is sent.
-  expect(params.prompt).toBe('follow the motion in Video 1 with Image 1 ');
+  // Each chip is sent as a neutral reference to its param, counted within its
+  // own kind's list; provider writes it the way the upstream names a file.
+  expect(params.prompt).toBe('follow the motion in {{ref:videos:1}} with {{ref:images:1}} ');
 });

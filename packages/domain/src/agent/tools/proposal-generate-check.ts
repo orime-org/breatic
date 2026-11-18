@@ -260,10 +260,18 @@ interface Wiring {
  * @param index - Its index.
  * @param chosen - Its model.
  * @param at - The generation, as a fix names it.
+ * @param optionalNodes - The indices of the nodes standing for an optional input of a template this generation belongs to.
  * @returns What the wiring settles, or the refusal.
  * @throws {never} Never.
  */
-function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number, chosen: ModelInfo, at: NodeLabel): Wiring | Refusal {
+function checkWiring(
+  proposal: CanvasProposal,
+  node: ProposalNode,
+  index: number,
+  chosen: ModelInfo,
+  at: NodeLabel,
+  optionalNodes: ReadonlySet<number>,
+): Wiring | Refusal {
   const routing = routeEdges(proposal, index, chosen);
   if ("refusal" in routing) return routing;
   const filling = fillsOf(proposal, node, chosen, at);
@@ -301,10 +309,10 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
     const each = unmentioned.map(refAsSent).join(", ");
     return refuse("ref-missing", `${names} ${unmentioned.length === 1 ? "is" : "are"} wired into the pool of "${node.name}" and no ref @s ${unmentioned.length === 1 ? "it" : "them"}. A node in the pool is used only where a ref @s it ${where}: ${each}.`);
   }
-  const asked = notesAsked(arriving);
+  const asked = notesAsked(arriving, (n) => optionalNodes.has(proposal.nodes.indexOf(n)));
   const notes = notesIn(node);
   if (notes < asked.length) {
-    return refuse("notes-missing", `"${node.name}" needs a note for each of ${asked.map(({ node: n, why }) => `"${n.name}" (${why})`).join(", ")}, and carries ${String(notes)}.`, fixOn(at, `give each one a note ${where}: which slot to pick it into, or what to do first with a node that lands empty.`));
+    return refuse("notes-missing", `"${node.name}" needs a note for each of ${asked.map(({ node: n, why }) => `"${n.name}" (${why})`).join(", ")}, and carries ${String(notes)}.`, fixOn(at, `give each one a note ${where}: which slot to pick it into, what to do first with a node that lands empty, or that an optional input can be left empty.`));
   }
   return { arriving, pooled };
 }
@@ -423,7 +431,8 @@ function lyricsSent(node: ProposalNode, chosen: ModelInfo, arriving: Wiring["arr
 export function generateRunOf(proposal: CanvasProposal, node: ProposalNode, index: number): { model: string; params: Record<string, unknown>; prompt: string } | undefined {
   const resolved = resolveModel(node, index);
   if ("refusal" in resolved) return undefined;
-  const wiring = checkWiring(proposal, node, index, resolved.chosen, nodeLabel(proposal.nodes, index));
+  // Which inputs are optional changes only a refusal's wording, and a refusal here means no run.
+  const wiring = checkWiring(proposal, node, index, resolved.chosen, nodeLabel(proposal.nodes, index), new Set());
   if ("refusal" in wiring) return undefined;
   const lyrics = lyricsSent(node, resolved.chosen, wiring.arriving);
   const entry = proposalModelEntry(node);
@@ -524,17 +533,18 @@ export function checkBlanks(proposal: CanvasProposal): ProposalVerdict {
  * @param proposal - The whole proposal, for reading the group around it.
  * @param node - The node being judged.
  * @param index - Where it sits, for naming it in a refusal.
+ * @param optionalNodes - The indices of the nodes standing for an optional input of a template this generation belongs to, whose refs here are marked optional (inner#1811).
  * @returns Whether it stands, and what is missing when it does not.
  * @throws {never} Never.
  */
-export function checkGenerateNode(proposal: CanvasProposal, node: ProposalNode, index: number): ProposalVerdict {
+export function checkGenerateNode(proposal: CanvasProposal, node: ProposalNode, index: number, optionalNodes: ReadonlySet<number>): ProposalVerdict {
   const resolved = resolveModel(node, index);
   if ("refusal" in resolved) return resolved;
   const { chosen } = resolved;
   const at = nodeLabel(proposal.nodes, index);
   const settings = checkSettings(node, chosen, at);
   if (!settings.ok) return settings;
-  const wiring = checkWiring(proposal, node, index, chosen, at);
+  const wiring = checkWiring(proposal, node, index, chosen, at, optionalNodes);
   if ("refusal" in wiring) return wiring;
   return checkPanelGate(proposal, node, chosen, wiring, at);
 }

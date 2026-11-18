@@ -197,6 +197,17 @@ const SOCIAL_HOOK_VIDEOS = SOCIAL_HOOKS.filter((id) => id !== 'fisheye-clone-pov
 /** The poster and graphics templates (inner#1809), in registry order. */
 const POSTERS = ['name-as-world-typography', 'destination-festival-poster', 'photo-paper-diorama'];
 
+/** The e-commerce ad templates (inner#1811), in registry order. */
+const ECOMMERCE = [
+  'product-ad-15s',
+  'ugc-creator-review',
+  'livestream-pitch',
+  'hype-then-twist-ad',
+  'product-commercial-shotlist',
+  'unboxing-ad',
+  'variant-carousel-ad',
+];
+
 /** The motion and speed templates (inner#1810), in registry order. */
 const SPEED = ['vehicle-speed-cutlist', 'sports-live-coverage', 'extreme-sports-run'];
 
@@ -312,6 +323,7 @@ describe('generation templates', () => {
       'single-view-refs-scene',
       'identity-locked-sequence',
       'character-showcase-orbit',
+      ...ECOMMERCE,
       ...FOOD_VIDEOS,
       ...SOCIAL_HOOK_VIDEOS,
       ...SPEED,
@@ -381,6 +393,16 @@ describe('generation templates', () => {
       'name-as-world-typography': { result: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '3:4' } } },
       'destination-festival-poster': { result: { type: 'image', mode: 't2i', model: 'seedream-v5.5-text-to-image', params: { aspect_ratio: '3:4' } } },
       'photo-paper-diorama': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '3:4' } } },
+      'product-ad-15s': {
+        still: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
+        ...t2v(15),
+      },
+      'ugc-creator-review': t2v(15),
+      'livestream-pitch': t2v(12),
+      'hype-then-twist-ad': t2v(12),
+      'product-commercial-shotlist': t2v(12, '16:9'),
+      'unboxing-ad': t2v(25),
+      'variant-carousel-ad': t2v(20),
       'vehicle-speed-cutlist': t2v(12, '16:9'),
       'sports-live-coverage': t2v(12, '16:9'),
       'extreme-sports-run': t2v(10),
@@ -486,11 +508,12 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'food', 'social-hooks', 'posters', 'speed', 'sound']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'ecommerce', 'food', 'social-hooks', 'posters', 'speed', 'sound']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
     const goals: Record<string, string> = {
+      ...Object.fromEntries(ECOMMERCE.map((id) => [id, 'ecommerce'])),
       ...Object.fromEntries(FOOD.map((id) => [id, 'food'])),
       ...Object.fromEntries(SOCIAL_HOOKS.map((id) => [id, 'social-hooks'])),
       ...Object.fromEntries(POSTERS.map((id) => [id, 'posters'])),
@@ -547,6 +570,7 @@ describe('creative goals and triggers', () => {
     ]);
     expect(templateGoalsFor('video').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['single-view-refs-scene', 'identity-locked-sequence', 'character-showcase-orbit']],
+      ['ecommerce', ECOMMERCE],
       ['food', FOOD_VIDEOS],
       ['social-hooks', SOCIAL_HOOK_VIDEOS],
       ['speed', SPEED],
@@ -695,6 +719,107 @@ describe('generation template registry checks', () => {
   });
 });
 
+describe('e-commerce ad templates (inner#1811)', () => {
+  it('feeds the product and an optional person into the still and the video, and wires the still into the video pool', () => {
+    const ad = byId('product-ad-15s');
+    expect(ad?.inputs).toEqual([
+      { key: 'product', type: 'image', feeds: ['still', 'result'] },
+      { key: 'person', type: 'image', feeds: ['still', 'result'], optional: true },
+    ]);
+    expect(ad?.edges).toEqual([{ from: 'still', to: 'result', into: 'pool' }]);
+  });
+
+  it('feeds each of the other six its user inputs, all required', () => {
+    const expected: Record<string, string[]> = {
+      'ugc-creator-review': ['creator', 'product'],
+      'livestream-pitch': ['host', 'product'],
+      'hype-then-twist-ad': ['product'],
+      'product-commercial-shotlist': ['product'],
+      'unboxing-ad': ['product'],
+      'variant-carousel-ad': ['variant-1', 'variant-2', 'variant-3'],
+    };
+    for (const [id, keys] of Object.entries(expected)) {
+      expect(byId(id)?.inputs, id).toEqual(keys.map((key) => ({ key, type: 'image' })));
+      expect(byId(id)?.edges, id).toEqual([]);
+    }
+  });
+
+  it('tells the agent the still comes first and goes into the video pool', () => {
+    expect(byId('product-ad-15s')?.agentNote).toMatch(/still .*first.*video'?s? pool/);
+  });
+
+  it('tells the agent which model kept the product in shape for the still, and which did not (inner#1811 §9)', () => {
+    const note = byId('product-ad-15s')?.agentNote ?? '';
+    const still = byId('product-ad-15s')?.nodes.find((node) => node.key === 'still');
+    expect(still?.role === 'generate' ? still.model : undefined).toBe('nano-banana-pro-edit-ultra');
+    expect(note).toMatch(/still runs on nano-banana-pro-edit-ultra, which kept the product's proportions/);
+    expect(note).toContain('gpt-image-2.5-sunburst-edit changed them');
+  });
+});
+
+describe('optional template inputs (inner#1811, CAP-9)', () => {
+  /** Every optional input, as `<template id>.<input key>`. */
+  const optionalInputs = (): string[] =>
+    GENERATION_TEMPLATES.flatMap((template) => template.inputs.filter((input) => input.optional === true).map((input) => `${template.id}.${input.key}`));
+
+  it('marks the person of the product ad and of the pet selfie vlog optional, and no other input', () => {
+    expect(optionalInputs()).toEqual(['product-ad-15s.person', 'pet-selfie-vlog.person']);
+  });
+
+  it('feeds the pet selfie vlog an optional person after its pet', () => {
+    expect(byId('pet-selfie-vlog')?.inputs).toEqual([
+      { key: 'pet', type: 'image' },
+      { key: 'person', type: 'image', optional: true },
+    ]);
+  });
+
+  it('@s an optional input only in a paragraph of its own, holding no other reference, in every node it feeds and every language', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      for (const input of template.inputs.filter((one) => one.optional === true)) {
+        for (const locale of LOCALES) {
+          const name = raw(locale, textKey(template, `input.${input.key}.name`));
+          for (const key of feedsOf(template, input)) {
+            const node = generateNodes(template).find((one) => one.key === key);
+            if (!node) throw new Error(`${template.id} feeds ${key}`);
+            const paragraphs = wordKeysOf(template, node).flatMap((rest) => (raw(locale, textKey(template, rest)) ?? '').split('\n'));
+            const holding = paragraphs.filter((paragraph) => markedSegments(paragraph).some((s) => s.slot?.kind === 'asset' && s.slot.label === name));
+            const where = `${template.id} ${locale} ${key} ${input.key}`;
+            expect(holding.length, where).toBeGreaterThan(0);
+            for (const paragraph of holding) {
+              const labels = markedSegments(paragraph).flatMap((s) => (s.slot?.kind === 'asset' ? [s.slot.label] : []));
+              expect(new Set(labels), where).toEqual(new Set([name]));
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('says in English that an optional input can be left empty', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      for (const input of template.inputs.filter((one) => one.optional === true)) {
+        expect(raw('en', textKey(template, `input.${input.key}.note`)), `${template.id} ${input.key}`).toMatch(/^Optional: .*leave it empty/);
+      }
+    }
+  });
+
+  it('never feeds an optional input into a node of dialogue lines, whose lines are never left out', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      for (const input of template.inputs.filter((one) => one.optional === true)) {
+        for (const key of feedsOf(template, input)) {
+          expect(generateNodes(template).find((one) => one.key === key)?.lines, `${template.id} ${input.key} ${key}`).toBeUndefined();
+        }
+      }
+    }
+  });
+
+  it('never puts an optional input into a slot, as only a pool reference is left out with its paragraph', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      for (const input of template.inputs.filter((one) => one.optional === true)) expect(input.into, `${template.id} ${input.key}`).toBeUndefined();
+    }
+  });
+});
+
 describe('motion and speed templates (inner#1810)', () => {
   it('tells the agent the user’s vehicle photo goes straight into the video, which takes only the vehicle from it', () => {
     expect(byId('vehicle-speed-cutlist')?.agentNote).toContain(
@@ -706,7 +831,8 @@ describe('motion and speed templates (inner#1810)', () => {
 describe('social hook templates (inner#1816)', () => {
   it('feeds each its user inputs and wires the carried object through two scenes into the first and last frame', () => {
     const expected: Record<string, { inputs: Array<{ key: string; type: string; feeds: readonly string[] }>; edges: GenerationTemplate['edges'] }> = {
-      'pet-selfie-vlog': { inputs: [{ key: 'pet', type: 'image', feeds: ['result'] }], edges: [] },
+      // inner#1811 adds the optional person filming.
+      'pet-selfie-vlog': { inputs: [{ key: 'pet', type: 'image', feeds: ['result'] }, { key: 'person', type: 'image', feeds: ['result'] }], edges: [] },
       'phone-vlog-realism': { inputs: [{ key: 'person', type: 'image', feeds: ['result'] }], edges: [] },
       'retro-found-footage': { inputs: [], edges: [] },
       'time-freeze-rewind': { inputs: [{ key: 'person', type: 'image', feeds: ['result'] }], edges: [] },

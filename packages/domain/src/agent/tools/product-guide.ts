@@ -885,7 +885,10 @@ export function renderProductGuide(): string {
       "@'d in the prompt: a picture already " +
       "connected to the node is used as it is; for one that is missing, an empty node is placed to the left, " +
       "connected and @'d, and a note at the top of the prompt says what to put in it (with a shot list, at the " +
-      "top of the first shot). A template may also place " +
+      "top of the first shot). A picture the template marks optional may be left empty and its note says so: the " +
+      "paragraph of the prompt that @'s it stands on its own, is greyed while that node holds no picture and is " +
+      "then left out of what generation gets, and hovering it says it is sent once that node holds a picture; " +
+      "once a picture is put in the node, the paragraph is sent again. A template may also place " +
       "picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt " +
       "says to generate them first. A picture such a template places for the first or end frame is connected " +
       "but not @'d, and its note says to pick it into that frame once it has generated. A template that needs a " +
