@@ -15,7 +15,7 @@ interface TierComparisonProps {
 }
 
 /**
- * The priced tiers' six ceilings side by side.
+ * The priced tiers' ceilings side by side.
  *
  * A real `<table>` rather than a grid of divs: the numbers are a table, and
  * one that says so can be read down a column by anything that reads tables.

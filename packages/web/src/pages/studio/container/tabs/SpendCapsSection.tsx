@@ -119,7 +119,8 @@ function limitText(value: string | null, t: ReturnType<typeof useTranslation>): 
  * 3.10): the Studio's total and the per-person default, what was spent this
  * month and when it resets, and everyone who can spend here with what they
  * spent and the limit in force. Only the admin reads it; the server's 403 for
- * anyone else and 404 for a personal Studio leave the section out.
+ * anyone else, and its 404 for a personal Studio or a deployment that charges
+ * no credits, leave the section out.
  * @param props - The Studio.
  * @param props.slug - The Studio's slug.
  * @returns The section, or nothing for anyone but a team Studio's admin.
@@ -195,7 +196,7 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
   }, [restoring, slug, queryClient, queryKey, saveFailed]);
 
   if (view === undefined) {
-    // A personal Studio (404) or a user who is not its admin (403) has no such section; any other failure says so.
+    // A personal Studio or a deployment that charges no credits (404), or a user who is not its admin (403), has no such section; any other failure says so.
     const absent = query.error instanceof ApiException && (query.error.status === 403 || query.error.status === 404);
     if (!query.isError || absent) return null;
     return (

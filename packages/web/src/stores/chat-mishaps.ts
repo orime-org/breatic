@@ -90,11 +90,12 @@ export function tell(mishap: ChatMishap): void {
 /**
  * Read a failed request as the user would hear it.
  *
- * For every request that fetches rather than runs a turn -- opening the
- * chat, reaching further back, switching, starting, renaming, removing, and
- * re-reading the list. Either we have a sentence about it (the server's own,
- * or the spend-limit one built here from the server's answer) or nothing
- * does.
+ * For every chat request that fails as a whole -- opening the chat, reaching
+ * further back, switching, starting, renaming, removing, re-reading the list,
+ * sending a message, answering a card, stopping and taking a message back.
+ * Either we have a sentence about it or nothing does: the server's own, or,
+ * for sending a message or answering a card past a spend limit, the
+ * spend-limit one built here from the server's answer.
  *
  * A third case exists and is not told apart here: something answered, but
  * with nothing of ours in it. Saying "network error" for that is not right --
@@ -113,9 +114,10 @@ export function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'
  * it is told (inner#1530: a toast, said once).
  *
  * Our sentence passes through -- the server's own, or the spend-limit one
- * built from its answer, both written for the user in their language. A conversation that is gone is not an error, so it says
- * that. A turn that answered with nothing of ours says the reply is not
- * coming; no answer at all says only that the network failed.
+ * built from its answer, both written for the user in their language. A
+ * conversation that is gone is not an error, so it says that. A turn that
+ * answered with nothing of ours says the reply is not coming; no answer at
+ * all says only that the network failed.
  * @param mishap - What happened.
  * @returns The sentence.
  */

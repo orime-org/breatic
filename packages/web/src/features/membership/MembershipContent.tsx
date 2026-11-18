@@ -440,7 +440,7 @@ export function MembershipContent({
   );
 }
 
-/** One of the four ceilings only the self-hosted tier lists here. */
+/** One of the ceilings only the self-hosted tier lists here. */
 interface SelfHostedRowProps {
   /** What the ceiling is called. */
   label: string;

@@ -23,8 +23,9 @@
  *   3. The ceiling goes through honouredTier. A pro account past its grace
  *      window is judged as base, otherwise storage would be judged as pro and
  *      every other ceiling as base: two standards for one account.
- *   4. An enterprise account with no saved agreement passes, and limitBytes
- *      is null, neither an invented number nor a 500. An active agreement's
+ *   4. An enterprise account with no saved agreement passes, and
+ *      getStudioStorageQuota answers storageBytes: null, neither an invented
+ *      number nor a 500. An active agreement's
  *      storage_bytes caps it, and an expired one is judged on its fallback
  *      tier (enterprise-agreement-terms).
  */

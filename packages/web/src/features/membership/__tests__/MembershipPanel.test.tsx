@@ -820,10 +820,9 @@ describe('MembershipPanel', () => {
     expect(await screen.findByTestId('current-tier-name')).toHaveTextContent(
       'Enterprise',
     );
-    // The storage row above it is the agreement's, so the note speaks only of the rest (inner#1968).
+    // Without an agreement storage is shown as used against no cap (inner#1968
+    // design 3.6); the note speaks only of the other allowances, which stay out.
     expect(screen.getByTestId('enterprise-quota-note')).toHaveTextContent('Your other allowances are set by a separate agreement and are not shown here.');
-    // Storage is drawn against the agreement since inner#1968 (design 3.6);
-    // the other ceilings stay out.
     expect(screen.queryByTestId('quota-team-studios')).toBeNull();
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.queryByTestId('tier-card-pro')).toBeNull();
@@ -853,7 +852,7 @@ describe('MembershipPanel', () => {
     expect(screen.getByTestId('over-limit-storage')).toBeInTheDocument();
   });
 
-  it('企业存储超出协议上限时也说明已有内容仍可用、新内容传不上，不提升级 (inner#1968)', async () => {
+  it('says existing content stays usable and nothing new can be stored, without an upgrade, when enterprise storage is past its agreement (inner#1968)', async () => {
     membershipMock.mockResolvedValue(
       answer({
         tier: 'enterprise',
