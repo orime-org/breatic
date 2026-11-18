@@ -31,6 +31,7 @@ type Props = {
   onChoosePicture: (part: string) => void;
   showingPictures?: ReadonlySet<string>;
   uploadPercentOf?: (part: string) => number | null;
+  pictureUrl?: (assetId: string) => string | undefined;
 };
 
 afterEach(() => cleanup());

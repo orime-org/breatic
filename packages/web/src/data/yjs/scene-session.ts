@@ -242,7 +242,8 @@ export class SceneSession {
     const eligible = shown && this.focused;
     const pilot = this.pilot;
     const piloted = pilot ? this.snapshot.objects.find((object) => object.id === pilot.id) : undefined;
-    const gesture = this.gesture ? this.snapshot.objects.filter((object) => this.selectedIds.includes(object.id))
+    // Collaborators draw a drag's transform and pose only; a look reaches them when it is committed (design 3.8).
+    const gesture = this.gesture ? this.snapshot.objects.filter((object) => this.selectedIds.includes(object.id)).map(({ look: _look, ...object }) => object)
       : pilot && piloted ? [{ ...piloted, position: pilot.position, rotation: pilot.rotation }] : null;
     const scenePresence = eligible ? { selectedIds: this.selectedIds, gesture } : { selectedIds: [], gesture: null };
     const state = awareness.getLocalState();

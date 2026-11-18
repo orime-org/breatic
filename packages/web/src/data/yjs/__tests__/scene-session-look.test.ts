@@ -118,6 +118,16 @@ describe('dragging a look field (inner#1693 design 4.3)', () => {
     expect(lookIn(state.doc)).toEqual(START_LOOK);
   });
 
+  it('publishes the dragged objects to collaborators without their look, which they do not draw', () => {
+    const state = fixture();
+    begin(state);
+    state.session.previewGesture(lookDraft('0', { roughness: 0.9 }));
+    flush();
+    const published = (state.awareness.getLocalState()?.scenePresence as { gesture: Array<Record<string, unknown>> }).gesture;
+    expect(published.map((object) => object.id)).toEqual([ID]);
+    expect('look' in published[0]!).toBe(false);
+  });
+
   it('writes nothing when the field ends where the drag started', () => {
     const state = fixture();
     begin(state);
