@@ -3,7 +3,8 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, OrthographicCamera, Vector3, type Scene } from 'three';
-import { ModelResourceCache } from '@web/spaces/three-d/viewport/model-resources';
+import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
+import { ModelResourceCache, loadSceneModel } from '@web/spaces/three-d/viewport/model-resources';
 import { SceneMiniMapRuntime, fitSceneOverview } from '@web/spaces/three-d/viewport/scene-mini-map';
 import type { SceneObject } from '@breatic/shared';
 
@@ -83,6 +84,40 @@ describe('native scene overview (inner#1724)', () => {
     expect(renders).toHaveLength(count + 1);
   });
 
+});
+
+describe('appearance in the overview (inner#1693 design 5.2)', () => {
+  it('shows each object\'s look and leaves its materials alone while only its transform changes', async () => {
+    const cache = new ModelResourceCache((source, signal) => loadSceneModel(source, signal, vi.fn(), '#969696', IMPORT_LIMITS)); owners.push(() => cache.dispose());
+    const main = cache.acquire(OBJECT.model); await main.ready;
+    const host = document.createElement('div'); document.body.append(host);
+    Object.defineProperties(host, { clientWidth: { value: 200 }, clientHeight: { value: 140 } });
+    host.style.setProperty('--color-muted-foreground', '#969696');
+    const map = new SceneMiniMapRuntime(host, cache, vi.fn()); owners.push(() => map.dispose());
+    const looked = { ...OBJECT, look: { 0: { color: '#ff0000', map: 'none' as const } } };
+    map.update([looked], new Set([OBJECT.id]), new Vector3(), new Set());
+    await vi.waitFor(() => {
+      const scene = renders.at(-1)?.[0] as Group;
+      expect(scene.children.some((child) => child.userData.sceneObjectId === OBJECT.id)).toBe(true);
+    });
+    map.render();
+    /** The overview instance's material. */
+    const material = (): MeshStandardMaterial => {
+      let found: MeshStandardMaterial | null = null;
+      (renders.at(-1)?.[0] as Group).traverse((child) => { if (child.userData.sceneObjectId === OBJECT.id) child.traverse((inner) => { if (inner instanceof Mesh) found = inner.material as MeshStandardMaterial; }); });
+      if (!found) throw new Error('no overview instance');
+      return found;
+    };
+    expect(`#${material().color.getHexString()}`).toBe('#ff0000');
+    expect(material().map).toBeNull();
+    const shown = material(); const version = shown.version;
+    map.update([{ ...looked, position: [41, 8, -30] }], new Set([OBJECT.id]), new Vector3(), new Set());
+    expect(material()).toBe(shown);
+    expect(shown.version).toBe(version);
+    map.update([{ ...looked, look: { 0: { color: '#00ff00' } } }], new Set([OBJECT.id]), new Vector3(), new Set());
+    expect(`#${material().color.getHexString()}`).toBe('#00ff00');
+    main.release();
+  });
 });
 
 describe('environment reflection in the overview (inner#1693 design 5.7)', () => {

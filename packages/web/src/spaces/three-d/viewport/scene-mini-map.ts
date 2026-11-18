@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Box3, CircleGeometry, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, type Texture, Vector2, Vector3, WebGLRenderer } from 'three';
+import { Box3, CircleGeometry, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, type Object3D, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, type Texture, Vector2, Vector3, WebGLRenderer } from 'three';
 import { SCENE_ENVIRONMENT_INTENSITY, createSceneEnvironment } from '@web/spaces/three-d/viewport/scene-environment';
 import { isSceneLight, isSceneModelFile, type SceneObject } from '@breatic/shared';
 import { lookModelOf, type ModelResourceCache, type SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
@@ -57,6 +57,8 @@ export class SceneMiniMapRuntime {
   private previewed: ReadonlySet<string> = new Set();
   private disposed = false;
   private renderKey = '';
+  /** The look and theme colour last written to each instance, so a moved object keeps its materials as they are. */
+  private readonly appliedLooks = new WeakMap<Object3D, string>();
   private width = 0;
   private height = 0;
 
@@ -180,7 +182,11 @@ export class SceneMiniMapRuntime {
       applyPose(root, object.pose, !this.previewed.has(object.id));
       // The same per-part values as the main view; user pictures are not loaded here and show as unusable (inner#1693 design 5.2).
       const look = lookModelOf(root);
-      if (look && builtin) applyLook(root, look.table, object.look ?? {}, { themeColor: builtin, picture: () => null });
+      const lookKey = JSON.stringify([object.look ?? {}, builtin]);
+      if (look && builtin && this.appliedLooks.get(root) !== lookKey) {
+        applyLook(root, look.table, object.look ?? {}, { themeColor: builtin, picture: () => null });
+        this.appliedLooks.set(root, lookKey);
+      }
       bounds.expandByObject(root);
     }
     for (const icon of this.icons.values()) {
