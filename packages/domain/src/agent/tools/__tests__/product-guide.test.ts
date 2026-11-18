@@ -679,6 +679,19 @@ describe("what the guide says", () => {
     expect(doc).toMatch(/Shift\+Tab moves it back out/);
   });
 
+  it("names the slash menu's triggers by character and its place by the slash it hangs from", () => {
+    const slash = section("Document spaces").split("\n").find((line) => line.startsWith("- Typing a slash")) ?? "";
+    const triggers = /SLASH_TRIGGERS[^=]*= \[([^\]]*)\]/u.exec(webSource("spaces/document/document-slash-trigger.ts"))?.[1] ?? "";
+    const chars = [...triggers.matchAll(/'([^']*)'/gu)].map((m) => JSON.parse(`"${m[1] ?? ""}"`) as string);
+    expect(chars).toHaveLength(3);
+    for (const char of chars) expect(slash).toContain(char);
+    expect(slash).not.toMatch(/slash key|input method/u);
+    const menu = webSource("spaces/document/DocumentSlashMenu.tsx");
+    expect(menu).toContain("placement: 'bottom-start'");
+    expect(menu).toContain("flip({ padding: EDGE })");
+    expect(slash).toMatch(/opens, under the slash or, with no room under it, over the line,/u);
+  });
+
   it("names the plus only on an empty paragraph, the one line it shows on", () => {
     expect(webSource("spaces/document/document-insert-row.ts")).toContain("row?.type === 'paragraph' &&");
     const doc = `${section("Document spaces")}\n${section("Document columns")}`;

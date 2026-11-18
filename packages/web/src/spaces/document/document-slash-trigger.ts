@@ -4,8 +4,7 @@
 /**
  * Where typing a trigger opens the slash menu (inner#1125 design 5.1).
  *
- * The full-width slash and the ideographic comma are what the slash key types
- * with a Chinese or Japanese input method on, so they open the same menu.
+ * The full-width slash and the ideographic comma open the same menu.
  */
 
 import type { Transaction } from '@tiptap/pm/state';

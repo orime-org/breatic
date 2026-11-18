@@ -1891,9 +1891,9 @@ export function renderProductGuide(): string {
       "when that line is the document's only block. Empty " +
       "paragraphs have no six-dot handle, so its menu and dragging are not offered on them; a selection that takes " +
       "in an empty paragraph acts on it as on any other paragraph.",
-    "- Typing a slash at the start of a line or after a space opens, under the caret, the same entries as " +
-      `${quoted(t("spaces.document.blockHandle.insertBelow"))} (with a Chinese or Japanese input method on, the ` +
-      "full-width slash or the ideographic comma the slash key types does the same). Letters typed after it narrow " +
+    "- Typing a slash (/) at the start of a line or after a space opens, under the slash or, with no room under " +
+      `it, over the line, the same entries as ${quoted(t("spaces.document.blockHandle.insertBelow"))}; the ` +
+      "full-width slash (\uFF0F) and the ideographic comma (\u3001) do the same. Letters typed after it narrow " +
       "the list by an entry's name in the interface language or in English; when nothing matches it says " +
       `${quoted(t("spaces.document.slashMenu.empty"))}, and it closes once three more characters still match ` +
       "nothing. A space right after the slash closes it and keeps what was typed. The up and down arrows move " +
