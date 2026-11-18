@@ -136,6 +136,39 @@ function inRepeatRange(repeat: number): number {
 }
 
 /**
+ * What the panel shows for a part, read from one of its materials as loaded.
+ * @param material - The material.
+ * @param options - How the model was made.
+ * @param options.builtin - Whether the model is built in.
+ * @returns The part's reported state.
+ */
+function describePart(material: Material, options: { builtin: boolean }): Omit<LookPartEntry, 'originals'> {
+  const lit = material as Lit;
+  const map = lit.map ?? null;
+  const image = map?.image as { width?: number; height?: number } | undefined;
+  const repeats = map !== null && map.wrapS === RepeatWrapping && map.wrapT === RepeatWrapping;
+  return {
+    materialType: material.type,
+    name: material.name || null,
+    color: `#${(lit.color ?? new Color(SCENE_LOOK_PICTURE_COLOR)).getHexString()}`,
+    ...(lit.isMeshStandardMaterial ? { roughness: lit.roughness, metalness: lit.metalness,
+      emissive: `#${lit.emissive.getHexString()}`, emissiveIntensity: lit.emissiveIntensity } : {}),
+    opacity: material.opacity,
+    transmission: lit.transmission ?? 0,
+    transparent: material.transparent,
+    depthWrite: material.depthWrite,
+    alphaTest: material.alphaTest,
+    hasMap: map !== null,
+    ...(map ? { mapRepeat: [inRepeatRange(map.repeat.x), inRepeatRange(map.repeat.y)] as [number, number], mapOffset: [inOffsetRange(map.offset.x), inOffsetRange(map.offset.y)] as [number, number],
+      mapRotation: MathUtils.euclideanModulo(MathUtils.radToDeg(map.rotation) + 180, 360) - 180, thumbnail: thumbnailOf(map.image) } : {}),
+    unlit: material.type === 'MeshBasicMaterial',
+    line: isLineMaterial(material),
+    builtin: options.builtin,
+    clampBytes: map !== null && !repeats && image?.width && image.height ? uploadBytes({ width: image.width, height: image.height }, true) : 0,
+  };
+}
+
+/**
  * Record each part's own state and put the part key on its material, so object clones carry it (inner#1693 design 5.1).
  * @param root - The model template root.
  * @param partOf - The part a template material belongs to.
@@ -156,34 +189,13 @@ export function buildPartTable(root: Object3D, partOf: (material: Material) => s
         material.userData.lookOriginal = known.originals.length;
         copies.set(material, known.originals.push(material.clone()) - 1);
       } else material.userData.lookOriginal = copies.get(material);
+      // One glTF material drawn as points or lines as well as triangles is a lit part: its triangle variant is reported.
+      if (known.line && !isLineMaterial(material)) Object.assign(known, describePart(material, options));
       return;
     }
     copies.set(material, 0);
     material.userData.lookOriginal = 0;
-    const lit = material as Lit;
-    const map = lit.map ?? null;
-    const image = map?.image as { width?: number; height?: number } | undefined;
-    const repeats = map !== null && map.wrapS === RepeatWrapping && map.wrapT === RepeatWrapping;
-    table.set(part, {
-      materialType: material.type,
-      name: material.name || null,
-      color: `#${(lit.color ?? new Color(SCENE_LOOK_PICTURE_COLOR)).getHexString()}`,
-      ...(lit.isMeshStandardMaterial ? { roughness: lit.roughness, metalness: lit.metalness,
-        emissive: `#${lit.emissive.getHexString()}`, emissiveIntensity: lit.emissiveIntensity } : {}),
-      opacity: material.opacity,
-      transmission: lit.transmission ?? 0,
-      transparent: material.transparent,
-      depthWrite: material.depthWrite,
-      alphaTest: material.alphaTest,
-      hasMap: map !== null,
-      ...(map ? { mapRepeat: [inRepeatRange(map.repeat.x), inRepeatRange(map.repeat.y)] as [number, number], mapOffset: [inOffsetRange(map.offset.x), inOffsetRange(map.offset.y)] as [number, number],
-        mapRotation: MathUtils.euclideanModulo(MathUtils.radToDeg(map.rotation) + 180, 360) - 180, thumbnail: thumbnailOf(map.image) } : {}),
-      unlit: material.type === 'MeshBasicMaterial',
-      line: isLineMaterial(material),
-      builtin: options.builtin,
-      clampBytes: map !== null && !repeats && image?.width && image.height ? uploadBytes({ width: image.width, height: image.height }, true) : 0,
-      originals: [material.clone()],
-    });
+    table.set(part, { ...describePart(material, options), originals: [material.clone()] });
   });
   return table;
 }

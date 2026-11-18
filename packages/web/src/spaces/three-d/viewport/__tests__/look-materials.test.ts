@@ -70,6 +70,18 @@ describe('buildPartTable', () => {
     root.add(line);
     expect(exported<Build>('buildPartTable')(root, partOf, { builtin: false }).get('0')).toMatchObject({ line: true });
   });
+
+  it('reports a part whose material also draws triangles from its triangle variant, met after a points variant', () => {
+    const root = new Group();
+    const points = new PointsMaterial({ color: '#00ff00' });
+    const lit = new MeshStandardMaterial({ color: '#00ff00', roughness: 0.3, metalness: 0.6 });
+    points.userData.lookPart = '0';
+    lit.userData.lookPart = '0';
+    root.add(new Points(new BoxGeometry(), points), new Mesh(new BoxGeometry(), lit));
+    const entry = exported<Build>('buildPartTable')(root, partOf, { builtin: false }).get('0');
+    expect(entry).toMatchObject({ materialType: 'MeshStandardMaterial', line: false, roughness: 0.3, metalness: 0.6 });
+    expect([points.userData.lookOriginal, lit.userData.lookOriginal]).toEqual([0, 1]);
+  });
 });
 
 describe('applyLook', () => {
