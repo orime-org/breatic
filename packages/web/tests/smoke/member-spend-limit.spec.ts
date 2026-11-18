@@ -21,7 +21,7 @@ import { expect, type BrowserContext } from 'playwright/test';
 
 import { dataOf } from '../helpers/api';
 import { credentialsFor } from '../helpers/credentials';
-import { openCanvas, pressGenerate } from '../helpers/metered-account';
+import { openCanvas, pressGenerate } from '../helpers/tier-account';
 import { seedNode } from '../helpers/mini-tool';
 import { MADE_BY_SMOKE } from '../helpers/project';
 import { stateFile, test } from '../helpers/slot';

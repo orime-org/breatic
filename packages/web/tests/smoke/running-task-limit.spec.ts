@@ -19,7 +19,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { dataOf } from '../helpers/api';
-import { pressGenerate, runScript } from '../helpers/metered-account';
+import { pressGenerate, runScript } from '../helpers/tier-account';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { seedNode } from '../helpers/mini-tool';
 import { MADE_BY_SMOKE } from '../helpers/project';

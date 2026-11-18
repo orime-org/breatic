@@ -22,7 +22,7 @@ import { randomBytes } from 'node:crypto';
 import { expect, type BrowserContext, type Page } from 'playwright/test';
 
 import { dataOf } from '../helpers/api';
-import { runScript } from '../helpers/metered-account';
+import { runScript } from '../helpers/tier-account';
 import { credentialsFor } from '../helpers/credentials';
 import { MADE_BY_SMOKE } from '../helpers/project';
 import { stateFile, test } from '../helpers/slot';
