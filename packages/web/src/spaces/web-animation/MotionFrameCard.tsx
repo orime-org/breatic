@@ -20,10 +20,8 @@ interface MotionFrameCardProps {
   boundary: HTMLElement | null;
   /** The Space, which the card is drawn in so it stays under the Space's shared notices. */
   container: HTMLElement | null;
-  /** Esc, unless a text box with words in it takes the press first. */
+  /** Esc (unless a text box with words in it takes the press first) or its close button. */
   onClose: () => void;
-  /** Whether it draws its own close button, which stays in the corner while the content scrolls. */
-  closable?: boolean;
   className?: string;
   children: React.ReactNode;
 }
@@ -68,20 +66,20 @@ const POINT_OFFSET = 18;
  * A card anchored to a point on the Motion frame, or to the frame's bottom centre (#1490 design §7.1, §7.3): the thread
  * card and the annotation write box. It opens beside the point and stays inside the preview area, flipping or sliding
  * near an edge, and no taller than the room there, scrolling what does not fit; pressing outside does not close it, Esc
- * does, and so does its close button when it has one. One Esc closes only this card, not the panel behind it.
+ * does, and so does its close button, which stays in the corner while the content scrolls. One Esc closes only this card,
+ * not the panel behind it. The content scrolls edge to edge, so its 8px rail runs along the card's right edge.
  * @param props - The card.
  * @param props.testId - Its test hook.
  * @param props.point - Its point.
  * @param props.boundary - The preview area.
  * @param props.container - The Space element.
  * @param props.onClose - Closes it.
- * @param props.closable - Whether it has a close button.
  * @param props.className - Its surface.
- * @param props.children - Its content.
+ * @param props.children - Its content, padded by the caller inside the scroller.
  * @returns The card.
  * @throws {never} Never.
  */
-export function MotionFrameCard({ testId, point, boundary, container, onClose, closable = false, className, children }: MotionFrameCardProps): React.JSX.Element {
+export function MotionFrameCard({ testId, point, boundary, container, onClose, className, children }: MotionFrameCardProps): React.JSX.Element {
   const t = useTranslation();
   const changeOpen = React.useCallback((open: boolean): void => { if (!open) onClose(); }, [onClose]);
   const anchorStyle = React.useMemo((): React.CSSProperties => (point === null
@@ -94,8 +92,9 @@ export function MotionFrameCard({ testId, point, boundary, container, onClose, c
       onClick={stopAtCard} updatePositionStrategy='always'
       className={cn('relative grid max-h-[var(--radix-popover-content-available-height)] grid-rows-[minmax(0,1fr)] overflow-hidden', className)}>
       <ScrollArea scrollbars='vertical' className='min-h-0'>{children}</ScrollArea>
-      {closable && <Button type='button' variant='ghost' size='compact' className='absolute right-1 top-1 z-10 bg-card px-1' aria-label={t('spaces.webAnimation.closePanel')}
-        onClick={onClose} icon={<X className='size-4' />} />}
+      {/* 10px in from the right edge, clear of the 8px rail. */}
+      <Button type='button' variant='ghost' size='compact' className='absolute right-2.5 top-1 z-10 bg-card px-1' aria-label={t('spaces.webAnimation.closePanel')}
+        onClick={onClose} icon={<X className='size-4' />} />
     </PopoverContent>
   </Popover>;
 }

@@ -581,15 +581,17 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
           {draftPoint !== null && <span className='pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-status-selected'
             style={{ left: `${draftPoint.x * 100}%`, top: `${draftPoint.y * 100}%` }} />}
           {annotation.status !== 'idle' && <MotionFrameCard testId='motion-annotation-draft' point={draftPoint} boundary={previewArea} container={spaceElement} onClose={cancelAnnotation}
-            className='w-72 p-3'>
-            <span className='mb-2 block text-2xs text-muted-foreground'>{t('spaces.webAnimation.annotateAt', { time: formatAnnotationTime(annotation.timeSeconds) })}</span>
-            {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the box the user just asked for by pressing Add annotation; they expect to type immediately */}
-            <DocumentCommentWriteBox name='motion-annotation' autoFocus value={annotation.status === 'picking' ? '' : annotation.text} placeholder={t('spaces.webAnimation.annotationPlaceholder')}
-              onChange={typeAnnotation} onSave={sendAnnotation} onCancel={cancelAnnotation} />
+            className='w-72 bg-card p-0'>
+            <div className='p-3'>
+              <span className='mb-2 block text-2xs text-muted-foreground'>{t('spaces.webAnimation.annotateAt', { time: formatAnnotationTime(annotation.timeSeconds) })}</span>
+              {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the box the user just asked for by pressing Add annotation; they expect to type immediately */}
+              <DocumentCommentWriteBox name='motion-annotation' autoFocus value={annotation.status === 'picking' ? '' : annotation.text} placeholder={t('spaces.webAnimation.annotationPlaceholder')}
+                onChange={typeAnnotation} onSave={sendAnnotation} onCancel={cancelAnnotation} />
+            </div>
           </MotionFrameCard>}
           {activeThread !== null && annotation.status === 'idle'
             && <MotionFrameCard key={activeThread.thread.id} testId='motion-thread-card-popover' point={activeThread.anchor.point} boundary={previewArea} container={spaceElement}
-              onClose={closeThread} closable className='w-auto border-0 bg-transparent p-0 shadow-none'>
+              onClose={closeThread} className='w-auto border-0 bg-transparent p-0 shadow-none'>
               <MotionThreadCard thread={activeThread.thread} timeSeconds={activeThread.anchor.timeSeconds} store={store} myRole={myRole} viewerId={viewerId} canWrite={annotationsWritable}
                 draft={activeDraft} onDraft={annotations.setDraft} />
             </MotionFrameCard>}
