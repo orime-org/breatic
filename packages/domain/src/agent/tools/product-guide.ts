@@ -1880,7 +1880,8 @@ export function renderProductGuide(): string {
       `same entries as ${quoted(t("spaces.document.blockHandle.insertBelow"))}, and the one picked turns that ` +
       "line itself into it (a divider, or the files picked for an image, audio or video entry, go above the line, " +
       "which stays empty). " +
-      `${quoted(t("spaces.document.commands.quote"))} is greyed there on a line already in a quote. ` +
+      `${quoted(t("spaces.document.commands.quote"))} is greyed there on a line already in a quote, and ` +
+      `${quoted(t("spaces.document.commands.table"))} on a line with lines nested under it. ` +
       `The menu ends with ${quoted(t("spaces.document.blockHandle.delete"))}, which removes that line; it is greyed ` +
       "when that line is the document's only block. Empty " +
       "paragraphs have no six-dot handle, so its menu and dragging are not offered on them; a selection that takes " +
@@ -1891,10 +1892,13 @@ export function renderProductGuide(): string {
       `in English; when nothing matches it says ${quoted(t("spaces.document.slashMenu.empty"))}, and it closes once ` +
       "three more characters still match nothing. The up and down arrows move through it and Enter or a click picks; " +
       "the slash and the letters after it are removed, a line left with no text turns into the pick and a line with " +
-      "text gets it below, greyed entries and what follows a pick (the file picker, the formula box) work as in the " +
-      `plus menu. ${quoted(t("spaces.document.commands.table"))} puts in an empty table of three rows and three ` +
-      "columns at once; picking a size first is done from the plus, and rows and columns are added later from the " +
-      "table's own handles. Esc, clicking elsewhere or moving the caret off the line closes it and " +
+      "text gets it below. Entries are greyed as in the plus menu on a line left with no text and as in " +
+      `${quoted(t("spaces.document.blockHandle.insertBelow"))} on a line with text, and what follows a pick (the ` +
+      "file picker, the formula box) works as in those menus. " +
+      `${quoted(t("spaces.document.commands.table"))} puts in an empty table of three rows and three columns at ` +
+      "once; picking a size first is done from the plus on an empty line or from " +
+      `${quoted(t("spaces.document.blockHandle.insertBelow"))} on a line with text, and rows and columns are added ` +
+      "later from the table's own handles. Esc, clicking elsewhere or moving the caret off the line closes it and " +
       "keeps what was typed; one undo after a pick brings the slash and its letters back. It does not open in a code " +
       "block.",
     "- Hovering any other line, with no text selected, shows a handle of six dots at its left. Drag it to move the " +
