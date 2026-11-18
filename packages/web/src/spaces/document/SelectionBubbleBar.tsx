@@ -81,6 +81,7 @@ import {
 
 
 import { commentTool } from '@web/spaces/document/document-comment-entries';
+import { holdsFormula, MATH_INLINE } from '@web/spaces/document/document-math';
 import { addToAgentTool } from '@web/spaces/document/document-to-agent';
 import { useTableFullscreen } from '@web/spaces/document/use-table-fullscreen';
 import { mergeCellsTool } from '@web/spaces/document/document-table-tools';
@@ -407,7 +408,8 @@ export function bubbleAnchorRect(
  * @param doc - The document node.
  * @param from - Range start.
  * @param to - Range end.
- * @returns True when at least one non-empty text node lies in the range.
+ * @returns True when at least one non-empty text node, or an inline formula
+ *   with a source (inner#1423), lies in the range.
  */
 export function hasTextIn(doc: ProseMirrorNode, from: number, to: number): boolean {
   // An empty range holds nothing, and `nodesBetween` would say otherwise: it
@@ -420,7 +422,8 @@ export function hasTextIn(doc: ProseMirrorNode, from: number, to: number): boole
   let found = false;
   doc.nodesBetween(from, to, (node) => {
     if (found) return false;
-    if (node.isText && (node.text?.length ?? 0) > 0) {
+    // A block formula is a block without words, as a picture is (inner#1423 design §5.2).
+    if ((node.isText && (node.text?.length ?? 0) > 0) || (node.type.name === MATH_INLINE && holdsFormula(node))) {
       found = true;
       return false;
     }

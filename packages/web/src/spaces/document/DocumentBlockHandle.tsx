@@ -65,6 +65,7 @@ import {
   insertMediaOnRow,
   type InsertChoice,
 } from '@web/spaces/document/document-insert-row';
+import { openFormulaBlock } from '@web/spaces/document/document-math';
 import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { QUOTED } from '@web/spaces/document/document-list-block';
@@ -265,10 +266,14 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
     [hold],
   );
 
+  // A formula block a pick made, whose box opens once the menu has let go of
+  // the focus.
+  const formulaToOpen = React.useRef<string | undefined>(undefined);
   // Held rather than written inline: the menu hands it to the memoised colour
   // panel through two callbacks that list it, so a new identity per render
   // would leave that memo comparing unequal props and unable to bail.
-  const closeMenu = React.useCallback((): void => {
+  const closeMenu = React.useCallback((formula?: string): void => {
+    formulaToOpen.current = formula;
     onMenuOpenChange(false);
   }, [onMenuOpenChange]);
 
@@ -276,8 +281,7 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
   const onFill = React.useCallback(
     (choice: InsertChoice): void => {
       const live = rowNow();
-      if (live !== undefined) fillEmptyRow(editor as never, live, choice);
-      closeMenu();
+      closeMenu(live === undefined ? undefined : fillEmptyRow(editor as never, live, choice));
     },
     [editor, rowNow, closeMenu],
   );
@@ -435,8 +439,13 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
           // the document (A11). A row that took the focus somewhere on purpose
           // keeps it there — the comment row's draft box focuses itself before
           // this runs, and the user is about to type into it (design §9.4.0).
+          // A formula picked here opens its box now, which takes the focus
+          // (inner#1423 A5).
           onCloseAutoFocus={(event) => {
             event.preventDefault();
+            const formula = formulaToOpen.current;
+            formulaToOpen.current = undefined;
+            if (formula !== undefined && openFormulaBlock(editor as never, formula)) return;
             const holder = document.activeElement;
             const unclaimed =
               holder === null ||

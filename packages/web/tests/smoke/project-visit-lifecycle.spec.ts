@@ -128,11 +128,11 @@ test('a committed opened response lost in transit is queried by its original ide
     expect(recovered).toMatchObject({ ...committed, status: 'recorded' });
     await expect(page.getByTestId('space-drawer-trigger')).toBeVisible();
     expect(traffic.posts).toHaveLength(1);
-    const before = await dataOf<RecentFeedItem[]>(await page.request.get('/api/v1/studios/recent'), 'recent before original replay');
+    const before = (await dataOf<{ items: RecentFeedItem[] }>(await page.request.get('/api/v1/studios/recent'), 'recent before original replay')).items;
     expect(before.some((item) => item.projectId === projectId)).toBe(true);
     const replay = await dataOf<ProjectVisitOpened>(await page.request.post(`/api/v1/projects/${projectId}/opened`, { data: { visit_id: committed!.visit_id } }), 'actual original identity replay');
     expect(replay).toMatchObject(committed!);
-    const after = await dataOf<typeof before>(await page.request.get('/api/v1/studios/recent'), 'recent after original replay');
+    const after = (await dataOf<{ items: RecentFeedItem[] }>(await page.request.get('/api/v1/studios/recent'), 'recent after original replay')).items;
     expect(after.map(({ projectId, lastOpenedAt }) => ({ projectId, lastOpenedAt }))).toEqual(before.map(({ projectId, lastOpenedAt }) => ({ projectId, lastOpenedAt })));
     await page.getByTestId('top-bar-back').click();
     await expect(page.locator(`a[href$="-${projectId}"]`)).toHaveCount(1);

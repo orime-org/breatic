@@ -16,7 +16,7 @@
  */
 
 import { assetRepo } from "@breatic/domain";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 
 /**
  * Total live storage an account uses across all studios it controls, in bytes.

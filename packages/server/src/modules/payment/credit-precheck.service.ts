@@ -18,7 +18,7 @@
  * and /mini-tools/* share ONE admission that can never drift.
  */
 
-import { AppError, env, getNodeTaskConfig } from "@breatic/core";
+import { AppError, env, getNodeTaskConfig, logger } from "@breatic/core";
 import { assetService, creditHoldService, creditLotService } from "@breatic/domain";
 import { parseCreditDecimal, quantizeQuotedCredits, serializeCreditMicro, ceilToCreditCent, formatCredits, getActiveLocale, t, type ProjectCreditsView } from "@breatic/shared";
 
@@ -132,6 +132,7 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
  * @throws {CreditsHeldError} 402 when running work holds what it needs.
  * @throws {AppError} 402 when the studio cannot cover it for another cause.
  * @throws {RangeError} When the estimate is negative or not a number.
+ * @throws {GlobalApiError} When the global region did not answer, after its hold is released.
  */
 export async function reserveForRun(
   projectId: string,
@@ -141,13 +142,23 @@ export async function reserveForRun(
 ): Promise<void> {
   if (!env.PAYMENT_ENABLED) return;
   const charge = ceilToCreditCent(required);
-  const outcome = await creditHoldService.reserveCredits({
-    projectId,
-    actorUserId: userId,
-    referenceId,
-    amount: charge,
-    ttlMs: getNodeTaskConfig().default_budget_ms,
-  });
+  const outcome = await creditHoldService
+    .reserveCredits({
+      projectId,
+      actorUserId: userId,
+      referenceId,
+      amount: charge,
+      ttlMs: getNodeTaskConfig().default_budget_ms,
+    })
+    .catch(async (err: unknown) => {
+      // The global region may have taken the hold and lost only its answer,
+      // or may still be taking it (inner#1955): give the key up so neither
+      // keeps the credits for the whole budget.
+      await creditHoldService.abandonHold({ projectId, actorUserId: userId, referenceId }).catch((releaseErr: unknown) => {
+        logger.error({ err: releaseErr, referenceId }, "credit_hold_release_failed");
+      });
+      throw err;
+    });
   if (outcome.ok) return;
   await refuse(userId, charge, outcome);
 }

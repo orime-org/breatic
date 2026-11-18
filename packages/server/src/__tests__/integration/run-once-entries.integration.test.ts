@@ -53,6 +53,7 @@ import {
 import type { Hono } from "hono";
 import { getPricingTiers } from "@server/config/pricing.js";
 import { confirmCheckout } from "@server/modules/subscription/subscription.service.js";
+import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 
 /**
  * The suite's environment. The upscaler's provider needs a key to be served,
@@ -119,6 +120,7 @@ async function seedAccount(customerId: string | null = null): Promise<Account> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${userId}, 'admin')
   `;
+  await mirrorInDirectory(sql, studioId);
   const slug = `roe-proj-${seq}`;
   const [p] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug)

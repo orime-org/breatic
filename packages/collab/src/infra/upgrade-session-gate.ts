@@ -9,9 +9,12 @@ import {
   createLogger,
   decideClientIdentity,
   getSession,
+  identityCookieName,
+  isIdentityRevoked,
   redactSessionError,
   sessionCookieName,
   sessionId,
+  verifyIdentityToken,
   type Redis,
 } from "@breatic/core";
 import { readCookie } from "@collab/infra/cookie.js";
@@ -27,6 +30,46 @@ type UpgradePayload = Pick<onUpgradePayload, "request"> & {
 interface UpgradeSessionOptions {
   redis: Redis;
   recordFailedUpgrade?: (request: IncomingMessage) => Promise<void>;
+  /**
+   * Set in a region that does not hold the sessions (inner#1955): the upgrade
+   * is admitted on the identity token cookie, checked with these public keys
+   * and this region's revocation tombstones, and its user and session id are
+   * bound to the connection.
+   */
+  identity?: { publicKeys: Readonly<Record<string, string>>; nowSeconds: () => number };
+}
+
+/** Who an upgrade admitted on an identity token is. */
+export interface BoundIdentity {
+  userId: string;
+  sid: string;
+}
+
+/**
+ * The request header that carries a bound identity from the upgrade to the
+ * document authentication. Hocuspocus hands `onAuthenticate` a request rebuilt
+ * from the upgrade's headers, not the upgrade request itself, so the gate
+ * writes the identity there. The gate removes any value the client sent
+ * before deciding, so only the gate ever sets it.
+ */
+export const BOUND_IDENTITY_HEADER = "x-breatic-bound-identity";
+
+/**
+ * The identity the upgrade gate bound to a connection, read from its headers.
+ * @param headers - The headers `onAuthenticate` receives.
+ * @returns The identity, or undefined when the gate bound none.
+ */
+export function readBoundIdentity(headers: Headers): BoundIdentity | undefined {
+  const raw = headers.get(BOUND_IDENTITY_HEADER);
+  if (raw === null) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as Partial<BoundIdentity>;
+    return typeof parsed.userId === "string" && typeof parsed.sid === "string"
+      ? { userId: parsed.userId, sid: parsed.sid }
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** A crossws peer, which keeps the upgrade request it was opened with. */
@@ -41,6 +84,8 @@ export interface UpgradeSessionGate {
   onDestroy(): Promise<void>;
   /** The session's user of an admitted connection, read from its upgrade request. */
   userOf(peer: object): string | undefined;
+  /** The identity bound to an upgrade request admitted on an identity token. */
+  identityOf(request: object): BoundIdentity | undefined;
 }
 
 /** The first terminal decision remains authoritative for this physical request. */
@@ -55,6 +100,7 @@ interface FinishOutcome {
   reason: string;
   status?: 401 | 503;
   userId?: string;
+  sid?: string;
   error?: unknown;
   errorEvent?: "collab_upgrade_cookie_error" | "collab_upgrade_session_error";
 }
@@ -70,6 +116,7 @@ export function createUpgradeSessionGate(options: UpgradeSessionOptions): Upgrad
   // crossws keeps the same request object on the peer (`_internal.nodeReq`),
   // so the reassembler can name the user of each connection (inner#1585).
   const admittedUsers = new WeakMap<object, string>();
+  const boundIdentities = new WeakMap<object, BoundIdentity>();
 
   /**
    * The user an admitted connection's session belongs to.
@@ -95,6 +142,8 @@ export function createUpgradeSessionGate(options: UpgradeSessionOptions): Upgrad
    */
   function onUpgrade(payload: UpgradePayload): Promise<void> {
     const { request, socket } = payload;
+    // Only this gate may say who a connection is.
+    delete request.headers[BOUND_IDENTITY_HEADER];
     const cookieHeader = request.headers.cookie;
     const rawIdentity = request.headers["x-real-ip"];
     const identity = decideClientIdentity({
@@ -191,6 +240,11 @@ export function createUpgradeSessionGate(options: UpgradeSessionOptions): Upgrad
       decision = outcome.kind;
       if (decision === "admitted") {
         if (outcome.userId !== undefined) admittedUsers.set(request, outcome.userId);
+        if (outcome.userId !== undefined && outcome.sid !== undefined) {
+          const bound = { userId: outcome.userId, sid: outcome.sid };
+          boundIdentities.set(request, bound);
+          request.headers[BOUND_IDENTITY_HEADER] = JSON.stringify(bound);
+        }
         advanceOwnership("handed_off");
         resolveCompletion();
         return;
@@ -245,6 +299,8 @@ export function createUpgradeSessionGate(options: UpgradeSessionOptions): Upgrad
       finish({ kind: "peer_gone", reason: "peer_closed" });
     } else if (stopping) {
       stopRequest();
+    } else if (options.identity !== undefined) {
+      admitIdentity(options.identity);
     } else {
       try {
         token = readCookie(cookieHeader, sessionCookieName());
@@ -271,6 +327,42 @@ export function createUpgradeSessionGate(options: UpgradeSessionOptions): Upgrad
       }
     }
     return completion;
+
+    /**
+     * Admit on the identity token cookie, with no session read.
+     * @param identityOptions - The public keys and the clock.
+     */
+    function admitIdentity(identityOptions: NonNullable<UpgradeSessionOptions["identity"]>): void {
+      let cookie: string | null = null;
+      try {
+        cookie = readCookie(cookieHeader, identityCookieName());
+      } catch (err) {
+        finish({ kind: "rejected", reason: "cookie_malformed", status: 401, error: err, errorEvent: "collab_upgrade_cookie_error" });
+        return;
+      }
+      if (!cookie) {
+        finish({ kind: "rejected", reason: "missing_identity", status: 401 });
+        return;
+      }
+      const verdict = verifyIdentityToken(cookie, identityOptions.publicKeys, identityOptions.nowSeconds());
+      if (!verdict.ok) {
+        finish({ kind: "rejected", reason: `identity_${verdict.reason}`, status: 401 });
+        return;
+      }
+      const { sub: userId, sid } = verdict.claims;
+      void isIdentityRevoked(options.redis, sid).then(
+        (revoked) => finish(revoked
+          ? { kind: "rejected", reason: "identity_revoked", status: 401 }
+          : { kind: "admitted", reason: "identity_valid", userId, sid }),
+        (err: unknown) => {
+          if (decision === "pending") {
+            finish({ kind: "rejected", reason: "lookup_failed", status: 503, error: err, errorEvent: "collab_upgrade_session_error" });
+          } else {
+            logger.error({ err, ctx: context("lookup", "lookup_failed"), status: 503 }, "collab_upgrade_session_error");
+          }
+        },
+      );
+    }
   }
 
   return {
@@ -278,5 +370,6 @@ export function createUpgradeSessionGate(options: UpgradeSessionOptions): Upgrad
     stop,
     onDestroy: async (): Promise<void> => { stop(); },
     userOf,
+    identityOf: (request: object): BoundIdentity | undefined => boundIdentities.get(request),
   };
 }

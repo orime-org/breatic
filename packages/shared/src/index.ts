@@ -52,12 +52,15 @@ export type {
   NotificationEntity,
   NotificationRef,
   NotificationListView,
+  NotificationFeed,
+  NotificationCount,
   ProjectEntity,
   ProjectDetail,
   ProjectSummary,
   StudioProjectSort,
   StudioProjectPage,
   RecentItem,
+  RecentFeed,
   MemoryContext,
   AgentMemoryEntity,
   AgentModelChoice,
@@ -449,6 +452,8 @@ export { COLLAB_DOCUMENT_TOO_LARGE_REASON, COLLAB_REAUTH_REASONS, isReauthCloseR
 export { DOC_SIZE_ACK_PARAM, DOC_SIZE_EVENT_BYTES, DocSizeSeenSchema, DocSizeStatusSchema } from "@shared/doc-size.js";
 export type { DocSizeSeen, DocSizeStatus } from "@shared/doc-size.js";
 export { READ_ONLY_COLLAB_TOKEN } from "@shared/collab-read-only-token.js";
+export { FOLLOWING_TABLE, followingDeclarationSchema, followingEntrySchema } from "@shared/following-table.js";
+export type { FollowingDeclaration, FollowingEntry } from "@shared/following-table.js";
 export { COLLAB_CHUNK_ACK, COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema, sendInChunks } from "@shared/collab-frame-chunks.js";
 
 export {
@@ -606,6 +611,7 @@ export type {
 } from "@shared/refund-eligibility.js";
 
 export { newId, deriveId } from "@shared/ids.js";
+export { GLOBAL_API_PATHS } from "@shared/global-api-paths.js";
 
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,
@@ -681,7 +687,7 @@ export {
 // called dead. How often they arrive is `config/agent.yaml`'s, served to the
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
-export { extractPromptText } from "@shared/agent/extract-prompt.js";
+export { cleanTextParams, extractPromptText, type TextParamSpec } from "@shared/agent/extract-prompt.js";
 export { applyForces, checkParamCombination, gateHolds, gateParams, promptTaken, resolveParams } from "@shared/param-resolution.js";
 export { modesOf, picturesOf } from "@shared/scene-generation.js";
 export type { AppliedForces, ParamViolation, ResolvableModel, ResolvableParam } from "@shared/param-resolution.js";
@@ -949,6 +955,8 @@ export {
   type TemplateShot,
   type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
+export { RETIRED_MODELS, currentModelName, withCurrentModelNames, type NodeModelFields } from "@shared/canvas/retired-models.js";
+export { inputRefusalText, type InputLimitShape, type InputRefusalShape } from "@shared/input-refusal.js";
 export {
   STAND_IN_ON,
   dialogueSideOf,
@@ -960,6 +968,7 @@ export {
   speakersShort,
   standInOf,
   typedSpeaker,
+  wireParams,
   withStandInOn,
   type DialogueLine,
   type LinePlan,

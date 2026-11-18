@@ -18,6 +18,7 @@ import { env,
   getAgentConfig,
   getSubscriptionPlans,
 } from "@breatic/core";
+import { lacksRegionListener } from "@server/utils/region-listener.js";
 import { onDatabaseWaitTimeout } from "@breatic/core";
 import { getPricingTiers } from "@server/config/pricing.js";
 import { getMaintenanceConfig } from "@server/config/maintenance.js";
@@ -36,6 +37,7 @@ import { logger, initLogger } from "@breatic/core";
 import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
 import { startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
+import { startRegionLoops } from "@server/modules/studio/region-loops.js";
 import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
 import { getServerShutdownDeadlineMs } from "@server/config/limits.js";
 import { markShuttingDown } from "@server/agent/shutdown-flag.js";
@@ -176,6 +178,12 @@ if (env.PAYMENT_ENABLED) {
   }
 }
 
+// Calls between regions arrive on the internal listener (inner#1955).
+if (lacksRegionListener(env)) {
+  logger.error({ region: env.REGION, globalRegion: env.GLOBAL_REGION }, "region_internal_api_disabled");
+  await exitProcess(1);
+}
+
 // The refund time limits are read lazily by the internal API and the refund
 // loop; a malformed file must stop the boot, not the first approval.
 if (env.INTERNAL_API_ENABLED) {
@@ -270,10 +278,12 @@ server.on("error", (err) => {
 // side cannot run inside the business transaction).
 const lifecycleRelay = startLifecycleRelay();
 
-// The refund disposition loop (inner#1410 §7.1); it runs whenever the
-// internal API is on, since it finishes every disposition the API accepts.
+// The refund disposition loop (inner#1410 §7.1); it runs whenever the global
+// region's internal API is on, since it finishes every disposition the API accepts.
 const refundLoop = startRefundLoop();
 const maintenanceLoop = startMaintenanceLoop();
+// Work left between the global region and another region (inner#1955).
+const regionLoops = startRegionLoops();
 
 // Health probe - separate port so probe traffic stays off the main
 // hono port and per-port failure semantics in the LB stay clean.
@@ -346,7 +356,7 @@ async function shutdown(signal: string): Promise<void> {
       () =>
         // The loop's last tick can still queue a buyer mail, so it stops
         // before the after-reply work is waited for.
-        Promise.all([refundLoop.stop(), maintenanceLoop.stop()])
+        Promise.all([refundLoop.stop(), maintenanceLoop.stop(), regionLoops.stop()])
           .then(() => settleAfterReply())
           .then(() => Promise.allSettled([flushServerAnalytics(), closeDb(), closeRedis(), closeQueues(), closeChatSubscriberRedis()])),
     ],

@@ -20,11 +20,17 @@
  * a single `$` for an inline formula, which this product reads as a character.
  */
 
-/** Both ends of a formula, inline or on a line of its own (user 2026-08-25). */
-const DELIMITER = '$$';
+import { formulaSourceHolder } from '@web/lib/formula-source';
 
 /** What KaTeX marks any rendered formula with. */
 const FORMULA_CLASS = 'katex';
+
+/**
+ * The root of a reply (`MarkdownMessage`): a copy is this handler's only when
+ * it starts or ends inside one, so the document body's own copy never passes
+ * through here (inner#1423).
+ */
+const REPLY = '.chat-markdown';
 
 /**
  * What a paste target cannot read outside the element it came from.
@@ -105,6 +111,16 @@ function formulaAround(node: Node): Element | null {
 }
 
 /**
+ * Whether a node sits in a reply.
+ * @param node - Where an end of the selection landed.
+ * @returns True inside one.
+ */
+function inReply(node: Node): boolean {
+  const element = node instanceof Element ? node : node.parentElement;
+  return element?.closest(REPLY) != null;
+}
+
+/**
  * Turn every formula in this copy back into the source it was drawn from.
  * @param copied - The copied selection, modified in place.
  */
@@ -117,21 +133,27 @@ function replaceFormulaeWithSource(copied: Element): void {
     // KaTeX writes MathML's own way of saying it, and leaves the attribute
     // off an inline formula.
     const onItsOwnLine = formula.querySelector('math')?.getAttribute('display') === 'block';
-    const holder = document.createElement('span');
+    const holder = formulaSourceHolder(source, onItsOwnLine);
     // Source, not prose: the line breaks around a formula on its own line are
     // part of what makes it one, and normal white-space handling would fold
     // them into spaces on the way out.
     holder.style.whiteSpace = 'pre';
-    holder.textContent = onItsOwnLine
-      ? `${DELIMITER}\n${source}\n${DELIMITER}`
-      : `${DELIMITER}${source}${DELIMITER}`;
     formula.replaceWith(holder);
   }
 }
 
-document.addEventListener('copy', (event: ClipboardEvent): void => {
+/**
+ * Writes a selection that reaches into a reply, its formulae turned back into
+ * source, onto a copy's clipboard or a drag's data.
+ * @param data - Where the copy or the drag puts what it carries.
+ * @returns Whether anything was written; nothing is for a selection outside a
+ *   reply or holding no formula, which the browser serialises itself.
+ */
+function writeWithSource(data: DataTransfer | null): boolean {
   const selection = window.getSelection();
-  if (!selection || selection.isCollapsed || !event.clipboardData) return;
+  if (!selection || selection.isCollapsed || !data) return false;
+  const ranges = Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index));
+  if (!ranges.some((range) => inReply(range.startContainer) || inReply(range.endContainer))) return false;
 
   // Serialising this by hand is what the browser is for: `textContent` knows
   // nothing of block boundaries, table cells or list markers, and markup
@@ -185,7 +207,7 @@ document.addEventListener('copy', (event: ClipboardEvent): void => {
     }
   }
 
-  if (!host.querySelector(`.${FORMULA_CLASS}`)) return;
+  if (!host.querySelector(`.${FORMULA_CLASS}`)) return false;
 
   // Neither of these belongs in something a person pastes, and a stylesheet
   // pasted into a rich-text target would apply itself there.
@@ -193,9 +215,23 @@ document.addEventListener('copy', (event: ClipboardEvent): void => {
   replaceFormulaeWithSource(host);
 
   document.body.append(host);
-  event.clipboardData.setData('text/html', host.innerHTML);
-  event.clipboardData.setData('text/plain', host.innerText);
+  data.setData('text/html', host.innerHTML);
+  data.setData('text/plain', host.innerText);
   host.remove();
+  return true;
+}
 
-  event.preventDefault();
+// The browser's own copy is stopped once this one is written. A drag carries
+// the same data and goes on: a drop reads it as a paste reads the clipboard.
+document.addEventListener('copy', (event: ClipboardEvent): void => {
+  if (writeWithSource(event.clipboardData)) event.preventDefault();
+});
+// Only a drag of the selection itself: a link or a picture dragged while a
+// selection stays on the page carries its own data, and so does a link the
+// selection only reaches into, which the browser drags whole (`text/uri-list`)
+// from its unselected end; a selection's own drag carries no URL.
+document.addEventListener('dragstart', (event: DragEvent): void => {
+  if (!(event.target instanceof Node) || window.getSelection()?.containsNode(event.target, true) !== true) return;
+  if (event.dataTransfer?.types.includes('text/uri-list') === true) return;
+  writeWithSource(event.dataTransfer);
 });

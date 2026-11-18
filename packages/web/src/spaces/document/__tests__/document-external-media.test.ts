@@ -18,9 +18,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { ownMediaOnly } from '@web/spaces/document/document-external-media';
 
-import { drop, pasteFormats } from './paste-harness';
-
-type Editor = ReturnType<typeof buildDocumentEditor>;
+import { drop, pasteFormats, type Editor } from './paste-harness';
 
 const mounted: Editor[] = [];
 

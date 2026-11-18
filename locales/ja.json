@@ -49,7 +49,8 @@
       "signup_code_exhausted": "このコードは使用できなくなりました。新しいコードを取得してください。",
       "signup_expired": "この登録は期限切れです。",
       "signup_resend_cooldown": "{seconds, plural, other {# 秒}}後に再度コードを取得してください。",
-      "signup_code_send_failed": "確認コードを送信できませんでした。もう一度お試しください。"
+      "signup_code_send_failed": "確認コードを送信できませんでした。もう一度お試しください。",
+      "invitation_region_unavailable": "現在この招待を開けません。しばらくしてからもう一度お試しください。"
     },
     "studio": {
       "slug_taken": "その Slug はすでに使用されています。別のものを選んでください。",
@@ -65,6 +66,10 @@
       "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。",
       "transfer_credits_designated": "この Studio にまだクレジットパックが割り当てられています。アバターメニュー →「クレジット」→「割り当て」で解除してから譲渡してください。",
       "designation_during_transfer": "この Studio には承認待ちの譲渡があります。譲渡を取り消すか終了した後に、再びパックを割り当てられます。",
+      "transfer_processing": "Studio の譲渡を処理中です。しばらくしてからもう一度お試しください。",
+      "region_unavailable": "選択したリージョンでは現在 Studio を作成できません。しばらくしてからもう一度お試しいただくか、別のリージョンを選んでください。",
+      "creation_in_progress": "前回の作成をまだ処理中です。しばらくしてからもう一度お試しください。",
+      "creation_abandoned": "この Studio は作成できませんでした。もう一度お試しください。",
       "email_not_registered_no_mail": "このメールアドレスは未登録です。この環境ではメールが無効のため、未登録のアドレスを招待できません。",
       "invite_mail_failed": "メールを送信できませんでした。もう一度お試しください。"
     },
@@ -343,10 +348,28 @@
     },
     "model": {
       "not_configured": "このデプロイでは {model} がまだ設定されていません。{envVars} の設定が必要です。",
-      "upstream_not_bound": "{model} は {upstream} 経由では提供されていません。"
+      "upstream_not_bound": "{model} は {upstream} 経由では提供されていません。",
+      "input_limit": {
+        "characters_max": "{model} の{field}は最大 {max, number} 文字です。",
+        "characters_min": "{model} の{field}は {min, number} 文字以上必要です。",
+        "line_characters_max": "{model} の{field}は1行あたり最大 {max, number} 文字です。",
+        "item_characters_max": "{model} の{field}は1件あたり最大 {max, number} 文字です。",
+        "lines_max": "{model} の{field}は最大 {max, number} 行です。",
+        "chinese_characters_max": "{model} の{field}は漢字最大 {max, number} 文字です。",
+        "unsupported": "{model} は現在の設定では実行できません。設定を変えるか、別のモデルを選んでください。"
+      },
+      "input_field": {
+        "prompt": "テキスト",
+        "negative_prompt": "ネガティブプロンプト",
+        "lyrics": "歌詞",
+        "multi_prompt": "ショットのプロンプト"
+      }
     },
     "document": {
       "versions_full": "{limit, plural, other {この Document のスナップショットは上限の # 件に達しています。古いスナップショットを削除してから保存してください。}}"
+    },
+    "region": {
+      "unavailable": "この Studio には現在アクセスできません。しばらくしてからもう一度お試しください。"
     }
   },
   "chat": {
@@ -741,6 +764,7 @@
       "mentionEmpty": "参照できるものがありません",
       "voicePlaceholder": "音声が未選択",
       "voiceSearchPlaceholder": "音声を検索…",
+      "voiceSampleLanguage": "試聴",
       "voiceLoading": "音声を読み込み中…",
       "voiceEmpty": "一致する音声がありません",
       "voiceError": "音声を利用できません",
@@ -1151,7 +1175,9 @@
         "media_refused": "モデルがこのファイルを受け付けませんでした。",
         "tool_failed": "ツールでこのファイルを処理できませんでした。",
         "no_audio_track": "{kind, select, audio {この音声から音を読み取れません。} other {この動画には音声トラックがありません。}}",
-        "cut_short": "長すぎて最後まで文字起こしできませんでした。"
+        "cut_short": "長すぎて最後まで文字起こしできませんでした。",
+        "input_refused": "{model} は現在の設定では実行できません。設定を変えるか、別のモデルを選んでください。",
+        "model_not_configured": "このデプロイでは {model} がまだ設定されていません。{envVars} の設定が必要です。"
       },
       "kind": {
         "upload": "アップロード",
@@ -2062,7 +2088,8 @@
       "helper": "ホームは /studio/… になります。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使え、一意である必要があります。",
       "submit": "続行",
       "submitting": "設定中...",
-      "failed": "Studio を設定できませんでした。もう一度お試しください。"
+      "failed": "Studio を設定できませんでした。もう一度お試しください。",
+      "unavailable": "現在登録を完了できません。しばらくしてからもう一度お試しください。"
     },
     "recovery": {
       "title": "リカバリーコードを保存してください",
@@ -2223,7 +2250,11 @@
     "popover": {
       "title": "Project メンバー",
       "manage": "コラボレーターを管理",
-      "isMe": "(自分)"
+      "isMe": "(自分)",
+      "online": "オンライン",
+      "offline": "オフライン",
+      "follow": "表示",
+      "unfollow": "停止"
     },
     "modal": {
       "title": "コラボレーター管理",
@@ -2255,6 +2286,17 @@
     },
     "stack": {
       "triggerAria": "Project メンバー({count})"
+    },
+    "follow": {
+      "bar": "{name} をフォロー中",
+      "stop": "停止",
+      "stoppedViewport": "ビューを動かしたため、フォローを停止しました",
+      "stoppedSpace": "Space を切り替えたため、フォローを停止しました",
+      "stoppedOffline": "{name} がオフラインになったため、フォローを停止しました",
+      "stoppedLeaderFollows": "{name} が {other} のフォローを始めたため、フォローを停止しました",
+      "stoppedLeaderFollowsYou": "{name} があなたのフォローを始めたため、フォローを停止しました",
+      "busy": "{name} は {other} をフォロー中です",
+      "busyYou": "{name} はあなたをフォロー中です"
     }
   },
   "spaces": {
@@ -2356,6 +2398,7 @@
         "taskList": "タスクリスト",
         "divider": "区切り線",
         "table": "表",
+        "formula": "数式",
         "columns": "列",
         "align": "配置",
         "alignLeft": "左揃え",
@@ -2521,6 +2564,13 @@
         "notWrittenYet": "アップロード済み。まだ追加されていません",
         "notPasted": "{count} 件を貼り付けられませんでした。",
         "stillUploading": "{count} 件の画像・動画・音声はアップロード中のため貼り付けられませんでした。アップロードが完了したらもう一度コピーしてください。"
+      },
+      "math": {
+        "placeholder": "LaTeX を入力（例：E = mc^2）",
+        "empty": "数式を追加",
+        "blank": "空の数式",
+        "error": "数式にエラーがあります",
+        "ok": "OK"
       },
       "versions": {
         "title": "スナップショット",
@@ -3258,7 +3308,11 @@
         "slugRequired": "Slug を入力してください。",
         "emailRequired": "メールアドレスを入力してください。",
         "slugUnverified": "今は確認できません。送信時にサーバーが判断します。",
-        "slugLabelOptional": "Slug(任意)"
+        "slugLabelOptional": "Slug(任意)",
+        "regionLabel": "リージョン",
+        "regionUnavailable": "選択したリージョンでは現在 Studio を作成できません。しばらくしてからもう一度お試しいただくか、別のリージョンを選んでください。",
+        "creationInProgress": "前回の Studio はまだ作成中です。しばらくしてからもう一度お試しください。",
+        "regionHelper": "内容はこのリージョンに保存され、作成後は変更できません。"
       },
       "toolbar": {
         "sortLabel": "並び替え",
@@ -3983,6 +4037,18 @@
       "playBlocked": "ブラウザが音声付きの再生をブロックしました。再生を押して開始してください。",
       "videoLoading": "{track}：動画を読み込み中…",
       "videoUnavailable": "{track}：動画を利用できません"
+    }
+  },
+  "regions": {
+    "usWest": "米国西部",
+    "sg": "シンガポール",
+    "unavailable": {
+      "studioTitle": "この Studio には現在アクセスできません",
+      "projectTitle": "この Project には現在アクセスできません",
+      "body": "内容は失われていません。",
+      "recents": "一部の Studio に現在アクセスできません。関連する項目は後で再び表示されます。",
+      "bell": "一部の Studio に現在アクセスできません。関連する通知は後で再び表示されます。",
+      "badge": "現在アクセス不可"
     }
   }
 }

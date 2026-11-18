@@ -13,6 +13,8 @@ import {
   RAIL_ROW_NESTED,
 } from '@web/pages/studio/rail/rail-row';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
+import { TooltipProvider } from '@web/components/ui/tooltip';
+import { useRegionHealthStore } from '@web/stores/region-health';
 
 function studio(id: string, name: string): StudioSummary {
   return {
@@ -24,6 +26,7 @@ function studio(id: string, name: string): StudioSummary {
     bio: null,
     memberCount: 1,
     myStudioRole: 'admin',
+    region: null,
   };
 }
 
@@ -230,5 +233,58 @@ describe('RailStudioGroup (rail ④⑤ — spec §4.2 / §4.3 / §0.1)', () => {
     expect(title.className).toContain('tracking-wider');
     // 28px header row against the 32px top-level rows.
     expect(title.closest('div')?.className).toMatch(/(^|\s)h-7(\s|$)/);
+  });
+});
+
+describe('RailStudioGroup — a region that does not answer (inner#1955)', () => {
+  beforeEach(() => useRegionHealthStore.setState({ bySource: { bell: [], recent: [] } }));
+
+  it('still lists and links a Studio of that region, marked as unavailable', () => {
+    useRegionHealthStore.setState({ bySource: { bell: ['sg'], recent: [] } });
+    render(
+      <MemoryRouter>
+        <TooltipProvider>
+          <RailStudioGroup
+            title='My Studios'
+            studios={[{ ...studio('far', 'Far'), region: 'sg' }, studio('near', 'Near')]}
+            activeSlug={null}
+            emptyText='none yet'
+            section='mine'
+          />
+        </TooltipProvider>
+      </MemoryRouter>,
+    );
+
+    const far = screen.getByRole('link', { name: /Far/ });
+    expect(far).toHaveAttribute('href', '/studio/far');
+    expect(far).toHaveTextContent('Unavailable');
+    expect(screen.getByRole('link', { name: /Near/ })).not.toHaveTextContent('Unavailable');
+  });
+
+  // The name and the mark stay readable on the hover and current fills, the
+  // way the rail's own icons are lifted there (RAIL_ICON).
+  it('greys the name and the mark, and lifts both to the foreground on hover and on the open Studio', () => {
+    useRegionHealthStore.setState({ bySource: { bell: ['sg'], recent: [] } });
+    render(
+      <MemoryRouter>
+        <TooltipProvider>
+          <RailStudioGroup
+            title='My Studios'
+            studios={[{ ...studio('far', 'Far'), region: 'sg' }]}
+            activeSlug='far'
+            emptyText='none yet'
+            section='mine'
+          />
+        </TooltipProvider>
+      </MemoryRouter>,
+    );
+
+    const name = screen.getByText('Far');
+    const mark = screen.getByTestId('rail-studio-unavailable');
+    for (const el of [name, mark]) {
+      expect(el).toHaveClass('text-muted-foreground', 'group-hover:text-foreground', 'group-aria-[current=page]:text-foreground');
+    }
+    expect(name).not.toHaveClass('opacity-50');
+    expect(screen.getByRole('link', { name: /Far/ })).toHaveAttribute('aria-current', 'page');
   });
 });

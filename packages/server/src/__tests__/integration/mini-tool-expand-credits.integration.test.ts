@@ -39,6 +39,7 @@ vi.mock("@server/infra/stripe.js", () => ({
 import crypto from "node:crypto";
 import type { Hono } from "hono";
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import { initCore, loadLocales, getRedis, setSession, sessionCookieName } from "@breatic/core";
 import { estimateTaskCredits } from "@breatic/domain";
 import { miniToolById, miniToolEstimateInput } from "@breatic/shared/mini-tools";
@@ -96,6 +97,7 @@ async function seed(credits: number): Promise<{ projectId: string; cookie: strin
     VALUES (${userId}, ${`expand-s-${n}-${stamp}`}, 'team', 'Expand') RETURNING id
   `;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${userId}, 'admin')`;
+  await mirrorInDirectory(sql, studio!.id);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, slug, name)
     VALUES (${studio!.id}, ${userId}, ${`expand-p-${n}-${stamp}`}, 'Expand') RETURNING id

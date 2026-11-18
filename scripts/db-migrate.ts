@@ -23,7 +23,7 @@ loadEnv(ROOT);
 // ── Run migration ───────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const { initCore, runMigrations, runYjsMigrations } = await import(
+  const { applyRegionGrants, env, initCore, isGlobalRegion, runMigrations, runYjsMigrations } = await import(
     "../packages/core/dist/index.js"
   );
   // Core reads no env directly (PR #168 env injection) — this migration
@@ -42,6 +42,16 @@ async function main(): Promise<void> {
   const { migrationsFolder: yjsFolder } = await runYjsMigrations();
   // eslint-disable-next-line no-console
   console.log(`✓ Yjs migrations completed (folder: ${yjsFolder})`);
+  // Outside the global region the services' role loses the global tables
+  // (inner#1955); a region without that role configured is refused.
+  if (!isGlobalRegion(env)) {
+    if (env.DATABASE_APP_ROLE === "") {
+      throw new Error(`REGION=${env.REGION} is not the global region, so DATABASE_APP_ROLE must name the services' role`);
+    }
+    await applyRegionGrants(env.DATABASE_APP_ROLE);
+    // eslint-disable-next-line no-console
+    console.log(`✓ Granted ${env.DATABASE_APP_ROLE} the region tables`);
+  }
 }
 
 main().catch((err: unknown) => {

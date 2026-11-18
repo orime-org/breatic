@@ -14,6 +14,12 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// Which region the recipient now has data in is recorded through the
+// directory writer, which reads the deployment's region settings.
+vi.mock("@breatic/domain", () => ({
+  directoryWrites: { userRegionTouched: vi.fn(async () => undefined) },
+}));
+
 vi.mock("../notification.repo.js", () => ({
   create: vi.fn(),
   listUnreadByUser: vi.fn(),

@@ -30,6 +30,7 @@ vi.mock("ai", () => ({
 
 import fc from "fast-check";
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import { initCore, env, loadLocales } from "@breatic/core";
 import { creditLotService, creditLotRepo } from "@breatic/domain";
 import type { ActivityCursor } from "@breatic/core";
@@ -91,6 +92,7 @@ async function seedFixture(): Promise<Fixture> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${userId}, 'admin')
   `;
+  await mirrorInDirectory(sql, studioId);
   const projectName = `Engine 项目 ${n}`;
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, slug, name)
@@ -111,6 +113,7 @@ async function seedStudioAdministeredBy(userId: string): Promise<string> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studio!.id}, ${userId}, 'admin')
   `;
+  await mirrorInDirectory(sql, studio!.id);
   return studio!.id;
 }
 
@@ -358,6 +361,7 @@ describe("扣费", () => {
     const other = await seedFixture();
     const lotId = await seedLot(fx, 500, other.studioId);
     await sql`UPDATE studios SET deleted_at = NOW() WHERE id = ${other.studioId}`;
+    await sql`UPDATE studio_directory SET deleted_at = now() WHERE studio_id = ${other.studioId}`;
 
     const spendable = Number(await creditLotService.getSpendableCredits(other.studioId));
     expect(spendable).toBe(0);
@@ -375,6 +379,7 @@ describe("扣费", () => {
     const other = await seedFixture();
     await seedLot(fx, 500, other.studioId);
     await sql`UPDATE studios SET deleted_at = NOW() WHERE id = ${other.studioId}`;
+    await sql`UPDATE studio_directory SET deleted_at = now() WHERE studio_id = ${other.studioId}`;
 
     expect(await creditLotRepo.listSpendableLots(other.studioId)).toEqual([]);
   });
@@ -561,10 +566,11 @@ describe("总览的两个数", () => {
     // 操作人名字同一处。
     const fx = await seedFixture();
     const buyerName = `买家 ${seq}`;
-    await sql`
+    const [personal] = await sql<{ id: string }[]>`
       INSERT INTO studios (created_by_user_id, slug, type, name)
-      VALUES (${fx.userId}, ${`engine-me-${seq++}-${Date.now()}`}, 'personal', ${buyerName})
+      VALUES (${fx.userId}, ${`engine-me-${seq++}-${Date.now()}`}, 'personal', ${buyerName}) RETURNING id
     `;
+    await mirrorInDirectory(sql, personal!.id);
     const lotId = await seedLot(fx, 880, fx.studioId);
 
     const purchases = await creditLotRepo.listLotsByStudio(fx.studioId);
@@ -577,6 +583,7 @@ describe("总览的两个数", () => {
     const fx = await seedFixture();
     await seedLot(fx, 100, fx.studioId);
     await sql`UPDATE studios SET deleted_at = NOW() WHERE id = ${fx.studioId}`;
+    await sql`UPDATE studio_directory SET deleted_at = now() WHERE studio_id = ${fx.studioId}`;
 
     expect(await creditLotRepo.listLotsByStudio(fx.studioId)).toEqual([]);
   });
@@ -1288,7 +1295,6 @@ describe("studio 流水：一次生成一行", () => {
         consumed: "-70.000000",
         owed: "0",
         projectId: fx.projectId,
-        projectName: fx.projectName,
         model: "seedance-1.5-pro",
       }),
     ]);

@@ -54,6 +54,28 @@ export async function insertHold(hold: NewHold, tx?: DbTx): Promise<void> {
 }
 
 /**
+ * Give up a hold whose reserve may still be on its way: release it, or file
+ * its key as released so the reserve, if it arrives later, finds the key
+ * taken and holds nothing.
+ * @param hold - The hold's Studio, actor and key.
+ * @param hold.studioId - The Studio.
+ * @param hold.actorUserId - Who started the work.
+ * @param hold.referenceId - Its key.
+ * @param tx - Optional transaction.
+ */
+export async function abandonHold(hold: { studioId: string; actorUserId: string; referenceId: string }, tx?: DbTx): Promise<void> {
+  const now = new Date();
+  await (tx ?? db)
+    .insert(creditHolds)
+    .values({ ...hold, amount: "0", status: "released", releasedAt: now, expiresAt: now })
+    .onConflictDoUpdate({
+      target: creditHolds.referenceId,
+      set: { status: "released", releasedAt: now, updatedAt: now },
+      setWhere: eq(creditHolds.status, "held"),
+    });
+}
+
+/**
  * Release a hold. A key with no hold, or one already released, is left alone.
  * @param referenceId - Its key.
  * @param tx - Optional transaction, so a charge releases in its own commit.

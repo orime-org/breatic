@@ -31,6 +31,7 @@ import { inTableFullscreen } from '@web/spaces/document/document-table-fullscree
 import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
 import { isMac } from '@web/lib/is-mac';
 import { SPACE_FOCUS_ROOT } from '@web/lib/space-focus-root';
+import { FORMULA_BOX } from '@web/spaces/document/document-math';
 
 /** The attribute on the layout elements beside the body column that count as blank. */
 export const BODY_BLANK = 'data-document-body-blank';
@@ -109,7 +110,7 @@ export function pressTargetOf(view: EditorView, event: MouseEvent): PressTarget 
   if (view.dom.contains(target)) {
     const quiet = target.closest('[data-upload-slot], input[type="checkbox"]');
     if (quiet !== null) return { kind: 'quiet-control', element: quiet };
-    const control = target.closest(`${MEDIA_CONTROLS}, input, button, textarea`);
+    const control = target.closest(`${MEDIA_CONTROLS}, ${FORMULA_BOX}, input, button, textarea`);
     if (control !== null) return { kind: 'control', element: control };
     const hit = rowHit(target);
     if (hit !== null) return { kind: hit.onMedia ? 'media' : 'blank', element: hit.row };

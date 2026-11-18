@@ -190,6 +190,8 @@ class SpaceProvider extends HocuspocusProvider {
 }
 
 let sharedSocket: HocuspocusProviderWebsocket | null = null;
+/** The address the shared socket was opened at. */
+let sharedSocketUrl: string | null = null;
 const docEntries = new Map<string, DocEntry>();
 const providerObservers = new Map<string, Set<() => void>>();
 const projectSyncObservers = new Map<string, Set<() => void>>();
@@ -345,6 +347,7 @@ function destroyAccountTransport(): void {
   if (sharedSocket) {
     sharedSocket.destroy();
     sharedSocket = null;
+    sharedSocketUrl = null;
   }
 }
 
@@ -375,8 +378,13 @@ export function createCollabSocket(url: string): HocuspocusProviderWebsocket {
  * @returns The single shared WebSocket for the tab.
  */
 function ensureSharedSocket(url: string): HocuspocusProviderWebsocket {
+  // A Project in another region has its own collab address (inner#1955). The
+  // previous Project's documents may still wait for their deferred release,
+  // so retire them with their socket, as an account change does.
+  if (sharedSocket && sharedSocketUrl !== url) destroyAccountTransport();
   if (!sharedSocket) {
     sharedSocket = createCollabSocket(url);
+    sharedSocketUrl = url;
     // The connection reports its own drops: each attached provider re-emits
     // this close, so reporting there sent one alert per open document. Only a
     // connection that had opened counts as dropped; while it is down every
@@ -461,6 +469,7 @@ function maybeDestroySharedSocket(): void {
   if (docEntries.size === 0 && sharedSocket) {
     sharedSocket.destroy();
     sharedSocket = null;
+    sharedSocketUrl = null;
   }
 }
 

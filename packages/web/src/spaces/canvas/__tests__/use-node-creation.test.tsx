@@ -519,7 +519,7 @@ describe('useNodeCreation', () => {
     describe('a dialogue the Agent proposes on Gemini speech', () => {
       /** Gemini's speech model: one voice, or a dialogue whose speakers replace it. */
       const GEMINI_TTS = {
-        name: 'gemini-3.1-flash-text-to-speech',
+        name: 'gemini-3.8-flash-text-to-speech',
         modality: 'audio',
         mode: 'tts',
         params: {
@@ -568,6 +568,23 @@ describe('useNodeCreation', () => {
         const { nodes } = canvasSpace.readCanvasGraph('p-duo', 's-duo');
         const record = contentAt(nodes, ids[0]).paramsByModel?.[GEMINI_TTS.name] ?? {};
         const sent = wireParams(GEMINI_TTS, record);
+        expect(sent).toHaveProperty('speakers', SPEAKERS);
+        expect(sent).not.toHaveProperty('voice_id');
+      });
+
+      it('lands an older proposal naming the retired model on its replacement, still a dialogue (#1521)', () => {
+        const catalog = {
+          image: [], video: [], audio: [], tts: [GEMINI_TTS], three_d: [], total: 1, credit_multiplier: 1,
+        } as unknown as ModelCatalog;
+        const older: CanvasProposal = { ...DIALOGUE, nodes: [{ ...DIALOGUE.nodes[0]!, model: 'gemini-3.1-flash-text-to-speech' }] } as CanvasProposal;
+        const { result } = renderHook(() => useNodeCreation('p-old', 's-old', catalog));
+
+        const { nodeIds: ids } = placeOk(result.current, older, { x: 0, y: 0 }, []);
+
+        const { nodes } = canvasSpace.readCanvasGraph('p-old', 's-old');
+        const content = contentAt(nodes, ids[0]);
+        expect(content.model).toBe(GEMINI_TTS.name);
+        const sent = wireParams(GEMINI_TTS, content.paramsByModel?.[GEMINI_TTS.name] ?? {});
         expect(sent).toHaveProperty('speakers', SPEAKERS);
         expect(sent).not.toHaveProperty('voice_id');
       });

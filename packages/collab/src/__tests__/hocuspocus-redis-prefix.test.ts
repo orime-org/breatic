@@ -129,6 +129,8 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   // ceiling (#88). Nothing here exercises the ceiling, but the wiring reads
   // the export at module scope, so it has to exist.
   getProjectConcurrentEditorLimit: vi.fn(async () => 100),
+  // A single-region deployment: the ceiling is read in process.
+  env: { REGION: "us-west", GLOBAL_REGION: "us-west" },
   projectAuthService: { loadProjectRole: loadProjectRoleStub },
   runWithConsent: <T>(_consent: unknown, fn: () => T): T => fn(),
 }));
@@ -191,7 +193,7 @@ import { OutgoingMessage } from "@hocuspocus/server";
 
 import { createCollabServer } from "../hocuspocus.js";
 import { getConnectionTimings } from "../config.js";
-import { readPresence } from "../hooks/presence.js";
+import { readFollowing, readPresence } from "../hooks/presence.js";
 import {
   connectLiveClient,
   createLiveServer,
@@ -705,7 +707,9 @@ describe("createCollabServer — the connected hook takes the seat (inner#1034)"
     await onDisconnect({ documentName: DOC, context: { user: { id: "u1" } }, socketId: "sock-1" });
     expect(registryStub.unregister).toHaveBeenCalledWith(DOC, "sock-1");
     registryStub.unregister.mockClear();
-    await onDisconnect({ documentName: META, context: { user: { id: "u1" } }, socketId: "sock-1" });
+    // The framework's payload always carries the document; the meta one's
+    // close drops that connection's following entry from it (#920).
+    await onDisconnect({ documentName: META, context: { user: { id: "u1" } }, socketId: "sock-1", document: new Y.Doc() });
     expect(registryStub.unregister).not.toHaveBeenCalled();
   });
 
@@ -876,6 +880,118 @@ describe("createCollabServer — the connected hook takes the seat (inner#1034)"
     expect(connectionConfig.readOnly).toBe(false);
     expect(ctx.seatCap).toBe(100);
     meta.destroy();
+  });
+});
+
+describe("createCollabServer — whom a connection follows is kept by its hooks (#920)", () => {
+  const PID = "11111111-1111-4111-8111-111111111111";
+  const META = `project-${PID}/meta`;
+
+  beforeEach(() => {
+    serverSpy.mockClear();
+    loadProjectRoleStub.mockReset().mockResolvedValue("editor");
+    sessionLookupSpy.mockResolvedValue("u1");
+  });
+
+  /**
+   * Build the server and hand back its hooks, with a way to open the meta
+   * document on one socket the way Hocuspocus would.
+   * @param doc - The meta document the instance holds.
+   * @returns The hooks and the connect helper.
+   */
+  async function metaHooks(doc: Y.Doc): Promise<{
+    connect: (context: Record<string, unknown>) => Promise<{ close: ReturnType<typeof vi.fn> }>;
+    beforeHandleAwareness: (payload: unknown) => Promise<void>;
+    onDisconnect: (payload: unknown) => Promise<void>;
+  }> {
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+    const config = serverSpy.mock.calls.at(-1)?.[0] as {
+      connected: (payload: unknown) => Promise<void>;
+      beforeHandleAwareness: (payload: unknown) => Promise<void>;
+      onDisconnect: (payload: unknown) => Promise<void>;
+    };
+    const webSocket = Object.assign(new EventEmitter(), { send: vi.fn() });
+    return {
+      async connect(context): Promise<{ close: ReturnType<typeof vi.fn> }> {
+        const connection = { readOnly: true, close: vi.fn(), context, document: doc, webSocket };
+        await config.connected({
+          documentName: META,
+          socketId: "sock-1",
+          context,
+          instance: { documents: new Map([[META, doc]]) },
+          connectionConfig: { readOnly: true },
+          connection,
+        });
+        return connection;
+      },
+      beforeHandleAwareness: config.beforeHandleAwareness,
+      onDisconnect: config.onDisconnect,
+    };
+  }
+
+  /**
+   * A meta handshake's context.
+   * @param arrivedAtMs - When it began.
+   * @returns The context.
+   */
+  const metaContext = (arrivedAtMs: number): Record<string, unknown> => ({
+    user: { id: "u1", role: "editor" },
+    seatCap: null,
+    arrivedAtMs,
+    session: { token: "tok", id: "tok-id" },
+  });
+
+  /**
+   * The awareness hook payload for one frame from the meta connection on `sock-1`.
+   * @param context - The connection's context.
+   * @param doc - The meta document.
+   * @param state - The sender's state.
+   * @returns The payload, with the scratch awareness's own empty entry first, as the framework builds it.
+   */
+  const frameFrom = (context: Record<string, unknown>, doc: Y.Doc, state: Record<string, unknown>): Record<string, unknown> => ({
+    states: new Map<number, Record<string, unknown>>([[1, {}], [8080, state]]),
+    connection: { context, socketId: "sock-1" },
+    context,
+    socketId: "sock-1",
+    documentName: META,
+    document: doc,
+  });
+
+  it("records whom the meta connection follows from its awareness frame", async () => {
+    const doc = new Y.Doc();
+    const { connect, beforeHandleAwareness } = await metaHooks(doc);
+    const context = metaContext(1000);
+    await connect(context);
+
+    await beforeHandleAwareness(frameFrom(context, doc, { following: { id: "u2", at: 500 } }));
+
+    expect(readFollowing(doc, "sock-1")).toEqual(expect.objectContaining({ userId: "u1", target: "u2", at: 500 }));
+    doc.destroy();
+  });
+
+  it("drops the entry when the meta connection closes, but not when a refused duplicate on its socket does", async () => {
+    // The duplicate shares the socket id, so deleting by socket id on its
+    // close would erase what the connection it duplicated declared.
+    const doc = new Y.Doc();
+    const { connect, beforeHandleAwareness, onDisconnect } = await metaHooks(doc);
+    const firstContext = metaContext(1000);
+    await connect(firstContext);
+    await beforeHandleAwareness(frameFrom(firstContext, doc, { following: { id: "u2", at: 500 } }));
+    const duplicateContext = metaContext(2000);
+    const duplicate = await connect(duplicateContext);
+    expect(duplicate.close).toHaveBeenCalledTimes(1);
+
+    await onDisconnect({ documentName: META, context: duplicateContext, socketId: "sock-1", document: doc });
+    expect(readFollowing(doc, "sock-1")?.target).toBe("u2");
+
+    await onDisconnect({ documentName: META, context: firstContext, socketId: "sock-1", document: doc });
+    expect(readFollowing(doc, "sock-1")).toBeNull();
+    doc.destroy();
   });
 });
 

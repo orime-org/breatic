@@ -6,6 +6,22 @@ import { t, type DocumentVersion } from "@breatic/shared";
 import { getDocumentVersionLimits } from "@server/config/limits.js";
 import * as repo from "@server/modules/document-version/document-version.repo.js";
 import type { VersionKey } from "@server/modules/document-version/document-version.repo.js";
+import { profilesService } from "@breatic/domain";
+
+/**
+ * Give snapshots their saver's display name, from the global profiles
+ * (inner#1955); null when the saver has no personal Studio.
+ * @param versions - The snapshots.
+ * @returns The same snapshots, named.
+ * @throws {GlobalApiError} When the global region does not answer.
+ */
+async function named(versions: DocumentVersion[]): Promise<DocumentVersion[]> {
+  const names = await profilesService.personalIdentities(versions.map((version) => version.createdBy.id));
+  return versions.map((version) => ({
+    ...version,
+    createdBy: { ...version.createdBy, name: names.get(version.createdBy.id)?.name ?? null },
+  }));
+}
 
 /** A save the document's ceiling turned away. */
 export interface SaveRefused {
@@ -34,7 +50,7 @@ export async function saveVersion(input: {
   schemaVersion: string;
 }): Promise<{ ok: true; version: DocumentVersion } | SaveRefused> {
   const { maxPerSpace } = getDocumentVersionLimits();
-  return db.transaction(async (tx) => {
+  const saved = await db.transaction(async (tx): Promise<{ ok: true; version: DocumentVersion } | SaveRefused> => {
     await repo.lockSpace(input.projectId, input.spaceId, tx);
     if ((await repo.countLive(input.projectId, input.spaceId, tx)) >= maxPerSpace) {
       return { ok: false, reason: "document_versions_full", limit: maxPerSpace } satisfies SaveRefused;
@@ -53,6 +69,7 @@ export async function saveVersion(input: {
     );
     return { ok: true, version };
   });
+  return saved.ok ? { ok: true, version: (await named([saved.version]))[0]! } : saved;
 }
 
 /**
@@ -67,7 +84,8 @@ export async function listVersions(
   spaceId: string,
   cursor: string | undefined,
 ): Promise<{ versions: DocumentVersion[]; nextCursor: string | null }> {
-  return repo.listPage(projectId, spaceId, cursor, getDocumentVersionLimits().pageSize);
+  const page = await repo.listPage(projectId, spaceId, cursor, getDocumentVersionLimits().pageSize);
+  return { versions: await named(page.versions), nextCursor: page.nextCursor };
 }
 
 /**
@@ -79,7 +97,7 @@ export async function listVersions(
 export async function getVersion(key: VersionKey): Promise<{ version: DocumentVersion; content: Record<string, unknown> }> {
   const found = await repo.findWithContent(key);
   if (!found) throw new NotFoundError(t("server.error.not_found"));
-  return found;
+  return { version: (await named([found.version]))[0]!, content: found.content };
 }
 
 /**

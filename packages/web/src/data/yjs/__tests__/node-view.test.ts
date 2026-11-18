@@ -429,3 +429,22 @@ describe('toNodeView — the template node a node stands for (inner#1345)', () =
     expect(v?.type === 'image' ? v.data.templateNode : 'not an image view').toBeUndefined();
   });
 });
+
+describe('toNodeView — a node saved on a retired model reads as its replacement (#1521)', () => {
+  const OLD = 'gemini-3.1-flash-text-to-speech';
+  const NEW = 'gemini-3.8-flash-text-to-speech';
+  const pair = [{ speaker: 'Ava', voice: 'Kore' }, { speaker: 'Leo', voice: 'Puck' }];
+
+  it('gives the panel the replacement and its records, before collab has upgraded the stored node', () => {
+    const typed = toNodeView(fields('audio', {
+      mode: 'tts',
+      model: OLD,
+      modelByMode: { tts: OLD },
+      paramsByModel: { [OLD]: { speakers: pair, voice_id: 'Kore' } },
+    }));
+    const data = typed?.data as { model?: string; modelByMode?: Record<string, string>; paramsByModel?: Record<string, Record<string, unknown>> };
+    expect(data.model).toBe(NEW);
+    expect(data.modelByMode).toEqual({ tts: NEW });
+    expect(data.paramsByModel).toEqual({ [NEW]: { speakers: pair, voice_id: 'Kore' } });
+  });
+});

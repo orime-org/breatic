@@ -36,6 +36,7 @@ initCore(process.env);
 import * as projectService from "@server/modules/project/project.service.js";
 import * as joinService from "@server/modules/project-join-request/projectJoinRequest.service.js";
 import * as recentRepo from "@server/modules/recent/recent.repo.js";
+import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -92,6 +93,7 @@ async function seedScene(): Promise<Scene> {
            (${studio!.id}, ${viewerId!}, 'maintainer', ${adminId!}),
            (${studio!.id}, ${guestId!}, 'guest', ${adminId!})
   `;
+  await mirrorInDirectory(sql, studio!.id);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug)
     VALUES (${studio!.id}, ${ownerId!}, ${tag}, ${`${tag}-p`}) RETURNING id

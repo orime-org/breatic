@@ -56,6 +56,7 @@ const STUDIO: StudioDetail = {
   bio: null,
   memberCount: 3,
   myStudioRole: 'admin',
+  region: null,
 };
 
 /**

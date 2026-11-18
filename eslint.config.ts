@@ -644,6 +644,43 @@ export default tseslint.config(
     },
   },
   {
+    // Code that runs only in the global region (inner#1955) reads Studios
+    // and Projects through the global directory: their own tables hold only
+    // this region's rows, so a Studio in another region would read as missing.
+    // Files that also serve region routes (payment/credit-precheck) stay out.
+    files: [
+      "packages/server/src/modules/{payment,subscription,referral,credit-grant,credit-refund,account}/**/*.ts",
+      "packages/domain/src/credit/creditLot.repo.ts",
+      "packages/core/src/auth/membership.repo.ts",
+    ],
+    ignores: [
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.spec.ts",
+      "packages/server/src/modules/payment/credit-precheck.service.ts",
+    ],
+    rules: {
+      "no-restricted-imports": ["error", {
+        paths: [
+          ...["@breatic/core", "@core/db/schema.js"].map((name) => ({
+            name,
+            importNames: ["studios", "studioMembers", "projects", "projectMembers", "studioAssets", "assetRepo", "projectsRepo"],
+            message: "Global-region code reads Studios and Projects through the global directory (studioDirectory, projectDirectory) or a region function.",
+          })),
+          {
+            name: "@breatic/domain",
+            importNames: ["studioRepo", "studioMembersRepo", "assetRepo", "assetService"],
+            message: "Global-region code reads Studios and Projects through the global directory or a region function.",
+          },
+        ],
+        patterns: [{
+          group: ["@domain/studio/*", "@domain/auth/studioMembers.repo*", "@server/modules/studio/*", "@server/modules/project/*"],
+          message: "Global-region code reads Studios and Projects through the global directory or a region function.",
+        }],
+      }],
+    },
+  },
+  {
     // Only provider names an upstream (inner#1743): its addresses, names and
     // key variables, read from config/provider/upstreams.yaml. web declares
     // the same rule in its own config.

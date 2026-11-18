@@ -90,6 +90,7 @@ import {
 import { workerAnswers } from "@server/__tests__/integration/transfer-grant-fixtures.js";
 import { closeFinishQueue, runQueuedFinish } from "@server/__tests__/helpers/queued-finish.js";
 import type { Hono } from "hono";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -169,6 +170,7 @@ async function seedEditor(): Promise<{
 
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
+  await mirrorAllInDirectory(sql);
   return {
     userId,
     studioId,

@@ -13,7 +13,7 @@ export const TWO_VOICE_DIALOGUE: GenerationTemplate = {
       role: "generate",
       type: "audio",
       mode: "tts",
-      model: "gemini-3.1-flash-text-to-speech",
+      model: "gemini-3.8-flash-text-to-speech",
       params: { speakers: [{ speaker: "Ava", voice: "Kore" }, { speaker: "Leo", voice: "Puck" }] },
       lines: [{ speaker: 1 }, { speaker: 2 }, { speaker: 1 }],
     },

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type * as MockModule0 from "@server/modules";
-import type * as MockModule1 from "@server/modules/auth/user.repo.js";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
@@ -26,7 +25,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 vi.mock("@breatic/domain", async () => {
   const { domainMock } = await import("../helpers/mock-core.js");
-  return domainMock();
+  const base = await domainMock();
+  return { ...base, usersRepo: { ...base.usersRepo, getUserById: spies.getUserById } };
 });
 
 vi.mock("@server/modules", async (importOriginal) => ({
@@ -37,13 +37,12 @@ vi.mock("@server/modules", async (importOriginal) => ({
   },
 }));
 
-vi.mock("@server/modules/auth/user.repo.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof MockModule1>()),
-  getUserById: spies.getUserById,
-}));
-
 vi.mock("@server/modules/invitation/claim-email-invitations.js", () => ({
   claimEmailInvitations: spies.claimEmailInvitations,
+  // Signing in claims this region's invitations for a verified mailbox.
+  claimEmailInvitationsOnSignIn: async (user: { emailVerified: boolean }) => {
+    if (user.emailVerified) await spies.claimEmailInvitations(user);
+  },
 }));
 
 import { authRoute } from "@server/routes/auth.js";

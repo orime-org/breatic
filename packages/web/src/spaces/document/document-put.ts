@@ -34,6 +34,7 @@ import type { Read, ReadBlock } from '@web/spaces/document/document-paste-read';
 import { isWordsLine, rowsOf, WORDS, type Rows } from '@web/spaces/document/document-paste-slice';
 import { DOC_TABLE, isTableCell, keepTablesWhole, squareSelectedTable } from '@web/spaces/document/document-table-nodes';
 import { heldTables, swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
+import { leafWords } from '@web/spaces/document/document-math';
 import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-selection';
 
 /** How a medium lands: its props as they go in, or null when it is left out. */
@@ -168,7 +169,7 @@ function carriedId(node: PMNode): string | null {
  * @returns The words.
  */
 function wordsIn(textblock: PMNode): string {
-  return textblock.textBetween(0, textblock.content.size, '', (leaf) => (leaf.type.name === 'hardBreak' ? '\n' : ''));
+  return textblock.textBetween(0, textblock.content.size, '', leafWords((leaf) => (leaf.type.name === 'hardBreak' ? '\n' : '')));
 }
 
 /**
@@ -381,7 +382,8 @@ function wordsOf(rows: readonly PMNode[]): string {
       return node.children.map((row) => row.children.map((cell) => wordsOf(cell.children)).join('\t')).join('\n');
     }
     const nested = node.lastChild?.type.name === 'blockGroup' ? node.lastChild.children : [];
-    return [node.firstChild!.isTextblock ? wordsIn(node.firstChild!) : '', ...nested.map((child) => wordsOf([child]))].join('\n');
+    // A leaf reads as its `leafText`: a formula block as its `$$` lines.
+    return [node.firstChild!.isTextblock ? wordsIn(node.firstChild!) : node.firstChild!.textContent, ...nested.map((child) => wordsOf([child]))].join('\n');
   }).join('\n');
 }
 
@@ -919,7 +921,8 @@ export function selectPlaced(view: EditorView, placed: Placed): void {
     if (node.isBlock && node.isAtom && pos >= from && pos + node.nodeSize <= to) atoms.push(pos);
     return true;
   });
-  if (atoms.length === 1 && doc.textBetween(from, to) === '') {
+  // Leaves read as nothing: a formula's `leafText` would count as words here.
+  if (atoms.length === 1 && doc.textBetween(from, to, undefined, () => '') === '') {
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(doc, atoms[0])));
     return;
   }

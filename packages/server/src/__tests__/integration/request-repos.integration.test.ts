@@ -62,7 +62,7 @@ initCore(process.env);
 
 import * as roleUpgradeRequestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
 import * as projectTransfersRepo from "@server/modules/project/projectTransfers.repo.js";
-import * as studioTransfersRepo from "@server/modules/studio/studioTransfers.repo.js";
+import { studioTransfersRepo as studioTransfersRepo } from "@breatic/domain";
 
 let sql: ReturnType<typeof postgres>;
 

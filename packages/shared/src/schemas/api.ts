@@ -28,6 +28,7 @@ import { REQUEST_SHAPE_PARAMS } from "@shared/api/error-reason.js";
 import { THREE_D_GENERATION_MODES } from "@shared/types/model-catalog.js";
 import { SCENE_GENERATION_ORIGINS } from "@shared/types/scene-generation-proposal.js";
 import type { NodeMediaFields } from "@shared/canvas/node-media.js";
+import { currentModelName } from "@shared/canvas/retired-models.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
 
@@ -162,6 +163,17 @@ const studioSlug = z
   .refine((value) => !RESERVED_STUDIO_SLUGS.has(value), "slug_reserved");
 
 /**
+ * Where a new Studio goes (inner#1955): the id the page generated, reused
+ * while the form is unchanged so a retry is the same creation, and the region
+ * the user chose. Both are optional so a page loaded before regions existed
+ * still creates; the server then picks the id and the global region.
+ */
+const studioPlacement = {
+  studioId: z.uuid().optional(),
+  region: z.string().regex(/^[A-Za-z0-9-]{1,32}$/).optional(),
+};
+
+/**
  * `POST /auth/setup-studio` body — the second registration step. The
  * authenticated (but studio-less) user picks the slug for their personal
  * studio; the server validates it here and re-checks uniqueness against
@@ -169,6 +181,7 @@ const studioSlug = z
  */
 export const setupStudioSchema = z.object({
   slug: studioSlug,
+  ...studioPlacement,
 });
 export type SetupStudioInput = z.infer<typeof setupStudioSchema>;
 
@@ -181,6 +194,7 @@ export type SetupStudioInput = z.infer<typeof setupStudioSchema>;
 export const createTeamStudioSchema = z.object({
   name: z.string().trim().min(1).max(255),
   slug: studioSlug,
+  ...studioPlacement,
 });
 export type CreateTeamStudioInput = z.infer<typeof createTeamStudioSchema>;
 
@@ -538,8 +552,8 @@ export const taskCreateSchema = z
   .object({
     /** `tasks.task_type` is varchar(50). */
     task_type: z.string().max(50),
-    /** `tasks.model` is varchar(100). */
-    model: z.string().max(100).optional(),
+    /** `tasks.model` is varchar(100). A retired model is asked for under its replacement (#1521). */
+    model: z.string().max(100).optional().transform((name) => (name === undefined ? name : currentModelName(name))),
     params: z.record(z.string(), z.unknown()),
     /**
      * Result nodes this task will update on completion (1..N).

@@ -114,6 +114,8 @@ export function isUploadFailureReason(
 export interface UploadFailure {
   reason: UploadFailureReason;
   taskId?: string;
+  /** The API base the upload's ticket was asked of, where its task row lives. */
+  apiBase?: string;
 }
 
 /** Too Many Requests (RFC 6585 §4): a per-user limit on the upload routes. */
@@ -188,7 +190,7 @@ export interface MediaUploadDeps {
    * Wait for how a queued finish ended (`waitForUploadEnding` unless a test
    * stands in for it).
    */
-  waitForEnding?: (storageKey: string, signal?: AbortSignal) => Promise<UploadEnding>;
+  waitForEnding?: (storageKey: string, signal?: AbortSignal, apiBase?: string) => Promise<UploadEnding>;
   /** The accepted finish is now awaiting authoritative registration. */
   onRegistering?: () => void;
   /**
@@ -344,12 +346,14 @@ async function deliverTicket(
     return;
   }
 
-  const { taskId } = answer;
+  const { taskId, apiBase } = answer;
+  // Where a failure is reported: the region whose server holds the row.
+  const at = { ...(taskId !== undefined && { taskId }), ...(apiBase !== undefined && { apiBase }) };
   if (isOpenFailed(answer)) {
     // Our server could not open the upload at the Worker and has settled the
     // row itself; to the page it is the same as bytes that never got out, so
     // the File is kept for a retry.
-    sinks.onFailure({ reason: 'transfer', ...(taskId !== undefined && { taskId }) });
+    sinks.onFailure({ reason: 'transfer', ...at });
     return;
   }
 
@@ -366,20 +370,17 @@ async function deliverTicket(
     signal?.throwIfAborted();
   } catch (err) {
     signal?.throwIfAborted();
-    sinks.onFailure({
-      reason: failureOf(err),
-      ...(taskId !== undefined && { taskId }),
-    });
+    sinks.onFailure({ reason: failureOf(err), ...at });
     return;
   }
 
   sinks.onRegistering?.();
   signal?.throwIfAborted();
   const waitForEnding = deps.waitForEnding ?? waitForUploadEnding;
-  const ending = waitForEnding(queued.storageKey, signal);
+  const ending = waitForEnding(queued.storageKey, signal, apiBase);
   if (taskId !== undefined) {
     void ending.then((end) => {
-      if (end.state !== 'completed') sinks.onFailure({ reason: failureOfEnding(end), taskId });
+      if (end.state !== 'completed') sinks.onFailure({ reason: failureOfEnding(end), ...at, taskId });
       else sinks.onRegistered?.();
     });
     return;

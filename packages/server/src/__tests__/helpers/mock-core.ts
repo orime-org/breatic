@@ -201,6 +201,8 @@ export const mocks = {
   // breatic#1393 server gate (a style prompt with Mureka composing from a
   // melody). Default: no violation; the breatic#1393 test flips it.
   sendsUntakenPrompt: vi.fn().mockReturnValue(false),
+  // #1521 gate (no upstream here takes the run). Default: one does; the #1521 test flips it.
+  inputRefusalFor: vi.fn().mockResolvedValue(null),
   nodeHistoryService: {
     listByNode: vi.fn(),
     recordGenerationSuccess: vi.fn(),
@@ -401,8 +403,12 @@ export const mocks = {
     listUnread: vi.fn().mockResolvedValue([]),
     listAll: vi.fn().mockResolvedValue([]),
     countUnread: vi.fn().mockResolvedValue(0),
+    listFeed: vi.fn().mockResolvedValue({ items: [], resolved: { users: {}, studios: {}, projects: {} }, unavailableRegions: [] }),
+    countFeed: vi.fn().mockResolvedValue({ count: 0, unavailableRegions: [] }),
     markRead: vi.fn().mockResolvedValue(undefined),
+    markReadIn: vi.fn().mockResolvedValue(undefined),
     markAllRead: vi.fn().mockResolvedValue(0),
+    markAllReadEverywhere: vi.fn().mockResolvedValue(0),
     createRoleUpgradeRequest: vi.fn().mockResolvedValue({
       id: "n-1", userId: "u-owner",
       type: "access.role_upgrade_request",
@@ -440,6 +446,13 @@ export const mocks = {
     status: "skipped",
     reason: "backend_disabled",
   }),
+  profilesService: {
+    profilesOf: vi.fn().mockResolvedValue(new Map()),
+    personalProfiles: vi.fn().mockResolvedValue(new Map()),
+    personalIdentities: vi.fn().mockResolvedValue(new Map()),
+    accountsOf: vi.fn().mockResolvedValue(new Map()),
+    accountByEmail: vi.fn().mockResolvedValue(null),
+  },
   studioService: {
     createPersonalStudio: vi.fn().mockResolvedValue({
       id: "studio-1",
@@ -455,7 +468,6 @@ export const mocks = {
       type: "personal",
       name: "Personal Studio",
     }),
-    getPersonalStudioIdentitiesByUserIds: vi.fn().mockResolvedValue(new Map()),
   },
 };
 
@@ -506,8 +518,9 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // Fixtures across this suite build cookie headers with the bare name;
     // the per-deployment suffix is covered by session-store's own test.
     sessionCookieName: () => "breatic_session",
+    identityCookieName: () => "breatic_identity_dev",
     // Config
-    env: { ENV: "dev", PORT: 3000, CREDIT_MULTIPLIER: 2.5, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "r2", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled", INGEST_SHARED_SECRET: "test-ingest-secret", INGEST_BASE_URL: "https://ingest.test.example" },
+    env: { ENV: "dev", PORT: 3000, CREDIT_MULTIPLIER: 2.5, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "r2", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled", INGEST_SHARED_SECRET: "test-ingest-secret", INGEST_BASE_URL: "https://ingest.test.example", REGION: "default", GLOBAL_REGION: "default", IDENTITY_SIGNING_KEY: "", IDENTITY_SIGNING_KEY_ID: "", IDENTITY_PUBLIC_KEYS: {}, IDENTITY_COOKIE_DOMAIN: "" },
     // The real repository root, so a config loader the app runs on every
     // request (the request body limit reads config/limits.yaml) finds the
     // shipped yaml instead of ENOENT. Suites that need other values mock the
@@ -599,6 +612,8 @@ export const domainMock = async () => ({
   ...(await import("../../../../domain/src/agent/memory-entries.js")),
   createUsageRecorder: vi.fn(usageRecorderDouble),
   handOffLookups: mocks.handOffLookups,
+  usersRepo: mocks.userRepo,
+  profilesService: mocks.profilesService,
   // The same shape as the real one: every tool in the set gets the recorder.
   usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
     Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),
@@ -642,6 +657,7 @@ export const domainMock = async () => ({
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,
   violatesTextLengthForModel: mocks.violatesTextLengthForModel,
   sendsUntakenPrompt: mocks.sendsUntakenPrompt,
+  inputRefusalFor: mocks.inputRefusalFor,
   // A provider whose calls run on no model until a test hands one over.
   provider: fakeProvider(() => undefined),
   instructionsText: REAL_INSTRUCTIONS_TEXT,
@@ -690,15 +706,6 @@ export const domainMock = async () => ({
   STOPPED_BY_USER: REAL_STOPPED_BY_USER,
   extractPromptText: vi.fn((s: string) => s),
 });
-
-/**
- * Mock for `@server/modules/auth/user.repo.js` — the identity repo moved from
- * @breatic/core to @server in PR4. Tests that hit a route reading user
- * rows directly (canvas lock-holder lookup, batch /users) mock this path:
- *
- *   vi.mock("@server/modules/auth/user.repo.js", userRepoMock);
- */
-export const userRepoMock = () => mocks.userRepo;
 
 /**
  * Mock for `@server/modules` — the server-private domain (auth /

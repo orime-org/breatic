@@ -49,7 +49,8 @@
       "signup_code_exhausted": "This code can no longer be used. Request a new one.",
       "signup_expired": "This sign-up has expired.",
       "signup_resend_cooldown": "Wait {seconds, plural, one {# second} other {# seconds}} before requesting another code.",
-      "signup_code_send_failed": "The verification code could not be sent. Try again."
+      "signup_code_send_failed": "The verification code could not be sent. Try again.",
+      "invitation_region_unavailable": "This invitation can't be opened right now. Please try again in a moment."
     },
     "studio": {
       "slug_taken": "That Slug is already in use. Please choose another.",
@@ -65,6 +66,10 @@
       "leave_last_admin": "Transfer the admin role before leaving this Studio.",
       "transfer_credits_designated": "A credit pack is still assigned to this Studio. Unassign it under avatar menu → Credits → Assign, then start the transfer.",
       "designation_during_transfer": "This Studio has a pending transfer. Credit packs can be assigned to it again once the transfer is withdrawn or ends.",
+      "transfer_processing": "This Studio's transfer is being processed. Please try again later.",
+      "region_unavailable": "Studios can't be created in this region right now. Please try again later, or pick another region.",
+      "creation_in_progress": "Your last Studio is still being created. Please try again later.",
+      "creation_abandoned": "This Studio couldn't be created. Please try again.",
       "email_not_registered_no_mail": "That email is not registered. This deployment has email disabled, so it cannot invite unregistered addresses.",
       "invite_mail_failed": "The email could not be sent. Please try again."
     },
@@ -343,10 +348,28 @@
     },
     "model": {
       "not_configured": "{model} is not set up on this deployment: it needs {envVars}.",
-      "upstream_not_bound": "{model} is not offered through {upstream}."
+      "upstream_not_bound": "{model} is not offered through {upstream}.",
+      "input_limit": {
+        "characters_max": "{model} takes at most {max, number} characters in {field}.",
+        "characters_min": "{model} needs at least {min, number} characters in {field}.",
+        "line_characters_max": "{model} takes at most {max, number} characters in each line of {field}.",
+        "item_characters_max": "{model} takes at most {max, number} characters in each of {field}.",
+        "lines_max": "{model} takes at most {max, number} lines in {field}.",
+        "chinese_characters_max": "{model} takes at most {max, number} Chinese characters in {field}.",
+        "unsupported": "{model} can’t take this run as set up. Change the settings or pick another model."
+      },
+      "input_field": {
+        "prompt": "the text",
+        "negative_prompt": "the negative prompt",
+        "lyrics": "the lyrics",
+        "multi_prompt": "the shot prompts"
+      }
     },
     "document": {
       "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
+    },
+    "region": {
+      "unavailable": "This Studio can't be reached right now. Please try again later."
     }
   },
   "chat": {
@@ -754,6 +777,7 @@
       "mentionEmpty": "No references available",
       "voicePlaceholder": "No voice chosen",
       "voiceSearchPlaceholder": "Search voices…",
+      "voiceSampleLanguage": "Sample",
       "voiceLoading": "Loading voices…",
       "voiceEmpty": "No matching voices",
       "voiceError": "Voices unavailable",
@@ -1151,7 +1175,9 @@
         "media_refused": "The model would not take this file.",
         "tool_failed": "The tool could not process this file.",
         "no_audio_track": "{kind, select, audio {This audio has no sound to read.} other {This video has no audio track.}}",
-        "cut_short": "This is too long to transcribe in full."
+        "cut_short": "This is too long to transcribe in full.",
+        "input_refused": "{model} can’t take this run as set up. Change the settings or pick another model.",
+        "model_not_configured": "{model} is not set up on this deployment: it needs {envVars}."
       },
       "kind": {
         "upload": "Upload",
@@ -2062,7 +2088,8 @@
       "helper": "Your home will live at /studio/…. {min}–{max} characters, starting with a lowercase letter; lowercase letters, numbers and hyphens only; it must be unique.",
       "submit": "Continue",
       "submitting": "Setting up...",
-      "failed": "Could not set up your Studio. Please try again."
+      "failed": "Could not set up your Studio. Please try again.",
+      "unavailable": "We can't finish signing you up right now. Please try again later."
     },
     "recovery": {
       "title": "Save your recovery code",
@@ -2223,7 +2250,11 @@
     "popover": {
       "title": "Project members",
       "manage": "Manage collaborators",
-      "isMe": "(you)"
+      "isMe": "(you)",
+      "online": "Online",
+      "offline": "Offline",
+      "follow": "View",
+      "unfollow": "Stop"
     },
     "modal": {
       "title": "Collaborators",
@@ -2255,6 +2286,17 @@
     },
     "stack": {
       "triggerAria": "Project members ({count})"
+    },
+    "follow": {
+      "bar": "Following {name}",
+      "stop": "Stop",
+      "stoppedViewport": "You moved the view. Stopped following",
+      "stoppedSpace": "You switched Space. Stopped following",
+      "stoppedOffline": "{name} went offline. Stopped following",
+      "stoppedLeaderFollows": "{name} started following {other}. Stopped following",
+      "stoppedLeaderFollowsYou": "{name} started following you. Stopped following",
+      "busy": "{name} is following {other}",
+      "busyYou": "{name} is following you"
     }
   },
   "spaces": {
@@ -2356,6 +2398,7 @@
         "taskList": "To-do list",
         "divider": "Divider",
         "table": "Table",
+        "formula": "Formula",
         "columns": "Columns",
         "align": "Alignment",
         "alignLeft": "Left",
@@ -2521,6 +2564,13 @@
         "notWrittenYet": "Uploaded, not added yet",
         "notPasted": "{count, plural, one {# item was not pasted.} other {# items were not pasted.}}",
         "stillUploading": "{count, plural, one {# image, video or audio is still uploading and was not pasted. Copy it again once the upload finishes.} other {# images, videos or audio are still uploading and were not pasted. Copy them again once the upload finishes.}}"
+      },
+      "math": {
+        "placeholder": "Enter LaTeX, e.g. E = mc^2",
+        "empty": "Add a formula",
+        "blank": "Empty formula",
+        "error": "Formula has an error",
+        "ok": "OK"
       },
       "versions": {
         "title": "Snapshots",
@@ -3258,7 +3308,11 @@
         "slugRequired": "Enter a Slug.",
         "emailRequired": "Enter an email address.",
         "slugUnverified": "Couldn't check right now. The server decides when you submit.",
-        "slugLabelOptional": "Slug (optional)"
+        "slugLabelOptional": "Slug (optional)",
+        "regionLabel": "Region",
+        "regionUnavailable": "Studios can't be created in this region right now. Please try again later, or pick another region.",
+        "creationInProgress": "Your last Studio is still being created. Please try again later.",
+        "regionHelper": "Content is stored in this region and can't be moved later."
       },
       "toolbar": {
         "sortLabel": "Sort",
@@ -3983,6 +4037,18 @@
       "playBlocked": "The browser blocked playback with sound. Press play to start.",
       "videoLoading": "{track}: video loading…",
       "videoUnavailable": "{track}: video unavailable"
+    }
+  },
+  "regions": {
+    "usWest": "US West",
+    "sg": "Singapore",
+    "unavailable": {
+      "studioTitle": "This Studio can't be reached right now",
+      "projectTitle": "This Project can't be reached right now",
+      "body": "Your content is safe.",
+      "recents": "Some Studios can't be reached right now. Their items will show again later.",
+      "bell": "Some Studios can't be reached right now. Their notifications will show again later.",
+      "badge": "Unavailable"
     }
   }
 }

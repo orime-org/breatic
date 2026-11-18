@@ -27,7 +27,7 @@ import {
   storyboardEntryKind,
   type StoryboardShotView,
 } from '@web/data/yjs/node-storyboard';
-import { useShots } from '@web/data/yjs/use-storyboard';
+import { useShots, useShotWords } from '@web/data/yjs/use-storyboard';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
@@ -41,7 +41,7 @@ import {
   type ReferencePool,
   type StoryboardSpec,
 } from '@breatic/shared';
-import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
@@ -283,12 +283,6 @@ function VideoGeneratePanelBody({
       buildVideoPanelViewModel({ nodeId, nodes, edges, models, mode, textById }),
     [nodeId, nodes, edges, models, mode, textById],
   );
-  const creditText = useCreditText(
-    vm.modelEntry,
-    videoEstimateInput(vm, extractPromptText(promptText)),
-    catalog?.credit_multiplier ?? 1,
-  );
-
   // The node's shots, which only the multi-shot mode shows and sends: `spec`
   // is defined there alone, for a model that takes shots.
   const spec = React.useMemo(() => specOf(vm.modelEntry, mode), [vm.modelEntry, mode]);
@@ -423,6 +417,22 @@ function VideoGeneratePanelBody({
   // the latest rows the editors were handed.
   const referencesRef = React.useRef(stableReferences);
   referencesRef.current = stableReferences;
+  // A media chip's words follow the pool, and a new record on every derive
+  // would rebuild the prompt slot each time the canvas moves.
+  const stableMentionTokens = useContentStable(vm.mentionTokens);
+  // What the multi-shot mode sends, read as the click reads it: the shots in Kling's field, or written into the prompt
+  // for a model with no field for them. Words typed in a shot change it (`useShotWords`).
+  const shotWords = useShotWords(projectId, spaceId, nodeId);
+  const shotRun = React.useMemo(
+    () => (spec && shots ? storyboardRun(spec, shots, total, stableReferences, stableMentionTokens) : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `shotWords` is the signal that the shots' words changed.
+    [spec, shots, total, stableReferences, stableMentionTokens, shotWords],
+  );
+  // The run as the click sends it: no prompt for a model taking none, the shots in the multi-shot mode, else the main
+  // prompt. Priced, and asked why no upstream here takes it (#1521), for the button and the click.
+  const sentPrompt = !vm.promptRequired ? '' : shotRun ? (shotRun.writtenPrompt ?? '') : promptText;
+  const estimateInput = videoEstimateInput(vm, extractPromptText(sentPrompt), shotRun?.params);
+  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
   // The picked slot URLs are a fresh object per view-model build, on the same
   // terms as the references above — at most one short string per slot, so a
   // stringify key is cheap and exact. Before the slots were collected into one
@@ -778,7 +788,12 @@ function VideoGeneratePanelBody({
       ),
       pools: poolCounts(fresh.pool, fresh.referenceUrls),
       storyboard: run.gate,
+      inputRefusal: latestRefusal.current,
     });
+    if (verdict?.message !== undefined) {
+      toast.warning(verdict.message);
+      return;
+    }
     if (verdict != null) {
       // The limit is written out here so the check that every id reaches a
       // real message in all five catalogs can see it.
@@ -837,6 +852,7 @@ function VideoGeneratePanelBody({
     // where the linter cannot see that for itself.
     promptEditorRef,
     promptTextRef,
+    latestRefusal,
   ]);
 
   // EVERY localized string below is depended on BY VALUE, not via `t`: `t` is a
@@ -876,9 +892,6 @@ function VideoGeneratePanelBody({
   // there is nothing to type into it here, and a mounted collaborative editor
   // costs a TipTap instance plus its bindings. The cost is the prompt's undo
   // history, which lives on the editor instance and dies with it (#1961).
-  // A media chip's words follow the pool, and a new record on every derive
-  // would rebuild the prompt slot each time the canvas moves.
-  const stableMentionTokens = useContentStable(vm.mentionTokens);
   const shotPlaceholder = t('canvas.generatePanel.storyboard.shotPlaceholder');
   const mainEditor = React.useMemo(
     () =>
@@ -1037,6 +1050,7 @@ function VideoGeneratePanelBody({
             vm.referenceUrls,
           ),
           pools: poolCounts(vm.pool, vm.referenceUrls),
+          inputRefusal: refusalText,
         })?.refusal ?? null
       }
       promptSlot={promptSlot}

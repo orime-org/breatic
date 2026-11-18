@@ -54,7 +54,8 @@
       "signup_code_exhausted": "这个验证码已失效，请重新获取。",
       "signup_expired": "本次注册已过期。",
       "signup_resend_cooldown": "请 {seconds, plural, other {# 秒}}后再获取验证码。",
-      "signup_code_send_failed": "验证码发送失败，请重试。"
+      "signup_code_send_failed": "验证码发送失败，请重试。",
+      "invitation_region_unavailable": "暂时无法打开这条邀请，请稍后再试。"
     },
     "studio": {
       "slug_taken": "该 Slug 已被使用，请换一个。",
@@ -70,6 +71,10 @@
       "leave_last_admin": "离开这个 Studio 前请先转让 Admin。",
       "transfer_credits_designated": "还有积分包指定给这个 Studio。请先在头像菜单 →「积分」→「指定」里取消指定，再发起转让。",
       "designation_during_transfer": "这个 Studio 有待接受的转让，撤回或转让结束后才能再给它指定积分包。",
+      "transfer_processing": "Studio 转让正在处理，请稍后再试。",
+      "region_unavailable": "所选区域暂时无法创建 Studio，请稍后再试，或改选其他区域。",
+      "creation_in_progress": "上一次创建还在处理，请稍后再试。",
+      "creation_abandoned": "这个 Studio 没有创建成功，请重试。",
       "email_not_registered_no_mail": "该邮箱未注册。这个部署没有开启邮件，无法邀请未注册的邮箱。",
       "invite_mail_failed": "邮件没发出去，请重试。"
     },
@@ -343,10 +348,28 @@
     },
     "model": {
       "not_configured": "这个部署还没配置好 {model}：需要设置 {envVars}。",
-      "upstream_not_bound": "{model} 不通过 {upstream} 提供。"
+      "upstream_not_bound": "{model} 不通过 {upstream} 提供。",
+      "input_limit": {
+        "characters_max": "{model} 的{field}最多 {max, number} 个字符。",
+        "characters_min": "{model} 的{field}至少要 {min, number} 个字符。",
+        "line_characters_max": "{model} 的{field}每行最多 {max, number} 个字符。",
+        "item_characters_max": "{model} 的{field}每条最多 {max, number} 个字符。",
+        "lines_max": "{model} 的{field}最多 {max, number} 行。",
+        "chinese_characters_max": "{model} 的{field}最多 {max, number} 个汉字。",
+        "unsupported": "{model} 接不了现在的设置，请改设置或换个模型。"
+      },
+      "input_field": {
+        "prompt": "文本",
+        "negative_prompt": "反向提示词",
+        "lyrics": "歌词",
+        "multi_prompt": "分镜提示词"
+      }
     },
     "document": {
       "versions_full": "{limit, plural, other {这个 Document 的快照已满 # 张。删掉旧的快照后再保存。}}"
+    },
+    "region": {
+      "unavailable": "这个 Studio 暂时无法访问，请稍后再试。"
     }
   },
   "chat": {
@@ -741,6 +764,7 @@
       "mentionEmpty": "没有可引用的内容",
       "voicePlaceholder": "未选音色",
       "voiceSearchPlaceholder": "搜索音色…",
+      "voiceSampleLanguage": "试听",
       "voiceLoading": "正在加载音色…",
       "voiceEmpty": "没有匹配的音色",
       "voiceError": "音色暂不可用",
@@ -1151,7 +1175,9 @@
         "media_refused": "模型不接受这个文件。",
         "tool_failed": "工具没能处理这个文件。",
         "no_audio_track": "{kind, select, audio {这段音频读不出声音。} other {这个视频没有音轨。}}",
-        "cut_short": "内容太长，没能转写完。"
+        "cut_short": "内容太长，没能转写完。",
+        "input_refused": "{model} 接不了现在的设置，请改设置或换个模型。",
+        "model_not_configured": "这个部署还没配置好 {model}：需要设置 {envVars}。"
       },
       "kind": {
         "upload": "上传",
@@ -2062,7 +2088,8 @@
       "helper": "你的主页将位于 /studio/…。{min}–{max} 个字符，以小写字母开头，只能用小写字母、数字和连字符；必须唯一。",
       "submit": "继续",
       "submitting": "设置中...",
-      "failed": "无法设置你的 Studio,请重试。"
+      "failed": "无法设置你的 Studio,请重试。",
+      "unavailable": "暂时无法完成注册，请稍后再试。"
     },
     "recovery": {
       "title": "保存你的恢复码",
@@ -2223,7 +2250,11 @@
     "popover": {
       "title": "Project 成员",
       "manage": "管理协作者",
-      "isMe": "(你)"
+      "isMe": "(你)",
+      "online": "在线",
+      "offline": "离线",
+      "follow": "查看",
+      "unfollow": "停止"
     },
     "modal": {
       "title": "协作者管理",
@@ -2255,6 +2286,17 @@
     },
     "stack": {
       "triggerAria": "Project 成员（{count}）"
+    },
+    "follow": {
+      "bar": "正在跟随 {name}",
+      "stop": "停止",
+      "stoppedViewport": "你动了视口，已停止跟随",
+      "stoppedSpace": "你切了 Space，已停止跟随",
+      "stoppedOffline": "{name} 离线，已停止跟随",
+      "stoppedLeaderFollows": "{name} 开始跟随 {other}，已停止跟随",
+      "stoppedLeaderFollowsYou": "{name} 开始跟随你，已停止跟随",
+      "busy": "{name} 正在跟随 {other}",
+      "busyYou": "{name} 正在跟随你"
     }
   },
   "spaces": {
@@ -2356,6 +2398,7 @@
         "taskList": "任务列表",
         "divider": "分割线",
         "table": "表格",
+        "formula": "公式",
         "columns": "分栏",
         "align": "对齐",
         "alignLeft": "靠左",
@@ -2521,6 +2564,13 @@
         "notWrittenYet": "已上传，还没写进正文",
         "notPasted": "{count} 项没有粘贴进来。",
         "stillUploading": "{count} 个图片、视频或音频还在上传，没有粘贴进来。上传完成后重新复制。"
+      },
+      "math": {
+        "placeholder": "输入 LaTeX，例如 E = mc^2",
+        "empty": "添加公式",
+        "blank": "空公式",
+        "error": "公式有误",
+        "ok": "确定"
       },
       "versions": {
         "title": "快照",
@@ -3258,7 +3308,11 @@
         "slugRequired": "请填写 Slug。",
         "emailRequired": "请填写邮箱。",
         "slugUnverified": "暂时无法检查，提交时由服务器判断。",
-        "slugLabelOptional": "Slug（选填）"
+        "slugLabelOptional": "Slug（选填）",
+        "regionLabel": "区域",
+        "regionUnavailable": "所选区域暂时无法创建 Studio，请稍后再试，或改选其他区域。",
+        "creationInProgress": "上一次创建还在处理，请稍后再试。",
+        "regionHelper": "内容存放在这个区域，创建后不能更改。"
       },
       "toolbar": {
         "sortLabel": "排序",
@@ -3983,6 +4037,18 @@
       "playBlocked": "浏览器阻止了有声播放，请按播放开始。",
       "videoLoading": "{track}：视频加载中…",
       "videoUnavailable": "{track}：视频不可用"
+    }
+  },
+  "regions": {
+    "usWest": "美国西部",
+    "sg": "新加坡",
+    "unavailable": {
+      "studioTitle": "这个 Studio 暂时无法访问",
+      "projectTitle": "这个 Project 暂时无法访问",
+      "body": "你的内容没有丢失。",
+      "recents": "部分 Studio 暂时无法访问，相关内容稍后会恢复显示。",
+      "bell": "部分 Studio 暂时无法访问，相关通知稍后会恢复显示。",
+      "badge": "暂时无法访问"
     }
   }
 }

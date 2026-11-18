@@ -14,7 +14,7 @@ vi.mock("@breatic/domain", async (importOriginal) => ({
 
 import { ConflictError, db, initCore, loadLocales, NotFoundError } from "@breatic/core";
 import { enqueueMail } from "@breatic/domain";
-import * as usersRepo from "@server/modules/auth/user.repo.js";
+import { usersRepo as usersRepo } from "@breatic/domain";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { getDecisionWindowMs } from "@server/config/limits.js";
 import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
@@ -54,7 +54,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
     it("converts the original row and atomically attaches one notification before acceptance", async () => {
       const fixture = await seedInvitationFixture(sql);
       const invitation = await seedEmailInvitation(sql, scope, fixture);
-      const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+      const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
       const before = Date.now();
       await claimEmailInvitations(user);
       const rows = await invitationRows(sql, scope, fixture);
@@ -91,7 +91,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
     it("uses current stored verification instead of an untrusted supplied user snapshot", async () => {
       const fixture = await seedInvitationFixture(sql);
       const invitation = await seedEmailInvitation(sql, scope, fixture);
-      const unverified = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: false });
+      const unverified = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: false });
       await claimEmailInvitations({ ...unverified, emailVerified: true });
       expect((await invitationRows(sql, scope, fixture))[0]).toMatchObject({
         id: invitation.id, invited_user_id: null, invited_email: fixture.email, notification_id: null,
@@ -102,7 +102,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
     it("keeps another mailbox's invitation separate", async () => {
       const fixture = await seedInvitationFixture(sql);
       const invitation = await seedEmailInvitation(sql, scope, fixture);
-      const other = await usersRepo.createUser({ locale: "en", email: `other-${fixture.email}`, emailVerified: true });
+      const other = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: `other-${fixture.email}`, emailVerified: true });
       await claimEmailInvitations(other);
       expect((await invitationRows(sql, scope, fixture))[0]).toMatchObject({
         id: invitation.id, invited_user_id: null, invited_email: fixture.email, notification_id: null,
@@ -116,7 +116,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
       if (closed === "expired") await expireInvitation(sql, scope, invitation.id);
       else if (closed === "revoked") await revokeInvitation(scope, fixture, invitation.id);
       else await sql`UPDATE ${sql(table)} SET deleted_at = now() WHERE id = ${invitation.id}`;
-      const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+      const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
       await claimEmailInvitations(user);
       expect((await invitationRows(sql, scope, fixture))[0]).toMatchObject({
         id: invitation.id, invited_user_id: null, invited_email: fixture.email, notification_id: null,
@@ -127,7 +127,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
     it("converts an existing email invitation before committing a duplicate rejection", async () => {
       const fixture = await seedInvitationFixture(sql);
       const invitation = await seedEmailInvitation(sql, scope, fixture);
-      const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+      const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
       await expect(createInvitation(scope, fixture)).rejects.toBeInstanceOf(ConflictError);
       const rows = await invitationRows(sql, scope, fixture);
       expect(rows).toHaveLength(1);
@@ -140,7 +140,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
     it("retains an email invitation when a duplicate request finds an unverified account", async () => {
       const fixture = await seedInvitationFixture(sql);
       const invitation = await seedEmailInvitation(sql, scope, fixture);
-      await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: false });
+      await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: false });
       await expect(createInvitation(scope, fixture)).rejects.toBeInstanceOf(ConflictError);
       expect((await invitationRows(sql, scope, fixture))[0]).toMatchObject({
         id: invitation.id, invited_user_id: null, invited_email: fixture.email, notification_id: null, status: "pending",
@@ -151,10 +151,10 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
     it("rolls the conversion back with its notification and retries the same row", async () => {
       const fixture = await seedInvitationFixture(sql);
       const invitation = await seedEmailInvitation(sql, scope, fixture);
-      const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+      const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
       const restoreNotifications = await rejectNotificationWrites(sql);
       try {
-        await expect(claimEmailInvitations(user)).resolves.toBeUndefined();
+        await expect(claimEmailInvitations(user)).resolves.toEqual({ unavailable: null });
       } finally {
         await restoreNotifications();
       }
@@ -173,7 +173,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
       await fc.assert(fc.asyncProperty(fc.integer({ min: 1, max: 5 }), fc.boolean(), async (repeats, upperCase) => {
         const fixture = await seedInvitationFixture(sql);
         const invitation = await seedEmailInvitation(sql, scope, fixture);
-        const user = await usersRepo.createUser({ locale: "en", email: upperCase ? fixture.email.toUpperCase() : fixture.email, emailVerified: true });
+        const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: upperCase ? fixture.email.toUpperCase() : fixture.email, emailVerified: true });
         for (let n = 0; n < repeats; n++) await claimEmailInvitations(user);
         const rows = await invitationRows(sql, scope, fixture);
         expect(rows).toHaveLength(1);
@@ -190,7 +190,7 @@ it("converts both project and Studio invitations for one verified account", asyn
   const fixture = await seedInvitationFixture(sql);
   const project = await seedEmailInvitation(sql, "project", fixture);
   const studio = await seedEmailInvitation(sql, "studio", fixture);
-  const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+  const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
   await claimEmailInvitations(user);
   expect((await invitationRows(sql, "project", fixture))[0]).toMatchObject({ id: project.id, invited_user_id: user.id, invited_email: null });
   expect((await invitationRows(sql, "studio", fixture))[0]).toMatchObject({ id: studio.id, invited_user_id: user.id, invited_email: null });
@@ -200,7 +200,7 @@ it("keeps an archived project's invitation closed", async () => {
   const fixture = await seedInvitationFixture(sql);
   const invitation = await seedEmailInvitation(sql, "project", fixture);
   await db.transaction(async (tx) => { await projectRepo.archiveProject(fixture.projectId, fixture.adminId, tx); });
-  const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+  const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
   await claimEmailInvitations(user);
   expect((await invitationRows(sql, "project", fixture))[0]).toMatchObject({
     id: invitation.id, status: "failed", failed_reason: "invalidated", invited_user_id: null, notification_id: null,
@@ -218,7 +218,7 @@ it("preserves the earlier expiration reason when an email invitation is archived
 it("does not let an arbitrary user accept an unclaimed email invitation", async () => {
   const fixture = await seedInvitationFixture(sql);
   const invitation = await seedEmailInvitation(sql, "project", fixture);
-  const user = await usersRepo.createUser({ locale: "en", email: `stranger-${fixture.email}`, emailVerified: true });
+  const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: `stranger-${fixture.email}`, emailVerified: true });
   await expect(answerInvitation("project", invitation.id, user.id, true)).rejects.toBeInstanceOf(NotFoundError);
   expect(await membershipCount(sql, "project", fixture, user.id)).toBe(0);
 });
@@ -227,13 +227,13 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
   it(`${scope} claim keeps the acceptance capacity gate in force`, async () => {
     const fixture = await seedInvitationFixture(sql);
     const invitation = await seedEmailInvitation(sql, scope, fixture);
-    const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+    const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
     await sql`UPDATE users SET membership_tier = 'base' WHERE id = ${fixture.adminId}`;
     if (scope === "project") {
       const { getLimitsForStudio } = await import("@breatic/core");
       const limits = await getLimitsForStudio(fixture.studioId);
       for (let n = 0; n < limits.project_members; n++) {
-        const member = await usersRepo.createUser({ locale: "en", email: `capacity-${n}-${fixture.email}`, emailVerified: true });
+        const member = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: `capacity-${n}-${fixture.email}`, emailVerified: true });
         await sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${fixture.projectId}, ${member.id}, 'viewer')`;
       }
     }
@@ -253,7 +253,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
       const { getLimitsForStudio } = await import("@breatic/core");
       const limits = await getLimitsForStudio(fixture.studioId);
       for (let n = 0; n < limits.project_members; n++) {
-        const member = await usersRepo.createUser({ locale: "en", email: `filled-${n}-${fixture.email}`, emailVerified: true });
+        const member = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: `filled-${n}-${fixture.email}`, emailVerified: true });
         await sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${fixture.projectId}, ${member.id}, 'viewer')`;
       }
     }
@@ -267,7 +267,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
   it(`${scope} conversion requires the account's current mailbox to match`, async () => {
     const fixture = await seedInvitationFixture(sql);
     const invitation = await seedEmailInvitation(sql, scope, fixture);
-    const other = await usersRepo.createUser({ locale: "en", email: `unrelated-${fixture.email}`, emailVerified: true });
+    const other = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: `unrelated-${fixture.email}`, emailVerified: true });
     await claimEmailInvitations({ ...other, email: fixture.email });
     expect((await invitationRows(sql, scope, fixture))[0]).toMatchObject({
       id: invitation.id, invited_email: fixture.email, invited_user_id: null, notification_id: null,
@@ -277,7 +277,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
   it(`${scope} conversion requires an active account`, async () => {
     const fixture = await seedInvitationFixture(sql);
     const invitation = await seedEmailInvitation(sql, scope, fixture);
-    const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+    const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
     await sql`UPDATE users SET deleted_at = now() WHERE id = ${user.id}`;
     await claimEmailInvitations(user);
     expect((await invitationRows(sql, scope, fixture))[0]).toMatchObject({
@@ -290,10 +290,10 @@ it("continues processing another invitation after one notification transaction f
   const fixture = await seedInvitationFixture(sql);
   const project = await seedEmailInvitation(sql, "project", fixture);
   const studio = await seedEmailInvitation(sql, "studio", fixture);
-  const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+  const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
   const restoreNotifications = await rejectNotificationWrites(sql, true);
   try {
-    await expect(claimEmailInvitations(user)).resolves.toBeUndefined();
+    await expect(claimEmailInvitations(user)).resolves.toEqual({ unavailable: null });
   } finally {
     await restoreNotifications();
   }

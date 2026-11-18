@@ -9,6 +9,7 @@ import {
   writtenMark,
   type ChatAttachedChip,
   type ModelCatalog,
+  withCurrentModelNames,
 } from '@breatic/shared';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import { catalogEntryOf } from '@breatic/shared/mini-tools';
@@ -216,11 +217,13 @@ export function snapshotOfPick(
    */
   const entry = (node: CanvasNodeView): Record<string, unknown> & { id: string } => {
     const stored = readers.dataOf(node.id);
-    const data = {
+    // The stored data wins over the view, so a node saved on a retired model is
+    // read under its replacement here too, as the view reads it (#1521).
+    const data = withCurrentModelNames({
       ...(node.data as unknown as Record<string, unknown>),
       ...(stored ? (plain(stored) as Record<string, unknown>) : {}),
       ...(stored?.has('prompts') === true ? { prompts: promptsOf(node, stored, readers.catalog) } : {}),
-    };
+    });
     const current = isGenerationNodeType(node.type)
       ? currentGeneration(
         node.type,

@@ -45,8 +45,14 @@ const STORYBOARD = {
  */
 const files = (n: number, tag: string): string[] => Array.from({ length: n }, (_, i) => `${tag}${i}`);
 
+/** A song model: the lyrics are words the user writes in a box of their own. */
+const SONG = {
+  name: "song",
+  params: { lyrics: { default: null, fill: "editor" } },
+};
+
 beforeEach(() => {
-  h.getFullModelConfig.mockReturnValue({ models: [IMAGE, STORYBOARD] });
+  h.getFullModelConfig.mockReturnValue({ models: [IMAGE, STORYBOARD, SONG] });
 });
 
 describe("validateModelParams", () => {
@@ -81,6 +87,13 @@ describe("validateModelParams", () => {
 
   it("sends each text setting cleaned, the way the prompt is", () => {
     expect(validateModelParams("image", "edit", { caption: " <b>hi</b>\u200b " })[1].caption).toBe("hi");
+  });
+
+  it("sends what the user wrote in an editor box cleaned, as every check before it reads it (#1960, #1521)", () => {
+    expect(validateModelParams("audio", "song", { lyrics: "<b>morning</b>  light" })[1].lyrics).toBe("morning light");
+    // What the panel's gate refuses first; a request built from this reaches
+    // the gateway as an empty lyrics and comes back `2013 - invalid params`.
+    expect(validateModelParams("audio", "song", { lyrics: "\u200B <!-- note --> " })[1].lyrics).toBe("");
   });
 
   it("cleans each text field of a list's entries and keeps its other fields", () => {

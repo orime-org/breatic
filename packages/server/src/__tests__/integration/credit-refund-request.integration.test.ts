@@ -39,6 +39,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import { initCore, loadLocales } from "@breatic/core";
 import { creditLotService, creditLotRepo } from "@breatic/domain";
 import { parseCreditDecimal, t } from "@breatic/shared";
@@ -97,6 +98,7 @@ async function seedFixture(): Promise<Fixture> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${userId}, 'admin')
   `;
+  await mirrorInDirectory(sql, studioId);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, slug, name)
     VALUES (${studioId}, ${userId}, ${`refund-p-${n}-${Date.now()}`}, 'Refund project')

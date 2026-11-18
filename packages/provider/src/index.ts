@@ -16,6 +16,7 @@ export { costSchema, type Cost, type CostLookup, type PendingCost, type TokenBuc
 export { createProvider, type Provider, type ProviderOptions } from "@provider/provider.js";
 export { providerErrorOf, readContextOverflow, unrecognised400, type ContextOverflow } from "@provider/llm/context-overflow.js";
 export type { Route } from "@provider/routing/route.js";
+export type { InputLimit, RejectedInput } from "@provider/pricing/estimate.js";
 export type { MessagesCallEnd, MessagesCandidate, MessagesPlan, MessagesTokens } from "@provider/messages/relay.js";
 export { ProviderConfigError, type CatalogShape, type ProviderConfigInput } from "@provider/config/schema.js";
 export type {

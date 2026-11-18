@@ -28,13 +28,14 @@ import {
   getRedis,
   getSession,
   getCollabRedis,
-  getProjectConcurrentEditorLimit,
+  isIdentityRevoked,
   projectAuthService,
   sendMail,
   MONOREPO_ROOT,
 } from "@breatic/core";
 import { createConnectionGate, recordingFailedAuth } from "@collab/infra/connection-gate.js";
-import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
+import { createUpgradeSessionGate, readBoundIdentity } from "@collab/infra/upgrade-session-gate.js";
+import { concurrentEditorLimit } from "@collab/infra/region.js";
 import { createFrameAssembler, type FrameMessage, type FramePeer } from "@collab/infra/frame-assembler.js";
 import { filter as filterInbound, forgetSocket as forgetInboundSocket } from "@collab/infra/inbound-filter.js";
 import { createSharedThrottle } from "@collab/infra/shared-throttle.js";
@@ -68,6 +69,8 @@ import {
 import { createActivityHook } from "@collab/hooks/account-activity.js";
 import { createAuthHook } from "@collab/hooks/auth.js";
 import {
+  forgetFollowingOnDisconnect,
+  recordFollowingFromAwareness,
   recordPresenceOnConnect,
   stampIdentityOnAwareness,
 } from "@collab/hooks/presence-wiring.js";
@@ -90,6 +93,7 @@ import {
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import { getCollabConfig, getConnectionTimings, getReassemblyLimits } from "@collab/config.js";
 import { convertStoredTablesOnLoad } from "@collab/services/legacy-table-conversion.js";
+import { convertRetiredModelsOnLoad } from "@collab/services/retired-model-conversion.js";
 import { convertStoredTimelineTransformsOnLoad } from "@collab/services/legacy-timeline-transform-conversion.js";
 import {
   acknowledge,
@@ -132,6 +136,13 @@ export interface CollabServerInfra {
    * before. The unload gate stops retrying in time to rescue before it.
    */
   shutdownDeadline: () => number | undefined;
+  /**
+   * Set in a region that does not hold the sessions (inner#1955): the public
+   * keys identity tokens are verified with. Upgrades are then admitted on the
+   * identity token, and every document on a connection authenticates as what
+   * it named.
+   */
+  identityPublicKeys?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -268,9 +279,16 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     : null;
   if (connectionGate) extensions.push(connectionGate);
 
+  // Outside the global region the upgrade is admitted on the identity token
+  // and every document on the connection authenticates as what it named
+  // (inner#1955).
+  const regionalKeys = infra.identityPublicKeys;
   const sessionGate = createUpgradeSessionGate({
     redis: authRedis,
     recordFailedUpgrade: connectionGate?.recordFailedUpgrade,
+    ...(regionalKeys
+      ? { identity: { publicKeys: regionalKeys, nowSeconds: () => Math.floor(Date.now() / 1000) } }
+      : {}),
   });
   extensions.push(sessionGate);
 
@@ -279,16 +297,16 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   const authenticate = createAuthHook({
     redis: authRedis,
     // The ceiling belongs to the studio that owns this project, read from
-    // its current admin's membership tier (#88). It is looked up per
-    // handshake and deliberately not cached: a stale ceiling would outlive
-    // a tier change or a studio transfer with nothing to invalidate it.
+    // its current admin's membership tier (#88). In the global region it is
+    // looked up per handshake; elsewhere it comes from the global region and
+    // is cached for `limits_cache_ttl_ms` (inner#1955).
     //
     // A handshake is per DOCUMENT, not per socket — one socket carries the
     // meta doc plus every open Space, and `onAuthenticate` fires for each
     // (@hocuspocus/server 4.6.0 keys its hook payloads by document). Meta
     // and viewers skip the ceiling entirely (`auth.ts`), so the real cost
     // is one lookup per Space document opened.
-    resolveConnectionLimit: getProjectConcurrentEditorLimit,
+    resolveConnectionLimit: concurrentEditorLimit,
     // Cluster-wide count via the cross-instance registry (#1421), NOT
     // the local `getConnectionsCount()` (which only sees this process).
     // The count excludes this connection: registration happens later, in
@@ -302,6 +320,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // by themselves. Replacing that seat is the `connected` hook's job.
     hasOwnSeat: (documentName: string, userId: string): Promise<OwnSeat> =>
       connectionRegistry.hasOwnSeat(documentName, userId),
+    ...(regionalKeys ? { boundIdentity: ({ requestHeaders }: { requestHeaders: Headers }) => readBoundIdentity(requestHeaders) } : {}),
   });
 
   // Assembled after the server exists, because the gate's final store
@@ -511,6 +530,26 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         }
       }
 
+      // A canvas node saved on a retired model is stored under its replacement
+      // (#1521), at the same point and on the same terms as the tables above;
+      // until it succeeds web reads the old name as the new one.
+      if (parsed?.kind === "canvas") {
+        try {
+          const converted = await convertRetiredModelsOnLoad({
+            documentName,
+            document,
+            takeLock: async (key) =>
+              (await getCollabRedis().set(key, instanceId, "PX", getCollabConfig().retired_model_migrate_lock_ms, "NX")) === "OK",
+            readStored: () => fetchDocData(documentName),
+          });
+          if (converted > 0) {
+            logger.info({ documentName, converted, reason: "retired_model_migrated" }, "retired_model_migrated");
+          }
+        } catch (err) {
+          logger.error({ err, documentName, reason: "retired_model_migrate_failed" }, "retired_model_migrate_failed");
+        }
+      }
+
       // The size record starts from the exact size, after the conversion
       // above (a write of the load itself) and before any client syncs
       // (inner#1790). A failure leaves the document unrecorded, which admits
@@ -638,7 +677,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // The same for the session: one ended after the handshake read it was
       // announced before this connection could be found (inner#1548).
       try {
-        await closeIfSessionEnded(connection, (token) => getSession(authRedis, token));
+        await closeIfSessionEnded(connection, (token) => getSession(authRedis, token), (sid) => isIdentityRevoked(authRedis, sid));
       } catch (err) {
         logger.error({ err, documentName, userId: auth.user.id }, "session_recheck_failed");
       }
@@ -649,14 +688,21 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // server writes it from the credential it validated at the handshake.
     // Runs on every document, not just the meta one: carets live in the canvas
     // and document files, which is where an id becomes a name on a screen.
-    beforeHandleAwareness: async ({ states, connection, context }) => {
+    beforeHandleAwareness: async ({ states, connection, context, socketId, documentName, document }) => {
       stampIdentityOnAwareness({ states, connection, context });
+      // After the stamp, so the scratch entry is recognisable as holding only
+      // the identity (see `recordFollowingFromAwareness`).
+      recordFollowingFromAwareness({ states, connection, context, socketId, documentName, document }, {
+        now: Date.now,
+        staleAfterMs: timings.presenceStaleAfterMs,
+      });
     },
 
-    onDisconnect: async ({ documentName, context, socketId }) => {
+    onDisconnect: async ({ documentName, context, socketId, document }) => {
       // A refused duplicate held nothing; what is recorded under its socket
       // and document belongs to the connection it duplicated.
       if (refusedDuplicates.has(context)) return;
+      forgetFollowingOnDisconnect({ documentName, socketId, document });
       const ctx = context as { user?: { id: string } };
       const userId = ctx.user?.id;
       // Remove this connection from the cross-instance registry on clean
@@ -685,8 +731,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         await connectionRegistry.unregister(documentName, socketId);
       }
       logger.info({ documentName, userId }, "Client disconnected");
-      // NOTHING about the document's contents is touched here, and both
-      // halves of that are deliberate.
+      // Beyond this connection's own following entry (keyed by socket, so its
+      // close is the whole story), NOTHING about the document's contents is
+      // touched here, and both halves of that are deliberate.
       //
       // The presence list is not written because this socket ending says
       // nothing about whether its owner is still in the project: one person

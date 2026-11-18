@@ -14,7 +14,7 @@ import {
   creditLots,
   purchaseConsents,
   purchaseMailOutbox,
-  studios,
+  studioDirectory,
 } from "@breatic/core";
 import { parseCreditDecimal, serializeCreditMicro, quantizeQuotedCredits, type CreditDecimal, HELD_LIFECYCLES } from "@breatic/shared";
 import type { PaymentEntity } from "@breatic/shared";
@@ -384,7 +384,9 @@ export async function listAcquisitionHistory(
     .from(payments)
     .where(eq(payments.userId, userId))
     .as("my_payments");
-  const liveStudio = sql`CASE WHEN ${studios.deletedAt} IS NULL THEN`;
+  // The designated Studio may live in any region, so its name comes from the
+  // global directory (inner#1955).
+  const liveStudio = sql`CASE WHEN ${studioDirectory.deletedAt} IS NULL THEN`;
   const rowAt = sql`COALESCE(${myPayments.createdAt}, ${myLots.createdAt})`;
   const rowId = sql`COALESCE(${myPayments.id}, ${myLots.id})`;
   return db
@@ -414,16 +416,16 @@ export async function listAcquisitionHistory(
       lifecycle: myLots.lifecycle,
       designatedStudioId: sql<
         string | null
-      >`${liveStudio} ${studios.id} ELSE NULL END`,
+      >`${liveStudio} ${studioDirectory.studioId} ELSE NULL END`,
       designatedStudioName: sql<
         string | null
-      >`${liveStudio} ${studios.name} ELSE NULL END`,
+      >`${liveStudio} ${studioDirectory.name} ELSE NULL END`,
       mailStatus: purchaseMailOutbox.status,
       mailUpdatedAt: purchaseMailOutbox.updatedAt,
     })
     .from(myLots)
     .fullJoin(myPayments, eq(myPayments.id, myLots.sourceId))
-    .leftJoin(studios, eq(studios.id, myLots.designatedStudioId))
+    .leftJoin(studioDirectory, eq(studioDirectory.studioId, myLots.designatedStudioId))
     .leftJoin(
       purchaseMailOutbox,
       eq(purchaseMailOutbox.paymentId, myPayments.id),

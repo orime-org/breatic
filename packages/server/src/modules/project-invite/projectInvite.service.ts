@@ -33,13 +33,14 @@
  */
 
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { globalApi } from "@breatic/domain";
 import * as invitesRepo from "@server/modules/project-invite/projectInvitations.repo.js";
 import { createInvitation } from "@server/modules/invitation/invitation.service.js";
+import { withPendingDisplay } from "@server/modules/invitation/pending-display.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
-import { accountActivityRepo, db, getLimitsForStudio, trackServerEvent } from "@breatic/core";
+import { accountActivityRepo, db, projectsRepo, trackServerEvent } from "@breatic/core";
 import * as projectJoinRequestService from "@server/modules/project-join-request/projectJoinRequest.service.js";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { projectMembersRepo } from "@breatic/core";
@@ -48,6 +49,7 @@ import type {
   InvitableProjectRole,
   PendingProjectInvitationSummary,
 } from "@breatic/shared";
+import { profilesService } from "@breatic/domain";
 
 /**
  * Invite an account or mailbox to a Project through recipient arbitration.
@@ -110,19 +112,24 @@ export async function confirmInvite(
   receiverUserId: string,
 ): Promise<void> {
   let joinedActivity: { projectId: string; studioId: string; role: ProjectRole } | null = null;
+  // Which project this invite is for, read WITHOUT a lock. The id is only
+  // reachable through the invitation row, and the row lock below has to come
+  // before the accept CAS, so it has to be read first. Safe: an invitation's
+  // `project_id` never changes, nor does a project's studio, and whether this
+  // invite may still be accepted is decided by the CAS, not by this read. The
+  // studio's collaborator ceiling comes from the global region before the
+  // transaction opens (inner#1955).
+  const targetProjectId = await invitesRepo.getTargetProjectId(invitationId);
+  if (targetProjectId === null) {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  const targetStudioId = await projectsRepo.findOwnerStudioId(targetProjectId);
+  if (targetStudioId === undefined) {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  const { project_members: collaboratorLimit } = await globalApi().getLimitsForStudio(targetStudioId);
+  const inviteeProfiles = await profilesService.personalProfiles([receiverUserId]);
   await db.transaction(async (tx) => {
-    // Which project this invite is for, read WITHOUT a lock. The id is only
-    // reachable through the invitation row, and the row lock below has to come
-    // before the accept CAS, so it has to be read first. Safe: an invitation's
-    // `project_id` never changes, and whether this invite may still be
-    // accepted is decided by the CAS, not by this read.
-    const targetProjectId = await invitesRepo.getTargetProjectId(
-      invitationId,
-      tx,
-    );
-    if (targetProjectId === null) {
-      throw new NotFoundError(t("server.error.not_found"));
-    }
 
     // Taken BEFORE the CAS, and that order is not a preference: `archiveProject`
     // takes `projects` first and `project_invitations` second, so a confirm
@@ -147,14 +154,9 @@ export async function confirmInvite(
     // taken above, so two simultaneous confirms cannot both see the same last
     // seat. Only a NEW seat is checked: an invitee who became a member by
     // another route since the invite was sent already holds one, and accepting
-    // only changes its role. The project is re-read here rather than at the
-    // bottom of this transaction because the ceiling belongs to its studio.
+    // only changes its role.
     const project = await projectRepo.getProjectById(accepted.projectId, tx);
     if (!project) throw new NotFoundError(t("server.error.not_found"));
-    const { project_members: collaboratorLimit } = await getLimitsForStudio(
-      project.studioId,
-      tx,
-    );
     const alreadyMember =
       (await projectMembersRepo.getRole(
         accepted.projectId,
@@ -191,11 +193,7 @@ export async function confirmInvite(
       );
     }
 
-    const profiles = await studioRepo.getPersonalProfilesByCreators(
-      [accepted.invitedUserId],
-      tx,
-    );
-    const invitee = profiles.get(accepted.invitedUserId);
+    const invitee = inviteeProfiles.get(accepted.invitedUserId);
     await notificationService.createProjectInviteAccepted({
       userId: accepted.invitedBy,
       projectId: accepted.projectId,
@@ -303,16 +301,16 @@ export async function revokeInvite(
 
 /**
  * List a project's LIVE pending invitations (for the owner's "invited
- * (pending)" section). Thin pass-through to the repo so the route reaches the
- * data layer through the service (prohibition #1). The route gates
- * `requireRole('owner')`, so authorization is enforced before this runs.
+ * (pending)" section), with the invitee's and inviter's display fields. The
+ * route gates `requireRole('owner')`, so authorization is enforced before
+ * this runs.
  * @param projectId - Project UUID
  * @returns Pending invitations with display fields (empty when none)
  */
 export async function listPending(
   projectId: string,
 ): Promise<PendingProjectInvitationSummary[]> {
-  return invitesRepo.listPendingByProject(projectId);
+  return withPendingDisplay(await invitesRepo.listPendingByProject(projectId));
 }
 
 

@@ -16,7 +16,8 @@ import { resolveParams, type ModelEntry } from "@breatic/shared";
 
 import { TOOL_MAP } from "@domain/agent/tools/index.js";
 import { makeProposeSceneGeneration } from "@domain/agent/tools/propose-scene-generation.js";
-import { getModelCatalog, estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+import { getModelCatalog, estimateModelCredits, inputRefusalFor } from "@domain/model-catalog/model-catalog.js";
+import type * as ModelCatalog from "@domain/model-catalog/model-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 import { resolveProjectImageInputs } from "@domain/asset/project-image-inputs.js";
 import * as creditHoldService from "@domain/credit/creditHold.service.js";
@@ -24,6 +25,11 @@ import * as taskService from "@domain/task/task.service.js";
 import * as sceneTaskService from "@domain/node-task/scene-task.service.js";
 
 vi.mock("@domain/asset/project-image-inputs.js", () => ({ resolveProjectImageInputs: vi.fn() }));
+
+vi.mock("@domain/model-catalog/model-catalog.js", async (importOriginal) => {
+  const real = await importOriginal<typeof ModelCatalog>();
+  return { ...real, inputRefusalFor: vi.fn(real.inputRefusalFor) };
+});
 
 vi.mock("@domain/credit/creditHold.service.js", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -146,6 +152,30 @@ describe("the model and mode", () => {
     const reason = await refusal({ ...TEXT_TO_3D, model: "tripo-h3.1-i23d" });
     expect(reason).toContain("tripo-h3.1-i23d");
     expect(reason).toContain("t23d");
+  });
+});
+
+describe("a run no upstream here takes (#1521)", () => {
+  it("is refused with the limit it breaks, in the upstream's words too", async () => {
+    vi.mocked(inputRefusalFor).mockResolvedValueOnce({ reason: "Tripo prompt up to 1024", limit: { field: "prompt", measure: "characters", max: 1024 } });
+    const reason = await refusal(TEXT_TO_3D);
+    expect(reason).toContain('"tripo-h3.1-t23d" takes at most 1024 characters in the prompt here.');
+    expect(reason).toContain("The upstream says: Tripo prompt up to 1024.");
+  });
+
+  it("names a count of Chinese characters as such", async () => {
+    vi.mocked(inputRefusalFor).mockResolvedValueOnce({ reason: "r", limit: { field: "prompt", measure: "chinese_characters", max: 2500 } });
+    expect(await refusal(TEXT_TO_3D)).toContain('"tripo-h3.1-t23d" takes at most 2500 Chinese characters in the prompt here.');
+  });
+
+  it("is refused in the upstream's words when the refusal names no count", async () => {
+    vi.mocked(inputRefusalFor).mockResolvedValueOnce({ param: "texture", value: "4k" });
+    expect(await refusal(TEXT_TO_3D)).toContain('The upstream says: it does not take texture = "4k".');
+  });
+
+  it("asks with the run as planned", async () => {
+    await propose(TEXT_TO_3D);
+    expect(vi.mocked(inputRefusalFor)).toHaveBeenLastCalledWith("tripo-h3.1-t23d", expect.objectContaining({ params: expect.any(Object) }));
   });
 });
 

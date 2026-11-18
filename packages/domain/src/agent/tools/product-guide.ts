@@ -72,7 +72,9 @@ const INDEX: readonly { group: string; sections: readonly (readonly [name: strin
   {
     group: "Document",
     sections: [
-      ["Document spaces", "writing, formatting, pasting, comments and media in a document"],
+      ["Document spaces", "writing, formatting, pasting and media in a document"],
+      ["Document formulas", "typing, inserting and editing LaTeX formulas in a document"],
+      ["Document comments", "leaving, answering, resolving and deleting comments in a document"],
       ["Document columns", "putting lines side by side in columns, resizing and leaving columns"],
       ["Document proposal cards", "applying a comment, rewrite or insert proposed in this chat"],
       ["Document snapshots", "saving, previewing, comparing, restoring, renaming and deleting snapshots of a document"],
@@ -274,7 +276,24 @@ export function renderProductGuide(): string {
       "double-clicking it (Enter or clicking away saves, Esc or an empty name keeps the old one); and the user's role, " +
       `${quoted(t("role.owner"))} or ${quoted(t("role.editor"))}.`,
     "On the right: the members' pictures with a small arrow, which open " +
-      `${quoted(t("members.popover.title"))}. For an editor or a viewer that list ends with ` +
+      `${quoted(t("members.popover.title"))}. Each member's row says ${quoted(t("members.popover.online"))} or ` +
+      `${quoted(t("members.popover.offline"))}. Every role can follow another member who is online: pressing ` +
+      `${quoted(t("members.popover.follow"))} on their row takes the user to the Space they have in front, and on ` +
+      "to each Space they switch to; on a canvas or in a document the user's view also moves with theirs as they " +
+      "pan, zoom or scroll, while in a 3D or Timeline Space only the Space follows. While following, a bar in that member's colour " +
+      `across the top of the Space area reads ${quoted(t("members.follow.bar"))}, {name} being that member's name, ` +
+      `with ${quoted(t("members.follow.stop"))}, the Space area is outlined in the same colour, and their row shows ` +
+      `${quoted(t("members.popover.unfollow"))}. Following ends when the user presses either of those; when the user ` +
+      `moves the view themselves (${quoted(t("members.follow.stoppedViewport"))}) or switches Space themselves ` +
+      `(${quoted(t("members.follow.stoppedSpace"))}); when that member goes offline or leaves the project ` +
+      `(${quoted(t("members.follow.stoppedOffline"))}); or when that member starts following someone ` +
+      `(${quoted(t("members.follow.stoppedLeaderFollows"))}, or ` +
+      `${quoted(t("members.follow.stoppedLeaderFollowsYou"))} when that someone is the user). Pressing ` +
+      `${quoted(t("members.popover.follow"))} on someone else switches straight to them. Following is one level ` +
+      "deep: a member who is following someone cannot be followed. Their " +
+      `${quoted(t("members.popover.follow"))} is dimmed, and pressing it only says whom they follow ` +
+      `(${quoted(t("members.follow.busy"))}, or ${quoted(t("members.follow.busyYou"))}). ` +
+      "For an editor or a viewer that list ends with " +
       `${quoted(t("project.leave.action"))}, which asks to confirm first, with ` +
       `${quoted(t("project.leave.confirm"))}; once they leave they are taken back to their recent projects and can ` +
       "no longer open the project. A member of the project's studio also finds it on the project's card in " +
@@ -913,6 +932,9 @@ export function renderProductGuide(): string {
     `  - ${quoted(t("canvas.generatePanel.errorStorageFull"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorUnavailable"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorFailed"))}`,
+    "  - a sentence naming the model and, when a count says it, the limit the run breaks there, such as how many " +
+      "characters or lines its text may have; otherwise it says the model can't take the run as set up and to change " +
+      "the settings or pick another model",
     "When the run finishes, its result replaces what the node held. A run makes one result; there is no count. " +
       "To get another, open the panel again and press the arrow: it can start while an earlier task is still " +
       "running, each finished result replaces what the node holds in turn, and the earlier ones stay in its " +
@@ -1063,7 +1085,10 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.voicePlaceholder"))} until a voice is picked; clicking it opens rows such ` +
       `as ${quoted(t("canvas.generatePanel.audioVoice"))}, which opens the voice list beside it with ` +
       `${quoted(t("canvas.generatePanel.voiceSearchPlaceholder"))} and a play button on each voice that has a ` +
-      "sample; " +
+      "sample; on a model whose samples come in several languages a menu marked " +
+      `${quoted(t("canvas.generatePanel.voiceSampleLanguage"))} beside the search box picks the language the samples ` +
+      "play in, starting from the one the user last picked there, else the interface language; it changes only what the user hears there, and the speech " +
+      "generated is in the language of the script; " +
       `sliders such as ${quoted(t("canvas.generatePanel.voiceSpeed"))}, ` +
       `${quoted(t("canvas.generatePanel.voiceVolume"))}, ${quoted(t("canvas.generatePanel.voiceSimilarity"))} ` +
       `and ${quoted(t("canvas.generatePanel.voiceStability"))} (marked ` +
@@ -1914,7 +1939,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.blockHandle.delete"))}; it acts on that line. ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} puts that line, with the lines nested under it, into the ` +
       "Agent's box as an attachment, opening the Agent panel if hidden; greyed when they hold " +
-      "neither words (spaces don't count) nor uploaded media. On media it hands " +
+      "no words (spaces don't count), no uploaded media and no formula with LaTeX in it. On media it hands " +
       `over the file plus nested lines as text; ${quoted(t("spaces.document.commands.comment"))} covers ` +
       `the whole item; both stay greyed mid-upload; pressing either says ` +
       `${quoted(t("spaces.document.media.notUploaded"))} ` +
@@ -1924,10 +1949,11 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} lists the block types other than ` +
       `${quoted(t("spaces.document.commands.paragraph"))}, then ${quoted(t("spaces.document.commands.divider"))}, ` +
       `${quoted(t("spaces.document.commands.table"))} and ${quoted(t("spaces.document.commands.columns"))} on their own, then ` +
+      `${quoted(t("spaces.document.commands.formula"))}, then ` +
       `${quoted(t("spaces.document.media.image"))}, ${quoted(t("spaces.document.media.audio"))} and ` +
       `${quoted(t("spaces.document.media.video"))}, and puts a new line of the one picked ` +
-      "below; the divider and the table each come with an empty line under them, and a new table puts the caret " +
-      `in its first cell. On a line in a table cell, ${quoted(t("spaces.document.commands.table"))} is greyed: a ` +
+      "below; the divider, the table and the formula each come with an empty line under them, a new table puts the caret " +
+      `in its first cell, and a new formula opens its box. On a line in a table cell, ${quoted(t("spaces.document.commands.table"))} is greyed: a ` +
       "table does not go inside a cell. " +
       "The last three open the computer's file picker for that kind; the files chosen go " +
       "under the line, above an empty line made for the caret. " +
@@ -2054,7 +2080,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged; while it is open ` +
       "that cell is tinted the way selected cells are. A cell holds blocks " +
       "the way the rest of the document does: paragraphs, headings, lists, to-dos, quotes, code, dividers, " +
-      "pictures, videos and audio, each with its own handle of six dots, and an empty line with the plus; a table " +
+      "formulas, pictures, videos and audio, each with its own handle of six dots, and an empty line with the plus; a table " +
       "does not go inside a cell. Enter and Shift+Enter work as anywhere else, and Enter on the last empty line " +
       "of a cell stays in the cell. Tab in a list item indents it when it can be indented and Shift+Tab takes an " +
       "indented one back out; otherwise Tab moves to the next cell, and in the last cell it adds a row first, and " +
@@ -2076,7 +2102,10 @@ export function renderProductGuide(): string {
       "unresolved. Other people in the document show as coloured carets " +
       "with their names. Content written by a newer version of the editor shows as a box marked " +
       `${quoted(t("spaces.document.unsupported.label"))} and is kept as it is.`,
-    "- Snapshots and columns have sections of their own: Document snapshots and Document columns.",
+    "- Snapshots: saving, comparing and restoring snapshots of the body are in the Document snapshots section.",
+    "- Formulas: typing, inserting and editing LaTeX formulas are in the Document formulas section.",
+    "- Comments: leaving, answering, resolving and deleting comments are in the Document comments section.",
+    "- Columns: putting lines side by side, resizing and leaving columns are in the Document columns section.",
     "- The heading outline: an icon at the top left of the body, level with the three dots, opens and shuts " +
       `it; hovering it says ${quoted(t("spaces.document.outline.show"))} or ${quoted(t("spaces.document.outline.hide"))}. ` +
       "The outline lists the body's level 1–3 headings as a tree, with the same numbers the body shows; headings " +
@@ -2087,9 +2116,22 @@ export function renderProductGuide(): string {
       "until the outline icon is clicked again. Whether the outline is shown is remembered for each account in " +
       "this browser and applies to every document. With no headings yet the column says " +
       `${quoted(t("spaces.document.outline.empty"))}.`,
-    `- Comments: select text and press the speech bubble, or choose ` +
-      `${quoted(t("spaces.document.commands.comment"))} on a line's handle menu (greyed on an empty line, ` +
-      `except uploaded media). The ${quoted(t("spaces.document.comment.railTitle"))} panel opens beside the text, the words take ` +
+    "",
+    "## Document formulas",
+    "A formula is LaTeX: $$x$$ typed in a line becomes a formula of x as the closing $$ is typed (a single $ stays " +
+      `text, and Cmd+Z takes it back), and ${quoted(t("spaces.document.commands.formula"))} in the insert menu puts ` +
+      "one on its own line. Clicking a formula opens a box under it to edit the LaTeX, the formula redrawing as it " +
+      `is typed; Enter, ${quoted(t("spaces.document.math.ok"))}, Esc or a click outside closes the box and keeps the change, and Cmd+Z ` +
+      "undoes it like any typing. Backspace right under a formula or Delete right above it selects it; a second press " +
+      "deletes it. An empty one shows " +
+      `${quoted(t("spaces.document.math.empty"))} (${quoted(t("spaces.document.math.blank"))} in a snapshot or a read-only ` +
+      `document), one that does not parse ${quoted(t("spaces.document.math.error"))}. ` +
+      "The Agent, copies and Markdown get it as its LaTeX between $$.",
+    "",
+    "## Document comments",
+    `Select text and press the speech bubble, or choose ` +
+      `${quoted(t("spaces.document.commands.comment"))} on a line's handle menu (greyed on a line with no words, such as an ` +
+      `empty line or one holding only a formula; uploaded media can still be commented). The ${quoted(t("spaces.document.comment.railTitle"))} panel opens beside the text, the words take ` +
       `a highlight, and a box, ${quoted(t("spaces.document.comment.placeholder"))}, waits next to them. Enter ` +
       `or ${quoted(t("spaces.document.comment.save"))} posts it, Shift+Enter starts a new line, and Esc or ` +
       `${quoted(t("spaces.document.comment.cancel"))} drops it; both buttons appear once something is typed. ` +

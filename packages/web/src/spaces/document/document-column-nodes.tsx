@@ -81,7 +81,9 @@ export function docColumnSpecs(): DocColumnSpecs {
       children: { allow: [DOC_COLUMN], min: 0, dissolve: false },
     },
     {
-      parse: (element: HTMLElement) => (element.dataset['docColumns'] !== undefined ? {} : undefined),
+      // Read as attributes: the parser meets every pasted element, and one
+      // outside HTML (MathML's `<math>`) need not carry `dataset`.
+      parse: (element: HTMLElement) => (element.hasAttribute('data-doc-columns') ? {} : undefined),
       toExternalHTML: flatOutside,
       renderFrame(this: { renderType: 'dom' | 'nodeView' }, _block: unknown, editor: DividerEditor) {
         const element = document.createElement('div');
@@ -126,8 +128,8 @@ export function docColumnSpecs(): DocColumnSpecs {
       experimental_keyboard: { emptyChildEnter: 'stay' },
       toExternalHTML: flatOutside,
       parse: (element: HTMLElement) => {
-        if (element.dataset['docColumn'] === undefined) return undefined;
-        return { width: columnWeight(element.dataset['width']) };
+        if (!element.hasAttribute('data-doc-column')) return undefined;
+        return { width: columnWeight(element.getAttribute('data-width')) };
       },
       renderFrame: (block: { props: ColumnProps }) => {
         const element = document.createElement('div');

@@ -6,6 +6,7 @@ import { canvasGraphs } from '@web/stores/canvas-graph';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { useDocumentProposals } from '@web/stores/document-proposals';
+import { useFollowStore } from '@web/stores/follow';
 import { useSceneProposals } from '@web/stores/scene-proposals';
 import { useUIStore } from '@web/stores/ui';
 
@@ -44,4 +45,7 @@ export function resetProjectUiStores(projectId: string): void {
   // No 3D Space of this project receives any more, and a proposal it had not
   // taken must not open a dialog in the next one (inner#1691).
   useSceneProposals.getState().reset();
+  // Following a member of this project means nothing in the next one, and
+  // leaving is not a stop the user needs telling about (#920).
+  useFollowStore.getState().reset();
 }

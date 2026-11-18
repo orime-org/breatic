@@ -119,6 +119,7 @@ const collabConfigSchema = z.object({
   // only expires, and has to outlast the store interval by far.
   doc_table_migrate_lock_ms: z.number().int().positive().default(300_000),
   timeline_transform_migrate_lock_ms: z.number().int().positive().default(300_000),
+  retired_model_migrate_lock_ms: z.number().int().positive().default(300_000),
   // Document size limit (inner#1790): where the notice turns to warning, how
   // far above the limit deletes may still go (the hard ceiling), how many
   // split endpoints one update may carry, and the fewest milliseconds between

@@ -20,6 +20,7 @@ function studio(
     bio: null,
     memberCount: 1,
     myStudioRole: role,
+    region: null,
   };
 }
 

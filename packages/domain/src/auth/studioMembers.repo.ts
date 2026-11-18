@@ -20,7 +20,7 @@
 import { and, eq, isNull, isNotNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { studioMembers, studios, users } from "@breatic/core";
+import { studioMembers, studios } from "@breatic/core";
 import type { StudioRole } from "@breatic/shared";
 
 /**
@@ -85,60 +85,27 @@ export async function insertAdmin(
 }
 
 /**
- * List a studio's active members with display fields, for the Members tab.
- *
- * Backs `GET /studio/:slug/members`. Joins each member to `users` for `email`
- * and to that user's personal studio for the display `name` + `avatar` — a
- * user's display name and avatar both live on their personal studio (there is
- * no `users.username`, and `users.avatar_url` moved to the studio in #1808).
- * Soft-deleted members are excluded; ordered oldest-first (`addedAt`) so the
- * admin/creator appears at the top.
+ * List a studio's active members, for the Members tab, ordered oldest-first
+ * (`addedAt`) so the admin/creator appears at the top. Who each member is
+ * (address, name, avatar) comes from the global profiles.
  * @param studioId - Studio UUID
- * @returns Active members: userId, email, display name, avatar, role, joinedAt
+ * @returns Active members: userId, role, joinedAt
  */
 export async function listByStudio(
   studioId: string,
-): Promise<
-  ReadonlyArray<{
-    userId: string;
-    email: string;
-    name: string;
-    avatarUrl: string | null;
-    role: StudioRole;
-    addedAt: Date;
-  }>
-> {
+): Promise<ReadonlyArray<{ userId: string; role: StudioRole; addedAt: Date }>> {
   const rows = await db
     .select({
       userId: studioMembers.userId,
-      email: users.email,
-      name: studios.name,
-      avatarUrl: studios.avatarUrl,
       role: studioMembers.role,
       addedAt: studioMembers.addedAt,
     })
     .from(studioMembers)
-    .innerJoin(users, eq(users.id, studioMembers.userId))
-    .leftJoin(
-      studios,
-      and(
-        eq(studios.createdByUserId, studioMembers.userId),
-        eq(studios.type, "personal"),
-        isNull(studios.deletedAt),
-      ),
-    )
     .where(
       and(eq(studioMembers.studioId, studioId), isNull(studioMembers.deletedAt)),
     )
     .orderBy(studioMembers.addedAt);
-  return rows.map((r) => ({
-    userId: r.userId,
-    email: r.email,
-    name: r.name ?? r.email,
-    avatarUrl: r.avatarUrl,
-    role: r.role as StudioRole,
-    addedAt: r.addedAt,
-  }));
+  return rows.map((r) => ({ userId: r.userId, role: r.role as StudioRole, addedAt: r.addedAt }));
 }
 
 /**
@@ -367,19 +334,3 @@ export async function updateRole(
   return rows.length > 0;
 }
 
-
-/**
- * Lock a grant's member identity, then let the caller check its current role.
- * The predicate never filters role: a concurrent downgrade must be observed.
- * @param studioId - The personal Studio identity to lock.
- * @param userId - The target product account UUID.
- * @param tx - The transaction holding the identity and funding locks.
- * @returns The current active role, or null when the member is unavailable.
- * @throws {Error} When the member lock cannot be acquired.
- */
-export async function lockGrantMemberRole(studioId: string, userId: string, tx: DbTx): Promise<StudioRole | null> {
-  const rows = await tx.select({ role: studioMembers.role }).from(studioMembers)
-    .where(and(eq(studioMembers.studioId, studioId), eq(studioMembers.userId, userId), isNull(studioMembers.deletedAt)))
-    .for("no key update").limit(1);
-  return rows[0] ? rows[0].role as StudioRole : null;
-}

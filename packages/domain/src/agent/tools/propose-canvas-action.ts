@@ -55,8 +55,9 @@ import {
 } from "@breatic/shared";
 
 import { renderPrice } from "@domain/agent/tools/generation-models.js";
+import { upstreamRefusal } from "@domain/agent/tools/upstream-refusal.js";
 import { onDialogueSide, proposalDialogueText } from "@domain/agent/tools/proposal-dialogue.js";
-import { checkBlanks, checkGenerateNode, takesPromptHere } from "@domain/agent/tools/proposal-generate-check.js";
+import { checkBlanks, checkGenerateNode, generateRunOf, takesPromptHere } from "@domain/agent/tools/proposal-generate-check.js";
 import { checkSourceNodesFit, checkUnsentNotes, hasRing } from "@domain/agent/tools/proposal-group-checks.js";
 import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/tools/proposal-node-checks.js";
@@ -66,7 +67,7 @@ import { anchoredInstances, checkTemplateInstances, type AnchoredInstance } from
 import { expandAt, templatePlace, type TemplatePlace } from "@domain/agent/tools/template-expansion.js";
 import { GET_GENERATION_TEMPLATE, GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
-import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+import { estimateModelCredits, inputRefusalFor } from "@domain/model-catalog/model-catalog.js";
 import type { CreditEstimate } from "@breatic/shared/pricing";
 
 export type { MaterialFacts, MaterialTable } from "@domain/asset/material-facts.js";
@@ -326,6 +327,33 @@ function judgeSent(sent: z.infer<typeof inputSchema>, materials: MaterialTable, 
   if (!blanks.ok) return blanks;
   const verdict = checkResolved(resolved.proposal, materials, resolved.instances);
   return verdict.ok ? resolved : verdict;
+}
+
+/**
+ * {@link answerFor}, after asking provider whether an upstream here takes each generation as it would be sent (#1521):
+ * a run none takes is refused before it is placed, naming the limit, as Generate would refuse it.
+ * @param sent - What the model sent.
+ * @param materials - The registration behind each material address it names.
+ * @param templates - The template registry the tags are read against.
+ * @returns The answer the card and the canvas read.
+ * @throws {Error} When a limit cannot be evaluated in a way provider does not catch.
+ */
+export async function checkedAnswerFor(
+  sent: z.infer<typeof inputSchema>,
+  materials: MaterialTable = NO_MATERIAL,
+  templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
+): Promise<ProposalAnswer> {
+  const judged = judgeSent(sent, materials, templates);
+  if ("proposal" in judged) {
+    for (const [index, node] of judged.proposal.nodes.entries()) {
+      if (node.role !== "generate") continue;
+      const run = generateRunOf(judged.proposal, node, index);
+      if (run === undefined) continue;
+      const refusal = await inputRefusalFor(run.model, { params: run.params, prompt: run.prompt });
+      if (refusal !== null) return { placed: false, reason: upstreamRefusal(node.name, run.model, refusal) };
+    }
+  }
+  return answerFor(sent, materials, templates);
 }
 
 /**
@@ -639,7 +667,7 @@ export function makeProposeCanvasAction(
     const urls = proposal.nodes.flatMap((node) => (node.material === undefined ? [] : [node.material]));
     // A proposal with no material asks the ledger nothing.
     const materials = urls.length === 0 ? NO_MATERIAL : await materialFacts(context.studioId, urls);
-    return answerFor(proposal, materials, templates);
+    return checkedAnswerFor(proposal, materials, templates);
   },
 });
 }

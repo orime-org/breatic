@@ -14,6 +14,7 @@
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { formulaLeafText, isFormula } from '@web/spaces/document/document-math';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 
@@ -36,7 +37,7 @@ export interface ReadBlock {
  * (`document-table-markdown.ts`). A stored table goes through BlockNote's
  * export, which splits a merged cell into the cell and empty cells beside it.
  */
-const CARRIED_ATTRS = new Set(['id', 'level', 'checked', 'language', 'start', 'url', 'name', 'caption', 'colspan', 'rowspan']);
+const CARRIED_ATTRS = new Set(['id', 'level', 'checked', 'language', 'start', 'url', 'name', 'caption', 'colspan', 'rowspan', 'source']);
 
 /** Marks Markdown writes out. */
 const CARRIED_MARKS = new Set(['bold', 'italic', 'strike', 'code', 'link']);
@@ -51,7 +52,56 @@ const STAND_INS = new Set(['unsupportedBlock', 'unsupportedInline']);
  * @returns The plain text.
  */
 export function blockPlainText(node: ProseMirrorNode): string {
-  return node.textBetween(0, node.content.size, '\n', '\n');
+  return blockPlainRuns(node).text;
+}
+
+/** Where one text node of a block sits in the block's plain text. */
+export interface PlainRun {
+  /** The text node's position, relative to the start of the block's content. */
+  readonly rel: number;
+  /** Where its words start in the plain text. */
+  readonly at: number;
+  readonly length: number;
+}
+
+/**
+ * A block's plain text with where each text node's words sit in it.
+ *
+ * It reads as `textBetween(0, size, '\n', '\n')` does, except that a formula
+ * reads as its text (`formulaLeafText`): `$$source$$` inside a line, the source
+ * between two `$$` lines for a block (inner#1423). A proposal quotes it the way
+ * the Markdown it is sent writes it.
+ * @param node - The block: its `blockContainer`, or a table's own node, which no container wraps.
+ * @returns The text and its runs.
+ */
+export function blockPlainRuns(node: ProseMirrorNode): { text: string; runs: PlainRun[] } {
+  let text = '';
+  let first = true;
+  const runs: PlainRun[] = [];
+  /**
+   * Reads a node's children.
+   * @param parent - The node.
+   * @param base - Where its content starts, relative to the block's content.
+   */
+  const walk = (parent: ProseMirrorNode, base: number): void => {
+    parent.forEach((child, offset) => {
+      const rel = base + offset;
+      if (child.isText) {
+        runs.push({ rel, at: text.length, length: child.text?.length ?? 0 });
+        text += child.text ?? '';
+        return;
+      }
+      const leaf = isFormula(child) ? formulaLeafText(child) : child.isLeaf ? '\n' : '';
+      if (child.isBlock && (child.isLeaf || child.isTextblock)) {
+        if (first) first = false;
+        else text += '\n';
+      }
+      text += leaf;
+      walk(child, rel + 1);
+    });
+  };
+  walk(node, 0);
+  return { text, runs };
 }
 
 /**

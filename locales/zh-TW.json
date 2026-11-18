@@ -49,7 +49,8 @@
       "signup_code_exhausted": "這個驗證碼已失效，請重新取得。",
       "signup_expired": "本次註冊已過期。",
       "signup_resend_cooldown": "請 {seconds, plural, other {# 秒}}後再取得驗證碼。",
-      "signup_code_send_failed": "驗證碼傳送失敗，請重試。"
+      "signup_code_send_failed": "驗證碼傳送失敗，請重試。",
+      "invitation_region_unavailable": "暫時無法開啟這則邀請，請稍後再試。"
     },
     "studio": {
       "slug_taken": "該 Slug 已被使用，請換一個。",
@@ -65,6 +66,10 @@
       "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。",
       "transfer_credits_designated": "還有點數包指定給這個 Studio。請先在頭像選單 →「點數」→「指定」裡取消指定，再發起轉讓。",
       "designation_during_transfer": "這個 Studio 有待接受的轉讓，撤回或轉讓結束後才能再為它指定點數包。",
+      "transfer_processing": "Studio 轉讓正在處理，請稍後再試。",
+      "region_unavailable": "所選區域暫時無法建立 Studio，請稍後再試，或改選其他區域。",
+      "creation_in_progress": "上一次建立還在處理，請稍後再試。",
+      "creation_abandoned": "這個 Studio 沒有建立成功，請重試。",
       "email_not_registered_no_mail": "此信箱尚未註冊。這個部署未啟用電子郵件，無法邀請尚未註冊的信箱。",
       "invite_mail_failed": "郵件未能寄出，請重試。"
     },
@@ -343,10 +348,28 @@
     },
     "model": {
       "not_configured": "這個部署還沒設定好 {model}：需要設定 {envVars}。",
-      "upstream_not_bound": "{model} 不透過 {upstream} 提供。"
+      "upstream_not_bound": "{model} 不透過 {upstream} 提供。",
+      "input_limit": {
+        "characters_max": "{model} 的{field}最多 {max, number} 個字元。",
+        "characters_min": "{model} 的{field}至少要 {min, number} 個字元。",
+        "line_characters_max": "{model} 的{field}每行最多 {max, number} 個字元。",
+        "item_characters_max": "{model} 的{field}每條最多 {max, number} 個字元。",
+        "lines_max": "{model} 的{field}最多 {max, number} 行。",
+        "chinese_characters_max": "{model} 的{field}最多 {max, number} 個漢字。",
+        "unsupported": "{model} 無法使用目前的設定，請修改設定或換個模型。"
+      },
+      "input_field": {
+        "prompt": "文字",
+        "negative_prompt": "反向提示詞",
+        "lyrics": "歌詞",
+        "multi_prompt": "分鏡提示詞"
+      }
     },
     "document": {
       "versions_full": "{limit, plural, other {這個 Document 的快照已滿 # 張。刪掉舊的快照後再儲存。}}"
+    },
+    "region": {
+      "unavailable": "這個 Studio 暫時無法存取，請稍後再試。"
     }
   },
   "chat": {
@@ -741,6 +764,7 @@
       "mentionEmpty": "沒有可引用的內容",
       "voicePlaceholder": "未選音色",
       "voiceSearchPlaceholder": "搜尋音色…",
+      "voiceSampleLanguage": "試聽",
       "voiceLoading": "正在載入音色…",
       "voiceEmpty": "沒有匹配的音色",
       "voiceError": "音色暫不可用",
@@ -1151,7 +1175,9 @@
         "media_refused": "模型不接受這個檔案。",
         "tool_failed": "工具沒能處理這個檔案。",
         "no_audio_track": "{kind, select, audio {這段音訊讀不出聲音。} other {這個影片沒有音軌。}}",
-        "cut_short": "內容太長，沒能轉寫完。"
+        "cut_short": "內容太長，沒能轉寫完。",
+        "input_refused": "{model} 無法使用目前的設定，請修改設定或換個模型。",
+        "model_not_configured": "這個部署還沒設定好 {model}：需要設定 {envVars}。"
       },
       "kind": {
         "upload": "上傳",
@@ -2062,7 +2088,8 @@
       "helper": "你的首頁將位於 /studio/…。{min}–{max} 個字元，以小寫字母開頭，只能使用小寫字母、數字和連字號；必須唯一。",
       "submit": "繼續",
       "submitting": "設定中...",
-      "failed": "無法設定你的 Studio,請重試。"
+      "failed": "無法設定你的 Studio,請重試。",
+      "unavailable": "暫時無法完成註冊，請稍後再試。"
     },
     "recovery": {
       "title": "保存你的復原碼",
@@ -2223,7 +2250,11 @@
     "popover": {
       "title": "Project 成員",
       "manage": "管理協作者",
-      "isMe": "(你)"
+      "isMe": "(你)",
+      "online": "線上",
+      "offline": "離線",
+      "follow": "查看",
+      "unfollow": "停止"
     },
     "modal": {
       "title": "協作者管理",
@@ -2255,6 +2286,17 @@
     },
     "stack": {
       "triggerAria": "Project 成員（{count}）"
+    },
+    "follow": {
+      "bar": "正在跟隨 {name}",
+      "stop": "停止",
+      "stoppedViewport": "你動了視口，已停止跟隨",
+      "stoppedSpace": "你切換了 Space，已停止跟隨",
+      "stoppedOffline": "{name} 離線，已停止跟隨",
+      "stoppedLeaderFollows": "{name} 開始跟隨 {other}，已停止跟隨",
+      "stoppedLeaderFollowsYou": "{name} 開始跟隨你，已停止跟隨",
+      "busy": "{name} 正在跟隨 {other}",
+      "busyYou": "{name} 正在跟隨你"
     }
   },
   "spaces": {
@@ -2356,6 +2398,7 @@
         "taskList": "待辦清單",
         "divider": "分隔線",
         "table": "表格",
+        "formula": "公式",
         "columns": "分欄",
         "align": "對齊",
         "alignLeft": "靠左",
@@ -2521,6 +2564,13 @@
         "notWrittenYet": "已上傳，還沒寫進正文",
         "notPasted": "{count} 項沒有貼上。",
         "stillUploading": "{count} 個圖片、影片或音訊還在上傳，沒有貼上。上傳完成後重新複製。"
+      },
+      "math": {
+        "placeholder": "輸入 LaTeX，例如 E = mc^2",
+        "empty": "新增公式",
+        "blank": "空公式",
+        "error": "公式有誤",
+        "ok": "確定"
       },
       "versions": {
         "title": "快照",
@@ -3258,7 +3308,11 @@
         "slugRequired": "請填寫 Slug。",
         "emailRequired": "請填寫電子郵件。",
         "slugUnverified": "暫時無法檢查，送出時由伺服器判斷。",
-        "slugLabelOptional": "Slug（選填）"
+        "slugLabelOptional": "Slug（選填）",
+        "regionLabel": "區域",
+        "regionUnavailable": "所選區域暫時無法建立 Studio，請稍後再試，或改選其他區域。",
+        "creationInProgress": "上一次建立仍在處理中，請稍後再試。",
+        "regionHelper": "內容存放在這個區域，建立後無法變更。"
       },
       "toolbar": {
         "sortLabel": "排序",
@@ -3983,6 +4037,18 @@
       "playBlocked": "瀏覽器阻止了有聲播放，請按播放開始。",
       "videoLoading": "{track}：影片載入中…",
       "videoUnavailable": "{track}：影片不可用"
+    }
+  },
+  "regions": {
+    "usWest": "美國西部",
+    "sg": "新加坡",
+    "unavailable": {
+      "studioTitle": "這個 Studio 暫時無法存取",
+      "projectTitle": "這個 Project 暫時無法存取",
+      "body": "你的內容沒有遺失。",
+      "recents": "部分 Studio 暫時無法存取，相關內容稍後會恢復顯示。",
+      "bell": "部分 Studio 暫時無法存取，相關通知稍後會恢復顯示。",
+      "badge": "暫時無法存取"
     }
   }
 }

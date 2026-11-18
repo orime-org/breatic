@@ -21,6 +21,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     AppError: real.AppError,
     env,
     getNodeTaskConfig: () => ({ default_budget_ms: 7_200_000 }),
+    logger: { error: vi.fn() },
   };
 });
 
@@ -30,6 +31,7 @@ vi.mock("@breatic/shared", async (importOriginal) => ({
 }));
 
 const reserveCredits = vi.fn();
+const abandonHold = vi.fn(async () => undefined);
 const getSpendableCredits = vi.fn();
 const getStudioDebt = vi.fn();
 const getUnassignedCredits = vi.fn();
@@ -38,6 +40,7 @@ const resolveOwnerStudioId = vi.fn();
 vi.mock("@breatic/domain", () => ({
   creditHoldService: {
     reserveCredits: (...a: unknown[]) => reserveCredits(...a),
+    abandonHold: (...a: unknown[]) => abandonHold(...(a as [])),
   },
   creditLotService: {
     getStudioDebt: (...a: unknown[]) => getStudioDebt(...a),
@@ -91,6 +94,22 @@ beforeEach(() => {
 });
 
 describe("reserveForRun", () => {
+  it("gives the hold up and rethrows when the global region did not answer", async () => {
+    const lost = new Error("timed out");
+    reserveCredits.mockRejectedValueOnce(lost);
+
+    await expect(reserveForRun(PROJECT, USER, "task-lost", 40)).rejects.toBe(lost);
+    expect(abandonHold).toHaveBeenCalledWith({ projectId: PROJECT, actorUserId: USER, referenceId: "task-lost" });
+  });
+
+  it("still rethrows the first failure when the release fails too", async () => {
+    const lost = new Error("timed out");
+    reserveCredits.mockRejectedValueOnce(lost);
+    abandonHold.mockRejectedValueOnce(new Error("still down"));
+
+    await expect(reserveForRun(PROJECT, USER, "task-lost", 40)).rejects.toBe(lost);
+  });
+
   it("holds the estimate under the run's key for the task budget", async () => {
     await reserveForRun(PROJECT, USER, "task-1", 40);
     expect(reserveCredits).toHaveBeenCalledWith({

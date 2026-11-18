@@ -142,12 +142,18 @@ export async function takeBack(app: Hono, who: Seeded, messageId: string): Promi
  * Attach to the conversation's run and read every frame until it ends.
  * @param app - The server app.
  * @param who - Whose conversation.
+ * @param onResponse - Called once the server responds, before reading the frames.
  * @returns The status, and each frame's chunk when there was a stream.
  */
-export async function attach(app: Hono, who: Seeded): Promise<{ status: number; frames: Record<string, unknown>[] }> {
+export async function attach(
+  app: Hono,
+  who: Seeded,
+  onResponse?: () => void,
+): Promise<{ status: number; frames: Record<string, unknown>[] }> {
   const res = await app.request(`/api/v1/chat/conversations/${who.conversationId}/stream`, {
     headers: { Cookie: who.cookie },
   });
+  onResponse?.();
   if (res.status !== 200) return { status: res.status, frames: [] };
   const text = await res.text();
   const frames = text
