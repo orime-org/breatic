@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Account provider keys repository — data access for `account_provider_keys` (inner#1953), a global table: the only
+ * Account provider keys repository — data access for `account_provider_keys` (inner#1953): the only
  * place an account's own upstream key is kept, sealed. Replacing, deleting or erasing a key clears its sealed text and
  * soft-deletes its row in one write, so a task still naming the row by id reads nothing. Nothing this module returns
  * for display carries the sealed text; only {@link sealedKeyById} does, for the caller that opens it.
@@ -240,6 +240,6 @@ export async function deleteKey(userId: string, upstream: string): Promise<boole
  */
 export async function eraseForAccounts(userIds: readonly string[], tx: TransactionSql): Promise<void> {
   await tx`
-    UPDATE account_provider_keys SET ciphertext = NULL, deleted_at = COALESCE(deleted_at, now()), updated_at = now()
-    WHERE user_id = ANY(${[...userIds]}::uuid[]) AND (ciphertext IS NOT NULL OR deleted_at IS NULL)`;
+    UPDATE account_provider_keys SET ciphertext = NULL, deleted_at = now(), updated_at = now()
+    WHERE user_id = ANY(${[...userIds]}::uuid[]) AND deleted_at IS NULL`;
 }

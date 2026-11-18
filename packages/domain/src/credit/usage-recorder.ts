@@ -61,11 +61,8 @@ export interface UsageRow {
   credits: number;
   /** The call's stable identity, when it has one; a second row with the same identity is never written. */
   costIdentity: string | null;
-  /**
-   * The `account_provider_keys` row whose key paid the call (inner#1953); null for ours. Absent from a recorder opened
-   * with no key row in mind.
-   */
-  keyId?: string | null;
+  /** The `account_provider_keys` row whose key paid the call (inner#1953); null for ours. */
+  keyId: string | null;
 }
 
 /** A paid call to a service that is not a language model. */
@@ -271,7 +268,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
       costSource: cost.state === "known" ? SOURCE_OF[cost.source] : "missing",
       credits: onAccount ? 0 : creditsForUsd(costUsd, multiplier),
       costIdentity,
-      ...(options.keyId === undefined ? {} : { keyId: onAccount ? options.keyId : null }),
+      keyId: onAccount ? (options.keyId ?? null) : null,
     });
   };
 
@@ -301,7 +298,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
         costSource: cost.costSource,
         credits: creditsForUsd(cost.costUsd, multiplier),
         costIdentity: null,
-        ...(options.keyId === undefined ? {} : { keyId: null }),
+        keyId: null,
       });
     },
     recordLookedUpCall(call) {
