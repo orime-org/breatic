@@ -29,6 +29,10 @@ export interface SceneLookPartRow {
   transmission?: number;
   emissive?: string;
   emissiveIntensity?: number;
+  /** The own picture's tiling, offset and rotation in degrees, when it has one. */
+  mapRepeat?: [number, number];
+  mapOffset?: [number, number];
+  mapRotation?: number;
 }
 
 /** A slider or colour drag that previews and is written once on release (inner#1693 design 3.3). */
@@ -52,13 +56,24 @@ export interface SceneLookSectionProps {
   onChoosePicture: (part: string) => void;
   gesture?: SceneLookGesture;
   spaceId?: string;
-  /** The selected part's upload progress in whole percent, or null. */
-  uploadPercent?: number | null;
+  /** A part's running upload progress in whole percent, or null. */
+  uploadPercentOf?: (part: string) => number | null;
   /** Whether a picked Project picture is being checked against the limits. */
   checking?: boolean;
   /** A user picture's URL for its thumbnail, when known. */
   pictureUrl?: (assetId: string) => string | undefined;
 }
+
+/**
+ * A colour field's press when there is no gesture.
+ * @returns -1, a refused press.
+ */
+const NO_PRESS = (): number => -1;
+/**
+ * A colour field's commit or cancel when there is no gesture.
+ * @returns Nothing.
+ */
+const NOTHING = (): void => undefined;
 
 /** Finish presets (inner#1693 design 3.4); each writes all four values as one command. */
 const PRESETS = {
@@ -164,12 +179,16 @@ function LookPair({ label, labelId, value, min, max, disabled, testId, onCommit 
  * @returns The section.
  */
 export const SceneLookSection = React.memo(function SceneLookSection(props: SceneLookSectionProps): React.JSX.Element {
-  const { objectId, parts, look, selectedPart, mutable, onSelectPart, onCommand, onChoosePicture, gesture, spaceId = '', uploadPercent, checking, pictureUrl } = props;
+  const { objectId, parts, look, selectedPart, mutable, onSelectPart, onCommand, onChoosePicture, gesture, spaceId = '', uploadPercentOf, checking, pictureUrl } = props;
   const t = useTranslation();
   const ids = React.useId();
   const write = React.useCallback((part: string | null, set: SceneLookSet): void => {
     onCommand({ type: 'look', id: objectId, part, set });
   }, [onCommand, objectId]);
+  const previewColor = React.useCallback((color: string): boolean => (selectedPart === null ? false : gesture?.preview(selectedPart, { color }) ?? false), [gesture, selectedPart]);
+  const writeColor = React.useCallback((color: string): void => { if (selectedPart !== null) write(selectedPart, { color }); }, [write, selectedPart]);
+  const previewEmissive = React.useCallback((emissive: string): boolean => (selectedPart === null ? false : gesture?.preview(selectedPart, { emissive }) ?? false), [gesture, selectedPart]);
+  const writeEmissive = React.useCallback((emissive: string): void => { if (selectedPart !== null) write(selectedPart, { emissive }); }, [write, selectedPart]);
 
   const title = <div className='flex items-center justify-between'>
     <h3 className='text-xs font-medium'>{t('spaces.threeD.look.title')}</h3>
@@ -196,6 +215,9 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
   const shownUserPicture = isPicture(stored.map);
   const shownPicture = stored.map === 'none' ? false : shownUserPicture || (row?.hasMap ?? false);
   const restricted = !row || row.unlit || row.line;
+  const uploadPercent = row ? uploadPercentOf?.(row.key) : null;
+  // A user picture starts untiled; the model's own picture starts from its own transform (design 3.3).
+  const ownTransform = shownUserPicture ? undefined : row;
   const disabled = !mutable;
   /**
    * Preview a dragged field of the selected part.
@@ -211,6 +233,7 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
         const picture = isPicture(fields.map) ? pictureUrl?.(fields.map) : undefined;
         const color = fields.color ?? (isPicture(fields.map) ? SCENE_LOOK_PICTURE_COLOR : part.color);
         const active = part.key === selectedPart;
+        const uploading = uploadPercentOf?.(part.key);
         return <li key={part.key}>
           <Button variant={null} size={null} data-testid={`scene-look-part-${part.key}`} aria-pressed={active}
             className={cn('flex h-[var(--btn-inline)] w-full items-center gap-2 rounded-chrome border px-2 text-left text-xs',
@@ -219,7 +242,9 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
             <span className='size-4 shrink-0 rounded-chrome-sm border border-swatch-border bg-cover bg-center'
               style={picture ? { backgroundImage: `url(${picture})` } : { backgroundColor: color }} />
             <span className='min-w-0 flex-1 truncate'>{labels[index]}</span>
-            {Object.keys(fields).length > 0 ? <span className='size-1.5 shrink-0 rounded-full bg-foreground' data-testid={`scene-look-modified-${part.key}`} /> : null}
+            {uploading !== null && uploading !== undefined
+              ? <span className='shrink-0 tabular-nums text-muted-foreground' data-testid={`scene-look-upload-${part.key}`}>{`${uploading}%`}</span>
+              : Object.keys(fields).length > 0 ? <span className='size-1.5 shrink-0 rounded-full bg-foreground' data-testid={`scene-look-modified-${part.key}`} /> : null}
           </Button>
         </li>;
       })}
@@ -229,8 +254,8 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
         data-testid={`scene-look-preset-${name}`} onClick={() => write(row.key, PRESETS[name])}>{t(`spaces.threeD.look.presets.${name}`)}</Button>)}</div>
       <Row label={t('spaces.threeD.look.color')} labelId={`${ids}-color`}>
         <SceneColorField value={stored.color ?? (shownUserPicture ? SCENE_LOOK_PICTURE_COLOR : row.color)} disabled={disabled || !gesture} labelId={`${ids}-color`} spaceId={spaceId}
-          onPressStart={gesture?.begin ?? (() => -1)} onPreview={(color) => gesture?.preview(row.key, { color }) ?? false}
-          onCommit={gesture?.commit ?? (() => undefined)} onCancel={gesture?.cancel ?? (() => undefined)} onWrite={(color) => write(row.key, { color })} />
+          onPressStart={gesture?.begin ?? NO_PRESS} onPreview={previewColor}
+          onCommit={gesture?.commit ?? NOTHING} onCancel={gesture?.cancel ?? NOTHING} onWrite={writeColor} />
       </Row>
       <Row label={t('spaces.threeD.look.image')} labelId={`${ids}-image`}>
         {checking ? <span className='text-xs text-muted-foreground' data-testid='scene-look-checking'>{t('spaces.threeD.look.checking')}</span>
@@ -245,11 +270,11 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
             </>}
       </Row>
       {shownPicture && !row.line ? <>
-        <LookPair label={t('spaces.threeD.look.repeat')} labelId={`${ids}-repeat`} value={stored.mapRepeat ?? [1, 1]} min={0.01} max={100} disabled={disabled}
+        <LookPair label={t('spaces.threeD.look.repeat')} labelId={`${ids}-repeat`} value={stored.mapRepeat ?? ownTransform?.mapRepeat ?? [1, 1]} min={0.01} max={100} disabled={disabled}
           testId='scene-look-repeat' onCommit={(mapRepeat) => write(row.key, { mapRepeat })} />
-        <LookPair label={t('spaces.threeD.look.offset')} labelId={`${ids}-offset`} value={stored.mapOffset ?? [0, 0]} min={-10} max={10} disabled={disabled}
+        <LookPair label={t('spaces.threeD.look.offset')} labelId={`${ids}-offset`} value={stored.mapOffset ?? ownTransform?.mapOffset ?? [0, 0]} min={-10} max={10} disabled={disabled}
           testId='scene-look-offset' onCommit={(mapOffset) => write(row.key, { mapOffset })} />
-        <LookSlider label={t('spaces.threeD.look.rotation')} labelId={`${ids}-rotation`} value={stored.mapRotation ?? 0} min={-180} max={180} step={1} suffix='°'
+        <LookSlider label={t('spaces.threeD.look.rotation')} labelId={`${ids}-rotation`} value={stored.mapRotation ?? ownTransform?.mapRotation ?? 0} min={-180} max={180} step={1} suffix='°'
           disabled={disabled} testId='scene-look-rotation' gesture={gesture} onPreview={(mapRotation) => preview({ mapRotation })} />
       </> : null}
       <LookSlider label={t('spaces.threeD.look.gloss')} labelId={`${ids}-gloss`} value={1 - (stored.roughness ?? row.roughness ?? 1)} disabled={disabled || restricted}
@@ -262,8 +287,8 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
         testId='scene-look-transmission' gesture={gesture} onPreview={(transmission) => preview({ transmission })} />
       <Row label={t('spaces.threeD.look.emission')} labelId={`${ids}-emission`}>
         <SceneColorField value={stored.emissive ?? row.emissive ?? SCENE_LOOK_EMISSIVE_DEFAULT} disabled={disabled || restricted || !gesture} labelId={`${ids}-emission`} spaceId={spaceId}
-          onPressStart={gesture?.begin ?? (() => -1)} onPreview={(emissive) => gesture?.preview(row.key, { emissive }) ?? false}
-          onCommit={gesture?.commit ?? (() => undefined)} onCancel={gesture?.cancel ?? (() => undefined)} onWrite={(emissive) => write(row.key, { emissive })} />
+          onPressStart={gesture?.begin ?? NO_PRESS} onPreview={previewEmissive}
+          onCommit={gesture?.commit ?? NOTHING} onCancel={gesture?.cancel ?? NOTHING} onWrite={writeEmissive} />
         <Slider aria-labelledby={`${ids}-emission`} className='w-20' min={0} max={10} step={0.1} value={[stored.emissiveIntensity ?? row.emissiveIntensity ?? 1]}
           disabled={disabled || restricted || !gesture} data-testid='scene-look-emission-intensity'
           onValueChange={([value]) => { if (value !== undefined) preview({ emissiveIntensity: value }); }}

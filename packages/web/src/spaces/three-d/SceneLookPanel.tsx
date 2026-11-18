@@ -31,6 +31,15 @@ export interface SceneLookPanelProps {
 }
 
 /**
+ * The resolved URLs of the pictures, in order; a stable array while they are unchanged.
+ * @param results - The picture queries' results.
+ * @returns Each picture's URL, when resolved.
+ */
+function urlsOnly(results: ReadonlyArray<{ data?: { url: string } }>): Array<string | undefined> {
+  return results.map((result) => result.data?.url);
+}
+
+/**
  * Show a picture notice as a toast.
  * @param notice - The notice.
  */
@@ -48,7 +57,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   const queryClient = useQueryClient();
   const uploads = React.useMemo(() => pageSceneLookUploads(queryClient), [queryClient]);
   const textures = React.useMemo(() => pageLookTextureCache(projectId), [projectId]);
-  React.useSyncExternalStore(uploads.subscribe, uploads.getVersion);
+  const uploadVersion = React.useSyncExternalStore(uploads.subscribe, uploads.getVersion);
   const [pickerPart, setPickerPart] = React.useState<string | null>(null);
   const [checking, setChecking] = React.useState<string | null>(null);
   const look = React.useMemo(() => object.look ?? {}, [object.look]);
@@ -85,9 +94,9 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
     queryKey: ['scene-asset', projectId, assetId] as const,
     queryFn: ({ signal }: { signal: AbortSignal }) => resolveSceneAsset(projectId, assetId, signal),
     staleTime: Number.POSITIVE_INFINITY,
-  })) });
+  })), combine: urlsOnly });
   const urlOf = React.useMemo(() => {
-    const known = new Map(pictures.map((assetId, index) => [assetId, urls[index]?.data?.url]));
+    const known = new Map(pictures.map((assetId, index) => [assetId, urls[index]]));
     return (assetId: string): string | undefined => known.get(assetId);
   }, [pictures, urls]);
 
@@ -125,11 +134,15 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   }, [pickerPart, ready, uploads, projectId, spaceId, session.name, object.id, textureLimits]);
   const openChange = React.useCallback((open: boolean): void => { if (!open) setPickerPart(null); }, []);
 
-  const uploadPercent = selectedPart === null ? null : uploads.get(spaceId, object.id, selectedPart)?.percent ?? null;
+  const uploadPercentOf = React.useMemo(() => {
+    // A new lookup per progress step, so the memoized section draws it.
+    void uploadVersion;
+    return (part: string): number | null => uploads.get(spaceId, object.id, part)?.percent ?? null;
+  }, [uploads, spaceId, object.id, uploadVersion]);
   return <>
     <SceneLookSection objectId={object.id} parts={ready ? ready.parts : report === 'failed' ? 'failed' : 'loading'} look={look}
       selectedPart={selectedPart} mutable={mutable} onSelectPart={onSelectPart} onCommand={onCommand} onChoosePicture={setPickerPart}
-      gesture={gesture} spaceId={spaceId} uploadPercent={uploadPercent} checking={checking !== null && checking === selectedPart} pictureUrl={urlOf} />
+      gesture={gesture} spaceId={spaceId} uploadPercentOf={uploadPercentOf} checking={checking !== null && checking === selectedPart} pictureUrl={urlOf} />
     <SceneImagePickerDialog projectId={projectId} open={pickerPart !== null} onOpenChange={openChange} onPick={pick} onPickFile={pickFile} />
   </>;
 });

@@ -15,7 +15,7 @@ import * as sectionModule from '@web/spaces/three-d/SceneLookSection';
 const ID = '11111111-1111-4111-8111-111111111111';
 const IMAGE = '66666666-6666-4666-8666-666666666666';
 const PARTS = [
-  { key: '0', name: 'Jacket', color: '#ffffff', hasMap: true, unlit: false, line: false },
+  { key: '0', name: 'Jacket', color: '#ffffff', hasMap: true, unlit: false, line: false, mapRepeat: [3, 4] as [number, number], mapOffset: [0.5, 0] as [number, number], mapRotation: 30 },
   { key: '1', name: null, color: '#5f5f5f', hasMap: false, unlit: false, line: false },
   { key: 'd', name: null, color: '#f4f4f4', hasMap: false, unlit: true, line: false },
 ];
@@ -29,6 +29,7 @@ type Props = {
   onSelectPart: (part: string | null) => void;
   onCommand: (command: unknown) => void;
   onChoosePicture: (part: string) => void;
+  uploadPercentOf?: (part: string) => number | null;
 };
 
 afterEach(() => cleanup());
@@ -124,5 +125,28 @@ describe('SceneLookSection', () => {
     const { onCommand } = renderSection({ look: { 1: { color: '#ff0000' } } });
     fireEvent.click(screen.getByTestId('scene-look-reset-all'));
     expect(onCommand).toHaveBeenCalledWith({ type: 'look', id: ID, part: null, set: {} });
+  });
+
+  it('starts the own picture\'s tiling, offset and rotation from the model and keeps the other axis when one box changes', () => {
+    const { onCommand } = renderSection({ selectedPart: '0' });
+    expect((screen.getByTestId('scene-look-repeat-0') as HTMLInputElement).value).toBe('3');
+    expect((screen.getByTestId('scene-look-repeat-1') as HTMLInputElement).value).toBe('4');
+    expect((screen.getByTestId('scene-look-offset-0') as HTMLInputElement).value).toBe('0.5');
+    const box = screen.getByTestId('scene-look-repeat-0') as HTMLInputElement;
+    fireEvent.change(box, { target: { value: '2' } });
+    fireEvent.blur(box);
+    expect(onCommand).toHaveBeenCalledWith({ type: 'look', id: ID, part: '0', set: { mapRepeat: [2, 4] } });
+  });
+
+  it('starts a user picture\'s tiling at one', () => {
+    renderSection({ selectedPart: '0', look: { 0: { map: IMAGE } } });
+    expect((screen.getByTestId('scene-look-repeat-0') as HTMLInputElement).value).toBe('1');
+    expect((screen.getByTestId('scene-look-offset-0') as HTMLInputElement).value).toBe('0');
+  });
+
+  it('shows a running upload on its part row while no part is expanded', () => {
+    renderSection({ uploadPercentOf: (part) => (part === '1' ? 40 : null) });
+    expect(screen.getByTestId('scene-look-upload-1').textContent).toBe('40%');
+    expect(screen.queryByTestId('scene-look-upload-0')).toBeNull();
   });
 });
