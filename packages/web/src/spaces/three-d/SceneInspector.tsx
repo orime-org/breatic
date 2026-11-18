@@ -13,13 +13,15 @@ import { Button } from '@web/components/ui/button';
 import { Switch } from '@web/components/ui/switch';
 import { POSE_PRESETS, POSE_PRESET_NAMES } from '@web/spaces/three-d/viewport/pose-presets';
 import type { SceneSkeletonState } from '@web/spaces/three-d/viewport/scene-viewport-props';
-import type { SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
+import type { SceneLookPictures, SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
 import { SceneLookPanel } from '@web/spaces/three-d/SceneLookPanel';
 
 /** What the appearance section needs from the editor (inner#1693). */
 export interface SceneLookInputs {
   /** What the viewport reported for each loaded model's parts. */
   reports: ReadonlyMap<string, SceneLookReport | 'loading' | 'failed'>;
+  /** How each object's part pictures stand in the scene. */
+  pictures: ReadonlyMap<string, SceneLookPictures>;
   selectedPart: string | null;
   onSelectPart: (part: string | null) => void;
   projectId: string;
@@ -122,6 +124,9 @@ function transformFields(object: SceneObject): readonly ('position' | 'rotation'
  * @returns The current selection inspector.
  * @throws {never} Command refusals are reported by the session owner.
  */
+/** No user picture is shown. */
+const NO_PICTURES: readonly string[] = [];
+
 export const SceneInspector = React.memo(function SceneInspector({ session, snapshot, readObjects, namedPeers, spaceId, Field, DirectorFields, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, onJointModeChange, look }: Pick<SceneEditorProps, 'session' | 'snapshot' | 'readObjects' | 'namedPeers' | 'spaceId'> & SceneFieldDraftOwner & ScenePoseInputs & { Field: typeof SceneField; DirectorFields: typeof SceneDirectorFields; look?: SceneLookInputs }): React.JSX.Element {
   const t = useTranslation();
   const selected = snapshot.objects.filter((object) => snapshot.selectedIds.includes(object.id));
@@ -185,7 +190,8 @@ export const SceneInspector = React.memo(function SceneInspector({ session, snap
       <DirectorFields object={object} session={session} canEdit={snapshot.canEdit} spaceId={spaceId} Field={Field} compact={false}
         fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} />
       {look && isSceneModelFile(object.model) ? <SceneLookPanel key={object.id} session={session} object={object} report={look.reports.get(object.id) ?? 'loading'}
-        projectId={look.projectId} spaceId={spaceId} limits={look.limits} mutable={mutable} selectedPart={look.selectedPart} onSelectPart={look.onSelectPart} /> : null}
+        projectId={look.projectId} spaceId={spaceId} limits={look.limits} mutable={mutable} selectedPart={look.selectedPart} onSelectPart={look.onSelectPart}
+        showing={look.pictures.get(object.id)?.shown ?? NO_PICTURES} /> : null}
       {skeleton ? <PoseSection objectId={object.id} state={skeleton} mutable={mutable} session={session}
         jointMode={jointMode} onJointModeChange={onJointModeChange} /> : null}</> : <><p className='text-xs font-medium'>{t('spaces.threeD.selectedCount', { count: selected.length })}</p><p className='text-xs text-muted-foreground'>{t('spaces.threeD.multiTransform')}</p>
         {(['position', 'rotation', 'scale'] as const).map((field) => <p key={field} className='text-xs'>{geometryLabels[field]}: {geometries.every((item) => JSON.stringify(item[field]) === JSON.stringify(geometries[0]?.[field])) ? geometries[0]?.[field].map(numberText).join(', ') : t('spaces.threeD.mixed')}</p>)}</>}

@@ -233,7 +233,7 @@ export class SceneViewportRuntime {
       this.monitorEvent({ type: 'changed' });
       this.inspect(true);
     },
-    onFailure: (id, failure) => this.props.onLookFailure?.(id, failure),
+    onPictures: (id, pictures) => this.props.onLookPictures?.(id, pictures),
   });
   private gesture: SceneTransformGesture | null = null;
   private joint: JointGesture | null = null;

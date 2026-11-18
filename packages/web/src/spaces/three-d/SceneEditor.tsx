@@ -38,7 +38,7 @@ import { SceneRightPanel } from '@web/spaces/three-d/SceneRightPanel';
 import { SceneViewportToolbar, type ScenePanel } from '@web/spaces/three-d/SceneViewportToolbar';
 import { SceneObjectToolbar } from '@web/spaces/three-d/SceneObjectToolbar';
 import type { SceneCameraView, SceneFrameCapture, SceneModelAcquire, SceneModelState, ScenePilotControl, SceneSkeletonState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
-import type { SceneLookFailure, SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
+import type { SceneLookPictures, SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
 import { pageLookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
 import { getModelImportController } from '@web/spaces/three-d/model-import-controller';
 import type { ModelImportController, PreparedModel } from '@web/spaces/three-d/model-import-controller';
@@ -114,21 +114,22 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const [modelErrors, setModelErrors] = React.useState<ReadonlyMap<string, Error>>(new Map());
   const [fieldDrafts, setFieldDrafts] = React.useState<ReadonlyMap<string, SceneFieldDraft>>(new Map());
   const [skeletonStates, setSkeletonStates] = React.useState<ReadonlyMap<string, SceneSkeletonState>>(new Map());
-  // Each loaded model's parts, each object's unshown part pictures, and the selected object's selected part (inner#1693).
+  // Each loaded model's parts, how each object's part pictures stand, and the selected object's selected part (inner#1693).
   const [lookReports, setLookReports] = React.useState<ReadonlyMap<string, SceneLookReport | 'loading' | 'failed'>>(new Map());
-  const [lookFailures, setLookFailures] = React.useState<ReadonlyMap<string, SceneLookFailure>>(new Map());
+  const [lookPictures, setLookPictures] = React.useState<ReadonlyMap<string, SceneLookPictures>>(new Map());
   const [selectedPart, setSelectedPart] = React.useState<string | null>(null);
   const lookTextures = React.useMemo(() => pageLookTextureCache(projectId), [projectId]);
   const onLookReport = React.useCallback((id: string, report: SceneLookReport | 'loading' | 'failed'): void => {
     setLookReports((previous) => previous.get(id) === report ? previous : new Map(previous).set(id, report));
   }, []);
-  const onLookFailure = React.useCallback((id: string, failure: SceneLookFailure | null): void => {
-    setLookFailures((previous) => {
+  const onLookPictures = React.useCallback((id: string, pictures: SceneLookPictures | null): void => {
+    setLookPictures((previous) => {
       const current = previous.get(id);
-      if (failure === null ? current === undefined : current?.retry === failure.retry && current.over === failure.over) return previous;
+      if (pictures === null ? current === undefined : current !== undefined && current.retry === pictures.retry && current.over === pictures.over
+        && current.shown.join() === pictures.shown.join()) return previous;
       const next = new Map(previous);
-      if (failure === null) next.delete(id);
-      else next.set(id, failure);
+      if (pictures === null) next.delete(id);
+      else next.set(id, pictures);
       return next;
     });
   }, []);
@@ -269,7 +270,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   // A model whose content was refused fails again on retry; only transport failures can succeed.
   const cause = failures.find((error): error is ModelImportError => error instanceof ModelImportError);
   const modelRetryable = !failures.length || failures.some((error) => !(error instanceof ModelImportError));
-  const shownFailures = snapshot.objects.flatMap((object) => lookFailures.get(object.id) ?? []);
+  const shownFailures = snapshot.objects.flatMap((object) => lookPictures.get(object.id) ?? []);
   const lookRetry = shownFailures.some((failure) => failure.retry);
   const lookOver = shownFailures.some((failure) => failure.over);
 
@@ -686,8 +687,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     returnTarget.current = stage.current?.querySelector('canvas') ?? null;
     setPanel('properties'); setRightOpen(true);
   }, [panel, rightOpen, setRightOpen]);
-  const lookInputs = React.useMemo(() => (controls.data ? { reports: lookReports, selectedPart, onSelectPart: setSelectedPart, projectId, limits: controls.data.import } : undefined),
-    [controls.data, lookReports, selectedPart, projectId]);
+  const lookInputs = React.useMemo(() => (controls.data ? { reports: lookReports, pictures: lookPictures, selectedPart, onSelectPart: setSelectedPart, projectId, limits: controls.data.import } : undefined),
+    [controls.data, lookReports, lookPictures, selectedPart, projectId]);
   /**
    * Begin the personal native transform draft.
    * @throws {never} Never.
@@ -874,7 +875,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                   overviewHost={overviewHost} mode={mode} readOnly={!mutable} view={view.current} focusRevision={focusRevision} cancelRevision={snapshot.cancelRevision}
                   remotePeers={snapshot.remotePeers} scaleSensitivity={controls.data.scaleSensitivity} importLimits={controls.data.import} modelRetryRevision={modelRetryRevision}
                   jointMode={jointMode} selectedJoint={selectedJoint} onJointSelect={setSelectedJoint} onSkeletonState={onSkeletonState}
-                  selectedPart={selectedPart} onSelectPart={onSelectPart} lookTextures={lookTextures} onLookReport={onLookReport} onLookFailure={onLookFailure}
+                  selectedPart={selectedPart} onSelectPart={onSelectPart} lookTextures={lookTextures} onLookReport={onLookReport} onLookPictures={onLookPictures}
                   onSelect={onSelect} onGestureStart={onGestureStart}
                   onGestureChange={onGestureChange} onGestureEnd={onGestureEnd}
                   onViewChange={onViewChange} onUserCameraMove={stopFollowing} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} onResources={onResources}

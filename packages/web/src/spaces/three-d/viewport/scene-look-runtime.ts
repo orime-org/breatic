@@ -40,12 +40,14 @@ export interface SceneLookReport {
   deviceMaxEdge: number;
 }
 
-/** Whether some part pictures of an object are not shown. */
-export interface SceneLookFailure {
+/** How an object's part pictures stand: which are shown, and why the others are not. */
+export interface SceneLookPictures {
   /** A download, decode or size read failed; a retry can help. */
   retry: boolean;
-  /** A picture is over this device's edge or the object's texture budget. */
+  /** A picture is over the object's texture budget. */
   over: boolean;
+  /** The user pictures the scene shows now. */
+  shown: readonly string[];
 }
 
 export interface SceneLookRuntimeDeps {
@@ -60,7 +62,7 @@ export interface SceneLookRuntimeDeps {
   onProgramChanged: (root: Group) => void;
   /** Something on screen changed. */
   onChanged: () => void;
-  onFailure: (id: string, failure: SceneLookFailure | null) => void;
+  onPictures: (id: string, pictures: SceneLookPictures | null) => void;
 }
 
 type PictureState = 'loading' | 'ready' | 'failed' | 'over';
@@ -172,7 +174,7 @@ export class SceneLookRuntime {
     releaseLook(state.root);
     const textures = this.deps.textures();
     for (const [assetId, texture] of state.held) textures?.release(assetId, texture);
-    this.deps.onFailure(id, null);
+    this.deps.onPictures(id, null);
   }
 
   /** Check again every object whose pictures failed to load. */
@@ -245,9 +247,11 @@ export class SceneLookRuntime {
       picture: (assetId) => (state.states.get(assetId) === 'ready' ? state.held.get(assetId) ?? null : null),
     });
     if (programChanged) this.deps.onProgramChanged(state.root);
-    const states = [...state.states.values()];
-    const failure = { retry: states.includes('failed'), over: states.includes('over') };
-    this.deps.onFailure(id, failure.retry || failure.over ? failure : null);
+    const states = [...state.states];
+    this.deps.onPictures(id, states.length === 0 ? null : {
+      retry: states.some(([, status]) => status === 'failed'), over: states.some(([, status]) => status === 'over'),
+      shown: states.filter(([, status]) => status === 'ready').map(([assetId]) => assetId),
+    });
     this.deps.onChanged();
   }
 

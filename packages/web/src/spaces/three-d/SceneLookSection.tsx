@@ -62,6 +62,8 @@ export interface SceneLookSectionProps {
   checking?: boolean;
   /** A user picture's URL for its thumbnail, when known. */
   pictureUrl?: (assetId: string) => string | undefined;
+  /** The user pictures the scene shows now; one still loading, failed or over the budget shows the model's own colour. */
+  showingPictures?: ReadonlySet<string>;
 }
 
 /**
@@ -191,8 +193,12 @@ function LookPair({ label, labelId, value, accepts, disabled, testId, onCommit }
  * @param props - The object, its parts and look, the selected part and the writers.
  * @returns The section.
  */
+/** No user picture is shown. */
+const NO_PICTURES: ReadonlySet<string> = new Set();
+
 export const SceneLookSection = React.memo(function SceneLookSection(props: SceneLookSectionProps): React.JSX.Element {
-  const { objectId, parts, look, selectedPart, mutable, onSelectPart, onCommand, onChoosePicture, gesture, spaceId = '', uploadPercentOf, checking, pictureUrl } = props;
+  const { objectId, parts, look, selectedPart, mutable, onSelectPart, onCommand, onChoosePicture, gesture, spaceId = '', uploadPercentOf, checking, pictureUrl,
+    showingPictures = NO_PICTURES } = props;
   const t = useTranslation();
   const ids = React.useId();
   const write = React.useCallback((part: string | null, set: SceneLookSet): void => {
@@ -244,7 +250,7 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
       {parts.map((part, index) => {
         const fields = look[part.key] ?? {};
         const picture = isPicture(fields.map) ? pictureUrl?.(fields.map) : undefined;
-        const color = fields.color ?? (isPicture(fields.map) ? SCENE_LOOK_PICTURE_COLOR : part.color);
+        const color = fields.color ?? (isPicture(fields.map) && showingPictures.has(fields.map) ? SCENE_LOOK_PICTURE_COLOR : part.color);
         const active = part.key === selectedPart;
         const uploading = uploadPercentOf?.(part.key);
         return <li key={part.key}>
@@ -266,7 +272,7 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
       <div className='grid grid-cols-3 gap-1'>{PRESET_NAMES.map((name) => <Button key={name} variant='outline' size='compact' disabled={disabled || restricted}
         data-testid={`scene-look-preset-${name}`} onClick={() => write(row.key, PRESETS[name])}>{t(`spaces.threeD.look.presets.${name}`)}</Button>)}</div>
       <Row label={t('spaces.threeD.look.color')} labelId={`${ids}-color`}>
-        <SceneColorField value={stored.color ?? (shownUserPicture ? SCENE_LOOK_PICTURE_COLOR : row.color)} disabled={disabled || !gesture} labelId={`${ids}-color`} spaceId={spaceId}
+        <SceneColorField value={stored.color ?? (shownUserPicture && showingPictures.has(stored.map!) ? SCENE_LOOK_PICTURE_COLOR : row.color)} disabled={disabled || !gesture} labelId={`${ids}-color`} spaceId={spaceId}
           onPressStart={gesture?.begin ?? NO_PRESS} onPreview={previewColor}
           onCommit={gesture?.commit ?? NOTHING} onCancel={gesture?.cancel ?? NOTHING} onWrite={writeColor} />
       </Row>

@@ -29,6 +29,7 @@ type Props = {
   onSelectPart: (part: string | null) => void;
   onCommand: (command: unknown) => void;
   onChoosePicture: (part: string) => void;
+  showingPictures?: ReadonlySet<string>;
   uploadPercentOf?: (part: string) => number | null;
 };
 
@@ -139,7 +140,7 @@ describe('SceneLookSection', () => {
   });
 
   it('changes one axis of a mirrored model picture and takes a mirrored count, refusing one nearer 0 than 0.01', () => {
-    const mirrored = [{ ...PARTS[0]!, mapRepeat: [-1, 1] as [number, number], mapOffset: [60, 0] as [number, number] }, ...PARTS.slice(1)];
+    const mirrored = [{ ...PARTS[0]!, mapRepeat: [-1, 1] as [number, number], mapOffset: [60, 0] as [number, number] }, ...PARTS.slice(1)] as typeof PARTS;
     const { onCommand } = renderSection({ selectedPart: '0', parts: mirrored });
     const across = screen.getByTestId('scene-look-repeat-0') as HTMLInputElement;
     const down = screen.getByTestId('scene-look-repeat-1') as HTMLInputElement;
@@ -155,6 +156,15 @@ describe('SceneLookSection', () => {
     fireEvent.change(offset, { target: { value: '80' } });
     fireEvent.blur(offset);
     expect(onCommand).toHaveBeenLastCalledWith({ type: 'look', id: ID, part: '0', set: { mapOffset: [60, 80] } });
+  });
+
+  it('shows a stored user picture\'s part at white only while the scene shows the picture, and in the model colour otherwise', () => {
+    const swatch = (): HTMLElement => screen.getByTestId('scene-look-part-1').querySelector('span') as HTMLElement;
+    renderSection({ look: { 1: { map: IMAGE } }, showingPictures: new Set() });
+    expect(swatch().style.backgroundColor).toBe('rgb(95, 95, 95)');
+    cleanup();
+    renderSection({ look: { 1: { map: IMAGE } }, showingPictures: new Set([IMAGE]) });
+    expect(swatch().style.backgroundColor).toBe('rgb(255, 255, 255)');
   });
 
   it('starts a user picture\'s tiling at one', () => {

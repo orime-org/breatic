@@ -3,7 +3,7 @@
 
 /**
  * One viewport's looks (inner#1693 design 5.2-5.4, 6.2): pictures judged from headers, held while shown and released
- * when replaced or removed, a stale check leaving no trace, and failures told apart from limits.
+ * when replaced or removed, a stale check leaving no trace, and failures told apart from limits, and which pictures are shown.
  */
 
 import { readFileSync } from 'node:fs';
@@ -13,7 +13,7 @@ import { httpRequest, type SceneObject } from '@breatic/shared';
 import type * as SharedModule from '@breatic/shared';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { loadSceneModel } from '@web/spaces/three-d/viewport/model-resources';
-import { SceneLookRuntime, type SceneLookFailure } from '@web/spaces/three-d/viewport/scene-look-runtime';
+import { SceneLookRuntime, type SceneLookPictures } from '@web/spaces/three-d/viewport/scene-look-runtime';
 import type { LookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
 
 vi.mock('@breatic/shared', async (importOriginal) => ({ ...await importOriginal<typeof SharedModule>(), httpRequest: vi.fn() }));
@@ -49,13 +49,13 @@ const runtimes: SceneLookRuntime[] = [];
 afterEach(() => { runtimes.splice(0).forEach((runtime) => runtime.dispose()); });
 
 /** A runtime over a fake cache, with a loaded built-in box. */
-async function open(fake: FakeCache): Promise<{ runtime: SceneLookRuntime; root: Group; failures: Array<SceneLookFailure | null>; programs: ReturnType<typeof vi.fn> }> {
+async function open(fake: FakeCache): Promise<{ runtime: SceneLookRuntime; root: Group; failures: Array<SceneLookPictures | null>; programs: ReturnType<typeof vi.fn> }> {
   const root = await loadSceneModel(BOX.model as never, new AbortController().signal, vi.fn(), '#969696', IMPORT_LIMITS);
-  const failures: Array<SceneLookFailure | null> = [];
+  const failures: Array<SceneLookPictures | null> = [];
   const programs = vi.fn();
   const runtime = new SceneLookRuntime({
     textures: () => fake.cache, limits: () => ({ maxTextureEdge: 8192, maxTextureBytes: 268_435_456 }), themeColor: () => '#969696',
-    highlightColor: () => '#3b6fd8', onProgramChanged: programs, onChanged: vi.fn(), onFailure: (_id, failure) => failures.push(failure),
+    highlightColor: () => '#3b6fd8', onProgramChanged: programs, onChanged: vi.fn(), onPictures: (_id, pictures) => failures.push(pictures),
   });
   runtimes.push(runtime);
   return { runtime, root, failures, programs };
@@ -75,18 +75,19 @@ describe('SceneLookRuntime', () => {
     const { runtime, root, failures } = await open(fake);
     runtime.sync(withLook({ 0: { map: A } }), root);
     await settle();
-    expect(failures.at(-1)).toEqual({ retry: true, over: false });
+    expect(failures.at(-1)).toEqual({ retry: true, over: false, shown: [] });
     expect(fake.size).toHaveBeenCalledTimes(1);
     failures.length = 0;
     for (const roughness of [0.2, 0.4, 0.6]) runtime.sync(withLook({ 0: { map: A, roughness } }), root);
     await settle();
     expect(fake.size).toHaveBeenCalledTimes(1);
-    expect(failures).not.toContain(null);
+    expect(failures.every((pictures) => pictures?.retry)).toBe(true);
     fake.size.mockImplementation(async () => SMALL);
     runtime.retry();
     await settle();
     expect(fake.size).toHaveBeenCalledTimes(2);
-    expect(failures.at(-1)).toBeNull();
+    // The picture is shown now, which is what the panel's colour follows.
+    expect(failures.at(-1)).toEqual({ retry: false, over: false, shown: [A] });
   });
 
   it('releases every picture it held once replaced or removed', async () => {
@@ -120,13 +121,13 @@ describe('SceneLookRuntime', () => {
     const first = await open(over);
     first.runtime.sync(withLook({ 0: { map: A } }), first.root);
     await settle();
-    expect(first.failures.at(-1)).toEqual({ retry: false, over: true });
+    expect(first.failures.at(-1)).toEqual({ retry: false, over: true, shown: [] });
     expect(over.acquire).not.toHaveBeenCalled();
     const broken = fakeCache(async () => SMALL, async () => { throw new Error('decode failed'); });
     const second = await open(broken);
     second.runtime.sync(withLook({ 0: { map: A } }), second.root);
     await settle();
-    expect(second.failures.at(-1)).toEqual({ retry: true, over: false });
+    expect(second.failures.at(-1)).toEqual({ retry: true, over: false, shown: [] });
   });
 
   it('asks for a compile when a part changes shader class', async () => {
@@ -164,7 +165,7 @@ describe('SceneLookRuntime', () => {
     fake.release.mockImplementation((assetId: string) => { if (assetId === A) shownAtRelease.push(partMaterial('1').map?.source === held.get(A)!.source); });
     const runtime = new SceneLookRuntime({
       textures: () => fake.cache, limits: () => ({ maxTextureEdge: 8192, maxTextureBytes: 30 * 1024 * 1024 }), themeColor: () => '#969696',
-      highlightColor: () => '#3b6fd8', onProgramChanged: vi.fn(), onChanged: vi.fn(), onFailure: vi.fn(),
+      highlightColor: () => '#3b6fd8', onProgramChanged: vi.fn(), onChanged: vi.fn(), onPictures: vi.fn(),
     });
     runtimes.push(runtime);
     const figure = { ...BOX, id: 'figure', model: { kind: 'builtin', id: 'figure' } } as SceneObject;

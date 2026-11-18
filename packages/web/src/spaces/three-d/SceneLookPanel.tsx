@@ -28,6 +28,8 @@ export interface SceneLookPanelProps {
   mutable: boolean;
   selectedPart: string | null;
   onSelectPart: (part: string | null) => void;
+  /** The user pictures the scene shows for this object now. */
+  showing: readonly string[];
 }
 
 /**
@@ -56,7 +58,8 @@ function notify(notice: LookUploadNotice): void {
 const NO_PARTS: ReadonlySet<string> = new Set();
 
 export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLookPanelProps): React.JSX.Element {
-  const { session, object, report, projectId, spaceId, limits, mutable, selectedPart, onSelectPart } = props;
+  const { session, object, report, projectId, spaceId, limits, mutable, selectedPart, onSelectPart, showing } = props;
+  const showingPictures = React.useMemo(() => new Set(showing), [showing]);
   const queryClient = useQueryClient();
   const uploads = React.useMemo(() => pageSceneLookUploads(queryClient), [queryClient]);
   const textures = React.useMemo(() => pageLookTextureCache(projectId), [projectId]);
@@ -169,7 +172,8 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   return <>
     <SceneLookSection objectId={object.id} parts={ready ? ready.parts : report === 'failed' ? 'failed' : 'loading'} look={look}
       selectedPart={selectedPart} mutable={mutable} onSelectPart={onSelectPart} onCommand={onCommand} onChoosePicture={setPickerPart}
-      gesture={gesture} spaceId={spaceId} uploadPercentOf={uploadPercentOf} checking={selectedPart !== null && checking.has(selectedPart)} pictureUrl={urlOf} />
+      gesture={gesture} spaceId={spaceId} uploadPercentOf={uploadPercentOf} checking={selectedPart !== null && checking.has(selectedPart)} pictureUrl={urlOf}
+      showingPictures={showingPictures} />
     <SceneImagePickerDialog projectId={projectId} open={pickerPart !== null} onOpenChange={openChange} onPick={pick} onPickFile={pickFile} />
   </>;
 });

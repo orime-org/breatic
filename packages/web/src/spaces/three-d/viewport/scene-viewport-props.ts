@@ -6,7 +6,7 @@ import type { SceneEnvironmentValues } from '@web/data/yjs/scene-document';
 import type { LightsPlan } from '@web/spaces/three-d/viewport/director-lights';
 import type { MeasuredSceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 import type { LookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
-import type { SceneLookFailure, SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
+import type { SceneLookPictures, SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
 
 /** Plain tuples keep the Project shell outside the lazy Three dependency graph. */
 export type SceneVector3 = [number, number, number];
@@ -70,8 +70,8 @@ export interface SceneViewportProps {
   lookTextures?: LookTextureCache | null;
   /** Told each model's parts when it loads, or that it is loading or failed. */
   onLookReport?: (id: string, report: SceneLookReport | 'loading' | 'failed') => void;
-  /** Told whether some part pictures of an object are not shown. */
-  onLookFailure?: (id: string, failure: SceneLookFailure | null) => void;
+  /** Told which part pictures of an object are shown, and why the others are not. */
+  onLookPictures?: (id: string, pictures: SceneLookPictures | null) => void;
   onSelect: (id: string | null, additive: boolean) => void;
   onGestureStart: () => boolean;
   onGestureChange: (patches: readonly SceneTransformPatch[]) => void;

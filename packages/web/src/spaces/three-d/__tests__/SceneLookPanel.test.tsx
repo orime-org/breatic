@@ -48,6 +48,7 @@ const OBJECT = {
 const REPORT = { parts: [{ key: '0', name: null, color: '#969696', hasMap: false, unlit: false, line: false }, { key: '1', name: null, color: '#969696', hasMap: false, unlit: false, line: false }],
   ownBytes: 0, clampBytes: { 0: 0, 1: 0 }, deviceMaxEdge: 16_384 };
 const cleanups: (() => void)[] = [];
+const NO_PICTURES: readonly string[] = [];
 afterEach(() => { cleanup(); cleanups.splice(0).forEach((done) => done()); sizes.clear(); vi.clearAllMocks(); });
 
 /** A panel on a scene with one figure, and its document. */
@@ -63,7 +64,7 @@ function panel(): { doc: Y.Doc; session: SceneSession; rerender: () => void } {
   /** The panel for the object as it is now. */
   const view = (): React.JSX.Element => <QueryClientProvider client={client}>
     <SceneLookPanel session={session} object={session.getSnapshot().objects[0] as SceneObject} report={REPORT as never} projectId='p1' spaceId='s1'
-      limits={IMPORT_LIMITS} mutable selectedPart='0' onSelectPart={vi.fn()} />
+      limits={IMPORT_LIMITS} mutable selectedPart='0' onSelectPart={vi.fn()} showing={NO_PICTURES} />
   </QueryClientProvider>;
   const result = render(view());
   return { doc, session, rerender: () => result.rerender(view()) };
