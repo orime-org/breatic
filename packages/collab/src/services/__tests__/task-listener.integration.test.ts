@@ -37,6 +37,8 @@ import { isNewerStreamId } from "@collab/services/stream-id.js";
 const PID = "77777777-7777-4777-8777-777777777777";
 /** A Project of its own for the cases that write into every Timeline of a Project. */
 const PID2 = randomUUID();
+/** A copy of another Project, holding a grant to an execution made there. */
+const PID3 = randomUUID();
 const OWNER_ID = randomUUID();
 const STUDIO_ID = randomUUID();
 
@@ -128,6 +130,7 @@ beforeAll(async () => {
   await db.insert(schema.projects).values([
     { id: PID, studioId: STUDIO_ID, createdByUserId: OWNER_ID, name: "Task listener Project", slug: `tl-${PID}` },
     { id: PID2, studioId: STUDIO_ID, createdByUserId: OWNER_ID, name: "Task listener fan-out Project", slug: `tl-${PID2}` },
+    { id: PID3, studioId: STUDIO_ID, createdByUserId: OWNER_ID, name: "Task listener copied Project", slug: `tl-${PID3}` },
   ]);
   stream = createRedisClient(process.env.REDIS_STREAM_URL!, { name: "itest-task-stream" });
   coordination = createRedisClient(process.env.REDIS_COLLAB_URL!, { name: "itest-task-coord" });
@@ -144,7 +147,7 @@ afterAll(async () => {
   await Promise.all(servers.map((s) => s.destroy()));
   await stream.quit();
   await coordination.quit();
-  await db.update(schema.projects).set({ deletedAt: new Date() }).where(inArray(schema.projects.id, [PID, PID2]));
+  await db.update(schema.projects).set({ deletedAt: new Date() }).where(inArray(schema.projects.id, [PID, PID2, PID3]));
   await db.update(schema.studios).set({ deletedAt: new Date() }).where(eq(schema.studios.id, STUDIO_ID));
   await db.update(schema.users).set({ deletedAt: new Date() }).where(eq(schema.users.id, OWNER_ID));
 });
@@ -220,16 +223,18 @@ async function untilUnloaded(docName: string): Promise<void> {
 }
 
 /**
- * Publish that a Space's executions changed.
+ * Publish that a Space's background work changed.
  * @param c - The case.
  * @param count - How many changes, in order.
  * @param extra - Extra stream fields on every entry.
+ * @param projects - The Projects whose Timelines the change also reaches, when the event names them.
  * @returns Their stream ids.
  */
-async function publishSpaceTasksVersion(c: Case, count = 1, extra: string[] = []): Promise<string[]> {
+async function publishSpaceTasksVersion(c: Case, count = 1, extra: string[] = [], projects?: string[]): Promise<string[]> {
   const ids: string[] = [];
+  const payload = JSON.stringify({ type: "space-tasks-version", docName: c.docName, ...(projects === undefined ? {} : { projects }) });
   for (let i = 0; i < count; i++) {
-    ids.push((await stream.xadd(c.streamKey, "*", "payload", JSON.stringify({ type: "space-tasks-version", docName: c.docName }), ...extra))!);
+    ids.push((await stream.xadd(c.streamKey, "*", "payload", payload, ...extra))!);
   }
   return ids;
 }
@@ -860,6 +865,18 @@ describe("task events across two collab instances", () => {
     expect(await readSpaceTasksVersion(otherProject)).toBeUndefined();
     await untilUnloaded(deletedTimeline);
     expect(await readRestored(deletedTimeline)).toEqual({ note: "kept", version: undefined });
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("writes a Motion Space's change into the Timelines of every Project the event names, such as a copy holding its grant", async () => {
+    const c = await newSpaceTasksCase(webAnimationSpaceDocName, PID2);
+    const own = timelineSpaceDocName(PID2, randomUUID());
+    const copied = timelineSpaceDocName(PID3, randomUUID());
+    for (const name of [own, copied]) await yjsRepo.seedInitialState(name, Y.encodeStateAsUpdate(new Y.Doc()));
+    const ids = await publishSpaceTasksVersion(c, 1, [], [PID2, PID3]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    for (const name of [own, copied]) await until(async () => (await readSpaceTasksVersion(name)) !== undefined);
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 

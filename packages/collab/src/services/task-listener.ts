@@ -121,6 +121,20 @@ function outcomeForAll(batch: DocBatch, outcome: EntryOutcome): Map<string, Entr
 }
 
 /**
+ * The Projects a batch's change versions name for their Timelines, or undefined when none of its events names any.
+ * @param batch - The document and its events.
+ * @returns The named Projects.
+ */
+function namedProjects(batch: DocBatch): string[] | undefined {
+  let named: string[] | undefined;
+  for (const { event } of batch.items) {
+    if (event.type !== "space-tasks-version" || !Array.isArray(event.projects)) continue;
+    named = [...(named ?? []), ...event.projects.filter((id): id is string => typeof id === "string")];
+  }
+  return named;
+}
+
+/**
  * Coordination keys of one document.
  * @param keyPrefix - `REDIS_KEY_PREFIX`.
  * @param docName - The canvas document.
@@ -322,7 +336,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       await coordination.set(keys.handoff, Buffer.from(vector).toString("base64"), "PX", settings.docLeaseMs * 2);
       if (spaceTasks) {
         try {
-          for (const name of await docsFollowingChange(batch.docName)) {
+          for (const name of await docsFollowingChange(batch.docName, namedProjects(batch))) {
             const follow: SpaceTasksVersionEvent = { type: "space-tasks-version", docName: name };
             await publishToStream(deps.stream, deps.streamKey, { ...follow });
           }

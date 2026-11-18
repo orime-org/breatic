@@ -227,7 +227,9 @@ describe("POST /timeline/executions — create from a Motion Space", () => {
     });
     expect(data.input).toEqual({ prompt: "A logo reveal", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: getTimelineConfig().web_animation.fps });
     expect(await grantedProjects(data.id)).toEqual([fx.projectId]);
-    expect(await executionChangesFor(fx.projectId, fx.spaceId)).toEqual([{ type: "space-tasks-version", docName: webAnimationSpaceDocName(fx.projectId, fx.spaceId) }]);
+    expect(await executionChangesFor(fx.projectId, fx.spaceId)).toEqual([
+      { type: "space-tasks-version", docName: webAnimationSpaceDocName(fx.projectId, fx.spaceId), projects: [fx.projectId] },
+    ]);
     expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
   });
 
@@ -241,6 +243,23 @@ describe("POST /timeline/executions — create from a Motion Space", () => {
     expect(res.status, await res.clone().text()).toBe(200);
     expect((await executionChangesFor(fx.projectId, fx.spaceId)).length).toBe(before + 1);
     expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
+  });
+
+  it("names every Project holding a grant in the change, so a copy's Timelines hear about a run made in its source", async () => {
+    const fx = await seedProject();
+    const data = await acceptRow(fx.editor.cookie, createBody(fx), 201);
+    const copied = await app.request(`/api/v1/projects/${fx.projectId}/duplicate`, {
+      method: "POST", headers: { Cookie: fx.owner.cookie, "Content-Type": "application/json" },
+    });
+    expect(copied.status, await copied.clone().text()).toBe(201);
+    const copyId = ((await copied.json()) as { data: { id: string } }).data.id;
+    const res = await app.request(`/api/v1/timeline/executions/${data.id}/cancel`, {
+      method: "POST", headers: { Cookie: fx.editor.cookie, "Content-Type": "application/json" }, body: JSON.stringify({ projectId: fx.projectId }),
+    });
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect((await executionChangesFor(fx.projectId, fx.spaceId)).at(-1)).toEqual({
+      type: "space-tasks-version", docName: webAnimationSpaceDocName(fx.projectId, fx.spaceId), projects: [fx.projectId, copyId].sort(),
+    });
   });
 
   it("adds the row's job to the timeline queue as soon as it is accepted, without waiting for the sweep", async () => {

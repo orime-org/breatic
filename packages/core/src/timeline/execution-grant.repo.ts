@@ -43,6 +43,21 @@ export async function copyGrants(sourceProjectId: string, copyProjectId: string,
 }
 
 /**
+ * Every Project holding a live grant to an execution: its own and any copy made while the grant was live.
+ * @param executionId - The execution.
+ * @returns Their ids, in order.
+ * @throws {Error} When the read fails.
+ */
+export async function grantedProjectIds(executionId: string): Promise<string[]> {
+  const rows = await db
+    .select({ projectId: g.projectId })
+    .from(g)
+    .where(and(eq(g.executionId, executionId), isNull(g.deletedAt)))
+    .orderBy(g.projectId);
+  return rows.map((row) => row.projectId);
+}
+
+/**
  * Which of these executions a Project holds a live grant for.
  * @param projectId - The Project.
  * @param executionIds - The executions asked about.

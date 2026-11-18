@@ -197,7 +197,8 @@ describe("sweeping rows that never landed", () => {
     expect(await read(fx.execution.id)).toMatchObject({ status: "expired", fence: null });
     await expectNothingHeld(fx);
     expect(await liveJob(fx.execution.id)).toBeNull();
-    expect(await signalsFor(fx)).toEqual({ doc: [{ type: "space-tasks-version", docName: webAnimationSpaceDocName(fx.projectId, fx.spaceId) }], meta: [] });
+    // The fixture grants no Project, so the change names none.
+    expect(await signalsFor(fx)).toEqual({ doc: [{ type: "space-tasks-version", docName: webAnimationSpaceDocName(fx.projectId, fx.spaceId), projects: [] }], meta: [] });
   });
 
   it("leaves an awaiting-landing row whose Space was deleted alone until its original deadline, then expires it", async () => {
