@@ -21,7 +21,7 @@ import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 
 const NAME = 'project-p1/3d-s1';
 
-const { reportError, viewportInputs } = vi.hoisted(() => ({ reportError: vi.fn(), viewportInputs: vi.fn() }));
+const { reportError, viewportInputs, lookPanelInputs } = vi.hoisted(() => ({ reportError: vi.fn(), viewportInputs: vi.fn(), lookPanelInputs: vi.fn() }));
 
 vi.mock('@web/data/api/scene', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/scene')>()),
@@ -31,6 +31,9 @@ vi.mock('@web/data/api/scene', async (importOriginal) => ({
 }));
 vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
   default: (props: SceneViewportProps): React.JSX.Element => { viewportInputs(props); return <div data-testid='scene-viewport-boundary' />; },
+}));
+vi.mock('@web/spaces/three-d/SceneLookPanel', () => ({
+  SceneLookPanel: (props: { showing: readonly string[] }): null => { lookPanelInputs(props); return null; },
 }));
 vi.mock('@web/lib/scene-view-storage', () => ({
   readSceneView: vi.fn(() => null),
@@ -187,6 +190,18 @@ describe('registered model load failures (inner#1690)', () => {
     expect(screen.queryByRole('button', { name: t('spaces.threeD.retry') })).toBeNull();
     act(() => { props.onLookPictures?.(ID, null); });
     await waitFor(() => expect(screen.queryByTestId('scene-model-notice')).toBeNull());
+  });
+
+  it('gives the look panel the pictures the scene shows for the selected object (inner#1693 design 3.5)', async () => {
+    const { session, client } = fixture();
+    render(editorTree(session, client, 'visible'));
+    await screen.findByTestId('scene-viewport-boundary');
+    const picture = '22222222-2222-4222-8222-222222222222';
+    const props = viewportInputs.mock.calls.at(-1)![0] as SceneViewportProps;
+    act(() => { props.onLookPictures?.(ID, { retry: false, over: false, shown: [picture] }); });
+    await waitFor(() => expect((lookPanelInputs.mock.calls.at(-1)?.[0] as { showing: readonly string[] } | undefined)?.showing).toEqual([picture]));
+    act(() => { props.onLookPictures?.(ID, { retry: false, over: false, shown: [] }); });
+    await waitFor(() => expect((lookPanelInputs.mock.calls.at(-1)![0] as { showing: readonly string[] }).showing).toEqual([]));
   });
 });
 
