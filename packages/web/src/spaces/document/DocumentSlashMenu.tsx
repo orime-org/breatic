@@ -10,8 +10,8 @@
  * BlockNote's suggestion extension tracks the trigger and the query; what is
  * drawn, the keys and the pick are ours, because the library's controller
  * runs its own "close, clear the query, call back" on Enter and click, which
- * keeps the removal of the query out of the pick's undo step and the size
- * grid away from the arrow keys (design 4). The focus never leaves the body:
+ * keeps the removal of the query out of the pick's undo step (design 4). The
+ * focus never leaves the body:
  * the keys are read off the editor in the capture phase, and a press anywhere
  * on the menu is cancelled.
  */
@@ -23,12 +23,10 @@ import {
   autoUpdate,
   flip,
   offset,
-  safePolygon,
   shift,
   size,
   useFloating,
 } from '@floating-ui/react';
-import { ChevronRight } from 'lucide-react';
 import type { Transaction } from '@tiptap/pm/state';
 import * as React from 'react';
 
@@ -63,7 +61,6 @@ import { filterInsertEntries, closesForNoMatch } from '@web/spaces/document/docu
 import { landSlashMedia, pickInSlashMenu, slashTyped } from '@web/spaces/document/document-slash-pick';
 import { SLASH_TRIGGERS, slashMayOpen, slashMenuShown } from '@web/spaces/document/document-slash-trigger';
 import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
-import { PlainTableSizeGrid, stepCell } from '@web/spaces/document/DocumentTableSizeGrid';
 
 
 /** The gap between the menu and what it opens from, as the insert menu's. */
@@ -72,8 +69,12 @@ const GAP = 6;
 /** How far the menu keeps off the edges of the body. */
 const EDGE = 8;
 
-/** Keys that change nothing on their own, so they leave the size grid open. */
-const MODIFIERS: ReadonlySet<string> = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock']);
+/**
+ * The table Table puts in: an empty 3x3, as Confluence's and Outline's slash
+ * menus do; its size is changed afterwards with the row and column handles
+ * (design 5.8).
+ */
+const SLASH_TABLE: TableSize = { rows: 3, cols: 3 };
 
 /** A tracker that has never seen a composition end, for an editor without one. */
 const NEVER_ENDED: CompositionEnd = { mark: () => undefined, justEnded: () => false };
@@ -268,13 +269,6 @@ interface OpenSlashMenuProps {
   pointer: PointerAt;
 }
 
-/** The size grid, open for the query it was opened under. */
-interface GridState {
-  readonly query: string;
-  /** The lit cell, or null while none is. */
-  readonly at: TableSize | null;
-}
-
 /**
  * The menu while it is open: mounted when it opens, so every opening starts
  * on its first row with nothing remembered.
@@ -334,27 +328,6 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
     [filterQuery],
   );
 
-  // The grid belongs to the query it was opened under: any change of query
-  // closes it, including input that sends no key (an input method, a paste),
-  // so a query typed and taken back does not reopen it.
-  const [grid, setGrid] = React.useState<GridState | null>(null);
-  if (grid !== null && grid.query !== query) setGrid(null);
-  const openGrid = React.useCallback(
-    (at: TableSize | null): void => {
-      // The same size again keeps the state, so a pointer moving inside a lit
-      // cell renders nothing.
-      setGrid((now) =>
-        now !== null && now.query === query && now.at?.rows === at?.rows && now.at?.cols === at?.cols
-          ? now
-          : { query, at },
-      );
-    },
-    [query],
-  );
-  const closeGrid = React.useCallback((): void => {
-    setGrid(null);
-  }, []);
-
   // Closes three characters past the last query that matched (5.3).
   const lastUseful = React.useRef(0);
   const matched = items.length > 0;
@@ -367,7 +340,7 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
   }, [composing, filterQuery, matched, menu]);
 
   const pick = React.useCallback(
-    (id: InsertEntryId, table?: TableSize): void => {
+    (id: InsertEntryId): void => {
       const now = slashRow(editor, typed);
       if (now === undefined) {
         menu.closeMenu();
@@ -377,10 +350,6 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
       const out = insertReach(editor.prosemirrorState.doc, now.blockId, now.bare ? 'fill' : 'below');
       if (out.has(id)) {
         if (id === COLUMNS) toast.warning(t('spaces.document.columns.unavailable'));
-        return;
-      }
-      if (id === 'table' && table === undefined) {
-        openGrid({ rows: 1, cols: 1 });
         return;
       }
       const record = slashTyped(editor, now.blockId, typed, now.offset);
@@ -400,17 +369,17 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
       }
       let formula: string | undefined;
       asOneUndoStep(undoOf(editor), () => {
-        formula = pickInSlashMenu(editor, record, table === undefined ? (id as InsertChoice) : { table });
+        formula = pickInSlashMenu(editor, record, id === 'table' ? { table: SLASH_TABLE } : (id as InsertChoice));
       });
       // The focus is already in the body, so the box can open straight away.
       if (formula !== undefined) openFormulaBlock(editor, formula);
     },
-    [editor, mediaPick, menu, openGrid, t, typed],
+    [editor, mediaPick, menu, t, typed],
   );
 
   // The keys, read before the body sees them, while the menu is open.
-  const latest = React.useRef({ items, index, grid, pick, highlight, openGrid, closeGrid, reach });
-  latest.current = { items, index, grid, pick, highlight, openGrid, closeGrid, reach };
+  const latest = React.useRef({ items, index, pick, highlight });
+  latest.current = { items, index, pick, highlight };
   React.useEffect(() => {
     const dom = domElementOf(editor);
     if (dom === null) return undefined;
@@ -422,31 +391,6 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
     const onKey = (event: KeyboardEvent): void => {
       if (keyBelongsToInputMethod(event, ended)) return;
       const now = latest.current;
-      if (now.grid !== null) {
-        const at = now.grid.at;
-        if (event.key === 'Escape' || (event.key === 'ArrowLeft' && (at?.cols ?? 1) === 1)) {
-          claim(event);
-          now.closeGrid();
-          return;
-        }
-        // The first Enter or arrow on a grid the pointer opened lights its
-        // first cell, as the insert menu's submenu focuses its first item.
-        if (event.key === 'Enter') {
-          claim(event);
-          if (at !== null) now.pick('table', at);
-          else now.openGrid({ rows: 1, cols: 1 });
-          return;
-        }
-        const next = stepCell(at ?? { rows: 1, cols: 1 }, event.key);
-        if (next !== undefined) {
-          claim(event);
-          now.openGrid(at === null ? { rows: 1, cols: 1 } : next);
-          return;
-        }
-        // Anything else goes to the body, as typing: the grid gives way to it.
-        if (!MODIFIERS.has(event.key)) now.closeGrid();
-        return;
-      }
       const count = now.items.length;
       const current = now.items[now.index];
       switch (event.key) {
@@ -470,12 +414,6 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
           // Swallowed with nothing to pick, so the line is not split.
           claim(event);
           if (current !== undefined) now.pick(current);
-          return;
-        case 'ArrowRight':
-          if (current === 'table' && !now.reach.has('table')) {
-            claim(event);
-            now.openGrid({ rows: 1, cols: 1 });
-          }
           return;
         case 'Escape':
           // The query stays in the line (5.7).
@@ -539,55 +477,6 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
     update();
   }, [referencePos, update]);
 
-  // The size grid stands beside the table row, as a submenu does, and works
-  // as the insert menu's Radix submenu: the pointer moving on Table lights it
-  // and opens the grid, and each time the pointer leaves Table while the grid
-  // is open, the triangle from that point to the grid is a grace in which
-  // the rows it crosses neither light nor close the grid. The triangle is
-  // floating-ui's safePolygon; the grid's state is the menu's alone.
-  const gridFloat = useFloating({
-    open: grid !== null,
-    strategy: 'absolute',
-    placement: 'right-start',
-    middleware: [offset({ mainAxis: 4 + 5, alignmentAxis: -5 }), flip({ padding: EDGE }), shift({ padding: EDGE })],
-    whileElementsMounted: autoUpdate,
-  });
-  const grace = React.useRef<((event: MouseEvent) => void) | null>(null);
-  React.useEffect(() => {
-    if (grid === null) grace.current = null;
-  }, [grid]);
-  React.useEffect(() => {
-    /**
-     * Hands every pointer move to the grace while one is set.
-     * @param event - The move.
-     */
-    const onMove = (event: MouseEvent): void => {
-      grace.current?.(event);
-    };
-    document.addEventListener('mousemove', onMove);
-    return () => {
-      document.removeEventListener('mousemove', onMove);
-    };
-  }, []);
-  const gridContext = gridFloat.context;
-  const graceFrom = React.useCallback(
-    (event: React.MouseEvent): void => {
-      if (grid === null || gridContext.elements.floating === null) return;
-      // Called as useHover calls it: the floating context with the point
-      // the pointer left from.
-      const handler = safePolygon()({
-        ...gridContext,
-        x: event.clientX,
-        y: event.clientY,
-        onClose: () => {
-          if (grace.current === handler) grace.current = null;
-        },
-      });
-      grace.current = handler;
-    },
-    [grid, gridContext],
-  );
-
   // The lit row stays in sight, scrolling the menu's own list only.
   React.useEffect(() => {
     const lit = refs.floating.current?.querySelector<HTMLElement>('[data-highlighted]');
@@ -598,13 +487,6 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
     if (box.top < view.top) scroller.scrollTo({ top: scroller.scrollTop + box.top - view.top });
     else if (box.bottom > view.bottom) scroller.scrollTo({ top: scroller.scrollTop + box.bottom - view.bottom });
   }, [index, filterQuery, refs]);
-
-  const onGridPick = React.useCallback(
-    (at: TableSize): void => {
-      pick('table', at);
-    },
-    [pick],
-  );
 
   const scroller = domElementOf(editor)?.closest<HTMLElement>('[data-radix-scroll-area-viewport]') ?? undefined;
   const layer = bodyLayerMark(editor, { block: row?.blockId ?? '' });
@@ -633,36 +515,27 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
               const { Icon, labelKey } = insertEntryLook(id);
               const out = reach.has(id);
               const ruled = ruleBetween(items[at - 1], id);
-              /** The pointer on a row: lights it, and opens or closes the grid. */
+              /** The pointer on a row: lights it. */
               const hover = (): void => {
                 // A row out of reach does not light up under the pointer,
-                // as in the insert menu; nor does one the pointer crosses
-                // on its way to the grid.
-                if (out || (id !== 'table' && grace.current !== null)) return;
-                highlight(at);
-                if (id !== 'table') closeGrid();
-                else if (grid === null) openGrid(null);
+                // as in the insert menu.
+                if (!out) highlight(at);
               };
               // Only a pointer that moves lights a row, as Radix menu items
               // do: a list scrolled under a still pointer lights nothing.
               const handlers = {
                 onMouseMove: hover,
-                onMouseLeave: id === 'table' ? graceFrom : undefined,
                 onMouseDown: (event: React.MouseEvent): void => {
                   // Only the main button picks, as in the insert menu;
                   // Control with it is the secondary click on a Mac.
                   if (event.button !== 0 || event.ctrlKey) return;
-                  // A press on Table opens a closed grid and leaves an open
-                  // one as it is, as a Radix submenu trigger does.
-                  if (id !== 'table' || out) pick(id);
-                  else if (grid === null) openGrid(null);
+                  pick(id);
                 },
               };
               return (
                 <React.Fragment key={id}>
                   {ruled ? <Separator className='-mx-1 w-auto' /> : null}
                   <Button
-                    ref={id === 'table' ? gridFloat.refs.setReference : undefined}
                     variant={null}
                     size={null}
                     tabIndex={-1}
@@ -673,13 +546,11 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
                       menuItemBase,
                       'w-full justify-start font-normal data-[highlighted]:bg-accent',
                       out && UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
-                      id === 'table' && grid !== null && 'bg-accent',
                     )}
                     {...handlers}
                   >
                     <Icon />
                     {t(labelKey)}
-                    {id === 'table' ? <ChevronRight className='ml-auto size-4 text-muted-foreground' /> : null}
                   </Button>
                 </React.Fragment>
               );
@@ -687,21 +558,6 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
           )}
         </MenuRows>
       </div>
-      {grid === null ? null : (
-        <div
-          ref={gridFloat.refs.setFloating}
-          style={gridFloat.floatingStyles}
-          data-testid='doc-slash-table-grid'
-          onMouseMoveCapture={ignoreStillPointer}
-          onMouseDownCapture={keepFocus}
-          className={menuSurface}
-          {...layer}
-        >
-          <MenuRows>
-            <PlainTableSizeGrid at={grid.at} onHover={openGrid} onPick={onGridPick} />
-          </MenuRows>
-        </div>
-      )}
     </FloatingPortal>
   );
 }
