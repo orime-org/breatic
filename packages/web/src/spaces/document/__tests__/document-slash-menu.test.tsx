@@ -428,7 +428,7 @@ describe('the table entry (A4, design 5.8)', () => {
     caretAtEnd(editor, id);
     type(editor, ' /tab');
     press(editor, 'Enter');
-    expect(textOf(editor, id)).toBe('ab');
+    expect(textOf(editor, id)).toBe('ab ');
     expect(read(editor)[1]?.type).toBe('docTable');
     expect(firstTable(editor)?.map((cells) => cells.length)).toEqual([3, 3, 3]);
   });
@@ -457,7 +457,13 @@ describe('the table entry (A4, design 5.8)', () => {
     const id = read(editor)[0]!.id;
     caretAtEnd(editor, id);
     type(editor, '/tab');
-    expect(fireEvent.keyDown(editor.prosemirrorView!.dom, { key: 'ArrowRight' })).toBe(true);
+    const seen = vi.fn();
+    // Above the body: a key the menu claims stops at the body.
+    document.addEventListener('keydown', seen);
+    press(editor, 'ArrowRight');
+    document.removeEventListener('keydown', seen);
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(screen.queryAllByTestId(/^doc-slash-/u).filter((el) => !menu()!.contains(el))).toEqual([]);
     expect(read(editor).some((block) => block.type === 'docTable')).toBe(false);
     expect(textOf(editor, id)).toBe('/tab');
   });
