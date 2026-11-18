@@ -14,7 +14,7 @@ import { parse } from "yaml";
 import { z } from "zod";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
-const workerConfigSchema = z.object({
+export const workerConfigSchema = z.object({
   /** Jobs one worker process runs at once: per queue, with a default for the rest. */
   concurrency: z
     .object({
@@ -49,7 +49,13 @@ const workerConfigSchema = z.object({
     })
     .strict()
     .prefault({}),
-});
+}).refine(
+  // A waiter is judged at most every slot_wait_max_delay_ms and its check time
+  // is rewritten only once older than a third of slot_wait_stale_ms; past this
+  // a waiter still in line reads as stale and later tasks start ahead of it.
+  (config) => config.slot_wait_max_delay_ms + config.slot_wait_stale_ms / 3 < config.slot_wait_stale_ms,
+  { message: "slot_wait_max_delay_ms plus a third of slot_wait_stale_ms must stay below slot_wait_stale_ms", path: ["slot_wait_max_delay_ms"] },
+);
 
 /** Validated worker configuration type. */
 export type WorkerConfig = z.infer<typeof workerConfigSchema>;

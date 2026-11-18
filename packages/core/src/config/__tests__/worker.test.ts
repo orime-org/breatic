@@ -1,10 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 
 import { getUnderstandConfig } from "@core/config/understand.js";
-import { assertKnownQueues, getWorkerConfig, workerConcurrencyFor } from "@core/config/worker.js";
+import { MONOREPO_ROOT } from "@core/config/env.js";
+import { assertKnownQueues, getWorkerConfig, workerConcurrencyFor, workerConfigSchema } from "@core/config/worker.js";
 
 // A task waiting on an upstream is back on the queue between questions, so
 // waiting holds no worker slot (inner#1337).
@@ -78,5 +82,21 @@ describe("assertKnownQueues", () => {
 
   it("refuses a per-queue figure for a queue the worker does not run", () => {
     expect(() => assertKnownQueues(["url-ingest", "mail"])).toThrow(/tasks/);
+  });
+});
+
+// A waiter is judged at most every slot_wait_max_delay_ms and its check time is
+// rewritten only once older than a third of slot_wait_stale_ms, so its check
+// stays within the stale window only while the two together fit inside it
+// (inner#1968).
+describe("running-task gate settings", () => {
+  it("accepts the shipped settings", () => {
+    expect(workerConfigSchema.safeParse(parse(readFileSync(resolve(MONOREPO_ROOT, "config/worker.yaml"), "utf-8"))).success).toBe(true);
+  });
+
+  it("refuses a longest delay that lets a waiter's check age past the stale window", () => {
+    const result = workerConfigSchema.safeParse({ slot_wait_stale_ms: 120_000, slot_wait_max_delay_ms: 90_000 });
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.error?.issues)).toMatch(/slot_wait_max_delay_ms/);
   });
 });
