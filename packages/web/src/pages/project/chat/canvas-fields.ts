@@ -86,6 +86,8 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
   editedAt: 'other',
   // Which external-agent connection a thread is handed to.
   assignment: 'other',
+  // The members a comment mentions, by id.
+  mentions: 'other',
   locked: 'other',
   handling: 'other',
   taskCounts: 'other',
@@ -110,7 +112,7 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
 /** The fields of one element of each array field. */
 export const ARRAY_FIELD_RULES: Readonly<Record<'shots' | 'replies' | 'focusImages' | 'attachments', Readonly<Record<string, FieldClass>>>> = {
   shots: { id: 'identity', prompt: 'content', duration: 'reference' },
-  replies: { id: 'identity', content: 'content', createdBy: 'reference', createdAt: 'other', editedAt: 'other', via: 'other', answers: 'other' },
+  replies: { id: 'identity', content: 'content', createdBy: 'reference', createdAt: 'other', editedAt: 'other', via: 'other', answers: 'other', mentions: 'other' },
   focusImages: { id: 'identity', url: 'reference', name: 'content', width: 'other', height: 'other' },
   attachments: { id: 'identity', url: 'reference', name: 'content', mimeType: 'other', size: 'other', uploadedAt: 'other' },
 };

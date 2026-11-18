@@ -245,6 +245,8 @@ export interface AnnotationAssignment {
   assignedBy: string;
   /** When, epoch milliseconds; a reply that answers it carries this. */
   assignedAt: number;
+  /** The project it was handed over in; a project copy carries its source's and reads no hand-over. */
+  projectId: string;
 }
 
 // ── Content-node Generate: references + prompt ───────────

@@ -91,7 +91,7 @@ async function syncFromState(projectId: string, spaceId: string, kind: CommentSp
   let read: Parameters<typeof commentRecordService.syncSpace>[2];
   try {
     Y.applyUpdate(doc, state);
-    read = { mentions: readCommentMentions(kind, doc, projectId), assignments: readCommentAssignments(kind, doc) };
+    read = { mentions: readCommentMentions(kind, doc, projectId), assignments: readCommentAssignments(kind, doc, projectId) };
   } finally {
     doc.destroy();
   }

@@ -186,18 +186,21 @@ export function readCommentMentions(kind: CommentSpaceKind, doc: Y.Doc, projectI
 }
 
 /**
- * Every thread of a Space document handed to an external agent, and where it
- * stands: answered once a reply written through that connection answers this
- * hand-over, resolved once a document thread is resolved, pending otherwise.
+ * Every thread of a Space document handed to an external agent in this
+ * project, and where it stands: answered once a reply written through that
+ * connection answers this hand-over, resolved once a document thread is
+ * resolved, pending otherwise. A hand-over given in another project, as a
+ * project copy carries, is not read.
  * @param kind - The Space kind.
  * @param doc - Its document.
+ * @param projectId - The project the document belongs to.
  * @returns The hand-overs.
  */
-export function readCommentAssignments(kind: CommentSpaceKind, doc: Y.Doc): CommentAssignmentRecord[] {
+export function readCommentAssignments(kind: CommentSpaceKind, doc: Y.Doc, projectId: string): CommentAssignmentRecord[] {
   const out: CommentAssignmentRecord[] = [];
   for (const thread of threadsOf(kind, doc)) {
     const a = record(thread.assignment);
-    if (!a || typeof a.connectionId !== "string" || typeof a.assignedBy !== "string" || typeof a.assignedAt !== "number") continue;
+    if (!a || a.projectId !== projectId || typeof a.connectionId !== "string" || typeof a.assignedBy !== "string" || typeof a.assignedAt !== "number") continue;
     const { connectionId, assignedBy, assignedAt } = a;
     const answered = thread.entries.some((e) => e.via === connectionId && e.answers === assignedAt);
     out.push({ threadId: thread.id, connectionId, assignedBy, assignedAt, status: answered ? "answered" : thread.resolved ? "resolved" : "pending" });
