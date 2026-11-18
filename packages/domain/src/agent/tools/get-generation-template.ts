@@ -145,9 +145,10 @@ function amount(price: TemplatePrice): string {
 }
 
 /**
- * What a template costs on this deployment at its settings, and, when some
- * setting makes it cheaper, how a take of it runs and what that costs,
- * priced live: the price list and its multiplier belong to the deployment,
+ * What a template costs on this deployment at its settings and how a take of
+ * it runs: at the cheaper settings and what that costs when some make it
+ * cheaper, else at its own settings as its final (inner#1811). Priced live:
+ * the price list and its multiplier belong to the deployment,
  * so a number written into the template would be wrong elsewhere.
  * @param template - The template.
  * @returns The sentences, or "" when none of its generate nodes is priced.
@@ -159,13 +160,15 @@ async function applyCost(template: GenerationTemplate): Promise<string> {
   const finalSentence = `At its settings this template costs ${amount(final)} credits.`;
   const changed = nodes.filter((node) => Object.keys(node.cheaper).length > 0);
   const take = changed.length === 0 ? undefined : await priceOf(nodes.map((node) => ({ model: node.model, params: { ...node.own, ...node.cheaper } })));
-  // Nothing cheaper: an apply runs at its cheapest and is its own final.
-  if (take === undefined || take.credits >= final.credits) return finalSentence;
+  if (take === undefined || take.credits >= final.credits) {
+    return `${finalSentence} A take of it is made keeping its mode, model and length, at these settings, which are already its cheapest, so a take of it is already its final.`;
+  }
   const cheaper = JSON.stringify(Object.fromEntries(changed.map((node) => [node.key, node.cheaper])));
   return (
-    `${finalSentence} While the user is still deciding, apply it as a take: keep its mode, model and length, which its prompts and wiring are written for, ` +
+    `${finalSentence} A take of it is made this way, and comes before its final: apply it keeping its mode, model and length, which its prompts and wiring are written for, ` +
+    "even once its prompts are in the user's words and its tweak segments filled, " +
     `and write these cheaper settings in its generate nodes' params: ${cheaper}. A take costs ${amount(take)} credits; ` +
-    "the final is made at its settings from the take they pick, keeping it as it is, or when they ask for a final."
+    "the final is made at its settings from the take they pick, keeping it as it is, or straight away when they ask for a final."
   );
 }
 
