@@ -841,9 +841,11 @@ canvas.post(
     const { taskId: named } = c.req.valid("param");
     // The task lists name their rows, so a row of the node task list stands
     // for the task it runs as (inner#1968).
-    const taskId = (await taskService.getByIdInternal(named)) !== null ? named : ((await nodeTaskService.findById(named))?.taskId ?? named);
-    const task = await taskService.getByIdInternal(taskId);
+    const direct = await taskService.getByIdInternal(named);
+    const rowTaskId = direct === null ? ((await nodeTaskService.findById(named))?.taskId ?? null) : null;
+    const task = direct ?? (rowTaskId === null ? null : await taskService.getByIdInternal(rowTaskId));
     if (task === null || task.projectId === null) throw new NotFoundError(t("server.error.not_found"));
+    const taskId = task.id;
     await projectService.assertAccess(task.projectId, user.id, "editor");
     const result = await runningSlotService.cancelQueued(taskId);
     for (const err of result.publishFailures) logger.error({ err, taskId }, "running_slot_publish_failed");
