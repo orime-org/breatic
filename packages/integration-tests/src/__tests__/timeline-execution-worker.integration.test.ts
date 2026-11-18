@@ -59,7 +59,7 @@ import type * as DomainModule from "@breatic/domain";
 import fc from "fast-check";
 import { createHash } from "node:crypto";
 import { createPgClient, createQueue, env, getStreamRedis, getTimelineConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
-import { initProvider, provider, toChargeCredits, USAGE_LOOKUP_QUEUE } from "@breatic/domain";
+import { creditLotService, initProvider, provider, toChargeCredits, USAGE_LOOKUP_QUEUE } from "@breatic/domain";
 import { NoUpstreamAvailable, type CostLookup } from "@breatic/provider";
 import { t } from "@breatic/shared";
 import { spaceTasksChangedChannel } from "@breatic/shared";
@@ -377,6 +377,73 @@ describe("a pickup that finds the execution claimed by another meanwhile", () =>
     expect(row.fence).not.toBe(other!.fence);
     // The other claim submitted nothing here, so this pickup finds no job and submits it once.
     expect(ingest.calls.map((call) => call.route)).toEqual(["read", "submit"]);
+  });
+});
+
+// An execution is admitted on a balance above zero and holds nothing, so one
+// that waited for a running slot is judged again before it starts, as a chat
+// turn is: a spend limit reached or a balance gone meanwhile ends it without
+// a submit or a charge (inner#1968 design 3.10).
+describe("a queued execution that waited for a running slot", () => {
+  const PAID = { ...process.env, PAYMENT_ENABLED: "true", STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite", STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite" };
+  beforeAll(() => {
+    initCore(PAID);
+  });
+  afterAll(() => {
+    initCore(process.env);
+  });
+
+  /**
+   * Seed a queued execution, marked as having waited for a slot when asked.
+   * @param waited - Whether it waited.
+   * @returns The fixture.
+   */
+  async function queued(waited: boolean): Promise<ExecutionFixture> {
+    const fx = await seed("queued");
+    if (waited) await sql`update timeline_executions set slot_wait_since = now() - interval '1 minute', slot_checked_at = now(), slot_wait_limit = 2 where id = ${fx.execution.id}`;
+    return fx;
+  }
+
+  /**
+   * Give the studio credits to spend.
+   * @param fx - Whose studio.
+   */
+  async function fund(fx: ExecutionFixture): Promise<void> {
+    const [source] = await sql<{ id: string }[]>`insert into credit_sources (id, kind) values (gen_random_uuid(), 'payment') returning id`;
+    await sql`insert into payments (id, user_id, amount_cents, status, credits_granted) values (${source!.id}, ${fx.userId}, 1000, 'completed', 100)`;
+    const lot = await creditLotService.grantFromPayment({ paymentId: source!.id, userId: fx.userId, purchasedCredits: 100 });
+    await sql`update credit_lots set designated_studio_id = ${fx.studioId} where id = ${lot.id}`;
+  }
+
+  it.each([
+    ["a spend limit of 0", "spend_cap"],
+    ["no credits left", "no_credits"],
+  ] as const)("ends it with %s as %s, submitting and charging nothing", async (situation, reason) => {
+    const fx = await queued(true);
+    if (situation === "a spend limit of 0") {
+      await fund(fx);
+      await sql`insert into studio_spend_limits(studio_id, member_default_credits, studio_monthly_credits, updated_by_user_id) values (${fx.studioId}, 0, null, ${fx.userId})`;
+    }
+    const ingest = installFakeIngest(fx);
+    await pickUp(fx);
+    expect(await read(fx.execution.id)).toMatchObject({ status: "failed", failureReason: reason, fence: null });
+    expect(ingest.calls).toEqual([]);
+    expect(await chargesFor(fx.execution.id)).toEqual([]);
+  });
+
+  it("starts one that never waited, judged at its acceptance", async () => {
+    const fx = await queued(false);
+    installFakeIngest(fx);
+    await pickUp(fx);
+    expect(await read(fx.execution.id)).toMatchObject({ status: "running", attempt: 1 });
+  });
+
+  it("starts one that waited while the limit and the balance still allow it", async () => {
+    const fx = await queued(true);
+    await fund(fx);
+    installFakeIngest(fx);
+    await pickUp(fx);
+    expect(await read(fx.execution.id)).toMatchObject({ status: "running", attempt: 1 });
   });
 });
 

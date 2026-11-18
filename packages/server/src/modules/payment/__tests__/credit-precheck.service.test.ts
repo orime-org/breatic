@@ -35,11 +35,12 @@ const getStudioDebt = vi.fn();
 const getUnassignedCredits = vi.fn();
 const getGrantedCredits = vi.fn();
 const resolveOwnerStudioId = vi.fn();
+const judgeBalanceAdmission = vi.fn();
 vi.mock("@breatic/domain", () => ({
   creditHoldService: {
     reserveCredits: (...a: unknown[]) => reserveCredits(...a),
-    // No monthly spend limit is reached here (inner#1968 design 3.10 judges it first).
-    spendCapFor: async () => null,
+    // The balance admission is domain's; here only how a refusal is said is tested.
+    judgeBalanceAdmission: (...a: unknown[]) => judgeBalanceAdmission(...a),
   },
   creditLotService: {
     getStudioDebt: (...a: unknown[]) => getStudioDebt(...a),
@@ -190,22 +191,29 @@ describe("reserveForRun", () => {
 describe("precheckCredits", () => {
   // A chat turn cannot know up front what it will cost, so it holds nothing
   // and is admitted on the balance alone, holds or not (user 2026-10-18).
-  it("lets a chat turn through on the balance, without reading holds", async () => {
-    getSpendableCredits.mockResolvedValue("100.000000");
+  it("lets a chat turn through when the balance admission lets it, without reading holds", async () => {
+    judgeBalanceAdmission.mockResolvedValue(null);
     await expect(precheckCredits(PROJECT, USER, 0.000001)).resolves.toBeUndefined();
   });
 
   it("refuses on the balance with the sentence that names the cause, never the held one", async () => {
     getSpendableCredits.mockResolvedValue("0.000000");
+    judgeBalanceAdmission.mockResolvedValue({ reason: "no_credits", studioId: "s", spendable: "0.000000" });
     expect(await refusal(() => precheckCredits(PROJECT, USER, 0.000001))).toEqual({
       status: 402,
       message: "server.credit.none",
     });
   });
 
-  it("asks nothing while payments are off", async () => {
+  it("refuses past a spend limit with the spend-limit refusal", async () => {
+    judgeBalanceAdmission.mockResolvedValue({ reason: "spend_cap", cap: { scope: "member", limit: "10.000000", resetsAt: "2026-12-01T00:00:00.000Z" } });
+    const err = await precheckCredits(PROJECT, USER, 0.000001).catch((e: unknown) => e);
+    expect(err).toMatchObject({ statusCode: 402, reason: "spend_cap_reached" });
+  });
+
+  // precheckCredits leaves payments off to judgeBalanceAdmission (spend-caps E-09).
+  it("holds nothing while payments are off", async () => {
     env.PAYMENT_ENABLED = false;
-    await precheckCredits(PROJECT, USER, 1);
     await reserveForRun(PROJECT, USER, "t", 1);
     expect(getSpendableCredits).not.toHaveBeenCalled();
     expect(reserveCredits).not.toHaveBeenCalled();

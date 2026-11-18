@@ -23,7 +23,8 @@ import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import { fromMicroCredits, positionFrom, serializeCreditPosition, toChargeMicro, toMicroCredits, type CreditPositionMicro } from "@domain/credit/credit-math.js";
 import { db, env } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import type { ProjectCreditsView } from "@breatic/shared";
+import { parseCreditDecimal, quantizeQuotedCredits, type CreditDecimal, type ProjectCreditsView } from "@breatic/shared";
+import { getSpendableCredits } from "@domain/credit/creditLot.service.js";
 
 /** One hold asked for. */
 export interface HoldRequest {
@@ -157,6 +158,30 @@ async function spendCapHit(studioId: string, actorUserId: string, estimate: bigi
 export async function spendCapFor(studioId: string, actorUserId: string): Promise<SpendCapHit | null> {
   if (!env.PAYMENT_ENABLED) return null;
   return spendCapHit(studioId, actorUserId, null);
+}
+
+/** Why work admitted on a balance above zero may not start. */
+export type BalanceRefusal =
+  | { reason: "spend_cap"; cap: SpendCapHit }
+  | { reason: "no_credits"; studioId: string; spendable: CreditDecimal };
+
+/**
+ * The one admission of work that holds nothing (chat turns, text tools,
+ * Timeline executions, including one that waited for a running slot): the
+ * spend limits first, as every admission judges them (design 3.10), then a
+ * balance that reaches `required`.
+ * @param projectId - The project the work belongs to; its studio pays.
+ * @param actorUserId - Who starts it.
+ * @param required - Credits the studio's balance must at least reach.
+ * @returns Why it may not start, or null when it may; null with payments off.
+ */
+export async function judgeBalanceAdmission(projectId: string, actorUserId: string, required: number): Promise<BalanceRefusal | null> {
+  if (!env.PAYMENT_ENABLED) return null;
+  const studioId = await resolveOwnerStudioId(projectId);
+  const cap = await spendCapFor(studioId, actorUserId);
+  if (cap !== null) return { reason: "spend_cap", cap };
+  const spendable = await getSpendableCredits(studioId);
+  return parseCreditDecimal(spendable) >= quantizeQuotedCredits(required) ? null : { reason: "no_credits", studioId, spendable };
 }
 
 /**

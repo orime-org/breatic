@@ -35,10 +35,12 @@ import { costSchema, NoUpstreamAvailable, type Cost } from "@breatic/provider";
 import {
   containerCostUsd,
   createUsageRecorder,
+  creditHoldService,
   creditLotService,
   handOffLookups,
   provider,
   runningSlotService,
+  SMALLEST_CREDIT,
   sumCreditsByOperationKeys,
   timelineOperationKey,
   toChargeCredits,
@@ -246,6 +248,18 @@ async function take(row: TimelineExecution): Promise<TimelineExecution | null> {
     if (row.slotWaitSince == null && Date.parse(row.deadlineAt) <= Date.now()) {
       await move(row, { type: "deadline" });
       return null;
+    }
+    // It holds nothing and was admitted on a balance above zero, so one that
+    // waited for a running slot is judged again before it starts, as a chat
+    // turn is: a spend limit reached or a balance gone meanwhile ends it
+    // without a submit or a charge (inner#1968, design 3.10).
+    if (row.slotWaitSince != null) {
+      const refusal = await creditHoldService.judgeBalanceAdmission(row.projectId, row.actorUserId, SMALLEST_CREDIT);
+      if (refusal !== null) {
+        logger.info({ executionId: row.id, userId: row.actorUserId, reason: refusal.reason }, "timeline_execution_refused_at_start");
+        await move(row, { type: "failure", fence: null, reason: refusal.reason });
+        return null;
+      }
     }
     // The running-task gate claims it when its person runs fewer than their
     // limit; otherwise it throws StillRunning and the job goes back to the

@@ -615,6 +615,9 @@ describe('execution list', () => {
       .map((reason): [string, string] => [reason, 'check']),
     ...['harness_failed', 'container_failed', 'internal'].map((reason): [string, string] => [reason, 'stopped']),
     ['feature_disabled', 'feature_disabled'],
+    // inner#1968: an execution that waited for a slot is judged again before it starts.
+    ['spend_cap', 'spendCap'],
+    ['no_credits', 'noCredits'],
     ['a_reason_with_no_sentence', 'unknown'],
     [null, 'unknown'],
   ];

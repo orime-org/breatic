@@ -3912,6 +3912,8 @@
         "feature_disabled": "網頁動畫暫不可用。",
         "check": "頁面沒有通過檢查。",
         "stopped": "製作意外中斷。",
+        "spendCap": "未開始：本月花費已達上限。",
+        "noCredits": "未開始：點數不足。",
         "unknown": "執行失敗。"
       },
       "preview": {

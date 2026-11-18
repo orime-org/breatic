@@ -128,6 +128,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "timeline.webAnimation.failure.check": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.webAnimation.failure.stopped": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.webAnimation.failure.unknown": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "timeline.webAnimation.failure.spendCap": { described: /the monthly spend limit was reached or the credits ran out meanwhile it ends without running/ },
+  "timeline.webAnimation.failure.noCredits": { described: /the monthly spend limit was reached or the credits ran out meanwhile it ends without running/ },
   "timeline.webAnimation.preview.pending": { described: /noted at the top right of the preview with its track and its run's status/ },
   "timeline.webAnimation.preview.failed": { described: /noted at the top right of the preview with its track and its run's status/ },
   "timeline.webAnimation.preview.unavailable": { described: /noted there as unavailable/ },

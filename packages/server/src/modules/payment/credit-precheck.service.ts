@@ -21,7 +21,7 @@
  */
 
 import { AppError, env, getNodeTaskConfig } from "@breatic/core";
-import { assetService, creditHoldService, creditLotService } from "@breatic/domain";
+import { creditHoldService, creditLotService } from "@breatic/domain";
 import { SpendCapReachedError } from "@server/modules/payment/spend-cap-error.js";
 import { parseCreditDecimal, quantizeQuotedCredits, serializeCreditMicro, ceilToCreditCent, formatCredits, getActiveLocale, t, type ProjectCreditsView } from "@breatic/shared";
 
@@ -157,13 +157,8 @@ export async function precheckCredits(
   userId: string,
   required: number,
 ): Promise<void> {
-  if (!env.PAYMENT_ENABLED) return;
-  const studioId = await assetService.resolveOwnerStudioId(projectId);
-  // Judged before the balance, as every admission judges it (design 3.10).
-  const cap = await creditHoldService.spendCapFor(studioId, userId);
-  if (cap !== null) throw new SpendCapReachedError(cap);
-
-  const spendable = await creditLotService.getSpendableCredits(studioId);
-  if (parseCreditDecimal(spendable) >= quantizeQuotedCredits(required)) return;
-  await refuse(userId, required, { studioId, spendable, held: serializeCreditMicro(0n), available: spendable });
+  const refusal = await creditHoldService.judgeBalanceAdmission(projectId, userId, required);
+  if (refusal === null) return;
+  if (refusal.reason === "spend_cap") throw new SpendCapReachedError(refusal.cap);
+  await refuse(userId, required, { studioId: refusal.studioId, spendable: refusal.spendable, held: serializeCreditMicro(0n), available: refusal.spendable });
 }
