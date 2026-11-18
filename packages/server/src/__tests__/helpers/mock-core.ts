@@ -282,6 +282,14 @@ export const mocks = {
     getCreditPosition: vi.fn().mockResolvedValue({ spendable: "100.000000", held: "0.000000", available: "100.000000" }),
     // No monthly spend limit is reached (inner#1968 design 3.10); limits are pinned by the integration suites.
     spendCapFor: vi.fn().mockResolvedValue(null),
+    // The balance admission as domain makes it, over this double's own limit and balance, so a case that sets either
+    // still decides the answer.
+    judgeBalanceAdmission: vi.fn(async (_projectId: string, actorUserId: string, required: number) => {
+      const cap: unknown = await mocks.creditHoldService.spendCapFor("studio-1", actorUserId);
+      if (cap !== null) return { reason: "spend_cap", cap };
+      const spendable = String(await mocks.creditLotService.getSpendableCredits("studio-1"));
+      return Number(spendable) >= required ? null : { reason: "no_credits", studioId: "studio-1", spendable };
+    }),
   },
   creditLotService: {
     // Read at module evaluation by `routes/schemas.ts`, so a double without it
