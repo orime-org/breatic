@@ -14,6 +14,7 @@ import {
   type ProviderConfigInput,
 } from "../schema.js";
 import { createProvider } from "../../provider.js";
+import { deploymentKeySet } from "../../keys.js";
 
 const pricing = { kind: "formula", base_price: 0.1, formula: "", discount_rate: 100 };
 
@@ -249,7 +250,7 @@ describe("candidatesOf", () => {
   it("marks each binding configured by whether its key env var has a value", () => {
     const config = parseProviderConfig(input([bind("bytedance", 0), bind("wavespeed", 1), bind("fal", 2)]));
     const env: Record<string, string> = { WAVESPEED_API_KEY: "k", FAL_KEY: "" };
-    const candidates = candidatesOf(config, "seedance", (name) => env[name]);
+    const candidates = candidatesOf(config, "seedance", deploymentKeySet(config, (name) => env[name]));
     expect(candidates).toEqual([
       { upstream: "bytedance", weight: 0, configured: false, envVar: "BYTEPLUS_ARK_API_KEY" },
       { upstream: "wavespeed", weight: 1, configured: true, envVar: "WAVESPEED_API_KEY" },

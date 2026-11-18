@@ -47,8 +47,6 @@ export interface ProviderOptions {
 export interface Provider {
   /** The validated configuration, deployment overrides applied. */
   readonly config: ProviderConfig;
-  /** The caller's key reader. */
-  readonly keyOf: (envName: string) => string | undefined;
   /** The deployment's key set, which a call handed no key set runs on. */
   readonly deploymentKeys: KeySet;
   /** A model's upstreams in effective weight order, each saying whether the key set (the deployment's by default) holds its key. */
@@ -117,7 +115,6 @@ export function createProvider(options: ProviderOptions): Provider {
   });
   return {
     config,
-    keyOf: options.keyOf,
     deploymentKeys,
     availability,
     assertBindsCatalog: (catalog) => assertBindsCatalog(config, catalog),
@@ -125,7 +122,7 @@ export function createProvider(options: ProviderOptions): Provider {
     estimate: (model, input, route, keys) => estimateCost(pricingRules(model), availability(model, keys), input, route),
     refusal: (model, input, route, keys) => inputRefusal(pricingRules(model), availability(model, keys), input, route),
     checkKey: (upstream, key) => checkKey(config, upstream, key),
-    llm: createLlm(config, options),
+    llm: createLlm(config, options, deploymentKeys),
     cost: {
       lookup: async (lookup, { lastAttempt, keys }) => {
         const owned = recordedKeys(lookupOwner(lookup), keys, deploymentKeys, `call ${lookup.upstream} billed`);

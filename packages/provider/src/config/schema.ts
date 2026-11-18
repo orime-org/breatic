@@ -8,7 +8,7 @@ import { mediaAdapter } from "@provider/media/adapters.js";
 import { dialogueSchema } from "@provider/pricing/dialogue.js";
 import { pricingRuleSchema, rejectSchema, vendorRejectSchema, type Reject } from "@provider/pricing/estimate.js";
 import { formulaProblem } from "@provider/pricing/evaluate.js";
-import { deploymentKeySet, hasKey, type KeySet } from "@provider/keys.js";
+import { hasKey, type KeySet } from "@provider/keys.js";
 import type { Candidate } from "@provider/routing/route.js";
 
 const choice = z.union([z.string(), z.number(), z.boolean()]);
@@ -534,16 +534,15 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
  * The routing candidates of one model.
  * @param config - The validated configuration.
  * @param model - Our model id.
- * @param keys - The key set the call runs on, or the deployment's environment reader (undefined or empty means not configured).
+ * @param keys - The key set the call runs on.
  * @returns One candidate per binding, with effective weights.
  * @throws {Error} When the model has no bindings.
  * @throws {MalformedKey} When an account's key is not printable ASCII.
  */
-export function candidatesOf(config: ProviderConfig, model: string, keys: KeySet | ((env: string) => string | undefined)): Candidate[] {
+export function candidatesOf(config: ProviderConfig, model: string, keys: KeySet): Candidate[] {
   const bindings = config.models[model];
   if (bindings === undefined) throw new Error(`Model ${model} has no upstream bindings`);
-  const set = typeof keys === "function" ? deploymentKeySet(config, keys) : keys;
-  return bindings.map((b) => candidateOf(config, b.upstream, b.weight, set));
+  return bindings.map((b) => candidateOf(config, b.upstream, b.weight, keys));
 }
 
 /**

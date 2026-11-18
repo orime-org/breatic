@@ -20,7 +20,7 @@ import { classifyLlm, costRefOf, InBandError, pauseBeforeRetry, SwitchingModel }
 import { AnswerUnread, assertSucceeded, MediaReadFailed, StepRefused, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
 import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
 import { messagesSpeakerOf } from "@provider/llm/upstreams/messages.js";
-import { assertAccountReaches, deploymentKeySet, hasKey, keyFor, keysOr, llmFailureOn, paidAsMarked, paidOn, payerMark, triedOn, type KeySet } from "@provider/keys.js";
+import { assertAccountReaches, hasKey, keyFor, keysOr, llmFailureOn, paidAsMarked, paidOn, payerMark, triedOn, type KeySet } from "@provider/keys.js";
 import { cacheMark, hasLlmAdapter, isClaude, messageOf, optionsFor, vendorOf, type ModelV4, type Vendor, type VendorOptions } from "@provider/llm/vendors.js";
 import type { MessagesPlan } from "@provider/messages/relay.js";
 import type { ProviderOptions } from "@provider/provider.js";
@@ -84,10 +84,10 @@ function cleanDeep(value: unknown, clean: (text: string) => string): unknown {
  * The LLM part of a provider instance.
  * @param config - The validated configuration.
  * @param options - The caller's options.
+ * @param deploymentKeys - The deployment's key set, which a call handed no key set runs on.
  * @returns The LLM API.
  */
-export function createLlm(config: ProviderConfig, options: ProviderOptions): LlmApi {
-  const deploymentKeys = deploymentKeySet(config, options.keyOf);
+export function createLlm(config: ProviderConfig, options: ProviderOptions, deploymentKeys: KeySet): LlmApi {
   /** Each upstream's model factory by the key it was built with (hashed): one client per key, never shared across keys. */
   const factories = new Map<string, (modelId: string) => ModelV4>();
   let refreshing: Promise<void> | undefined;
