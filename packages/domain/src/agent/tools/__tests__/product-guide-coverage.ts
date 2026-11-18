@@ -1069,6 +1069,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.mail.signup_code.lead": { excluded: REASONS.MAIL },
   "server.mail.signup_code.subject": { excluded: REASONS.MAIL },
   "server.mail.storage_full.footer": { excluded: REASONS.MAIL },
+  "server.mail.storage_full.footer_enterprise": { excluded: REASONS.MAIL },
   "server.mail.storage_full.lead": { excluded: REASONS.MAIL },
   "server.mail.storage_full.subject": { excluded: REASONS.MAIL },
   "server.mail.studio_invite.action": { excluded: REASONS.MAIL },
