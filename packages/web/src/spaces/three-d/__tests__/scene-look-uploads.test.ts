@@ -231,6 +231,30 @@ describe('SceneLookUploads', () => {
     expect(h.unregister).toHaveBeenCalled();
   });
 
+  it.each([
+    ['a transfer that failed', 'transfer'],
+    ['an error with no upload reason', null],
+  ] as const)('says the picture could not be uploaded after %s', async (_name, reason) => {
+    const { session } = editor();
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    const { UploadFailedError } = await import('@web/data/upload/media-upload');
+    h.fail(reason === null ? new Error('network') : new UploadFailedError(reason));
+    await done;
+    expect(h.notify).toHaveBeenCalledWith({ key: 'canvas.upload.failed', params: { filename: 'pattern.png', kind: 'image', formats: 'PNG, JPEG, WebP' }, severity: 'error' });
+  });
+
+  it('names the picture formats when the server refuses the file type', async () => {
+    const { session } = editor();
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    h.fail(new (await import('@web/data/upload/media-upload')).UploadFailedError('unsupportedType'));
+    await done;
+    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'canvas.upload.unsupportedType', params: { filename: 'pattern.png', kind: 'image', formats: 'PNG, JPEG, WebP' } }));
+  });
+
   it('puts the same picture already on another part on this one too, as picking it from the Project would', async () => {
     const { doc, session } = editor();
     applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);

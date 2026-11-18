@@ -6,14 +6,14 @@ import type { QueryClient } from '@tanstack/react-query';
 import { getLocale, t, type SceneLook } from '@breatic/shared';
 
 import { projectImagesQueryKey } from '@web/data/api/scene';
-import { uploadMedia } from '@web/data/upload/media-upload';
+import { UploadFailedError, uploadMedia } from '@web/data/upload/media-upload';
 import type { UploadContext } from '@web/data/upload/ingest-upload';
 import { peekSceneSession, type SceneSession } from '@web/data/yjs/scene-session';
 import { toast } from '@web/lib/toast';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
+import { uploadFailureMessageKey } from '@web/spaces/canvas/upload-failure';
 import { checkLookWrite, type LookTextureReason } from '@web/spaces/three-d/look-texture-budget';
 import { pageLookTextureCache, readPictureSize } from '@web/spaces/three-d/viewport/look-texture-cache';
-import { modelUploadFailure } from '@web/spaces/three-d/model-upload-failure';
 
 /** A picture's header size and type. */
 export interface LookImageSize {
@@ -108,6 +108,18 @@ const LOOK_IMAGE_FORMATS = 'PNG, JPEG, WebP';
  */
 export function unsupportedPictureNotice(filename: string): LookUploadNotice {
   return { key: 'canvas.upload.unsupportedType', params: { filename, kind: 'image', formats: LOOK_IMAGE_FORMATS }, severity: 'warning' };
+}
+
+/**
+ * The notice for a picture upload that did not complete, said as Timeline and Document say a failed media upload.
+ * @param error - What the upload threw.
+ * @param filename - The file's name.
+ * @returns The notice.
+ */
+export function pictureUploadFailedNotice(error: unknown, filename: string): LookUploadNotice {
+  const reason = error instanceof UploadFailedError ? error.reason : 'upload';
+  if (reason === 'unsupportedType') return unsupportedPictureNotice(filename);
+  return { key: uploadFailureMessageKey(reason), params: { filename, kind: 'image', formats: LOOK_IMAGE_FORMATS }, severity: 'error' };
 }
 
 /**
@@ -243,8 +255,7 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       else session.execute({ type: 'look', id: input.objectId, part: input.part, set: { map: stored.assetId } });
     } catch (error) {
       if (refused) return;
-      const failure = modelUploadFailure(error, input.file.name);
-      deps.notify({ key: failure.key, params: failure.params, severity: 'error' });
+      deps.notify(pictureUploadFailedNotice(error, input.file.name));
     } finally {
       unwatch?.();
     }
