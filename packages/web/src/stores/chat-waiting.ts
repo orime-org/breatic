@@ -66,8 +66,8 @@ export const chatWaiting = {
    * @param seen.blocked - The balance cannot pay for a run.
    * @param seen.capNote - A spend limit stopped the run: what says so.
    */
-  fromSync(conversationId: string, seen: { pending: ChatPendingItem[]; awaiting: boolean; blocked: boolean; capNote?: string | null }): void {
-    update(conversationId, () => ({ ...seen, capNote: seen.capNote ?? null }));
+  fromSync(conversationId: string, seen: { pending: ChatPendingItem[]; awaiting: boolean; blocked: boolean; capNote: string | null }): void {
+    update(conversationId, () => seen);
   },
   /**
    * A message left the queue: a run took it in, or it was taken back here or elsewhere.

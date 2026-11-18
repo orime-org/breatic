@@ -20,7 +20,7 @@ import {
 
 import { miniToolsApi } from '@web/data/api/mini-tools';
 import { ApiException } from '@web/data/api/types';
-import { refusalSentence } from '@web/stores/credit-refusals';
+import { ourSentence } from '@web/stores/credit-refusals';
 import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
@@ -405,9 +405,8 @@ type Settle = (message?: UploadMarkMessage) => void;
  * @returns The message.
  */
 async function refusalOf(err: unknown): Promise<UploadMarkMessage> {
-  const refused = refusalSentence(err);
-  if (refused !== null) return { text: refused };
-  if (err instanceof ApiException && err.fromServer && err.message) return { text: err.message };
+  const ours = ourSentence(err);
+  if (ours !== null) return { text: ours };
   if (err instanceof ApiException && err.status === 413) return await tooLargeMessage();
   return { key: 'canvas.miniTool.panel.couldNotStart' };
 }

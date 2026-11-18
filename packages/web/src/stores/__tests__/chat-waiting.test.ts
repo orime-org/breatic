@@ -26,14 +26,14 @@ beforeEach(() => {
 describe('the waiting area', () => {
   it('is what the last answer said the queue holds (WB-13)', () => {
     chatWaiting.fromSend('c1', [item('m1')]);
-    chatWaiting.fromSync('c1', { pending: [item('m1'), item('m2')], awaiting: false, blocked: false });
+    chatWaiting.fromSync('c1', { pending: [item('m1'), item('m2')], awaiting: false, blocked: false, capNote: null });
     expect(useChatWaiting.getState().byConversation.c1?.pending.map((p) => p.id)).toEqual(['m1', 'm2']);
   });
 
   it('says a card waits, and that credits are short, only while the server says so (WB-14, WB-15)', () => {
-    chatWaiting.fromSync('c1', { pending: [item('m1')], awaiting: true, blocked: false });
+    chatWaiting.fromSync('c1', { pending: [item('m1')], awaiting: true, blocked: false, capNote: null });
     expect(useChatWaiting.getState().byConversation.c1).toMatchObject({ awaiting: true, blocked: false });
-    chatWaiting.fromSync('c1', { pending: [item('m1')], awaiting: false, blocked: true });
+    chatWaiting.fromSync('c1', { pending: [item('m1')], awaiting: false, blocked: true, capNote: null });
     expect(useChatWaiting.getState().byConversation.c1).toMatchObject({ awaiting: false, blocked: true });
     chatWaiting.fromSend('c1', [item('m1')]);
     expect(useChatWaiting.getState().byConversation.c1).toMatchObject({ awaiting: false, blocked: false });

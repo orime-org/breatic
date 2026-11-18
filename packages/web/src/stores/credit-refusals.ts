@@ -25,3 +25,15 @@ export function refusalSentence(err: unknown): string | null {
   if (!(err instanceof ApiException || err instanceof StreamRefusedError) || err.reason !== SPEND_CAP_REACHED) return null;
   return spendCapSentence(err.details ?? {}, err.fromServer && err.message ? err.message : t('credits.refusal.spendCap'));
 }
+
+/**
+ * What a refusal says at every entry that starts work: the spend limit when
+ * that is why, otherwise the sentence our server wrote (design 3.3a).
+ * @param err - What a request, or a stream before it opened, rejected with.
+ * @returns The sentence, or null when nothing of ours says why.
+ */
+export function ourSentence(err: unknown): string | null {
+  const capped = refusalSentence(err);
+  if (capped !== null) return capped;
+  return (err instanceof ApiException || err instanceof StreamRefusedError) && err.fromServer && err.message ? err.message : null;
+}

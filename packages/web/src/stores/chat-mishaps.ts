@@ -12,8 +12,7 @@
  */
 
 import { t } from '@breatic/shared';
-import { ApiException } from '@web/data/api/types';
-import { refusalSentence } from '@web/stores/credit-refusals';
+import { ourSentence } from '@web/stores/credit-refusals';
 
 /**
  * Something that went wrong, told once to whoever is looking.
@@ -88,23 +87,6 @@ export function tell(mishap: ChatMishap): void {
 }
 
 /**
- * The sentence our own server wrote for this user, if it wrote one.
- *
- * The whole of what this answers. What to say when it answers nothing is not
- * the same question in every place that asks, so it is left to whoever asked.
- * @param err - Whatever the call threw.
- * @returns The server's own words, or nothing when they are not the server's.
- */
-function serverSentence(err: unknown): string | undefined {
-  // Only a sentence our own server wrote for this user. An answer coming
-  // back is not the same thing: a gateway that timed out also answers, and
-  // there is nothing of ours in what it sends -- so the exception says whether
-  // the message it is carrying came out of our envelope, and this asks that
-  // and nothing else.
-  return err instanceof ApiException && err.fromServer ? err.message : undefined;
-}
-
-/**
  * Read a failed request as the user would hear it.
  *
  * For every request that fetches rather than runs a turn -- opening the
@@ -121,10 +103,8 @@ function serverSentence(err: unknown): string | undefined {
  *   answered with any.
  */
 export function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'; message: string } {
-  const refused = refusalSentence(err);
-  if (refused !== null) return { kind: 'server', message: refused };
-  const said = serverSentence(err);
-  return said === undefined ? { kind: 'network' } : { kind: 'server', message: said };
+  const said = ourSentence(err);
+  return said === null ? { kind: 'network' } : { kind: 'server', message: said };
 }
 
 /**

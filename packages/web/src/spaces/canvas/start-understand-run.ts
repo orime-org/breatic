@@ -25,7 +25,7 @@ import {
   getCachedUnderstandMaxBytes,
 } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
-import { refusalSentence } from '@web/stores/credit-refusals';
+import { ourSentence } from '@web/stores/credit-refusals';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';
@@ -344,9 +344,8 @@ async function reportReadingFailure(reading: Reading, err: unknown): Promise<voi
  * @returns The sentence, in the user's language.
  */
 async function readingFailureSentence(reading: Reading, err: unknown): Promise<string> {
-  const refused = refusalSentence(err);
-  if (refused !== null) return refused;
-  if (err instanceof ApiException && err.fromServer && err.message) return err.message;
+  const ours = ourSentence(err);
+  if (ours !== null) return ours;
   if (err instanceof ApiException && err.status === 413) {
     const { key, params } = await tooLargeMessage();
     return t(key, params);

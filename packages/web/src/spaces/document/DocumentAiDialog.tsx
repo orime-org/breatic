@@ -55,13 +55,13 @@ import {
   type TextToolRequest,
   type TextToolsConfig,
 } from '@web/data/api/text-tools';
-import { textToolRefusal } from '@web/spaces/document/text-tool-refusal';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { langFor } from '@web/features/preferences/supported-langs';
 import { useTranslation } from '@web/i18n/use-translation';
 import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-end';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
+import { ourSentence } from '@web/stores/credit-refusals';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentAiLaunchContext, TONE_LABEL_KEYS, type AiLaunch } from '@web/spaces/document/document-ai-context';
 import { aiCapture, aiContextOf } from '@web/spaces/document/document-ai-launch';
@@ -272,7 +272,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
             }
           },
           onError: (err) => {
-            failure.current = textToolRefusal(err);
+            failure.current = ourSentence(err);
             send({ type: 'error', seq });
           },
           signal: controller.signal,
