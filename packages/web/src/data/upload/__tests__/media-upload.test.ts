@@ -507,6 +507,16 @@ describe('uploadMedia — the pipeline wired to the real network, as a promise',
     );
   });
 
+  it('asks before sending the bytes of a new upload', async () => {
+    wire();
+    const beforeSend = vi.fn(async () => undefined);
+
+    await uploadMedia(file, { projectId: 'p1' }, undefined, undefined, undefined, beforeSend);
+
+    expect(beforeSend).toHaveBeenCalledTimes(1);
+    expect(beforeSend.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(sendFileAndFinish).mock.invocationCallOrder.at(-1)!);
+  });
+
   it('rejects with the pipeline\'s reason, readable as the message too', async () => {
     wire();
     vi.mocked(assetsApi.requestUploadTicket).mockRejectedValue(apiError(507));

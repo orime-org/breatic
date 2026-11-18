@@ -194,6 +194,8 @@ describe('generateLookUvs', () => {
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', position);
     geometry.setAttribute('normal', new InterleavedBufferAttribute(normals, 3, 0, true));
+    // A second attribute in the same buffer, starting one value into each vertex.
+    geometry.setAttribute('_shifted', new InterleavedBufferAttribute(normals, 2, 1, true));
     geometry.setAttribute('color', new BufferAttribute(colours, 3, true));
     geometry.setIndex([0, 1, 2, 0, 3, 1]);
     const mesh = new Mesh(geometry, new MeshStandardMaterial());
@@ -209,6 +211,8 @@ describe('generateLookUvs', () => {
       const from = source[corner]!;
       expect(stored(made.attributes.normal as BufferAttribute, copy), `normal of corner ${corner}`)
         .toEqual(Array.from(normals.array.slice(from * 4, from * 4 + 3)));
+      expect(stored(made.attributes._shifted as BufferAttribute, copy), `shifted of corner ${corner}`)
+        .toEqual(Array.from(normals.array.slice(from * 4 + 1, from * 4 + 3)));
       expect(stored(made.attributes.color as BufferAttribute, copy), `colour of corner ${corner}`).toEqual(Array.from(colours.slice(from * 3, from * 3 + 3)));
     }
     expect(made.attributes.normal!.normalized).toBe(true);
