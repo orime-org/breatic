@@ -1738,13 +1738,13 @@
           },
           "after": {
             "name": "After",
-            "prompt": "A square studio photo of [📎 Product] on {✏️ the surface, the same as in Before}: its shape, colours, materials, label and logo exactly as in the picture, no words on it changed or added, nothing else taken from the picture. It is now {✏️ its other state, e.g. with the lid open and folded back}; everything else about it unchanged. The same front three-quarter view at table height, the product in the same place and size, the same soft daylight from the left. No text in the picture."
+            "prompt": "(💡 Generate Before first)Edit [📎 Before]: keep the camera, framing, surface, light and background exactly as they are, and keep the product's shape, colours, materials, label and logo, no words on it changed or added. Change only its state: it is now {✏️ its other state, e.g. with the lid open and folded back}. No text in the picture."
           }
         },
         "input": {
           "product": {
             "name": "Product",
-            "note": "Add a clear photo of your product first, then generate Before and After."
+            "note": "Add a clear photo of your product first, then generate Before, then After."
           }
         }
       },

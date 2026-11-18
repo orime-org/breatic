@@ -801,7 +801,7 @@ const RUNS: Record<string, Run> = {
     photo: false,
     inputs: { product: 'product.jpg' },
     first: ['before', 'after'],
-    fills: { before: ['a white oak table'], after: ['a white oak table', 'with its bamboo cap off, lying beside it'], anchor: ['a hand unscrews the cap and sets it down beside the bottle', 'the same hand'] },
+    fills: { before: ['a white oak table'], after: ['with its bamboo cap off, lying beside it'], anchor: ['a hand unscrews the cap and sets it down beside the bottle', 'the same hand'] },
     frames: { 'first-frame': 'before', 'end-frame': 'after' },
   },
   'livestream-pitch': {

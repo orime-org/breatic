@@ -13,13 +13,14 @@ export const PRODUCT_STATE_CHANGE: GenerationTemplate = {
     { key: "after", role: "generate", type: "image", mode: "i2i", model: "nano-banana-pro-edit-ultra", params: { aspect_ratio: "1:1" } },
   ],
   edges: [
+    { from: "before", to: "after", into: "pool" },
     { from: "before", to: "result", into: "image" },
     { from: "after", to: "result", into: "end_image" },
   ],
-  inputs: [{ key: "product", type: "image", feeds: ["before", "after"] }],
+  inputs: [{ key: "product", type: "image", feeds: ["before"] }],
   steps: [],
   agentNote:
-    "a 5-second square before-and-after of the user's product: two pictures generated from their photo on the same surface from the same camera, one in its starting state and one in its other state (open, folded, another colour), become the video's first and end frame, and the video is one continuous change between them carried by one thing throughout, such as a hand; the user fills in the surface, the other state and what carries the change",
+    "a 5-second square before-and-after of the user's product: a picture of the product in its starting state is generated from their photo, and a picture of it in its other state (open, folded, another colour) is edited from that one so the camera, surface and light stay; the two become the video's first and end frame, and the video is one continuous change between them carried by one thing throughout, such as a hand; the user fills in the surface, the other state and what carries the change",
   goal: "product-showcase",
   triggers: {
     asks: ["show my product going from one state to another", "a before and after of my product"],
