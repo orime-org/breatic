@@ -2821,7 +2821,8 @@
       "dialog": {
         "instruction": "要改的地方",
         "instructionPlaceholder": "例如：标题慢一点，背景再暗一些",
-        "modifyDescription": "修改自「{base}」，原结果保持不变。",
+        "modifyDescription": "修改自「{base}」",
+        "modifyKeepsOriginal": "原结果保持不变。",
         "modifyTitle": "修改网页动画",
         "relayout": "画面会按新尺寸重新排版。"
       },

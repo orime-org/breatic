@@ -81,11 +81,11 @@ export async function executeInMotion(page: Page, request: MotionRequest): Promi
   await expect(dialog.getByTestId('web-animation-engine')).toHaveText('DeepSeek');
   await expect(dialog.getByTestId('web-animation-duration')).toHaveValue('4');
   const aspectField = dialog.getByTestId('web-animation-aspect');
-  await expect(aspectField).toHaveText('16:9');
+  await expect(aspectField.getByRole('tab', { name: '16:9', exact: true })).toHaveAttribute('aria-selected', 'true');
   if (request.aspect !== undefined && request.aspect !== '16:9') {
-    await aspectField.click();
-    await page.getByRole('option', { name: request.aspect, exact: true }).click();
-    await expect(aspectField).toHaveText(request.aspect);
+    const choice = aspectField.getByRole('tab', { name: request.aspect, exact: true });
+    await choice.click();
+    await expect(choice).toHaveAttribute('aria-selected', 'true');
   }
   if (request.seconds !== 4) await dialog.getByTestId('web-animation-duration').fill(String(request.seconds));
   await dialog.getByTestId('web-animation-prompt').fill(request.prompt);

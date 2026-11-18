@@ -2821,7 +2821,8 @@
       "dialog": {
         "instruction": "바꿀 부분",
         "instructionPlaceholder": "예: 제목을 더 천천히, 배경은 더 어둡게",
-        "modifyDescription": "“{base}”을(를) 수정합니다. 원래 결과는 그대로 유지됩니다.",
+        "modifyDescription": "“{base}”을(를) 수정합니다",
+        "modifyKeepsOriginal": "원래 결과는 그대로 유지됩니다.",
         "modifyTitle": "웹 애니메이션 수정",
         "relayout": "새 크기에 맞게 화면을 다시 배치합니다."
       },

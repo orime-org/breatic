@@ -7,7 +7,8 @@
  */
 
 import * as React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@breatic/shared';
 import type { WebAnimationRowView } from '@breatic/shared/space-content';
@@ -41,10 +42,12 @@ const baseRow = {
  * @param input - What the draft holds.
  * @param base - The result a modification starts from, once read.
  */
-function show(input: Partial<CreationDraftInput>, base?: WebAnimationRowView): void {
+function show(input: Partial<CreationDraftInput>, base?: WebAnimationRowView): ReturnType<typeof vi.fn> {
   const full: CreationDraftInput = { base: null, prompt: '', engine: 'deepseek', aspect: '16:9', durationSeconds: 4, ...input };
+  const onEdit = vi.fn();
   render(<WebAnimationDialog projectId={PROJECT} spaceId={SPACE} draft={{ status: 'drafting', open: true, input: full, error: null }} retry={false}
-    limits={LIMITS as never} baseRow={base} baseRead={{ failed: false, retrying: false, retry: vi.fn() }} onEdit={vi.fn()} onExecute={vi.fn()} onClose={vi.fn()} />);
+    limits={LIMITS as never} baseRow={base} baseRead={{ failed: false, retrying: false, retry: vi.fn() }} onEdit={onEdit} onExecute={vi.fn()} onClose={vi.fn()} />);
+  return onEdit;
 }
 
 const MODIFY: Partial<CreationDraftInput> = { base: { executionId: BASE, sourceVersionId: BASE_SOURCE, request: 'Gold dot along an arc' } };
@@ -55,7 +58,9 @@ describe('the Modify dialog', () => {
   it('shows a small preview of the result it starts from, at its middle frame', () => {
     show(MODIFY, baseRow);
     const card = screen.getByTestId('web-animation-base');
-    expect(card).toHaveTextContent(t('spaces.webAnimation.dialog.modifyDescription', { base: 'Gold dot along an arc' }));
+    // The quoted request on its own line, the original-stays note on a muted line below it, with no doubled stop.
+    expect(within(card).getByText(t('spaces.webAnimation.dialog.modifyDescription', { base: 'Gold dot along an arc' }))).toHaveClass('text-foreground');
+    expect(within(card).getByText(t('spaces.webAnimation.dialog.modifyKeepsOriginal'))).toHaveClass('text-muted-foreground');
     const player = screen.getByTestId('base-player');
     expect(player).toHaveAttribute('data-source', BASE_SOURCE);
     expect(player).toHaveAttribute('data-frame', '48');
@@ -78,6 +83,16 @@ describe('the Modify dialog', () => {
 });
 
 describe('the New dialog', () => {
+  it('shows every aspect side by side, the chosen one selected, and picks one with a click on its label', async () => {
+    const onEdit = show({});
+    const group = screen.getByTestId('web-animation-aspect');
+    expect(within(group).getAllByRole('tab').map((item) => item.textContent)).toEqual(['16:9', '9:16', '1:1']);
+    expect(within(group).getByRole('tab', { name: '16:9' })).toHaveAttribute('aria-selected', 'true');
+    expect(group).toHaveAccessibleName(t('timeline.webAnimation.dialog.aspect'));
+    await userEvent.setup().click(within(group).getByRole('tab', { name: '1:1' }));
+    expect(onEdit).toHaveBeenCalledWith({ aspect: '1:1' });
+  });
+
   it('has no result to start from', () => {
     show({});
     expect(screen.queryByTestId('web-animation-base')).toBeNull();
@@ -88,7 +103,7 @@ describe('the New dialog', () => {
 describe('the dialog copy', () => {
   it('has the layout notice and the label in all five locales', () => {
     for (const [tag, catalog] of LOCALE_CATALOGS) {
-      for (const key of ['spaces.webAnimation.dialog.relayout', 'spaces.webAnimation.dialog.instruction']) {
+      for (const key of ['spaces.webAnimation.dialog.relayout', 'spaces.webAnimation.dialog.instruction', 'spaces.webAnimation.dialog.modifyDescription', 'spaces.webAnimation.dialog.modifyKeepsOriginal']) {
         expect(String(readPath(catalog, key) ?? ''), `${tag} ${key}`).not.toBe('');
       }
     }

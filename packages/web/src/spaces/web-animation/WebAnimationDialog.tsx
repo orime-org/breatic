@@ -11,6 +11,7 @@ import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
 import { Skeleton } from '@web/components/ui/skeleton';
+import { Tabs, TabsList, TabsTrigger } from '@web/components/ui/tabs';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
@@ -96,7 +97,10 @@ export function WebAnimationDialog({ projectId, spaceId, draft, retry, limits, b
                   : <MotionResultPlayer projectId={projectId} executionId={base.id} sourceVersionId={base.resultSourceVersionId} input={base.input}
                     frame={Math.floor(webAnimationDurationFrames(base.input) / 2)} />}
               </div>
-              <span className='min-w-0'>{t('spaces.webAnimation.dialog.modifyDescription', { base: input.base?.request ?? '' })}</span>
+              <span className='flex min-w-0 flex-col gap-0.5'>
+                <span className='break-words text-foreground'>{t('spaces.webAnimation.dialog.modifyDescription', { base: input.base?.request ?? '' })}</span>
+                <span className='text-xs text-muted-foreground'>{t('spaces.webAnimation.dialog.modifyKeepsOriginal')}</span>
+              </span>
             </div>
           </DialogDescription>}
           <div className='flex flex-col gap-1.5'>
@@ -114,11 +118,13 @@ export function WebAnimationDialog({ projectId, spaceId, draft, retry, limits, b
               </Select>
             </div>
             <div className='flex min-w-0 flex-col gap-1.5'>
-              <Label htmlFor={`${fieldId}-aspect`}>{t('timeline.webAnimation.dialog.aspect')}</Label>
-              <Select value={input.aspect} onValueChange={changeAspect} disabled={submitting}>
-                <SelectTrigger id={`${fieldId}-aspect`} data-testid='web-animation-aspect' className='w-full'><SelectValue /></SelectTrigger>
-                <SelectContent>{limits.aspects.map((aspect) => <SelectItem key={aspect} value={aspect}>{aspect}</SelectItem>)}</SelectContent>
-              </Select>
+              <Label id={`${fieldId}-aspect`}>{t('timeline.webAnimation.dialog.aspect')}</Label>
+              {/* Every aspect side by side, picked with one click (the approved demo's creation dialog). */}
+              <Tabs value={input.aspect} onValueChange={changeAspect}>
+                <TabsList data-testid='web-animation-aspect' aria-labelledby={`${fieldId}-aspect`} className='h-[var(--control-height)]'>
+                  {limits.aspects.map((aspect) => <TabsTrigger key={aspect} value={aspect} disabled={submitting} className='tabular-nums'>{aspect}</TabsTrigger>)}
+                </TabsList>
+              </Tabs>
             </div>
             <div className='flex min-w-0 flex-col gap-1.5'>
               <Label htmlFor={`${fieldId}-duration`}>{t('timeline.webAnimation.dialog.duration')}</Label>
