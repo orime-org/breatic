@@ -18,6 +18,7 @@ import {
   spendLimitsQueryKey,
   type SpendLimitMember,
 } from '@web/data/api/spend-limits';
+import { serverMessage } from '@web/data/api/server-message';
 import { ApiException } from '@web/data/api/types';
 import { usersApi } from '@web/data/api/users';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -52,17 +53,6 @@ function valueOf(draft: Draft): number | null | undefined {
   if (!/^(\d+|\d{1,3}(,\d{3})+)(\.\d{1,2})?$/.test(text)) return undefined;
   const credits = Number(text.replace(/,/g, ''));
   return credits <= SPEND_LIMIT_MAX_CREDITS ? credits : undefined;
-}
-
-/**
- * Why a save failed, in the user's language: the server's own sentence when
- * it sent one.
- * @param err - What the save rejected with.
- * @param fallback - The sentence for anything else.
- * @returns The sentence.
- */
-function saveFailure(err: unknown, fallback: string): string {
-  return err instanceof ApiException && err.fromServer && err.message ? err.message : fallback;
 }
 
 /**
@@ -189,7 +179,7 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
       await queryClient.invalidateQueries({ queryKey });
       toast.success(savedLine);
     } catch (err) {
-      toast.error(saveFailure(err, saveFailed));
+      toast.error(serverMessage(err, saveFailed));
     } finally {
       setSaving(false);
     }
@@ -201,7 +191,7 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
       await removeMemberSpendLimit(slug, userId);
       await queryClient.invalidateQueries({ queryKey });
     } catch (err) {
-      toast.error(saveFailure(err, saveFailed));
+      toast.error(serverMessage(err, saveFailed));
     } finally {
       setRestoring(null);
     }
@@ -344,7 +334,7 @@ function OverrideDialog({ slug, member, name, fallback, onClose }: { slug: strin
       await queryClient.invalidateQueries({ queryKey: spendLimitsQueryKey(slug) });
       onClose();
     } catch (err) {
-      toast.error(saveFailure(err, saveFailed));
+      toast.error(serverMessage(err, saveFailed));
     } finally {
       setSaving(false);
     }

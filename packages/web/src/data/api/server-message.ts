@@ -2,6 +2,17 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { ApiException } from '@web/data/api/types';
+import { StreamRefusedError } from '@web/data/stream/sse';
+
+/**
+ * The sentence our server wrote for this user about a refused request, or a
+ * stream refused before it opened, if it wrote one.
+ * @param err - Whatever the call threw.
+ * @returns The sentence, or null when it is not ours.
+ */
+export function serverWords(err: unknown): string | null {
+  return (err instanceof ApiException || err instanceof StreamRefusedError) && err.fromServer && err.message ? err.message : null;
+}
 
 /**
  * What to tell the user about a request the server turned down.
@@ -22,8 +33,5 @@ import { ApiException } from '@web/data/api/types';
  * @returns The line to show.
  */
 export function serverMessage(err: unknown, fallback: string): string {
-  if (err instanceof ApiException && err.fromServer && err.message) {
-    return err.message;
-  }
-  return fallback;
+  return serverWords(err) ?? fallback;
 }

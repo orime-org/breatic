@@ -9,6 +9,7 @@
 
 import { t } from '@breatic/shared';
 
+import { serverWords } from '@web/data/api/server-message';
 import { ApiException } from '@web/data/api/types';
 import { StreamRefusedError } from '@web/data/stream/sse';
 import { spendCapSentence } from '@web/lib/spend-cap-message';
@@ -23,7 +24,7 @@ const SPEND_CAP_REACHED = 'spend_cap_reached';
  */
 export function refusalSentence(err: unknown): string | null {
   if (!(err instanceof ApiException || err instanceof StreamRefusedError) || err.reason !== SPEND_CAP_REACHED) return null;
-  return spendCapSentence(err.details ?? {}, err.fromServer && err.message ? err.message : t('credits.refusal.spendCap'));
+  return spendCapSentence(err.details ?? {}, serverWords(err) ?? t('credits.refusal.spendCap'));
 }
 
 /**
@@ -33,7 +34,5 @@ export function refusalSentence(err: unknown): string | null {
  * @returns The sentence, or null when nothing of ours says why.
  */
 export function ourSentence(err: unknown): string | null {
-  const capped = refusalSentence(err);
-  if (capped !== null) return capped;
-  return (err instanceof ApiException || err instanceof StreamRefusedError) && err.fromServer && err.message ? err.message : null;
+  return refusalSentence(err) ?? serverWords(err);
 }
