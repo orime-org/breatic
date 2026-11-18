@@ -679,6 +679,17 @@ describe("what the guide says", () => {
     expect(doc).toMatch(/Shift\+Tab moves it back out/);
   });
 
+  it("names the plus only on an empty paragraph, the one line it shows on", () => {
+    expect(webSource("spaces/document/document-insert-row.ts")).toContain("row?.type === 'paragraph' &&");
+    const doc = `${section("Document spaces")}\n${section("Document columns")}`;
+    expect(doc).not.toMatch(/plus on an? (?!empty paragraph)[\w ]*?\bline\b/);
+    expect(doc).not.toMatch(/\bline with the plus\b/);
+    expect(doc).not.toMatch(/where the plus puts it/);
+    expect(doc).toMatch(/from the plus on an empty paragraph/);
+    expect(doc).toMatch(/behind the plus on an empty paragraph/);
+    expect(doc).toMatch(/an empty paragraph with the plus/);
+  });
+
   it("names in one sentence every entry the insert menus can grey", () => {
     const entries = webSource("spaces/document/document-insert-entries.ts");
     const reach = entries.split("export function insertReach")[1]?.split("\n}\n")[0] ?? "";

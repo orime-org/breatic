@@ -1898,15 +1898,15 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.slashMenu.empty"))}, and it closes once three more characters still match ` +
       "nothing. A space right after the slash closes it and keeps what was typed. The up and down arrows move " +
       "through it and Enter or a click picks. A line holding nothing but the slash and the letters after it counts " +
-      "as a line with no text: there the pick goes where the plus puts it, and on a line with text where " +
+      "as a line with no text: there the pick turns the line itself into it, as the plus does, and on a line with text where " +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} puts it; its greyed entries are as the insert menus' ` +
       "line says. " +
       "Picking a block type, the divider, the table, columns or the formula removes the slash and its letters at " +
       "once; picking an image, audio or video opens the file picker and removes them when the files land, and " +
       "closing the picker keeps them. The file picker and the formula box that follow a pick work as in those " +
       `menus. ${quoted(t("spaces.document.commands.table"))} puts in an empty table of three rows and three ` +
-      "columns at once; picking a size first is done from the plus on a line with no text or from " +
-      `${quoted(t("spaces.document.blockHandle.insertBelow"))} on a line with text, and rows and columns are added ` +
+      "columns at once; picking a size first is done from the plus on an empty paragraph or from " +
+      `${quoted(t("spaces.document.blockHandle.insertBelow"))} elsewhere, and rows and columns are added ` +
       "later from the table's own handles. Esc, clicking elsewhere or moving the caret off the line closes it and " +
       "keeps what was typed; one undo after a pick brings the slash and its letters back. It does not open in a " +
       "code block.",
@@ -2059,7 +2059,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged; while it is open ` +
       "that cell is tinted the way selected cells are. A cell holds blocks " +
       "the way the rest of the document does: paragraphs, headings, lists, to-dos, quotes, code, dividers, " +
-      "formulas, pictures, videos and audio, each with its own handle of six dots, and an empty line with the plus; a table " +
+      "formulas, pictures, videos and audio, each with its own handle of six dots, and an empty paragraph with the plus; a table " +
       "does not go inside a cell. Enter and Shift+Enter work as anywhere else, and Enter on the last empty line " +
       "of a cell stays in the cell. Tab in a list item indents it when it can be indented and Shift+Tab takes an " +
       "indented one back out; otherwise Tab moves to the next cell, and in the last cell it adds a row first, and " +
@@ -2148,7 +2148,7 @@ export function renderProductGuide(): string {
     "",
     "## Document columns",
     `${quoted(t("spaces.document.commands.columns"))} in a line's ${quoted(t("spaces.document.blockHandle.insertBelow"))} ` +
-      "menu, or behind the plus on an empty line, puts two columns side by side, each holding an empty line, with the " +
+      "menu, or behind the plus on an empty paragraph, puts two columns side by side, each holding an empty line, with the " +
       "caret in the first. It is greyed on a line in a column, on a line nested under another line and on a line " +
       `with lines nested under it, and pressing it there says ${quoted(t("spaces.document.columns.unavailable"))}`,
     "Dragging a line by its six dots (or a picture, video or audio by itself) onto the left or right " +
