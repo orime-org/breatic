@@ -14,7 +14,7 @@ import type { ChatAttachedChip } from "@shared/schemas/api.js";
 import type { CreditSourceKind } from "@shared/types/credit.js";
 import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
-import type { AccountKeyFailureReason } from "@shared/types/task-failure.js";
+import type { AccountKeyFailureKind, AccountKeyFailureReason } from "@shared/types/task-failure.js";
 import type { TimelineRate } from "@shared/timeline/time.js";
 import type { TimelineExecutionStatusSchema } from "@shared/timeline/web-animation.js";
 import type { z } from "zod";
@@ -959,10 +959,10 @@ export interface AccountActivityCoverageEntity {
 }
 
 /** How a chat turn on the payer's own key failed (inner#1953), as its stored reply keeps it. */
-export type ChatKeyFailureReason = "account_key_failed" | "account_key_missing" | "upstream_unavailable";
+export type ChatKeyFailureReason = AccountKeyFailureKind;
 
 /** Why an upstream refused the payer's own key (inner#1953). */
-export type ChatKeyRefusal = "invalid" | "no_balance" | "model_not_found" | "rate_limited";
+export type ChatKeyRefusal = AccountKeyFailureReason;
 
 /** What the last check of an account's upstream key found about its balance (inner#1953). */
 export type ProviderKeyBalanceState = "known" | "unsupported" | "forbidden" | "no_cap";

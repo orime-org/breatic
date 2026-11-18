@@ -860,9 +860,12 @@ export { uprightKeyFor, type UprightCopy } from "@shared/upload/upright.js";
 // Why a task failed, as a code rather than a sentence: the writer is a server
 // and the user is whoever opens the list, in their own language.
 export {
+  ACCOUNT_KEY_FAILURE_KINDS,
+  ACCOUNT_KEY_FAILURE_REASONS,
   TASK_FAILURE_REASONS,
   encodeTaskFailure,
   readTaskFailure,
+  type AccountKeyFailureKind,
   type AccountKeyFailureReason,
   type TaskFailureReason,
 } from "@shared/types/task-failure.js";

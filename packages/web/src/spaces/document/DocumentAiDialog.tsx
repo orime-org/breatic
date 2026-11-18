@@ -43,7 +43,7 @@ import { RotateCcw, Sparkles, Square, X } from 'lucide-react';
 import { useSmoothText } from 'use-smooth-text';
 import * as Y from 'yjs';
 
-import { documentBodyFragment, TEXT_TOOL_INSTRUCTIONS_MAX } from '@breatic/shared';
+import { documentBodyFragment, encodeTaskFailure, TEXT_TOOL_INSTRUCTIONS_MAX } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { WaitingDot } from '@web/components/WaitingDot';
@@ -57,11 +57,13 @@ import {
 } from '@web/data/api/text-tools';
 import { StreamRefusedError } from '@web/data/stream/sse';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
+import { useKeyFailureWords } from '@web/features/byok/key-failure-words';
 import { langFor } from '@web/features/preferences/supported-langs';
 import { useTranslation } from '@web/i18n/use-translation';
 import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-end';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
+import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentAiLaunchContext, TONE_LABEL_KEYS, type AiLaunch } from '@web/spaces/document/document-ai-context';
 import { aiCapture, aiContextOf } from '@web/spaces/document/document-ai-launch';
@@ -199,6 +201,7 @@ interface DocumentAiDialogProps {
  */
 export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialogProps): React.JSX.Element {
   const t = useTranslation();
+  const keyWords = useKeyFailureWords();
   const projectId = useDocumentProjectId();
   const { writeAccess } = useSpaceConnection();
   const writeAccessRef = React.useRef(writeAccess);
@@ -267,7 +270,15 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
             if (event.type === 'text_delta') send({ type: 'delta', seq, text: event.text });
             else if (event.type === 'done') send({ type: 'done', seq });
             else if (event.type === 'error') {
-              failure.current = event.message === '' ? null : event.message;
+              // A failure of the payer's own key names the key, the upstream and why, as a canvas task does (inner#1953).
+              const keyFailure = event.keyFailure;
+              const about = keyFailure === undefined ? undefined : {
+                ...(keyFailure.upstream === undefined ? {} : { upstream: keyFailure.upstream }),
+                ...(keyFailure.keyReason === undefined ? {} : { keyReason: keyFailure.keyReason }),
+              };
+              failure.current = keyFailure !== undefined
+                ? failureSentence(encodeTaskFailure(keyFailure.reason, about), t, undefined, keyWords)
+                : event.message === '' ? null : event.message;
               send({ type: 'error', seq });
             }
           },

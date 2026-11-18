@@ -18,7 +18,7 @@
  */
 import { getToolName, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
-import { NOTHING_SAID_WHY, attachmentPart, wireLineOf } from "@breatic/shared";
+import { ACCOUNT_KEY_FAILURE_KINDS, ACCOUNT_KEY_FAILURE_REASONS, NOTHING_SAID_WHY, attachmentPart, wireLineOf } from "@breatic/shared";
 import type { ChatAttachedChip, ChatKeyRefusal, MessageData, MessagePart, StoredMessageMetadata, ToolFailure } from "@breatic/shared";
 import { NOTHING_OF_IT_RAN } from "@server/agent/tool-ending.js";
 
@@ -140,10 +140,10 @@ function storedUserMessage(data: unknown): MessagePart | undefined {
 }
 
 /** The failure reasons a stored reply keeps; any other failure is stored as an ordinary one. */
-const STORED_FAILURE_REASONS: ReadonlySet<string> = new Set(["too_long", "shutdown", "account_key_failed", "account_key_missing", "upstream_unavailable"]);
+const STORED_FAILURE_REASONS: ReadonlySet<string> = new Set(["too_long", "shutdown", ...ACCOUNT_KEY_FAILURE_KINDS]);
 
 /** Why an upstream refused the payer's own key, as a stored failure keeps it (inner#1953). */
-const KEY_REFUSALS: ReadonlySet<string> = new Set(["invalid", "no_balance", "model_not_found", "rate_limited"]);
+const KEY_REFUSALS: ReadonlySet<string> = new Set(ACCOUNT_KEY_FAILURE_REASONS);
 
 /**
  * A failed mark, as the store keeps it: its reason when it is one the reply keeps, and for a failure of the payer's

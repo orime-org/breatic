@@ -50,7 +50,8 @@ import { knownTokensAtStart, requestTokens } from "@server/agent/request-size.js
 import type { Assembly, FoldResult, FoldTrigger, TurnIdentity } from "@server/agent/turn-fold.js";
 import { claimFirstMilestone, currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { accountKeyFailureIn, readContextOverflow, unrecognised400, type ContextOverflow } from "@breatic/provider";
+import { readContextOverflow, unrecognised400, type ContextOverflow } from "@breatic/provider";
+import { keyFailureFrame } from "@server/agent/key-failure-frame.js";
 import { lastFullSnapshotKey, pictureFactsOfRows, prefixHash, replayRows, stripThinking } from "@server/agent/history-replay.js";
 import type { ReplyForModel, UserForModel } from "@server/agent/history-replay.js";
 import { endingNote } from "@server/agent/model-messages.js";
@@ -109,22 +110,6 @@ type TurnKeys = { keys: KeySet | undefined; keyId: string | null } | { failed: u
 
 /** A turn on our keys. */
 const ON_OUR_KEYS: TurnKeys = { keys: undefined, keyId: null };
-
-/**
- * What a failed reply's mark says about an account key's failure (inner#1953): which kind, which upstream and why, so
- * the panel can tell the user to top up or replace the key. Empty for any other failure.
- * @param err - What the turn failed with.
- * @returns The mark's data.
- */
-function keyFailureFrame(err: unknown): Record<string, string> {
-  const facts = accountKeyFailureIn(err);
-  if (facts === undefined) return {};
-  return {
-    reason: facts.kind,
-    ...(facts.upstream === undefined || facts.upstream === "" ? {} : { upstream: facts.upstream }),
-    ...(facts.reason === undefined ? {} : { keyReason: facts.reason }),
-  };
-}
 
 /**
  * Main Agent for streaming chat interactions.

@@ -10,7 +10,7 @@
  * is a new run.
  */
 
-import type { TextToolLanguage, TextToolTone } from '@breatic/shared';
+import { ACCOUNT_KEY_FAILURE_KINDS, ACCOUNT_KEY_FAILURE_REASONS, type AccountKeyFailureKind, type AccountKeyFailureReason, type TextToolLanguage, type TextToolTone } from '@breatic/shared';
 
 import { apiGet } from '@web/data/api/request';
 import { sseStream } from '@web/data/stream/sse';
@@ -35,7 +35,29 @@ export type TextToolRequest =
 export type TextStreamEvent =
   | { readonly type: 'text_delta'; readonly text: string }
   | { readonly type: 'done' }
-  | { readonly type: 'error'; readonly message: string };
+  | { readonly type: 'error'; readonly message: string; readonly keyFailure?: TextToolKeyFailure };
+
+/** A failure of the payer's own key a text-tool run ended on (inner#1953): its kind, the upstream and why. */
+export interface TextToolKeyFailure {
+  readonly reason: AccountKeyFailureKind;
+  readonly upstream?: string;
+  readonly keyReason?: AccountKeyFailureReason;
+}
+
+/**
+ * The key failure an error frame names, if it names one.
+ * @param payload - The frame's data.
+ * @returns The failure, or undefined.
+ */
+function keyFailureOf(payload: Record<string, unknown>): TextToolKeyFailure | undefined {
+  const { reason, upstream, keyReason } = payload;
+  if (!(ACCOUNT_KEY_FAILURE_KINDS as readonly unknown[]).includes(reason)) return undefined;
+  return {
+    reason: reason as AccountKeyFailureKind,
+    ...(typeof upstream === 'string' && upstream !== '' ? { upstream } : {}),
+    ...((ACCOUNT_KEY_FAILURE_REASONS as readonly unknown[]).includes(keyReason) ? { keyReason: keyReason as AccountKeyFailureReason } : {}),
+  };
+}
 
 /** The budgets the browser windows a request to, and the pace it shows the answer at. */
 export interface TextToolsConfig {
@@ -70,7 +92,10 @@ function parseFrame(data: string, event: string): TextStreamEvent | null {
   }
   if (event === 'text_delta') return typeof payload['text'] === 'string' ? { type: 'text_delta', text: payload['text'] } : null;
   if (event === 'done') return { type: 'done' };
-  if (event === 'error') return { type: 'error', message: typeof payload['message'] === 'string' ? payload['message'] : '' };
+  if (event === 'error') {
+    const keyFailure = keyFailureOf(payload);
+    return { type: 'error', message: typeof payload['message'] === 'string' ? payload['message'] : '', ...(keyFailure === undefined ? {} : { keyFailure }) };
+  }
   return null;
 }
 

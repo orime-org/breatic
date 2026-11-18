@@ -122,6 +122,12 @@ export const TASK_FAILURE_REASONS = [
   "upstream_unavailable",
 ] as const;
 
+/** How a run on an account's own key failed (inner#1953): its key, its key row, or the upstream it runs on. */
+export const ACCOUNT_KEY_FAILURE_KINDS = ["account_key_failed", "account_key_missing", "upstream_unavailable"] as const satisfies readonly TaskFailureReason[];
+
+/** One of the kinds above. */
+export type AccountKeyFailureKind = (typeof ACCOUNT_KEY_FAILURE_KINDS)[number];
+
 /** Why an upstream turned an account's own key down (inner#1953). */
 export const ACCOUNT_KEY_FAILURE_REASONS = ["invalid", "no_balance", "model_not_found", "rate_limited"] as const;
 

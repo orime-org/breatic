@@ -18,6 +18,7 @@ import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { textToolSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
+import { keyFailureFrame } from "@server/agent/key-failure-frame.js";
 import { precheckCredits, projectService, textToolService } from "@server/modules";
 import { getModelForTool, getTextToolsConfig } from "@server/config/text-tools.js";
 import { assertLlmServable } from "@server/modules/task/model-servable.js";
@@ -171,8 +172,9 @@ textTools.post(
         }
         ended = true;
         if (event.type === "error") {
-          // The cause stays in the log; the user is told the run failed.
-          await writeEvent(s, "error", { type: "error", message: t("server.text_tool.failed") });
+          // The cause stays in the log; the user is told the run failed, and whose key failed where and why when it
+          // was the payer's own (inner#1953).
+          await writeEvent(s, "error", { type: "error", message: t("server.text_tool.failed"), ...keyFailureFrame(event.err) });
           logger.error({ err: event.err, userId: user.id, projectId, tool }, "text_tool_error");
           continue;
         }
@@ -188,7 +190,7 @@ textTools.post(
       // waiting for one.
       logger.error({ err, userId: user.id, projectId, tool }, "text_tool_stream_failed");
       if (!ended && !s.closed) {
-        await writeEvent(s, "error", { type: "error", message: t("server.text_tool.failed") });
+        await writeEvent(s, "error", { type: "error", message: t("server.text_tool.failed"), ...keyFailureFrame(err) });
       }
     });
   },

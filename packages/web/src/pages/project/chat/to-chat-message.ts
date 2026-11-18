@@ -32,6 +32,8 @@ import {
   spaceRequestInputSchema,
   stripDsml,
   TURNED_AWAY,
+  ACCOUNT_KEY_FAILURE_KINDS,
+  ACCOUNT_KEY_FAILURE_REASONS,
 } from '@breatic/shared';
 import type { CanvasProposal, ChatAttachedChip, ChatKeyFailureReason, ChatKeyRefusal, DocumentProposal, SceneGenerationProposal } from '@breatic/shared';
 import type {
@@ -53,10 +55,10 @@ const INTERRUPTED = 'data-interrupted';
 const FAILED = 'data-failed';
 
 /** The failed mark's reasons that are a failure of the payer's own key (inner#1953). */
-const KEY_FAILURES: ReadonlySet<string> = new Set(['account_key_failed', 'account_key_missing', 'upstream_unavailable']);
+const KEY_FAILURES: ReadonlySet<string> = new Set(ACCOUNT_KEY_FAILURE_KINDS);
 
 /** Why an upstream refused the payer's own key, as the failed mark carries it. */
-const KEY_REFUSALS: ReadonlySet<string> = new Set(['invalid', 'no_balance', 'model_not_found', 'rate_limited']);
+const KEY_REFUSALS: ReadonlySet<string> = new Set(ACCOUNT_KEY_FAILURE_REASONS);
 
 /**
  * A failure of the payer's own key off a failed mark's data, live or reloaded alike.
