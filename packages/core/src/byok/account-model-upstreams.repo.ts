@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Account model upstreams repository — data access for `account_model_upstreams` (inner#1953), a global table: the
+ * Account model upstreams repository — data access for `account_model_upstreams` (inner#1953): the
  * upstream an account chose for a catalog model that is not a language model. One live choice per account and model;
  * a model without one runs on the deployment's keys.
  */
@@ -11,7 +11,7 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { AccountModelUpstream } from "@breatic/shared";
 import type { TransactionSql } from "postgres";
 import { db, type DbTx } from "@core/db/client.js";
-import { accountModelUpstreams, users } from "@core/db/schema.js";
+import { accountModelUpstreams, accountProviderKeys, users } from "@core/db/schema.js";
 
 const entityColumns = {
   id: accountModelUpstreams.id,
@@ -24,22 +24,33 @@ const entityColumns = {
 
 /**
  * Set or clear the upstream an account chose for a model: the live choice is soft-deleted and, unless clearing, a
- * new one inserted, in one transaction. Whether the account holds a key that can run the model is the caller's check.
+ * new one inserted, in one transaction. A choice naming an upstream the account holds no live key for is refused
+ * under the account's lock, which a key's delete takes too, so a delete cannot slip between the check and the insert
+ * and leave a choice that comes back with the next key. Whether the upstream can run the model is the caller's check.
  * @param userId - The account.
  * @param model - The catalog model.
  * @param upstream - The chosen upstream, or null to go back to the deployment's keys.
- * @returns Nothing.
+ * @returns False when the account holds no live key for the upstream, and nothing was written; true otherwise.
  * @throws {Error} When the account does not exist (foreign key).
  */
-export async function setModelUpstream(userId: string, model: string, upstream: string | null): Promise<void> {
-  await db.transaction(async (tx) => {
-    // Serialises the account's choice writes, so two at once cannot both insert a live row.
+export async function setModelUpstream(userId: string, model: string, upstream: string | null): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    // Serialises the account's choice writes and key deletes, so two at once cannot both insert a live row.
     await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("no key update");
+    if (upstream !== null) {
+      const [held] = await tx
+        .select({ id: accountProviderKeys.id })
+        .from(accountProviderKeys)
+        .where(and(eq(accountProviderKeys.userId, userId), eq(accountProviderKeys.upstream, upstream), isNull(accountProviderKeys.deletedAt)))
+        .limit(1);
+      if (held === undefined) return false;
+    }
     await tx
       .update(accountModelUpstreams)
       .set({ deletedAt: sql`now()` })
       .where(and(eq(accountModelUpstreams.userId, userId), eq(accountModelUpstreams.model, model), isNull(accountModelUpstreams.deletedAt)));
     if (upstream !== null) await tx.insert(accountModelUpstreams).values({ userId, model, upstream });
+    return true;
   });
 }
 

@@ -243,6 +243,8 @@ describe("account_provider_keys", () => {
 describe("account_model_upstreams", () => {
   it("sets, changes and clears the upstream an account chose for a model", async () => {
     const userId = await seedUser();
+    await save(userId, "fal");
+    await save(userId, "wavespeed");
     expect(await accountModelUpstreamsRepo.modelUpstreamFor(userId, "nano-banana-2")).toBeNull();
 
     await accountModelUpstreamsRepo.setModelUpstream(userId, "nano-banana-2", "fal");
@@ -261,6 +263,9 @@ describe("account_model_upstreams", () => {
   it("keeps one choice per model and account apart from every other", async () => {
     const userId = await seedUser();
     const other = await seedUser();
+    await save(userId, "fal");
+    await save(userId, "wavespeed");
+    await save(other, "sandbase");
     await accountModelUpstreamsRepo.setModelUpstream(userId, "nano-banana-2", "fal");
     await accountModelUpstreamsRepo.setModelUpstream(userId, "ideogram-v3-quality", "wavespeed");
     await accountModelUpstreamsRepo.setModelUpstream(other, "nano-banana-2", "sandbase");
@@ -272,10 +277,21 @@ describe("account_model_upstreams", () => {
 
   it("holds at most one live choice per account and model, in the table itself", async () => {
     const userId = await seedUser();
+    await save(userId, "fal");
     await accountModelUpstreamsRepo.setModelUpstream(userId, "nano-banana-2", "fal");
     await expect(sql`
       INSERT INTO account_model_upstreams (user_id, model, upstream) VALUES (${userId}, 'nano-banana-2', 'wavespeed')
     `).rejects.toMatchObject({ code: "23505" });
+  });
+
+  it("refuses a choice naming an upstream the account holds no live key for, checked under the account's lock", async () => {
+    const userId = await seedUser();
+    await save(userId, "fal");
+    await accountProviderKeysRepo.deleteKey(userId, "fal");
+
+    expect(await accountModelUpstreamsRepo.setModelUpstream(userId, "nano-banana-2", "fal")).toBe(false);
+    expect(await accountModelUpstreamsRepo.liveModelUpstreamsFor(userId)).toEqual([]);
+    expect(await accountModelUpstreamsRepo.setModelUpstream(userId, "nano-banana-2", null)).toBe(true);
   });
 
   it("drops the choices naming an upstream when that upstream's key is deleted, and only those", async () => {

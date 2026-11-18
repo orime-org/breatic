@@ -281,12 +281,9 @@ export async function setModelUpstream(userId: string, model: string, upstream: 
   const bound = mediaBindings().get(model);
   const refused = new AppError(422, t("server.byok.model_choice_refused"), "model_choice_refused");
   if (bound === undefined) throw refused;
-  if (upstream !== null) {
-    if (upstream === ACCOUNT_LLM_UPSTREAM || !bound.includes(upstream)) throw refused;
-    const held = (await accountProviderKeysRepo.liveKeysFor(userId)).some((k) => k.upstream === upstream);
-    if (!held) throw refused;
-  }
-  await accountModelUpstreamsRepo.setModelUpstream(userId, model, upstream);
+  if (upstream !== null && (upstream === ACCOUNT_LLM_UPSTREAM || !bound.includes(upstream))) throw refused;
+  // The repository checks the account still holds a live key for the upstream, under the lock a delete takes.
+  if (!(await accountModelUpstreamsRepo.setModelUpstream(userId, model, upstream))) throw refused;
 }
 
 /**
