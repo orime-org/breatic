@@ -29,6 +29,8 @@ export interface LookPartEntry {
   mapRepeat?: [number, number];
   mapOffset?: [number, number];
   mapRotation?: number;
+  /** A small picture of the own picture, for the part row and the picture field; none for a picture the page cannot draw. */
+  thumbnail?: string;
   /** A basic material: only colour, picture and opacity apply. */
   unlit: boolean;
   /** A line or points material: only colour and opacity are offered. */
@@ -87,6 +89,34 @@ function isLineMaterial(material: Material): boolean {
   return material.type === 'LineBasicMaterial' || material.type === 'LineDashedMaterial' || material.type === 'PointsMaterial';
 }
 
+/** The longest edge of a part picture's thumbnail, in pixels. */
+const THUMBNAIL_EDGE = 64;
+
+/**
+ * A small copy of a decoded picture as a data URL.
+ * @param image - The texture's image.
+ * @returns The thumbnail, or undefined for a compressed or empty picture, or one the page may not read back.
+ */
+function thumbnailOf(image: unknown): string | undefined {
+  const drawable = (typeof ImageBitmap !== 'undefined' && image instanceof ImageBitmap) || image instanceof HTMLImageElement || image instanceof HTMLCanvasElement;
+  if (!drawable) return undefined;
+  const { width, height } = image as { width: number; height: number };
+  if (!width || !height) return undefined;
+  const scale = THUMBNAIL_EDGE / Math.max(width, height);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const context = canvas.getContext('2d');
+  if (!context) return undefined;
+  try {
+    context.drawImage(image as CanvasImageSource, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL();
+  } catch {
+    // A picture from another origin cannot be read back; the row shows the part's colour.
+    return undefined;
+  }
+}
+
 /**
  * An offset brought into the range a part takes by whole picture widths, which a repeating picture draws the same.
  * @param offset - The model's own offset.
@@ -138,7 +168,7 @@ export function buildPartTable(root: Object3D, partOf: (material: Material) => s
       alphaTest: material.alphaTest,
       hasMap: map !== null,
       ...(map ? { mapRepeat: [map.repeat.x, map.repeat.y] as [number, number], mapOffset: [inOffsetRange(map.offset.x), inOffsetRange(map.offset.y)] as [number, number],
-        mapRotation: MathUtils.euclideanModulo(MathUtils.radToDeg(map.rotation) + 180, 360) - 180 } : {}),
+        mapRotation: MathUtils.euclideanModulo(MathUtils.radToDeg(map.rotation) + 180, 360) - 180, thumbnail: thumbnailOf(map.image) } : {}),
       unlit: material.type === 'MeshBasicMaterial',
       line: isLineMaterial(material),
       builtin: options.builtin,

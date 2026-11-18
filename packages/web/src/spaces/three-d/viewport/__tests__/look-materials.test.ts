@@ -271,6 +271,25 @@ describe('buildPartTable picture transform', () => {
     expect(entry.mapRotation).toBeCloseTo(90);
   });
 
+  it('keeps a small thumbnail of the own picture, for the part row and the picture field', () => {
+    const draw = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: draw } as never);
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,own');
+    const image = document.createElement('canvas');
+    image.width = 512; image.height = 256;
+    const root = new Group();
+    const textured = new MeshStandardMaterial({ map: new Texture(image) });
+    textured.userData.lookPart = '0';
+    const plain = new MeshStandardMaterial();
+    plain.userData.lookPart = '1';
+    root.add(new Mesh(new BoxGeometry(), textured), new Mesh(new BoxGeometry(), plain));
+    const table = exported<Build>('buildPartTable')(root, partOf, { builtin: false });
+    expect((table.get('0') as unknown as { thumbnail?: string }).thumbnail).toBe('data:image/png;base64,own');
+    expect(draw).toHaveBeenCalledWith(image, 0, 0, 64, 32);
+    expect((table.get('1') as unknown as { thumbnail?: string }).thumbnail).toBeUndefined();
+    vi.restoreAllMocks();
+  });
+
   it('brings a model rotation past 180 degrees and an offset past 100 into the ranges a part takes, drawing the same', () => {
     const root = new Group();
     const map = new Texture();

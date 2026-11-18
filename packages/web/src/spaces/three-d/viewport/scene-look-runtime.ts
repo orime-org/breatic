@@ -29,6 +29,8 @@ export interface SceneLookPartReport {
   mapRepeat?: [number, number];
   mapOffset?: [number, number];
   mapRotation?: number;
+  /** A small picture of the own picture. */
+  thumbnail?: string;
 }
 
 /** What the editor needs to show and change an object's look. */
@@ -99,7 +101,7 @@ function partRows(table: LookPartTable, themeColor: string): SceneLookPartReport
     key, name: entry.builtin ? null : entry.name, color: entry.builtin ? themeColor : entry.color, hasMap: entry.hasMap,
     unlit: entry.unlit, line: entry.line, roughness: entry.roughness, metalness: entry.metalness, opacity: entry.opacity,
     transmission: entry.transmission, emissive: entry.emissive, emissiveIntensity: entry.emissiveIntensity,
-    mapRepeat: entry.mapRepeat, mapOffset: entry.mapOffset, mapRotation: entry.mapRotation,
+    mapRepeat: entry.mapRepeat, mapOffset: entry.mapOffset, mapRotation: entry.mapRotation, thumbnail: entry.thumbnail,
   }));
 }
 

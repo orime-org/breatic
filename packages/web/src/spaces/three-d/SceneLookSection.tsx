@@ -33,6 +33,8 @@ export interface SceneLookPartRow {
   mapRepeat?: [number, number];
   mapOffset?: [number, number];
   mapRotation?: number;
+  /** A small picture of the model's own picture. */
+  thumbnail?: string;
 }
 
 /** A slider or colour drag that previews and is written once on release (inner#1693 design 3.3). */
@@ -237,6 +239,7 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
   const uploadPercent = row ? uploadPercentOf?.(row.key) : null;
   // A user picture starts untiled; the model's own picture starts from its own transform (design 3.3).
   const ownTransform = shownUserPicture ? undefined : row;
+  const fieldPicture = shownUserPicture ? pictureUrl?.(stored.map!) : stored.map === undefined ? row?.thumbnail : undefined;
   const disabled = !mutable;
   /**
    * Preview a dragged field of the selected part.
@@ -249,7 +252,7 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
     <ul className='flex flex-col gap-1'>
       {parts.map((part, index) => {
         const fields = look[part.key] ?? {};
-        const picture = isPicture(fields.map) ? pictureUrl?.(fields.map) : undefined;
+        const picture = isPicture(fields.map) ? pictureUrl?.(fields.map) : fields.map === undefined ? part.thumbnail : undefined;
         const color = fields.color ?? (isPicture(fields.map) && showingPictures.has(fields.map) ? SCENE_LOOK_PICTURE_COLOR : part.color);
         const active = part.key === selectedPart;
         const uploading = uploadPercentOf?.(part.key);
@@ -281,7 +284,7 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
           : uploadPercent !== null && uploadPercent !== undefined
             ? <span className='text-xs tabular-nums text-muted-foreground' data-testid='scene-look-uploading'>{`${uploadPercent}%`}</span>
             : <>
-              {shownUserPicture && pictureUrl?.(stored.map!) ? <img src={pictureUrl(stored.map!)} alt='' className='size-8 rounded-chrome-sm border border-swatch-border object-cover' /> : null}
+              {fieldPicture ? <img src={fieldPicture} alt='' className='size-8 rounded-chrome-sm border border-swatch-border object-cover' /> : null}
               <Button variant='outline' size='compact' disabled={disabled || row.line} data-testid='scene-look-choose-image'
                 onClick={() => onChoosePicture(row.key)}>{t(shownPicture ? 'spaces.threeD.look.replaceImage' : 'spaces.threeD.look.chooseImage')}</Button>
               {shownPicture ? <Button variant='outline' size='compact' disabled={disabled || row.line} data-testid='scene-look-remove-image'

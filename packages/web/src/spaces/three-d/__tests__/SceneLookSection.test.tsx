@@ -167,6 +167,18 @@ describe('SceneLookSection', () => {
     expect(swatch().style.backgroundColor).toBe('rgb(255, 255, 255)');
   });
 
+  it('shows the model\'s own picture on the part row and in the picture field until it is replaced or turned off', () => {
+    const own = [{ ...PARTS[0]!, thumbnail: 'data:image/png;base64,own' }, ...PARTS.slice(1)] as typeof PARTS;
+    renderSection({ selectedPart: '0', parts: own });
+    const swatch = screen.getByTestId('scene-look-part-0').querySelector('span') as HTMLElement;
+    expect(swatch.style.backgroundImage).toContain('data:image/png;base64,own');
+    expect(screen.getByTestId('scene-look-part-fields').querySelector('img')?.getAttribute('src')).toBe('data:image/png;base64,own');
+    cleanup();
+    renderSection({ selectedPart: '0', parts: own, look: { 0: { map: 'none' } } });
+    expect((screen.getByTestId('scene-look-part-0').querySelector('span') as HTMLElement).style.backgroundImage).toBe('');
+    expect(screen.getByTestId('scene-look-part-fields').querySelector('img')).toBeNull();
+  });
+
   it('starts a user picture\'s tiling at one', () => {
     renderSection({ selectedPart: '0', look: { 0: { map: IMAGE } } });
     expect((screen.getByTestId('scene-look-repeat-0') as HTMLInputElement).value).toBe('1');
