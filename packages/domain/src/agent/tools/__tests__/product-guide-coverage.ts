@@ -55,6 +55,7 @@ interface Excluded {
 
 /** Every message the guide does not quote, and what the guide does with it. */
 export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
+  "server.credit.agent_tools_need_credits": { described: /web search, image search and page reading are paid in credits/ },
   "spaces.create.notAvailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.loading": { excluded: REASONS.PASSING },
   "timeline.unavailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
@@ -706,6 +707,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "chat.tool.checkingCanvas": { described: /a line may name what it is doing/ },
   "chat.tool.checkingModels": { described: /a line may name what it is doing/ },
   "chat.tool.failedLine": { described: /naming the step and why/ },
+  "chat.tool.failure.accountKey": { described: /says which upstream and whose key it was/ },
   "chat.tool.failure.badAnswer": { described: /naming the step and why/ },
   "chat.tool.failure.declined": { described: /naming the step and why/ },
   "chat.tool.failure.emptyFile": { described: /naming the step and why/ },

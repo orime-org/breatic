@@ -985,7 +985,9 @@ export function renderProductGuide(): string {
       "dialog where an account adds its own keys for upstreams (one OpenRouter key runs every language model; " +
       "keys for other upstreams run picture, video, sound and 3D models) and picks, model by model, which upstream " +
       "with a key runs it. A studio's runs use the keys of whoever pays for it: the owner's own on a personal " +
-      "studio, the Studio Admin's on a team studio. A run on such a key takes no credits. When the key fails, the " +
+      "studio, the Studio Admin's on a team studio. A run on such a key takes no credits, but an Agent message " +
+      "still needs credits above zero, since web search, image search and page reading are paid in credits; with " +
+      "none the message is turned away and says so. When the key fails, the " +
       "run fails and its task or the Agent's reply says which upstream and whose key it was, and what to do: top " +
       "up at that upstream or change the key in that dialog, or, on the Studio Admin's key, ask the Studio Admin. " +
       "Such a run never moves to the platform's keys.",
