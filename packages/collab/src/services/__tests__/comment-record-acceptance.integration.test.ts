@@ -14,7 +14,7 @@ import * as Y from "yjs";
 import { sql as dsql } from "drizzle-orm";
 
 import { env, getStreamRedis } from "@breatic/core";
-import { assignmentsChangedChannel, canvasSpaceDocName, projectMetaDocName, type SpaceRpcRequest } from "@breatic/shared";
+import { assignmentsChangedChannel, canvasSpaceDocName, projectMetaDocName } from "@breatic/shared";
 import { canvasNodesMap } from "@breatic/shared/canvas-model";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import { storeDoc } from "@collab/services/persistence.js";
@@ -213,7 +213,7 @@ describe("deleting and restoring a Space", () => {
         id: randomUUID(),
         type,
         payload: { spaceId: world.spaceId },
-      } as SpaceRpcRequest)).ok;
+      })).ok;
     expect(await rpc("space:delete")).toBe(true);
     expect((await rows("comment_mentions", world))[0]).toMatchObject({ deleted_at: expect.any(String) });
     expect((await rows("comment_assignments", world))[0]).toMatchObject({ deleted_at: expect.any(String) });
