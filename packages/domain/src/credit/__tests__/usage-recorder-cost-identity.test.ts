@@ -66,6 +66,7 @@ describe("a model call's cost identity", () => {
         costSource: "provider",
         credits: 1.25,
         costIdentity: "timeline:11111111-1111-4111-8111-111111111111:1",
+        keyId: null,
       },
     ]);
     expect(missing).toEqual([]);
