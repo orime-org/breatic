@@ -127,7 +127,7 @@ describe('an audio separation press refused at a spend limit', () => {
     const ids = builtIds();
     expect(ids.length).toBeGreaterThan(0);
     for (const id of ids) {
-      expect(drawNode(id)).toHaveTextContent(spendCapMessage('spend_cap_reached', 'studio', '10', '2026-12-01T00:00:00.000Z'));
+      expect(drawNode(id)).toHaveTextContent(spendCapMessage('studio', '10', '2026-12-01T00:00:00.000Z'));
     }
   });
 });

@@ -23,7 +23,7 @@ afterEach(() => setLocale('en'));
 
 describe('one of a thing in English', () => {
   const cases: [string, (n: string) => string, RegExp, RegExp][] = [
-    ['a person\'s own spend limit refusal', (n) => spendCapMessage('spend_cap_reached', 'member', n, RESET), /\(1 credit\)/, /\(2 credits\)/],
+    ['a person\'s own spend limit refusal', (n) => spendCapMessage('member', n, RESET), /\(1 credit\)/, /\(2 credits\)/],
     ['the server\'s own spend limit refusal', (n) => t('server.spend_cap.member', { limit: formatCredits(n, 'en') }), /\(1 credit\)/, /\(2 credits\)/],
     ['a limit on the spend limits section', (n) => t(`${KEY}.amount`, { amount: formatCreditAmount(n) }), /^1 credit$/, /^2 credits$/],
     ['spent against a limit', (n) => t(`${KEY}.spentOfLimit`, { spent: formatCreditAmount('0.5'), limit: formatCreditAmount(n) }), /^0\.5 \/ 1 credit$/, /^0\.5 \/ 2 credits$/],

@@ -24,7 +24,7 @@ import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { noteTurnRunning } from '@web/stores/running-turns';
 import { runOnce } from '@web/stores/task-actions-in-flight';
 import { ApiException } from '@web/data/api/types';
-import { spendCapMessage } from '@web/lib/spend-cap-message';
+import { spendCapSentence } from '@web/lib/spend-cap-message';
 import { isReadingRun, layLatestPage, letGoOfRun, readRun, runNamedIn, settleAsk, type CardResult } from '@web/stores/chat-sessions';
 
 /** The conversation this page shows, and its project. */
@@ -72,9 +72,7 @@ const askedAgain = new Set<string>();
  */
 function capNoteOf(seen: ChatSyncAnswer): string | null {
   if (seen.blocked !== 'spend_cap') return null;
-  if (seen.scope === undefined || seen.resetsAt === undefined) return t('credits.refusal.spendCap');
-  if (seen.scope === 'member' && seen.limit === undefined) return t('credits.refusal.spendCap');
-  return spendCapMessage('spend_cap_reached', seen.scope, seen.limit ?? '', seen.resetsAt);
+  return spendCapSentence(seen, t('credits.refusal.spendCap'));
 }
 
 /**

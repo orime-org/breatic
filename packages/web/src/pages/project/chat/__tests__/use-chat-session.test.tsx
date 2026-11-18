@@ -921,7 +921,7 @@ describe('a send refused at a spend limit', () => {
 
     const calls = [...toastSpy.error.mock.calls, ...toastSpy.warning.mock.calls] as unknown[][];
     expect(calls).toHaveLength(1);
-    expect(calls[0]![0]).toBe(spendCapMessage('spend_cap_reached', details.scope, details.limit, details.resetsAt));
+    expect(calls[0]![0]).toBe(spendCapMessage(details.scope, details.limit, details.resetsAt));
     expect((calls[0]![1] as { action?: unknown } | undefined)?.action).toBeUndefined();
     expect(panel.result.current.draft).toBe('hello');
   });

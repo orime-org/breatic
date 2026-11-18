@@ -12,7 +12,7 @@ const RESETS = '2026-12-01T00:00:00.000Z';
 describe('what a refused text-tool run says (inner#1968 H-37)', () => {
   it('names the spend limit and its local reset day', () => {
     const err = new StreamRefusedError(402, 'cap reached', true, 'spend_cap_reached', { code: 402, message: 'cap reached', reason: 'spend_cap_reached', scope: 'studio', limit: '50', resetsAt: RESETS });
-    expect(textToolRefusal(err)).toBe(spendCapMessage('spend_cap_reached', 'studio', '50', RESETS));
+    expect(textToolRefusal(err)).toBe(spendCapMessage('studio', '50', RESETS));
   });
 
   it('says the server sentence for any other refusal our server wrote', () => {

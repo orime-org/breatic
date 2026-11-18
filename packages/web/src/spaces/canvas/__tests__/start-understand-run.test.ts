@@ -482,7 +482,7 @@ describe('a reading refused at a spend limit', () => {
 
     const calls = [...vi.mocked(toast.error).mock.calls, ...vi.mocked(toast.warning).mock.calls] as unknown[][];
     expect(calls).toHaveLength(1);
-    expect(calls[0]![0]).toBe(spendCapMessage('spend_cap_reached', details.scope, details.limit, details.resetsAt));
+    expect(calls[0]![0]).toBe(spendCapMessage(details.scope, details.limit, details.resetsAt));
     expect((calls[0]![1] as { action?: unknown } | undefined)?.action).toBeUndefined();
   });
 });

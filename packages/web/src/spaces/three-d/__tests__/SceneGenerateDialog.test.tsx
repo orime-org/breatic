@@ -607,7 +607,7 @@ describe('SceneGenerateDialog refused at a spend limit', () => {
     const resetsAt = '2026-12-01T00:00:00.000Z';
     await refusedWith(new ApiException({ status: 402, message: 'cap reached', reason: 'spend_cap_reached', fromServer: true, details: { scope: 'member', limit: '10', resetsAt } }));
     expect(toastsShown(toast.error, toast.warning).map((shown) => shown.message)).toEqual([
-      spendCapMessage('spend_cap_reached', 'member', '10', resetsAt),
+      spendCapMessage('member', '10', resetsAt),
     ]);
   });
 });
