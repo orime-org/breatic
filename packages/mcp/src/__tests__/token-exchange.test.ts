@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { TokenExchangeRateLimitedError, TokenExchangeUnavailableError, createTokenExchanger } from "@mcp/token-exchange.js";
+import { TokenExchangeRateLimitedError, TokenExchangeUnavailableError, createTokenExchanger, discoverTokenEndpoint } from "@mcp/token-exchange.js";
 
 let server: Server | undefined;
 afterEach(() => new Promise<void>((done) => (server ? server.close(() => done()) : done())));
@@ -89,5 +89,19 @@ describe("createTokenExchanger", () => {
   it("throws on any other failure, so the call is answered as a server error", async () => {
     const { url } = await tokenEndpoint(401, { error: "invalid_client" });
     await expect(createTokenExchanger({ tokenEndpoint: url, clientSecret: "wrong", timeoutMs: 5_000 })("t")).rejects.toThrow(/401/);
+  });
+});
+
+describe("discoverTokenEndpoint", () => {
+  it("reads the token endpoint from the issuer's authorization server metadata", async () => {
+    const { url, seen } = await tokenEndpoint(200, { issuer: "http://127.0.0.1", token_endpoint: "http://127.0.0.1/oauth/token" });
+    const issuer = new URL(url).origin;
+    expect(await discoverTokenEndpoint(issuer, 5_000)).toBe("http://127.0.0.1/oauth/token");
+    expect(seen.deliveries).toBe(1);
+  });
+
+  it("refuses metadata without a token endpoint", async () => {
+    const { url } = await tokenEndpoint(200, { issuer: "http://127.0.0.1" });
+    await expect(discoverTokenEndpoint(new URL(url).origin, 5_000)).rejects.toThrow();
   });
 });
