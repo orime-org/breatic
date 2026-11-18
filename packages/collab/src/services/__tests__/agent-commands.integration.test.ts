@@ -14,9 +14,11 @@ import { randomUUID } from "node:crypto";
 import { sql as dsql } from "drizzle-orm";
 
 import { agentAccessService, db, getMcpConfig } from "@breatic/core";
-import { callScopedId, mcpCommandStreamKey, mcpDoneChannel, mcpReplyKey } from "@breatic/shared";
+import * as Y from "yjs";
+import { agentPresenceKey, agentPresenceRecordSchema, callScopedId, mcpCommandStreamKey, mcpDoneChannel, mcpReplyKey, projectMetaDocName } from "@breatic/shared";
 import { getCollabConfig } from "@collab/config.js";
 import {
+  call,
   canvasNodes,
   consumeOn,
   harness,
@@ -26,6 +28,7 @@ import {
   seedWorld,
   send,
   useAgentCommandHarness,
+  type World,
 } from "@collab/services/__tests__/agent-command-harness.js";
 
 useAgentCommandHarness();
@@ -216,5 +219,77 @@ describe("refusals", () => {
     const elsewhere = await seedWorld();
     consumeOn(elsewhere, harness.instanceB);
     expect(await replyOf(elsewhere, (await send(elsewhere, "list_spaces", {})).callId)).toMatchObject({ status: "done" });
+  });
+});
+
+/**
+ * The agent's presence record in the Project's meta document.
+ * @param world - Whose agent.
+ * @returns The record, or undefined when none was written.
+ */
+async function agentPresence(world: World): Promise<Record<string, unknown> | undefined> {
+  const conn = await harness.instanceB.openDirectConnection(projectMetaDocName(world.projectId), {});
+  try {
+    const entry = conn.document!.getMap("users").get(agentPresenceKey(world.userId, world.connectionId));
+    return entry instanceof Y.Map ? entry.toJSON() : undefined;
+  } finally {
+    await conn.disconnect();
+  }
+}
+
+/**
+ * Wait until the agent's record satisfies a check.
+ * @param world - Whose agent.
+ * @param check - What the record must show.
+ * @returns The record.
+ */
+async function presenceWhen(world: World, check: (record: Record<string, unknown> | undefined) => boolean): Promise<Record<string, unknown> | undefined> {
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    const record = await agentPresence(world);
+    if (check(record) || Date.now() > deadline) return record;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+describe("presence (§19.2)", () => {
+  it("records the agent online in its Space with the nodes a command named, beside its owner", async () => {
+    const world = await seedWorld();
+    consumeOn(world, harness.instanceA);
+    await call(world, "update_canvas_node", { nodeId: world.nodeId, name: "Seen" });
+    const record = await presenceWhen(world, (r) => r !== undefined);
+    expect(record).toMatchObject({ id: world.userId, online: true, agent: { connectionId: world.connectionId, spaceId: world.spaceId, focus: [world.nodeId] } });
+    expect(agentPresenceRecordSchema.safeParse(record).success).toBe(true);
+  });
+
+  it("keeps the last focus across a whole-canvas read, and moves it to the nodes a create made", async () => {
+    const world = await seedWorld();
+    consumeOn(world, harness.instanceA);
+    await call(world, "read_canvas", { nodeIds: [world.nodeId] });
+    await presenceWhen(world, (r) => r !== undefined);
+    await call(world, "read_canvas", {});
+    expect(await agentPresence(world)).toMatchObject({ agent: { focus: [world.nodeId] } });
+    const created = await send(world, "create_canvas_nodes", { nodes: [{ type: "text" }, { type: "text" }] });
+    await replyOf(world, created.callId);
+    const ids = [callScopedId(created.callId, "node:0"), callScopedId(created.callId, "node:1")];
+    expect(await presenceWhen(world, (r) => JSON.stringify((r?.agent as { focus?: unknown })?.focus) === JSON.stringify(ids))).toMatchObject({ agent: { focus: ids } });
+  });
+
+  it("refreshes presence with touch_presence without counting it against commands_per_minute", async () => {
+    const world = await seedWorld();
+    consumeOn(world, harness.instanceA);
+    const max = getMcpConfig().rate_limit.commands_per_minute;
+    for (let i = 0; i < max; i++) await send(world, "touch_presence", i === 0 ? { focus: [world.nodeId] } : {});
+    expect(await replyOf(world, (await send(world, "list_spaces", {})).callId, 20_000)).toMatchObject({ status: "done" });
+    expect(await agentPresence(world)).toMatchObject({ online: true, agent: { spaceId: world.spaceId, focus: [world.nodeId] } });
+  });
+
+  it("writes no presence for a command it refused", async () => {
+    const world = await seedWorld();
+    const stranger = await seedWorld();
+    consumeOn(world, harness.instanceA);
+    const outsider = { ...world, userId: stranger.userId, connectionId: stranger.connectionId, credential: stranger.credential };
+    expect(await call(outsider, "read_canvas", {})).toMatchObject({ status: "rejected", reason: "no_access" });
+    expect(await agentPresence(outsider)).toBeUndefined();
   });
 });
