@@ -3,7 +3,7 @@
 
 /**
  * Whether a Motion Space has a run in progress (#1490 design §8.3) is read from the same in-progress list the open
- * Space shows, so the tab's mark and the Space's list come from one request and one poll.
+ * Space shows, so the tab's mark and the Space's list come from one request; nothing polls it (design §4.7).
  */
 
 import * as React from 'react';
@@ -34,10 +34,23 @@ describe('useMotionRunning', () => {
     ) as never);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const wrapper = ({ children }: { children: React.ReactNode }): React.JSX.Element => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-    const hook = renderHook(() => ({ running: useMotionRunning(PROJECT, SPACE, true), lists: useMotionLists(PROJECT, SPACE, undefined) }), { wrapper });
+    const hook = renderHook(() => ({ running: useMotionRunning(PROJECT, SPACE, true), lists: useMotionLists(PROJECT, SPACE) }), { wrapper });
     await waitFor(() => expect(hook.result.current.running).toBe(true));
     await waitFor(() => expect(hook.result.current.lists.running.own.isSuccess).toBe(true));
     const runningReads = vi.mocked(timelineApi.listSpaceExecutions).mock.calls.filter(([params]) => params.scope === 'space' && params.group === 'running');
     expect(runningReads).toHaveLength(1);
+  });
+
+  it('reads the in-progress list once while a run is in progress, however short a refresh interval the server sends', async () => {
+    vi.mocked(timelineApi.limits).mockResolvedValue({ webAnimation: { sourceRefreshIntervalMs: 20 } } as never);
+    vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async () => (
+      { rows: [{ id: 'r1' }], nextCursor: null, totals: { done: 0, inProgress: 1 } }
+    ) as never);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: React.ReactNode }): React.JSX.Element => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    const hook = renderHook(() => useMotionRunning(PROJECT, SPACE, true), { wrapper });
+    await waitFor(() => expect(hook.result.current).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(vi.mocked(timelineApi.listSpaceExecutions)).toHaveBeenCalledTimes(1);
   });
 });

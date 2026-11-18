@@ -87,7 +87,8 @@ export function threeDSpaceDocName(projectId: string, spaceId: string): string {
 }
 
 /**
- * Build the Motion Space content document name; it holds the Space's annotation threads.
+ * Build the Motion Space content document name; it holds the Space's annotation threads and its executions' change
+ * version.
  * @param projectId - Project UUID.
  * @param spaceId - Space UUID.
  * @returns `"project-{projectId}/web_animation-{spaceId}"`

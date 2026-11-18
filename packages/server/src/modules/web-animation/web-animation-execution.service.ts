@@ -20,6 +20,7 @@ import {
   NotFoundError,
   ValidationError,
   addTimelineExecutionJob,
+  announceExecutionChange,
   budgetDeadlineFrom,
   db,
   env,
@@ -57,7 +58,6 @@ import {
 import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
 import * as projectService from "@server/modules/project/project.service.js";
-import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 import { timelineQueue } from "@server/modules/web-animation/timeline-queue.js";
 import * as grantRepo from "@server/modules/web-animation/execution-grant.repo.js";
 import * as listRepo from "@server/modules/web-animation/web-animation-list.repo.js";
@@ -88,6 +88,18 @@ class InsertLost extends Error {
 interface Frozen {
   input: Record<string, unknown>;
   engine: TimelineExecution["engine"];
+}
+
+/**
+ * Tell the execution's Space that it changed, and carry on if Redis refuses: the open tabs read the next change.
+ * @param row - The execution as written.
+ */
+async function announceQuietly(row: TimelineExecution): Promise<void> {
+  try {
+    await announceExecutionChange(row);
+  } catch (err) {
+    logger.error({ err, executionId: row.id, projectId: row.projectId, spaceId: row.spaceId }, "execution_change_publish_failed");
+  }
 }
 
 /**
@@ -261,7 +273,7 @@ export async function accept(userId: string, body: WebAnimationExecutionRequest 
     await addTimelineExecutionJob(timelineQueue(), row.id).catch((err: unknown) => {
       logger.error({ err, executionId: row.id, projectId, spaceId, userId }, "web_animation_execution_enqueue_failed");
     });
-    await publishSpaceTasksQuietly(projectId, spaceId);
+    await announceQuietly(row);
     return answer(row, true);
   } catch (err) {
     if (!(err instanceof InsertLost)) throw err;
@@ -591,7 +603,7 @@ export async function cancel(userId: string, executionId: string, projectId?: st
   }
   const result = await timelineExecutionRepo.transition({ id: executionId, event: { type: "cancel" } });
   if (!result.applied) return result.row;
-  await publishSpaceTasksQuietly(result.row.projectId, result.row.spaceId);
+  await announceQuietly(result.row);
   return result.row;
 }
 

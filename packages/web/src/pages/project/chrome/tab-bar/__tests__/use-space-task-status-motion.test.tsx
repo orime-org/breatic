@@ -5,21 +5,22 @@
  * The Motion tab spinner (#1490 design §8.3).
  *
  * For a Motion Space, `useSpaceTaskStatus` reads how many of the Space's executions are still in progress from the
- * Space list route, polling at the Project's `webAnimation.sourceRefreshIntervalMs`, and spins while that count is
- * above zero; the page's Space-task signal refetches it at once. A Timeline no longer makes web animations, so it
+ * Space list route and spins while that count is above zero; it reads the count again when the Space's document
+ * records an execution change (#1490 design §4.7) and never polls. A Timeline no longer makes web animations, so it
  * reads no execution list and spins only for its own uploads; Canvas and Document tabs never read it either.
  */
 
 import * as React from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TimelineClientLimits } from '@breatic/shared';
+import { SPACE_TASKS_KEY, SPACE_TASKS_VERSION, webAnimationSpaceDocName, type TimelineClientLimits } from '@breatic/shared';
 
-import { spaceTasksQueryKey } from '@web/data/api/scene';
+import { getDoc } from '@web/data/yjs/manager';
 import { timelineApi, type SpaceExecutionPage } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
 import { useSpaceTaskStatus } from '@web/pages/project/chrome/tab-bar/use-space-task-status';
+import { SpaceTasksWatcher } from '@web/pages/project/SpaceTasksWatcher';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
@@ -43,8 +44,8 @@ function page(inProgress: number): SpaceExecutionPage {
 }
 
 /**
- * The limits the Project answers, with a polling interval.
- * @param sourceRefreshIntervalMs - How often an unfinished list is read again.
+ * The limits the Project answers, with the refresh interval older clients poll at.
+ * @param sourceRefreshIntervalMs - How often an older client reads an unfinished list again.
  * @returns The limits.
  * @throws {never} Never.
  */
@@ -63,9 +64,18 @@ function provider(): { client: QueryClient; wrapper: (props: { children: React.R
   return {
     client,
     wrapper: ({ children }) => <QueryClientProvider client={client}>
+      <SpaceTasksWatcher projectId={PROJECT} spaceId={SPACE} name={webAnimationSpaceDocName(PROJECT, SPACE)} />
       {children}
     </QueryClientProvider>,
   };
+}
+
+/**
+ * Write an executions version into the Motion Space's document, the way collab does.
+ * @param version - The stream id.
+ */
+function recordChange(version: string): void {
+  getDoc(webAnimationSpaceDocName(PROJECT, SPACE)).getMap(SPACE_TASKS_KEY).set(SPACE_TASKS_VERSION, version);
 }
 
 beforeEach(() => {
@@ -96,23 +106,26 @@ describe('useSpaceTaskStatus for a Motion Space', () => {
     ))).toBe(true);
   });
 
-  it('stops once the last execution ends, by polling at the configured interval', async () => {
+  it('stops once the last execution ends and the Space\'s document records it, without polling', async () => {
     vi.mocked(timelineApi.limits).mockResolvedValue(limits(20));
     vi.mocked(timelineApi.listSpaceExecutions).mockResolvedValue(page(1));
     const { wrapper } = provider();
     const { result } = renderHook(() => useSpaceTaskStatus(PROJECT, SPACE, 'web_animation'), { wrapper });
     await waitFor(() => expect(result.current).toBe(true));
     vi.mocked(timelineApi.listSpaceExecutions).mockResolvedValue(page(0));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(result.current).toBe(true);
+    act(() => { recordChange('2-0'); });
     await waitFor(() => expect(result.current).toBe(false));
   });
 
-  it('starts spinning at once when the Space-task signal refetches the count', async () => {
-    const { client, wrapper } = provider();
+  it('starts spinning at once when the Space\'s document records a new execution', async () => {
+    const { wrapper } = provider();
     const { result } = renderHook(() => useSpaceTaskStatus(PROJECT, SPACE, 'web_animation'), { wrapper });
     await waitFor(() => expect(timelineApi.listSpaceExecutions).toHaveBeenCalled());
     expect(result.current).toBe(false);
     vi.mocked(timelineApi.listSpaceExecutions).mockResolvedValue(page(1));
-    await client.invalidateQueries({ queryKey: spaceTasksQueryKey(PROJECT, SPACE) });
+    act(() => { recordChange('1-0'); });
     await waitFor(() => expect(result.current).toBe(true));
   });
 });

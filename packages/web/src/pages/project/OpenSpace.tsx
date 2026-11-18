@@ -17,6 +17,10 @@ import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 import { CanvasActivityPublisher } from '@web/spaces/canvas/use-publish-activity';
 import { SceneUploadProgressPublisher } from '@web/spaces/three-d/scene-upload-progress';
 import { DocumentInterceptGuard } from '@web/spaces/document/DocumentInterceptGuard';
+import { SpaceTasksWatcher } from '@web/pages/project/SpaceTasksWatcher';
+
+/** The Space types whose background work reaches the tab through their document; another type joins by being listed here. */
+const SPACE_TASKS_TYPES: ReadonlySet<SpaceType> = new Set<SpaceType>(['web_animation']);
 
 interface OpenSpaceProps {
   projectId: string;
@@ -123,6 +127,8 @@ export const OpenSpace = React.memo(function OpenSpace({
       {type === '3d' ? <SceneConnectionLifetime name={name} readOnly={readOnly} /> : null}
       {/* A 3D Space's upload progress stays on the peers' screens while another tab is on screen. */}
       {type === '3d' ? <SceneUploadProgressPublisher projectId={projectId} spaceId={spaceId} name={name} /> : null}
+      {/* Its background-work lists follow its document, on screen or not. */}
+      {SPACE_TASKS_TYPES.has(type) ? <SpaceTasksWatcher projectId={projectId} spaceId={spaceId} name={name} /> : null}
       {body}
     </SpaceConnection>
   );

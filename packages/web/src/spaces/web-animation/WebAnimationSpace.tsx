@@ -251,7 +251,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const queryClient = useQueryClient();
   const viewerId = useCurrentUserStore((state) => state.user?.id);
   const limits = useTimelineLimits(projectId)?.webAnimation;
-  const lists = useMotionLists(projectId, spaceId, limits?.sourceRefreshIntervalMs);
+  const lists = useMotionLists(projectId, spaceId);
   const spaces = useProjectSpaceList(projectId);
   const canvases = React.useMemo(() => canvasesOldestFirst(spaces), [spaces]);
   const connection = useSpaceConnection();

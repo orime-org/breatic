@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { useInfiniteQuery, useQueryClient, type InfiniteData, type UseInfiniteQueryResult } from '@tanstack/react-query';
+import { useInfiniteQuery, type InfiniteData, type UseInfiniteQueryResult } from '@tanstack/react-query';
 import type { WebAnimationRowView } from '@breatic/shared/space-content';
 
 import { spaceTasksQueryKey } from '@web/data/api/scene';
@@ -42,24 +42,22 @@ export function motionListQueryKey(projectId: string, spaceId: string, scope: Sp
 }
 
 /**
- * One list, paged; the in-progress lists poll while they hold a row.
+ * One list, paged. It is read again when the Space's document says an execution changed (`SpaceTasksWatcher`,
+ * #1490 design §4.7); nothing polls it.
  * @param projectId - The Project.
  * @param spaceId - The Motion Space.
  * @param scope - Which list.
  * @param group - Which tab.
- * @param refreshMs - The polling interval for an unfinished list.
  * @param enabled - Whether to read it.
  * @returns The query.
  * @throws {never} Never.
  */
-export function useMotionList(projectId: string, spaceId: string, scope: SpaceExecutionQuery['scope'], group: MotionTab, refreshMs: number | undefined, enabled = true): ListQuery {
+export function useMotionList(projectId: string, spaceId: string, scope: SpaceExecutionQuery['scope'], group: MotionTab, enabled = true): ListQuery {
   const queryKey = React.useMemo(() => motionListQueryKey(projectId, spaceId, scope, group), [projectId, spaceId, scope, group]);
   const queryFn = React.useCallback(({ pageParam, signal }: { pageParam: string | undefined; signal: AbortSignal }) =>
     timelineApi.listSpaceExecutions({ projectId, spaceId, scope, group, cursor: pageParam }, signal), [projectId, spaceId, scope, group]);
-  const refetchInterval = React.useCallback((query: { state: { data?: InfiniteData<SpaceExecutionPage, string | undefined> } }): number | false =>
-    group === 'running' && refreshMs !== undefined && (query.state.data?.pages[0]?.rows.length ?? 0) > 0 ? refreshMs : false, [group, refreshMs]);
   return useInfiniteQuery({
-    queryKey, queryFn, refetchInterval, enabled,
+    queryKey, queryFn, enabled,
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
@@ -76,31 +74,18 @@ export function rowsOf(query: ListQuery): WebAnimationRowView[] {
 }
 
 /**
- * A Motion Space's four lists: its own and the Timeline-made group, each in Completed and In Progress. A row that
- * leaves In Progress has ended, so Completed is read again then.
+ * A Motion Space's four lists: its own and the Timeline-made group, each in Completed and In Progress. All four are
+ * keyed under the Space, so one change in its document reads them all again.
  * @param projectId - The Project.
  * @param spaceId - The Motion Space.
- * @param refreshMs - The polling interval while a row is unfinished.
  * @returns The lists.
  * @throws {never} Never.
  */
-export function useMotionLists(projectId: string, spaceId: string, refreshMs: number | undefined): MotionLists {
-  const queryClient = useQueryClient();
-  const ownDone = useMotionList(projectId, spaceId, 'space', 'done', refreshMs);
-  const ownRunning = useMotionList(projectId, spaceId, 'space', 'running', refreshMs);
-  const legacyDone = useMotionList(projectId, spaceId, 'timeline', 'done', refreshMs);
-  const legacyRunning = useMotionList(projectId, spaceId, 'timeline', 'running', refreshMs);
-  const runningIds = React.useMemo(() => [...rowsOf(ownRunning), ...rowsOf(legacyRunning)].map((row) => row.id).join(','), [ownRunning, legacyRunning]);
-  const previous = React.useRef(runningIds);
-  React.useEffect(() => {
-    const before = previous.current.split(',').filter(Boolean);
-    previous.current = runningIds;
-    const now = new Set(runningIds.split(','));
-    if (before.some((id) => !now.has(id))) {
-      void queryClient.invalidateQueries({ queryKey: motionListQueryKey(projectId, spaceId, 'space', 'done') });
-      void queryClient.invalidateQueries({ queryKey: motionListQueryKey(projectId, spaceId, 'timeline', 'done') });
-    }
-  }, [runningIds, queryClient, projectId, spaceId]);
+export function useMotionLists(projectId: string, spaceId: string): MotionLists {
+  const ownDone = useMotionList(projectId, spaceId, 'space', 'done');
+  const ownRunning = useMotionList(projectId, spaceId, 'space', 'running');
+  const legacyDone = useMotionList(projectId, spaceId, 'timeline', 'done');
+  const legacyRunning = useMotionList(projectId, spaceId, 'timeline', 'running');
   const byId = React.useMemo(() => {
     const map = new Map<string, WebAnimationRowView>();
     for (const query of [ownDone, legacyDone, ownRunning, legacyRunning]) for (const row of rowsOf(query)) map.set(row.id, row);

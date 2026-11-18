@@ -20,7 +20,7 @@ import { ExecutionError, Redlock, type ExecutionStats } from "@sesamecare-oss/re
 
 import { createRedisClient, db, initCore, schema, type Redis } from "@breatic/core";
 import { eq } from "drizzle-orm";
-import { CANVAS_NODES_KEY, type NodeTaskCountsEvent } from "@breatic/shared";
+import { CANVAS_NODES_KEY, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, webAnimationSpaceDocName, type NodeTaskCountsEvent } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import {
@@ -172,6 +172,46 @@ async function newCase(nodes: Record<string, string>): Promise<Case> {
   }
   await yjsRepo.seedInitialState(docName, Y.encodeStateAsUpdate(doc));
   return { streamKey: `itest:stream:task:${id}`, keyPrefix: `itest-${id}`, docName };
+}
+
+/**
+ * A fresh stream, key prefix and empty Motion Space document.
+ * @returns The case's names.
+ */
+async function newMotionCase(): Promise<Case> {
+  const id = randomUUID();
+  const docName = webAnimationSpaceDocName(PID, randomUUID());
+  await yjsRepo.seedInitialState(docName, Y.encodeStateAsUpdate(new Y.Doc()));
+  return { streamKey: `itest:stream:task:${id}`, keyPrefix: `itest-${id}`, docName };
+}
+
+/**
+ * Publish that a Space's executions changed.
+ * @param c - The case.
+ * @param count - How many changes, in order.
+ * @param extra - Extra stream fields on every entry.
+ * @returns Their stream ids.
+ */
+async function publishExecutionsChanged(c: Case, count = 1, extra: string[] = []): Promise<string[]> {
+  const ids: string[] = [];
+  for (let i = 0; i < count; i++) {
+    ids.push((await stream.xadd(c.streamKey, "*", "payload", JSON.stringify({ type: "space-tasks-version", docName: c.docName }), ...extra))!);
+  }
+  return ids;
+}
+
+/**
+ * The executions change version a Space document holds, as stored and synced.
+ * @param c - The case.
+ * @returns The version, or undefined when none was written.
+ */
+async function readExecutionsVersion(c: Case): Promise<unknown> {
+  const conn = await instanceA.openDirectConnection(c.docName, { context: { user: { id: "test" } } });
+  try {
+    return conn.document!.getMap(SPACE_TASKS_KEY).get(SPACE_TASKS_VERSION);
+  } finally {
+    await conn.disconnect();
+  }
 }
 
 /**
@@ -713,6 +753,34 @@ describe("task events across two collab instances", () => {
     const brokenId = await stream.xadd(c.streamKey, "*", "payload", "{not json");
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, [metaId!, brokenId!]));
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("writes the stream id of a Motion Space's latest execution change into its document", async () => {
+    const c = await newMotionCase();
+    const ids = await publishExecutionsChanged(c, 3);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await readExecutionsVersion(c)).toBe(ids[2]);
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("keeps a Motion Space's newer executions version when an older change is replayed from the dead-letter stream", async () => {
+    const c = await newMotionCase();
+    const [olderId, newerId] = await publishExecutionsChanged(c, 2);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, [olderId!, newerId!]));
+    const replayed = await publishExecutionsChanged(c, 1, ["originId", olderId!]);
+    await until(() => handled(c.streamKey, replayed));
+    expect(await readExecutionsVersion(c)).toBe(newerId);
+  });
+
+  it("acknowledges and skips an executions change for a document that is not a Motion Space", async () => {
+    const c = await newCase({});
+    const ids = await publishExecutionsChanged(c);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await readExecutionsVersion(c)).toBeUndefined();
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 });

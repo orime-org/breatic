@@ -46,7 +46,7 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
 import { TIMELINE_QUEUE, coverKeyFor, createQueue, getTimelineConfig, timelineExecutionRepo } from "@breatic/core";
-import { extractPromptText, t, type TimelineExecution } from "@breatic/shared";
+import { extractPromptText, t, webAnimationSpaceDocName, type TimelineExecution } from "@breatic/shared";
 import { WebAnimationRowViewSchema } from "@breatic/shared/space-content";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 import { useWebAnimationHarness, type ProjectFixture } from "@server/__tests__/integration/web-animation-harness.js";
@@ -55,7 +55,7 @@ const APP = "web-animation-routes-test-driver";
 const h = useWebAnimationHarness(APP);
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
-const { seedUser, seedProject, insertExecution, grant, step, succeed, signalsFor, expectNotFound, fillStorage, grantedProjects } = h;
+const { seedUser, seedProject, insertExecution, grant, step, succeed, signalsFor, executionChangesFor, expectNotFound, fillStorage, grantedProjects } = h;
 
 let queue: ReturnType<typeof createQueue>;
 
@@ -227,9 +227,20 @@ describe("POST /timeline/executions — create from a Motion Space", () => {
     });
     expect(data.input).toEqual({ prompt: "A logo reveal", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: getTimelineConfig().web_animation.fps });
     expect(await grantedProjects(data.id)).toEqual([fx.projectId]);
-    expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([
-      { type: "project-space-tasks:changed", projectId: fx.projectId, spaceId: fx.spaceId, ts: expect.any(Number) },
-    ]);
+    expect(await executionChangesFor(fx.projectId, fx.spaceId)).toEqual([{ type: "space-tasks-version", docName: webAnimationSpaceDocName(fx.projectId, fx.spaceId) }]);
+    expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
+  });
+
+  it("announces a cancel to the Motion Space's document and nowhere else", async () => {
+    const fx = await seedProject();
+    const data = await acceptRow(fx.editor.cookie, createBody(fx), 201);
+    const before = (await executionChangesFor(fx.projectId, fx.spaceId)).length;
+    const res = await app.request(`/api/v1/timeline/executions/${data.id}/cancel`, {
+      method: "POST", headers: { Cookie: fx.editor.cookie, "Content-Type": "application/json" }, body: JSON.stringify({ projectId: fx.projectId }),
+    });
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect((await executionChangesFor(fx.projectId, fx.spaceId)).length).toBe(before + 1);
+    expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
   });
 
   it("adds the row's job to the timeline queue as soon as it is accepted, without waiting for the sweep", async () => {

@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Task lifecycle events, from the cross-service stream into the canvas
- * documents (#186, inner#1497 §6.1).
+ * Task lifecycle events, from the cross-service stream into the Space
+ * documents they belong to (#186, inner#1497 §6.1, #1490 design §4.7).
  *
  * Data path:
  *   server / worker → Redis stream → consumer group (one round per document) →
  *   per-document lease → one direct connection per round → applyNodeTaskCounts
+ *   (canvas) or applySpaceTasksVersion (the Space types in SPACE_TASKS_DOC_KINDS)
  *
  * Collab executes; it does not judge. Which task moved, what the counts now
  * are, whether a result rides along — the server decided all of it.
@@ -19,20 +20,23 @@
  * database; what keeps the next holder from writing over a peer's update it
  * has not received yet is the hand-over record, the state vector the previous
  * holder stored; what keeps an older event from undoing a newer one is the
- * version each node carries.
+ * version each node carries, and for other Space types the version their
+ * document holds.
  *
- * Doc layout: `project-{pid}/canvas-{spaceId}`, one canvas doc per Space. Any
- * other doc name is skipped.
+ * Doc layout: `project-{pid}/canvas-{spaceId}` for node counts and the
+ * content document of a Space type in `SPACE_TASKS_DOC_KINDS` for change
+ * versions, one doc per Space. Any other doc name is skipped.
  */
 
 import { setTimeout as delay } from "node:timers/promises";
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import { ExecutionError, Redlock, ResourceLockedError } from "@sesamecare-oss/redlock";
-import type { NodeTaskCountsEvent } from "@breatic/shared";
+import type { NodeTaskCountsEvent, SpaceTasksVersionEvent } from "@breatic/shared";
 import { parseDocName } from "@breatic/shared";
 import { createLogger, type Redis } from "@breatic/core";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
+import { applySpaceTasksVersion, SPACE_TASKS_DOC_KINDS } from "@collab/services/space-tasks-version.js";
 import {
   startGroupConsumer,
   type EntryOutcome,
@@ -90,7 +94,7 @@ export interface TaskListenerDeps {
 /** One parsed event and the stream entry it came from. */
 interface Item {
   entry: StreamEntry;
-  event: NodeTaskCountsEvent;
+  event: NodeTaskCountsEvent | SpaceTasksVersionEvent;
 }
 
 /** One document's events, in stream order. */
@@ -158,29 +162,30 @@ async function leaseHeldElsewhere(err: unknown): Promise<boolean> {
 }
 
 /**
- * Read one entry as a task event for a canvas document.
+ * Read one entry as a task event: a node's counts for a canvas document, or a change version for a document of a
+ * Space type listed in `SPACE_TASKS_DOC_KINDS`.
  * @param entry - The stream entry.
  * @returns The event, or why it is skipped.
  */
-function readItem(entry: StreamEntry): NodeTaskCountsEvent | { skip: string } {
+function readItem(entry: StreamEntry): NodeTaskCountsEvent | SpaceTasksVersionEvent | { skip: string } {
   let event: unknown;
   try {
     event = JSON.parse(entry.payload ?? "");
   } catch {
     return { skip: "task_event_unparseable_skipped" };
   }
-  if (typeof event !== "object" || event === null || (event as { type?: unknown }).type !== "node-task-counts") {
-    return { skip: "task_event_unknown_type_skipped" };
-  }
+  const type = typeof event === "object" && event !== null ? (event as { type?: unknown }).type : undefined;
+  if (type !== "node-task-counts" && type !== "space-tasks-version") return { skip: "task_event_unknown_type_skipped" };
   const docName = (event as { docName?: unknown }).docName;
   const parsed = typeof docName === "string" ? parseDocName(docName) : null;
-  if (!parsed || parsed.kind !== "canvas") return { skip: "task_event_unknown_doc_skipped" };
-  return event as NodeTaskCountsEvent;
+  const fits = parsed !== null && (type === "node-task-counts" ? parsed.kind === "canvas" : SPACE_TASKS_DOC_KINDS.has(parsed.kind));
+  if (!fits) return { skip: "task_event_unknown_doc_skipped" };
+  return event as NodeTaskCountsEvent | SpaceTasksVersionEvent;
 }
 
 /**
  * The round key of an entry: its document, or the entry itself when it names
- * no canvas document, so it is skipped on its own.
+ * no document it can be written to, so it is skipped on its own.
  * @param entry - The stream entry.
  * @returns The key.
  */
@@ -271,6 +276,11 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       await connection.transact((d) => {
         for (const { entry, event } of batch.items) {
           try {
+            if (event.type === "space-tasks-version") {
+              applySpaceTasksVersion(d, entry.originId ?? entry.id);
+              outcomes.set(entry.id, "done");
+              continue;
+            }
             const held = moved.get(event.nodeId) ?? versions[event.nodeId];
             const after = applyNodeTaskCounts(d, event, {
               version: entry.originId ?? entry.id,
@@ -279,7 +289,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
             if (after !== undefined && after !== held) moved.set(event.nodeId, after);
             outcomes.set(entry.id, "done");
           } catch (err) {
-            logger.error({ err, id: entry.id, docName: batch.docName, nodeId: event.nodeId }, "task_event_apply_failed");
+            logger.error({ err, id: entry.id, docName: batch.docName, nodeId: "nodeId" in event ? event.nodeId : undefined }, "task_event_apply_failed");
             outcomes.set(entry.id, { failed: err });
           }
         }

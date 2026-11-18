@@ -20,11 +20,12 @@ import {
   loadLocales,
   sessionCookieName,
   setSession,
+  taskEventsStreamKey,
   timelineExecutionRepo,
   type Redis,
 } from "@breatic/core";
 import { webAnimationSourceRepo } from "@breatic/domain";
-import { t, type TimelineExecution } from "@breatic/shared";
+import { t, webAnimationSpaceDocName, type TimelineExecution } from "@breatic/shared";
 import { seedDesignatedLot } from "@server/__tests__/integration/studio-credit-fixtures.js";
 
 /** Where signed preview addresses point in these suites. */
@@ -67,6 +68,8 @@ export interface WebAnimationHarness {
   holdsOf(studioId: string): Promise<{ reference_id: string; status: string; amount: number }[]>;
   grantedProjects(executionId: string): Promise<string[]>;
   signalsFor(projectId: string, spaceId: string): Promise<Record<string, unknown>[]>;
+  /** Execution changes published for a Motion Space's document since the case began. */
+  executionChangesFor(projectId: string, spaceId: string): Promise<Record<string, unknown>[]>;
   expectNotFound(res: Response): Promise<void>;
   fillStorage(studioId: string, userId: string): Promise<void>;
 }
@@ -91,6 +94,7 @@ export function useWebAnimationHarness(appName: string): WebAnimationHarness {
   let subscriber: Redis | undefined;
   const signals: { channel: string; message: Record<string, unknown> }[] = [];
   let seq = 0;
+  let streamFrom = "0";
 
   beforeAll(async () => {
     initCore(suiteEnv);
@@ -107,6 +111,7 @@ export function useWebAnimationHarness(appName: string): WebAnimationHarness {
 
   beforeEach(() => {
     signals.length = 0;
+    streamFrom = `${Date.now()}-0`;
   });
 
   afterAll(async () => {
@@ -239,6 +244,14 @@ export function useWebAnimationHarness(appName: string): WebAnimationHarness {
     async signalsFor(projectId, spaceId) {
       await new Promise((resolve) => setTimeout(resolve, 300));
       return signals.filter((s) => s.channel.includes(projectId) && s.message.spaceId === spaceId).map((s) => s.message);
+    },
+
+    async executionChangesFor(projectId, spaceId) {
+      const docName = webAnimationSpaceDocName(projectId, spaceId);
+      const entries = await getStreamRedis().xrange(taskEventsStreamKey(), streamFrom, "+");
+      return entries
+        .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
+        .filter((event) => event.docName === docName);
     },
 
     async expectNotFound(res) {

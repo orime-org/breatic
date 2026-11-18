@@ -3,24 +3,23 @@
 
 /**
  * Moving a Timeline execution from the worker (inner#1711 design §5.2): every transition applied through {@link move}
- * signals the Space's task list. A pickup's retry is the one transition written without it, since a new attempt
- * changes nothing the user sees.
+ * is announced to the execution's Space (#1490 design §4.7). A pickup's retry is the one transition written without
+ * it, since a new attempt changes nothing the user sees.
  */
 
-import { logger, publishSpaceTasksChanged, timelineExecutionRepo, type TimelineExecutionEvent, type TimelineExecutionTransition } from "@breatic/core";
+import { announceExecutionChange, logger, timelineExecutionRepo, type TimelineExecutionEvent, type TimelineExecutionTransition } from "@breatic/core";
 import type { TimelineExecution } from "@breatic/shared";
 
 /**
- * Tell the members with the Space open that its execution list changed, and carry on if that fails: whoever missed
- * it reads the list when they next open it.
- * @param row - The execution.
+ * Tell the execution's Space that it changed, and carry on if Redis refuses: the open tabs read the next change.
+ * @param row - The execution as written.
  * @returns Nothing.
  */
-export async function signalSpace(row: Pick<TimelineExecution, "id" | "projectId" | "spaceId">): Promise<void> {
+export async function signalSpace(row: Pick<TimelineExecution, "id" | "projectId" | "spaceId" | "origin">): Promise<void> {
   try {
-    await publishSpaceTasksChanged(row.projectId, row.spaceId);
+    await announceExecutionChange(row);
   } catch (err) {
-    logger.error({ err, executionId: row.id, projectId: row.projectId, spaceId: row.spaceId }, "space_tasks_publish_failed");
+    logger.error({ err, executionId: row.id, projectId: row.projectId, spaceId: row.spaceId }, "execution_change_publish_failed");
   }
 }
 
