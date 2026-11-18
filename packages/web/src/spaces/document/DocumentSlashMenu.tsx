@@ -247,13 +247,8 @@ export function DocumentSlashMenu({ editor }: DocumentSlashMenuProps): React.JSX
   }, [editor, menu]);
 
   if (state === undefined || !slashMenuShown(state)) return null;
-  // The extension draws a fresh id for every opening and carries it unchanged
-  // while that menu stays open, so a trigger typed with a menu already open
-  // remounts the menu.
-  const opening = menu.prosemirrorPlugins?.[0]?.getState(editor.prosemirrorState) as { decorationId?: string } | undefined;
   return (
     <OpenSlashMenu
-      key={opening?.decorationId}
       editor={editor}
       pointer={pointer}
       menu={menu}
@@ -275,8 +270,9 @@ interface OpenSlashMenuProps {
 }
 
 /**
- * The menu while it is open: mounted when it opens, so every opening starts
- * on its first row with nothing remembered.
+ * The menu while it is open. A new opening starts on its first row and
+ * counts unmatched characters from zero because its query starts empty:
+ * the highlight and the count both reset on a change of query.
  * @param props - See {@link OpenSlashMenuProps}.
  * @param props.editor - The editor.
  * @param props.menu - The suggestion extension.

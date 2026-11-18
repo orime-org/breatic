@@ -374,7 +374,7 @@ describe('the mouse on the menu (A3)', () => {
     expect(screen.getByTestId('doc-slash-row-heading-1').hasAttribute('data-highlighted')).toBe(true);
   });
 
-  it('counts the no-match characters of a menu opened by a second trigger from its own start', () => {
+  it('counts the no-match characters of a menu opened by a second trigger from its empty query', () => {
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);
     type(editor, '/heading ');
