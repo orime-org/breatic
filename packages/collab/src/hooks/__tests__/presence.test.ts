@@ -45,7 +45,12 @@ import {
   deleteFollowing,
   touchFollowing,
   readFollowing,
+  markAgentActive,
+  markAgentsOffline,
+  listAgentPresence,
+  sweepAgentPresence,
 } from "@collab/hooks/presence";
+import { agentPresenceKey, agentPresenceRecordSchema } from "@breatic/shared";
 
 const ALICE = "u-alice";
 const BOB = "u-bob";
@@ -420,5 +425,80 @@ describe("following — what each connection follows", () => {
 
     expect(readFollowing(doc, SOCK_A)).toBeNull();
     expect(readFollowing(doc, SOCK_B)?.target).toBe(ALICE);
+  });
+});
+
+describe("external agents — presence by connection (breatic#1488 §19.2)", () => {
+  const AGENT = agentPresenceKey(ALICE, "conn-1");
+  const OTHER = agentPresenceKey(ALICE, "conn-2");
+
+  /**
+   * Read one agent record as plain data.
+   * @param doc - The meta document.
+   * @param key - The record's key.
+   * @returns The record, or undefined.
+   */
+  function agentRecord(doc: Y.Doc, key: string): unknown {
+    return (doc.getMap("users").get(key) as Y.Map<unknown> | undefined)?.toJSON();
+  }
+
+  it("records an agent beside its owner without marking the owner online", () => {
+    const doc = emptyMetaDoc();
+    markAgentActive({ document: doc, userId: ALICE, connectionId: "conn-1", spaceId: "s1", focus: ["n1"], now: 1_000 });
+    expect(agentRecord(doc, AGENT)).toEqual({
+      id: ALICE,
+      online: true,
+      lastSeenAt: 1_000,
+      agent: { connectionId: "conn-1", spaceId: "s1", focus: ["n1"], focusAt: 1_000 },
+    });
+    expect(readPresence(doc, ALICE)).toBeNull();
+    expect(agentPresenceRecordSchema.safeParse(agentRecord(doc, AGENT)).success).toBe(true);
+  });
+
+  it("keeps the last focus and Space when a command names neither", () => {
+    const doc = emptyMetaDoc();
+    markAgentActive({ document: doc, userId: ALICE, connectionId: "conn-1", spaceId: "s1", focus: ["n1"], now: 1_000 });
+    markAgentActive({ document: doc, userId: ALICE, connectionId: "conn-1", spaceId: null, focus: undefined, now: 2_000 });
+    expect(agentRecord(doc, AGENT)).toMatchObject({ lastSeenAt: 2_000, agent: { spaceId: "s1", focus: ["n1"], focusAt: 1_000 } });
+  });
+
+  it("starts with no focus until a command names nodes or blocks", () => {
+    const doc = emptyMetaDoc();
+    markAgentActive({ document: doc, userId: ALICE, connectionId: "conn-1", spaceId: "s1", focus: undefined, now: 1_000 });
+    expect(agentRecord(doc, AGENT)).toMatchObject({ agent: { focus: [], focusAt: null } });
+  });
+
+  it("goes idle after the idle span and offline after the online span, and a new command clears both", () => {
+    const doc = emptyMetaDoc();
+    markAgentActive({ document: doc, userId: ALICE, connectionId: "conn-1", spaceId: "s1", focus: ["n1"], now: 0 });
+    sweepAgentPresence({ document: doc, now: 299_999, idleMs: 300_000, onlineMs: 1_800_000 });
+    expect(agentRecord(doc, AGENT)).not.toHaveProperty("idle");
+    sweepAgentPresence({ document: doc, now: 300_000, idleMs: 300_000, onlineMs: 1_800_000 });
+    expect(agentRecord(doc, AGENT)).toMatchObject({ online: true, idle: true, agent: { focus: ["n1"] } });
+    sweepAgentPresence({ document: doc, now: 1_800_000, idleMs: 300_000, onlineMs: 1_800_000 });
+    expect(agentRecord(doc, AGENT)).toMatchObject({ online: false, lastSeenAt: 0 });
+    markAgentActive({ document: doc, userId: ALICE, connectionId: "conn-1", spaceId: "s1", focus: undefined, now: 1_900_000 });
+    expect(agentRecord(doc, AGENT)).toMatchObject({ online: true, lastSeenAt: 1_900_000 });
+    expect(agentRecord(doc, AGENT)).not.toHaveProperty("idle");
+  });
+
+  it("is left alone by the members' sweep, whose span is two ping periods", () => {
+    const doc = emptyMetaDoc();
+    markAgentActive({ document: doc, userId: ALICE, connectionId: "conn-1", spaceId: "s1", focus: undefined, now: 0 });
+    expect(sweepStalePresence({ document: doc, now: 90_000, staleAfterMs: 60_000 })).toEqual([]);
+    expect(agentRecord(doc, AGENT)).toMatchObject({ online: true });
+  });
+
+  it("marks offline only the connections asked for, and lists every agent record", () => {
+    const doc = emptyMetaDoc();
+    markOnline({ document: doc, userId: BOB, now: 0 });
+    markAgentActive({ document: doc, userId: ALICE, connectionId: "conn-1", spaceId: "s1", focus: undefined, now: 0 });
+    markAgentActive({ document: doc, userId: ALICE, connectionId: "conn-2", spaceId: "s1", focus: undefined, now: 0 });
+    expect(listAgentPresence(doc).map((a) => a.connectionId).sort()).toEqual(["conn-1", "conn-2"]);
+    expect(markAgentsOffline({ document: doc, matches: (a) => a.connectionId === "conn-1" })).toEqual([AGENT]);
+    expect(agentRecord(doc, AGENT)).toMatchObject({ online: false });
+    expect(agentRecord(doc, OTHER)).toMatchObject({ online: true });
+    expect(readPresence(doc, BOB)).toMatchObject({ online: true });
+    expect(markAgentsOffline({ document: doc, matches: (a) => a.connectionId === "conn-1" })).toEqual([]);
   });
 });

@@ -158,7 +158,7 @@ describe("live connections — a socket outlives the documents on it (inner#1034
       onAlive: createLivenessHandler({
         refreshSeats,
         requestDemote: vi.fn(async () => undefined),
-        presencePolicy: { now: () => 1_000, staleAfterMs: 60_000 },
+        presencePolicy: { now: () => 1_000, staleAfterMs: 60_000, agentIdleMs: 300_000, agentOnlineMs: 1_800_000 },
       }),
       pingIntervalMs: 30_000,
     });

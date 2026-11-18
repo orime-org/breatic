@@ -124,7 +124,7 @@ async function rig(real = false): Promise<Rig> {
   const onAlive = createLivenessHandler({
     refreshSeats: (socketId: string, heardAt: number) => reg.refreshSocket(socketId, heardAt),
     requestDemote: (documentName: string, member: string) => handover.requestDemote(documentName, member),
-    presencePolicy: { now: () => clock, staleAfterMs: 60_000 },
+    presencePolicy: { now: () => clock, staleAfterMs: 60_000, agentIdleMs: 300_000, agentOnlineMs: 1_800_000 },
   });
   const all: FakeConn[] = [];
   return {

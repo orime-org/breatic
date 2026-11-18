@@ -63,7 +63,7 @@ describe("a sign of life refreshes everything it proves", () => {
     const handler = createLivenessHandler({
       refreshSeats,
       requestDemote: vi.fn(async () => undefined),
-      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
+      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000, agentIdleMs: 300_000, agentOnlineMs: 1_800_000 },
     });
 
     handler("sock-1", new Map(), 25_000);
@@ -76,7 +76,7 @@ describe("a sign of life refreshes everything it proves", () => {
     const handler = createLivenessHandler({
       refreshSeats: vi.fn(nothingToReport),
       requestDemote: vi.fn(async () => undefined),
-      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
+      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000, agentIdleMs: 300_000, agentOnlineMs: 1_800_000 },
     });
 
     handler(
@@ -100,7 +100,7 @@ describe("a sign of life refreshes everything it proves", () => {
     const handler = createLivenessHandler({
       refreshSeats,
       requestDemote: vi.fn(async () => undefined),
-      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
+      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000, agentIdleMs: 300_000, agentOnlineMs: 1_800_000 },
     });
 
     handler(
@@ -127,7 +127,7 @@ describe("a sign of life refreshes whom the socket follows (#920)", () => {
     const handler = createLivenessHandler({
       refreshSeats: vi.fn(nothingToReport),
       requestDemote: vi.fn(async () => undefined),
-      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
+      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000, agentIdleMs: 300_000, agentOnlineMs: 1_800_000 },
     });
 
     handler(
@@ -204,7 +204,7 @@ async function aliveWith(
   const handler = createLivenessHandler({
     refreshSeats: vi.fn(async () => answers),
     requestDemote,
-    presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
+    presencePolicy: { now: () => 31_000, staleAfterMs: 60_000, agentIdleMs: 300_000, agentOnlineMs: 1_800_000 },
   });
   await handler("sock-1", connections as Connections, 31_000);
   return { requestDemote };
@@ -314,7 +314,7 @@ describe("the handler's promise settles once the seat work is done (#1326)", () 
           setTimeout(() => resolve([{ documentName: D1, outcome: "full", liveCount: 2, cap: 2 }]), 20);
         }),
       requestDemote: vi.fn(async () => undefined),
-      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
+      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000, agentIdleMs: 300_000, agentOnlineMs: 1_800_000 },
     });
 
     await handler("sock-1", new Map([[D1, c1]]), 31_000);
@@ -333,7 +333,7 @@ describe("the handler's promise settles once the seat work is done (#1326)", () 
             resolve();
           }, 20);
         }),
-      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
+      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000, agentIdleMs: 300_000, agentOnlineMs: 1_800_000 },
     });
 
     await handler("sock-1", new Map() as Connections, 31_000);
@@ -347,7 +347,7 @@ describe("the handler's promise settles once the seat work is done (#1326)", () 
     const handler = createLivenessHandler({
       refreshSeats: () => Promise.reject(failure),
       requestDemote: vi.fn(async () => undefined),
-      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
+      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000, agentIdleMs: 300_000, agentOnlineMs: 1_800_000 },
     });
 
     await expect(handler("sock-1", new Map() as Connections, 31_000)).resolves.toBeUndefined();

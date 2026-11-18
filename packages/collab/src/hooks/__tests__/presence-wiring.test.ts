@@ -30,7 +30,7 @@ import {
   waitFor,
   type LiveClient,
 } from "@collab/__tests__/helpers/live-hocuspocus.js";
-import { markOnline, readFollowing, readPresence, writeFollowing } from "@collab/hooks/presence";
+import { listAgentPresence, markAgentActive, markOnline, readFollowing, readPresence, writeFollowing } from "@collab/hooks/presence";
 import {
   forgetFollowingOnDisconnect,
   recordFollowingFromAwareness,
@@ -49,7 +49,7 @@ const ALICE = "u-alice";
 let clock = 1_000_000;
 
 /** Presence policy these cases run under; production reads it from config. */
-const POLICY = { staleAfterMs: 90_000 };
+const POLICY = { staleAfterMs: 90_000, agentIdleMs: 300_000, agentOnlineMs: 1_800_000 };
 
 /** How often an awake browser renews its awareness clock. */
 const BEAT_MS = 15_000;
@@ -415,6 +415,27 @@ describe("presence wiring — a sign of life refreshes and sweeps", () => {
 
     expect(readPresence(doc, "u-old")?.online).toBe(false);
     expect(readPresence(doc, "u-recent")?.online).toBe(true);
+    doc.destroy();
+  });
+
+  it("ages external agents by their own spans when somebody arrives or a pong arrives", () => {
+    const doc = new Y.Doc();
+    markAgentActive({ document: doc, userId: "u-bob", connectionId: "gone", spaceId: null, focus: undefined, now: clock - POLICY.agentOnlineMs });
+    markAgentActive({ document: doc, userId: "u-bob", connectionId: "quiet", spaceId: null, focus: undefined, now: clock - POLICY.agentIdleMs });
+    markAgentActive({ document: doc, userId: "u-bob", connectionId: "busy", spaceId: null, focus: undefined, now: clock - POLICY.staleAfterMs * 2 });
+    recordPresenceOnConnect(
+      { documentName: META_DOC, instance: { documents: new Map([[META_DOC, doc]]) }, context: { user: { id: ALICE } } },
+      { now: () => clock, ...POLICY },
+    );
+    const byId = new Map(listAgentPresence(doc).map((a) => [a.connectionId, a]));
+    expect(byId.get("gone")?.online).toBe(false);
+    expect(byId.get("quiet")?.online).toBe(true);
+    expect((doc.getMap("users").get(byId.get("quiet")!.key) as Y.Map<unknown>).get("idle")).toBe(true);
+    expect(byId.get("busy")?.online).toBe(true);
+
+    markAgentActive({ document: doc, userId: "u-bob", connectionId: "busy", spaceId: null, focus: undefined, now: clock - POLICY.agentOnlineMs });
+    alive(ALICE, { document: doc });
+    expect(listAgentPresence(doc).find((a) => a.connectionId === "busy")?.online).toBe(false);
     doc.destroy();
   });
 
