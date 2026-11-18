@@ -547,7 +547,7 @@ async function runTaskBody(
     try {
       gate = await runningSlotService.startWithinLimit({ table: "tasks", id: taskId, jobId: job.id ?? "" });
     } catch (err) {
-      if (err instanceof runningSlotService.StillRunning && token !== undefined) {
+      if (err instanceof StillRunning && token !== undefined) {
         logPublishFailures(taskId, err.publishFailures);
         await job.moveToDelayed(err.resumeAt, token);
         throw new DelayedError();

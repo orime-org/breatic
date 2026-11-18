@@ -39,7 +39,6 @@ import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
 import { StillRunning } from "@domain/task/still-running.js";
 
-export { StillRunning };
 import type { NodeTaskCounts, TaskRowPlace } from "@domain/node-task/node-task.repo.js";
 
 /** Which row the gate judges. */

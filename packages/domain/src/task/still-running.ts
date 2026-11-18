@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What the running-task gate throws when a task must wait for a free running
- * slot (inner#1968). The worker's own `StillRunning` (inner#1337 §3.1) says
- * the same about upstream work; the worker puts the job back on the queue for
- * either, spending none of its attempts.
- */
-
-/**
- * This pickup cannot start the task yet: its person runs as many tasks as the
- * limit allows, or another pickup of theirs holds the gate. The run goes back
- * to the queue and comes back at `resumeAt`.
+ * A pickup that cannot finish its work yet: the upstream work is still going,
+ * the question about it got no usable answer, no reading place was free
+ * (inner#1337 §3.1), or the task waits for a free running slot because its
+ * person runs as many tasks as the limit allows (inner#1968). The worker puts
+ * the job back on the queue until `resumeAt`, spending none of its attempts,
+ * so no worker slot is held while nothing happens; the waiting on upstream
+ * work ends at the task's two-hour budget (`default_budget_ms` in
+ * `config/node-tasks.yaml`). Published as its own entry,
+ * `@breatic/domain/still-running`, so a worker module can load the class
+ * without the rest of the package.
  */
 export class StillRunning extends Error {
   /**

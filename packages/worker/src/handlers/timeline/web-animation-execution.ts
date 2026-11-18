@@ -253,9 +253,10 @@ async function take(row: TimelineExecution): Promise<TimelineExecution | null> {
     try {
       gate = await runningSlotService.startWithinLimit({ table: "timeline_executions", id: row.id, jobId: "" });
     } catch (err) {
-      if (!(err instanceof runningSlotService.StillRunning)) throw err;
-      for (const failure of err.publishFailures) logger.error({ err: failure, executionId: row.id }, "running_slot_publish_failed");
-      throw new StillRunning(err.resumeAt);
+      if (err instanceof StillRunning) {
+        for (const failure of err.publishFailures) logger.error({ err: failure, executionId: row.id }, "running_slot_publish_failed");
+      }
+      throw err;
     }
     for (const err of gate.publishFailures) logger.error({ err, executionId: row.id }, "running_slot_publish_failed");
     const after = await timelineExecutionRepo.findById(row.id);
