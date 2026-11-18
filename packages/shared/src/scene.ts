@@ -164,7 +164,7 @@ const LOOK_PART_KEY = /^(?:0|[1-9]\d{0,3}|d)$/u;
 const unit = z.number().finite().min(0).max(1);
 
 /** The fields one part may change; each is optional and absent means the model's own value. */
-export const SceneLookPartSchema = z.object({
+const SceneLookPartSchema = z.object({
   color: SceneColorSchema,
   roughness: unit,
   metalness: unit,
@@ -424,7 +424,7 @@ export function isSceneModelMediaType(value: string): boolean {
 }
 
 /** Picture types a part look may use (inner#1693). */
-export const SCENE_LOOK_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
+const SCENE_LOOK_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
 
 /**
  * Whether a registered asset's media type is a picture a part look may use.
