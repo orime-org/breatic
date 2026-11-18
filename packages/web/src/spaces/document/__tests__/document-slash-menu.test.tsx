@@ -308,8 +308,7 @@ describe('the mouse on the menu (A3)', () => {
     expect(read(editor)[0]?.type).toBe('paragraph');
     expect(menu()).not.toBeNull();
 
-    fireEvent.mouseDown(screen.getByTestId('doc-slash-row-table'));
-    fireEvent.mouseDown(screen.getByTestId('doc-slash-table-size-2-2'), { button: 2 });
+    fireEvent.mouseDown(screen.getByTestId('doc-slash-row-table'), { button: 2 });
     expect(read(editor).some((block) => block.type === 'docTable')).toBe(false);
   });
 
@@ -319,38 +318,8 @@ describe('the mouse on the menu (A3)', () => {
     type(editor, '/');
     fireEvent.mouseDown(screen.getByTestId('doc-slash-row-heading-3'), { button: 0, ctrlKey: true });
     expect(read(editor)[0]?.type).toBe('paragraph');
-    fireEvent.mouseDown(screen.getByTestId('doc-slash-row-table'));
-    fireEvent.mouseDown(screen.getByTestId('doc-slash-table-size-2-2'), { button: 0, ctrlKey: true });
+    fireEvent.mouseDown(screen.getByTestId('doc-slash-row-table'), { button: 0, ctrlKey: true });
     expect(read(editor).some((block) => block.type === 'docTable')).toBe(false);
-  });
-
-  it('leaves the page taking the pointer when a grid opened by hover is reopened from the keyboard', () => {
-    const { editor } = open([para('')]);
-    caretAtEnd(editor, read(editor)[0]!.id);
-    type(editor, '/tab');
-    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-table'));
-    expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
-    press(editor, 'Escape');
-    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
-    press(editor, 'ArrowRight');
-    expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
-    expect(document.body.style.pointerEvents).toBe('');
-  });
-
-  it('lights Table when the pointer moving on it opens the grid', () => {
-    const { editor } = open([para('')]);
-    caretAtEnd(editor, read(editor)[0]!.id);
-    type(editor, '/');
-    const table = screen.getByTestId('doc-slash-row-table');
-    fireEvent.mouseMove(table, { clientX: 10, clientY: 10 });
-    expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
-    press(editor, 'Escape');
-    press(editor, 'ArrowDown');
-    press(editor, 'ArrowDown');
-    expect(table.hasAttribute('data-highlighted')).toBe(false);
-    fireEvent.mouseMove(table, { clientX: 11, clientY: 10 });
-    expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
-    expect(table.hasAttribute('data-highlighted')).toBe(true);
   });
 
   it('lights nothing when a row only comes under a pointer that has not moved', () => {
@@ -359,19 +328,6 @@ describe('the mouse on the menu (A3)', () => {
     type(editor, '/');
     fireEvent.mouseEnter(screen.getByTestId('doc-slash-row-quote'));
     expect(screen.getByTestId('doc-slash-row-heading-1').hasAttribute('data-highlighted')).toBe(true);
-    fireEvent.mouseEnter(screen.getByTestId('doc-slash-row-table'));
-    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
-  });
-
-  it('keeps the lit size when Table is pressed with the grid open', () => {
-    const { editor } = open([para('')]);
-    caretAtEnd(editor, read(editor)[0]!.id);
-    type(editor, '/tab');
-    press(editor, 'Enter');
-    press(editor, 'ArrowRight');
-    expect(screen.getByTestId('doc-slash-table-size-1-2').hasAttribute('data-on')).toBe(true);
-    fireEvent.mouseDown(screen.getByTestId('doc-slash-row-table'));
-    expect(screen.getByTestId('doc-slash-table-size-1-2').hasAttribute('data-on')).toBe(true);
   });
 
   it('ignores a move where the pointer already was, and lights on the next real move', () => {
@@ -420,13 +376,6 @@ describe('the mouse on the menu (A3)', () => {
     expect(screen.getByTestId('doc-slash-row-heading-1').hasAttribute('data-highlighted')).toBe(true);
   });
 
-  it('marks Table as opening a grid, as the insert menu does', () => {
-    const { editor } = open([para('')]);
-    caretAtEnd(editor, read(editor)[0]!.id);
-    type(editor, '/');
-    expect(screen.getByTestId('doc-slash-row-table').querySelector('.lucide-chevron-right')).not.toBeNull();
-    expect(screen.getByTestId('doc-slash-row-heading-1').querySelector('.lucide-chevron-right')).toBeNull();
-  });
 });
 
 describe('entries out of reach (A7)', () => {
@@ -438,7 +387,7 @@ describe('entries out of reach (A7)', () => {
     const table = screen.getByTestId('doc-slash-row-table');
     expect(table.getAttribute('aria-disabled')).toBe('true');
     press(editor, 'Enter');
-    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
+    expect(read(editor).filter((block) => block.type === 'docTable')).toHaveLength(1);
     expect(textOf(editor, id)).toBe('cell /ta');
   });
 
@@ -454,126 +403,63 @@ describe('entries out of reach (A7)', () => {
   });
 });
 
+/** The rows of the first table in the document, each as its cells. */
+function firstTable(editor: Editor): unknown[][] | undefined {
+  const table = read(editor).find((block) => block.type === 'docTable') as
+    | (ReadBlock & { children: { children: unknown[] }[] })
+    | undefined;
+  return table?.children.map((row) => row.children);
+}
+
 describe('the table entry (A4, design 5.8)', () => {
-  it('opens the size grid, moves across it with the arrows and inserts the size picked', () => {
+  it('turns an empty line into an empty 3x3 table on Enter', () => {
     const { editor } = open([para('')]);
-    const id = read(editor)[0]!.id;
-    caretAtEnd(editor, id);
+    caretAtEnd(editor, read(editor)[0]!.id);
     type(editor, '/table');
     press(editor, 'Enter');
-    expect(screen.getByTestId('doc-slash-table-grid')).not.toBeNull();
-    expect(textOf(editor, id)).toBe('/table');
-    press(editor, 'ArrowRight');
-    press(editor, 'ArrowDown');
-    press(editor, 'Enter');
-    const table = read(editor).find((block) => block.type !== 'paragraph') as
-      | (ReadBlock & { children: { children: unknown[] }[] })
-      | undefined;
-    expect(table?.children).toHaveLength(2);
-    expect(table?.children[0]?.children).toHaveLength(2);
-  });
-
-  it('lights the first cell on Enter in a grid the pointer opened, and inserts it on the next Enter', () => {
-    const { editor } = open([para('')]);
-    const id = read(editor)[0]!.id;
-    caretAtEnd(editor, id);
-    type(editor, '/table');
-    fireEvent.mouseMove(screen.getByTestId('doc-slash-row-table'), { clientX: 10, clientY: 10 });
-    expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
-    press(editor, 'Enter');
-    expect(screen.getByTestId('doc-slash-table-size-1-1').hasAttribute('data-on')).toBe(true);
-    expect(textOf(editor, id)).toBe('/table');
-    press(editor, 'Enter');
-    const table = read(editor).find((block) => block.type !== 'paragraph') as
-      | (ReadBlock & { children: { children: unknown[] }[] })
-      | undefined;
-    expect(table?.children).toHaveLength(1);
-    expect(table?.children[0]?.children).toHaveLength(1);
-  });
-
-  it('goes back to the list on Escape and keeps what was typed', () => {
-    const { editor } = open([para('')]);
-    const id = read(editor)[0]!.id;
-    caretAtEnd(editor, id);
-    type(editor, '/table');
-    press(editor, 'Enter');
-    press(editor, 'Escape');
-    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
-    expect(menu()).not.toBeNull();
-    expect(textOf(editor, id)).toBe('/table');
-  });
-});
-
-describe('keys while the size grid is open (design state table)', () => {
-  /** Opens the menu with the query typed and the size grid open from the keyboard. */
-  function gridOpen(query: string): { editor: Editor; manager: Y.UndoManager; id: string } {
-    const { editor, manager } = open([para('')]);
-    const id = read(editor)[0]!.id;
-    caretAtEnd(editor, id);
-    type(editor, query);
-    manager.stopCapturing();
-    press(editor, 'ArrowRight');
-    expect(screen.queryByTestId('doc-slash-table-grid')).not.toBeNull();
-    return { editor, manager, id };
-  }
-
-  it('closes the grid and opens a new menu on a trigger typed after a space', () => {
-    const { editor, id } = gridOpen('/tab');
-    press(editor, ' ');
-    type(editor, ' ');
-    press(editor, '/');
-    type(editor, '/');
-    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
-    expect(textOf(editor, id)).toBe('/tab /');
-    expect(menu()).not.toBeNull();
-    expect(rows()).toContain('heading-1');
-  });
-
-  it('closes the grid and narrows the list on another character', () => {
-    const { editor, id } = gridOpen('/tab');
-    press(editor, 'l');
-    type(editor, 'l');
-    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
-    expect(textOf(editor, id)).toBe('/tabl');
-    expect(rows()).toEqual(['table']);
-  });
-
-  it('closes the grid and shortens the query on Backspace', () => {
-    const { editor, id } = gridOpen('/tab');
-    press(editor, 'Backspace');
-    const view = editor.prosemirrorView!;
-    act(() => {
-      const { from } = view.state.selection;
-      view.dispatch(view.state.tr.delete(from - 1, from));
-    });
-    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
-    expect(textOf(editor, id)).toBe('/ta');
-    expect(menu()).not.toBeNull();
-    expect(rows()).toContain('table');
-  });
-
-  it('closes the grid on Cmd+Z, and the menu once the undo takes the query out', () => {
-    const { editor, manager, id } = gridOpen('/tab');
-    press(editor, 'z', { metaKey: true });
-    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
-    act(() => {
-      manager.undo();
-    });
-    expect(textOf(editor, id)).toBe('');
+    expect(read(editor)[0]?.type).toBe('docTable');
+    expect(firstTable(editor)?.map((cells) => cells.length)).toEqual([3, 3, 3]);
     expect(menu()).toBeNull();
   });
-  it('keeps the grid closed when input with no key changes the query and changes it back', () => {
-    const { editor, id } = gridOpen('/tab');
-    // An input method or a paste changes the line with no keydown.
-    type(editor, 'l');
-    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
-    const view = editor.prosemirrorView!;
-    act(() => {
-      const { from } = view.state.selection;
-      view.dispatch(view.state.tr.delete(from - 1, from));
-    });
+
+  it('puts an empty 3x3 table below a line with text, and keeps the text', () => {
+    const { editor } = open([para('ab')]);
+    const id = read(editor)[0]!.id;
+    caretAtEnd(editor, id);
+    type(editor, ' /tab');
+    press(editor, 'Enter');
+    expect(textOf(editor, id)).toBe('ab');
+    expect(read(editor)[1]?.type).toBe('docTable');
+    expect(firstTable(editor)?.map((cells) => cells.length)).toEqual([3, 3, 3]);
+  });
+
+  it('puts the 3x3 table in on a press of the Table row', () => {
+    const { editor } = open([para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/');
+    fireEvent.mouseDown(screen.getByTestId('doc-slash-row-table'));
+    expect(firstTable(editor)?.map((cells) => cells.length)).toEqual([3, 3, 3]);
+  });
+
+  it('draws Table as a plain row: no arrow, and nothing opens beside the menu', () => {
+    const { editor } = open([para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/tab');
+    const table = screen.getByTestId('doc-slash-row-table');
+    expect(table.querySelector('.lucide-chevron-right')).toBeNull();
+    fireEvent.mouseMove(table, { clientX: 10, clientY: 10 });
+    expect(table.hasAttribute('data-highlighted')).toBe(true);
+    expect(screen.queryAllByTestId(/^doc-slash-/u).filter((el) => !menu()!.contains(el))).toEqual([]);
+  });
+
+  it('leaves ArrowRight on Table to the body', () => {
+    const { editor } = open([para('')]);
+    const id = read(editor)[0]!.id;
+    caretAtEnd(editor, id);
+    type(editor, '/tab');
+    expect(fireEvent.keyDown(editor.prosemirrorView!.dom, { key: 'ArrowRight' })).toBe(true);
+    expect(read(editor).some((block) => block.type === 'docTable')).toBe(false);
     expect(textOf(editor, id)).toBe('/tab');
-    expect(screen.queryByTestId('doc-slash-table-grid')).toBeNull();
   });
 });
 
@@ -635,7 +521,6 @@ describe('undo after a pick (A8)', () => {
     const id = read(editor)[0]!.id;
     caretAtEnd(editor, id);
     type(editor, '/tab');
-    press(editor, 'Enter');
     press(editor, 'Enter');
     expect(read(editor).some((block) => block.type === 'docTable')).toBe(true);
     act(() => {
