@@ -58,9 +58,11 @@ function overlayOf(mesh: Mesh, material: Material | Material[]): Mesh {
 }
 
 /**
- * Cover every mesh, line and points object of one part with a tinted overlay child of the same kind (inner#1693 design 5.5). Overlays are not picked, cast or
- * receive no shadow, are marked `lookHighlight` so outlines, bounds and the minimap skip them, and are never culled, so
- * a pose that moves the mesh moves them too.
+ * Cover every mesh, line and points object of one part with a tinted overlay child of the same kind (inner#1693
+ * design 5.5). Overlays are not picked, cast or receive no shadow, and are never culled, so a pose that moves the mesh
+ * moves them too. They are marked `lookHighlight`, so applying a look and reading the drawn parts skip them; they share
+ * their source's geometry and bounds, so outlines and model bounds come out the same with or without them; the minimap
+ * draws its own instances, which never carry them.
  * @param root - The object's instance root.
  * @param part - The highlighted part.
  * @param color - The tint.

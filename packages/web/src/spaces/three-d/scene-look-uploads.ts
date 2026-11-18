@@ -12,15 +12,8 @@ import { peekSceneSession, type SceneSession } from '@web/data/yjs/scene-session
 import { toast } from '@web/lib/toast';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { uploadFailureMessageKey } from '@web/spaces/canvas/upload-failure';
-import { checkLookWrite, type LookTextureReason } from '@web/spaces/three-d/look-texture-budget';
-import { pageLookTextureCache, readPictureSize } from '@web/spaces/three-d/viewport/look-texture-cache';
-
-/** A picture's header size and type. */
-export interface LookImageSize {
-  width: number;
-  height: number;
-  type: string;
-}
+import { checkLookWrite, type LookTextureLimits, type LookTextureReason } from '@web/spaces/three-d/look-texture-budget';
+import { pageLookTextureCache, readPictureSize, type LookPictureSize } from '@web/spaces/three-d/viewport/look-texture-cache';
 
 /** A message for the uploader. */
 export interface LookUploadNotice {
@@ -43,9 +36,9 @@ export interface SceneLookUploadDeps {
   /** Refresh the Project's picture list, which now holds the upload. */
   invalidateImages: (projectId: string) => void;
   /** The local file's header size and type, or null when it cannot be read. */
-  readLocalSize: (file: File) => Promise<LookImageSize | null>;
+  readLocalSize: (file: File) => Promise<LookPictureSize | null>;
   /** A used picture's header size in a Project, or null when it cannot be read. */
-  size: (projectId: string, assetId: string) => Promise<LookImageSize | null>;
+  size: (projectId: string, assetId: string) => Promise<LookPictureSize | null>;
   /** The open editing session of a Space document, if any; never creates one. */
   session: (name: string) => SceneSession | undefined;
 }
@@ -54,12 +47,6 @@ export interface SceneLookUploadDeps {
 export interface LookLimitIssue {
   reason: LookTextureReason;
   total: number;
-}
-
-/** The scene's texture limits, the edge capped by this device. */
-export interface LookTextureLimits {
-  maxTextureEdge: number;
-  maxTextureBytes: number;
 }
 
 /** What an upload records when it starts (inner#1693 design 6.3). */
@@ -204,7 +191,7 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
    * @param mapSize - The new picture's size.
    * @returns The refusal with the object's texture total, or null.
    */
-  const overLimit = (input: SceneLookUploadStart, look: SceneLook, map: string, mapSize: LookImageSize): ReturnType<typeof checkLookWrite> =>
+  const overLimit = (input: SceneLookUploadStart, look: SceneLook, map: string, mapSize: LookPictureSize): ReturnType<typeof checkLookWrite> =>
     checkLookWrite({ ownBytes: input.ownBytes, clampBytes: input.clampBytes, limits: input.limits, look, part: input.part, map, mapSize,
       size: (assetId) => deps.size(input.projectId, assetId) });
 
@@ -216,7 +203,7 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
    * @param startLook - The object's look when the upload started.
    * @param key - The part's entry key.
    */
-  const upload = async (input: SceneLookUploadStart, local: LookImageSize, opened: SceneSession | undefined,
+  const upload = async (input: SceneLookUploadStart, local: LookPictureSize, opened: SceneSession | undefined,
     startLook: SceneLook | undefined, key: string): Promise<void> => {
     // Another explicit picture set on the part meanwhile blocks the write; a reset that deletes the key does not.
     let partChanged = false;
@@ -272,7 +259,7 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       deps.register(input.spaceId, operationId);
       changed();
       try {
-        let local: LookImageSize | null;
+        let local: LookPictureSize | null;
         try {
           local = await deps.readLocalSize(input.file);
         } catch {

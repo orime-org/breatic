@@ -131,7 +131,6 @@ const NO_LOOK: SceneLook = {};
  * @returns The current selection inspector.
  * @throws {never} Command refusals are reported by the session owner.
  */
-
 export const SceneInspector = React.memo(function SceneInspector({ session, snapshot, readObjects, namedPeers, spaceId, Field, DirectorFields, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, onJointModeChange, look }: Pick<SceneEditorProps, 'session' | 'snapshot' | 'readObjects' | 'namedPeers' | 'spaceId'> & SceneFieldDraftOwner & ScenePoseInputs & { Field: typeof SceneField; DirectorFields: typeof SceneDirectorFields; look?: SceneLookInputs }): React.JSX.Element {
   const t = useTranslation();
   const selected = snapshot.objects.filter((object) => snapshot.selectedIds.includes(object.id));

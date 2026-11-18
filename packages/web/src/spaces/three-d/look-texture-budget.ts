@@ -9,6 +9,12 @@ import { uploadBytes } from '@web/spaces/three-d/model-texture-metadata';
 export type LookTextureReason = 'bytes' | 'unknown';
 export type LookTextureVerdict = { usable: true } | { usable: false; reason: LookTextureReason };
 
+/** The scene's texture limits, the edge capped by this device. */
+export interface LookTextureLimits {
+  maxTextureEdge: number;
+  maxTextureBytes: number;
+}
+
 /** Everything one budget check reads. */
 export interface LookTextureInput {
   /** Upload bytes of the model's own textures. */
@@ -19,7 +25,7 @@ export interface LookTextureInput {
   /** Header sizes of the look pictures by asset id; null when the size could not be read. */
   sizes: ReadonlyMap<string, { width: number; height: number } | null>;
   /** The configured limits, the edge already capped by this device's largest texture. */
-  limits: { maxTextureEdge: number; maxTextureBytes: number };
+  limits: LookTextureLimits;
 }
 
 /** A picture's width and height in pixels. */
