@@ -4093,5 +4093,8 @@
     "replied": "{name} 回覆",
     "handedOver": "已交給 {name}",
     "writeFailed": "沒能交出"
+  },
+  "commentLink": {
+    "gone": "這條批註已不在了"
   }
 }

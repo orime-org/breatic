@@ -160,6 +160,7 @@ import { steppedMarkSize } from '@web/stores/mark-draft';
 import { uploadDerivedImage } from '@web/spaces/canvas/upload-derived-image';
 import { failUploadIntoNode, startUploadIntoNode } from '@web/spaces/canvas/upload-into-node';
 import { useCanvasRevealReceiver } from '@web/spaces/canvas/use-canvas-reveal-receiver';
+import { useCommentRevealReceiver } from '@web/features/comment-reveal/use-comment-reveal-receiver';
 import {
   fileToNodeSpec,
   checkFileAdmission,
@@ -3000,6 +3001,12 @@ function CanvasSpaceInner({
     setSelectAfterCreate([id]);
   }, [getInternalNode, nodes, setCenter, rfStoreApi, clearOpeningFit]);
   useCanvasRevealReceiver(spaceId, synced, hasNode, revealNode);
+  // A link to a note (#1488 §11.6): showing it selects it, which opens it.
+  const hasNote = React.useCallback(
+    (id: string): boolean => nodes.some((node) => node.id === id && node.type === 'annotation'),
+    [nodes],
+  );
+  useCommentRevealReceiver(spaceId, synced, hasNote, revealNode);
 
   // One dispatch for Cmd+V and the menu's Paste (design 5.9): our nodes paste
   // as nodes, media copied in the document body as media nodes (inner#1537),

@@ -107,6 +107,8 @@ interface DocumentCommentRailProps {
   scroller: HTMLElement | null;
   /** The document; its project is who the `@` list offers. Null offers none. */
   scope?: DocumentScope | null;
+  /** The thread a link asked to show, one object per link (#1488 §11.6). */
+  linked?: { threadId: string } | null;
 }
 
 /** Which threads the panel is showing. */
@@ -148,6 +150,7 @@ type CardHandling = Omit<
  * @param root0.onClose - Closes the panel.
  * @param root0.scroller - The body's scroller, moved to show a new draft card.
  * @param root0.scope - The document, for the `@` list's project.
+ * @param root0.linked - The thread a link asked to show.
  * @returns The panel.
  */
 export const DocumentCommentRail = React.memo(function DocumentCommentRail({
@@ -157,6 +160,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   onClose,
   scroller,
   scope = null,
+  linked = null,
 }: DocumentCommentRailProps): React.JSX.Element {
   const t = useTranslation();
   const cards = useCommentCards(editor, rail);
@@ -178,6 +182,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     editor: ToolEditor;
     filter: Filter;
     prepared: ProposalLocation | null;
+    linked?: { threadId: string };
   }>({ editor, filter: 'open', prepared: null });
   // Prepare the complete collection before committing the membership effect.
   // Keeping the processed identity lets a later manual filter stay in force.
@@ -185,6 +190,10 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     setFilterState({ editor, filter: explicit === null ? 'open' : 'all', prepared: explicit });
   } else if (explicit !== null && filterState.prepared !== explicit) {
     setFilterState({ editor, filter: 'all', prepared: explicit });
+  }
+  // A link to a settled thread shows the cards it is among, once per link.
+  if (linked !== null && filterState.linked !== linked && cards.resolved.some((card) => card.id === linked.threadId)) {
+    setFilterState({ ...filterState, filter: 'all', linked });
   }
   const filter = filterState.filter;
   /**

@@ -4093,5 +4093,8 @@
     "replied": "{name} 답글",
     "handedOver": "{name}에게 맡겼습니다",
     "writeFailed": "맡기지 못했습니다"
+  },
+  "commentLink": {
+    "gone": "이 댓글은 더 이상 없습니다"
   }
 }

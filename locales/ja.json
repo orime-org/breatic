@@ -4093,5 +4093,8 @@
     "replied": "{name} が返信",
     "handedOver": "{name} に任せました",
     "writeFailed": "任せられませんでした"
+  },
+  "commentLink": {
+    "gone": "このコメントはもうありません"
   }
 }

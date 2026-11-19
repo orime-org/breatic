@@ -4093,5 +4093,8 @@
     "replied": "{name} replied",
     "handedOver": "Handed to {name}",
     "writeFailed": "Couldn't hand it over"
+  },
+  "commentLink": {
+    "gone": "This comment is no longer here"
   }
 }

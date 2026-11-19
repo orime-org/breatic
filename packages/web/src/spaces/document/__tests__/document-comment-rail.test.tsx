@@ -29,6 +29,7 @@ import { CommentsExtension } from '@blocknote/core/comments';
 import { documentBodyFragment, documentCommentThreads } from '@breatic/shared';
 
 import { toast } from '@web/lib/toast';
+import { useCommentRevealStore } from '@web/stores/comment-reveal';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import {
   _resetDocumentEditorCacheForTests,
@@ -781,6 +782,42 @@ describe('the comment panel', () => {
       ]);
     });
     expect(deepened()).toBe(1);
+  });
+
+  it('opens the panel at the thread a link points to (#1488 §11.6)', async () => {
+    show();
+    await comment(0, 5, 'about alpha');
+    const id = [...handle.editor.getExtension(CommentsExtension)!.threadStore.getThreads().keys()][0]!;
+    act(() => {
+      useCommentRevealStore.getState().reveal(SCOPE.spaceId, id);
+    });
+    const card = await screen.findByTestId('doc-comment-card');
+    await waitFor(() => expect(card.getAttribute('data-selected')).toBe('true'));
+  });
+
+  it('shows a settled thread a link points to among all the cards (#1488 §11.6)', async () => {
+    show();
+    await comment(0, 5, 'about alpha');
+    const store = handle.editor.getExtension(CommentsExtension)!.threadStore;
+    const id = [...store.getThreads().keys()][0]!;
+    await act(async () => {
+      await store.resolveThread({ threadId: id });
+    });
+    act(() => {
+      useCommentRevealStore.getState().reveal(SCOPE.spaceId, id);
+    });
+    const card = await screen.findByTestId('doc-comment-card');
+    expect(card.getAttribute('data-thread')).toBe(id);
+    expect(card.getAttribute('data-settled')).toBe('true');
+  });
+
+  it('says a comment a link points to is gone when its thread is (#1488 §11.6)', async () => {
+    show();
+    act(() => {
+      useCommentRevealStore.getState().reveal(SCOPE.spaceId, 'no-such-thread');
+    });
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('This comment is no longer here'));
+    expect(screen.queryByTestId('doc-comment-card')).toBeNull();
   });
 
   it('stores the member a reply mentions (#1488 §11.6)', async () => {

@@ -4,6 +4,7 @@
 import * as React from 'react';
 import { cn } from '@web/lib/utils';
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { useCommentRevealReceiver } from '@web/features/comment-reveal/use-comment-reveal-receiver';
 import { BODY_ROW_CLASS, BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import {
   adoptDocumentEditor,
@@ -245,6 +246,20 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     clearReplies(handle.editor);
   }, [handle.editor]);
   const rail = useCommentRail(handle.editor);
+  // A link to a comment (#1488 §11.6): reading its thread opens the panel at it.
+  const holdsThread = React.useCallback(
+    (id: string): boolean => rail.unresolved.some((c) => c.id === id) || rail.resolved.some((c) => c.id === id),
+    [rail],
+  );
+  const [linked, setLinked] = React.useState<{ threadId: string } | null>(null);
+  const showThread = React.useCallback(
+    (id: string): void => {
+      setLinked({ threadId: id });
+      selectThreads(handle.editor, [id]);
+    },
+    [handle.editor],
+  );
+  useCommentRevealReceiver(scope?.spaceId ?? '', scope !== null, holdsThread, showThread);
   // ScrollArea owns this viewport; pass it to document surfaces so a table's
   // nested horizontal viewport cannot become their vertical scroll boundary.
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
@@ -556,6 +571,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
                   onClose={closeRail}
                   scroller={viewport}
                   scope={scope}
+                  linked={linked}
                 />
               )}
             </React.Activity>
