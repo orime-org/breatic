@@ -6,7 +6,7 @@ import { t } from "@shared/i18n/index.js";
 /** What one input limit counts and where it stops, as `@breatic/provider` states it on a reject. */
 export interface InputLimitShape {
   readonly field: string;
-  readonly measure: "characters" | "lines" | "chinese_characters";
+  readonly measure: "characters" | "lines" | "chinese_characters" | "seconds";
   readonly max?: number;
   readonly min?: number;
   readonly per?: "line" | "item";
@@ -28,6 +28,11 @@ const NAMED_FIELDS = new Set(["prompt", "negative_prompt", "lyrics", "multi_prom
  */
 function sentenceOf(limit: InputLimitShape): { key: string; count: number; name: "max" | "min" } | undefined {
   const base = "server.model.input_limit";
+  // A media param's length per call (inner#1306 §11.5): seconds of that video or audio.
+  if (limit.measure === "seconds") {
+    if (limit.max !== undefined) return { key: `${base}.seconds_max`, count: limit.max, name: "max" };
+    return limit.min === undefined ? undefined : { key: `${base}.seconds_min`, count: limit.min, name: "min" };
+  }
   if (limit.max !== undefined) {
     if (limit.measure === "lines") return limit.per === undefined ? { key: `${base}.lines_max`, count: limit.max, name: "max" } : undefined;
     if (limit.measure === "chinese_characters") return limit.per === undefined ? { key: `${base}.chinese_characters_max`, count: limit.max, name: "max" } : undefined;
@@ -53,6 +58,8 @@ export function inputRefusalText(refusal: InputRefusalShape, model: string): str
   const limit = "limit" in refusal ? refusal.limit : undefined;
   const sentence = limit === undefined ? undefined : sentenceOf(limit);
   if (limit === undefined || sentence === undefined) return t("server.model.input_limit.unsupported", { model });
-  const field = t(`server.model.input_field.${NAMED_FIELDS.has(limit.field) ? limit.field : "prompt"}`);
+  // A length in seconds is of a video or an audio param (`videos`, `reference_audios` among them); a count, of text.
+  const name = limit.measure === "seconds" ? (limit.field.includes("audio") ? "audio" : "video") : NAMED_FIELDS.has(limit.field) ? limit.field : "prompt";
+  const field = t(`server.model.input_field.${name}`);
   return t(sentence.key, { model, field, [sentence.name]: sentence.count });
 }

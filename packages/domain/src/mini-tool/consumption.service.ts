@@ -59,8 +59,8 @@ export async function recordMiniToolConsumption(input: RecordMiniToolConsumption
       if (request.claim) return consumption;
       throw new Error("Consumption upstream identity cannot be replaced");
     }
-    if (consumption.identity.kind === "provider" && step.predictionId !== consumption.identity.predictionId) {
-      throw new Error("Consumption prediction differs from its upstream step");
+    if (consumption.identity.kind === "provider" && (consumption.identity.stepId !== step.id || step.kind !== "generate")) {
+      throw new Error("Consumption differs from its model step");
     }
     if (consumption.identity.kind === "container" && step.kind !== "container_job") {
       throw new Error("Container consumption requires its actual container step");
@@ -69,21 +69,24 @@ export async function recordMiniToolConsumption(input: RecordMiniToolConsumption
     if (request.claim && !await taskRepo.hasMiniToolSettlementLease(task.id, request.claim, tx)) return consumption;
     if (consumption.state !== "known") return consumption;
     if (settlement.state === "settled") return consumption;
-    const { costUsd, costSource } = consumption;
-    if (costUsd === null || costSource === null) throw new Error("Known consumption has no confirmed amount");
+    const { costUsd } = consumption;
+    if (costUsd === null) throw new Error("Known consumption has no confirmed amount");
     const multiplier = consumption.chargeTo === "platform" ? 0 : consumption.creditMultiplier;
     const recorder = createUsageRecorder({
       operationKey: key, feature: "mini_tool", actorUserId: task.userId, projectId: task.projectId,
       multiplier,
       write: (row) => insertUsageRecord(row, tx),
-      onMissingCost: () => { throw new Error("Known consumption cannot have a missing cost"); },
+      // A model step's cost no upstream could name is recorded at zero, as a canvas generation's is (cost-wait.ts);
+      // the worker logs `cost_unavailable` where the step's run or lookup handed it over.
+      onMissingCost: () => undefined,
     });
-    recorder.recordServiceCall({
-      source: consumption.identity.kind === "provider" ? "model" : "container",
-      service: consumption.identity.kind === "provider" ? step.endpoint : `cloudflare-container:${step.endpoint}`,
-      provider: consumption.identity.kind === "provider" ? consumption.identity.provider : "cloudflare",
-      requests: 1, costUsd, costSource,
-    });
+    if (consumption.identity.kind === "provider") {
+      // One row per billed answer, its source as provider reported it (§11.4 recording row).
+      const answered = [...consumption.costs!, ...consumption.waiting!.flatMap((held) => (held.cost === undefined ? [] : [held.cost]))];
+      for (const cost of answered) recorder.recordModelCall({ source: "model", model: step.endpoint, upstream: consumption.servedBy ?? "unknown", cost });
+    } else {
+      recorder.recordServiceCall({ source: "container", service: `cloudflare-container:${step.endpoint}`, provider: "cloudflare", requests: 1, costUsd, costSource: "computed" });
+    }
     // settle waits for the injected write; its rounded return belongs to the
     // ordinary single-operation charge path, not this parent's later aggregate.
     await recorder.settle();
@@ -127,11 +130,8 @@ export async function confirmMiniToolConsumption(input: ConfirmMiniToolConsumpti
     if (consumption.state !== "pending" || task.billedAt !== null) return consumption;
     const key = await miniToolConsumptionKey({ taskId: task.id, stepId: step.id, identity: consumption.identity });
     if (key !== consumption.consumptionKey) throw new Error("Consumption key differs from its persistent identity");
-    if (consumption.identity.kind === "provider" && step.predictionId !== consumption.identity.predictionId) {
-      throw new Error("Consumption prediction differs from its upstream step");
-    }
-    if (consumption.identity.kind === "container" && step.kind !== "container_job") {
-      throw new Error("Container consumption requires its actual container step");
+    if (consumption.identity.kind !== "container" || step.kind !== "container_job") {
+      throw new Error("Only a container job's cost is confirmed from its report");
     }
     const known = miniToolConsumptionRecordSchema.parse({
       ...consumption, state: "known", costUsd: request.costUsd, costSource: request.costSource, raw: request.raw,

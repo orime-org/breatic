@@ -28,7 +28,10 @@ export type UpstreamStepKind =
   | "rig"
   | "container_job";
 
-/** Where a step stands. */
+/**
+ * Where a step stands. A video mini-tool model step whose upstream answered is `submitted` with `output.providerReturn`
+ * until its derived object is stored (returned, inner#1306 execution design §6.3).
+ */
 export type UpstreamStepStatus = "pending" | "submitted" | "done" | "failed";
 
 /** One step as the worker plans it. */
@@ -259,4 +262,114 @@ export async function storeMiniToolStepExecution(
   }).where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId)))
     .returning({ id: taskUpstreamSteps.id });
   if (rows.length !== 1) throw new Error("Planned execution step no longer belongs to its task");
+}
+
+/** A model step's provider ticket and its send mark (inner#1306 execution design §11.2). */
+export interface StoredStepTicket {
+  ticket: ({ version: number } & Record<string, unknown>) | null;
+  sendingAt: Date | null;
+}
+
+/**
+ * The provider ticket a model step holds and whether a send of it is in flight.
+ * @param taskId - The owning task.
+ * @param stepId - The step.
+ * @param tx - The transaction, when one is open.
+ * @returns What it holds; null when the task owns no such step.
+ */
+export async function getStepTicket(taskId: string, stepId: string, tx?: DbTx): Promise<StoredStepTicket | null> {
+  const [row] = await (tx ?? db).select({ output: taskUpstreamSteps.output }).from(taskUpstreamSteps)
+    .where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId)));
+  if (row === undefined) return null;
+  const output = (row.output ?? {}) as { providerTicket?: StoredStepTicket["ticket"]; providerSendingAt?: string };
+  return { ticket: output.providerTicket ?? null, sendingAt: output.providerSendingAt === undefined ? null : new Date(output.providerSendingAt) };
+}
+
+/**
+ * Store a model step's ticket over an older one: a run that kept an older ticket cannot write it back over a newer one.
+ * @param taskId - The owning task.
+ * @param stepId - The step.
+ * @param ticket - provider's ticket.
+ * @returns True when stored, false when a ticket as new or newer is stored, null when the task owns no such step.
+ */
+export async function storeStepTicket(taskId: string, stepId: string, ticket: { version: number } & Record<string, unknown>): Promise<boolean | null> {
+  const patch = sql.param({ providerTicket: ticket }, taskUpstreamSteps.output);
+  const rows = await db.update(taskUpstreamSteps).set({
+    output: sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${patch}`, updatedAt: sql`clock_timestamp()`,
+  }).where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId),
+    sql`coalesce((${taskUpstreamSteps.output}->'providerTicket'->>'version')::int, -1) < ${ticket.version}`))
+    .returning({ id: taskUpstreamSteps.id });
+  if (rows.length > 0) return true;
+  return (await getStepTicket(taskId, stepId)) === null ? null : false;
+}
+
+/**
+ * Set or clear a model step's send mark.
+ * @param taskId - The owning task.
+ * @param stepId - The step.
+ * @param at - The database instant of the send as text, or null to clear it.
+ * @param tx - The transaction, when one is open.
+ * @returns Whether the task owns the step.
+ */
+export async function setStepSending(taskId: string, stepId: string, at: string | null, tx?: DbTx): Promise<boolean> {
+  const output = at === null
+    ? sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) - 'providerSendingAt'`
+    : sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${sql.param({ providerSendingAt: at }, taskUpstreamSteps.output)}`;
+  const rows = await (tx ?? db).update(taskUpstreamSteps).set({
+    output, ...(at === null ? {} : { status: sql`CASE WHEN ${taskUpstreamSteps.status} = 'pending' THEN 'submitted' ELSE ${taskUpstreamSteps.status} END` }),
+    updatedAt: sql`clock_timestamp()`,
+  }).where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId))).returning({ id: taskUpstreamSteps.id });
+  return rows.length === 1;
+}
+
+/**
+ * Append the costs a model step's run handed over on a throw, before the step ends.
+ * @param taskId - The owning task.
+ * @param stepId - The step.
+ * @param costs - The costs, as JSON.
+ * @param tx - The transaction holding the task lock.
+ * @throws {Error} When the task owns no such step.
+ */
+export async function appendStepDeliveredCosts(taskId: string, stepId: string, costs: unknown[], tx: DbTx): Promise<void> {
+  const rows = await tx.update(taskUpstreamSteps).set({
+    output: sql`jsonb_set(coalesce(${taskUpstreamSteps.output}, '{}'::jsonb), '{deliveredCosts}',
+      coalesce(${taskUpstreamSteps.output}->'deliveredCosts', '[]'::jsonb) || ${sql.param(costs, taskUpstreamSteps.output)})`,
+    updatedAt: sql`clock_timestamp()`,
+  }).where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId))).returning({ id: taskUpstreamSteps.id });
+  if (rows.length !== 1) throw new Error("Model step no longer belongs to its task");
+}
+
+/**
+ * Write a model step's end: its status and output fields, its send mark cleared.
+ * @param taskId - The owning task.
+ * @param stepId - The step.
+ * @param status - `submitted` for a step whose upstream returned (its `providerReturn` in the patch), or `failed`.
+ * @param patch - The output fields the end writes.
+ * @param tx - The transaction holding the task lock.
+ * @throws {Error} When the task owns no such step.
+ */
+export async function storeStepEnd(taskId: string, stepId: string, status: "submitted" | "failed", patch: Record<string, unknown>, tx: DbTx): Promise<void> {
+  const rows = await tx.update(taskUpstreamSteps).set({
+    status, output: sql`(coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) - 'providerSendingAt') || ${sql.param(patch, taskUpstreamSteps.output)}`,
+    updatedAt: sql`clock_timestamp()`,
+  }).where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId))).returning({ id: taskUpstreamSteps.id });
+  if (rows.length !== 1) throw new Error("Model step no longer belongs to its task");
+}
+
+/**
+ * Count one send of a model step the upstream did not take.
+ * @param taskId - The owning task.
+ * @param stepId - The step.
+ * @returns How many sends of it the upstream has not taken.
+ * @throws {Error} When the task owns no such step.
+ */
+export async function countStepSendNotAccepted(taskId: string, stepId: string): Promise<number> {
+  const [row] = await db.update(taskUpstreamSteps).set({
+    output: sql`jsonb_set(coalesce(${taskUpstreamSteps.output}, '{}'::jsonb), '{sendNotAccepted}',
+      to_jsonb(coalesce((${taskUpstreamSteps.output}->>'sendNotAccepted')::int, 0) + 1))`,
+    updatedAt: sql`clock_timestamp()`,
+  }).where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId)))
+    .returning({ count: sql<number>`(${taskUpstreamSteps.output}->>'sendNotAccepted')::int` });
+  if (row === undefined) throw new Error("Model step no longer belongs to its task");
+  return Number(row.count);
 }

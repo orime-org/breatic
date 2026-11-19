@@ -7,6 +7,7 @@ import { miniToolConsumptionLookupSchema, type DueMiniToolSettlement, type MiniT
 import { settleMiniToolCharge, type MiniToolChargeResult } from "@domain/mini-tool/settlement.service.js";
 import { claimMiniToolSettlement, deferMiniToolSettlement } from "@domain/mini-tool/settlement-lookup.service.js";
 import { confirmMiniToolConsumption, recordMiniToolConsumption } from "@domain/mini-tool/consumption.service.js";
+import { lastMiniToolConsumptionLookup, recordMiniToolConsumptionLookup } from "@domain/mini-tool/model-step.service.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
 
@@ -43,14 +44,19 @@ export async function runMiniToolSettlement(input: MiniToolSettlementWake, looku
       } else {
         const scope = { taskId: input.taskId, stepId: next.stepId, identity: next.consumption.identity, claim: owned.claim };
         let canRecord = next.consumption.state === "known";
-        if (next.consumption.state === "pending") {
+        if (next.consumption.state === "pending" && next.consumption.identity.kind === "provider") {
+          // A model step's waiting costs, asked once each; the last lookup the wait allows answers known or missing.
+          const answer = miniToolConsumptionLookupSchema.parse(await lookup({ consumption: next.consumption, lastAttempt: lastMiniToolConsumptionLookup(next.consumption, Date.now()) }));
+          if (answer.state !== "looked_up") throw new Error("A model step's lookup answers its waiting costs");
+          const written = await recordMiniToolConsumptionLookup({ taskId: input.taskId, stepId: next.stepId, claim: owned.claim, costs: answer.costs });
+          canRecord = written.state === "known";
+        } else if (next.consumption.state === "pending") {
           const request: MiniToolConsumptionLookupInput = { consumption: next.consumption };
-          if (next.consumption.identity.kind === "container") {
-            const step = (await upstreamStepRepo.listSteps(input.taskId)).find((candidate) => candidate.id === next.stepId);
-            request.plan = miniToolPlanJobRequestSchema.parse(step?.output.miniToolPlanJob);
-          }
+          const step = (await upstreamStepRepo.listSteps(input.taskId)).find((candidate) => candidate.id === next.stepId);
+          request.plan = miniToolPlanJobRequestSchema.parse(step?.output.miniToolPlanJob);
           // claimMiniToolSettlement committed its own short transaction before this external read.
           const answer = miniToolConsumptionLookupSchema.parse(await lookup(request));
+          if (answer.state === "looked_up") throw new Error("A container job's lookup answers its report");
           if (answer.state === "pending") {
             await deferMiniToolSettlement({ taskId: input.taskId, claim: owned.claim, lastError: answer.reason });
           } else {

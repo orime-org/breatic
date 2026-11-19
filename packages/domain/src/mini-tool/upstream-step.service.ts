@@ -3,37 +3,25 @@
 
 import type { MiniToolConsumptionIdentity } from "@breatic/shared/mini-tools";
 import type { UpstreamStep } from "@domain/task/upstreamStep.repo.js";
-import type { MiniToolConsumptionRecord } from "@domain/mini-tool/consumption.types.js";
 
 import { z } from "zod";
-import { db, env, type DbTx } from "@breatic/core";
+import { db, type DbTx } from "@breatic/core";
 import { miniToolPlanJobRequestSchema } from "@breatic/shared";
-import { canonicalMiniToolValue, hashMiniToolValue, miniToolConsumptionIdentitySchema } from "@breatic/shared/mini-tools";
+import { canonicalMiniToolValue, miniToolConsumptionIdentitySchema } from "@breatic/shared/mini-tools";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as stepRepo from "@domain/task/upstreamStep.repo.js";
-import { miniToolConsumptionRecordSchema, miniToolSettlementSchema } from "@domain/mini-tool/consumption.types.js";
-import { completeResolvedMiniToolConsumptionSet, openMiniToolConsumptionForStepAttempt } from "@domain/mini-tool/consumption-producer.service.js";
-import { miniToolStepStateSchema, type MiniToolStepState, type MiniToolStepJson, type MiniToolStepAttempt } from "@domain/mini-tool/upstream-step.types.js";
+import { miniToolConsumptionRecordSchema } from "@domain/mini-tool/consumption.types.js";
+import { completeResolvedMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
+import { miniToolStepStateSchema, type MiniToolStepState, type MiniToolStepJson } from "@domain/mini-tool/upstream-step.types.js";
 import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
 import * as pinRepo from "@domain/presentation/presentation-pin.repo.js";
 
-export type { MiniToolStepJson, MiniToolStepAttempt } from "@domain/mini-tool/upstream-step.types.js";
+export type { MiniToolStepJson } from "@domain/mini-tool/upstream-step.types.js";
 /** A pure operation-owned result decoder; no provider or storage IO belongs here. */
 export interface MiniToolStepResultParser {
   kind: "generate" | "container_job";
   parse: (value: unknown) => Record<string, MiniToolStepJson>;
 }
-/** Internal submit inputs; first policy and request facts win on recovery. */
-export interface BeginMiniToolStepAttemptInput {
-  taskId: string; stepId: string; attemptId: string; deadlineAt: number;
-  requestBody: Record<string, MiniToolStepJson>; chargeTo: "user" | "platform";
-}
-/** Only the first preparation of a new attempt can authorize the caller's POST. */
-export interface BeginMiniToolStepAttemptResult { step: UpstreamStep; attempt: MiniToolStepAttempt | null; shouldSubmit: boolean }
-/** A receipt is tied to an existing immutable submit intent. */
-export interface RecordMiniToolStepIdentityInput { taskId: string; stepId: string; attemptId: string; predictionId: string }
-/** A conflicting receipt preserves the canonical identity and never assigns replacement fees. */
-export interface RecordMiniToolStepIdentityResult { step: UpstreamStep; consumption: MiniToolConsumptionRecord | null; conflict: boolean }
 /** A decoded terminal result remains independent from its consumption's fee state. */
 export interface RecordMiniToolStepResultInput {
   taskId: string; stepId: string; identity: MiniToolConsumptionIdentity;
@@ -53,88 +41,6 @@ export interface FailMiniToolStepInput {
 }
 
 /**
- * Persist an owned request intent before the caller can submit it.
- * @param input - The owned scope and immutable request intent.
- * @returns The original or newly prepared intent and the caller submission gate.
- * @throws {Error} When persistence, ownership or the original submit fence fails.
- */
-export async function beginMiniToolStepAttempt(input: BeginMiniToolStepAttemptInput): Promise<BeginMiniToolStepAttemptResult> {
-  const request = beginSchema.parse(input);
-  return db.transaction(async (tx) => {
-    const { task, step, state } = await ownedStep(request.taskId, request.stepId, tx);
-    if (step.kind !== "generate") throw new Error("Provider submit intent requires a generate step");
-    const fingerprint = await hashMiniToolValue({ kind: step.kind, endpoint: step.endpoint, requestBody: request.requestBody });
-    if (state.requestFingerprint !== null && state.requestFingerprint !== fingerprint) throw new Error("Planned submit body cannot replace its original request");
-    const held = state.attempts.find((attempt) => attempt.attemptId === request.attemptId);
-    if (held) return { step, attempt: held, shouldSubmit: false };
-    if (step.predictionId !== null || step.status === "done" || step.status === "failed" || task.status !== "pending" && task.status !== "running" || closed(task)) {
-      return { step, attempt: null, shouldSubmit: false };
-    }
-    const now = await taskRepo.miniToolSettlementDatabaseNow(task.id, tx);
-    const deadlineAt = state.deadlineAt ?? request.deadlineAt;
-    if (Date.parse(now) >= deadlineAt) return { step, attempt: null, shouldSubmit: false };
-    if (state.requestBody === null) {
-      state.deadlineAt = deadlineAt; state.requestBody = request.requestBody; state.requestFingerprint = fingerprint;
-      state.chargeTo = request.chargeTo; state.creditMultiplier = env.CREDIT_MULTIPLIER;
-    }
-    const attempt: MiniToolStepAttempt = { attemptId: request.attemptId, preparedAt: now, requestFingerprint: fingerprint, resolution: { kind: "unresolved" } };
-    state.attempts.push(attempt);
-    await stepRepo.storeMiniToolStepExecution(task.id, step.id, state, {}, tx);
-    if (task.result.settlement === undefined) {
-      await taskRepo.storeMiniToolSettlement(task.id, miniToolSettlementSchema.parse({
-        version: 0, state: "waiting", consumptionSetComplete: false, pendingConsumptionKeys: [],
-        nextAttemptAt: now, leaseToken: null, leaseUntil: null, lastError: null,
-      }), tx);
-    }
-    return { step: await reread(task.id, step.id, tx), attempt, shouldSubmit: true };
-  });
-}
-
-/**
- * Save a matching prediction receipt and its pending expense in one transaction.
- * @param input - A receipt tied to the original durable intent.
- * @returns The canonical identity and preserved expense, or a recorded conflict.
- * @throws {Error} When no matching durable attempt authorizes this receipt.
- */
-export async function recordMiniToolStepIdentity(input: RecordMiniToolStepIdentityInput): Promise<RecordMiniToolStepIdentityResult> {
-  const request = identitySchema.parse(input);
-  const answer = await db.transaction(async (tx): Promise<RecordMiniToolStepIdentityResult | Error> => {
-    const { task, step, state } = await ownedStep(request.taskId, request.stepId, tx);
-    if (step.kind !== "generate") throw new Error("Provider identity requires a generate step");
-    const attempt = state.attempts.find((candidate) => candidate.attemptId === request.attemptId);
-    if (!attempt || state.requestFingerprint === null || attempt.requestFingerprint !== state.requestFingerprint || state.requestBody === null) throw new Error("Provider identity has no matching persisted submit intent");
-    const fingerprint = await hashMiniToolValue({ kind: step.kind, endpoint: step.endpoint, requestBody: state.requestBody });
-    if (fingerprint !== state.requestFingerprint) throw new Error("Provider identity request fingerprint is inconsistent");
-    const receipt = { kind: "identity" as const, predictionId: request.predictionId };
-    if (attempt.resolution.kind !== "unresolved" && canonicalMiniToolValue(attempt.resolution) !== canonicalMiniToolValue(receipt)) {
-      return recordIdentityConflict(task.id, step, state, request, tx);
-    }
-    if (step.predictionId !== null && step.predictionId !== request.predictionId) return recordIdentityConflict(task.id, step, state, request, tx);
-    const consumption = step.output.miniToolConsumption === undefined ? null : miniToolConsumptionRecordSchema.parse(step.output.miniToolConsumption);
-    if (consumption !== null && (consumption.identity.kind !== "provider" || consumption.identity.predictionId !== request.predictionId)) throw new Error("Provider receipt differs from the stored expense");
-    if (consumption === null && closed(task)) {
-      const conflict = { kind: "closed_identity" as const, attemptId: request.attemptId, candidateId: request.predictionId };
-      if (appendConflict(state, conflict)) await stepRepo.storeMiniToolStepExecution(task.id, step.id, state, {}, tx);
-      return new Error("Provider receipt conflicts with the closed consumption set");
-    }
-    const changed = canonicalMiniToolValue(attempt.resolution) !== canonicalMiniToolValue(receipt);
-    attempt.resolution = receipt;
-    if (changed || step.predictionId === null) {
-      await stepRepo.storeMiniToolStepExecution(task.id, step.id, state, {
-        predictionId: request.predictionId,
-        ...(step.status === "pending" ? { status: "submitted" as const } : {}),
-      }, tx);
-    }
-    const stored = consumption ?? await openMiniToolConsumptionForStepAttempt(request, tx);
-    // A late receipt may resolve an ended execution's or analysis's last attempt; the closer itself skips a running task.
-    await completeResolvedMiniToolConsumptionSet(task.id, tx);
-    return { step: await reread(task.id, step.id, tx), consumption: stored, conflict: false };
-  });
-  if (answer instanceof Error) throw answer;
-  return answer;
-}
-
-/**
  * Save an operation-validated terminal result without rewriting fee or plan facts.
  * @param input - The original identity and operation result.
  * @param parser - A pure decoder for that operation and step kind.
@@ -151,7 +57,7 @@ export async function recordMiniToolStepResult(input: RecordMiniToolStepResultIn
     const consumption = miniToolConsumptionRecordSchema.parse(step.output.miniToolConsumption);
     if (canonicalMiniToolValue(consumption.identity) !== canonicalMiniToolValue(request.identity)) throw new Error("Execution result differs from its stored consumption identity");
     if (request.identity.kind === "provider") {
-      if (step.kind !== "generate" || step.predictionId !== request.identity.predictionId) throw new Error("Execution result has no canonical provider identity");
+      if (step.kind !== "generate" || request.identity.stepId !== step.id) throw new Error("Execution result differs from its model step");
     } else {
       const plan = miniToolPlanJobRequestSchema.parse(step.output.miniToolPlanJob);
       if (step.kind !== "container_job" || step.endpoint !== request.identity.containerClass || plan.containerClass !== request.identity.containerClass || plan.jobId !== request.identity.jobId) throw new Error("Execution result differs from its complete original plan");
@@ -210,8 +116,6 @@ export async function failMiniToolStep(input: FailMiniToolStepInput): Promise<Up
 
 const scope = { taskId: z.uuid(), stepId: z.uuid() };
 const jsonObject = z.record(z.string(), z.json());
-const beginSchema = z.strictObject({ ...scope, attemptId: z.uuid(), deadlineAt: z.number().int().positive(), requestBody: jsonObject, chargeTo: z.enum(["user", "platform"]) });
-const identitySchema = z.strictObject({ ...scope, attemptId: z.uuid(), predictionId: z.string().min(1) });
 const resultSchema = z.strictObject({ ...scope, identity: miniToolConsumptionIdentitySchema, outcome: z.enum(["done", "failed"]), result: z.unknown(), error: jsonObject.optional(),
   presentation: z.strictObject({
     prepared: z.strictObject({ toolInputId: z.string().regex(/^[a-f0-9]{64}$/), preparedKey: z.string().min(1) }).optional(),
@@ -258,17 +162,6 @@ async function reread(taskId: string, stepId: string, tx: DbTx): Promise<Upstrea
 }
 
 /**
- * Read the existing submission fence without guessing that absent costs mean zero.
- * @param task - Current facts read under the immutable task lock.
- * @returns Whether no new consumption identity may be opened.
- * @throws {z.ZodError} When an existing settlement period is malformed.
- */
-function closed(task: taskRepo.LockedMiniToolConsumptionTask): boolean {
-  const period = task.result.settlement === undefined ? null : miniToolSettlementSchema.parse(task.result.settlement);
-  return task.billedAt !== null || period?.consumptionSetComplete === true || period?.state === "settled";
-}
-
-/**
  * Retain one canonicalized conflict for reconciliation without growing duplicate facts.
  * @param state - The operation-owned state in this transaction.
  * @param conflict - The observed identity or result conflict.
@@ -280,20 +173,4 @@ function appendConflict(state: MiniToolStepState, conflict: MiniToolStepState["c
   if (state.conflicts.some((held) => canonicalMiniToolValue(held) === identity)) return false;
   state.conflicts.push(conflict);
   return true;
-}
-
-/**
- * Preserve an incompatible receipt without changing the canonical ID or assigning fees.
- * @param taskId - The parent whose lock is held.
- * @param step - The original current step.
- * @param state - Validated execution and attempt facts.
- * @param receipt - The conflicting original-attempt receipt.
- * @param tx - The same task transaction.
- * @returns The preserved canonical step and expense with a conflict indication.
- * @throws {Error} When conflict persistence fails.
- */
-async function recordIdentityConflict(taskId: string, step: UpstreamStep, state: MiniToolStepState, receipt: RecordMiniToolStepIdentityInput, tx: DbTx): Promise<RecordMiniToolStepIdentityResult> {
-  const conflict = { kind: "identity" as const, attemptId: receipt.attemptId, canonicalId: step.predictionId, candidateId: receipt.predictionId };
-  if (appendConflict(state, conflict)) await stepRepo.storeMiniToolStepExecution(taskId, step.id, state, {}, tx);
-  return { step: await reread(taskId, step.id, tx), consumption: step.output.miniToolConsumption === undefined ? null : miniToolConsumptionRecordSchema.parse(step.output.miniToolConsumption), conflict: true };
 }

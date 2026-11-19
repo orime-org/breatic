@@ -101,7 +101,7 @@ describe("a model step through its ticket", () => {
   });
 
   it("only fetches a step found returned", async () => {
-    h.list.mockResolvedValue([row("returned", { providerReturn: { link: LINK } })]);
+    h.list.mockResolvedValue([row("submitted", { providerReturn: { link: LINK }, miniToolConsumption: {} })]);
     expect(await advanceGenerate(RUN, PLANNED, "u", DEADLINE)).toEqual({ key: `erase:0:${STEP}` });
     expect(h.run).not.toHaveBeenCalled();
     expect(h.transfer).toHaveBeenCalledWith(LINK, expect.objectContaining({ storageKey: `erase:0:${STEP}` }));

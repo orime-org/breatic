@@ -370,13 +370,17 @@
         "item_characters_max": "{model} takes at most {max, number} characters in each of {field}.",
         "lines_max": "{model} takes at most {max, number} lines in {field}.",
         "chinese_characters_max": "{model} takes at most {max, number} Chinese characters in {field}.",
+        "seconds_max": "{model} takes at most {max, plural, one {# second} other {# seconds}} of {field} per call.",
+        "seconds_min": "{model} needs at least {min, plural, one {# second} other {# seconds}} of {field} per call.",
         "unsupported": "{model} can’t take this run as set up. Change the settings or pick another model."
       },
       "input_field": {
         "prompt": "the text",
         "negative_prompt": "the negative prompt",
         "lyrics": "the lyrics",
-        "multi_prompt": "the shot prompts"
+        "multi_prompt": "the shot prompts",
+        "video": "the video",
+        "audio": "the audio"
       }
     },
     "document": {

@@ -228,7 +228,7 @@ models:
         fill: "tool"
       seed:
         description: "Seed frozen at admission"
-        default: null
+        default: 0
         min: 0
         max: 2147483646
         fill: "tool"

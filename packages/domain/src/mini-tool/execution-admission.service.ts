@@ -26,7 +26,8 @@ import { executionPlanFromTask } from "@domain/mini-tool/execution-plan.service.
 import { recordFromPlan } from "@domain/mini-tool/execution.service.js";
 import { containerCostUsd } from "@domain/credit/container-cost.js";
 import { creditsForUsd } from "@domain/credit/usage-cost.js";
-import { estimateModelCredits, estimateTaskCredits, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
+import { MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
+import { admitModelCall, MINI_TOOL_MODEL_ROUTE } from "@domain/mini-tool/model-call-admission.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
 import * as pinRepo from "@domain/presentation/presentation-pin.repo.js";
@@ -56,7 +57,7 @@ type FrozenToolInput = {
 };
 /** The original server-owned execution stored under tasks.params.miniToolExecution. */
 export type AcceptedMiniToolExecution = ExecutionPlan & (TransitionsExecution | (FrozenToolInput & (
-  | { tool: "video.remove-bg"; provider: PreparedVideoRemoveBackground["provider"];
+  | { tool: "video.remove-bg"; route: typeof MINI_TOOL_MODEL_ROUTE;
     body: Omit<PreparedVideoRemoveBackground["params"], "video"> & { video: PreparedModelInputRef };
     /** The model's own quote, frozen apart from the preparation so a failed-output retry quotes generate alone. */
     modelCredits: number;
@@ -69,7 +70,7 @@ export type AcceptedMiniToolExecution = ExecutionPlan & (TransitionsExecution | 
     container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number };
     /** Each output's planned work in seconds without job start, frozen so a retry re-quotes its subset. */
     outputSeconds: number[] }
-  | { tool: "video.lip-sync"; generator: LipSyncGenerator; timeline: LipsyncTimeline; usedRange: { start: 0; end: number };
+  | { tool: "video.lip-sync"; generator: LipSyncGenerator; route: typeof MINI_TOOL_MODEL_ROUTE; timeline: LipsyncTimeline; usedRange: { start: 0; end: number };
     /** The rows with their registered audio durations, the people they name and the tracking model (DD §7.1). */
     dialogues: VideoExecutionDialogue[]; persons: LipSyncPerson[]; tracking: { model: string }; cropSize: number;
     /** The composite's face feather, a fraction of each face's shorter side, frozen from config/mini-tools.yaml (DD §7.2 step 6). */
@@ -80,7 +81,7 @@ export type AcceptedMiniToolExecution = ExecutionPlan & (TransitionsExecution | 
     sharedStepKeys: Record<string, string>;
     /** The raw disk budget computed once at admission (execution design paragraph before §9.4); jobs read only this value. */
     container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number; rawDiskBytes: number } }
-  | { tool: "video.erase";
+  | { tool: "video.erase"; route: typeof MINI_TOOL_MODEL_ROUTE;
     /** The tracking analysis the run reads and its RLE (execution design §10.4 request row). */
     tracking: EraseTracking;
     /** The range's presentation frames and the model grid over them (§10.4 model grid row). */
@@ -91,7 +92,7 @@ export type AcceptedMiniToolExecution = ExecutionPlan & (TransitionsExecution | 
     /** Each step's frozen quote, by step name (§10.4 quote row): a retry holds those not done on the original chain. */
     stepCredits: Record<string, number>;
     container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number } }
-  | ({ tool: "video.expand";
+  | ({ tool: "video.expand"; route: typeof MINI_TOOL_MODEL_ROUTE;
     /** The even target layout (§10.5 geometry row), the resolved prompt, the frozen seed and the windows on the presentation. */
     layout: VideoExpandLayout; prompt: string; seed: number; windows: ModelWindow[]; modelFps: number; modelCredits: number;
     composite: FrameWindow[]; stageJobs: MiniToolStageJobs[]; stepKeys: Record<string, string>;
@@ -459,16 +460,15 @@ async function prepareRemoval(request: Extract<MiniToolPlannedRequest, { tool: "
   const settings = config.executions["video.remove-bg"];
   const prepared = await prepareVideoRemoveBackground(request.draft.source, settings.model);
   const version = await selectedToolInput(request.presentation_ref.source, prepared.binding, prepared.sourceKey, config);
-  const model = await estimateModelCredits(prepared.model, { params: prepared.params, durations: { video: [gridSeconds(version)] }, sources: ["video"] });
-  if (model === undefined) throw new AppError(503, t("server.mini_tool.unavailable"));
+  const modelCredits = await admitModelCall(prepared.model, { params: prepared.params, durations: { video: [gridSeconds(version)] }, sources: ["video"] });
   const layout = preparationLayout(version, config);
   assertWithinParallelCap(plannedStageJobs({ preparation: layout.chunks }), config);
   const preparation = { ...containerPolicy(settings.preparation.container_class, settings.preparation.precheck_seconds, config), chunks: layout.chunks,
     chunkRetries: config.encoding.chunk_retries, encode: { crf: config.presentation.crf, preset: config.presentation.preset } };
-  return { ...common, tool: request.tool, binding: prepared.binding, sourceKey: prepared.sourceKey, model: prepared.model, provider: prepared.provider,
+  return { ...common, tool: request.tool, binding: prepared.binding, sourceKey: prepared.sourceKey, model: prepared.model, route: MINI_TOOL_MODEL_ROUTE,
     body: { ...prepared.params, video: { kind: "prepared", inputId: "source", job: `${request.run_id}:prep:0` } },
     presentationRef: request.presentation_ref, presentations: { source: version }, versionIds: { source: version.versionId }, preparation,
-    chargeTo: miniToolChargeTo(request.tool), modelCredits: model.credits, credits: model.credits + containerCredits(preparation, layout.seconds) };
+    chargeTo: miniToolChargeTo(request.tool), modelCredits, credits: modelCredits + containerCredits(preparation, layout.seconds) };
 }
 
 /**
@@ -491,7 +491,7 @@ async function prepareLipSync(request: Extract<MiniToolPlannedRequest, { tool: "
   const persons = await lipSyncPeople(request, request.project_id);
   const dialogues = await lipSyncDialogues(request);
   const { timeline, usedRange } = lipSyncTimeline(request, version.display, dialogues, settings, model);
-  const generation = await estimateTaskCredits(model.name, { params: {}, durations: { video: [timeline.duration], audio: [timeline.duration] }, sources: ["video", "audio"] });
+  const generation = Math.max(await admitModelCall(model.name, { params: {}, durations: { video: [timeline.duration], audio: [timeline.duration] }, sources: ["video", "audio"] }), MIN_TASK_CREDIT_COST);
   const anchor = persons[0]!.anchor.frameIndex;
   const { layout, seconds: layoutWork, rawDiskBytes } = lipSyncLayout(version,
     { timeline, usedRange, persons: persons.length, cropSize: model.crop_size, containerClass: settings.container_class, anchor }, config);
@@ -499,7 +499,7 @@ async function prepareLipSync(request: Extract<MiniToolPlannedRequest, { tool: "
   // over its encoded length; the layout prepares the clips, and each person's tracks are joined.
   const clips = trackingClips({ start: 0, end: layout.preparation.at(-1)!.end }, anchor);
   let tracking = 0;
-  for (const seconds of trackingClipSeconds(version.display, clips)) tracking += await estimateTaskCredits(settings.tracking.model, { params: {}, durations: { video: [seconds] }, sources: ["video"] });
+  for (const seconds of trackingClipSeconds(version.display, clips)) tracking += Math.max(await admitModelCall(settings.tracking.model, { params: {}, durations: { video: [seconds] }, sources: ["video"] }), MIN_TASK_CREDIT_COST);
   const seconds = layoutWork + persons.length * config.encoding.encoder.start_seconds;
   const stageJobs = plannedStageJobs(layout);
   // The reversed tracking chunks cover [0, anchor] whatever the outputs are, so their refusal names the anchor (§10.2).
@@ -510,7 +510,7 @@ async function prepareLipSync(request: Extract<MiniToolPlannedRequest, { tool: "
   const container = { ...containerPolicy(settings.container_class, settings.precheck_seconds, config), startSeconds: config.encoding.encoder.start_seconds,
     encode: { crf: config.presentation.crf, preset: config.presentation.preset }, chunkRetries: config.encoding.chunk_retries, rawDiskBytes };
   const plan = { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, presentations: { source: version },
-    versionIds: { source: version.versionId }, chargeTo: miniToolChargeTo(request.tool), model: model.name, container, layout, stageJobs, timeline, usedRange, dialogues, persons, cropSize: model.crop_size,
+    versionIds: { source: version.versionId }, chargeTo: miniToolChargeTo(request.tool), model: model.name, route: MINI_TOOL_MODEL_ROUTE, container, layout, stageJobs, timeline, usedRange, dialogues, persons, cropSize: model.crop_size,
     faceFeather: settings.face_feather,
     tracking: { model: settings.tracking.model },
     generator: { backend: "wavespeed-crop" as const, modelId: model.name, schemaFingerprint: model.schema_fingerprint, providerSyncMode: model.accepts_sync_mode ? "cut_off" as const : null },
@@ -613,7 +613,7 @@ async function prepareErase(request: Extract<MiniToolPlannedRequest, { tool: "vi
   const { params } = request.draft;
   const { first, count, grid } = eraseRangeGrid(version.display, params.range, params.anchor, settings.model);
   const tracking = await eraseTracking(request, request.project_id, binding.canonicalURL);
-  const modelCredits = await estimateTaskCredits(settings.model.name, { params: {}, durations: { video: [grid.frameCount / grid.rate] }, sources: ["video"] });
+  const modelCredits = Math.max(await admitModelCall(settings.model.name, { params: {}, durations: { video: [grid.frameCount / grid.rate] }, sources: ["video"] }), MIN_TASK_CREDIT_COST);
   const rates = videoEncoderRates(config);
   const pixels = version.display.width * version.display.height;
   const decode = pixels * decodePixelSeconds(version, rates);
@@ -639,7 +639,7 @@ async function prepareErase(request: Extract<MiniToolPlannedRequest, { tool: "vi
       { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second }) }],
   ]);
   const plan = { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, presentations: { source: version },
-    versionIds: { source: version.versionId }, chargeTo: miniToolChargeTo(request.tool), model: settings.model.name, tracking, range: { start: first, end: first + count }, grid,
+    versionIds: { source: version.versionId }, chargeTo: miniToolChargeTo(request.tool), model: settings.model.name, route: MINI_TOOL_MODEL_ROUTE, tracking, range: { start: first, end: first + count }, grid,
     asyncRejection: settings.model.async_rejection, matte: settings.matte, modelCredits, composite, stageJobs, container, stepCredits,
     credits: Math.max(stepsCredits(Object.values(stepCredits)), MIN_TASK_CREDIT_COST) };
   // Step keys are frozen over the plan's fingerprint before them, as lip-sync's are (§10.7), so a retry finds every done step.
@@ -675,7 +675,7 @@ async function prepareExpand(request: Extract<MiniToolPlannedRequest, { tool: "v
   const windows = planModelWindows(Array.from({ length: display.frameCount }, (_unused, at) => ({ start: at * frameSeconds, end: (at + 1) * frameSeconds })),
     settings.model.max_window_seconds, settings.model.overlap_seconds);
   const prices: number[] = [];
-  for (const window of windows) prices.push(await estimateTaskCredits(settings.model.name, { params: { duration: window.duration }, durations: { video: [window.duration] }, sources: ["video"] }));
+  for (const window of windows) prices.push(Math.max(await admitModelCall(settings.model.name, { params: { duration: window.duration }, durations: { video: [window.duration] }, sources: ["video"] }), MIN_TASK_CREDIT_COST));
   const modelCredits = prices.reduce((total, price) => total + price, 0);
   const rates = videoEncoderRates(config);
   const decode = decodePixelSeconds(version, rates);
@@ -702,7 +702,7 @@ async function prepareExpand(request: Extract<MiniToolPlannedRequest, { tool: "v
     ["stitch", { seconds: estimateAudioEncodeSeconds(videoSeconds, { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second }) }],
   ]);
   const plan = { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, presentations: { source: version },
-    versionIds: { source: version.versionId }, chargeTo: miniToolChargeTo(request.tool), model: settings.model.name, layout, ...box, prompt, seed: randomInt(0, 2 ** 31 - 1), windows,
+    versionIds: { source: version.versionId }, chargeTo: miniToolChargeTo(request.tool), model: settings.model.name, route: MINI_TOOL_MODEL_ROUTE, layout, ...box, prompt, seed: randomInt(0, 2 ** 31 - 1), windows,
     modelFps: settings.model.model_fps, modelCredits, composite, stageJobs, container, stepCredits, credits: Math.max(stepsCredits(Object.values(stepCredits)), MIN_TASK_CREDIT_COST) };
   const keyed = await hashMiniToolValue(plan);
   return { ...plan, stepKeys: Object.fromEntries(Object.keys(stepCredits).map((step) => [step, lipsyncStepKey(keyed, null, step)])) };

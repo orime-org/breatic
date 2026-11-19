@@ -370,13 +370,17 @@
         "item_characters_max": "{model} 的{field}每条最多 {max, number} 个字符。",
         "lines_max": "{model} 的{field}最多 {max, number} 行。",
         "chinese_characters_max": "{model} 的{field}最多 {max, number} 个汉字。",
+        "seconds_max": "{model} 每次调用的{field}最长 {max, number} 秒。",
+        "seconds_min": "{model} 每次调用的{field}至少要 {min, number} 秒。",
         "unsupported": "{model} 接不了现在的设置，请改设置或换个模型。"
       },
       "input_field": {
         "prompt": "文本",
         "negative_prompt": "反向提示词",
         "lyrics": "歌词",
-        "multi_prompt": "分镜提示词"
+        "multi_prompt": "分镜提示词",
+        "video": "视频",
+        "audio": "音频"
       }
     },
     "document": {

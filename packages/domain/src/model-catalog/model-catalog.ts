@@ -469,7 +469,7 @@ function servabilityOn(upstreams: readonly { upstream: string; configured: boole
  * @param model - Model name.
  * @returns The entry, or undefined when no modality carries it.
  */
-function findCatalogEntry(model: string): ModelEntry | undefined {
+export function findCatalogEntry(model: string): ModelEntry | undefined {
   const catalog = getModelCatalog();
   for (const modality of MODALITIES) {
     const entry = catalog[modality].find((m) => m.name === model);

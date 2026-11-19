@@ -122,6 +122,7 @@ describe("a model step's consumption wait", () => {
 
   it("writes back a pending answer, counts it and waits twice as long", async () => {
     const f = await seed();
+    await dueAt(f.stepIds[0]!, Date.now() - 1000);
     const owned = await claim(f);
     const before = Date.now();
     await recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: f.stepIds[0]!, claim: owned.claim, costs: [{ state: "pending", lookup: lookupOf("p-0") }] });
@@ -132,10 +133,12 @@ describe("a model step's consumption wait", () => {
 
   it("turns known once every handle has an answer, a missing cost counting nothing", async () => {
     const f = await seed();
+    await dueAt(f.stepIds[0]!, Date.now() - 1000);
     const owned = await claim(f);
     await recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: f.stepIds[0]!, claim: owned.claim, costs: [{ state: "known", usd: 0.4, source: "billing" }] });
     expect(await consumptionOf(f.stepIds[0]!)).toMatchObject({ state: "known", known: 0.4, waiting: [{ cost: { state: "known", usd: 0.4 } }] });
     const g = await seed();
+    await dueAt(g.stepIds[0]!, Date.now() - 1000);
     const other = await claim(g);
     await recordMiniToolConsumptionLookup({ taskId: g.taskId, stepId: g.stepIds[0]!, claim: other.claim, costs: [{ state: "missing", reason: "not billed" }] });
     expect(await consumptionOf(g.stepIds[0]!)).toMatchObject({ state: "known", known: 0 });
@@ -143,6 +146,7 @@ describe("a model step's consumption wait", () => {
 
   it("is refused under a lease that is no longer current", async () => {
     const f = await seed();
+    await dueAt(f.stepIds[0]!, Date.now() - 1000);
     const owned = await claim(f);
     await expect(recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: f.stepIds[0]!, claim: { ...owned.claim, leaseToken: "stale" }, costs: [{ state: "known", usd: 1, source: "billing" }] })).rejects.toThrow();
     expect(await consumptionOf(f.stepIds[0]!)).toMatchObject({ state: "pending", attempts: 0 });
@@ -184,6 +188,6 @@ describe("running a settlement lookup", () => {
     await makeDue(f);
     await runMiniToolSettlement({ taskId: f.taskId, settlementVersion: (await settlementOf(f)).version }, lookup);
     expect(asked).toEqual([true]);
-    expect(await consumptionOf(f.stepIds[0]!)).toMatchObject({ state: "known", known: 0 });
+    expect(await consumptionOf(f.stepIds[0]!)).toMatchObject({ state: "recorded", known: 0 });
   });
 });

@@ -42,12 +42,13 @@ const frozenToolInput = {
 const runContainer = z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),
   encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), chunkRetries: index });
 const rect = z.strictObject({ x: z.number().int(), y: z.number().int(), width: z.number().int().positive(), height: z.number().int().positive() });
+/** The route a model tool's calls take, frozen at admission (inner#1306 execution design §11.2 route row). */
+const modelRoute = z.strictObject({ mode: z.literal("upstream"), upstream: z.literal("wavespeed") });
 /** The recipe kind each tool's outputs carry. */
 const RECIPE_KIND = { "video.split": "segment", "video.remove-bg": "remove-bg", "video.lip-sync": "lip-sync", "video.extract-frames": "frame", "video.focus-crop": "frame",
   "video.transitions": "transitions", "video.erase": "erase", "video.expand": "expand" } as const;
 const storedPlanSchema = z.union([
-  z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.remove-bg"),
-    provider: z.strictObject({ provider: z.literal("wavespeed"), model_id: z.literal("bria/fibo/video-background-remover") }),
+  z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.remove-bg"), route: modelRoute,
     body: z.strictObject({ video: z.strictObject({ kind: z.literal("prepared"), inputId: z.literal("source"), job: z.string().regex(/^[0-9a-f-]{36}:prep:0$/) }),
       background_color: z.literal("Transparent"), output_container_and_codec: z.literal("webm_vp9"), preserve_audio: z.literal(true) }),
     preparation: z.strictObject({ ...container, chunks: z.array(z.strictObject({ start: index, end: index })).min(1), chunkRetries: index,
@@ -73,7 +74,7 @@ const storedPlanSchema = z.union([
     windowContainer: z.strictObject({ ...container, containerClass: z.literal("MiniToolContainerGl") }),
   }),
   // A lip-sync run (execution design §9.3; DD §7.1).
-  z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.lip-sync"),
+  z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.lip-sync"), route: modelRoute,
     generator: z.strictObject({ backend: z.literal("wavespeed-crop"), modelId: z.string().min(1), schemaFingerprint: z.string().regex(/^[a-f0-9]{64}$/), providerSyncMode: z.literal("cut_off").nullable() }),
     timeline: z.strictObject({ duration: z.number().positive(), videoDuration: z.number().positive(), syncMode: z.enum(["cut_off", "silence", "loop", "bounce", "remap"]) }),
     usedRange: z.strictObject({ start: z.literal(0), end: z.number().positive() }),
@@ -93,7 +94,7 @@ const storedPlanSchema = z.union([
       rawDiskBytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
   }),
   // An erase run (execution design §10.4).
-  z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.erase"),
+  z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.erase"), route: modelRoute,
     tracking: z.strictObject({ analysisRunId: z.uuid(), rleKey: z.string().min(1) }), range: z.strictObject({ start: index, end: index }),
     grid: z.strictObject({ mode: z.enum(["frames", "resample"]), rate: z.number().positive(), frameCount: z.number().int().positive() }),
     asyncRejection: z.strictObject({ path: z.string().min(1), equals: z.json() }), matte: z.strictObject({ dilate: index, feather: index }),
@@ -102,7 +103,7 @@ const storedPlanSchema = z.union([
     stepCredits: z.record(z.string().regex(/^(prepare|mask|generate|composite:\d+|stitch)$/), z.number().nonnegative()),
   }),
   // An expand run (execution design §10.5).
-  z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.expand"),
+  z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.expand"), route: modelRoute,
     layout: z.strictObject({ width: z.number().int().positive(), height: z.number().int().positive(), sourceX: z.number().int(), sourceY: z.number().int(), overSide: z.literal(false) }),
     frame: z.strictObject({ width: z.number().int().positive(), height: z.number().int().positive() }), size: z.enum(["832*480", "480*832"]), targetRoi: rect, sourceRoi: rect,
     prompt: z.string().min(1), seed: index, modelFps: z.number().int().positive(), modelCredits: z.number().nonnegative(),

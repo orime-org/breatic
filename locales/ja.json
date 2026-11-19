@@ -370,13 +370,17 @@
         "item_characters_max": "{model} の{field}は1件あたり最大 {max, number} 文字です。",
         "lines_max": "{model} の{field}は最大 {max, number} 行です。",
         "chinese_characters_max": "{model} の{field}は漢字最大 {max, number} 文字です。",
+        "seconds_max": "{model} の{field}は1回あたり最大 {max, number} 秒です。",
+        "seconds_min": "{model} の{field}は1回あたり {min, number} 秒以上必要です。",
         "unsupported": "{model} は現在の設定では実行できません。設定を変えるか、別のモデルを選んでください。"
       },
       "input_field": {
         "prompt": "テキスト",
         "negative_prompt": "ネガティブプロンプト",
         "lyrics": "歌詞",
-        "multi_prompt": "ショットのプロンプト"
+        "multi_prompt": "ショットのプロンプト",
+        "video": "動画",
+        "audio": "音声"
       }
     },
     "document": {

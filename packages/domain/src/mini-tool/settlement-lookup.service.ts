@@ -11,6 +11,7 @@ import {
   type MiniToolConsumptionRecord, type MiniToolSettlementClaim,
   type DueMiniToolSettlementPage,
 } from "@domain/mini-tool/consumption.types.js";
+import { consumptionDueAt, nextSettlementDue } from "@domain/mini-tool/consumption-due.js";
 
 const claimInputSchema = miniToolSettlementWakeSchema;
 const deferInputSchema = z.strictObject({ taskId: z.string().uuid(), claim: miniToolSettlementClaimSchema, lastError: z.string() });
@@ -64,14 +65,23 @@ export async function claimMiniToolSettlement(input: z.infer<typeof claimInputSc
     }
     if (!clock.waitingDue) return null;
     const steps = await upstreamStepRepo.listSteps(task.id, tx);
+    // The unrecorded item due first; one whose lookup is not yet due is never looked up early (§11.4 lookup row).
+    const now = Date.parse(clock.now);
     let nextConsumption: ClaimedMiniToolSettlement["nextConsumption"] = null;
+    let unrecorded = false;
+    let dueAt = Infinity;
     for (const step of steps) {
       if (step.output.miniToolConsumption === undefined) continue;
       const consumption = miniToolConsumptionRecordSchema.parse(step.output.miniToolConsumption);
-      if (consumption.state !== "recorded") {
-        nextConsumption = { stepId: step.id, consumption };
-        break;
-      }
+      if (consumption.state === "recorded") continue;
+      unrecorded = true;
+      const due = consumptionDueAt(consumption, now);
+      if (due <= now && due < dueAt) { dueAt = due; nextConsumption = { stepId: step.id, consumption }; }
+    }
+    if (unrecorded && nextConsumption === null) {
+      const due = nextSettlementDue(steps, now);
+      await taskRepo.storeMiniToolSettlement(task.id, { ...previous, version: previous.version + 1, nextAttemptAt: new Date(due.at!).toISOString() }, tx);
+      return null;
     }
     const leaseToken = randomUUID();
     await taskRepo.storeMiniToolSettlement(task.id, {
@@ -98,8 +108,10 @@ export async function deferMiniToolSettlement(input: z.infer<typeof deferInputSc
     if (!await taskRepo.hasMiniToolSettlementLease(task.id, request.claim, tx)) return false;
     const previous = miniToolSettlementSchema.parse(task.result.settlement);
     const clock = await taskRepo.miniToolSettlementClock(task.id, getMiniToolsConfig().settlement, tx);
+    // A model step waiting on a later lookup is next due then; anything else retries after the configured delay.
+    const due = nextSettlementDue(await upstreamStepRepo.listSteps(task.id, tx), Date.parse(clock.retryAt)).at;
     await taskRepo.storeMiniToolSettlement(task.id, {
-      ...previous, version: previous.version + 1, state: "waiting", nextAttemptAt: clock.retryAt,
+      ...previous, version: previous.version + 1, state: "waiting", nextAttemptAt: due === null ? clock.retryAt : new Date(due).toISOString(),
       leaseToken: null, leaseUntil: null, lastError: request.lastError,
     }, tx);
     return true;

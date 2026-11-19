@@ -10,7 +10,8 @@ import * as assetRepo from "@domain/asset/asset.repo.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 import { containerCostUsd } from "@domain/credit/container-cost.js";
 import { creditsForUsd } from "@domain/credit/usage-cost.js";
-import { estimateModelCredits, getModelCatalog, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
+import { getModelCatalog, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
+import { admitModelCall } from "@domain/mini-tool/model-call-admission.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import { completeResolvedMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
 import { selectedToolInput } from "@domain/mini-tool/selected-tool-input.js";
@@ -196,20 +197,18 @@ async function estimate(kind: MiniToolAnalysisKind, input: MiniToolAnalysisRecor
   let credits = creditsForUsd(usd, env.CREDIT_MULTIPLIER);
   if (input.kind === "tracked_mask") {
     const entry = getModelCatalog().video.find((candidate) => candidate.name === input.profile.id);
-    if (!entry?.pricing) throw new AppError(503, t("server.mini_tool.unavailable"));
-    const limit = entry.params.video?.max_total_duration;
+    if (!entry) throw new AppError(503, t("server.mini_tool.unavailable"));
     const first = input.range.start;
     const count = Math.min(input.range.end, display.frameCount) - first;
     const preparation = config.analyses.tracked_mask.preparation;
     const prepareUsd = containerCostUsd({ wallMs: preparation.precheck_seconds * 1000, cpuUsec: null }, config.classes[preparation.container_class]!, config.prices);
     for (const seconds of trackingClipSeconds(display, trackingClips({ start: first, end: first + count }, input.anchor.frameIndex))) {
-      if (limit !== undefined && seconds > limit) throw new ValidationError(t("server.mini_tool.foreignSource"));
-      const model = await estimateModelCredits(input.profile.id, {
+      // Each clip is one SAM3 call, admitted and priced on the frozen route (inner#1306 §11.5).
+      const model = await admitModelCall(input.profile.id, {
         params: { video: input.sourceURL, apply_mask: false }, prompt: input.trackingPrompt,
         durations: { video: [seconds] }, sources: ["video"],
       });
-      if (!model) throw new AppError(503, t("server.mini_tool.unavailable"));
-      credits += model.credits + creditsForUsd(prepareUsd, env.CREDIT_MULTIPLIER);
+      credits += model + creditsForUsd(prepareUsd, env.CREDIT_MULTIPLIER);
     }
   }
   return Math.max(ceilToCreditCent(credits), MIN_TASK_CREDIT_COST);

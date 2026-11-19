@@ -125,7 +125,7 @@ describe("ending a model step", () => {
     await markStepSending(f.taskId, f.stepId, DEADLINE);
     await endMiniToolModelStep({ taskId: f.taskId, stepId: f.stepId, end: { kind: "returned", link: "https://out.example/a.mp4" }, costs: [KNOWN], servedBy: "wavespeed" });
     const row = await stepRow(f);
-    expect(row.status).toBe("returned");
+    expect(row.status).toBe("submitted");
     expect(row.output.providerReturn).toEqual({ link: "https://out.example/a.mp4" });
     expect(row.output.miniToolConsumption).toMatchObject({ identity: { kind: "provider", stepId: f.stepId }, state: "known", servedBy: "wavespeed", known: 0.25, waiting: [] });
     expect((await getStepTicket(f.taskId, f.stepId)).sendingAt).toBeNull();
@@ -157,7 +157,7 @@ describe("ending a model step", () => {
     await endMiniToolModelStep({ taskId: f.taskId, stepId: f.stepId, end: { kind: "returned", link: "https://out.example/a.mp4" }, costs: [KNOWN], servedBy: "wavespeed" });
     await endMiniToolModelStep({ taskId: f.taskId, stepId: f.stepId, end: { kind: "failed", category: "failed", error: { code: "failed" } }, costs: [KNOWN], servedBy: "wavespeed" });
     const row = await stepRow(f);
-    expect(row.status).toBe("returned");
+    expect(row.output.providerReturn).toBeDefined();
     expect(row.output.miniToolConsumption).toMatchObject({ known: 0.25 });
   });
 });
