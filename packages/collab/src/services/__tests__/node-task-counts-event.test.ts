@@ -472,8 +472,7 @@ describe("the waiting count", () => {
     expect(data.get("taskCounts")).toEqual({ running: 1, waiting: 1, done: 0, failed: 0, expired: 0 });
   });
 
-  // Passes before this work: the four-number comparison already ignores a
-  // missing `waiting`, which is what reading it as 0 asks for here.
+  // sameCounts reads a missing `waiting` as 0, so an older document is not rewritten for it.
   it("reads an older document's missing waiting as 0, so the same counts with waiting 0 write nothing", () => {
     const nodeId = crypto.randomUUID();
     const { doc, data } = docWithNode(nodeId);

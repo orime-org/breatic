@@ -20,9 +20,10 @@
  *      bytes. Counting only the current studio lets a write through when the
  *      admin's personal studio is nearly full and the team studio is empty,
  *      although the account is long full.
- *   3. The ceiling goes through honouredTier. A pro account past its grace
- *      window is judged as base, otherwise storage would be judged as pro and
- *      every other ceiling as base: two standards for one account.
+ *   3. The ceiling comes from the membership reading's effective tier
+ *      (resolveMembershipReading). A pro account past its grace window is
+ *      judged as base, otherwise storage would be judged as pro and every
+ *      other ceiling as base: two standards for one account.
  *   4. An enterprise account with no saved agreement passes, and
  *      getStudioStorageQuota answers storageBytes: null, neither an invented
  *      number nor a 500. An active agreement's

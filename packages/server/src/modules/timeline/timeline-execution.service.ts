@@ -5,10 +5,10 @@
  * The Timeline execution routes' logic (inner#1711 design §4).
  *
  * Accepting looks up the action first: an action already accepted answers its own row, or a conflict when its input
- * differs. A new one, like an Agent chat turn, needs only a balance above zero and holds no credits; it writes the
- * execution and this Project's grant in one transaction, and settlement later charges actual use. Reads answer through
- * the grant rows, so a duplicated Project resolves and previews what its source made while its execution list stays
- * its own.
+ * differs. A new one, like an Agent chat turn, is admitted once, here, within the monthly spend limits and on a balance
+ * above zero, and holds no credits; it writes the execution and this Project's grant in one transaction, and settlement
+ * later charges actual use. Reads answer through the grant rows, so a duplicated Project resolves and previews what its
+ * source made while its execution list stays its own.
  */
 
 import { createHash } from "node:crypto";
@@ -112,7 +112,8 @@ export async function accept(userId: string, body: TimelineExecutionCreateInput 
   const existing = await timelineExecutionRepo.findByAction({ projectId, spaceId, actionId });
   if (existing !== undefined) return sameAction(existing, inputHash);
 
-  // An execution needs a balance above zero to start, as an Agent chat turn does (chat.ts). Payments off: no check.
+  // Admitted once, as an Agent chat turn is (chat.ts): the spend limits, then a balance above zero; one that then
+  // waits for a running slot starts without a second check (design 3.10). Payments off: no check.
   await precheckCredits(projectId, userId, SMALLEST_CREDIT);
   try {
     const row = await db.transaction(async (tx) => {

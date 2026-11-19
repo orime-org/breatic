@@ -138,7 +138,7 @@ export async function assertStudioStorageAllowance(
  * other request legitimately holds.
  * @param adminUserId - The account that is out of storage.
  * @param studioId - Where this particular refusal happened.
- * @param enterprise - Whether the account is on an enterprise agreement.
+ * @param enterprise - Whether the account's effective tier is enterprise.
  */
 async function tellTheAdmin(
   adminUserId: string,

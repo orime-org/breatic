@@ -261,8 +261,9 @@ export async function lockAccountRow(userId: string, tx: DbTx): Promise<void> {
  * @param studioId - The studio whose storage ceiling to resolve
  * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
  *   for why a caller inside a transaction must pass it
- * @returns The current admin's account id, whether that account is on an
- *   enterprise agreement, and its storage ceiling
+ * @returns The current admin's account id, whether that account's effective
+ *   tier is enterprise (an agreement in force, or a legacy account without
+ *   one), and its storage ceiling
  *   in bytes — `null` for an enterprise account without an agreement
  * @throws {Error} if the studio is gone, or has no live admin, or that admin's
  *   stored tier is not one this build knows — all three are corruption
