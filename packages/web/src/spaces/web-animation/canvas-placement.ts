@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Putting an exported video on a canvas (#1490 design §9.1, §13.4). The one writer is `transitionCanvasPlacement`; the

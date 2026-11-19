@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The `timeline` queue's processor (inner#1711 design §3.5, §5.2, §5.3, §6; #1490 design §5.2, §6).

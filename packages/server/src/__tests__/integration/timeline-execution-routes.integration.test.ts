@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The web-animation execution HTTP surface an older tab still uses (inner#1711 design §3.4, §4, §5.1; #1490 design

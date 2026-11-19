@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The 3D and Motion settings read (`GET /projects/:id/three-d/config`) has one hook: it waits until the signed-in user

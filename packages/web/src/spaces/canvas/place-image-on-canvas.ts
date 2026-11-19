@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { createEmptyNode } from '@web/spaces/canvas/node-factory';
 import { placeNodeOnCanvas, type PlaceNodeOutcome } from '@web/spaces/canvas/place-on-canvas';

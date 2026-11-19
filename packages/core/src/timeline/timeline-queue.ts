@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The `timeline` BullMQ queue's contract (inner#1711 design §5.1, §5.2; #1490 design §4.2): the server adds an

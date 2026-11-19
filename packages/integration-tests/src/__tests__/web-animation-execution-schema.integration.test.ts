@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the Motion Space migration adds to the execution and grant tables (#1490 design §4.6, §6.4, §13.1): the three

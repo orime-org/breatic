@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Writing one node onto a canvas whether or not its tab is open (#1411 design 5.3, #1490 design §9.1): acquire the

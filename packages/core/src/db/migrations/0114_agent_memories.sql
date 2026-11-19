@@ -1,5 +1,5 @@
 -- Copyright (c) 2026 Orime, Inc.
--- SPDX-License-Identifier: Elastic-2.0
+-- SPDX-License-Identifier: AGPL-3.0-only
 
 -- Product database (#1363): the Agent's memory as one row per fact, and the
 -- model each conversation is answered by. A row with no conversation belongs

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * When a canvas video still is the video a Motion Space exported (#1490 design §9.2, §9.3): only a video whose content
