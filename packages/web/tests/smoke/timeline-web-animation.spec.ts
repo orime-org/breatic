@@ -1024,14 +1024,24 @@ async function writeLegacyCopies(page: Page, timelineId: string, placed: string,
     const manager = await import(/* @vite-ignore */ at) as typeof YjsManagerModule;
     const doc = manager.getDoc(manager.docName.timelineSpace(pid, sid));
     const clips = doc.getMap('clips');
-    const base = clips.get(clipId) as { startFrame: number; durationFrames: number } | undefined;
-    if (base === undefined) throw new Error('no copy to replace');
+    // Each clip is a Y.Map of plain fields, as the client writes it (attachTimelineRecord in @breatic/shared).
+    const placedClip = clips.get(clipId) as { toJSON: () => Record<string, unknown>; set: (key: string, value: unknown) => void } | undefined;
+    if (placedClip === undefined) throw new Error('no copy to replace');
+    const base = placedClip.toJSON() as { startFrame: number; durationFrames: number };
+    const ClipMap = placedClip.constructor as new () => { set: (key: string, value: unknown) => void };
     const made: string[] = [];
     doc.transact(() => {
-      clips.delete(clipId);
       ids.forEach((executionId, index) => {
-        const id = index === 0 ? clipId : crypto.randomUUID();
-        clips.set(id, { ...base, id, startFrame: base.startFrame + index * base.durationFrames, contentBinding: { baseSourceResultId: null, operationId: executionId } });
+        const contentBinding = { baseSourceResultId: null, operationId: executionId };
+        if (index === 0) {
+          placedClip.set('contentBinding', contentBinding);
+          made.push(clipId);
+          return;
+        }
+        const id = crypto.randomUUID();
+        const clip = new ClipMap();
+        clips.set(id, clip);
+        for (const [key, value] of Object.entries({ ...base, id, startFrame: base.startFrame + index * base.durationFrames, contentBinding })) clip.set(key, value);
         made.push(id);
       });
     });
