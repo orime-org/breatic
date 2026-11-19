@@ -1233,6 +1233,82 @@ describe('the execution list\'s three tabs', () => {
   });
 });
 
+describe('the marked row of the execution list', () => {
+  /**
+   * Lay the execution list out with one row below the fold, or inside it, and catch where its viewport is scrolled to.
+   * @param rowId - The row.
+   * @param y - The row's top; the viewport shows 0 to 300.
+   * @returns The scrollTo calls, with the element each was made on.
+   */
+  function rowAt(rowId: string, y: number): Array<{ on: Element; options: unknown }> {
+    const calls: Array<{ on: Element; options: unknown }> = [];
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: Element) {
+      if (this.getAttribute('data-testid') === `motion-row-${rowId}`) return DOMRect.fromRect({ x: 0, y, width: 300, height: 40 });
+      if (this.hasAttribute('data-radix-scroll-area-viewport')) return DOMRect.fromRect({ x: 0, y: 0, width: 300, height: 300 });
+      return DOMRect.fromRect({ x: 0, y: 0, width: 0, height: 0 });
+    });
+    Element.prototype.scrollTo = function scrollTo(this: Element, options?: unknown) { calls.push({ on: this, options }); } as typeof Element.prototype.scrollTo;
+    return calls;
+  }
+
+  /**
+   * The calls made on the execution list's own viewport.
+   * @param calls - Every scrollTo call.
+   * @returns Those on the list's viewport.
+   */
+  function onList(calls: Array<{ on: Element; options: unknown }>): unknown[] {
+    const viewport = screen.queryByTestId('motion-panel-executions')?.querySelector('[data-radix-scroll-area-viewport]');
+    return calls.filter((call) => call.on === viewport).map((call) => call.options);
+  }
+
+  it('scrolls the list to a row an accept marks below the fold, by the least distance', async () => {
+    const shown = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');
+    const made = { ...exported(shown), status: 'queued', resultAssetId: null };
+    listing([shown]);
+    vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async () => {
+      listing([shown], { running: [made] });
+      return { row: made, created: true } as never;
+    });
+    const calls = rowAt(EXPORT, 1000);
+    show();
+    await userEvent.setup().click(await screen.findByTestId('motion-action-export'));
+    await waitFor(() => expect(onList(calls)).toEqual([{ top: 740, behavior: 'smooth' }]));
+  });
+
+  it('scrolls to a marked row in the group made in a Timeline before', async () => {
+    const failed = endedRow(done(FAILED, 'A box', '2026-11-15T07:00:00.000000Z'));
+    vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string }) => (
+      params.scope === 'timeline' && params.group === 'failed'
+        ? { rows: [failed], nextCursor: null, totals: { running: 0, succeeded: 0, failed: 1 } }
+        : { rows: [], nextCursor: null, totals: { running: 0, succeeded: 0, failed: 0 } }
+    ) as never);
+    vi.mocked(timelineApi.getExecution).mockReset().mockResolvedValue(failed as never);
+    useSpaceOpenRequestStore.setState({ state: { status: 'opened', request: { type: 'web_animation', select: FAILED }, spaceId: SPACE } });
+    const calls = rowAt(FAILED, 1000);
+    show();
+    const panel = await screen.findByTestId('motion-panel-executions');
+    expect(within(await within(panel).findByTestId('motion-legacy-group')).getByTestId(`motion-row-${FAILED}`)).toHaveAttribute('data-marked', 'true');
+    await waitFor(() => expect(onList(calls)).toEqual([{ top: 740, behavior: 'smooth' }]));
+  });
+
+  it('leaves the list where it is when the marked row already shows', async () => {
+    const shown = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');
+    const made = { ...exported(shown), status: 'queued', resultAssetId: null };
+    listing([shown]);
+    vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async () => {
+      listing([shown], { running: [made] });
+      return { row: made, created: true } as never;
+    });
+    const calls = rowAt(EXPORT, 100);
+    show();
+    await userEvent.setup().click(await screen.findByTestId('motion-action-export'));
+    const panel = await screen.findByTestId('motion-panel-executions');
+    expect(await within(panel).findByTestId(`motion-row-${EXPORT}`)).toHaveAttribute('data-marked', 'true');
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(onList(calls)).toEqual([]);
+  });
+});
+
 describe('the execution list when a read fails', () => {
   it('keeps the rows when Load more fails, and turns Load more into Retry', async () => {
     const first = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');

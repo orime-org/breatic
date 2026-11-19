@@ -15,6 +15,8 @@ import type { ThreadData } from '@blocknote/core/comments';
 import type { YjsThreadStore } from '@blocknote/core/yjs';
 import { readWebAnimationAnchor, type WebAnimationAnchor } from '@breatic/shared/space-content';
 
+import { revealWithin } from '@web/spaces/web-animation/motion-parts';
+
 /** Which threads the annotation panel lists. */
 export type AnnotationFilter = 'open' | 'all';
 
@@ -94,20 +96,6 @@ function useThreads(store: YjsThreadStore): ThreadData[] {
  */
 function anchorOf(thread: ThreadData): WebAnimationAnchor | null {
   return thread.deletedAt === undefined ? readWebAnimationAnchor(thread.metadata) : null;
-}
-
-/**
- * Scroll an item into its scroller and nothing else: by the least distance, and not at all when it shows already.
- * @param viewport - The scroller.
- * @param item - The item.
- * @throws {never} Never.
- */
-function revealWithin(viewport: HTMLElement, item: HTMLElement): void {
-  const view = viewport.getBoundingClientRect();
-  const box = item.getBoundingClientRect();
-  const top = box.top < view.top ? viewport.scrollTop + box.top - view.top
-    : box.bottom > view.bottom ? viewport.scrollTop + box.bottom - view.bottom : null;
-  if (top !== null) viewport.scrollTo({ top, behavior: 'smooth' });
 }
 
 /**

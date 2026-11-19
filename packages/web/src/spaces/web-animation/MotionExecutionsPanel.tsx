@@ -15,7 +15,7 @@ import { useRunning } from '@web/stores/task-actions-in-flight';
 import { cancelIntent, endedSentenceKey, exportIntent, phaseKey } from '@web/spaces/web-animation/execution-text';
 import { ListLoadError, ListPending, LoadMoreButton, listShows } from '@web/spaces/web-animation/list-states';
 import type { MotionTab } from '@web/spaces/web-animation/motion-panels';
-import { MotionPanel, rowSeconds } from '@web/spaces/web-animation/motion-parts';
+import { MotionPanel, revealWithin, rowSeconds } from '@web/spaces/web-animation/motion-parts';
 import { rowsOf, type MotionLists } from '@web/spaces/web-animation/use-motion-lists';
 import { webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
 
@@ -123,7 +123,7 @@ interface MotionRowProps {
  */
 const MotionRow = React.memo(function MotionRow({ row, selected, onPick }: MotionRowProps): React.JSX.Element {
   const pick = React.useCallback((): void => onPick(row), [onPick, row]);
-  return <Button type='button' variant={null} size={null} data-testid={`motion-row-${row.id}`} aria-current={selected || undefined} onClick={pick}
+  return <Button type='button' variant={null} size={null} data-testid={`motion-row-${row.id}`} data-execution-id={row.id} aria-current={selected || undefined} onClick={pick}
     className={cn('group/row flex w-full min-w-0 flex-col items-stretch gap-0.5 border-b border-border px-3 py-2 text-left hover-enabled:bg-accent', selected && 'bg-accent-strong hover-enabled:bg-accent-strong')}>
     <RowText row={row} active={selected} />
   </Button>;
@@ -210,7 +210,7 @@ interface RowFrameProps {
  * @throws {never} Never.
  */
 function RowFrame({ row, marked, detail, action }: RowFrameProps): React.JSX.Element {
-  return <div data-testid={`motion-row-${row.id}`} data-marked={marked || undefined}
+  return <div data-testid={`motion-row-${row.id}`} data-execution-id={row.id} data-marked={marked || undefined}
     className={cn('flex items-start gap-2 border-b border-border px-3 py-2', marked && 'bg-accent-strong')}>
     <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
       <RowText row={row} active={marked} />
@@ -292,13 +292,26 @@ export const MotionExecutionsPanel = React.memo(function MotionExecutionsPanel({
   const shows = listShows(current.own, current.legacy);
   const empty = rowsOf(current.own).length === 0 && rowsOf(current.legacy).length === 0;
   const emptyKey = TABS.find((entry) => entry.tab === tab)?.empty ?? 'spaces.webAnimation.empty';
+  // The marked row is brought into view once per mark and tab, as soon as its list has it; a later read of the list
+  // leaves the user's scrolling alone.
+  const viewportRef = React.useRef<HTMLDivElement | null>(null);
+  const servedMark = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const viewport = viewportRef.current;
+    const mark = markedId === null ? null : `${tab}:${markedId}`;
+    if (mark === null || mark === servedMark.current || viewport === null) return;
+    const row = [...viewport.querySelectorAll<HTMLElement>('[data-execution-id]')].find((element) => element.dataset.executionId === markedId);
+    if (row === undefined) return;
+    servedMark.current = mark;
+    revealWithin(viewport, row);
+  }, [markedId, tab, current]);
   return <MotionPanel testId='motion-panel-executions' title={t('spaces.webAnimation.executions')} onClose={onClose}>
     <Tabs value={tab} onValueChange={changeTab} className='shrink-0 border-b border-border px-2 py-1.5'>
       <TabsList>
         {TABS.map((entry) => <TabsTrigger key={entry.tab} value={entry.tab}>{t(entry.name)}<span className='tabular-nums'>{lists.totals[entry.tab]}</span></TabsTrigger>)}
       </TabsList>
     </Tabs>
-    <ScrollArea className='min-h-0 flex-1'>
+    <ScrollArea className='min-h-0 flex-1' viewportRef={viewportRef}>
       {shows === 'pending' ? <ListPending className='p-2' />
         : shows === 'failed' ? <ListLoadError message={t('spaces.webAnimation.listError')} onRetry={retry} />
           : empty ? <p className='p-6 text-center text-xs text-muted-foreground'>{t(emptyKey)}</p>

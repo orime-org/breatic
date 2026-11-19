@@ -3,7 +3,8 @@
 
 /**
  * The pieces the Motion Space's bar and panels are built from: an icon button named by its tooltip, the panel that
- * docks inside the Space on the right, how a time in a result reads, and how long a row is.
+ * docks inside the Space on the right and how it scrolls an item into view, how a time in a result reads, and how
+ * long a row is.
  */
 
 import * as React from 'react';
@@ -26,6 +27,20 @@ export function formatMotionTime(seconds: number): string {
   const minutes = Math.floor(tenths / 600);
   const rest = (tenths % 600) / 10;
   return `${minutes}:${rest.toFixed(1).padStart(4, '0')}`;
+}
+
+/**
+ * Scroll an item into a panel's scroller and nothing else: by the least distance, and not at all when it shows already.
+ * @param viewport - The scroller.
+ * @param item - The item.
+ * @throws {never} Never.
+ */
+export function revealWithin(viewport: HTMLElement, item: HTMLElement): void {
+  const view = viewport.getBoundingClientRect();
+  const box = item.getBoundingClientRect();
+  const top = box.top < view.top ? viewport.scrollTop + box.top - view.top
+    : box.bottom > view.bottom ? viewport.scrollTop + box.bottom - view.bottom : null;
+  if (top !== null) viewport.scrollTo({ top, behavior: 'smooth' });
 }
 
 /** One icon button of the bar. */
