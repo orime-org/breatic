@@ -1251,6 +1251,25 @@ describe('exporting a result', () => {
     await pressTwice('motion-action-export');
   });
 
+  it('turns Export into View video on a result opened by id beyond the loaded pages once its export is accepted', async () => {
+    const FAR = '90000000-0000-4000-8000-0000000000d3';
+    const far = done(FAR, 'Far logo', '2026-11-14T09:00:00.000000Z');
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    vi.mocked(timelineApi.getExecution).mockReset().mockResolvedValue(far as never);
+    vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async () => {
+      // From now on the server answers the result with its export.
+      vi.mocked(timelineApi.getExecution).mockResolvedValue({ ...far, export: { executionId: EXPORT, status: 'queued' } } as never);
+      return { row: { ...exported(far), status: 'queued' }, created: true } as never;
+    });
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    act(() => useSpaceOpenRequestStore.setState({ state: { status: 'opened', request: { type: 'web_animation', select: FAR }, spaceId: SPACE } }));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', FAR));
+    fireEvent.click(await screen.findByTestId('motion-action-export'));
+    expect(await screen.findByTestId('motion-action-view-video')).toBeInTheDocument();
+    expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', FAR);
+  });
+
   it('sends one export for two quick presses of Export again on a failed export, which waits for the answer', async () => {
     const source = done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z');
     listing([source], { failed: [{ ...exported(source), status: 'failed', failureReason: 'render_failed' }] });

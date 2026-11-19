@@ -271,8 +271,18 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   // While another row is read by id, the preview keeps the one it showed (design §13.2).
   const selected = shown(selection) ?? undefined;
   const selectedId = selected?.id ?? null;
-  // The shown row is never missing while one is selected: the freshest listed copy, or the one the selection holds.
-  const row = selected === undefined ? undefined : lists.byId.get(selected.id) ?? selected;
+  // A shown row on no loaded page is read under the Space-task key, so a change in the Space's document reads it again
+  // as it reads the lists; it starts from the copy the selection holds.
+  const heldId = selectedId !== null && !lists.byId.has(selectedId) ? selectedId : null;
+  const heldRead = useQuery({
+    queryKey: [...spaceTasksQueryKey(projectId, spaceId), 'motion-held', heldId],
+    queryFn: ({ signal }) => timelineApi.getExecution(projectId, spaceId, heldId ?? '', signal),
+    enabled: heldId !== null,
+    initialData: heldId === null ? undefined : selected,
+    staleTime: Infinity,
+  });
+  // The shown row is never missing while one is selected: the freshest listed copy, or the held row as last read.
+  const row = selected === undefined ? undefined : lists.byId.get(selected.id) ?? (heldRead.data?.id === selected.id ? heldRead.data : selected);
   const locate = React.useCallback((executionId: string, threadId: string | null): void => {
     requestSeq.current += 1;
     select({ type: 'locate', executionId, row: rowById(executionId) ?? null, requestId: requestSeq.current, threadId });
