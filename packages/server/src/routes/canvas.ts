@@ -239,7 +239,7 @@ canvas.post(
   // releases the hold; once queued, the worker charges or releases it.
   // The run as it is priced, and asked about before anything is held.
   const estimateInput = { params: body.params, prompt: extractPromptText(body.params.prompt ?? body.params.text) };
-  const { taskId, checked: keys } = await holdRun({
+  const { taskId, checked: { runKeys: keys, route } } = await holdRun({
     projectId,
     userId: user.id,
     check: async () => {
@@ -305,7 +305,8 @@ canvas.post(
       // inner#1953: the keys of whoever pays for the Studio, settled once here; the task records their rows.
       const runKeys = entry === undefined ? null : await mediaRunKeys(projectId, entry.name, body.params);
       const route = runKeys === null ? body.route : runRoute(runKeys, body.route);
-      if (entry !== undefined) assertServable(entry.name, entry.display_name, route, runKeys === null ? undefined : accountKeys(runKeys.media));
+      const onAccount = runKeys === null ? undefined : accountKeys(runKeys.media);
+      if (entry !== undefined) assertServable(entry.name, entry.display_name, route, onAccount);
       // inner#1825 text-length gate: a setting the model needs written, emptied.
       const short = violatesTextLengthForModel(body.model, body.params);
       if (short) {
@@ -314,14 +315,14 @@ canvas.post(
       }
       // #1521: a run no upstream here takes (too long a text, too many lines) is refused naming the limit.
       if (entry !== undefined) {
-        await assertTakesInput(entry.name, entry.display_name, estimateInput, route, { userId: user.id, projectId }, runKeys === null ? undefined : accountKeys(runKeys.media));
+        await assertTakesInput(entry.name, entry.display_name, estimateInput, route, { userId: user.id, projectId }, onAccount);
       }
-      return runKeys;
+      return { runKeys, route };
     },
-    credits: (runKeys) =>
+    credits: ({ runKeys, route }) =>
       runKeys === null
-        ? estimateTaskCredits(body.model, estimateInput, body.route)
-        : creditsToHold(runKeys, projectId, user.id, () => estimateTaskCredits(body.model, estimateInput, runRoute(runKeys, body.route))),
+        ? estimateTaskCredits(body.model, estimateInput, route)
+        : creditsToHold(runKeys, projectId, user.id, () => estimateTaskCredits(body.model, estimateInput, route)),
   });
 
   let task: Awaited<ReturnType<typeof taskService.create>>;
@@ -334,7 +335,6 @@ canvas.post(
     await assertStorageAllowance(projectId, "generate");
 
     // The run is held, priced and served on one route: the task row and the job both carry the one the estimate used.
-    const route = keys === null ? body.route : runRoute(keys, body.route);
     const runParams = route === undefined ? body.params : { ...body.params, route };
     task = await admitGeneration(
       user.id,
