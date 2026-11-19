@@ -15,7 +15,11 @@ import { resolve } from 'node:path';
 
 import { expect, type Locator, type Page } from 'playwright/test';
 
-import { MOTION_RUN_MS, executeInMotion, motionDetails, motionListTab, openSpaceById, waitMotionFinished } from '../helpers/motion';
+import type * as YjsManagerModule from '@web/data/yjs/manager';
+
+import { dataOf } from '../helpers/api';
+import { YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
+import { MOTION_RUN_MS, acceptedRowId, executeInMotion, motionDetails, motionListTab, openSpaceById, waitMotionFinished } from '../helpers/motion';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { test } from '../helpers/slot';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
@@ -984,5 +988,126 @@ test('a run cancelled from In progress moves to Failed as Cancelled, is not offe
   } finally {
     if (motionId !== '') await deleteSpace(page, motionId);
     await deleteSpace(page, spaceId);
+  }
+});
+
+/**
+ * Ask for a web animation the way a Timeline tab from before Motion still does: a create without `kind`, from the
+ * Timeline, with its frame rate. The server files it as made in a Timeline.
+ * @returns The accepted execution's id.
+ * @throws {Error} When the server refuses it.
+ */
+async function legacyCreate(page: Page, projectId: string, timelineId: string): Promise<string> {
+  const res = await page.request.post('/api/v1/timeline/executions', {
+    headers: { 'Idempotency-Key': crypto.randomUUID() },
+    data: { projectId, spaceId: timelineId, actionId: crypto.randomUUID(), prompt: PROMPT, engine: 'deepseek', aspect: '16:9', durationSeconds: SECONDS, fps: { num: 30, den: 1 } },
+  });
+  const row = await dataOf<{ id: string; origin: string }>(res, 'accept a create from an older Timeline');
+  expect(row.origin).toBe('timeline');
+  return row.id;
+}
+
+/**
+ * Write copies into the shown Timeline's document the way the client before Motion left them: bound to an execution
+ * only. The first takes the place of an existing copy; each further one follows the copy before it on its track.
+ * @param page - The page with the Timeline open.
+ * @param timelineId - The Timeline.
+ * @param placed - An existing copy whose placement the old copies reuse.
+ * @param executionIds - The execution each old copy is bound to.
+ * @returns The old copies' clip ids, in order.
+ * @throws {Error} When the copy or the document is missing.
+ */
+async function writeLegacyCopies(page: Page, timelineId: string, placed: string, executionIds: string[]): Promise<string[]> {
+  const managerAt = await liveModuleUrl(page, YJS_MANAGER);
+  return page.evaluate(async ([pid, sid, at, clipId, ids]: [string, string, string, string, string[]]) => {
+    const manager = await import(/* @vite-ignore */ at) as typeof YjsManagerModule;
+    const doc = manager.getDoc(manager.docName.timelineSpace(pid, sid));
+    const clips = doc.getMap('clips');
+    const base = clips.get(clipId) as { startFrame: number; durationFrames: number } | undefined;
+    if (base === undefined) throw new Error('no copy to replace');
+    const made: string[] = [];
+    doc.transact(() => {
+      clips.delete(clipId);
+      ids.forEach((executionId, index) => {
+        const id = index === 0 ? clipId : crypto.randomUUID();
+        clips.set(id, { ...base, id, startFrame: base.startFrame + index * base.durationFrames, contentBinding: { baseSourceResultId: null, operationId: executionId } });
+        made.push(id);
+      });
+    });
+    return made;
+  }, [smokeProjectId(), timelineId, managerAt, placed, executionIds] as [string, string, string, string, string[]]);
+}
+
+test('a web animation made in a Timeline before Motion keeps its copy and name, is modified from that group in Motion, and a cancelled one opens in Motion under Failed @needs-model @needs-ingest', async ({ page }) => {
+  // Two real model runs (the old create and its modification) and one drained cancelled run.
+  test.setTimeout(3 * RUN_MS + 120_000);
+  const errors = watchTimelineErrors(page);
+  await openSmokeProject(page);
+  const projectId = smokeProjectId();
+  const timelineId = await createSpace(page, 'timeline', `Timeline legacy ${crypto.randomUUID()}`);
+  // The newest Motion Space holds the group of runs made in a Timeline.
+  const motionId = await createSpace(page, 'web_animation', `Motion legacy ${crypto.randomUUID()}`);
+  try {
+    const done = await legacyCreate(page, projectId, timelineId);
+    const cancelled = await legacyCreate(page, projectId, timelineId);
+    await dataOf(await page.request.post(`/api/v1/timeline/executions/${cancelled}/cancel`, {
+      headers: { 'Idempotency-Key': crypto.randomUUID() }, data: { projectId },
+    }), 'cancel the second old run');
+
+    await test.step('Motion lists the old run under Made in a Timeline before', async () => {
+      await waitMotionFinished(page, done);
+      const list = await motionListTab(page, 'Completed');
+      await expect(list.getByTestId('motion-legacy-group').getByTestId(`motion-row-${done}`)).toContainText(PROMPT);
+    });
+
+    let old = '';
+    let failed = '';
+    await test.step('an old copy keeps its name and previews; a cancelled one offers Open in Motion', async () => {
+      await openTimeline(page, timelineId);
+      const placed = await placeCopy(page, done);
+      [old, failed] = await writeLegacyCopies(page, timelineId, placed, [done, cancelled]);
+      const outlet = visibleSpace(page);
+      await expect(outlet.getByTestId(`timeline-clip-${old}`)).toHaveAttribute('data-state', 'ready', { timeout: 30_000 });
+      await expect(outlet.getByTestId(`timeline-clip-${old}`)).toContainText(PROMPT);
+      await selectTimelineClip(page, old);
+      await expect(outlet.getByTestId('timeline-clip-request')).toHaveText(PROMPT);
+      await seekPreview(page, 30);
+      await expect(outlet.locator(`${DRAWN}[data-clip-id="${old}"]`)).toHaveAttribute('data-web-state', 'ready', { timeout: 30_000 });
+      await selectTimelineClip(page, failed);
+      await expect(outlet.getByTestId('timeline-web-failure')).toBeVisible();
+    });
+
+    await test.step('Open in Motion opens the newest Motion Space on Failed with the cancelled run marked', async () => {
+      await visibleSpace(page).getByTestId('timeline-web-open-in-motion').click();
+      await expect(page.locator(`[data-space-outlet="${motionId}"]`)).toBeVisible();
+      const list = visibleSpace(page).getByTestId('motion-panel-executions');
+      await expect(list.getByRole('tab', { name: /^Failed/ })).toHaveAttribute('aria-selected', 'true');
+      const row = list.getByTestId('motion-legacy-group').getByTestId(`motion-row-${cancelled}`);
+      await expect(row).toHaveAttribute('data-marked', 'true');
+      await expect(row).toBeInViewport();
+      await expect(row).toContainText('Cancelled');
+    });
+
+    await test.step('the old result is modified in Motion into a new run of this Space', async () => {
+      const motion = visibleSpace(page);
+      const list = await motionListTab(page, 'Completed');
+      await list.getByTestId(`motion-row-${done}`).click();
+      await expect(motion.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', done);
+      await motion.getByTestId('motion-action-modify').click();
+      const dialog = page.getByRole('dialog', { name: 'Modify web animation', exact: true });
+      await expect(dialog).toContainText(PROMPT);
+      await dialog.getByTestId('web-animation-prompt').fill('Make the circle blue.');
+      await dialog.getByTestId('web-animation-execute').click();
+      await expect(dialog).toHaveCount(0);
+      const modified = await acceptedRowId(page);
+      await waitMotionFinished(page, modified);
+      const completed = await motionListTab(page, 'Completed');
+      await expect(completed.getByTestId('motion-legacy-group').getByTestId(`motion-row-${modified}`)).toHaveCount(0);
+      await expect(completed.getByTestId(`motion-row-${modified}`)).toContainText(`Modified from “${PROMPT}”: Make the circle blue.`);
+    });
+    expect(errors.unexpected).toEqual([]);
+  } finally {
+    await deleteSpace(page, motionId);
+    await deleteSpace(page, timelineId);
   }
 });

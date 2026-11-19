@@ -271,7 +271,10 @@ test('one web animation is made, modified, exported, put on a Canvas that View o
       await expect(motion.getByTestId(`motion-row-${exported}`)).toContainText('Video · ');
       await waitMotionFinished(page, exported, 'video');
       await expect(motion.getByTestId('motion-action-download')).toBeEnabled();
-      await expect(motion.getByTestId('motion-action-view-source')).toBeVisible();
+      await motion.getByTestId('motion-action-view-source').click();
+      await expect(motion.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', modified);
+      await motion.getByTestId('motion-action-view-video').click();
+      await expect(motion.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', exported);
     });
 
     await test.step('place: the video goes on the chosen Canvas, and the message\'s View opens that Canvas with the video selected', async () => {
