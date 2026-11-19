@@ -95,7 +95,12 @@ async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Respo
   if (!parsed.success) return new Response("Not a job", { status: 400 });
   const { sealedKeys, ...job } = parsed.data;
   const privateKey = env.KEY_UNSEAL_PRIVATE_KEY ?? "";
-  if (job.messagesPlan === undefined || privateKey === "" || sealedKeys === undefined) return featureDisabled();
+  if (privateKey === "") {
+    // The binding is here and the secret is not: the deployment's configuration, told in the log by name.
+    noteFailure("ingest_web_animation_unseal_key_unset", { jobId: job.jobId, secret: "KEY_UNSEAL_PRIVATE_KEY" });
+    return featureDisabled();
+  }
+  if (job.messagesPlan === undefined || sealedKeys === undefined) return featureDisabled();
   let keys: Record<string, string>;
   try {
     keys = await openModelKeys(sealedKeys, privateKey);

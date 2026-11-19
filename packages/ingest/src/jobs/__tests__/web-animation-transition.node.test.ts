@@ -452,6 +452,18 @@ describe("a passing failure of the payer's own key (inner#1953)", () => {
     expect(report(failed!.record)).toMatchObject({ failureReason: "harness_failed", failureUpstream: null });
   });
 
+  it("forgets it once a later call begins, so a later call that fails for another reason is told as the runner's own", () => {
+    const [, , , , failed] = run(after([]), [passing, begin, started(1), ended(1, "interrupted"), harnessGaveUp]);
+
+    expect(report(failed!.record)).toMatchObject({ failureReason: "harness_failed", failureUpstream: null });
+  });
+
+  it("keeps the note of the last call when that call itself failed on the key", () => {
+    const [, , , failed] = run(after([]), [begin, passing, ended(1, "upstream_error"), harnessGaveUp]);
+
+    expect(report(failed!.record)).toMatchObject({ failureReason: "account_key_failed", failureKeyReason: "rate_limited" });
+  });
+
   it("does not stand in the way of a run that finishes", () => {
     const [, , , done] = run(after([]), [passing, writtenPackage, writtenManifest, { type: "finished", ok: true, failureReason: null, cpuUsec: 1 }]);
 

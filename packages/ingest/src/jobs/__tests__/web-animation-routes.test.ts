@@ -302,13 +302,16 @@ describe("a Worker without web-animation execution configured", () => {
   it.each([
     ["missing", ["KEY_UNSEAL_PRIVATE_KEY"], {}],
     ["empty", [], { KEY_UNSEAL_PRIVATE_KEY: "" }],
-  ])("answers a submit 501 feature_disabled when the private key that opens its keys is %s", async (_label, without, overrides) => {
+  ])("answers a submit 501 feature_disabled when the private key that opens its keys is %s, logging the secret it lacks", async (_label, without, overrides) => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { namespace, stub } = standIn();
     const res = await submit(configured(namespace, without, overrides));
 
     expect(res.status).toBe(501);
     await expect(res.text()).resolves.toBe("feature_disabled");
     expect(stub.submit).not.toHaveBeenCalled();
+    expect(logged).toHaveBeenCalledWith("ingest_web_animation_unseal_key_unset", expect.objectContaining({ secret: "KEY_UNSEAL_PRIVATE_KEY" }));
+    logged.mockRestore();
   });
 
   it("answers a submit without sealed keys, or with keys this Worker cannot open, 501 feature_disabled", async () => {

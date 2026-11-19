@@ -60,8 +60,8 @@ export interface WebAnimationJobRecord {
   failureUpstream?: string | null;
   failureKeyReason?: KeyReason | null;
   /**
-   * The last passing failure of the payer's own key (a 429, a 5xx, the upstream unreachable) since a call last
-   * completed (inner#1953); a runner that gives up after it fails with it. Absent from a record stored before it.
+   * A passing failure of the payer's own key (a 429, a 5xx, the upstream unreachable) on the last call begun
+   * (inner#1953); a runner that gives up after it fails with it. Absent from a record stored before it.
    */
   keyPassing?: ({ reason: string } & FailureNames) | null;
 }
@@ -246,7 +246,8 @@ export function transitionWebAnimationJob(
       if (!running || openCall(record) !== undefined) return stay(record);
       const seq = record.calls.length + 1;
       const call: StoredCall = { seq, upstream: null, messageId: null, tokens: null, cost: null, outcome: null };
-      return { record: { ...record, calls: [...record.calls, call] }, effects: [], seq, refused: false };
+      // A noted key failure tells only of the call before this one; this call notes its own if it fails on the key.
+      return { record: { ...record, calls: [...record.calls, call], keyPassing: null }, effects: [], seq, refused: false };
     }
     case "recordModelCallStart": {
       if (openCall(record)?.seq !== event.seq) return stay(record);
@@ -259,7 +260,6 @@ export function transitionWebAnimationJob(
       // A call whose end names no upstream keeps the one its start recorded.
       const ended = {
         ...record,
-        ...(outcome === "completed" ? { keyPassing: null } : {}),
         calls: record.calls.map((call) => (call.seq === event.seq ? { ...call, outcome, upstream: event.upstream ?? call.upstream, tokens, cost } : call)),
       };
       return record.endAs === null ? stay(ended) : end(ended, record.endAs.state, record.endAs.failureReason, now, record.endAs);
