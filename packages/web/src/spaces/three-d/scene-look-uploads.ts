@@ -3,7 +3,7 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 
-import { getLocale, t, uploadableFormatList, type SceneLook } from '@breatic/shared';
+import { getLocale, isSceneLookImageMediaType, t, uploadableFormatList, type SceneLook } from '@breatic/shared';
 
 import { projectImagesQueryKey } from '@web/data/api/scene';
 import { UploadFailedError, uploadMedia } from '@web/data/upload/media-upload';
@@ -84,7 +84,6 @@ export interface SceneLookUploads {
   getVersion: () => number;
 }
 
-const LOOK_IMAGE_TYPES = new Set(['png', 'jpeg', 'webp']);
 /**
  * The notice for a file that is not a picture a part may use.
  * @param filename - The file's or the asset's name.
@@ -118,10 +117,10 @@ export function pictureReadFailedNotice(filename: string): LookUploadNotice {
 /**
  * Whether a header's type is a picture a part may use.
  * @param type - The type `image-dimensions` read.
- * @returns True for PNG, JPEG and WebP.
+ * @returns True for a type the server lets a part use (PNG, JPEG, WebP).
  */
 export function isLookImageType(type: string): boolean {
-  return LOOK_IMAGE_TYPES.has(type);
+  return isSceneLookImageMediaType(`image/${type}`);
 }
 
 /**

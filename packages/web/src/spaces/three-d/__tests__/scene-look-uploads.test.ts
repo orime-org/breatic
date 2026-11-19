@@ -327,6 +327,13 @@ describe('SceneLookUploads', () => {
   });
 });
 
+describe('isLookImageType', () => {
+  it('takes the header types of the pictures the server lets a part use, and no other', () => {
+    for (const type of ['png', 'jpeg', 'webp']) expect(uploadsModule.isLookImageType(type)).toBe(true);
+    for (const type of ['gif', 'bmp', 'svg', 'jpg', '']) expect(uploadsModule.isLookImageType(type)).toBe(false);
+  });
+});
+
 describe('reading the local file first (inner#1693 design 3.5)', () => {
   it('tells the user a file that cannot be read, and uploads nothing', async () => {
     const { doc, session } = editor();
