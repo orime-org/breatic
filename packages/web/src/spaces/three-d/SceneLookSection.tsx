@@ -253,6 +253,8 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
   const uploadPercent = row ? uploadPercentOf?.(row.key) : null;
   // A user picture starts untiled; the model's own picture starts from its own transform (design 3.3).
   const ownTransform = shownUserPicture ? undefined : row;
+  // A draft belongs to the picture it was typed for; another picture on the part starts from its own tiling.
+  const draftPrefix = `${objectId}:look:${row?.key ?? ''}:${stored.map ?? 'own'}`;
   const fieldPicture = shownUserPicture ? pictureUrl?.(stored.map!) : stored.map === undefined ? row?.thumbnail : undefined;
   const disabled = !mutable;
   /**
@@ -309,10 +311,10 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
       </Row>
       {shownPicture && !row.line ? <>
         <LookPair label={t('spaces.threeD.look.repeat')} labelId={`${ids}-repeat`} value={stored.mapRepeat ?? ownTransform?.mapRepeat ?? [1, 1]} accepts={acceptsRepeat} disabled={disabled}
-          testId='scene-look-repeat' draftKey={`${objectId}:look:${row.key}:repeat`} spaceId={spaceId} drafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
+          testId='scene-look-repeat' draftKey={`${draftPrefix}:repeat`} spaceId={spaceId} drafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
           onCommit={writeRepeat} />
         <LookPair label={t('spaces.threeD.look.offset')} labelId={`${ids}-offset`} value={stored.mapOffset ?? ownTransform?.mapOffset ?? [0, 0]} accepts={acceptsOffset} disabled={disabled}
-          testId='scene-look-offset' draftKey={`${objectId}:look:${row.key}:offset`} spaceId={spaceId} drafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
+          testId='scene-look-offset' draftKey={`${draftPrefix}:offset`} spaceId={spaceId} drafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
           onCommit={writeOffset} />
         <LookSlider label={t('spaces.threeD.look.rotation')} labelId={`${ids}-rotation`} value={stored.mapRotation ?? ownTransform?.mapRotation ?? 0} min={-SCENE_LOOK_ROTATION_MAX} max={SCENE_LOOK_ROTATION_MAX} step={1} suffix='°'
           disabled={disabled} testId='scene-look-rotation' gesture={gesture} onPreview={(mapRotation) => preview({ mapRotation })} />

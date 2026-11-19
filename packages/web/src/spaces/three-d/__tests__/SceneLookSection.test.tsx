@@ -239,6 +239,30 @@ describe('SceneLookSection', () => {
     expect(screen.getByText(t('spaces.threeD.valueFailed'))).toBeTruthy();
   });
 
+  it('drops a refused tiling value once the part shows another picture', async () => {
+    const Section = sectionModule.SceneLookSection as unknown as React.ComponentType<Props>;
+    let showLook: (look: Props['look']) => void = () => undefined;
+    /** The section over a look the test changes, keeping drafts as the properties panel does. */
+    function Harness(): React.JSX.Element {
+      const [look, setLook] = React.useState<Props['look']>({});
+      showLook = setLook;
+      const [fieldDrafts, setFieldDrafts] = React.useState<ReadonlyMap<string, SceneFieldDraft>>(new Map());
+      const onFieldDraftChange = React.useCallback((key: string, draft: SceneFieldDraft | undefined): void => {
+        setFieldDrafts((previous) => { const next = new Map(previous); if (draft) next.set(key, draft); else next.delete(key); return next; });
+      }, []);
+      return <Section objectId={ID} parts={PARTS} look={look} selectedPart='0' mutable fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
+        onSelectPart={vi.fn()} onCommand={vi.fn(() => true)} onChoosePicture={vi.fn()} showingPictures={new Set([IMAGE])} />;
+    }
+    render(<TooltipProvider><Harness /></TooltipProvider>);
+    await enter('scene-look-repeat-0', '0');
+    expect(screen.getByText(t('spaces.threeD.valueFailed'))).toBeTruthy();
+    act(() => { showLook({ 0: { map: 'none' } }); });
+    expect(screen.queryByTestId('scene-look-repeat-0')).toBeNull();
+    act(() => { showLook({ 0: { map: IMAGE } }); });
+    expect((screen.getByTestId('scene-look-repeat-0') as HTMLInputElement).value).toBe('1');
+    expect(screen.queryByText(t('spaces.threeD.valueFailed'))).toBeNull();
+  });
+
   it('leaves the tiling and offset boxes alone when only the upload percent of the section changes', () => {
     const Section = sectionModule.SceneLookSection as unknown as React.ComponentType<Props>;
     const onCommand = vi.fn(() => true);
