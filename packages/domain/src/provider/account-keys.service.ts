@@ -8,6 +8,7 @@
 import { accountModelUpstreamsRepo, accountProviderKeysRepo } from "@breatic/core";
 import { ACCOUNT_LLM_UPSTREAM } from "@breatic/provider";
 import { liveAdminOf } from "@domain/auth/studioMembers.repo.js";
+import { provider } from "@domain/provider/instance.js";
 
 /** What a call needs keys for: a language model (always provider's `ACCOUNT_LLM_UPSTREAM`), or one catalog media model. */
 export type KeyPurpose = { kind: "llm" } | { kind: "media"; model: string };
@@ -43,6 +44,17 @@ export interface StudioKeyPlan {
 }
 
 /**
+ * Whether a model choice still holds: the configuration binds the model on the upstream. A choice saved while a binding
+ * existed outlives the binding, and then counts as no choice at all, as one dropped with its key does.
+ * @param model - The catalog model.
+ * @param upstream - The upstream it was pointed at.
+ * @returns True while the upstream runs the model.
+ */
+export function choiceHolds(model: string, upstream: string): boolean {
+  return (provider().config.models[model] ?? []).some((binding) => binding.upstream === upstream);
+}
+
+/**
  * The payer's key a call of a Studio runs on, for its purpose: the language-model upstream's key, the key of the
  * upstream the payer chose for a media model.
  * @param studioId - The Studio.
@@ -53,7 +65,7 @@ export async function studioProviderKey(studioId: string, purpose: KeyPurpose): 
   const payerUserId = await liveAdminOf(studioId);
   if (payerUserId === null) return null;
   const upstream = purpose.kind === "llm" ? ACCOUNT_LLM_UPSTREAM : await accountModelUpstreamsRepo.modelUpstreamFor(payerUserId, purpose.model);
-  if (upstream === null) return null;
+  if (upstream === null || (purpose.kind === "media" && !choiceHolds(purpose.model, upstream))) return null;
   const sealed = await accountProviderKeysRepo.sealedLiveKeyFor(payerUserId, upstream);
   return sealed === null ? null : { payerUserId, keyId: sealed.id, upstream, ciphertext: sealed.ciphertext };
 }
@@ -84,6 +96,6 @@ export async function studioKeyPlan(studioId: string): Promise<StudioKeyPlan | n
   return {
     payerUserId,
     upstreams,
-    models: Object.fromEntries(choices.filter((c) => upstreams.includes(c.upstream)).map((c) => [c.model, c.upstream])),
+    models: Object.fromEntries(choices.filter((c) => upstreams.includes(c.upstream) && choiceHolds(c.model, c.upstream)).map((c) => [c.model, c.upstream])),
   };
 }

@@ -37,7 +37,7 @@ import { mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { MONOREPO_ROOT, createLogger, getRedis, initCore, initLogger, loadLocales, sessionCookieName, setSession } from "@breatic/core";
+import { MONOREPO_ROOT, accountModelUpstreamsRepo, createLogger, getRedis, initCore, initLogger, loadLocales, sessionCookieName, setSession } from "@breatic/core";
 import { initProvider } from "@breatic/domain";
 import type { Hono } from "hono";
 
@@ -551,6 +551,15 @@ describe("PUT /api/v1/account/byok/models/:model", () => {
     expect((await putKey(cookie, "fal", freshKey("fal-"))).status).toBe(200);
 
     expect((await putModel(cookie, WAVESPEED_ONLY, "fal")).status).toBe(422);
+    expect((await settings(cookie)).data.models).toEqual([]);
+  });
+
+  it("lists no choice whose upstream no longer runs the model, as when the configuration drops that binding", async () => {
+    const { userId, cookie } = await signedIn();
+    expect((await putKey(cookie, "fal", freshKey("fal-"))).status).toBe(200);
+    // A choice saved while the binding existed: the repository writes it as stored, the way it once passed the route.
+    await accountModelUpstreamsRepo.setModelUpstream(userId, WAVESPEED_ONLY, "fal");
+
     expect((await settings(cookie)).data.models).toEqual([]);
   });
 

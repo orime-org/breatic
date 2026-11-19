@@ -27,7 +27,7 @@ import {
   type ProviderKeyCheckRecord,
   type ProviderKeyRing,
 } from "@breatic/core";
-import { provider, studioKeyPlan } from "@breatic/domain";
+import { choiceHolds, provider, studioKeyPlan } from "@breatic/domain";
 import { ACCOUNT_LLM_UPSTREAM, type KeyCheck, type KeySet } from "@breatic/provider";
 import { t, type AccountProviderKey, type ModelAvailability, type ProviderKeyBalanceState } from "@breatic/shared";
 import { assertAccess } from "@server/modules/project/project.service.js";
@@ -199,7 +199,7 @@ export async function readSettings(userId: string): Promise<ByokSettings> {
     enabled: ring() !== null,
     upstreams: offeredUpstreams().map(listingOf),
     keys: keys.map(savedKeyView),
-    models: chosen.filter((c) => held.has(c.upstream)).map((c) => ({ model: c.model, upstream: c.upstream })),
+    models: chosen.filter((c) => held.has(c.upstream) && choiceHolds(c.model, c.upstream)).map((c) => ({ model: c.model, upstream: c.upstream })),
     choices,
   };
 }
@@ -311,10 +311,8 @@ export async function readKeyPlan(projectId: string, userId: string): Promise<Ke
   const payer = plan === null || plan.payerUserId === userId ? "self" : "admin";
   const upstreamNames = Object.fromEntries(Object.keys(provider().config.upstreams).map((u) => [u, listingOf(u).name]));
   if (plan === null || ring() === null) return { payer, llm: { usesAccountKey: false }, models: {}, upstreamNames };
-  const bindings = mediaBindings();
   const models: KeyPlan["models"] = {};
   for (const [model, upstream] of Object.entries(plan.models)) {
-    if (!bindings.has(model)) continue;
     models[model] = { upstream, availability: provider().availability(model, heldOnly(upstream)) };
   }
   return { payer, llm: { usesAccountKey: plan.upstreams.includes(ACCOUNT_LLM_UPSTREAM) }, models, upstreamNames };

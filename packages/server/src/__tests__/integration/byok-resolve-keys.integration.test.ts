@@ -31,7 +31,7 @@ import { randomBytes } from "node:crypto";
 import fc from "fast-check";
 import postgres from "postgres";
 import { accountModelUpstreamsRepo, accountProviderKeysRepo, initCore, sealProviderKey } from "@breatic/core";
-import { resolveKeys } from "@breatic/domain";
+import { initProvider, resolveKeys } from "@breatic/domain";
 
 const SECRET = randomBytes(32);
 const RING = { current: "t1", keys: { t1: SECRET } };
@@ -50,6 +50,7 @@ const MEDIA = { kind: "media", model: MODEL } as const;
 let sql: ReturnType<typeof postgres>;
 
 beforeAll(() => {
+  initProvider();
   sql = postgres(inject("DATABASE_URL"), { max: 4, prepare: false });
 });
 
@@ -239,6 +240,18 @@ describe("resolveKeys: media calls", () => {
     await saveKey(userId, "fal", "fal-key");
 
     const resolved = await resolveKeys({ studioId }, MEDIA);
+    expect(resolved.keys.owner).toBe("deployment");
+    expect(resolved.keyId).toBeNull();
+    expect(resolved.route).toEqual({ mode: "default" });
+  });
+
+  it("runs on the deployment's keys when the chosen upstream no longer runs the model", async () => {
+    const userId = await seedUser();
+    const { projectId } = await seedStudio(userId, "personal");
+    await saveKey(userId, "fal", "fal-key");
+    await accountModelUpstreamsRepo.setModelUpstream(userId, "ideogram-v3-quality", "fal");
+
+    const resolved = await resolveKeys({ projectId }, { kind: "media", model: "ideogram-v3-quality" });
     expect(resolved.keys.owner).toBe("deployment");
     expect(resolved.keyId).toBeNull();
     expect(resolved.route).toEqual({ mode: "default" });

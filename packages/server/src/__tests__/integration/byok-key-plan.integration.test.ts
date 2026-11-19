@@ -40,12 +40,16 @@ import {
 } from "@breatic/core";
 import { initProvider } from "@breatic/domain";
 import { providerKeyById, studioKeyPlan, studioProviderKey } from "../../../../domain/src/provider/account-keys.service.js";
+// The source module reads its own provider instance, apart from the built package the app runs on.
+import { initProvider as initSourceProvider } from "../../../../domain/src/provider/instance.js";
 import type { Hono } from "hono";
 
 const SECRET = randomBytes(32);
 const RING = { current: "t1", keys: { t1: SECRET } };
 /** A media model bound on WaveSpeed, fal and SandBase. */
 const MODEL = "gpt-image-2.5-sunburst-text-to-image";
+/** A model only WaveSpeed runs. */
+const WAVESPEED_ONLY = "ideogram-v3-quality";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -54,6 +58,7 @@ beforeAll(async () => {
   initCore({ ...process.env, PROVIDER_KEY_SECRET_ID: "t1", PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }) });
   loadLocales();
   initProvider();
+  initSourceProvider();
   sql = postgres(inject("DATABASE_URL"), { max: 4, prepare: false, connection: { application_name: "byok-key-plan-test" } });
   const { createApp } = await import("@server/app.js");
   app = createApp();
@@ -182,6 +187,18 @@ describe("GET /api/v1/projects/:id/key-plan", () => {
     expect(plan!.models[MODEL]!.upstream).toBe("fal");
     expect(plan!.models[MODEL]!.availability.upstreams.filter((u) => u.configured).map((u) => u.upstream)).toEqual(["fal"]);
     expectNoKeyTrace(text, saved);
+  });
+
+  it("leaves out a choice whose upstream no longer runs the model, so the panel prices it on the deployment's keys", async () => {
+    const { userId, cookie } = await signedIn();
+    const { projectId } = await seedStudio(userId, "personal");
+    await saveKey(userId, "fal", `fal-${crypto.randomBytes(12).toString("hex")}`);
+    await accountModelUpstreamsRepo.setModelUpstream(userId, WAVESPEED_ONLY, "fal");
+
+    const { status, plan } = await keyPlan(cookie, projectId);
+
+    expect(status).toBe(200);
+    expect(plan!.models).toEqual({});
   });
 
   it("answers an account with no keys: the deployment's keys pay for everything", async () => {
