@@ -21,9 +21,8 @@
  */
 
 import { Hono } from "hono";
-import { frontendOrigin } from "@breatic/core";
+import { frontendOrigin, validate, logger, NotFoundError, ValidationError } from "@breatic/core";
 import { z } from "zod";
-import { validate } from "@breatic/core";
 import { getActiveLocale, t } from "@breatic/shared";
 import { createTeamStudioSchema, emailSchema, updateStudioSchema } from "@breatic/shared";
 import { creditPageQuerySchema, projectListQuerySchema } from "@server/routes/schemas.js";
@@ -37,7 +36,6 @@ import {
   recentService,
   creditViewService,
 } from "@server/modules";
-import { logger, NotFoundError, ValidationError } from "@breatic/core";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
 import * as studioAvatarService from "@server/modules/studio/studioAvatar.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";

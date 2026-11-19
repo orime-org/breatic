@@ -16,8 +16,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { validate } from "@breatic/core";
-import { NotFoundError } from "@breatic/core";
+import { validate, NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";

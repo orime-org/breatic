@@ -4,9 +4,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@breatic/shared";
-import { projectAssetReferenceService } from "@breatic/core";
+import { projectAssetReferenceService, validate } from "@breatic/core";
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
-import { validate } from "@breatic/core";
 
 const projectAssets = new Hono<{ Variables: AuthVariables }>();
 const projectParams = z.object({ projectId: z.uuid() });

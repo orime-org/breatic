@@ -10,7 +10,7 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
-import { storableText } from "@breatic/core";
+import { storableText, validate } from "@breatic/core";
 import {
   PROMOTER_CHANNEL_INPUT_MAX,
   PROMOTER_CHANNELS_MAX,
@@ -23,7 +23,6 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { requirePayments } from "@server/middleware/require-payments.js";
 import { runOnce } from "@server/middleware/run-once.js";
-import { validate } from "@breatic/core";
 import { getLegalConfig } from "@server/config/legal.js";
 import { submitApplication } from "@server/modules/referral/promoter-application.service.js";
 import { bindLater, readAccountReferral } from "@server/modules/referral/referral.service.js";

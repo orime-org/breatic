@@ -17,11 +17,10 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { validate } from "@breatic/core";
+import { validate, frontendOrigin } from "@breatic/core";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { frontendOrigin } from "@breatic/core";
 import { projectJoinRequestService } from "@server/modules";
 
 const paramSchema = z.object({ pid: z.string().uuid() });

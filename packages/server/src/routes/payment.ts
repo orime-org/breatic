@@ -10,7 +10,7 @@
  */
 
 import { Hono } from "hono";
-import { validate } from "@breatic/core";
+import { validate, logger } from "@breatic/core";
 import { runOnce } from "@server/middleware/run-once.js";
 import {
   idempotencyKeyHeaderSchema,
@@ -27,7 +27,6 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { paymentService, stripeWebhookRecordingService, stripeWebhookDispatchService } from "@server/modules";
 import { logFulfillment } from "@server/modules/payment/fulfillment-log.js";
 import { verifyWebhookSignature } from "@server/infra/stripe.js";
-import { logger } from "@breatic/core";
 import { recordStripeWebhook, type StripeWebhookVariables } from "@server/middleware/stripe-webhook-recording.js";
 import type Stripe from "stripe";
 

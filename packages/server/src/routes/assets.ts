@@ -15,10 +15,9 @@
  * part has landed — the Worker asks for a secret the browser does not hold.
  */
 
-import { accountActivityRepo } from "@breatic/core";
+import { accountActivityRepo, validate } from "@breatic/core";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
-import { validate } from "@breatic/core";
 import { z } from "zod";
 import {
   verifySessionToken,

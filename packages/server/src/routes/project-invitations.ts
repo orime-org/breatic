@@ -15,10 +15,9 @@
  */
 
 import { Hono } from "hono";
-import { frontendOrigin } from "@breatic/core";
+import { frontendOrigin, validate } from "@breatic/core";
 import { z } from "zod";
 import { emailSchema } from "@breatic/shared";
-import { validate } from "@breatic/core";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireRole, getProjectId } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";

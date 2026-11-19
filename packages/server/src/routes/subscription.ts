@@ -15,12 +15,11 @@
 
 import { subscriptionConversion } from "@server/modules/subscription/subscription-analytics.js";
 import { Hono } from "hono";
-import { adsAllowedFor, currentAdsBrowser, logger } from "@breatic/core";
+import { adsAllowedFor, currentAdsBrowser, logger, validate } from "@breatic/core";
 import { requireAuth } from "@server/middleware/auth.js";
 import { assertPaymentsEnabled } from "@server/middleware/require-payments.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { validate } from "@breatic/core";
 import { runOnce } from "@server/middleware/run-once.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import {

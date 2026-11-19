@@ -137,10 +137,9 @@ import * as studioService from "../../studio/studio.service.js";
 import * as projectRepo from "../../project/project.repo.js";
 import * as requestsRepo from "../roleUpgradeRequests.repo.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
-import { projectMembersRepo } from "@breatic/core";
+import { projectMembersRepo, NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 import { enqueueMail } from "@breatic/domain";
 import * as roleUpgradeRequestService from "../roleUpgradeRequest.service.js";
-import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 
 // The mocked core above keeps only what this file uses, so the catalogs the
 // email templates read are loaded from the real one.

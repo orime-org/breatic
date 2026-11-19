@@ -16,10 +16,9 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getConnInfo } from "@hono/node-server/conninfo";
-import { decideClientIdentity, logger } from "@breatic/core";
+import { decideClientIdentity, logger, closeAfterRefusal } from "@breatic/core";
 import { formatBytes, t } from "@breatic/shared";
 import { getRequestBodyLingerSeconds, getRequestBodyMaxBytes } from "@server/config/limits.js";
-import { closeAfterRefusal } from "@breatic/core";
 import { readSessionCookie } from "@server/middleware/session-cookie.js";
 import { authService } from "@server/modules";
 

@@ -64,8 +64,7 @@ vi.mock("@server/utils/send-best-effort-mail.js", () => ({
 
 import type Stripe from "stripe";
 import postgres from "postgres";
-import { initCore, loadLocales, getUserMembershipTier, getSubscriptionPlan } from "@breatic/core";
-import { db, upsertSubscription } from "@breatic/core";
+import { initCore, loadLocales, getUserMembershipTier, getSubscriptionPlan, db, upsertSubscription } from "@breatic/core";
 import { handleSubscriptionEvent } from "@server/modules/subscription/subscription-events.js";
 import { readStripeSubscription } from "@server/modules/subscription/read-stripe-subscription.js";
 

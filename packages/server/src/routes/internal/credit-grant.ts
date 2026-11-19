@@ -3,10 +3,8 @@
 
 import type { Context, Hono } from "hono";
 import { z } from "zod";
-import { creditGrantWriteSchema } from "@breatic/core";
-import { validate } from "@breatic/core";
+import { creditGrantWriteSchema, validate, fingerprint } from "@breatic/core";
 import { creditGrantService } from "@server/modules/index.js";
-import { fingerprint } from "@breatic/core";
 
 const ACCOUNT = "/internal/v1/accounts/:userId/credit-grants";
 const OPERATION = "/internal/v1/credit-grant-operations/:key";

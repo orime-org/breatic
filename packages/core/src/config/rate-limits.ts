@@ -4,15 +4,15 @@
 /**
  * Rate-limit configuration loader.
  *
- * Loads per-action abuse throttles from `config/rate-limits.yaml`: every
+ * Loads per-action abuse throttles from a service's `rate-limits.yaml` (the
+ * product's `config/` unless the caller names another directory): every
  * route that throttles reads its `{ max, windowSeconds }` from here instead
  * of hardcoding the numbers.
  * The key DIMENSION (see the yaml file's header) stays in code per action;
  * only the counts are tuned in yaml.
  *
- * Mirrors the `limits.ts` / `pricing.ts` / `text-tools.ts` business-
- * config loaders: a yaml file under `config/` validated by a Zod schema
- * and memoized.
+ * A yaml file validated by a Zod schema and memoized per directory, like the
+ * other config loaders.
  */
 
 import { readFileSync } from "node:fs";
@@ -68,7 +68,7 @@ export function getRateLimit(
   const entry = loadConfig(configDir)[action];
   if (!entry) {
     throw new Error(
-      `Rate limit for action "${action}" is not configured in config/rate-limits.yaml`,
+      `Rate limit for action "${action}" is not configured in ${resolve(configDir, "rate-limits.yaml")}`,
     );
   }
   return { max: entry.max, windowSeconds: entry.window_seconds };

@@ -4,10 +4,8 @@
 import type { Context, Hono } from "hono";
 import { z } from "zod";
 import { REFERRAL_CODE_INPUT_MAX } from "@breatic/shared";
-import { storableText } from "@breatic/core";
+import { storableText, validate, fingerprint } from "@breatic/core";
 import { requirePayments } from "@server/middleware/require-payments.js";
-import { validate } from "@breatic/core";
-import { fingerprint } from "@breatic/core";
 import * as referralAdmin from "@server/modules/referral/referral-admin.service.js";
 
 const APPLICATIONS = "/internal/v1/promoter-applications";

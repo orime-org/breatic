@@ -3,11 +3,9 @@
 
 import type { Context, Hono } from "hono";
 import { z } from "zod";
-import { enterpriseMembershipWriteSchema } from "@breatic/core";
+import { enterpriseMembershipWriteSchema, validate, fingerprint } from "@breatic/core";
 import type { EnterpriseMembershipWrite } from "@breatic/core";
-import { validate } from "@breatic/core";
 import { enterpriseMembershipService } from "@server/modules/index.js";
-import { fingerprint } from "@breatic/core";
 
 const ACCOUNT = "/internal/v1/accounts/:userId/enterprise-membership";
 const OPERATION = "/internal/v1/enterprise-membership-operations/:key";
