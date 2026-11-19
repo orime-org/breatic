@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { RotateCcw, X } from 'lucide-react';
+import { getLocale } from '@breatic/shared';
 import type { WebAnimationRowView } from '@breatic/shared/space-content';
 
 import { Button } from '@web/components/ui/button';
@@ -11,10 +12,10 @@ import { Tabs, TabsList, TabsTrigger } from '@web/components/ui/tabs';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { useRunning } from '@web/stores/task-actions-in-flight';
-import { cancelIntent, endedSentenceKey, exportIntent } from '@web/spaces/web-animation/execution-text';
+import { cancelIntent, endedSentenceKey, exportIntent, phaseKey } from '@web/spaces/web-animation/execution-text';
 import { ListLoadError, ListPending, LoadMoreButton, listShows } from '@web/spaces/web-animation/list-states';
 import type { MotionTab } from '@web/spaces/web-animation/motion-panels';
-import { MotionPanel, MotionRow, rowStep, rowSummary } from '@web/spaces/web-animation/motion-parts';
+import { MotionPanel, rowSeconds } from '@web/spaces/web-animation/motion-parts';
 import { rowsOf, type MotionLists } from '@web/spaces/web-animation/use-motion-lists';
 import { webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
 
@@ -34,6 +35,87 @@ const TABS: ReadonlyArray<{ tab: MotionTab; name: string; empty: string }> = [
 function isTab(value: string): value is MotionTab {
   return TABS.some(({ tab }) => tab === value);
 }
+
+/**
+ * The aspect of a row's frame, as the creation dialog names it, or its pixel size for an export.
+ * @param row - The row.
+ * @returns The text.
+ * @throws {never} Never.
+ */
+function rowFrame(row: WebAnimationRowView): string {
+  return row.kind === 'web_animation_export' ? `${row.input.width}×${row.input.height}` : row.input.aspect;
+}
+
+/**
+ * A row's summary line: frame, length and when it was made. The tab says how it stands; a row in progress or one that
+ * failed tells its step or reason on a line of its own.
+ * @param row - The row.
+ * @param t - The translator.
+ * @returns The line.
+ * @throws {never} Never.
+ */
+function rowSummary(row: WebAnimationRowView, t: (key: string, params?: Record<string, string | number>) => string): string {
+  const made = new Date(row.createdAt).toLocaleString(getLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return `${rowFrame(row)} · ${t('timeline.webAnimation.durationShort', { seconds: rowSeconds(row) })} · ${made}`;
+}
+
+/**
+ * Where a row in progress stands: the step it is on while it runs, otherwise its status word (Queued, Cancelling).
+ * @param row - The row.
+ * @param t - The translator.
+ * @returns The words.
+ * @throws {never} Never.
+ */
+function rowStep(row: WebAnimationRowView, t: (key: string) => string): string {
+  return row.status === 'running' && row.phase !== null ? t(phaseKey(row.kind, row.phase)) : t(`timeline.webAnimation.status.${row.status}`);
+}
+
+/** A row's title and summary. */
+interface RowTextProps {
+  row: WebAnimationRowView;
+  /** Whether the row wears the selected look, on whose fill the summary reads one step stronger. */
+  active: boolean;
+}
+
+/**
+ * A row's title and its summary line, as every row of the list starts.
+ * @param props - The row.
+ * @param props.row - The execution.
+ * @param props.active - Whether the row is selected or marked.
+ * @returns The two lines.
+ * @throws {never} Never.
+ */
+function RowText({ row, active }: RowTextProps): React.JSX.Element {
+  const t = useTranslation();
+  return <>
+    <span className='truncate text-xs font-medium'>{webAnimationTitle(row, t)}</span>
+    <span className={cn('truncate text-2xs', active ? 'text-row-foreground-muted' : 'text-muted-foreground group-hover/row:text-row-foreground-muted')}>{rowSummary(row, t)}</span>
+  </>;
+}
+
+/** One list row. */
+interface MotionRowProps {
+  row: WebAnimationRowView;
+  selected: boolean;
+  onPick: (row: WebAnimationRowView) => void;
+}
+
+/**
+ * One execution in the list: its title and summary; a press opens it in the preview.
+ * @param props - The row.
+ * @param props.row - The execution.
+ * @param props.selected - Whether the preview shows it.
+ * @param props.onPick - Opens it.
+ * @returns The row.
+ * @throws {never} Never.
+ */
+const MotionRow = React.memo(function MotionRow({ row, selected, onPick }: MotionRowProps): React.JSX.Element {
+  const pick = React.useCallback((): void => onPick(row), [onPick, row]);
+  return <Button type='button' variant={null} size={null} data-testid={`motion-row-${row.id}`} aria-current={selected || undefined} onClick={pick}
+    className={cn('group/row flex w-full min-w-0 flex-col items-stretch gap-0.5 border-b border-border px-3 py-2 text-left hover-enabled:bg-accent', selected && 'bg-accent-strong hover-enabled:bg-accent-strong')}>
+    <RowText row={row} active={selected} />
+  </Button>;
+});
 
 /** What the rows of the In progress and Failed tabs act with. */
 interface RowActions {
@@ -112,12 +194,10 @@ interface RowFrameProps {
  * @throws {never} Never.
  */
 function RowFrame({ row, marked, detail, action }: RowFrameProps): React.JSX.Element {
-  const t = useTranslation();
   return <div data-testid={`motion-row-${row.id}`} data-marked={marked || undefined}
     className={cn('flex items-start gap-2 border-b border-border px-3 py-2', marked && 'bg-accent-strong')}>
     <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
-      <span className='truncate text-xs font-medium'>{webAnimationTitle(row, t)}</span>
-      <span className={cn('truncate text-2xs', marked ? 'text-row-foreground-muted' : 'text-muted-foreground')}>{rowSummary(row, t)}</span>
+      <RowText row={row} active={marked} />
       {detail}
     </div>
     {action}
