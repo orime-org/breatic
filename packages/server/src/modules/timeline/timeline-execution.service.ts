@@ -101,6 +101,7 @@ function sameAction(row: TimelineExecution, inputHash: string): AcceptedExecutio
  * @throws {ForbiddenError} When the caller is below editor.
  * @throws {ValidationError} When the input is out of the configured bounds.
  * @throws {ConflictError} When the action was accepted with a different input.
+ * @throws {SpendCapReachedError} 402 when the caller or the studio has spent its monthly limit.
  * @throws {AppError} 402 when the studio's balance is not above zero.
  */
 export async function accept(userId: string, body: TimelineExecutionCreateInput & { projectId: string }): Promise<AcceptedExecution> {
