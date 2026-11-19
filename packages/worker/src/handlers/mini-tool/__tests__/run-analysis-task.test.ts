@@ -15,7 +15,7 @@ import { runMiniToolAnalysisTask } from "../run-analysis-task.js";
 import { FROZEN_PRESENTATION } from "./frozen-presentation.js";
 
 const h = vi.hoisted(() => ({ start: vi.fn(), finish: vi.fn(), deadline: vi.fn(), execute: vi.fn(),
-  extend: vi.fn(), delay: vi.fn(), error: vi.fn(), warn: vi.fn(), stream: {} }));
+  extend: vi.fn(), delay: vi.fn(), error: vi.fn(), warn: vi.fn(), abandon: vi.fn(), stream: {} }));
 vi.mock("@breatic/core", async (original) => {
   const actual = await original<typeof coreModule>();
   return { ...actual, getStreamRedis: () => h.stream, getWorkerConfig: () => ({ lock_duration_ms: 600000 }),
@@ -27,6 +27,7 @@ vi.mock("@breatic/domain", async (original) => {
 });
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }));
 vi.mock("@worker/handlers/mini-tool/analysis-completion.js", () => ({ finishMiniToolAnalysisAndNotify: h.finish }));
+vi.mock("@worker/handlers/mini-tool/run-end.js", () => ({ abandonUnresolvedModelSteps: h.abandon }));
 
 const TASK = "10000000-0000-4000-8000-000000000001";
 const DEADLINE = 1792927200000;
@@ -85,7 +86,7 @@ function trackedFixture(): { original: miniToolAnalysisService.MiniToolAnalysisE
 beforeEach(() => {
   vi.resetAllMocks(); vi.spyOn(Date, "now").mockReturnValue(DEADLINE - 1);
   h.start.mockResolvedValue(structuredClone(execution)); h.execute.mockResolvedValue(result); h.deadline.mockResolvedValue(DEADLINE);
-  h.extend.mockResolvedValue(1); h.finish.mockResolvedValue(undefined);
+  h.extend.mockResolvedValue(1); h.finish.mockResolvedValue(undefined); h.abandon.mockResolvedValue(undefined);
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -225,5 +226,29 @@ describe("tracked mask failures (execution design §10.3)", () => {
     h.execute.mockRejectedValue(new DeadlinePassed());
     expect(await runMiniToolAnalysisTask(job(), "token", h.execute)).toEqual({ failed: true, reason: "timeout" });
     expect(h.finish.mock.calls[0]?.[1]).toMatchObject({ kind: "error", error: { code: "timeout" } });
+  });
+});
+
+// Execution design §11.4 run end: every model step still unresolved is abandoned before the final state is written.
+describe("an analysis run's end", () => {
+  it("abandons its unresolved model steps before writing a failure, as a timeout past the deadline", async () => {
+    const order: string[] = [];
+    h.abandon.mockImplementation(() => { order.push("abandon"); return Promise.resolve(); });
+    h.finish.mockImplementation(() => { order.push("finish"); return Promise.resolve(); });
+    vi.mocked(Date.now).mockReturnValue(DEADLINE); h.execute.mockRejectedValue(new DeadlinePassed());
+    await runMiniToolAnalysisTask(job(2), "token", h.execute);
+    expect(order).toEqual(["abandon", "finish"]);
+    expect(h.abandon).toHaveBeenCalledExactlyOnceWith(TASK, "deadline");
+  });
+
+  it("abandons them before writing a result", async () => {
+    await runMiniToolAnalysisTask(job(), "token", h.execute);
+    expect(h.abandon).toHaveBeenCalledExactlyOnceWith(TASK, "failed");
+  });
+
+  it("abandons nothing while a step still runs", async () => {
+    h.execute.mockRejectedValue(new StillRunning(DEADLINE - 1)); h.delay.mockResolvedValue(undefined);
+    await expect(runMiniToolAnalysisTask(job(), "token", h.execute)).rejects.toBeInstanceOf(DelayedError);
+    expect(h.abandon).not.toHaveBeenCalled();
   });
 });

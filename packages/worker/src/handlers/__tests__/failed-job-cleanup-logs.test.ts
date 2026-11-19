@@ -166,3 +166,22 @@ function understandJob(): FailedJobLike {
     finishedOn: Date.now(),
   } as unknown as FailedJobLike;
 }
+
+const mockAbandon = vi.hoisted(() => vi.fn());
+const mockFinishAnalysis = vi.hoisted(() => vi.fn());
+vi.mock("@worker/handlers/mini-tool/run-end.js", () => ({ abandonUnresolvedModelSteps: mockAbandon }));
+vi.mock("@worker/handlers/mini-tool/analysis-completion.js", () => ({ finishMiniToolAnalysisAndNotify: mockFinishAnalysis }));
+
+// inner#1306 execution design §11.4 run end: a video mini-tool run nobody finished abandons its unresolved model steps
+// before its final state is written.
+describe("cleanupFailedJobNodes, ending a video mini-tool analysis nobody finished", () => {
+  it("abandons its unresolved model steps before writing the failure", async () => {
+    const order: string[] = [];
+    mockAbandon.mockImplementation(() => { order.push("abandon"); return Promise.resolve(); });
+    mockFinishAnalysis.mockImplementation(() => { order.push("finish"); return Promise.resolve(); });
+    const analysis = { name: "execute-mini-tool-analysis", data: { taskId: "task-9", hostNodeId: "node-9" }, finishedOn: Date.now() } as unknown as FailedJobLike;
+    await cleanupFailedJobNodes({} as never, analysis, "stalled");
+    expect(order).toEqual(["abandon", "finish"]);
+    expect(mockAbandon).toHaveBeenCalledWith("task-9", "failed");
+  });
+});

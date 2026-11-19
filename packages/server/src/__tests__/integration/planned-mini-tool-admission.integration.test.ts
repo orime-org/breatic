@@ -233,6 +233,15 @@ describe("planned POST real admission, strict body and original row/hold/queue o
   it("A14 rejects an unavailable real catalog before claim instead of using a fallback quote", async () => {
     const f = await seed(); configure(true, 1, ""); expect((await post(f)).status).toBe(503); expect(await counts(f)).toEqual({ tasks: 0, rows: 0, holds: 0, queue: 0 });
   });
+  it("A20 freezes the route the model was measured on into the plan (inner#1306 §11.2 route row)", async () => {
+    const f = await seed(); await accepted(f, await post(f));
+    expect((await parent(f)).params.miniToolExecution).toMatchObject({ model: "bria-fibo-video-background-remover", route: { mode: "upstream", upstream: "wavespeed" } });
+  });
+  it("A21 refuses before claim a call longer than the model's vendor limit (inner#1306 §11.5)", async () => {
+    const f = await seed(); await pg`UPDATE studio_assets SET duration_seconds=61 WHERE id=${f.sourceId}`;
+    const response = await post(f); expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ error: { reason: "input_refused" } }); expect(await counts(f)).toEqual({ tasks: 0, rows: 0, holds: 0, queue: 0 });
+  });
   it.each(["tool", "project_id", "space_id", "run_id", "draft", "analysis_refs", "outputs"])("H02 rejects missing %s as request_shape", async (field) => {
     const f = await seed(); const body = { ...f.body }; Reflect.deleteProperty(body, field); const response = await post(f, body);
     expect(response.status).toBe(422); expect(await response.json()).toMatchObject({ error: { reason: "request_shape" } }); expect(await counts(f)).toEqual({ tasks: 0, rows: 0, holds: 0, queue: 0 });

@@ -5,45 +5,79 @@
  * The pure rules of the tracking, erase and expand steps (inner#1306 execution design §10.3–§10.5, §10.7), shared by the
  * generic step runner:
  *
- * - `modelStepCategory(error, rejection)`: a paid model step's category, the lip-sync `gen` rule made tool-independent:
- *   400 and 422 at submit and the configured asynchronous rejection are `model_rejected`; a passed deadline, exhausted
- *   network retries, 408, 429 and 5xx are `timeout`; anything else `failed`.
+ * - `modelStepCategory(error, rejection)`: a paid model step's category from provider's errors (execution design §11.3):
+ *   a 400 or 422 refusal, an input no upstream takes and the configured asynchronous rejection are `model_rejected`; a
+ *   passed deadline and a run every upstream failed with 408, 429, 5xx or a request that never left are `timeout`;
+ *   anything else `failed`.
  * - `trackedMaskFailure(step, cause)`: the `{ code, step }` a failed tracking analysis stores; a container step's reason
  *   `empty_foreground` or `tracking_output_mismatch` keeps its name, SAM3 follows `modelStepCategory` with no rejection field.
  * - `eraseContainerCategory(reason)`: `model_output_mismatch` from the composite keeps its name, any other reason is `failed`.
  * - `expandFailureReason(windows, shared)`: a line per window that did not succeed; a window never submitted after a failure
  *   or an expiry is `generate` / `stopped`.
- * - `sam3RleLink(outputs)`: the RLE link of a SAM3 tracking answer, the `rle_url` of its one output; null for any other shape.
  * - `lipsyncTrackJoinFailureLine(reason)`: a person's `track_join` failure, `empty_foreground` as `track` / `no_face`, anything
  *   else as `track` / `failed`.
  */
 import { describe, expect, it } from "vitest";
-import { DeadlinePassed, HttpRetryError } from "@breatic/shared";
+import { DeadlinePassed } from "@breatic/shared";
+import { NoUpstreamAvailable, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@breatic/provider";
 import { expandFailureReasonSchema } from "@breatic/shared/mini-tools";
 import { lipsyncTrackJoinFailureLine } from "@worker/handlers/mini-tool/lipsync-steps.js";
-import { eraseContainerCategory, expandFailureReason, modelStepCategory, sam3RleLink, trackedMaskFailure } from "@worker/handlers/mini-tool/model-run-steps.js";
-import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
+import { eraseContainerCategory, expandFailureReason, modelStepCategory, trackedMaskFailure } from "@worker/handlers/mini-tool/model-run-steps.js";
+import { MediaRunFailed } from "@worker/handlers/media-run.js";
 
 /**
- * An asynchronous model failure carrying the upstream's error value.
- * @param value - The structured error.
+ * A run provider answered failed, as `runMedia` throws it.
+ * @param reason - provider's reason.
  * @returns The error.
  */
-function asyncFailure(value: unknown): UpstreamTaskFailed {
-  return Object.assign(new UpstreamTaskFailed("wavespeed", JSON.stringify(value)), { structuredError: value });
+function failed(reason: Error): MediaRunFailed {
+  return new MediaRunFailed(reason, [], "Model");
+}
+
+/**
+ * A refusal of the submit with a status.
+ * @param status - The status.
+ * @returns The error.
+ */
+function refused(status: number): MediaRunFailed {
+  return failed(new UpstreamRequestRejected("m", "wavespeed", "refused", [], { status }));
+}
+
+/**
+ * A run no upstream could serve.
+ * @param reasons - Why each was skipped.
+ * @returns The error.
+ */
+function unavailable(...reasons: UnavailableReason[]): MediaRunFailed {
+  return failed(new NoUpstreamAvailable("m", reasons));
+}
+
+/**
+ * An asynchronous model failure carrying the upstream's error object.
+ * @param detail - The error object.
+ * @returns The error.
+ */
+function asyncFailure(detail: unknown): MediaRunFailed {
+  return failed(new UpstreamTaskFailed("wavespeed", JSON.stringify(detail), detail));
 }
 const BRIA = { path: "code", equals: 1401 };
 
-describe("model step categories (execution design §10.4, §10.5 category tables)", () => {
+describe("model step categories (execution design §11.3 table)", () => {
   it.each([
-    ["Bria refusing the submit with 400", new HttpStatusError("wavespeed", 400, "{}"), BRIA, "model_rejected"],
-    ["VACE refusing the submit with 422", new HttpStatusError("wavespeed", 422, "{}"), undefined, "model_rejected"],
+    ["a passed deadline", new DeadlinePassed(), BRIA, "timeout"],
+    ["a submit refused with 400", refused(400), BRIA, "model_rejected"],
+    ["a submit refused with 422", refused(422), undefined, "model_rejected"],
+    ["a submit refused with another status", refused(403), undefined, "failed"],
+    ["an input no upstream takes", unavailable({ upstream: "wavespeed", kind: "unsupported_input", reason: "at most 5 seconds" }), undefined, "model_rejected"],
+    ["every upstream answering 429", unavailable({ upstream: "wavespeed", kind: "failed", failure: "http_status", status: 429 }), undefined, "timeout"],
+    ["every upstream answering 503", unavailable({ upstream: "wavespeed", kind: "failed", failure: "http_status", status: 503 }), undefined, "timeout"],
+    ["every upstream answering 408", unavailable({ upstream: "wavespeed", kind: "failed", failure: "http_status", status: 408 }), undefined, "timeout"],
+    ["a request that never left", unavailable({ upstream: "wavespeed", kind: "failed", failure: "not_sent" }), undefined, "timeout"],
+    ["an upstream without the model", unavailable({ upstream: "wavespeed", kind: "failed", failure: "model_not_found" }), undefined, "failed"],
+    ["a missing key", unavailable({ upstream: "wavespeed", kind: "missing_key", envVar: "WAVESPEED_API_KEY" }), undefined, "failed"],
     ["Bria failing with async code 1401", asyncFailure({ code: 1401 }), BRIA, "model_rejected"],
     ["Bria failing with another code", asyncFailure({ code: 1500 }), BRIA, "failed"],
     ["VACE failing asynchronously", asyncFailure({ code: 1401 }), undefined, "failed"],
-    ["a passed deadline", new DeadlinePassed(), BRIA, "timeout"],
-    ["exhausted network retries", new HttpRetryError("POST https://api.example.test", 3, new TypeError("fetch failed")), undefined, "timeout"],
-    ["a 503", new HttpStatusError("wavespeed", 503, ""), BRIA, "timeout"],
     ["any other error", new Error("boom"), BRIA, "failed"],
   ] as const)("MS01 %s is %s", (_name, error, rejection, category) => {
     expect(modelStepCategory(error, rejection)).toBe(category);
@@ -55,9 +89,9 @@ describe("tracked mask failure codes (execution design §10.3 code table)", () =
     ["join", { reason: "empty_foreground" }, { code: "empty_foreground", step: "join" }],
     ["join", { reason: "tracking_output_mismatch" }, { code: "tracking_output_mismatch", step: "join" }],
     ["prepare", { reason: "tool_failed" }, { code: "failed", step: "prepare" }],
-    ["track", new HttpStatusError("wavespeed", 400, "{}"), { code: "model_rejected", step: "track" }],
+    ["track", refused(400), { code: "model_rejected", step: "track" }],
     ["track", asyncFailure({ code: 1405 }), { code: "failed", step: "track" }],
-    ["track", new HttpStatusError("wavespeed", 429, ""), { code: "timeout", step: "track" }],
+    ["track", unavailable({ upstream: "wavespeed", kind: "failed", failure: "http_status", status: 429 }), { code: "timeout", step: "track" }],
     ["prepare", new DeadlinePassed(), { code: "timeout", step: "prepare" }],
   ] as const)("TM01 a %s failure from %j stores %j", (step, cause, expected) => {
     expect(trackedMaskFailure(step, cause)).toEqual(expected);
@@ -103,21 +137,6 @@ describe("expand failure reason (execution design §10.5 failure paragraph)", ()
 describe("lip-sync track_join failure line (execution design §10.2 last paragraph)", () => {
   it.each([["empty_foreground", "no_face"], ["tracking_output_mismatch", "failed"], ["tool_failed", "failed"]] as const)("LJ01 %s is track / %s", (reason, category) => {
     expect(lipsyncTrackJoinFailureLine(reason)).toEqual({ step: "track", category });
-  });
-});
-
-describe("SAM3 tracking answer (execution design §10.3 track step)", () => {
-  const rle = "https://provider.test.invalid/sam3/rle.json?signature=x";
-
-  it("TA01 reads the rle_url of the one output", () => {
-    expect(sam3RleLink([{ rle_url: rle, video_url: "https://provider.test.invalid/sam3/preview.mp4" }])).toBe(rle);
-  });
-
-  it.each([
-    undefined, null, {}, [], [rle], [null], [{}], [{ rle_url: "" }], [{ rle_url: "not a url" }], [{ rle_url: 1 }],
-    [{ rle_url: rle }, { rle_url: rle }],
-  ].map((outputs) => ({ outputs })))("TA02 is null for an answer of any other shape: %j", ({ outputs }) => {
-    expect(sam3RleLink(outputs)).toBeNull();
   });
 });
 
