@@ -6,7 +6,7 @@ import { addEdgeInDoc, addNodeInDoc, createEmptyNode, readEdges, readNodes } fro
 import { beforeAll, describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { ServerApiError } from "@mcp/server-api.js";
-import { runGeneration, transcribeNode, understandNode } from "@mcp/tools/generation-tools.js";
+import { runGeneration, runMiniTool, transcribeNode, understandNode } from "@mcp/tools/generation-tools.js";
 import { stubDeps, type ApiCall } from "@mcp/__tests__/tool-deps.js";
 
 beforeAll(() => {
@@ -200,5 +200,85 @@ describe("understand_node and transcribe_node", () => {
   it("refuses a node with no file", async () => {
     const { deps } = readingDeps(mediaNode("image", {}));
     await expect(understandNode.run(deps, { projectId: PROJECT, spaceId: SPACE, nodeId: "src" })).rejects.toMatchObject({ reason: "invalid_request" });
+  });
+});
+
+describe("run_mini_tool", () => {
+  const TOOL_CATALOG = {
+    image: [
+      model({ name: "nano-banana-2-quick-edit", modality: "image", mode: "edit", params: { resolution: { description: "", default: "1k", values: ["1k", "2k"] } } }),
+      model({ name: "bria-genfill", modality: "image", mode: "edit" }),
+    ],
+    video: [model({ name: "seedance-2.5-talking-avatar", modality: "video", mode: "avatar", params: { resolution: { description: "", default: "720p" } } })],
+    audio: [],
+    tts: [],
+    three_d: [],
+    total: 3,
+    credit_multiplier: 1,
+  };
+  const picture = { id: "src", type: "image", position: { x: 0, y: 0 }, data: { handling: 0, content: "https://cdn/p.png", mimeType: "image/png", width: 1200, height: 800 } };
+  const voice = { id: "voice", type: "audio", position: { x: 0, y: 300 }, data: { handling: 0, content: "https://cdn/v.mp3", duration: 4 } };
+
+  /**
+   * Deps whose collab reads the canvas nodes and places the result nodes.
+   * @returns The stubbed deps.
+   */
+  const toolDeps = (): ReturnType<typeof stubDeps> =>
+    stubDeps({
+      reply: (command) =>
+        command.type === "read_canvas"
+          ? { status: "done", result: { nodes: [picture, voice], edges: [], people: [] } }
+          : { status: "done", result: { nodeIds: ["result-1"] } },
+      api: (call) => (call.path === "/models" ? TOOL_CATALOG : { task_id: "task-m", status: "pending" }),
+    });
+
+  it("places the result node, then sends the panel's request for the tool", async () => {
+    const { deps, submitted, calls, tracked } = toolDeps();
+    const { value } = await runMiniTool.run(deps, { projectId: PROJECT, spaceId: SPACE, nodeId: "src", tool: "image.quickEdit", prompt: "make it night" });
+    expect(submitted.map((c) => [c.type, c.params])).toEqual([
+      ["read_canvas", { nodeIds: ["src"] }],
+      ["create_mini_tool_results", { toolId: "image.quickEdit", sourceNodeId: "src", params: { resolution: "2k" } }],
+    ]);
+    const post = calls.find((c) => c.path === "/mini-tools")!;
+    expect(post.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
+    expect(post.body).toEqual({
+      tool: "image.quickEdit",
+      project_id: PROJECT,
+      space_id: SPACE,
+      node_ids: ["result-1"],
+      source: { url: "https://cdn/p.png", mime_type: "image/png", width: 1200, height: 800 },
+      prompt: "make it night",
+      params: { resolution: "2k" },
+      slots: {},
+    });
+    expect(value).toEqual({ taskId: "task-m", nodeIds: ["result-1"] });
+    expect(tracked).toEqual([{ taskId: "task-m", tool: "run_mini_tool" }]);
+  });
+
+  it("refuses an empty prompt the tool needs before placing anything", async () => {
+    const { deps, submitted } = toolDeps();
+    await expect(runMiniTool.run(deps, { projectId: PROJECT, spaceId: SPACE, nodeId: "src", tool: "image.quickEdit" })).rejects.toMatchObject({ reason: "promptMissing" });
+    expect(submitted.map((c) => c.type)).toEqual(["read_canvas"]);
+  });
+
+  it("asks for the mask a painting tool needs, and sends it beside the source", async () => {
+    const missing = toolDeps();
+    await expect(runMiniTool.run(missing.deps, { projectId: PROJECT, spaceId: SPACE, nodeId: "src", tool: "image.inpaint", prompt: "a hat" })).rejects.toMatchObject({ reason: "drawingEmpty" });
+    const { deps, calls } = toolDeps();
+    await runMiniTool.run(deps, { projectId: PROJECT, spaceId: SPACE, nodeId: "src", tool: "image.inpaint", prompt: "a hat", mask: "https://cdn/mask.png" });
+    expect(calls.find((c) => c.path === "/mini-tools")!.body).toMatchObject({ drawing: { mask: "https://cdn/mask.png" } });
+  });
+
+  it("fills a slot from a node on the canvas", async () => {
+    const { deps, submitted, calls } = toolDeps();
+    await runMiniTool.run(deps, { projectId: PROJECT, spaceId: SPACE, nodeId: "src", tool: "image.digital-human", prompt: "hello", slots: { audio: "voice" } });
+    expect(submitted[0]!.params).toEqual({ nodeIds: ["src", "voice"] });
+    expect(calls.find((c) => c.path === "/mini-tools")!.body).toMatchObject({ slots: { audio: { url: "https://cdn/v.mp3", duration: 4 } } });
+  });
+
+  it("leaves a tool that runs without our models to the agent", async () => {
+    const { deps, submitted } = toolDeps();
+    await expect(runMiniTool.run(deps, { projectId: PROJECT, spaceId: SPACE, nodeId: "src", tool: "image.crop" })).rejects.toMatchObject({ reason: "invalid_request" });
+    expect(submitted).toEqual([]);
   });
 });
