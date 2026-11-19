@@ -39,7 +39,10 @@ export interface WebAnimationRunBody {
   base?: { packageUrl: string; viewport: { width: number; height: number }; durationFrames: number; fontSetVersion: number };
 }
 
-/** The port the render runner listens on, and its paths, are the creation runner's. */
+/**
+ * What the render Durable Object posts to the render runner: the source package to render, the frozen frame, rate
+ * and length, and where the runner writes the video and its cover and posts its phase and final report.
+ */
 export interface WebAnimationRenderRunBody {
   /** The source package, read by GET through `r2.local`. */
   packageUrl: string;
