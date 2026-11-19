@@ -7,6 +7,16 @@ import { TRANSLATED_PRODUCT_NOUNS } from "#repo-lint/product-noun-denylist";
 const TRANSLATED_CATALOG = /^locales\/(zh-CN|zh-TW|ja|ko)\.json$/;
 
 /**
+ * The non-English template style catalogs (inner#1817). Only the names a menu
+ * shows are checked there: a style's own words say 画布 or キャンバス for the
+ * painter's support, which is not the product's Canvas.
+ */
+const STYLE_CATALOG = /^locales\/template-styles\/(zh-CN|zh-TW|ja|ko)\.json$/;
+
+/** The style catalog keys a menu shows: a style's name and a category's name. */
+const SHOWN_STYLE_KEY = /(\.name|\.category\.[^.]+)$/;
+
+/**
  * Reads every leaf string in a catalog, keyed by its dotted path.
  * @param value A parsed catalog or one of its subtrees.
  * @param prefix The dotted path accumulated so far.
@@ -49,7 +59,7 @@ export const noTranslatedProductNoun = {
   description: "Product nouns stay English in every locale",
   run(context: CheckContext): Finding[] {
     const catalogs = context.files(
-      (path) => TRANSLATED_CATALOG.test(path),
+      (path) => TRANSLATED_CATALOG.test(path) || STYLE_CATALOG.test(path),
       "non-English locale catalogs",
     );
 
@@ -57,6 +67,7 @@ export const noTranslatedProductNoun = {
     for (const catalog of catalogs) {
       const strings = flatten(JSON.parse(context.read(catalog)) as unknown);
       for (const [key, value] of Object.entries(strings)) {
+        if (STYLE_CATALOG.test(catalog) && !SHOWN_STYLE_KEY.test(key)) continue;
         for (const [noun, forms] of TRANSLATED_PRODUCT_NOUNS) {
           for (const form of forms) {
             if (value.includes(form)) {
