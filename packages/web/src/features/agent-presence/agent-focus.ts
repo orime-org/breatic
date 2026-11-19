@@ -94,7 +94,7 @@ export function agentColor(connectionId: string): string {
  */
 export function followedAgent(agents: ReadonlyArray<ProjectAgent>, followId: string | null): ProjectAgent | null {
   const connectionId = followId === null ? null : connectionOfOccupant(followId);
-  return connectionId === null ? null : agents.find((a) => a.connectionId === connectionId) ?? null;
+  return agents.find((a) => a.connectionId === connectionId) ?? null;
 }
 
 /**
