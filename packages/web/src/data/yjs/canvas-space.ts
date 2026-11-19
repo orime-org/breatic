@@ -14,7 +14,7 @@ import { CANVAS_NODES_KEY } from '@breatic/shared';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import { runHistoryStep } from '@web/data/yjs/history-step';
-import type { CommentMention, NodeMediaFields } from '@breatic/shared';
+import type { AnnotationAssignment, CommentMention, NodeMediaFields } from '@breatic/shared';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import type { CanvasEdge, CanvasNodeView, NodePlacement, SnapshotNode } from '@breatic/shared/canvas-model';
 import {
@@ -48,6 +48,7 @@ import {
   replyIndex,
   resizeGroupInDoc,
   restoreNodeMediaInDoc,
+  setAnnotationAssignmentInDoc,
   setGroupBackgroundInDoc,
   setNodeExtractedTextInDoc,
   setNodeLockedInDoc,
@@ -832,6 +833,32 @@ export function editReply(
   return writeSpaceDoc(name, options, () => {
     doc.transact(() => editReplyInDoc(doc, nodeId, replyId, content, editedAt, mentions), CANVAS_UNDO);
   }).ok;
+}
+
+/**
+ * Hand a note's thread to an external agent, or take it back (#1488 §11.7).
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the annotation.
+ * @param nodeId - Id of the annotation.
+ * @param assignment - Who it is handed to; null takes it back.
+ * @returns Whether it was written; false when the note is gone or the size cap refused it.
+ */
+export function setAnnotationAssignment(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  assignment: AnnotationAssignment | null,
+): boolean {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  if (!annotationEditTarget(doc, nodeId, null)) return false;
+  const { name, options } = canvasWrite(projectId, spaceId, 'edit');
+  let wrote = false;
+  const result = writeSpaceDoc(name, options, () => {
+    doc.transact(() => {
+      wrote = setAnnotationAssignmentInDoc(doc, nodeId, assignment);
+    }, CANVAS_UNDO);
+  });
+  return result.ok && wrote;
 }
 
 /**

@@ -13,6 +13,25 @@ import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 /** The React Query key of the user's connection list. */
 export const AGENT_CONNECTIONS_KEY = ['agent-access', 'connections'] as const;
 
+/** One thread the user handed over in a Space, as the server keeps it (#1488 §11.7). */
+export interface SpaceAssignment {
+  threadId: string;
+  connectionId: string;
+  /** When, epoch milliseconds; equals the thread's own `assignedAt` once synced. */
+  assignedAt: number;
+  status: 'pending' | 'answered' | 'resolved';
+}
+
+/**
+ * The React Query key of what the user handed over in one Space.
+ * @param projectId - The project.
+ * @param spaceId - The Space; left out, every Space of the project.
+ * @returns The key.
+ */
+export function commentAssignmentsKey(projectId: string, spaceId?: string): readonly string[] {
+  return spaceId === undefined ? ['comment-assignments', projectId] : ['comment-assignments', projectId, spaceId];
+}
+
 export const agentAccessApi = {
   /**
    * The user's live connections, newest first.
@@ -53,5 +72,31 @@ export const agentAccessApi = {
    */
   createToken(name: string, expiresInDays: PersonalAccessTokenExpiryDays): Promise<CreatedPersonalAccessToken> {
     return apiPost<CreatedPersonalAccessToken>('/agent-access/personal-access-tokens', { name, expiresInDays });
+  },
+
+  /**
+   * The names of connections, anyone's and deleted ones included, so a reply
+   * an external agent wrote can say which one.
+   * @param ids - The connections.
+   * @returns Their names; unknown ids are left out.
+   * @throws {import('@web/data/api/types').ApiException} When the read fails.
+   */
+  connectionNames(ids: readonly string[]): Promise<Array<{ id: string; name: string }>> {
+    return apiGet<Array<{ id: string; name: string }>>(
+      `/agent-access/connections/names?ids=${encodeURIComponent(ids.join(','))}`,
+    );
+  },
+
+  /**
+   * What the user handed over in one Space.
+   * @param projectId - The project.
+   * @param spaceId - The Space.
+   * @returns The hand-overs.
+   * @throws {import('@web/data/api/types').ApiException} When the read fails.
+   */
+  spaceAssignments(projectId: string, spaceId: string): Promise<SpaceAssignment[]> {
+    return apiGet<SpaceAssignment[]>(
+      `/comment-assignments?project_id=${encodeURIComponent(projectId)}&space_id=${encodeURIComponent(spaceId)}`,
+    );
   },
 };
