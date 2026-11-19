@@ -21,6 +21,7 @@
  */
 
 import type { CommentData } from '@blocknote/core/comments';
+import type { AnnotationAssignment } from '@breatic/shared';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import * as React from 'react';
 
@@ -55,6 +56,10 @@ export interface CommentEntryView {
   readonly createdAt: Date;
   /** Whether it landed from a proposal the Agent made (inner#1509). */
   readonly fromAgent: boolean;
+  /** The external-agent connection that wrote it for its author, or null (#1488 §11.7). */
+  readonly via: string | null;
+  /** The hand-over it answers, by that hand-over's time, or null. */
+  readonly answers: number | null;
 }
 
 /** One card, with everything drawn on it. */
@@ -69,6 +74,8 @@ export interface CommentCardView {
   readonly media: MediaQuote | null;
   /** The opening comment and every reply, oldest first. */
   readonly entries: readonly CommentEntryView[];
+  /** Who the thread is handed to, if anyone (#1488 §11.7). */
+  readonly assignment: AnnotationAssignment | undefined;
 }
 
 /** The two groups the panel draws. */
@@ -117,6 +124,7 @@ function entryOf(
   comment: CommentData,
   source: CommentsApi,
 ): CommentEntryView {
+  const meta = comment.metadata as { via?: unknown; answers?: unknown } | undefined;
   return {
     id: comment.id,
     author: source.userStore.getUser(comment.userId)?.username ?? null,
@@ -125,6 +133,8 @@ function entryOf(
     body: bodyText(comment.body),
     createdAt: comment.createdAt,
     fromAgent: (comment.metadata as { fromAgent?: unknown } | undefined)?.fromAgent === true,
+    via: typeof meta?.via === 'string' ? meta.via : null,
+    answers: typeof meta?.answers === 'number' ? meta.answers : null,
   };
 }
 
@@ -158,7 +168,42 @@ function drawCard(
     quote: quote ?? '',
     media,
     entries: thread.comments.map((comment) => entryOf(comment, source)),
+    assignment: assignmentOf(thread.metadata),
   };
+}
+
+/**
+ * The hand-over a thread's metadata holds, when it is a whole one.
+ * @param metadata - The thread's metadata.
+ * @returns It, or undefined.
+ */
+function assignmentOf(metadata: unknown): AnnotationAssignment | undefined {
+  const a = (metadata as { assignment?: Partial<AnnotationAssignment> } | undefined)?.assignment;
+  if (
+    typeof a?.connectionId !== 'string' ||
+    typeof a.assignedBy !== 'string' ||
+    typeof a.assignedAt !== 'number' ||
+    typeof a.projectId !== 'string'
+  ) {
+    return undefined;
+  }
+  return { connectionId: a.connectionId, assignedBy: a.assignedBy, assignedAt: a.assignedAt, projectId: a.projectId };
+}
+
+/**
+ * Whether two hand-overs are the same.
+ * @param a - One.
+ * @param b - The other.
+ * @returns True when they hand the thread to the same connection at the same time.
+ */
+function sameAssignment(a: AnnotationAssignment | undefined, b: AnnotationAssignment | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return (
+    a.connectionId === b.connectionId &&
+    a.assignedBy === b.assignedBy &&
+    a.assignedAt === b.assignedAt &&
+    a.projectId === b.projectId
+  );
 }
 
 /**
@@ -173,6 +218,7 @@ function sameCard(a: CommentCardView, b: CommentCardView): boolean {
     a.settled === b.settled &&
     a.quote === b.quote &&
     sameMediaQuote(a.media, b.media) &&
+    sameAssignment(a.assignment, b.assignment) &&
     a.entries.length === b.entries.length &&
     a.entries.every((entry, index) => {
       const other = b.entries[index];
@@ -182,7 +228,9 @@ function sameCard(a: CommentCardView, b: CommentCardView): boolean {
         entry.author === other.author &&
         entry.avatarUrl === other.avatarUrl &&
         entry.body === other.body &&
-        entry.fromAgent === other.fromAgent
+        entry.fromAgent === other.fromAgent &&
+        entry.via === other.via &&
+        entry.answers === other.answers
       );
     })
   );

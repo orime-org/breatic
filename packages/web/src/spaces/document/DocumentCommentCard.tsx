@@ -42,6 +42,10 @@ import { X } from 'lucide-react';
 import * as React from 'react';
 
 import type { CommentMention, ProjectRole } from '@breatic/shared';
+import { answeredHandOver } from '@web/features/comment-handover/hand-over-state';
+import { HandOverButton } from '@web/features/comment-handover/HandOverButton';
+import { HandOverStatus } from '@web/features/comment-handover/HandOverStatus';
+import { ReplyVia } from '@web/features/comment-handover/ReplyVia';
 
 import { PreviewImg } from '@web/components/PreviewImg';
 import { Button } from '@web/components/ui/button';
@@ -179,6 +183,12 @@ interface DocumentCommentCardProps {
   projectId?: string;
   /** Takes a member picked in the reply box, with the words it wrote. */
   onMention?: (threadId: string, body: string, mention: CommentMention) => void;
+  /** The Space the thread is in; with `projectId`, what the hand-over label reads. */
+  spaceId?: string;
+  /** Hands the thread to one of the user's external agents (#1488 §11.7). */
+  onHandOver?: (threadId: string, connectionId: string) => void;
+  /** Takes the hand-over back. */
+  onTakeBack?: (threadId: string) => void;
 }
 
 /**
@@ -239,6 +249,7 @@ function Entry({
       <div className='min-w-0 flex-1'>
         <div className='flex items-center text-2xs'>
           <span className='min-w-0 truncate font-medium'>{author}</span>
+          {entry.via === null ? null : <ReplyVia connectionId={entry.via} className='ml-1.5' />}
           {entry.fromAgent ? (
             <span className='ml-1.5 shrink-0 whitespace-nowrap text-muted-foreground' data-testid='doc-comment-from-agent'>
               {t('spaces.document.comment.fromAgent')}
@@ -292,6 +303,9 @@ function Entry({
  * @param root0.onDeleteReply - Withdraws one reply.
  * @param root0.projectId - The project the reply box's @ list offers.
  * @param root0.onMention - Takes a member picked in the reply box.
+ * @param root0.spaceId - The Space the thread is in.
+ * @param root0.onHandOver - Hands the thread to an external agent.
+ * @param root0.onTakeBack - Takes the hand-over back.
  * @returns The card.
  */
 export const DocumentCommentCard = React.memo(function DocumentCommentCard({
@@ -309,6 +323,9 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
   onDeleteReply,
   projectId,
   onMention,
+  spaceId,
+  onHandOver,
+  onTakeBack,
 }: DocumentCommentCardProps): React.JSX.Element {
   const t = useTranslation();
   const reply = draft;
@@ -353,6 +370,8 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
     [projectId, onMention, card.id],
   );
 
+  const answered = answeredHandOver(card.assignment, card.entries);
+
   /** Throws away what was written, which is what Cancel and Escape do. */
   const callOff = React.useCallback(() => {
     setReply('');
@@ -366,9 +385,22 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
       data-selected={marked}
       className={`${CARD_SURFACE} ${CARD_READING_OUTLINE} data-[settled=true]:text-muted-foreground`}
     >
-      {card.media === null
-        ? <CommentQuote words={card.quote} testId='doc-comment-card-quote' />
-        : <MediaCommentQuote media={card.media} testId='doc-comment-card-quote' />}
+      <div className='flex items-start gap-2'>
+        <div className='min-w-0 flex-1'>
+          {card.media === null
+            ? <CommentQuote words={card.quote} testId='doc-comment-card-quote' />
+            : <MediaCommentQuote media={card.media} testId='doc-comment-card-quote' />}
+        </div>
+        {mayWrite && reading && onHandOver !== undefined && onTakeBack !== undefined ? (
+          <HandOverButton
+            assignment={card.assignment}
+            viewerId={viewerId}
+            answered={answered}
+            onAssign={(connectionId) => onHandOver(card.id, connectionId)}
+            onCancel={() => onTakeBack(card.id)}
+          />
+        ) : null}
+      </div>
 
       {drawn.map((entry, index) => (
         <React.Fragment key={entry.id}>
@@ -404,6 +436,19 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
           )}
         </React.Fragment>
       ))}
+
+      {projectId === undefined || spaceId === undefined ? null : (
+        <HandOverStatus
+          projectId={projectId}
+          spaceId={spaceId}
+          threadId={card.id}
+          assignment={card.assignment}
+          viewerId={viewerId}
+          answered={answered}
+          resolved={settled}
+          className='mt-1.5 flex'
+        />
+      )}
 
       {/* A settled thread takes no replies: the discussion is over until
           somebody reopens it. */}
