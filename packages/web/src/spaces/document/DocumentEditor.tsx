@@ -62,6 +62,7 @@ import { useDocumentVersions } from '@web/spaces/document/use-document-versions'
 import { DocumentVersionAreaUnavailable } from '@web/spaces/document/DocumentVersionAreaUnavailable';
 import { useDocumentFollow } from '@web/spaces/document/use-document-follow';
 import { usePublishTopBlock } from '@web/spaces/document/use-publish-top-block';
+import { captureElement } from '@web/features/view-capture/capture-element';
 import { registerViewCapture } from '@web/features/view-capture/registry';
 import { visibleBlockIds } from '@web/spaces/document/block-scroll';
 import { useFollowStore } from '@web/stores/follow';
@@ -312,10 +313,8 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   React.useEffect(() => {
     if (captureSpaceId === null || viewport === null || bodyRoot === null) return undefined;
     return registerViewCapture(captureSpaceId, async () => {
-      const { toCanvas } = await import('html-to-image');
       const content = (viewport.firstElementChild as HTMLElement | null) ?? viewport;
-      const canvas = await toCanvas(content, {
-        pixelRatio: 1,
+      const canvas = await captureElement(content, {
         width: viewport.clientWidth,
         height: viewport.clientHeight,
         style: { transform: `translate(${-viewport.scrollLeft}px, ${-viewport.scrollTop}px)` },

@@ -160,6 +160,7 @@ import { steppedMarkSize } from '@web/stores/mark-draft';
 import { uploadDerivedImage } from '@web/spaces/canvas/upload-derived-image';
 import { failUploadIntoNode, startUploadIntoNode } from '@web/spaces/canvas/upload-into-node';
 import { useCanvasRevealReceiver } from '@web/spaces/canvas/use-canvas-reveal-receiver';
+import { captureElement } from '@web/features/view-capture/capture-element';
 import { registerViewCapture } from '@web/features/view-capture/registry';
 import { flowAreaOnScreen, visibleNodeIds } from '@web/spaces/canvas/canvas-view-capture';
 import {
@@ -3028,9 +3029,7 @@ function CanvasSpaceInner({
   React.useEffect(() => {
     if (flowShell === null) return undefined;
     return registerViewCapture(spaceId, async () => {
-      const { toCanvas } = await import('html-to-image');
-      const canvas = await toCanvas(flowShell, {
-        pixelRatio: 1,
+      const canvas = await captureElement(flowShell, {
         filter: (el) =>
           !(el instanceof HTMLElement) ||
           !(el.classList.contains('react-flow__minimap') || el.classList.contains('react-flow__panel')),
