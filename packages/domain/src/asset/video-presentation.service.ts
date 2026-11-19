@@ -4,10 +4,11 @@
 import { randomUUID } from 'node:crypto';
 import { budgetDeadlineFrom, ConflictError, NotFoundError, ValidationError, createQueue, defaultJobOpts, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from '@breatic/core';
 import { t, videoPresentationAtIngest, videoPresentationAwaitsServer, videoPresentationResponseSchema,
-  videoPresentationSourceBindingSchema, type VideoPresentationTableReadLimits,
+  videoPresentationSourceBindingSchema,
   type StudioAssetEntity, type VideoPresentation, type VideoPresentationIngestPreparation, type VideoPresentationIngestRequest, type VideoPresentationPricing,
   type VideoPresentationIngestSnapshot, type VideoPresentationResponse, type VideoPresentationSourceBinding } from '@breatic/shared';
 import { findById, findLiveByStorageKey } from '@domain/asset/asset.repo.js';
+import { videoEncoderRates } from '@domain/asset/video-encoder-rates.js';
 
 /** An authorized read of a canonical registered video. */
 export interface ResolveVideoPresentationInput { projectId: string; userId: string; canonicalURL: string }
@@ -126,8 +127,6 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
   const storage = await getStorageAdapter();
   const config = getMiniToolsConfig();
   const settings = config.presentation;
-  const ledger = settings.source_ledger;
-  const encoder = config.encoding.encoder;
   const proposed = { jobId: `video-presentation-${options.requestId ?? randomUUID()}`, deadlineAt: options.parentDeadlineAt ?? budgetDeadlineFrom(Date.now()) };
   const request: VideoPresentationIngestRequest = {
     action: 'accept', storageKey: row.storageKey, sourceFingerprint: row.contentHash, ...proposed,
@@ -137,26 +136,24 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
     actorUserId: options.userId ?? row.producedByUserId, projectId: options.projectId ?? null,
     // One public base; ingest derives every object URL from it. publicUrl(key) is the base joined to the key.
     publicBaseURL: storage.publicUrl(row.storageKey).slice(0, -`/${row.storageKey}`.length),
-    limits: { ...config.plan_limits, maxSourceBytes: settings.max_source_bytes, maxPackedBytes: settings.max_packed_bytes, crf: settings.crf, preset: settings.preset,
-      sourceLedger: { maxBytes: ledger.max_bytes, probeStdoutBytes: ledger.probe_stdout_bytes, metadataBytes: ledger.metadata_bytes,
-        isoBoxCount: ledger.iso_box_count, matroskaElementCount: ledger.matroska_element_count, matroskaMaxBlocks: ledger.matroska_max_blocks } },
-    // Both container prices are frozen together (design §5.1 step 1): basic probes and copies, standard-4 encodes.
+    // The probe's output cap is presentation.probe_output_max_bytes (frames-split §8.2).
+    limits: { ...config.plan_limits, probeStdoutBytes: settings.probe_output_max_bytes, maxSourceBytes: settings.max_source_bytes,
+      maxPackedBytes: settings.max_packed_bytes, crf: settings.crf, preset: settings.preset },
+    // Both container prices are frozen together (design §5.1 step 1): basic probes, standard-4 counts and encodes.
     pricing: { basic: priceOf(settings.container_class), standard4: priceOf(config.encoding.encoder.container_class) },
     targetPolicyVersion: settings.policy_version,
-    policy: { chunkRetries: config.encoding.chunk_retries, maxAutoRepairs: ledger.max_auto_repairs },
+    // Ledger auto-repairs are gone with the ledger (frames-split §8.2): an invalid P is readmitted at most once (§3.5).
+    policy: { chunkRetries: config.encoding.chunk_retries },
+    // The rate table frozen at admission carries every decode key and edit tier (§5.4 estimate row).
     encoding: {
       chunkShare: config.encoding.chunk_share, maxParallelChunks: config.encoding.max_parallel_chunks,
-      encoder: { startSeconds: encoder.start_seconds, encodePixelsPerSecond: encoder.encode_pixels_per_second, decodeConvertPixelsPerSecond: encoder.decode_convert_pixels_per_second,
-        aacEncodeSecondsPerSecond: encoder.aac_encode_seconds_per_second },
-      copyDiskMarginBytes: config.encoding.copy_disk_margin_bytes,
+      encoder: { ...videoEncoderRates(config), aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second },
+      edit: { crf: settings.edit.crf, preset: settings.edit.preset, proresProfile: settings.edit.prores_profile, bytesPerPixel: settings.edit.bytes_per_pixel,
+        maxEditBytes: settings.max_edit_bytes },
       carrier: { maxShortSide: settings.carrier.max_short_side, color: settings.carrier.color },
     },
-    // The probe's sample count, the single-frame duration and the identity table are frozen with the job (design §5.1 step 2, §4.1).
-    probe: {
-      sampleFrames: settings.probe_sample_frames, singleFrameDurationMs: settings.single_frame_duration_ms,
-      identityFormats: settings.identity_formats.map((entry) => ({ container: entry.container, videoCodec: entry.video_codec, profiles: entry.profiles,
-        pixFmt: entry.pix_fmt, bitDepth: entry.bit_depth, audioCodecs: entry.audio_codecs, rotation: entry.rotation, sar: entry.sar, matrixTagged: entry.matrix_tagged })),
-    },
+    // The probe's sample count, the single-frame duration and the rate cap are frozen with the job (design §5.1 step 2, §4.1).
+    probe: { sampleFrames: settings.probe_sample_frames, singleFrameDurationMs: settings.single_frame_duration_ms, maxFps: settings.max_fps },
   };
   const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, request);
   await enqueue(row, snapshot);
@@ -164,17 +161,8 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
 }
 
 /**
- * The current read policy for a stored source frame table.
- * @returns The configured compact-table byte budget.
- * @throws {Error} When configuration cannot be read.
- */
-function sourceLedgerReadLimits(): VideoPresentationTableReadLimits {
-  return { maxBytes: getMiniToolsConfig().presentation.source_ledger.max_bytes };
-}
-
-/**
  * Mirror the snapshot in the public response (design §3.5 web→server row, §5.1 step 6): the registered binding, the
- * selected bundle, the target preparation and the selected version's ledger, polling exactly while the reader waits.
+ * selected bundle and the target preparation, polling exactly while the user waits.
  * @param binding - Current registry identity.
  * @param snapshot - Validated durable source facts.
  * @returns The public response.
@@ -182,9 +170,8 @@ function sourceLedgerReadLimits(): VideoPresentationTableReadLimits {
  */
 function response(binding: VideoPresentationSourceBinding, snapshot: VideoPresentationIngestSnapshot): VideoPresentationResponse {
   return videoPresentationResponseSchema.parse({
-    sourceBinding: binding, presentation: snapshot.presentation, preparation: snapshot.preparation, ledger: snapshot.ledger,
+    sourceBinding: binding, presentation: snapshot.presentation, preparation: snapshot.preparation,
     pollAfterMs: videoPresentationAwaitsServer(snapshot) ? getMiniToolsConfig().poll_interval_ms : null,
-    sourceLedgerReadLimits: sourceLedgerReadLimits(),
   });
 }
 

@@ -94,18 +94,19 @@ export async function queueForReclaim(entry: ReclaimEntry): Promise<void> {
 }
 
 /**
- * Queue derived presentation objects that no live pin references any more (inner#1306 §7.15). Idempotent like
- * `queueForReclaim`; the offline job checks the pins again before it deletes anything.
- * @param keys - The released object keys.
+ * Queue derived objects that no live pin references any more (inner#1306 §7.15). A presentation-derived object records its
+ * canonical key in `kept_storage_key`, so reclaim can check that key's current descriptor; an execution or analysis
+ * intermediate records none. Idempotent like `queueForReclaim`; the offline job checks the pins again before it deletes.
+ * @param entries - The released object keys with their canonical key, or null.
  * @param tx - The transaction that released them.
  * @returns Nothing.
  * @throws {Error} When the insert fails for any reason other than the conflict.
  */
-export async function queueDerived(keys: readonly string[], tx: DbTx): Promise<void> {
-  if (keys.length === 0) return;
+export async function queueDerived(entries: readonly { storageKey: string; canonicalKey: string | null }[], tx: DbTx): Promise<void> {
+  if (entries.length === 0) return;
   await tx.execute(sql`
-    INSERT INTO storage_reclaim_queue (storage_key, kind)
-    VALUES ${sql.join(keys.map((key) => sql`(${key}, 'derived')`), sql`, `)}
+    INSERT INTO storage_reclaim_queue (storage_key, kind, kept_storage_key)
+    VALUES ${sql.join(entries.map((entry) => sql`(${entry.storageKey}, 'derived', ${entry.canonicalKey})`), sql`, `)}
     ON CONFLICT (storage_key) DO NOTHING
   `);
 }

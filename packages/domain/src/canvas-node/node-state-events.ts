@@ -15,7 +15,7 @@
  */
 
 import { publishNodeEvent, type getStreamRedis } from "@breatic/core";
-import type { NodeTaskCounts, NodeTaskCountsEvent, NodeTaskResult } from "@breatic/shared";
+import type { FocusImage, NodeTaskCounts, NodeTaskCountsEvent, NodeTaskResult } from "@breatic/shared";
 
 /**
  * Publish a node's four task counts (#186, design §3.4).
@@ -39,6 +39,8 @@ import type { NodeTaskCounts, NodeTaskCountsEvent, NodeTaskResult } from "@breat
  *   kind from being written against this function by accident; the server
  *   sends those through `publishCountsQuietly`, which logs and carries on.
  * @param resultOrigin - Immutable planned output identity, sent only with media.
+ * @param focusImageAppend - A landed video focus crop's image, which collab appends to the node's focus images
+ *   (frames-split §5.5 delivery row); it carries no `result`.
  */
 export async function emitNodeTaskCounts(
   streamRedis: ReturnType<typeof getStreamRedis>,
@@ -47,6 +49,7 @@ export async function emitNodeTaskCounts(
   counts: NodeTaskCounts,
   result: NodeTaskResult | undefined,
   resultOrigin?: NodeTaskCountsEvent["resultOrigin"],
+  focusImageAppend?: FocusImage,
 ): Promise<void> {
   await publishNodeEvent(streamRedis, {
     type: "node-task-counts",
@@ -55,5 +58,6 @@ export async function emitNodeTaskCounts(
     counts,
     ...(result !== undefined && { result }),
     ...(result !== undefined && resultOrigin !== undefined && { resultOrigin }),
+    ...(focusImageAppend !== undefined && { focusImageAppend }),
   });
 }

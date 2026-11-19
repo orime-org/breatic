@@ -11,7 +11,7 @@ import { and, eq, desc, inArray, isNull, sql } from "drizzle-orm";
 import { db, type DbTx } from "@breatic/core";
 import { tasks } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
-import type { MiniToolMedium } from "@breatic/shared/mini-tools";
+import { VIDEO_TOOL_IDS, type MiniToolMedium } from "@breatic/shared/mini-tools";
 import type { DueMiniToolSettlement, DueMiniToolSettlementPage, MiniToolSettlement, MiniToolSettlementClaim, MiniToolSettlementCursor } from "@domain/mini-tool/consumption.types.js";
 import type { MiniToolDeliveryState, MiniToolDeliveryCursor } from "@domain/mini-tool/delivery.service.js";
 
@@ -491,7 +491,8 @@ export async function claimMiniToolExecutionTask(data: {
  * @param spaceId - The original canvas Space.
  * @param nodeIds - Exact original output destinations.
  * @param tx - The transaction holding the immutable original execution lock.
- * @returns Whether a pending or running planned execution already owns any destination.
+ * @returns Whether a pending or running planned execution that writes its output node's content already owns any
+ *   destination; a video focus crop only appends to its panel node's focus images, so it never does (frames-split §5.5).
  * @throws {Error} When the database read fails.
  */
 export async function hasActiveMiniToolExecutionNodes(projectId: string, spaceId: string, nodeIds: string[], tx: DbTx): Promise<boolean> {
@@ -499,6 +500,7 @@ export async function hasActiveMiniToolExecutionNodes(projectId: string, spaceId
     SELECT ${tasks.id} AS id FROM ${tasks}
     WHERE ${tasks.projectId} = ${projectId} AND ${tasks.spaceId} = ${spaceId}
       AND ${tasks.source} = 'mini_tool' AND ${tasks.status} IN ('pending', 'running')
+      AND ${tasks.params}->'miniToolExecution'->>'tool' IN (${sql.join(VIDEO_TOOL_IDS.map((tool) => sql`${tool}`), sql`, `)})
       AND EXISTS (SELECT 1 FROM jsonb_array_elements(${tasks.params}->'miniToolExecution'->'outputs') AS output
         WHERE output->>'nodeId' IN (${sql.join(nodeIds.map((id) => sql`${id}`), sql`, `)}))
     LIMIT 1`);

@@ -9,10 +9,10 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { AppError, ValidationError, getStorageAdapter, type MiniToolsConfig } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { t, type VideoPresentationDisplay } from "@breatic/shared";
 import {
-  lipsyncClipCropFrames, lipsyncPictureBytes, lipsyncSourceSpan, lipsyncTimeline, lipsyncUsedSourceRange, type TrackingClips, miniToolAnalysisRecordSchema, presentationFrameAt, presentationVideoEnd,
-  type LipsyncTimeline, type MiniToolPlannedRequest, type VideoExecutionDialogue, type VideoPresentationTable,
+  lipsyncClipCropFrames, lipsyncPictureBytes, lipsyncSourceSpan, lipsyncTimeline, lipsyncUsedSourceRange, type TrackingClips, miniToolAnalysisRecordSchema,
+  type LipsyncTimeline, type MiniToolPlannedRequest, type VideoExecutionDialogue,
 } from "@breatic/shared/mini-tools";
 import { miniToolFrozenAnalysisSchema } from "@domain/mini-tool/analysis.service.js";
 import * as assetRepo from "@domain/asset/asset.repo.js";
@@ -33,7 +33,8 @@ export type LipSyncSharedStep = "prepare:fwd" | "prepare:rev" | `composite:${num
 export interface LipSyncPerson {
   personId: string;
   detectionNumber: number;
-  anchor: { frameIndex: number; pts: number };
+  /** The people analysis's anchor, a grid frame. */
+  anchor: { frameIndex: number };
   anchorFaceBox: { x: number; y: number; width: number; height: number };
   /** The step keys a retry carries from its original run, so the retry reuses the done steps (§97 D21-6). */
   stepKeys?: Partial<Record<LipSyncPersonStep, string>>;
@@ -150,9 +151,10 @@ export async function lipSyncDialogues(request: LipSyncRequest): Promise<VideoEx
 }
 
 /**
- * The timeline and the used source range, each checked against its model's duration range (§9.3).
+ * The timeline and the used source range, each checked against its model's duration range (§9.3), on the grid: the video
+ * lasts its real video slots V ÷ fps, the anchor frame k starts at k ÷ fps and its slot ends at (k + 1) ÷ fps.
  * @param request - The request.
- * @param table - The selected tool input's compact table.
+ * @param display - The selected version's display grid.
  * @param dialogues - The rows with registered durations.
  * @param settings - The configured lip-sync execution.
  * @param model - The selected model.
@@ -160,13 +162,15 @@ export async function lipSyncDialogues(request: LipSyncRequest): Promise<VideoEx
  * @throws {AppError} When either lies outside its model's range.
  * @throws {ValidationError} When the rows or the anchor do not fit the video.
  */
-export function lipSyncTimeline(request: LipSyncRequest, table: VideoPresentationTable, dialogues: VideoExecutionDialogue[], settings: LipSyncSettings,
+export function lipSyncTimeline(request: LipSyncRequest, display: VideoPresentationDisplay, dialogues: VideoExecutionDialogue[], settings: LipSyncSettings,
   model: LipSyncSettings["models"][number]): { timeline: LipsyncTimeline; usedRange: { start: 0; end: number } } {
   let timeline: LipsyncTimeline;
-  let windowEnd: number;
+  const { fps } = display;
+  const anchor = request.draft.params.anchor.frameIndex;
+  const frameSeconds = fps.denominator / fps.numerator;
   try {
-    timeline = lipsyncTimeline({ videoDuration: presentationVideoEnd(table), dialogues, syncMode: request.draft.params.syncMode });
-    windowEnd = presentationFrameAt(table, request.draft.params.anchor.frameIndex).displayEnd;
+    if (anchor >= display.frameCount) throw new RangeError("The anchor lies outside the grid");
+    timeline = lipsyncTimeline({ videoDuration: display.realFrameCount * frameSeconds, dialogues, syncMode: request.draft.params.syncMode });
   } catch (error) {
     if (!(error instanceof RangeError || error instanceof z.ZodError)) throw error;
     throw new ValidationError(t("server.mini_tool.foreignSource"));
@@ -185,7 +189,7 @@ export function lipSyncTimeline(request: LipSyncRequest, table: VideoPresentatio
   if (!within(timeline.duration, model)) {
     throw new AppError(400, t("server.mini_tool.lipSyncDurationOutOfRange", { min: model.min_duration_seconds, max: model.max_duration_seconds }));
   }
-  const usedRange = lipsyncUsedSourceRange(timeline, [{ time: request.draft.params.anchor.pts, windowEnd }]);
+  const usedRange = lipsyncUsedSourceRange(timeline, [{ time: anchor * frameSeconds, windowEnd: (anchor + 1) * frameSeconds }]);
   if (!within(usedRange.end - usedRange.start, settings.tracking)) {
     throw new AppError(400, t("server.mini_tool.lipSyncTrackingOutOfRange", { min: settings.tracking.min_duration_seconds, max: settings.tracking.max_duration_seconds }));
   }

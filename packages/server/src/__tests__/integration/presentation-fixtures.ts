@@ -2,68 +2,56 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * A registered source's selected presentation version as ingest answers it after
- * S6c and E3 (inner#1306 test plan §90 E3b): the S6c snapshot, the selected
- * bundle, and the full ledger (with its §3.2 item 7 encode facts) and compact
- * stored at the receipt's URLs. Every value is deterministic for a given source
- * hash and key, so golden plans that embed the receipt can be hashed
- * independently. 1011 frames of 1/200 s give a display duration of exactly
- * 5.055 s, the registered duration of the removal fixtures.
+ * A registered source's selected presentation version as ingest answers it on the frame grid (frames-split design §3.5):
+ * the snapshot and the selected bundle. Every value is deterministic for a given source hash and key, so golden plans
+ * that embed the bundle can be hashed independently. 1011 grid frames at 200 fps give a display duration of exactly
+ * 5.055 s, the registered duration of the removal fixtures; the tools read the original, with a keyframe every 1.25 s.
  */
 
-import { createHash } from "node:crypto";
 import * as shared from "@breatic/shared";
 
 /** One input's tool-input reference (§7.13). */
 export interface ToolInputRef { toolInputId: string; planSha256: string }
-/** The selected version's stored objects and the snapshot that names them. */
+/** The selected version and the snapshot that names it. */
 export interface PresentedSource {
   presentationRef: { source: ToolInputRef };
   versionId: string;
-  receipt: Record<string, unknown> & { url: string; size: number; table: Record<string, unknown> & { url: string; size: number } };
-  full: Record<string, unknown>;
-  compact: Record<string, unknown>;
-  bundle: Record<string, unknown>;
+  bundle: shared.VideoPresentationVersion;
   snapshot: Record<string, unknown>;
-  /** Stored bodies by public URL. */
-  bodies: Map<string, string>;
 }
 
-const rational = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
-
-export const REMOVAL_TABLE = { schemaVersion: 1, timescale: 200, runs: [{ start: 0, count: 1011, step: 1, duration: 1 }] };
-export const REMOVAL_PLAN = {
-  display: { width: 960, height: 540, duration: rational(1011, 200) }, colorMatrix: "bt601", source: { transfer: null, bitDepth: 8 },
-  output: { toneMap: "none", framePngBitDepth: 8 }, policy: { singleFrameDurationMs: 5000, emptyFill: "black" }, presentation: REMOVAL_TABLE,
-  originMapping: { timeBase: rational(1, 1000), origin: rational(0), entries: [{ kind: "source", start: 0, count: 1011, step: 5 }],
-    firstSource: { supportStart: rational(0), lead: null }, lastSource: { support: "declared", supportEnd: rational(1011, 200), hold: null } },
-  videoSpans: null, audioSpans: null, segmentDuration: null,
-};
-// §93 D6-1 (design §3.2 item 7): every source keyframe's pts and dts and the first packet dts; the removal source has no
-// B-frames, so dts equals pts (frame k is at k/200 s) and nothing is shifted.
-export const REMOVAL_ENCODING = { keyframeOrdinals: [0, 250, 500, 750, 1000], codedWidth: 960, codedHeight: 540,
-  sourceKeyframes: [rational(0), rational(5, 4), rational(5, 2), rational(15, 4), rational(5)].map((time) => ({ pts: time, dts: time })), firstPacketDts: rational(0) };
+const DIGEST = "d".repeat(64);
 export const REMOVAL_VERSION_ID = "e".repeat(64);
-export const REMOVAL_ATTEMPT = { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 };
+export const REMOVAL_PLAN: shared.VideoPresentationPlan = {
+  gridRulesVersion: shared.GRID_RULES_VERSION,
+  grid: { fps: { numerator: 200, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, leadFrames: 0, gridEnd: null, singleFrameDurationMs: 5000 },
+  toolSource: "original", audioTrack: null, display: { width: 960, height: 540 }, color: { matrix: "bt601", toneMap: "none" }, framePngBitDepth: 8,
+};
+export const REMOVAL_KEYFRAMES: shared.SourceKeyframeStats = { earliestKeyframeTime: 0, maxKeyframeInterval: 1.25, allKeyframes: false };
+export const REMOVAL_DISPLAY = {
+  width: 960, height: 540, fps: { numerator: 200, denominator: 1 }, frameCount: 1011, gridStart: { numerator: 0, denominator: 1 }, realFrameCount: 1011, leadFrames: 0, holdFrames: 0,
+};
+
+/** What the selected version carries besides the removal source's defaults. */
+export interface PresentedOptions {
+  /** The selected plan; the removal source's when absent. */
+  plan?: shared.VideoPresentationPlan;
+  /** The tools read an edit file (frames-split §4.2) whose key is a presentation work key of the source. */
+  edit?: boolean;
+  /** The playback file is alpha-packed (a transparent source, §4.3). */
+  transparent?: boolean;
+  /** The source keyframe statistics (§7.16); a keyframe every 1.25 s when absent. */
+  keyframes?: shared.SourceKeyframeStats;
+}
 
 /**
- * The full and compact ledger keys of one toolInputId (S6e E4-7: stored per toolInputId, design §5.1 step 5).
+ * The edit file's key of a source in these fixtures.
  * @param sourceKey - The registered storage key.
- * @param toolInputId - The ledger instance.
- * @returns Both keys.
+ * @returns The key.
  * @throws {never} Never.
  */
-export function ledgerKeys(sourceKey: string, toolInputId: string): { full: string; table: string } {
-  return { full: shared.videoSourceLedgerKeyFor(sourceKey, toolInputId), table: shared.videoSourceLedgerTableKeyFor(sourceKey, toolInputId) };
-}
-
-/**
- * Lowercase SHA-256 of a string's UTF-8 bytes.
- * @param text - The text.
- * @returns The digest.
- */
-function sha256(text: string): string {
-  return createHash("sha256").update(text).digest("hex");
+export function editKeyOf(sourceKey: string): string {
+  return shared.videoPresentationWorkKeyFor(sourceKey, "video-presentation:edit-job:edit.mp4");
 }
 
 /**
@@ -71,29 +59,24 @@ function sha256(text: string): string {
  * @param hash - The registered content hash.
  * @param sourceKey - The registered storage key.
  * @param publicUrl - The storage's public URL function.
- * @param presented - The selected plan and its encode facts; the removal source's by default.
- * @param presented.plan - The plan.
- * @param presented.encoding - Its encode facts.
- * @returns Its stored objects and snapshot.
- * @throws {Error} When the shared identity functions are missing.
+ * @param options - The plan, edit file, transparency and keyframes; the removal source's by default.
+ * @returns Its bundle, reference and snapshot.
+ * @throws {z.ZodError} When the plan or the bundle is not valid.
  */
-export async function presentedSource(hash: string, sourceKey: string, publicUrl: (key: string) => string,
-  presented: { plan: typeof REMOVAL_PLAN; encoding: typeof REMOVAL_ENCODING } = { plan: REMOVAL_PLAN, encoding: REMOVAL_ENCODING }): Promise<PresentedSource> {
-  const { plan, encoding } = presented;
-  const api = shared as unknown as Record<string, (value: unknown) => Promise<string>>;
-  const planSha256 = await api.videoPresentationPlanSha256!(plan);
-  const toolInputId = await api.videoPresentationToolInputId!({ sourceFingerprint: hash, planSha256 });
-  const full = { schemaVersion: 2, sourceFingerprint: hash, toolInputId, planSha256, attempt: REMOVAL_ATTEMPT, plan, encoding };
-  const compact = { sourceFingerprint: hash, toolInputId, planSha256, presentation: REMOVAL_TABLE };
-  const fullJSON = JSON.stringify(full); const compactJSON = JSON.stringify(compact);
-  const receipt: PresentedSource["receipt"] = { schemaVersion: 2, sourceFingerprint: hash, toolInputId, planSha256, producerVersion: 2, attempt: REMOVAL_ATTEMPT,
-    url: publicUrl(ledgerKeys(sourceKey, toolInputId).full), etag: "full-etag", size: Buffer.byteLength(fullJSON), sha256: sha256(fullJSON), contentType: "application/json",
-    table: { url: publicUrl(ledgerKeys(sourceKey, toolInputId).table), sha256: sha256(compactJSON), size: Buffer.byteLength(compactJSON), contentType: "application/json", frameCount: 1011 } };
-  const bundle = { schemaVersion: 1, sourceFingerprint: hash, versionId: REMOVAL_VERSION_ID, toolInputId, planSha256, policyVersion: 1, producerVersion: 2, profileVersion: 1,
-    original: { width: plan.display.width, height: plan.display.height, duration: 5.055 }, display: plan.display,
-    playback: { kind: "native", carrier: { storageKey: sourceKey, url: publicUrl(sourceKey), etag: "source-etag", size: 4096, sha256: hash, contentType: "video/mp4" }, displayRect: null },
-    playbackClock: REMOVAL_TABLE };
-  const snapshot = { sourceBinding: { storageKey: sourceKey, sourceFingerprint: hash }, presentation: bundle, preparation: null, ledger: { state: "ready", receipt, failure: null }, readmit: false };
-  return { presentationRef: { source: { toolInputId, planSha256 } }, versionId: REMOVAL_VERSION_ID, receipt, full, compact, bundle, snapshot,
-    bodies: new Map([[receipt.url, fullJSON], [receipt.table.url, compactJSON]]) };
+export async function presentedSource(hash: string, sourceKey: string, publicUrl: (key: string) => string, options: PresentedOptions = {}): Promise<PresentedSource> {
+  const plan = options.edit ? { ...(options.plan ?? REMOVAL_PLAN), toolSource: "edit" as const } : (options.plan ?? REMOVAL_PLAN);
+  const receipt = (key: string, contentType: string, sha256: string): Record<string, unknown> => ({ storageKey: key, url: publicUrl(key), etag: `etag-${key}`, size: 4096, sha256, contentType });
+  const edit = options.edit ? { ...receipt(editKeyOf(sourceKey), "video/mp4", "a".repeat(64)), editProfileVersion: DIGEST, tier: "edit_h264_intra_8bit_420" } : null;
+  const planSha256 = await shared.videoPresentationPlanSha256(plan);
+  const toolInputId = await shared.videoPresentationToolInputId({ sourceFingerprint: hash, planSha256, editFileSha256: edit === null ? null : "a".repeat(64) });
+  const playback = options.transparent
+    ? { kind: "alpha-packed", carrier: receipt(shared.videoPresentationWorkKeyFor(sourceKey, "video-presentation:edit-job:packed.mp4"), "video/mp4", "b".repeat(64)), manifest: receipt(shared.videoPresentationWorkKeyFor(sourceKey, "video-presentation:edit-job:alpha.json"), "application/json", "c".repeat(64)) }
+    : { kind: "native", carrier: receipt(sourceKey, "video/mp4", hash), displayRect: null };
+  const bundle = shared.videoPresentationVersionSchema.parse({
+    schemaVersion: 1, sourceFingerprint: hash, versionId: REMOVAL_VERSION_ID, toolInputId, planSha256, policyVersion: 1, producerVersion: DIGEST, profileVersion: DIGEST,
+    original: { width: plan.display.width, height: plan.display.height, duration: 5.055 }, display: { ...REMOVAL_DISPLAY, ...plan.display },
+    playback, toolSource: { edit, keyframes: options.keyframes ?? REMOVAL_KEYFRAMES, sourceDecodeKey: "sdr_8bit" },
+  });
+  const snapshot = { sourceBinding: { storageKey: sourceKey, sourceFingerprint: hash }, presentation: bundle, preparation: null, readmit: false };
+  return { presentationRef: { source: { toolInputId, planSha256 } }, versionId: REMOVAL_VERSION_ID, bundle, snapshot };
 }

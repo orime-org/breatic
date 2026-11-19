@@ -20,6 +20,7 @@ import { type StudioAssetEntity } from '@breatic/shared';
 import { budgetDeadlineFrom, getMiniToolsConfig } from '@breatic/core';
 import type * as coreModule from '@breatic/core';
 import { resolveVideoPresentation, repairVideoPresentation, ensureVideoPresentation } from '../video-presentation.service.js';
+import { videoEncoderRates } from '../video-encoder-rates.js';
 
 const { loadProjectRole, findLiveByStorageKey, findById, keyFromUrl, publicUrl } = vi.hoisted(() => ({
   loadProjectRole: vi.fn(), findLiveByStorageKey: vi.fn(), findById: vi.fn(), keyFromUrl: vi.fn(), publicUrl: vi.fn(),
@@ -57,20 +58,15 @@ const asset: StudioAssetEntity = {
 const registered = { assetId: asset.id, contentHash: H, canonicalURL, kind: 'video', mediaInfo: { width: null, height: null, duration: null, mimeType: asset.mimeType } };
 const ingestBinding = { storageKey: asset.storageKey, sourceFingerprint: H };
 const bundle = {
-  schemaVersion: 1, sourceFingerprint: H, versionId: 'e'.repeat(64), toolInputId: T, planSha256: PLAN, policyVersion: 1, producerVersion: 2, profileVersion: 1,
-  original: { width: 64, height: 48, duration: 2.125 }, display: { width: 64, height: 48, duration: { numerator: '17', denominator: '8' } },
+  schemaVersion: 1, sourceFingerprint: H, versionId: 'e'.repeat(64), toolInputId: T, planSha256: PLAN, policyVersion: 1, producerVersion: 'd'.repeat(64), profileVersion: 'd'.repeat(64),
+  original: { width: 64, height: 48, duration: 2.125 },
+  display: { width: 64, height: 48, fps: { numerator: 8, denominator: 1 }, frameCount: 17, gridStart: { numerator: 0, denominator: 1 }, realFrameCount: 17, leadFrames: 0, holdFrames: 0 },
   playback: { kind: 'native', carrier: { storageKey: asset.storageKey, url: canonicalURL, etag: 'e1', size: 4096, sha256: 'f'.repeat(64), contentType: 'video/webm' }, displayRect: null },
-  playbackClock: { schemaVersion: 1, timescale: 8, runs: [{ start: 0, count: 17, step: 1, duration: 1 }] },
+  toolSource: { edit: null, keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false }, sourceDecodeKey: 'sdr_8bit' },
 };
-const receipt = {
-  schemaVersion: 2, sourceFingerprint: H, toolInputId: T, planSha256: PLAN, producerVersion: 2, attempt: { jobId: 'video-presentation-a', deadlineAt: 1900000000000 },
-  url: 'https://assets.example.test/video/canonical.webm.ledger.json', etag: '"e"', size: 912, sha256: 'b'.repeat(64), contentType: 'application/json',
-  table: { url: 'https://assets.example.test/video/canonical.webm.table.json', sha256: 'c'.repeat(64), size: 81, contentType: 'application/json', frameCount: 17 },
-};
-const limits = { maxBytes: 16777216 };
 
 interface Sent { action: string; jobId?: string; deadlineAt?: number; targetPolicyVersion?: number; repair?: boolean;
-  pricing?: { basic: Record<string, unknown>; standard4: Record<string, unknown> }; policy?: { chunkRetries: number; maxAutoRepairs: number } }
+  pricing?: { basic: Record<string, unknown>; standard4: Record<string, unknown> }; policy?: { chunkRetries: number } }
 
 /**
  * Every request the domain sent to ingest.
@@ -107,7 +103,7 @@ function prep(jobId: string, stage: string | null = null, failure: string | null
  * @returns The snapshot.
  */
 function snapshot(fields: Record<string, unknown> = {}): Record<string, unknown> {
-  return { sourceBinding: ingestBinding, presentation: null, preparation: null, ledger: null, ...fields };
+  return { sourceBinding: ingestBinding, presentation: null, preparation: null, readmit: false, ...fields };
 }
 
 /**
@@ -191,15 +187,14 @@ describe('the S6c admission request (inner#1306 §3.5 server/worker→ingest, §
     });
   });
 
-  it('A02 freezes the chunk retry and auto-repair caps from configuration', async () => {
+  it('A02 freezes the chunk retry cap from configuration', async () => {
     const core = await import('@breatic/core');
     const settings = getMiniToolsConfig();
-    const spy = vi.spyOn(core, 'getMiniToolsConfig').mockReturnValue({ ...settings, encoding: { ...settings.encoding, chunk_retries: 5 },
-      presentation: { ...settings.presentation, source_ledger: { ...settings.presentation.source_ledger, max_auto_repairs: 7 } } });
+    const spy = vi.spyOn(core, 'getMiniToolsConfig').mockReturnValue({ ...settings, encoding: { ...settings.encoding, chunk_retries: 5 } });
     try {
       await ensureVideoPresentation({ assetId: asset.id });
     } finally { spy.mockRestore(); }
-    expect(acceptSent().policy).toEqual({ chunkRetries: 5, maxAutoRepairs: 7 });
+    expect(acceptSent().policy).toEqual({ chunkRetries: 5 });
   });
 
   it('A03 sends the configured presentation.policy_version as the target on the read and on the accept it leads to', async () => {
@@ -225,24 +220,22 @@ describe('the S6c admission request (inner#1306 §3.5 server/worker→ingest, §
     expect(aacRate, 'encoding.encoder.aac_encode_seconds_per_second is configured').toBeGreaterThan(0);
     expect((acceptSent() as unknown as Record<string, unknown>).encoding).toEqual({
       chunkShare: config.encoding.chunk_share, maxParallelChunks: config.encoding.max_parallel_chunks,
-      encoder: { startSeconds: encoder.start_seconds, encodePixelsPerSecond: encoder.encode_pixels_per_second, decodeConvertPixelsPerSecond: encoder.decode_convert_pixels_per_second,
-        aacEncodeSecondsPerSecond: aacRate },
-      copyDiskMarginBytes: config.encoding.copy_disk_margin_bytes,
+      // The rate table the estimate reads (frames-split §5.4 estimate row): source decode keys, edit tiers and the tone map.
+      encoder: { ...videoEncoderRates(config), aacEncodeSecondsPerSecond: aacRate },
+      edit: { crf: config.presentation.edit.crf, preset: config.presentation.edit.preset, proresProfile: config.presentation.edit.prores_profile,
+        bytesPerPixel: config.presentation.edit.bytes_per_pixel, maxEditBytes: config.presentation.max_edit_bytes },
       carrier: { maxShortSide: config.presentation.carrier.max_short_side, color: config.presentation.carrier.color },
     });
   });
 
-  it('A07 freezes the probe sample count and the single-frame duration from configuration on the accept (S6d D1, §91 D-6)', async () => {
+  it('A07 freezes the probe sample count, the single-frame duration and the rate cap from configuration on the accept (frames-split §5.1 step 2, §4.1)', async () => {
     const core = await import('@breatic/core');
     const settings = getMiniToolsConfig();
     const spy = vi.spyOn(core, 'getMiniToolsConfig').mockReturnValue({ ...settings,
-      presentation: { ...settings.presentation, probe_sample_frames: 3, single_frame_duration_ms: 4000 } });
+      presentation: { ...settings.presentation, probe_sample_frames: 3, single_frame_duration_ms: 4000, max_fps: 120 } });
     try {
       await ensureVideoPresentation({ assetId: asset.id });
-      // §91 D1-1: the identity table travels with the frozen probe facts, its keys in the wire's camelCase.
-      expect((acceptSent() as unknown as Record<string, unknown>).probe).toEqual({ sampleFrames: 3, singleFrameDurationMs: 4000,
-        identityFormats: (settings.presentation as unknown as { identity_formats: Record<string, unknown>[] }).identity_formats.map((entry) => ({ container: entry.container, videoCodec: entry.video_codec, profiles: entry.profiles,
-          pixFmt: entry.pix_fmt, bitDepth: entry.bit_depth, audioCodecs: entry.audio_codecs, rotation: entry.rotation, sar: entry.sar, matrixTagged: entry.matrix_tagged })) });
+      expect((acceptSent() as unknown as Record<string, unknown>).probe).toEqual({ sampleFrames: 3, singleFrameDurationMs: 4000, maxFps: 120 });
     } finally { spy.mockRestore(); }
   });
 
@@ -290,7 +283,7 @@ describe('read: admit once, otherwise answer the snapshot as it is (inner#1306 �
     const got = await resolveVideoPresentation(input);
     const accept = acceptSent();
     expect(accept.repair).not.toBe(true);
-    expect(got).toEqual({ sourceBinding: registered, presentation: null, preparation: prep(accept.jobId!), ledger: null, pollAfterMs: 5000, sourceLedgerReadLimits: limits });
+    expect(got).toEqual({ sourceBinding: registered, presentation: null, preparation: prep(accept.jobId!), pollAfterMs: 5000 });
     expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ jobId: accept.jobId }), expect.objectContaining({ jobId: accept.jobId }));
   });
 
@@ -310,40 +303,33 @@ describe('read: admit once, otherwise answer the snapshot as it is (inner#1306 �
     expect(got).toMatchObject({ presentation: null, preparation: prep('failed-job', 'plan', 'too_long'), pollAfterMs: null });
   });
 
-  it.each([
-    ['ready', { state: 'ready', receipt, failure: null }],
-    ['failed', { state: 'failed', receipt: null, failure: 'source_ledger_invalid' }],
-    ['pending', { state: 'pending', receipt: null, failure: null }],
-  ])('R04 a selected version with a %s ledger is answered as it is without admission', async (_name, ledger) => {
-    ingest(snapshot({ presentation: bundle, ledger }));
+  // frames-split §7.12: a selected version carries its grid, so it is answered as it is.
+  it('R04 a selected version is answered as it is without admission', async () => {
+    ingest(snapshot({ presentation: bundle }));
     const got = await resolveVideoPresentation(input);
     expect(sent().map((request) => request.action)).toEqual(['read']);
     expect(got.presentation).toEqual(bundle);
-    expect(got).toMatchObject({ ledger });
   });
 });
 
 describe('the response mirrors the snapshot (inner#1306 §3.5 web→server, §5.1 step 6, §7.12)', () => {
   it('M01 maps every field with one name per concept and nothing else', async () => {
-    const ledger = { state: 'ready', receipt, failure: null };
-    ingest(snapshot({ presentation: bundle, ledger, preparation: prep('next-policy', 'encode') }));
+    ingest(snapshot({ presentation: bundle, preparation: prep('next-policy', 'encode') }));
     expect(await resolveVideoPresentation(input)).toEqual({
-      sourceBinding: registered, presentation: bundle, preparation: prep('next-policy', 'encode'), ledger, pollAfterMs: null, sourceLedgerReadLimits: limits,
+      sourceBinding: registered, presentation: bundle, preparation: prep('next-policy', 'encode'), pollAfterMs: null,
     });
   });
 
-  it('M02 never exposes the internal ingest binding, an attempt, a manifest or the earlier sourceLedger field', async () => {
-    ingest(snapshot({ presentation: bundle, ledger: { state: 'pending', receipt: null, failure: null } }));
+  it('M02 never exposes the internal ingest binding, an attempt, a manifest, the readmit flag or a frame table', async () => {
+    ingest(snapshot({ presentation: bundle, readmit: true }));
     const got = await resolveVideoPresentation(input) as unknown as Record<string, unknown>;
     expect(got.sourceBinding).toEqual(registered);
-    for (const key of ['attempt', 'manifest', 'sourceLedger', 'usageFact']) expect(key in got).toBe(false);
+    for (const key of ['attempt', 'manifest', 'readmit', 'ledger', 'sourceLedger', 'sourceLedgerReadLimits', 'usageFact']) expect(key in got).toBe(false);
   });
 
   it.each([
-    ['a selected version whose ledger is pending', { presentation: bundle, ledger: { state: 'pending', receipt: null, failure: null } }, 5000],
-    ['a selected version whose ledger is absent', { presentation: bundle, ledger: null }, 5000],
-    ['a selected version whose ledger is ready while new target work runs', { presentation: bundle, ledger: { state: 'ready', receipt, failure: null }, preparation: prep('next-policy', 'encode') }, null],
-    ['a selected version whose ledger failed', { presentation: bundle, ledger: { state: 'failed', receipt: null, failure: 'unsupported_rate' } }, null],
+    ['a selected version', { presentation: bundle }, null],
+    ['a selected version while new target work runs', { presentation: bundle, preparation: prep('next-policy', 'encode') }, null],
     ['nothing selected and target work in flight', { preparation: prep('in-flight', 'plan') }, 5000],
     ['nothing selected and the target work failed', { preparation: prep('failed-job', 'plan', 'classification_unknown') }, null],
   ])('M03 polls with the configured interval exactly when waiting: %s', async (_name, fields, pollAfterMs) => {
@@ -351,15 +337,6 @@ describe('the response mirrors the snapshot (inner#1306 §3.5 web→server, §5.
     expect((await resolveVideoPresentation(input)).pollAfterMs).toBe(pollAfterMs);
   });
 
-  it('M04 advertises the configured byte budget as the read limits', async () => {
-    const core = await import('@breatic/core');
-    const settings = getMiniToolsConfig();
-    const spy = vi.spyOn(core, 'getMiniToolsConfig').mockReturnValue({ ...settings, presentation: { ...settings.presentation, source_ledger: { ...settings.presentation.source_ledger, max_bytes: 8192 } } });
-    ingest(snapshot({ preparation: prep('in-flight', 'plan') }));
-    try {
-      expect((await resolveVideoPresentation(input)).sourceLedgerReadLimits).toEqual({ maxBytes: 8192 });
-    } finally { spy.mockRestore(); }
-  });
 });
 
 describe('repair returns the same response (inner#1306 §3.5 web→server repair, §7.4 one admission entry)', () => {
@@ -367,25 +344,25 @@ describe('repair returns the same response (inner#1306 §3.5 web→server repair
     const got = await repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'repair-press' });
     const accept = acceptSent();
     expect(accept).toMatchObject({ action: 'accept', repair: true, storageKey: asset.storageKey, sourceFingerprint: H });
-    expect(got).toEqual({ sourceBinding: registered, presentation: null, preparation: prep(accept.jobId!), ledger: null, pollAfterMs: 5000, sourceLedgerReadLimits: limits });
+    expect(got).toEqual({ sourceBinding: registered, presentation: null, preparation: prep(accept.jobId!), pollAfterMs: 5000 });
   });
 
-  it('RP02 a ledger-only repair of the selected version answers the pending ledger and queues the job ingest accepted', async () => {
-    ingest(snapshot(), snapshot({ presentation: bundle, ledger: { state: 'pending', receipt: null, failure: null }, preparation: prep('ledger-only', 'plan') }));
+  it('RP02 a repair of the selected version answers it with the new work and queues the job ingest accepted', async () => {
+    ingest(snapshot(), snapshot({ presentation: bundle, preparation: prep('repair-job', 'plan') }));
     const got = await repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'retry-press' });
-    expect(got).toMatchObject({ presentation: bundle, ledger: { state: 'pending', receipt: null, failure: null }, preparation: prep('ledger-only', 'plan'), pollAfterMs: 5000 });
-    expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ jobId: 'ledger-only' }), expect.objectContaining({ jobId: 'ledger-only' }));
+    expect(got).toMatchObject({ presentation: bundle, preparation: prep('repair-job', 'plan'), pollAfterMs: null });
+    expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ jobId: 'repair-job' }), expect.objectContaining({ jobId: 'repair-job' }));
   });
 
   it('RP03 two concurrent repairs queue the one job ingest accepted, never their own proposed ids', async () => {
-    const accepted = snapshot({ preparation: prep('ledger-only', 'plan') });
+    const accepted = snapshot({ preparation: prep('repair-job', 'plan') });
     ingest(snapshot(), accepted);
     const [a, b] = await Promise.all([
       repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'press-a' }),
       repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'press-b' }),
     ]);
     expect(a.preparation).toEqual(b.preparation);
-    expect(new Set(queueAdd.mock.calls.map(([, job]) => (job as { jobId: string }).jobId))).toEqual(new Set(['ledger-only']));
+    expect(new Set(queueAdd.mock.calls.map(([, job]) => (job as { jobId: string }).jobId))).toEqual(new Set(['repair-job']));
   });
 });
 
@@ -455,7 +432,7 @@ describe('the conditional admission of a dedup winner or a replayed terminal (§
   });
 
   it.each([
-    ['a selected version', { presentation: bundle, ledger: { state: 'ready', receipt, failure: null } }],
+    ['a selected version', { presentation: bundle }],
     ['a preparation in progress', { preparation: prep('video-presentation-a', 'encode'), readmit: false }],
   ])('DW03 %s: the winner reads and admits nothing', async (_name, fields) => {
     ingest(snapshot(fields));

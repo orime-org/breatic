@@ -6,8 +6,9 @@
  * design §7.15 candidate 与 selected 行, 唯一写点「处理 P 提交与候选阶段事件的 worker」).
  *
  * On each pickup the presentation worker hands its job id and the DO's prepare answer to one domain function,
- * `syncPresentationPins`. It acquires the job's `candidate` pin (L of the plan's toolInputId and the candidate's own
- * work objects), acquires or moves the canonical key's `selected` pin to the selected version, and releases the
+ * `syncPresentationPins`. It acquires the job's `candidate` pin (the candidate's own work objects under the plan's
+ * toolInputId), acquires or moves the canonical key's `selected` pin to the selected version (its playback file,
+ * manifest and edit file), and releases the
  * candidate when it is published (the selected pin takes over), archived, failed or past its deadline (the answer
  * no longer grants it a capability). The offline recheck before deletion is the arbiter (§7.15 仲裁), so the order of
  * pin writes and DO reuse does not matter here. The P descriptor pointer and the source object are never registered.
@@ -18,9 +19,9 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
 import * as shared from "@breatic/shared";
-import { videoContainerJobId } from "@breatic/shared/mini-tools";
+import { videoCarrierRouteStages, videoContainerJobId } from "@breatic/shared/mini-tools";
 import * as domain from "@domain/index.js";
-import { ledgerKeys, presentedSource, type PresentedSource } from "../../../../server/src/__tests__/integration/presentation-fixtures.js";
+import { editKeyOf, presentedSource, type PresentedSource } from "../../../../server/src/__tests__/integration/presentation-fixtures.js";
 
 type Sync = (jobId: string, answer: shared.VideoPresentationPrepareAnswer) => Promise<void>;
 let pg: ReturnType<typeof createPgClient>;
@@ -51,11 +52,12 @@ interface World { key: string; job: string; source: PresentedSource; chunk: stri
 
 /**
  * A registered source with a selectable version and one presentation job.
+ * @param edit - Whether the selected version's tools read an edit file.
  * @returns It.
  */
-async function world(): Promise<World> {
+async function world(edit = false): Promise<World> {
   const key = `video/pin-sync/${randomUUID()}.mp4`;
-  const source = await presentedSource(randomBytes(32).toString("hex"), key, publicUrl);
+  const source = await presentedSource(randomBytes(32).toString("hex"), key, publicUrl, { edit });
   const job = `pres-${randomUUID()}`;
   return { key, job, source,
     chunk: videoContainerJobId({ kind: "presentation-chunk", jobId: job, chunk: 0, attempt: 1 }),
@@ -71,12 +73,11 @@ async function world(): Promise<World> {
 function answer(w: World, fields: Partial<Record<keyof shared.VideoPresentationPrepareAnswer, unknown>> = {}): shared.VideoPresentationPrepareAnswer {
   const { toolInputId, planSha256 } = w.source.presentationRef.source;
   return shared.videoPresentationPrepareAnswerSchema.parse({
-    sourceBinding: { storageKey: w.key, sourceFingerprint: w.source.receipt.sourceFingerprint }, presentation: null,
-    preparation: { targetPolicyVersion: 1, jobId: w.job, stage: "encode", failure: null }, ledger: null,
+    sourceBinding: { storageKey: w.key, sourceFingerprint: w.source.bundle.sourceFingerprint }, presentation: null,
+    preparation: { targetPolicyVersion: 1, jobId: w.job, stage: "encode", failure: null },
     capability: { token: "token", deadlineAt: Date.now() + 3_600_000 },
-    plan: { route: "encode", stages: ["plan", "encode", "stitch", "publish"], toolInputId, planSha256 },
+    plan: { route: "encode", stages: videoCarrierRouteStages("encode"), toolInputId, planSha256 },
     work: { kind: "encode", chunks: [{ start: 0, end: 1011 }] },
-    candidateLedger: { state: "ready", receipt: w.source.receipt, failure: null },
     units: { [`video-presentation:${w.job}:chunk:0`]: { state: "done", attempt: 1, attempts: [{ attempt: 1, jobId: w.chunk, state: "done", usageRecorded: true }] } },
     // §91 D3b-1: the frozen carrier encode parameters.
     frozen: { pricing: { basic: { ...price, containerClass: "MediaContainer" }, standard4: price }, actorUserId: ACTOR, projectId: null, carrier: { crf: 18, preset: "medium", maxShortSide: 1080 } },
@@ -107,12 +108,12 @@ async function queued(key: string): Promise<string[]> {
 }
 
 describe("candidate pin (design §7.15 candidate)", () => {
-  it("SY01 a granted plan acquires the job's candidate pin on L of its toolInputId and its work objects", async () => {
-    const w = await world(); const t = w.source.presentationRef.source.toolInputId; const l = ledgerKeys(w.key, t);
+  it("SY01 a granted plan acquires the job's candidate pin under its toolInputId on its work objects", async () => {
+    const w = await world(); const t = w.source.presentationRef.source.toolInputId;
     await sync()(w.job, answer(w));
     const [row] = await live(w.job);
     expect(row).toMatchObject({ holder_kind: "candidate", tool_input_id: t, version_id: null });
-    expect(row!.keys).toEqual(expect.arrayContaining([l.full, l.table, shared.videoPresentationWorkKeyFor(w.key, w.chunk)]));
+    expect(row!.keys).toEqual([shared.videoPresentationWorkKeyFor(w.key, w.chunk)]);
   });
 
   it("SY02 the same answer twice changes nothing", async () => {
@@ -125,45 +126,45 @@ describe("candidate pin (design §7.15 candidate)", () => {
   });
 
   it("SY03 a job the DO no longer grants releases its candidate and registers what nothing else pins", async () => {
-    const w = await world(); const t = w.source.presentationRef.source.toolInputId; const l = ledgerKeys(w.key, t);
+    const w = await world();
     await sync()(w.job, answer(w));
-    await sync()(w.job, answer(w, { capability: null, plan: null, work: { kind: "none" }, candidateLedger: null }));
+    await sync()(w.job, answer(w, { capability: null, plan: null, work: { kind: "none" } }));
     expect(await live(w.job)).toEqual([]);
-    expect(await queued(w.key)).toEqual(expect.arrayContaining([l.full, l.table, shared.videoPresentationWorkKeyFor(w.key, w.chunk)]));
+    expect(await queued(w.key)).toEqual([shared.videoPresentationWorkKeyFor(w.key, w.chunk)]);
   });
 });
 
 describe("selected pin (design §7.15 selected, Mv)", () => {
-  it("SY04 publishing the candidate moves L to the selected pin and releases the candidate without registering L", async () => {
-    const w = await world(); const t = w.source.presentationRef.source.toolInputId; const l = ledgerKeys(w.key, t);
+  it("SY04 publishing the candidate pins the version's edit file on the selected row and releases the candidate's work objects", async () => {
+    const w = await world(true); const t = w.source.presentationRef.source.toolInputId; const edit = editKeyOf(w.key);
     await sync()(w.job, answer(w));
-    await sync()(w.job, answer(w, { presentation: w.source.bundle, ledger: { state: "ready", receipt: w.source.receipt, failure: null } }));
+    await sync()(w.job, answer(w, { presentation: w.source.bundle }));
     expect(await live(w.job)).toEqual([]);
     const [selected] = await live(w.key);
     expect(selected).toMatchObject({ holder_kind: "selected", tool_input_id: t, version_id: w.source.versionId });
-    expect(selected!.keys).toEqual(expect.arrayContaining([l.full, l.table]));
-    expect(await queued(w.key)).not.toEqual(expect.arrayContaining([l.full]));
-    expect(await queued(w.key)).not.toEqual(expect.arrayContaining([l.table]));
+    expect(selected!.keys).toEqual([edit]);
+    expect(await queued(w.key)).toEqual([shared.videoPresentationWorkKeyFor(w.key, w.chunk)]);
   });
 
-  it("SY05 a later answer selecting another toolInputId moves the one selected row and registers the old L", async () => {
-    const w = await world(); const t = w.source.presentationRef.source.toolInputId; const l = ledgerKeys(w.key, t);
+  it("SY05 a later answer selecting another toolInputId moves the one selected row and registers the old edit file", async () => {
+    const w = await world(true); const old = editKeyOf(w.key);
     const other = "f".repeat(64); const versionId = "b".repeat(64);
-    await sync()(w.job, answer(w, { presentation: w.source.bundle, capability: null, plan: null, work: { kind: "none" }, candidateLedger: null }));
-    const moved = { ...w.source.bundle, versionId, toolInputId: other };
-    const otherReceipt = { ...w.source.receipt, toolInputId: other, url: publicUrl(ledgerKeys(w.key, other).full), table: { ...w.source.receipt.table, url: publicUrl(ledgerKeys(w.key, other).table) } };
-    await sync()(`pres-${randomUUID()}`, answer(w, { presentation: moved, ledger: { state: "ready", receipt: otherReceipt, failure: null }, capability: null, plan: null, work: { kind: "none" }, candidateLedger: null }));
+    const otherEdit = shared.videoPresentationWorkKeyFor(w.key, "video-presentation:other-job:edit.mp4");
+    await sync()(w.job, answer(w, { presentation: w.source.bundle, capability: null, plan: null, work: { kind: "none" } }));
+    const moved = { ...w.source.bundle, versionId, toolInputId: other,
+      toolSource: { ...w.source.bundle.toolSource, edit: { ...w.source.bundle.toolSource.edit!, storageKey: otherEdit, url: publicUrl(otherEdit) } } };
+    await sync()(`pres-${randomUUID()}`, answer(w, { presentation: moved, capability: null, plan: null, work: { kind: "none" } }));
     const rows = await live(w.key);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ holder_kind: "selected", tool_input_id: other, version_id: versionId });
-    expect(await queued(w.key)).toEqual(expect.arrayContaining([l.full, l.table]));
+    expect(rows[0]).toMatchObject({ holder_kind: "selected", tool_input_id: other, version_id: versionId, keys: [otherEdit] });
+    expect(await queued(w.key)).toEqual([old]);
   });
 
   it("SY06 the P descriptor pointer and the identity carrier (the source itself) are never pinned objects nor registered", async () => {
     const w = await world();
     await sync()(w.job, answer(w));
-    await sync()(w.job, answer(w, { presentation: w.source.bundle, ledger: { state: "ready", receipt: w.source.receipt, failure: null } }));
-    await sync()(w.job, answer(w, { presentation: { ...w.source.bundle, versionId: "b".repeat(64), toolInputId: "f".repeat(64) }, capability: null, plan: null, work: { kind: "none" }, candidateLedger: null, ledger: null }));
+    await sync()(w.job, answer(w, { presentation: w.source.bundle }));
+    await sync()(w.job, answer(w, { presentation: { ...w.source.bundle, versionId: "b".repeat(64), toolInputId: "f".repeat(64) }, capability: null, plan: null, work: { kind: "none" } }));
     const descriptor = shared.videoPresentationKeyFor(w.key);
     expect(await queued(w.key)).not.toContain(descriptor);
     expect(await queued(w.key)).not.toContain(w.key);
@@ -215,14 +216,14 @@ describe("release points of the candidate's own objects and of old versions (des
    * @returns The parsed answer.
    */
   function selectedOnly(w: World, presentation: Record<string, unknown>): shared.VideoPresentationPrepareAnswer {
-    return answer(w, { presentation, ledger: { state: "ready", receipt: w.source.receipt, failure: null }, capability: null, plan: null, work: { kind: "none" }, candidateLedger: null, units: {} });
+    return answer(w, { presentation, capability: null, plan: null, work: { kind: "none" }, units: {} });
   }
 
-  it("SY07 a never-selected alpha candidate that is archived, failed or expired registers its own carrier and manifest (from the stitch's done receipts) and chunk outputs, but not an L the selected version still pins", async () => {
-    const w = await world(); const l = ledgerKeys(w.key, w.source.presentationRef.source.toolInputId);
+  it("SY07 a never-selected alpha candidate that is archived, failed or expired registers its own carrier and manifest (from the stitch's done receipts) and chunk outputs, but not the edit file the selected version still pins", async () => {
+    const w = await world(true); const edit = editKeyOf(w.key);
     const carrier = shared.videoPresentationWorkKeyFor(w.key, w.stitch); const chunk = shared.videoPresentationWorkKeyFor(w.key, w.chunk);
     const manifest = `${w.key}.alpha-manifest-${randomUUID()}.json`;
-    // Another version of the same toolInputId is selected, so L stays pinned by the selected row.
+    // Another version of the same toolInputId is selected, so its edit file stays pinned by the selected row.
     await sync()(`pres-${randomUUID()}`, selectedOnly(w, w.source.bundle));
     await sync()(w.job, answer(w, { units: {
       [`video-presentation:${w.job}:chunk:0`]: { state: "done", attempt: 1, attempts: [attemptOf(w.chunk, 1, "done")] },
@@ -238,11 +239,10 @@ describe("release points of the candidate's own objects and of old versions (des
     expect(await queued(w.key)).not.toContain(manifest);
     const [candidate] = await live(w.job);
     expect(candidate!.keys).toEqual(expect.arrayContaining([carrier, manifest]));
-    await sync()(w.job, answer(w, { capability: null, plan: null, work: { kind: "none" }, candidateLedger: null }));
+    await sync()(w.job, answer(w, { capability: null, plan: null, work: { kind: "none" } }));
     const rows = await queued(w.key);
     expect(rows).toEqual(expect.arrayContaining([carrier, manifest, chunk]));
-    expect(rows).not.toContain(l.full);
-    expect(rows).not.toContain(l.table);
+    expect(rows).not.toContain(edit);
   });
 
   it("SY08 a superseded attempt's output is registered at once; the chunk outputs are registered when the stitch is committed, the stitched carrier is not", async () => {

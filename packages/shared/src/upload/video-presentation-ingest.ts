@@ -36,7 +36,7 @@ export interface VideoPresentationUsageFact {
 /** Both container prices, frozen together at admission (design §3.5): basic probes, standard-4 counts and encodes. */
 export interface VideoPresentationIngestPricing { basic: VideoPresentationPricing; standard4: VideoPresentationPricing }
 /** The retry caps frozen at admission. */
-export interface VideoPresentationAdmissionPolicy { chunkRetries: number; maxAutoRepairs: number }
+export interface VideoPresentationAdmissionPolicy { chunkRetries: number }
 /** The internal source binding: the registered storage key and the source bytes' fingerprint. */
 export interface VideoPresentationIngestSourceBinding { storageKey: string; sourceFingerprint: string }
 /** The target policy's preparation: the original job, its real stage and its failure code. */
@@ -145,7 +145,7 @@ export const videoPresentationIngestRequestSchema = z.discriminatedUnion('action
     limits: videoPresentationProcessLimitsSchema,
     pricing: z.strictObject({ basic: videoPresentationPricingSchema, standard4: videoPresentationPricingSchema }),
     targetPolicyVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-    policy: z.strictObject({ chunkRetries: retryCap, maxAutoRepairs: retryCap }),
+    policy: z.strictObject({ chunkRetries: retryCap }),
     encoding: videoPresentationEncodingSchema,
     probe: videoPresentationProbeSchema,
     actorUserId: z.uuid(), projectId: z.uuid().nullable(),

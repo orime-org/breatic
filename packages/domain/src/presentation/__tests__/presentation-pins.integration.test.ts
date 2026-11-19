@@ -12,8 +12,9 @@
  *   - `Rel` soft-deletes and registers each key that lost its last live reference, once; a key still referenced by
  *     another live pin is not registered;
  *   - `Acq` of the same holder and toolInputId is idempotent;
- *   - one live `selected` row per canonical key; moving it to t' registers L(t) only when nothing else pins it, and
- *     keeping t (only the carrier changed) releases nothing of L;
+ *   - one live `selected` row per canonical key; moving it to t' registers the edit file of t only when nothing else pins
+ *     it, and keeping t (only the playback file changed) releases nothing of the edit file;
+ *   - a presentation-derived object is registered with its canonical key, an intermediate with none;
  *   - the P descriptor pointer and the source object are never registered.
  *
  * Service and field names are the test author's choices recorded in §90 (open to veto).
@@ -54,24 +55,25 @@ function pins(): PinService {
 }
 
 /**
- * A fresh source with the keys of its ledgers, descriptor pointer and work objects.
+ * A fresh source with the keys of its edit files, descriptor pointer, presentation work objects and run intermediates.
  * @returns Keys.
  */
-function source(): { key: string; full: (t: string) => string; table: (t: string) => string; descriptor: string; work: (job: string) => string } {
+function source(): { key: string; edit: (t: string) => string; descriptor: string; work: (job: string) => string; intermediate: (name: string) => string } {
   const key = `video/pins/${randomUUID()}.mp4`;
-  return { key, full: (t) => `${key}.video-source-ledger.${t}.json`, table: (t) => `${key}.video-presentation-table.${t}.json`,
-    descriptor: `${key}.video-presentation.v1.json`, work: (job) => `${key}.${job}` };
+  return { key, edit: (t) => `${key}.video-presentation:edit-${t.slice(0, 8)}:edit.mp4`,
+    descriptor: `${key}.video-presentation.v1.json`, work: (job) => `${key}.video-presentation:${job}`, intermediate: (name) => `${key}.run-${name}` };
 }
 
 /**
- * The `derived` queue rows of a source, by key.
+ * The `derived` queue rows of a source, by key; a presentation work object carries its canonical key, an intermediate none
+ * (frames-split §7.15 reclaim queue row).
  * @param prefix - The source key.
  * @returns Sorted keys.
  */
 async function queued(prefix: string): Promise<string[]> {
   const rows = await pg<{ storage_key: string; kind: string; kept_storage_key: string | null; studio_id: string | null }[]>`
     SELECT storage_key,kind,kept_storage_key,studio_id FROM storage_reclaim_queue WHERE starts_with(storage_key, ${prefix}) ORDER BY storage_key`;
-  for (const row of rows) expect(row).toMatchObject({ kind: "derived", kept_storage_key: null, studio_id: null });
+  for (const row of rows) expect(row).toMatchObject({ kind: "derived", kept_storage_key: row.storage_key.includes(".video-presentation:") ? prefix : null, studio_id: null });
   return rows.map((row) => row.storage_key);
 }
 
@@ -90,85 +92,85 @@ async function live(holderId: string): Promise<{ holder_kind: string; tool_input
 describe("Acq, Rel and Chk (design §7.15 事件表)", () => {
   it("PN01 an execution pin records its holder, toolInputId and every referenced key; a repeated Acq is idempotent", async () => {
     const s = source(); const task = randomUUID();
-    const objectKeys = [s.full(T), s.table(T)];
+    const objectKeys = [s.edit(T)];
     await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys });
     await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys });
     expect(await live(task)).toEqual([{ holder_kind: "execution", tool_input_id: T, prepared_key: null, version_id: null, keys: [...objectKeys].sort() }]);
     for (const key of objectKeys) expect(await pins().isKeyPinned(key)).toBe(true);
-    expect(await pins().isKeyPinned(s.full(T2))).toBe(false);
+    expect(await pins().isKeyPinned(s.edit(T2))).toBe(false);
   });
 
   it("PN02 Rel soft-deletes the rows and registers each key that lost its last live reference as derived", async () => {
     const s = source(); const task = randomUUID();
-    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.full(T), s.table(T)] });
+    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.edit(T)] });
     await pins().release({ holderKind: "execution", holderId: task });
     expect(await live(task)).toEqual([]);
     const [kept] = await pg<{ n: number }[]>`SELECT count(*)::int AS n FROM presentation_pins WHERE holder_id=${task} AND deleted_at IS NOT NULL`;
     expect(kept!.n).toBe(1);
-    expect(await pins().isKeyPinned(s.full(T))).toBe(false);
-    expect(await queued(s.key)).toEqual([s.full(T), s.table(T)].sort());
+    expect(await pins().isKeyPinned(s.edit(T))).toBe(false);
+    expect(await queued(s.key)).toEqual([s.edit(T)]);
     await pins().release({ holderKind: "execution", holderId: task });
-    expect(await queued(s.key)).toEqual([s.full(T), s.table(T)].sort());
+    expect(await queued(s.key)).toEqual([s.edit(T)]);
   });
 
   it("PN03 a key still referenced by another live pin is not registered when one holder releases it", async () => {
     const s = source(); const a = randomUUID(); const b = randomUUID();
-    await pins().acquire({ holderKind: "execution", holderId: a, toolInputId: T, objectKeys: [s.full(T), s.table(T)] });
-    await pins().acquire({ holderKind: "analysis", holderId: b, toolInputId: T, objectKeys: [s.full(T), s.table(T)] });
+    await pins().acquire({ holderKind: "execution", holderId: a, toolInputId: T, objectKeys: [s.edit(T)] });
+    await pins().acquire({ holderKind: "analysis", holderId: b, toolInputId: T, objectKeys: [s.edit(T)] });
     await pins().release({ holderKind: "execution", holderId: a });
     expect(await queued(s.key)).toEqual([]);
-    expect(await pins().isKeyPinned(s.full(T))).toBe(true);
+    expect(await pins().isKeyPinned(s.edit(T))).toBe(true);
     await pins().release({ holderKind: "analysis", holderId: b });
-    expect(await queued(s.key)).toEqual([s.full(T), s.table(T)].sort());
+    expect(await queued(s.key)).toEqual([s.edit(T)]);
   });
 
   it("PN04 a prepared pin names its prepared key; releasing one kind of a holder leaves its other kind live", async () => {
     const s = source(); const task = randomUUID(); const prepared = s.work(`${task}:prep:0:a1`);
-    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.full(T), s.table(T)] });
+    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.edit(T)] });
     await pins().acquire({ holderKind: "prepared", holderId: task, toolInputId: T, preparedKey: prepared, objectKeys: [prepared] });
     expect((await live(task)).map((row) => [row.holder_kind, row.prepared_key])).toEqual(expect.arrayContaining([["execution", null], ["prepared", prepared]]));
     await pins().release({ holderKind: "prepared", holderId: task });
     expect(await queued(s.key)).toEqual([prepared]);
-    expect(await pins().isKeyPinned(s.full(T))).toBe(true);
+    expect(await pins().isKeyPinned(s.edit(T))).toBe(true);
   });
 });
 
 describe("the selected pin (design §7.15 selected 行与 Mv)", () => {
   it("PN05 the first selection acquires one row for the canonical key with its version", async () => {
     const s = source(); const carrier = s.work("carrier-v1.mp4");
-    await pins().select({ canonicalKey: s.key, toolInputId: T, versionId: "e".repeat(64), objectKeys: [s.full(T), s.table(T), carrier] });
-    expect(await live(s.key)).toEqual([{ holder_kind: "selected", tool_input_id: T, prepared_key: null, version_id: "e".repeat(64), keys: [s.full(T), s.table(T), carrier].sort() }]);
+    await pins().select({ canonicalKey: s.key, toolInputId: T, versionId: "e".repeat(64), objectKeys: [s.edit(T), carrier] });
+    expect(await live(s.key)).toEqual([{ holder_kind: "selected", tool_input_id: T, prepared_key: null, version_id: "e".repeat(64), keys: [s.edit(T), carrier].sort() }]);
   });
 
-  it("PN06 moving to t' keeps one live row and registers L(t) and the old version's objects when nothing else pins them", async () => {
+  it("PN06 moving to t' keeps one live row and registers the edit file of t and the old version's objects when nothing else pins them", async () => {
     const s = source(); const oldCarrier = s.work("carrier-v1.mp4"); const newCarrier = s.work("carrier-v2.mp4");
-    await pins().select({ canonicalKey: s.key, toolInputId: T, versionId: "e".repeat(64), objectKeys: [s.full(T), s.table(T), oldCarrier] });
-    await pins().select({ canonicalKey: s.key, toolInputId: T2, versionId: "f".repeat(64), objectKeys: [s.full(T2), s.table(T2), newCarrier] });
-    expect(await live(s.key)).toEqual([{ holder_kind: "selected", tool_input_id: T2, prepared_key: null, version_id: "f".repeat(64), keys: [s.full(T2), s.table(T2), newCarrier].sort() }]);
-    expect(await queued(s.key)).toEqual([oldCarrier, s.full(T), s.table(T)].sort());
+    await pins().select({ canonicalKey: s.key, toolInputId: T, versionId: "e".repeat(64), objectKeys: [s.edit(T), oldCarrier] });
+    await pins().select({ canonicalKey: s.key, toolInputId: T2, versionId: "f".repeat(64), objectKeys: [s.edit(T2), newCarrier] });
+    expect(await live(s.key)).toEqual([{ holder_kind: "selected", tool_input_id: T2, prepared_key: null, version_id: "f".repeat(64), keys: [s.edit(T2), newCarrier].sort() }]);
+    expect(await queued(s.key)).toEqual([oldCarrier, s.edit(T)].sort());
   });
 
-  it("PN07 moving while an execution still pins L(t) registers only the old version's own objects", async () => {
+  it("PN07 moving while an execution still pins the edit file of t registers only the old version's own objects", async () => {
     const s = source(); const task = randomUUID(); const oldCarrier = s.work("carrier-v1.mp4");
-    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.full(T), s.table(T)] });
-    await pins().select({ canonicalKey: s.key, toolInputId: T, versionId: "e".repeat(64), objectKeys: [s.full(T), s.table(T), oldCarrier] });
-    await pins().select({ canonicalKey: s.key, toolInputId: T2, versionId: "f".repeat(64), objectKeys: [s.full(T2), s.table(T2)] });
+    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.edit(T)] });
+    await pins().select({ canonicalKey: s.key, toolInputId: T, versionId: "e".repeat(64), objectKeys: [s.edit(T), oldCarrier] });
+    await pins().select({ canonicalKey: s.key, toolInputId: T2, versionId: "f".repeat(64), objectKeys: [s.edit(T2)] });
     expect(await queued(s.key)).toEqual([oldCarrier]);
   });
 
-  it("PN08 a new version of the same toolInputId (only the carrier changed) releases nothing of L", async () => {
+  it("PN08 a new version of the same toolInputId (only the playback file changed) releases nothing of the edit file", async () => {
     const s = source(); const oldCarrier = s.work("carrier-v1.mp4"); const newCarrier = s.work("carrier-v2.mp4");
-    await pins().select({ canonicalKey: s.key, toolInputId: T, versionId: "e".repeat(64), objectKeys: [s.full(T), s.table(T), oldCarrier] });
-    await pins().select({ canonicalKey: s.key, toolInputId: T, versionId: "f".repeat(64), objectKeys: [s.full(T), s.table(T), newCarrier] });
+    await pins().select({ canonicalKey: s.key, toolInputId: T, versionId: "e".repeat(64), objectKeys: [s.edit(T), oldCarrier] });
+    await pins().select({ canonicalKey: s.key, toolInputId: T, versionId: "f".repeat(64), objectKeys: [s.edit(T), newCarrier] });
     expect(await queued(s.key)).toEqual([oldCarrier]);
-    expect(await pins().isKeyPinned(s.full(T))).toBe(true);
+    expect(await pins().isKeyPinned(s.edit(T))).toBe(true);
   });
 
   it("PN09 the descriptor pointer and the source object are never pinned objects nor registered, whatever the caller passes", async () => {
     const s = source();
-    await pins().select({ canonicalKey: s.key, toolInputId: T, versionId: "e".repeat(64), objectKeys: [s.full(T), s.table(T), s.descriptor, s.key] });
-    await pins().select({ canonicalKey: s.key, toolInputId: T2, versionId: "f".repeat(64), objectKeys: [s.full(T2), s.table(T2), s.descriptor, s.key] });
-    expect(await queued(s.key)).toEqual([s.full(T), s.table(T)].sort());
+    await pins().select({ canonicalKey: s.key, toolInputId: T, versionId: "e".repeat(64), objectKeys: [s.edit(T), s.descriptor, s.key] });
+    await pins().select({ canonicalKey: s.key, toolInputId: T2, versionId: "f".repeat(64), objectKeys: [s.edit(T2), s.descriptor, s.key] });
+    expect(await queued(s.key)).toEqual([s.edit(T)]);
     const [refs] = await pg<{ n: number }[]>`SELECT count(*)::int AS n FROM presentation_pin_objects WHERE storage_key IN (${s.descriptor}, ${s.key})`;
     expect(refs!.n).toBe(0);
   });
@@ -176,8 +178,8 @@ describe("the selected pin (design §7.15 selected 行与 Mv)", () => {
   it("PN10 two concurrent first selections of one canonical key leave one live row", async () => {
     const s = source();
     await Promise.allSettled([
-      pins().select({ canonicalKey: s.key, toolInputId: T, versionId: "e".repeat(64), objectKeys: [s.full(T)] }),
-      pins().select({ canonicalKey: s.key, toolInputId: T2, versionId: "f".repeat(64), objectKeys: [s.full(T2)] }),
+      pins().select({ canonicalKey: s.key, toolInputId: T, versionId: "e".repeat(64), objectKeys: [s.edit(T)] }),
+      pins().select({ canonicalKey: s.key, toolInputId: T2, versionId: "f".repeat(64), objectKeys: [s.edit(T2)] }),
     ]);
     expect(await live(s.key)).toHaveLength(1);
   });
@@ -229,61 +231,59 @@ describe("pin and registration invariants over any event sequence (critical path
   });
 });
 
-// inner#1306 test plan §97 D17-7 (b) (frames-split §7.15 唯一写点 and the execution holder row; §7.17 lip-sync note): the
-// worker registers each lip-sync intermediate object (RLE, transform table, person video, stem, generation result) by
-// appending its key to the run's `execution` pin child rows inside the registration transaction, through the repository's
-// one writer `appendExecutionPinObjects(taskId, keys, tx)`; a later `Chk` keeps those keys, and releasing the execution pin
-// registers them for reclaim with the ledgers.
-describe("appending lip-sync intermediates to the execution pin (§97 D17-7)", () => {
+// frames-split §7.15 唯一写点 and the execution holder row: the worker registers each run intermediate object (a lip-sync
+// RLE, transform table, person video, stem or generation result, a transitions chunk) by appending its key to the run's
+// `execution` pin rows inside the registration transaction, through the repository's one writer `appendPinObjects`; a later
+// `Chk` keeps those keys, and releasing the execution pin registers them, without a canonical key, beside the edit file.
+describe("appending run intermediates to the execution pin (§7.15)", () => {
   type Append = (taskId: string, keys: readonly string[], tx: DbTx) => Promise<void>;
   /**
-   * The repository writer, read by name so this file compiles before it exists.
+   * The repository writer for the execution holder.
    * @returns It.
    */
   const append = async (): Promise<Append> => {
-    const repo = await import("@domain/presentation/presentation-pin.repo.js") as Record<string, unknown>;
-    expect(repo.appendExecutionPinObjects, "appendExecutionPinObjects is exported by the pin repository").toBeTypeOf("function");
-    return repo.appendExecutionPinObjects as Append;
+    const repo = await import("@domain/presentation/presentation-pin.repo.js");
+    return (taskId, keys, tx) => repo.appendPinObjects("execution", taskId, keys, tx);
   };
 
   it("PA01 keys appended in the registration transaction are on the execution pin when it commits, and Chk keeps them", async () => {
     const s = source(); const task = randomUUID();
-    const intermediates = [s.work(`${"a".repeat(64)}:70000000-0000-4000-8000-000000000001`), s.work(`${"b".repeat(64)}:70000000-0000-4000-8000-000000000002`)];
-    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.full(T), s.table(T)] });
+    const intermediates = [s.intermediate("a1"), s.intermediate("b2")];
+    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.edit(T)] });
     const write = await append();
     await db.transaction(async (tx) => { await write(task, intermediates, tx); });
-    expect(await live(task)).toEqual([{ holder_kind: "execution", tool_input_id: T, prepared_key: null, version_id: null, keys: [s.full(T), s.table(T), ...intermediates].sort() }]);
+    expect(await live(task)).toEqual([{ holder_kind: "execution", tool_input_id: T, prepared_key: null, version_id: null, keys: [s.edit(T), ...intermediates].sort() }]);
     for (const key of intermediates) expect(await pins().isKeyPinned(key)).toBe(true);
     expect(await queued(s.key)).toEqual([]);
   });
 
   it("PA02 keys appended in a registration transaction that rolls back are not pinned", async () => {
-    const s = source(); const task = randomUUID(); const key = s.work(`${"c".repeat(64)}:70000000-0000-4000-8000-000000000003`);
-    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.full(T), s.table(T)] });
+    const s = source(); const task = randomUUID(); const key = s.intermediate("c3");
+    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.edit(T)] });
     const write = await append();
     await expect(db.transaction(async (tx) => { await write(task, [key], tx); throw new Error("registration failed"); })).rejects.toThrow("registration failed");
     expect(await pins().isKeyPinned(key)).toBe(false);
   });
 
-  it("PA03 releasing the execution pin registers the appended keys with the ledgers", async () => {
-    const s = source(); const task = randomUUID(); const key = s.work(`${"d".repeat(64)}:70000000-0000-4000-8000-000000000004`);
-    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.full(T), s.table(T)] });
+  it("PA03 releasing the execution pin registers the appended keys with the edit file", async () => {
+    const s = source(); const task = randomUUID(); const key = s.intermediate("d4");
+    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.edit(T)] });
     const write = await append();
     await db.transaction(async (tx) => { await write(task, [key], tx); });
     await pins().release({ holderKind: "execution", holderId: task });
-    expect(await queued(s.key)).toEqual([s.full(T), s.table(T), key].sort());
+    expect(await queued(s.key)).toEqual([s.edit(T), key].sort());
   });
 
   // A transitions run pins each of its two inputs in its own execution row; a done chunk it appends stays pinned with the
   // run and is registered when the run's pins are released.
   it("PA04 a run with one execution row per input appends to it, and releasing the run registers the appended keys", async () => {
-    const s = source(); const task = randomUUID(); const key = s.work(`${"e".repeat(64)}:70000000-0000-4000-8000-000000000005`);
-    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.full(T), s.table(T)] });
-    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T2, objectKeys: [s.full(T2), s.table(T2)] });
+    const s = source(); const task = randomUUID(); const key = s.intermediate("e5");
+    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.edit(T)] });
+    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T2, objectKeys: [s.edit(T2)] });
     const write = await append();
     await db.transaction(async (tx) => { await write(task, [key], tx); });
     expect(await pins().isKeyPinned(key)).toBe(true);
     await pins().release({ holderKind: "execution", holderId: task });
-    expect(await queued(s.key)).toEqual([s.full(T), s.table(T), s.full(T2), s.table(T2), key].sort());
+    expect(await queued(s.key)).toEqual([s.edit(T), s.edit(T2), key].sort());
   });
 });

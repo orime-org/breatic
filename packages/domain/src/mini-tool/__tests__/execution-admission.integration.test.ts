@@ -3,11 +3,11 @@
 
 /**
  * Remove-background durable admission (S6e E3b, inner#1306 test plan §90; design §5.3 remove-bg and model-input rows,
- * §7.11, §5.4 作业身份). The request names its tool input; admission reads the selected version and its full ledger,
- * freezes `params.video` as the prepared reference `<taskId>:prep:0`, the standard-4 preparation (price, limits and
- * chunk windows) and quotes the model (duration from display.duration) plus max(preparation precheck, planned
- * preparation work) at the frozen standard-4 price. The golden fingerprints were recomputed independently with Python's
- * canonical JSON/SHA-256 (JS number formatting), which reproduces the previous goldens exactly.
+ * §7.11, §5.4 作业身份; frames-split §7.11). The request names its tool input; admission freezes the selected version
+ * on the frame grid, `params.video` as the prepared reference `<taskId>:prep:0`, the standard-4 preparation (price,
+ * limits and grid chunk windows) and the payer, and quotes the model (the grid's display duration) plus max(preparation
+ * precheck, planned preparation work) at the frozen standard-4 price. The golden fingerprints were recomputed
+ * independently with Python's canonical JSON/SHA-256 (ECMAScript number text).
  */
 import crypto from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
@@ -21,7 +21,7 @@ import { creditsForUsd } from "@domain/credit/usage-cost.js";
 import { estimateModelCredits, MIN_TASK_CREDIT_COST, resetModelCatalog } from "@domain/model-catalog/model-catalog.js";
 import { seedStudioFixture } from "../../../../server/src/__tests__/integration/studio-credit-fixtures.js";
 import { waitUntilBlockedOn } from "../../../../server/src/__tests__/integration/lock-probe.js";
-import { presentedSource } from "../../../../server/src/__tests__/integration/presentation-fixtures.js";
+import { presentedSource, type PresentedSource } from "../../../../server/src/__tests__/integration/presentation-fixtures.js";
 
 const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), reads: [] as string[], ingest: vi.fn(), config: vi.fn() }));
 vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof shared>(), videoPresentationAtIngest: outside.ingest }));
@@ -40,6 +40,7 @@ interface Fixture {
   sourceAssetId: string;
   sourceKey: string;
   sourceHash: string;
+  presented: PresentedSource;
 }
 interface StoredTask {
   id: string;
@@ -77,14 +78,8 @@ const GOLDEN_BODY: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }> 
   },
   analysis_refs: [],
   outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "remove-bg" } }],
-  presentation_ref: { source: { toolInputId: "e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec", planSha256: "bf04fa15ca5b369ad3012912dacce70ff0ec47c9779c5c1f87e461505e3c4ea1" } },
-};
-const GOLDEN_RECEIPT = {
-  schemaVersion: 2, sourceFingerprint: "a".repeat(64), toolInputId: "e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec",
-  planSha256: "bf04fa15ca5b369ad3012912dacce70ff0ec47c9779c5c1f87e461505e3c4ea1", producerVersion: 2, attempt: { jobId: "video-presentation:removal-source", deadlineAt: 1900000000000 },
-  url: "https://assets.example.test/video/source.mp4.video-source-ledger.e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec.json", etag: "full-etag", size: 1734,
-  sha256: "db9041da7a5e7c503ca5bf84281075c46160f638fcb6abc8c5bfcb8ac6f47b14", contentType: "application/json",
-  table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec.json", sha256: "d506e9d87e75dbaa9521961e007dbc3b5f4911b7756a062685f64642a9954693", size: 356, contentType: "application/json", frameCount: 1011 },
+  // The golden source's grid tool input (presentation-fixtures.ts with hash "a" x 64 at video/source.mp4).
+  presentation_ref: { source: { toolInputId: "6d11edc6ff23f7252db3a5d7410aa1bc6fd09eb0a82d4e9416708a6e5a56f20d", planSha256: "f8d213d4c5ed6a79e8161cc7acf54c558ab53ea5f18cebc3baedb18f95a4d955" } },
 };
 // The complete server-plan projection was hashed independently with Python's JSON/SHA-256.
 const GOLDEN_PLAN: AcceptedMiniToolExecution = {
@@ -114,9 +109,7 @@ const GOLDEN_PLAN: AcceptedMiniToolExecution = {
     output_container_and_codec: "webm_vp9",
     preserve_audio: true,
   },
-  presentationRef: GOLDEN_BODY.presentation_ref,
-  ledgerReceipts: { source: GOLDEN_RECEIPT },
-  versionIds: { source: "e".repeat(64) },
+  // The selected version and its reference are the golden source's (presentation-fixtures.ts), set by `goldenPlan`.
   preparation: {
     containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
     prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
@@ -128,11 +121,13 @@ const GOLDEN_PLAN: AcceptedMiniToolExecution = {
   },
   // Model 30 for 5.055 s of display + standard-4 preparation at its 300 s floor (0.03342 USD, the 5-credit minimum).
   credits: 35,
+  chargeTo: "user",
   // The frozen model part of the quote (display.duration), so a retry that reruns only generate can hold it alone.
   modelCredits: 30,
-  requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725",
-  // Recomputed for preparation.encode (§91 D3b-5) with the same canonical hash the plan service uses.
-  planFingerprint: "cf74d0cc111c8d40597397da945d8a343454a05c02760ed90510b58de015c4c3",
+  requestFingerprint: "91f5eef27ba46d6f47d72ab8878e296659fe7c0509b75eaea4a5fff359b78f86",
+  // Both fingerprints were recomputed independently in Python (sorted keys, compact JSON, ECMAScript number text, SHA-256)
+  // over the golden request and the plan with the golden source's grid version (frames-split §7.11).
+  planFingerprint: "45ea65fbb8cb54f21c6367499bf09b0f20a3537d66d1a76efc5ce6f505e3fee1",
 } as unknown as AcceptedMiniToolExecution;
 
 let pg: ReturnType<typeof createPgClient>;
@@ -212,9 +207,18 @@ async function seed(golden = false): Promise<Fixture> {
   }
   const presented = await presentedSource(sourceHash, sourceKey, publicUrl);
   outside.snapshots.set(sourceKey, presented.snapshot);
-  for (const [url, stored] of presented.bodies) outside.bodies.set(url, stored);
   body.presentation_ref = presented.presentationRef;
-  return { body, userId, otherEditorId, viewerId, sourceStudioId: source.studioId, targetStudioId: target.studioId, sourceAssetId, sourceKey, sourceHash };
+  return { body, userId, otherEditorId, viewerId, sourceStudioId: source.studioId, targetStudioId: target.studioId, sourceAssetId, sourceKey, sourceHash, presented };
+}
+
+/**
+ * The golden plan with the golden source's selected version (frames-split §7.11): the plan freezes the version the
+ * snapshot selects, its reference and its versionId.
+ * @param f - The golden fixture.
+ * @returns The plan.
+ */
+function goldenPlan(f: Fixture): AcceptedMiniToolExecution {
+  return { ...GOLDEN_PLAN, presentationRef: f.presented.presentationRef, presentations: { source: f.presented.bundle }, versionIds: { source: f.presented.versionId } };
 }
 
 /** Read the task independently of the admission service and its repository mapper. @throws {Error} On fixture SQL failure. */
@@ -237,15 +241,15 @@ describe("planned execution durable admission", () => {
     const start = vi.fn(async (accepted: AcceptedMiniToolExecution): Promise<"pending"> => {
       captured.push(structuredClone(accepted));
       const task = await readTask(accepted.taskId);
-      expect(task?.params).toEqual({ miniToolExecution: GOLDEN_PLAN });
+      expect(task?.params).toEqual({ miniToolExecution: goldenPlan(f) });
       return "pending";
     });
     expect(await acceptMiniToolExecution(f.body, f.userId, start)).toEqual({ taskId: GOLDEN_BODY.run_id, status: "pending" });
     expect(start).toHaveBeenCalledTimes(1);
-    expect(captured).toEqual([GOLDEN_PLAN]);
+    expect(captured).toEqual([goldenPlan(f)]);
     const task = await readTask(f.body.run_id);
     expect(task).toMatchObject({ id: f.body.run_id, user_id: f.userId, project_id: f.body.project_id, space_id: f.body.space_id,
-      task_type: "video", source: "mini_tool", mode: "append", status: "pending", model: "bria-fibo-video-background-remover", params: { miniToolExecution: GOLDEN_PLAN } });
+      task_type: "video", source: "mini_tool", mode: "append", status: "pending", model: "bria-fibo-video-background-remover", params: { miniToolExecution: goldenPlan(f) } });
     const [destination] = await pg<{ target_studio: string; source_studio: string }[]>`SELECT p.studio_id AS target_studio,a.studio_id AS source_studio
       FROM projects p CROSS JOIN studio_assets a WHERE p.id=${f.body.project_id} AND a.id=${f.sourceAssetId}`;
     expect(destination).toEqual({ target_studio: f.targetStudioId, source_studio: f.sourceStudioId });
@@ -448,19 +452,13 @@ describe("remove-bg model-input preparation at admission (inner#1306 §90 E3b; d
     expect(accepted.credits).toBe(accepted.modelCredits + std4Credits(100000));
   });
 
-  it.each(["ref toolInputId", "nothing selected", "ledger pending", "full without encode facts"])("RB-A03 refuses when %s, before claiming the run", async (bad) => {
+  // frames-split §7.11: the press is admitted only on the selected version it names.
+  it.each(["ref toolInputId", "ref planSha256", "nothing selected"])("RB-A03 refuses when %s, before claiming the run", async (bad) => {
     const f = await seed(); const start = startRecorder();
-    const snapshot = outside.snapshots.get(f.sourceKey) as { presentation: unknown; ledger: { state: string; receipt: Record<string, unknown> | null; failure: null } | null };
+    const snapshot = outside.snapshots.get(f.sourceKey) as { presentation: unknown };
     if (bad === "ref toolInputId") f.body.presentation_ref.source.toolInputId = "b".repeat(64);
-    else if (bad === "nothing selected") { snapshot.presentation = null; snapshot.ledger = null; }
-    else if (bad === "ledger pending") snapshot.ledger = { state: "pending", receipt: null, failure: null };
-    else {
-      const url = snapshot.ledger!.receipt!.url as string;
-      const { encoding: _dropped, ...without } = JSON.parse(outside.bodies.get(url)!) as Record<string, unknown>;
-      const json = JSON.stringify(without);
-      snapshot.ledger!.receipt = { ...snapshot.ledger!.receipt!, size: Buffer.byteLength(json), sha256: crypto.createHash("sha256").update(json).digest("hex") };
-      outside.bodies.set(url, json);
-    }
+    else if (bad === "ref planSha256") f.body.presentation_ref.source.planSha256 = "b".repeat(64);
+    else snapshot.presentation = null;
     await expect(acceptMiniToolExecution(f.body, f.userId, start)).rejects.toThrow();
     expect(start).not.toHaveBeenCalled(); expect(await readTask(f.body.run_id)).toBeNull();
   });
@@ -468,7 +466,7 @@ describe("remove-bg model-input preparation at admission (inner#1306 §90 E3b; d
   it("RB-R01 a failed-output retry reuses the frozen params.video reference and preparation without reading the current version or re-preparing", async () => {
     const f = await seed(); const start = startRecorder();
     await acceptMiniToolExecution(f.body, f.userId, start);
-    const original = start.mock.calls[0]![0] as unknown as { body: { video: unknown }; preparation: unknown; presentationRef: unknown; ledgerReceipts: unknown; planFingerprint: string; binding: unknown; outputs: unknown[]; sourceKey: string };
+    const original = start.mock.calls[0]![0] as unknown as { body: { video: unknown }; preparation: unknown; presentationRef: unknown; presentations: unknown; planFingerprint: string; binding: unknown; outputs: unknown[]; sourceKey: string };
     await seedPrepared(f.body.run_id, f.body.presentation_ref.source.toolInputId, original.sourceKey);
     const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: original.planFingerprint,
       resultVersion: 1, sourceBindings: [original.binding], outputs: (original.outputs as Record<string, unknown>[]).map((output) => ({ ...output, late: false,
@@ -481,7 +479,7 @@ describe("remove-bg model-input preparation at admission (inner#1306 §90 E3b; d
     expect(accepted.body.video).toEqual(original.body.video);
     expect(accepted.preparation).toEqual(original.preparation);
     expect(accepted.presentationRef).toEqual(original.presentationRef);
-    expect(accepted.ledgerReceipts).toEqual(original.ledgerReceipts);
+    expect(accepted.presentations).toEqual(original.presentations);
     expect(outside.ingest).not.toHaveBeenCalled(); expect(outside.reads).toEqual([]);
   });
 

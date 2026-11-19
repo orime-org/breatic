@@ -9,45 +9,34 @@
  */
 import { describe, expect, it } from "vitest";
 import { getMiniToolsConfig } from "@breatic/core";
-import type { VideoPresentationLedger } from "@breatic/shared";
+import type { VideoPresentationVersion } from "@breatic/shared";
 import {
-  lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceSpan, plannedStageJobs, type LipsyncTimeline, type VideoPresentationTable,
+  lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceSpan, plannedStageJobs, type LipsyncTimeline,
 } from "@breatic/shared/mini-tools";
 import { lipsyncClipCropBytes, lipsyncCompositeChunks, lipsyncRawDiskBytes } from "../lipsync-admission.js";
 import { lipSyncLayout } from "../execution-admission.service.js";
 
-const rational = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
+const DIGEST = "d".repeat(64);
 
 /**
- * A constant-rate table.
- * @param fps - Its frame rate.
- * @param count - Its frame count.
- * @returns The table.
- */
-function cfr(fps: number, count: number): VideoPresentationTable {
-  return { schemaVersion: 1, timescale: fps, runs: [{ start: 0, count, step: 1, duration: 1 }] };
-}
-
-/**
- * The full ledger facts the lip-sync layout reads, of an 8-bit SDR source with a keyframe every second.
- * @param fps - Its frame rate.
- * @param count - Its frame count.
+ * The selected version the lip-sync layout reads: an 8-bit SDR source read in place, a keyframe every second, on a
+ * constant grid (frames-split design §3.5).
+ * @param fps - Its grid rate.
+ * @param count - Its grid frame count.
  * @param size - Its display size.
  * @param size.width - The width.
  * @param size.height - The height.
- * @returns The ledger.
+ * @returns The version.
  */
-function ledgerOf(fps: number, count: number, size: { width: number; height: number }): VideoPresentationLedger {
-  const keyframes = Array.from({ length: Math.ceil(count / fps) }, (_unused, at) => at * fps);
+function versionOf(fps: number, count: number, size: { width: number; height: number }): VideoPresentationVersion {
+  const receipt = { storageKey: "video/fixture/play.mp4", url: "https://assets.example.test/video/fixture/play.mp4", etag: "e", size: 4096, sha256: DIGEST, contentType: "video/mp4" };
   return {
-    plan: {
-      display: { ...size, duration: rational(count, fps) }, source: { transfer: null, bitDepth: 8 }, policy: { emptyFill: "black" }, presentation: cfr(fps, count),
-      originMapping: { timeBase: rational(1, fps), origin: rational(0), entries: [{ kind: "source", start: 0, count, step: 1 }],
-        firstSource: { supportStart: rational(0), lead: null }, lastSource: { support: "declared", supportEnd: rational(count, fps), hold: null } },
-    },
-    encoding: { keyframeOrdinals: keyframes, codedWidth: size.width, codedHeight: size.height,
-      sourceKeyframes: keyframes.map((frame) => ({ pts: rational(frame, fps), dts: rational(frame, fps) })), firstPacketDts: rational(0) },
-  } as unknown as VideoPresentationLedger;
+    schemaVersion: 1, sourceFingerprint: DIGEST, versionId: DIGEST, toolInputId: DIGEST, planSha256: DIGEST, policyVersion: 1, producerVersion: DIGEST, profileVersion: DIGEST,
+    original: { ...size, duration: count / fps },
+    display: { ...size, fps: { numerator: fps, denominator: 1 }, frameCount: count, gridStart: { numerator: 0, denominator: 1 }, realFrameCount: count, leadFrames: 0, holdFrames: 0 },
+    playback: { kind: "native", carrier: receipt, displayRect: null },
+    toolSource: { edit: null, keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false }, sourceDecodeKey: "sdr_8bit" },
+  };
 }
 
 const HD = { width: 1920, height: 1080 };
@@ -69,7 +58,7 @@ function layout(fps: number, frames: number, timeline: LipsyncTimeline, at: { an
   const config = structuredClone(getMiniToolsConfig());
   if (at.reverseBufferBytes !== undefined) config.encoding.reverse_buffer_bytes = at.reverseBufferBytes;
   const usedEnd = timeline.syncMode === "cut_off" ? timeline.duration : timeline.videoDuration;
-  return lipSyncLayout(ledgerOf(fps, frames, at.size), cfr(fps, frames),
+  return lipSyncLayout(versionOf(fps, frames, at.size),
     { timeline, usedRange: { start: 0, end: usedEnd }, persons: 2, cropSize: 512, containerClass: "MiniToolContainerStd4", anchor: at.anchor }, config);
 }
 
@@ -108,9 +97,9 @@ describe("lip-sync admission over streamed steps (execution design paragraph bef
 
   it("LD05 cuts a chunk that goes back so its union source window fits the disk, and leaves a forward chunk whole", () => {
     // A 10-frame source looped over 40 result frames, one time chunk; a picture of 100 bytes and a disk for 6 of them.
-    const table = cfr(10, 10);
+    const grid = { fps: { numerator: 10, denominator: 1 }, frameCount: 10 };
     const timeline: LipsyncTimeline = { duration: 4, videoDuration: 1, syncMode: "loop" };
-    const sources = lipsyncResultSourceFrames(timeline, table);
+    const sources = lipsyncResultSourceFrames(timeline, grid);
     const segments = [0, 10, 20, 30].map((start) => ({ resultStart: start, resultEnd: start + 10 }));
     const chunks = lipsyncCompositeChunks({ sources, segments, seconds: (window) => 1 + (window.end - window.start) * 0.01, shareSeconds: 100,
       rawBytes: (span) => (span.end - span.start) * 100, diskBytes: 600 });

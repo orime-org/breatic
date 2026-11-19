@@ -588,14 +588,14 @@ describe("durable expense recovery orchestration", () => {
     const [usage] = await pg`SELECT count(*)::int AS count FROM agent_usage_records WHERE operation_key IN (${f.fact.consumptionKey},${secondKey})`;
     expect(usage).toEqual({ count: 2 });
   });
-// §93 D5 (frames-split design §7.17 frame row 「不得把presentation ordinal当原解码n」, 「唯一写点：worker的配方构造」): a job frame recipe names a full-ledger entry and its PNG target, not a frameIndex.
 
+  // A job frame recipe names a grid frame of the frozen grid, the tool source and its PNG target (frames-split §7.16).
   it("reads a container through its complete original plan after computation ended", async () => {
     const f = await seed(); const inputId = crypto.randomUUID();
     const plan = { schemaVersion: 2, jobId: `original:${f.taskId}`, containerClass: "MediaContainer", deadlineAt: Date.parse("2026-10-24T11:03:03.100001Z"),
       limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 },
       inputs: [{ inputId, storageKey: "original/input.mp4" }],
-      outputs: [{ outputIndex: 8, storageKey: "original/frame.png", contentType: "image/png", recipe: { kind: "frame", inputId, entry: { kind: "source", decodeStart: { numerator: "42", denominator: "25" }, clipStart: { numerator: "42", denominator: "25" }, displayStart: { numerator: "42", denominator: "25" }, displayEnd: { numerator: "43", denominator: "25" }, rate: { numerator: "1", denominator: "1" } }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }] };
+      outputs: [{ outputIndex: 8, storageKey: "original/frame.png", contentType: "image/png", recipe: { kind: "frame", inputId, grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 96, realFrameCount: 96 }, source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false } }, frameIndex: 42, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }] };
     const identity = { kind: "container", containerClass: plan.containerClass, jobId: plan.jobId, chunkIndex: 1 } as const;
     const fact = { ...f.fact, identity, consumptionKey: await miniToolConsumptionKey({ taskId: f.taskId, stepId: f.stepId, identity }),
       containerPricing: { configVersion: "first-price", size: { vcpu: 8, memory_gib: 2, disk_gb: 4 }, prices: { vcpu_second_usd: 0.001, memory_gib_second_usd: 0.002, disk_gb_second_usd: 0.003 } } };

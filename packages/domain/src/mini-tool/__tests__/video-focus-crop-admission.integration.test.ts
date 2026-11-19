@@ -41,7 +41,8 @@ vi.mock("@breatic/shared/mini-tools", async (original) => ({
   miniToolChargeTo: (subject: string): "platform" | "user" => (outside.funded.has(subject) ? "platform" : "user"),
 }));
 
-const CROP = { x: 480, y: 270, width: 960, height: 540 };
+// A crop inside the selected version's 960x540 display (frames-split §5.5 admission row).
+const CROP = { x: 240, y: 135, width: 480, height: 270 };
 type FocusBody = Record<string, unknown> & { tool: "video.focus-crop"; project_id: string; space_id: string; run_id: string; outputs: Array<{ nodeId: string }>; presentation_ref: { source: { toolInputId: string; planSha256: string } } };
 interface Fixture { userId: string; projectId: string; studioId: string; panelNodeId: string; body: FocusBody }
 type FrozenCrop = AcceptedMiniToolExecution & { chargeTo?: string; credits: number; outputs: Array<{ outputIndex: number; nodeId: string; recipe: unknown }> };
@@ -85,13 +86,13 @@ async function seed(panelNodeId: string = crypto.randomUUID(), target?: Pick<Fix
   let base = target;
   if (base === undefined) {
     const studio = await seedStudioFixture(pg, "focus-crop");
+    await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${studio.projectId},${studio.userId},'editor')`;
     const sourceAssetId = crypto.randomUUID(); const sourceKey = `video/focus-crop-fixture/${sourceAssetId}.mp4`; const hash = crypto.randomBytes(32).toString("hex");
     const sourceURL = publicUrl(sourceKey);
     await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
       VALUES (${sourceAssetId},${studio.studioId},${hash},${sourceKey},${sourceURL},4096,'video/mp4','video','upload',${studio.userId},960,540,5.055)`;
     const presented = await presentedSource(hash, sourceKey, publicUrl);
     outside.snapshots.set(sourceKey, presented.snapshot);
-    for (const [url, stored] of presented.bodies) outside.bodies.set(url, stored);
     base = { userId: studio.userId, projectId: studio.projectId, studioId: studio.studioId, spaceId: crypto.randomUUID(), sourceNodeId: crypto.randomUUID(), sourceURL, ref: presented.presentationRef };
   }
   const body: FocusBody = {

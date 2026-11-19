@@ -84,24 +84,24 @@ async function seed(kind: MiniToolAnalysisKind = "people", status: Status = "run
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
     VALUES (${sourceAssetId},${studioId},${sourceHash},${sourceKey},${sourceURL},4096,'video/mp4','video','upload',${userId},400,200,5)`;
   const binding = { assetId: sourceAssetId, contentHash: sourceHash, canonicalURL: sourceURL, kind: "video", mediaInfo: { width: 400, height: 200, duration: 5, mimeType: "video/mp4" } };
-  const anchor = { frameIndex: 1, pts: 0.25 }; const range = { start: 0, end: 5 };
+  const anchor = { frameIndex: 1 }; const range = { start: 0, end: 5 };
   const analysisInput = projectMiniToolAnalysisInput({ kind, source: { canonicalURL: sourceURL }, profile: getMiniToolsConfig().analyses[kind].profile,
     params: kind === "people" ? { anchor } : kind === "scene_cuts" ? { range } : { anchor, range, region: { box: { x: 0.1, y: 0.1, width: 0.2, height: 0.3 }, points: [] }, trackingPrompt: "the selected person" },
   });
   const identity = { schemaVersion: 1, draftId: "20000000-0000-4000-8000-000000000001", revision: "30000000-0000-4000-8000-000000000001", analysisRunId: taskId, acceptedAt: at, kind, binding, analysisInput, inputFingerprint: await fingerprintMiniToolAnalysisInput(analysisInput) };
   const payload = kind === "people" ? { anchor, people: [{ personId: "person-1", faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.3 }, artifactRefs: [await artifact(studioId, userId, "thumbnail")] }] }
-    : kind === "scene_cuts" ? { timeBase: { numerator: 1, denominator: 100 }, frameCount: 20, cuts: [{ frameIndex: 2, pts: 1, detectionScore: 85 }] }
-      : { anchor, width: 400, height: 200, frameCount: 20, timeBase: { numerator: 1, denominator: 4 }, regionFingerprint: "d".repeat(64), sourceFrameMapping: Array.from({ length: 20 }, (_, index) => ({ frameIndex: index, sourcePts: index / 4 })), artifactRefs: await Promise.all(["rle"].map((role) => artifact(studioId, userId, role as MiniToolAnalysisArtifact["role"]))) };
+    : kind === "scene_cuts" ? { fps: { numerator: 4, denominator: 1 }, frameCount: 20, cuts: [{ frameIndex: 2, detectionScore: 85 }] }
+      : { anchor, width: 400, height: 200, frameCount: 20, fps: { numerator: 4, denominator: 1 }, regionFingerprint: "d".repeat(64), artifactRefs: await Promise.all(["rle"].map((role) => artifact(studioId, userId, role as MiniToolAnalysisArtifact["role"]))) };
   const result = miniToolAnalysisResultSchema.parse({ ...identity, ...payload });
   const normalized = status === "cancelled" ? "failed" : status;
   const initial = miniToolAnalysisRecordSchema.parse({ ...identity, status: normalized, result: status === "completed" ? result : null, error: normalized === "failed" ? ERROR : null, usage: [{ marker: "original-usage" }], artifactUnavailable: false });
   const presentation = await presentedSource(sourceHash, sourceKey, publicUrl);
   outside.snapshots.set(sourceKey, presentation.snapshot);
-  for (const [url, body] of presentation.bodies) outside.bodies.set(url, body);
   const frozen = { schemaVersion: 1, analysisRunId: taskId, projectId, spaceId, hostNodeId, draftId: identity.draftId, revision: identity.revision, kind,
     source: { nodeId: hostNodeId, canonicalURL: sourceURL, mediaInfo: binding.mediaInfo }, binding, analysisInput, inputFingerprint: identity.inputFingerprint,
-    // S6e E4-12: the tool input and the selected version's receipts frozen with the analysis, as for an execution.
-    presentationRef: presentation.presentationRef, ledgerReceipts: { source: presentation.receipt }, versionIds: { source: presentation.versionId } };
+    // The tool input, the selected version and the payer frozen with the analysis, as for an execution (frames-split §7.11, §5.5).
+    presentationRef: presentation.presentationRef, presentations: { source: presentation.bundle }, versionIds: { source: presentation.versionId },
+    chargeTo: kind === "people" ? "platform" as const : "user" as const };
   const params = { analysis: frozen, requestFingerprint: "e".repeat(64), sourceKey, credits: kind === "people" ? 0 : 1 };
   const stepId = crypto.randomUUID(); const nodeTaskId = crypto.randomUUID();
   const expenseIdentity = { kind: "container", containerClass: "std1", jobId: taskId, chunkIndex: 0 } as const;
@@ -498,7 +498,7 @@ describe("persistent analysis results", () => {
     { field: "profile version", rehash: true, change: (r) => ({ ...r, analysisInput: { ...r.analysisInput, profile: { ...r.analysisInput.profile, version: "other-version" } } }) },
     { field: "weights", rehash: true, change: (r) => ({ ...r, analysisInput: { ...r.analysisInput, profile: { ...r.analysisInput.profile, weightsHash: "e".repeat(64) } } }) },
     { field: "profile params", rehash: true, change: (r) => ({ ...r, analysisInput: { ...r.analysisInput, profile: { ...r.analysisInput.profile, params: { ...r.analysisInput.profile.params, changed: true } } } }) },
-    { field: "anchor", rehash: true, change: (r) => ({ ...r, anchor: { frameIndex: 2, pts: 0.5 }, analysisInput: { ...r.analysisInput, anchor: { frameIndex: 2, pts: 0.5 } } }) },
+    { field: "anchor", rehash: true, change: (r) => ({ ...r, anchor: { frameIndex: 2 }, analysisInput: { ...r.analysisInput, anchor: { frameIndex: 2 } } }) },
     { field: "fingerprint", change: (r) => ({ ...r, inputFingerprint: "f".repeat(64) }) },
   ];
   it.each(identityChanges)("rejects frozen $field changes without a partial write", async ({ change, rehash }) => {
@@ -511,7 +511,7 @@ describe("persistent analysis results", () => {
   it("rejects a different valid analysis kind for the original task", async () => {
     const f = await seedOpen(); const before = await snapshot(f);
     const input = projectMiniToolAnalysisInput({ kind: "scene_cuts", source: { canonicalURL: f.result.binding.canonicalURL }, profile: getMiniToolsConfig().analyses.scene_cuts.profile, params: { range: { start: 0, end: 5 } } });
-    const raw: Record<string, unknown> = { ...f.result, kind: "scene_cuts", analysisInput: input, inputFingerprint: await fingerprintMiniToolAnalysisInput(input), timeBase: { numerator: 1, denominator: 100 }, frameCount: 20, cuts: [] };
+    const raw: Record<string, unknown> = { ...f.result, kind: "scene_cuts", analysisInput: input, inputFingerprint: await fingerprintMiniToolAnalysisInput(input), fps: { numerator: 4, denominator: 1 }, frameCount: 20, cuts: [] };
     delete raw.people; delete raw.anchor;
     const incoming = miniToolAnalysisResultSchema.parse(raw);
     await expect(record(f, incoming)).rejects.toBeInstanceOf(ConflictError); expect(await snapshot(f)).toEqual(before);
@@ -520,8 +520,8 @@ describe("persistent analysis results", () => {
   it.each(["people", "scene_cuts", "tracked_mask"] as const)("applies the complete typed %s schema at the write boundary", async (kind) => {
     const f = await seedOpen(kind); const before = await snapshot(f);
     const invalid = f.result.kind === "people" ? { ...f.result, people: [{ ...f.result.people[0]!, faceBox: { x: 0.9, y: 0, width: 0.2, height: 0.3 } }] }
-      : f.result.kind === "scene_cuts" ? { ...f.result, cuts: [{ frameIndex: 20, pts: 1, detectionScore: 85 }] }
-        : { ...f.result, sourceFrameMapping: f.result.sourceFrameMapping.slice(1) };
+      : f.result.kind === "scene_cuts" ? { ...f.result, cuts: [{ frameIndex: 20, detectionScore: 85 }] }
+        : { ...f.result, artifactRefs: [] };
     await expect(record(f, invalid)).rejects.toBeInstanceOf(z.ZodError); expect(await snapshot(f)).toEqual(before);
   });
 

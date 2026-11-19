@@ -6,7 +6,7 @@ import { trackingClips } from "@breatic/shared/mini-tools";
 import { lipsyncPersonStepKeys, lipsyncSharedStepKeys, lipsyncStepKey, type LipSyncPerson } from "../lipsync-admission.js";
 
 const PLAN = "f".repeat(64);
-const PERSON: LipSyncPerson = { personId: "person-1", detectionNumber: 1, anchor: { frameIndex: 0, pts: 0 }, anchorFaceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 } };
+const PERSON: LipSyncPerson = { personId: "person-1", detectionNumber: 1, anchor: { frameIndex: 0 }, anchorFaceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 } };
 const RANGE = { start: 0, end: 90 };
 
 // Execution design §10.2 last paragraph: the people analysis has one anchor, so the forward and reversed clips are shared by
@@ -21,7 +21,7 @@ describe("lip-sync tracking steps follow trackingClips (execution design §10.2)
     const shared = lipsyncSharedStepKeys(PLAN, 2, clips);
     expect(Object.keys(shared).sort()).toEqual([...preparations, "composite:0", "composite:1", "stitch"].sort());
     for (const step of preparations) expect(shared[step]).toBe(lipsyncStepKey(PLAN, null, step));
-    const person = lipsyncPersonStepKeys(PLAN, { ...PERSON, anchor: { frameIndex: anchor, pts: anchor / 30 } }, clips);
+    const person = lipsyncPersonStepKeys(PLAN, { ...PERSON, anchor: { frameIndex: anchor } }, clips);
     expect(Object.keys(person).sort()).toEqual([...tracks, "track_join", "faces", "clip", "stem", "gen"].sort());
     for (const [step, key] of Object.entries(person)) expect(key).toBe(lipsyncStepKey(PLAN, PERSON.personId, step));
   });

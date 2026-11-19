@@ -502,6 +502,7 @@ function task(over: Partial<NodeTaskRecord>): NodeTaskRecord {
     duration: null,
     mimeType: null,
     size: null,
+    sourceName: null,
     ...over,
   };
 }

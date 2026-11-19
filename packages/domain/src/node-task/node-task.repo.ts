@@ -13,7 +13,7 @@
 
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, type DbTx } from "@breatic/core";
-import { nodeHistory, nodeTasks } from "@breatic/core";
+import { nodeHistory, nodeTasks, tasks } from "@breatic/core";
 import type { NodeTaskAction } from "@breatic/shared";
 
 /** The four states a task can be in, and the four numbers the node shows. */
@@ -74,6 +74,8 @@ export interface NodeTaskListRow extends NodeTaskRow {
   duration: number | null;
   mimeType: string | null;
   size: number | null;
+  /** A video focus crop's frozen source node name, the row's title beside its tool id (frames-split §5.5); null otherwise. */
+  sourceName: string | null;
 }
 
 /**
@@ -373,10 +375,16 @@ export async function listLive(
   projectId: string,
   nodeId: string,
 ): Promise<NodeTaskListRow[]> {
+  const execution = sql`${tasks.params}->'miniToolExecution'`;
   const rows = await db
-    .select({ task: nodeTasks, history: nodeHistory })
+    .select({
+      task: nodeTasks, history: nodeHistory,
+      // A video focus crop freezes its source node's name in its plan's draft (frames-split §5.5 admission row).
+      sourceName: sql<string | null>`CASE WHEN ${execution}->>'tool' = 'video.focus-crop' THEN ${execution}->'draft'->'params'->>'sourceName' END`,
+    })
     .from(nodeTasks)
     .leftJoin(nodeHistory, eq(nodeHistory.id, nodeTasks.nodeHistoryId))
+    .leftJoin(tasks, eq(tasks.id, nodeTasks.taskId))
     .where(
       and(
         eq(nodeTasks.projectId, projectId),
@@ -386,8 +394,9 @@ export async function listLive(
     )
     .orderBy(sql`${nodeTasks.startedAt} DESC`);
 
-  return rows.map(({ task, history }) => ({
+  return rows.map(({ task, history, sourceName }) => ({
     ...rowOf(task),
+    sourceName: sourceName ?? null,
     content: history?.content ?? null,
     coverUrl: history?.thumbnailUrl ?? null,
     mediaWidth: history?.mediaWidth ?? null,

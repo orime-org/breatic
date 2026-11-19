@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { z } from "zod";
-import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError, budgetDeadlineFrom, db, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from "@breatic/core";
+import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError, db, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { ceilToCreditCent, readVideoPresentationLedger, t, videoPresentationLedgerReceiptSchema, type ConsentSnapshot } from "@breatic/shared";
-import { canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, hashMiniToolValue, miniToolAnalysisInputSchema, miniToolPresentationRefSchema, miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, miniToolSourceBindingSchema, projectMiniToolAnalysisInput, presentationFramesIn, trackingClips, videoToolSourceRefSchema, type VideoPresentationTable, type MiniToolAnalysisRequest, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisResult, type MiniToolSourceBinding } from "@breatic/shared/mini-tools";
+import { ceilToCreditCent, t, videoPresentationVersionSchema, type ConsentSnapshot, type VideoPresentationVersion } from "@breatic/shared";
+import { canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, hashMiniToolValue, miniToolAnalysisInputSchema, miniToolChargeTo, miniToolPresentationRefSchema, miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, miniToolSourceBindingSchema, projectMiniToolAnalysisInput, trackingClips, videoToolSourceRefSchema, type MiniToolAnalysisRequest, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisResult, type MiniToolSourceBinding } from "@breatic/shared/mini-tools";
 import * as assetRepo from "@domain/asset/asset.repo.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 import { containerCostUsd } from "@domain/credit/container-cost.js";
@@ -27,10 +27,13 @@ export const miniToolFrozenAnalysisSchema = z.strictObject({
   kind: z.enum(["people", "scene_cuts", "tracked_mask"]), source: videoToolSourceRefSchema,
   binding: miniToolSourceBindingSchema, analysisInput: miniToolAnalysisInputSchema,
   inputFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-  // The selected tool input and its receipts, frozen as an execution freezes them (design §7.11).
+  // The selected tool input and its version (grid, tool source and source keyframe statistics), frozen as an execution
+  // freezes them (frames-split §7.11).
   presentationRef: miniToolPresentationRefSchema,
-  ledgerReceipts: z.strictObject({ source: videoPresentationLedgerReceiptSchema }),
+  presentations: z.strictObject({ source: videoPresentationVersionSchema }),
   versionIds: z.strictObject({ source: z.string().regex(/^[a-f0-9]{64}$/) }),
+  // Who pays, decided at admission from the platform-funded set and read by the runner (frames-split §5.5 configuration row).
+  chargeTo: z.enum(["platform", "user"]),
 });
 
 export type MiniToolFrozenAnalysis = z.infer<typeof miniToolFrozenAnalysisSchema>;
@@ -179,27 +182,27 @@ export async function resolveSource(source: MiniToolAnalysisRequest["source"]): 
  * length and each clip's standard-4 preparation at its precheck, beside the join at the analysis class's precheck.
  * @param kind - The analysis operation.
  * @param input - Its frozen public dependencies.
- * @param table - The selected tool input's presentation table, which a tracked mask's clips are cut on.
- * @returns User credits; auxiliary people detection is funded by the platform.
+ * @param display - The selected version's display grid, which a tracked mask's clips are cut on.
+ * @returns User credits; a platform-funded kind (people detection) quotes 0.
  * @throws {AppError} When a deployment does not serve or price the selected model.
  * @throws {ValidationError} When a clip is longer than the tracker takes.
  */
-async function estimate(kind: MiniToolAnalysisKind, input: MiniToolAnalysisRecord["analysisInput"], table: VideoPresentationTable | null): Promise<number> {
-  if (kind === "people") return 0;
+async function estimate(kind: MiniToolAnalysisKind, input: MiniToolAnalysisRecord["analysisInput"], display: VideoPresentationVersion["display"]): Promise<number> {
+  if (miniToolChargeTo(kind) === "platform") return 0;
   const config = getMiniToolsConfig();
   const operation = config.analyses[kind];
   const size = config.classes[operation.container_class]!;
   const usd = containerCostUsd({ wallMs: operation.precheck_seconds * 1000, cpuUsec: null }, size, config.prices);
   let credits = creditsForUsd(usd, env.CREDIT_MULTIPLIER);
   if (input.kind === "tracked_mask") {
-    if (table === null) throw new Error("A tracked mask is quoted on its presentation table");
     const entry = getModelCatalog().video.find((candidate) => candidate.name === input.profile.id);
     if (!entry?.pricing) throw new AppError(503, t("server.mini_tool.unavailable"));
     const limit = entry.params.video?.max_total_duration;
-    const { first, count } = presentationFramesIn(table, input.range);
+    const first = input.range.start;
+    const count = Math.min(input.range.end, display.frameCount) - first;
     const preparation = config.analyses.tracked_mask.preparation;
     const prepareUsd = containerCostUsd({ wallMs: preparation.precheck_seconds * 1000, cpuUsec: null }, config.classes[preparation.container_class]!, config.prices);
-    for (const seconds of trackingClipSeconds(table, trackingClips({ start: first, end: first + count }, input.anchor.frameIndex))) {
+    for (const seconds of trackingClipSeconds(display, trackingClips({ start: first, end: first + count }, input.anchor.frameIndex))) {
       if (limit !== undefined && seconds > limit) throw new ValidationError(t("server.mini_tool.foreignSource"));
       const model = await estimateModelCredits(input.profile.id, {
         params: { video: input.sourceURL, apply_mask: false }, prompt: input.trackingPrompt,
@@ -210,6 +213,17 @@ async function estimate(kind: MiniToolAnalysisKind, input: MiniToolAnalysisRecor
     }
   }
   return Math.max(ceilToCreditCent(credits), MIN_TASK_CREDIT_COST);
+}
+
+/**
+ * The object a run or an analysis keeps alive for its input (§7.15 execution and analysis rows): the edit file, when tools
+ * read one.
+ * @param version - The selected version.
+ * @returns Its edit file's key, or none.
+ * @throws {never} Never.
+ */
+export function toolSourceObjects(version: VideoPresentationVersion): string[] {
+  return version.toolSource.edit === null ? [] : [version.toolSource.edit.storageKey];
 }
 
 /**
@@ -297,36 +311,34 @@ export async function get(id: string, userId: string): Promise<MiniToolAnalysisR
  * @returns The frozen facts and the credits the run holds.
  * @throws {ValidationError} When a source, range or expected fingerprint is invalid.
  * @throws {AppError} When the deployment does not offer or price the analysis.
- * @throws {Error} When the ledger cannot be read.
+ * @throws {Error} When ingest cannot be read.
  */
 async function freeze(body: MiniToolAnalysisRequest): Promise<{
-  binding: MiniToolFrozenAnalysis["binding"]; sourceKey: string; versionId: string; receipt: MiniToolFrozenAnalysis["ledgerReceipts"]["source"];
+  binding: MiniToolFrozenAnalysis["binding"]; sourceKey: string; version: VideoPresentationVersion;
   profile: MiniToolAnalysisRecord["analysisInput"]["profile"]; analysisInput: MiniToolAnalysisRecord["analysisInput"]; inputFingerprint: string; credits: number;
 }> {
   const { binding, sourceKey } = await resolveSource(body.source);
-  const { versionId, receipt } = await selectedToolInput(body.presentationRef.source, binding, sourceKey, structuredClone(getMiniToolsConfig()));
+  const version = await selectedToolInput(body.presentationRef.source, binding, sourceKey, structuredClone(getMiniToolsConfig()));
+  const { display } = version;
   const profile = getMiniToolsConfig().analyses[body.kind].profile;
   const analysisInput = projectMiniToolAnalysisInput({ kind: body.kind, source: { canonicalURL: binding.canonicalURL }, profile, params: body.params });
-  if (("range" in analysisInput && analysisInput.range.end > binding.mediaInfo.duration)
-    || ("anchor" in analysisInput && analysisInput.anchor.pts > binding.mediaInfo.duration)) {
+  // Ranges and anchors are grid frames of the selected version (frames-split §10.12 analysis-input.ts row).
+  if (("range" in analysisInput && analysisInput.range.end > display.frameCount)
+    || ("anchor" in analysisInput && analysisInput.anchor.frameIndex >= display.frameCount)) {
     throw new ValidationError(t("server.mini_tool.foreignSource"));
   }
-  let table: VideoPresentationTable | null = null;
   if (analysisInput.kind === "tracked_mask") {
     // Tracking serves an erase, so the selection is checked as the erase will be (execution design §10.2, §10.4).
-    const config = getMiniToolsConfig();
-    const ledger = await readVideoPresentationLedger(receipt, { maxBytes: config.presentation.source_ledger.max_bytes }, { deadlineAt: budgetDeadlineFrom(Date.now()) });
-    assertOpaqueSource(ledger);
-    const erase = config.executions["video.erase"];
+    const erase = getMiniToolsConfig().executions["video.erase"];
+    assertOpaqueSource(version);
     if (erase === undefined) throw new AppError(400, t("server.mini_tool.unavailable"));
-    eraseRangeGrid(ledger.plan.presentation, analysisInput.range, analysisInput.anchor, erase.model);
-    table = ledger.plan.presentation;
+    eraseRangeGrid(display, analysisInput.range, analysisInput.anchor, erase.model);
   }
   const inputFingerprint = await fingerprintMiniToolAnalysisInput(analysisInput);
   if (body.inputFingerprint !== undefined && body.inputFingerprint !== inputFingerprint) {
     throw new ValidationError(t("server.idempotency.mismatch"));
   }
-  return { binding, sourceKey, versionId, receipt, profile, analysisInput, inputFingerprint, credits: await estimate(body.kind, analysisInput, table) };
+  return { binding, sourceKey, version, profile, analysisInput, inputFingerprint, credits: await estimate(body.kind, analysisInput, display) };
 }
 
 /**
@@ -368,7 +380,8 @@ export async function accept(
     schemaVersion: 1, analysisRunId: body.analysisRunId, projectId: body.projectId,
     spaceId: body.spaceId, hostNodeId: body.hostNodeId, draftId: body.draftId,
     revision: body.revision, kind: body.kind, source: body.source, binding: frozen.binding, analysisInput: frozen.analysisInput,
-    inputFingerprint: frozen.inputFingerprint, presentationRef: body.presentationRef, ledgerReceipts: { source: frozen.receipt }, versionIds: { source: frozen.versionId },
+    inputFingerprint: frozen.inputFingerprint, presentationRef: body.presentationRef, presentations: { source: frozen.version }, versionIds: { source: frozen.version.versionId },
+    chargeTo: miniToolChargeTo(body.kind),
   };
   const taskParams: MiniToolAnalysisTaskParams = { analysis, requestFingerprint, sourceKey, credits: frozen.credits };
   const toolInputId = body.presentationRef.source.toolInputId;
@@ -377,8 +390,8 @@ export async function accept(
       id: body.analysisRunId, userId, projectId: body.projectId, spaceId: body.spaceId,
       params: taskParams, ...(body.kind === "tracked_mask" ? { model: profile.id } : {}),
     }, tx);
-    // The analysis keeps its input's L alive until it ends (§7.15 analysis row).
-    if (claimed) await presentationPinService.acquire({ holderKind: "analysis", holderId: body.analysisRunId, toolInputId, objectKeys: presentationPinService.ledgerObjectKeys(sourceKey, toolInputId) }, tx);
+    // The analysis keeps its input's edit file alive until it ends (§7.15 analysis row).
+    if (claimed) await presentationPinService.acquire({ holderKind: "analysis", holderId: body.analysisRunId, toolInputId, objectKeys: toolSourceObjects(frozen.version) }, tx);
     return claimed;
   });
   if (!inserted) {

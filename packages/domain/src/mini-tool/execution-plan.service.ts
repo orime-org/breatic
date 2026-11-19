@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { z } from "zod";
-import { miniToolPlanLimitsSchema, x264PresetSchema, videoPresentationLedgerReceiptSchema, type TaskEntity } from "@breatic/shared";
+import { miniToolPlanLimitsSchema, x264PresetSchema, videoPresentationVersionSchema, type TaskEntity } from "@breatic/shared";
 import {
   canonicalMiniToolValue, hashMiniToolValue, miniToolExecutionRecipeSchema, miniToolExecutionRetryRequestSchema, miniToolPlannedRequestSchema,
-  miniToolPresentationRefSchema, miniToolSourceBindingSchema, videoToolAnalysisRefSchema, videoToolDraftSchema,
+  miniToolPresentationRefSchema, miniToolSourceBindingSchema, miniToolTaskType, videoFocusCropDraftSchema, videoToolAnalysisRefSchema, videoToolDraftSchema,
 } from "@breatic/shared/mini-tools";
 import type { AcceptedMiniToolExecution } from "@domain/mini-tool/execution-admission.service.js";
 import * as taskRepo from "@domain/task/task.repo.js";
@@ -17,6 +17,8 @@ const common = {
   draft: z.unknown(), analysisRefs: z.array(videoToolAnalysisRefSchema),
   outputs: z.array(z.strictObject({ outputIndex: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), nodeId: z.uuid(), recipe: miniToolExecutionRecipeSchema })).min(1),
   model: z.string().min(1), credits: z.number().nonnegative(), requestFingerprint: fingerprint, planFingerprint: fingerprint,
+  // Who pays, frozen at admission and bound by the plan fingerprint (frames-split §5.5 configuration row).
+  chargeTo: z.enum(["platform", "user"]),
 };
 const index = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const layout = z.strictObject({
@@ -24,7 +26,7 @@ const layout = z.strictObject({
   encodes: z.array(z.strictObject({ outputIndex: index, chunks: z.array(z.strictObject({ start: index, end: index })).min(1) })),
 });
 const frameWindows = z.array(z.strictObject({ start: index, end: index })).min(1);
-const stageJobs = z.array(z.strictObject({ stage: z.enum(["prepare", "prepare_stitch", "track_prepare", "track_prepare_stitch", "encode", "stitch", "faces", "clip_stem", "model_composite", "composite"]), jobs: z.number().int().positive() }));
+const stageJobs = z.array(z.strictObject({ stage: z.enum(["prepare", "prepare_stitch", "track_prepare", "track_prepare_stitch", "track_join", "encode", "stitch", "faces", "clip_stem", "mask", "window", "model_composite", "composite"]), jobs: z.number().int().positive() }));
 const container = {
   containerClass: z.literal("MiniToolContainerStd4"), precheckSeconds: z.number().positive(),
   size: z.strictObject({ instance_type: z.string().min(1), vcpu: z.number().positive(), memory_gib: z.number().positive(), disk_gb: z.number().positive() }),
@@ -33,14 +35,15 @@ const container = {
 };
 const frozenToolInput = {
   presentationRef: miniToolPresentationRefSchema,
-  ledgerReceipts: z.strictObject({ source: videoPresentationLedgerReceiptSchema }), versionIds: z.strictObject({ source: fingerprint }),
+  // The selected version: its display grid, tool source and source keyframe statistics (frames-split §7.11).
+  presentations: z.strictObject({ source: videoPresentationVersionSchema }), versionIds: z.strictObject({ source: fingerprint }),
   retry: miniToolExecutionRetryRequestSchema.shape.retry.optional(),
 };
 const runContainer = z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),
   encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), chunkRetries: index });
 const rect = z.strictObject({ x: z.number().int(), y: z.number().int(), width: z.number().int().positive(), height: z.number().int().positive() });
 /** The recipe kind each tool's outputs carry. */
-const RECIPE_KIND = { "video.split": "segment", "video.remove-bg": "remove-bg", "video.lip-sync": "lip-sync", "video.extract-frames": "frame",
+const RECIPE_KIND = { "video.split": "segment", "video.remove-bg": "remove-bg", "video.lip-sync": "lip-sync", "video.extract-frames": "frame", "video.focus-crop": "frame",
   "video.transitions": "transitions", "video.erase": "erase", "video.expand": "expand" } as const;
 const storedPlanSchema = z.union([
   z.strictObject({ ...common, ...frozenToolInput, tool: z.literal("video.remove-bg"),
@@ -51,7 +54,7 @@ const storedPlanSchema = z.union([
       encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }) }),
     modelCredits: z.number().nonnegative(),
   }),
-  z.strictObject({ ...common, ...frozenToolInput, tool: z.enum(["video.extract-frames", "video.split"]), layout,
+  z.strictObject({ ...common, ...frozenToolInput, tool: z.enum(["video.extract-frames", "video.split", "video.focus-crop"]), layout,
     // The stage counts frozen beside the layout (§97 D12-1); plans admitted before them have none.
     stageJobs: stageJobs.optional(),
     outputSeconds: z.array(z.number().nonnegative().finite()), container: z.strictObject({ ...container, startSeconds: z.number().nonnegative().finite(),
@@ -59,7 +62,7 @@ const storedPlanSchema = z.union([
   }),
   // A transitions run (frames-split §5.4, §7.17; §97 D23-3): both clips' inputs by draft input id.
   z.strictObject({ ...common, tool: z.literal("video.transitions"),
-    presentationRef: z.record(z.uuid(), miniToolPresentationRefSchema.shape.source), ledgerReceipts: z.record(z.uuid(), videoPresentationLedgerReceiptSchema),
+    presentationRef: z.record(z.uuid(), miniToolPresentationRefSchema.shape.source), presentations: z.record(z.uuid(), videoPresentationVersionSchema),
     versionIds: z.record(z.uuid(), fingerprint), bindings: z.record(z.uuid(), miniToolSourceBindingSchema), sourceKeys: z.record(z.uuid(), z.string().min(1)),
     retry: miniToolExecutionRetryRequestSchema.shape.retry.optional(),
     layout: z.strictObject({ encode: z.array(z.strictObject({ start: index, end: index })), window: z.array(z.strictObject({ start: index, end: index })) }), stageJobs,
@@ -76,7 +79,7 @@ const storedPlanSchema = z.union([
     usedRange: z.strictObject({ start: z.literal(0), end: z.number().positive() }),
     dialogues: z.array(z.strictObject({ dialogueId: z.string().min(1), personId: z.string().min(1), audioInputId: z.uuid(), startTime: z.number().nonnegative(), duration: z.number().positive() })).min(1),
     persons: z.array(z.strictObject({ personId: z.string().min(1), detectionNumber: z.number().int().positive(),
-      anchor: z.strictObject({ frameIndex: index, pts: z.number().nonnegative() }),
+      anchor: z.strictObject({ frameIndex: index }),
       anchorFaceBox: z.strictObject({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }),
       // Every step key is frozen at the first admission and copied by each retry (DD §7.1).
       stepKeys: z.strictObject({ "track:fwd": fingerprint.optional(), "track:rev": fingerprint.optional(), track_join: fingerprint, faces: fingerprint,
@@ -134,7 +137,8 @@ export async function readMiniToolExecutionPlan(taskId: string): Promise<MiniToo
 export async function executionPlanFromTask(task: TaskEntity): Promise<MiniToolExecutionPlan> {
   if (task.source !== "mini_tool" || task.mode !== "append") throw new Error("Planned video execution has no owning task");
   const stored = storedPlanSchema.parse(task.params.miniToolExecution);
-  const draft = videoToolDraftSchema(stored.tool).parse(stored.draft);
+  // A focus crop's draft is its request's own (frames-split §5.5); the seven panel tools' drafts are their node drafts.
+  const draft = stored.tool === "video.focus-crop" ? videoFocusCropDraftSchema.parse(stored.draft) : videoToolDraftSchema(stored.tool).parse(stored.draft);
   if (stored.retry !== undefined) {
     const indexes = stored.outputs.map((output) => output.outputIndex);
     if (stored.retry.runId === stored.taskId || canonicalMiniToolValue([...indexes].sort((a, b) => a - b)) !== canonicalMiniToolValue([...stored.retry.outputIndexes].sort((a, b) => a - b))
@@ -147,10 +151,10 @@ export async function executionPlanFromTask(task: TaskEntity): Promise<MiniToolE
   }
   const execution = { ...stored, draft } as AcceptedMiniToolExecution;
   const { requestFingerprint: _requestFingerprint, planFingerprint, ...projection } = execution;
-  if (task.taskType !== (execution.tool === "video.extract-frames" ? "image" : "video")
+  if (task.taskType !== miniToolTaskType(execution.tool)
     || execution.taskId !== task.id || execution.projectId !== task.projectId || execution.spaceId !== task.spaceId || execution.model !== task.model
     || !frozenInputsMatch(execution)
-    || ((execution.tool === "video.extract-frames" || execution.tool === "video.split") && (execution.model !== execution.tool || execution.outputSeconds.length !== execution.outputs.length))
+    || ((execution.tool === "video.extract-frames" || execution.tool === "video.split" || execution.tool === "video.focus-crop") && (execution.model !== execution.tool || execution.outputSeconds.length !== execution.outputs.length))
     || (execution.tool === "video.lip-sync" && execution.model !== execution.generator.modelId)
     || canonicalMiniToolValue(execution.targetNodeIds) !== canonicalMiniToolValue(execution.outputs.map((output) => output.nodeId))
     || await hashMiniToolValue(projection) !== planFingerprint) throw new Error("Planned execution differs from its original parent or complete plan");
@@ -158,16 +162,19 @@ export async function executionPlanFromTask(task: TaskEntity): Promise<MiniToolE
 }
 
 /**
- * Whether each frozen input's receipt is the one its ref and registered binding name.
+ * Whether each frozen input's selected version is the one its ref and registered binding name.
  * @param execution - The plan.
  * @returns True when every input matches.
  * @throws {never} Never.
  */
 function frozenInputsMatch(execution: AcceptedMiniToolExecution): boolean {
   if (execution.tool !== "video.transitions") {
-    return execution.ledgerReceipts.source.sourceFingerprint === execution.binding.contentHash && execution.ledgerReceipts.source.toolInputId === execution.presentationRef.source.toolInputId;
+    const version = execution.presentations.source;
+    return version.sourceFingerprint === execution.binding.contentHash && version.toolInputId === execution.presentationRef.source.toolInputId
+      && version.planSha256 === execution.presentationRef.source.planSha256 && version.versionId === execution.versionIds.source;
   }
   const ids = Object.keys(execution.presentationRef);
-  return ids.length === 2 && ids.every((id) => execution.ledgerReceipts[id]?.toolInputId === execution.presentationRef[id]!.toolInputId
-    && execution.ledgerReceipts[id]?.sourceFingerprint === execution.bindings[id]?.contentHash && execution.sourceKeys[id] !== undefined && execution.versionIds[id] !== undefined);
+  return ids.length === 2 && ids.every((id) => execution.presentations[id]?.toolInputId === execution.presentationRef[id]!.toolInputId
+    && execution.presentations[id]?.sourceFingerprint === execution.bindings[id]?.contentHash && execution.sourceKeys[id] !== undefined
+    && execution.presentations[id]?.versionId === execution.versionIds[id]);
 }

@@ -16,7 +16,7 @@
  */
 
 import type { getStreamRedis } from "@breatic/core";
-import type { NodeTaskCountsEvent, NodeTaskResult } from "@breatic/shared";
+import type { FocusImage, NodeTaskCountsEvent, NodeTaskResult } from "@breatic/shared";
 import * as repo from "@domain/node-task/node-task.repo.js";
 import * as service from "@domain/node-task/node-task.service.js";
 import { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
@@ -37,6 +37,8 @@ import { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
  * @param opts.errorMessage - What the list shows for a failure.
  * @param opts.result - The content fields, on the transition into `done`.
  * @param opts.resultOrigin - Immutable planned media identity, preserved on a landed replay.
+ * @param opts.focusImageAppend - A video focus crop's image for the node's focus images, sent only when the row landed, as
+ *   `result` is (frames-split §5.5 delivery row).
  * @returns The original node verdict after publication, or null when this run opened no row.
  * @throws {Error} When persistence, recounting or stream publication fails.
  */
@@ -51,6 +53,7 @@ export async function settleTaskForNode(
     errorMessage?: string;
     result?: NodeTaskResult;
     resultOrigin?: NodeTaskCountsEvent["resultOrigin"];
+    focusImageAppend?: FocusImage;
   },
 ): Promise<{ landed: boolean } | null> {
   const row = await repo.findByTaskAndNode(opts.taskId, opts.nodeId);
@@ -76,7 +79,9 @@ export async function settleTaskForNode(
     // settled some OTHER way keeps whatever is on the node: something else
     // finished it, and choosing between the two is not ours to do.
     settled.landed ? opts.result : undefined,
-    ...origin,
+    origin[0],
+    // A row judged expired or failed before the crop arrived did not land: the image stays in the asset library only.
+    settled.landed ? opts.focusImageAppend : undefined,
   );
   return { landed: settled.landed };
 }

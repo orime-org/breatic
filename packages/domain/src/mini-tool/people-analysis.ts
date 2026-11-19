@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { miniToolPlanJobRequestSchema, readMiniToolPlanJobReport,
-  type MiniToolPlanEntry, type MiniToolPlanJobReport, type MiniToolPlanJobRequest, type MiniToolPlanPixelRect, type StudioAssetEntity } from "@breatic/shared";
+  type MiniToolPlanJobReport, type MiniToolPlanJobRequest, type MiniToolPlanPixelRect, type StudioAssetEntity } from "@breatic/shared";
 import { canonicalMiniToolValue, miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema,
   type MiniToolAnalysisArtifact, type MiniToolAnalysisRecord, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
 
@@ -74,12 +74,11 @@ export function readMiniToolDisplayPeople(accepted: MiniToolAnalysisRecord, obse
  * @param sourceKey - The SQL frozen source key mapped by the original source alias.
  * @param observations - The original registered display candidates.
  * @param jobs - Original thumbnail plans, reports and registered rows from the owning task.
- * @param anchorEntry - The anchor's full-ledger entry, from the people job the caller built (§93 D5-9).
  * @returns The complete run-scoped people result with canonical image references.
  * @throws {Error} When candidates, original recipes, reports or registered rows differ.
  */
 export function assembleMiniToolPeopleAnalysis(
-  accepted: MiniToolAnalysisRecord, sourceKey: string, observations: unknown, jobs: readonly MiniToolRegisteredAnalysisJob[], anchorEntry: MiniToolPlanEntry,
+  accepted: MiniToolAnalysisRecord, sourceKey: string, observations: unknown, jobs: readonly MiniToolRegisteredAnalysisJob[],
 ): MiniToolPeopleAnalysisResult {
   const original = miniToolAnalysisRecordSchema.parse(accepted);
   const people = readMiniToolDisplayPeople(original, observations);
@@ -103,10 +102,10 @@ export function assembleMiniToolPeopleAnalysis(
     for (const output of request.outputs) {
       const candidate = candidates.get(output.outputIndex);
       const recipe = output.recipe;
-      // §93 D5-7: each thumbnail is the anchor's frame recipe on its entry, cropped in the display geometry.
+      // §93 D5-7 (frames-split §7.16): each thumbnail is the anchor's grid frame, cropped in the display geometry.
       if (candidate === undefined || references.has(output.outputIndex) || output.contentType !== "image/png" ||
-        recipe.kind !== "frame" || !("entry" in recipe) || recipe.inputId !== original.binding.assetId ||
-        canonicalMiniToolValue(recipe.entry) !== canonicalMiniToolValue(anchorEntry) || recipe.crop === undefined ||
+        recipe.kind !== "frame" || recipe.inputId !== original.binding.assetId ||
+        recipe.frameIndex !== anchor.frameIndex || recipe.crop === undefined ||
         recipe.crop.sourceWidth !== people.width || recipe.crop.sourceHeight !== people.height ||
         canonicalMiniToolValue(recipe.crop.rect) !== canonicalMiniToolValue(candidate.pixelCrop)) {
         throw new Error("People thumbnail recipe differs from its original display candidate");
