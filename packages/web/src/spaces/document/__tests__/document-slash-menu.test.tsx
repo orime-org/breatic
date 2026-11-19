@@ -440,6 +440,20 @@ function firstTable(editor: Editor): unknown[][] | undefined {
 }
 
 describe('the table entry (A4, design 5.8)', () => {
+  it('keeps the page caret in the first cell of the table an empty line below text becomes', async () => {
+    const { editor } = open([para('words'), para('')]);
+    caretAtEnd(editor, read(editor)[1]!.id);
+    type(editor, '/table');
+    press(editor, 'Enter');
+    // The table's frame commits in a React root of its own, after the pick.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const anchor = document.getSelection()?.anchorNode ?? null;
+    const at = anchor instanceof Element ? anchor : anchor?.parentElement;
+    expect(at?.closest('td')).not.toBeNull();
+  });
+
   it('turns an empty line into an empty 3x3 table on Enter', () => {
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);

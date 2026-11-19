@@ -201,6 +201,22 @@ function drawColumns(colgroup: HTMLElement, table: HTMLElement, block: TableBloc
 }
 
 /**
+ * Moves an element into another, and puts back a page selection that lay in
+ * it. Removing a node collapses a range inside it onto its old parent, and
+ * ProseMirror reads the page selection back on the DOM change, so a caret
+ * just put in a new table would land on the text before the table.
+ * @param element - The element to move.
+ * @param into - Where it goes.
+ */
+function moveKeepingSelection(element: HTMLElement, into: HTMLElement): void {
+  const page = element.ownerDocument.getSelection();
+  const { anchorNode, anchorOffset, focusNode, focusOffset } = page ?? {};
+  const inside = anchorNode && focusNode && element.contains(anchorNode) && element.contains(focusNode);
+  into.appendChild(element);
+  if (inside) page?.setBaseAndExtent(anchorNode, anchorOffset ?? 0, focusNode, focusOffset ?? 0);
+}
+
+/**
  * Puts the table into the horizontal frame of `DocumentTableScroller`. The
  * table is attached before ProseMirror reads its content DOM. React owns a
  * separate chrome host, and the slot moves that same table into its viewport
@@ -221,7 +237,7 @@ function mountScroller(host: HTMLElement, table: HTMLElement, scrollLeft = 0): R
         className='tableWrapper'
         ref={(slot) => {
           if (slot === null || table.parentElement === slot) return;
-          slot.appendChild(table);
+          moveKeepingSelection(table, slot);
           const viewport = slot.closest<HTMLElement>('[data-radix-scroll-area-viewport]');
           if (viewport !== null && scrollLeft > 0) viewport.scrollLeft = scrollLeft;
         }}

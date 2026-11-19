@@ -192,6 +192,18 @@ test.describe('the slash menu in the document body', () => {
     expect(await tableShape(page)).toEqual([3, 3]);
   });
 
+  test('puts the caret in the first cell of the table an empty line below text becomes', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('words');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('/table');
+    await page.keyboard.press('Enter');
+    await expect.poll(() => lines(page)).toContain('docTable');
+    await page.keyboard.type('X');
+    await expect(page.locator(`${EDITOR} td p`).first()).toHaveText('X');
+    expect(await lines(page)).toEqual(['paragraph:words', 'docTable']);
+  });
+
   test('puts a 3x3 table below a line with text on a click of Table', async () => {
     await openFreshDocument(page);
     await page.keyboard.type('abc /tab');
