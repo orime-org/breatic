@@ -555,6 +555,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
                   myRole={myRole}
                   onClose={closeRail}
                   scroller={viewport}
+                  scope={scope}
                 />
               )}
             </React.Activity>

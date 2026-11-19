@@ -24,7 +24,7 @@
 import { X } from 'lucide-react';
 import * as React from 'react';
 
-import type { ProjectRole } from '@breatic/shared';
+import type { CommentMention, ProjectRole } from '@breatic/shared';
 
 import { CountChip } from '@web/components/CountChip';
 import { Button } from '@web/components/ui/button';
@@ -67,11 +67,15 @@ import {
   type Draft,
 } from '@web/spaces/document/document-comment-draft-range';
 import {
+  addPick,
   keepRepliesOf,
   onUnsentChange,
+  picksOf,
   repliesOf,
   writeReply,
 } from '@web/spaces/document/document-comment-unsent';
+import type { DocumentScope } from '@web/data/api/documents';
+import { picksStillWritten } from '@web/spaces/document/document-comment-unsent';
 import { DocumentCommentDraftCard } from '@web/spaces/document/DocumentCommentDraftCard';
 import { commentedElement } from '@web/spaces/document/document-comment-media';
 import { revealInTable } from '@web/spaces/document/document-table-reveal';
@@ -99,6 +103,8 @@ interface DocumentCommentRailProps {
   onClose: () => void;
   /** The body's scroller, which the panel shares; null before it mounts. */
   scroller: HTMLElement | null;
+  /** The document; its project is who the `@` list offers. Null offers none. */
+  scope?: DocumentScope | null;
 }
 
 /** Which threads the panel is showing. */
@@ -139,6 +145,7 @@ type CardHandling = Omit<
  * @param root0.myRole - This user's role.
  * @param root0.onClose - Closes the panel.
  * @param root0.scroller - The body's scroller, moved to show a new draft card.
+ * @param root0.scope - The document, for the `@` list's project.
  * @returns The panel.
  */
 export const DocumentCommentRail = React.memo(function DocumentCommentRail({
@@ -147,6 +154,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   myRole,
   onClose,
   scroller,
+  scope = null,
 }: DocumentCommentRailProps): React.JSX.Element {
   const t = useTranslation();
   const cards = useCommentCards(editor, rail);
@@ -208,10 +216,18 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
 
   const said = useCommentWrite();
 
+  const projectId = scope?.projectId;
   const onReply = React.useCallback(
     async (threadId: string, body: string) =>
-      (await said(replyToThread(editor, threadId, body))) ?? false,
+      (await said(replyToThread(editor, threadId, body, picksStillWritten(body, picksOf(editor, threadId))))) ?? false,
     [editor, said],
+  );
+  const onMention = React.useCallback(
+    (threadId: string, body: string, mention: CommentMention) => {
+      addPick(editor, threadId, mention);
+      writeReply(editor, threadId, body);
+    },
+    [editor],
   );
   const onResolve = React.useCallback(
     (threadId: string) => {
@@ -276,8 +292,12 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       onReopen,
       onDelete,
       onDeleteReply,
+      projectId,
+      onMention,
     }),
     [
+      projectId,
+      onMention,
       myRole,
       viewerId,
       onDraft,
@@ -778,6 +798,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
                 >
                   <DocumentCommentDraftCard
                     editor={editor}
+                    projectId={projectId}
                     draft={entry.draft}
                     myRole={myRole}
                     reading={reading === entry.id}

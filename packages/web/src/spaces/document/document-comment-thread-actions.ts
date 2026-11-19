@@ -13,6 +13,7 @@
  * thread into the store, and that pairing is what `commentOn` owns.
  */
 
+import type { CommentMention } from '@breatic/shared';
 import { asCommentBody } from '@breatic/shared/document-model';
 import { commentsOn } from '@web/spaces/document/document-comment-extension';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
@@ -23,6 +24,7 @@ import type { ToolEditor } from '@web/spaces/document/document-tool-button';
  * @param editor - The document editor.
  * @param threadId - Which thread to reply on.
  * @param body - What the reply says.
+ * @param mentions - The members it mentions (#1488 §11.6).
  * @returns True when a reply was written; false for blank words, which are
  *   not worth writing, and for an editor with no comments wired.
  * @throws {Error} Whatever the thread store throws, an unauthorised write
@@ -32,12 +34,16 @@ export async function replyToThread(
   editor: ToolEditor,
   threadId: string,
   body: string,
+  mentions: readonly CommentMention[] = [],
 ): Promise<boolean> {
   const threads = commentsOn(editor)?.threadStore;
   if (threads === undefined || body.trim().length === 0) return false;
   await threads.addComment({
     threadId,
-    comment: { body: asCommentBody(body) },
+    comment: {
+      body: asCommentBody(body),
+      ...(mentions.length > 0 ? { metadata: { mentions: [...mentions] } } : {}),
+    },
   });
   return true;
 }

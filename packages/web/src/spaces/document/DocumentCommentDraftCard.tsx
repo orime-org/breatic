@@ -30,7 +30,7 @@ import { caretAt } from '@web/spaces/document/document-body-edge-selection';
 import { X } from 'lucide-react';
 import * as React from 'react';
 
-import type { ProjectRole } from '@breatic/shared';
+import type { CommentMention, ProjectRole } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -43,7 +43,11 @@ import {
   type DraftCommand,
 } from '@web/spaces/document/document-comment-draft-range';
 import {
+  addPick,
+  DRAFT_PICKS,
   draftWordsOf,
+  picksOf,
+  picksStillWritten,
   onUnsentChange,
   writeDraftWords,
 } from '@web/spaces/document/document-comment-unsent';
@@ -79,6 +83,8 @@ interface DraftCardProps {
   myRole: ProjectRole;
   /** Whether this is the card being read. */
   reading: boolean;
+  /** The project whose members the `@` list offers; none without it. */
+  projectId?: string;
 }
 
 /**
@@ -115,6 +121,7 @@ function readDraftQuote(editor: ToolEditor): string | null {
  * @param root0.draft - The draft this card draws.
  * @param root0.myRole - The user's role on the project.
  * @param root0.reading - Whether this is the card being read.
+ * @param root0.projectId - The project the `@` list offers.
  * @returns The card.
  */
 export function DocumentCommentDraftCard({
@@ -122,11 +129,25 @@ export function DocumentCommentDraftCard({
   draft,
   myRole,
   reading,
+  projectId,
 }: DraftCardProps): React.JSX.Element {
   const t = useTranslation();
   const mayWrite = canPostAnnotations(myRole);
   const said = useCommentWrite();
   const { opening } = draft;
+  const mention = React.useMemo(
+    () =>
+      projectId === undefined
+        ? undefined
+        : {
+          projectId,
+          onPick: (next: string, picked: CommentMention): void => {
+            addPick(opening, DRAFT_PICKS, picked);
+            writeDraftWords(opening, next);
+          },
+        },
+    [projectId, opening],
+  );
   const words = React.useSyncExternalStore(onUnsentChange, () =>
     draftWordsOf(opening),
   );
@@ -200,7 +221,7 @@ export function DocumentCommentDraftCard({
   const post = React.useCallback((): void => {
     // Words that are only spaces are not worth writing; the card stays open.
     if (words.trim().length === 0) return;
-    void said(postComment(editor, words)).then((thread) => {
+    void said(postComment(editor, words, picksStillWritten(words, picksOf(opening, DRAFT_PICKS)))).then((thread) => {
       // No thread means nothing was written, whichever way: `undefined` is a
       // refusal `said` has already reported, `null` is `postComment` finding
       // no range left to aim at — and the draft range plugin has already
@@ -210,7 +231,7 @@ export function DocumentCommentDraftCard({
       if (thread == null) return;
       close();
     });
-  }, [words, editor, close, said]);
+  }, [words, editor, close, said, opening]);
 
   if (draft.kind === 'dropped') {
     return (
@@ -272,6 +293,7 @@ export function DocumentCommentDraftCard({
         }}
         onSave={post}
         onCancel={close}
+        mention={mention}
       />
     </article>
   );

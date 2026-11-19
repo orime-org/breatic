@@ -31,6 +31,7 @@
 import { CommentsExtension, type ThreadData } from '@blocknote/core/comments';
 import type { EditorState } from '@tiptap/pm/state';
 
+import type { CommentMention } from '@breatic/shared';
 import { asCommentBody } from '@breatic/shared/document-model';
 
 import type { SpaceRefusal } from '@web/data/yjs/space-write';
@@ -150,18 +151,24 @@ export async function commentOn(
  * @param editor - The document editor, with the draft and comments
  *   extensions registered.
  * @param body - What the user wrote.
+ * @param mentions - The members it mentions (#1488 §11.6).
  * @returns The thread created, or null when there is no open draft or the
  *   text it was aimed at is gone — in which case nothing was created.
  * @throws {SpaceFullError} When the Space's size refused it; any toast said so.
  * @throws {Error} Whatever the thread store throws while creating the thread.
  */
-export async function postComment(editor: CommentableEditor, body: string): Promise<ThreadData | null> {
+export async function postComment(
+  editor: CommentableEditor,
+  body: string,
+  mentions: readonly CommentMention[] = [],
+): Promise<ThreadData | null> {
   const state = editor.prosemirrorView?.state;
   const media = state === undefined ? null : mediaDraftIn(state);
   const posted = await commentOn(
     editor,
     asCommentBody(body),
     media === null ? (now) => draftRangeIn(now)?.segments ?? null : { mediaBlockId: media },
+    mentions.length > 0 ? { comment: { mentions: [...mentions] } } : {},
   );
   if (posted !== null && 'ok' in posted) throw new SpaceFullError();
   return posted;

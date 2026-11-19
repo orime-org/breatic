@@ -28,12 +28,14 @@ import * as Y from 'yjs';
 import { CommentsExtension } from '@blocknote/core/comments';
 
 import { documentBodyFragment, documentCommentThreads } from '@breatic/shared';
+import { readCommentMentions } from '@breatic/shared/space-content';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
 } from '@web/spaces/document/document-comment-draft-range';
 import { postComment } from '@web/spaces/document/document-comment-post';
+import { replyToThread } from '@web/spaces/document/document-comment-thread-actions';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -238,4 +240,40 @@ describe('postComment', () => {
     );
   });
 
+});
+
+describe('mentions in a document comment (#1488 §11.6)', () => {
+  const alice = { userId: 'u2', projectId: 'p1', mentionedAt: 7, label: '@Alice' };
+
+  it('stores the members a new thread mentions in its first comment', async () => {
+    const { editor, doc } = open();
+    const run = firstRun(editor);
+    aimAt(editor, { from: run.from, to: run.from + 5 });
+
+    const posted = await postComment(editor, 'ask @Alice', [alice]);
+
+    expect(readCommentMentions('document', doc, 'p1')).toEqual([
+      expect.objectContaining({ threadId: posted!.id, authorId: 'u1', userId: 'u2', mentionedAt: 7 }),
+    ]);
+  });
+
+  it('stores the members a reply mentions', async () => {
+    const { editor, doc } = open();
+    const run = firstRun(editor);
+    aimAt(editor, { from: run.from, to: run.from + 5 });
+    const posted = await postComment(editor, 'first');
+
+    await replyToThread(editor, posted!.id, '@Alice see', [alice]);
+
+    expect(readCommentMentions('document', doc, 'p1').map((m) => m.userId)).toEqual(['u2']);
+  });
+
+  it('stores no mentions key when there are none', async () => {
+    const { editor } = open();
+    const run = firstRun(editor);
+    aimAt(editor, { from: run.from, to: run.from + 5 });
+    const posted = await postComment(editor, 'plain', []);
+    const stored = editor.getExtension(CommentsExtension)!.threadStore.getThreads().get(posted!.id);
+    expect(stored?.comments[0]?.metadata?.mentions).toBeUndefined();
+  });
 });

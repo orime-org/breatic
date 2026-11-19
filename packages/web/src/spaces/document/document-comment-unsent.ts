@@ -16,6 +16,9 @@
  * with its opening once the draft closes, and the replies with the editor.
  */
 
+import type { CommentMention } from '@breatic/shared';
+
+import { settleMentions } from '@web/features/comment-mention/mention-text';
 import type { DraftOpening } from '@web/spaces/document/document-comment-draft-range';
 
 /** The words in each open draft, by the opening they were written in. */
@@ -23,6 +26,17 @@ const draftWords = new WeakMap<DraftOpening, string>();
 
 /** The words in each thread's reply box, by the editor they belong to. */
 const replyWords = new WeakMap<object, ReadonlyMap<string, string>>();
+
+/**
+ * The members picked from the `@` list in each box (#1488 §11.6): by the
+ * same owner as its words (the draft's opening, or the editor) and the
+ * thread id, or the empty string for the draft. Kept beside the words so a
+ * card mounted again still sends them.
+ */
+const picked = new WeakMap<object, ReadonlyMap<string, readonly CommentMention[]>>();
+
+/** The key the draft's own picks sit under. */
+export const DRAFT_PICKS = '';
 
 /** An empty set of replies, handed out whole so it reads as unchanged. */
 const NO_REPLIES: ReadonlyMap<string, string> = new Map();
@@ -93,7 +107,53 @@ export function writeReply(
   if (words === '') next.delete(threadId);
   else next.set(threadId, words);
   replyWords.set(editor, next);
+  if (words === '') dropPicks(editor, (key) => key === threadId);
   changed();
+}
+
+/**
+ * The members picked in one box.
+ * @param owner - The draft's opening, or the editor for a reply.
+ * @param key - The thread id, or `DRAFT_PICKS`.
+ * @returns Them, oldest first.
+ */
+export function picksOf(owner: object, key: string): readonly CommentMention[] {
+  return picked.get(owner)?.get(key) ?? [];
+}
+
+/**
+ * The picks a document comment sends: a comment there is never edited, so
+ * every mention is one picked in this box, kept while the label it wrote is
+ * still in the words.
+ * @param words - What is being sent.
+ * @param picks - The box's picks.
+ * @returns The mentions to store.
+ */
+export function picksStillWritten(words: string, picks: readonly CommentMention[]): CommentMention[] {
+  return settleMentions(words, picks, () => undefined);
+}
+
+/**
+ * Remember a member picked in one box.
+ * @param owner - The draft's opening, or the editor for a reply.
+ * @param key - The thread id, or `DRAFT_PICKS`.
+ * @param mention - The member, as the `@` list wrote them.
+ */
+export function addPick(owner: object, key: string, mention: CommentMention): void {
+  const next = new Map(picked.get(owner));
+  next.set(key, [...(next.get(key) ?? []), mention]);
+  picked.set(owner, next);
+}
+
+/**
+ * Forget the picks of the boxes a test names.
+ * @param owner - Whose boxes.
+ * @param gone - Whether a box's picks go.
+ */
+function dropPicks(owner: object, gone: (key: string) => boolean): void {
+  const held = picked.get(owner);
+  if (held === undefined) return;
+  picked.set(owner, new Map([...held].filter(([key]) => !gone(key))));
 }
 
 /**
@@ -104,6 +164,7 @@ export function writeReply(
 export function keepRepliesOf(editor: object, live: ReadonlySet<string>): void {
   const held = repliesOf(editor);
   const kept = [...held].filter(([id]) => live.has(id));
+  dropPicks(editor, (key) => !live.has(key));
   if (kept.length === held.size) return;
   replyWords.set(editor, new Map(kept));
   changed();
@@ -114,6 +175,7 @@ export function keepRepliesOf(editor: object, live: ReadonlySet<string>): void {
  * @param editor - The editor the threads belong to.
  */
 export function clearReplies(editor: object): void {
+  picked.delete(editor);
   if (repliesOf(editor).size === 0) return;
   replyWords.set(editor, NO_REPLIES);
   changed();

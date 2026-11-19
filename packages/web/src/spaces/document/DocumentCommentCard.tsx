@@ -41,7 +41,7 @@
 import { X } from 'lucide-react';
 import * as React from 'react';
 
-import type { ProjectRole } from '@breatic/shared';
+import type { CommentMention, ProjectRole } from '@breatic/shared';
 
 import { PreviewImg } from '@web/components/PreviewImg';
 import { Button } from '@web/components/ui/button';
@@ -175,6 +175,10 @@ interface DocumentCommentCardProps {
   onDelete: (threadId: string) => void;
   /** Withdraws one reply. */
   onDeleteReply: (threadId: string, commentId: string) => void;
+  /** The project whose members the reply box's `@` list offers; none without it. */
+  projectId?: string;
+  /** Takes a member picked in the reply box, with the words it wrote. */
+  onMention?: (threadId: string, body: string, mention: CommentMention) => void;
 }
 
 /**
@@ -286,6 +290,8 @@ function Entry({
  * @param root0.onReopen - Brings it back.
  * @param root0.onDelete - Withdraws the thread.
  * @param root0.onDeleteReply - Withdraws one reply.
+ * @param root0.projectId - The project the reply box's @ list offers.
+ * @param root0.onMention - Takes a member picked in the reply box.
  * @returns The card.
  */
 export const DocumentCommentCard = React.memo(function DocumentCommentCard({
@@ -301,6 +307,8 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
   onReopen,
   onDelete,
   onDeleteReply,
+  projectId,
+  onMention,
 }: DocumentCommentCardProps): React.JSX.Element {
   const t = useTranslation();
   const reply = draft;
@@ -333,6 +341,17 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
       if (sent) setReply('');
     });
   }, [card.id, onReply, reply, setReply]);
+
+  const replyMention = React.useMemo(
+    () =>
+      projectId === undefined || onMention === undefined
+        ? undefined
+        : {
+          projectId,
+          onPick: (body: string, mention: CommentMention): void => onMention(card.id, body, mention),
+        },
+    [projectId, onMention, card.id],
+  );
 
   /** Throws away what was written, which is what Cancel and Escape do. */
   const callOff = React.useCallback(() => {
@@ -397,6 +416,7 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
           onChange={setReply}
           onSave={send}
           onCancel={callOff}
+          mention={replyMention}
         />
       )}
 

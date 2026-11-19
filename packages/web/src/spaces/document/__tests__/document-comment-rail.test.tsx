@@ -46,6 +46,7 @@ import {
   COMMENT_MARK,
 } from '@web/spaces/document/document-comment-extension';
 import { asCommentBody } from '@breatic/shared/document-model';
+import { readCommentMentions } from '@breatic/shared/space-content';
 import { openCommentDraft } from '@web/spaces/document/document-comment-entries';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
 import { rowById } from '@web/spaces/document/document-row-by-id';
@@ -60,11 +61,24 @@ vi.mock('@web/lib/toast', () => ({
 
 // The real one throughout, wrapped so one case can ask for the answer it
 // gives when there is no range left to aim at.
+// The comment boxes open the `@` list on the project's roster (#1488 §11.6).
+vi.mock('@web/data/use-project-members', () => ({
+  useProjectMembers: () => ({
+    members: [{ userId: 'u2', name: 'Rafa' }],
+    isLoading: false,
+    isError: false,
+    retry: () => undefined,
+  }),
+}));
+
 vi.mock('@web/spaces/document/document-comment-post', async (real) => {
   const actual =
     await real<typeof import('@web/spaces/document/document-comment-post')>();
   return { ...actual, postComment: vi.fn(actual.postComment) };
 });
+
+/** The document the panel belongs to. */
+const SCOPE = { projectId: 'p1', spaceId: 's1' };
 
 describe('the comment panel', () => {
   const NAME = 'project-p/document-comment-rail';
@@ -109,6 +123,7 @@ describe('the comment panel', () => {
         handle={handle}
         myRole={myRole}
         readOnly={myRole === 'viewer'}
+        scope={SCOPE}
       />,
     );
     // One case takes the right to write away mid-draft. Both props move
@@ -121,6 +136,7 @@ describe('the comment panel', () => {
           handle={handle}
           myRole={next}
           readOnly={next === 'viewer'}
+          scope={SCOPE}
         />,
       );
     };
@@ -131,6 +147,7 @@ describe('the comment panel', () => {
           handle={handle}
           myRole={myRole}
           readOnly={myRole === 'viewer'}
+          scope={SCOPE}
         />,
       );
     };
@@ -764,6 +781,37 @@ describe('the comment panel', () => {
       ]);
     });
     expect(deepened()).toBe(1);
+  });
+
+  it('stores the member a reply mentions (#1488 §11.6)', async () => {
+    show();
+    await comment(0, 5, 'about alpha');
+    await pressCommentsRow();
+    await userEvent.click(await screen.findByTestId('doc-comment-card'));
+    const box = await screen.findByTestId('doc-comment-reply-input');
+    await userEvent.type(box, 'see @');
+    await userEvent.click(await screen.findByTestId('mention-picker-member-u2'));
+    expect(box).toHaveValue('see @Rafa ');
+    await userEvent.click(screen.getByTestId('doc-comment-reply-save'));
+
+    await waitFor(() => {
+      expect(readCommentMentions('document', doc, 'p1').map((m) => m.userId)).toEqual(['u2']);
+    });
+  });
+
+  it('stores the member a new comment mentions (#1488 §11.6)', async () => {
+    show();
+    aimDraft(0, 5);
+    const box = await screen.findByTestId('doc-comment-draft-input');
+    await userEvent.type(box, 'ask @Ra');
+    await userEvent.click(await screen.findByTestId('mention-picker-member-u2'));
+    await userEvent.click(screen.getByTestId('doc-comment-draft-save'));
+
+    await waitFor(() => {
+      expect(readCommentMentions('document', doc, 'p1')).toEqual([
+        expect.objectContaining({ userId: 'u2', authorId: 'u1' }),
+      ]);
+    });
   });
 
   it('keeps a half-written reply while its thread is settled and reopened', async () => {

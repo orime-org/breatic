@@ -17,9 +17,11 @@
 
 import * as React from 'react';
 
+import type { CommentMention } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Textarea } from '@web/components/ui/textarea';
+import { MentionPicker } from '@web/features/comment-mention/MentionPicker';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
@@ -42,6 +44,11 @@ interface WriteBoxProps {
   onSave: () => void;
   /** Throws it away. */
   onCancel: () => void;
+  /**
+   * The `@` member list (#1488 §11.6): the project, and where a pick goes
+   * with the words it writes. Left out, the box offers none.
+   */
+  mention?: { projectId: string; onPick: (text: string, mention: CommentMention) => void };
   /** Focuses the box as soon as it is on screen. */
   autoFocus?: boolean;
   /**
@@ -61,6 +68,7 @@ interface WriteBoxProps {
  * @param root0.onChange - Takes each keystroke.
  * @param root0.onSave - Sends what was written.
  * @param root0.onCancel - Throws it away.
+ * @param root0.mention - The `@` member list's project and where a pick goes.
  * @param root0.autoFocus - Focuses the box on arrival.
  * @param root0.className - Where the box sits in whatever holds it.
  * @returns The box and, once it holds words, the pair.
@@ -72,6 +80,7 @@ export function DocumentCommentWriteBox({
   onChange,
   onSave,
   onCancel,
+  mention,
   autoFocus = false,
   className,
 }: WriteBoxProps): React.JSX.Element {
@@ -134,6 +143,9 @@ export function DocumentCommentWriteBox({
           {...keys.box}
         />
       </ScrollArea>
+      {mention === undefined ? null : (
+        <MentionPicker projectId={mention.projectId} boxRef={box} text={value} onPick={mention.onPick} />
+      )}
 
       {/* The same question the write itself asks before it sends: words that
           are only spaces are not worth sending, and a control that looks live
