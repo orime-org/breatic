@@ -288,4 +288,44 @@ describe('generated UVs on a mirrored node (inner#1693 design 5.1)', () => {
     // Its corners come out in the order 0, 2, 1; put them back in vertex order.
     expect(uvsOf(-1, [0, 1, 2]).map((value) => value + 0)).toEqual([reversed[0], reversed[1], reversed[4], reversed[5], reversed[2], reversed[3]].map((value) => value! + 0));
   });
+
+  it('reads a mirrored non-indexed face from outside the way three draws it', async () => {
+    const three = await import('three');
+    const { generateLookUvs } = await import('@web/spaces/three-d/viewport/look-uv');
+    const corners = [[0, 0, 0], [0, 1, 0], [0, 0, 1]];
+    /** One non-indexed triangle under a node with the given x scale and corner order. */
+    const uvsOf = (scaleX: number, order: number[]): number[] => {
+      const geometry = new three.BufferGeometry();
+      geometry.setAttribute('position', new three.BufferAttribute(new Float32Array(order.flatMap((i) => corners[i]!)), 3));
+      const mesh = new three.Mesh(geometry, new three.MeshStandardMaterial());
+      mesh.scale.set(scaleX, 1, 1);
+      const root = new three.Group();
+      root.add(mesh);
+      generateLookUvs(root);
+      return [...(mesh.geometry.getAttribute('uv').array as Float32Array)].map((value) => value + 0);
+    };
+    const reversed = uvsOf(1, [0, 2, 1]);
+    expect(uvsOf(-1, [0, 1, 2])).toEqual([reversed[0], reversed[1], reversed[4], reversed[5], reversed[2], reversed[3]]);
+  });
+
+  it('projects a geometry shared with a mirrored node from an unmirrored one, whatever the node order', async () => {
+    const three = await import('three');
+    const { generateLookUvs } = await import('@web/spaces/three-d/viewport/look-uv');
+    /** The unmirrored node's UVs when the mirrored node is listed first or last. */
+    const plainUvs = (mirroredFirst: boolean): number[] => {
+      const geometry = new three.BufferGeometry();
+      geometry.setAttribute('position', new three.BufferAttribute(new Float32Array([1, 0, 0, 1, 0, -1, 1, 1, 0]), 3));
+      geometry.setIndex([0, 1, 2]);
+      const plain = new three.Mesh(geometry, new three.MeshStandardMaterial());
+      const mirror = new three.Mesh(geometry, new three.MeshStandardMaterial());
+      mirror.scale.set(-1, 1, 1);
+      const root = new three.Group();
+      if (mirroredFirst) root.add(mirror, plain);
+      else root.add(plain, mirror);
+      generateLookUvs(root);
+      expect(mirror.geometry).toBe(plain.geometry);
+      return [...(plain.geometry.getAttribute('uv').array as Float32Array)].map((value) => value + 0);
+    };
+    expect(plainUvs(true)).toEqual(plainUvs(false));
+  });
 });
