@@ -139,10 +139,11 @@ export async function waitMotionFinished(page: Page, executionId: string, result
   const outlet = visibleSpace(page);
   const running = await motionListTab(page, 'In progress');
   await expect(running.getByTestId(`motion-row-${executionId}`)).toHaveCount(0, { timeout: MOTION_RUN_MS });
-  const failed = await motionListTab(page, 'Failed');
-  await expect(failed.getByTestId(`motion-row-${executionId}`), `execution ${executionId} did not succeed`).toHaveCount(0);
+  // The six lists are read again one by one; a run that ended is listed under Completed only once it succeeded.
   const completed = await motionListTab(page, 'Completed');
-  await completed.getByTestId(`motion-row-${executionId}`).click();
+  const row = completed.getByTestId(`motion-row-${executionId}`);
+  await expect(row, `execution ${executionId} did not succeed`).toBeVisible({ timeout: 30_000 });
+  await row.click();
   const preview = outlet.locator(`[data-testid="motion-preview"][data-execution-id="${executionId}"]`);
   await expect(preview).toBeVisible();
   if (result === 'source') {
