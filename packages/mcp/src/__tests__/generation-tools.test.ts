@@ -6,7 +6,7 @@ import { addEdgeInDoc, addNodeInDoc, createEmptyNode, readEdges, readNodes } fro
 import { beforeAll, describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { ServerApiError } from "@mcp/server-api.js";
-import { runGeneration } from "@mcp/tools/generation-tools.js";
+import { runGeneration, transcribeNode, understandNode } from "@mcp/tools/generation-tools.js";
 import { stubDeps, type ApiCall } from "@mcp/__tests__/tool-deps.js";
 
 beforeAll(() => {
@@ -141,5 +141,64 @@ describe("run_generation on a video node", () => {
     const { deps, calls } = depsFor(node, { t2v: [{ pieces: [{ text: "waves at night" }] }] });
     await runGeneration.run(deps, { projectId: PROJECT, spaceId: SPACE, nodeId: node.id });
     expect(calls.find((c) => c.path === "/canvas/tasks")!.body).toMatchObject({ task_type: "video", model: "vid", params: { prompt: "waves at night" } });
+  });
+});
+
+describe("understand_node and transcribe_node", () => {
+  /**
+   * A media node as read_canvas reads it.
+   * @param type - Its type.
+   * @param data - Its media fields.
+   * @returns The node.
+   */
+  const mediaNode = (type: string, data: Record<string, unknown>): Record<string, unknown> => ({ id: "src", type, position: { x: 0, y: 0 }, data: { handling: 0, ...data } });
+
+  /**
+   * Deps whose collab reads `node` and places a reading node.
+   * @param node - The node read.
+   * @returns The stubbed deps.
+   */
+  const readingDeps = (node: Record<string, unknown>): ReturnType<typeof stubDeps> =>
+    stubDeps({
+      reply: (command) => (command.type === "read_canvas" ? { status: "done", result: { nodes: [node], edges: [], people: [] } } : { status: "done", result: { nodeId: "reading-1" } }),
+      api: () => ({ task_id: "task-r", status: "pending" }),
+    });
+
+  it("places the text node it writes into, then asks the server to read the file into it", async () => {
+    const { deps, submitted, calls, tracked } = readingDeps(mediaNode("image", { content: "https://cdn/x.png", mimeType: "image/png" }));
+    const { value } = await understandNode.run(deps, { projectId: PROJECT, spaceId: SPACE, nodeId: "src", language: "zh-CN" });
+    expect(submitted.map((c) => [c.type, c.params])).toEqual([
+      ["read_canvas", { nodeIds: ["src"] }],
+      ["create_reading_node", { sourceNodeId: "src", reading: "understand" }],
+    ]);
+    expect(calls).toEqual([
+      {
+        method: "POST",
+        path: "/canvas/understand",
+        idempotencyKey: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        body: { project_id: PROJECT, space_id: SPACE, source_type: "image", source_url: "https://cdn/x.png", node_ids: ["reading-1"], source_mime_type: "image/png", user_locale: "zh-CN", reader_locale: "zh-CN" },
+      },
+    ]);
+    expect(value).toEqual({ taskId: "task-r", nodeId: "reading-1" });
+    expect(tracked).toEqual([{ taskId: "task-r", tool: "understand_node" }]);
+  });
+
+  it("refuses a file its model cannot read before placing anything", async () => {
+    const { deps, submitted, calls } = readingDeps(mediaNode("image", { content: "https://cdn/x.tiff", mimeType: "image/tiff" }));
+    await expect(understandNode.run(deps, { projectId: PROJECT, spaceId: SPACE, nodeId: "src" })).rejects.toMatchObject({ reason: "unsupported_format" });
+    expect(submitted.map((c) => c.type)).toEqual(["read_canvas"]);
+    expect(calls).toEqual([]);
+  });
+
+  it("transcribes a video with the filler switch and no language when none is given", async () => {
+    const { deps, calls } = readingDeps(mediaNode("video", { content: "https://cdn/v.mp4", mimeType: "video/mp4" }));
+    await transcribeNode.run(deps, { projectId: PROJECT, spaceId: SPACE, nodeId: "src", keepFillers: true });
+    expect(calls[0]).toMatchObject({ path: "/canvas/transcribe", body: { source_type: "video", keep_fillers: true, source_url: "https://cdn/v.mp4" } });
+    expect(calls[0]!.body).not.toHaveProperty("user_locale");
+  });
+
+  it("refuses a node with no file", async () => {
+    const { deps } = readingDeps(mediaNode("image", {}));
+    await expect(understandNode.run(deps, { projectId: PROJECT, spaceId: SPACE, nodeId: "src" })).rejects.toMatchObject({ reason: "invalid_request" });
   });
 });

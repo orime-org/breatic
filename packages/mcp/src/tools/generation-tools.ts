@@ -38,6 +38,7 @@ import {
   type CanvasNodeView,
   type PromptPieceBlock,
   type RunPlan,
+  understandRefusal,
 } from "@breatic/shared/canvas-model";
 import { z } from "zod";
 import { defineTool, idempotencyKey, runCommandNow, ToolRefusal, type ToolDeps } from "@mcp/tools/kit.js";
@@ -183,5 +184,93 @@ export const runGeneration = defineTool({
   },
 });
 
+/** The two readings of a file into a text node, as the node menu offers them. */
+const READINGS = {
+  understand: { route: "/canvas/understand", tool: "understand_node", reads: new Set(["image", "video", "audio"]) },
+  transcribe: { route: "/canvas/transcribe", tool: "transcribe_node", reads: new Set(["audio", "video"]) },
+} as const;
+
+/** What the readings take. */
+const readingInput = z.object({
+  projectId: z.uuid(),
+  spaceId: z.uuid(),
+  nodeId: z.uuid().describe("The node whose file is read."),
+  language: z
+    .string()
+    .min(2)
+    .max(35)
+    .optional()
+    .describe("The language the text is written in, as a BCP 47 tag such as en or zh-CN; use the language the user writes to you in."),
+});
+
+/**
+ * Read a node's file into a new text node wired from it, as the node menu's
+ * Understand and Transcribe do: refuse what the file's format rules out,
+ * place the text node, then ask the server to read into it.
+ * @param deps - The call.
+ * @param reading - Which reading.
+ * @param args - The node and the language.
+ * @param extra - What one reading's route takes besides.
+ * @returns The task and the text node.
+ * @throws {ToolRefusal} When the node holds no file this reading takes.
+ */
+async function startReading(
+  deps: ToolDeps,
+  reading: keyof typeof READINGS,
+  args: z.infer<typeof readingInput>,
+  extra: Record<string, unknown>,
+): Promise<{ value: { taskId: string; nodeId: string } }> {
+  const where = { projectId: args.projectId, spaceId: args.spaceId };
+  const read = (await runCommandNow(deps, { type: "read_canvas", ...where, params: { nodeIds: [args.nodeId] } })) as { nodes: CanvasNodeView[] };
+  const source = read.nodes.find((node) => node.id === args.nodeId);
+  // A media node's fields, as the node view carries them.
+  const data = source?.data as { content?: unknown; mimeType?: string; sizeBytes?: number } | undefined;
+  const url = typeof data?.content === "string" ? data.content : "";
+  if (!source || !READINGS[reading].reads.has(source.type) || url === "") {
+    throw new ToolRefusal("invalid_request", `Only a ${[...READINGS[reading].reads].join(", ")} node holding a file can be read this way.`);
+  }
+  const kind = source.type as "image" | "video" | "audio";
+  // The size ceiling is the server's to judge here; the format is judged as the menu judges it.
+  const refusal = understandRefusal({ kind, mimeType: data?.mimeType, sizeBytes: data?.sizeBytes, url }, null, null);
+  if (refusal?.kind === "format") {
+    throw new ToolRefusal("unsupported_format", `This file's format (${refusal.type}) cannot be read; convert it to a common ${kind} format and upload it first.`);
+  }
+  const { nodeId } = (await runCommandNow(deps, { type: "create_reading_node", ...where, params: { sourceNodeId: args.nodeId, reading } })) as { nodeId: string };
+  const body = {
+    project_id: args.projectId,
+    space_id: args.spaceId,
+    source_type: kind,
+    source_url: url,
+    node_ids: [nodeId],
+    ...(data?.mimeType === undefined ? {} : { source_mime_type: data.mimeType }),
+    // The answer is written in this language; the old name rides along for a server of the previous release.
+    ...(args.language === undefined ? {} : { user_locale: args.language, reader_locale: args.language }),
+    ...extra,
+  };
+  const started = await deps.api.post<StartedTask>(READINGS[reading].route, body, { idempotencyKey: idempotencyKey() });
+  await deps.tasks.track(started.task_id, READINGS[reading].tool);
+  return { value: { taskId: started.task_id, nodeId } };
+}
+
+export const understandNode = defineTool({
+  name: "understand_node",
+  description:
+    "Describe what an image, video or audio node holds, as the node menu's Understand does: a new text node wired from it receives the description. Charged to the user's credits. " +
+    "Returns the task id and the text node's id at once; the text arrives in finishedTasks, or ask get_task_result.",
+  input: readingInput,
+  readOnly: false,
+  run: (deps, args) => startReading(deps, "understand", args, {}),
+});
+
+export const transcribeNode = defineTool({
+  name: "transcribe_node",
+  description:
+    "Write down what is said in an audio or video node, as the node menu's Transcribe does: a new text node wired from it receives the words. Charged to the user's credits. " +
+    "Returns the task id and the text node's id at once; the text arrives in finishedTasks, or ask get_task_result.",
+  input: readingInput.extend({ keepFillers: z.boolean().default(false).describe("Keep fillers such as um and uh, as the menu's switch does.") }),
+  readOnly: false,
+  run: (deps, { keepFillers, ...args }) => startReading(deps, "transcribe", args, { keep_fillers: keepFillers }),
+});
+
 /** The generation tools. */
-export const GENERATION_TOOLS = [runGeneration];
+export const GENERATION_TOOLS = [runGeneration, understandNode, transcribeNode];
