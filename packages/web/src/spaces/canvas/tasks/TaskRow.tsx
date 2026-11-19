@@ -15,6 +15,7 @@ import * as React from 'react';
 import { getLocale, type NodeTaskEntry } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -206,10 +207,14 @@ export const TaskRow = React.memo(function TaskRow({
             <span data-testid='task-detail'>{kind.detail}</span>
           ) : null}
         </span>
+        {/* What the task acted on keeps its width; a long starter name is cut first. */}
         {starter !== null ? (
-          <span className='shrink-0 text-2xs text-muted-foreground'>
-            {starter}
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className='min-w-0 max-w-28 truncate text-2xs text-muted-foreground'>{starter}</span>
+            </TooltipTrigger>
+            <TooltipContent portal className='max-w-xs break-words'>{starter}</TooltipContent>
+          </Tooltip>
         ) : null}
       </div>
 

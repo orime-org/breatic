@@ -23,6 +23,7 @@ vi.mock('@web/data/api/canvas', () => ({
 import type { NodeTaskEntry } from '@breatic/shared';
 import { getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
 
 afterEach(cleanup);
@@ -92,22 +93,24 @@ function renderRow(
   names: Record<string, string> = { 'u-1': 'Ada' },
 ): void {
   render(
-    <CollaboratorNamesProvider
-      value={{ resolve: (userId: string) => names[userId] ?? null, members: [] }}
-    >
-      <TaskRow
-        entry={entry(over)}
-        now={NOW}
-        hasRetryFile={props.hasRetryFile ?? false}
-        readOnly={props.readOnly ?? false}
-        retrying={props.retrying ?? false}
-        dismissing={props.dismissing ?? false}
-        onView={props.onView ?? ((): void => {})}
-        onRetry={props.onRetry ?? ((): void => {})}
-        onDismiss={props.onDismiss ?? ((): void => {})}
-        {...(props.medium !== undefined && { medium: props.medium })}
-      />
-    </CollaboratorNamesProvider>,
+    <TooltipProvider>
+      <CollaboratorNamesProvider
+        value={{ resolve: (userId: string) => names[userId] ?? null, members: [] }}
+      >
+        <TaskRow
+          entry={entry(over)}
+          now={NOW}
+          hasRetryFile={props.hasRetryFile ?? false}
+          readOnly={props.readOnly ?? false}
+          retrying={props.retrying ?? false}
+          dismissing={props.dismissing ?? false}
+          onView={props.onView ?? ((): void => {})}
+          onRetry={props.onRetry ?? ((): void => {})}
+          onDismiss={props.onDismiss ?? ((): void => {})}
+          {...(props.medium !== undefined && { medium: props.medium })}
+        />
+      </CollaboratorNamesProvider>
+    </TooltipProvider>,
   );
 }
 
@@ -118,6 +121,16 @@ describe('TaskRow', () => {
     const row = screen.getByTestId('node-task-row');
     expect(row).toHaveTextContent('holiday.mp4');
     expect(row).toHaveTextContent('Ada');
+  });
+
+  // inner#1968 visual round 2: what the task acted on keeps its width; a long starter name is cut and shown whole under the pointer.
+  it('cuts a long starter name before what the task acted on, and shows it whole under the pointer', async () => {
+    const long = 'alexandria-montgomery-fitzwilliam-the-third';
+    renderRow({}, {}, { 'u-1': long });
+    const starter = screen.getByText(long);
+    expect(starter).toHaveClass('truncate', 'max-w-28');
+    await userEvent.hover(starter);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(long);
   });
 
   it('opens with a badge naming the kind, then what it acted on, in every state', () => {
