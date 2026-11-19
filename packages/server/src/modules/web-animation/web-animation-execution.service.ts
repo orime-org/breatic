@@ -24,7 +24,6 @@ import {
   budgetDeadlineFrom,
   db,
   env,
-  executionGrantRepo as grantRepo,
   getStorageConfig,
   getTimelineConfig,
   logger,
@@ -59,6 +58,7 @@ import {
 import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
 import * as projectService from "@server/modules/project/project.service.js";
+import * as grantRepo from "@server/modules/web-animation/execution-grant.repo.js";
 import { timelineQueue } from "@server/modules/web-animation/timeline-queue.js";
 import * as listRepo from "@server/modules/web-animation/web-animation-list.repo.js";
 

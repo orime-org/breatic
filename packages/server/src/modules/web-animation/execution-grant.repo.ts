@@ -3,14 +3,12 @@
 
 /**
  * Data access for `timeline_execution_grants` (inner#1711 design §3.4): which Projects may resolve and preview what
- * an execution made. Acceptance grants the accepting Project, duplicating a Project copies its source's grants, the
- * web-source and preview routes answer through them, and a change to an execution reaches the Timelines of every
- * granted Project (#1490 design §4.7).
+ * an execution made. Only the server reads and writes it: acceptance grants the accepting Project, duplicating a
+ * Project copies its source's grants, and the web-source and preview routes answer through them.
  */
 
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { db, type DbTx } from "@core/db/client.js";
-import { timelineExecutionGrants as g } from "@core/db/schema.js";
+import { db, timelineExecutionGrants as g, type DbTx } from "@breatic/core";
 
 /**
  * Grant an execution to a Project.
@@ -40,21 +38,6 @@ export async function copyGrants(sourceProjectId: string, copyProjectId: string,
     WHERE ${g.projectId} = ${sourceProjectId} AND ${g.deletedAt} IS NULL
     ON CONFLICT DO NOTHING
   `);
-}
-
-/**
- * Every Project holding a live grant to an execution: its own and any copy made while the grant was live.
- * @param executionId - The execution.
- * @returns Their ids, in order.
- * @throws {Error} When the read fails.
- */
-export async function grantedProjectIds(executionId: string): Promise<string[]> {
-  const rows = await db
-    .select({ projectId: g.projectId })
-    .from(g)
-    .where(and(eq(g.executionId, executionId), isNull(g.deletedAt)))
-    .orderBy(g.projectId);
-  return rows.map((row) => row.projectId);
 }
 
 /**
