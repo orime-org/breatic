@@ -18,7 +18,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 interface SpaceKindPickerProps {
   /** The currently selected space type. */
   value: SpaceType;
-  /** Called with the chosen type when an available card is clicked. */
+  /** Called with the chosen type when a card is clicked. */
   onChange: (type: SpaceType) => void;
   /**
    * Prefix for the cards' `data-testid` + radiogroup test id, so the two
@@ -34,8 +34,6 @@ interface TypeCardMeta {
   icon: typeof Palette;
   titleKey: 'spaces.kind.canvas' | 'spaces.kind.document' | 'spaces.kind.timeline' | 'spaces.kind.threeD' | 'spaces.kind.webAnimation';
   descriptionKey: 'spaces.kind.canvasSub' | 'spaces.kind.documentSub' | 'spaces.kind.timelineSub' | 'spaces.kind.threeDSub' | 'spaces.kind.webAnimationSub';
-  /** Whether this type's editor can be opened. */
-  available: boolean;
 }
 
 const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
@@ -44,29 +42,25 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
     icon: Palette,
     titleKey: 'spaces.kind.canvas',
     descriptionKey: 'spaces.kind.canvasSub',
-    available: true,
   },
   {
     type: 'document',
     icon: FileText,
     titleKey: 'spaces.kind.document',
     descriptionKey: 'spaces.kind.documentSub',
-    available: true,
   },
-  { type: '3d', icon: Box, titleKey: 'spaces.kind.threeD', descriptionKey: 'spaces.kind.threeDSub', available: true },
+  { type: '3d', icon: Box, titleKey: 'spaces.kind.threeD', descriptionKey: 'spaces.kind.threeDSub' },
   {
     type: 'timeline',
     icon: Clock,
     titleKey: 'spaces.kind.timeline',
     descriptionKey: 'spaces.kind.timelineSub',
-    available: true,
   },
   {
     type: 'web_animation',
     icon: Clapperboard,
     titleKey: 'spaces.kind.webAnimation',
     descriptionKey: 'spaces.kind.webAnimationSub',
-    available: true,
   },
 ];
 
@@ -140,11 +134,11 @@ function landing(viewport: HTMLElement, span: Span, edge: 'start' | 'end'): numb
 }
 
 /**
- * The Project and Space creation dialogs share this control so type labels,
- * ordering and availability stay consistent across both entry points.
+ * The Project and Space creation dialogs share this control so type labels
+ * and ordering stay consistent across both entry points.
  * @param root0 - Component props.
  * @param root0.value - The currently selected space type.
- * @param root0.onChange - Called with the chosen type when an available card is clicked.
+ * @param root0.onChange - Called with the chosen type when a card is clicked.
  * @param root0.idPrefix - Prefix for the cards' + group's `data-testid`.
  * @returns The labelled space-type segmented control.
  */
@@ -224,9 +218,8 @@ export function SpaceKindPicker({
   const onKeyDown = React.useCallback((event: React.KeyboardEvent): void => {
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
     event.preventDefault();
-    const available = TYPE_CARDS.filter((card) => card.available);
-    const index = available.findIndex((card) => card.type === value);
-    const next = available[index + (event.key === 'ArrowRight' ? 1 : -1)];
+    const index = TYPE_CARDS.findIndex((card) => card.type === value);
+    const next = TYPE_CARDS[index + (event.key === 'ArrowRight' ? 1 : -1)];
     if (next === undefined) return;
     choose(next.type);
     cardRefs.current.get(next.type)?.focus();
@@ -259,9 +252,7 @@ export function SpaceKindPicker({
                   type='button'
                   role='radio'
                   aria-checked={selected}
-                  aria-disabled={!card.available}
-                  aria-label={!card.available ? `${t(card.titleKey)} (${t('spaces.create.notAvailable')})` : undefined}
-                  onClick={card.available ? () => choose(card.type) : undefined}
+                  onClick={() => choose(card.type)}
                   onKeyDown={onKeyDown}
                   data-testid={`${idPrefix}-${card.type}`}
                   className={cn(
@@ -272,11 +263,7 @@ export function SpaceKindPicker({
                     // The picked card keeps its own fill under the pointer: plain
                     // hover outranks it and would drop it to the fill of the
                     // hoverable sibling cards.
-                    card.available
-                      ? selected
-                        ? 'hover:bg-accent-strong'
-                        : 'hover:bg-accent'
-                      : 'cursor-not-allowed opacity-50',
+                    selected ? 'hover-enabled:bg-accent-strong' : 'hover-enabled:bg-accent',
                   )}
                 >
                   <Icon
@@ -298,7 +285,7 @@ export function SpaceKindPicker({
                       </Badge>
                     ) : null}
                   </div>
-                  <TooltipContent>{t(card.descriptionKey)}{!card.available ? ` · ${t('spaces.create.notAvailable')}` : null}</TooltipContent>
+                  <TooltipContent>{t(card.descriptionKey)}</TooltipContent>
                 </Tooltip>
               );
             })}

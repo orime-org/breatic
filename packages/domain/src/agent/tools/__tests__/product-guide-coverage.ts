@@ -55,7 +55,6 @@ interface Excluded {
 
 /** Every message the guide does not quote, and what the guide does with it. */
 export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
-  "spaces.create.notAvailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.loading": { excluded: REASONS.PASSING },
   "timeline.unavailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.incompatible": { excluded: REASONS.SAYS_WHAT_HAPPENED },
