@@ -233,12 +233,7 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
    * @returns Nothing.
    */
   async failForKeys(reason: string, upstream?: string, keyReason?: AccountKeyRefusal["reason"]): Promise<void> {
-    await this.apply({
-      type: "keyFailed",
-      reason,
-      ...(upstream === undefined ? {} : { upstream }),
-      ...(keyReason === undefined ? {} : { keyReason }),
-    });
+    await this.apply({ type: "keyFailed", reason, upstream, keyReason });
   }
 
   /**
@@ -250,7 +245,7 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
    * @returns Nothing.
    */
   async notePassingKeyFailure(reason: string, upstream: string, keyReason?: AccountKeyRefusal["reason"]): Promise<void> {
-    await this.apply({ type: "keyPassing", reason, upstream, ...(keyReason === undefined ? {} : { keyReason }) });
+    await this.apply({ type: "keyPassing", reason, upstream, keyReason });
   }
 
   /**

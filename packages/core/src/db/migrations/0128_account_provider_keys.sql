@@ -72,7 +72,7 @@ ALTER TABLE agent_usage_records ADD COLUMN key_id uuid CONSTRAINT agent_usage_re
 --> statement-breakpoint
 
 -- A clone lives on the upstream account whose key made it: 'deployment' for
--- ours, the account's id for an account's key. Every row so far was made with
+-- ours, the account_provider_keys row for an account's key. Every row so far was made with
 -- ours, which the default fills in. Never null, so the live-uniqueness index
 -- covers every owner (NULLs never collide in a unique index).
 ALTER TABLE studio_upstream_clones ADD COLUMN key_owner text NOT NULL DEFAULT 'deployment';

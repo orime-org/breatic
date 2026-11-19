@@ -893,7 +893,7 @@ export const studioUpstreamClones = pgTable(
     /** The source asset's sha256; an element adds its name after a colon. */
     sourceKey: text("source_key").notNull(),
     upstreamId: text("upstream_id").notNull(),
-    /** Whose upstream account holds the clone: `deployment` for our keys, else the account's id (0128, inner#1953). */
+    /** Whose upstream account holds the clone: `deployment` for our keys, else the `account_provider_keys` row it was made with (0128, inner#1953). */
     keyOwner: text("key_owner").default("deployment").notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
