@@ -1534,6 +1534,7 @@
         "product-showcase": "Product showcase",
         "food": "Food",
         "social-hooks": "Social hooks",
+        "talking": "Talking and dialogue",
         "posters": "Posters & graphics",
         "speed": "Motion & speed",
         "sound": "Sound, music & voice"
@@ -2028,6 +2029,82 @@
           "subject": {
             "name": "Subject",
             "note": "Add a photo of the person or the thing the tip is about first, then generate."
+          }
+        }
+      },
+      "talking-presenter": {
+        "name": "Talking presenter",
+        "description": "Your photo reads your script on camera",
+        "prompt": "(💡 Generate Portrait first, then pick it into the Character slot)(💡 Generate Voice-over first, then pick it into the Driving audio slot)The person looks straight into the lens and says the voice-over, lips matching every word. Small, calm head movements and expressions that follow what is said; {✏️ the manner, e.g. warm and confident, a slight smile at the end}. The camera does not move.",
+        "node": {
+          "portrait": {
+            "name": "Portrait",
+            "prompt": "A vertical medium close-up photo of the person in [📎 Person]: face, hair, skin tone and clothes as in the picture, nothing else taken from it. They face the camera straight on, mouth closed, eyes on the lens, in {✏️ the setting, e.g. a bright home office with a bookshelf}, lit by soft indoor light. The bottom third of the frame is plain enough for subtitles. No text in the picture."
+          },
+          "voice": {
+            "name": "Voice-over",
+            "prompt": "{✏️ the script, exactly the words to say, with a comma or a full stop wherever a pause belongs}"
+          }
+        },
+        "input": {
+          "person": {
+            "name": "Person",
+            "note": "Add a clear photo of the person first, face in view, then generate Portrait."
+          }
+        }
+      },
+      "talking-head-pitch": {
+        "name": "One-line talking clip",
+        "description": "A few short lines said straight to camera",
+        "prompt": "A 10-second vertical video with sound, spoken in {✏️ the language, e.g. English}. The person is [📎 Person]: face, hair, skin tone and clothes as in the picture, nothing else taken from it. A medium close-up, the camera locked; they look into the lens in {✏️ the setting, e.g. a sunlit café} and say \"{✏️ the first line, at most 10 words}\", then \"{✏️ the second line, at most 10 words}\". Lips match every word. Sound: only their voice and the quiet room around them, no music. No text, captions or subtitles on screen.",
+        "input": {
+          "person": {
+            "name": "Person",
+            "note": "Add a clear photo of the person first, face in view, then generate."
+          }
+        }
+      },
+      "two-speaker-talk": {
+        "name": "Two-person conversation",
+        "description": "Two people talking in one shot, each in their own voice",
+        "prompt": "(💡 Generate Two-shot first, then pick it into the Character slot)(💡 Generate Left voice first, then pick it into the Left audio slot)(💡 Generate Right voice first, then pick it into the Right audio slot)The person on the left speaks first, then the person on the right. Each one's lips move only while their own voice plays; the other listens, nods and reacts. A relaxed, natural conversation; the camera does not move.",
+        "node": {
+          "scene": {
+            "name": "Two-shot",
+            "prompt": "A widescreen photo of two people sitting side by side at {✏️ the setting, e.g. a podcast desk with two microphones}: on the left the person in [📎 Left person], on the right the person in [📎 Right person], each one's face, hair, skin tone and clothes as in their picture, nothing else taken from them. Both face the camera, turned slightly toward each other, mouths closed, both faces fully in view and the same size. Soft, even light. No text in the picture."
+          },
+          "left-voice": {
+            "name": "Left voice",
+            "prompt": "{✏️ what the person on the left says}"
+          },
+          "right-voice": {
+            "name": "Right voice",
+            "prompt": "{✏️ what the person on the right says}"
+          }
+        },
+        "input": {
+          "left-person": {
+            "name": "Left person",
+            "note": "Add a clear photo of the person on the left first, then generate Two-shot."
+          },
+          "right-person": {
+            "name": "Right person",
+            "note": "Add a clear photo of the person on the right first, then generate Two-shot."
+          }
+        }
+      },
+      "talking-own-voice": {
+        "name": "Talking in my own voice",
+        "description": "Your photo speaks your own recording",
+        "prompt": "The person looks into the lens and says the recording, lips matching every word; {✏️ the manner, e.g. relaxed, with small natural nods}. The camera does not move.",
+        "input": {
+          "portrait": {
+            "name": "Portrait",
+            "note": "Add your photo first, face in view, then pick it into the Character slot."
+          },
+          "recording": {
+            "name": "Recording",
+            "note": "Add your recording first, then pick it into the Driving audio slot."
           }
         }
       },

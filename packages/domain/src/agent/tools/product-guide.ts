@@ -889,9 +889,10 @@ export function renderProductGuide(): string {
       "paragraph of the prompt that @'s it stands on its own, is greyed while that node holds no picture and is " +
       "then left out of what generation gets, and hovering it says it is sent once that node holds a picture; " +
       "once a picture is put in the node, the paragraph is sent again. A template may also place " +
-      "picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt " +
-      "says to generate them first. A picture such a template places for the first or end frame is connected " +
-      "but not @'d, and its note says to pick it into that frame once it has generated. A template that needs a " +
+      "picture, video or sound nodes to the left that generate first, connected and @'d; a note at the top of the prompt " +
+      "says to generate them first. A picture or sound such a template generates for one of the model's slots, such as " +
+      "the first or end frame, the character or the audio the face speaks, is connected but not @'d, and its note says " +
+      "to pick it into that slot once it has generated. A template that needs a " +
       "video, picture or sound in one of the model's slots places an empty node for it, connected but not @'d, " +
       "with a note saying what to put in it and to pick it into that slot; when a node holding one is already " +
       "connected to the node, it goes straight into the slot instead. A template may also place nodes to the " +
