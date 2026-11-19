@@ -243,6 +243,36 @@ describe('SceneLookUploads', () => {
     expect(session.getSnapshot().commandError).toBeNull();
   });
 
+  it('judges every guard again after reading the other pictures, so a picture set on the part meanwhile stays', async () => {
+    const { doc, session } = editor();
+    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
+    let releaseSize: () => void = () => undefined;
+    const h = harness(() => session, { width: 64, height: 64, type: 'png' },
+      (assetId) => (assetId === OTHER_IMAGE ? new Promise((resolve) => { releaseSize = () => resolve({ width: 64, height: 64, type: 'png' }); }) : Promise.resolve({ width: 64, height: 64, type: 'png' })));
+    const done = h.uploads.start(startFor());
+    await settle();
+    h.finish();
+    await settle();
+    // A collaborator puts their own picture on the part while the other picture's size is read.
+    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
+    releaseSize();
+    await done;
+    expect(lookOf(doc)).toEqual({ 0: { map: OTHER_IMAGE }, 1: { map: OTHER_IMAGE } });
+    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.partChanged' }));
+  });
+
+  it('puts a picture on a part the object already changed when it holds the most parts it can', async () => {
+    const { doc, session } = editor();
+    for (let part = 0; part < 256; part += 1) applySceneCommand(doc, { type: 'look', id: ID, part: String(part), set: { opacity: 0.5 } } as never, Symbol(), true, NAME);
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    expect(h.upload).toHaveBeenCalledTimes(1);
+    h.finish();
+    await done;
+    expect((lookOf(doc) as Record<string, { map?: string }>)['0']?.map).toBe(UPLOADED);
+  });
+
   it('tells the reason when the upload fails and leaves the part alone', async () => {
     const { doc, session } = editor();
     const h = harness(() => session);

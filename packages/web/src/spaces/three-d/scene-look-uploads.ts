@@ -242,6 +242,11 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
         changed();
       }, controller.signal, beforeSend);
       deps.invalidateImages(input.projectId);
+      // The total reads other pictures' headers and can take a while; every guard below is judged after it, so nothing
+      // the document gains meanwhile is missed before the write.
+      const before = deps.session(input.name);
+      const beforeLook = before ? lookOf(before, input.objectId) : undefined;
+      const overTotal = beforeLook === undefined ? null : await overLimit(input, beforeLook, stored.assetId, local);
       const session = deps.session(input.name);
       const look = session ? lookOf(session, input.objectId) : undefined;
       const object = session?.getSnapshot().objects.find((item) => item.id === input.objectId);
@@ -251,7 +256,7 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       else if (partChanged) deps.notify({ key: 'spaces.threeD.look.partChanged', severity: 'warning' });
       else if (pastPartLimit(session, input, stored.assetId)) {
         deps.notify({ key: 'spaces.threeD.look.uploadedPartLimit', params: { max: String(SCENE_LOOK_MAX_PARTS) }, severity: 'warning' });
-      } else if (await overLimit(input, look, stored.assetId, local)) deps.notify({ key: 'spaces.threeD.look.uploadedOverLimit', severity: 'warning' });
+      } else if (overTotal) deps.notify({ key: 'spaces.threeD.look.uploadedOverLimit', severity: 'warning' });
       else session.execute({ type: 'look', id: input.objectId, part: input.part, set: { map: stored.assetId } });
     } catch (error) {
       if (refused) return;
