@@ -44,6 +44,8 @@ async function dragUp(page: Page, during: () => Promise<void>): Promise<void> {
   const centre = await toPage(page, native.center);
   for (let offset = 30; offset <= 120; offset += 5) {
     await page.mouse.move(centre.x, centre.y - offset);
+    // The handle under the pointer is reported from the frame loop.
+    await page.evaluate(() => new Promise<void>((resolve) => { requestAnimationFrame(() => requestAnimationFrame(() => resolve())); }));
     const axis = (JSON.parse(await canvas.getAttribute('data-native-controls') ?? '{}') as { axis: string | null }).axis;
     if (axis === null) continue;
     await page.mouse.down();

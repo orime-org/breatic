@@ -88,6 +88,51 @@ async function setPartColor(page: Page, hex: string): Promise<void> {
 }
 
 /**
+ * Wait until the viewport has drawn two more frames, so what it reports in its attributes follows the last pointer move.
+ * @param page - The page.
+ */
+async function nextFrames(page: Page): Promise<void> {
+  await page.evaluate(() => new Promise<void>((resolve) => { requestAnimationFrame(() => requestAnimationFrame(() => resolve())); }));
+}
+
+/**
+ * The selected object's handle centre on the page.
+ * @param page - The page with one object selected.
+ * @returns The point.
+ * @throws {Error} When the viewport has no box.
+ */
+async function selectedCentre(page: Page): Promise<{ x: number; y: number }> {
+  const canvas = visibleSpace(page).getByTestId('three-d-viewport');
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('The viewport has no box.');
+  const native = JSON.parse(await canvas.getAttribute('data-native-controls') ?? '{}') as { center: number[] };
+  return { x: box.x + (native.center[0] + 1) / 2 * box.width, y: box.y + (1 - native.center[1]) / 2 * box.height };
+}
+
+/**
+ * The mean colour of a few screen pixels around a point, as the page shows them.
+ * @param page - The page.
+ * @param point - The point.
+ * @returns The mean red, green and blue.
+ */
+async function meanColour(page: Page, point: { x: number; y: number }): Promise<[number, number, number]> {
+  const png = await page.screenshot({ clip: { x: point.x - 3, y: point.y - 3, width: 6, height: 6 } });
+  return page.evaluate(async (base64) => {
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('no 2d context');
+    context.drawImage(bitmap, 0, 0);
+    const data = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    const sum = [0, 0, 0];
+    for (let i = 0; i < data.length; i += 4) for (let channel = 0; channel < 3; channel += 1) sum[channel] += data[i + channel]!;
+    const count = data.length / 4;
+    return sum.map((value) => value / count) as [number, number, number];
+  }, png.toString('base64'));
+}
+
+/**
  * Click the selected object in the scene at a point the transform handles do not answer.
  * @param page - The page with one object selected.
  * @param shift - Whether Shift is held.
@@ -95,13 +140,12 @@ async function setPartColor(page: Page, hex: string): Promise<void> {
  */
 async function clickSelectedObject(page: Page, shift = false): Promise<void> {
   const canvas = visibleSpace(page).getByTestId('three-d-viewport');
-  const box = await canvas.boundingBox();
-  if (!box) throw new Error('The viewport has no box.');
-  const native = JSON.parse(await canvas.getAttribute('data-native-controls') ?? '{}') as { center: number[] };
-  const centre = { x: box.x + (native.center[0] + 1) / 2 * box.width, y: box.y + (1 - native.center[1]) / 2 * box.height };
+  const centre = await selectedCentre(page);
   // The box stands on its origin, so its faces are above the handle centre.
   for (const [dx, dy] of [[-14, -30], [14, -30], [-20, -18], [20, -18], [0, -40], [-8, -48]]) {
     await page.mouse.move(centre.x + dx, centre.y + dy);
+    // The handle under the pointer is reported from the frame loop.
+    await nextFrames(page);
     const axis = (JSON.parse(await canvas.getAttribute('data-native-controls') ?? '{}') as { axis: string | null }).axis;
     if (axis !== null) continue;
     if (shift) await page.keyboard.down('Shift');
@@ -122,6 +166,11 @@ test('a box part takes a preset and a colour, undo takes back one step, and the 
     // Glass lets light through, which takes the physical material.
     await expect.poll(async () => (await rendered(page))[0].parts['0'].type).toBe('MeshPhysicalMaterial');
     await expect(page.getByTestId('scene-look-modified-0')).toBeVisible();
+    // The glass face is drawn, neither black nor NaN (which draws black): a point on the face clear of the handles.
+    const centre = await selectedCentre(page);
+    await nextFrames(page);
+    const glass = await meanColour(page, { x: centre.x - 14, y: centre.y - 30 });
+    expect(Math.max(...glass), `glass face colour ${glass.join(',')}`).toBeGreaterThan(24);
 
     await setPartColor(page, '#ff0000');
     await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: { ...GLASS, color: '#ff0000' } }]);
