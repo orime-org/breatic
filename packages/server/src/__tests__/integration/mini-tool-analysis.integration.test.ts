@@ -13,10 +13,10 @@ import { t as sharedT } from "@breatic/shared";
 import { miniToolAnalysisRequestSchema, miniToolAnalysisService, taskRepo, taskService } from "@breatic/domain";
 import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, miniToolConsumptionKey, projectMiniToolAnalysisInput, type MiniToolAnalysisKind, type MiniToolAnalysisRecord } from "@breatic/shared/mini-tools";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
-import { ledgerKeys, presentedSource, REMOVAL_ENCODING, REMOVAL_PLAN, type PresentedSource } from "./presentation-fixtures.js";
+import { editKeyOf, presentedSource, type PresentedSource } from "./presentation-fixtures.js";
 
 // S6e E4-2 (inner#1306 §90; design §7.11 分析受理): the request names its tool input; admission reads the selected
-// version from ingest (faked here) and the stored ledger objects (served by URL), as the fresh execution admission does.
+// version from ingest (faked here), as the fresh execution admission does.
 const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), ingest: vi.fn() }));
 vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof shared>(), videoPresentationAtIngest: outside.ingest }));
 
@@ -65,8 +65,9 @@ interface FrozenAnalysisParams {
     analysisInput: MiniToolAnalysisRecord["analysisInput"];
     inputFingerprint: string;
     presentationRef: AnalysisRequest["presentationRef"];
-    ledgerReceipts: { source: unknown };
+    presentations: { source: unknown };
     versionIds: { source: string };
+    chargeTo: "platform" | "user";
   };
 }
 
@@ -139,10 +140,11 @@ async function member(projectId: string, role: "editor" | "viewer"): Promise<{ i
 /**
  * Builds a project, three roles, spendable credits and a registered video.
  * @param options - Whether the video presents with transparency.
- * @param options.transparent - A source whose presentation fills with transparency.
+ * @param options.transparent - A source whose playback file is alpha-packed.
+ * @param options.edit - A source whose tools read an edit file.
  * @returns The fixture with immutable registration facts.
  */
-async function seed(options: { transparent?: boolean } = {}): Promise<AnalysisFixture> {
+async function seed(options: { transparent?: boolean; edit?: boolean } = {}): Promise<AnalysisFixture> {
   const fixture = await seedStudioFixture(sql, "analysis");
   await sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${fixture.projectId}, ${fixture.userId}, 'owner')`;
   await seedDesignatedLot(sql, fixture, 1000);
@@ -158,11 +160,10 @@ async function seed(options: { transparent?: boolean } = {}): Promise<AnalysisFi
     VALUES (${fixture.studioId}, ${sourceHash}, ${key}, ${sourceURL}, 4096, 'video/mp4', 'video',
       'upload', ${fixture.userId}, 960, 540, 5.055) RETURNING id
   `;
-  // The selected version of this source and its ready ledger, as ingest answers and storage serves them.
-  const presentation = await presentedSource(sourceHash, key, publicUrl, options.transparent
-    ? { plan: { ...REMOVAL_PLAN, policy: { ...REMOVAL_PLAN.policy, emptyFill: "transparent" } }, encoding: REMOVAL_ENCODING } : undefined);
+  // The selected version of this source, as ingest answers it.
+  const presentation = await presentedSource(sourceHash, key, publicUrl, options);
   outside.snapshots.set(key, presentation.snapshot);
-  for (const [url, body] of presentation.bodies) outside.bodies.set(url, body);
+  
   return {
     ...fixture, ownerCookie: await cookieFor(fixture.userId),
     editorId: editor.id, editorCookie: editor.cookie, viewerId: viewer.id, viewerCookie: viewer.cookie,
@@ -178,8 +179,9 @@ async function seed(options: { transparent?: boolean } = {}): Promise<AnalysisFi
  */
 function requestFor(fixture: AnalysisFixture, kind: MiniToolAnalysisKind = "people"): AnalysisRequest {
   const hostNodeId = crypto.randomUUID();
-  const anchor = { frameIndex: 0, pts: 0 };
-  const range = { start: 0, end: 5 };
+  const anchor = { frameIndex: 0 };
+  // Ranges are grid frames (frames-split §10.12): 5 s of the 200 fps fixture grid.
+  const range = { start: 0, end: 1000 };
   return {
     analysisRunId: crypto.randomUUID(), projectId: fixture.projectId, spaceId: crypto.randomUUID(),
     hostNodeId, draftId: crypto.randomUUID(), revision: crypto.randomUUID(), kind,
@@ -295,7 +297,8 @@ async function seedAccepted(fixture: AnalysisFixture, acceptedAt: string): Promi
     schemaVersion: 1, analysisRunId: body.analysisRunId, projectId: body.projectId, spaceId: body.spaceId,
     hostNodeId: body.hostNodeId, draftId: body.draftId, revision: body.revision, kind: "people",
     source: body.source, binding, analysisInput, inputFingerprint: record.inputFingerprint,
-    presentationRef: body.presentationRef, ledgerReceipts: { source: fixture.presentation.receipt }, versionIds: { source: fixture.presentation.versionId },
+    presentationRef: body.presentationRef, presentations: { source: fixture.presentation.bundle }, versionIds: { source: fixture.presentation.versionId },
+    chargeTo: "platform",
   } };
   // Keep the parameter's OID textual: the driver's timestamp serializer runs
   // strings through Date, which would discard the microseconds before insertion.
@@ -338,8 +341,9 @@ describe("mini-tool analysis admission and project reads", () => {
       schemaVersion: 1, analysisRunId: body.analysisRunId, projectId: body.projectId, spaceId: body.spaceId, hostNodeId: body.hostNodeId,
       draftId: body.draftId, revision: body.revision, kind, source: body.source,
       binding: record.binding, analysisInput: record.analysisInput, inputFingerprint: record.inputFingerprint,
-      // S6e E4-2: the tool input and the selected version's receipts are frozen with the analysis (as §7.11 freezes an execution's).
-      presentationRef: body.presentationRef, ledgerReceipts: { source: fixture.presentation.receipt }, versionIds: { source: fixture.presentation.versionId },
+      // The tool input and the selected version are frozen with the analysis (frames-split §7.11), with its payer (§5.5).
+      presentationRef: body.presentationRef, presentations: { source: fixture.presentation.bundle }, versionIds: { source: fixture.presentation.versionId },
+      chargeTo: kind === "people" ? "platform" : "user",
     });
     const rows = await sql<{ node_id: string; action: string; budget_ms: number; task_id: string }[]>`
       SELECT node_id, action, budget_ms, task_id FROM node_tasks WHERE task_id = ${body.analysisRunId}
@@ -419,7 +423,7 @@ describe("mini-tool analysis admission and project reads", () => {
     const body = requestFor(fixture);
     const key = crypto.randomUUID();
     const first = await accepted(await post(body, fixture.ownerCookie, key));
-    const response = await post({ ...body, params: { anchor: { frameIndex: 1, pts: 0.04 } } }, fixture.ownerCookie, key);
+    const response = await post({ ...body, params: { anchor: { frameIndex: 1 } } }, fixture.ownerCookie, key);
     expect(response.status).toBe(422);
     expect(await reading(await get(body.analysisRunId, fixture.ownerCookie))).toEqual(first);
     expect(await counts(body.analysisRunId)).toEqual({ tasks: 1, rows: 1, holds: 0 });
@@ -429,7 +433,7 @@ describe("mini-tool analysis admission and project reads", () => {
     const fixture = await seed();
     const body = requestFor(fixture);
     const first = await accepted(await post(body, fixture.ownerCookie));
-    const changed = await post({ ...body, params: { anchor: { frameIndex: 1, pts: 0.04 } } }, fixture.ownerCookie);
+    const changed = await post({ ...body, params: { anchor: { frameIndex: 1 } } }, fixture.ownerCookie);
     expect([409, 422]).toContain(changed.status);
     const otherActor = await post(body, fixture.editorCookie);
     expect([409, 422]).toContain(otherActor.status);
@@ -571,7 +575,7 @@ describe("mini-tool analysis admission and project reads", () => {
       // The public record's transport fields are not detector-result fields.
       const { status: _status, result: _result, error: _error, usage: _usage, artifactUnavailable: _unavailable, ...identity } = record;
       const result = kind === "people" ? completedPeople(record, record.acceptedAt).result : {
-        ...identity, kind: "scene_cuts", timeBase: { numerator: 1, denominator: 100 }, frameCount: 20, cuts: [],
+        ...identity, kind: "scene_cuts", fps: { numerator: 200, denominator: 1 }, frameCount: 20, cuts: [],
       };
       committed = (await miniToolAnalysisService.finishMiniToolAnalysis(body.analysisRunId, { kind: "result", result })).record;
       if (nodeStatus === "done") await sql`UPDATE node_tasks SET status='done',settled_at=now() WHERE task_id=${body.analysisRunId}`;
@@ -651,12 +655,12 @@ describe("analysis tool input and pins (inner#1306 §90 E4-2; design §7.11 分�
       WHERE p.holder_id=${runId} AND p.deleted_at IS NULL GROUP BY p.id`;
   }
 
-  it("AP01 an accepted analysis pins L of its tool input in the admission", async () => {
-    const fixture = await seed();
+  it("AP01 an accepted analysis pins its tool input's edit file in the admission", async () => {
+    const fixture = await seed({ edit: true });
     const body = requestFor(fixture);
     await accepted(await post(body, fixture.ownerCookie));
-    const t = body.presentationRef.source.toolInputId; const l = ledgerKeys(fixture.sourceKey, t);
-    expect(await livePins(body.analysisRunId)).toEqual([{ holder_kind: "analysis", tool_input_id: t, keys: expect.arrayContaining([l.full, l.table]) }]);
+    const t = body.presentationRef.source.toolInputId;
+    expect(await livePins(body.analysisRunId)).toEqual([{ holder_kind: "analysis", tool_input_id: t, keys: [editKeyOf(fixture.sourceKey)] }]);
   });
 
   it("AP02 a request without its tool input is refused as request shape with no effect", async () => {
@@ -678,9 +682,9 @@ describe("analysis tool input and pins (inner#1306 §90 E4-2; design §7.11 分�
     expect(await livePins(body.analysisRunId)).toEqual([]);
   });
 
-  it("AP04 a selected version whose ledger is not ready is refused with no effect and no pin", async () => {
+  it("AP04 a source with no selected version is refused with no effect and no pin", async () => {
     const fixture = await seed();
-    (outside.snapshots.get(fixture.sourceKey) as { ledger: unknown }).ledger = { state: "pending", receipt: null, failure: null };
+    (outside.snapshots.get(fixture.sourceKey) as { presentation: unknown }).presentation = null;
     const body = requestFor(fixture, "scene_cuts");
     expect((await post(body, fixture.ownerCookie)).ok).toBe(false);
     expect(await counts(body.analysisRunId)).toEqual({ tasks: 0, rows: 0, holds: 0 });
@@ -688,7 +692,7 @@ describe("analysis tool input and pins (inner#1306 §90 E4-2; design §7.11 分�
   });
 
   it.each(["completed", "failed"] as const)("AP05 an analysis that becomes %s releases its pin and registers the keys nothing else pins", async (end) => {
-    const fixture = await seed();
+    const fixture = await seed({ edit: true });
     const body = requestFor(fixture);
     const pending = await accepted(await post(body, fixture.ownerCookie));
     if (end === "completed") {
@@ -698,9 +702,10 @@ describe("analysis tool input and pins (inner#1306 §90 E4-2; design §7.11 分�
       await miniToolAnalysisService.finishMiniToolAnalysis(body.analysisRunId, { kind: "error", error: { code: "analysis_failed" } });
     }
     expect(await livePins(body.analysisRunId)).toEqual([]);
-    const l = ledgerKeys(fixture.sourceKey, body.presentationRef.source.toolInputId);
-    const queued = await sql<{ storage_key: string; kind: string }[]>`SELECT storage_key,kind FROM storage_reclaim_queue WHERE storage_key IN (${l.full},${l.table}) ORDER BY storage_key`;
-    expect([...queued]).toEqual([l.full, l.table].sort().map((storage_key) => ({ storage_key, kind: "derived" })));
+    const editKey = editKeyOf(fixture.sourceKey);
+    const queued = await sql<{ storage_key: string; kind: string; kept_storage_key: string | null }[]>`SELECT storage_key,kind,kept_storage_key FROM storage_reclaim_queue WHERE storage_key=${editKey}`;
+    // A presentation-derived object is registered with its canonical key (frames-split §7.15).
+    expect([...queued]).toEqual([{ storage_key: editKey, kind: "derived", kept_storage_key: fixture.sourceKey }]);
   });
 });
 
@@ -710,7 +715,7 @@ describe("tracked mask admission checks (execution design §10.2–§10.4)", () 
   /**
    * A tracked mask request over a range with an anchor.
    * @param fixture - The registered source.
-   * @param range - The range in seconds.
+   * @param range - The range in seconds, sent as frames of the 200 fps fixture grid.
    * @param range.start - Its start.
    * @param range.end - Its end.
    * @param anchorFrame - The anchor's presentation frame on the 200 fps fixture.
@@ -718,7 +723,7 @@ describe("tracked mask admission checks (execution design §10.2–§10.4)", () 
    */
   function tracked(fixture: AnalysisFixture, range: { start: number; end: number }, anchorFrame: number): AnalysisRequest {
     const body = requestFor(fixture, "tracked_mask");
-    return { ...body, params: { ...body.params, range, anchor: { frameIndex: anchorFrame, pts: anchorFrame / 200 } } };
+    return { ...body, params: { ...body.params, range: { start: Math.round(range.start * 200), end: Math.round(range.end * 200) }, anchor: { frameIndex: anchorFrame } } };
   }
 
   /**

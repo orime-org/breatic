@@ -65,7 +65,8 @@ describe("presentation_pins (E4-4)", () => {
     const columns = await columnsOf("presentation_pins");
     expect(columns).toMatchObject({
       id: { type: "uuid", nullable: false }, holder_kind: { nullable: false }, holder_id: { type: "text", nullable: false },
-      tool_input_id: { nullable: false }, prepared_key: { type: "text", nullable: true }, version_id: { nullable: true },
+      // frames-split §7.15: a candidate may not know its toolInputId yet; every other kind records it (PS07).
+      tool_input_id: { nullable: true }, prepared_key: { type: "text", nullable: true }, version_id: { nullable: true },
       created_at: { type: "timestamp with time zone", nullable: false }, updated_at: { type: "timestamp with time zone", nullable: false },
       deleted_at: { type: "timestamp with time zone", nullable: true },
     });
@@ -102,6 +103,19 @@ describe("presentation_pins (E4-4)", () => {
     expect(await codeOf(pin({ holder_kind: "prepared", holder_id: holder, prepared_key: key }))).toBeNull();
     expect(await codeOf(pin({ holder_kind: "prepared", holder_id: holder, prepared_key: key }))).toBe("23505");
     expect(await codeOf(pin({ holder_kind: "prepared", holder_id: holder, prepared_key: `${key}x` }))).toBeNull();
+  });
+
+  it("PS07 only a candidate pin may leave its toolInputId unknown", async () => {
+    expect(await codeOf(pin({ holder_kind: "candidate", tool_input_id: null }))).toBeNull();
+    expect(await codeOf(pin({ tool_input_id: null }))).toBe("23514");
+    expect(await codeOf(pin({ holder_kind: "analysis", tool_input_id: null }))).toBe("23514");
+    expect(await codeOf(pin({ holder_kind: "selected", holder_id: `video/${randomUUID()}.mp4`, tool_input_id: null, version_id: "e".repeat(64) }))).toBe("23514");
+  });
+
+  it("PS08 a presentation job holds one live candidate row, whatever toolInputId it records", async () => {
+    const holder = `pres-${randomUUID()}`;
+    expect(await codeOf(pin({ holder_kind: "candidate", holder_id: holder, tool_input_id: null }))).toBeNull();
+    expect(await codeOf(pin({ holder_kind: "candidate", holder_id: holder, tool_input_id: T2 }))).toBe("23505");
   });
 
   it("PS06 a released (soft-deleted) row stays and does not block a new live row", async () => {

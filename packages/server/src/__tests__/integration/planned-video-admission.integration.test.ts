@@ -4,14 +4,13 @@
 /**
  * S5: real admission/authorization/PG/Redis/holds/queue/settlement; only external presentation delivery is controlled.
  *
- * S6e E3 (inner#1306 test plan §90; design §7.11, §5.4 「用户运行的两层编码」, §5.3, §3.2 item 7): the request names its
- * tool input per input id (`presentation_ref`); admission reads the S6c snapshot, the selected version's compact and its
- * full ledger (bounded, with the encode facts), recomputes the recipes, computes the exact §5.4 job layout, refuses a run
- * whose standard-4 job count exceeds `encoding.max_parallel_chunks`, and quotes max(precheck, planned work). The frozen
- * plan carries presentationRef, the ledger receipts, the selected versionIds and the layout.
+ * frames-split design §7.11, §5.4, §10.7: the request names its tool input per input id (`presentation_ref`) and its
+ * outputs in grid frames; admission reads the selected version from the snapshot (its display grid, tool source and
+ * keyframe statistics, no other object), recomputes the recipes, computes the exact §5.4 job layout, refuses a run whose
+ * largest stage exceeds `encoding.max_parallel_chunks`, and quotes max(precheck, planned work). The frozen plan carries
+ * presentationRef, the selected version, its versionId, the layout and the payer.
  */
-import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import type { Queue } from "bullmq";
 import fc from "fast-check";
@@ -20,7 +19,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } fro
 import * as core from "@breatic/core";
 import * as shared from "@breatic/shared";
 import * as miniTools from "@breatic/shared/mini-tools";
-import { hashMiniToolValue, miniToolExecutionRecordSchema, planVideoFrames, planVideoSplit, type VideoPresentationTable } from "@breatic/shared/mini-tools";
+import { hashMiniToolValue, miniToolExecutionRecordSchema, planVideoFrames, planVideoSplit } from "@breatic/shared/mini-tools";
 import {
   claimMiniToolSettlement, completeMiniToolConsumptionSet, confirmMiniToolConsumption, containerCostUsd,
   creditHoldService, creditsForUsd, MIN_TASK_CREDIT_COST, openMiniToolConsumption, readMiniToolExecutionPlan,
@@ -28,22 +27,21 @@ import {
 } from "@breatic/domain";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
-import { ledgerKeys } from "./presentation-fixtures.js";
+import { editKeyOf, presentedSource, REMOVAL_PLAN, type PresentedOptions } from "./presentation-fixtures.js";
 
 type Tool = "video.extract-frames" | "video.split";
-type Recipe = { kind: "frame"; frameIndex: number; pts: number } | { kind: "segment"; range: { start: number; end: number } };
+type Recipe = { kind: "frame"; frameIndex: number } | { kind: "segment"; range: { start: number; end: number } };
 interface Output { outputIndex: number; nodeId: string; recipe: Recipe }
 type Ref = { toolInputId: string; planSha256: string };
-type Receipt = Record<string, unknown> & { url: string; size: number; table: Record<string, unknown> & { url: string; size: number } };
 interface Body {
   tool: Tool; project_id: string; space_id: string; run_id: string;
   draft: { version: 1; draftId: string; revision: string; source: { nodeId: string; canonicalURL: string; mediaInfo: { width: number; height: number; duration: number; mimeType: string } }; inputs: []; params: Record<string, unknown> };
   analysis_refs: []; presentation_ref: { source: Ref }; outputs: Output[];
 }
-interface Fixture extends StudioFixture { body: Body; sourceId: string; sourceKey: string; hash: string; viewerId: string; otherId: string; receipt: Receipt; full: Record<string, unknown>; versionId: string }
+interface Fixture extends StudioFixture { body: Body; sourceId: string; sourceKey: string; hash: string; viewerId: string; otherId: string; bundle: shared.VideoPresentationVersion; versionId: string }
 interface Plan extends Record<string, unknown> {
   taskId: string; binding: { assetId: string; contentHash: string; mediaInfo: { width: number; height: number; duration: number } };
-  sourceKey: string; presentationRef: { source: Ref }; ledgerReceipts: { source: Receipt }; versionIds: { source: string };
+  sourceKey: string; presentationRef: { source: Ref }; presentations: { source: shared.VideoPresentationVersion }; versionIds: { source: string };
   layout: { batches: number[][]; encodes: { outputIndex: number; chunks: { start: number; end: number }[] }[] };
   // §97 D12-1: the per-stage job counts of the frozen layout, frozen beside it.
   stageJobs?: { stage: string; jobs: number }[];
@@ -53,7 +51,7 @@ interface Plan extends Record<string, unknown> {
 }
 interface Parent { id: string; user_id: string; status: string; params: { miniToolExecution: Plan }; result: Record<string, unknown>; billed_at: string | null; created_at: string; updated_at: string }
 
-const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), reads: [] as string[], ingest: vi.fn(), config: vi.fn(),
+const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), reads: [] as string[], ingest: vi.fn(), config: vi.fn(),
   funded: null as ReadonlySet<string> | null }));
 vi.mock("@breatic/core", async (original) => ({ ...await original<typeof core>(), getMiniToolsConfig: outside.config }));
 vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof shared>(), videoPresentationAtIngest: outside.ingest }));
@@ -65,26 +63,10 @@ vi.mock("@breatic/shared/mini-tools", async (original) => {
     get PLATFORM_FUNDED(): ReadonlySet<string> { return outside.funded ?? real.PLATFORM_FUNDED; },
     miniToolChargeTo: (subject: string): "platform" | "user" => (outside.funded === null ? real.miniToolChargeTo(subject) : outside.funded.has(subject) ? "platform" : "user") };
 });
-// 44 frames of 1/10 s over 4.4 s; the selected version's compact presentation and its full plan (S6a).
-const TABLE: VideoPresentationTable = { schemaVersion: 1, timescale: 10, runs: [{ start: 0, count: 44, step: 1, duration: 1 }] };
-const rational = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
-/** A rational reduced, as exactTime requires. */
-const reduce = (value: { numerator: string; denominator: string }): { numerator: string; denominator: string } => {
-  let [a, b] = [Math.abs(Number(value.numerator)), Number(value.denominator)]; while (b !== 0) [a, b] = [b, a % b];
-  const g = a === 0 ? Number(value.denominator) : a;
-  return { numerator: String(Number(value.numerator) / g), denominator: String(Number(value.denominator) / g) };
-};
-const PLAN_BODY = {
-  display: { width: 960, height: 540, duration: rational(22, 5) }, colorMatrix: "bt601", source: { transfer: null, bitDepth: 8 },
-  output: { toneMap: "none", framePngBitDepth: 8 }, policy: { singleFrameDurationMs: 5000, emptyFill: "black" }, presentation: TABLE,
-  originMapping: { timeBase: rational(1, 1000), origin: rational(0), entries: [{ kind: "source", start: 0, count: 44, step: 100 }],
-    firstSource: { supportStart: rational(0), lead: null }, lastSource: { support: "declared", supportEnd: rational(22, 5), hold: null } },
-  videoSpans: null, audioSpans: null, segmentDuration: null,
-};
-// §3.2 item 7: the physical encode facts beside the plan; keyframes every 10 frames, coded at the display size.
-// §93 D6-1: every source keyframe's pts and dts (frame k is at k/10 s; no B-frames, so dts equals pts) and the first packet dts.
-const ENCODE_FACTS = { keyframeOrdinals: [0, 10, 20, 30, 40], codedWidth: 960, codedHeight: 540,
-  sourceKeyframes: [0, 1, 2, 3, 4].map((second) => ({ pts: rational(second), dts: rational(second) })), firstPacketDts: rational(0) };
+// 44 grid frames at 10 fps over 4.4 s, read from the original with a keyframe every second (frames-split §4.1, §7.16).
+const GRID_PLAN: shared.VideoPresentationPlan = { ...REMOVAL_PLAN, grid: { ...REMOVAL_PLAN.grid, fps: { numerator: 10, denominator: 1 } } };
+const GRID_DISPLAY = { frameCount: 44, realFrameCount: 44 };
+const KEYFRAMES: shared.SourceKeyframeStats = { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false };
 let pg: ReturnType<typeof core.createPgClient>;
 let queue: Queue;
 let app: Hono;
@@ -92,9 +74,6 @@ let base: core.MiniToolsConfig;
 let settings: core.MiniToolsConfig;
 let publicUrl: (key: string) => string;
 const tokens: string[] = [];
-
-/** Hash actual delivered bytes, independently from the production reader. @throws {never} Never. */
-function digest(body: string): string { return createHash("sha256").update(body).digest("hex"); }
 
 /** Configure a real paid admission without any provider key or external call. @throws {Error} On invalid deployment configuration. */
 function configure(multiplier = 1): void {
@@ -117,7 +96,7 @@ beforeEach(() => {
     "video.extract-frames": { container_class: "MiniToolContainerStd4", precheck_seconds: 17, max_outputs: 12, max_outputs_per_job: 8 },
     "video.split": { container_class: "MiniToolContainerStd4", precheck_seconds: 23, max_outputs: 12, max_outputs_per_job: 8 } } });
   outside.config.mockImplementation(() => settings);
-  outside.snapshots.clear(); outside.bodies.clear(); outside.reads.length = 0;
+  outside.snapshots.clear(); outside.reads.length = 0;
   outside.ingest.mockReset().mockImplementation(async (_url: string, _secret: string, input: { action: string; storageKey: string }): Promise<unknown> => {
     if (input.action !== "read") throw new Error(`Unexpected presentation admission ${input.action}`);
     const snapshot = outside.snapshots.get(input.storageKey);
@@ -127,9 +106,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
     const url = input instanceof Request ? input.url : String(input);
     outside.reads.push(url);
-    const body = outside.bodies.get(url);
-    if (body === undefined) throw new Error(`Admission must not fetch full ledger or unregistered URL: ${url}`);
-    return new Response(body, { headers: { "Content-Type": "application/json" } });
+    throw new Error(`Admission must not fetch any object: ${url}`);
   }));
 });
 afterAll(async () => {
@@ -146,33 +123,17 @@ async function member(projectId: string, role: "viewer" | "editor"): Promise<str
 }
 
 /**
- * Declare the source's selected version as the S6c snapshot answers it, with its full ledger and compact stored at the
- * receipt's URLs, and point the request at that tool input. @throws {Error} When the shared identity functions are missing.
+ * Declare the source's selected version as the snapshot answers it and point the request at that tool input.
+ * @param f - The fixture.
+ * @param options - What the version carries besides the 44-frame 10 fps grid on the original.
+ * @returns Nothing.
+ * @throws {z.ZodError} When the version is not valid.
  */
-async function present(f: Fixture, presented: { plan: typeof PLAN_BODY; encoding: Record<string, unknown> } = { plan: PLAN_BODY, encoding: ENCODE_FACTS }): Promise<void> {
-  const { plan: PLAN, encoding } = presented;
-  const table = PLAN.presentation;
-  const frameCount = table.runs.reduce((total, run) => total + run.count, 0);
-  const api = shared as unknown as Record<string, (value: unknown) => unknown>;
-  const planSha256 = await api.videoPresentationPlanSha256!(PLAN) as string;
-  const toolInputId = await api.videoPresentationToolInputId!({ sourceFingerprint: f.hash, planSha256 }) as string;
-  const attempt = { jobId: `video-presentation:${f.sourceId}`, deadlineAt: Date.now() + core.getNodeTaskConfig().default_budget_ms };
-  const full = { schemaVersion: 2, sourceFingerprint: f.hash, toolInputId, planSha256, attempt, plan: PLAN, encoding };
-  const compact = { sourceFingerprint: f.hash, toolInputId, planSha256, presentation: table };
-  const fullJSON = JSON.stringify(full); const compactJSON = JSON.stringify(compact);
-  const receipt: Receipt = { schemaVersion: 2, sourceFingerprint: f.hash, toolInputId, planSha256, producerVersion: 2, attempt,
-    url: publicUrl(ledgerKeys(f.sourceKey, toolInputId).full), etag: "full-etag", size: Buffer.byteLength(fullJSON), sha256: digest(fullJSON), contentType: "application/json",
-    table: { url: publicUrl(ledgerKeys(f.sourceKey, toolInputId).table), sha256: digest(compactJSON), size: Buffer.byteLength(compactJSON), contentType: "application/json", frameCount } };
-  const versionId = "e".repeat(64);
-  const bundle = { schemaVersion: 1, sourceFingerprint: f.hash, versionId, toolInputId, planSha256, policyVersion: 1, producerVersion: 2, profileVersion: 1,
-    original: { width: 960, height: 540, duration: 4.4 }, display: PLAN.display,
-    playback: { kind: "native", carrier: { storageKey: f.sourceKey, url: publicUrl(f.sourceKey), etag: "source-etag", size: 4096, sha256: f.hash, contentType: "video/mp4" }, displayRect: null },
-    playbackClock: table };
-  Object.assign(f, { receipt, full, versionId });
-  f.body.presentation_ref = { source: { toolInputId, planSha256 } };
-  outside.bodies.set(receipt.url, fullJSON); outside.bodies.set(receipt.table.url, compactJSON);
-  outside.snapshots.set(f.sourceKey, { sourceBinding: { storageKey: f.sourceKey, sourceFingerprint: f.hash }, presentation: bundle,
-    preparation: null, ledger: { state: "ready", receipt, failure: null }, readmit: false });
+async function present(f: Fixture, options: PresentedOptions = {}): Promise<void> {
+  const presented = await presentedSource(f.hash, f.sourceKey, publicUrl, { plan: GRID_PLAN, display: GRID_DISPLAY, duration: 4.4, keyframes: KEYFRAMES, ...options });
+  Object.assign(f, { versionId: presented.versionId, bundle: presented.bundle });
+  f.body.presentation_ref = presented.presentationRef;
+  outside.snapshots.set(f.sourceKey, presented.snapshot);
 }
 
 /** Register measured video facts and fund the real target Studio, not the source Studio. @throws {Error} On fixture SQL failure. */
@@ -186,16 +147,16 @@ async function seed(tool: Tool = "video.split"): Promise<Fixture> {
   const body: Body = { tool, project_id: target.projectId, space_id: randomUUID(), run_id: randomUUID(),
     draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: randomUUID(), canonicalURL: publicUrl(sourceKey),
       mediaInfo: { width: 16, height: 16, duration: 0.1, mimeType: "video/mp4" } }, inputs: [],
-    params: tool === "video.split" ? { cuts: [2, 4] } : { mode: "current", currentTime: 2.3 } },
+    params: tool === "video.split" ? { cuts: [20, 40] } : { mode: "current", frameIndex: 23 } },
     analysis_refs: [], outputs: [], presentation_ref: { source: { toolInputId: "", planSha256: "" } } };
   const f = { ...target, body, sourceId, sourceKey, hash, viewerId: await member(target.projectId, "viewer"), otherId: await member(target.projectId, "editor") } as Fixture;
   await present(f);
   body.outputs = tool === "video.split"
-    ? [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 0, end: 2 } } },
-      { outputIndex: 1, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 2, end: 4 } } },
-      { outputIndex: 2, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 4, end: 4.4 } } }]
-    // §97 D11-1 (frames-split §10.6 删除行; 4.4.5): frame extraction plans one output, the current frame at 2.3 s.
-    : [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: 23, pts: 2.3 } }];
+    ? [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 0, end: 20 } } },
+      { outputIndex: 1, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 20, end: 40 } } },
+      { outputIndex: 2, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 40, end: 44 } } }]
+    // frames-split §10.6, §10.7: frame extraction plans one output, the current grid frame 23.
+    : [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: 23 } }];
   return f;
 }
 
@@ -262,7 +223,7 @@ async function failedOriginal(f: Fixture): Promise<Parent> {
   return parent(f.body.run_id);
 }
 
-/** Use original stable output indices; no fresh draft, receipt or recipe can override a retry. @throws {never} Never. */
+/** Use original stable output indices; no fresh draft, version or recipe can override a retry. @throws {never} Never. */
 function retry(f: Fixture, ids = [2], run = randomUUID()): { tool: Tool; project_id: string; space_id: string; run_id: string; retry: { runId: string; outputIndexes: number[] } } {
   return { tool: f.body.tool, project_id: f.projectId, space_id: f.body.space_id, run_id: run, retry: { runId: f.body.run_id, outputIndexes: ids } };
 }
@@ -322,32 +283,22 @@ async function contending<T>(id: string, calls: (() => Promise<T>)[]): Promise<T
 }
 
 describe("S5 fresh frame and split execution admission", () => {
-  it("S5-A00 proves the selected version's receipt, compact reader and independent planner literals are valid", async () => {
+  it("S5-A00 proves the independent planner literals on the selected grid", async () => {
     const f = await seed();
-    expect(shared.videoPresentationLedgerReceiptSchema.parse(f.receipt)).toEqual(f.receipt);
-    expect(await shared.readVideoPresentationCompact(f.receipt, { maxBytes: base.presentation.source_ledger.max_bytes }, { deadlineAt: Date.now() + core.getNodeTaskConfig().default_budget_ms })).toEqual(TABLE);
-    expect(planVideoSplit(TABLE, f.body.draft.params.cuts as number[])).toEqual([
-      { outputIndex: 0, start: 0, end: 2 }, { outputIndex: 1, start: 2, end: 4 }, { outputIndex: 2, start: 4, end: 4.4 },
+    const grid = { fps: f.bundle.display.fps, frameCount: f.bundle.display.frameCount };
+    expect(planVideoSplit(grid, f.body.draft.params.cuts as number[])).toEqual([
+      { outputIndex: 0, start: 0, end: 20 }, { outputIndex: 1, start: 20, end: 40 }, { outputIndex: 2, start: 40, end: 44 },
     ]);
-    expect(planVideoFrames(TABLE, { mode: "current", currentTime: 2.3 })).toEqual([{ outputIndex: 0, frameIndex: 23, pts: 2.3 }]);
+    expect(planVideoFrames(grid, { mode: "current", frameIndex: 23 })).toEqual([{ outputIndex: 0, frameIndex: 23 }]);
   });
-  it.each(["video.extract-frames", "video.split"] as const)("S5-A01 freezes every %s output, measured source, receipt and Std4 policy before the real hold and queue", async (tool) => {
+  it.each(["video.extract-frames", "video.split"] as const)("S5-A01 freezes every %s output, measured source, selected version and Std4 policy before the real hold and queue", async (tool) => {
     const f = await seed(tool); const original = structuredClone(f.body);
-    const reader = vi.spyOn(shared, "readVideoPresentationCompact");
-    try {
-      await accept(f);
-      expect(reader).toHaveBeenCalledTimes(1);
-      expect(reader.mock.calls[0]?.[0]).toEqual(f.receipt);
-      expect(reader.mock.calls[0]?.[1]).toEqual({ maxBytes: settings.presentation.source_ledger.max_bytes });
-      const deadline = reader.mock.calls[0]?.[2].deadlineAt;
-      expect(deadline).toBeGreaterThan(Date.now());
-      expect(deadline).toBeLessThanOrEqual(Date.now() + 7200000);
-    } finally { reader.mockRestore(); }
+    await accept(f);
     const stored = await parent(f.body.run_id); const plan = stored.params.miniToolExecution;
     // One batch holds every output under max_outputs_per_job; no output needs chunking (E3-6).
     expect(plan.layout).toEqual({ batches: [original.outputs.map((o) => o.outputIndex)], encodes: [] });
     expect(plan).toMatchObject({ tool, taskId: f.body.run_id, sourceKey: f.sourceKey,
-      presentationRef: original.presentation_ref, ledgerReceipts: { source: f.receipt }, versionIds: { source: f.versionId },
+      presentationRef: original.presentation_ref, presentations: { source: f.bundle }, versionIds: { source: f.versionId },
       binding: { assetId: f.sourceId, contentHash: f.hash, mediaInfo: { width: 960, height: 540, duration: 4.4 } },
       // §67.1 S5-A01/A05 (frames-split §5.5 「配置」行, §10.8 「计费」行): extract-frames is platform-funded, quoted 0 with no hold;
       // the payer is frozen in the plan for the worker and every retry.
@@ -366,62 +317,37 @@ describe("S5 fresh frame and split execution admission", () => {
     expect([...holds]).toEqual(tool === "video.split" ? [{ studio_id: f.studioId, amount: estimate(tool), status: "held" }] : []);
     expect(await effects(f.body.run_id)).toEqual({ tasks: 1, rows: original.outputs.length, holds: tool === "video.split" ? 1 : 0, jobs: 1 });
     expect(await queue.getJob(f.body.run_id)).toMatchObject({ id: f.body.run_id, name: "execute-mini-tool", data: { taskId: f.body.run_id, executionKind: "planned" } });
-    // The full ledger is read once for the layout's encode facts (E3-3), the compact once for the recipes.
-    expect([...outside.reads].sort()).toEqual([f.receipt.url, f.receipt.table.url].sort());
-  });
-  it.each([
-    ["first", 0, 0], ["last", 43, 4.3], ["current", 30, 3],
-  ] as const)("S5-A01 resolves %s through the selected version's compact timeline", async (mode, frameIndex, pts) => {
-    const f = await seed("video.extract-frames"); f.body.draft.params = { mode, currentTime: 3 };
-    f.body.outputs = [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex, pts } }];
-    await accept(f); expect((await parent(f.body.run_id)).params.miniToolExecution.outputs).toEqual(f.body.outputs);
+    // The selected version carries the grid, tool source and keyframe statistics: admission fetches no object (§7.11).
+    expect(outside.reads).toEqual([]);
   });
   // §97 D11-1: a frame plan has one output, so its order row moved to the segment plan below (4.4.5).
-  it.each(["frameIndex", "pts", "omission", "addition"])("S5-A02 refuses a frame plan %s before any durable execution side effect", async (bad) => {
+  it.each(["frameIndex", "omission", "addition"])("S5-A02 refuses a frame plan %s before any durable execution side effect", async (bad) => {
     const f = await seed("video.extract-frames"); await control(f);
     if (bad === "frameIndex") Object.assign(f.body.outputs[0]!.recipe, { frameIndex: 1 });
-    else if (bad === "pts") Object.assign(f.body.outputs[0]!.recipe, { pts: 0.000001 });
     else if (bad === "omission") f.body.outputs.pop();
-    else f.body.outputs.push({ outputIndex: 1, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: 41, pts: 4.1 } });
+    else f.body.outputs.push({ outputIndex: 1, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex: 41 } });
     expect((await post(f)).status).toBe(422); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
   });
   it.each(["start", "end", "omission", "addition", "order"])("S5-A02 refuses a segment plan %s after a valid control", async (bad) => {
     const f = await seed(); await control(f);
-    if (bad === "start") Object.assign(f.body.outputs[0]!.recipe, { range: { start: 0.1, end: 2 } });
-    else if (bad === "end") Object.assign(f.body.outputs[1]!.recipe, { range: { start: 2, end: 4.1 } });
+    if (bad === "start") Object.assign(f.body.outputs[0]!.recipe, { range: { start: 1, end: 20 } });
+    else if (bad === "end") Object.assign(f.body.outputs[1]!.recipe, { range: { start: 20, end: 41 } });
     else if (bad === "omission") f.body.outputs.pop();
-    else if (bad === "addition") f.body.outputs.push({ outputIndex: 3, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 4, end: 4.4 } } });
+    else if (bad === "addition") f.body.outputs.push({ outputIndex: 3, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 40, end: 44 } } });
     else f.body.outputs.reverse();
     expect((await post(f)).status).toBe(422); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
   });
-  it.each(["source deleted", "source hash", "ref toolInputId", "ref planSha256", "selected version moved", "nothing selected", "ledger pending", "ledger failed", "ledger absent"])("S5-A03 refuses a request whose tool input is not the selected, ready one: %s", async (bad) => {
+  it.each(["source deleted", "source hash", "ref toolInputId", "ref planSha256", "selected version moved", "nothing selected"])("S5-A03 refuses a request whose tool input is not the selected one: %s", async (bad) => {
     const f = await seed(); await control(f);
-    const snapshot = structuredClone(outside.snapshots.get(f.sourceKey)) as { presentation: Record<string, unknown> | null; ledger: Record<string, unknown> | null };
+    const snapshot = structuredClone(outside.snapshots.get(f.sourceKey)) as { presentation: Record<string, unknown> | null };
     if (bad === "source deleted") await pg`UPDATE studio_assets SET deleted_at=clock_timestamp() WHERE id=${f.sourceId}`;
     else if (bad === "source hash") await pg`UPDATE studio_assets SET content_hash=${"e".repeat(64)} WHERE id=${f.sourceId}`;
     else if (bad === "ref toolInputId") f.body.presentation_ref.source.toolInputId = "b".repeat(64);
     else if (bad === "ref planSha256") f.body.presentation_ref.source.planSha256 = "b".repeat(64);
-    else if (bad === "selected version moved") { snapshot.presentation = { ...snapshot.presentation, toolInputId: "b".repeat(64) }; snapshot.ledger = null; }
-    else if (bad === "nothing selected") { snapshot.presentation = null; snapshot.ledger = null; }
-    else if (bad === "ledger pending") snapshot.ledger = { state: "pending", receipt: null, failure: null };
-    else if (bad === "ledger failed") snapshot.ledger = { state: "failed", receipt: null, failure: "source_ledger_invalid" };
-    else snapshot.ledger = null;
+    else if (bad === "selected version moved") snapshot.presentation = { ...snapshot.presentation, toolInputId: "b".repeat(64) };
+    else snapshot.presentation = null;
     outside.snapshots.set(f.sourceKey, snapshot);
     expect((await post(f)).status).toBe(422); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
-  });
-  it.each(["compact digest", "compact size", "full digest", "full without encode facts", "byte budget"])("S5-A04 validates the whole compact and full objects against the receipt and the byte budget: %s", async (bad) => {
-    const f = await seed(); await control(f);
-    if (bad === "compact digest") outside.bodies.set(f.receipt.table.url, JSON.stringify({ sourceFingerprint: f.hash, toolInputId: f.body.presentation_ref.source.toolInputId, planSha256: f.body.presentation_ref.source.planSha256, presentation: { ...TABLE, timescale: 20 } }));
-    else if (bad === "compact size") outside.bodies.set(f.receipt.table.url, `${outside.bodies.get(f.receipt.table.url)} `);
-    else if (bad === "full digest") outside.bodies.set(f.receipt.url, JSON.stringify({ ...f.full, encoding: { ...ENCODE_FACTS, codedWidth: 961 } }));
-    else if (bad === "full without encode facts") {
-      const { encoding: _dropped, ...without } = f.full; const json = JSON.stringify(without);
-      const receipt = { ...f.receipt, size: Buffer.byteLength(json), sha256: digest(json) };
-      outside.bodies.set(f.receipt.url, json);
-      (outside.snapshots.get(f.sourceKey) as { ledger: { receipt: unknown } }).ledger.receipt = receipt;
-    } else settings.presentation.source_ledger.max_bytes = Math.min(f.receipt.size, f.receipt.table.size) - 1;
-    // Stored-object corruption is not necessarily a client validation error; the contract fixes refusal and zero durable effects, not an HTTP error class.
-    expect((await post(f)).ok).toBe(false); expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
   });
   it.each([1, 2.5])("S5-A05 holds the configured Std4 estimate once with multiplier %s and leaves every deadline at two hours", async (multiplier) => {
     const f = await seed(); configure(multiplier);
@@ -445,7 +371,7 @@ describe("S5 fresh frame and split execution admission", () => {
     const f = await seed(); const original = structuredClone(f.body); const key = randomUUID(); await accept(f, original, key);
     const before = await parent(f.body.run_id); outside.ingest.mockClear(); outside.reads.length = 0;
     await pg`UPDATE studio_assets SET content_hash=${"e".repeat(64)},duration_seconds=99 WHERE id=${f.sourceId}`;
-    settings.prices.vcpu_second_usd *= 9; settings.presentation.source_ledger.max_bytes = 1;
+    settings.prices.vcpu_second_usd *= 9; settings.encoding.encoder.start_seconds = 999;
     f.body.draft.params.cuts = []; f.body.draft.revision = randomUUID();
     await accept(f, original, key); await accept(f, original);
     expect(await parent(original.run_id)).toEqual(before); expect(outside.ingest).not.toHaveBeenCalled(); expect(outside.reads).toEqual([]);
@@ -482,16 +408,16 @@ describe("S5 fresh frame and split execution admission", () => {
 });
 
 describe("S5 independent failed-output retry admission", () => {
-  it("S5-R01 reuses only the selected failed original node/recipe/frozen refs, never today's draft, version, compact or full", async () => {
+  it("S5-R01 reuses only the selected failed original node/recipe/frozen refs, never today's draft or version", async () => {
     const f = await seed(); const before = await failedOriginal(f); const body = retry(f);
     f.body.draft.params.cuts = []; f.body.draft.revision = randomUUID();
     await pg`UPDATE studio_assets SET duration_seconds=99 WHERE id=${f.sourceId}`;
-    outside.ingest.mockClear(); outside.reads.length = 0; outside.snapshots.clear(); outside.bodies.clear();
+    outside.ingest.mockClear(); outside.reads.length = 0; outside.snapshots.clear();
     await accept(f, body); const plan = (await parent(body.run_id)).params.miniToolExecution;
     expect(plan.outputs).toEqual([before.params.miniToolExecution.outputs[2]]); expect(plan.targetNodeIds).toEqual([f.body.outputs[2]!.nodeId]);
     expect(plan.binding).toEqual(before.params.miniToolExecution.binding);
     expect(plan.presentationRef).toEqual(before.params.miniToolExecution.presentationRef);
-    expect(plan.ledgerReceipts).toEqual(before.params.miniToolExecution.ledgerReceipts);
+    expect(plan.presentations).toEqual(before.params.miniToolExecution.presentations);
     expect(plan.versionIds).toEqual(before.params.miniToolExecution.versionIds);
     expect(await parent(f.body.run_id)).toEqual(before); expect(outside.ingest).not.toHaveBeenCalled(); expect(outside.reads).toEqual([]);
     expect(await effects(body.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
@@ -778,16 +704,6 @@ describe("E3 job layout, parallel cap and quote at admission (inner#1306 §90 E3
     expect(credits).toBeLessThanOrEqual(std4Credits(10));
   });
 
-  it("E3-A06 the layout uses the full ledger's keyframes: without encode facts nothing is admitted", async () => {
-    const f = await seed(); await control(f);
-    const { encoding: _dropped, ...without } = f.full; const json = JSON.stringify(without);
-    const receipt = { ...f.receipt, size: Buffer.byteLength(json), sha256: digest(json) };
-    outside.bodies.set(f.receipt.url, json);
-    (outside.snapshots.get(f.sourceKey) as { ledger: { receipt: unknown } }).ledger.receipt = receipt;
-    expect((await post(f)).ok).toBe(false);
-    expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
-  });
-
   it("E3-A07 a target-policy preparation in progress does not block admission", async () => {
     const f = await seed();
     const snapshot = outside.snapshots.get(f.sourceKey) as { preparation: unknown };
@@ -799,8 +715,9 @@ describe("E3 job layout, parallel cap and quote at admission (inner#1306 §90 E3
 // §97 D12-1 (frames-split §5.4 上限 and 预算 rows): the cap is the number of container jobs one stage sends at once, so
 // admission compares the largest stage of the frozen layout with `encoding.max_parallel_chunks`, not the total, and freezes
 // the stage counts as `stageJobs` beside `layout`. For split, encode is every batch plus every chunk, stitch one per chunked
-// output. The configuration below makes each 2 s segment (20 frames, keyframes every 10) exceed one job's share and chunk,
-// while the 0.4 s segment stays in a batch: work is one second per frame and decode is negligible.
+// output. The configuration below makes each 2 s segment (20 frames plus the original's 11-frame pre-roll) exceed one job's
+// 20 s share and chunk, while the 0.4 s segment (4 frames) stays in a batch: work is one second per frame and decode is
+// negligible.
 describe("stage job counts at admission (§97 D12-1; frames-split §5.4)", () => {
   /** Configure chunked split outputs at a given cap. @throws {Error} When the task configuration cannot be read. */
   function chunked(cap = 8): void {
@@ -810,7 +727,7 @@ describe("stage job counts at admission (§97 D12-1; frames-split §5.4)", () =>
     for (const key of Object.keys(encoder.decode_convert_pixels_per_second) as (keyof typeof encoder.decode_convert_pixels_per_second)[]) {
       encoder.decode_convert_pixels_per_second[key] = 1e15;
     }
-    settings.encoding.chunk_share = 12 / (core.getNodeTaskConfig().default_budget_ms / 1000);
+    settings.encoding.chunk_share = 20 / (core.getNodeTaskConfig().default_budget_ms / 1000);
     settings.encoding.max_parallel_chunks = cap;
   }
   /** The stages counted from a frozen split layout. @throws {never} Never. */
@@ -832,6 +749,15 @@ describe("stage job counts at admission (§97 D12-1; frames-split §5.4)", () =>
     expect(plan.stageJobs).toEqual(stagesOf(plan.layout));
   });
 
+  // frames-split §5.4 chunking row: each chunk holds as many frames as fit the share beside its own pre-roll, counted once:
+  // (20 s share − 1 s start) − 11 pre-roll frames at 1 s leaves 8 frames, so each 20-frame segment takes 3 chunks.
+  it("SA04 sizes each chunk by the frames that fit the share beside one pre-roll", async () => {
+    const plan = await chunkedPlan();
+    expect(plan.layout.encodes.map((encode) => encode.chunks)).toEqual([
+      { outputIndex: 0, base: 0 }, { outputIndex: 1, base: 20 },
+    ].map(({ base }) => [{ start: base, end: base + 6 }, { start: base + 6, end: base + 13 }, { start: base + 13, end: base + 20 }]));
+  });
+
   it("SA02 admits a split whose total jobs exceed the cap while its largest stage does not", async () => {
     const stages = stagesOf((await chunkedPlan()).layout);
     const largest = Math.max(...stages.map((stage) => stage.jobs));
@@ -851,82 +777,41 @@ describe("stage job counts at admission (§97 D12-1; frames-split §5.4)", () =>
   });
 });
 
-// §93 D6-1 (frames-split design §5.4 估算行, §3.2 item 7, §7.17 时间线行): the decode pre-roll is counted from the same
-// keyframe decodeStart uses: the latest source keyframe (presented or not, from `encoding.sourceKeyframes`) whose pts is not
-// after the span's first frame's source time; pre-roll frames = ceil((first frame source time − keyframe pts) ÷ the first
-// frame's source frame duration), that duration being the next source frame's start minus its own in the origin mapping.
-// The quote's planned work per output (`outputSeconds`) carries it. The plans below are valid full ledgers; every span
-// starts on its source's first presented frame, so no case depends on anything but the pre-roll rule.
-describe("the pre-roll from the selected source keyframe (§93 D6-1; design §5.4 估算行)", () => {
-  const ledgerFixture = (name: string): { plan: typeof PLAN_BODY; encoding: Record<string, unknown> } =>
-    JSON.parse(readFileSync(new URL(`../../../../worker/src/handlers/__tests__/fixtures/presentation/${name}.ledger.json`, import.meta.url), "utf8")) as { plan: typeof PLAN_BODY; encoding: Record<string, unknown> };
-  /** The planned work of one span: the shared estimate minus the start seconds, as admission freezes it. */
-  const planned = (frames: number, preroll: number, side: { width: number; height: number }, coded: { width: number; height: number }): number => {
-    const encoder = settings.encoding.encoder;
-    const rates = { startSeconds: encoder.start_seconds, encodePixelsPerSecond: encoder.encode_pixels_per_second, decodeConvertPixelsPerSecond: encoder.decode_convert_pixels_per_second };
-    return miniTools.estimateVideoJobSeconds({ encodedFrames: frames, prerollFrames: preroll, sourceWidth: coded.width, sourceHeight: coded.height,
-      outputWidth: side.width, outputHeight: side.height, bitDepth: 8, hdr: false }, rates) - rates.startSeconds;
+// frames-split §5.4 estimate row, §7.16: every job reading the original pays the decode pre-roll of its keyframe statistics,
+// max(largest keyframe interval, 3/23 s) × fps + 1 frames; a job reading the all-intra edit file pays none. The quote's
+// planned work per output (`outputSeconds`) carries it.
+describe("the decode pre-roll from the tool source (frames-split §5.4 estimate row, §7.16)", () => {
+  /** The planned work of one span on the 960x540 grid: the shared estimate minus the start seconds, as admission freezes it. */
+  const planned = (frames: number, preroll: number, decodeKey: miniTools.VideoDecodeKey): number => {
+    const { encoder, decoder } = settings.encoding;
+    const rates = { startSeconds: encoder.start_seconds, encodePixelsPerSecond: encoder.encode_pixels_per_second, tonemapPixelsPerSecond: encoder.tonemap_pixels_per_second,
+      decodeConvertPixelsPerSecond: { ...encoder.decode_convert_pixels_per_second, edit_h264_intra_8bit_420: decoder.edit_h264_intra_8bit_420_pixels_per_second },
+      editEncodePixelsPerSecond: {} } as unknown as miniTools.VideoEncoderRates;
+    return miniTools.estimateVideoJobSeconds({ encodedFrames: frames, prerollFrames: preroll, sourceWidth: 960, sourceHeight: 540, outputWidth: 960, outputHeight: 540,
+      decodeKey, encodeKey: "playback", toneMap: false }, rates) - rates.startSeconds;
   };
 
-  it("PR01 a first frame cut in the middle by the edit: its source keyframe is not presented, so the pre-roll counts back to it", async () => {
-    // cut.ledger.json: one edit presenting media [0.1, 1.6) s of a g=10, 25 fps, B-frame-free source; the first presented frame
-    // is source 0.08 s (partly cut), the keyframe before it is source 0 s and is not presented.
-    const cut = ledgerFixture("cut");
+  it.each([
+    // A keyframe every second at 10 fps: ceil(1 × 10 + 1) = 11 frames.
+    ["a keyframe every second", 1, 11],
+    // Keyframes closer than FFmpeg's 3/23 s move: ceil(3/23 × 10 + 1) = 3 frames.
+    ["dense keyframes", 0.05, 3],
+    // A keyframe every 2.5 s: ceil(2.5 × 10 + 1) = 26 frames.
+    ["sparse keyframes", 2.5, 26],
+  ] as const)("PR01 each span reading the original pays the pre-roll of %s", async (_name, interval, preroll) => {
     const f = await seed();
-    await present(f, { plan: cut.plan, encoding: { ...cut.encoding,
-      sourceKeyframes: [0, 10, 20, 30].map((n) => ({ pts: rational(n, 25), dts: rational(n, 25) })).map((k) => ({ pts: reduce(k.pts), dts: reduce(k.dts) })), firstPacketDts: rational(0) } });
-    f.body.draft.params = { cuts: [0.5] };
-    f.body.outputs = [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 0, end: 0.5 } } },
-      { outputIndex: 1, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 0.5, end: 1.5 } } }];
+    await present(f, { keyframes: { ...KEYFRAMES, maxKeyframeInterval: interval } });
     await accept(f);
     const plan = (await parent(f.body.run_id)).params.miniToolExecution as Plan & { outputSeconds: number[] };
-    // Frames 0–12 cover [0, 0.5); (0.08 − 0) ÷ 0.04 = 2 frames of pre-roll (was 0: the presented ordinals hold no keyframe before it).
-    expect(plan.outputSeconds[0]).toBeCloseTo(planned(13, 2, { width: 160, height: 96 }, { width: 160, height: 96 }), 9);
+    [20, 20, 4].forEach((frames, index) => expect(plan.outputSeconds[index]).toBeCloseTo(planned(frames, preroll, "sdr_8bit"), 9));
   });
 
-  it("PR02 a derived lead: the pre-roll counts from the first frame's source time, not its extended display start", async () => {
-    // Source frames every 0.1 s from 0.2 s; the first is shown from 0 (a derived lead to the presentation start), its
-    // support from 0.2. The keyframe before it is at source 0.1 s and is not presented.
-    const lead = { ...PLAN_BODY, display: { width: 960, height: 540, duration: rational(21, 5) },
-      presentation: { schemaVersion: 1 as const, timescale: 10, runs: [{ start: 0, count: 1, step: 3, duration: 3 }, { start: 3, count: 39, step: 1, duration: 1 }] },
-      originMapping: { timeBase: rational(1, 1000), origin: rational(0), entries: [{ kind: "source", start: 200, count: 40, step: 100 }],
-        firstSource: { supportStart: rational(1, 5), lead: { kind: "derived-lead", start: rational(0) } },
-        lastSource: { support: "declared", supportEnd: rational(21, 5), hold: null } } } as unknown as typeof PLAN_BODY;
+  it("PR02 a span reading the edit file pays no pre-roll and decodes at its tier's rate", async () => {
     const f = await seed();
-    await present(f, { plan: lead, encoding: { keyframeOrdinals: [10, 20, 30], codedWidth: 960, codedHeight: 540,
-      sourceKeyframes: [{ pts: rational(1, 10), dts: rational(1, 10) }, { pts: rational(6, 5), dts: rational(6, 5) }], firstPacketDts: rational(1, 10) } });
-    f.body.draft.params = { cuts: [2] };
-    f.body.outputs = [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 0, end: 2 } } },
-      { outputIndex: 1, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 2, end: 4.2 } } }];
+    await present(f, { edit: true });
     await accept(f);
     const plan = (await parent(f.body.run_id)).params.miniToolExecution as Plan & { outputSeconds: number[] };
-    // Frames 0–17 cover [0, 2); (0.2 − 0.1) ÷ 0.1 = 1 frame of pre-roll (was 0). Output 1 starts on frame 18 (source 2.0 s):
-    // its keyframe is 1.2 s, (2.0 − 1.2) ÷ 0.1 = 8 frames, as the presented keyframe ordinal 10 also gives.
-    expect(plan.outputSeconds[0]).toBeCloseTo(planned(18, 1, { width: 960, height: 540 }, { width: 960, height: 540 }), 9);
-    expect(plan.outputSeconds[1]).toBeCloseTo(planned(22, 8, { width: 960, height: 540 }, { width: 960, height: 540 }), 9);
-  });
-});
-
-describe("E4 ledger objects per toolInputId (inner#1306 §90 E4-7; design §5.1 step 5, §7.15)", () => {
-  it("E4-K01 the frozen receipt names the full and compact objects of the plan's own toolInputId", async () => {
-    const f = await seed(); await accept(f);
-    const toolInputId = f.body.presentation_ref.source.toolInputId;
-    const receipt = (await readMiniToolExecutionPlan(f.body.run_id)).execution.ledgerReceipts.source;
-    expect(receipt.url).toBe(publicUrl(ledgerKeys(f.sourceKey, toolInputId).full));
-    expect(receipt.table.url).toBe(publicUrl(ledgerKeys(f.sourceKey, toolInputId).table));
-    expect(receipt.url).toContain(toolInputId);
-    expect(receipt.table.url).toContain(toolInputId);
-  });
-
-  it("E4-K02 a ready receipt at the toolInputId-less legacy keys is refused with no durable effect", async () => {
-    const f = await seed(); await control(f);
-    const legacy = { full: publicUrl(`${f.sourceKey}.video-source-ledger.v1.json`), table: publicUrl(`${f.sourceKey}.video-presentation-table.v1.json`) };
-    expect(f.receipt.url).not.toBe(legacy.full);
-    outside.bodies.set(legacy.full, outside.bodies.get(f.receipt.url)!); outside.bodies.set(legacy.table, outside.bodies.get(f.receipt.table.url)!);
-    const receipt = { ...f.receipt, url: legacy.full, table: { ...f.receipt.table, url: legacy.table } };
-    (outside.snapshots.get(f.sourceKey) as { ledger: { receipt: unknown } }).ledger.receipt = receipt;
-    expect((await post(f)).ok).toBe(false);
-    expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+    [20, 20, 4].forEach((frames, index) => expect(plan.outputSeconds[index]).toBeCloseTo(planned(frames, 0, "edit_h264_intra_8bit_420"), 9));
   });
 });
 
@@ -952,11 +837,11 @@ describe("E4 execution pins at admission (inner#1306 §90 E4-4, E4-5; design §7
     return (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE starts_with(storage_key, ${key})`).map((row) => row.storage_key);
   }
 
-  it("E4-P01 a fresh admission pins L of its tool input for the run, in the admission", async () => {
+  it("E4-P01 a fresh admission pins its tool input for the run, in the admission: no object on the original, the edit file on an edit source", async () => {
     const f = await seed(); await accept(f);
-    const t = f.body.presentation_ref.source.toolInputId; const l = ledgerKeys(f.sourceKey, t);
-    const rows = await livePins(f.body.run_id);
-    expect(rows).toEqual([{ holder_kind: "execution", tool_input_id: t, keys: expect.arrayContaining([l.full, l.table]) }]);
+    expect(await livePins(f.body.run_id)).toEqual([{ holder_kind: "execution", tool_input_id: f.body.presentation_ref.source.toolInputId, keys: [] }]);
+    const e = await seed(); await present(e, { edit: true }); await accept(e);
+    expect(await livePins(e.body.run_id)).toEqual([{ holder_kind: "execution", tool_input_id: e.body.presentation_ref.source.toolInputId, keys: [editKeyOf(e.sourceKey)] }]);
   });
 
   it("E4-P02 a refused admission pins nothing", async () => {
@@ -969,9 +854,9 @@ describe("E4 execution pins at admission (inner#1306 §90 E4-4, E4-5; design §7
 
   it("E4-P03 a retry of some failed outputs pins for itself and leaves the original's pins live", async () => {
     const f = await seed(); await failedOriginal(f);
-    const t = f.body.presentation_ref.source.toolInputId; const l = ledgerKeys(f.sourceKey, t);
+    const t = f.body.presentation_ref.source.toolInputId;
     const body = retry(f, [2]); await accept(f, body);
-    expect(await livePins(body.run_id)).toEqual([{ holder_kind: "execution", tool_input_id: t, keys: expect.arrayContaining([l.full, l.table]) }]);
+    expect(await livePins(body.run_id)).toEqual([{ holder_kind: "execution", tool_input_id: t, keys: [] }]);
     expect((await livePins(f.body.run_id)).map((row) => row.holder_kind)).toEqual(["execution"]);
   });
 
@@ -1041,8 +926,9 @@ describe("frame-grid requests and the platform-funded set at admission (§67.1, 
     ["first", 0], ["last", 43], ["current", 30],
   ] as const)("S5-A01 a %s frame is planned on the selected grid by frame number alone; the measured grid beats the client's media info", async (mode, frameIndex) => {
     const f = await seed("video.extract-frames");
-    // The request names grid frame numbers only (§10.8 请求行: `{ kind: 'frame', frameIndex }`, no seconds).
-    f.body.draft.params = mode === "current" ? { mode, frameIndex: 30 } : { mode };
+    // The request names grid frame numbers only (§10.8 请求行: `{ kind: 'frame', frameIndex }`, no seconds); the draft keeps the
+    // player's grid frame in every mode, as the panel sends it.
+    f.body.draft.params = { mode, frameIndex: 30 };
     f.body.outputs = [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex } as unknown as Recipe }];
     await accept(f);
     expect((await parent(f.body.run_id)).params.miniToolExecution.outputs).toEqual(f.body.outputs);

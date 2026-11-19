@@ -100,7 +100,7 @@ async function admitted(): Promise<ExecutionFixture> {
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
     VALUES (${sourceId},${f.studioId},${"a".repeat(64)},${sourceKey},${sourceURL},4096,'video/mp4','video','upload',${f.userId},960,540,5.055)`;
   const presented = await presentedSource("a".repeat(64), sourceKey, (key) => sourceURL.slice(0, sourceURL.length - sourceKey.length) + key);
-  outside.snapshots.set(sourceKey, presented.snapshot); for (const [url, stored] of presented.bodies) outside.bodies.set(url, stored);
+  outside.snapshots.set(sourceKey, presented.snapshot); 
   const body = { presentation_ref: presented.presentationRef, tool: "video.remove-bg", project_id: f.projectId, space_id: randomUUID(), run_id: randomUUID(),
     draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: randomUUID(), canonicalURL: sourceURL, mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } }, inputs: [], params: {} },
     analysis_refs: [], outputs: [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "remove-bg" } }] } as MiniToolPlannedRequest;

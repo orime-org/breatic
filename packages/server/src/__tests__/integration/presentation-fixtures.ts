@@ -42,6 +42,10 @@ export interface PresentedOptions {
   transparent?: boolean;
   /** The source keyframe statistics (§7.16); a keyframe every 1.25 s when absent. */
   keyframes?: shared.SourceKeyframeStats;
+  /** The display grid's frame counts and offsets; the removal source's 1011 frames when absent. Its rate is the plan's. */
+  display?: Partial<Pick<typeof REMOVAL_DISPLAY, "frameCount" | "realFrameCount" | "leadFrames" | "holdFrames">>;
+  /** The original's duration in seconds; 5.055 when absent. */
+  duration?: number;
 }
 
 /**
@@ -59,7 +63,7 @@ export function editKeyOf(sourceKey: string): string {
  * @param hash - The registered content hash.
  * @param sourceKey - The registered storage key.
  * @param publicUrl - The storage's public URL function.
- * @param options - The plan, edit file, transparency and keyframes; the removal source's by default.
+ * @param options - The plan, edit file, transparency, keyframes, display frame counts and duration; the removal source's by default.
  * @returns Its bundle, reference and snapshot.
  * @throws {z.ZodError} When the plan or the bundle is not valid.
  */
@@ -74,7 +78,8 @@ export async function presentedSource(hash: string, sourceKey: string, publicUrl
     : { kind: "native", carrier: receipt(sourceKey, "video/mp4", hash), displayRect: null };
   const bundle = shared.videoPresentationVersionSchema.parse({
     schemaVersion: 1, sourceFingerprint: hash, versionId: REMOVAL_VERSION_ID, toolInputId, planSha256, policyVersion: 1, producerVersion: DIGEST, profileVersion: DIGEST,
-    original: { width: plan.display.width, height: plan.display.height, duration: 5.055 }, display: { ...REMOVAL_DISPLAY, ...plan.display },
+    original: { width: plan.display.width, height: plan.display.height, duration: options.duration ?? 5.055 },
+    display: { ...REMOVAL_DISPLAY, ...options.display, ...plan.display, fps: plan.grid.fps, gridStart: plan.grid.gridStart },
     playback, toolSource: { edit, keyframes: options.keyframes ?? REMOVAL_KEYFRAMES, sourceDecodeKey: "sdr_8bit" },
   });
   const snapshot = { sourceBinding: { storageKey: sourceKey, sourceFingerprint: hash }, presentation: bundle, preparation: null, readmit: false };

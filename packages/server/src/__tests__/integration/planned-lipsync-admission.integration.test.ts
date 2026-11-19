@@ -6,7 +6,7 @@
  * design §9.2, §9.3 with its pricing paragraph, §9.4; multi-person lip-sync DD §7.1 frozen plan table).
  *
  * Real admission, authorization, PG, Redis, holds and queue; only the external presentation snapshot (ingest) and the
- * stored ledger objects (fetch) are controlled, as in planned-video-admission. A fresh lip-sync run is admitted only when
+ * the stored objects (fetch) are controlled, as in planned-video-admission. A fresh lip-sync run is admitted only when
  * its `draft.params.modelId` is a configured selectable model, the planned `timeline.duration` lies in that model's
  * duration range, the used source range (shared `lipsyncUsedSourceRange`) lies in the tracking model's range, and the
  * referenced people and dialogue rows stay within `max_people` and `max_dialogues`; each refusal is a 400 the user can
@@ -28,7 +28,7 @@ import {
   MIN_TASK_CREDIT_COST, presentationPinService,
 } from "@breatic/domain";
 // The worker's §7.15 write point for derived step objects; the domain entry does not export the repository.
-import { appendExecutionPinObjects } from "@domain/presentation/presentation-pin.repo.js";
+import { appendPinObjects } from "@domain/presentation/presentation-pin.repo.js";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
 import { presentedSource, type PresentedSource } from "./presentation-fixtures.js";
 
@@ -45,7 +45,7 @@ interface Body {
     version: 1; draftId: string; revision: string;
     source: { nodeId: string; canonicalURL: string; mediaInfo: { width: number; height: number; duration: number; mimeType: string } };
     inputs: { inputId: string; url: string; mediaInfo: { duration: number; mimeType: string } }[];
-    params: { anchor: { frameIndex: number; pts: number }; dialogues: Row[]; syncMode: SyncMode; modelId: string };
+    params: { anchor: { frameIndex: number }; dialogues: Row[]; syncMode: SyncMode; modelId: string };
   };
   analysis_refs: { version: 1; draftId: string; analysisRunId: string; inputFingerprint: string; toolId: "video.lip-sync"; kind: "people" }[];
   presentation_ref: PresentedSource["presentationRef"];
@@ -167,7 +167,7 @@ async function seedPeople(f: { userId: string; projectId: string; body: Body }, 
   const record = miniToolAnalysisRecordSchema.parse({ ...identity, status: "completed", result: { ...identity, anchor: draft.params.anchor, people }, error: null, usage: [], artifactUnavailable: false });
   const analysis = miniToolFrozenAnalysisSchema.parse({ schemaVersion: 1, analysisRunId, projectId, spaceId, hostNodeId: draft.source.nodeId, draftId: draft.draftId, revision,
     kind: "people", source: draft.source, binding, analysisInput, inputFingerprint, presentationRef: presented.presentationRef,
-    ledgerReceipts: { source: presented.receipt }, versionIds: { source: presented.versionId } });
+    presentations: { source: presented.bundle }, versionIds: { source: presented.versionId }, chargeTo: "platform" });
   const params = { analysis, requestFingerprint: randomBytes(32).toString("hex"), sourceKey, credits: 0 };
   // Keep the instant textual so its microseconds survive, as seedAccepted does.
   await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,params,result,created_at)
@@ -195,7 +195,7 @@ async function seed(audio: { registered: number; claimed: number }[], options: {
     VALUES (${sourceId},${target.studioId},${hash},${sourceKey},${publicUrl(sourceKey)},4096,'video/mp4','video','upload',${target.userId},960,540,${V})`;
   const presented = await presentedSource(hash, sourceKey, publicUrl);
   outside.snapshots.set(sourceKey, presented.snapshot);
-  for (const [url, body] of presented.bodies) outside.bodies.set(url, body);
+  
   const audios: Audio[] = [];
   for (const { registered } of audio) {
     const assetId = randomUUID(); const key = `audio/lipsync/${assetId}.mp3`;
@@ -209,7 +209,7 @@ async function seed(audio: { registered: number; claimed: number }[], options: {
       source: { nodeId: randomUUID(), canonicalURL: publicUrl(sourceKey), mediaInfo: { width: 960, height: 540, duration: V, mimeType: "video/mp4" } },
       // The client's own media claims; the plan must use the registered durations instead.
       inputs: audios.map((a, index) => ({ inputId: a.inputId, url: a.url, mediaInfo: { duration: audio[index]!.claimed, mimeType: "audio/mpeg" } })),
-      params: { anchor: { frameIndex: anchorFrame, pts: anchorFrame / 200 }, dialogues: [], syncMode: "cut_off", modelId: SYNC } },
+      params: { anchor: { frameIndex: anchorFrame }, dialogues: [], syncMode: "cut_off", modelId: SYNC } },
     analysis_refs: [], presentation_ref: presented.presentationRef,
     outputs: [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "lip-sync" } }] };
   const binding = { assetId: sourceId, contentHash: hash, canonicalURL: publicUrl(sourceKey), kind: "video" as const, mediaInfo: { width: 960, height: 540, duration: V, mimeType: "video/mp4" } };
@@ -645,7 +645,7 @@ describe("lip-sync single job over one chunk share (frames-split §5.4 派发 an
 // Execution design paragraph before §9.4: composite chunks are cut by the chunk share and may span loop and bounce segment
 // boundaries; a chunk whose source frames go back decodes its union source window to a raw file, which must fit the raw disk
 // budget computed once at admission and frozen into the plan. Checked through the shared `lipsyncSourceFrameAt` on the
-// source's own table (presentation-fixtures REMOVAL_TABLE).
+// source's own grid (presentation-fixtures REMOVAL_DISPLAY: 1011 frames at 200 fps).
 describe("lip-sync composite chunks span segments within the frozen raw disk budget (execution design paragraph before §9.4)", () => {
   it("LJ03 freezes a bounce run whose source window fits the disk as one chunk across the reversal, and freezes the disk budget", async () => {
     // A = max(0 + 3, 3 + 5) = 8 > V: bounce plays [0, V] forward and comes back from V; 1600 result frames of 1/200 s.
@@ -654,8 +654,8 @@ describe("lip-sync composite chunks span segments within the frozen raw disk bud
     await accept(f);
     const frozen = await plan(f.body.run_id);
     expect(frozen.timeline).toEqual({ duration: 8, videoDuration: V, syncMode: "bounce" });
-    const table = { schemaVersion: 1 as const, timescale: 200, runs: [{ start: 0, count: 1011, step: 1, duration: 1 }] };
-    const shown = Array.from({ length: 1600 }, (_, at) => miniTools.lipsyncSourceFrameAt(frozen.timeline, table, at));
+    const grid = { fps: { numerator: 200, denominator: 1 }, frameCount: 1011 };
+    const shown = Array.from({ length: 1600 }, (_, at) => miniTools.lipsyncSourceFrameAt(frozen.timeline, grid, at));
     expect(shown.some((frame, at) => at > 0 && frame < shown[at - 1]!), "the result goes back through the source").toBe(true);
     // 1011 frames of 960 × 540 at 4:2:0 are about 0.8 GB, within half of standard-4's 20 GB disk.
     expect(frozen.layout?.composite).toEqual([{ start: 0, end: 1600 }]);
@@ -730,7 +730,7 @@ describe("lip-sync retry admission (frames-split §7.11 retry row, §7.15; execu
     // prepared input pinned by the worker's preparation registration (§7.15 prepared row).
     const steps = [`${frozen.sourceKey}.${id}:lipsync:${frozen.persons![0]!.stepKeys!.track}.json`];
     const prepared = `${frozen.sourceKey}.${id}:prep:0:a1`;
-    await core.db.transaction(async (tx) => appendExecutionPinObjects(id, steps, tx));
+    await core.db.transaction(async (tx) => appendPinObjects("execution", id, steps, tx));
     await presentationPinService.acquire({ holderKind: "prepared", holderId: id, toolInputId, preparedKey: prepared, objectKeys: [prepared] });
     await finishFailed(id, reason);
     return { f, original: { plan: frozen, row: await taskRow(id), pins: await livePins(id), steps, prepared } };
@@ -834,7 +834,7 @@ describe("lip-sync retry admission (frames-split §7.11 retry row, §7.15; execu
     await miniToolExecutionService.startMiniToolExecution(first.run_id, `lipsync-${first.run_id}`);
     // The first retry's own done step: its key is the original's, the object it registers is new (§97 D17-7).
     const extra = `${original.plan.sourceKey}.${first.run_id}:lipsync:${original.plan.persons![1]!.stepKeys!.gen}.mp4`;
-    await core.db.transaction(async (tx) => appendExecutionPinObjects(first.run_id, [extra], tx));
+    await core.db.transaction(async (tx) => appendPinObjects("execution", first.run_id, [extra], tx));
     await finishFailed(first.run_id, { kind: "lipsync", persons: [person(2, "gen", "timeout")], shared: { step: "composite", category: "failed" } });
     const held = await livePins(first.run_id);
     const heldExecution = held.find((pin) => pin.holder_kind === "execution")!;
@@ -868,7 +868,7 @@ describe("lip-sync retry admission (frames-split §7.11 retry row, §7.15; execu
     const frozen = await plan(id) as Failed["plan"];
     await miniToolExecutionService.startMiniToolExecution(id, `lipsync-${id}`);
     const prepared = `${frozen.sourceKey}.${id}:prep:0:a1`;
-    await core.db.transaction(async (tx) => appendExecutionPinObjects(id, [`${frozen.sourceKey}.${id}:lipsync:${frozen.persons![0]!.stepKeys!.track}.json`], tx));
+    await core.db.transaction(async (tx) => appendPinObjects("execution", id, [`${frozen.sourceKey}.${id}:lipsync:${frozen.persons![0]!.stepKeys!.track}.json`], tx));
     await presentationPinService.acquire({ holderKind: "prepared", holderId: id, toolInputId: f.body.presentation_ref.source.toolInputId, preparedKey: prepared, objectKeys: [prepared] });
     const row = await taskRow(id); const pins = await livePins(id);
     expect((row as { status: string }).status).toBe("running");

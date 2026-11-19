@@ -27,7 +27,7 @@ import * as shared from "@breatic/shared";
 import { containerCostUsd, creditsForUsd, MIN_TASK_CREDIT_COST, miniToolExecutionService } from "@breatic/domain";
 import { estimateAudioEncodeSeconds, planTransitionChunks, plannedStageJobs, planVideoTimeline, transitionOutputProfile } from "@breatic/shared/mini-tools";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
-import { presentedSource, REMOVAL_ENCODING, REMOVAL_PLAN, type ToolInputRef } from "./presentation-fixtures.js";
+import { presentedSource, REMOVAL_KEYFRAMES, REMOVAL_PLAN, type PresentedOptions, type ToolInputRef } from "./presentation-fixtures.js";
 
 type Transition = { kind: "cut" | "fade" | "wipeLeft" | "wipeRight"; duration: number };
 interface Clip { clipId: string; inputId: string; in: number; out: number; transition: Transition }
@@ -55,10 +55,12 @@ const MEDIA: Media = { width: 960, height: 540, duration: 5.055, mimeType: "vide
 const FADE: Transition = { kind: "fade", duration: 0.5 };
 const CUT: Transition = { kind: "cut", duration: 0 };
 /** A selected plan and its encode facts. */
-type Presented = { plan: typeof REMOVAL_PLAN; encoding: typeof REMOVAL_ENCODING };
-const LARGE: Presented = { plan: REMOVAL_PLAN, encoding: REMOVAL_ENCODING };
+type Presented = PresentedOptions & { plan: typeof REMOVAL_PLAN };
+const LARGE: Presented = { plan: REMOVAL_PLAN };
+// Tools read an edit file, which the execution pin holds for the run (frames-split §7.15 execution row).
+const EDITED: Presented = { plan: REMOVAL_PLAN, edit: true };
 // The same 1011 frames of 1/200 s and keyframes, displayed and coded at 160×90.
-const SMALL: Presented = { plan: { ...REMOVAL_PLAN, display: { ...REMOVAL_PLAN.display, width: 160, height: 90 } }, encoding: { ...REMOVAL_ENCODING, codedWidth: 160, codedHeight: 90 } };
+const SMALL: Presented = { plan: { ...REMOVAL_PLAN, display: { width: 160, height: 90 } } };
 
 let pg: ReturnType<typeof core.createPgClient>;
 let queue: Queue;
@@ -120,7 +122,7 @@ async function registered(target: StudioFixture, presented: Presented = LARGE): 
     VALUES (${id},${target.studioId},${hash},${key},${publicUrl(key)},4096,'video/mp4','video','upload',${target.userId},${presented.plan.display.width},${presented.plan.display.height},${MEDIA.duration})`;
   const source = await presentedSource(hash, key, publicUrl, presented);
   outside.snapshots.set(key, source.snapshot);
-  for (const [url, body] of source.bodies) outside.bodies.set(url, body);
+  
   return { url: publicUrl(key), ref: source.presentationRef.source };
 }
 
@@ -194,9 +196,9 @@ async function effects(id: string): Promise<{ tasks: number; rows: number; holds
 
 /** The output profile both clips' selected plans give (D13-1, D15-5). @throws {RangeError} Never for the fixture plan. */
 function expectedProfile(): ReturnType<typeof transitionOutputProfile> {
-  // The fixture plan's empty fill is the literal "black"; only its widened type needs naming.
-  const plan = REMOVAL_PLAN as Parameters<typeof transitionOutputProfile>[0];
-  return transitionOutputProfile(plan, plan, { encode: { crf: settings.presentation.crf, preset: settings.presentation.preset } });
+  // Both clips are opaque 200 fps grids (frames-split §7.17 transition output profile row).
+  const clip = { display: { width: 960, height: 540, fps: REMOVAL_PLAN.grid.fps }, alpha: false };
+  return transitionOutputProfile(clip, clip, { encode: { crf: settings.presentation.crf, preset: settings.presentation.preset } });
 }
 
 describe("transitions admission freezes its layout, stage counts and output profile (§97 D11-3, D12-1, D13-1, D15-3..D15-7)", () => {
@@ -206,7 +208,7 @@ describe("transitions admission freezes its layout, stage counts and output prof
     const plan = await frozen(f.body.run_id);
     const profile = expectedProfile();
     // The output grid is the first clip's frame rate: 200 fps; the window is 100 frames ending where the first clip ends.
-    expect(profile.fps).toEqual({ numerator: "200", denominator: "1" });
+    expect(profile.fps).toEqual({ numerator: 200, denominator: 1 });
     const timeline = planVideoTimeline(f.body.draft.params.clips, profile.fps);
     expect(timeline.window).toEqual({ startFrame: 700, frameCount: 100, kind: "fade" });
     expect(plan).toMatchObject({ tool: "video.transitions", presentationRef: f.body.presentation_ref, profile });
@@ -286,11 +288,12 @@ describe("the transitions quote decodes each clip at its own size (§97; frames-
     const timeline = planVideoTimeline(f.body.draft.params.clips, profile.fps);
     expect(timeline.frameCount).toBe(1300);
     const decodeRate = 500_000;
-    const sources = [LARGE, SMALL].map((presented) => presented.encoding.codedWidth * presented.encoding.codedHeight);
+    const sources = [LARGE, SMALL].map((presented) => presented.plan.display.width * presented.plan.display.height);
     const outputPixels = profile.width * profile.height;
     // Both clips present at the output's 200 fps from in point 0, so output frame k of clip c is its presentation frame
-    // k − startFrame; a span's pre-roll counts back to the latest keyframe ordinal not after its first frame.
-    const preroll = (first: number): number => first - Math.max(...REMOVAL_ENCODING.keyframeOrdinals.filter((ordinal) => ordinal <= first));
+    // k − startFrame; a span pays the original's pre-roll, max(largest keyframe interval, 3/23 s) × fps + 1 (§5.4, §7.16),
+    // at most the frames before its first frame.
+    const preroll = (first: number): number => Math.min(first, shared.decodePrerollFrames({ toolSource: "original", keyframes: REMOVAL_KEYFRAMES, fps: REMOVAL_PLAN.grid.fps }));
     const decode = (chunk: { start: number; end: number }): number => timeline.clips.reduce((total, clip, c) => {
       const low = Math.max(chunk.start, clip.startFrame); const high = Math.min(chunk.end, clip.startFrame + clip.frameCount);
       if (high <= low) return total;
@@ -338,16 +341,10 @@ describe("the transitions quote is the admission's own computation (§97 D26-1)"
 // clip's cost. Every source frame here is a keyframe, so no chunk boundary adds decode pre-roll and only the per-frame cost
 // decides the layout.
 describe("transition chunks hold what each clip's own frames cost (§97; frames-split §5.4 待实测 row)", () => {
-  /** A rational in lowest terms. @throws {never} Never. */
-  const exact = (numerator: number, denominator: number): { numerator: string; denominator: string } => {
-    let [a, b] = [numerator, denominator]; while (b !== 0) [a, b] = [b, a % b];
-    return { numerator: String(numerator / a), denominator: String(denominator / a) };
-  };
-  const everyFrame = (width: number, height: number): Presented["encoding"] => ({ ...REMOVAL_ENCODING, codedWidth: width, codedHeight: height,
-    keyframeOrdinals: Array.from({ length: 1011 }, (_, k) => k),
-    sourceKeyframes: Array.from({ length: 1011 }, (_, k) => ({ pts: exact(k, 200), dts: exact(k, 200) })) });
-  const DENSE_LARGE: Presented = { plan: REMOVAL_PLAN, encoding: everyFrame(960, 540) };
-  const DENSE_SMALL: Presented = { plan: SMALL.plan, encoding: everyFrame(160, 90) };
+  // Every frame a keyframe: the shortest pre-roll the original allows (§7.16).
+  const everyFrame = { earliestKeyframeTime: 0, maxKeyframeInterval: 1 / 200, allKeyframes: true };
+  const DENSE_LARGE: Presented = { plan: REMOVAL_PLAN, keyframes: everyFrame };
+  const DENSE_SMALL: Presented = { plan: SMALL.plan, keyframes: everyFrame };
 
   it("TK01 every frozen chunk's own work fits the share, and the small clip's region is chunked as coarsely as the share allows", async () => {
     const encoder = settings.encoding.encoder;
@@ -402,10 +399,10 @@ describe("transition chunks hold what each clip's own frames cost (§97; frames-
 });
 
 // frames-split §7.15 可重试结束: transitions has no retry, so a failed run can never be taken over and its terminal commit
-// ends its retryability: the execution pins are released there and the ledgers and done chunks they held are registered.
+// ends its retryability: the execution pins are released there and the edit files and done chunks they held are registered.
 describe("a failed transitions run releases its pins at the terminal commit (frames-split §7.15)", () => {
-  it("TP01 releases the execution pins and registers the ledgers and the done chunks for reclaim", async () => {
-    const f = await seed();
+  it("TP01 releases the execution pins and registers the edit files and the done chunks for reclaim", async () => {
+    const f = await seed(FADE, { currentOut: 4, pickedOut: 4, picked: EDITED, current: EDITED });
     await accept(f);
     const runId = f.body.run_id;
     const { execution } = await miniToolExecutionService.startMiniToolExecution(runId, runId);
@@ -414,7 +411,7 @@ describe("a failed transitions run releases its pins at the terminal commit (fra
     for (const key of chunks) await pg`INSERT INTO presentation_pin_objects (pin_id,storage_key) VALUES (${pin!.id},${key})`;
     const held = (await pg<{ storage_key: string }[]>`SELECT o.storage_key FROM presentation_pin_objects o JOIN presentation_pins p ON p.id=o.pin_id
       WHERE p.holder_kind='execution' AND p.holder_id=${runId} AND p.deleted_at IS NULL`).map((row) => row.storage_key).sort();
-    expect(held.filter((key) => key.endsWith(".json"))).toHaveLength(4);
+    expect(held.filter((key) => key.includes(".video-presentation:"))).toHaveLength(2);
     const error = { code: "mini_tool_failed" };
     const plan = execution as unknown as { planFingerprint: string; outputs: { outputIndex: number; nodeId: string; recipe: { kind: "transitions" } }[] };
     expect((await miniToolExecutionService.finishMiniToolExecution(runId, { planFingerprint: plan.planFingerprint, expectedVersion: 0, error,
@@ -428,10 +425,10 @@ describe("a failed transitions run releases its pins at the terminal commit (fra
 
 // frames-split §7.15 可重试结束: a transitions run refused at admission is just as unretryable as one that failed later, so
 // the admission failure is a terminal write that ends its retryability: the execution pins taken at admission are
-// released there and the ledgers they held are registered for reclaim.
+// released there and the edit files they held are registered for reclaim.
 describe("a transitions run refused at admission releases its pins (frames-split §7.15)", () => {
-  it("TP02 a no_credits refusal leaves no live execution pin and registers the ledgers for reclaim", async () => {
-    const f = await seed();
+  it("TP02 a no_credits refusal leaves no live execution pin and registers the edit files for reclaim", async () => {
+    const f = await seed(FADE, { currentOut: 4, pickedOut: 4, picked: EDITED, current: EDITED });
     await pg`UPDATE credit_lots SET designated_studio_id=NULL WHERE designated_studio_id=${f.studioId}`;
     const response = await post(f);
     expect({ status: response.status, body: await response.json() }).toEqual({ status: 201, body: { data: { task_id: f.body.run_id, status: "failed" } } });
@@ -439,7 +436,7 @@ describe("a transitions run refused at admission releases its pins (frames-split
     expect(task!.error_message).toBe("no_credits");
     const held = (await pg<{ storage_key: string }[]>`SELECT o.storage_key FROM presentation_pin_objects o JOIN presentation_pins p ON p.id=o.pin_id
       WHERE p.holder_kind='execution' AND p.holder_id=${f.body.run_id}`).map((row) => row.storage_key).sort();
-    expect(held.filter((key) => key.endsWith(".json"))).toHaveLength(4);
+    expect(held.filter((key) => key.includes(".video-presentation:"))).toHaveLength(2);
     const [live] = await pg<{ count: number }[]>`SELECT count(*)::int AS count FROM presentation_pins WHERE holder_id=${f.body.run_id} AND deleted_at IS NULL`;
     expect(live!.count).toBe(0);
     const queued = (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE storage_key=ANY(${held}) AND kind='derived'`).map((row) => row.storage_key).sort();

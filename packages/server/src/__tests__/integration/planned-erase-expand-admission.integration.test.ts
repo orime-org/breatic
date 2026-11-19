@@ -21,11 +21,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } fro
 import * as core from "@breatic/core";
 import * as shared from "@breatic/shared";
 import * as miniTools from "@breatic/shared/mini-tools";
-import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, presentationFrameAt, projectMiniToolAnalysisInput, type VideoPresentationTable } from "@breatic/shared/mini-tools";
+import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, projectMiniToolAnalysisInput } from "@breatic/shared/mini-tools";
 import { creditHoldService, estimateTaskCredits, miniToolExecutionService, miniToolFrozenAnalysisSchema } from "@breatic/domain";
-import { appendExecutionPinObjects } from "@domain/presentation/presentation-pin.repo.js";
+import { appendPinObjects } from "@domain/presentation/presentation-pin.repo.js";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
-import { presentedSource, REMOVAL_ENCODING, REMOVAL_PLAN, REMOVAL_TABLE, type PresentedSource } from "./presentation-fixtures.js";
+import { presentedSource, type PresentedSource } from "./presentation-fixtures.js";
 
 type Range = { start: number; end: number };
 type Frame = { x: number; y: number; width: number; height: number };
@@ -38,7 +38,7 @@ vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof share
 
 // The shared planners admission must use (§10.4, §10.5); read by name so this file compiles before they exist.
 const planners = miniTools as unknown as {
-  modelGrid: (frames: Range[], maxFps: number) => { mode: string; rate: number; frameCount: number };
+  modelGrid: (frameCount: number, fps: { numerator: number; denominator: number }, maxFps: number) => { mode: string; rate: number; frameCount: number };
   videoExpandLayout: (frame: Frame, source: { width: number; height: number }, maxSide: number) => Record<string, unknown>;
   planModelWindows: (frames: Range[]) => { span: Range; duration: 5 | 10 }[];
 };
@@ -120,10 +120,9 @@ async function seedSource(options: { transparent?: boolean } = {}): Promise<Stud
   const sourceId = randomUUID(); const sourceKey = `video/erase/${sourceId}.mp4`; const hash = randomBytes(32).toString("hex");
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
     VALUES (${sourceId},${target.studioId},${hash},${sourceKey},${publicUrl(sourceKey)},4096,'video/mp4','video','upload',${target.userId},960,540,${V})`;
-  const plan = options.transparent ? { ...REMOVAL_PLAN, policy: { ...REMOVAL_PLAN.policy, emptyFill: "transparent" } } : REMOVAL_PLAN;
-  const presented = await presentedSource(hash, sourceKey, publicUrl, { plan, encoding: REMOVAL_ENCODING });
+  const presented = await presentedSource(hash, sourceKey, publicUrl, { transparent: options.transparent });
   outside.snapshots.set(sourceKey, presented.snapshot);
-  for (const [url, body] of presented.bodies) outside.bodies.set(url, body);
+  
   const binding = { assetId: sourceId, contentHash: hash, canonicalURL: publicUrl(sourceKey), kind: "video" as const, mediaInfo: { width: 960, height: 540, duration: V, mimeType: "video/mp4" } };
   return { ...target, sourceKey, presented, binding };
 }
@@ -157,7 +156,8 @@ function request(target: Awaited<ReturnType<typeof seedSource>>, tool: string, p
 async function seedErase(range: Range, options: { anchorFrame?: number; status?: "completed" | "running"; transparent?: boolean } = {}): Promise<Fixture> {
   const target = await seedSource(options);
   const anchorFrame = options.anchorFrame ?? Math.round(range.start * 200);
-  const params = { range, anchor: { frameIndex: anchorFrame, pts: anchorFrame / 200 }, region: { box: { x: 0.3, y: 0.3, width: 0.2, height: 0.2 }, points: [] }, trackingPrompt: "" };
+  // The range is grid frames of the 200 fps fixture (frames-split §10.12).
+  const params = { range: { start: Math.round(range.start * 200), end: Math.round(range.end * 200) }, anchor: { frameIndex: anchorFrame }, region: { box: { x: 0.3, y: 0.3, width: 0.2, height: 0.2 }, points: [] }, trackingPrompt: "" };
   const body = request(target, "video.erase", params, "erase");
   const analysisRunId = randomUUID(); const revision = randomUUID(); const rleId = randomUUID(); const rleKey = `document/erase/${rleId}.json`;
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id)
@@ -166,14 +166,13 @@ async function seedErase(range: Range, options: { anchorFrame?: number; status?:
   const inputFingerprint = await fingerprintMiniToolAnalysisInput(analysisInput);
   const frames = Math.round((range.end - range.start) * 200);
   const identity = { schemaVersion: 1 as const, draftId: body.draft.draftId, revision, kind: "tracked_mask" as const, analysisRunId, acceptedAt: ACCEPTED_AT, binding: target.binding, analysisInput, inputFingerprint };
-  const result = { ...identity, width: 960, height: 540, frameCount: frames, timeBase: { numerator: 1, denominator: 200 }, anchor: params.anchor, regionFingerprint: "c".repeat(64),
-    sourceFrameMapping: Array.from({ length: frames }, (_unused, frameIndex) => ({ frameIndex, sourcePts: range.start + frameIndex / 200 })),
+  const result = { ...identity, width: 960, height: 540, frameCount: frames, fps: { numerator: 200, denominator: 1 }, anchor: params.anchor, regionFingerprint: "c".repeat(64),
     artifactRefs: [{ role: "rle", assetId: rleId, canonicalURL: publicUrl(rleKey), contentHash: "d".repeat(64), kind: "document", mimeType: "text/plain", size: 2048, frameMetadata: null }] };
   const status = options.status ?? "completed";
   const record = miniToolAnalysisRecordSchema.parse({ ...identity, status, result: status === "completed" ? result : null, error: null, usage: [], artifactUnavailable: false });
   const analysis = miniToolFrozenAnalysisSchema.parse({ schemaVersion: 1, analysisRunId, projectId: target.projectId, spaceId: body.space_id as string, hostNodeId: body.draft.source.nodeId,
     draftId: body.draft.draftId, revision, kind: "tracked_mask", source: body.draft.source, binding: target.binding, analysisInput, inputFingerprint,
-    presentationRef: target.presented.presentationRef, ledgerReceipts: { source: target.presented.receipt }, versionIds: { source: target.presented.versionId } });
+    presentationRef: target.presented.presentationRef, presentations: { source: target.presented.bundle }, versionIds: { source: target.presented.versionId }, chargeTo: "user" });
   const taskParams = { analysis, requestFingerprint: randomBytes(32).toString("hex"), sourceKey: target.sourceKey, credits: 0 };
   await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,params,result,created_at)
     VALUES (${analysisRunId},${target.userId},${target.projectId},${body.space_id as string},'mini_tool_analysis','append','mini_tool',${status},
@@ -237,23 +236,21 @@ async function refused(f: Fixture, key: string, params?: Record<string, number>)
 }
 
 /**
- * The presented frames of a range of the fixture source, in seconds.
+ * The grid frames of a range of the 200 fps fixture source, as [i/200, (i+1)/200) seconds.
  * @param range - The range.
  * @returns Its frames.
  * @throws {RangeError} Never for ranges inside the source.
  */
 function framesOf(range: Range): Range[] {
-  return Array.from({ length: Math.round((range.end - range.start) * 200) }, (_unused, at) => {
-    const frame = presentationFrameAt(REMOVAL_TABLE as VideoPresentationTable, Math.round(range.start * 200) + at);
-    return { start: frame.pts, end: frame.displayEnd };
-  });
+  const first = Math.round(range.start * 200);
+  return Array.from({ length: Math.round((range.end - range.start) * 200) }, (_unused, at) => ({ start: (first + at) / 200, end: (first + at + 1) / 200 }));
 }
 
 describe("erase fresh admission (execution design §10.4)", () => {
   it("EA01 admits a 3 s range over one completed tracked mask, freezing the 30 fps grid and Bria's price for it", async () => {
     const f = await seedErase({ start: 1, end: 4 });
     const plan = await accept(f);
-    const grid = planners.modelGrid(framesOf({ start: 1, end: 4 }), 30);
+    const grid = planners.modelGrid(600, { numerator: 200, denominator: 1 }, 30);
     expect(grid).toEqual({ mode: "resample", rate: 30, frameCount: 90 });
     expect(plan).toMatchObject({ tool: "video.erase", model: BRIA, grid });
     expect(plan.modelCredits).toBe(await estimateTaskCredits(BRIA, { params: {}, durations: { video: [3] }, sources: ["video"] }));
@@ -366,7 +363,7 @@ describe("erase and expand retry quote (execution design §10.4, §10.5 quote ro
     const sourceKey = String(original.sourceKey);
     // Container outputs carry `<task>:<stepKey>:a<n>` in their work key; a generate object is `<stepKey>:<attempt>` (§97 D17-6).
     const objects = done(keys).map((step) => (step.startsWith("generate") ? `${keys[step]}:${randomUUID()}` : `${sourceKey}.${id}:${keys[step]}:a1.mp4`));
-    await core.db.transaction(async (tx) => appendExecutionPinObjects(id, objects, tx));
+    await core.db.transaction(async (tx) => appendPinObjects("execution", id, objects, tx));
     const error = z.record(z.string(), z.json()).parse(reason);
     const outputs = original.outputs as { outputIndex: number; nodeId: string; recipe: { kind: "erase" | "expand" } }[];
     await miniToolExecutionService.finishMiniToolExecution(id, { planFingerprint: String(original.planFingerprint), expectedVersion: 0,

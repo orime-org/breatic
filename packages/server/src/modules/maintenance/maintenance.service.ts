@@ -23,6 +23,15 @@ export interface MaintenanceAnswer<T> {
 let taskQueue: ReturnType<typeof createQueue> | null = null;
 
 /**
+ * The storage port qualification reads a derived row's descriptor through, or null while the executor is not configured.
+ * @returns The port.
+ * @throws {Error} When the configured storage client cannot be built.
+ */
+function qualificationStorage(): Pick<ReturnType<typeof getMaintenanceDependencies>["storage"], "read"> | null {
+  return maintenanceAvailability().configured ? getMaintenanceDependencies().storage : null;
+}
+
+/**
  * Read all physical BullMQ categories independently, including paused and prioritized.
  * @returns Fresh queue counts and the actual job failure retention.
  * @throws {Error} On queue or configuration infrastructure failure.
@@ -107,7 +116,7 @@ export async function preview(ids: string[], requestedBy: string): Promise<Maint
       id, storageKey: row.storageKey, keptStorageKey: row.keptStorageKey
     };
     let reason = await qualify(row, {
-      config: maintenanceConfig(), now: maintenanceNow
+      config: maintenanceConfig(), now: maintenanceNow, storage: qualificationStorage()
     });
     if (!reason && await repo.findObject(row.storageKey))
       reason = "already_approved";
@@ -241,7 +250,7 @@ export async function submit(input: MaintenanceSubmission): Promise<MaintenanceA
         break;
       }
       reason = await qualify(row, {
-        config: maintenanceConfig(), now: maintenanceNow
+        config: maintenanceConfig(), now: maintenanceNow, storage: qualificationStorage()
       }, tx);
       if (!reason)
         reason = physicalReason;

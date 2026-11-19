@@ -119,7 +119,7 @@ async function seed(credits = 1000): Promise<Fixture> {
   body.draft.draftId = randomUUID(); body.draft.revision = randomUUID(); body.draft.source.nodeId = randomUUID(); body.draft.source.canonicalURL = url; body.outputs[0]!.nodeId = randomUUID();
   const presented = await presentedSource(sourceHash, sourceKey, publicUrl);
   outside.snapshots.set(sourceKey, presented.snapshot);
-  for (const [stored, value] of presented.bodies) outside.bodies.set(stored, value);
+  
   body.presentation_ref = presented.presentationRef;
   return { ...target, body, viewerId: await member(target.projectId, "viewer"), otherId: await member(target.projectId, "editor"), sourceId, sourceStudioId: source.studioId, sourceKey, sourceHash };
 }
