@@ -357,10 +357,10 @@ export const coreConfigSchema = z.object({
     .default("")
     .transform((value) => value.replace(/\/+$/, "")),
   // The ingest Worker's public key (SPKI PEM; line breaks may be written as
-  // `\n`, inner#1953): the worker seals the payer's own model keys to it when
-  // it submits a web-animation job, and only the Worker's
-  // `KEY_UNSEAL_PRIVATE_KEY` opens them. Empty fails such a job before it is
-  // submitted.
+  // `\n`, inner#1953): every web-animation run's model keys, ours or the
+  // paying account's own, are sealed to it at submit, and only the Worker's
+  // `KEY_UNSEAL_PRIVATE_KEY` opens them. Empty fails every web-animation run
+  // before it is submitted.
   INGEST_KEY_SEAL_PUBLIC_KEY: z.string().default(""),
   // ── Upload Size Limits (MB, per asset kind) ─────
   UPLOAD_MAX_IMAGE_MB: numeric(z.coerce.number().positive().default(50)),
