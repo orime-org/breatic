@@ -347,10 +347,10 @@ export class SceneSession {
       return false;
     }
     this.gesture = this.selectedIds.map((id) => ({ id }));
-    this.gestureStartPoses = new Map(this.snapshot.objects
-      .filter((object) => this.selectedIds.includes(object.id)).map((object) => [object.id, object.pose ?? {}]));
-    this.gestureStartLooks = new Map(this.snapshot.objects
-      .filter((object) => this.selectedIds.includes(object.id)).map((object) => [object.id, object.look ?? {}]));
+    // From the document: the snapshot still shows the preview of a press that never ended.
+    const started = readSceneDocument(this.doc).objects.filter((object) => this.selectedIds.includes(object.id));
+    this.gestureStartPoses = new Map(started.map((object) => [object.id, object.pose ?? {}]));
+    this.gestureStartLooks = new Map(started.map((object) => [object.id, object.look ?? {}]));
     this.refresh();
     return true;
   }

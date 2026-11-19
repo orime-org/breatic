@@ -139,6 +139,18 @@ describe('dragging a look field (inner#1693 design 4.3)', () => {
     expect(state.session.history.undoStack).toHaveLength(0);
   });
 
+  it('starts a drag from the committed look when the press before it never ended', () => {
+    const state = fixture();
+    begin(state);
+    state.session.previewGesture(lookDraft('0', { roughness: 0.9 }));
+    // The release of that press is lost; the next press starts while its preview still shows.
+    begin(state);
+    state.session.previewGesture(lookDraft('0', { roughness: 0.9 }));
+    state.session.endGesture(true);
+    expect((lookIn(state.doc) as Record<string, { roughness?: number }>)['0']?.roughness).toBe(0.9);
+    expect(state.session.history.undoStack).toHaveLength(1);
+  });
+
   it('keeps a field another member committed to another part during the drag', () => {
     const state = fixture();
     const peer = new Y.Doc(); cleanups.push(() => peer.destroy());
