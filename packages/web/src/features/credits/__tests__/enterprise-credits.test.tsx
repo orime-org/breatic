@@ -7,7 +7,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
-import { setLocale, type CreditDecimal, type CreditLotView, type Locale, type PurchaseRow } from '@breatic/shared';
+import { setLocale, t, type CreditDecimal, type CreditLotView, type Locale, type PurchaseRow } from '@breatic/shared';
 import { PurchasesSection } from '@web/features/credits/sections/PurchasesSection';
 import { AssignSection } from '@web/features/credits/sections/AssignSection';
 import { RefundsSection } from '@web/features/credits/sections/RefundsSection';
@@ -86,6 +86,14 @@ const languages: readonly { locale: Locale; gift: string; compensation: string; 
   { locale: 'ko', gift: '선물 크레딧', compensation: '보상', enterprise: '기업 크레딧', offline: '기업 크레딧 환불은 계약 담당자에게 문의하세요.' },
 ];
 
+const refundHeadings: readonly { locale: Locale; online: string; general: string }[] = [
+  { locale: 'en', online: 'Online credit purchase refund rules', general: 'Refund rule' },
+  { locale: 'zh-CN', online: '线上购买积分退款规则', general: '退款规则' },
+  { locale: 'zh-TW', online: '線上購買點數退款規則', general: '退款規則' },
+  { locale: 'ja', online: 'オンライン購入クレジットの返金ルール', general: '返金ルール' },
+  { locale: 'ko', online: '온라인 구매 크레딧 환불 규정', general: '환불 규정' },
+];
+
 beforeEach(() => {
   vi.clearAllMocks();
   setLocale('en');
@@ -136,6 +144,13 @@ describe('enterprise and gift provenance in the actual product surfaces', () => 
     expect(document.body).toHaveTextContent(enterprise);
     expect(document.body).toHaveTextContent('CONTRACT-174');
     expect(requestCreditLotRefund).not.toHaveBeenCalled();
+  });
+
+  it.each(refundHeadings)('scopes refund rules to online credit purchases in $locale', async ({ locale, online, general }) => {
+    setLocale(locale);
+    mount(<RefundsSection userId='account-174' billing />);
+    expect(await screen.findByRole('heading', { level: 3, name: online })).toBeInTheDocument();
+    expect(t('credits.refundTitle')).toBe(general);
   });
 
   it('shows the enterprise contract while assigning personal, team and unassigned destinations', async () => {
