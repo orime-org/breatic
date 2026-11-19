@@ -189,6 +189,8 @@ export interface PlaceProposalInput {
   userId: string;
   /** A model's catalog entry, for the params a new generation node starts on. */
   entryOf: (model: string) => ModelEntry | undefined;
+  /** The ids the new nodes and group take, for a writer that must place the same flow again under the same ids; fresh ids otherwise. */
+  ids?: { node: (index: number) => string; group: string };
 }
 
 /** What a placed proposal left on the canvas. */
@@ -225,7 +227,8 @@ export function placeProposalInDoc(doc: Y.Doc, input: PlaceProposalInput): Place
   proposal.nodes.forEach((node, i) => {
     const settled = existing.get(i);
     if (settled === undefined) {
-      const built = createEmptyNode(node.type, spots[i] ?? { x: start.x, y: start.y }, input.userId);
+      const empty = createEmptyNode(node.type, spots[i] ?? { x: start.x, y: start.y }, input.userId);
+      const built = input.ids ? { ...empty, id: input.ids.node(i) } : empty;
       addNodeInDoc(doc, built);
       nodeIds[i] = built.id;
       setNodeNameInDoc(doc, built.id, node.name);
@@ -252,7 +255,7 @@ export function placeProposalInDoc(doc: Y.Doc, input: PlaceProposalInput): Place
   // canvas says so. Only the new nodes become members: an anchor or a reused
   // node already on the canvas stays where it is.
   if (aimedGroup) {
-    const id = newId();
+    const id = input.ids?.group ?? newId();
     groupId = id;
     createGroupInDoc(
       doc,

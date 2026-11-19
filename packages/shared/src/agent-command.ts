@@ -266,6 +266,14 @@ export const agentCommandParamsSchemas = {
       (p) => (p.edges ?? []).every((e) => [e.source, e.target].every((end) => !("new" in end) || end.new < p.nodes.length)),
       { message: "an edge names a new node the batch does not have" },
     ),
+  // A generation template placed as the panel's apply places it, on a node
+  // already there or on a new node of its anchor's type; the entries are the
+  // template's models, which collab does not hold (§8).
+  apply_generation_template: z.object({
+    templateId: z.string().min(1),
+    nodeId: nodeIdSchema.optional(),
+    models: z.array(modelEntrySchema).min(1),
+  }),
   // Every field but the id is a change to make, and at least one is given.
   update_canvas_node: z
     .object({

@@ -46,6 +46,7 @@ import {
   createUploadNodes,
   placedLate,
 } from "@collab/services/agent-commands/result-commands.js";
+import { applyGenerationTemplate } from "@collab/services/agent-commands/template-commands.js";
 import {
   commentOnDocument,
   deleteBlocks,
@@ -204,6 +205,17 @@ const COMMANDS: CommandTable = {
     space: "canvas",
     run: (doc, params, command, actor) => createNodes(doc, params, command, ownerView(actor.views, command)),
     late: createLate,
+    focus: (_p, answer) => resultIds(answer, "nodeIds"),
+    counted: true,
+    views: true,
+  },
+  apply_generation_template: {
+    params: agentCommandParamsSchemas.apply_generation_template,
+    write: true,
+    size: "add",
+    space: "canvas",
+    run: (doc, params, command, actor) => applyGenerationTemplate(doc, params, command, ownerView(actor.views, command)),
+    late: unfinished,
     focus: (_p, answer) => resultIds(answer, "nodeIds"),
     counted: true,
     views: true,

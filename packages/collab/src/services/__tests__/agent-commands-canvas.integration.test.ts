@@ -16,7 +16,7 @@ import * as Y from "yjs";
 import { sql as dsql } from "drizzle-orm";
 
 import { getCanvasReferencePoolCap, getCollabRedis, getMcpConfig } from "@breatic/core";
-import { callScopedId } from "@breatic/shared";
+import { callScopedId, mcpReplyKey } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import {
   addEdgeInDoc,
@@ -648,5 +648,82 @@ describe("where notes are pinned and what is handed over (#1488 §11.7, §11.8)"
     expect(resultOf(await call(world, "read_canvas_assignments", {}))).toEqual({
       assignments: [{ threadId: ids.pending, assignedBy: world.userId, assignedAt, pin: { x: 10, y: 10, nodeIds: [world.nodeId], groupId: null } }],
     });
+  });
+});
+
+describe("apply_generation_template", () => {
+  const TEMPLATE = "character-design-from-text";
+  const MODELS = [
+    { name: "nano-banana-pro-edit-ultra", mode: ["i2i"], params: {} },
+    { name: "gpt-image-2.5-sunburst-text-to-image", mode: ["t2i"], params: {} },
+  ];
+
+  it("places the template on a new node of its anchor's type, as the panel's apply does", async () => {
+    const world = await seedWorld();
+    consumeOn(world, harness.instanceA);
+    const command = await send(world, "apply_generation_template", { templateId: TEMPLATE, models: MODELS });
+    const anchorId = callScopedId(command.callId, "template:anchor");
+    const designId = callScopedId(command.callId, "template:1");
+    expect(await replyOf(world, command.callId)).toMatchObject({ status: "done", result: { nodeIds: [anchorId, designId], resources: [] } });
+    const nodes = await canvasNodes(harness.instanceB, world);
+    const anchor = nodes.find((n) => n.id === anchorId)! as unknown as { type: string; data: Record<string, unknown> };
+    const design = nodes.find((n) => n.id === designId)! as unknown as { type: string; data: Record<string, unknown> };
+    expect([anchor.type, anchor.data.mode, anchor.data.model]).toEqual(["image", "i2i", "nano-banana-pro-edit-ultra"]);
+    expect([design.type, design.data.mode, design.data.model, design.data.templateNode]).toEqual([
+      "image",
+      "t2i",
+      "gpt-image-2.5-sunburst-text-to-image",
+      { template: TEMPLATE, key: "design" },
+    ]);
+    expect((await canvasEdges(harness.instanceB, world)).map((e) => e.id)).toContain(`${designId}->${anchorId}`);
+  });
+
+  it("places it once when the same call is delivered twice", async () => {
+    const world = await seedWorld();
+    consumeOn(world, harness.instanceA);
+    const command = await send(world, "apply_generation_template", { templateId: TEMPLATE, models: MODELS });
+    await replyOf(world, command.callId);
+    await harness.mcp.del(mcpReplyKey(world.prefix, command.callId));
+    await send(world, "apply_generation_template", { templateId: TEMPLATE, models: MODELS }, { callId: command.callId });
+    expect(await replyOf(world, command.callId)).toMatchObject({ status: "done" });
+    expect((await canvasNodes(harness.instanceB, world)).filter((n) => n.type === "image")).toHaveLength(2);
+  });
+
+  it("applies it to a node already there, and refuses a node of another type", async () => {
+    const imageId = randomUUID();
+    const world = await seedWorld("owner", (canvas, uid) => {
+      addNodeInDoc(canvas, { ...createEmptyNode("image", { x: 400, y: 0 }, uid), id: imageId });
+    });
+    consumeOn(world, harness.instanceA);
+    expect(await call(world, "apply_generation_template", { templateId: TEMPLATE, nodeId: world.nodeId, models: MODELS })).toMatchObject({
+      status: "rejected",
+      reason: "invalid_command",
+    });
+    expect(await call(world, "apply_generation_template", { templateId: TEMPLATE, nodeId: imageId, models: MODELS })).toMatchObject({
+      status: "done",
+      result: { nodeIds: [imageId, expect.any(String)] },
+    });
+    await expect.poll(async () => ((await nodeOf(world, imageId))?.data as { model?: string } | undefined)?.model).toBe("nano-banana-pro-edit-ultra");
+  });
+
+  it("refuses a template it does not know and one whose models were not sent", async () => {
+    const world = await seedWorld();
+    consumeOn(world, harness.instanceA);
+    expect(await call(world, "apply_generation_template", { templateId: "no-such-template", models: MODELS })).toMatchObject({ status: "rejected", reason: "not_found" });
+    expect(await call(world, "apply_generation_template", { templateId: TEMPLATE, models: MODELS.slice(0, 1) })).toMatchObject({
+      status: "rejected",
+      reason: "invalid_command",
+    });
+    expect((await canvasNodes(harness.instanceB, world)).filter((n) => n.type === "image")).toEqual([]);
+  });
+
+  it("refuses a locked node", async () => {
+    const imageId = randomUUID();
+    const world = await seedWorld("owner", (canvas, uid) => {
+      addNodeInDoc(canvas, { ...createEmptyNode("image", { x: 400, y: 0 }, uid), id: imageId });
+      nodeDataMap(canvas, imageId)!.set("locked", true);
+    });
+    consumeOn(world, harness.instanceA);
+    expect(await call(world, "apply_generation_template", { templateId: TEMPLATE, nodeId: imageId, models: MODELS })).toMatchObject({ status: "rejected", reason: "locked" });
   });
 });
