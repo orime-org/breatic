@@ -197,6 +197,21 @@ export async function countLiveSpaceDocs(projectId: string): Promise<number> {
 }
 
 /**
+ * Whether a document is a live Space or meta document: its row exists and is not soft-deleted.
+ * @param name - Full doc name.
+ * @returns True when a live row holds it.
+ * @throws {Error} When the Yjs database read fails.
+ */
+export async function isLiveDoc(name: string): Promise<boolean> {
+  const rows = await yjsDb
+    .select({ name: yjsDocuments.name })
+    .from(yjsDocuments)
+    .where(and(eq(yjsDocuments.name, name), isNull(yjsDocuments.deletedAt)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
  * Restore (clear `deleted_at` on) the row backing a named Yjs doc, and mark it
  * touched now.
  *
