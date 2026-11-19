@@ -11,7 +11,7 @@ import { toast } from '@web/lib/toast';
 import type { SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
 import { SceneImagePickerDialog } from '@web/spaces/three-d/SceneImagePickerDialog';
 import { SceneLookSection, type SceneLookGesture } from '@web/spaces/three-d/SceneLookSection';
-import { checkLookWrite } from '@web/spaces/three-d/look-texture-budget';
+import { checkLookWrite, picturesOf } from '@web/spaces/three-d/look-texture-budget';
 import { isLookImageType, lookLimitNotice, pageSceneLookUploads, pictureReadFailedNotice, unsupportedPictureNotice, type LookUploadNotice } from '@web/spaces/three-d/scene-look-uploads';
 import { takeStepKey } from '@web/spaces/three-d/slider-step-key';
 import { pageLookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
@@ -155,7 +155,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   }, [session, objectId]);
   const onCommand = React.useCallback((command: Parameters<SceneSession['execute']>[0]): boolean => session.execute(command).ok, [session]);
 
-  const pictures = React.useMemo(() => [...new Set(Object.values(look).flatMap((fields) => (fields.map && fields.map !== 'none' ? [fields.map] : [])))], [look]);
+  const pictures = React.useMemo(() => picturesOf(look), [look]);
   const urls = useQueries({ queries: pictures.map((assetId) => ({
     queryKey: ['scene-asset', projectId, assetId] as const,
     queryFn: ({ signal }: { signal: AbortSignal }) => resolveSceneAsset(projectId, assetId, signal),

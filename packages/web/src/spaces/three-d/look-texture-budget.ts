@@ -51,6 +51,15 @@ export function fittedLookSize(size: LookPictureDimensions, maxEdge: number): Lo
 }
 
 /**
+ * The asset ids a look shows as pictures: a part's map other than 'none'.
+ * @param look - The look.
+ * @returns Distinct picture ids.
+ */
+export function picturesOf(look: SceneLook): string[] {
+  return [...new Set(Object.values(look).flatMap((fields) => (fields.map && fields.map !== 'none' ? [fields.map] : [])))];
+}
+
+/**
  * A part's place in panel order: its material index, the default part after every index.
  * @param part - A part key.
  * @returns Its sort rank.
@@ -166,7 +175,7 @@ export interface LookWriteCheck extends Omit<LookTextureInput, 'sizes'> {
  * @returns The refusal with the bytes the object's textures would take, or null.
  */
 export async function checkLookWrite(check: LookWriteCheck): Promise<{ reason: LookTextureReason; total: number } | null> {
-  const used = new Set(Object.values(check.look).map((fields) => fields.map).filter((map): map is string => !!map && map !== 'none'));
+  const used = new Set(picturesOf(check.look));
   used.add(check.map);
   const sizes = new Map(await Promise.all([...used].map(async (id) =>
     [id, id === check.map && check.mapSize !== undefined ? check.mapSize : await check.size(id)] as const)));

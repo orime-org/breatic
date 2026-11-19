@@ -5,7 +5,7 @@ import type { Group, Object3D, Texture } from 'three';
 
 import type { SceneLook, SceneObject } from '@breatic/shared';
 
-import { checkLookTextures, lookPartRank, type LookTextureInput, type LookTextureLimits, type LookTextureVerdict } from '@web/spaces/three-d/look-texture-budget';
+import { checkLookTextures, lookPartRank, picturesOf, type LookTextureInput, type LookTextureLimits, type LookTextureVerdict } from '@web/spaces/three-d/look-texture-budget';
 import { addPartHighlight, type PartHighlight } from '@web/spaces/three-d/viewport/look-highlight';
 import { applyLook, releaseLook, type LookPartTable } from '@web/spaces/three-d/viewport/look-materials';
 import type { LookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
@@ -78,15 +78,6 @@ interface ObjectLook {
   run: number;
   held: Map<string, Texture>;
   states: Map<string, PictureState>;
-}
-
-/**
- * The asset ids a look shows as pictures.
- * @param look - The look.
- * @returns Distinct picture ids.
- */
-function picturesOf(look: SceneLook): string[] {
-  return [...new Set(Object.values(look).flatMap((fields) => (fields.map && fields.map !== 'none' ? [fields.map] : [])))];
 }
 
 /**
