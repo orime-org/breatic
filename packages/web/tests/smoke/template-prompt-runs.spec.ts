@@ -316,14 +316,17 @@ async function dialogueLines(): Promise<{ speaker: string; text: string }[]> {
   return shown;
 }
 
+/** A slot of the video panel a template node is picked into, by its test-id stem. */
+type VideoSlotId = 'first-frame' | 'end-frame' | 'character-image' | 'driving-audio' | 'left-audio' | 'right-audio';
+
 /**
- * Pick a node into one frame of the open video panel, the way a user does: the frame, then the
+ * Pick a node into one slot of the open video panel, the way a user does: the slot, then the
  * part of the node still showing, since a tall result next to it can cover its centre.
- * @param slot - The frame.
+ * @param slot - The slot.
  * @param nodeId - The node.
  * @throws {Error} When no part of the node is showing.
  */
-async function pickIntoFrame(slot: 'first-frame' | 'end-frame', nodeId: string): Promise<void> {
+async function pickIntoFrame(slot: VideoSlotId, nodeId: string): Promise<void> {
   await page.getByTestId(`generate-video-tool-${slot}`).click();
   const point = await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).evaluate((node) => {
     const box = node.getBoundingClientRect();
@@ -337,7 +340,9 @@ async function pickIntoFrame(slot: 'first-frame' | 'end-frame', nodeId: string):
   });
   if (point === null) throw new Error(`no part of node ${nodeId} is showing`);
   await page.mouse.click(point.x, point.y);
-  await expect(page.getByTestId(`generate-video-${slot}-thumbnail`)).toBeVisible({ timeout: 30_000 });
+  // An audio slot paints no thumbnail; its clear button shows once it holds the pick.
+  const filled = slot.endsWith('-audio') ? `generate-video-${slot}-clear` : `generate-video-${slot}-thumbnail`;
+  await expect(page.getByTestId(filled)).toBeVisible({ timeout: 30_000 });
 }
 
 /**
@@ -621,8 +626,8 @@ interface Run {
   localeFills?: Record<string, Record<string, string[]>>;
   /** What each of the anchor's shots' braces are filled with, in order. */
   shots?: string[][];
-  /** The template nodes picked into the anchor's frames once generated. */
-  frames?: Partial<Record<'first-frame' | 'end-frame', string>>;
+  /** The template nodes picked into the anchor's slots once generated. */
+  frames?: Partial<Record<VideoSlotId, string>>;
 }
 
 /** How each template is run. */
@@ -803,6 +808,45 @@ const RUNS: Record<string, Run> = {
     first: ['before', 'after'],
     fills: { before: ['a white oak table'], after: ['with its bamboo cap off, lying beside it'], anchor: ['a hand unscrews the cap and sets it down beside the bottle', 'the same hand'] },
     frames: { 'first-frame': 'before', 'end-frame': 'after' },
+  },
+  'talking-presenter': {
+    type: 'video',
+    photo: false,
+    inputs: { person: 'portrait.png' },
+    first: ['portrait', 'voice'],
+    fills: {
+      portrait: ['a bright home office with a bookshelf'],
+      voice: ['Hi, I am Mika. Here are three quick ways to keep your desk tidy, and the first one takes ten seconds.'],
+      anchor: ['warm and confident, a slight smile at the end'],
+    },
+    frames: { 'character-image': 'portrait', 'driving-audio': 'voice' },
+  },
+  'talking-head-pitch': {
+    type: 'video',
+    photo: false,
+    inputs: { person: 'portrait.png' },
+    first: [],
+    fills: { anchor: ['English', 'a sunlit café', 'This one changed my mornings', 'Try it for a week and see'] },
+  },
+  'two-speaker-talk': {
+    type: 'video',
+    photo: false,
+    inputs: { 'left-person': 'character.jpg', 'right-person': 'portrait.png' },
+    first: ['scene', 'left-voice', 'right-voice'],
+    fills: {
+      scene: ['a podcast desk with two microphones'],
+      'left-voice': ['So, what got you into making videos?'],
+      'right-voice': ['Honestly, I just wanted to show my friends what I cook.'],
+      anchor: [],
+    },
+    frames: { 'character-image': 'scene', 'left-audio': 'left-voice', 'right-audio': 'right-voice' },
+  },
+  'talking-own-voice': {
+    type: 'video',
+    photo: false,
+    inputs: { portrait: 'portrait.png', recording: 'voice.mp3' },
+    first: [],
+    fills: { anchor: ['relaxed, with small natural nods'] },
   },
   'livestream-pitch': {
     type: 'video',
@@ -994,7 +1038,7 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
       await save(url, `${id}-${key}-${LABEL}-${n}.${EXTENSION[kind]}`);
     }
     await openPanel(anchor);
-    for (const [slot, key] of Object.entries(run.frames ?? {})) await pickIntoFrame(slot as 'first-frame' | 'end-frame', await keyed(key));
+    for (const [slot, key] of Object.entries(run.frames ?? {})) await pickIntoFrame(slot as VideoSlotId, await keyed(key));
     let prompt = '';
     const registered = GENERATION_TEMPLATES.find((template) => template.id === id);
     if (registered === undefined) throw new Error(`no template "${id}" in the registry`);
