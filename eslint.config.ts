@@ -417,8 +417,8 @@ export default tseslint.config(
     // literal written at the throw site is a literal the user reads — in
     // English, whatever language they picked.
     //
-    // All three packages that throw this family: domain and core reach a
-    // client through the same handler as server does.
+    // domain and core reach a client through the same handler as server
+    // does; server itself is held to this rule by backendConfig.
     //
     // Tests are exempt: they construct errors to assert on, not to send.
     files: ["packages/{domain,core}/src/**/*.ts"],

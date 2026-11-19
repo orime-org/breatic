@@ -7,7 +7,9 @@
  * `packages/server`; a service that builds on the product's libraries in
  * another repository applies the same blocks to its own package, so both are
  * held to one rule set. Each rule's reason is in its own documentation; the
- * root `eslint.config.ts` carries the history of each choice.
+ * root `eslint.config.ts` carries the history of the choices it applies
+ * itself; the reasons for the two rules only service packages carry sit
+ * beside them below.
  */
 
 import type { TSESLint } from "@typescript-eslint/utils";
@@ -177,7 +179,21 @@ export function backendConfig(options: BackendConfigOptions): TSESLint.FlatConfi
       ignores: ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}", "**/__tests__/**"],
       rules: { "breatic/doc-link-resolves": "error" },
     },
+    // Where the five deferred decisions live (studio invite, project invite,
+    // studio transfer, project transfer, role upgrade). Their shared TTL is
+    // config/limits.yaml -> deferred_request_ttl_days, reached through
+    // deferredRequestExpiry(), which lives in src/config outside this glob.
+    // Session lifetime is out of scope: a 30-day session is a different
+    // concept that happens to be measured in days. Tests are exempt because
+    // they construct deliberately expired instants to verify the expiry gate.
     { files: each("src/modules/**/*.ts"), ignores: TEST_IGNORES, rules: { "breatic/no-hardcoded-request-ttl": "error" } },
+    // Routes hand their body to `validate`; they never parse it themselves. A
+    // bare ZodError or SyntaxError from a hand-parsed body is not an AppError,
+    // so it falls past the error handler's typed branches and answers 500 for
+    // a request the caller simply got wrong. The whole package, because reading
+    // a parsed body outside the one wrapper is wrong wherever it is written.
+    // `req.text()` stays allowed: a Stripe signature is computed over the bytes
+    // as sent. Tests are exempt: they build requests rather than handle them.
     { files: src, ignores: TEST_IGNORES, rules: { "breatic/no-raw-body-parse": "error" } },
     { files: src, ignores: TEST_IGNORES, rules: { "breatic/no-untranslated-error-message": "error" } },
     { files: each("src/**/*.{test,spec}.{ts,tsx}"), rules: { "breatic/test-file-location": "error" } },

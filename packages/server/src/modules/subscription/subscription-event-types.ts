@@ -3,8 +3,8 @@
 
 /**
  * The Stripe event types the membership leg routes on. Kept apart from the
- * handlers so the dispatcher and the catch-up can name them without loading
- * the handlers.
+ * handlers so the dispatcher's `HANDLED_EVENT_TYPES` does not depend on the
+ * handler module, which the dispatcher's tests replace with a mock.
  */
 
 /**

@@ -30,7 +30,8 @@ function canonicalJson(value: unknown): string {
  * The request's fingerprint, kept in `request_hash`.
  * @param method - HTTP method.
  * @param routeTemplate - The route's path template.
- * @param targetId - The `lotId` or `operationId` in the path.
+ * @param targetId - The id the request acts on (such as a `lotId`, `operationId`,
+ *   account id or operation key), or empty when there is none.
  * @param body - The parsed body.
  * @returns Lowercase hex SHA-256.
  */

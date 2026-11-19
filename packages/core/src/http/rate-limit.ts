@@ -198,7 +198,7 @@ export function createRateLimiting(deps: RateLimitingDeps): RateLimiting {
   }
 
   /**
-   * Rate limit a route by one quota from `config/rate-limits.yaml`.
+   * Rate limit a route by one quota from the service's `rate-limits.yaml` (via `limitOf`).
    * @param action - Throttle action (yaml key + Redis prefix, e.g. `register`).
    * @param keyBy - The quota's dimension; `'ip'` when absent.
    * @param answers - The 429 body and the fail-closed answer, when not the public ones.

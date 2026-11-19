@@ -6,8 +6,9 @@
  *
  * The single place that decides what a client is told. It answers on its own
  * terms for the two things it can recognise as the caller's doing, and
- * everything else is ours: a 500 plus `Unhandled error`, which is what makes
- * a fault reconstructable afterwards.
+ * everything else is ours: a 500, reported to the service as an `unhandled`
+ * event (the product logs it as `Unhandled error`), which is what makes a
+ * fault reconstructable afterwards.
  *
  * Recognising a rejected request by the TYPE of exception does not work, and
  * a first version of this handler tried it. `ZodError` and `SyntaxError` say
