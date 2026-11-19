@@ -11,7 +11,7 @@
  * the charge and the terminal transition, as for a creation job.
  */
 
-import { coverKeyFor, getMiniToolsConfig, getTimelineConfig, NotFoundError, timelineExecutionRepo, type TimelineExecutionEvent } from "@breatic/core";
+import { coverKeyFor, getMiniToolsConfig, getTimelineConfig, logger, NotFoundError, timelineExecutionRepo, type TimelineExecutionEvent } from "@breatic/core";
 import { containerCostUsd, createUsageRecorder, ingestReportService, timelineOperationKey, webAnimationSourceRepo } from "@breatic/domain";
 import type { TimelineExecution } from "@breatic/shared";
 import {
@@ -200,6 +200,7 @@ async function running(pickup: RenderPickup): Promise<void> {
       return;
     }
     answer = await submitRenderJob(request, endsAt);
+    if (answer.kind === "unavailable") logger.warn({ executionId: row.id, jobId: request.jobId }, "web_animation_render_container_start_refused");
   }
   if (answer.kind === "disabled" || answer.kind === "unconfigured") return settle(pickup, DISABLED, { type: "failure", fence: row.fence, reason: "feature_disabled" });
   const report = answer.kind === "report" ? answer.report : null;
