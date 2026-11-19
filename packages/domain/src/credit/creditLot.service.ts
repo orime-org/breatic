@@ -236,7 +236,7 @@ export async function grantTrialCredits(
   input: { userId: string; studioId: string; credits: number },
   tx: DbTx,
 ): Promise<CreditLotEntity | null> {
-  if (!env.PAYMENT_ENABLED) return null;
+  if (!env.CHARGING_ENABLED) return null;
   if (input.credits <= 0) return null;
 
   const opened = await creditSourceRepo.claimSource(
@@ -315,9 +315,9 @@ async function applyCharge(input: ChargeInput, tx: DbTx): Promise<ChargeOutcome>
     referenceId: input.referenceId,
   };
 
-  // Payment-disabled deployments still need usage records to report what
+  // Deployments that charge nothing still need usage records to report what
   // they produced, even though no purchase is charged.
-  if (!env.PAYMENT_ENABLED) {
+  if (!env.CHARGING_ENABLED) {
     await creditLotRepo.recordStandaloneUsage({
       ...usageEntry,
       amount: fromMicroCredits(-amountMicro),
@@ -496,7 +496,7 @@ async function settleOnce(requestId: string): Promise<ChargeOutcome | null> {
   if (settled === null) return null;
   const { outcome, projectId } = settled;
   // Only a charge against a studio's pool changes what its users see.
-  if (projectId === null || outcome.studioId === null || !env.PAYMENT_ENABLED) return outcome;
+  if (projectId === null || outcome.studioId === null || !env.CHARGING_ENABLED) return outcome;
   try {
     await publishCreditsChanged(projectId);
     return outcome;

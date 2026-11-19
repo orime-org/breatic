@@ -139,7 +139,7 @@ export async function reserveForRun(
   referenceId: string,
   required: number,
 ): Promise<void> {
-  if (!env.PAYMENT_ENABLED) return;
+  if (!env.CHARGING_ENABLED) return;
   const charge = ceilToCreditCent(required);
   const outcome = await creditHoldService.reserveCredits({
     projectId,
@@ -166,7 +166,7 @@ export async function precheckCredits(
   userId: string,
   required: number,
 ): Promise<void> {
-  if (!env.PAYMENT_ENABLED) return;
+  if (!env.CHARGING_ENABLED) return;
 
   const studioId = await assetService.resolveOwnerStudioId(projectId);
   const spendable = await creditLotService.getSpendableCredits(studioId);

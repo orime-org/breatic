@@ -46,7 +46,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<typeof CoreModule>()),
-  env: { PAYMENT_ENABLED: true, ENV: "test" },
+  env: { CHARGING_ENABLED: true, PAYMENT_ENABLED: false, ENV: "test" },
   db: {
     transaction: async (run: (tx: unknown) => Promise<unknown>): Promise<unknown> => {
       const result = await run({});

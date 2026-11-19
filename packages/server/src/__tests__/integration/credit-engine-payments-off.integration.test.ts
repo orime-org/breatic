@@ -86,6 +86,8 @@ async function seedFixture(): Promise<{
 describe("支付关闭", () => {
   it("开关确实是关的", () => {
     expect(env.PAYMENT_ENABLED).toBe(false);
+    // CHARGING_ENABLED is unset here, so it falls back to the old name.
+    expect(env.CHARGING_ENABLED).toBe(false);
   });
 
   it("照写用量记录，lot_id 为空而付款方照填", async () => {

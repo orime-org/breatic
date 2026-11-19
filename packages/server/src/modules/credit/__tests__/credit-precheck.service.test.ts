@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import type * as SharedModule from "@breatic/shared";
 
-const { env } = vi.hoisted(() => ({ env: { PAYMENT_ENABLED: true } }));
+const { env } = vi.hoisted(() => ({ env: { CHARGING_ENABLED: true, PAYMENT_ENABLED: true } }));
 vi.mock("@breatic/core", async (importOriginal) => {
   const real = await importOriginal<typeof CoreModule>();
   return {
@@ -81,6 +81,7 @@ function refuseWith(spendable: number, held: number): void {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  env.CHARGING_ENABLED = true;
   env.PAYMENT_ENABLED = true;
   resolveOwnerStudioId.mockResolvedValue(STUDIO);
   reserveCredits.mockResolvedValue({ ok: true });
@@ -205,8 +206,8 @@ describe("precheckCredits", () => {
     });
   });
 
-  it("asks nothing while payments are off", async () => {
-    env.PAYMENT_ENABLED = false;
+  it("asks nothing while charging is off, whatever the old switch says", async () => {
+    env.CHARGING_ENABLED = false;
     await precheckCredits(PROJECT, USER, 1);
     await reserveForRun(PROJECT, USER, "t", 1);
     expect(getSpendableCredits).not.toHaveBeenCalled();

@@ -71,7 +71,7 @@ function expiryFor(ttlMs: number): Date {
  * @throws {NotFoundError} When the project has no live studio.
  */
 export async function reserveCredits(request: HoldRequest): Promise<ReserveOutcome> {
-  if (!env.PAYMENT_ENABLED) return { ok: true };
+  if (!env.CHARGING_ENABLED) return { ok: true };
   const studioId = await resolveOwnerStudioId(request.projectId);
   const amount = toChargeMicro(request.amount);
   return db.transaction(async (tx) => {
