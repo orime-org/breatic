@@ -4,6 +4,7 @@
 import {
   InstancedMesh, LineBasicMaterial, Mesh, MeshBasicMaterial, Points, PointsMaterial, SkinnedMesh, type BufferGeometry, type ColorRepresentation,
   type Intersection, type Line, type Material, type Object3D,
+  type Side,
 } from 'three';
 
 /** A drawn object a part can be on: a triangle mesh, a line or points. */
@@ -69,11 +70,25 @@ function overlayOf(mesh: Mesh, material: Material | Material[]): Mesh {
  * @returns The overlays and their removal.
  */
 export function addPartHighlight(root: Object3D, part: string, color?: ColorRepresentation): PartHighlight {
-  const tint = new MeshBasicMaterial({ transparent: true, opacity: TINT_OPACITY, depthWrite: false,
-    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const lineTint = new LineBasicMaterial({ transparent: true, opacity: TINT_OPACITY, depthWrite: false });
   const hidden = new MeshBasicMaterial({ visible: false });
-  const made: Material[] = [tint, lineTint, hidden];
+  const made: Material[] = [lineTint, hidden];
+  const tints = new Map<Side, MeshBasicMaterial>();
+  /**
+   * The tint drawn on the side a part's own material draws, so a double-sided part shows it from behind too.
+   * @param side - The part material's side.
+   * @returns The tint.
+   */
+  const tint = (side: Side): MeshBasicMaterial => {
+    let material = tints.get(side);
+    if (!material) {
+      material = new MeshBasicMaterial({ transparent: true, opacity: TINT_OPACITY, depthWrite: false, side,
+        polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+      tints.set(side, material);
+      made.push(material);
+    }
+    return material;
+  };
   /**
    * A tint for points as large as the part's own.
    * @param source - The part's points material.
@@ -93,8 +108,8 @@ export function addPartHighlight(root: Object3D, part: string, color?: ColorRepr
   });
   const overlays = drawables.map((drawable) => {
     const overlay = (drawable as Mesh).isMesh ? overlayOf(drawable as Mesh, Array.isArray(drawable.material)
-      ? drawable.material.map((slot) => (slot.userData.lookPart === part ? tint : hidden))
-      : tint)
+      ? drawable.material.map((slot) => (slot.userData.lookPart === part ? tint(slot.side) : hidden))
+      : tint(drawable.material.side))
       : (drawable as Points).isPoints ? new Points(drawable.geometry, pointsTint(slots(drawable)[0]!))
         : new (drawable.constructor as new (geometry: BufferGeometry, material: Material) => Line)(drawable.geometry, lineTint);
     if (!(drawable as Mesh).isMesh) overlay.morphTargetInfluences = drawable.morphTargetInfluences;

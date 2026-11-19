@@ -126,3 +126,18 @@ describe('highlight bounds (inner#1693 design 5.5)', () => {
   });
 });
 
+
+describe('the tint on a double-sided part', () => {
+  it('draws on the side the part itself draws', async () => {
+    const three = await import('three');
+    const { addPartHighlight } = await import('@web/spaces/three-d/viewport/look-highlight');
+    const material = new three.MeshStandardMaterial({ side: three.DoubleSide });
+    material.userData.lookPart = '0';
+    const root = new three.Group();
+    root.add(new three.Mesh(new three.PlaneGeometry(), material));
+    const highlight = addPartHighlight(root, '0');
+    const overlay = highlight.overlays[0] as unknown as { material: { side: number } };
+    expect(overlay.material.side).toBe(three.DoubleSide);
+    highlight.remove();
+  });
+});
