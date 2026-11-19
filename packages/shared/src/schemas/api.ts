@@ -1047,9 +1047,9 @@ export interface ChatSyncAnswer {
   blocked?: "credits";
   /**
    * Beside `blocked`: the payer's own key runs the turn's model, so what the balance must pay for is the Agent's paid
-   * tools (inner#1953).
+   * tools (inner#1953); `self` when that key is the caller's own, `admin` when it is the Studio Admin's.
    */
-  own_key?: true;
+  own_key?: "self" | "admin";
   /** When to ask again, in milliseconds. */
   next_sync_ms: number;
 }

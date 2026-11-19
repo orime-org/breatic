@@ -13,6 +13,7 @@
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import type { StoredAsset } from "@breatic/domain";
+import { readTaskFailure } from "@breatic/shared";
 
 const h = vi.hoisted(() => {
   /** Stand-in for the real class, matched by `instanceof` in the dispatcher. */
@@ -55,6 +56,7 @@ const h = vi.hoisted(() => {
     updateCostWait: vi.fn(),
     recordGenerationSuccess: vi.fn(async (_entry: unknown) => ({ id: "history-1" })),
     keysById: vi.fn(),
+    keyOwnerOf: vi.fn(async (id: string | null) => (id === null ? undefined : "payer-account")),
     recordModelCall: vi.fn(),
     createUsageRecorder: vi.fn(),
   };
@@ -137,6 +139,7 @@ vi.mock("@breatic/domain", async () => ({
   UnderstandRefused: class extends Error {},
   createUsageRecorder: h.createUsageRecorder,
   keysById: h.keysById,
+  keyOwnerOf: h.keyOwnerOf,
   handOffLookups: vi.fn(async () => undefined),
   UNDERSTAND_PINS: { model: "google/gemini-3.8-flash" },
   extractPromptText: vi.fn(),
@@ -275,6 +278,7 @@ describe("a model generation on an account's key", () => {
     expect(h.moveToDelayed).not.toHaveBeenCalled();
     const stored = h.markFailed.mock.calls.at(-1)![1] as string;
     expect(stored).toContain(kind);
+    expect(readTaskFailure(stored).keyOwner).toBe("payer-account");
     expect(h.markCompletedAndBill).not.toHaveBeenCalled();
   });
 });

@@ -43,7 +43,7 @@ const KEY_FAILURES: ReadonlySet<string> = new Set(ACCOUNT_KEY_FAILURE_KINDS);
  * @throws {never} Never.
  */
 export function executionFailureSentence(
-  row: Pick<TimelineExecutionRow, 'failureReason' | 'failureUpstream' | 'failureKeyReason'>,
+  row: Pick<TimelineExecutionRow, 'failureReason' | 'failureUpstream' | 'failureKeyReason' | 'failureKeyOwner'>,
   t: ReturnType<typeof useTranslation>,
   keys: KeyFailureWords | undefined,
 ): string {
@@ -52,6 +52,7 @@ export function executionFailureSentence(
     const about = {
       ...(row.failureUpstream === null ? {} : { upstream: row.failureUpstream }),
       ...(row.failureKeyReason === null ? {} : { keyReason: row.failureKeyReason }),
+      ...(row.failureKeyOwner === undefined ? {} : { keyOwner: row.failureKeyOwner }),
     };
     return failureSentence(encodeTaskFailure(reason, about), t, undefined, keys);
   }

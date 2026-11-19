@@ -11,6 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { readTaskFailure } from "@breatic/shared";
 
+import { MediaRunFailed } from "@worker/handlers/media-run.js";
 import { understandFailureCode, verdictStands } from "@worker/handlers/understand-failure.js";
 import { storedFailure } from "@worker/handlers/stored-failure.js";
 
@@ -81,6 +82,20 @@ describe("what a key failure's row holds", () => {
     expect(readTaskFailure(storedFailure("video", keyFailure("upstream_unavailable", { upstream: "sandbase" })))).toMatchObject({
       reason: "upstream_unavailable",
       upstream: "sandbase",
+    });
+  });
+
+  it("names whose key it was, on a lane's own failure and on a failed media run alike", () => {
+    const owner = "8b1c0f4e-0000-4000-8000-000000000002";
+    const failure = keyFailure("account_key_failed", { reason: "no_balance", upstream: "fal", lasting: true }, true);
+    expect(readTaskFailure(storedFailure("understand", failure, undefined, undefined, owner))).toMatchObject({ keyOwner: owner });
+    const media = new MediaRunFailed(failure, [], "Seedream 5");
+    expect(readTaskFailure(storedFailure("image", media, undefined, undefined, owner))).toEqual({
+      reason: "account_key_failed",
+      model: "Seedream 5",
+      upstream: "fal",
+      keyReason: "no_balance",
+      keyOwner: owner,
     });
   });
 });

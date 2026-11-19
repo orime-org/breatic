@@ -83,9 +83,13 @@ describe('the waiting area', () => {
     expect(screen.getAllByTestId('chat-waiting-delete')).toHaveLength(2);
   });
 
-  it('says the paid tools need credits when the payer runs the model on their own key (inner#1953)', () => {
-    setup({ blocked: true, ownKey: true });
+  it.each([
+    ['self', 'Your own OpenRouter key'],
+    ['admin', 'The Studio Admin\'s OpenRouter key'],
+  ] as const)('says the paid tools need credits, and whose key pays for the model, when it is the %s payer\'s own key (inner#1953)', (ownKey, whose) => {
+    setup({ blocked: true, ownKey });
     expect(screen.getByTestId('chat-waiting-tray')).toHaveTextContent('web search, image search and page reading run on our services and are paid in credits');
+    expect(screen.getByTestId('chat-waiting-tray')).toHaveTextContent(whose);
   });
 
   it.each([

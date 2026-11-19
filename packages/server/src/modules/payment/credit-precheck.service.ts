@@ -123,15 +123,16 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
  * turn that could not pay for them is refused before it starts. The refusal then says why the own key is not enough.
  * @param projectId - The turn's project.
  * @param userId - The authenticated caller.
- * @param onOwnKey - Whether the turn's model runs on the payer's own key.
+ * @param keyOwner - The account whose own key runs the turn's model; undefined on our keys.
  * @throws {AppError} 402 when the balance is not above zero.
  */
-export async function precheckAgentTurn(projectId: string, userId: string, onOwnKey: boolean): Promise<void> {
+export async function precheckAgentTurn(projectId: string, userId: string, keyOwner: string | undefined): Promise<void> {
   try {
     await precheckCredits(projectId, userId, SMALLEST_CREDIT);
   } catch (err) {
-    if (!onOwnKey || !(err instanceof AppError) || err.statusCode !== 402) throw err;
-    throw new AppError(402, t("server.credit.agent_tools_need_credits", { refusal: err.message }), err.reason);
+    if (keyOwner === undefined || !(err instanceof AppError) || err.statusCode !== 402) throw err;
+    const whose = keyOwner === userId ? "self" : "admin";
+    throw new AppError(402, t("server.credit.agent_tools_need_credits", { refusal: err.message, whose }), err.reason);
   }
 }
 

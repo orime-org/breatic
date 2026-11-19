@@ -47,7 +47,7 @@ import { agentInstructionsService } from "@server/modules";
 import { runningTurnsService } from "@server/modules";
 import { projectService } from "@server/modules";
 import { precheckAgentTurn, precheckCredits } from "@server/modules";
-import { SMALLEST_CREDIT, keysById, resolveKeys } from "@breatic/domain";
+import { SMALLEST_CREDIT, keyOwnerOf, keysById, resolveKeys } from "@breatic/domain";
 import type { KeySet } from "@breatic/provider";
 import { startRun, stopChannel } from "@server/agent/chat-run.js";
 import { runStreams } from "@server/agent/run-stream.js";
@@ -262,12 +262,16 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
   // segment ran on, read back by id. Null when that row is gone: the resumed run then ends failed on its own stream,
   // saying so, without asking a model.
   let keys: KeySet | undefined | null;
+  // The account whose key that is, so a refusal says whether it is the caller's own or the Studio Admin's.
+  let keyOwner: string | undefined;
   if (resumed === undefined) {
     const resolved = await resolveKeys({ projectId: body.project_id }, { kind: "llm" });
     keys = resolved.keyId === null ? undefined : resolved.keys;
+    keyOwner = resolved.payerUserId ?? undefined;
   }
   else if (keyId === undefined) keys = undefined;
   else {
+    keyOwner = await keyOwnerOf(keyId);
     try {
       keys = (await keysById(keyId))?.keys;
     } catch (err) {
@@ -277,7 +281,7 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
   }
   // A turn needs a balance above zero to start (#296), on the payer's own key too (inner#1953). Payments off: no
   // check. Checked before an answer is taken, so a refused answer leaves the card waiting.
-  await precheckAgentTurn(body.project_id, user.id, keys !== undefined);
+  await precheckAgentTurn(body.project_id, user.id, keys === undefined ? undefined : keyOwner);
 
   // A message in the project's Agent chat is a collaboration action (inner#1442
   // §4.8). Reported alongside the turn; it never rejects.
@@ -413,9 +417,10 @@ chat.post(
       } catch (err) {
         if (!(err instanceof AppError) || err.statusCode !== 402) throw err;
         // On the payer's own OpenRouter key the page says the Agent's paid tools are what need credits (inner#1953).
-        const onOwnKey = (await resolveKeys({ projectId }, { kind: "llm" })).keyId !== null;
+        const { payerUserId } = await resolveKeys({ projectId }, { kind: "llm" });
+        const ownKey = payerUserId === null ? undefined : payerUserId === user.id ? "self" : "admin";
         return c.json({
-          data: { pending: pendingOf(await queue.pending(conversation.id)), running: false, awaiting: false, blocked: "credits", ...(onOwnKey ? { own_key: true } : {}), next_sync_ms },
+          data: { pending: pendingOf(await queue.pending(conversation.id)), running: false, awaiting: false, blocked: "credits", ...(ownKey === undefined ? {} : { own_key: ownKey }), next_sync_ms },
         });
       }
       const claimed = await queue.claim(conversation.id);

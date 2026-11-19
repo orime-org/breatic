@@ -28,7 +28,7 @@
       "refund_already_spent": "這筆的點數已經用過，不能退款。",
       "refund_window_closed": "這筆的退款期限已過。",
       "refund_state_changed": "這筆的退款狀態已經變了，請重新整理後再試。",
-      "agent_tools_need_credits": "{refusal}你自己的 OpenRouter key 只支付 Agent 的模型；聯網搜尋、圖片搜尋和網頁讀取走我們的服務，要用點數支付。"
+      "agent_tools_need_credits": "{refusal}{whose, select, self {你自己的 OpenRouter key} other {Studio Admin 的 OpenRouter key}}只支付 Agent 的模型；聯網搜尋、圖片搜尋和網頁讀取走我們的服務，要用點數支付。"
     },
     "auth": {
       "invalid_credentials": "電子郵件或密碼錯誤",
@@ -453,7 +453,7 @@
         "noConnection": "連不上服務，稍後可以再試",
         "refused": "服務沒有接受這次請求",
         "unavailable": "這項功能暫時無法使用",
-        "accountKey": "BYOK 設定裡儲存的 key 無法使用",
+        "accountKey": "這個 Studio 用的 BYOK key 無法使用",
         "badAnswer": "服務回傳的內容無法使用",
         "linkUnreachable": "這個網址打不開，可以換一個連結",
         "fileTooLarge": "檔案太大",

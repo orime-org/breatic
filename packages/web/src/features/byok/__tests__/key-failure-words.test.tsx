@@ -31,7 +31,7 @@ vi.mock('@web/data/api/byok', () => ({ byokApi: { keyPlan: (projectId: string) =
  * @returns The plan.
  */
 function plan(payer: 'self' | 'admin'): KeyPlan {
-  return { payer, llm: { usesAccountKey: true }, models: {}, upstreamNames: { wavespeed: 'WaveSpeed Cloud', openrouter: 'OpenRouter' } };
+  return { payer, payerUserId: null, llm: { usesAccountKey: true }, models: {}, upstreamNames: { wavespeed: 'WaveSpeed Cloud', openrouter: 'OpenRouter' } };
 }
 
 /**

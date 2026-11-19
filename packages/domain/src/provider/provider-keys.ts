@@ -25,13 +25,15 @@ export interface ResolvedKeys {
   route: Route;
   /** The `account_provider_keys` row, or null for the deployment's keys. */
   keyId: string | null;
+  /** The account whose key it is, or null for the deployment's keys. */
+  payerUserId: string | null;
 }
 
 /** The deployment's keys, read through this process's provider when a call uses one. */
 const DEPLOYMENT_KEYS: KeySet = { owner: "deployment", keyOf: (upstream) => provider().deploymentKeys.keyOf(upstream) };
 
 /** A call on the deployment's keys and the model's weights. */
-const ON_DEPLOYMENT: ResolvedKeys = { keys: DEPLOYMENT_KEYS, route: { mode: "default" }, keyId: null };
+const ON_DEPLOYMENT: ResolvedKeys = { keys: DEPLOYMENT_KEYS, route: { mode: "default" }, keyId: null, payerUserId: null };
 
 /**
  * An account's key set: one key, for one upstream.
@@ -69,6 +71,7 @@ export async function resolveKeys(payer: KeyPayer, purpose: KeyPurpose): Promise
     keys: accountKeySet(found.upstream, openProviderKey(found.ciphertext, masterKeys)),
     route: purpose.kind === "media" ? { mode: "upstream", upstream: found.upstream } : { mode: "default" },
     keyId: found.keyId,
+    payerUserId: found.payerUserId,
   };
 }
 
@@ -90,6 +93,15 @@ export async function keysById(keyId: string | null): Promise<{ keys: KeySet } |
     throw new AccountKeyFailure("", "account_key_missing", found === null ? {} : { upstream: found.upstream });
   }
   return { keys: accountKeySet(found.upstream, openProviderKey(found.ciphertext, masterKeys)) };
+}
+
+/**
+ * The account a key row belongs to, live or retired, so a failure on it can say whose key it was.
+ * @param keyId - The row a task, turn or execution recorded, or null for the deployment's keys.
+ * @returns The account's id, or undefined for our keys or an id no row has.
+ */
+export async function keyOwnerOf(keyId: string | null): Promise<string | undefined> {
+  return keyId === null ? undefined : (await providerKeyById(keyId))?.userId;
 }
 
 /**

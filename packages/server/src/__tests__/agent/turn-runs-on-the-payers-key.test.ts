@@ -25,6 +25,7 @@ const h = vi.hoisted(() => ({
   chargeOnce: vi.fn(async (..._args: unknown[]): Promise<unknown> => null),
   resolveKeys: vi.fn(),
   keysById: vi.fn(),
+  keyOwnerOf: vi.fn(async (_id: string | null): Promise<string | undefined> => "payer-account"),
   failWith: { value: undefined as Error | undefined },
   model: undefined as MockLanguageModelV4 | undefined,
 }));
@@ -83,6 +84,7 @@ vi.mock("@breatic/domain", async () => {
     createUsageRecorder: vi.fn(recorder),
     resolveKeys: h.resolveKeys,
     keysById: h.keysById,
+    keyOwnerOf: h.keyOwnerOf,
     provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => {
       h.model = h.failWith.value === undefined ? modelProducing(parts) : modelFailingToStart(h.failWith.value);
       return h.model;
@@ -148,7 +150,7 @@ beforeEach(() => {
   h.failWith.value = undefined;
   // A model left by an earlier case would answer for a turn that prepared none.
   h.model = undefined;
-  h.resolveKeys.mockResolvedValue({ keys: ACCOUNT, keyId: "key-1", route: { mode: "default" } });
+  h.resolveKeys.mockResolvedValue({ keys: ACCOUNT, keyId: "key-1", route: { mode: "default" }, payerUserId: "payer-account" });
   h.keysById.mockResolvedValue({ keys: ACCOUNT });
 });
 
@@ -175,7 +177,7 @@ describe("a chat turn on the payer's OpenRouter key", () => {
   });
 
   it("is charged, and records no key row, on the deployment's keys", async () => {
-    h.resolveKeys.mockResolvedValue({ keys: DEPLOYMENT, keyId: null, route: { mode: "default" } });
+    h.resolveKeys.mockResolvedValue({ keys: DEPLOYMENT, keyId: null, route: { mode: "default" }, payerUserId: null });
     await drain(() => new MainAgent().chat("hi"));
 
     expect(h.chargeOnce).toHaveBeenCalledTimes(1);
@@ -188,7 +190,7 @@ describe("a chat turn on the payer's OpenRouter key", () => {
 
     expect(sent).toContainEqual(expect.objectContaining({
       type: "data-failed",
-      data: expect.objectContaining({ reason: "account_key_failed", upstream: "openrouter", keyReason: "no_balance" }),
+      data: expect.objectContaining({ reason: "account_key_failed", upstream: "openrouter", keyReason: "no_balance", keyOwner: "payer-account" }),
     }));
     expect(h.chargeOnce).not.toHaveBeenCalled();
     expect(JSON.stringify(sent)).not.toContain(ACCOUNT_KEY);
@@ -209,7 +211,8 @@ describe("a segment resumed by an answer to its card", () => {
     h.keysById.mockRejectedValue(Object.assign(new Error("the key row is gone"), { kind: "account_key_missing" }));
     await drain(() => new MainAgent().answer("ask-1", { answers: [] }, 3, undefined, "UTC", {}, "deepseek/deepseek-v4.1-flash-1017", "openrouter", { resumeKeyId: "key-1" }));
 
-    expect(sent).toContainEqual(expect.objectContaining({ type: "data-failed", data: expect.objectContaining({ reason: "account_key_missing" }) }));
+    expect(sent).toContainEqual(expect.objectContaining({ type: "data-failed", data: expect.objectContaining({ reason: "account_key_missing", keyOwner: "payer-account" }) }));
+    expect(h.keyOwnerOf).toHaveBeenCalledWith("key-1");
     expect(h.model?.doStreamCalls ?? []).toHaveLength(0);
     expect(h.resolveKeys).not.toHaveBeenCalled();
     expect(h.chargeOnce).not.toHaveBeenCalled();

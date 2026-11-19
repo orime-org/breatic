@@ -28,7 +28,7 @@
       "refund_already_spent": "この購入のクレジットは使用済みのため、返金できません。",
       "refund_window_closed": "この購入の返金期限は終了しました。",
       "refund_state_changed": "この購入の返金状況が変わりました。再読み込みしてからもう一度お試しください。",
-      "agent_tools_need_credits": "{refusal}ご自身の OpenRouter キーで支払われるのは Agent のモデルだけです。ウェブ検索、画像検索、ページの読み取りは当社のサービスで動くため、クレジットで支払われます。"
+      "agent_tools_need_credits": "{refusal}{whose, select, self {ご自身の OpenRouter キー} other {Studio Admin の OpenRouter キー}}で支払われるのは Agent のモデルだけです。ウェブ検索、画像検索、ページの読み取りは当社のサービスで動くため、クレジットで支払われます。"
     },
     "auth": {
       "invalid_credentials": "メールアドレスまたはパスワードが正しくありません",
@@ -453,7 +453,7 @@
         "noConnection": "サービスに接続できませんでした。しばらくしてから再試行してください",
         "refused": "サービスがこのリクエストを受け付けませんでした",
         "unavailable": "この機能は現在利用できません",
-        "accountKey": "BYOK 設定に保存したキーを使えませんでした",
+        "accountKey": "この Studio が使う BYOK キーを使えませんでした",
         "badAnswer": "サービスから使える結果が返ってきませんでした",
         "linkUnreachable": "このアドレスを開けません。別のリンクをお試しください",
         "fileTooLarge": "ファイルが大きすぎます",

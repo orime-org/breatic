@@ -22,8 +22,8 @@ import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, publishSpaceTasksChanged } from "@breatic/core";
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getUnderstandConfig, getAgentConfig } from "@breatic/core";
-import { costsOf, type Cost, type KeySet } from "@breatic/provider";
-import { failureOutcome, taskRepo, taskService, upstreamStepRepo } from "@breatic/domain";
+import { accountKeyFailureIn, costsOf, type Cost, type KeySet } from "@breatic/provider";
+import { failureOutcome, keyOwnerOf, taskRepo, taskService, upstreamStepRepo } from "@breatic/domain";
 import { creditHoldService, creditLotService, toChargeCredits } from "@breatic/domain";
 import { modelCatalog, nodeHistoryService, sceneTaskService } from "@breatic/domain";
 import {
@@ -687,11 +687,14 @@ async function runTaskBody(
     // Provider call failed. Safe to retry via BullMQ — no charge yet,
     // no provider_result_url recorded. The next retry enters this
     // function fresh.
+    // A failure of the payer's own key names whose key it was; both of a task's rows belong to the one payer.
+    const keyOwner = accountKeyFailureIn(err instanceof MediaRunFailed ? err.reason : err) === undefined ? undefined : await keyOwnerOf(keyId ?? llmKeyId);
     const errorMsg = storedFailure(
       taskType,
       err,
       typeof params.source_url === "string" ? params.source_url : undefined,
       isTranscription(params) ? "transcribe" : undefined,
+      keyOwner,
     );
     // The error itself, beside what the row will hold. A reading stores a
     // code of ours, and `internal` says only that a part of this broke —

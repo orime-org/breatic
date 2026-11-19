@@ -28,7 +28,7 @@
       "refund_already_spent": "这笔的积分已经用过，不能退款。",
       "refund_window_closed": "这笔的退款期限已过。",
       "refund_state_changed": "这笔的退款状态已经变了，请刷新后再试。",
-      "agent_tools_need_credits": "{refusal}你自己的 OpenRouter key 只支付 Agent 的模型；联网搜索、图片搜索和网页读取走我们的服务，要用积分支付。"
+      "agent_tools_need_credits": "{refusal}{whose, select, self {你自己的 OpenRouter key} other {Studio Admin 的 OpenRouter key}}只支付 Agent 的模型；联网搜索、图片搜索和网页读取走我们的服务，要用积分支付。"
     },
     "text_tool": {
       "selection_too_long": "选中的内容太长，AI 处理不了：{actual} 个字符，上限是 {limit}。",
@@ -453,7 +453,7 @@
         "noConnection": "连不上服务，稍后可以再试",
         "refused": "服务没有接受这次请求",
         "unavailable": "这项功能暂时不可用",
-        "accountKey": "BYOK 设置里保存的 key 用不了",
+        "accountKey": "这个 Studio 用的 BYOK key 用不了",
         "badAnswer": "服务返回的内容用不了",
         "linkUnreachable": "这个地址打不开，可以换一个链接",
         "fileTooLarge": "文件太大",

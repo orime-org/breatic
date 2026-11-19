@@ -12,8 +12,6 @@ import type {
   AskUserQuestion,
   CanvasProposal,
   ChatAttachedChip,
-  ChatKeyFailureReason,
-  ChatKeyRefusal,
   DocumentProposal,
   SceneGenerationProposal,
   SharedSpace,
@@ -21,6 +19,8 @@ import type {
   SpaceType,
   ToolFailureKind,
 } from '@breatic/shared';
+
+import type { KeyFailure } from '@web/data/api/key-failure';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -253,7 +253,7 @@ export interface ChatMessage {
    * The turn ran on the payer's own key and that key failed (inner#1953): refused by its upstream, replaced or
    * deleted, or its upstream could not be reached. The ending says which upstream and whose key, not a bare failure.
    */
-  keyFailure?: { reason: ChatKeyFailureReason; upstream?: string; keyReason?: ChatKeyRefusal };
+  keyFailure?: KeyFailure;
   /**
    * The turn hit the per-call output ceiling, so this stops mid-sentence.
    *

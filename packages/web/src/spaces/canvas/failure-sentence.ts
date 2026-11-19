@@ -4,7 +4,7 @@
 import { inputRefusalText, readTaskFailure, uploadableFormatList } from '@breatic/shared';
 
 import { getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
-import type { KeyFailureWords } from '@web/features/byok/key-failure-words';
+import { whoseKey, type KeyFailureWords } from '@web/features/byok/key-failure-words';
 import { formatBytes } from '@web/lib/format-bytes';
 import type { useTranslation } from '@web/i18n/use-translation';
 
@@ -100,7 +100,7 @@ export function failureSentence(
     // why (inner#1953). Always a value: ICU throws on a select with none, and the gone-key sentence selects on `none`
     // to drop the upstream a run did not record.
     upstream: held.upstream === undefined ? 'none' : (keys?.upstreamNames[held.upstream] ?? held.upstream),
-    whose: keys?.payer ?? 'other',
+    whose: whoseKey(keys, held.keyOwner),
     keyReason: held.keyReason ?? 'other',
   });
 }

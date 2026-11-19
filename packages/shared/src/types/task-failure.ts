@@ -207,6 +207,11 @@ export type TaskFailureDetail = {
   upstream?: string;
   /** Why that upstream turned the account's key down. */
   keyReason?: AccountKeyFailureReason;
+  /**
+   * The account whose key it was, so a viewer is told it was their own key, the current Studio Admin's or neither,
+   * after the Studio changes hands too.
+   */
+  keyOwner?: string;
 };
 
 /** A stored failure, read back; a type rather than an interface, so it reads as a plain record of its fields. */
@@ -239,6 +244,7 @@ export function encodeTaskFailure(
     ...(about.envVars !== undefined && about.envVars.length > 0 && { envVars: about.envVars }),
     ...(about.upstream !== undefined && about.upstream !== "" && { upstream: about.upstream }),
     ...(isKeyReason(about.keyReason) && { keyReason: about.keyReason }),
+    ...(about.keyOwner !== undefined && about.keyOwner !== "" && { keyOwner: about.keyOwner }),
   };
   return Object.keys(detail).length === 0
     ? reason
@@ -284,6 +290,7 @@ export function readTaskFailure(message: string | null): StoredTaskFailure {
     ...(Array.isArray(held.envVars) && held.envVars.length > 0 && held.envVars.every((v) => typeof v === "string") && { envVars: held.envVars }),
     ...(typeof held.upstream === "string" && held.upstream !== "" && { upstream: held.upstream }),
     ...(isKeyReason(held.keyReason) && { keyReason: held.keyReason }),
+    ...(typeof held.keyOwner === "string" && held.keyOwner !== "" && { keyOwner: held.keyOwner }),
   };
 }
 

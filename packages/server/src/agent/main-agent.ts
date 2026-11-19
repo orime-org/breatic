@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
 import { parseCreditDecimal } from "@breatic/shared";
 
 import { createUIMessageStream, stepCountIs, wrapLanguageModel } from "ai";
-import { keysById, provider, resolveKeys, streamTextRetry } from "@breatic/domain";
+import { keyOwnerOf, keysById, provider, resolveKeys, streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, Tool, ToolSet, UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
 import type { KeySet, PreparedCall } from "@breatic/provider";
 import {
@@ -105,8 +105,11 @@ const REPLIED_IN_CHAT: CardResult = { repliedInChat: true };
  */
 const FAILED_TEXT = "The assistant could not finish this turn.";
 
-/** The keys a turn runs on (inner#1953), or why they could not be read; undefined keys are the deployment's. */
-type TurnKeys = { keys: KeySet | undefined; keyId: string | null } | { failed: unknown };
+/**
+ * The keys a turn runs on (inner#1953), or why they could not be read; undefined keys are the deployment's. `keyOwner`
+ * is the account the key row belongs to, so a failure of it says whose key it was.
+ */
+type TurnKeys = ({ keys: KeySet | undefined; keyId: string | null } | { failed: unknown }) & { keyOwner?: string };
 
 /** A turn on our keys. */
 const ON_OUR_KEYS: TurnKeys = { keys: undefined, keyId: null };
@@ -138,7 +141,7 @@ export class MainAgent {
     try {
       const resolved = await resolveKeys({ projectId: this.ctx.projectId }, { kind: "llm" });
       // Our keys are provider's own default, so a turn on them hands provider none.
-      return resolved.keyId === null ? ON_OUR_KEYS : { keys: resolved.keys, keyId: resolved.keyId };
+      return resolved.payerUserId === null ? ON_OUR_KEYS : { keys: resolved.keys, keyId: resolved.keyId, keyOwner: resolved.payerUserId };
     } catch (err) {
       return { failed: err };
     }
@@ -152,11 +155,12 @@ export class MainAgent {
    */
   private async resumedKeys(keyId: string | undefined): Promise<TurnKeys> {
     if (keyId === undefined) return ON_OUR_KEYS;
+    const keyOwner = await keyOwnerOf(keyId);
     try {
       const found = await keysById(keyId);
-      return { keys: found?.keys, keyId };
+      return { keys: found?.keys, keyId, keyOwner };
     } catch (err) {
-      return { failed: err };
+      return { failed: err, keyOwner };
     }
   }
 
@@ -370,6 +374,7 @@ export class MainAgent {
     // records it for a resumed segment, and a later lookup asks with it. Null on our keys.
     const keyId = "failed" in turnKeys ? null : turnKeys.keyId;
     const keys = "failed" in turnKeys ? undefined : turnKeys.keys;
+    const { keyOwner } = turnKeys;
     const agentCfg = getAgentConfig();
     // The asking browser's choice, held for the end of the turn, which can
     // run after the request that started it has returned.
@@ -1385,7 +1390,7 @@ export class MainAgent {
       }
       if (failed !== undefined) {
         if (signal?.aborted !== true) sayThoughtFor(writer);
-        writer.write({ type: "data-failed", data: keyFailureFrame(streamFailure) });
+        writer.write({ type: "data-failed", data: keyFailureFrame(streamFailure, keyOwner) });
         writer.write(failed);
       }
       if (finished !== undefined) writer.write(finished);
@@ -1421,7 +1426,7 @@ export class MainAgent {
             // Said before the error frame the SDK writes for this throw: the
             // page draws a failed reply only from this mark (inner#1717).
             sayThoughtFor(writer);
-            writer.write({ type: "data-failed", data: keyFailureFrame(err) });
+            writer.write({ type: "data-failed", data: keyFailureFrame(err, keyOwner) });
             throw err;
           }
         } finally {

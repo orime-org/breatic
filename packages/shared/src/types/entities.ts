@@ -255,6 +255,8 @@ export type MessagePart =
     upstream?: string;
     /** Why the upstream refused the key, for `account_key_failed`. */
     keyReason?: ChatKeyRefusal;
+    /** The account the key belongs to, for an account-key reason. */
+    keyOwner?: string;
   }
   /**
    * A message the user sent while this turn ran, taken in at the step
@@ -1038,7 +1040,11 @@ export interface TimelineExecution {
 }
 
 /** One row `GET /timeline/executions` answers: the execution and the credits its usage rows add up to so far. */
-export type TimelineExecutionRow = TimelineExecution & { usageCredits: number };
+export type TimelineExecutionRow = TimelineExecution & {
+  usageCredits: number;
+  /** The account whose key a failure of the payer's own key failed on (inner#1953); absent for any other row. */
+  failureKeyOwner?: string;
+};
 
 /**
  * What `GET /timeline/web-sources` answers for the references of a document's web-animation copies (inner#1711

@@ -78,7 +78,7 @@ vi.mock("@server/config/text-tools.js", async (importOriginal) => ({
 const { executeTextTool } = await import("@server/modules/text-tool/text-tool.service.js");
 
 /** The keys the route settles for a payer with an OpenRouter key. */
-const ON_ACCOUNT = { keys: ACCOUNT, keyId: "key-1", route: { mode: "default" } } as const;
+const ON_ACCOUNT = { keys: ACCOUNT, keyId: "key-1", route: { mode: "default" }, payerUserId: "payer-account" } as const;
 
 /**
  * Read one run to its end.
@@ -122,7 +122,7 @@ describe("a text-tool run on the payer's OpenRouter key", () => {
   });
 
   it("is charged, naming no key row, on the deployment's keys", async () => {
-    await run({ keys: DEPLOYMENT, keyId: null, route: { mode: "default" } });
+    await run({ keys: DEPLOYMENT, keyId: null, route: { mode: "default" }, payerUserId: null });
 
     expect(h.chargeOnce).toHaveBeenCalledTimes(1);
     expect(h.opened[0]?.keyId ?? null).toBeNull();

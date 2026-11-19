@@ -90,7 +90,7 @@ describe('TranscribePanelContainer', () => {
     ['self', 'Uses your key, no credits'],
     ['admin', 'Uses the Studio\'s key, no credits'],
   ] as const)('says whose key runs it when the %s payer\'s OpenRouter key does (inner#1953)', async (payer, words) => {
-    keyPlan.current = { payer, llm: { usesAccountKey: true }, models: {}, upstreamNames: {} } satisfies KeyPlan;
+    keyPlan.current = { payer, payerUserId: null, llm: { usesAccountKey: true }, models: {}, upstreamNames: {} } satisfies KeyPlan;
     render(tree(vi.fn()));
     expect(await screen.findByText(words)).toBeInTheDocument();
     expect(screen.getByTestId('transcribe-credit')).not.toHaveTextContent('Billed by usage');

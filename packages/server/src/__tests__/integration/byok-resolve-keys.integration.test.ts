@@ -152,6 +152,7 @@ describe("resolveKeys: whose keys", () => {
 
     const resolved = await resolveKeys({ studioId }, LLM);
     expect(resolved.keyId).toBe(adminKey);
+    expect(resolved.payerUserId).toBe(admin);
     expect(resolved.keys.keyOf("openrouter")).toBe("sk-or-v1-admin-key");
   });
 

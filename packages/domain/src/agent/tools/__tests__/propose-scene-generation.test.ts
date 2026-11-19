@@ -187,7 +187,7 @@ describe("a run no upstream here takes (#1521)", () => {
 
   it("asks on the upstream and key the Studio's payer runs the model on (inner#1953)", async () => {
     const keys = { owner: "account" as const, keyOf: () => "ws-account-key" };
-    vi.mocked(resolveKeys).mockResolvedValueOnce({ keys, route: { mode: "upstream", upstream: "wavespeed" }, keyId: "key-row-1" });
+    vi.mocked(resolveKeys).mockResolvedValueOnce({ keys, route: { mode: "upstream", upstream: "wavespeed" }, keyId: "key-row-1", payerUserId: "payer-account" });
     await propose(TEXT_TO_3D);
     expect(vi.mocked(resolveKeys)).toHaveBeenLastCalledWith({ projectId: PROJECT_ID }, { kind: "media", model: "tripo-h3.1-t23d" });
     expect(vi.mocked(inputRefusalFor)).toHaveBeenLastCalledWith("tripo-h3.1-t23d", expect.any(Object), { mode: "upstream", upstream: "wavespeed" }, keys);

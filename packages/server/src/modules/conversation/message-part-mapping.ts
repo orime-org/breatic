@@ -147,12 +147,13 @@ const KEY_REFUSALS: ReadonlySet<string> = new Set(ACCOUNT_KEY_FAILURE_REASONS);
 
 /**
  * A failed mark, as the store keeps it: its reason when it is one the reply keeps, and for a failure of the payer's
- * own key (inner#1953) the upstream and the key's own reason, so a reload still tells the user what to do.
+ * own key (inner#1953) the upstream, the key's own reason and whose key it was, so a reload still tells the user what to
+ * do.
  * @param data - The mark's data as it was streamed.
  * @returns The stored part.
  */
 function storedFailure(data: unknown): Extract<MessagePart, { type: "failed" }> {
-  const { reason, upstream, keyReason } = (data ?? {}) as { reason?: unknown; upstream?: unknown; keyReason?: unknown };
+  const { reason, upstream, keyReason, keyOwner } = (data ?? {}) as { reason?: unknown; upstream?: unknown; keyReason?: unknown; keyOwner?: unknown };
   if (typeof reason !== "string" || !STORED_FAILURE_REASONS.has(reason)) return { type: "failed" };
   const kept = { type: "failed", reason } as Extract<MessagePart, { type: "failed" }>;
   if (reason === "too_long" || reason === "shutdown") return kept;
@@ -160,6 +161,7 @@ function storedFailure(data: unknown): Extract<MessagePart, { type: "failed" }> 
     ...kept,
     ...(typeof upstream === "string" && upstream !== "" ? { upstream } : {}),
     ...(typeof keyReason === "string" && KEY_REFUSALS.has(keyReason) ? { keyReason: keyReason as ChatKeyRefusal } : {}),
+    ...(typeof keyOwner === "string" && keyOwner !== "" ? { keyOwner } : {}),
   };
 }
 

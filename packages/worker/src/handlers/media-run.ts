@@ -110,9 +110,7 @@ export interface MediaRunDone {
 function failureMessage(reason: Error, displayName: string): string {
   // An account's own key failed or is gone (inner#1953): the row names the key's code, the model, the upstream and why.
   const keyFailure = accountKeyFailureIn(reason);
-  if (keyFailure !== undefined) {
-    return encodeTaskFailure(keyFailure.kind, { model: displayName, upstream: keyFailure.upstream, keyReason: keyFailure.reason });
-  }
+  if (keyFailure !== undefined) return keyFailureStored(keyFailure, { model: displayName });
   if (reason instanceof UpstreamTaskFailed) return `${reason.upstream} task failed: ${reason.upstreamError}`;
   if (reason instanceof NoUpstreamAvailable && reason.reasons.length > 0 && reason.reasons.every((r) => r.kind === "missing_key")) {
     const envVars = reason.reasons.map((r) => (r.kind === "missing_key" ? r.envVar : ""));
@@ -129,6 +127,17 @@ function failureMessage(reason: Error, displayName: string): string {
 }
 
 /** A run provider answered failed: an upstream refused or failed it, or no upstream can take it. */
+/**
+ * What a row holds for a failure of an account's own key (inner#1953): the key's code, the upstream and why, beside what
+ * the caller knows (the model, the reading, whose key it was).
+ * @param keyFailure - The failure, as accountKeyFailureIn reads it.
+ * @param about - The rest the row names.
+ * @returns What the row stores.
+ */
+export function keyFailureStored(keyFailure: NonNullable<ReturnType<typeof accountKeyFailureIn>>, about: Parameters<typeof encodeTaskFailure>[1] = {}): string {
+  return encodeTaskFailure(keyFailure.kind, { ...about, upstream: keyFailure.upstream, keyReason: keyFailure.reason });
+}
+
 export class MediaRunFailed extends Error {
   /**
    * Record why, and what the run cost before it failed.
@@ -139,7 +148,7 @@ export class MediaRunFailed extends Error {
   constructor(
     readonly reason: Error,
     readonly costs: Cost[],
-    displayName: string,
+    readonly displayName: string,
   ) {
     super(failureMessage(reason, displayName), { cause: reason });
     this.name = "MediaRunFailed";

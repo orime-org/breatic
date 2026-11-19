@@ -51,6 +51,8 @@ export interface ByokView {
 export interface KeyPlan {
   /** The viewer's own key, or the Studio admin's. */
   payer: 'self' | 'admin';
+  /** The account that pays for the Studio; null when it has none. */
+  payerUserId: string | null;
   /** Whether language model calls run on the payer's OpenRouter key. */
   llm: { usesAccountKey: boolean };
   /** Non-language models on the payer's key, with the availability counted on that payer's keys. */

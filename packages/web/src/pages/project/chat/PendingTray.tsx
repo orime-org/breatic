@@ -24,8 +24,8 @@ interface PendingTrayProps {
   awaiting: boolean;
   /** The balance cannot pay for the run these would open. */
   blocked: boolean;
-  /** Beside `blocked`: the payer's own key runs the model, and the balance pays for the Agent's paid tools. */
-  ownKey?: boolean;
+  /** Beside `blocked`: whose own key runs the model, so the balance pays for the Agent's paid tools; null on our keys. */
+  ownKey?: 'self' | 'admin' | null;
   /** Which messages are being taken back, and how. */
   busy: Readonly<Record<string, 'retract' | 'delete'>>;
   /** Take a message back into the box, or delete it. */
@@ -77,15 +77,15 @@ function TrayButton({ label, icon, busy, onPress, testId }: TrayButtonProps): Re
  * @param root0.items - The messages waiting.
  * @param root0.awaiting - A card waits for an answer first.
  * @param root0.blocked - The balance cannot pay.
- * @param root0.ownKey - The payer's own key runs the model, so the balance pays for the paid tools.
+ * @param root0.ownKey - Whose own key runs the model, so the balance pays for the paid tools; null on our keys.
  * @param root0.busy - Which are being taken back.
  * @param root0.onTakeBack - Take one back or delete it.
  * @returns The area, or nothing while nothing waits.
  */
-function PendingTrayInner({ items, awaiting, blocked, ownKey = false, busy, onTakeBack }: PendingTrayProps): React.JSX.Element | null {
+function PendingTrayInner({ items, awaiting, blocked, ownKey = null, busy, onTakeBack }: PendingTrayProps): React.JSX.Element | null {
   const t = useTranslation();
   if (items.length === 0) return null;
-  const short = ownKey ? t('server.credit.agent_tools_need_credits', { refusal: t('chat.waiting.blocked') }) : t('chat.waiting.blocked');
+  const short = ownKey === null ? t('chat.waiting.blocked') : t('server.credit.agent_tools_need_credits', { refusal: t('chat.waiting.blocked'), whose: ownKey });
   const note = blocked ? short : awaiting ? t('chat.waiting.awaitingCard') : null;
   return (
     <div data-testid='chat-waiting-tray' className='mx-[var(--space-5)] -mb-[var(--space-3)] rounded-chrome border border-border bg-card'>

@@ -135,6 +135,29 @@ async function seedOwner(credits: number): Promise<Seeded & { lotId?: string }> 
 }
 
 /**
+ * A maintainer of the owner's Studio on the same project, signed in, with a conversation of their own.
+ * @param owner - The seeded owner.
+ * @returns The member's ids and cookie.
+ */
+async function memberOf(owner: Seeded): Promise<Seeded> {
+  const tag = `run-member-${crypto.randomBytes(4).toString("hex")}`;
+  const [user] = await sql<{ id: string }[]>`INSERT INTO users (email, email_verified) VALUES (${`${tag}@example.com`}, true) RETURNING id`;
+  const [project] = await sql<{ studio_id: string }[]>`SELECT studio_id FROM projects WHERE id = ${owner.projectId}`;
+  await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${project!.studio_id}, ${user!.id}, 'maintainer')`;
+  await sql`INSERT INTO project_members (project_id, user_id, role, added_by) VALUES (${owner.projectId}, ${user!.id}, 'editor', ${owner.userId})`;
+  const token = crypto.randomBytes(24).toString("hex");
+  await setSession(getRedis(), token, user!.id);
+  const cookie = `${sessionCookieName()}=${token}`;
+  const opened = await app.request("/api/v1/chat/open", {
+    method: "POST",
+    headers: { Cookie: cookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ project_id: owner.projectId }),
+  });
+  const conversationId = ((await opened.json()) as { data: { current: { conversation: { id: string } } } }).data.current.conversation.id;
+  return { userId: user!.id, projectId: owner.projectId, conversationId, cookie };
+}
+
+/**
  * Spend a studio's whole balance.
  * @param lotId - Its one lot.
  */
@@ -175,7 +198,7 @@ interface Synced {
   running: boolean;
   awaiting: boolean;
   blocked?: string;
-  own_key?: boolean;
+  own_key?: "self" | "admin";
 }
 
 /**
@@ -233,14 +256,27 @@ describe("a send on the payer's own OpenRouter key the balance cannot pay for (i
     expect(res.status).toBe(402);
     const body = (await res.json()) as { error: { message: string } };
     expect(body.error.message).toContain("web search, image search and page reading");
+    expect(body.error.message).toContain("Your own OpenRouter key");
     expect(await snapshotOf(who.conversationId)).toEqual(before);
+  });
+
+  it("tells a team member it is the Studio Admin's key, not their own", async () => {
+    const admin = await seedOwner(0);
+    await ownKey(admin);
+    const member = await memberOf(admin);
+    const res = await send(app, member, { id: crypto.randomUUID(), message: "hello" });
+    expect(res.status).toBe(402);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain("The Studio Admin's OpenRouter key");
+    await getRedis().rpush(keysOf(member.conversationId).queue, itemOf(member, crypto.randomUUID()));
+    expect(await synced(member)).toMatchObject({ blocked: "credits", own_key: "admin" });
   });
 
   it("says the balance is why no run opened for what is queued", async () => {
     const who = await seedOwner(0);
     await ownKey(who);
     await getRedis().rpush(keysOf(who.conversationId).queue, itemOf(who, crypto.randomUUID()));
-    expect(await synced(who)).toMatchObject({ blocked: "credits", own_key: true });
+    expect(await synced(who)).toMatchObject({ blocked: "credits", own_key: "self" });
   });
 });
 

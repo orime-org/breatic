@@ -500,14 +500,22 @@ describe("GET /timeline/executions", () => {
     const fx = await seedProject(0);
     const failed = await insertExecution(fx.projectId, fx.spaceId, fx.owner.userId);
     const plain = await insertExecution(fx.projectId, fx.spaceId, fx.owner.userId);
-    await sql`UPDATE timeline_executions SET status = 'failed', failure_reason = 'account_key_failed', failure_upstream = 'openrouter', failure_key_reason = 'no_balance' WHERE id = ${failed.id}`;
+    // The run went out on the owner's OpenRouter key row, since retired; the row still names whose key it was.
+    const [key] = await sql<{ id: string }[]>`
+      INSERT INTO account_provider_keys (user_id, upstream, ciphertext, display_hint, deleted_at)
+      VALUES (${fx.owner.userId}, 'openrouter', NULL, 'sk-or…1234', now()) RETURNING id
+    `;
+    await sql`UPDATE timeline_executions SET status = 'failed', failure_reason = 'account_key_failed', failure_upstream = 'openrouter', failure_key_reason = 'no_balance', llm_key_id = ${key!.id} WHERE id = ${failed.id}`;
     const res = await app.request(`/api/v1/timeline/executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}`, {
       headers: { Cookie: fx.viewer.cookie },
     });
-    const { data } = (await res.json()) as { data: TimelineExecution[] };
+    const { data } = (await res.json()) as { data: (TimelineExecution & { failureKeyOwner?: string })[] };
 
-    expect(data.find((row) => row.id === failed.id)).toMatchObject({ failureReason: "account_key_failed", failureUpstream: "openrouter", failureKeyReason: "no_balance" });
+    expect(data.find((row) => row.id === failed.id)).toMatchObject({
+      failureReason: "account_key_failed", failureUpstream: "openrouter", failureKeyReason: "no_balance", failureKeyOwner: fx.owner.userId,
+    });
     expect(data.find((row) => row.id === plain.id)).toMatchObject({ failureUpstream: null, failureKeyReason: null });
+    expect(data.find((row) => row.id === plain.id)).not.toHaveProperty("failureKeyOwner");
   });
 
   it("answers an outsider with 404", async () => {

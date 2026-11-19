@@ -131,6 +131,7 @@ async function saveKey(userId: string, upstream: string, key: string): Promise<{
 /** The plan as the panel reads it. */
 interface KeyPlan {
   payer: "self" | "admin";
+  payerUserId: string | null;
   llm: { usesAccountKey: boolean };
   models: Record<string, { upstream: string; availability: { upstreams: { upstream: string; configured: boolean }[] } }>;
   upstreamNames: Record<string, string>;
@@ -225,6 +226,7 @@ describe("GET /api/v1/projects/:id/key-plan", () => {
     const asMember = await keyPlan(member.cookie, projectId);
     expect(asMember.status).toBe(200);
     expect(asMember.plan!.payer).toBe("admin");
+    expect(asMember.plan!.payerUserId).toBe(admin.userId);
     expect(asMember.plan!.llm.usesAccountKey).toBe(false);
     expect(asMember.plan!.models[MODEL]!.upstream).toBe("fal");
     expectNoKeyTrace(asMember.text, saved);

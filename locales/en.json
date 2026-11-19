@@ -28,7 +28,7 @@
       "refund_already_spent": "Credits from this purchase have been spent, so it cannot be refunded.",
       "refund_window_closed": "The refund window for this purchase has closed.",
       "refund_state_changed": "This purchase's refund status has changed. Refresh and try again.",
-      "agent_tools_need_credits": "{refusal} Your own OpenRouter key pays for the Agent's model, but web search, image search and page reading run on our services and are paid in credits."
+      "agent_tools_need_credits": "{refusal} {whose, select, self {Your own OpenRouter key} other {The Studio Admin's OpenRouter key}} pays for the Agent's model, but web search, image search and page reading run on our services and are paid in credits."
     },
     "auth": {
       "invalid_credentials": "Invalid email or password",
@@ -453,7 +453,7 @@
         "noConnection": "couldn't reach the service, try again later",
         "refused": "the service didn't accept this request",
         "unavailable": "this feature is unavailable right now",
-        "accountKey": "the key saved in BYOK settings couldn't be used",
+        "accountKey": "the BYOK key this Studio runs on couldn't be used",
         "badAnswer": "the service returned something unusable",
         "linkUnreachable": "this address can't be opened, try another link",
         "fileTooLarge": "the file is too large",

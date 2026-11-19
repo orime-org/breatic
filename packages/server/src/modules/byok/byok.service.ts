@@ -79,6 +79,8 @@ export interface ByokSettings {
 export interface KeyPlan {
   /** The caller's own keys, or the Studio admin's. */
   payer: "self" | "admin";
+  /** The account that pays for the Studio, so a key failure can say whether its key was the payer's; null with none. */
+  payerUserId: string | null;
   llm: { usesAccountKey: boolean };
   models: Record<string, { upstream: string; availability: ModelAvailability }>;
   /** Each upstream's name on screen, for a failure sentence that names the upstream a key failed on. */
@@ -309,11 +311,12 @@ export async function readKeyPlan(projectId: string, userId: string): Promise<Ke
   const studioId = await projectsRepo.findOwnerStudioId(projectId);
   const plan = studioId === undefined ? null : await studioKeyPlan(studioId);
   const payer = plan === null || plan.payerUserId === userId ? "self" : "admin";
+  const payerUserId = plan?.payerUserId ?? null;
   const upstreamNames = Object.fromEntries(Object.keys(provider().config.upstreams).map((u) => [u, listingOf(u).name]));
-  if (plan === null || ring() === null) return { payer, llm: { usesAccountKey: false }, models: {}, upstreamNames };
+  if (plan === null || ring() === null) return { payer, payerUserId, llm: { usesAccountKey: false }, models: {}, upstreamNames };
   const models: KeyPlan["models"] = {};
   for (const [model, upstream] of Object.entries(plan.models)) {
     models[model] = { upstream, availability: provider().availability(model, heldOnly(upstream)) };
   }
-  return { payer, llm: { usesAccountKey: plan.upstreams.includes(ACCOUNT_LLM_UPSTREAM) }, models, upstreamNames };
+  return { payer, payerUserId, llm: { usesAccountKey: plan.upstreams.includes(ACCOUNT_LLM_UPSTREAM) }, models, upstreamNames };
 }

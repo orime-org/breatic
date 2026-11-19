@@ -103,9 +103,28 @@ describe('a model run refused here', () => {
 // inner#1953: a run on the payer's own key that failed names the upstream as the user knows it, and whose key it was.
 describe('a run on an account key that failed', () => {
   const names = { wavespeed: 'WaveSpeed Cloud' };
-  const own = { payer: 'self', upstreamNames: names } as const;
-  const admins = { payer: 'admin', upstreamNames: names } as const;
+  const own = { payer: 'self', payerUserId: 'u-admin', viewerUserId: 'u-admin', upstreamNames: names } as const;
+  const admins = { payer: 'admin', payerUserId: 'u-admin', viewerUserId: 'u-member', upstreamNames: names } as const;
   const noBalance = encodeTaskFailure('account_key_failed', { upstream: 'wavespeed', keyReason: 'no_balance' });
+
+  it('names the owner the failure recorded, after the Studio changed hands too', () => {
+    setLocale('en');
+    const t = renderHook(() => useTranslation()).result.current;
+    const onOldAdmins = encodeTaskFailure('account_key_failed', { upstream: 'wavespeed', keyReason: 'no_balance', keyOwner: 'u-old' });
+    // The former admin, now a member, reads it as their own key.
+    expect(failureSentence(onOldAdmins, t, undefined, { ...admins, viewerUserId: 'u-old' })).toBe(
+      'Your WaveSpeed Cloud key is out of balance. Top up at WaveSpeed Cloud.',
+    );
+    // The new admin and any member read it as neither their own nor the current Studio Admin's.
+    expect(failureSentence(onOldAdmins, t, undefined, own)).toBe('The WaveSpeed Cloud key is out of balance. Top up at WaveSpeed Cloud.');
+    expect(failureSentence(onOldAdmins, t, undefined, admins)).toBe('The WaveSpeed Cloud key is out of balance. Top up at WaveSpeed Cloud.');
+    // A failure on the current admin's key reads as it always did.
+    const onAdmins = encodeTaskFailure('account_key_failed', { upstream: 'wavespeed', keyReason: 'no_balance', keyOwner: 'u-admin' });
+    expect(failureSentence(onAdmins, t, undefined, own)).toBe('Your WaveSpeed Cloud key is out of balance. Top up at WaveSpeed Cloud.');
+    expect(failureSentence(onAdmins, t, undefined, admins)).toBe(
+      'The Studio Admin\'s WaveSpeed Cloud key is out of balance. Ask the Studio Admin to top up at WaveSpeed Cloud.',
+    );
+  });
 
   it('tells the payer it is their own key, by the upstream\'s name', () => {
     setLocale('en');

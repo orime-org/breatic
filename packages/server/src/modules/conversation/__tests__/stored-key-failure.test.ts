@@ -17,6 +17,7 @@ type UiParts = UIMessage["parts"];
 describe("a turn failed on an account key, stored and read back", () => {
   it.each([
     [{ reason: "account_key_failed", upstream: "openrouter", keyReason: "no_balance" }],
+    [{ reason: "account_key_failed", upstream: "openrouter", keyReason: "no_balance", keyOwner: "payer-account" }],
     [{ reason: "account_key_missing" }],
     [{ reason: "upstream_unavailable", upstream: "fal" }],
   ])("keeps %o", (data) => {

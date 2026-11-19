@@ -32,7 +32,7 @@ import { randomBytes } from "node:crypto";
 import fc from "fast-check";
 import postgres from "postgres";
 import { accountProviderKeysRepo, initCore, sealProviderKey } from "@breatic/core";
-import { accountKeyFailureIn, keysById } from "@breatic/domain";
+import { accountKeyFailureIn, keyOwnerOf, keysById } from "@breatic/domain";
 
 const SECRET = randomBytes(32);
 const RING = { current: "t1", keys: { t1: SECRET } };
@@ -148,6 +148,17 @@ describe("keysById", () => {
     } finally {
       initCore({ ...process.env, PROVIDER_KEY_SECRET_ID: "t1", PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }) });
     }
+  });
+
+  it("names the account a row belongs to, live or retired, and none for our keys or an unknown id", async () => {
+    const userId = await seedUser();
+    const oldId = await saveKey(userId, "fal", "fal-owner-old");
+    const liveId = await saveKey(userId, "fal", "fal-owner-new");
+
+    expect(await keyOwnerOf(liveId)).toBe(userId);
+    expect(await keyOwnerOf(oldId)).toBe(userId);
+    expect(await keyOwnerOf(null)).toBeUndefined();
+    expect(await keyOwnerOf(crypto.randomUUID())).toBeUndefined();
   });
 
   it("fails as account_key_missing naming no upstream for an id no row has", async () => {

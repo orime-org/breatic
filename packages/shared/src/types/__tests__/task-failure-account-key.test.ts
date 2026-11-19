@@ -47,4 +47,15 @@ describe("the causes a run on an account's key can fail on", () => {
       upstream: "sandbase",
     });
   });
+
+  it("carries whose key it was, so the sentence still names the right owner after the Studio changes hands", () => {
+    const owner = "4f7a9c2e-0000-4000-8000-000000000001";
+    expect(readTaskFailure(encodeTaskFailure("account_key_failed", { upstream: "fal", keyReason: "no_balance", keyOwner: owner }))).toEqual({
+      reason: "account_key_failed",
+      upstream: "fal",
+      keyReason: "no_balance",
+      keyOwner: owner,
+    });
+    expect(readTaskFailure(JSON.stringify({ reason: "account_key_missing", keyOwner: 42 }))).not.toHaveProperty("keyOwner");
+  });
 });
