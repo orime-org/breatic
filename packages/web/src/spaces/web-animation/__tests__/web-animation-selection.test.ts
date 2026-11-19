@@ -3,62 +3,78 @@
 
 /**
  * Which result the Motion Space's preview shows (#1490 design §13.2, the table whose one writer is
- * `transitionWebAnimationSelection`). Every cell of the table is one case. A row that ended belongs to the
- * "done" tab and one still open to "running"; the effects ask the panels to show a tab or the page to toast.
+ * `transitionWebAnimationSelection`). Every cell of the table is one case. The preview only ever holds a succeeded
+ * row; a row still in progress or one that failed is revealed in the execution list instead, on its own tab and
+ * marked, and the preview keeps what it showed. While a row is fetched by id the preview keeps the row it showed.
  */
 
 import { describe, expect, it } from 'vitest';
 
 import {
-  transitionWebAnimationSelection, type SelectionEvent, type SelectionRow, type SelectionState,
+  tabOf, transitionWebAnimationSelection, type SelectionEvent, type SelectionRow, type SelectionState,
 } from '@web/spaces/web-animation/web-animation-selection';
 
 const A = 'a0000000-0000-4000-8000-000000000001';
 const B = 'b0000000-0000-4000-8000-000000000002';
 const C = 'c0000000-0000-4000-8000-000000000003';
+const T = 't0000000-0000-4000-8000-000000000001';
 
 const NONE: SelectionState = { status: 'none' };
-const T = 't0000000-0000-4000-8000-000000000001';
-const ROW_A: SelectionRow = { id: A, status: 'running' };
-const ROW_B: SelectionRow = { id: B, status: 'succeeded' };
-const ROW_C: SelectionRow = { id: C, status: 'succeeded' };
-const FETCHING: SelectionState = { status: 'fetching', executionId: B, requestId: 1, focusThreadId: null };
-const SELECTED: SelectionState = { status: 'selected', row: ROW_A, focusThreadId: null };
-const ON_C: SelectionState = { status: 'selected', row: ROW_C, focusThreadId: null };
+const RUNNING_A: SelectionRow = { id: A, status: 'running' };
+const DONE_B: SelectionRow = { id: B, status: 'succeeded' };
+const DONE_C: SelectionRow = { id: C, status: 'succeeded' };
+const FAILED_A: SelectionRow = { id: A, status: 'failed' };
+const ON_B: SelectionState = { status: 'selected', row: DONE_B, focusThreadId: null };
+const ON_C: SelectionState = { status: 'selected', row: DONE_C, focusThreadId: null };
+const fetching = (previous: SelectionRow | null, focusThreadId: string | null = null): SelectionState =>
+  ({ status: 'fetching', executionId: A, requestId: 1, focusThreadId, previous });
 
-const pick: SelectionEvent = { type: 'pick', row: ROW_C };
 type Accepted = Extract<SelectionEvent, { type: 'accepted' }>;
-const created: Accepted = { type: 'accepted', created: true, row: { id: C, status: 'queued' } };
-const existingDone: Accepted = { type: 'accepted', created: false, row: ROW_C };
-const existingRunning: Accepted = { type: 'accepted', created: false, row: { id: C, status: 'running' } };
+const created: Accepted = { type: 'accepted', row: { id: A, status: 'queued' } };
+const answeredDone: Accepted = { type: 'accepted', row: DONE_C };
+const answeredRunning: Accepted = { type: 'accepted', row: RUNNING_A };
+const reveal = (tab: 'running' | 'succeeded' | 'failed', executionId = A): { type: 'reveal'; tab: typeof tab; executionId: string } => ({ type: 'reveal', tab, executionId });
+
+describe('tabOf', () => {
+  it.each([
+    ['queued', 'running'], ['running', 'running'], ['cancelling', 'running'], ['awaiting_landing', 'running'],
+    ['succeeded', 'succeeded'], ['failed', 'failed'], ['cancelled', 'failed'], ['expired', 'failed'],
+  ] as const)('puts a %s row on the %s tab', (status, tab) => {
+    expect(tabOf(status)).toBe(tab);
+  });
+});
 
 describe('transitionWebAnimationSelection — nothing selected', () => {
-  it('selects a picked row', () => {
-    expect(transitionWebAnimationSelection(NONE, pick)).toEqual({ state: ON_C, effects: [] });
+  it('selects a picked row that succeeded, and ignores a pick of one in progress or failed', () => {
+    expect(transitionWebAnimationSelection(NONE, { type: 'pick', row: DONE_C })).toEqual({ state: ON_C, effects: [] });
+    expect(transitionWebAnimationSelection(NONE, { type: 'pick', row: RUNNING_A })).toEqual({ state: NONE, effects: [] });
+    expect(transitionWebAnimationSelection(NONE, { type: 'pick', row: FAILED_A })).toEqual({ state: NONE, effects: [] });
   });
 
-  it('selects a row a new accept created and shows the running tab', () => {
-    expect(transitionWebAnimationSelection(NONE, created)).toEqual({ state: { status: 'selected', row: created.row, focusThreadId: null }, effects: [{ type: 'show_tab', tab: 'running' }] });
+  it('reveals a row a new accept created, leaving the preview empty', () => {
+    expect(transitionWebAnimationSelection(NONE, created)).toEqual({ state: NONE, effects: [reveal('running')] });
   });
 
-  it.each([[existingDone, 'done'], [existingRunning, 'running']] as const)('selects a row an accept answered with and shows its own tab (%#)', (event, tab) => {
-    expect(transitionWebAnimationSelection(NONE, event)).toEqual({ state: { status: 'selected', row: event.row, focusThreadId: null }, effects: [{ type: 'show_tab', tab }] });
+  it('selects and reveals a succeeded row an accept answered with, and only reveals one in progress', () => {
+    expect(transitionWebAnimationSelection(NONE, answeredDone)).toEqual({ state: ON_C, effects: [reveal('succeeded', C)] });
+    expect(transitionWebAnimationSelection(NONE, answeredRunning)).toEqual({ state: NONE, effects: [reveal('running')] });
   });
 
-  it('selects a located row that is loaded and shows its tab, and fetches one that is not', () => {
-    expect(transitionWebAnimationSelection(NONE, { type: 'locate', executionId: C, row: ROW_C, requestId: 7, threadId: null })).toEqual({ state: ON_C, effects: [{ type: 'show_tab', tab: 'done' }] });
+  it('selects a located row that is loaded and succeeded, reveals one that is not, and fetches one not loaded', () => {
+    expect(transitionWebAnimationSelection(NONE, { type: 'locate', executionId: C, row: DONE_C, requestId: 7, threadId: null })).toEqual({ state: ON_C, effects: [] });
+    expect(transitionWebAnimationSelection(NONE, { type: 'locate', executionId: A, row: RUNNING_A, requestId: 7, threadId: null })).toEqual({ state: NONE, effects: [reveal('running')] });
+    expect(transitionWebAnimationSelection(NONE, { type: 'locate', executionId: A, row: FAILED_A, requestId: 7, threadId: null })).toEqual({ state: NONE, effects: [reveal('failed')] });
     expect(transitionWebAnimationSelection(NONE, { type: 'locate', executionId: C, row: null, requestId: 7, threadId: null })).toEqual({
-      state: { status: 'fetching', executionId: C, requestId: 7, focusThreadId: null }, effects: [{ type: 'fetch', executionId: C, requestId: 7 }],
+      state: { status: 'fetching', executionId: C, requestId: 7, focusThreadId: null, previous: null }, effects: [{ type: 'fetch', executionId: C, requestId: 7 }],
     });
   });
 
-  it('ignores a fetch answer, a row change and a tab switch', () => {
+  it('ignores a fetch answer, a row change and a reached thread', () => {
     for (const event of [
-      { type: 'fetched', requestId: 1, row: { id: C, status: 'succeeded' } },
+      { type: 'fetched', requestId: 1, row: DONE_C },
       { type: 'fetch_failed', requestId: 1 },
-      { type: 'row_changed', row: { id: C, status: 'failed' } },
+      { type: 'row_changed', row: DONE_C },
       { type: 'focused', threadId: T },
-      { type: 'tab' },
     ] as SelectionEvent[]) {
       expect(transitionWebAnimationSelection(NONE, event)).toEqual({ state: NONE, effects: [] });
     }
@@ -66,101 +82,100 @@ describe('transitionWebAnimationSelection — nothing selected', () => {
 });
 
 describe('transitionWebAnimationSelection — fetching', () => {
-  it('selects a picked row and drops the fetch', () => {
-    expect(transitionWebAnimationSelection(FETCHING, pick).state).toEqual(ON_C);
+  it('selects a picked succeeded row and drops the fetch, and keeps fetching on a pick of another row', () => {
+    expect(transitionWebAnimationSelection(fetching(DONE_B), { type: 'pick', row: DONE_C }).state).toEqual(ON_C);
+    expect(transitionWebAnimationSelection(fetching(DONE_B), { type: 'pick', row: FAILED_A }).state).toEqual(fetching(DONE_B));
   });
 
-  it('selects an accepted row and drops the fetch', () => {
-    expect(transitionWebAnimationSelection(FETCHING, created).state).toEqual({ status: 'selected', row: created.row, focusThreadId: null });
-    expect(transitionWebAnimationSelection(FETCHING, existingDone).state).toEqual(ON_C);
+  it('selects a succeeded row an accept answered with and drops the fetch; a new row only reveals', () => {
+    expect(transitionWebAnimationSelection(fetching(DONE_B), answeredDone).state).toEqual(ON_C);
+    expect(transitionWebAnimationSelection(fetching(DONE_B), created)).toEqual({ state: fetching(DONE_B), effects: [reveal('running')] });
   });
 
-  it('replaces the fetch with a newer locate', () => {
-    expect(transitionWebAnimationSelection(FETCHING, { type: 'locate', executionId: C, row: null, requestId: 2, threadId: null }).state).toEqual({ status: 'fetching', executionId: C, requestId: 2, focusThreadId: null });
+  it('replaces the fetch with a newer locate, keeping the row the preview shows', () => {
+    expect(transitionWebAnimationSelection(fetching(DONE_B), { type: 'locate', executionId: C, row: null, requestId: 2, threadId: null }).state)
+      .toEqual({ status: 'fetching', executionId: C, requestId: 2, focusThreadId: null, previous: DONE_B });
   });
 
-  it('selects the fetched row and shows its tab', () => {
-    expect(transitionWebAnimationSelection(FETCHING, { type: 'fetched', requestId: 1, row: ROW_B })).toEqual({
-      state: { status: 'selected', row: ROW_B, focusThreadId: null }, effects: [{ type: 'show_tab', tab: 'done' }],
-    });
+  it('drops the fetch for a newer locate of a loaded row that has not succeeded, back on the row it showed', () => {
+    expect(transitionWebAnimationSelection(fetching(DONE_B), { type: 'locate', executionId: A, row: RUNNING_A, requestId: 2, threadId: null }))
+      .toEqual({ state: ON_B, effects: [reveal('running')] });
+  });
+
+  it('selects a fetched row that succeeded', () => {
+    expect(transitionWebAnimationSelection(fetching(DONE_B), { type: 'fetched', requestId: 1, row: { id: A, status: 'succeeded' } }))
+      .toEqual({ state: { status: 'selected', row: { id: A, status: 'succeeded' }, focusThreadId: null }, effects: [] });
+  });
+
+  it('goes back to the row it showed and reveals a fetched row that has not succeeded', () => {
+    expect(transitionWebAnimationSelection(fetching(DONE_B), { type: 'fetched', requestId: 1, row: RUNNING_A })).toEqual({ state: ON_B, effects: [reveal('running')] });
+    expect(transitionWebAnimationSelection(fetching(null), { type: 'fetched', requestId: 1, row: FAILED_A })).toEqual({ state: NONE, effects: [reveal('failed')] });
   });
 
   it('ignores the answer of a fetch a newer locate replaced', () => {
-    expect(transitionWebAnimationSelection(FETCHING, { type: 'fetched', requestId: 0, row: { id: A, status: 'succeeded' } })).toEqual({ state: FETCHING, effects: [] });
+    expect(transitionWebAnimationSelection(fetching(DONE_B), { type: 'fetched', requestId: 0, row: DONE_C })).toEqual({ state: fetching(DONE_B), effects: [] });
+    expect(transitionWebAnimationSelection(fetching(DONE_B), { type: 'fetch_failed', requestId: 0 })).toEqual({ state: fetching(DONE_B), effects: [] });
   });
 
-  it('clears the selection and says the row was not found when the fetch fails', () => {
-    expect(transitionWebAnimationSelection(FETCHING, { type: 'fetch_failed', requestId: 1 })).toEqual({ state: NONE, effects: [{ type: 'toast_not_found' }] });
+  it('goes back to the row it showed and says the row was not found when the fetch fails', () => {
+    expect(transitionWebAnimationSelection(fetching(DONE_B), { type: 'fetch_failed', requestId: 1 })).toEqual({ state: ON_B, effects: [{ type: 'toast_not_found' }] });
+    expect(transitionWebAnimationSelection(fetching(null), { type: 'fetch_failed', requestId: 1 })).toEqual({ state: NONE, effects: [{ type: 'toast_not_found' }] });
   });
 
-  it('keeps fetching through a row change and a tab switch', () => {
-    expect(transitionWebAnimationSelection(FETCHING, { type: 'row_changed', row: { id: A, status: 'failed' } }).state).toEqual(FETCHING);
-    expect(transitionWebAnimationSelection(FETCHING, { type: 'tab' }).state).toEqual(FETCHING);
+  it('keeps fetching through a row change', () => {
+    expect(transitionWebAnimationSelection(fetching(DONE_B), { type: 'row_changed', row: DONE_C }).state).toEqual(fetching(DONE_B));
   });
 });
 
 describe('transitionWebAnimationSelection — a row selected', () => {
-  it('moves to a newly picked row', () => {
-    expect(transitionWebAnimationSelection(SELECTED, pick).state).toEqual(ON_C);
+  it('moves to a newly picked succeeded row, and stays on a pick of one that has not succeeded', () => {
+    expect(transitionWebAnimationSelection(ON_B, { type: 'pick', row: DONE_C }).state).toEqual(ON_C);
+    expect(transitionWebAnimationSelection(ON_B, { type: 'pick', row: RUNNING_A })).toEqual({ state: ON_B, effects: [] });
   });
 
-  it('moves to an accepted row, showing running for a new one and its own tab for one that existed', () => {
-    expect(transitionWebAnimationSelection(SELECTED, created).effects).toEqual([{ type: 'show_tab', tab: 'running' }]);
-    expect(transitionWebAnimationSelection(SELECTED, existingDone).effects).toEqual([{ type: 'show_tab', tab: 'done' }]);
+  it('keeps the preview on an accept that created a row, and moves to a succeeded row an accept answered with', () => {
+    expect(transitionWebAnimationSelection(ON_B, created)).toEqual({ state: ON_B, effects: [reveal('running')] });
+    expect(transitionWebAnimationSelection(ON_B, answeredDone)).toEqual({ state: ON_C, effects: [reveal('succeeded', C)] });
   });
 
-  it('follows the selected row into the other tab when its status crosses, keeping the fresher copy', () => {
-    const ended: SelectionRow = { id: A, status: 'succeeded' };
-    expect(transitionWebAnimationSelection(SELECTED, { type: 'row_changed', row: ended })).toEqual({
-      state: { status: 'selected', row: ended, focusThreadId: null }, effects: [{ type: 'show_tab', tab: 'done' }],
-    });
+  it('starts a fetch that keeps the row it shows', () => {
+    expect(transitionWebAnimationSelection(ON_B, { type: 'locate', executionId: A, row: null, requestId: 3, threadId: null }).state)
+      .toEqual({ status: 'fetching', executionId: A, requestId: 3, focusThreadId: null, previous: DONE_B });
   });
 
-  it('keeps a fresher copy in the same tab without asking for a tab', () => {
-    const later: SelectionRow = { id: A, status: 'cancelling' };
-    expect(transitionWebAnimationSelection(SELECTED, { type: 'row_changed', row: later })).toEqual({ state: { status: 'selected', row: later, focusThreadId: null }, effects: [] });
+  it('keeps a fresher copy of the selected row without asking for anything', () => {
+    const later: SelectionRow = { id: B, status: 'succeeded' };
+    expect(transitionWebAnimationSelection(ON_B, { type: 'row_changed', row: later })).toEqual({ state: { status: 'selected', row: later, focusThreadId: null }, effects: [] });
   });
 
-  it('does nothing when told about the row it already holds', () => {
-    const outcome = transitionWebAnimationSelection(SELECTED, { type: 'row_changed', row: ROW_A });
-    expect(outcome.state).toBe(SELECTED);
-    expect(outcome.effects).toEqual([]);
-  });
-
-  it('ignores a change of another row', () => {
-    expect(transitionWebAnimationSelection(SELECTED, { type: 'row_changed', row: ROW_B })).toEqual({ state: SELECTED, effects: [] });
-  });
-
-  it('keeps the preview on the selected result when the tab is switched', () => {
-    expect(transitionWebAnimationSelection(SELECTED, { type: 'tab' })).toEqual({ state: SELECTED, effects: [] });
+  it('does nothing when told about the row it already holds or another row', () => {
+    expect(transitionWebAnimationSelection(ON_B, { type: 'row_changed', row: DONE_B }).state).toBe(ON_B);
+    expect(transitionWebAnimationSelection(ON_B, { type: 'row_changed', row: DONE_C })).toEqual({ state: ON_B, effects: [] });
   });
 });
 
 describe('transitionWebAnimationSelection — the thread to focus', () => {
-  const FOCUSED: SelectionState = { status: 'selected', row: ROW_A, focusThreadId: T };
+  const FOCUSED: SelectionState = { status: 'selected', row: DONE_B, focusThreadId: T };
 
   it('carries a locate\'s thread into the selection, directly or through the fetch', () => {
-    expect(transitionWebAnimationSelection(SELECTED, { type: 'locate', executionId: A, row: ROW_A, requestId: 3, threadId: T }).state).toEqual(FOCUSED);
-    const fetching = transitionWebAnimationSelection(NONE, { type: 'locate', executionId: B, row: null, requestId: 3, threadId: T }).state;
-    expect(fetching).toEqual({ status: 'fetching', executionId: B, requestId: 3, focusThreadId: T });
-    expect(transitionWebAnimationSelection(fetching, { type: 'fetched', requestId: 3, row: ROW_B }).state)
-      .toEqual({ status: 'selected', row: ROW_B, focusThreadId: T });
+    expect(transitionWebAnimationSelection(ON_C, { type: 'locate', executionId: B, row: DONE_B, requestId: 3, threadId: T }).state).toEqual(FOCUSED);
+    const waiting = transitionWebAnimationSelection(NONE, { type: 'locate', executionId: B, row: null, requestId: 3, threadId: T }).state;
+    expect(waiting).toEqual({ status: 'fetching', executionId: B, requestId: 3, focusThreadId: T, previous: null });
+    expect(transitionWebAnimationSelection(waiting, { type: 'fetched', requestId: 3, row: DONE_B }).state).toEqual(FOCUSED);
   });
 
   it('drops the focus when the fetch fails, a row is picked or an accept moves the selection', () => {
-    const fetching: SelectionState = { status: 'fetching', executionId: B, requestId: 1, focusThreadId: T };
-    expect(transitionWebAnimationSelection(fetching, { type: 'fetch_failed', requestId: 1 }).state).toEqual(NONE);
-    expect(transitionWebAnimationSelection(fetching, pick).state).toEqual(ON_C);
-    expect(transitionWebAnimationSelection(FOCUSED, pick).state).toEqual(ON_C);
-    expect(transitionWebAnimationSelection(FOCUSED, created).state).toEqual({ status: 'selected', row: created.row, focusThreadId: null });
+    expect(transitionWebAnimationSelection(fetching(DONE_C, T), { type: 'fetch_failed', requestId: 1 }).state).toEqual(ON_C);
+    expect(transitionWebAnimationSelection(FOCUSED, { type: 'pick', row: DONE_C }).state).toEqual(ON_C);
+    expect(transitionWebAnimationSelection(FOCUSED, answeredDone).state).toEqual(ON_C);
   });
 
   it('replaces the focus with a newer locate\'s, including none', () => {
-    expect(transitionWebAnimationSelection(FOCUSED, { type: 'locate', executionId: C, row: ROW_C, requestId: 4, threadId: null }).state).toEqual(ON_C);
+    expect(transitionWebAnimationSelection(FOCUSED, { type: 'locate', executionId: C, row: DONE_C, requestId: 4, threadId: null }).state).toEqual(ON_C);
   });
 
   it('spends the focus once it is reached, and ignores a reach of another thread', () => {
-    expect(transitionWebAnimationSelection(FOCUSED, { type: 'focused', threadId: T })).toEqual({ state: SELECTED, effects: [] });
+    expect(transitionWebAnimationSelection(FOCUSED, { type: 'focused', threadId: T })).toEqual({ state: ON_B, effects: [] });
     expect(transitionWebAnimationSelection(FOCUSED, { type: 'focused', threadId: 'other' })).toEqual({ state: FOCUSED, effects: [] });
   });
 });

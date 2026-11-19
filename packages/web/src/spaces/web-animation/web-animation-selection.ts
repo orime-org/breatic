@@ -3,11 +3,13 @@
 
 /**
  * Which result the Motion Space's preview shows (#1490 design §13.2), and which annotation thread's time the playhead
- * jumps to once that result shows. The one writer is `transitionWebAnimationSelection`; the effects it returns ask the
- * panels to show a tab, the page to fetch a row that is not on a loaded page, or to say a located row was not found.
- * The selection holds the selected row itself, so the preview keeps it when a read of the list no longer holds it, and
- * the tab it last showed for it, so telling the selection about an unchanged row asks for nothing. Every transition
- * that changes the result names the thread to focus, so a focus never outlives the move that asked for it.
+ * jumps to once that result shows. The one writer is `transitionWebAnimationSelection`. The preview only ever holds a
+ * succeeded row; a row still in progress or one that failed is revealed in the execution list instead (the effect asks
+ * the panels to open its tab and mark it), and the preview keeps what it showed. The effects also ask the page to fetch
+ * a row that is not on a loaded page, or to say a located row was not found. The selection holds the selected row
+ * itself, so the preview keeps it when a read of the list no longer holds it, and while a fetch is out it keeps the row
+ * it showed before. Every transition that changes the result names the thread to focus, so a focus never outlives the
+ * move that asked for it.
  */
 
 import { webAnimationExecutionEnded, type WebAnimationExecutionStatus } from '@breatic/shared/space-content';
@@ -20,16 +22,17 @@ export interface SelectionRow {
   status: WebAnimationExecutionStatus;
 }
 
-/** What the preview shows: nothing, a row being read by id, or the selected row as last seen. */
+/** What the preview shows: nothing, the row it showed while another is fetched by id, or the selected row as last seen. */
 export type SelectionState<R extends SelectionRow = SelectionRow> =
   | { status: 'none' }
-  | { status: 'fetching'; executionId: string; requestId: number; focusThreadId: string | null }
+  | { status: 'fetching'; executionId: string; requestId: number; focusThreadId: string | null; previous: R | null }
   | { status: 'selected'; row: R; focusThreadId: string | null };
 
 /** What can happen to the selection. */
 export type SelectionEvent<R extends SelectionRow = SelectionRow> =
   | { type: 'pick'; row: R }
-  | { type: 'accepted'; created: boolean; row: R }
+  /** The row an accept created or answered with. */
+  | { type: 'accepted'; row: R }
   /** A request to show a row by id; `row` is its loaded copy, or null when no loaded page holds it. */
   | { type: 'locate'; executionId: string; row: R | null; requestId: number; threadId: string | null }
   | { type: 'fetched'; requestId: number; row: R }
@@ -37,12 +40,11 @@ export type SelectionEvent<R extends SelectionRow = SelectionRow> =
   /** The page's freshest copy of the selected row. */
   | { type: 'row_changed'; row: R }
   /** The playhead reached the focused thread's time. */
-  | { type: 'focused'; threadId: string }
-  | { type: 'tab' };
+  | { type: 'focused'; threadId: string };
 
 /** What the page does after a transition. */
 export type SelectionEffect =
-  | { type: 'show_tab'; tab: MotionTab }
+  | { type: 'reveal'; tab: MotionTab; executionId: string }
   | { type: 'fetch'; executionId: string; requestId: number }
   | { type: 'toast_not_found' };
 
@@ -57,11 +59,43 @@ export const SELECTION_NONE: SelectionState<never> = { status: 'none' };
 /**
  * The execution-list tab a row belongs to.
  * @param status - The row's status.
- * @returns `done` once it ended, `running` before.
+ * @returns `succeeded`, `running` before it ended, or `failed` once it failed, was cancelled or expired.
  * @throws {never} Never.
  */
 export function tabOf(status: WebAnimationExecutionStatus): MotionTab {
-  return webAnimationExecutionEnded(status) ? 'done' : 'running';
+  if (status === 'succeeded') return 'succeeded';
+  return webAnimationExecutionEnded(status) ? 'failed' : 'running';
+}
+
+/**
+ * What the preview shows once a fetch is dropped: the row it showed before, or nothing.
+ * @param state - The selection now.
+ * @returns The selection without the fetch.
+ * @throws {never} Never.
+ */
+function settled<R extends SelectionRow>(state: SelectionState<R>): SelectionState<R> {
+  if (state.status !== 'fetching') return state;
+  return state.previous === null ? SELECTION_NONE : { status: 'selected', row: state.previous, focusThreadId: null };
+}
+
+/**
+ * The row the preview shows now.
+ * @param state - The selection.
+ * @returns The row, or null.
+ * @throws {never} Never.
+ */
+function shown<R extends SelectionRow>(state: SelectionState<R>): R | null {
+  return state.status === 'selected' ? state.row : state.status === 'fetching' ? state.previous : null;
+}
+
+/**
+ * The reveal of a row in the execution list.
+ * @param row - The row.
+ * @returns The effect.
+ * @throws {never} Never.
+ */
+function reveal(row: SelectionRow): SelectionEffect {
+  return { type: 'reveal', tab: tabOf(row.status), executionId: row.id };
 }
 
 /**
@@ -75,38 +109,33 @@ export function transitionWebAnimationSelection<R extends SelectionRow>(state: S
   const stay: SelectionTransition<R> = { state, effects: [] };
   switch (event.type) {
     case 'pick':
-      return { state: { status: 'selected', row: event.row, focusThreadId: null }, effects: [] };
+      return event.row.status === 'succeeded' ? { state: { status: 'selected', row: event.row, focusThreadId: null }, effects: [] } : stay;
     case 'accepted':
       return {
-        state: { status: 'selected', row: event.row, focusThreadId: null },
-        effects: [{ type: 'show_tab', tab: event.created ? 'running' : tabOf(event.row.status) }],
+        state: event.row.status === 'succeeded' ? { status: 'selected', row: event.row, focusThreadId: null } : state,
+        effects: [reveal(event.row)],
       };
     case 'locate':
-      if (event.row !== null) {
-        return { state: { status: 'selected', row: event.row, focusThreadId: event.threadId }, effects: [{ type: 'show_tab', tab: tabOf(event.row.status) }] };
+      if (event.row === null) {
+        return {
+          state: { status: 'fetching', executionId: event.executionId, requestId: event.requestId, focusThreadId: event.threadId, previous: shown(state) },
+          effects: [{ type: 'fetch', executionId: event.executionId, requestId: event.requestId }],
+        };
       }
-      return {
-        state: { status: 'fetching', executionId: event.executionId, requestId: event.requestId, focusThreadId: event.threadId },
-        effects: [{ type: 'fetch', executionId: event.executionId, requestId: event.requestId }],
-      };
+      if (event.row.status === 'succeeded') return { state: { status: 'selected', row: event.row, focusThreadId: event.threadId }, effects: [] };
+      return { state: settled(state), effects: [reveal(event.row)] };
     case 'fetched':
       if (state.status !== 'fetching' || state.requestId !== event.requestId) return stay;
-      return {
-        state: { status: 'selected', row: event.row, focusThreadId: state.focusThreadId },
-        effects: [{ type: 'show_tab', tab: tabOf(event.row.status) }],
-      };
+      if (event.row.status === 'succeeded') return { state: { status: 'selected', row: event.row, focusThreadId: state.focusThreadId }, effects: [] };
+      return { state: settled(state), effects: [reveal(event.row)] };
     case 'fetch_failed':
       if (state.status !== 'fetching' || state.requestId !== event.requestId) return stay;
-      return { state: SELECTION_NONE, effects: [{ type: 'toast_not_found' }] };
-    case 'row_changed': {
+      return { state: settled(state), effects: [{ type: 'toast_not_found' }] };
+    case 'row_changed':
       if (state.status !== 'selected' || state.row.id !== event.row.id || state.row === event.row) return stay;
-      const tab = tabOf(event.row.status);
-      return { state: { ...state, row: event.row }, effects: tab === tabOf(state.row.status) ? [] : [{ type: 'show_tab', tab }] };
-    }
+      return { state: { ...state, row: event.row }, effects: [] };
     case 'focused':
       if (state.status !== 'selected' || state.focusThreadId !== event.threadId) return stay;
       return { state: { ...state, focusThreadId: null }, effects: [] };
-    case 'tab':
-      return stay;
   }
 }
