@@ -108,6 +108,9 @@ export const SYNC_IN_REQUEST_PATH_IGNORES = [
 ];
 
 const TEST_IGNORES = ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"];
+
+/** Where SQL may be written outside a repository: repositories, the database setup and the startup probe. */
+export const RAW_SQL_OUTSIDE_REPO_IGNORES = ["**/*.repo.ts", "packages/*/src/db/**", "**/connectivity-check.ts", ...TEST_IGNORES];
 const TEST_IGNORES_TSX = ["**/__tests__/**", "**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"];
 
 /**
@@ -168,11 +171,7 @@ export function backendConfig(options: BackendConfigOptions): TSESLint.FlatConfi
       rules: { "breatic/no-sync-in-request-path": "error" },
     },
     { files: srcTsx, ignores: TEST_IGNORES_TSX, rules: { "breatic/no-yjs-documents-outside-repo": "error" } },
-    {
-      files: src,
-      ignores: ["**/*.repo.ts", "packages/*/src/db/**", "**/connectivity-check.ts", ...TEST_IGNORES],
-      rules: { "breatic/no-raw-sql-outside-repo": "error" },
-    },
+    { files: src, ignores: RAW_SQL_OUTSIDE_REPO_IGNORES, rules: { "breatic/no-raw-sql-outside-repo": "error" } },
     {
       files: anyTsx,
       ignores: ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}", "**/__tests__/**"],

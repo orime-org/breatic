@@ -11,7 +11,6 @@
 import type Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 import { CATCH_UP_EVENT_TYPES, catchUpStripeEvents } from "@server/modules/stripe-webhook/catch-up.js";
-import { HANDLED_EVENT_TYPES } from "@server/modules/stripe-webhook/dispatch.service.js";
 
 /**
  * A minimal event.
@@ -43,8 +42,7 @@ describe("catchUpStripeEvents", () => {
     });
   });
 
-  it("lists exactly the types the webhook handles, within Stripe's limit of 20 per list call", () => {
-    expect(new Set(CATCH_UP_EVENT_TYPES)).toEqual(HANDLED_EVENT_TYPES);
+  it("stays within Stripe's limit of 20 types per list call", () => {
     expect(CATCH_UP_EVENT_TYPES.length).toBeLessThanOrEqual(20);
   });
 

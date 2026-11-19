@@ -6,6 +6,7 @@ import {
   DRIZZLE_WHERE_RULES,
   FUNCTION_FORMAT_PLUGINS,
   FUNCTION_FORMAT_RULES,
+  RAW_SQL_OUTSIDE_REPO_IGNORES,
   SYNC_IN_REQUEST_PATH_IGNORES,
   backendConfig,
   breaticPlugin,
@@ -376,14 +377,7 @@ export default tseslint.config(
     // and drifting. The db layer itself legitimately touches the driver, and
     // the connectivity ping runs `SELECT 1` against no table at all.
     files: ["packages/{collab,core,domain,provider}/src/**/*.ts"],
-    ignores: [
-      "**/*.repo.ts",
-      "packages/*/src/db/**",
-      "**/connectivity-check.ts",
-      "**/__tests__/**",
-      "**/*.test.ts",
-      "**/*.spec.ts",
-    ],
+    ignores: RAW_SQL_OUTSIDE_REPO_IGNORES,
     rules: {
       "breatic/no-raw-sql-outside-repo": "error",
     },
@@ -481,8 +475,9 @@ export default tseslint.config(
     },
   },
   {
-    // Only the three service entries, and the rule reads the path itself so
-    // the decision is testable. The other half of this invariant — that
+    // The worker and collab entries; server's entry is held by backendConfig.
+    // Which files are entries is decided by these globs: the rule checks every
+    // file it is given. The other half of this invariant — that
     // these files exist at all — cannot be a rule and lives in the
     // repo-wide checks: a deleted entry is a file nothing lints.
     files: ["packages/{worker,collab}/src/index.ts"],

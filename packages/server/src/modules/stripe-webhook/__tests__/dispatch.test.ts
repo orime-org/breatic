@@ -74,6 +74,24 @@ describe("Stripe processing result classification", () => {
     expect(mocked.refund).toHaveBeenCalledTimes(0);
   });
 
+  it("handles exactly the types the membership, credit and refund legs act on", () => {
+    expect([...HANDLED_EVENT_TYPES].sort()).toEqual([
+      "checkout.session.async_payment_failed",
+      "checkout.session.async_payment_succeeded",
+      "checkout.session.completed",
+      "checkout.session.expired",
+      "customer.subscription.created",
+      "customer.subscription.deleted",
+      "customer.subscription.pending_update_applied",
+      "customer.subscription.pending_update_expired",
+      "customer.subscription.updated",
+      "invoice.paid",
+      "refund.created",
+      "refund.failed",
+      "refund.updated",
+    ]);
+  });
+
   it("hands every type in the handled set to the handlers", async () => {
     mocked.fulfill.mockResolvedValue({ status: "noop" });
     mocked.failed.mockResolvedValue({ status: "noop" });

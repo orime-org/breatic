@@ -15,7 +15,16 @@
  * part has landed — the Worker asks for a secret the browser does not hold.
  */
 
-import { accountActivityRepo, validate } from "@breatic/core";
+import {
+  accountActivityRepo,
+  validate,
+  createQueue,
+  defaultJobOpts,
+  getStorageConfig,
+  getStorageAdapter,
+  env,
+  logger,
+} from "@breatic/core";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 import { z } from "zod";
@@ -62,14 +71,6 @@ import {
   assertStudioStorageAllowance,
   projectService,
 } from "@server/modules";
-import {
-  createQueue,
-  defaultJobOpts,
-  getStorageConfig,
-  getStorageAdapter,
-  env,
-  logger,
-} from "@breatic/core";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 
 const assets = new Hono<{ Variables: AuthVariables }>();

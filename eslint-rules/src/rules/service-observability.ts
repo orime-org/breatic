@@ -61,7 +61,6 @@ export const serviceObservability = createRule<
   },
   defaultOptions: [],
   create(context) {
-
     let hasLogger = false;
     let hasHealthServer = false;
 

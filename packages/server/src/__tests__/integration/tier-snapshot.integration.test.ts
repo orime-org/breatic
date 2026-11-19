@@ -71,7 +71,7 @@ afterAll(async () => {
   }
 });
 
-describe("listMembershipReadingsAt", () => {
+describe("membershipReadingsAt", () => {
   it("reads each live account at the given moment, once, in id order", async () => {
     const base = await account("base");
     const pro = await account("pro");

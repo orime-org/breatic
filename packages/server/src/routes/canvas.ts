@@ -11,7 +11,16 @@
 
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
-import { currentConsent, validate, defaultJobOpts, getMiniToolsConfig } from "@breatic/core";
+import {
+  currentConsent,
+  validate,
+  defaultJobOpts,
+  getMiniToolsConfig,
+  ValidationError,
+  NotFoundError,
+  getUnderstandConfig,
+  logger,
+} from "@breatic/core";
 import { Hono } from "hono";
 import { runOnce } from "@server/middleware/run-once.js";
 
@@ -58,12 +67,6 @@ import {
   pasteAssetsService,
   projectService,
 } from "@server/modules";
-import {
-  ValidationError,
-  NotFoundError,
-  getUnderstandConfig,
-  logger,
-} from "@breatic/core";
 import { t, GENERATION_TEMPLATES, extractPromptText } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 import type { UnderstandInput } from "@breatic/shared";

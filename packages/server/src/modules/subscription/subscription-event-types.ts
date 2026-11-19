@@ -31,8 +31,8 @@ export const SUBSCRIPTION_EVENT_TYPES: ReadonlySet<string> = new Set([
  * Every one of these arrives for a membership checkout and for a credit-pack
  * checkout alike, and nothing but the session's `mode` separates them. A
  * membership event that falls through to the credit leg looks up a `payments`
- * row that was never written: the failure branch answers the webhook 404, and
- * Stripe redelivers a 404 for three days.
+ * row that was never written and is answered `credits_unknown` with 200, so
+ * the misroute stays silent.
  */
 export const SHARED_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
   "checkout.session.completed",
