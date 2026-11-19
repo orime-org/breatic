@@ -56,9 +56,8 @@ export function isPurchased(kind: CreditSourceKind): boolean {
 /**
  * The kinds nobody paid for, for readers that ask in SQL.
  *
- * Derived rather than listed, so a fifth kind joins it by being added to
- * {@link CREDIT_SOURCE_KINDS} and answering {@link isPurchased} — a query
- * naming the bought kind itself would be the same rule written twice.
+ * Deriving this list from {@link CREDIT_SOURCE_KINDS} and {@link isPurchased}
+ * keeps SQL readers aligned with the purchase classification.
  */
 export const GRANTED_SOURCE_KINDS: readonly CreditSourceKind[] =
   CREDIT_SOURCE_KINDS.filter((kind) => !isPurchased(kind));

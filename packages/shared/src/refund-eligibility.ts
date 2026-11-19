@@ -2,16 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Whether one purchase can be asked about — the one copy.
- *
- * Two readers ask this. The server turns each answer into its own status code
- * and sentence; the refunds screen lists every purchase and, where the rule
- * gives an answer, names that answer in its own words in place of the button.
- * Stated twice, the two
- * drifted: the screen kept the window clause and dropped the clause that
- * reopens it after a refusal, so a buyer who asked once and then waited past
- * the thirtieth day stopped seeing a purchase they still had the right to
- * ask about.
+ * Shared refund eligibility for server enforcement and credit-list display.
+ * Both consumers evaluate the recorded funding channel and ordered lot facts
+ * so the displayed action agrees with the accepted request.
  */
 
 import { withinRefundWindow } from "@shared/refund-window.js";
@@ -77,10 +70,9 @@ export interface RefundCandidate {
 /**
  * Why this purchase cannot be asked about, or null when it can.
  *
- * The answers come in the order a buyer can act on them. What the credits
- * are comes first, because it is the one answer no state could change: a
- * refund returns money, and none was taken for a grant. Then where the
- * purchase stands. Then the three nothing can be done about — whether its
+ * The original funding channel comes first: enterprise purchases follow the
+ * offline contract process, and grants have no purchase payment to return.
+ * Next comes the purchase lifecycle, then whether its
  * credits were restored after a failed refund, what was drawn from it, and
  * whether the window has shut. The designation comes last
  * because it is the only one the buyer can undo: reaching it means every

@@ -106,12 +106,7 @@ interface RefundsSectionProps {
 }
 
 /**
- * Every pack this account ever bought, and where each one stands.
- *
- * One list in purchase order, newest first, holding the spent ones and the
- * already refunded ones too. A pack the buyer cannot find here is a pack he
- * has to guess about: the terms at the foot state the rule, and guessing
- * which of his purchases meets it is work this screen should be doing.
+ * Account credit lots, newest first, with their current refund eligibility.
  *
  * A row's right column answers one question — can this be refunded. The ask
  * button when it can, the state when it cannot, and the state is the reason.
@@ -147,22 +142,8 @@ export function RefundsSection({
     <Section
       scrolls={false}
       title={t('credits.section.refunds')}
-      // The terms hold whatever the list is doing, so they stay on screen for
-      // a user whose list is empty or still arriving.
-      //
-      // The lines the rule is published as, read back from the version in
-      // force today. A summary written separately said two of them, and one
-      // of the two it left out is the one a buyer acts on: a pack has to be
-      // released from its Studio before it can be asked about.
-      //
-      // Its own read, so the list is not held up by it — and its own three
-      // states for the same reason: silence here is the one outcome that
-      // reads as "this screen states no rule", which is the opposite of what
-      // the block is for. The heading stands through all three, so the rule
-      // is announced before it arrives.
-      //
-      // Unbordered, set apart by space: the rule is about the screen, while
-      // the bordered block above it holds the packs it is about.
+      // Online purchase terms have an independent read so their heading and
+      // loading/error states remain available while account lots are read.
       footer={
         !billing ? undefined : (
           <div className='mt-3 flex flex-col gap-2'>
