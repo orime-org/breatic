@@ -48,9 +48,12 @@ describe('the queued cell of the counts column', () => {
     [{ running: 2, waiting: 3, done: 0, failed: 0, expired: 0 }, EACH_WITHOUT],
     [{ running: 2, waiting: 1, waitingLimit: 5, done: 0, failed: 0, expired: 0 }, ONE_WITH_LIMIT],
   ])('says why with the limit the counts carry: %o', async (counts, said) => {
-    render(<TooltipProvider><TaskCountColumn counts={counts} endedShown openFor={null} onOpen={vi.fn()} /></TooltipProvider>);
+    const { container } = render(<TooltipProvider><TaskCountColumn counts={counts} endedShown openFor={null} onOpen={vi.fn()} /></TooltipProvider>);
     await userEvent.hover(screen.getByTestId('task-count-waiting'));
-    expect((await screen.findByRole('tooltip')).textContent).toContain(said);
+    const tip = await screen.findByRole('tooltip');
+    expect(tip.textContent).toContain(said);
+    // inner#1968 visual round 1: drawn on the page, over the nodes, not inside the canvas's transformed layer.
+    expect(container.contains(tip)).toBe(false);
   });
 });
 
@@ -71,6 +74,8 @@ describe('a waiting row of the task list', () => {
       </TooltipProvider>,
     );
     expect(screen.getByTestId('node-task-row')).toHaveTextContent(said);
+    // inner#1968 visual round 1: the panel's heading names the state; the row says only why.
+    expect(screen.getByTestId('task-waiting')).not.toHaveTextContent('排队中');
   });
 });
 

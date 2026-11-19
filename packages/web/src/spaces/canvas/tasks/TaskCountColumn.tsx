@@ -125,7 +125,8 @@ function TaskCount({
           />
         </Button>
       </TooltipTrigger>
-      <TooltipContent side='right'>
+      {/* On the page, over the nodes: inline it sits in the canvas's transformed layer, under the next node. */}
+      <TooltipContent portal side='right' className='max-w-xs'>
         {tip}
         {status === 'waiting' ? <span className='block'>{waitReason(t, waitingLimit, { each: value })}</span> : null}
       </TooltipContent>
