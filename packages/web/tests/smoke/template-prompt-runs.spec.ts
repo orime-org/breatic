@@ -381,9 +381,11 @@ function optionalLeads(id: string, key: string): Map<string, string> {
   const template = GENERATION_TEMPLATES.find((one) => one.id === id);
   const leads = new Map<string, string>();
   if (template === undefined) return leads;
+  const optional = template.inputs.filter((input) => input.optional === true && (input.feeds ?? [template.anchor]).includes(key));
+  // A node no optional input feeds is not read: a shot-list node has no prompt string.
+  if (optional.length === 0) return leads;
   const words = fromLocale(`canvas.template.${id}.${key === template.anchor ? '' : `node.${key}.`}prompt`).split('\n');
-  for (const input of template.inputs) {
-    if (input.optional !== true || !(input.feeds ?? [template.anchor]).includes(key)) continue;
+  for (const input of optional) {
     const name = fromLocale(`canvas.template.${id}.input.${input.key}.name`);
     const paragraph = words.find((line) => markedSegments(line).some((s) => s.slot?.kind === 'asset' && s.slot.label === name));
     const lead = paragraph === undefined ? undefined : markedSegments(paragraph).find((s) => s.text?.trim())?.text?.trim();
