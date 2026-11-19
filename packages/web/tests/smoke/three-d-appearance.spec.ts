@@ -168,9 +168,12 @@ test('a box part takes a preset and a colour, undo takes back one step, and the 
     // tint is not what is read, and the point is one the handles leave clear.
     await page.getByTestId('scene-look-part-0').click();
     await expect(visibleSpace(page).getByTestId('three-d-viewport')).toHaveAttribute('data-part-highlight', '0');
-    const glass = await meanColour(page, await freeFacePoint(page));
+    const point = await freeFacePoint(page);
+    const glass = await meanColour(page, point);
     expect(Math.min(...glass), `glass face colour ${glass.join(',')}`).toBeGreaterThan(60);
-    await page.getByTestId('scene-look-part-0').click();
+    // A click on that point picks the part, so the pixels read were the box's face.
+    await page.mouse.click(point.x, point.y);
+    await expect(page.getByTestId('scene-look-part-0')).toHaveAttribute('aria-pressed', 'true');
 
     await setPartColor(page, '#ff0000');
     await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: { ...GLASS, color: '#ff0000' } }]);
