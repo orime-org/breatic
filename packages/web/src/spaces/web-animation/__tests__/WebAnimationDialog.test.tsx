@@ -7,7 +7,7 @@
  */
 
 import * as React from 'react';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@breatic/shared';
@@ -91,6 +91,17 @@ describe('the New dialog', () => {
     expect(group).toHaveAccessibleName(t('timeline.webAnimation.dialog.aspect'));
     await userEvent.setup().click(within(group).getByRole('tab', { name: '1:1' }));
     expect(onEdit).toHaveBeenCalledWith({ aspect: '1:1' });
+  });
+
+  it('takes the length as digits in a plain text field, with the numeric keypad and no spinner', () => {
+    const onEdit = show({});
+    const field = screen.getByTestId('web-animation-duration');
+    expect(field).toHaveAttribute('type', 'text');
+    expect(field).toHaveAttribute('inputmode', 'numeric');
+    fireEvent.change(field, { target: { value: '1e2' } });
+    expect(onEdit).toHaveBeenLastCalledWith({ durationSeconds: 12 });
+    fireEvent.change(field, { target: { value: '-' } });
+    expect(onEdit).toHaveBeenLastCalledWith({ durationSeconds: Number.NaN });
   });
 
   it('has no result to start from', () => {

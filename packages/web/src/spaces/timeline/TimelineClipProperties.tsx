@@ -124,7 +124,8 @@ export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE
   const update = React.useCallback((field: Field, patch: Partial<FieldDraft>): void => {
     setDrafts((previous) => ({ ...previous, [field]: { ...previous[field], ...patch } }));
   }, []);
-  const change = React.useCallback((field: Field, value: string): void => update(field, { value, error: false }), [update]);
+  // Frames are whole and never negative: the plain field keeps digits only, with no native spinner.
+  const change = React.useCallback((field: Field, value: string): void => update(field, { value: value.replace(/[^0-9]/g, ''), error: false }), [update]);
   // Each field is judged with the other fields' stored values: an entry in range is committed and its field shows the
   // stored value again (the new one, or the old one with a toast when refused), so a draft left in another field is
   // one judged out of range.
@@ -163,7 +164,7 @@ export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE
     return <div className='flex flex-col gap-1'>
       <Label htmlFor={editable[which] ? id : undefined} className={LABEL}>{t(label)}</Label>
       {editable[which]
-        ? <Input id={id} data-testid={testId} type='number' inputMode='numeric' autoComplete='off' step={1} value={current[which].value} className='h-8 w-full'
+        ? <Input id={id} data-testid={testId} type='text' inputMode='numeric' autoComplete='off' value={current[which].value} className='h-8 w-full'
           aria-invalid={current[which].error} onChange={(event) => change(which, event.target.value)} onBlur={() => commit(which)}
           onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(which); } }} />
         : <span data-testid={testId} className={cn('flex h-8 items-center text-sm tabular-nums', !readOnly && 'px-3')}>{current[which].value}</span>}

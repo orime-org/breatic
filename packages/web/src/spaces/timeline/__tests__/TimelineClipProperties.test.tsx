@@ -63,11 +63,13 @@ describe('TimelineClipProperties field input', () => {
     expect(screen.getByTestId('timeline-clip-field-error')).toHaveTextContent('Enter a frame range inside the video.');
   });
 
-  it.each(['timeline-clip-start', 'timeline-clip-in', 'timeline-clip-duration'])('commits nothing and shows the error for non-digit text in %s', (testId) => {
-    const onCommit = showFields();
-    typeAndBlur(testId, '1e1');
-    expect(onCommit).not.toHaveBeenCalled();
-    expect(screen.getByTestId('timeline-clip-field-error')).toBeInTheDocument();
+  it.each(['timeline-clip-start', 'timeline-clip-in', 'timeline-clip-duration'])('keeps only the digits typed in %s, a plain text field with the numeric keypad', (testId) => {
+    showFields();
+    const field = screen.getByTestId(testId);
+    expect(field).toHaveAttribute('type', 'text');
+    expect(field).toHaveAttribute('inputmode', 'numeric');
+    fireEvent.change(field, { target: { value: '-1e1.5' } });
+    expect(field).toHaveValue('115');
   });
 
   it('names the in-point and duration fields in frames', () => {

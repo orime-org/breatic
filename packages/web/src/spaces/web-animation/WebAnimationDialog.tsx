@@ -72,9 +72,11 @@ export function WebAnimationDialog({ projectId, spaceId, draft, retry, limits, b
   const changeAspect = React.useCallback((value: string): void => {
     if (isWebAnimationAspect(value)) onEdit({ aspect: value });
   }, [onEdit]);
-  // An emptied field is not a number; Execute stays unavailable until it holds a whole number in range.
+  // The field keeps digits only (a plain field, no native spinner); an emptied field is not a number, and Execute stays
+  // unavailable until it holds a whole number in range.
   const changeDuration = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => {
-    onEdit({ durationSeconds: event.target.value.trim() === '' ? Number.NaN : Number(event.target.value) });
+    const digits = event.target.value.replace(/[^0-9]/g, '');
+    onEdit({ durationSeconds: digits === '' ? Number.NaN : Number(digits) });
   }, [onEdit]);
   const fieldId = `motion-dialog-${spaceId}`;
   const modifying = input.base !== null;
@@ -128,7 +130,7 @@ export function WebAnimationDialog({ projectId, spaceId, draft, retry, limits, b
             </div>
             <div className='flex min-w-0 flex-col gap-1.5'>
               <Label htmlFor={`${fieldId}-duration`}>{t('timeline.webAnimation.dialog.duration')}</Label>
-              <Input id={`${fieldId}-duration`} data-testid='web-animation-duration' type='number' inputMode='numeric' autoComplete='off' min={min} max={max} step={1} className='w-full'
+              <Input id={`${fieldId}-duration`} data-testid='web-animation-duration' type='text' inputMode='numeric' autoComplete='off' className='w-full'
                 value={Number.isFinite(input.durationSeconds) ? input.durationSeconds : ''} disabled={submitting} onChange={changeDuration} />
             </div>
           </div>
