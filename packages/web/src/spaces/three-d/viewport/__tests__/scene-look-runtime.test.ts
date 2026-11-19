@@ -206,4 +206,25 @@ describe('SceneLookRuntime', () => {
     await settle();
     expect(shownAtRelease).toEqual([false]);
   });
+  it('leaves a picture that failed to load out of the total at once', async () => {
+    vi.mocked(httpRequest).mockImplementation(async () => new Response(Uint8Array.from(readFileSync('src/spaces/three-d/viewport/assets/figure.glb'))));
+    const root = await loadSceneModel({ kind: 'builtin', id: 'figure' }, new AbortController().signal, vi.fn(), '#969696', IMPORT_LIMITS);
+    const big = { width: 2048, height: 2048, type: 'png' };
+    const fake = fakeCache(async () => big, async (assetId) => {
+      if (assetId === A) throw new Error('download failed');
+      return new Texture();
+    });
+    const pictures: Array<SceneLookPictures | null> = [];
+    const runtime = new SceneLookRuntime({
+      textures: () => fake.cache, limits: () => ({ maxTextureEdge: 8192, maxTextureBytes: 30 * 1024 * 1024 }), themeColor: () => '#969696',
+      highlightColor: () => '#3b6fd8', onProgramChanged: vi.fn(), onChanged: vi.fn(), onPictures: (_id, value) => pictures.push(value),
+    });
+    runtimes.push(runtime);
+    const figure = { ...BOX, id: 'figure', model: { kind: 'builtin', id: 'figure' } } as SceneObject;
+    // Each picture fits the budget alone and the two do not; A comes first, so B is over the total while A counts.
+    runtime.sync({ ...figure, look: { 0: { map: A }, 1: { map: B } } } as SceneObject, root);
+    await settle();
+    await settle();
+    expect(pictures.at(-1)).toEqual({ retry: true, over: false, shown: [B] });
+  });
 });

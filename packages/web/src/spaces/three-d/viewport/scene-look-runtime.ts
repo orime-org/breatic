@@ -317,6 +317,7 @@ export class SceneLookRuntime {
       this.apply(id, state);
       for (const [assetId, held] of dropped) textures.release(assetId, held);
     }
+    let failed = false;
     await Promise.all(toLoad.map(async (assetId) => {
       try {
         const texture = await textures.acquire(assetId, limits.maxTextureEdge);
@@ -327,10 +328,14 @@ export class SceneLookRuntime {
         state.held.set(assetId, texture);
         state.states.set(assetId, 'ready');
       } catch {
+        failed = true;
         if (run === state.run) state.states.set(assetId, 'failed');
       }
       if (run === state.run) this.apply(id, state);
     }));
-    if (run === state.run && this.objects.get(id) === state) this.apply(id, state);
+    if (run !== state.run || this.objects.get(id) !== state) return;
+    // A picture that failed to load counts against no other (design 5.3), so the rest are judged again without it.
+    if (failed) void this.checkPictures(id, state);
+    else this.apply(id, state);
   }
 }
