@@ -17,7 +17,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { ForbiddenError, agentAccessService, logger } from "@breatic/core";
-import { REQUEST_SHAPE_PARAMS, t } from "@breatic/shared";
+import { AGENT_CONNECTION_NAME_MAX_LENGTH, PERSONAL_ACCESS_TOKEN_EXPIRY_DAYS, REQUEST_SHAPE_PARAMS, t } from "@breatic/shared";
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { validate } from "@server/middleware/validate.js";
@@ -25,7 +25,7 @@ import * as service from "@server/modules/agent-access/agent-access.service.js";
 import { credentialId } from "@server/modules/agent-access/agent-token-store.js";
 
 /** A connection's or a token's name: trimmed, 1 to 64 characters. */
-const nameSchema = z.string().trim().min(1).max(64);
+const nameSchema = z.string().trim().min(1).max(AGENT_CONNECTION_NAME_MAX_LENGTH);
 
 const connectionParam = z.object({ id: z.string().uuid() });
 
@@ -75,7 +75,7 @@ agentAccess.post(
     "json",
     z.object({
       name: nameSchema,
-      expiresInDays: z.union([z.literal(30), z.literal(90), z.literal(365), z.null()]),
+      expiresInDays: z.literal(PERSONAL_ACCESS_TOKEN_EXPIRY_DAYS).nullable(),
     }),
   ),
   async (c) => {

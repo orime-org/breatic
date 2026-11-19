@@ -29,7 +29,12 @@ export type {
 } from "@shared/types/decision.js";
 
 export {
+  AGENT_CONNECTION_NAME_MAX_LENGTH,
   OAUTH_CONSENT_ERROR_REASONS,
+  PERSONAL_ACCESS_TOKEN_EXPIRY_DAYS,
+  type AgentConnectionItem,
+  type CreatedPersonalAccessToken,
+  type PersonalAccessTokenExpiryDays,
   type OAuthConsentErrorReason,
   type OAuthInteractionResult,
   type OAuthInteractionView,
