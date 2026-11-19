@@ -57,6 +57,16 @@ describe('the queued cell of the counts column', () => {
   });
 });
 
+// inner#1968 visual round 2: the state line reads as the tip's heading, the reason as its body.
+it('sets the queued tip\'s state line apart from the reason below it', async () => {
+  render(<TooltipProvider><TaskCountColumn counts={{ running: 0, waiting: 1, waitingLimit: 2, done: 0, failed: 0, expired: 0 }} endedShown openFor={null} onOpen={vi.fn()} /></TooltipProvider>);
+  const cell = screen.getByTestId('task-count-waiting');
+  await userEvent.hover(cell);
+  const tip = await screen.findByRole('tooltip');
+  const heading = tip.querySelector('.font-medium');
+  expect(heading?.textContent).toBe(cell.getAttribute('aria-label'));
+});
+
 describe('a waiting row of the task list', () => {
   it.each([['u', WITH_LIMIT], ['someone-else', OTHER_WITH_LIMIT]])('says why with the limit its task waits under, for a row started by %s', (startedByUserId, said) => {
     const entry = {
