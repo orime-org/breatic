@@ -33,6 +33,8 @@ export interface ToolDeps {
   tasks: TaskTracker;
   /** `config/mcp.yaml`. */
   config: Readonly<McpConfig>;
+  /** Log a failure the tool answers past, such as a report that did not go out. */
+  report: (err: Error, context: Record<string, unknown>) => void;
 }
 
 /** An image a tool hands back, as MCP image content. */

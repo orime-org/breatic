@@ -10,6 +10,7 @@
  */
 
 import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
+import { z } from "zod";
 import { ServerApiError } from "@mcp/server-api.js";
 import { ToolRefusal, type ToolDef, type ToolDeps } from "@mcp/tools/kit.js";
 
@@ -41,6 +42,11 @@ const SERVER_REFUSALS: Readonly<Record<number, string>> = {
  */
 function refusalBody(err: unknown): Record<string, unknown> | null {
   if (err instanceof ToolRefusal) return { error: err.reason, message: err.message };
+  // A command the shared format refuses: the arguments passed the tool's
+  // schema but not the command's.
+  if (err instanceof z.ZodError) {
+    return { error: "invalid_request", message: err.issues.map((issue) => `${issue.path.join(".") || "(arguments)"}: ${issue.message}`).join("; ") };
+  }
   if (err instanceof ServerApiError && SERVER_REFUSALS[err.status] !== undefined) {
     return {
       error: SERVER_REFUSALS[err.status],

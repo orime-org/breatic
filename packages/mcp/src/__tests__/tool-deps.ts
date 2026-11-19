@@ -28,6 +28,8 @@ export interface StubbedDeps {
   calls: ApiCall[];
   /** Tasks the tool listed. */
   tracked: Array<{ taskId: string; tool: string }>;
+  /** Failures the tool answered past. */
+  reported: Array<{ err: Error; context: Record<string, unknown> }>;
 }
 
 /** How the stubs answer. */
@@ -48,6 +50,7 @@ export function stubDeps(answers: StubAnswers = {}): StubbedDeps {
   const sent: AgentCommand[] = [];
   const calls: ApiCall[] = [];
   const tracked: Array<{ taskId: string; tool: string }> = [];
+  const reported: Array<{ err: Error; context: Record<string, unknown> }> = [];
   const respond = (call: ApiCall): unknown => {
     calls.push(call);
     return answers.api ? answers.api(call) : undefined;
@@ -80,6 +83,9 @@ export function stubDeps(answers: StubAnswers = {}): StubbedDeps {
       forget: vi.fn(async () => undefined),
     },
     config: mcpConfigSchema.parse({}),
+    report: (err, context) => {
+      reported.push({ err, context });
+    },
   };
-  return { deps, submitted, sent, calls, tracked };
+  return { deps, submitted, sent, calls, tracked, reported };
 }

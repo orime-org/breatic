@@ -36,6 +36,7 @@ function depsWith(outcome: (c: AgentCommand) => SubmitOutcome, startedAt = Date.
     commands,
     tasks: {} as ToolDeps["tasks"],
     config: mcpConfigSchema.parse({}),
+    report: vi.fn(),
   };
   return { deps, submitted, sent };
 }

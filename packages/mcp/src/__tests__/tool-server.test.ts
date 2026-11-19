@@ -45,6 +45,7 @@ function depsWith(assignments: unknown[] | Error, finished: FinishedTask[] = [])
     commands: { submit: vi.fn(), send: vi.fn(), operationResult: vi.fn(), close: vi.fn() },
     tasks,
     config: mcpConfigSchema.parse({}),
+    report: vi.fn(),
   };
 }
 
@@ -94,7 +95,18 @@ const picture = defineTool({
   run: async () => ({ value: { spaceId: "s" }, images: [{ data: "aGk=", mimeType: "image/webp" }] }),
 });
 
-const TOOLS = [echo, refuse, broke, poor, picture];
+const malformed = defineTool({
+  name: "malformed",
+  description: "Builds a command the shared format refuses.",
+  input: z.object({}),
+  readOnly: false,
+  run: async () => {
+    z.object({ nodeIds: z.array(z.string()).min(1) }).parse({ nodeIds: [] });
+    return { value: null };
+  },
+});
+
+const TOOLS = [echo, refuse, broke, poor, picture, malformed];
 
 describe("buildToolServer", () => {
   it("lists each tool with its description, input schema and whether it only reads, and sends the instructions", async () => {
@@ -107,6 +119,7 @@ describe("buildToolServer", () => {
       ["broke", true],
       ["poor", false],
       ["picture", true],
+      ["malformed", false],
     ]);
     expect(listed[0]!.description).toBe("Echo the word back.");
     expect(listed[0]!.inputSchema).toMatchObject({ type: "object", properties: { word: { type: "string", description: "The word." } } });
@@ -168,5 +181,16 @@ describe("buildToolServer", () => {
     await client.initialize();
     const result = await client.callTool("picture", {});
     expect(result.content[1]).toEqual({ type: "image", data: "aGk=", mimeType: "image/webp" });
+  });
+});
+
+describe("a command the shared format refuses", () => {
+  it("is answered as an invalid request naming the field", async () => {
+    const client = await connectClient(buildToolServer(depsWith([]), TOOLS, {}));
+    await client.initialize();
+    const { isError, body } = await client.callJson("malformed", {});
+    expect(isError).toBe(true);
+    expect(body.error).toBe("invalid_request");
+    expect(String(body.message)).toContain("nodeIds");
   });
 });
