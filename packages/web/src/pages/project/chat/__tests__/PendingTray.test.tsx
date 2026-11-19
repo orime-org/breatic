@@ -83,6 +83,11 @@ describe('the waiting area', () => {
     expect(screen.getAllByTestId('chat-waiting-delete')).toHaveLength(2);
   });
 
+  it('says the paid tools need credits when the payer runs the model on their own key (inner#1953)', () => {
+    setup({ blocked: true, ownKey: true });
+    expect(screen.getByTestId('chat-waiting-tray')).toHaveTextContent('web search, image search and page reading run on our services and are paid in credits');
+  });
+
   it.each([
     ['a card waits', { awaiting: true }, 'chat.waiting.awaitingCard'],
     ['the balance is short', { blocked: true }, 'chat.waiting.blocked'],

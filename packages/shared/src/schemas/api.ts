@@ -1045,6 +1045,11 @@ export interface ChatSyncAnswer {
   awaiting: boolean;
   /** Present when what waits could not open a run because the balance cannot pay for it. */
   blocked?: "credits";
+  /**
+   * Beside `blocked`: the payer's own key runs the turn's model, so what the balance must pay for is the Agent's paid
+   * tools (inner#1953).
+   */
+  own_key?: true;
   /** When to ask again, in milliseconds. */
   next_sync_ms: number;
 }

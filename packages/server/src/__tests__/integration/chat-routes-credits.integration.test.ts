@@ -175,6 +175,7 @@ interface Synced {
   running: boolean;
   awaiting: boolean;
   blocked?: string;
+  own_key?: boolean;
 }
 
 /**
@@ -239,7 +240,7 @@ describe("a send on the payer's own OpenRouter key the balance cannot pay for (i
     const who = await seedOwner(0);
     await ownKey(who);
     await getRedis().rpush(keysOf(who.conversationId).queue, itemOf(who, crypto.randomUUID()));
-    expect((await synced(who)).blocked).toBe("credits");
+    expect(await synced(who)).toMatchObject({ blocked: "credits", own_key: true });
   });
 });
 

@@ -20,6 +20,8 @@ export interface WaitingArea {
   awaiting: boolean;
   /** What waits could not open a run, because the balance cannot pay. */
   blocked: boolean;
+  /** Beside `blocked`: the payer's own key runs the model, and the balance pays for the Agent's paid tools. */
+  ownKey: boolean;
   /** Which messages are being taken back, and whether into the box or away. */
   busy: Record<string, 'retract' | 'delete'>;
 }
@@ -29,7 +31,7 @@ interface ChatWaitingState {
 }
 
 /** Nothing waiting, and no reason given. */
-export const NOTHING_WAITING: Readonly<WaitingArea> = Object.freeze({ pending: [], awaiting: false, blocked: false, busy: {} });
+export const NOTHING_WAITING: Readonly<WaitingArea> = Object.freeze({ pending: [], awaiting: false, blocked: false, ownKey: false, busy: {} });
 
 export const useChatWaiting = create<ChatWaitingState>(() => ({ byConversation: {} }));
 
@@ -53,7 +55,7 @@ export const chatWaiting = {
    * @param pending - The queue.
    */
   fromSend(conversationId: string, pending: ChatPendingItem[]): void {
-    update(conversationId, () => ({ pending, awaiting: false, blocked: false }));
+    update(conversationId, () => ({ pending, awaiting: false, blocked: false, ownKey: false }));
   },
   /**
    * What a sync answered.
@@ -62,8 +64,9 @@ export const chatWaiting = {
    * @param seen.pending - The queue.
    * @param seen.awaiting - A card waits.
    * @param seen.blocked - The balance cannot pay for a run.
+   * @param seen.ownKey - The payer's own key runs the model, so the balance pays for the paid tools.
    */
-  fromSync(conversationId: string, seen: { pending: ChatPendingItem[]; awaiting: boolean; blocked: boolean }): void {
+  fromSync(conversationId: string, seen: { pending: ChatPendingItem[]; awaiting: boolean; blocked: boolean; ownKey: boolean }): void {
     update(conversationId, () => seen);
   },
   /**

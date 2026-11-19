@@ -412,8 +412,10 @@ chat.post(
         await precheckCredits(projectId, user.id, SMALLEST_CREDIT);
       } catch (err) {
         if (!(err instanceof AppError) || err.statusCode !== 402) throw err;
+        // On the payer's own OpenRouter key the page says the Agent's paid tools are what need credits (inner#1953).
+        const onOwnKey = (await resolveKeys({ projectId }, { kind: "llm" })).keyId !== null;
         return c.json({
-          data: { pending: pendingOf(await queue.pending(conversation.id)), running: false, awaiting: false, blocked: "credits", next_sync_ms },
+          data: { pending: pendingOf(await queue.pending(conversation.id)), running: false, awaiting: false, blocked: "credits", ...(onOwnKey ? { own_key: true } : {}), next_sync_ms },
         });
       }
       const claimed = await queue.claim(conversation.id);
