@@ -40,7 +40,7 @@ vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
   return {
     ...actual,
-    timelineApi: { ...actual.timelineApi, listSpaceExecutions: vi.fn(), getExecution: vi.fn(), previewUrl: vi.fn(), limits: vi.fn(), resolveAsset: vi.fn(), acceptExecution: vi.fn() },
+    timelineApi: { ...actual.timelineApi, listSpaceExecutions: vi.fn(), getExecution: vi.fn(), previewUrl: vi.fn(), limits: vi.fn(), resolveAsset: vi.fn(), acceptExecution: vi.fn(), cancelExecution: vi.fn() },
   };
 });
 vi.mock('@hyperframes/player', () => ({}));
@@ -459,12 +459,28 @@ describe('opening an annotation', () => {
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
     const user = userEvent.setup();
     await openFromPanel(user, 'Gone note');
-    await screen.findByTestId('motion-loading');
+    await waitFor(() => expect(timelineApi.getExecution).toHaveBeenCalled());
     await user.click(screen.getByTestId('motion-open-executions'));
     await user.click(await screen.findByTestId(`motion-row-${OLDER}`));
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', OLDER));
     await openFromPanel(user, 'Older note');
     expect(screen.getByTestId('motion-bottom-bar')).toHaveTextContent('0:02.0 / 0:04.0');
+  });
+
+  it('keeps the shown result and its time in the preview while a result is read by id', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    vi.mocked(timelineApi.getExecution).mockReset().mockReturnValue(new Promise(() => {}));
+    await seedThreads([{ text: 'Gone note', executionId: GONE, timeSeconds: 3 }, { text: 'Shown note', executionId: NEWER, timeSeconds: 1 }]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await openFromPanel(user, 'Shown note');
+    expect(screen.getByTestId('motion-bottom-bar')).toHaveTextContent('0:01.0 / 0:04.0');
+    await openFromPanel(user, 'Gone note');
+    await waitFor(() => expect(timelineApi.getExecution).toHaveBeenCalled());
+    expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER);
+    expect(screen.queryByTestId('motion-loading')).toBeNull();
+    expect(screen.getByTestId('motion-bottom-bar')).toHaveTextContent('0:01.0 / 0:04.0');
   });
 
   it('lands on the marker\'s time when it is opened on the shown result after a read that never landed', async () => {
@@ -475,7 +491,7 @@ describe('opening an annotation', () => {
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
     const user = userEvent.setup();
     await openFromPanel(user, 'Gone note');
-    await screen.findByTestId('motion-loading');
+    await waitFor(() => expect(timelineApi.getExecution).toHaveBeenCalled());
     await user.click(screen.getByTestId('motion-open-executions'));
     await user.click(await screen.findByTestId(`motion-row-${NEWER}`));
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
@@ -585,7 +601,7 @@ describe('one owner for opening an annotation', () => {
     await fromPanel(user, 'First note');
     await user.type(await replyBox(), 'Half a reply');
     await fromPanel(user, 'Far note');
-    await screen.findByTestId('motion-loading');
+    await waitFor(() => expect(timelineApi.getExecution).toHaveBeenCalled());
     await fromPanel(user, 'First note');
     expect(await replyBox()).toHaveValue('Half a reply');
   });
@@ -976,6 +992,50 @@ const RUNNING = '90000000-0000-4000-8000-0000000000a1';
 const FAILED = '90000000-0000-4000-8000-0000000000f1';
 
 describe('the execution list\'s three tabs', () => {
+  it('holds the finished copy of a row the In progress list still answers as running', async () => {
+    const finished = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');
+    listing([finished], { running: [{ ...finished, status: 'running', phase: 'saving', resultSourceVersionId: null }] });
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    expect(await screen.findByTestId('motion-action-modify')).toBeInTheDocument();
+    expect(screen.getByTestId('motion-play')).toBeEnabled();
+  });
+
+  it('keeps Cancel waiting until the list read after it has answered', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')], { running: [inProgressRow(RUNNING, 'A dot')] });
+    show();
+    const panel = await (async () => {
+      const user = userEvent.setup();
+      await user.click(await screen.findByTestId('motion-open-executions'));
+      const opened = await screen.findByTestId('motion-panel-executions');
+      await user.click(within(opened).getByRole('tab', { name: new RegExp(t('spaces.webAnimation.inProgress')) }));
+      return opened;
+    })();
+    const cancel = within(await within(panel).findByTestId(`motion-row-${RUNNING}`)).getByTestId('motion-cancel');
+    vi.mocked(timelineApi.cancelExecution).mockReset().mockImplementation(async () => {
+      vi.mocked(timelineApi.listSpaceExecutions).mockReturnValue(new Promise(() => {}));
+      return { ...inProgressRow(RUNNING, 'A dot'), status: 'cancelling' } as never;
+    });
+    fireEvent.click(cancel);
+    await waitFor(() => expect(timelineApi.cancelExecution).toHaveBeenCalledOnce());
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(within(panel).getByTestId('motion-cancel')).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('keeps Export waiting until the list read after the accept has answered', async () => {
+    const shown = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');
+    listing([shown]);
+    vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async () => {
+      vi.mocked(timelineApi.listSpaceExecutions).mockReturnValue(new Promise(() => {}));
+      return { row: { ...exported(shown), status: 'queued', resultAssetId: null }, created: true } as never;
+    });
+    show();
+    fireEvent.click(await screen.findByTestId('motion-action-export'));
+    await waitFor(() => expect(timelineApi.acceptExecution).toHaveBeenCalledOnce());
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(screen.getByTestId('motion-action-export')).toHaveAttribute('aria-busy', 'true');
+  });
+
   /**
    * Open the execution list on one of its tabs.
    * @param tab - The tab's catalog key.

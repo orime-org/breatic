@@ -54,7 +54,7 @@ import { useMotionAnnotations } from '@web/spaces/web-animation/use-motion-annot
 import { useMotionClock } from '@web/spaces/web-animation/use-motion-clock';
 import { rowsOf, useMotionLists } from '@web/spaces/web-animation/use-motion-lists';
 import { WebAnimationDialog } from '@web/spaces/web-animation/WebAnimationDialog';
-import { SELECTION_NONE, transitionWebAnimationSelection, type SelectionEvent, type SelectionState } from '@web/spaces/web-animation/web-animation-selection';
+import { SELECTION_NONE, shown, transitionWebAnimationSelection, type SelectionEvent, type SelectionState } from '@web/spaces/web-animation/web-animation-selection';
 import { useCurrentUserStore } from '@web/stores';
 import { useCanvasRevealStore } from '@web/stores/canvas-reveal';
 import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
@@ -262,12 +262,13 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
       }
     }
   }, [projectId, spaceId, t]);
-  // A row by id: its copy on a loaded page, or the selected row as the selection last saw it.
+  // A row by id: its copy on a loaded page, or the shown row as the selection last saw it.
   const rowById = React.useCallback((id: string): WebAnimationRowView | undefined => {
-    const current = selectionRef.current;
-    return lists.byId.get(id) ?? (current.status === 'selected' && current.row.id === id ? current.row : undefined);
+    const held = shown(selectionRef.current);
+    return lists.byId.get(id) ?? (held?.id === id ? held : undefined);
   }, [lists.byId]);
-  const selected = selection.status === 'selected' ? selection.row : undefined;
+  // While another row is read by id, the preview keeps the one it showed (design §13.2).
+  const selected = shown(selection) ?? undefined;
   const selectedId = selected?.id ?? null;
   // The shown row is never missing while one is selected: the freshest listed copy, or the one the selection holds.
   const row = selected === undefined ? undefined : lists.byId.get(selected.id) ?? selected;
@@ -360,7 +361,9 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   }, [openRequest, spaceId, locateShown]);
 
   // Running, accepting and cancelling (design §4.2).
-  const refresh = React.useCallback((): void => { void queryClient.invalidateQueries({ queryKey: spaceTasksQueryKey(projectId, spaceId) }); }, [queryClient, projectId, spaceId]);
+  // Reads this Space's lists again; a button that changed them waits for this read, so it stops waiting only once the
+  // result is on screen.
+  const refresh = React.useCallback((): Promise<void> => queryClient.invalidateQueries({ queryKey: spaceTasksQueryKey(projectId, spaceId) }), [queryClient, projectId, spaceId]);
   // `intent` is what the button waits on, and a press while it waits sends nothing; `actionId` is fresh for every press
   // that does send.
   const accept = React.useCallback((request: WebAnimationAcceptRequest, intent: string, actionId: string, onRefused?: (message: string) => void): void => {
@@ -368,7 +371,11 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     void runOnce(intent, {
       scope: 'timeline-execution',
       prepare: () => ({ ...request, projectId, spaceId, actionId } as WebAnimationAcceptBody),
-      send: (key, body) => timelineApi.acceptExecution(body, key),
+      send: async (key, body) => {
+        const answer = await timelineApi.acceptExecution(body, key);
+        await refresh();
+        return answer;
+      },
     }).then((outcome) => {
       if (outcome.kind === 'released') return;
       if (outcome.kind === 'failed') {
@@ -380,7 +387,6 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
       // The preview keeps its result unless the answer is a succeeded row; the list opens on the row (design §7.3).
       if (accepted.status === 'succeeded') showResult(() => select({ type: 'accepted', row: accepted }));
       else select({ type: 'accepted', row: accepted });
-      refresh();
       if (created) dispatchDraft({ type: 'accepted', executionId: accepted.id });
     });
   }, [projectId, spaceId, select, showResult, refresh, t]);
@@ -389,8 +395,11 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     void runOnce(cancelIntent(target.id), {
       scope: 'timeline-execution',
       prepare: () => target.id,
-      send: (key, id) => timelineApi.cancelExecution(id, projectId, key),
-      onDone: () => { refresh(); return undefined; },
+      send: async (key, id) => {
+        const row = await timelineApi.cancelExecution(id, projectId, key);
+        await refresh();
+        return row;
+      },
       onFailure: (err) => { toast.error(serverMessage(err, t('common.runOnce.unknownResult'))); },
     });
   }, [readOnly, projectId, refresh, t]);

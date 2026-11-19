@@ -79,12 +79,13 @@ function settled<R extends SelectionRow>(state: SelectionState<R>): SelectionSta
 }
 
 /**
- * The row the preview shows now.
+ * The row the preview shows now: the selected row, or while another is read by id the row it showed before (design
+ * §13.2).
  * @param state - The selection.
  * @returns The row, or null.
  * @throws {never} Never.
  */
-function shown<R extends SelectionRow>(state: SelectionState<R>): R | null {
+export function shown<R extends SelectionRow>(state: SelectionState<R>): R | null {
   return state.status === 'selected' ? state.row : state.status === 'fetching' ? state.previous : null;
 }
 

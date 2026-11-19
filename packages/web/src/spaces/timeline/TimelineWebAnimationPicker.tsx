@@ -116,7 +116,8 @@ export function TimelineWebAnimationPicker({ projectId, making, onPick, onGoMake
   const spaces = useProjectSpaceList(projectId);
   const queryKey = React.useMemo(() => ['timeline-web-results', projectId], [projectId]);
   const queryFn = React.useCallback(({ pageParam, signal }: { pageParam: string | undefined; signal: AbortSignal }) => timelineApi.listResults(projectId, pageParam, signal), [projectId]);
-  const list = useInfiniteQuery({ queryKey, queryFn, initialPageParam: undefined as string | undefined, getNextPageParam: (page) => page.nextCursor ?? undefined });
+  // Opening the picker reads the list again (design §8.2): a result finished since the last read shows up.
+  const list = useInfiniteQuery({ queryKey, queryFn, initialPageParam: undefined as string | undefined, getNextPageParam: (page) => page.nextCursor ?? undefined, refetchOnMount: 'always' });
   const { refetch } = list;
   const shows = listShows(list);
   const rows = React.useMemo(() => (list.data?.pages.flatMap((page) => page.rows) ?? [])

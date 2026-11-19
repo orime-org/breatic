@@ -92,7 +92,9 @@ export function useMotionLists(projectId: string, spaceId: string): MotionLists 
   const legacyFailed = useMotionList(projectId, spaceId, 'timeline', 'failed');
   const byId = React.useMemo(() => {
     const map = new Map<string, WebAnimationRowView>();
-    for (const query of [ownSucceeded, legacySucceeded, ownRunning, legacyRunning, ownFailed, legacyFailed]) for (const row of rowsOf(query)) map.set(row.id, row);
+    // A run only moves towards its end and never back, so the ended lists go last and their copy of a row wins over a
+    // list not yet read again since it ended.
+    for (const query of [ownRunning, legacyRunning, ownFailed, legacyFailed, ownSucceeded, legacySucceeded]) for (const row of rowsOf(query)) map.set(row.id, row);
     return map;
   }, [ownSucceeded, legacySucceeded, ownRunning, legacyRunning, ownFailed, legacyFailed]);
   const own = ownSucceeded.data?.pages[0]?.totals;

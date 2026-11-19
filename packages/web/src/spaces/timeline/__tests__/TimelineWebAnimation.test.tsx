@@ -139,11 +139,12 @@ function webCopies(): Array<Extract<TimelineClip, { kind: 'web-animation' }>> {
 /**
  * Render the Timeline Space with this role.
  * @param readOnly - Whether the user is a Viewer.
+ * @param staleTime - How long a read counts as fresh; the app's client holds one for 30 s.
  * @returns The query cache.
  * @throws {Error} When rendering fails.
  */
-function showTimeline(readOnly = false): QueryClient {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { retry: false } } });
+function showTimeline(readOnly = false, staleTime = 0): QueryClient {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime }, mutations: { retry: false } } });
   clients.push(client);
   render(<QueryClientProvider client={client}><TooltipProvider><SpaceConnectionContext.Provider value={CONNECTED}>
     <div data-region='space'><TimelineSpace projectId={PROJECT} spaceId={SPACE} readOnly={readOnly} myRole={readOnly ? 'viewer' : 'editor'} /></div>
@@ -670,7 +671,8 @@ describe('Add web animation', () => {
     listSpaces([[MOTION_SPACE, 'web_animation', 'Launch motion']]);
     vi.mocked(timelineApi.listResults).mockResolvedValue({ rows: [], nextCursor: null, totals: { running: 0, succeeded: 0, failed: 0 } } as never);
     seed();
-    showTimeline();
+    // The app's client keeps a read fresh for 30 s; the picker reads again on opening anyway.
+    showTimeline(false, 30_000);
     const first = await openPicker();
     expect(await within(first).findByText(t('timeline.webAnimation.picker.empty'))).toBeInTheDocument();
     await userEvent.click(within(first).getByRole('button', { name: t('timeline.cancel') }));
