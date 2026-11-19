@@ -14,7 +14,7 @@ import { byokApi, type ByokView } from '@web/data/api/byok';
 import { rereadByok } from '@web/features/byok/byok-query';
 import { BYOK_MODALITIES } from '@web/features/byok/ByokUpstreamTab';
 import { useTranslation } from '@web/i18n/use-translation';
-import { ApiException } from '@web/data/api/types';
+import { serverMessage } from '@web/data/api/server-message';
 import { toast } from '@web/lib/toast';
 
 /** The select value standing for the platform key; never an upstream id. */
@@ -148,7 +148,7 @@ const ModelRow = React.memo(function ModelRow({
       toast.success(t('byok.modelSaved', { model: label, upstream: name }));
     },
     // The server says why it refused a choice; anything else gets the general sentence.
-    onError: (err) => toast.error(err instanceof ApiException && err.fromServer ? err.message : t('byok.modelSaveFailed')),
+    onError: (err) => toast.error(serverMessage(err, t('byok.modelSaveFailed'))),
   });
   // A choice the account no longer has a key for reads as the platform key, the way the server runs it.
   const saved = upstream !== undefined && options.includes(upstream) ? upstream : PLATFORM;
