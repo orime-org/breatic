@@ -7,8 +7,15 @@
  * running tasks, someone else's note, which nodes may connect, a full Space).
  */
 
-import { GENERATION_NODE_BUCKETS, type AgentCommandParams, type ModelCatalog, type ModelEntry } from "@breatic/shared";
-import { agentPromptSegments, CREATABLE_NODE_TYPES } from "@breatic/shared/canvas-model";
+import { GENERATION_NODE_BUCKETS, isGenerationNodeType, type AgentCommandParams, type ModelCatalog, type ModelEntry } from "@breatic/shared";
+import {
+  agentPromptSegments,
+  asContentView,
+  CREATABLE_NODE_TYPES,
+  modelsForModality,
+  resolveModeSwitch,
+  type CanvasNodeView,
+} from "@breatic/shared/canvas-model";
 import { z } from "zod";
 import { defineTool, outcomeValue, runCommand, runCommandNow, ToolRefusal, type ToolDeps } from "@mcp/tools/kit.js";
 
@@ -63,7 +70,7 @@ export const createCanvasNodes = defineTool({
 /** What an agent sends to change a node's generation settings. */
 const generationInput = z
   .object({
-    mode: z.string().min(1).optional().describe("A mode from get_canvas_capabilities; name the model too."),
+    mode: z.string().min(1).optional().describe("A mode from get_canvas_capabilities. Without a model, the panel's own pick: the model the node used last in that mode, else the mode's first."),
     model: z.string().min(1).optional().describe("A model name from list_generation_models; it must serve the mode."),
     params: z.record(z.string(), z.json()).optional().describe("Parameter values for the node's model, by the names list_generation_models gives."),
     prompt: z.string().optional().describe(`The prompt of the node's current mode. ${PROMPT_HELP}`),
@@ -98,17 +105,49 @@ async function modelEntry(deps: ToolDeps, name: string): Promise<ModelEntry> {
 }
 
 /**
- * The command's form of a generation change: the model's entry looked up,
- * every prompt's mentions numbered in one list.
+ * The model a node's panel picks when its mode is switched: the one the node
+ * remembers for that mode, else the mode's first (`resolveModeSwitch`).
  * @param deps - The call.
+ * @param where - The node.
+ * @param where.projectId - Its Project.
+ * @param where.spaceId - Its Space.
+ * @param where.nodeId - The node.
+ * @param mode - The mode switched to.
+ * @returns The model's name.
+ * @throws {ToolRefusal} When the node is not a generate node or no model serves the mode.
+ */
+async function modelForMode(deps: ToolDeps, where: { projectId: string; spaceId: string; nodeId: string }, mode: string): Promise<string> {
+  const [read, catalog] = await Promise.all([
+    runCommandNow(deps, { type: "read_canvas", projectId: where.projectId, spaceId: where.spaceId, params: { nodeIds: [where.nodeId] } }) as Promise<{ nodes: CanvasNodeView[] }>,
+    deps.api.get<ModelCatalog>("/models"),
+  ]);
+  const node = read.nodes.find((one) => one.id === where.nodeId);
+  if (!node) throw new ToolRefusal("not_found", "The node is not on the canvas.");
+  if (!isGenerationNodeType(node.type)) throw new ToolRefusal("invalid_request", "That node does not generate: only image, video and audio nodes have a mode.");
+  const { model } = resolveModeSwitch(asContentView(node.data), mode, modelsForModality(catalog, node.type));
+  if (model === "") throw new ToolRefusal("invalid_request", `No model serves the mode "${mode}" for this node; see get_canvas_capabilities and list_generation_models.`);
+  return model;
+}
+
+/**
+ * The command's form of a generation change: the model's entry looked up,
+ * every prompt's mentions numbered in one list, and a mode switched with no
+ * model given the model the panel would pick.
+ * @param deps - The call.
+ * @param where - The node.
+ * @param where.projectId - Its Project.
+ * @param where.spaceId - Its Space.
+ * @param where.nodeId - The node.
  * @param input - The change as the agent sent it.
  * @returns The change collab takes.
- * @throws {ToolRefusal} When a mode comes without a model, or the model is unknown.
+ * @throws {ToolRefusal} When the model is unknown or no model serves the mode.
  */
-async function generationChange(deps: ToolDeps, input: z.infer<typeof generationInput>): Promise<NonNullable<AgentCommandParams<"update_canvas_node">["generation"]>> {
-  if (input.mode !== undefined && input.model === undefined) {
-    throw new ToolRefusal("invalid_request", "A mode change names the model to use in it too; pick one that serves the mode with list_generation_models.");
-  }
+async function generationChange(
+  deps: ToolDeps,
+  where: { projectId: string; spaceId: string; nodeId: string },
+  input: z.infer<typeof generationInput>,
+): Promise<NonNullable<AgentCommandParams<"update_canvas_node">["generation"]>> {
+  const model = input.mode !== undefined && input.model === undefined ? await modelForMode(deps, where, input.mode) : input.model;
   let mentions: string[] = [];
   /**
    * One prompt's segments, its mentions added to the shared list.
@@ -125,7 +164,7 @@ async function generationChange(deps: ToolDeps, input: z.infer<typeof generation
   const shots = input.shots?.map((shot) => ({ duration: shot.duration, prompt: segmentsOf(shot.prompt) }));
   return {
     ...(input.mode === undefined ? {} : { mode: input.mode }),
-    ...(input.model === undefined ? {} : { model: input.model, modelEntry: (await modelEntry(deps, input.model)) as unknown as Record<string, never> }),
+    ...(model === undefined ? {} : { model, modelEntry: (await modelEntry(deps, model)) as unknown as Record<string, never> }),
     ...(input.params === undefined ? {} : { params: input.params }),
     ...(prompt === undefined ? {} : { prompt }),
     ...(lyrics === undefined ? {} : { lyrics }),
@@ -153,7 +192,8 @@ export const updateCanvasNode = defineTool({
   }),
   readOnly: false,
   run: async (deps, { projectId: project, spaceId: space, generation, ...rest }) => {
-    const params = { ...rest, ...(generation ? { generation: await generationChange(deps, generation) } : {}) };
+    const where = { projectId: project, spaceId: space, nodeId: rest.nodeId };
+    const params = { ...rest, ...(generation ? { generation: await generationChange(deps, where, generation) } : {}) };
     return { value: outcomeValue(await runCommand(deps, { type: "update_canvas_node", projectId: project, spaceId: space, params })) };
   },
 });

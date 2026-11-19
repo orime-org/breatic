@@ -105,9 +105,23 @@ describe("update_canvas_node", () => {
     expect(submitted).toEqual([]);
   });
 
-  it("refuses a mode change that names no model", async () => {
-    const { deps } = stubDeps({ api: () => CATALOG });
-    await expect(updateCanvasNode.run(deps, { ...WHERE, nodeId: "n1", generation: { mode: "t2i" } })).rejects.toMatchObject({ reason: "invalid_request" });
+  it("picks the model the panel picks for a mode change that names none: the one the node remembers for that mode", async () => {
+    const remembered = { ...CATALOG, image: [...CATALOG.image, { name: "img-b", modality: "image", mode: ["i2i"], params: {}, tier: "recommended" }] };
+    const node = { id: "n1", type: "image", position: { x: 0, y: 0 }, data: { handling: 0, mode: "t2i", model: "img-a", modelByMode: { i2i: "img-b" } } };
+    const { deps, submitted } = stubDeps({
+      api: () => remembered,
+      reply: (command) => (command.type === "read_canvas" ? { status: "done", result: { nodes: [node], edges: [], people: [] } } : { status: "done", result: { nodeId: "n1" } }),
+    });
+    await updateCanvasNode.run(deps, { ...WHERE, nodeId: "n1", generation: { mode: "i2i" } });
+    expect(submitted.map((c) => c.type)).toEqual(["read_canvas", "update_canvas_node"]);
+    expect(submitted[1]!.params).toMatchObject({ generation: { mode: "i2i", model: "img-b", modelEntry: { name: "img-b" } } });
+  });
+
+  it("refuses a mode no model serves", async () => {
+    const node = { id: "n1", type: "image", position: { x: 0, y: 0 }, data: { handling: 0 } };
+    const { deps, submitted } = stubDeps({ api: () => CATALOG, reply: () => ({ status: "done", result: { nodes: [node], edges: [], people: [] } }) });
+    await expect(updateCanvasNode.run(deps, { ...WHERE, nodeId: "n1", generation: { mode: "multi_shot" } })).rejects.toMatchObject({ reason: "invalid_request" });
+    expect(submitted.map((c) => c.type)).toEqual(["read_canvas"]);
   });
 });
 
