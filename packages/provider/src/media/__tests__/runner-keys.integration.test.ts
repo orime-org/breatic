@@ -357,6 +357,8 @@ describe("a failure of an account's key (critical path)", () => {
     { name: "SandBase's plan refusal", upstream: "sandbase", reply: { status: 403, body: { error: "This model is not available to free users." } }, reason: "no_balance" },
     { name: "SandBase's 402", upstream: "sandbase", reply: { status: 402, body: { error: "insufficient balance" } }, reason: "no_balance" },
     { name: "WaveSpeed's 401", upstream: "wavespeed", reply: { status: 401, body: { code: 401, message: "Unauthorized" } }, reason: "invalid" },
+    // wavespeed.ai/docs/error-codes: 1407 insufficient_credits, in the code/message envelope a refusal before a task carries.
+    { name: "WaveSpeed's insufficient credits", upstream: "wavespeed", reply: { status: 400, body: { code: 1407, message: "insufficient credits" } }, reason: "no_balance" },
     { name: "fal's 401", upstream: "fal", reply: { status: 401, body: { detail: "No user found for Key ID and Secret" } }, reason: "invalid" },
     { name: "SandBase's 401", upstream: "sandbase", reply: { status: 401, body: { error: "invalid api key" } }, reason: "invalid" },
     { name: "WaveSpeed's missing model", upstream: "wavespeed", reply: { status: 400, body: { code: 400, message: "Model not found." } }, reason: "model_not_found" },
@@ -385,6 +387,16 @@ describe("a failure of an account's key (critical path)", () => {
     const answer = await runner.poll(stored(running.ticket), { ...live(), keys });
     expect(keyFailureOf(answer)).toMatchObject({ kind: "account_key_failed", reason: "invalid", upstream: "wavespeed" });
     expect(deploymentKeys).not.toHaveBeenCalled();
+  });
+
+  it("fails a run whose task WaveSpeed ends for insufficient credits (code 1407) as account_key_failed/no_balance", async () => {
+    const { runner } = started();
+    ws.answer(({ method }) => (method === "POST" ? accepted("p-1") : { status: 200, body: { code: 200, message: "success", data: { id: "p-1", status: "failed", code: 1407, error: "insufficient credits" } } }));
+    const keys = accountKeys({ wavespeed: "acct-ws" });
+    const planned = expectState(await runner.plan("m", { prompt: "a fox", params: {} }, { mode: "default" }, planOptions(keys) as never), "send");
+    const running = expectState(await runner.send(stored(planned.ticket), { ...live(), keys }), "running");
+    const answer = await runner.poll(stored(running.ticket), { ...live(), keys });
+    expect(keyFailureOf(answer)).toMatchObject({ kind: "account_key_failed", reason: "no_balance", upstream: "wavespeed" });
   });
 
   it("asks again after a 429 on a poll of the account's key", async () => {

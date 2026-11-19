@@ -49,7 +49,8 @@ export type Asked =
   /** `handle` replaces the step's handle for the next question; it survives a JSON round trip in the ticket. */
   | { state: "running"; handle?: Record<string, string> }
   | { state: "done"; outputs: unknown[] }
-  | { state: "failed"; error: string };
+  /** `refusal` says the upstream failed the task on the account's side (its balance), as a submit refusal would. */
+  | { state: "failed"; error: string; refusal?: Exclude<Refusal, undefined> };
 
 /** What one step answered, for the steps after it and for billing. */
 export interface StepOutput {

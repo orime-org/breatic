@@ -8,7 +8,7 @@ import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js
 import { fetchMedia, MediaRefused } from "@provider/http/fetch-media.js";
 import { boundSignal, sideBounds } from "@provider/http/request.js";
 import { outputUrls, type MediaAdapter, type Reach, type RequestBounds, type StepCodec, type StepContext, type StepOutput } from "@provider/media/adapter.js";
-import { assertAccountReaches, keyFailureOf, keyFor, keysOr, paidInRun, recordedKeys, ticketOwners, triedOn, type KeySet, type TicketOwners } from "@provider/keys.js";
+import { assertAccountReaches, keyFailureOf, keyFor, paidInRun, recordedKeys, ticketOwners, triedOn, type KeySet, type TicketOwners } from "@provider/keys.js";
 import { adapterOf } from "@provider/media/adapters.js";
 import { buildBody } from "@provider/media/body.js";
 import { assess, cloneKeyOf, heldClone, isPresent, stepCalls, stepSource, type CloneKind, type HeldClone } from "@provider/pricing/estimate.js";
@@ -838,7 +838,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     chosen: Route,
     planOptions: PlanOptions,
   ): Promise<{ opened: Omit<Ticket, "steps">; warnings: MediaWarning[] } | MediaAnswer> => {
-    const keys = keysOr(planOptions.keys, deploymentKeys);
+    const keys = planOptions.keys ?? deploymentKeys;
     let plan: RoutePlan;
     try {
       plan = await route(model, input, chosen, planOptions, keys);
@@ -869,7 +869,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     idempotencyKey: planOptions.idempotencyKey,
     sourceKeys: planOptions.sourceKeys,
     clones: planOptions.clones,
-    ...ticketOwners(keysOr(planOptions.keys, deploymentKeys), keysOr(planOptions.llmKeys, deploymentKeys)),
+    ...ticketOwners(planOptions.keys ?? deploymentKeys, planOptions.llmKeys ?? deploymentKeys),
     ...at,
     costs: [],
   });
@@ -1076,7 +1076,12 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         if (asked.handle === undefined) return waiting(ticket);
         return waiting(next(ticket, { steps: ticket.steps.map((s, i) => (i === at.index ? { ...s, handle: asked.handle } : s)) }));
       }
-      if (asked.state === "failed") return endStep(ticket, at.index, bounds, new UpstreamTaskFailed(ticket.upstream, asked.error));
+      if (asked.state === "failed") {
+        // A task the upstream failed on the account's side is a failure of the account's key (inner#1953).
+        const turned = bounds.keys.owner === "account" && asked.refusal !== undefined ? accountFailureOf({ kind: asked.refusal }, "media_submit") : undefined;
+        const reason = turned === undefined ? new UpstreamTaskFailed(ticket.upstream, asked.error) : keyFailureOf(ticket.model, ticket.upstream, turned, new UpstreamTaskFailed(ticket.upstream, asked.error));
+        return endStep(ticket, at.index, bounds, reason);
+      }
       let output: StepOutput;
       try {
         output = outputOf(ticket, at.step, asked.outputs, at.step.predictionId);
@@ -1105,7 +1110,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       const binding = (config.models[model] ?? []).filter((b) => config.upstreams[b.upstream]?.kind === "wavespeed").sort((x, y) => x.weight - y.weight)[0];
       // Without a WaveSpeed binding no upstream can resume the run WaveSpeed took, and none has a reason of its own to name.
       if (binding === undefined) return { state: "failed", reason: new NoUpstreamAvailable(model, []), costs: [], ...common() };
-      const candidate = candidateOf(config, binding.upstream, binding.weight, keysOr(planOptions.keys, deploymentKeys));
+      const candidate = candidateOf(config, binding.upstream, binding.weight, planOptions.keys ?? deploymentKeys);
       if (!candidate.configured) {
         return { state: "failed", reason: new NoUpstreamAvailable(model, [{ upstream: candidate.upstream, kind: "missing_key", envVar: candidate.envVar }]), costs: [], ...common() };
       }

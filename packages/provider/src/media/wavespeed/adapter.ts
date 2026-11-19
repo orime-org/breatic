@@ -61,6 +61,7 @@ const resultSchema = z.looseObject({
     status: z.string().optional().catch(undefined),
     outputs: z.array(z.unknown()).optional().catch(undefined),
     error: z.unknown().optional(),
+    code: z.number().optional().catch(undefined),
   }).optional().catch(undefined),
 });
 
@@ -105,7 +106,10 @@ async function ask(reach: Reach, predictionId: string, bounds: RequestBounds): P
   if (data === undefined) return { state: "running" };
   if (data.status === "completed") return { state: "done", outputs: data.outputs ?? [] };
   // The upstream's error as text whatever its type, "unknown" when it gave none.
-  if (data.status === "failed") return { state: "failed", error: data.error === undefined || data.error === null ? "unknown" : String(data.error) };
+  if (data.status === "failed") {
+    const error = data.error === undefined || data.error === null ? "unknown" : String(data.error);
+    return data.code === INSUFFICIENT_CREDITS ? { state: "failed", error, refusal: "insufficient_balance" } : { state: "failed", error };
+  }
   return { state: "running" };
 }
 
@@ -139,14 +143,23 @@ async function billed(reach: Reach, predictionId: string, bounds: RequestBounds,
 const MODEL_NOT_FOUND = "Model not found.";
 
 /**
+ * WaveSpeed's code for an account without enough credits (`insufficient_credits`, wavespeed.ai/docs/error-codes): a
+ * failed task's `code`, and the envelope `code` of a refusal before a task, whatever its HTTP status.
+ */
+const INSUFFICIENT_CREDITS = 1407;
+
+/**
  * What a refused submit says: WaveSpeed's no-such-model answer is a 400 told
- * apart from a refusal of the request's params by its message.
+ * apart from a refusal of the request's params by its message, and an account
+ * without credits by its code.
  * @param error - The refusal.
- * @returns `model_not_found` for that answer, otherwise nothing.
+ * @returns `model_not_found` or `insufficient_balance` for those answers, otherwise nothing.
  */
 function refusal(error: HttpStatus): Refusal {
+  const body = parsed(error.body) as { message?: unknown; code?: unknown } | null | undefined;
+  if (body?.code === INSUFFICIENT_CREDITS) return "insufficient_balance";
   if (error.status !== 400) return undefined;
-  return (parsed(error.body) as { message?: unknown } | null | undefined)?.message === MODEL_NOT_FOUND ? "model_not_found" : undefined;
+  return body?.message === MODEL_NOT_FOUND ? "model_not_found" : undefined;
 }
 
 /**
