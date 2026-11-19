@@ -9,9 +9,8 @@
  * moment compare with `cmp`.
  */
 
-import { open } from "node:fs/promises";
 import { findRoot, loadEnv } from "./load-env.js";
-import { formatSnapshotLine, parseTierSnapshotOptions } from "./tier-snapshot-options.js";
+import { parseTierSnapshotOptions, writeSnapshotFile } from "./tier-snapshot-options.js";
 
 /** Accounts read per query. */
 const PAGE_SIZE = 500;
@@ -25,24 +24,13 @@ if (options.help) {
   const core = loaded as typeof import("../packages/core/src/index.js");
   core.initCore(process.env);
   core.initLogger("tier-snapshot");
-  const output = await open(options.outputPath, "wx", 0o600);
-  let accounts = 0;
   try {
-    let after: string | null = null;
-    for (;;) {
-      const page = await core.listMembershipReadingsAt(options.at, after, PAGE_SIZE);
-      for (const row of page) await output.appendFile(formatSnapshotLine(row));
-      accounts += page.length;
-      if (page.length < PAGE_SIZE) break;
-      after = page[page.length - 1]!.userId;
-    }
-    await output.sync();
+    const accounts = await writeSnapshotFile(core.membershipReadingsAt(options.at, PAGE_SIZE), options.outputPath);
     core.logger.info({ at: options.at.toISOString(), output: options.outputPath, accounts }, "tier_snapshot_written");
   } catch (err) {
     core.logger.error({ err, at: options.at.toISOString(), output: options.outputPath }, "tier_snapshot_failed");
     process.exitCode = 1;
   } finally {
-    await output.close();
     await core.closeDb();
   }
 }

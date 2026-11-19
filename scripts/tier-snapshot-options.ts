@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { open, rm } from "node:fs/promises";
+import { parseInstant } from "./instant-option.js";
+
 /** What `pnpm db:tier-snapshot` was asked to do. */
 export type TierSnapshotOptions = { help: true } | { help: false; at: Date; outputPath: string };
 
@@ -11,9 +14,6 @@ export interface SnapshotLineInput {
   limits: Readonly<Record<string, number>> | null;
   settlementProtected: boolean;
 }
-
-/** An absolute instant: date, time and an explicit zone. */
-const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
 
 /**
  * Parse the snapshot's arguments: `--at <ISO instant with zone>` and `--output <new file>`, in either order.
@@ -34,12 +34,10 @@ export function parseTierSnapshotOptions(args: string[]): TierSnapshotOptions {
   }
   const atText = values.get("--at");
   const outputPath = values.get("--output");
-  if (!atText || !outputPath || !INSTANT.test(atText)) {
+  if (!atText || !outputPath) {
     throw new Error("Expected one --at <ISO instant with a zone> and one --output <new file>");
   }
-  const at = new Date(atText);
-  if (Number.isNaN(at.getTime())) throw new Error(`--at ${atText} is not a valid instant`);
-  return { help: false, at, outputPath };
+  return { help: false, at: parseInstant("--at", atText), outputPath };
 }
 
 /**
@@ -53,4 +51,32 @@ export function formatSnapshotLine(row: SnapshotLineInput): string {
     ? null
     : Object.fromEntries(Object.keys(row.limits).sort().map((key) => [key, row.limits![key]]));
   return `${JSON.stringify({ userId: row.userId, effectiveTier: row.effectiveTier, limits, settlementProtected: row.settlementProtected })}\n`;
+}
+
+/**
+ * Write a snapshot to a new file, one line per row. The file is created only
+ * if it does not exist, so a finished snapshot is never overwritten; when the
+ * rows fail part way, the file this call created is removed, so a rerun can
+ * use the same name.
+ * @param rows - The readings, in account order.
+ * @param outputPath - The file to create.
+ * @returns How many rows were written.
+ * @throws {Error} When the file already exists (`EEXIST`), or reading or writing fails.
+ */
+export async function writeSnapshotFile(rows: AsyncIterable<SnapshotLineInput>, outputPath: string): Promise<number> {
+  const output = await open(outputPath, "wx", 0o600);
+  let written = 0;
+  try {
+    for await (const row of rows) {
+      await output.appendFile(formatSnapshotLine(row));
+      written += 1;
+    }
+    await output.sync();
+  } catch (err) {
+    await output.close();
+    await rm(outputPath, { force: true });
+    throw err;
+  }
+  await output.close();
+  return written;
 }

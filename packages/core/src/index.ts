@@ -378,4 +378,4 @@ export { createInternalAuth, type InternalAuthDeps, type InternalAuthEvent } fro
 export { createErrorHandler, type ErrorHandlerEvent } from "@core/http/error-handler.js";
 export { createInternalErrorHandler, type InternalErrorHandlerDeps } from "@core/http/internal-errors.js";
 export { createLogRequest, type InternalRequestLine } from "@core/http/log-request.js";
-export { listMembershipReadingsAt, type MembershipSnapshotRow } from "@core/auth/membership.repo.js";
+export { membershipReadingsAt, type MembershipSnapshotRow } from "@core/auth/membership.repo.js";

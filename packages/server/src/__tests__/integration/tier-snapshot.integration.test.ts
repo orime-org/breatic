@@ -10,7 +10,14 @@
 
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { db, initCore, listMembershipReadingsAt, upsertSubscription, type MembershipSnapshotRow } from "@breatic/core";
+import {
+  db,
+  getMembershipReadingForUser,
+  initCore,
+  membershipReadingsAt,
+  upsertSubscription,
+  type MembershipSnapshotRow,
+} from "@breatic/core";
 
 try {
   initCore(process.env);
@@ -37,20 +44,15 @@ async function account(tier: "base" | "pro"): Promise<string> {
 }
 
 /**
- * Every reading at `now`, paged `limit` at a time.
+ * Every reading at `now`, through the same paging the snapshot script uses.
  * @param now - The moment to read at.
- * @param limit - The page size.
- * @returns All rows, in page order.
+ * @param pageSize - The page size.
+ * @returns All rows, in order.
  */
-async function readAll(now: Date, limit: number): Promise<MembershipSnapshotRow[]> {
+async function readAll(now: Date, pageSize: number): Promise<MembershipSnapshotRow[]> {
   const rows: MembershipSnapshotRow[] = [];
-  let after: string | null = null;
-  for (;;) {
-    const page = await listMembershipReadingsAt(now, after, limit);
-    rows.push(...page);
-    if (page.length < limit) return rows;
-    after = page[page.length - 1]!.userId;
-  }
+  for await (const row of membershipReadingsAt(now, pageSize)) rows.push(row);
+  return rows;
 }
 
 beforeAll(() => {
@@ -101,6 +103,19 @@ describe("listMembershipReadingsAt", () => {
     expect(Object.keys(at(during, pro)!.limits ?? {}).sort()).toEqual(
       ["concurrent_editors", "project_members", "projects_per_studio", "storage_bytes", "studio_members", "team_studios"],
     );
+
+    // The snapshot reads what every reading reads: the same row the
+    // single-account reader gives at that moment.
+    const now = await readAll(new Date(), 1000);
+    for (const id of [base, pro]) {
+      const single = await getMembershipReadingForUser(id);
+      expect(at(now, id)).toEqual({
+        userId: id,
+        effectiveTier: single.effectiveTier,
+        limits: single.limits,
+        settlementProtected: single.settlementProtected,
+      });
+    }
 
     // Long after the paid period ended, the same rows read as lapsed.
     const later = await readAll(new Date("2027-06-01T00:00:00Z"), 1000);
