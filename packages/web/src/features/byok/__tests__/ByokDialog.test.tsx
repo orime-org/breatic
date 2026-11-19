@@ -683,6 +683,35 @@ describe('ByokDialog', () => {
         expect(within(confirm).getByText('Gemini 3 Pro Reference')).toBeInTheDocument();
       });
 
+      it('reads a key already gone as deleted, and the add form shows no refusal from an earlier replace', async () => {
+        const user = userEvent.setup();
+        api.put.mockRejectedValue(refused('Could not connect: the key is invalid.'));
+        const dialog = await mount();
+        const detail = await within(dialog).findByTestId('byok-detail-wavespeed');
+        await user.click(within(detail).getByRole('button', { name: 'Replace' }));
+        const replace = await screen.findByRole('dialog', { name: 'Replace the WaveSpeed key' });
+        await user.type(within(replace).getByLabelText('API key'), 'wsk_bad');
+        await user.click(within(replace).getByRole('button', { name: 'Save' }));
+        await within(replace).findByText('Could not connect: the key is invalid.');
+        await user.click(within(replace).getByRole('button', { name: 'Cancel' }));
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Replace the WaveSpeed key' })).toBeNull());
+        // Another tab deleted the key meanwhile: this delete is answered 404.
+        api.delete.mockImplementation(() => {
+          serve(view({ keys: [FAL_KEY], models: [], choices: {} }));
+          return Promise.reject(new ApiException({ status: 404, message: 'Not found', fromServer: true }));
+        });
+
+        await user.click(within(within(dialog).getByTestId('byok-detail-wavespeed')).getByRole('button', { name: 'Delete' }));
+        await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
+
+        await waitFor(() => expect(toasts.success).toHaveBeenCalled());
+        expect(toasts.error).not.toHaveBeenCalled();
+        await user.click(await within(dialog).findByTestId('byok-upstream-wavespeed'));
+        const add = await within(dialog).findByTestId('byok-detail-wavespeed');
+        await waitFor(() => expect(within(add).getByPlaceholderText('Paste a key')).toBeInTheDocument());
+        expect(within(add).queryByText('Could not connect: the key is invalid.')).toBeNull();
+      });
+
       it('deletes on confirm', async () => {
         const user = userEvent.setup();
         const deleted = view({

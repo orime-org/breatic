@@ -261,12 +261,14 @@ function failureText(failure: string | null, t: Translate): string {
 const SAVE_ROOT = ['byok', 'save'] as const;
 
 /**
- * The mutation key of saving one upstream's key, so its dialog can tell a save is out.
+ * The mutation key of saving one upstream's key from one form, so each form shows only its own refusal and a prefix
+ * of just the upstream finds both forms' saves.
  * @param upstream - The upstream id.
+ * @param form - The add form or the replace dialog; both when left out.
  * @returns The key.
  */
-function saveKeyOf(upstream: string): readonly ['byok', 'save', string] {
-  return [...SAVE_ROOT, upstream];
+function saveKeyOf(upstream: string, form?: 'add' | 'replace'): readonly string[] {
+  return form === undefined ? [...SAVE_ROOT, upstream] : [...SAVE_ROOT, upstream, form];
 }
 
 /**
@@ -297,10 +299,11 @@ function refusalText(err: unknown, t: Translate): string {
  * Saving a key: the check runs on the server first. The wait and the refusal are read from the mutation cache by
  * upstream, so both survive switching to another upstream and back.
  * @param upstream - The upstream.
+ * @param form - The add form or the replace dialog, whose refusals stay apart.
  * @param onSaved - Called once the saved key is on screen.
  * @returns The save, its wait, its refusal and a way to clear the refusal.
  */
-function useSaveKey(upstream: ByokUpstream, onSaved?: () => void): {
+function useSaveKey(upstream: ByokUpstream, form: 'add' | 'replace', onSaved?: () => void): {
   save: (key: string) => void;
   saving: boolean;
   error: string | null;
@@ -308,7 +311,7 @@ function useSaveKey(upstream: ByokUpstream, onSaved?: () => void): {
 } {
   const t = useTranslation();
   const client = useQueryClient();
-  const mutationKey = saveKeyOf(upstream.upstream);
+  const mutationKey = saveKeyOf(upstream.upstream, form);
   const [typedError, setTypedError] = React.useState<string | null>(null);
   // The submit time of the last refusal the user has moved past by typing.
   const [clearedAt, setClearedAt] = React.useState(0);
@@ -518,7 +521,7 @@ function SavedKeyState({ saved, kind }: { saved: ByokSavedKey; kind: ByokUpstrea
 function AddKeyForm({ upstream }: { upstream: ByokUpstream }): React.JSX.Element {
   const t = useTranslation();
   const [value, setValue] = React.useState('');
-  const { save, saving, error, clearError } = useSaveKey(upstream);
+  const { save, saving, error, clearError } = useSaveKey(upstream, 'add');
   const change = React.useCallback((next: string): void => {
     setValue(next);
     clearError();
@@ -573,7 +576,13 @@ function SavedKeyActions({
   const refreshing = useIsMutating({ mutationKey: checkKey }) > 0;
 
   const remove = useMutation({
-    mutationFn: () => byokApi.deleteKey(id).finally(() => rereadByok(client)),
+    // A key already gone (deleted in another tab) is what the delete was for, so a 404 reads as deleted.
+    mutationFn: () =>
+      byokApi.deleteKey(id)
+        .catch((err: unknown) => {
+          if (!(err instanceof ApiException && err.status === 404)) throw err;
+        })
+        .finally(() => rereadByok(client)),
     onSuccess: () => {
       forgetFinishedSaves(client, id);
       setDeleting(false);
@@ -682,7 +691,7 @@ function ReplaceKeyForm({
   const t = useTranslation();
   const [value, setValue] = React.useState('');
   const close = React.useCallback((): void => onOpenChange(false), [onOpenChange]);
-  const { save, saving, error, clearError } = useSaveKey(upstream, close);
+  const { save, saving, error, clearError } = useSaveKey(upstream, 'replace', close);
   const change = React.useCallback((next: string): void => {
     setValue(next);
     clearError();
