@@ -33,7 +33,11 @@ import {
   editReply,
   removeReply,
   runCanvasUndoBatch,
+  setAnnotationAssignment,
 } from '@web/data/yjs/canvas-space';
+import { answeredHandOver } from '@web/features/comment-handover/hand-over-state';
+import { HandOverStatus } from '@web/features/comment-handover/HandOverStatus';
+import { CanvasHandOverButton } from '@web/spaces/canvas/annotation/CanvasHandOverButton';
 import type { AnnotationNodeView } from '@breatic/shared/canvas-model';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
@@ -324,6 +328,25 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
     if (!mayWrite) apply({ type: 'drop', why: 'cannotWrite' });
   }, [mayWrite, apply]);
 
+  // Handing the thread to an external agent (#1488 §11.7): anyone who may
+  // write here may hand it to one of their own; only the one who handed it
+  // over may take it back.
+  const answered = answeredHandOver(data.assignment, data.replies);
+  const handOver = React.useCallback(
+    (connectionId: string): void => {
+      setAnnotationAssignment(projectId, spaceId, nodeId, {
+        connectionId,
+        assignedBy: viewerId ?? '',
+        assignedAt: Date.now(),
+        projectId,
+      });
+    },
+    [projectId, spaceId, nodeId, viewerId],
+  );
+  const takeBack = React.useCallback((): void => {
+    setAnnotationAssignment(projectId, spaceId, nodeId, null);
+  }, [projectId, spaceId, nodeId]);
+
   const editingBody =
     mayWrite && open && draft.use === 'edit' && isTarget(target, { kind: 'body' })
       ? draft.text
@@ -347,6 +370,17 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
       )}
       data-testid='annotation-sticky'
     >
+      {mayWrite ? (
+        <div className='nodrag flex justify-end border-b border-note-border px-2 py-1'>
+          <CanvasHandOverButton
+            assignment={data.assignment}
+            viewerId={viewerId}
+            answered={answered}
+            onAssign={handOver}
+            onCancel={takeBack}
+          />
+        </div>
+      ) : null}
       <AnnotationEntry
         content={data.content}
         createdAt={data.createdAt}
@@ -390,6 +424,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
                 createdAt={reply.createdAt}
                 editedAt={reply.editedAt}
                 authorName={nameOf(reply.createdBy)}
+                via={reply.via}
                 rights={offeredWhileBoxOpen(rightsFor(reply.createdBy), {
                   kind: 'reply',
                   id: reply.id,
@@ -441,6 +476,17 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
           </Button>
         </div>
       )}
+
+      <HandOverStatus
+        projectId={projectId}
+        spaceId={spaceId}
+        threadId={nodeId}
+        assignment={data.assignment}
+        viewerId={viewerId}
+        answered={answered}
+        resolved={false}
+        className='flex w-full border-t border-note-border px-2 py-1.5 text-2xs'
+      />
 
       {canReply ? (
         <div

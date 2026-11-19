@@ -39,6 +39,7 @@ import {
 import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
 import { NoteScroller } from '@web/spaces/canvas/annotation/NoteScroller';
 import { CanvasMentionPicker } from '@web/spaces/canvas/annotation/CanvasMentionPicker';
+import { ReplyVia } from '@web/features/comment-handover/ReplyVia';
 import type { AnnotationRights } from '@breatic/shared/canvas-model';
 
 export interface AnnotationEntryProps {
@@ -50,6 +51,8 @@ export interface AnnotationEntryProps {
   editedAt?: number;
   /** The author's display name, or an empty string while the name loads. */
   authorName: string;
+  /** The external-agent connection that wrote it, when one did (#1488 §11.7). */
+  via?: string;
   /** What this person may do to this particular entry. */
   rights: AnnotationRights;
   /** The draft text while this entry is being rewritten, else undefined. */
@@ -232,6 +235,7 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
         <span className='truncate text-2xs font-medium' data-testid={`${testId}-author`}>
           {name}
         </span>
+        {props.via === undefined ? null : <ReplyVia connectionId={props.via} className='text-2xs' />}
         {/* `ml-auto` here and nowhere else in this row: it takes all the
             leftover width, so the name sits at one edge and the time at the
             other, with whatever follows the time riding along behind it. A
