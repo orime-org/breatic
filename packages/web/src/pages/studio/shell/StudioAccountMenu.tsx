@@ -27,7 +27,6 @@ import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
 import { useCreditOverview } from '@web/features/credits/use-credit-overview';
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
-import { AgentTokensDialog } from '@web/features/agent-access/AgentTokensDialog';
 import { PromoterDialog } from '@web/features/referral/PromoterDialog';
 import { usePromoterEntry } from '@web/features/referral/use-promoter-entry';
 import { LogoutOthersDialog } from '@web/pages/studio/shell/LogoutOthersDialog';
@@ -39,6 +38,7 @@ import {
   refreshCurrentUser,
   useCurrentUserStore,
 } from '@web/stores/current-user';
+import { useAgentTokensDialog } from '@web/stores/agent-tokens-dialog';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
 import { usePaymentTiers } from '@web/features/credits/use-payment-tiers';
 
@@ -109,8 +109,8 @@ export function StudioAccountMenu(): React.JSX.Element {
   const openLogoutOthers = React.useCallback((): void => setLogoutOthersOpen(true), []);
   const accountButtonRef = React.useRef<HTMLButtonElement>(null);
   const [creditsOpen, setCreditsOpen] = React.useState(false);
-  const [agentTokensOpen, setAgentTokensOpen] = React.useState(false);
-  const openAgentTokens = React.useCallback((): void => setAgentTokensOpen(true), []);
+  const showAgentTokens = useAgentTokensDialog((s) => s.show);
+  const openAgentTokens = React.useCallback((): void => showAgentTokens(), [showAgentTokens]);
 
   // The balance beside the Credits entry, read from the overlay's own query:
   // designating a pack or asking for a refund invalidates it, so the next
@@ -363,7 +363,6 @@ export function StudioAccountMenu(): React.JSX.Element {
       />
       <MembershipPanel open={membershipOpen} onOpenChange={setMembershipOpen} />
       <PromoterDialog open={promoter.dialogOpen} onOpenChange={promoter.setDialogOpen} />
-      <AgentTokensDialog open={agentTokensOpen} onOpenChange={setAgentTokensOpen} />
       <CheckoutWaitOverlay open={back.waiting} onSkip={back.land} />
       <CreditsOverlay
         open={creditsOpen || back.overlayOpen}

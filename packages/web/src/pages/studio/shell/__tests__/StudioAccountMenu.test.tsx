@@ -16,6 +16,7 @@ import { authApi } from '@web/data/api/auth';
 import type { AccountReferral } from '@web/data/api/referral';
 import { ApiException } from '@web/data/api/types';
 import { StudioAccountMenu } from '@web/pages/studio/shell/StudioAccountMenu';
+import { useAgentTokensDialog } from '@web/stores/agent-tokens-dialog';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 const meMock = vi.fn();
@@ -227,7 +228,7 @@ describe('StudioAccountMenu', () => {
     setup();
     await openMenu(user);
     await user.click(screen.getByRole('menuitem', { name: 'Agent tokens' }));
-    expect(await screen.findByTestId('agent-tokens-dialog')).toBeInTheDocument();
+    expect(useAgentTokensDialog.getState()).toMatchObject({ open: true, focusId: null });
   });
 
   it('lists the account entries settings first, then Agent tokens, membership and credits', async () => {

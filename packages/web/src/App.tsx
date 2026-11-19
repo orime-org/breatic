@@ -7,6 +7,7 @@ import { AppRouter } from '@web/app/AppRouter';
 import AuthBootstrap from '@web/app/AuthBootstrap';
 import { LoadingScreenHost } from '@web/components/LoadingScreen';
 import { StaleReleaseDialog } from '@web/app/StaleReleaseDialog';
+import { AgentTokensDialogHost } from '@web/features/agent-access/AgentTokensDialogHost';
 import { Toaster } from '@web/components/ui/sonner';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { QueryClientProvider } from '@web/app/providers/QueryClientProvider';
@@ -42,6 +43,7 @@ export default function App(): React.JSX.Element {
           <AppRouter router={router} />
           <LoadingScreenHost />
           <StaleReleaseDialog />
+          <AgentTokensDialogHost />
           {/* Toast surface mounts at the top-center of the viewport so
               critical / interaction-blocking messages (lock notice,
               RPC failures, rename refusals) sit in the user's primary
