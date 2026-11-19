@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * `POST /mini-tools` — the one entry every server-run mini-tool shares
@@ -9,10 +9,11 @@
  * export uploads like any other file.
  */
 
+import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { ConflictError, currentConsent, logger } from "@breatic/core";
 import { Hono } from "hono";
-import { createQueue, defaultJobOpts } from "@breatic/core";
+import { defaultJobOpts } from "@breatic/core";
 import { acceptMiniToolExecution, quoteMiniToolExecution } from "@breatic/domain";
 import { miniToolById, miniToolPlannedRequestSchema, miniToolSubmissionSchema, outputTemplateOf } from "@breatic/shared/mini-tools";
 
@@ -30,7 +31,6 @@ const miniTools = new Hono<{ Variables: AuthVariables }>();
 
 miniTools.use("*", requireAuth);
 
-const tasksQueue = createQueue("tasks");
 
 /**
  * Quote a planned video run with the admission's own computation and write nothing (§97 D26-1).
@@ -108,7 +108,7 @@ miniTools.post(
     label: spec.id,
     credits: () => Promise.resolve(run.credits),
     enqueue: () =>
-      tasksQueue.add(
+      tasksQueue().add(
         "execute-mini-tool",
         {
           taskId: task.id,
@@ -122,6 +122,8 @@ miniTools.post(
           taskType,
           params: run.params,
           ...(run.sourceKey !== undefined && { sourceKey: run.sourceKey }),
+          // A join's clips after its source, in the order the user set (inner#1825 §6.4).
+          ...(run.inputKeys !== undefined && run.inputKeys.length > 1 && { extraKeys: run.inputKeys.slice(1) }),
           targetNodeIds: body.node_ids,
           mode: "append" as const,
         },

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The ONE sanitizer for a node's `focusImages` (#1782), shared by web and collab (frames-split §5.5 delivery row): the field is

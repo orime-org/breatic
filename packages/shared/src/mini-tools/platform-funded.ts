@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Who pays for a mini-tool run or analysis (inner#1306 frames-split design §5.5): the platform funds frame extraction,

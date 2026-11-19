@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Transitions execution admission (inner#1306 test plan §97 D11-3, D12-1, D12-2, D13-1, D15-3 to D15-7; frames-split design

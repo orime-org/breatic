@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The controls only one model has, drawn by the shape it declares (#2156,
@@ -50,7 +50,8 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
     generation_time: 10,
     takes_prompt: true,
     params,
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
   };
 }
 
@@ -318,7 +319,7 @@ describe('every param a panel names has words in every locale', () => {
     .filter((dir) => existsSync(dir))
     .flatMap((dir) =>
       readdirSync(dir)
-        .filter((file) => extname(file) === '.yaml' && file !== 'providers.yaml')
+        .filter((file) => extname(file) === '.yaml')
         .map((file) => resolve(dir, file)),
     )
     .flatMap((file) => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 test plan §69 U03 (frames-split design §7.8 surface list row "节点分辨率角标" and "几何读取"): with a

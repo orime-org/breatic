@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * An analysis freezes who pays at admission (inner#1306 test plan §67.2 A03; frames-split design §5.5 「配置」行, §10.12

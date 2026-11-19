@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The Space list the model reads names each Space's id (inner#1552).
@@ -26,7 +26,7 @@ describe("the Space list", () => {
     });
 
     expect(turn).toContain(
-      '## Spaces in this project\n\n- "Storyboard" (document, id: s1) — the reader has this one open\n- "Cast" (canvas, id: s2)',
+      '## Spaces in this project\n\n- "Storyboard" (document, id: s1) — the user has this one open\n- "Cast" (canvas, id: s2)',
     );
   });
 

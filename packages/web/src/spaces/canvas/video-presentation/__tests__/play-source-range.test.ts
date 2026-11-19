@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 split segment preview (canvas design §4 split row; demo video-controls.tsx CutEditor previewSegment): a segment

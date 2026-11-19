@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The worker's staged presentation job (inner#1306 test plan §90 E2; frames-split
@@ -26,7 +26,7 @@ import { videoContainerJobId } from '@breatic/shared/mini-tools';
 import type * as coreModule from '@breatic/core';
 import { containerCostUsd } from '@breatic/domain';
 import * as handler from '@worker/handlers/video-presentation.js';
-import { StillRunning } from '@worker/providers/still-running.js';
+import { StillRunning } from '@worker/handlers/still-running.js';
 
 const { findById, createUsageRecorder, recordServiceCall, settle, syncPresentationPins, logger } = vi.hoisted(() => ({
   findById: vi.fn(), createUsageRecorder: vi.fn(), recordServiceCall: vi.fn(), settle: vi.fn(), syncPresentationPins: vi.fn(),

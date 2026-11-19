@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 import { and, eq, isNull } from "drizzle-orm";
 import { db, type DbTx } from "@core/db/client.js";
 import { projects, studios } from "@core/db/schema.js";

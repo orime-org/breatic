@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 test plan §97 (canvas design §4 对口型 row: "列表为空时对口型菜单项不可用"): when `GET /canvas/limits` answers

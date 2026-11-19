@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Tab and Shift-Tab, for every selection rather than for a caret alone.
@@ -11,7 +11,7 @@
  * resolves the block at `selection.anchor`, which is the end the drag started
  * from, so a backwards drag asked about one block and acted on another.
  *
- * WHEN TAB CANNOT MOVE A BLOCK, THE READER IS TOLD. A block already as deep as
+ * WHEN TAB CANNOT MOVE A BLOCK, THE USER IS TOLD. A block already as deep as
  * it can go took the key and did nothing, and there was no way to tell that
  * from a press that missed (user 2026-09-08). The topmost block of the
  * selection is marked `data-tab-blocked` and the stylesheet animates it.
@@ -21,7 +21,7 @@
  * in a browser, the `.bn-block-outer` the attribute landed on reported
  * `isConnected: false` in the very next task — ProseMirror had already
  * replaced it — so no rule ever reached it, `getAnimations()` came back empty,
- * and the reader saw nothing. A decoration is re-applied to whatever element
+ * and the user saw nothing. A decoration is re-applied to whatever element
  * currently stands for that block, which is what surviving a redraw means.
  * jsdom has no such redraw, so the five cases below passed against the broken
  * version too; the probe that caught it drives a real browser.
@@ -39,7 +39,7 @@
  *
  * The key is claimed either way. An unclaimed Tab is one the browser answers,
  * and the browser answers it by moving focus out of the editor: measured,
- * focus went from the editor to `BODY` and the next characters the reader
+ * focus went from the editor to `BODY` and the next characters the user
  * typed reached nothing. BlockNote's own source says the same —
  * upstream's `KeyboardShortcutsExtension.ts`, "Always returning true for tab key
  * presses ensures they're not captured by the browser. Otherwise, they blur
@@ -51,7 +51,9 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import type { NodeRange, Node as PMNode } from '@tiptap/pm/model';
+
+import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 
 /** The attribute the stylesheet animates. */
 const BLOCKED_ATTRIBUTE = 'data-tab-blocked';
@@ -79,17 +81,16 @@ interface TabEditor {
 /**
  * Where the first block Tab would have moved begins.
  *
- * Read through the range `nestBlock` itself acts on, so the block that is
- * marked is the block that would have moved: `nestBlock.ts` takes
- * `$from.blockRange($to, node => node.childCount > 0 && (blockGroup ||
- * column))`, gives up when `range.startIndex === 0`, and otherwise moves from
+ * Read through the range `nestBlock` itself acts on ({@link nestRange}), so
+ * the block that is marked is the block that would have moved: `nestBlock.ts`
+ * gives up when `range.startIndex === 0`, and otherwise moves from
  * `range.start`.
  *
  * Walking the document for the first `blockContainer` instead named the wrong
  * block. Blocks nest inside one another, so the containers reached on the way
  * down to the caret are its ANCESTORS — a block indented once had the nudge
  * drawn on the top-level block holding it, and the animation started from the
- * left edge of the body rather than from the line the reader was on (user
+ * left edge of the body rather than from the line the user was on (user
  * 2026-09-08).
  *
  * A position rather than an element: the element is whatever currently draws
@@ -98,7 +99,7 @@ interface TabEditor {
  * A WHOLE-DOCUMENT SELECTION HAS NO SUCH RANGE, and it is two presses of the
  * platform's select-all away. Its `$from` sits at depth zero, whose parent is
  * the doc rather than a `blockGroup`, so the predicate matches nothing and
- * `blockRange` comes back null — the press was claimed and the reader was
+ * `blockRange` comes back null — the press was claimed and the user was
  * told nothing (measured in a browser: `[data-tab-blocked]` came back empty
  * while the same press one block down drew the nudge). The block Tab would
  * have moved is still the document's first, which is exactly the one
@@ -107,18 +108,44 @@ interface TabEditor {
  * @returns That position, or null for a document holding no block.
  */
 function topmostBlockPos(view: EditorView): number | null {
-  const { $from, $to } = view.state.selection;
-  const range = $from.blockRange(
-    $to,
-    (node: PMNode) =>
-      node.childCount > 0 &&
-      (node.type.name === 'blockGroup' || node.type.name === 'column'),
-  );
+  const range = nestRange(view.state);
   if (range !== null) return range.start;
 
   // The body's first block, a table too (inner#1619), stands right inside
   // its block group.
   return (view.state.doc.firstChild?.childCount ?? 0) > 0 ? 1 : null;
+}
+
+/**
+ * The range `nestBlock` acts on: the blocks the selection covers, in the
+ * innermost container holding blocks (`holdsItems` in its `nestBlock.ts`).
+ * @param state - The editor state.
+ * @returns The range, or null when none holds the selection.
+ */
+function nestRange(state: EditorState): NodeRange | null {
+  const { $from, $to } = state.selection;
+  const item = state.schema.nodes['blockContainer'];
+  return $from.blockRange(
+    $to,
+    (node: PMNode) =>
+      node.childCount > 0 && node.type.isInGroup('childContainer') && item !== undefined && node.type.contentMatch.matchType(item) !== null,
+  );
+}
+
+/**
+ * Whether Tab would move a column group: the range `nestBlock` acts on holds
+ * one, as when the selection runs across columns. Columns never stand under
+ * another block (inner#1314 A1).
+ * @param state - The editor state.
+ * @returns True when it would.
+ */
+function wouldNestColumns(state: EditorState): boolean {
+  const range = nestRange(state);
+  if (range === null) return false;
+  for (let index = range.startIndex; index < range.endIndex; index += 1) {
+    if (range.parent.child(index).type.name === DOC_COLUMN_LIST) return true;
+  }
+  return false;
 }
 
 /**
@@ -134,7 +161,7 @@ function nudgePlugin(): Plugin<number | null> {
         const asked = tr.getMeta(nudgeKey) as number | null | undefined;
         if (asked !== undefined) return asked;
         // A changed document takes the mark off. What it marks is a block that
-        // could not move, and an edit means the reader has moved on; carrying
+        // could not move, and an edit means the user has moved on; carrying
         // the position across changes that may have removed the block is more
         // than a 260ms animation is worth.
         return tr.docChanged ? null : previous;
@@ -170,7 +197,7 @@ export const documentTabExtension = createExtension(() => {
    *
    * A second press while one is still running leaves it running: re-applying
    * the same decoration sets the same attribute on the same element, which
-   * restarts nothing, and the reader pressing again inside 260ms is already
+   * restarts nothing, and the user pressing again inside 260ms is already
    * watching the answer to the first press.
    * @param view - The editor view the selection belongs to.
    */
@@ -194,7 +221,7 @@ export const documentTabExtension = createExtension(() => {
       Tab: ({ editor }: { editor: TabEditor }) => {
         const view = editor.prosemirrorView;
         const before = view.state.doc;
-        editor.nestBlock();
+        if (!wouldNestColumns(view.state)) editor.nestBlock();
         if (view.state.doc === before) sayItCannotMove(view);
         return true;
       },

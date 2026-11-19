@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The staged presentation job (inner#1306; frames-split design §5.1 steps 1, 2 and 2a, §5.4, §7.1, §7.1.1, §7.6).
@@ -22,7 +22,7 @@ import {
 } from '@breatic/shared';
 import { videoContainerJobId } from '@breatic/shared/mini-tools';
 import { advanceMiniToolPlanJob, planReadUntil } from '@worker/handlers/mini-tool/advance-plan-job.js';
-import { StillRunning } from '@worker/providers/still-running.js';
+import { StillRunning } from '@worker/handlers/still-running.js';
 import { audioOf, carrierTarget, chunkInputId, FullLedgerInvalid, readJobLedger, SOURCE_INPUT_ID, windowDuration, windowEntries } from '@worker/handlers/video-presentation-recipes.js';
 
 /** Everything one pickup acts with. */

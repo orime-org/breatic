@@ -1,7 +1,7 @@
 # Mini-tools that run in the media container (inner#888 §8, §9).
 #
 # Each container operation names the container class it runs in and the
-# seconds the credit precheck holds the reader to. The precheck is a floor, not
+# seconds the credit precheck holds the user to. The precheck is a floor, not
 # the bill: a run is charged for the seconds it actually used, priced below.
 # How long a run may take is the node task budget (config/node-tasks.yaml),
 # the one ceiling every task has.
@@ -250,6 +250,12 @@ classes:
     # Output pixels the headless-gl renderer draws per second on llvmpipe: provisional, the encoder's rate until a
     # Cloudflare standard-4 measurement replaces it.
     render_pixels_per_second: 248000000
+  # The page reader web_fetch runs (inner#1664); no op names it.
+  WebReaderContainer:
+    instance_type: "standard-2"
+    vcpu: 1
+    memory_gib: 6
+    disk_gb: 12
 
 ops:
   crop:
@@ -305,6 +311,19 @@ ops:
   pitch:
     container_class: "MiniToolContainerStd1"
     precheck_seconds: 300
+  # inner#1825: the joins read every clip and write their sum, so they run on
+  # the 20 GB disk; a crossfade re-encodes every clip.
+  join:
+    container_class: "MiniToolContainerStd4"
+    precheck_seconds: 900
+  audio_join:
+    container_class: "MiniToolContainerStd4"
+    precheck_seconds: 900
+
+# The most clips one join takes, its source included (inner#1825 §6.3). The
+# join panel's add tile and slot pick stop here; at most
+# MINI_TOOL_JOB_MAX_EXTRA_INPUTS + 1, which the job contract can carry.
+join_max_clips: 20
 
 # The audio cut band draws the source's waveform from the peaks file beside it
 # (inner#1305 §4.4). An audio without one yet is decoded in the browser only

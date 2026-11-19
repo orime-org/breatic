@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { MiniToolOutput } from '@breatic/shared/mini-tools';
 import { placeMiniToolOutput, type OutputSize, type PlacedOutput } from '@web/spaces/canvas/mini-tool/output-placement';

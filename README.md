@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>The real-time collaborative AI workspace for creative teams.</strong></p>
-<p align="center">Available online · Source-available · Desktop browser</p>
+<p align="center">Available online · Open source · Desktop browser</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_en">Website</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -29,6 +29,24 @@ Bring your brief, scenes and media into one project. Write in Document Spaces, g
 
 The hosted service has a free Starter plan. AI generation credits are purchased separately and are not included in membership plans. See [pricing and credits][hosted-pricing].
 
+## One project, four collaborative creative spaces
+
+In Breatic, you can revise the script, try different visuals, stage scenes, and arrange shots as you go. When you work with a team, everyone can work in the same project at the same time.
+
+| Feature | **Breatic** | Higgsfield | TapNow | LibTV | Luma | LTX Studio |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Collaborative documents** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Collaborative canvas** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Collaborative 3D** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Collaborative timeline** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 3D previs | ✅ | ✅ | ✅ | ✅ | ✗ | ✗ |
+| Timeline editing | ✅ | ✗ | ✅ | ✅ | ✗ | ✅ |
+| Project agent | ✅ | ✅ | ✅ | ✅ | ✅ | ✗ |
+| Review suggested rewrites | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Team sharing | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+Collaboration means multiple people can edit the same workspace in real time. Reviewing suggested rewrites means you can inspect an agent's proposed change before deciding whether to apply it to the original text. This comparison is based on public product information as of November 18, 2026. ✅ means support is confirmed. ✗ means support could not be confirmed from public information.
+
 ![Coffee-shop image candidates on a Breatic canvas beside the project chat](docs/images/readme/workspace-en.png)
 
 *A canvas example: compare generated visuals alongside the project's chat.*
@@ -40,12 +58,12 @@ The hosted service has a free Starter plan. AI generation credits are purchased 
 | **Projects with multiple Spaces** | Keep a brief, scenes and alternative creative directions together, with a separate tab for each Space. |
 | **Document Spaces** | Write scripts, shot descriptions and production checklists with headings, lists and formatted text. |
 | **Canvas Spaces** | Arrange references and media on an infinite canvas; generate and refine assets using prompts, models and reference inputs. |
-| **3D (DEV)** | Arrange built-in objects in a shared scene and edit their position, rotation and scale. |
-| **Timeline (DEV)** | Add Project videos or upload local videos to a shared visual track, adjust start frames and preview the sequence. |
+| **3D (DEV)** | Arrange built-in objects, imported glTF models and AI-generated models in a shared scene, edit their position, rotation and scale, pose characters with presets or joint by joint, set up shared cameras and lights in a director console that shows every camera's live picture, and frame a still of the scene or of any camera to add to the Agent, a Canvas or the clipboard. |
+| **Timeline (DEV)** | Arrange Project videos or uploaded local videos on shared tracks: move, trim, split, duplicate and delete clips, undo your own edits and preview the sequence. Describe a web animation, run it with DeepSeek, follow it in the execution list and add the result as clips that play on the Timeline clock. Videos and web animations on every track play together as stacked layers; select a layer in the preview to move, scale, stretch or rotate it, or type its position and size. Pick the frame's aspect ratio from seven presets (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) at the end of the play bar; layers keep their place in the frame. |
 | **An AI agent in your project** | Discuss ideas, provide document or canvas context, and review proposed work alongside your materials. |
 | **Real-time collaboration** | Invite collaborators, set project access permissions and work on synchronized canvases, documents, 3D scenes and Timelines. |
 
-Supported media includes images, video, audio and 3D assets. Generation capabilities depend on configured providers and model access. Canvas and Document Spaces are available; the 3D and Timeline editors carry **DEV** badges in both creation entries. The current Timeline supports video arrangement and preview on one visual track. Multi-track editing, additional media types, Web Animation and video export are planned. Model generation and annotations within the 3D scene are under development.
+Supported media includes images, video, audio and 3D assets. Generation capabilities depend on configured providers and model access. Canvas and Document Spaces are available; the 3D and Timeline editors carry **DEV** badges in both creation entries. The current Timeline edits and previews video and web animations on multiple visual tracks; web animation runs only on deployments that enable it. Additional media types and video export are planned. Annotations within the 3D scene are under development.
 
 ## Review changes together
 
@@ -115,9 +133,9 @@ The application uses TypeScript, React/Vite, Hono, PostgreSQL, Redis/BullMQ and 
 
 ## License and permitted use
 
-Breatic is **source-available** under the [Elastic License 2.0](LICENSE) (`Elastic-2.0`).
+Breatic is **open source** under the [GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`).
 
-You may read, modify and redistribute Breatic, and run it for yourself or inside your own organization, including for commercial work. You may not provide Breatic to third parties as a hosted or managed service. See the license for the complete terms.
+You may use, study, modify and self-host Breatic for any purpose, including commercial use. If you modify Breatic and let other people use your modified version over a network, you must offer them its complete source code under the same license. See the license for the complete terms.
 
 The Breatic name and logo are trademarks of Orime, Inc. and are not covered by the license; see [TRADEMARKS.md](TRADEMARKS.md). The license places no restriction on the content you create with Breatic.
 

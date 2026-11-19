@@ -4,7 +4,7 @@
 
 Use this guide to run Breatic for yourself or share it with your household, private group or colleagues within one organization. Install the application on one computer; other users connect through a browser. **Use published images, not development servers.** For source changes, see [Development setup](DEVELOPMENT.md).
 
-The [LICENSE](../LICENSE) permits individual use, private groups that are not publicly advertised or open to general sign-up, and internal organizational use. Without separate authorization, offering Breatic to the public is prohibited, whether paid or free. Limit LAN access to your permitted group as well.
+Breatic is licensed under the [GNU Affero General Public License v3.0](../LICENSE). If you modify it and let other people use your modified version over a network, you must offer them its complete source code under the same license. The Breatic name and logo are covered by [TRADEMARKS.md](../TRADEMARKS.md).
 
 ## 1. What you will run
 
@@ -83,7 +83,7 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 The bundled nginx refuses request bodies over 1 MiB (`client_max_body_size 1m` in `docker/breatic-locations.conf`), the same limit as `request_body_max_bytes` in `config/limits.yaml`. Change both together.
 
-Replace sample provider keys with your own valid keys; leave unused keys empty. `OPENROUTER_API_KEY` supplies the text-model route when no direct vendor key is configured, subject to model availability and account quota. For image, video and other providers, use the `api_key_env` named in `config/models/<type>/providers.yaml`; WaveSpeed models, for example, need `WAVESPEED_API_KEY`.
+Replace sample provider keys with your own valid keys; leave unused keys empty. `OPENROUTER_API_KEY` supplies the text-model route when no direct vendor key is configured, subject to model availability and account quota. Each upstream reads the variable named by `key_env` in `config/provider/upstreams.yaml`; an image, video or other generation model needs the key of at least one of its upstreams in `config/provider/media/<type>.yaml`, for example `WAVESPEED_API_KEY` or `FAL_KEY`.
 
 <a id="cloudflare"></a>
 ## 4. Deploy the Cloudflare upload service
@@ -98,7 +98,9 @@ The canvas node menu's **Download** opens the file's own address with `download=
 
 Assets are currently read through public URLs. A private Breatic instance does not automatically make R2 files private. Do not put files requiring authenticated access into this public-read setup.
 
-Text too large for one request (a long pasted text node, its history snapshot, an Agent message with large attachments) is uploaded as a temporary transfer file under the `transfer/` prefix and read back by the server with the S3 credentials. Add an R2 lifecycle rule to the bucket that deletes objects with the prefix `transfer/` after 1 day. On a custom asset domain, also add a Cloudflare WAF custom rule that blocks requests whose path starts with `/transfer/`; an `r2.dev` address cannot carry this rule. See [Object lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/).
+Text too large for one request (a long pasted text node, its history snapshot, an Agent message with large attachments, a snapshot of a long Document) is uploaded as a temporary transfer file under the `transfer/` prefix and read back by the server with the S3 credentials. Add an R2 lifecycle rule to the bucket that deletes objects with the prefix `transfer/` after 1 day. On a custom asset domain, also add a Cloudflare WAF custom rule that blocks requests whose path starts with `/transfer/`; an `r2.dev` address cannot carry this rule. See [Object lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/).
+
+Timeline web animation is optional and off unless you enable it ([packages/ingest/README.md](../packages/ingest/README.md#web-animation)). Its packages are stored under the private `web-animation/` prefix and are read only through the Worker's signed preview route. If you enable it on a custom asset domain, add a Cloudflare WAF custom rule that blocks requests whose path starts with `/web-animation/`; an `r2.dev` address cannot carry this rule.
 
 Save the following bucket CORS configuration:
 
@@ -132,7 +134,7 @@ Confirm that you logged into the account owning the bucket. Create `packages/ing
 name = "creator-ingest-config"
 main = "src/index.ts"
 compatibility_date = "2026-03-10"
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = ["nodejs_compat", "enable_request_signal"]
 account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
 
 [env.production]
@@ -159,9 +161,69 @@ class_name = "MediaContainer"
 [env.production.exports.MediaContainer]
 type = "durable-object"
 storage = "sqlite"
+
+[[env.production.containers]]
+class_name = "MiniToolContainerStd1"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-1"
+max_instances = 3
+
+[[env.production.containers]]
+class_name = "MiniToolContainerStd4"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-4"
+max_instances = 1
+
+[[env.production.durable_objects.bindings]]
+name = "MINI_TOOL_STD1"
+class_name = "MiniToolContainerStd1"
+
+[[env.production.durable_objects.bindings]]
+name = "MINI_TOOL_STD4"
+class_name = "MiniToolContainerStd4"
+
+[env.production.exports.MiniToolContainerStd1]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.MiniToolContainerStd4]
+type = "durable-object"
+storage = "sqlite"
+
+[[env.production.containers]]
+class_name = "LongMediaContainer"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-4"
+max_instances = 2
+
+[[env.production.durable_objects.bindings]]
+name = "LONG_MEDIA"
+class_name = "LongMediaContainer"
+
+[env.production.exports.LongMediaContainer]
+type = "durable-object"
+storage = "sqlite"
+
+[[env.production.containers]]
+class_name = "WebReaderContainer"
+image = "./web-reader/Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-2"
+max_instances = 3
+
+[[env.production.durable_objects.bindings]]
+name = "WEB_READER"
+class_name = "WebReaderContainer"
+
+[env.production.exports.WebReaderContainer]
+type = "durable-object"
+storage = "sqlite"
 ```
 
-`compatibility_flags` is required: without it the Worker fails to load (`No such module "node:async_hooks"`). A configuration created before this line was added needs it before the next deploy. No error-reporting settings are needed; with no `SENTRY_DSN` the Worker reports nothing.
+`compatibility_flags` is required: without `nodejs_compat` the Worker fails to load (`No such module "node:async_hooks"`), and `enable_request_signal` lets the page reader stop when the Agent's request ends. Every container class above is required as well: a Worker missing one of the bindings `MEDIA`, `MINI_TOOL_STD1`, `MINI_TOOL_STD4`, `LONG_MEDIA` or `WEB_READER` answers every request with 500 naming it. A configuration created before these lines were added needs them before the next deploy. `max_instances` caps how many instances of each class run at once; raise it for more simultaneous users, except `LongMediaContainer`, which stays at the `container_max_instances` that `config/understand.yaml` sets. No error-reporting settings are needed; with no `SENTRY_DSN` the Worker reports nothing.
 
 For multiple instances in one Cloudflare account, give each a distinct production `name`, bucket and shared secret. Do not overwrite an existing Worker. This deployment configuration has no `[dev].port`, `remote=true` or `.dev.vars`.
 
@@ -178,7 +240,7 @@ pnpm --filter @breatic/ingest exec wrangler secret put INGEST_SHARED_SECRET --en
 pnpm --filter @breatic/ingest deploy:worker
 ```
 
-If the first secret command asks to create a missing Worker, confirm that its name is the new instance you intend to create. Initial deployment builds and uploads the media container and prints the actual Worker HTTPS URL. Use that output, for example `https://creator-ingest-personal.YOUR_SUBDOMAIN.workers.dev`; do not guess your account subdomain. See [Deploy Containers](https://developers.cloudflare.com/containers/guides/deploy/).
+If the first secret command asks to create a missing Worker, confirm that its name is the new instance you intend to create. Initial deployment builds and uploads the media container and the page reader and prints the actual Worker HTTPS URL. Use that output, for example `https://creator-ingest-personal.YOUR_SUBDOMAIN.workers.dev`; do not guess your account subdomain. See [Deploy Containers](https://developers.cloudflare.com/containers/guides/deploy/).
 
 If Containers access, image building or deployment fails, resolve the error. Disabling the media container does not produce a complete upload setup.
 
@@ -198,6 +260,8 @@ INGEST_SHARED_SECRET=YOUR_GENERATED_SECRET
 ```
 
 Replace every `YOUR_...` value. The shared secret must exactly match the Cloudflare secret, and both sides must name the same bucket. Do not interchange the public read URL and S3 endpoint. Omit trailing slashes from base URLs and never commit credentials.
+
+If you enable web animation, also set `WEB_ANIMATION_PREVIEW_BASE_URL` to the HTTPS address that serves the Worker's preview route, ideally a domain of its own.
 
 The Worker does not need to call back into the local application. Personal use therefore does not require router port forwarding, a tunnel or a public domain for the application.
 
@@ -318,6 +382,8 @@ Repeat section 6. If rollback requires database recovery, stop the application a
 | Image missing or no matching platform | Confirm both tags exist and support the host CPU; do not mix releases or assume an unpublished architecture is supported |
 | Web fails or returns 502 | Read `docker compose logs --tail=100 web server collab`; check that the API service is `server` and the image matches the checked-out source version |
 | Migration exits nonzero | Read migration logs; check both databases, credentials, versions and migration files; do not bypass it |
+| Migration stops with `Studio transfers still accepting` | Start the previous release's `server` until it finishes those transfers (it checks every minute), stop it again and rerun the upgrade |
+| `0127_remove_regions` fails adding a foreign key | The database once ran as one of several regions. A global region's database: delete the rows that name Studios or Projects other regions held, then rerun the upgrade. Another region's database holds no accounts and cannot be upgraded on its own |
 | Works locally but not from another device | Check the host IP, `WEB_BIND_ADDRESS`, firewall, host sleep and client certificate trust |
 | HTTPS login loops | Use a trusted certificate, `ENV=prod`, an empty `COOKIE_DOMAIN` and one consistent address |
 | Upload returns 401 | Match the application and Cloudflare shared secrets, then recreate application containers |

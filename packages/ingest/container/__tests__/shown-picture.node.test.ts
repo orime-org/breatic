@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The picture Chromium shows (measured in Chromium 151 and Chrome 157): no container cropping, neither a Matroska PixelCrop

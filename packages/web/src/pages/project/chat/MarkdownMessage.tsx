@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Assistant prose, rendered as markdown.
@@ -24,6 +24,8 @@ import remend from 'remend';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
+import { DISPLAY_MATH_SCROLLER, KATEX_OPTIONS } from '@web/lib/katex-options';
+import { cn } from '@web/lib/utils';
 // Puts a copy handler on the document, so a copied formula reads as the
 // source the model wrote rather than as the glyphs it was drawn into.
 import '@web/pages/project/chat/copy-formula-source';
@@ -46,7 +48,7 @@ interface MarkdownMessageProps {
   streaming?: boolean;
   /** Which step of the type scale the prose is drawn at. */
   size?: keyof typeof SIZE_CLASS;
-  /** Whether a single newline in the source is a line the reader sees. */
+  /** Whether a single newline in the source is a line the user sees. */
   softBreaks?: boolean;
   /**
    * What a `[N]` the model wrote points at.
@@ -88,17 +90,17 @@ const SIZE_CLASS = {
  * Every switch is given a value: leaving one to its default is not a decision,
  * and a later version of the package could change what a default is. The
  * values written here are the library's own defaults, which is what Streamdown
- * ships and therefore what a reader of any of these products is used to
+ * ships and therefore what a user of any of these products is used to
  * seeing.
  *
  * They do three different things — close a marker the model has opened, escape
  * a character that would read as one (`20~25`), and drop an unclosed tag with
  * the prose after it — and all three run only while a turn is running. A
- * settled reply never goes through here, so what the reader is left with is
+ * settled reply never goes through here, so what the user is left with is
  * what the model sent, and the choices below are about the time in between
  * (user 2026-08-25).
  *
- * `linkMode` reaches the reader through `MarkdownLink` below, which sends
+ * `linkMode` reaches the user through `MarkdownLink` below, which sends
  * every outbound anchor to a tab of its own, so the half-typed link this mode
  * produces costs a spare tab and leaves the page it was clicked from alone.
  */
@@ -137,46 +139,6 @@ const REMARK_PLUGINS: Remark = [remarkGfm, [remarkMath, { singleDollarTextMath: 
 // they are copied.
 const REMARK_PLUGINS_WITH_BREAKS: Remark = [...REMARK_PLUGINS, remarkBreaks];
 
-/**
- * How a formula is rendered.
- *
- * Every switch is given a value, for the reason `COMPLETION` above carries.
- * `displayMode` and `throwOnError` are absent because rehype-katex owns them:
- * its own option type is `Omit<KatexOptions, 'displayMode' | 'throwOnError'>`.
- */
-const KATEX = {
-  // KaTeX's own default is a hard-coded #cc0000, which belongs to neither
-  // theme. A formula that failed to parse is shown as the LaTeX the model
-  // wrote, and there is nothing the reader can do about it, so it is said
-  // quietly. The grey is what @streamdown/math ships, the package Vercel's
-  // Streamdown renders maths with:
-  // https://github.com/vercel/streamdown/tree/main/packages/streamdown-math
-  errorColor: 'var(--color-muted-foreground)',
-  // Seven commands ask this before they run: `\href`, `\url`, the four
-  // `\html*` ones and `\includegraphics`. The `\html*` four write a class, an
-  // id, a style or a data attribute of the model's choosing into our DOM, and
-  // `\includegraphics` sends the browser after a URL of its choosing.
-  trust: false,
-  // The rest are the values KaTeX runs on with nothing passed, written out
-  // because a later version could change what running on nothing means.
-  // KaTeX's options page states a default for all of them except `fleqn` and
-  // `leqno`, whose entries in its settings schema carry no `default` field;
-  // both are read as `if (settings.fleqn)`, so the value below is what an
-  // absent one already does. @streamdown/math sets only errorColor and runs
-  // on every one of these.
-  // `macros`, `minRuleThickness` and `colorIsTextColor` are absent because
-  // they are not switches: KaTeX documents no default for any of the three,
-  // and it writes into `macros` — one object shared by every render would
-  // carry a reply's `\gdef` into the next one.
-  output: 'htmlAndMathml',
-  strict: 'warn',
-  maxExpand: 1000,
-  maxSize: Infinity,
-  fleqn: false,
-  leqno: false,
-  globalGroup: false,
-} as const;
-
 // Handed no language set, `rehype-highlight` colours with lowlight's `common`
 // — thirty-seven grammars, all of which it imports at the top of its own
 // module whatever it is given. Its `detect` stays off, so a block reaches a
@@ -209,7 +171,7 @@ function ScrollableTable({ children }: { children?: ReactNode }): ReactElement {
  */
 function ScrollableMath({ children }: { children?: ReactNode }): ReactElement {
   return (
-    <ScrollArea className='my-[1em] [&_.katex-display]:my-0' scrollbars='horizontal'>
+    <ScrollArea className={cn('my-[1em]', DISPLAY_MATH_SCROLLER)} scrollbars='horizontal'>
       {children}
     </ScrollArea>
   );
@@ -221,7 +183,7 @@ function ScrollableMath({ children }: { children?: ReactNode }): ReactElement {
  * The difference between a done item and an open one is the whole point of a
  * checklist. It reaches a screen reader through this element's label, and the
  * eye through a tick `index.css` draws — both of which stay out of the text a
- * reader selects and copies, so a copied checklist reads as the model wrote
+ * user selects and copies, so a copied checklist reads as the model wrote
  * it. `role='img'` is what gives the label a reader to reach: a label on a
  * bare span has no role to attach to.
  * @param root0 - The props react-markdown hands an `input`.
@@ -245,7 +207,7 @@ function TaskMark({ checked }: { checked?: boolean }): ReactElement {
 /**
  * A link the agent wrote, which leads away from the app.
  *
- * The reader is part-way through making something; following a link in this
+ * The user is part-way through making something; following a link in this
  * tab takes the canvas, the project and the running turn with it. Streamdown
  * hands its own links `target="_blank"` for the same reason, and the app's
  * other outbound links already carry both attributes.
@@ -305,7 +267,7 @@ const COMPONENTS = {
  * @param root0.content - The assistant's prose, as markdown.
  * @param root0.streaming - Whether this turn is still receiving tokens.
  * @param root0.size - Which step of the type scale the prose is drawn at.
- * @param root0.softBreaks - Whether a single newline is a line the reader sees.
+ * @param root0.softBreaks - Whether a single newline is a line the user sees.
  * @param root0.citations - What a `[N]` the model wrote points at.
  * @param root0.failureLines - The tool steps that did not finish.
  * @returns The rendered prose.
@@ -351,7 +313,7 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   // alone by the plugin itself.
   const rehypePlugins = useMemo<Rehype>(
     () => [
-      [rehypeKatex, KATEX],
+      [rehypeKatex, KATEX_OPTIONS],
       displayMathPlugin,
       [footnoteScopePlugin, scope],
       [citationPlugin, numbers],

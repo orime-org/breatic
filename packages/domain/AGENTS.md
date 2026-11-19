@@ -10,19 +10,19 @@ The business core shared by server and worker. These rules apply when you change
 
 ### Upstream step repos are worker-only
 
-**`task/upstreamStep.repo.ts` (`task_upstream_steps`) and `task/upstreamClone.repo.ts` (`studio_upstream_clones`) are read and written only by worker.** They are worker's record of each upstream call it made, and a retried task resumes from them.
+**`task/upstreamStep.repo.ts` (`task_upstream_steps`) and `task/upstreamClone.repo.ts` (`studio_upstream_clones`) are read and written only by worker.** The first holds a container mini-tool's `container_job` step and the upstream calls of tasks from before provider, which the worker turns into a provider ticket on their next pickup; the second is the clone cache the worker writes from provider's answers and hands back on every plan.
 
 ## Credits
 
 ### Estimate credits through the model catalog
 
-**Estimate credits only with `estimateModelCredits` / `estimateTaskCredits` in `model-catalog/model-catalog.ts`.** They apply each model's pricing contract through shared `estimateCredits`, and the enqueue pre-check depends on every estimate coming out the same way.
+**Estimate credits only with `estimateModelCredits` / `estimateTaskCredits` in `model-catalog/model-catalog.ts`, and ask why no upstream takes a run only with `inputRefusalFor` there.** They lay the run out with shared `prepareRunParams`, have provider price it on the upstream the route picks and turn that into credits with shared `creditEstimateOf`, the same steps the panels take; the enqueue pre-check depends on every estimate coming out the same way.
 
 ### Charging is atomic and idempotent
 
-**A charge and its ledger rows are written in one `db.transaction()`: a finished task is billed through `markCompletedAndBill`, a generation through `chargeOnceForGeneration(refKey, ...)`, and a video mini-tool with persistent per-step consumption through `settleMiniToolCharge(taskId)`.** The mini-tool entry claims the task billing guard, aggregates its complete recorded consumption once, and passes the same transaction to the credit engine; callers supply no replacement amount. A charge split across transactions, or repeated on a retry, leaves the balance and the ledger disagreeing.
+**A charge for delivered work is recorded as a `credit_charge_requests` row in the transaction that records the delivery (`requestCharge`; a finished task through `markCompletedAndBill`) and settled by `settleCharge`, which applies the charge, its ledger rows and its hold release and marks the row settled in one commit; a call with no delivery transaction to join (a chat turn, a consolidation, a text-tool run, a looked-up model call) goes through `chargeOnce(kind, refKey, ...)`.** One row per kind, actor and reference keeps a retry or a second settler from charging twice, and a settlement that fails stays pending for the worker's `credit-charge-sweep`, so a recorded charge is never dropped. **A video mini-tool with persistent per-step consumption records its request in `settleMiniToolCharge(taskId)`, which claims the task billing guard and sums its complete recorded consumption once in that transaction; callers supply no replacement amount.**
 
-**A canvas run that spends credits (generation, understanding, a mini-tool) is admitted by `creditHoldService.reserveCredits`, which holds its estimate under the studio's debt lock; its charge passes `releaseHold` so the hold is released in the charge's own transaction, and every other end of the run releases it.** Admissions that only read the balance let concurrent runs spend the same credits. Agent chat holds nothing: a turn is admitted on the balance and charged what it spent. How holds, admission and the credits signal fit together: the credit-hold paragraph in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#canvas-collaboration).
+**A canvas run that spends credits (generation, understanding, a mini-tool) is admitted by `creditHoldService.reserveCredits`, which holds its estimate under the studio's debt lock; its charge passes `releaseHold` so the hold is released in the charge's own transaction, and every other end of the run releases it.** Admissions that only read the balance let concurrent runs spend the same credits. Agent chat and Timeline web-animation executions hold nothing: a turn or an execution is admitted on a balance above zero and charged what it spent. How holds, admission and the credits signal fit together: the credit-hold paragraph in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#canvas-collaboration).
 
 **Every consumption is multiplied by `CREDIT_MULTIPLIER` (default 1).** It is a deployment setting that the model catalog also applies, so a cost computed without it bills a different number than the one shown.
 
@@ -36,7 +36,7 @@ The business core shared by server and worker. These rules apply when you change
 
 ### Tools and generation templates
 
-**The agent works with two things: tools (one external action each, in `agent/tools/`) and generation templates (a fixed workflow of generate nodes, the files it brings and the inputs the reader supplies, one file each under `packages/shared/src/canvas/templates/`, registered in `generation-templates.ts`).** The agent helps the user work in their Spaces: it calls tools and proposes nodes, optionally starting from a template, and a proposal lands on the canvas only when the user clicks Use.
+**The agent works with two things: tools (one external action each, in `agent/tools/`) and generation templates (a fixed workflow of generate nodes, the files it brings and the inputs the user supplies, one file each under `packages/shared/src/canvas/templates/`, registered in `generation-templates.ts`).** The agent helps the user work in their Spaces: it calls tools and proposes nodes, optionally starting from a template, and a proposal lands on the canvas only when the user clicks Use.
 
 Check: is this one external action (a tool) or a fixed way of generating (a template)?
 
@@ -48,9 +48,9 @@ Before changing templates or how the agent proposes them, read the generation te
 
 ### Tool guidance lives in the tool definition
 
-**Everything about a tool (what it does, when to use it, how to read its answer) is written in its `description` and its fields' `.describe()`; a template's words to the model are its `agentNote` and `triggers` in the template definition.** Guidance written anywhere else is a second copy that drifts, and it stays behind when the tool is removed. The system prompt side of this rule is [in server](../server/AGENTS.md#the-system-prompt-names-no-tool); `agent/tools/__tests__/tools-say-their-own-use.test.ts` guards this side. A tool or template is handled specially only when that has been explicitly asked for.
+**Everything about a product tool (what it does, when to use it, how to read its answer) is written in its `description` and its fields' `.describe()`; a template's words to the model are its `agentNote` and `triggers` in the template definition.** Guidance written anywhere else is a second copy that drifts, and it stays behind when the tool is removed. The Agent's own memory tools (`save_memory`, `delete_memory`, `read_memory`) are the one exception: their definitions give arguments and answers, and when to use them is said only in the system prompt ([server rule](../server/AGENTS.md#the-system-prompt-names-no-product-tool)). `agent/tools/__tests__/tools-say-their-own-use.test.ts` guards this side. A tool or template is handled specially only when that has been explicitly asked for.
 
-Check: is the sentence I am writing about one tool or template? Then it belongs in that tool's or template's own definition.
+Check: is the sentence I am writing about one tool or template? Then it belongs in that tool's or template's own definition. Changing such words runs the co-create suite ([server rule](../server/AGENTS.md#prompt-changes-run-the-co-create-suite)).
 
 ### One place assembles the agent
 

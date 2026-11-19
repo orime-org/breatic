@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Reading the Spaces an Agent asked to look at, once the reader allowed it
+ * Reading the Spaces an Agent asked to look at, once the user allowed it
  * (inner#1552, design 4.4, DD 5.3).
  *
  * Each requested Space ends in one of five states and the Agent is told each
@@ -329,7 +329,7 @@ describe('a Space this tab does not hold', () => {
     const socket = reader.config.websocketProvider as FakeSocket;
 
     expect(wsInstances).toContain(socket);
-    expect(socket.config.url).toBe('wss://collab.example/ws');
+    expect(socket.config.url).toBe('wss://collab.example/ws?size_ack=1');
     expect(socket.config.WebSocketPolyfill).toBe(ChunkingWebSocket);
 
     serve(reader, canvasUpdate(['a']));
@@ -348,7 +348,7 @@ describe('a Space this tab does not hold', () => {
 
     expect(sharedSocket).not.toBe(readSocket);
     expect(readSocket.config.url).toBe(sharedSocket.config.url);
-    expect(readSocket.config.url).toBe(`ws://${window.location.host}/ws`);
+    expect(readSocket.config.url).toBe(`ws://${window.location.host}/ws?size_ack=1`);
   });
 
   it('connects read-only, attaches its provider, and stays out of the tab registry and document cache', async () => {

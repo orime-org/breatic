@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * S6d D1: the basic container's probe action on real media (inner#1306 test plan §91; frames-split design §5.1 step 2,

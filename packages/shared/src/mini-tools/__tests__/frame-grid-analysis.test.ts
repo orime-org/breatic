@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 test plan §64.4 SC12 (frames-split design §10.12 analysis-input.ts, analysis-record.ts rows; execution design

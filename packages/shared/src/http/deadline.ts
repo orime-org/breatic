@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A task's deadline, carried down every call it makes (inner#1367).
@@ -19,9 +19,12 @@ import { MAX_TIMER_MS } from "@shared/http/constants.js";
  * cause code the task row holds.
  */
 export class DeadlinePassed extends Error {
-  /** Build the error. */
-  constructor() {
-    super("expired");
+  /**
+   * Build the error.
+   * @param cause - What the deadline cut short, when it cut a call.
+   */
+  constructor(cause?: unknown) {
+    super("expired", cause === undefined ? undefined : { cause });
     this.name = "DeadlinePassed";
   }
 }

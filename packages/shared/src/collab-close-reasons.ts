@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Why collab closed one document of a shared socket, when the answer is "come
@@ -27,6 +27,14 @@ export const COLLAB_REAUTH_REASONS = {
   /** The session this connection was opened with ended: the handshake now fails. */
   sessionEnded: "Session ended",
 } as const;
+
+/**
+ * Why collab closed one document after the size cap refused one of its
+ * updates: the document is full or past its hard ceiling, or the update was
+ * of a kind the cap never admits. It is not a re-auth reason: the client drops its copy of the
+ * document and syncs a fresh one instead of re-sending the refused update.
+ */
+export const COLLAB_DOCUMENT_TOO_LARGE_REASON = "Document size limit reached";
 
 const REAUTH_REASONS: ReadonlySet<string> = new Set(Object.values(COLLAB_REAUTH_REASONS));
 

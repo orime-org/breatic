@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Lane ③ into a derived key (inner#1306 test plan §97 D21-1; frames-split §7.17, the paragraph after the recipe table).

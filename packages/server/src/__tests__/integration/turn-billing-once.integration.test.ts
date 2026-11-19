@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A turn is charged for once, and two turns are charged for separately.
@@ -15,9 +15,10 @@
  *     written in two separately committed statements, so two messages arriving
  *     together could compute the same number. What that costs is not a
  *     duplicate charge but a missing one: the second turn's key collides with
- *     the first's, the lock says "already settled", and it runs for free.
- *   - the key not holding when it should. The lock lives in Redis, so a stub
- *     would only ever prove what the stub does.
+ *     the first's, the request row says "already asked for", and it runs for free.
+ *   - the key not holding when it should. The key is a unique row in
+ *     `credit_charge_requests`, so a stub would only ever prove what the stub
+ *     does.
  *
  * Payments are turned on for this suite. They default off, and with them off
  * `deduct` records the ledger row but leaves the balance alone — which would
@@ -38,11 +39,18 @@ import fc from "fast-check";
 // 连同 `createUIMessageStream` 一起没了，而一轮真的跑完、真的结算正要经过它。
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
+  actual.initProvider((await import("../helpers/fake-provider.js")).assemblyProvider());
   const { modelProducing, saying } = await import("../helpers/model-double.js");
+  const fakeProviderModule = await import("../helpers/fake-provider.js");
   return {
     ...actual,
-    resolveProvider: () => "test",
-    getModel: () => modelProducing(() => saying("hi")),
+    // Every call costs a cent, so every turn has a charge to settle.
+    provider: (() => {
+      const { fakeProvider } = fakeProviderModule;
+      const built = fakeProvider(() => modelProducing(() => saying("hi")));
+      built().llm.costOf = () => ({ state: "known", usd: 0.01, source: "reported" });
+      return built;
+    })(),
   };
 });
 
@@ -59,6 +67,7 @@ import {
 import { creditLotService } from "@breatic/domain";
 import type { Hono } from "hono";
 import { openPaymentSource } from "./payment-source.js";
+import { sendAndRead } from "./chat-run-harness.js";
 
 const PG_DRIVER_LOCAL = "turn-billing-once-test-driver";
 
@@ -69,8 +78,7 @@ beforeAll(async () => {
   // The Stripe secrets come with the switch: the config refuses to turn
   // payments on without them, because a webhook that cannot verify its
   // signature fails confusingly later instead of clearly here. Nothing in this
-  // suite reaches Stripe — the deduction path is entirely our own database and
-  // Redis — so placeholders satisfy the check without standing in for a key.
+  // suite reaches Stripe — the deduction path is entirely our own database — so placeholders satisfy the check without standing in for a key.
   initCore({
     ...process.env,
     PAYMENT_ENABLED: "true",
@@ -204,29 +212,21 @@ describe("turn numbers do not collide", () => {
 });
 
 describe("two turns in one conversation are billed apart", () => {
-  it("gives concurrent turns different settlement keys", async () => {
-    // Two messages sent together, the shape that used to collide: both turns
-    // read the conversation's highest turn number before either had written
-    // its own.
+  it("gives consecutive turns different settlement keys", async () => {
+    // Two messages in one conversation. Sent together they no longer make two
+    // turns that race for a number: the second joins the run the first opened
+    // (inner#1717), so the turns are sent one after the other here, each read
+    // to its end, and the collision itself is held by the case above.
     const { userId, projectId, conversationId, cookie } = await seed();
-    const send = async (): Promise<Response> =>
-      app.request("/api/v1/chat/message", {
-        method: "POST",
-        headers: { Cookie: cookie, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: "hello",
-          project_id: projectId,
-          conversation_id: conversationId,
-        }),
-      });
+    const send = async (): Promise<number> =>
+      (await sendAndRead(app, cookie, {
+        message: "hello",
+        project_id: projectId,
+        conversation_id: conversationId,
+      })).status;
 
-    const responses = await Promise.all([send(), send()]);
-    for (const res of responses) {
-      expect(res.status).toBe(200);
-      // Drain: the turn's work, including its settlement, happens as the
-      // stream is consumed.
-      await res.text();
-    }
+    expect(await send()).toBe(200);
+    expect(await send()).toBe(200);
 
     const keys = await settlementsFor(userId);
     expect(keys).toHaveLength(2);
@@ -255,7 +255,7 @@ describe("one turn is settled once, however many times it is asked for", () => {
           `;
 
           const charge = async (): Promise<unknown> =>
-            creditLotService.chargeOnceForGeneration(refKey, {
+            creditLotService.chargeOnce("operation", refKey, {
               projectId,
               actorUserId: userId,
               amount,
@@ -274,8 +274,14 @@ describe("one turn is settled once, however many times it is asked for", () => {
             FROM credit_lots WHERE user_id = ${userId}
           `;
 
+          const requests = await sql<{ status: string; amount: string }[]>`
+            SELECT status, amount::text AS amount FROM credit_charge_requests
+            WHERE kind = 'operation' AND actor_user_id = ${userId} AND reference_id = ${refKey}
+          `;
+
           expect(Number(rows[0]!.n)).toBe(1);
           expect(Number(after!.total)).toBe(Number(before!.total) - amount);
+          expect(requests).toEqual([{ status: "settled", amount: `${amount}.000000` }]);
         },
       ),
       { numRuns: 15 },

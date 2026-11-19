@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The one place an agent's three things are decided: model, instructions,
@@ -16,8 +16,7 @@ import type { Tool } from "ai";
 import { getAgentConfig } from "@breatic/core";
 import type { MemoryContext } from "@breatic/shared";
 import { instructionsForAgentMemory, type Instructions } from "@domain/agent/instructions.js";
-import { resolveModelPictureCapability } from "@domain/agent/model-picture-capability.js";
-import { resolveModelContextWindow } from "@domain/agent/model-context-window.js";
+import { provider } from "@domain/provider/instance.js";
 import type { AgentPicturePolicy } from "@domain/agent/project-agent-request.js";
 import {
   BASELINE_TOOLS,
@@ -37,8 +36,15 @@ export interface AgentConfigRequest {
    * application decision.
    */
   basePrompt: string;
-  /** The conversation and project layers, when the caller has any. */
+  /** The turn's memory, when the caller has any. */
   memoryContext?: MemoryContext;
+  /** The Project's instructions as stored, when it has any (#1400). */
+  projectInstructions?: string;
+  /**
+   * The model this turn is answered by, as the route resolved it from the
+   * user's pick (#1363); `default_model` when the caller names none.
+   */
+  modelId?: string;
   /** What the turn knows that a tool needs when it is built. */
   toolContext?: ToolContext;
   /** Stop this turn's wait without cancelling the shared model-directory query. */
@@ -54,7 +60,7 @@ export interface ResolvedAgentConfig {
    * one place.
    */
   modelId: string;
-  /** The system prompt in its parts; `systemFor` decides whether they go as separate blocks. */
+  /** The system prompt in its parts; the prepared call's `system` decides whether they go as separate blocks. */
   instructions: Instructions;
   /** Tools, ready for the AI SDK's `tools` option. */
   tools: Record<string, Tool>;
@@ -80,18 +86,19 @@ export interface ResolvedAgentConfig {
 export async function buildAgentConfig(
   request: AgentConfigRequest,
 ): Promise<ResolvedAgentConfig> {
-  const { basePrompt, memoryContext, toolContext } = request;
+  const { basePrompt, memoryContext, projectInstructions, toolContext } = request;
   const config = getAgentConfig();
-  const modelId = config.default_model;
-  const catalogPolicy = {
-    timeoutMs: config.model_catalog_timeout_ms,
-    ttlMs: config.model_catalog_ttl_ms,
-    retryMs: config.model_catalog_retry_ms,
-  };
-  const [seesPictures, resolvedWindow] = await Promise.all([
-    resolveModelPictureCapability(modelId, { override: config.main_model_sees_pictures, ...catalogPolicy }, request.signal),
-    resolveModelContextWindow(modelId, catalogPolicy, request.signal),
-  ]);
+  const modelId = request.modelId ?? config.default_model;
+  const { pictures: seesPictures, contextWindow: resolvedWindow } = await provider().llm.capabilities(
+    modelId,
+    {
+      override: config.main_model_sees_pictures,
+      timeoutMs: config.model_catalog_timeout_ms,
+      ttlMs: config.model_catalog_ttl_ms,
+      retryMs: config.model_catalog_retry_ms,
+    },
+    request.signal,
+  );
   const picturePolicy: AgentPicturePolicy = {
     seesPictures,
     maxPictures: config.chat_pictures_max,
@@ -101,7 +108,7 @@ export async function buildAgentConfig(
   const toolNames = [...BASELINE_TOOLS, ...CANVAS_TOOLS];
   return {
     modelId,
-    instructions: instructionsForAgentMemory(basePrompt, memoryContext),
+    instructions: instructionsForAgentMemory(basePrompt, memoryContext, projectInstructions),
     tools: buildToolSet(toolNames, { ...toolContext, mediaUrlAllowed: toolContext?.mediaUrlAllowed ?? (() => false), seesPictures }),
     seesPictures,
     picturePolicy,

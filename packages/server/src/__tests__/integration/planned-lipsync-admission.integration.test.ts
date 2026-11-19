@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Lip-sync execution admission (inner#1306 test plan §97; frames-split design §7.11 fresh row and §5.4 上限 row; execution

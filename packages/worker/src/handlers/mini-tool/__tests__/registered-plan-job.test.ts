@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as domainModule from "@breatic/domain";
@@ -19,7 +19,7 @@ vi.mock("@breatic/core", async (original) => ({ ...await original<typeof coreMod
 vi.mock("@worker/handlers/mini-tool/advance-plan-job.js", () => ({ advanceMiniToolPlanJob: h.advance }));
 
 import { advanceRegisteredMiniToolPlanJob } from "../registered-plan-job.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 
 const taskId = "10000000-0000-4000-8000-000000000001";
 const stepId = "20000000-0000-4000-8000-000000000001";

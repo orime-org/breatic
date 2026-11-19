@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The stop reaches the model and the tool, not just the route.
@@ -31,7 +31,7 @@ import type * as DomainModule from "@breatic/domain";
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));
@@ -42,7 +42,7 @@ let providerParts: () => readonly Record<string, unknown>[];
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const foldIfTooLong = vi.fn(async () => "none");
-const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
+const chargeOnce = vi.fn(async (..._args: unknown[]) => null);
 /** The usage rows the turn wrote. */
 const usageRows: DomainModule.UsageRow[] = [];
 /** The tools the turn is given, set per test. */
@@ -83,7 +83,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     finalizeTurn: actual.finalizeTurn,
     // The studio the turn's tools read material for; the ledger is not here.
     assetService: { ...actual.assetService, resolveOwnerStudioId: async () => "s0000000-0000-4000-8000-000000000001" },
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       new MockLanguageModelV4({
         doStream: async () => {
           providerCalls += 1;
@@ -103,22 +103,18 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             }),
           };
         },
-      }),
-    resolveProvider: () => "test",
+      })),
     buildAgentConfig: () => ({
       modelId: "test/model",
       instructions: { base: "system" },
       tools: turnTools,
     }),
-    creditLotService: { chargeOnceForGeneration },
+    creditLotService: { chargeOnce },
     // Real, writing into `usageRows` at a price for the test model.
     createUsageRecorder: (options: Parameters<typeof actual.createUsageRecorder>[0]) =>
       actual.createUsageRecorder({
         ...options,
         pricing: {
-          models: {
-            "test/model": { input_cache_hit_per_mtok: 1, input_cache_miss_per_mtok: 1, output_per_mtok: 1 },
-          },
           services: { brave_web_search: { per_request: 0.005 }, brave_image_search: { per_request: 0.005 } },
         },
         multiplier: 1,
@@ -137,11 +133,12 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
 // The turn asks the conversation what it is called, so it can say so in the
 // event that opens the turn. Answered with a name already set: these tests are
 // about what a turn streams, not about how a conversation comes by its name.
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  getMessagesForLlm: async () => [],
   titleForTurn: vi.fn(async () => "already named"),
 }));
 
@@ -198,7 +195,7 @@ beforeEach(() => {
   turnTools = {};
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
-  [addMessage, foldIfTooLong, chargeOnceForGeneration].forEach((m) => m.mockClear());
+  [addMessage, foldIfTooLong, chargeOnce].forEach((m) => m.mockClear());
   usageRows.length = 0;
 });
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A proposed node naming a template and one of its keys starts from that
@@ -12,7 +12,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
 
-import type { GenerationTemplate, ProposalNode } from "@breatic/shared";
+import type { GenerationTemplate, PromptSegment, ProposalNode } from "@breatic/shared";
 
 import { nodeLabel, type NodeLabel } from "@domain/agent/tools/proposal-refusals.js";
 import { expandAt, templatePlace, type TemplateExpansion } from "@domain/agent/tools/template-expansion.js";
@@ -57,6 +57,10 @@ function expandTemplate(node: ProposalNode & { template: Tag }, at: NodeLabel, t
   const place = templatePlace(tag, rest, templates);
   return "ok" in place ? place : expandAt(place, rest, at);
 }
+
+/** The pool sentence of a node asked for shots, and of one asked for a prompt. */
+const SHOTS_POOL = " Each node the shots @ goes into the pool. ";
+const PROMPT_POOL = " Each node the prompt @s goes into the pool. ";
 
 const SHEET_ANCHOR: Tag = { id: "fixture-sheet" };
 const SKETCH: Tag = { id: "fixture-sheet", key: "sketch" };
@@ -134,9 +138,14 @@ describe("expandTemplate", () => {
     expect(reason).not.toContain("📎");
   });
 
-  it("refuses a multi_shot generate node with no shots as sending no prompt", () => {
+  it("asks a multi_shot generate node with no shots for its shots", () => {
     const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "fixture-shots" } }, AT, FIXTURES);
     expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
+    const reason = out.ok ? "" : out.reason;
+    expect(reason).toContain("sends no shots");
+    expect(reason).toContain("write the shots.");
+    expect(reason).toContain(SHOTS_POOL);
+    expect(reason).not.toContain("prompt @s");
   });
 
   it("takes a multi_shot generate node's shots as its prompt", () => {
@@ -148,6 +157,51 @@ describe("expandTemplate", () => {
     });
   });
 
+  it("asks a shot-list template's node the agent moved to another mode for a prompt, not shots", () => {
+    const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "vertical-15s-quick-tip" }, mode: "t2v" }, AT);
+    expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
+    const reason = out.ok ? "" : out.reason;
+    expect(reason).toContain("sends no prompt");
+    expect(reason).not.toContain("sends no shots");
+    expect(reason).toContain("write a prompt.");
+    expect(reason).not.toContain("write the shots.");
+    // The mode moved off the template's, so no pool sentence follows.
+    expect(reason).not.toContain("goes into the pool");
+  });
+
+  it("asks a shot-list template's node that keeps multi_shot for its shots, its pool sentence about the shots", () => {
+    const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "vertical-15s-quick-tip" } }, AT);
+    expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
+    const reason = out.ok ? "" : out.reason;
+    expect(reason).toContain("sends no shots");
+    expect(reason).toContain("write the shots.");
+    expect(reason).toContain(SHOTS_POOL);
+    expect(reason).not.toContain("sends no prompt");
+    expect(reason).not.toContain("write a prompt.");
+    expect(reason).not.toContain("prompt @s");
+  });
+
+  it("asks a template node without shots that the agent moved to multi_shot for shots, not a prompt", () => {
+    const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "game-ui-livestream" }, mode: "multi_shot" }, AT);
+    expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
+    const reason = out.ok ? "" : out.reason;
+    expect(reason).toContain("sends no shots");
+    expect(reason).not.toContain("sends no prompt");
+    expect(reason).toContain("write the shots.");
+    expect(reason).not.toContain("write a prompt.");
+    expect(reason).not.toContain("prompt @s");
+  });
+
+  it("asks a template node without shots that keeps its mode for a prompt, its pool sentence about the prompt", () => {
+    const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "game-ui-livestream" } }, AT);
+    expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
+    const reason = out.ok ? "" : out.reason;
+    expect(reason).toContain("sends no prompt");
+    expect(reason).toContain("write a prompt.");
+    expect(reason).toContain(PROMPT_POOL);
+    expect(reason).not.toContain("the shots @");
+  });
+
   it("refuses a template the registry it is given does not have, naming the ones it does", () => {
     const out = expandTemplate(named({ id: "no-such" }), AT, FIXTURES);
     expect(out).toMatchObject({ ok: false, refusal: "template-unknown", reason: 'No template "no-such". Templates: fixture-sheet, fixture-solo, fixture-steps, fixture-shots.' });
@@ -156,5 +210,63 @@ describe("expandTemplate", () => {
   it("reads the registry when no other is given", () => {
     const out = expandTemplate(named({ id: "storyboard-grid-25" }), AT);
     expect(out).toMatchObject({ ok: true, node: { mode: "i2i", model: EDIT, params: { aspect_ratio: "1:1", resolution: "4k" } } });
+  });
+});
+
+// The Agent sent a template's character design with its style blank still in
+// the prompt, leaving the user to fill it in by hand (breatic#1361): a
+// template's tweak segment is never sent as it is.
+describe("a template's tweak segments left in the prompt", () => {
+  const DESIGN: Tag = { id: "character-design-from-text", key: "design" };
+  const WHO = "who the character is: age, build, face, hair, outfit, colours";
+  const STYLE = "one style, e.g. 3D cartoon, anime or photorealistic";
+  const SHEET_TEXT = "name, role, age, 3 to 5 personality keywords and a one-line theme";
+
+  /**
+   * A tweak segment as a template writes it.
+   * @param label - Its label.
+   * @returns The segment.
+   */
+  const tweak = (label: string): PromptSegment => ({ slot: { kind: "tweak", label, note: label } });
+
+  /**
+   * The design node with the prompt the agent sent.
+   * @param prompt - The prompt.
+   * @returns The node naming the design key.
+   */
+  const design = (prompt: PromptSegment[]): ProposalNode & { template: Tag } =>
+    named(DESIGN, { name: "Character design", prompt });
+
+  // Blanks are held by one check, the generate check on the whole proposal
+  // (`checkBlanks`), which the tool's path runs after expansion; how it
+  // refuses a template's own blanks is pinned in proposal-tweak-blanks.test.ts.
+  it("expands a node keeping the template's own tweak segments, leaving them to the generate check", () => {
+    const prompt = [{ text: "A full-body character design of " }, tweak(WHO), { text: ", in " }, tweak(STYLE), { text: "." }];
+    const out = expandTemplate(design(prompt), AT);
+    expect(out).toMatchObject({ ok: true, node: { prompt } });
+  });
+
+  it("expands the anchor keeping its own tweak segment, leaving it to the generate check", () => {
+    const prompt = [{ text: "A character sheet. " }, tweak(SHEET_TEXT), { ref: 1 }];
+    const out = expandTemplate(named({ id: "character-design-from-text" }, { name: "Sheet", prompt }), AT);
+    expect(out).toMatchObject({ ok: true, node: { prompt } });
+  });
+
+  it("accepts a prompt whose every template tweak segment is filled", () => {
+    const prompt = [{ text: "A full-body character design of a twelve-year-old fox girl in a red coat, in a 3D cartoon style." }];
+    const out = expandTemplate(design(prompt), AT);
+    expect(out).toMatchObject({ ok: true, node: { prompt } });
+  });
+
+  it("accepts a tweak segment the agent wrote itself, whose label is none of the template's", () => {
+    const prompt = [{ text: "A full-body character design of a fox girl, in a 3D cartoon style, wearing " }, tweak("the coat's colour"), { text: "." }];
+    const out = expandTemplate(design(prompt), AT);
+    expect(out).toMatchObject({ ok: true, node: { prompt } });
+  });
+
+  it("accepts a tweak segment whose label belongs to another node of the template, not this one", () => {
+    const prompt = [{ text: "A full-body character design of a fox girl, in a 3D cartoon style. " }, tweak(SHEET_TEXT)];
+    const out = expandTemplate(design(prompt), AT);
+    expect(out).toMatchObject({ ok: true, node: { prompt } });
   });
 });

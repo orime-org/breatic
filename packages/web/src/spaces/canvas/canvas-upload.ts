@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { validFocusImages } from '@web/data/focus-images';
 import { videoToolNodeAssetUrls } from '@web/data/video-tool-node-data';
@@ -10,6 +10,8 @@ import {
   reduceMediaType,
 } from '@breatic/shared';
 import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
+import { docName } from '@web/data/yjs/manager';
+import { canAdd, type SpaceWriteResult } from '@web/data/yjs/space-write';
 import {
   runMediaUpload,
   runMediaUploadBatch,
@@ -19,6 +21,7 @@ import {
 } from '@web/data/upload/media-upload';
 import { allSlotSpecs, readSlotPicks } from '@web/spaces/canvas/generate/slots';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
+import type { TrayNotice } from '@web/stores/chat-attachments';
 import { useUploadMarksStore, type UploadMarkMessage } from '@web/stores/upload-marks';
 
 /**
@@ -71,7 +74,7 @@ export type FileRejection = 'empty' | 'tooLarge' | 'unsupportedType';
  * Derived from the same list the admission gate asks, aliases and all: the
  * picker and the gate answer the same question, so a format shown here and
  * refused there is an offer withdrawn the moment somebody takes it, and one the
- * gate takes but the picker omits is a file the reader cannot select. A family
+ * gate takes but the picker omits is a file the user cannot select. A family
  * wildcard does the first — `image/*` shows HEIC, GIF and AVIF, none of which a
  * model can be given.
  * @param modality - One media kind, or all supported media.
@@ -107,6 +110,15 @@ export function refusedFormatParams(file: Pick<File, 'type'>): {
   return medium === undefined
     ? { kind: 'other', formats: '' }
     : { kind: medium, formats: uploadableFormatList(medium) };
+}
+
+/**
+ * What the Agent tray says about a media file refused for its format.
+ * @param file - The file whose medium determines the supported formats.
+ * @returns The notice the tray's toast renders.
+ */
+export function mediaFormatNotice(file: Pick<File, 'name' | 'type'>): TrayNotice {
+  return { key: 'unsupportedMedia', filename: file.name, ...refusedFormatParams(file) };
 }
 
 /**
@@ -165,7 +177,7 @@ export interface FillNodeDeps {
    * row and is said on the node itself (inner#1303 §6.7).
    *
    * Every reason needs something only the caller can do — pick or clear the
-   * Retry stash, and say the remedy in the reader's own language — and what
+   * Retry stash, and say the remedy in the user's own language — and what
    * each one needs differs: a hashing refusal must not be stashed (retrying on
    * this page hits the same broken worker) and a full account must not be
    * either (nobody frees storage in the seconds a retry takes), while an
@@ -185,13 +197,14 @@ export interface FillNodeDeps {
   /**
    * Content write-back for the text path, which has no upload: the text is
    * read here and there is nobody else to write it. A media node's content
-   * is written by the server through Yjs (design §6.6).
+   * is written by the server through Yjs (design §6.6). Answers whether the
+   * Space had room for the text (inner#1790); no answer counts as written.
    */
-  setContent: (nodeId: string, content: string) => void;
+  setContent: (nodeId: string, content: string) => SpaceWriteResult | void;
   /** The space the node lives in, which rides the ticket and keys its mark. */
   spaceId: string;
   /**
-   * The upload mark the caller began on the node when the reader asked for
+   * The upload mark the caller began on the node when the user asked for
    * this fill (inner#1303 §6.7); this fill ends it.
    */
   markOp: string;
@@ -254,12 +267,19 @@ export async function fillNodeFromFile(
     return;
   }
   try {
-    deps.setContent(nodeId, await deps.extractText(file));
-    marks.answer(deps.spaceId, nodeId, deps.markOp);
+    const written = deps.setContent(nodeId, await deps.extractText(file));
+    if (written && !written.ok) marks.fail(deps.spaceId, nodeId, deps.markOp, TEXT_REFUSAL_MARK);
+    else marks.answer(deps.spaceId, nodeId, deps.markOp);
   } catch {
     marks.fail(deps.spaceId, nodeId, deps.markOp, { key: 'canvas.upload.extractionFailed', params: { filename: file.name } });
   }
 }
+
+/**
+ * What a text node says when the words read from its file were not written
+ * because the Space could not take them (inner#1790, design 5.5).
+ */
+export const TEXT_REFUSAL_MARK: UploadMarkMessage = { key: 'spaces.sizeCap.text' };
 
 /**
  * What a node says when its upload ended before the server answered: the
@@ -329,7 +349,9 @@ export interface FillNodesDeps extends BatchUploadDeps {
  * (inner#1303 §6.5): a locked node is left out, every other node is
  * registered as busy before anything awaits, and each file's outcome goes to
  * the caller as a single fill's would. What a node ends up holding arrives
- * from the server through Yjs.
+ * from the server through Yjs, past the size gate, so a Space that filled
+ * after the result nodes were built sends nothing and each node's mark says
+ * why (inner#1790, design 5.5).
  * @param entries - Each node and the file it is filled with.
  * @param projectId - The project, which gates the tickets.
  * @param deps - The upload network and the canvas sinks.
@@ -348,6 +370,11 @@ export function fillNodesFromFiles(
     }
   }
   if (open.length === 0) return;
+  if (!canAdd(docName.canvasSpace(projectId, deps.spaceId))) {
+    const marks = useUploadMarksStore.getState();
+    for (const entry of open) marks.fail(deps.spaceId, entry.nodeId, entry.markOp, { key: 'spaces.sizeCap.reason' });
+    return;
+  }
   const work = runMediaUploadBatch(
     open.map((entry) => ({
       file: entry.file,

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { DelayedError, type Job } from "bullmq";
 import { AppError, getMiniToolsConfig, getStreamRedis, getWorkerConfig, logger } from "@breatic/core";
@@ -19,7 +19,7 @@ import { runMiniToolExpand } from "@worker/handlers/mini-tool/run-expand.js";
 import { modelRunFailure, type ModelRunAt } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { verdictStands } from "@worker/handlers/understand-failure.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 
 /**

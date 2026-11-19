@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Central LLM call wrapper (#1625 Slice 3, resilience).
@@ -34,7 +34,7 @@ import { unicodeTagMiddleware } from "@domain/agent/strip-unicode-tags.js";
  */
 function cleaned(model: LanguageModel): Exclude<LanguageModel, string> {
   if (typeof model === "string") {
-    throw new TypeError(`A model named by id ("${model}") cannot be cleaned; pass getModel()'s model`);
+    throw new TypeError(`A model named by id ("${model}") cannot be cleaned; pass the model provider prepared`);
   }
   return wrapLanguageModel({ model, middleware: [unicodeTagMiddleware, dsmlMiddleware] });
 }

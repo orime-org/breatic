@@ -1,0 +1,361 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=tripo3d/h3.1/image-to-3d",
+  "fields": {
+    "auto_size": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "face_limit": [
+      {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 2000000
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "geometry_quality": [
+      {
+        "type": "string",
+        "enum": [
+          "standard",
+          "detailed"
+        ],
+        "default": "standard"
+      }
+    ],
+    "image_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "orientation": [
+      {
+        "type": "string",
+        "enum": [
+          "default",
+          "align_image"
+        ],
+        "default": "default"
+      }
+    ],
+    "pbr": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "quad": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "texture": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "texture_alignment": [
+      {
+        "type": "string",
+        "enum": [
+          "original_image",
+          "geometry"
+        ],
+        "default": "original_image"
+      }
+    ],
+    "texture_quality": [
+      {
+        "type": "string",
+        "enum": [
+          "standard",
+          "detailed"
+        ],
+        "default": "standard"
+      }
+    ],
+    "texture_seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ]
+  },
+  "required": [
+    "image_url"
+  ],
+  "outputs": {
+    "model_mesh": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "model_mesh.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_mesh.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_mesh.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_mesh.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls": [
+      {
+        "type": "object"
+      }
+    ],
+    "model_urls.base_model": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.base_model.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.base_model.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.base_model.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.base_model.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.fbx": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.fbx.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.glb": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.glb.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "model_urls.pbr_model": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.pbr_model.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.pbr_model.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.pbr_model.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "model_urls.pbr_model.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "rendered_image": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "rendered_image.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "rendered_image.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "rendered_image.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "rendered_image.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "task_id": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ]
+  }
+}

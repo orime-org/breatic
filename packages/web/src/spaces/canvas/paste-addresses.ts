@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a paste sends to the server and how its answer is written back
@@ -13,7 +13,7 @@
  * belongs to.
  */
 
-import { isStoredObjectUrl, type PasteHistoryItem, type PastePair } from '@breatic/shared';
+import { isStoredObjectUrl, nodeMediaEntries, type NodeMediaFields, type PasteHistoryItem, type PastePair } from '@breatic/shared';
 
 import type { SnapshotNode } from '@web/data/yjs/canvas-space';
 
@@ -128,11 +128,34 @@ export function replaceAddresses(
 }
 
 /**
+ * Give each copy the media fields it lacks from what the target Studio's
+ * ledger holds for its content (inner#1537): a document block carries only
+ * the address. A field the copy already has is its own and stays.
+ * @param nodes - The copies, their addresses already mapped.
+ * @param media - The target Studio's ledger, by address.
+ * @returns The copies with the missing fields filled.
+ */
+export function fillMissingMedia(
+  nodes: ReadonlyArray<SnapshotNode>,
+  media: Readonly<Record<string, NodeMediaFields>>,
+): SnapshotNode[] {
+  return nodes.map((node) => {
+    const held = typeof node.data.content === 'string' ? media[node.data.content] : undefined;
+    if (held === undefined) return node;
+    const data = { ...node.data };
+    for (const [key, value] of nodeMediaEntries(held)) {
+      if (value !== null && !(key in data)) data[key] = value;
+    }
+    return { ...node, data };
+  });
+}
+
+/**
  * The words of a text body tree, one line per block.
  * @param body - The body tag from a snapshot.
  * @returns Its plain text.
  */
-function bodyText(body: unknown): string {
+export function bodyText(body: unknown): string {
   if (!isRecord(body) || !Array.isArray(body.children)) return '';
   /**
    * The text inside one element.

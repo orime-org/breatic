@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Assembles the `POST /canvas/tasks` request body for an audio-node Generate.
@@ -39,7 +39,7 @@ import { wireParams } from '@web/spaces/canvas/generate/stand-in';
  * the mode collects left empty, that null is what the panel gate, the
  * server's source gate and the mini-tool schema each refuse first; on a mode
  * taking any one of several, the nulls beside the picked one ride along and
- * the WaveSpeed transport strips them before the request.
+ * the worker's `paramsToSend` leaves them out before the run goes to provider.
  * @param slots - The slots the active mode collects.
  * @param slotUrls - What each slot currently holds.
  * @returns The source params, empty when nothing is picked.
@@ -130,16 +130,19 @@ interface AudioEstimateSource {
  * @param vm - The panel's view model.
  * @param slots - The slots the active mode collects.
  * @param prompt - The prompt as the model reads it.
+ * @param lyricsText - The lyrics as the submit sends them, or undefined when the mode collects none.
  * @returns The estimate input.
  */
 export function audioEstimateInput(
   vm: AudioEstimateSource,
   slots: readonly AudioSlot[],
   prompt: string,
+  lyricsText?: string,
 ): EstimateInput {
   return {
     params: {
       ...(vm.modelEntry ? wireParams(vm.modelEntry, vm.params) : vm.params),
+      ...(lyricsText !== undefined ? { lyrics: lyricsText } : {}),
       ...sourceParams(slots, vm.slotUrls),
     },
     prompt,

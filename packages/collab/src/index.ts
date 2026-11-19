@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Hocuspocus collaboration server entry point.
@@ -29,6 +29,7 @@ import {
   checkInfraReady,
   startHealthServer,
   runGracefulShutdown,
+  closeQueues,
   InfraNotReadyError,
   flushServerAnalytics,
   adsConversionState,
@@ -39,6 +40,7 @@ import {
   projectAuthService,
   type MemberChangeListener,
 } from "@breatic/core";
+import { getTimelineConfig, onDatabaseWaitTimeout } from "@breatic/core";
 import { getCollabConfig, getReassemblyLimits } from "@collab/config.js";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
@@ -58,6 +60,7 @@ const monitoring = initSentry();
 initLogger("collab");
 
 const logger = createLogger("main");
+onDatabaseWaitTimeout((event) => logger.error(event, "db_wait_timeout"));
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
 const analytics = initServerAnalytics({
   apiKey: env.AMPLITUDE_API_KEY,
@@ -299,6 +302,17 @@ async function main(): Promise<void> {
     return;
   }
 
+  // The Timeline config is lazy like the ones above; a default frame outside the presets (#1502) would otherwise
+  // surface on the first Timeline request instead of at startup.
+  try {
+    getTimelineConfig();
+  } catch (err) {
+    logger.error({ err }, "timeline_config_invalid");
+    await flushLogger();
+    await exitProcess(1);
+    return;
+  }
+
   await server.listen();
   logger.info({ port: env.COLLAB_PORT, ...getReassemblyLimits() }, "Hocuspocus collaboration server started");
 
@@ -487,6 +501,8 @@ async function main(): Promise<void> {
         () => seatHandover.stop(),
         () => controlRedis.quit(),
         () => closeCollabRedis(),
+        // The `timeline` queue a Timeline store enqueues landed executions on (inner#1711).
+        () => closeQueues(),
       ],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });

@@ -1,15 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import postgres from "postgres";
 import type { Hono } from "hono";
 import type * as DomainModule from "@breatic/domain";
-import { initCore, loadLocales } from "@breatic/core";
+import { getAgentConfig, initCore, loadLocales } from "@breatic/core";
 import { activityRows, rejectActivityWrites, seedActivityProject, seedActivityUser } from "./helpers/account-activity-fixture.js";
 import type { ActivityProject } from "./helpers/account-activity-fixture.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
+import { sendAndRead, type SentAndRead } from "./chat-run-harness.js";
 
 const model = vi.hoisted(() => ({ fail: false }));
 vi.mock("@breatic/domain", async (importOriginal) => {
@@ -17,16 +19,16 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const { modelProducing, saying } = await import("../helpers/model-double.js");
   return {
     ...actual,
-    resolveProvider: () => "deepseek",
-    getModel: () => modelProducing(() => {
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => modelProducing(() => {
       if (model.fail) throw new Error("activity model fixture failed");
       return saying("ok");
-    }),
+    })),
   };
 });
 
 initCore(process.env);
 loadLocales();
+initConfiguredProvider();
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -45,15 +47,16 @@ interface Chat extends ActivityProject {
 const QUESTION = { questions: [{ header: "Ratio", question: "Which ratio?", options: [{ label: "16:9" }, { label: "9:16" }] }] };
 
 /**
- * Seed a conversation owned by the fixture's authenticated user.
+ * Seed a conversation owned by the fixture's authenticated user, on the
+ * model a new conversation starts on (#1363).
  * @returns The real account, Project, conversation and cookie.
  * @throws {Error} When a fixture insert fails.
  */
 async function seedChat(): Promise<Chat> {
   const project = await seedActivityProject(sql);
   const [conversation] = await sql<{ id: string }[]>`
-    INSERT INTO conversations (user_id, project_id)
-    VALUES (${project.userId}, ${project.projectId}) RETURNING id
+    INSERT INTO conversations (user_id, project_id, agent_model)
+    VALUES (${project.userId}, ${project.projectId}, ${getAgentConfig().default_model}) RETURNING id
   `;
   if (!conversation) throw new Error("activity conversation fixture was not inserted");
   return { ...project, conversationId: conversation.id };
@@ -87,19 +90,30 @@ async function seedCard(chat: Chat, kind: "questionnaire" | "space"): Promise<{ 
 }
 
 /**
- * Drive a real chat request and finish reading its stream or error response.
+ * Drive a real chat request and, when it opens a run, read the run to its end.
  * @param chat - The real authenticated caller.
  * @param body - The message or card answer.
- * @returns The actual status and response text.
+ * @returns The actual status of the send.
  * @throws {Error} When the request cannot run.
  */
-async function post(chat: Chat, body: Record<string, unknown>): Promise<{ status: number; text: string }> {
-  const response = await app.request("/api/v1/chat/message", {
+async function post(chat: Chat, body: Record<string, unknown>): Promise<SentAndRead> {
+  return sendAndRead(app, chat.cookie, { project_id: chat.projectId, conversation_id: chat.conversationId, message: "", ...body });
+}
+
+/**
+ * Send a card answer and read only what the send answered, without waiting
+ * for the conversation to go idle.
+ * @param chat - The real authenticated caller.
+ * @param body - The card answer.
+ * @returns The status and the JSON body.
+ */
+async function answerAtOnce(chat: Chat, body: Record<string, unknown>): Promise<SentAndRead> {
+  const res = await app.request("/api/v1/chat/message", {
     method: "POST",
-    headers: { Cookie: chat.cookie, "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Cookie: chat.cookie },
     body: JSON.stringify({ project_id: chat.projectId, conversation_id: chat.conversationId, message: "", ...body }),
   });
-  return { status: response.status, text: await response.text() };
+  return { status: res.status, json: (await res.json()) as Record<string, unknown>, chunks: [] };
 }
 
 /**
@@ -247,7 +261,7 @@ describe("Agent activity acceptance and card transactions (inner#1893)", () => {
       expect((await activityRows(sql, chat.userId)).map((row) => row.kind)).toEqual(["agent_started"]);
     });
 
-    it(`P17 serializes two real ${kind} answers at the conversation lock`, async () => {
+    it(`P17 takes one of two real ${kind} answers and refuses the other while the first holds the conversation`, async () => {
       const chat = await seedChat();
       const card = await seedCard(chat, kind);
       let release = (): void => {};
@@ -262,16 +276,21 @@ describe("Agent activity acceptance and card transactions (inner#1893)", () => {
       });
       void holder.catch(fail);
       await ready;
+      // The first answer holds the run and waits at the conversation's row
+      // lock; the second finds the conversation held and is refused before
+      // it reaches the card (inner#1717).
       const first = post(chat, card.answer);
-      const second = post(chat, card.answer);
+      let second: SentAndRead;
       try {
-        await waitUntilBlockedOn(sql, ["conversations", "for update"], 2);
+        await waitUntilBlockedOn(sql, ["conversations", "for update"], 1);
+        second = await answerAtOnce(chat, card.answer);
       } finally {
         release();
         await holder;
       }
-      const responses = await Promise.all([first, second]);
-      expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+      expect(second.status).toBe(409);
+      expect((second.json as { error: { reason?: string } }).error.reason).toBe("turn_busy");
+      expect((await first).status).toBe(200);
       expect(await cardStatus(chat, card.callId)).toBe("success");
       expect((await activityRows(sql, chat.userId)).map((row) => row.kind)).toEqual(["agent_started"]);
     });
@@ -287,12 +306,12 @@ describe("Agent activity acceptance and card transactions (inner#1893)", () => {
     });
   }
 
-  it("P18 keeps text-tool activity account-scoped when a client supplies a Project", async () => {
+  it("P18 keeps text-tool activity account-scoped when the request names the Project it runs in", async () => {
     const project = await seedActivityProject(sql);
     const response = await app.request("/api/v1/mini-tools/text", {
       method: "POST",
       headers: { Cookie: project.cookie, "Content-Type": "application/json" },
-      body: JSON.stringify({ tool: "polish", document: "Hello", selection: "Hello", project_id: randomUUID() }),
+      body: JSON.stringify({ tool: "polish", document: "Hello", selection: "Hello", project_id: project.projectId }),
     });
     expect(response.status).toBe(200);
     await response.text();
@@ -334,7 +353,7 @@ describe("Agent activity acceptance and card transactions (inner#1893)", () => {
   });
 
 
-  it("P14 refuses an ordinary turn before opening SSE when activity persistence fails", async () => {
+  it("P14 refuses an ordinary turn before opening a run when activity persistence fails", async () => {
     const chat = await seedChat();
     const restore = await rejectActivityWrites(sql, chat.userId);
     try {
@@ -352,7 +371,7 @@ describe("Agent activity acceptance and card transactions (inner#1893)", () => {
     try {
       const response = await app.request("/api/v1/mini-tools/text", {
         method: "POST", headers: { Cookie: project.cookie, "Content-Type": "application/json" },
-        body: JSON.stringify({ tool: "polish", document: "Hello", selection: "Hello", project_id: randomUUID() }),
+        body: JSON.stringify({ tool: "polish", document: "Hello", selection: "Hello", project_id: project.projectId }),
       });
       expect(response.status).toBe(200);
       const stream = await response.text();

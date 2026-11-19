@@ -1,0 +1,283 @@
+{
+  "model": "kling-video-o3-4k-image-to-video",
+  "upstream": "sandbase",
+  "model_id": "kwaivgi/kling-video/o3/4k/image-to-video",
+  "runs": [
+    {
+      "params": {
+        "duration": 5,
+        "image": "https://example.com/image.png",
+        "auto_shots": false,
+        "generate_audio": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 5,
+        "image": "https://example.com/image.png",
+        "generate_audio": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    },
+    {
+      "params": {
+        "duration": 3,
+        "image": "https://example.com/image.png",
+        "auto_shots": false,
+        "generate_audio": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 3,
+        "image": "https://example.com/image.png",
+        "generate_audio": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    },
+    {
+      "params": {
+        "duration": 4,
+        "image": "https://example.com/image.png",
+        "auto_shots": false,
+        "generate_audio": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 4,
+        "image": "https://example.com/image.png",
+        "generate_audio": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    },
+    {
+      "params": {
+        "duration": 6,
+        "image": "https://example.com/image.png",
+        "auto_shots": false,
+        "generate_audio": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 6,
+        "image": "https://example.com/image.png",
+        "generate_audio": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    },
+    {
+      "params": {
+        "duration": 7,
+        "image": "https://example.com/image.png",
+        "auto_shots": false,
+        "generate_audio": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 7,
+        "image": "https://example.com/image.png",
+        "generate_audio": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    },
+    {
+      "params": {
+        "duration": 8,
+        "image": "https://example.com/image.png",
+        "auto_shots": false,
+        "generate_audio": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 8,
+        "image": "https://example.com/image.png",
+        "generate_audio": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    },
+    {
+      "params": {
+        "duration": 9,
+        "image": "https://example.com/image.png",
+        "auto_shots": false,
+        "generate_audio": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 9,
+        "image": "https://example.com/image.png",
+        "generate_audio": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    },
+    {
+      "params": {
+        "duration": 10,
+        "image": "https://example.com/image.png",
+        "auto_shots": false,
+        "generate_audio": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 10,
+        "image": "https://example.com/image.png",
+        "generate_audio": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    },
+    {
+      "params": {
+        "duration": 11,
+        "image": "https://example.com/image.png",
+        "auto_shots": false,
+        "generate_audio": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 11,
+        "image": "https://example.com/image.png",
+        "generate_audio": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    },
+    {
+      "params": {
+        "duration": 12,
+        "image": "https://example.com/image.png",
+        "auto_shots": false,
+        "generate_audio": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 12,
+        "image": "https://example.com/image.png",
+        "generate_audio": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    },
+    {
+      "params": {
+        "duration": 13,
+        "image": "https://example.com/image.png",
+        "auto_shots": false,
+        "generate_audio": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 13,
+        "image": "https://example.com/image.png",
+        "generate_audio": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    },
+    {
+      "params": {
+        "duration": 14,
+        "image": "https://example.com/image.png",
+        "auto_shots": false,
+        "generate_audio": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 14,
+        "image": "https://example.com/image.png",
+        "generate_audio": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    },
+    {
+      "params": {
+        "duration": 15,
+        "image": "https://example.com/image.png",
+        "auto_shots": false,
+        "generate_audio": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 15,
+        "image": "https://example.com/image.png",
+        "generate_audio": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    },
+    {
+      "params": {
+        "duration": 5,
+        "image": "https://example.com/image.png",
+        "shot_type": "customize",
+        "auto_shots": false,
+        "generate_audio": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 5,
+        "image": "https://example.com/image.png",
+        "shot_type": "customize",
+        "generate_audio": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    },
+    {
+      "params": {
+        "duration": 5,
+        "image": "https://example.com/image.png",
+        "auto_shots": true,
+        "generate_audio": false
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 5,
+        "image": "https://example.com/image.png",
+        "shot_type": "intelligent",
+        "generate_audio": false,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    },
+    {
+      "params": {
+        "duration": 5,
+        "image": "https://example.com/image.png",
+        "auto_shots": false,
+        "generate_audio": true
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "duration": 5,
+        "image": "https://example.com/image.png",
+        "generate_audio": true,
+        "prompt": "a red fox running through fresh snow at dawn",
+        "mode": "async",
+        "model": "kwaivgi/kling-video/o3/4k/image-to-video"
+      }
+    }
+  ],
+  "steps": []
+}

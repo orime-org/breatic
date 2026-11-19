@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * project.service.create unit test (3-role studio-scoped create).
@@ -26,7 +26,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // project.service imports @breatic/domain (studioAuthService), whose barrel
-// reaches agent/llm and therefore the `ai` SDK. `ai` is stubbed: the real SDK
+// reaches agent/model-call and therefore the `ai` SDK. `ai` is stubbed: the real SDK
 // is replaced with a double that reaches no network, so this suite needs no
 // API key and the SDK stays out of its module graph.
 vi.mock("ai", () => ({

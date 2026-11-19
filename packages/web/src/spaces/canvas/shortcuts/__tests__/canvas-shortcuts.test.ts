@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -18,7 +18,7 @@ import { matchDuplicateShortcut } from '@web/spaces/canvas/canvas-duplicate-shor
 import { brushSizeStep } from '@web/spaces/canvas/mini-tool/drawing-history';
 
 /**
- * Turn a listed chord into the keydown a reader pressing it would send, once
+ * Turn a listed chord into the keydown a user pressing it would send, once
  * with Cmd (macOS) and once with Ctrl (Windows).
  * @param spec - The listed chord.
  * @param platform - Which modifier carries `mod`.

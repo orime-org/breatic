@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 // After an update reload, the box shows the sentence the user had typed,
 // reference blocks included: the draft and the tray come back from two
@@ -26,7 +26,8 @@ await vi.hoisted(async () => {
 });
 vi.mock('@web/lib/toast', () => ({ toast: { warning: vi.fn(), error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import { attachmentMarker } from '@breatic/shared';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';

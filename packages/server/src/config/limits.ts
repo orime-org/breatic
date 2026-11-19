@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Business limits configuration loader.
@@ -33,6 +33,8 @@ export const limitsConfigSchema = z.object({
   activity_feed_page_max: z.number().int().positive().default(100),
   canvas_reference_pool_cap: z.number().int().positive().default(50),
   node_history_page_size: z.number().int().positive().default(20),
+  document_versions_max_per_space: z.number().int().positive().default(100),
+  document_versions_page_size: z.number().int().positive().default(30),
   studio_project_page_default: z.number().int().positive().default(50),
   studio_project_page_max: z.number().int().positive().default(100),
   credit_page_default: z.number().int().positive().default(30),
@@ -42,6 +44,11 @@ export const limitsConfigSchema = z.object({
   request_body_max_bytes: z.number().int().positive().default(1048576),
   // At most Node's own requestTimeout default; a timer cannot hold more than 2^31-1 ms.
   request_body_linger_seconds: z.number().int().positive().max(300).default(30),
+  /**
+   * How long a shutdown waits for in-flight work, Agent chat runs included,
+   * before it closes the pools anyway (inner#1717).
+   */
+  server_shutdown_deadline_ms: z.number().int().positive().default(4000),
 });
 
 /** Hours per day × minutes per hour × seconds per minute — written once. */
@@ -104,12 +111,31 @@ export function getCanvasReferencePoolCap(): number {
 }
 
 /**
+ * How long a shutdown waits for in-flight work before it closes the pools
+ * (inner#1717).
+ * @returns The deadline in milliseconds.
+ */
+export function getServerShutdownDeadlineMs(): number {
+  return loadConfig().server_shutdown_deadline_ms;
+}
+
+/**
  * Page size the frontend requests per infinite-scroll page of a node's
  * history (#1619). Served to the frontend via `GET /canvas/limits`.
  * @returns The node-history page size.
  */
 export function getNodeHistoryPageSize(): number {
   return loadConfig().node_history_page_size;
+}
+
+/**
+ * How many live snapshots one document may hold, and how many a list page
+ * returns (inner#1129).
+ * @returns The ceiling and the page size.
+ */
+export function getDocumentVersionLimits(): { maxPerSpace: number; pageSize: number } {
+  const config = loadConfig();
+  return { maxPerSpace: config.document_versions_max_per_space, pageSize: config.document_versions_page_size };
 }
 
 /**

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { MessageType, type HocuspocusProvider } from '@hocuspocus/provider';
 import * as decoding from 'lib0/decoding';
@@ -74,11 +74,14 @@ export function bindDocSync(name: string, doc: Y.Doc, provider: HocuspocusProvid
    */
   function scheduleConfirmation(handshake = false): void {
     const epoch = state.epoch;
-    queueMicrotask(() => {
+    // After the provider's own send window: its `update` listener was added
+    // before this binding's, so its timer of the same delay fires first and
+    // one operation's batched writes leave as one Update ahead of the receipt.
+    setTimeout(() => {
       if (!active || state.epoch !== epoch) return;
       if (handshake) apply({ type: 'handshake-complete', epoch });
       sendConfirmation();
-    });
+    }, provider.configuration.flushDelay || 0);
   }
 
   /**

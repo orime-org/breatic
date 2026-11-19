@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * decodeStart on real uploadable MP4s (inner#1306 test plan §93 D6, W7 withdrawn; frames-split design §7.17 时间线 row and

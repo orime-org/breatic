@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
 
@@ -23,7 +23,7 @@ describe('the rule the canvas reads and the rule the agent is held to', () => {
     // The agent proposes edges (#263) and its check runs in a library package
     // that cannot reach into this one, so the whitelist moved to the package
     // both sides can read. A copy would agree until the first change to it,
-    // and then the reader's own drag and the agent's proposal would part
+    // and then the user's own drag and the agent's proposal would part
     // company with nothing failing.
     expect(canConnect).toBe(shared);
   });
@@ -81,7 +81,7 @@ describe('canConnect', () => {
     });
   });
 
-  describe('audio input — { text, audio }', () => {
+  describe('audio input — { text, audio, video, image }', () => {
     it('allows text → audio', () => {
       expect(canConnect('text', 'audio')).toBe(true);
     });
@@ -90,9 +90,12 @@ describe('canConnect', () => {
       expect(canConnect('audio', 'audio')).toBe(true);
     });
 
+    it('allows video and image → audio, which scoring, foley and mood-from-picture read (inner#1825)', () => {
+      expect(canConnect('video', 'audio')).toBe(true);
+      expect(canConnect('image', 'audio')).toBe(true);
+    });
+
     it('rejects the modalities audio generation does not read', () => {
-      expect(canConnect('image', 'audio')).toBe(false);
-      expect(canConnect('video', 'audio')).toBe(false);
       expect(canConnect('3d', 'audio')).toBe(false);
     });
   });

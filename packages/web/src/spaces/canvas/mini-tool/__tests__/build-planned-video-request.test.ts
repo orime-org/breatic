@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 test plan §97 D27-1: one side-effect-free builder, `buildPlannedVideoRequest(tool, draft, panelFacts,

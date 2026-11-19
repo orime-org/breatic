@@ -54,6 +54,35 @@ beforeAll(() => {
   setLocale('en');
 });
 
+/**
+ * Routes the window's animation-frame calls through a set of the handles
+ * still waiting, so the end of a test can cancel what it left behind.
+ *
+ * @returns The handles requested and neither run nor cancelled yet.
+ */
+function trackAnimationFrames(): Set<number> {
+  const pending = new Set<number>();
+  const request = window.requestAnimationFrame;
+  const cancel = window.cancelAnimationFrame;
+  window.requestAnimationFrame = (callback) => {
+    const handle = request((time) => {
+      pending.delete(handle);
+      callback(time);
+    });
+    pending.add(handle);
+    return handle;
+  };
+  window.cancelAnimationFrame = (handle) => {
+    pending.delete(handle);
+    cancel(handle);
+  };
+  return pending;
+}
+// This file runs again for every test file while the window stays the same
+// one, so the set is kept on the window and the wrapping happens only once.
+const frameWindow = window as typeof window & { pendingAnimationFrames?: Set<number> };
+const pendingAnimationFrames = (frameWindow.pendingAnimationFrames ??= trackAnimationFrames());
+
 // Auto-clean DOM after each test to prevent leakage across tests.
 // Also reset locale to the default so a test that switched languages
 // doesn't poison the next file in the run.
@@ -74,6 +103,18 @@ afterEach(() => {
   // end any way it likes, including throwing mid-way.
   vi.useRealTimers();
   cleanup();
+  // Every file shares this window, and jsdom runs all animation frames off one
+  // `setInterval` that it starts on the first outstanding request and stops
+  // only when none is left. A loop that never cancels keeps it running into
+  // every later file; one started under a fake clock is a fake interval that
+  // vanishes with the clock while jsdom still counts it as running, so no
+  // frame fires again for the rest of the process. Cancelling what is left
+  // brings the count to zero, which is the only thing that makes jsdom start a
+  // fresh interval on the real clock. It runs after the clock is real again
+  // and after the unmount has cancelled what it owns.
+  for (const handle of pendingAnimationFrames) {
+    window.cancelAnimationFrame(handle);
+  }
   // `cleanup()` only takes back what testing-library rendered. A test that
   // attaches an element itself — mounting an editor needs one — leaves it
   // behind, and with one process per package every later FILE shares this

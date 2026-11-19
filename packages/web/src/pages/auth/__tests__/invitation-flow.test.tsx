@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type * as MockModule0 from '@web/data/api/auth';
 import type * as MockModule1 from '@web/pages/studio/container/dialogs/use-slug-availability';
@@ -29,6 +29,7 @@ vi.mock('@web/data/api/auth', async (importOriginal) => {
     authApi: {
       ...actual.authApi,
       invitation: preview,
+      options: vi.fn(async () => ({ emailVerification: true, referralEnabled: false })),
       register: vi.fn(),
       verifySignupCode: vi.fn(),
       resendSignupCode: vi.fn(),

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
@@ -9,6 +9,15 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type * as React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+// The header now holds the Project instructions entry (#1400), which reads
+// the Project's instructions through React Query; answer that read with
+// none so these tests stay about the rest of the row.
+vi.mock('@web/data/api/request', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/request')>()),
+  apiGet: vi.fn(async () => ({ text: '', updatedBy: null, updatedAt: null })),
+}));
 
 import { AgentColHeader } from '@web/pages/project/chrome/agent-header/AgentColHeader';
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -20,8 +29,16 @@ import { unexpectedTextIn } from '@web/test-utils/visible-text';
 // `TooltipProvider` somewhere up the tree. App.tsx supplies one at
 // runtime — tests need to add it explicitly. Alias `render` so each
 // call site auto-wraps without per-site edits.
+function Providers({ children }: { children: React.ReactNode }): React.JSX.Element {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return (
+    <QueryClientProvider client={client}>
+      <TooltipProvider>{children}</TooltipProvider>
+    </QueryClientProvider>
+  );
+}
 const render = (ui: React.ReactElement, options?: RenderOptions) =>
-  rtlRender(ui, { wrapper: TooltipProvider, ...options });
+  rtlRender(ui, { wrapper: Providers, ...options });
 
 function setup(overrides: Partial<Parameters<typeof AgentColHeader>[0]> = {}) {
   const onToggleHistory = vi.fn();
@@ -29,6 +46,7 @@ function setup(overrides: Partial<Parameters<typeof AgentColHeader>[0]> = {}) {
   const onRenameConversation = vi.fn();
   render(
     <AgentColHeader
+      projectId='p-1'
       conversationName='Onboarding'
       conversationNamePlaceholder='Untitled conversation'
       onToggleHistory={onToggleHistory}
@@ -68,7 +86,7 @@ describe('AgentColHeader', () => {
   });
 
   it('does not say how many conversations there are', () => {
-    // 会话总数对读者没有用处：他要知道的是自己现在在哪一条里。
+    // 会话总数对用户没有用处：他要知道的是自己现在在哪一条里。
     // 列表一分页，手上这份数组的长度也不再是总数了。
     // 判据跟 AgentColumn 那条同一个：说清顶栏允许显示哪些字符串，多出来的都报
     // 出来。换个 testid、或者把计数写成 `(7)` 挂在名字旁边，都绕不过去。

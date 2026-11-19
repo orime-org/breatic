@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Markup objects as Fabric draws them, and read back after the reader moves or
+ * Markup objects as Fabric draws them, and read back after the user moves or
  * resizes one (inner#1303 §6.2).
  */
 

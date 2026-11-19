@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The reader's answers to a questionnaire, held to the questions they answer.
+ * The user's answers to a questionnaire, held to the questions they answer.
  */
 import { describe, it, expect } from "vitest";
 
@@ -10,6 +10,7 @@ import {
   answersMismatch,
   askUserAnswerSchema,
   askUserInputSchema,
+  askUserQuestionSchema,
   ASK_USER_OTHER_MAX_CHARS,
   readQuestionnaire,
   type AskUserQuestion,
@@ -33,7 +34,7 @@ describe("answers that fit the questions", () => {
     expect(answersMismatch(QUESTIONS, [{ index: 0, selected: ["9:16"] }])).toBeNull();
   });
 
-  it("pass with several options on a question that takes several, plus words of the reader's own", () => {
+  it("pass with several options on a question that takes several, plus words of the user's own", () => {
     expect(answersMismatch(QUESTIONS, [{ index: 1, selected: ["People", "City"], other: "A dog" }])).toBeNull();
   });
 
@@ -68,7 +69,7 @@ describe("answers that do not fit", () => {
     );
   });
 
-  it("give two answers where one is taken, counting the reader's own words as one", () => {
+  it("give two answers where one is taken, counting the user's own words as one", () => {
     expect(answersMismatch(QUESTIONS, [{ index: 0, selected: ["16:9", "9:16"] }])).toBe(
       "Question 1 takes one answer.",
     );
@@ -84,7 +85,7 @@ describe("answers that do not fit", () => {
 });
 
 describe("the answer the browser sends", () => {
-  it("bounds the reader's own words", () => {
+  it("bounds the user's own words", () => {
     const fits = { toolCallId: "call-1", answers: [{ index: 0, selected: [], other: "a".repeat(ASK_USER_OTHER_MAX_CHARS) }] };
     const over = { toolCallId: "call-1", answers: [{ index: 0, selected: [], other: "a".repeat(ASK_USER_OTHER_MAX_CHARS + 1) }] };
     expect(askUserAnswerSchema.safeParse(fits).success).toBe(true);
@@ -110,6 +111,14 @@ describe("the questions the model sends", () => {
     const label = { header: "Q", question: "Which?", options: [{ label: "Yes" }, { label: "No" }] };
 
     expect(askUserInputSchema.safeParse({ questions: [label, label] }).success).toBe(true);
+  });
+});
+
+describe("what the model is told about a question", () => {
+  it("asks for one line with no number that says in a few words what the answer decides", () => {
+    expect(askUserQuestionSchema.shape.question.description).toBe(
+      "The question, in one line, with no number: the card numbers it. Say in it, in a few words, what the answer decides.",
+    );
   });
 });
 

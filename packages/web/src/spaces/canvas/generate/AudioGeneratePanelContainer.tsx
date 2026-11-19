@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The audio Generate panel's canvas integration: everything the presentational
@@ -29,6 +29,8 @@ import {
   setNodeModel,
   setNodeParams,
 } from '@web/data/yjs/canvas-space';
+import { docName } from '@web/data/yjs/manager';
+import { checkAdd } from '@web/data/yjs/space-write';
 import type { CanvasEdge } from '@web/data/yjs/canvas-space';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -51,16 +53,19 @@ import {
   buildAudioPanelViewModel,
   withListDefaultVoice,
 } from '@web/spaces/canvas/generate/audio-panel-view-model';
-import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { audioEstimateInput, buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import {
+  checkParamCombination,
   evaluateExecute,
   extractPromptText,
+  type ModelEntry,
 } from '@breatic/shared';
+import { wireParams } from '@web/spaces/canvas/generate/stand-in';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
@@ -85,6 +90,7 @@ import {
   useGenerating,
 } from '@web/spaces/canvas/generate/submit-generation';
 import { useVoiceList } from '@web/spaces/canvas/generate/use-voice-list';
+import { voiceDisplayName } from '@web/spaces/canvas/generate/voice-list-state';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
@@ -267,12 +273,17 @@ function AudioGeneratePanelBody({
   // Both off the model: which places it collects material in, and whether it
   // keeps the words to sing in a box of its own. A mode two models serve
   // differently is drawn differently for each.
+  // Read off the content-stable params: the view model rebuilds on every
+  // canvas mutation, and the slots flow into the memoised panel.
+  const params = useContentStable(vm.params);
   const slots = React.useMemo(
-    () => audioSlotsForModel(vm.modelEntry, mode),
-    [vm.modelEntry, mode],
+    () => audioSlotsForModel(vm.modelEntry, mode, params),
+    [vm.modelEntry, mode, params],
   );
   /** Whether this run shows a lyrics box, and so insists on what goes in it. */
   const lyrics = modelTakesLyrics(vm.modelEntry, mode);
+  /** The lyrics box's words while the box is on the panel: asked for, and seeded on the node. */
+  const shownLyricsFragment = lyrics ? lyricsFragment : null;
   /** The slot whose pick is running on this node, if any. */
   const activeSlot = useCanvasSession((s) => {
     const session = s.pickSession;
@@ -308,11 +319,10 @@ function AudioGeneratePanelBody({
   );
   useEndPickWhenSlotGone(nodeId, slots, getLastWriteWasLocal);
 
-  // Both rebuild with the view model, which rebuilds on every canvas mutation
-  // — every frame of any node drag — and both flow into React.memo components
-  // (the panel, and the rail and params picker under it).
+  // It rebuilds with the view model, which rebuilds on every canvas mutation
+  // — every frame of any node drag — and flows into React.memo components
+  // (the panel, and the rail under it).
   const references = useContentStable(derivedReferences);
-  const params = useContentStable(vm.params);
   // The picked slot URLs and what to paint for them are two more fresh objects
   // per view-model build. One unstable prop is enough to make the panel's memo
   // — and every memoised child under it — re-render on every frame of a drag.
@@ -439,30 +449,46 @@ function AudioGeneratePanelBody({
     },
     [projectId, spaceId, nodeId],
   );
-  // Which box the caret was last in. Clicking a rail row keeps the caret where
-  // it is (`ReferenceRail` preventDefaults the mousedown, which is what lets
-  // the chip land at the caret rather than at the end), but plenty of other
-  // things take focus first: tabbing to the row, the model picker, the params
-  // popover. In every one of those neither editor is focused, so which box to
-  // insert into has to be remembered rather than read at click time.
-  const lastFocusedBox = React.useRef<'prompt' | 'lyrics'>('prompt');
-  const onPromptFocus = React.useCallback(() => {
-    lastFocusedBox.current = 'prompt';
+  // Which of the two boxes is open while both are there (#1201): the style box
+  // each time the panel shows another pair of boxes, that is, whenever the
+  // lyrics box changes words (each mode keeps its own) or goes away.
+  const [expanded, setExpanded] = React.useState<'prompt' | 'lyrics'>('prompt');
+  const [seenLyrics, setSeenLyrics] = React.useState(shownLyricsFragment);
+  if (seenLyrics !== shownLyricsFragment) {
+    setSeenLyrics(shownLyricsFragment);
+    setExpanded('prompt');
+  }
+  // A run whose style box is left out (Mureka V9.5 Song composing from a
+  // melody) shows its lyrics box; a lone box stays as it is.
+  const shownBox = vm.promptRequired || !lyrics ? expanded : 'lyrics';
+  // Set by the user's own click on a row, and spent once that box is shown.
+  const focusOnOpen = React.useRef(false);
+  const onExpand = React.useCallback((box: 'prompt' | 'lyrics') => {
+    focusOnOpen.current = true;
+    setExpanded(box);
   }, []);
-  const onLyricsFocus = React.useCallback(() => {
-    lastFocusedBox.current = 'lyrics';
-  }, []);
+  React.useEffect(() => {
+    if (!focusOnOpen.current) return;
+    focusOnOpen.current = false;
+    (shownBox === 'lyrics' ? lyricsEditorRef : promptEditorRef).current?.focus();
+  }, [shownBox, lyricsEditorRef, promptEditorRef]);
+  // The rail's insert lands in the box on show: a chip put into the hidden
+  // one would arrive where the writer cannot see it.
   const onInsertReference = React.useCallback(
     (item: ReferenceRailItem) => {
       const target =
-        lastFocusedBox.current === 'lyrics' && lyricsEditorRef.current
+        shownBox === 'lyrics' && lyricsEditorRef.current
           ? lyricsEditorRef.current
           : promptEditorRef.current;
       target?.insertReference(item);
     },
-    [promptEditorRef, lyricsEditorRef],
+    [shownBox, promptEditorRef, lyricsEditorRef],
   );
 
+  // The run as the click sends it: a model taking no prompt with these settings sends none, whatever the box
+  // last held, and the lyrics go while the lyrics box is on the panel. Priced, and asked why no upstream here takes it (#1521), for the button and the click.
+  const estimateInput = audioEstimateInput({ ...vm, params }, slots, vm.promptRequired ? extractPromptText(promptText) : '', lyrics ? lyricsText : undefined);
+  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
   const onExecute = React.useCallback((): void => {
     // Every execute-critical value is read synchronously here, never from a
     // render closure that batching and live collaboration make stale.
@@ -497,19 +523,27 @@ function AudioGeneratePanelBody({
       voiceRequired: fresh.voiceRequired,
       voiceChosen: fresh.voiceChosen,
       speakersShort: fresh.speakersShort,
-      missing: audioMissing(fresh.modelEntry, mode, fresh.slotUrls),
+      linesEmpty: fresh.dialogueNames !== null && extractPromptText(freshPrompt).length === 0,
+      ...tooShort(fresh.modelEntry, fresh.params),
+      missing: audioMissing(fresh.modelEntry, mode, fresh.slotUrls, fresh.params),
       lyricsRequired: lyrics,
       lyricsText: freshLyrics,
+      inputRefusal: latestRefusal.current,
     });
+    if (verdict?.message !== undefined) {
+      toast.warning(verdict.message);
+      return;
+    }
     if (verdict != null) {
       const key = slotRefusalKey(
         AUDIO_SLOTS,
-        audioSlotsForModel(fresh.modelEntry, mode),
+        audioSlotsForModel(fresh.modelEntry, mode, fresh.params),
         verdict,
       );
       // `max` comes from the same value the gate judged by, so the sentence
       // can never name a limit other than the one that refused.
-      if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));
+      const name = verdict.param === undefined ? '' : t(`canvas.generatePanel.param.${verdict.param}`);
+      if (key) toast.warning(t(key, { max: maxInputChars ?? 0, name }));
       return;
     }
     // Unreachable past the gate above — `no-model` covers it — and stated so
@@ -517,6 +551,9 @@ function AudioGeneratePanelBody({
     const modelEntry = fresh.modelEntry;
     if (!modelEntry) return;
 
+    // The result is written into this node by the server, past the size
+    // gate, so a Space that cannot take an add sends nothing (design 5.2).
+    if (!checkAdd(docName.canvasSpace(projectId, spaceId)).ok) return;
     submitGeneration({
       spaceId,
       nodeId,
@@ -557,6 +594,7 @@ function AudioGeneratePanelBody({
     lyricsTextRef,
     promptEditorRef,
     promptTextRef,
+    latestRefusal,
   ]);
 
   // Depended on BY VALUE, not via `t`: `t` is a stable module-level function
@@ -571,6 +609,18 @@ function AudioGeneratePanelBody({
   const promptLabel =
     modeOption.promptLabelKey === undefined ? undefined : t(modeOption.promptLabelKey);
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
+  // The speakers by name and voice, kept the same object while both are the same.
+  const dialogueKey =
+    vm.dialogueNames === null
+      ? undefined
+      : JSON.stringify({
+        names: vm.dialogueNames,
+        voices: (vm.dialogueVoices ?? []).map((id) => (id === '' ? '' : voiceDisplayName(voices.state.voices, id))),
+      });
+  const dialogue = React.useMemo(
+    () => (dialogueKey === undefined ? undefined : (JSON.parse(dialogueKey) as { names: string[]; voices: string[] })),
+    [dialogueKey],
+  );
   const promptSlot = React.useMemo(
     () =>
       fragment ? (
@@ -585,20 +635,20 @@ function AudioGeneratePanelBody({
           // An audio node collects only text rows, and a text chip serializes
           // into the prompt itself — no id ever becomes a model input here.
           onAtMentionsChange={noop}
-          onFocus={onPromptFocus}
           references={references}
           // A media `@` chip is a model input on the other two panels; here
           // no audio model declares a pool for one to travel in.
           referenceKinds={NO_REFERENCE_KINDS}
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
+          dialogue={dialogue}
         />
       ) : null,
     [
+      dialogue,
       fragment,
       promptPlaceholder,
       onPromptChange,
-      onPromptFocus,
       references,
       mentionEmptyLabel,
       caretProvider,
@@ -610,7 +660,7 @@ function AudioGeneratePanelBody({
   const lyricsPlaceholder = t('canvas.generatePanel.musicLyricsPlaceholder');
   const lyricsSlot = React.useMemo(
     () =>
-      lyrics && lyricsFragment ? (
+      shownLyricsFragment ? (
         <PromptEditor
           ref={lyricsEditorRef}
           testId='generate-lyrics-editor'
@@ -618,14 +668,13 @@ function AudioGeneratePanelBody({
           // blank line between blocks, which reads as prose; here the line
           // structure is the content and the vendor is handed it as typed.
           blockSeparator={'\n'}
-          fragment={lyricsFragment}
+          fragment={shownLyricsFragment}
           placeholder={lyricsPlaceholder}
           onTextChange={onLyricsChange}
           // The `@` chip carries no id to the vendor here; it substitutes the
           // source node's words into the lyrics string, the way it does in the
           // box above.
           onAtMentionsChange={noop}
-          onFocus={onLyricsFocus}
           // The same pool the style box reads: a song's words are often
           // already written in a text node on the canvas, and `@` is how they
           // get in (user 2026-09-06).
@@ -636,11 +685,9 @@ function AudioGeneratePanelBody({
         />
       ) : null,
     [
-      lyrics,
-      lyricsFragment,
+      shownLyricsFragment,
       lyricsPlaceholder,
       onLyricsChange,
-      onLyricsFocus,
       references,
       mentionEmptyLabel,
       caretProvider,
@@ -648,11 +695,6 @@ function AudioGeneratePanelBody({
     ],
   );
 
-  const creditText = useCreditText(
-    vm.modelEntry,
-    audioEstimateInput({ ...vm, params }, slots, extractPromptText(promptText)),
-    catalog?.credit_multiplier ?? 1,
-  );
 
   return (
     <AudioGeneratePanel
@@ -662,7 +704,8 @@ function AudioGeneratePanelBody({
       model={vm.model}
       currentModel={vm.modelEntry}
       creditText={creditText}
-      modelTakesPrompt={vm.promptRequired}
+      modelTakesPrompt={vm.takesPrompt}
+      promptShown={vm.promptRequired}
       mode={mode}
       modeOptions={availableModes}
       voiceList={voices.state}
@@ -687,13 +730,21 @@ function AudioGeneratePanelBody({
         voiceRequired: vm.voiceRequired,
         voiceChosen: vm.voiceChosen,
         speakersShort: vm.speakersShort,
-        missing: audioMissing(vm.modelEntry, mode, vm.slotUrls),
+        linesEmpty: vm.dialogueNames !== null && extractPromptText(promptText).length === 0,
+        ...tooShort(vm.modelEntry, vm.params),
+        missing: audioMissing(vm.modelEntry, mode, vm.slotUrls, vm.params),
         lyricsRequired: lyrics,
         lyricsText,
+        inputRefusal: refusalText,
       })?.refusal ?? null}
       promptSlot={promptSlot}
       lyricsSlot={lyricsSlot}
       promptLabel={promptLabel}
+      promptPlaceholder={promptPlaceholder}
+      expanded={shownBox}
+      onExpand={onExpand}
+      promptFragment={fragment}
+      lyricsFragment={shownLyricsFragment}
       onToggleMode={onToggleMode}
       onSelectModel={onSelectModel}
       onVoiceOpenChange={voices.onOpenChange}
@@ -715,6 +766,19 @@ function AudioGeneratePanelBody({
  */
 function noop(): void {
   // Intentionally empty.
+}
+
+/**
+ * The text setting a run would send shorter than its model takes (inner#1825),
+ * for the gate to name.
+ * @param model - The active model.
+ * @param params - Its params as the run sends them.
+ * @returns The gate's input: the setting, or nothing when every one is long enough.
+ */
+function tooShort(model: ModelEntry | undefined, params: Readonly<Record<string, unknown>>): { paramTooShort?: string } {
+  if (model === undefined) return {};
+  const short = checkParamCombination(model, wireParams(model, params)).find((violation) => violation.rule === 'min_length');
+  return short === undefined ? {} : { paramTooShort: short.param };
 }
 
 /**

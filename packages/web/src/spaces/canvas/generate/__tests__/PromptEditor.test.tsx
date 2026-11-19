@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
 import {
   act,
+  fireEvent,
   render as baseRender,
   screen,
   waitFor,
@@ -33,6 +34,7 @@ import {
   type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { writeProposalPrompt, type ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
 import type { ReferenceKind } from '@breatic/shared';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { canvasSessions } from '@web/stores/canvas-session';
@@ -778,7 +780,7 @@ describe('PromptEditor — kept across a hidden Space (inner#1235 A13)', () => {
   it('still puts the caret back when the panel unmounts again right after mounting', async () => {
     // A mount undone straight away (Strict Mode) takes the panel down before
     // the caret could go back in; that second take-down must not read as the
-    // reader having left the prompt.
+    // user having left the prompt.
     canvasSessions.of(SPACE).getState().openGeneratePanel('n', 'image');
     const fragment = new Y.Doc().getXmlFragment('prompt');
     const first = render(onCanvas(fragment));
@@ -850,5 +852,113 @@ describe('PromptEditor — reporting a prompt already in the fragment', () => {
     } finally {
       errors.mockRestore();
     }
+  });
+});
+
+describe('PromptEditor — the paragraph of an optional input (inner#1811, CAP-9)', () => {
+  /**
+   * The pool, the product holding a picture and the person as given.
+   * @param personPicture - The person's picture, or none.
+   * @returns The rows.
+   */
+  const pool = (personPicture?: string): ReferenceRailItem[] => [
+    { refId: 'e0', sourceNodeId: 'n-product', sourceNodeType: 'image', sourceNodeName: 'Product', mediaUrl: 'https://r2.example/product.png' },
+    { refId: 'e1', sourceNodeId: 'n-person', sourceNodeType: 'image', sourceNodeName: 'Person', ...(personPicture === undefined ? {} : { mediaUrl: personPicture }) },
+  ];
+
+  /**
+   * A prompt fragment holding the product ad's three paragraphs, the person's optional.
+   * @returns The fragment.
+   */
+  function seeded(): Y.XmlFragment {
+    const fragment = new Y.Doc().getXmlFragment('prompt');
+    const mentions: ProposalMention[] = [
+      { sourceNodeId: 'n-product', label: 'Product', kind: 'image' },
+      { sourceNodeId: 'n-person', label: 'Person', kind: 'image' },
+    ];
+    writeProposalPrompt(
+      fragment,
+      [{ text: 'An ad for ' }, { ref: 0 }, { text: '.\nThe person looks like ' }, { ref: 1, optional: true }, { text: '.\nLit softly.' }],
+      (index) => mentions[index],
+    );
+    return fragment;
+  }
+
+  /** The paragraphs shown greyed as unsent. */
+  const heldBack = (): Element[] => [...document.querySelectorAll('.ProseMirror p[data-prompt-held-back]')];
+
+  it('greys the paragraph it leaves out, sends the others, and mentions only what they hold, until the person holds a picture', async () => {
+    const onTextChange = vi.fn();
+    const onAtMentionsChange = vi.fn();
+    const props = {
+      fragment: seeded(),
+      placeholder: 'Describe',
+      onTextChange,
+      onAtMentionsChange,
+      referenceKinds: ['image'] as const,
+      mentionEmptyLabel: 'No references',
+    };
+    const { rerender } = render(<PromptEditor {...props} references={pool()} />);
+    await waitFor(() => expect(heldBack()).toHaveLength(1));
+    expect(heldBack()[0]?.textContent).toContain('The person looks like');
+    // Greyed as it is left out: the box shows what it sends. The words keep a
+    // readable muted colour; only the chip inside is faded and drained.
+    expect(heldBack()[0]).toHaveClass('text-muted-foreground', '[&_.reference-mention]:opacity-40', '[&_.reference-mention]:grayscale');
+    expect(heldBack()[0]).not.toHaveClass('opacity-40');
+    await waitFor(() => expect(onAtMentionsChange).toHaveBeenLastCalledWith(['n-product']));
+    expect(String(onTextChange.mock.lastCall?.[0])).not.toContain('The person looks like');
+    expect(String(onTextChange.mock.lastCall?.[0])).toContain('Lit softly.');
+
+    rerender(<PromptEditor {...props} references={pool('https://r2.example/person.png')} />);
+    await waitFor(() => expect(heldBack()).toHaveLength(0));
+    await waitFor(() => expect(onAtMentionsChange).toHaveBeenLastCalledWith(['n-product', 'n-person']));
+    expect(String(onTextChange.mock.lastCall?.[0])).toContain('The person looks like');
+  });
+
+  it('names the missing input after the pointer rests on the greyed paragraph, and not when it only passes over', async () => {
+    render(
+      <PromptEditor
+        fragment={seeded()}
+        placeholder='Describe'
+        onTextChange={vi.fn()}
+        onAtMentionsChange={vi.fn()}
+        references={pool()}
+        referenceKinds={['image']}
+        mentionEmptyLabel='No references'
+      />,
+    );
+    await waitFor(() => expect(heldBack()).toHaveLength(1));
+    const paragraph = heldBack()[0] as HTMLElement;
+    const hint = (): HTMLElement | null => screen.queryByRole('tooltip');
+
+    fireEvent.pointerOver(paragraph);
+    expect(hint()).toBeNull();
+    fireEvent.pointerLeave(paragraph);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 150)));
+    expect(hint()).toBeNull();
+
+    fireEvent.pointerOver(paragraph);
+    expect(hint()).toBeNull();
+    await waitFor(() => expect(hint()).toHaveTextContent('Person'));
+  });
+
+  it('leaves the greyed paragraph out of a dialogue script as well', async () => {
+    const onTextChange = vi.fn();
+    render(
+      <PromptEditor
+        fragment={seeded()}
+        placeholder='Describe'
+        onTextChange={onTextChange}
+        onAtMentionsChange={vi.fn()}
+        references={pool()}
+        referenceKinds={['image']}
+        mentionEmptyLabel='No references'
+        dialogue={{ names: ['Host', 'Guest'] }}
+      />,
+    );
+    // A dialogue line is a node view: the mark lands on its wrapper.
+    await waitFor(() => expect(document.querySelectorAll('.ProseMirror [data-prompt-held-back]')).toHaveLength(1));
+    await waitFor(() => expect(String(onTextChange.mock.lastCall?.[0])).toContain('Lit softly.'));
+    expect(String(onTextChange.mock.lastCall?.[0])).not.toContain('The person looks like');
   });
 });

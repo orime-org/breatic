@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { ErrorBoundary } from '@sentry/react';
@@ -25,7 +25,7 @@ import type { SpaceBodyProps } from '@web/spaces';
  * @param target - Event target receiving a scene shortcut.
  * @returns Whether the Space owns this non-editable keyboard target.
  */
-function ownsSceneKeyboard(target: EventTarget | null): boolean {
+export function ownsSceneKeyboard(target: EventTarget | null): boolean {
   return regionOwnsKeyboard(target, 'space') && !isEditableTarget(target instanceof Element ? target : null);
 }
 

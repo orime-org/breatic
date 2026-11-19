@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 test plan §69 U02 (frames-split design §4.3 "浏览器取帧号与跳帧"): the browser's current frame number is the

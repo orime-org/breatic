@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Web search tool — Brave's LLM context endpoint.
@@ -29,6 +29,7 @@ import {
   toolFailed,
 } from "@domain/agent/tools/failure.js";
 import type { FailureVoice } from "@domain/agent/tools/failure.js";
+import { citationNumbers, publisherOf, type CitationNumbers } from "@domain/agent/tools/citation.js";
 
 /**
  * What the model may ask this tool to search for.
@@ -177,7 +178,7 @@ function readSource(item: unknown, index: number): SearchSource | null {
   const list = typeof snippets === "string" ? [snippets] : snippets;
   if (!Array.isArray(list)) return null;
 
-  // No address is unreadable in the sense that matters: what a reader does
+  // No address is unreadable in the sense that matters: what a user does
   // with a source is follow it, and a chip with nowhere to go is worse than
   // one page fewer.
   if (typeof url !== "string" || url === "") return null;
@@ -193,39 +194,13 @@ function readSource(item: unknown, index: number): SearchSource | null {
 }
 
 /**
- * Name the publisher a page belongs to.
- *
- * A source row reading `vitest.dev` names a domain; one reading `Vitest` names
- * whoever wrote the page, which is what a reader weighs a claim by. The
- * registrable name is the first label after any `www.`, so `www.vogue.co.uk`
- * is Vogue rather than Co or Uk.
- *
- * An address this cannot parse keeps its own text: the row still has to say
- * something, and what the service sent is the closest thing to a name there
- * is.
- * @param url - The page's address.
- * @returns The publisher's name.
- */
-function publisherOf(url: string): string {
-  let host: string;
-  try {
-    host = new URL(url).hostname;
-  } catch {
-    return url;
-  }
-  const name = host.replace(/^www\./, "").split(".")[0] ?? host;
-  if (name === "") return host;
-  return name.charAt(0).toUpperCase() + name.slice(1);
-}
-
-/**
  * Render one source as the block the model reads.
  *
  * The page's text sits in a region of its own, inside the block rather than
  * beside the two label lines. Those labels are what the answer attributes a
  * page by, and a page whose own text carries a `url:` line would otherwise
  * write a second one indistinguishable from the tool's -- cited back to the
- * reader under the address that page chose.
+ * user under the address that page chose.
  * @param source - The source, as read off the payload.
  * @returns The block.
  */
@@ -289,13 +264,9 @@ export function renderSearchForModel(answer: SearchAnswer): string {
 }
 
 /**
- * Search the web using Brave's LLM context endpoint.
- *
- * Returns extracts of each source's own page text, which is what the model
- * reads. Requires the `BRAVE_SEARCH_API_KEY` environment variable.
- */
-/**
- * The tools one turn searches with.
+ * The tools one turn searches with: Brave's LLM context endpoint, which
+ * returns extracts of each source's own page text. Requires the
+ * `BRAVE_SEARCH_API_KEY` environment variable.
  *
  * A turn's sources share one space of numbers, and that number has to be
  * settled where the search runs, because it is what the model is shown.
@@ -303,24 +274,27 @@ export function renderSearchForModel(answer: SearchAnswer): string {
  * every tool call of a step through one `Promise.all` and gives them all the
  * same `messages` (`dist/index.js:8171-8180`), so a sibling search's result
  * is never in what this one reads. Two searches in a step would take the
- * same numbers, and a number standing for two pages sends the reader to the
+ * same numbers, and a number standing for two pages sends the user to the
  * wrong one.
  *
  * The turn keeps the count and each call reserves its block from it. The
  * reservation is one synchronous statement, which JavaScript runs to
  * completion, so calls running together cannot interleave inside it.
+ * `web_fetch` takes its numbers from the same count (inner#1664), which
+ * `makeWebTools` hands both tools.
  *
  * The count starts at zero each time the tools are built, so a reply's
  * sources read `1` upward however long the conversation before it was, and
  * each reply's row stands on its own. A turn resumed after a questionnaire is
  * built afresh and is a row of its own, so its sources read `1` upward too;
  * the description tells the model so.
+ * @param numbers - The turn's run of citation numbers.
  * @returns This turn's search tools, keyed as the model names them.
+ * @throws {never} Never; the tool it returns throws.
  */
-export function makeSearchTools(): {
+export function makeSearchTools(numbers: CitationNumbers = citationNumbers()): {
   web_search: Tool<z.infer<typeof inputSchema>, SearchAnswer>;
 } {
-  let handedOut = 0;
 
   const webSearch: Tool<z.infer<typeof inputSchema>, SearchAnswer, UsageContext> = tool({
     description:
@@ -329,7 +303,7 @@ export function makeSearchTools(): {
       "for that many sources; the search returns what it finds. Each source arrives with a " +
       "number: write something you took from one of them and mark it with that number where " +
       "you write it, like [1], and a sentence drawing on several takes several markers, like " +
-      "[2][5]. Searches within one reply share one run of numbers, so use the number each " +
+      "[2][5]. Searches and web_fetch reads within one reply share one run of numbers, so use the number each " +
       "source arrived with in this reply. Every reply numbers its own sources from one, so a " +
       "number an earlier reply used stands for something else here: write about those " +
       "sources in words. What you write after the user answers an ask_user card numbers its " +
@@ -433,8 +407,7 @@ export function makeSearchTools(): {
 
         // Reserved before anything is read, so a search running beside this
         // one takes the block after rather than the same one.
-        let numbered = handedOut;
-        handedOut += found.length;
+        let numbered = numbers.reserve(found.length) - 1;
         const sources = found
           .map((item) => {
             const source = readSource(item, numbered + 1);

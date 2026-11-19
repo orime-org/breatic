@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 (demo 2026-10-23-1306-video-tools `timeline-editor.tsx`; canvas design §4 transitions row and §10 editor × export):

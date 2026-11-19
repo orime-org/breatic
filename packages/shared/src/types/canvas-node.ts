@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { VideoToolAnalysisRef, VideoToolDraftFields } from '@shared/mini-tools/video-draft.js';
 
@@ -96,6 +96,8 @@ export function canGenerate(type: NodeType): boolean {
  *   audio input ← text + audio (user 2026-09-22: an edge says one piece of
  *                 audio is what the next one is made from, and that reading
  *                 stands whether or not the pool can carry a mention of it)
+ *                 + video + image (inner#1825: the scoring, foley and
+ *                 mood-from-picture models read them from their slots)
  *
  * 3d / web have no ratified input rule yet and keep the current
  * anything-connects behavior (extend INPUT_WHITELIST when theirs land).
@@ -109,7 +111,7 @@ const INPUT_WHITELIST: Partial<Record<NodeType, ReadonlySet<string>>> = {
   image: new Set<string>(['image', 'text']),
   video: new Set<string>(['text', 'video', 'audio', 'image']),
   text: new Set<string>(['text', 'video', 'audio', 'image']),
-  audio: new Set<string>(['text', 'audio']),
+  audio: new Set<string>(['text', 'audio', 'video', 'image']),
 };
 
 /**
@@ -137,7 +139,7 @@ export function canConnect(
  * How long a node's name may be, in characters.
  *
  * The rename input stops at this and the commit clips to it, so it is also
- * the longest name a reader can give a node by hand. It lives here beside the
+ * the longest name a user can give a node by hand. It lives here beside the
  * connection rule for the same reason that one does: the agent proposes names
  * too (#263), and the tool judging a proposal sits in a library package that
  * cannot reach into the frontend. A name past this is one nobody could have
@@ -318,7 +320,8 @@ export interface CanvasNodeFields {
      * The generation template node this node was placed as (inner#1345):
      * the template, its key, and on the guide text node the id of the anchor
      * it explains. An input node the template placed carries its input's key
-     * with `input`, and the id of the anchor of the instance it was placed for. Content: a copy carries it, with the anchor id rewritten
+     * with `input`, and the id of the anchor of the instance it was placed for; so
+     * does a node no template edge touches (inner#1825). Content: a copy carries it, with the anchor id rewritten
      * when the anchor is copied along.
      */
     templateNode?: { template: string; key: string; anchor?: string; input?: true };

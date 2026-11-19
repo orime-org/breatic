@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The hard edge on what one turn may say (#148, G2).
@@ -7,23 +7,27 @@
  * Two lines, each drawn where a client cannot skip it: one on what the user
  * typed (the browser stops at ten thousand characters and says so), one on
  * the attached items as the model is sent them. The attachments do not eat
- * into what the reader may type, and a long question does not shrink what
+ * into what the user may type, and a long question does not shrink what
  * may be attached.
  *
  * The refusal is an error rather than a trim. A silently shortened message
- * leaves the reader unable to see what went missing, reading an answer to
+ * leaves the user unable to see what went missing, reading an answer to
  * something they did not ask.
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
-// `ai` is stubbed: the real SDK is replaced with a double that reaches no
-// network, so this suite needs no API key and the SDK stays out of its
-// module graph.
-vi.mock("ai", () => ({
+// `ai`'s model calls are stubbed with a double that reaches no network, so
+// this suite needs no API key.
+vi.mock("ai", async (importOriginal) => ({
+  // The run builds its stream with the SDK's own `createUIMessageStream`, so
+  // only the model calls are replaced (inner#1717).
+  ...(await importOriginal<Record<string, unknown>>()),
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({
     fullStream: (async function* () {})(),
+    toUIMessageStream: () => new ReadableStream({ start: (c) => c.close() }),
     text: Promise.resolve(""),
     usage: Promise.resolve({ totalTokens: 0 }),
     totalUsage: Promise.resolve({ totalTokens: 0 }),
@@ -44,6 +48,7 @@ import {
 } from "@breatic/core";
 import type { Hono } from "hono";
 import { attachmentMarker, attachmentSection } from "@breatic/shared";
+import { sendAndRead, type SentAndRead } from "./chat-run-harness.js";
 
 try {
   initCore(process.env);
@@ -51,6 +56,7 @@ try {
   // already initialised by a sibling suite in this worker — fine.
 }
 loadLocales();
+initConfiguredProvider();
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -116,22 +122,18 @@ async function seedOwner(): Promise<Seeded> {
 }
 
 /**
- * Post to the chat entrance.
- * @param path - The entrance.
+ * Post to the chat entrance and read the run it opens to its end.
+ * @param _path - The entrance.
  * @param body - The request body.
  * @param cookie - The session cookie.
- * @returns The raw response.
+ * @returns The status, the JSON answer and the run's frames.
  */
 async function post(
-  path: "/api/v1/chat/message",
+  _path: "/api/v1/chat/message",
   body: Record<string, unknown>,
   cookie: string,
-): Promise<Response> {
-  return app.request(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: cookie },
-    body: JSON.stringify(body),
-  });
+): Promise<SentAndRead> {
+  return sendAndRead(app, cookie, body);
 }
 
 /**
@@ -181,7 +183,7 @@ describe("what one turn may send", () => {
   it("admits a message that lands exactly on the limit", async () => {
     // The rule is "past the limit", so the line itself goes through. Without
     // this, an off-by-one refuses a message the browser had just told the
-    // reader was fine.
+    // user was fine.
     const { projectId, conversationId, cookie } = await seedOwner();
 
     const res = await post(
@@ -199,7 +201,7 @@ describe("what one turn may send", () => {
   });
 
   it("counts each reference to an attachment as one character", async () => {
-    // The box counts a reference as the one block the reader sees, so the
+    // The box counts a reference as the one block the user sees, so the
     // server has to as well: the marker it is written as is longer.
     const { projectId, conversationId, cookie } = await seedOwner();
     const attached = chip(1, 10);
@@ -259,7 +261,7 @@ describe("what one turn may send", () => {
 
   it("measures the attachments apart from the words", async () => {
     // Each half is under its own limit, and together they are past the limit
-    // on the words: the attachments do not eat into what the reader may type.
+    // on the words: the attachments do not eat into what the user may type.
     const { projectId, conversationId, cookie } = await seedOwner();
 
     const res = await post(
@@ -331,7 +333,7 @@ describe("what one turn may send", () => {
   });
 });
 
-describe("what one turn may carry of the reader's Spaces (inner#1413)", () => {
+describe("what one turn may carry of the user's Spaces (inner#1413)", () => {
   /** A loaded canvas carries what was done to fit it; these requests are over the limit by length alone. */
   const NO_REDUCTION = {
     selected_total: 0,
@@ -400,7 +402,7 @@ describe("what one turn may carry of the reader's Spaces (inner#1413)", () => {
     // Named by its length, so this is the limit refusing it and not the
     // request's shape.
     expect(res.status).toBe(422);
-    const body = (await res.json()) as { error: { message: string } };
+    const body = res.json as { error: { message: string } };
     expect(body.error.message).toContain(new Intl.NumberFormat("en").format(getAgentConfig().current_space_max_chars + 1));
   });
 
@@ -436,7 +438,7 @@ describe("what one turn may carry of the reader's Spaces (inner#1413)", () => {
     );
 
     expect(res.status).toBe(422);
-    const body = (await res.json()) as { error: { message: string } };
+    const body = res.json as { error: { message: string } };
     expect(body.error.message).toContain(String(getAgentConfig().space_list_max_items + 1));
   });
 });
@@ -494,7 +496,7 @@ describe("what one turn may carry of an open document's blocks (inner#1509)", ()
     );
 
     expect(res.status).toBe(422);
-    const body = (await res.json()) as { error: { message: string } };
+    const body = res.json as { error: { message: string } };
     expect(body.error.message).toContain(new Intl.NumberFormat("en").format(getAgentConfig().current_space_max_chars + 1));
   });
 });

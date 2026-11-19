@@ -1,15 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The document Space taking up the cards the reader pressed for it
+ * The document Space taking up the cards the user pressed for it
  * (inner#1509, design §5.4 step 3 · §5.7).
  *
  * The project page has opened this document; here every card waiting on it is
  * landed one after another in the order it was pressed, and how each ended is
  * reported back to the card. A locate press writes nothing: it shows where
  * the proposal points (inner#1646). A "View" press writes nothing either: it
- * shows where the change is, or, when the change is no longer in the document (the reader
+ * shows where the change is, or, when the change is no longer in the document (the user
  * undid it), tells the card the change is gone. Each change to the document
  * is counted, so a card reads again whether its change is still there.
  * Nothing is taken while there is no editor yet or
@@ -34,6 +34,7 @@ import {
 } from '@web/spaces/document/document-proposal-landing';
 import type { ProposalLocation } from '@web/spaces/document/document-proposal-location';
 import { pendingFor, useDocumentProposals, type PendingDocumentProposal } from '@web/stores/document-proposals';
+import { setTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 
 /** The execution holding this handle's serial queue. */
 interface PickupOwner {
@@ -127,6 +128,9 @@ export function useDocumentProposalPickup(
           const next = pendingFor(spaceId)[0];
           if (next === undefined) break;
           const id = next.proposal.proposalId;
+          // A table open full screen hides the body a proposal lands in or
+          // points at: the card's press ends it first (#1427 §5.3).
+          setTableFullscreen(handle.editor, null);
 
           /**
            * Hands the body where this request's proposal is, a comment's thread
@@ -172,7 +176,7 @@ export function useDocumentProposalPickup(
             if (at === null) outcome = 'gone';
             else publish(at);
           }
-          report(id, outcome, 'leftOut' in result ? result.leftOut : 0);
+          report(id, outcome, 'leftOut' in result ? result.leftOut : 0, 'refusal' in result ? result.refusal : undefined);
         }
       } finally {
         if (busy.current === owner) busy.current = null;

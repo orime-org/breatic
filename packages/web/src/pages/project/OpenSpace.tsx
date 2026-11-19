@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 
-import { type ProjectRole, type SpaceType } from '@breatic/shared';
+import { SPACE_TASKS_TYPES, type ProjectRole, type SpaceType } from '@breatic/shared';
 
+import { useDocGeneration } from '@web/data/yjs/doc-size';
 import { getDoc } from '@web/data/yjs/manager';
 import {
   DOC_NAME_BUILDERS,
@@ -14,7 +15,9 @@ import { useSocket } from '@web/data/yjs/use-socket';
 import { SceneConnectionLifetime } from '@web/data/yjs/scene-lifetime';
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 import { CanvasActivityPublisher } from '@web/spaces/canvas/use-publish-activity';
+import { SceneUploadProgressPublisher } from '@web/spaces/three-d/scene-upload-progress';
 import { DocumentInterceptGuard } from '@web/spaces/document/DocumentInterceptGuard';
+import { SpaceTasksWatcher } from '@web/pages/project/SpaceTasksWatcher';
 
 interface OpenSpaceProps {
   projectId: string;
@@ -65,8 +68,9 @@ export function SpaceConnection({
  * The tab holds its document's connection from open to close, whichever tab is
  * on screen, so a background tab stays live. Its body mounts the first time
  * the tab is on screen and from then on is hidden rather than unmounted when
- * the reader switches away, so it comes back as it was left; closing the tab
- * unmounts it.
+ * the user switches away, so it comes back as it was left; closing the tab
+ * unmounts it. After collab refuses an update the document is rebuilt and
+ * everything here mounts again on the new one.
  *
  * Memoized: its props are all plain values, and the project page re-renders on
  * every zoom step of the canvas on screen; a hidden body would be rendered
@@ -102,18 +106,26 @@ export const OpenSpace = React.memo(function OpenSpace({
     </React.Activity>
   ) : null;
   const buildName = DOC_NAME_BUILDERS[type];
-  if (!buildName) return body;
+  const name = buildName?.(projectId, spaceId);
+  // Collab refused an update and the document was rebuilt (inner#1790): the
+  // whole subtree mounts again, so it opens the new document and provider.
+  const generation = useDocGeneration(name ?? '');
+  if (name === undefined) return body;
   return (
-    <SpaceConnection name={buildName(projectId, spaceId)}>
+    <SpaceConnection key={generation} name={name}>
       {/* A document Space's editor outlives its body's mount, so what shuts it
         down is mounted with the tab — see `DocumentInterceptGuard`. */}
       {type === 'document' ? (
         <DocumentInterceptGuard projectId={projectId} spaceId={spaceId} />
       ) : null}
-      {/* What this reader is waiting on in a canvas Space stays on the peers'
+      {/* What this user is waiting on in a canvas Space stays on the peers'
         screens while another tab is on screen, so it is published with the tab. */}
       {type === 'canvas' ? <CanvasActivityPublisher spaceId={spaceId} /> : null}
-      {type === '3d' ? <SceneConnectionLifetime name={buildName(projectId, spaceId)} readOnly={readOnly} /> : null}
+      {type === '3d' ? <SceneConnectionLifetime name={name} readOnly={readOnly} /> : null}
+      {/* A 3D Space's upload progress stays on the peers' screens while another tab is on screen. */}
+      {type === '3d' ? <SceneUploadProgressPublisher projectId={projectId} spaceId={spaceId} name={name} /> : null}
+      {/* Its background-work lists follow its document, on screen or not. */}
+      {SPACE_TASKS_TYPES.has(type) ? <SpaceTasksWatcher projectId={projectId} spaceId={spaceId} name={name} /> : null}
       {body}
     </SpaceConnection>
   );

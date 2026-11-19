@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Ask for a judgement, with the odds attached.
@@ -15,14 +15,12 @@
  * cost more to keep true than the JSON costs to carry.
  */
 
-import { getAgentConfig, getRawEnvVar } from "@breatic/core";
-import { FAILURE_LINES } from "@breatic/shared";
+import { getAgentConfig } from "@breatic/core";
 import { tool } from "ai";
 import type { Tool } from "ai";
 import { z } from "zod";
 
-import { toolFailed } from "@domain/agent/tools/failure.js";
-import { askJev, JEV_PINS } from "@domain/agent/tools/jev.js";
+import { askJev } from "@domain/agent/tools/jev.js";
 import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import type { JevAnswers } from "@domain/agent/tools/jev.js";
@@ -67,7 +65,7 @@ const inputSchema = z.object({
   state: z
     .unknown()
     .describe(
-      "Everything you are judging against, in whatever shape you hold it: what the reader " +
+      "Everything you are judging against, in whatever shape you hold it: what the user " +
         "said, earlier turns, what is on the canvas, the catalog rows. The fuller this is, " +
         "the better the answer.",
     ),
@@ -103,12 +101,15 @@ const DESCRIPTION = [
     "",
     "Put what you are judging against into `state`.",
     "",
-    "Use it when you are unsure. For instance:",
-    "- the reader's sentence has several readings and you do not know which to act on",
-    "- you can see several ways to do something and cannot tell which suits this time",
+    "Use it when you are unsure and the material you hold can settle it. For instance:",
+    "- the user's sentence has several readings and what they sent or said before points to one",
+    "- of several ways to do something, what they asked for points to one",
     "- you are about to say something and are unsure it squares with what you hold",
-    "- the reader asked for something you think is off, and you are unsure whether to do it",
-    "- you cannot tell whether they said enough to start on, or whether to ask them first",
+    "- the user asked for something you think is off, and you are unsure whether to do it",
+    "- whether what they said and sent already holds what the work needs",
+    "",
+    "A reading that changes what gets made, and a choice of taste, go to the user as your " +
+      "working rules say.",
     "",
     "It judges the questions, so word one badly and it says so by name. When it does, " +
       "its words are passed on to you, quoted; write the call again from them.",
@@ -118,15 +119,15 @@ const DESCRIPTION = [
   "",
   "When it says it is unsure, the question has no answer in the material you gave it: the " +
       "option and scale shapes answer a confidence, and the claim shape answers a probability " +
-      "near a half. That is when to ask the reader, or to put more in and ask again.",
+      "near a half. That is when to ask the user, or to put more in and ask again.",
     "",
-    "Asking the reader is for what only they know. This is for what stands up in what you " +
+    "Asking the user is for what only they know. This is for what stands up in what you " +
       "already hold.",
 ].join("\n");
 
 /**
  * The tool, ready to be registered.
- * @throws {Error} Carrying tool failure detail, or the reader's stop.
+ * @throws {Error} Carrying tool failure detail, or the user's stop.
  */
 export const judgeLikelihood: Tool<z.infer<typeof inputSchema>, JevAnswers, UsageContext> = tool({
   description: DESCRIPTION,
@@ -138,31 +139,16 @@ export const judgeLikelihood: Tool<z.infer<typeof inputSchema>, JevAnswers, Usag
     { state, questions },
     { abortSignal, context }: { abortSignal?: AbortSignal; context: UsageContext },
   ): Promise<JevAnswers> => {
-    const apiKey = getRawEnvVar("OPENROUTER_API_KEY") ?? "";
-    if (!apiKey) {
-      // Defensive: `buildToolSet` leaves this tool out of the set entirely
-      // when the key is missing, so a turn should not reach here.
-      throw toolFailed(
-        "Judgement is not available on this deployment: it has no credentials. Tell the " +
-          "user, and do not try again.",
-        FAILURE_LINES.unavailable,
-      );
-    }
-
+    // A deployment without the decisions endpoint's key has this tool left
+    // out of the set (`buildToolSet`); one that reaches it anyway is told so
+    // by `askJev`.
     return askJev({
-      apiKey,
       state,
       questions,
       budgetMs: getAgentConfig().judge_likelihood_timeout_ms,
       ...(abortSignal ? { abortSignal } : {}),
-      onBilled: (costUsd) =>
-        context.usage.recordServiceCall({
-          source: "tool:judge_likelihood",
-          service: JEV_PINS.model,
-          provider: "openrouter",
-          requests: 1,
-          ...(costUsd === undefined ? {} : { costUsd }),
-        }),
+      onBilled: ({ cost, upstream, model }) =>
+        context.usage.recordModelCall({ source: "tool:judge_likelihood", model, upstream, cost, requests: 1 }),
     });
   },
 });

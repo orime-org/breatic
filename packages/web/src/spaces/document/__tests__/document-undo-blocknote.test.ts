@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * #904 验收 A10: undo never takes away what someone else wrote, and never
@@ -274,7 +274,7 @@ describe('undoing a clear', () => {
     // The guard normalises a selection the document cannot hold, and an
     // `AllSelection` restored by undo looks like one until you notice where it
     // came from: `document-select-all-guard.ts` skips undo transactions for
-    // exactly this. Reaching the clear the way a reader does — two presses of
+    // exactly this. Reaching the clear the way a user does — two presses of
     // `Mod-a`, then the confirmed clear — is what puts an `AllSelection` on
     // the stack to restore.
     const { editor } = openWithTwoBlocks();
@@ -300,5 +300,40 @@ describe('undoing a clear', () => {
     expect(selection).toBeInstanceOf(AllSelection);
     expect(selection.from).toBe(0);
     expect(selection.to).toBe(doc.content.size);
+  });
+});
+
+describe('an attribute given to a block that was already there', () => {
+  it('goes again with one undo: a table column width (inner#1314)', () => {
+    const doc = new Y.Doc();
+    const { manager, extension } = createDocumentUndo(doc);
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc), extensions: [extension] });
+    editor.mount(document.createElement('div'));
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'lead' },
+      { type: 'docTable', children: [{ type: 'docTableRow', children: [{ type: 'docTableCell', children: [{ type: 'paragraph', content: 'a' }] }] }] },
+    ] as never);
+    manager.clear();
+    const widths = (): unknown[] => {
+      const out: unknown[] = [];
+      editor.prosemirrorState.doc.descendants((node) => {
+        if (node.type.name === 'docTableCell') out.push(node.attrs['colwidth']);
+        return true;
+      });
+      return out;
+    };
+    const view = editor.prosemirrorView;
+    const tr = view.state.tr;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'docTableCell') tr.setNodeMarkup(pos, undefined, { ...node.attrs, colwidth: [200] });
+      return true;
+    });
+    view.dispatch(tr);
+    expect(widths()).toEqual([[200]]);
+
+    manager.undo();
+
+    expect(widths()).toEqual([null]);
   });
 });

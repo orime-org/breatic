@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What an understand adapter does: send one question with its media to one
@@ -11,6 +11,8 @@ import type { FinishReason, LanguageModelUsage, ProviderMetadata } from "ai";
 import type { UpstreamDecl } from "@provider/config/schema.js";
 import { HttpStatus } from "@provider/http/errors.js";
 import { answerText, deliver, isSuccess, parsed, type OutgoingRequest } from "@provider/http/request.js";
+import type { UnderstandMedia } from "@provider/llm/api.js";
+import type { VendorOptions } from "@provider/llm/vendors.js";
 
 /** One item uploaded to an upstream: its file's address, and its uri once the file is ready. */
 export interface UploadedFile {
@@ -34,13 +36,13 @@ export interface UnderstandCall {
   modelId: string;
   /** The question, already cleaned. */
   question: string;
-  media: { bytes: Uint8Array; contentType: string }[];
+  media: UnderstandMedia[];
   maxOutputTokens: number;
-  /** OpenRouter's backend pin for the model, when it has one. */
-  backend?: { only: string[]; allow_fallbacks: boolean };
+  /** OpenRouter's `provider` object for the call, sent as given: the model's backend pin and, for a cheapest call, the price sort. */
+  provider?: VendorOptions;
   deadlineAt: number;
   signal: AbortSignal;
-  /** The size past which Gemini takes media through its Files API, in bytes. */
+  /** The size of the inline request (question and base64 media) past which Gemini takes media through its Files API, in bytes. */
   inlineMaxBytes: number;
   /** How often an uploaded file's state is asked about, in ms. */
   filePollMs: number;
@@ -50,6 +52,8 @@ export interface UnderstandCall {
 /** The upstream's answer as it came: its status, parsed body and text. */
 export interface Answered {
   url: string;
+  /** When the request left, in epoch ms: a model answer's direct price is the one in effect then. */
+  sentAt: number;
   status: number;
   headers: Headers;
   body: unknown;
@@ -118,6 +122,41 @@ export interface UnderstandAdapter {
   read(body: unknown): Reading;
   /** How a 2xx answer is costed. */
   billing(body: unknown): Billing;
+  /** Whether a refusal's error value says the content was blocked (the upstream's own words for it). */
+  contentBlocked?(error: unknown): boolean;
+}
+
+/** An item's bytes and type, as an upstream that needs bytes sends them. */
+export type MediaBytes = { bytes: Uint8Array; contentType: string };
+
+/** The caller's reader of an image failed; the call ends with the caller's error, on no other upstream. */
+export class MediaReadFailed extends Error {
+  /**
+   * Wrap the caller's error.
+   * @param cause - What the reader threw.
+   */
+  constructor(cause: unknown) {
+    super("The caller's reader of an image failed", { cause });
+    this.name = "MediaReadFailed";
+  }
+}
+
+/**
+ * The bytes of every item: an item handed over by its address is read with the caller's reader.
+ * @param media - The items.
+ * @param signal - The call's signal.
+ * @returns Each item's bytes and type.
+ * @throws {MediaReadFailed} When a reader fails.
+ */
+export async function bytesOf(media: readonly UnderstandMedia[], signal: AbortSignal): Promise<MediaBytes[]> {
+  return Promise.all(media.map(async (item) => {
+    if (!("read" in item)) return item;
+    try {
+      return { bytes: await item.read(signal), contentType: item.contentType };
+    } catch (error) {
+      throw new MediaReadFailed(error);
+    }
+  }));
 }
 
 /** The largest answer read, in bytes. */
@@ -151,6 +190,7 @@ export class AnswerUnread extends Error {
  */
 export async function exchange(request: OutgoingRequest, call: Pick<UnderstandCall, "deadlineAt" | "signal">): Promise<Answered> {
   const bounds = { replaySafe: false, deadlineAt: call.deadlineAt, signal: call.signal };
+  const sentAt = Date.now();
   const response = await deliver(request, bounds);
   let text: string;
   try {
@@ -158,7 +198,7 @@ export async function exchange(request: OutgoingRequest, call: Pick<UnderstandCa
   } catch (error) {
     throw new AnswerUnread(request.url, response.status, error);
   }
-  return { url: request.url, status: response.status, body: parsed(text), text, headers: response.headers };
+  return { url: request.url, sentAt, status: response.status, body: parsed(text), text, headers: response.headers };
 }
 
 /**

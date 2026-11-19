@@ -1,14 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The agent's request to read Spaces and the reader's answer to it
+ * The agent's request to read Spaces and the user's answer to it
  * (inner#1552). Whether an answer fits the request it answers is checked by
  * the server (`space-answer-mismatch.ts`).
  *
  * Shared because three places read one shape: the tool that takes the model's
  * call, the card that draws it in the browser, and the route that takes the
- * reader's answer. What only the turn can know -- whether an id is in this
+ * user's answer. What only the turn can know -- whether an id is in this
  * turn's Space list, whether `blocks` names a document and `node_ids` a canvas,
  * and the configured caps on how many Spaces and node ids -- is checked by the
  * tool in domain, not here (`request-space-content-contract.test.ts`).
@@ -200,7 +200,7 @@ describe("one Space as the browser read it", () => {
   });
 });
 
-describe("the reader's answer", () => {
+describe("the user's answer", () => {
   it("is the Spaces shared, or a refusal, for one call", () => {
     expect(spaceRequestAnswerSchema.safeParse({ toolCallId: "r1", decision: "shared", spaces: [READ_DOCUMENT] }).success).toBe(
       true,
@@ -241,7 +241,9 @@ describe("a chat request carries words, an answer, or shared Spaces: exactly one
   });
 
   it("still takes words alone and an answer alone", () => {
-    expect(chatMessageSchema.safeParse({ ...base, message: "hello" }).success).toBe(true);
+    expect(chatMessageSchema.safeParse({ ...base, id: "33333333-3333-4333-8333-333333333333", message: "hello" }).success).toBe(true);
+    // Words are a new message, which carries the id the page made at the press.
+    expect(chatMessageSchema.safeParse({ ...base, message: "hello" }).success).toBe(false);
     expect(chatMessageSchema.safeParse({ ...base, message: "", answer }).success).toBe(true);
     expect(chatMessageSchema.safeParse({ ...base, message: "" }).success).toBe(false);
   });

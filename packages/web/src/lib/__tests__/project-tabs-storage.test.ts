@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
@@ -260,7 +260,7 @@ describe('project tab storage — data it will not trust', () => {
 
   // An account entry is where a hand-edit lands most easily, and it is read
   // during the project page's first render: anything thrown here replaces the
-  // whole page with an error screen the reader cannot get out of, since a
+  // whole page with an error screen the user cannot get out of, since a
   // reload meets the same record.
   it.each([
     ['null', null],

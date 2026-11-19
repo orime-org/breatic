@@ -1,15 +1,18 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Every paid call a chat turn makes leaves a row in `agent_usage_records`,
- * and what the turn is charged is what those rows add up to (#296).
+ * and what the turn is charged is what those rows add up to (#296). A memory
+ * consolidation's calls are recorded and charged the same way, each under its
+ * own key (#1363).
  *
  * Real database and Redis: the rows and the ledger are the thing under test.
  * Payments are on, so the charge reaches a lot and a balance check has
  * something to refuse.
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 let provider = "deepseek";
@@ -21,15 +24,62 @@ let cutOffAfter: string | undefined;
 /** When set, a call that ends normally still carries this generation id. */
 let rawId: string | undefined;
 let modelCalls = 0;
+/** When every call of the suite was sent: a weekday peak hour, so a direct DeepSeek call is at its full price. */
+const SENT_AT = Date.parse("2026-11-11T02:00:00Z");
+
+/**
+ * The id the later lookup of a generation is queued under.
+ * @param lookup - The lookup.
+ * @returns The job id.
+ */
+function jobIdOf(lookup: { upstream: string; generationId: string }): string {
+  return crypto.createHash("sha256").update(JSON.stringify(lookup)).digest("hex");
+}
+/** When set, every consolidation call answers with this text. */
+let consolidationAnswer: string | undefined;
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
   const { modelProducing, saying, finishing } = await import("../helpers/model-double.js");
   return {
     ...actual,
-    resolveProvider: () => provider,
-    getModel: () =>
-      modelProducing(() => {
+    generateTextRetry: async (...args: Parameters<typeof actual.generateTextRetry>) =>
+      consolidationAnswer === undefined
+        ? actual.generateTextRetry(...args)
+        : {
+          text: consolidationAnswer,
+          finishReason: "stop",
+          usage: { inputTokens: 1_000, inputTokenDetails: { noCacheTokens: 1_000 }, outputTokens: 1_000, outputTokenDetails: {}, totalTokens: 2_000 },
+          providerMetadata: { breatic: { upstream: provider, sentAt: SENT_AT } },
+          response: { id: `gen-${crypto.randomBytes(6).toString("hex")}` },
+        },
+    // The test's model, with what provider would report about it: the cost of each call is read by this
+    // process's real provider, from the upstream and the send moment its finish names.
+    provider: () => ({
+      llm: {
+        prepare: () => ({
+          model: model(),
+          options: { providerOptions: {}, maxRetries: 0 },
+          system: (parts: Parameters<typeof actual.instructionsText>[0]) => [{ role: "system", content: actual.instructionsText(parts) }],
+          pendingCosts: () =>
+            cutOffAfter === undefined
+              ? []
+              : provider === "openrouter"
+                ? [{ state: "pending", lookup: { upstream: "openrouter", generationId: cutOffAfter } }]
+                : [{ state: "missing", reason: "cut off before its finish", upstream: provider }],
+        }),
+        costOf: (finished: Parameters<ReturnType<typeof actual.provider>["llm"]["costOf"]>[0]) => actual.provider().llm.costOf(finished),
+        servedBy: (finished: Parameters<ReturnType<typeof actual.provider>["llm"]["servedBy"]>[0]) => actual.provider().llm.servedBy(finished),
+      },
+    }),
+  };
+
+  /**
+   * The test's model for one call.
+   * @returns It.
+   */
+  function model(): ReturnType<typeof modelProducing> {
+    return modelProducing(() => {
         modelCalls += 1;
         if (cutOffAfter !== undefined) {
           return [
@@ -50,16 +100,16 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         }
         const finish = finishing("stop", 1_000_000);
         const reported =
-          finish.type === "finish" && finishMetadata !== undefined
-            ? { ...finish, providerMetadata: finishMetadata }
+          finish.type === "finish"
+            ? { ...finish, providerMetadata: { ...finishMetadata, breatic: { upstream: provider, sentAt: SENT_AT } } }
             : finish;
         return [
           ...(rawId === undefined ? [] : [{ type: "raw" as const, rawValue: { id: rawId } }]),
           ...saying("hi").filter((part) => part.type !== "finish"),
           reported,
         ];
-      }),
-  };
+      });
+  }
 });
 
 import type * as DomainModule from "@breatic/domain";
@@ -72,11 +122,13 @@ import {
   sessionCookieName,
   loadLocales,
   createQueue,
+  getAgentConfig,
 } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { ceilToCreditCent } from "@breatic/shared";
 import type { Hono } from "hono";
 import { openPaymentSource } from "./payment-source.js";
+import { sendAndRead } from "./chat-run-harness.js";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -92,6 +144,7 @@ const SUITE_ENV = {
 
 beforeAll(async () => {
   initCore(SUITE_ENV);
+  initConfiguredProvider();
   loadLocales();
   sql = postgres(inject("DATABASE_URL"), { max: 4, prepare: false });
   const { createApp } = await import("@server/app.js");
@@ -173,22 +226,19 @@ async function seed(credits: number): Promise<{
 }
 
 /**
- * Send one message and drain the stream.
+ * Send one message and read its run to the end.
  * @param seeded - Who sends, and where.
+ * @param model - The model to pick, when the case picks one.
  * @returns The response status.
  */
-async function send(seeded: Awaited<ReturnType<typeof seed>>): Promise<number> {
-  const res = await app.request("/api/v1/chat/message", {
-    method: "POST",
-    headers: { Cookie: seeded.cookie, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      message: "hello",
-      project_id: seeded.projectId,
-      conversation_id: seeded.conversationId,
-    }),
+async function send(seeded: Awaited<ReturnType<typeof seed>>, model?: string): Promise<number> {
+  const { status } = await sendAndRead(app, seeded.cookie, {
+    message: "hello",
+    project_id: seeded.projectId,
+    conversation_id: seeded.conversationId,
+    ...(model === undefined ? {} : { model }),
   });
-  await res.text();
-  return res.status;
+  return status;
 }
 
 describe("a chat turn's model calls are recorded and charged at their cost", () => {
@@ -225,7 +275,7 @@ describe("a chat turn's model calls are recorded and charged at their cost", () 
     const seeded = await seed(100_000);
     try {
       expect(await send(seeded)).toBe(200);
-      expect(await queue.getJob(rawId)).toBeUndefined();
+      expect(await queue.getJob(jobIdOf({ upstream: "openrouter", generationId: rawId }))).toBeUndefined();
     } finally {
       rawId = undefined;
       await queue.close();
@@ -237,6 +287,59 @@ describe("a chat turn's model calls are recorded and charged at their cost", () 
     expect(row).toMatchObject({ cost_source: "provider" });
     expect(Number(row!.cost_usd)).toBeCloseTo(0.0123, 8);
     expect(Number(row!.credits)).toBeCloseTo(1.23, 6);
+  }, 60_000);
+
+  it("records the model the user picked for the conversation", async () => {
+    provider = "openrouter";
+    finishMetadata = { openrouter: { usage: { cost: 0.0123 } } };
+    const seeded = await seed(100_000);
+    expect(await send(seeded, "anthropic/claude-sonnet-5.5")).toBe(200);
+
+    const rows = await sql<{ model: string }[]>`
+      SELECT model FROM agent_usage_records WHERE actor_user_id = ${seeded.userId}
+    `;
+    expect(rows).toEqual([{ model: "anthropic/claude-sonnet-5.5" }]);
+  }, 60_000);
+});
+
+describe("a memory consolidation's calls are recorded and charged", () => {
+  it("charges every call of two folds from the same watermark, each under its own key", async () => {
+    provider = "deepseek";
+    finishMetadata = undefined;
+    const seeded = await seed(100_000);
+    const { consolidateWindow } = await import("@server/agent/memory-consolidator.js");
+    const window = {
+      userId: seeded.userId,
+      conversationId: seeded.conversationId,
+      projectId: seeded.projectId,
+      turns: [{ turnIndex: 1, messages: [{ role: "user" as const, content: "hello" }] }],
+      watermarkBefore: 0,
+      newWatermark: 1,
+    };
+    consolidationAnswer = "not json at all";
+    try {
+      expect(await consolidateWindow(window)).toBe("failed");
+      expect(await consolidateWindow(window)).toBe("failed");
+    } finally {
+      consolidationAnswer = undefined;
+    }
+
+    const rows = await sql<{ operation_key: string; model: string; credits: string }[]>`
+      SELECT operation_key, model, credits FROM agent_usage_records
+      WHERE actor_user_id = ${seeded.userId} AND feature = 'memory_consolidation'
+    `;
+    const keys = rows.map((row) => row.operation_key);
+    expect(rows).toHaveLength(2 * getAgentConfig().consolidation_answer_attempts);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(new Set(rows.map((row) => row.model))).toEqual(new Set([getAgentConfig().consolidation_model]));
+    const spent = await sql<{ reference_id: string; amount: string }[]>`
+      SELECT reference_id, amount FROM credit_ledger WHERE reference_id IN ${sql(keys)} AND entry_type = 'spend'
+    `;
+    expect(new Set(spent.map((entry) => entry.reference_id))).toEqual(new Set(keys));
+    for (const row of rows) {
+      const charged = spent.filter((entry) => entry.reference_id === row.operation_key).reduce((sum, entry) => sum + Number(entry.amount), 0);
+      expect(charged).toBeCloseTo(-ceilToCreditCent(Number(row.credits)), 6);
+    }
   }, 60_000);
 });
 
@@ -266,7 +369,7 @@ describe("a chat turn's tool calls are recorded under the same turn", () => {
   }, 60_000);
 });
 
-describe("an OpenRouter call cut off before it reported its cost", () => {
+describe("a call cut off before it reported its cost", () => {
   it("is handed to the later lookup under its generation id", async () => {
     provider = "openrouter";
     finishMetadata = undefined;
@@ -277,9 +380,10 @@ describe("an OpenRouter call cut off before it reported its cost", () => {
       const seeded = await seed(100_000);
       await send(seeded);
 
-      const job = await queue.getJob(generationId);
+      const job = await queue.getJob(jobIdOf({ upstream: "openrouter", generationId }));
       expect(job?.data).toMatchObject({
-        generationId,
+        lookup: { upstream: "openrouter", generationId },
+        upstream: "openrouter",
         feature: "chat_turn",
         source: "model",
         actorUserId: seeded.userId,
@@ -306,7 +410,7 @@ describe("an OpenRouter call cut off before it reported its cost", () => {
     try {
       const seeded = await seed(100_000);
       await send(seeded);
-      expect(await queue.getJob(generationId)).toBeUndefined();
+      expect(await queue.getJob(jobIdOf({ upstream: "openrouter", generationId }))).toBeUndefined();
     } finally {
       cutOffAfter = undefined;
       await queue.close();

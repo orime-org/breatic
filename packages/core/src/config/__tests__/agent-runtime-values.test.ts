@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Three figures this build reads from `config/agent.yaml` rather than source.
@@ -50,9 +50,8 @@ describe("the model this build talks to", () => {
   it("is DeepSeek V4.1 Flash 1017 in the shipped config", () => {
     const config = shippedConfig();
     expect(config.default_model).toBe(MODEL);
-    // Consolidation summarises old turns. Leaving it on the previous model
-    // would mean a conversation is read by one model and written by another,
-    // and the bill would name two.
+    // Consolidation stays on this one model whatever model a conversation
+    // picked.
     expect(config.consolidation_model).toBe(MODEL);
   });
 
@@ -62,12 +61,12 @@ describe("the model this build talks to", () => {
     expect(parsed.consolidation_model).toBe(MODEL);
   });
 
-  it("has a price, so a deployment that reaches DeepSeek directly still starts", () => {
+  it("has a direct price, so a deployment that reaches DeepSeek directly still starts", () => {
     // Through OpenRouter the call reports its own cost; with a DeepSeek key the
     // startup check (`assertModelsPriced`) refuses to run a model with no price.
-    const path = resolve(import.meta.dirname, "../../../../../config/usage-pricing.yaml");
-    const pricing = parse(readFileSync(path, "utf8")) as { models: Record<string, Record<string, number>> };
-    expect(pricing.models[MODEL]).toEqual({
+    const path = resolve(import.meta.dirname, "../../../../../config/provider/llm.yaml");
+    const llm = parse(readFileSync(path, "utf8")) as { prices: Record<string, Array<Record<string, unknown>>> };
+    expect(llm.prices[MODEL]?.[0]).toMatchObject({
       input_cache_hit_per_mtok: 0.006,
       input_cache_miss_per_mtok: 0.3,
       output_per_mtok: 1.2,
@@ -86,6 +85,21 @@ describe("the figures on the path from pressing send to the first frame", () => 
   it("declares how often the server says the stream is alive", () => {
     expect(defaults().sse_heartbeat_interval_ms).toBe(5000);
     expect(shippedConfig().sse_heartbeat_interval_ms).toBe(5000);
+  });
+
+  it("declares how often an open conversation list asks which conversations are running", () => {
+    // Both halves: the yaml ships the figure, the schema answers for a
+    // deployment whose file does not carry the key (#1394).
+    expect(defaults().running_poll_interval_ms).toBe(5000);
+    expect(shippedConfig().running_poll_interval_ms).toBe(5000);
+  });
+
+  it("rejects a running poll interval that is not a positive whole number", () => {
+    // It reaches a browser timer: zero or a negative is a list that asks
+    // without pause, a fraction is not an interval a timer takes.
+    for (const bad of [0, -1, 1.5]) {
+      expect(agentConfigSchemaForTests.safeParse({ running_poll_interval_ms: bad }).success).toBe(false);
+    }
   });
 
   it("declares how many messages one page of a conversation holds", () => {
@@ -148,13 +162,15 @@ describe("the memory keep line", () => {
     expect(typeof config.memory_keep_tokens).toBe("number");
     expect(config.context_window_fallback_tokens).toBe(1_000_000);
     expect(config.overflow_folds_per_turn).toBe(2);
-    expect(config.consolidation_shrink_attempts).toBe(6);
+    expect(config.memory_index_max_entries).toBe(200);
+    expect(config.memory_progress_max_chars).toBe(2000);
     expect(
       agentConfigSchemaForTests.safeParse({
         memory_keep_tokens: config.memory_keep_tokens,
         context_window_fallback_tokens: config.context_window_fallback_tokens,
         overflow_folds_per_turn: config.overflow_folds_per_turn,
-        consolidation_shrink_attempts: config.consolidation_shrink_attempts,
+        memory_index_max_entries: config.memory_index_max_entries,
+        memory_progress_max_chars: config.memory_progress_max_chars,
       }).success,
     ).toBe(true);
   });
@@ -163,42 +179,40 @@ describe("the memory keep line", () => {
     // The line the pass runs to is the keep line less the reserve. Take
     // exactly the whole of it and that line is zero: the loop's `remaining
     // <= keep` is false only while something is left, so a fold takes every
-    // turn there is. Doubled, because the reserve is counted in code units.
+    // turn there is. The reserve is 2 × (entries × 159 + progress), which
+    // 1000 entries and a 91000-character note bring to 500000.
     expect(
       agentConfigSchemaForTests.safeParse({
         memory_keep_tokens: 500_000,
-        memory_conversation_max_size: 125_000,
-        memory_project_max_size: 125_000,
+        memory_index_max_entries: 1000,
+        memory_progress_max_chars: 91_000,
       }).success,
     ).toBe(false);
-    // One code point under it passes, which is what makes the line above a
+    // One character under it passes, which is what makes the line above a
     // boundary rather than a range.
     expect(
       agentConfigSchemaForTests.safeParse({
         memory_keep_tokens: 500_000,
-        memory_conversation_max_size: 125_000,
-        memory_project_max_size: 124_999,
+        memory_index_max_entries: 1000,
+        memory_progress_max_chars: 90_999,
       }).success,
     ).toBe(true);
   });
 
   it("refuses memory ceilings that leave a pass nothing to run to", () => {
     // A pass runs to the keep line less the room the fold may add to memory,
-    // so the two ceilings together have to leave something under it. Take the
-    // whole of it and every fold swallows the conversation entire; take more
-    // and the line goes negative, which the loop reads as "never stop".
+    // so the memory ceilings together have to leave something under it. Take
+    // more and the line goes negative, which the loop reads as "never stop".
     expect(
       agentConfigSchemaForTests.safeParse({
         memory_keep_tokens: 500_000,
-        memory_conversation_max_size: 250_000,
-        memory_project_max_size: 250_000,
+        memory_index_max_entries: 5000,
       }).success,
     ).toBe(false);
     expect(
       agentConfigSchemaForTests.safeParse({
         memory_keep_tokens: 500_000,
-        memory_conversation_max_size: 400_000,
-        memory_project_max_size: 200_000,
+        memory_progress_max_chars: 400_000,
       }).success,
     ).toBe(false);
   });

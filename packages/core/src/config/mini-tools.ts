@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Container mini-tool loader (inner#888 §8, §9).
  *
  * Reads `config/mini-tools.yaml`: which container class each operation runs
- * in, how long it may run, what the precheck holds the reader to, and the
+ * in, how long it may run, what the precheck holds the user to, and the
  * published prices a run's seconds are charged at.
  */
 
@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
+import { MINI_TOOL_JOB_MAX_EXTRA_INPUTS } from "@breatic/shared";
 import { CONTAINER_OPS, type ContainerOp } from "@breatic/shared/mini-tools";
 import { MINI_TOOL_JOB_MAX_OUTPUTS, SOURCE_DECODE_KEYS, miniToolPlanLimitsSchema, type SourceDecodeKey } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
@@ -281,6 +282,14 @@ export const miniToolsConfigSchema = z
     waveform_peaks_retry_max_ms: z.number().int().positive().default(600_000),
     // How long a video tool panel's priced inputs hold still before it asks for a quote.
     quote_debounce_ms: z.number().int().nonnegative().default(300),
+    // The most clips one join takes, source included (inner#1825 §6.3); the
+    // job contract carries the source plus MINI_TOOL_JOB_MAX_EXTRA_INPUTS.
+    join_max_clips: z
+      .number()
+      .int()
+      .min(2)
+      .max(MINI_TOOL_JOB_MAX_EXTRA_INPUTS + 1)
+      .default(20),
   })
   .superRefine((config, ctx) => {
     if (!(config.presentation.container_class in config.classes)) {

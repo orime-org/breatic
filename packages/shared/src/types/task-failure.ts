@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Why a task failed, for the causes we author (#186 §7.1).
@@ -7,13 +7,14 @@
  * A task's `error_message` is read by whoever opens the node's task list, in
  * whatever language they set. A sentence written at the point of failure is
  * frozen into one language at that moment — the server's, or whichever
- * requester happened to trigger it — and every other reader gets that one.
+ * requester happened to trigger it — and every other user gets that one.
  *
  * So the causes we know are stored as a code and turned into a sentence where
- * the reader is. A provider's own error text is not one of these: it is what
+ * the user is. A provider's own error text is not one of these: it is what
  * the provider said, and it travels as itself.
  */
 
+import type { InputLimitShape } from "@shared/input-refusal.js";
 import {
   INGEST_FAILURE_CODES,
   INGEST_NO_ANSWER,
@@ -103,21 +104,28 @@ export const TASK_FAILURE_REASONS = [
    * a whole one.
    */
   "cut_short",
+  /**
+   * No upstream here takes the run as it was set up (#1521): the sentence
+   * names the model and, when the refusal states one, the limit it broke.
+   */
+  "input_refused",
+  /** No upstream of the model has its key on this deployment; the sentence names the variables. */
+  "model_not_configured",
 ] as const;
 
 /** One of the causes above. */
 export type TaskFailureReason = (typeof TASK_FAILURE_REASONS)[number];
 
 /**
- * The cause each stored code is told to the reader as.
+ * The cause each stored code is told to the user as.
  *
  * There are more codes than causes on purpose. An operator has to tell R2
  * refusing the bytes from the parts refusing to assemble; a person reading
  * the node has the same thing to do either way, and a list of our internals
- * is not what they came for. So the log keeps the code and the reader gets
+ * is not what they came for. So the log keeps the code and the user gets
  * the cause.
  *
- * A code absent from here reaches the reader as itself, in every language —
+ * A code absent from here reaches the user as itself, in every language —
  * which is what `task-failure.test.ts` holds every lane's codes against.
  */
 const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
@@ -136,7 +144,10 @@ const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
         code,
         // The Worker's own names for what our side did; the other three
         // describe the address, and are causes in their own right.
-        code === "store_failed" || code === "assemble_failed" || code === "upright_failed"
+        code === "store_failed" ||
+        code === "assemble_failed" ||
+        code === "upright_failed" ||
+        code === "reader_not_started"
           ? "internal"
           : code,
       ] as const,
@@ -146,7 +157,7 @@ const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
 /**
  * What a stored failure says about the file it was about.
  *
- * A cause on its own leaves the reader asking which of their files this
+ * A cause on its own leaves the user asking which of their files this
  * happened to and what it was that we would not take. Both are known where
  * the failure is raised — the run holds the address it was handed and the
  * type it judged, and the browser's own gate holds the same two — so they
@@ -156,15 +167,21 @@ const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
 export interface TaskFailureDetail {
   /** What the file is called: its storage key's last segment. */
   file?: string;
-  /** The type it was judged as, as the word a reader uses for that format. */
+  /** The type it was judged as, as the word a user uses for that format. */
   type?: string;
   /** How many bytes it is, for a cause that refused it over a ceiling. */
   bytes?: number;
   /**
    * Which reading failed, when it was not an understanding: the sentence
-   * names the act the reader asked for, on the row and in the history alike.
+   * names the act the user asked for, on the row and in the history alike.
    */
   reading?: "transcribe";
+  /** What the user knows the model as, for a cause about the model. */
+  model?: string;
+  /** The limit a refused input broke, when the refusal states one. */
+  limit?: InputLimitShape;
+  /** The environment variables a deployment is missing. */
+  envVars?: string[];
 }
 
 /** A stored failure, read back. */
@@ -192,6 +209,9 @@ export function encodeTaskFailure(
     ...(about.type !== undefined && about.type !== "" && { type: about.type }),
     ...(Number.isFinite(about.bytes) && { bytes: about.bytes }),
     ...(about.reading === "transcribe" && { reading: about.reading }),
+    ...(about.model !== undefined && about.model !== "" && { model: about.model }),
+    ...(about.limit !== undefined && { limit: about.limit }),
+    ...(about.envVars !== undefined && about.envVars.length > 0 && { envVars: about.envVars }),
   };
   return Object.keys(detail).length === 0
     ? reason
@@ -232,6 +252,30 @@ export function readTaskFailure(message: string | null): StoredTaskFailure {
     ...(typeof held.type === "string" && { type: held.type }),
     ...(typeof held.bytes === "number" && { bytes: held.bytes }),
     ...(held.reading === "transcribe" && { reading: "transcribe" as const }),
+    ...(typeof held.model === "string" && held.model !== "" && { model: held.model }),
+    ...(isLimit(held.limit) && { limit: held.limit }),
+    ...(Array.isArray(held.envVars) && held.envVars.length > 0 && held.envVars.every((v) => typeof v === "string") && { envVars: held.envVars }),
   };
+}
+
+/**
+ * Whether a stored value is an input limit as provider states one.
+ * @param value - What the row held; anything.
+ * @returns True for a limit with a field, a known measure and exactly one bound.
+ * @throws {never} Never.
+ */
+function isLimit(value: unknown): value is InputLimitShape {
+  if (typeof value !== "object" || value === null) return false;
+  const l = value as Record<string, unknown>;
+  /**
+   * Whether one bound is absent or a count.
+   * @param n - The stored bound.
+   * @returns True for undefined or a non-negative integer.
+   */
+  const bound = (n: unknown): boolean => n === undefined || (typeof n === "number" && Number.isInteger(n) && n >= 0);
+  return typeof l.field === "string"
+    && (l.measure === "characters" || l.measure === "lines" || l.measure === "chinese_characters")
+    && bound(l.max) && bound(l.min) && ((l.max === undefined) !== (l.min === undefined))
+    && (l.per === undefined || l.per === "line" || l.per === "item");
 }
 

@@ -1,22 +1,22 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Propose a wired group of nodes for the reader to place (#229).
+ * Propose a wired group of nodes for the user to place (#229).
  *
- * The tool hands its input straight back: the card the reader presses is
+ * The tool hands its input straight back: the card the user presses is
  * drawn from it, and the placing happens on the canvas. What stands between a
  * careless proposal and that card is `checkProposal`, and every rule it
  * applies is read off the live catalog -- which modes a node offers, which
  * models a mode can reach, and whether that mode needs material only the
- * reader has.
+ * user has.
  *
  * A mode that needs material is proposed with a source node for it: one
- * holding the reader's material (a chat upload or a picture saved with
- * save_image), or an empty one for the reader to fill.
+ * holding the user's material (a chat upload or a picture saved with
+ * save_image), or an empty one for the user to fill.
  * Every way a node reaches a generation is read off the catalog (`waysIn`,
  * design 5.7): the reference pool, mentioned in the prompt by a ref; a slot
- * on the panel, which the reader picks it into; or a song model's lyrics box,
+ * on the panel, which the user picks it into; or a song model's lyrics box,
  * which landing mentions it in. Each edge says which on `into`.
  *
  * Every character of this tool's description and its field descriptions goes
@@ -41,26 +41,40 @@ import { z } from "zod";
 
 import {
   canConnect,
+  keyStanding,
+  formatCredits,
   GENERATION_TEMPLATES,
   t,
   templateAnchor,
   templateGuideNode,
   type CanvasProposal,
   type GenerationTemplate,
+  type PromptSegment,
   type ProposalAnswer,
   type ProposalNode,
 } from "@breatic/shared";
 
-import { checkGenerateNode } from "@domain/agent/tools/proposal-generate-check.js";
+import { renderPrice } from "@domain/agent/tools/generation-models.js";
+import { upstreamRefusal } from "@domain/agent/tools/upstream-refusal.js";
+import { onDialogueSide, proposalDialogueText } from "@domain/agent/tools/proposal-dialogue.js";
+import { checkBlanks, checkGenerateNode, generateRunOf, takesPromptHere } from "@domain/agent/tools/proposal-generate-check.js";
 import { checkSourceNodesFit, checkUnsentNotes, hasRing } from "@domain/agent/tools/proposal-group-checks.js";
 import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/tools/proposal-node-checks.js";
 import { fixEdges, fixGroup, nodeLabel, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { aNode, chosenModelOf, routeEdges, spaced, waysOrNone } from "@domain/agent/tools/proposal-routing.js";
-import { anchoredInstances, checkTemplateInstances, type AnchoredInstance } from "@domain/agent/tools/template-consistency.js";
+import {
+  anchoredInstances,
+  checkOptionalInputs,
+  checkTemplateInstances,
+  optionalInputRefs,
+  type AnchoredInstance,
+} from "@domain/agent/tools/template-consistency.js";
 import { expandAt, templatePlace, type TemplatePlace } from "@domain/agent/tools/template-expansion.js";
 import { GET_GENERATION_TEMPLATE, GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
+import { estimateModelCredits, inputRefusalFor } from "@domain/model-catalog/model-catalog.js";
+import type { CreditEstimate } from "@breatic/shared/pricing";
 
 export type { MaterialFacts, MaterialTable } from "@domain/asset/material-facts.js";
 
@@ -82,7 +96,7 @@ function withCatalogFacts(proposal: CanvasProposal): CanvasProposal {
     ...proposal,
     nodes: proposal.nodes.map((node) => {
       const chosen = chosenModelOf(node);
-      return chosen === undefined ? node : { ...node, takesPrompt: chosen.takesPrompt };
+      return chosen === undefined ? node : { ...node, takesPrompt: takesPromptHere(node, chosen) };
     }),
   };
 }
@@ -123,7 +137,7 @@ function edgesSaid(edges: CanvasProposal["edges"], from: NodeLabel, to: NodeLabe
 }
 
 /**
- * Whether a proposal states a flow the reader can carry out.
+ * Whether a proposal states a flow the user can carry out.
  *
  * Pure, so the rule it applies is the one a test can hold: the catalog goes
  * in through `modelsForMode`, and nothing else is read.
@@ -167,9 +181,9 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable, insta
   }
 
   // A node earns its place on the canvas one of two ways: something generates
-  // there, or it stands in a relation the reader would otherwise have to keep
+  // there, or it stands in a relation the user would otherwise have to keep
   // in their head. Words with neither are words, and a reply carries those --
-  // the reader reads them, takes them, and asks for another version in the
+  // the user reads them, takes them, and asks for another version in the
   // same breath, where placing, pressing and undoing buys them nothing.
   if (!proposal.nodes.some((node) => node.role === "generate")) {
     // The second sentence is about words, so it is said only where there are
@@ -177,8 +191,8 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable, insta
     // model off to write copy nobody asked for.
     const words = proposal.nodes.some((node) => node.role === "written");
     return words
-      ? refuse("nothing-generates-words", "Nothing here generates, so these are words the reader reads and takes from your message: words with nothing generating belong in your reply.")
-      : refuse("nothing-generates", "Nothing here generates, so a card placed from this leaves the reader nothing to press.");
+      ? refuse("nothing-generates-words", "Nothing here generates, so these are words the user reads and takes from your message: words with nothing generating belong in your reply.")
+      : refuse("nothing-generates", "Nothing here generates, so a card placed from this leaves the user nothing to press.");
   }
 
   // The canvas holds one edge between two nodes: a second drag between the
@@ -209,7 +223,7 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable, insta
     if (into && into.role !== "generate") {
       return refuse("edge-into-nothing-generating", `An edge flows into "${into.name}", which generates nothing, so nothing there reads what it carries.`);
     }
-    // The same whitelist the canvas holds a reader's own drag to. A line they
+    // The same whitelist the canvas holds a user's own drag to. A line they
     // could not draw by hand is one the agent may not draw for them.
     if (into && outOf && !canConnect(outOf.type, into.type)) {
       // How the node reaches the generation instead is the model's to say; a
@@ -219,10 +233,10 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable, insta
     }
   }
   if (hasRing(proposal)) {
-    return refuse("edge-ring", "Those edges make a ring, and a ring says nothing about what the reader presses first.");
+    return refuse("edge-ring", "Those edges make a ring, and a ring says nothing about what the user presses first.");
   }
 
-  // Two or more nodes land inside a group, which the reader sees as one thing
+  // Two or more nodes land inside a group, which the user sees as one thing
   // on a ground of its own. Only the model knows what that thing is for -- it
   // just decided -- so the name comes with the proposal.
   if (proposal.nodes.length > 1 && (proposal.groupName ?? "").trim() === "") {
@@ -235,10 +249,14 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable, insta
   // still short of that edge.
   const whole = checkTemplateInstances(proposal, instances);
   if (!whole.ok) return whole;
+  const optional = checkOptionalInputs(proposal, instances);
+  if (!optional.ok) return optional;
 
+  // An input is optional only in the template's own generations, where its refs are marked.
+  const optionalIn = optionalInputRefs(instances);
   for (const [index, node] of proposal.nodes.entries()) {
     if (node.role !== "generate") continue;
-    const verdict = checkGenerateNode(proposal, node, index);
+    const verdict = checkGenerateNode(proposal, node, index, new Set(optionalIn.get(index)?.keys()));
     if (!verdict.ok) return verdict;
   }
 
@@ -299,12 +317,58 @@ export function verdictFor(
   materials: MaterialTable = NO_MATERIAL,
   templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
 ): ProposalVerdict {
-  const resolved = resolveSent(sent, templates);
-  return "proposal" in resolved ? checkResolved(resolved.proposal, materials, resolved.instances) : resolved;
+  const judged = judgeSent(sent, materials, templates);
+  return "proposal" in judged ? { ok: true } : judged;
 }
 
 /**
- * Each anchored template's own nodes marked with the key they stand for, and
+ * What the model sent, resolved and judged: the one path both the verdict
+ * and the tool's answer take, so no check runs on one and not the other.
+ * @param sent - What the model sent.
+ * @param materials - The registration behind each material address it names.
+ * @param templates - The template registry the tags are read against.
+ * @returns The resolved proposal, or the refusal.
+ * @throws {never} Never.
+ */
+function judgeSent(sent: z.infer<typeof inputSchema>, materials: MaterialTable, templates: readonly GenerationTemplate[]): Resolved | Refusal {
+  const resolved = resolveSent(sent, templates);
+  if (!("proposal" in resolved)) return resolved;
+  const blanks = checkBlanks(resolved.proposal);
+  if (!blanks.ok) return blanks;
+  const verdict = checkResolved(resolved.proposal, materials, resolved.instances);
+  return verdict.ok ? resolved : verdict;
+}
+
+/**
+ * {@link answerFor}, after asking provider whether an upstream here takes each generation as it would be sent (#1521):
+ * a run none takes is refused before it is placed, naming the limit, as Generate would refuse it.
+ * @param sent - What the model sent.
+ * @param materials - The registration behind each material address it names.
+ * @param templates - The template registry the tags are read against.
+ * @returns The answer the card and the canvas read.
+ * @throws {Error} When a limit cannot be evaluated in a way provider does not catch.
+ */
+export async function checkedAnswerFor(
+  sent: z.infer<typeof inputSchema>,
+  materials: MaterialTable = NO_MATERIAL,
+  templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
+): Promise<ProposalAnswer> {
+  const judged = judgeSent(sent, materials, templates);
+  if ("proposal" in judged) {
+    for (const [index, node] of judged.proposal.nodes.entries()) {
+      if (node.role !== "generate") continue;
+      const run = generateRunOf(judged.proposal, node, index);
+      if (run === undefined) continue;
+      const refusal = await inputRefusalFor(run.model, { params: run.params, prompt: run.prompt });
+      if (refusal !== null) return { placed: false, reason: upstreamRefusal(node.name, run.model, refusal) };
+    }
+  }
+  return answerFor(sent, materials, templates);
+}
+
+/**
+ * Each anchored template's own nodes marked with the key they stand for (one
+ * no template edge touches also with its instance's anchor), and
  * each input's node with its input key and its instance's anchor unless
  * another instance already owns it, so the panel recognises the instance on the canvas later; the anchor
  * carries no mark, as on the canvas.
@@ -315,9 +379,11 @@ export function verdictFor(
  */
 function markTemplateNodes(nodes: readonly ProposalNode[], instances: readonly AnchoredInstance[]): ProposalNode[] {
   const marks = new Map<number, ProposalNode["templateNode"]>();
-  for (const { place, match } of instances) {
+  for (const { anchor, place, match } of instances) {
     for (const [key, found] of match.keys) {
-      if (found.kind === "one") marks.set(Number(found.node), { template: place.template.id, key });
+      // A node no template edge touches is tied to its instance by the anchor alone (inner#1825).
+      const tie = keyStanding(place.template, key) === "standalone" ? { anchor } : {};
+      if (found.kind === "one") marks.set(Number(found.node), { template: place.template.id, key, ...tie });
     }
   }
   // An input's node is marked only when no instance claims it as its anchor
@@ -334,6 +400,36 @@ function markTemplateNodes(nodes: readonly ProposalNode[], instances: readonly A
   return nodes.map((node, index) => {
     const mark = marks.get(index);
     return mark === undefined ? node : { ...node, templateNode: mark };
+  });
+}
+
+/**
+ * Each ref an instance's own generation makes to an optional input's node
+ * marked optional (inner#1811, CAP-9), as the panel's expansion marks it: the
+ * mention lands marked, and the panel leaves its paragraph out while the node
+ * is empty.
+ * @param nodes - The proposal's nodes.
+ * @param instances - Each anchor and its match.
+ * @returns The nodes, those refs marked.
+ * @throws {never} Never.
+ */
+function markOptionalRefs(nodes: readonly ProposalNode[], instances: readonly AnchoredInstance[]): ProposalNode[] {
+  const refs = optionalInputRefs(instances);
+  return nodes.map((node, index) => {
+    const optional = refs.get(index);
+    if (optional === undefined) return node;
+    /**
+     * One run of words, its refs to an optional input marked.
+     * @param words - The words.
+     * @returns The words, marked.
+     */
+    const marked = (words: readonly PromptSegment[]): PromptSegment[] =>
+      words.map((segment) => (segment.ref !== undefined && optional.has(segment.ref) ? { ref: segment.ref, optional: true } : segment));
+    return {
+      ...node,
+      ...(node.prompt === undefined ? {} : { prompt: marked(node.prompt) }),
+      ...(node.shots === undefined ? {} : { shots: node.shots.map((shot) => ({ ...shot, prompt: marked(shot.prompt) })) }),
+    };
   });
 }
 
@@ -378,7 +474,7 @@ function orderInputEdges(edges: CanvasProposal["edges"], instances: readonly Anc
  * through the SDK would be pinning the SDK's calling convention.
  * Nodes naming a template are expanded first, so the check judges the node
  * that will be placed; a template with steps gets its guide text node after
- * the agent's own nodes, in the reader's language.
+ * the agent's own nodes, in the user's language.
  * @param sent - What the model sent.
  * @param materials - The registration behind each material address it names.
  * @param templates - The template registry the tags are read against.
@@ -390,23 +486,21 @@ export function answerFor(
   materials: MaterialTable = NO_MATERIAL,
   templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
 ): ProposalAnswer {
-  const sentResolved = resolveSent(sent, templates);
-  if (!("proposal" in sentResolved)) return { placed: false, reason: sentResolved.reason };
-  const { proposal: resolved, instances } = sentResolved;
-  const verdict = checkResolved(resolved, materials, instances);
-  if (!verdict.ok) return { placed: false, reason: verdict.reason };
+  const judged = judgeSent(sent, materials, templates);
+  if (!("proposal" in judged)) return { placed: false, reason: judged.reason };
+  const { proposal: resolved, instances } = judged;
   const guides = instances.flatMap(({ anchor, place }) => {
     const guide = templateGuideNode(place.template, anchor);
     return guide === undefined ? [] : [guide];
   });
-  const nodes = [...markTemplateNodes(resolved.nodes, instances), ...guides];
+  const nodes = [...markOptionalRefs(markTemplateNodes(resolved.nodes, instances), instances), ...guides];
   const first = instances[0];
   const groupName =
     resolved.groupName ?? (nodes.length > 1 && first !== undefined ? t(`canvas.template.${first.place.template.id}.name`) : undefined);
   const edges = orderInputEdges(resolved.edges, instances);
   // The same resolution the check just judged against, so what the canvas
   // places is the thing that was judged. Asked again over there the catalog
-  // could be absent -- the reader may press Use before it loads. Each node
+  // could be absent -- the user may press Use before it loads. Each node
   // holding material carries the numbers its registration holds, so it lands
   // the way an upload would.
   return {
@@ -429,23 +523,106 @@ export function answerFor(
 }
 
 /**
- * The one line the model reads back.
+ * What the model reads back: that the card is on screen, and what running
+ * each of its generations costs at the params it was sent with, so the agent
+ * can say it before anything is spent (#1361).
  *
- * The proposal itself is for the reader, not for the model -- it sent the
+ * The proposal itself is for the user, not for the model -- it sent the
  * thing, and repeating it into every later turn costs the whole payload again.
  * @param answer - What the tool answered.
- * @returns A sentence saying it is on screen, or why it is not.
+ * @returns Lines saying it is on screen with its costs, or why it is not.
  */
-export function renderProposalForModel(answer: ProposalAnswer): string {
-  return answer.placed
-    ? "The proposal is on screen as a card. The reader decides whether to place it."
-    : `That proposal was refused, so nothing is on screen. ${answer.reason}`;
+export async function renderProposalForModel(answer: ProposalAnswer): Promise<string> {
+  if (!answer.placed) return `That proposal was refused, so nothing is on screen. ${answer.reason}`;
+  const priced = await Promise.all(
+    answer.nodes.flatMap((node, index) =>
+      node.role === "generate" && node.model !== undefined
+        ? [estimateModelCredits(node.model, { params: wiredParams(answer, node, index), prompt: wordsOf(node) }).then((price) => ({ name: node.name, price }))]
+        : [],
+    ),
+  );
+  const lines = priced.map(({ name, price }) => `- "${name}": ${price === undefined ? "no price on this deployment" : renderPrice(price, "at its params")}`);
+  return ["The proposal is on screen as a card. The user decides whether to place it.", ...(priced.length === 0 ? [] : ["Running its generations costs:", ...lines]), ...totalLine(priced.map(({ price }) => price))].join("\n");
+}
+
+/**
+ * A generation's params with what the proposal wires into its source slots:
+ * each slot an edge or a fill reaches holds one stand-in per node feeding it,
+ * so a price that counts a slot's sources counts them.
+ * @param proposal - The placed proposal.
+ * @param node - The generation.
+ * @param index - Where it sits in the proposal.
+ * @returns Its params, each wired slot it left unset holding its stand-ins.
+ */
+function wiredParams(proposal: CanvasProposal, node: ProposalNode, index: number): Record<string, unknown> {
+  const params: Record<string, unknown> = { ...(node.params ?? {}) };
+  const declared = chosenModelOf(node)?.params ?? {};
+  const counts = new Map<string, number>();
+  const intos = [
+    ...proposal.edges.flatMap((edge) => (edge.toIndex === index && edge.into !== undefined ? [edge.into] : [])),
+    ...Object.entries(node.fills ?? {}).flatMap(([slot, from]) => from.map(() => slot)),
+  ];
+  for (const into of intos) {
+    const name = into === "pool" ? Object.keys(declared).find((key) => declared[key]?.fromReferencePool === true) : into;
+    if (name !== undefined) counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  for (const [name, count] of counts) {
+    const spec = declared[name];
+    if (spec?.filledBySource !== true || params[name] !== undefined) continue;
+    params[name] = spec.type === "list" ? Array.from({ length: count }, (_, i) => `wired ${String(i + 1)}`) : "wired";
+  }
+  return params;
+}
+
+/**
+ * A segment run's written words.
+ * @param segments - The segments.
+ * @returns Their text, joined.
+ */
+function textOf(segments: readonly PromptSegment[]): string {
+  return segments.map((segment) => ("text" in segment ? segment.text : "")).join("");
+}
+
+/**
+ * A node's written words, as a price billed by length reads them: a
+ * dialogue's script with each line after its speaker's name, else its
+ * prompt's and shots' words.
+ * @param node - The node.
+ * @returns The words, joined.
+ */
+function wordsOf(node: ProposalNode): string {
+  if (onDialogueSide(node)) return proposalDialogueText(node, textOf);
+  return textOf([...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)]);
+}
+
+/**
+ * The total of a proposal's estimates, worded by how they bound the charge:
+ * a generation left out of the sum, or one priced at least, makes it a floor;
+ * one priced up to makes it a ceiling; with both, it is neither, and the
+ * lines above say which way each part may move. No line when nothing could be
+ * summed.
+ * @param prices - Each generation's estimate, undefined when unpriced.
+ * @returns The line, or none.
+ */
+function totalLine(prices: readonly (CreditEstimate | undefined)[]): string[] {
+  const summed = prices.flatMap((price) => (price === undefined || price.bound === "per_thousand_chars" ? [] : [price]));
+  if (summed.length === 0) return [];
+  const credits = formatCredits(summed.reduce((sum, price) => sum + price.credits, 0), "en-US");
+  const left = prices.length - summed.length;
+  const outside = left === 0 ? "" : `, plus ${String(left)} generation${left === 1 ? "" : "s"} not in this sum`;
+  const floor = left > 0 || summed.some((price) => price.bound === "at_least");
+  const ceiling = summed.some((price) => price.bound === "at_most");
+  if (floor && ceiling) return [`Total: ${credits} credits${outside}; the lines above say which may cost more and which less.`];
+  if (floor) return [`Total: at least ${credits} credits${outside}.`];
+  if (ceiling) return [`Total: up to ${credits} credits.`];
+  return [`Total: ${credits} credits.`];
 }
 
 /**
  * The templates as one line each, what the agent weighs when choosing one:
- * its id, goal and anchor type, what it makes, the words a reader asks for it
- * with and when to offer it unasked (inner#1807). The full text is read with
+ * its id, goal and anchor type, what it makes, the words a user asks for it
+ * with and the situations it fits (inner#1807); when to propose it is the
+ * working rules' call (#1361). The full text is read with
  * get_generation_template, so a turn carries every template's index but only
  * the prompts of the template it means to propose.
  * @param templates - The registry.
@@ -456,13 +633,13 @@ function templateIndex(templates: readonly GenerationTemplate[]): string {
   const lines = templates.map(
     (template) =>
       `${template.id} (${template.goal}, makes ${templateAnchor(template).type}): ${template.agentNote}. ` +
-      `The reader asks for it with words like: ${template.triggers.asks.join("; ")}. ` +
-      `Offer it unasked when: ${template.triggers.offerWhen.join("; ")}.`,
+      `The user asks for it with words like: ${template.triggers.asks.join("; ")}.` +
+      (template.triggers.offerWhen.length === 0 ? "" : ` It also fits when: ${template.triggers.offerWhen.join("; ")}.`),
   );
   return (
     `Templates: ${lines.join(" | ")} ` +
     `Before proposing a template, read it with ${GET_GENERATION_TEMPLATE}: it gives the nodes, wiring, inputs and each prompt ` +
-    "in the reader's language, and how to send them."
+    "in the user's language, and how to send them."
   );
 }
 
@@ -486,7 +663,7 @@ export function makeProposeCanvasAction(
   description:
     "The canvas is where models are run and where the pieces of one job are " +
     "laid out in relation to each other. Propose the canvas nodes for what " +
-    "the reader asked for, as a card they place with one press, and the " +
+    "the user asked for, as a card they place with one press, and the " +
     "nodes are there, configured and wired. Something has to generate here: " +
     "asked for words and nothing else, write them in your reply instead, " +
     "where they read them and take them. Copy that is one part of a job the " +
@@ -494,27 +671,32 @@ export function makeProposeCanvasAction(
     "than half in your reply and half on the canvas. You decide the " +
     "shape: an empty node and a generation for a picture; the copy for the " +
     "same job as a written node beside them; one " +
-    "empty node feeding several generations for several takes on one thing. " +
-    "A source node can hold material the user gave: a file uploaded in the chat, " +
-    `or a picture found on the web and saved with ${SAVE_IMAGE}. Give its address as material, and ` +
+    "empty node feeding several generations for several takes on one thing; " +
+    "with no material, several generations, each with its full prompt, in one named group. " +
+    "A source node can hold material: a file uploaded in the chat, " +
+    `a picture found on the web and saved with ${SAVE_IMAGE}, or a picture or clip already on the canvas ` +
+    "(a take the user picked), by its address. Give its address as material, and " +
     "fill a generation's slot with it through fills, or wire it into the pool. " +
-    "Before proposing any shape with an empty node in it, find out whether " +
-    "they have that material, since the answer decides the shape: when the " +
-    "message carries the canvas they have open, under \"The Space the reader " +
-    "has open\", look there first; ask with ask_user when it is not there or no " +
-    "canvas came with the message. Wire an edge where a node draws on another's " +
-    "work or on what the reader puts in an empty node; belonging is said by " +
+    "Material they already have goes in a source node, and the canvas they have open " +
+    "is under \"The Space the user has open\" in the message; an empty node is for " +
+    "material they will put in. Wire an edge where a node draws on another's " +
+    "work or on what the user puts in an empty node; belonging is said by " +
     "the group, not edges. " +
     "Ask get_canvas_capabilities and list_generation_models first, and " +
     "propose only a mode and model they returned. Fill in every setting you " +
-    "can judge; the rest is theirs to run. Say in your reply, in numbered " +
-    `steps written from what ${GET_PRODUCT_GUIDE} says, what they do once it ` +
+    "can judge; the rest is theirs to run. Takes go out at the lowest value of every setting that sets the price. " +
+    "The answer says what running each " +
+    "generation costs at the params you sent, and the total; say it in your reply. " +
+    "A picked take is brought to full quality by an i2i generation with that take " +
+    "as its material. Clips for a timeline are made here, as video on a canvas. " +
+    "Say in your reply, in numbered " +
+    `steps written from what ${GET_PRODUCT_GUIDE} says in section "Proposal cards", what they do once it ` +
     "is placed -- what to put in, what to pick, what to press. " +
     templateIndex(templates),
   inputSchema,
   contextSchema: proposeContextSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
-  toModelOutput: ({ output }) => ({ type: "text", value: renderProposalForModel(output) }),
+  toModelOutput: async ({ output }) => ({ type: "text", value: await renderProposalForModel(output) }),
   execute: async (
     proposal: z.infer<typeof inputSchema>,
     // The signal is unused: a cached catalog and at most a few ledger rows,
@@ -525,7 +707,7 @@ export function makeProposeCanvasAction(
     const urls = proposal.nodes.flatMap((node) => (node.material === undefined ? [] : [node.material]));
     // A proposal with no material asks the ledger nothing.
     const materials = urls.length === 0 ? NO_MATERIAL : await materialFacts(context.studioId, urls);
-    return answerFor(proposal, materials, templates);
+    return checkedAnswerFor(proposal, materials, templates);
   },
 });
 }
@@ -533,6 +715,6 @@ export function makeProposeCanvasAction(
 /**
  * The proposal tool over the registry; it holds nothing between calls, so one
  * object serves every turn. It is built when the module loads, so its
- * description carries no text in the reader's language.
+ * description carries no text in the user's language.
  */
 export const proposeCanvasAction = makeProposeCanvasAction();

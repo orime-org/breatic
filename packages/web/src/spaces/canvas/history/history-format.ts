@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Pure derivations for the node-history panel (#1619) — kept out of the
@@ -72,6 +72,16 @@ export function entryModel(entry: NodeHistoryEntry): string | undefined {
  */
 export function entryCredits(entry: NodeHistoryEntry): number | undefined {
   return asFiniteCredits(entry.metadata.credits);
+}
+
+/**
+ * Whether a generation's credits are what is known so far: its task was delivered before its upstream billed it,
+ * and the billed amount replaces them (inner#1743).
+ * @param entry - The history row.
+ * @returns True while it is still being billed.
+ */
+export function entryBillingPending(entry: NodeHistoryEntry): boolean {
+  return entry.metadata.billing === 'pending';
 }
 
 /**

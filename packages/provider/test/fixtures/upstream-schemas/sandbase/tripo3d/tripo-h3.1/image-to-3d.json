@@ -1,0 +1,67 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/tripo3d/tripo-h3.1/image-to-3d",
+  "fields": {
+    "face_limit": [
+      {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 2000000
+      }
+    ],
+    "geometry_quality": [
+      {
+        "type": "string",
+        "enum": [
+          "standard",
+          "detailed"
+        ],
+        "default": "standard"
+      }
+    ],
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "pbr": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "quad": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "texture": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "texture_quality": [
+      {
+        "type": "string",
+        "enum": [
+          "standard",
+          "detailed"
+        ],
+        "default": "standard"
+      }
+    ]
+  },
+  "required": [
+    "image"
+  ],
+  "modes": [
+    "async"
+  ],
+  "owned_by": "tripo3d"
+}

@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { chatApi } from '@web/data/api/chat';
+import { UploadFailedError } from '@web/data/upload/media-upload';
 import {
   chatAttachments,
   type AttachmentLimits,
@@ -43,7 +44,7 @@ export async function openTray(projectId: string): Promise<Tray | undefined> {
 /**
  * Hand items to the agent: from the canvas, a document or a paste.
  *
- * The agent column is brought back into view so the reader sees them arrive.
+ * The agent column is brought back into view so the user sees them arrive.
  * The batch goes in whole or not at all, and what stopped it is told in a
  * toast.
  * @param projectId - The project the items come from.
@@ -54,4 +55,36 @@ export async function attachToChat(projectId: string, items: readonly TrayItem[]
   useUIStore.getState().setChatPanelCollapsed(false);
   const tray = await openTray(projectId);
   if (tray) chatAttachments.add(tray.conversationId, items, tray.limits);
+}
+
+/**
+ * Upload the file of one media item already in the tray, and settle the item.
+ *
+ * The item turns ready with the uploaded address, or failed: as rate limited
+ * when uploads came too often, as an upload failure otherwise. A format the
+ * server refused is answered `unsupported` so the caller can say which
+ * formats are taken; an item removed while it uploaded answers `failed`.
+ * @param tray - Where the item is.
+ * @param item - The item, as it was added.
+ * @param file - Its file.
+ * @param upload - Uploads the file and answers its address.
+ * @returns What the item became.
+ */
+export async function uploadTrayItem(
+  tray: Tray,
+  item: TrayItem,
+  file: File,
+  upload: (file: File) => Promise<string>,
+): Promise<'ready' | 'failed' | 'rate_limited' | 'unsupported'> {
+  let url: string;
+  try {
+    url = await upload(file);
+  } catch (err) {
+    const reason = err instanceof UploadFailedError ? err.reason : null;
+    chatAttachments.fail(tray.conversationId, item.id, reason === 'rateLimited' ? 'rate_limited' : 'upload');
+    if (reason === 'rateLimited') return 'rate_limited';
+    return reason === 'unsupportedType' ? 'unsupported' : 'failed';
+  }
+  const chip = { id: item.id, type: item.type, name: item.name, data_snapshot: { url } };
+  return chatAttachments.settle(tray.conversationId, item.id, chip, tray.limits) === 'ready' ? 'ready' : 'failed';
 }

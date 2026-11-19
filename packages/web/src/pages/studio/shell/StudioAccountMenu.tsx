@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Cookie, LogOut, MonitorSmartphone, Settings, Sparkles, Star } from 'lucide-react';
+import { Cookie, LogOut, Megaphone, MonitorSmartphone, Settings, Sparkles, Star } from 'lucide-react';
 import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/data/analytics';
 
 import { Button } from '@web/components/ui/button';
@@ -27,6 +27,8 @@ import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
 import { useCreditOverview } from '@web/features/credits/use-credit-overview';
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
+import { PromoterDialog } from '@web/features/referral/PromoterDialog';
+import { usePromoterEntry } from '@web/features/referral/use-promoter-entry';
 import { LogoutOthersDialog } from '@web/pages/studio/shell/LogoutOthersDialog';
 import { useMembershipCheckoutReturn } from '@web/features/membership/use-membership-checkout-return';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -56,7 +58,7 @@ const CONFIRM_WAIT_BACKSTOP_MS = 60_000;
  * The figure once it is in hand. While it is on its way, a placeholder: the
  * wait ends by itself, and an empty row would read as a balance of nothing.
  * When the read failed, the word for it — whether the request lands is not
- * ours to promise, whether the reader knows it did not is. Where the
+ * ours to promise, whether the user knows it did not is. Where the
  * deployment does not bill, nothing at all: the three figures are zeroes
  * there, and a rendered 0 reads as "your money is gone".
  * @param overview - The account's three figures, as the query holds them.
@@ -75,8 +77,8 @@ function creditsFigure(
 
 /**
  * Studio account menu — the current-user avatar in the studio top bar, opening
- * the account's own entries: who is signed in, account settings, membership,
- * credits, and sign out.
+ * the account's own entries: who is signed in, account settings, the promoter
+ * program, membership, credits, and sign out.
  *
  * A menu rather than a popover. Every entry here either navigates or acts, and
  * Radix's menu closes itself on select; a popover does not, and this one is
@@ -111,6 +113,7 @@ export function StudioAccountMenu(): React.JSX.Element {
   // designating a pack or asking for a refund invalidates it, so the next
   // open here reads the new figure rather than the one from before.
   const overview = useCreditOverview(menuOpen);
+  const promoter = usePromoterEntry(menuOpen);
 
   // Reports what a membership checkout came to, on the way back from it. It
   // lives beside the credits return for the same reason that one does: the
@@ -218,18 +221,17 @@ export function StudioAccountMenu(): React.JSX.Element {
             aria-label={t('studio.topBar.account')}
             variant={null}
             size={null}
-            // As tall as the language and theme buttons beside it, with the
-            // avatar centred inside. `sideOffset` is measured from the
-            // trigger, so a 26px anchor in a 32px row hangs the menu 3px
-            // higher than those two and leaves 1px of visible gap under the
-            // bar instead of their 4.
+            // As tall as the language and theme buttons beside it, so the menu
+            // hangs from the same edge as theirs (`sideOffset` is measured
+            // from the trigger). The avatar inside is the size of the avatars
+            // in the project page's top bar, and the keyboard ring hugs it.
             //
             // Hover dims rather than tinting the background: with an avatar set
             // the background is covered by the image, so a background hover is
             // invisible. Opacity also leaves the element's box untouched — this
             // button is the menu's anchor, and anything that resizes it
             // (a scale, a border) makes the menu jump on hover.
-            className='ml-1 flex h-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+            className='group/account ml-1 flex size-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-0'
           >
             <StudioAvatar
               name={user?.name ?? '?'}
@@ -238,6 +240,7 @@ export function StudioAccountMenu(): React.JSX.Element {
               type='personal'
               avatarUrl={user?.avatarUrl ?? null}
               size='sm'
+              className='group-focus-visible/account:ring-1 group-focus-visible/account:ring-ring'
             />
           </Button>
         </DropdownMenuTrigger>
@@ -286,6 +289,12 @@ export function StudioAccountMenu(): React.JSX.Element {
             <Settings className='h-4 w-4' />
             {t('studio.topBar.accountSettings')}
           </DropdownMenuItem>
+          {promoter.shown ? (
+            <DropdownMenuItem onSelect={promoter.select} data-testid='account-menu-promoter'>
+              <Megaphone className='h-4 w-4' />
+              {t('promoter.heading')}
+            </DropdownMenuItem>
+          ) : null}
           {/* The two rows that carry a reading are their own block: with the
             settings row among them the right-hand column reads as a list with
             a hole in it. */}
@@ -310,7 +319,7 @@ export function StudioAccountMenu(): React.JSX.Element {
               Three ways there is no figure, and they do not look alike. On its
               way: a placeholder, because the wait is short and ends by itself.
               Read failed: said out loud — whether the request lands is not
-              ours to promise, but whether the reader knows it did not is.
+              ours to promise, but whether the user knows it did not is.
               Deployment does not bill: nothing, because there the three
               figures are zeroes and a rendered 0 reads as "your money is gone"
               rather than "we do not charge". */}
@@ -346,6 +355,7 @@ export function StudioAccountMenu(): React.JSX.Element {
         returnFocusTo={accountButtonRef}
       />
       <MembershipPanel open={membershipOpen} onOpenChange={setMembershipOpen} />
+      <PromoterDialog open={promoter.dialogOpen} onOpenChange={promoter.setDialogOpen} />
       <CheckoutWaitOverlay open={back.waiting} onSkip={back.land} />
       <CreditsOverlay
         open={creditsOpen || back.overlayOpen}

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The transitions runner on the frozen plan (frames-split design §5.4 dispatch, budget and job identity rows; §7.17
@@ -18,7 +18,7 @@ import { failedResult, type VideoToolPickup } from "@worker/handlers/mini-tool/r
 import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { audioOf, chunkInputId, FullLedgerInvalid, readJobLedger, segmentTarget, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 
 type Transitions = Extract<AcceptedMiniToolExecution, { tool: "video.transitions" }>;
 /** One clip as the runner reads it: its input, source key, ledger and place on the output grid. */

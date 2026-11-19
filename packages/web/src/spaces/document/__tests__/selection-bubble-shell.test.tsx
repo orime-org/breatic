@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The bubble bar's shell (task #915).
@@ -207,7 +207,7 @@ describe('the bubble bar shell', () => {
       ).toBeNull();
     });
 
-    // A selection over two block types shows the type of the end the reader
+    // A selection over two block types shows the type of the end the user
     // started from, so the face answers "what am I in" rather than going blank
     // (user 2026-08-27).
     it('shows the anchor end block type when the selection spans two', async () => {
@@ -233,10 +233,10 @@ describe('the bubble bar shell', () => {
       ).toBe('heading-1');
     });
 
-    // A list item holds a paragraph, and the list is what the reader is in.
+    // A list item holds a paragraph, and the list is what the user is in.
     // The face has to say so wherever the other end of the selection reaches:
     // pressing the bullet list row here turns that list OFF, and a face
-    // reading "text" would have just said the reader was not in one.
+    // reading "text" would have just said the user was not in one.
     it.each([
       ['bullet-list', '<h1>a heading</h1><ul><li><p>an item</p></li></ul>', 16],
       ['ordered-list', '<h1>a heading</h1><ol><li><p>an item</p></li></ol>', 16],
@@ -329,7 +329,7 @@ describe('the bubble bar shell', () => {
   // And the bar's record of which menu is open goes with it: `overlayOpenRef`
   // reads that record to decide whether the editor losing the focus should
   // take the bar away, so a record left standing over no menu keeps the bar on
-  // screen after the reader has gone.
+  // screen after the user has gone.
   it('leaves no menu recorded as open once the alignment slot greys out', async () => {
     const editor = openSharedBody('<pre><code>some code</code></pre><p>a paragraph</p>');
     mountDocumentEditor(editor);
@@ -344,7 +344,7 @@ describe('the bubble bar shell', () => {
     });
 
     act(() => {
-      // The real thing a departing reader sends: the bar listens for
+      // The real thing a departing user sends: the bar listens for
       // `focusout` on the body, and jsdom raises it from `blur()`.
       domElementOf(editor)?.blur();
     });
@@ -353,9 +353,9 @@ describe('the bubble bar shell', () => {
     });
   });
 
-  // An open menu is why the bar stays through a blur — the reader is working
+  // An open menu is why the bar stays through a blur — the user is working
   // in it, not gone. Once it closes that reason is spent, and nothing else
-  // arrives to say so: a blur carries no transaction, and the reader who left
+  // arrives to say so: a blur carries no transaction, and the user who left
   // sends no further events.
   it('takes the bar away once the last menu closes after a blur', async () => {
     const editor = openSharedBody('<p>the quick brown fox</p>');
@@ -364,7 +364,7 @@ describe('the bubble bar shell', () => {
     await hoverOpenSlot('doc-bubble-block-type');
 
     act(() => {
-      // The real thing a departing reader sends: the bar listens for
+      // The real thing a departing user sends: the bar listens for
       // `focusout` on the body, and jsdom raises it from `blur()`.
       domElementOf(editor)?.blur();
     });
@@ -380,14 +380,7 @@ describe('the bubble bar shell', () => {
 
   describe('the slots the bar draws as ordinary controls', () => {
     /**
-     * All four look and behave the way the demo draws them, whether or not a
-     * command stands behind them. Where none does — the AI slot — a press
-     * reaches the console rather than the reader (user 2026-08-26): the
-     * product is not launched, and whoever has the browser open is the one who
-     * needs to know which command they reached.
-     *
-     * The alignment and colour slots take the first group only. They left the
-     * second when #905 gave them their commands.
+     * All three look and behave the way the demo draws them.
      */
     it.each([
       ['doc-bubble-align'],
@@ -405,38 +398,6 @@ describe('the bubble bar shell', () => {
       const classes = slot.className.split(/\s+/);
       expect(classes).not.toContain('opacity-50');
       expect(classes).not.toContain('cursor-not-allowed');
-    });
-
-    it.each([
-      ['doc-bubble-ai', 'doc-bubble-ai-item-translate'],
-    ])('says on the console that %s / %s reached no command', async (slot, item) => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-      const editor = openSharedBody('<p>hello world</p>');
-      mountDocumentEditor(editor);
-      await selectWithFocus(editor, 0, 5);
-      const before = sharedBodyMarkup();
-
-      const menu = await hoverOpenSlot(slot);
-      act(() => {
-        (menu.querySelector(`[data-testid="${item}"]`) as HTMLElement).click();
-      });
-
-      // Counted among our own lines. `console.warn` carries other traffic:
-      // ProseMirror writes "TextSelection endpoint not pointing into a node
-      // with inline content" from the setup above whenever the Y.Doc's content
-      // has not landed by the time the selection is set, and a count of every
-      // call made that warning decide whether this case passed.
-      const ours = warn.mock.calls.filter((call) =>
-        String(call[0]).startsWith('not implemented yet'));
-      expect(ours).toHaveLength(1);
-      // The document is what it was: the console is the only thing that
-      // happened.
-      expect(sharedBodyMarkup()).toBe(before);
-      // C2 ends with the menu closing, and it says so for every row alike —
-      // the ones that reach a command and the ones that reach the console.
-      await waitFor(() => {
-        expect(screen.queryByTestId(`${slot}-menu`)).toBeNull();
-      });
     });
 
     // The task list is the one row the demo greys, because it has
@@ -509,7 +470,7 @@ describe('the bubble bar shell', () => {
     });
 
     // A real pointer cannot produce "resting on the slot while the menu is
-    // shut": hovering opened it. So the click a reader makes always lands on
+    // shut": hovering opened it. So the click a user makes always lands on
     // an open menu, and it has to leave the menu standing.
     it('keeps the menu up when the slot is clicked while already open', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
@@ -700,7 +661,7 @@ describe('the bubble bar shell', () => {
     });
 
     // `packages/web/AGENTS.md#keyboard-shortcuts-on-both-platforms` makes
-    // carrying both platforms mandatory, and a hardcoded glyph reads as a chord Windows readers cannot press.
+    // carrying both platforms mandatory, and a hardcoded glyph reads as a chord Windows users cannot press.
     it('spells the shortcuts the Mac way on a Mac', async () => {
       vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
       const editor = openSharedBody('<p>the quick brown fox</p>');
@@ -844,7 +805,7 @@ describe('the bubble bar shell', () => {
       }
     });
 
-    it('lists the eight AI commands the ruling draws', async () => {
+    it('lists the seven AI commands in three groups divided by rules, with no headings', async () => {
       const editor = openSharedBody('<p>the quick brown fox</p>');
       mountDocumentEditor(editor);
       await selectWithFocus(editor, 0, 9);
@@ -852,32 +813,19 @@ describe('the bubble bar shell', () => {
 
       expect(
         menu.querySelectorAll('[data-testid^="doc-bubble-ai-item-"]'),
-      ).toHaveLength(8);
+      ).toHaveLength(7);
 
-      // A6 asks for eight rows in three groups, the three coming from the table
-      // (§3.2.1). Counting the rows alone leaves the grouping untested: strip
-      // every label out and eight ungrouped rows still pass.
-      //
-      // Read as the order the reader meets them in, with the count each one
-      // introduces — five rewrites, two that produce something new, one other.
-      const groups: { label: string; rows: number }[] = [];
+      // Read as the order the user meets them in: rows, a rule, rows. Any
+      // other child (a heading) fails the walk.
+      const groups: number[] = [0];
       for (const node of menu.children) {
-        const row = node.getAttribute('data-testid');
-        if (row?.startsWith('doc-bubble-ai-item-')) {
-          if (groups.length > 0) groups[groups.length - 1]!.rows += 1;
-          continue;
-        }
-        if (node.textContent) {
-          groups.push({ label: node.textContent.trim(), rows: 0 });
-        }
+        const id = node.getAttribute('data-testid');
+        if (id?.startsWith('doc-bubble-ai-item-')) groups[groups.length - 1]! += 1;
+        else if (id === 'doc-bubble-rule') groups.push(0);
+        else throw new Error(`unexpected child in the AI menu: ${node.outerHTML.slice(0, 80)}`);
       }
-      expect(groups.map((g) => g.rows)).toEqual([5, 2, 1]);
-      // Each heading resolved to a catalog entry: `t()` hands the key back
-      // when it finds nothing (`shared/src/i18n/index.ts:131`).
-      for (const g of groups) {
-        expect(g.label).not.toContain('spaces.document.commands');
-        expect(g.label.length).toBeGreaterThan(0);
-      }
+      // Five rewrites, the shot list, the custom instruction.
+      expect(groups).toEqual([5, 1, 1]);
     });
   });
 

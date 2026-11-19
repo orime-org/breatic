@@ -1,0 +1,4 @@
+{
+  "source": "https://api.fal.ai/v1/models/pricing?endpoint_id=fal-ai/kling-video/o3/4k/image-to-video",
+  "unit": "seconds"
+}

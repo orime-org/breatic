@@ -1,0 +1,160 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/minimax/speech/2.8/hd",
+  "fields": {
+    "bitrate": [
+      {
+        "type": "integer",
+        "enum": [
+          32000,
+          64000,
+          128000,
+          256000
+        ]
+      }
+    ],
+    "channel": [
+      {
+        "type": "integer",
+        "enum": [
+          1,
+          2
+        ]
+      }
+    ],
+    "emotion": [
+      {
+        "type": "string",
+        "enum": [
+          "happy",
+          "sad",
+          "angry",
+          "fearful",
+          "disgusted",
+          "surprised",
+          "neutral"
+        ],
+        "default": "happy"
+      }
+    ],
+    "english_normalization": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "format": [
+      {
+        "type": "string",
+        "enum": [
+          "mp3",
+          "pcm",
+          "flac"
+        ]
+      }
+    ],
+    "language_boost": [
+      {
+        "type": "string",
+        "enum": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Afrikaans",
+          "auto"
+        ]
+      }
+    ],
+    "pitch": [
+      {
+        "type": "integer",
+        "minimum": -12,
+        "maximum": 12,
+        "default": 0
+      }
+    ],
+    "sample_rate": [
+      {
+        "type": "integer",
+        "enum": [
+          8000,
+          16000,
+          22050,
+          24000,
+          32000,
+          44100
+        ]
+      }
+    ],
+    "speed": [
+      {
+        "type": "number",
+        "minimum": 0.5,
+        "maximum": 2,
+        "default": 1
+      }
+    ],
+    "text": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000,
+        "default": "Hello, welcome to Sandbase"
+      }
+    ],
+    "voice_id": [
+      {
+        "type": "string",
+        "default": "Wise_Woman"
+      }
+    ],
+    "volume": [
+      {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 10,
+        "default": 1
+      }
+    ]
+  },
+  "required": [
+    "text",
+    "voice_id"
+  ],
+  "modes": [
+    "async"
+  ],
+  "owned_by": "minimax"
+}

@@ -1,0 +1,45 @@
+# The breatic web-animation profile (inner#1711 design 6): the shipped headless
+# bundle, narrowed to what one container run needs. The Worker's model.local
+# relay is the boundary that holds; these rows keep dsh's own requests to the
+# standard Messages form and switch off what would reach anything else.
+
+# One explicit model entry without systemPromptUpdate and toolUpdate, so dsh
+# sends the standard leading system prompt and no tool_addition or beta header
+# (the shipped catalog entry sets both). The relay pins the real model.
+- id: llm-deepseek
+  config:
+    apiKeyEnv: DEEPSEEK_API_KEY
+    models:
+      - id: deepseek-flash
+        name: DeepSeek-V4.1-Flash
+        contextWindow: 1048576
+        inputModalities: [text]
+
+# No session log in model requests; the relay drops the field as well.
+- id: session-log-deepseek
+  config:
+    enabled: false
+
+# Session titles are an extra model call nobody reads here.
+- id: session-title
+  disabled: true
+
+- id: session-title-llm
+  disabled: true
+
+# No web_search or web_fetch: the container has no internet.
+- id: tool-web
+  disabled: true
+
+# No subagents or workflows: one agent, one model call at a time.
+- id: tool-subagent
+  disabled: true
+
+- id: tool-subagent-fork
+  disabled: true
+
+- id: tool-subagent-control
+  disabled: true
+
+- id: tool-workflow
+  disabled: true

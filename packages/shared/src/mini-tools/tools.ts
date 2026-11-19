@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Every mini-tool, in the order each modality's Tools submenu lists them
@@ -24,7 +24,7 @@ function key(id: string, leaf: string): string {
  * A slot filled from the canvas.
  * @param id - The tool id, for the banner key.
  * @param slotKey - The slot's key.
- * @param param - The pinned model's yaml param it fills.
+ * @param param - The pinned model's yaml param it fills, or the container operation's input.
  * @param accepts - The medium it takes.
  * @param many - Whether it takes a list.
  * @returns The slot.
@@ -334,6 +334,21 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     params: [{ kind: "range", key: "range" }],
     slots: [],
     outputs: [{ modality: "video", namePrefix: "CUT" }],
+    sourceParam: "video",
+    sourceMany: false,
+  },
+  // inner#1825: the join runs clips end to end, the source first and the
+  // clips slot after it in order; it sits beside the cut, its opposite.
+  {
+    id: "video.join",
+    source: "video",
+    run: { kind: "container", op: "join" },
+    labelKey: key("video.join", "label"),
+    guide: "joins several clips into one video in the order you set, with an optional crossfade",
+    icon: "Combine",
+    params: [{ kind: "number", key: "crossfade", default: 0, min: 0, max: 2, step: 0.1, unit: "s" }],
+    slots: [{ ...slot("video.join", "clips", "clips", "video", true), required: true }],
+    outputs: [{ modality: "video", namePrefix: "JOIN-VIDEO" }],
     sourceParam: "video",
     sourceMany: false,
   },
@@ -682,6 +697,19 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     sourceMany: false,
   },
   {
+    id: "audio.join",
+    source: "audio",
+    run: { kind: "container", op: "audio_join" },
+    labelKey: key("audio.join", "label"),
+    guide: "joins several sounds into one in the order you set, with an optional crossfade",
+    icon: "Combine",
+    params: [{ kind: "number", key: "crossfade", default: 0, min: 0, max: 3, step: 0.1, unit: "s" }],
+    slots: [{ ...slot("audio.join", "clips", "clips", "audio", true), required: true }],
+    outputs: [{ modality: "audio", namePrefix: "JOIN-AUDIO" }],
+    sourceParam: "audio",
+    sourceMany: false,
+  },
+  {
     id: "audio.eq",
     source: "audio",
     run: { kind: "container", op: "eq" },
@@ -808,20 +836,6 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     ],
     sourceParam: "audio",
     sourceMany: false,
-  },
-  {
-    id: "audio.extend",
-    source: "audio",
-    run: { kind: "model", model: "sfx-1.6-extend-audio" },
-    labelKey: key("audio.extend", "label"),
-    guide: "continues the sound past its end with a part you describe",
-    icon: "Timer",
-    params: [{ key: "append_duration" }, { key: "ambience" }, { key: "double_output" }],
-    slots: [],
-    outputs: [{ modality: "audio", namePrefix: "EXTEND" }],
-    sourceParam: "audio",
-    sourceMany: false,
-    prompt: { placeholderKey: key("audio.extend", "prompt") },
   },
 ];
 

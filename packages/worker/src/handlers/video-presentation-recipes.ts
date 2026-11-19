@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The presentation recipes built from the full ledger (inner#1306 §91 D3b; frames-split design §7.17, the worker's recipe

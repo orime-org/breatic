@@ -1,0 +1,18 @@
+{
+  "model": "hunyuan-video-foley",
+  "upstream": "fal",
+  "model_id": "fal-ai/hunyuan-video-foley",
+  "runs": [
+    {
+      "params": {
+        "video": "https://example.com/video.mp4"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "video_url": "https://example.com/video.mp4",
+        "text_prompt": "a red fox running through fresh snow at dawn"
+      }
+    }
+  ],
+  "steps": []
+}

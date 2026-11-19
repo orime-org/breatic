@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A node-anchored panel whose node is deleted closes, and a collaborator's
@@ -78,7 +78,7 @@ describe('a panel whose node is deleted', () => {
     );
   });
 
-  it('closes without a message when this reader deleted the node', () => {
+  it('closes without a message when this user deleted the node', () => {
     deleteHostUnderOpenPanel(false);
 
     expect(canvasSessions.of('s').getState().panelHostId).toBeNull();

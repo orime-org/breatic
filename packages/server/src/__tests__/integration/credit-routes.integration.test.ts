@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 积分的五个端点（任务 #11）。
@@ -44,6 +44,7 @@ import {
 import { creditHoldService, creditLotService } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import { openPaymentSource } from "./payment-source.js";
+import { chargeNow } from "./studio-credit-fixtures.js";
 
 const PG_DRIVER_LOCAL = "credit-routes-test-driver";
 
@@ -191,7 +192,7 @@ describe("GET /credits/overview", () => {
     // 少了付款方这个条件，面板会把别人的消耗算进我的账。
     const fx = await seedFixture();
     await seedLot(fx, 100, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 30,
@@ -306,7 +307,7 @@ describe("GET /credits/lots", () => {
     ];
     await sql`
       UPDATE credit_lots SET created_at = '2026-08-21T00:00:00Z'
-      WHERE id = ANY(${sql.array(ids)}::uuid[])
+      WHERE id = ANY(${ids}::uuid[])
     `;
 
     const seen: string[] = [];
@@ -346,7 +347,7 @@ describe("GET /credits/ledger", () => {
       VALUES (${owner.studioId}, ${guest.userId}, 'guest')
     `;
     await seedLot(owner, 100, owner.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: owner.projectId,
       actorUserId: guest.userId,
       amount: 10,
@@ -401,7 +402,7 @@ describe("GET /credits/ledger", () => {
   it("按 studio 筛", async () => {
     const fx = await seedFixture();
     await seedLot(fx, 100, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 10,
@@ -451,7 +452,7 @@ describe("GET /studio/:slug/credits", () => {
   it("给 admin 看这个 studio 能花多少、由哪几笔构成、花在哪儿了", async () => {
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 30,
@@ -504,7 +505,7 @@ describe("GET /studio/:slug/credits", () => {
     // 那个数是「充值记录」那一块里单独的一行。
     const fx = await seedFixture();
     await seedLot(fx, 30, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 350,
@@ -686,7 +687,7 @@ describe("GET /projects/:id/credits", () => {
       VALUES (${fx.projectId}, ${fx.userId}, 'owner')
     `;
     await seedLot(fx, 30, fx.studioId);
-    await creditLotService.chargeForGeneration({
+    await chargeNow({
       projectId: fx.projectId,
       actorUserId: fx.userId,
       amount: 350,
@@ -950,7 +951,7 @@ describe("POST /credits/lots/:id/refund", () => {
 
   it("refuses in the language of the request", async () => {
     // The handler puts `AppError.message` on the wire as it stands, so a
-    // refusal that reached for a literal would ship English to every reader.
+    // refusal that reached for a literal would ship English to every user.
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100, fx.studioId);
 

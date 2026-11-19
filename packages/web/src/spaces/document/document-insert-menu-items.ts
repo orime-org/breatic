@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the handle menu's insert-below submenu offers, in the order it offers
@@ -17,9 +17,7 @@
  * (it holds no text, so there is nothing to turn into one), and the submenu
  * draws it after these, in a group of its own (`DocumentBlockMenu.tsx`).
  *
- * Everything the product has not built yet — tables (#15), uploaded media
- * (#16 / #17), generated media (#20) — is absent by not being here (A15). A
- * row is added when the thing behind it exists, so the menu never offers
+ * A row is added when the thing behind it exists, so the menu never offers
  * something that cannot happen.
  */
 
@@ -29,7 +27,7 @@ import { BLOCK_TYPE_ITEMS } from '@web/spaces/document/document-block-type';
 /**
  * The eight entries, in the block type menu's order.
  *
- * Read off that menu rather than written out again: a reader who learns where
+ * Read off that menu rather than written out again: a user who learns where
  * Code block sits in one menu finds it in the same place in the other, and a
  * row added there arrives here already in position.
  */

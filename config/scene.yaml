@@ -1,2 +1,55 @@
 # Uniform-scale screen-drag sensitivity for the versioned Three controls adapter.
 scale_sensitivity: 0.01
+
+# Model import budgets, served to Project Viewers by GET /projects/:id/three-d/config and applied
+# when a model is imported and whenever a registered model is opened.
+import:
+  # Total bytes of the selected files; an imported ZIP counts by its own size.
+  max_input_bytes: 67108864
+  # Uncompressed bytes of a ZIP's entries, and the bytes a model package holds.
+  max_expanded_bytes: 268435456
+  # Bytes of the registered GLB or model package, when it is packed and when it is read back.
+  max_artifact_bytes: 268435456
+  # Files in a selection, archive or package; a package's manifest.json is not counted.
+  max_files: 4096
+  # Bytes of the glTF JSON (the .gltf file or the GLB JSON chunk) and of a package manifest.
+  max_entry_json_bytes: 4194304
+  # Workers each of the Draco and KTX2 decoders may start.
+  decoder_worker_limit: 1
+  # Largest declared texture edge in pixels; a device with a smaller GPU limit applies its own to what it decodes.
+  max_texture_edge: 8192
+  # Cumulative texture upload bytes for any browser that can open the model, counted from the declarations.
+  max_texture_bytes: 268435456
+  # Shortest gap between two upload-progress updates an uploader shares with the Space's other members.
+  progress_publish_ms: 1000
+
+# Viewfinder capture, served with the import budgets by GET /projects/:id/three-d/config.
+capture:
+  # Long edge of a captured still, in pixels; the short edge follows the chosen frame.
+  long_edge_px: 2048
+  # Shortest edge the viewfinder can be dragged down to, in screen pixels.
+  min_frame_px: 120
+  # How long to wait for a closed canvas to sync before giving up without writing anything.
+  canvas_sync_timeout_ms: 10000
+
+# Director console in the 3D Space, served with the capture parameters by GET /projects/:id/three-d/config.
+director:
+  # Shortest gap between two redraws of a director monitor, in milliseconds.
+  monitor_refresh_ms: 200
+  # Most lights a scene renders and accepts; how many cast shadows is worked out from the GPU at runtime.
+  max_lights: 16
+  # Pause after the last wheel step before a camera dolly is written, in milliseconds.
+  wheel_commit_ms: 400
+  # Shadow map edge for directional lights and spotlights, in pixels.
+  shadow_map_px: 2048
+  # Shadow map edge for point lights; three lays a point light shadow out 4 by 2, so 512 gives 2048 x 1024.
+  point_shadow_map_px: 512
+  # How far a directional shadow may reach along the ground, in multiples of the casters' bounding-box diagonal.
+  shadow_ground_reach: 3
+  # Depth offset of directional and spotlight shadows; more negative pushes shadow acne away but detaches shadows from contact points.
+  shadow_bias: -0.0005
+  # Offset along the surface normal for those shadows, in scene units.
+  shadow_normal_bias: 0.02
+  # The same two offsets for point light shadows, which are drawn at a lower resolution.
+  point_shadow_bias: -0.002
+  point_shadow_normal_bias: 0.02

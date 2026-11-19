@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Worker } from "bullmq";
 import {
@@ -49,6 +49,13 @@ export async function startMiniToolSettlementWorker(): Promise<Worker<unknown>> 
       if ("failure" in result) logger.error({ err: result.failure, ctx: wake }, "mini_tool_settlement_deferred");
       if (result.charge?.state === "settled" && "signalFailure" in result.charge) {
         logger.error({ err: result.charge.signalFailure, ctx: wake }, "mini_tool_settlement_signal_failed");
+      }
+      // The recorded request stays pending; the credit-charge sweep settles it later.
+      if (result.charge?.state === "settled" && "chargeFailure" in result.charge) {
+        logger.error({ err: result.charge.chargeFailure, ctx: wake }, "mini_tool_settlement_charge_pending");
+      }
+      if (result.charge?.state === "settled" && result.charge.chargeOutcome?.signalFailure !== undefined) {
+        logger.error({ err: result.charge.chargeOutcome.signalFailure, ctx: wake }, "mini_tool_settlement_signal_failed");
       }
       if (result.nextWake !== null) await enqueue(result.nextWake);
     } catch (err) {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * #113 acceptance A4, A13 and A15: what each of the two menus holds.
@@ -28,10 +28,13 @@ describe('the block handle menu', () => {
     ]);
   });
 
-  it('holds the table entry\'s rows with Add to Agent after Comment', () => {
+  it('holds the table entry\'s rows, full screen first and Add to Agent after Comment', () => {
     expect(TABLE_MENU_ROWS.map((row) => row.id)).toEqual([
+      'fullscreen',
       'insertBelow',
       'duplicate',
+      'copy',
+      'cut',
       'indent',
       'unindent',
       'comment',

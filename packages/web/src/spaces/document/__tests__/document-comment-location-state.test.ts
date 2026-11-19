@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** Explicit comment commands and ordinary reading share one real plugin state. */
 
@@ -107,7 +107,7 @@ async function open(): Promise<Fixture> {
     comment: { fromAgent: true },
   });
   const other = await commentOn(handle.editor, asCommentBody('Another observation'), () => [{ from: run.from + 6, to: run.from + 11 }]);
-  if (thread === null || other === null) throw new Error('The fixture did not create both threads.');
+  if (thread === null || other === null || 'ok' in thread || 'ok' in other) throw new Error('The fixture did not create both threads.');
   const fixture = { doc, awareness, name, handle, proposal, threadId: thread.id, otherThreadId: other.id };
   return fixture;
 }

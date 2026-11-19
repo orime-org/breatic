@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The mini-tool container (inner#888 §8): one Durable Object per job, named
@@ -190,7 +190,8 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
     const planned = isPlan(request);
     const objects: JobObjectAccess = planned
       ? { ...miniToolPlanAccess(request), attemptId: state.attemptId }
-      : { reads: [request.input.storageKey], writes };
+      // A join reads its further clips beside the source (inner#1825 §6.4).
+      : { reads: [request.input.storageKey, ...(request.extra ?? []).map((input) => input.storageKey)], writes };
     try {
       await this.setOutboundByHosts({
         [MEDIA_OBJECT_HOST]: { method: JOB_OBJECTS, params: objects },
@@ -217,6 +218,7 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
             op: request.op,
             params: request.params,
             input: mediaObjectUrl(request.input.storageKey),
+            extra: extra.map((input) => mediaObjectUrl(input.storageKey)),
             outputs: request.outputs.map((output) => ({
               url: mediaObjectUrl(output.storageKey), key: output.storageKey,
               ...(output.coverKey !== undefined && { coverUrl: mediaObjectUrl(output.coverKey) }),
@@ -422,7 +424,7 @@ function jobObject(env: MiniToolEnv, ctx: OutboundHandlerContext): DurableObject
 }
 
 /**
- * Read the job's source, or write one of its outputs.
+ * Read one of the job's inputs, or write one of its outputs.
  * @param request - What the container asked for.
  * @param env - The bindings.
  * @param ctx - The handler's context, carrying the job's keys.

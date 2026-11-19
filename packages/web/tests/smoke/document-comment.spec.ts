@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Commenting, end to end (task #18).
@@ -12,7 +12,7 @@
  * Wants dev running:
  *   pnpm --filter @breatic/web test:smoke
  */
-import { expect, type Page } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
 
 import {
   openFreshDocument,
@@ -62,7 +62,7 @@ async function commentOnParagraph(
   await p.getByTestId('doc-comment-draft-save').click();
   await expect(p.getByTestId('doc-comment-draft-card')).toHaveCount(0);
   // Writing one opens the panel, because that is where the card is (A1).
-  // The cases below start from a comment that exists and a panel the reader
+  // The cases below start from a comment that exists and a panel the user
   // has not opened, so it is closed again here.
   await p.getByTestId('doc-comment-rail-close').click();
   await expect(p.getByTestId('doc-comment-rail')).toHaveCount(0);
@@ -70,7 +70,7 @@ async function commentOnParagraph(
 
 /**
  * Selects a character range in one paragraph, from inside the body the way a
- * reader does: the body takes the focus first, then the range is set.
+ * user does: the body takes the focus first, then the range is set.
  * @param p - The page.
  * @param from - Where the range starts.
  * @param to - Where it ends.
@@ -168,7 +168,7 @@ test.describe('the card a comment is written in', () => {
   });
 
   test('sits level with the words it was aimed at', async ({ page }) => {
-    // A28 again, the half that makes it a card of the same kind: a reader
+    // A28 again, the half that makes it a card of the same kind: a user
     // looks across from the words to the card about them.
     await openFreshDocument(page);
     await page.keyboard.type('one\n');
@@ -189,7 +189,7 @@ test.describe('the card a comment is written in', () => {
     expect(Math.abs(card.y - words.y)).toBeLessThan(40);
   });
 
-  test('leaves the body where the reader scrolled it when the entry is pressed', async ({
+  test('leaves the body where the user scrolled it when the entry is pressed', async ({
     page,
   }) => {
     // The box takes the focus as the card arrives, before the card is set
@@ -421,7 +421,7 @@ test.describe('the card a comment is written in', () => {
   }) => {
     // The card lands level with its words, which can be under the panel's
     // header or above the screen; the body is then moved just enough to show
-    // the box the reader is about to type in (design §9.4.0).
+    // the box the user is about to type in (design §9.4.0).
     await page.setViewportSize({ width: 1440, height: 900 });
     await openFreshDocument(page);
     for (let i = 0; i < 60; i += 1) {
@@ -533,7 +533,7 @@ test.describe('the card a comment is written in', () => {
     page,
   }) => {
     // A30 again. Blank space is outside the card, and pressing there is the
-    // reader going somewhere else.
+    // user going somewhere else.
     await openWithALongSelection(page);
     await page.getByTestId('doc-bubble-tool-comment').click();
     await expect(page.getByTestId('doc-comment-draft-card')).toBeVisible();
@@ -557,7 +557,7 @@ test.describe('the card a comment is written in', () => {
   });
 
   test('keeps an empty one on a press on its own padding', async ({ page }) => {
-    // The press takes the focus off the box without the reader leaving: the
+    // The press takes the focus off the box without the user leaving: the
     // card's edge is still the card.
     await openWithALongSelection(page);
     await page.getByTestId('doc-bubble-tool-comment').click();
@@ -574,7 +574,7 @@ test.describe('the card a comment is written in', () => {
     page,
   }) => {
     // A2. The menu hands the focus back to the body as it closes, which is
-    // not the reader pressing anywhere.
+    // not the user pressing anywhere.
     await openFreshDocument(page);
     await page.keyboard.type('a block to comment on');
     const row = (await page
@@ -593,7 +593,7 @@ test.describe('the card a comment is written in', () => {
     await page.waitForTimeout(500);
     await expect(card).toBeVisible();
     // The box keeps the focus the entry gave it: the menu closing does not
-    // take it back to the body, so the reader's typing lands in the card.
+    // take it back to the body, so the user's typing lands in the card.
     await page.keyboard.type('from the handle');
     await expect(page.getByTestId('doc-comment-draft-input')).toHaveValue(
       'from the handle',
@@ -609,7 +609,7 @@ test.describe('the card a comment is written in', () => {
     page,
   }) => {
     // The Space is hidden by the switch, not taken down; the words are the
-    // reader's until they send or clear them.
+    // user's until they send or clear them.
     await openWithALongSelection(page);
     const home = await page
       .locator('[role="tab"][aria-selected="true"]')
@@ -803,7 +803,9 @@ test.describe('the card a comment is written in', () => {
       const line = peer.locator(`${EDITOR} p`).nth(1);
       await expect(line).toContainText('alpha bravo charlie', { timeout: 20_000 });
       await line.click({ position: { x: 1, y: 8 } });
-      await peer.keyboard.type('## ');
+      // At a person's pace: the provider merges the writes made within its
+      // flush delay into one Update, and keys typed apart arrive one by one.
+      await peer.keyboard.type('## ', { delay: 50 });
       await expect(page.locator(`${EDITOR} h2`)).toContainText('alpha bravo charlie');
 
       const first = peer.locator(`${EDITOR} p`).first();
@@ -826,7 +828,7 @@ test.describe('the card a comment is written in', () => {
     }
   });
 
-  test('keeps both ends on their lines when the reader moves its last line', async ({
+  test('keeps both ends on their lines when the user moves its last line', async ({
     page,
   }) => {
     // A move takes the line out and puts it back; each end follows its own
@@ -1066,7 +1068,7 @@ test.describe('what the bubble bar does once an overlay closes', () => {
   });
 
   test('stays away once a comment has been posted', async ({ page }) => {
-    // The round the reader started by selecting those words ends when they
+    // The round the user started by selecting those words ends when they
     // post. Measured on the link panel, which ends one the same way: nothing
     // stands back up after Escape or after an address is confirmed.
     await openWithALongSelection(page);
@@ -1109,7 +1111,7 @@ test.describe('the panel, read across from the body', () => {
     await commentOnParagraph(page, 0, 'about this line');
     await page.locator(`${EDITOR} .bn-thread-mark`).first().click();
     await expect(page.getByTestId('doc-comment-rail')).toBeVisible();
-    // The reader's hand crosses the body to the panel's close button and comes
+    // The user's hand crosses the body to the panel's close button and comes
     // back; three clicks in a row carry none of that, and the first of them is
     // still settling when the second lands.
     await page.waitForTimeout(150);
@@ -1200,7 +1202,9 @@ test.describe('the panel, read across from the body', () => {
     const before = (await header.boundingBox())!;
     const card = (await page.getByTestId('doc-comment-card').boundingBox())!;
 
-    await page.mouse.move(400, 500);
+    // Over the text: left of it stands the heading outline, a scroller of its own.
+    const text = (await page.locator(EDITOR).boundingBox())!;
+    await page.mouse.move(text.x + text.width / 2, 500);
     await page.mouse.wheel(0, 300);
     await page.waitForTimeout(400);
 
@@ -1231,7 +1235,9 @@ test.describe('the panel, read across from the body', () => {
     await page.waitForTimeout(400);
     const before = await page.getByTestId('doc-comment-card').boundingBox();
 
-    await page.mouse.move(400, 500);
+    // Over the text: left of it stands the heading outline, a scroller of its own.
+    const text = (await page.locator(EDITOR).boundingBox())!;
+    await page.mouse.move(text.x + text.width / 2, 500);
     await page.mouse.wheel(0, 300);
     await page.waitForTimeout(400);
 
@@ -1242,7 +1248,7 @@ test.describe('the panel, read across from the body', () => {
   test('deepens the words while the pointer rests on their card', async ({
     page,
   }) => {
-    // A comment that exists and a panel the reader opens, with nothing being
+    // A comment that exists and a panel the user opens, with nothing being
     // read.
     await openFreshDocument(page);
     await page.keyboard.type(LONG_LINE);
@@ -1612,9 +1618,7 @@ test.describe('what the pointer says over the body', () => {
 
     const settled = page.locator(`${EDITOR} .bn-thread-mark[data-orphan='true']`);
     await expect(settled).toHaveCount(1);
-    expect(await settled.evaluate((el) => getComputedStyle(el).cursor)).toBe(
-      'auto',
-    );
+    expect(await cursorOver(settled)).toBe('auto');
     // Resolving is only reachable on the thread being read, so the deeper
     // paint is on those words at the moment of the press. It goes with the
     // paint underneath it — measured, because reading the code the other way
@@ -1624,7 +1628,7 @@ test.describe('what the pointer says over the body', () => {
     ).toHaveCount(0);
   });
 
-  test('offers the pointer on words a reader can still open', async ({
+  test('offers the pointer on words a user can still open', async ({
     page,
   }) => {
     await openFreshDocument(page);
@@ -1635,11 +1639,24 @@ test.describe('what the pointer says over the body', () => {
       `${EDITOR} .bn-thread-mark:not([data-orphan='true'])`,
     );
     await expect(live.first()).toBeVisible();
-    expect(
-      await live.first().evaluate((el) => getComputedStyle(el).cursor),
-    ).toBe('pointer');
+    expect(await cursorOver(live.first())).toBe('pointer');
   });
 });
+
+/**
+ * The cursor shown with the pointer on an element's words: the one of
+ * whatever is topmost at the middle of its first line box, as the browser
+ * picks it. Words that wrap leave gaps inside the element's bounding box.
+ * @param target - The element.
+ * @returns The computed cursor.
+ */
+async function cursorOver(target: Locator): Promise<string> {
+  return target.evaluate((el) => {
+    const line = el.getClientRects()[0]!;
+    const top = document.elementFromPoint(line.x + line.width / 2, line.y + line.height / 2)!;
+    return getComputedStyle(top).cursor;
+  });
+}
 
 test.describe('a comment split around words that are not its own', () => {
   test('leaves the words between its runs the colour of plain prose', async ({

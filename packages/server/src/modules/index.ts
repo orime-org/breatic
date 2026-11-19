@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * `@server` module barrel - server-private domain SERVICES only.
@@ -20,6 +20,9 @@ export * as assetUploadService from "@server/modules/asset/assetUpload.service.j
 export * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 export * as pasteAssetsService from "@server/modules/asset/pasteAssets.service.js";
 export * as sceneAssetService from "@server/modules/asset/scene-asset.service.js";
+export * as sceneTasksService from "@server/modules/asset/scene-tasks.service.js";
+export * as sceneGenerationService from "@server/modules/asset/scene-generation.service.js";
+export { holdRun } from "@server/modules/task/generation-task.js";
 export * as transferReferenceService from "@server/modules/asset/transfer-reference.service.js";
 export * as authService from "@server/modules/auth/auth.service.js";
 export * as invitationService from "@server/modules/invitation/invitation.service.js";
@@ -27,6 +30,8 @@ export * as recoveryCodeService from "@server/modules/auth/recovery-code.service
 export * as signupCodeService from "@server/modules/auth/signup-code.service.js";
 export * as conversationService from "@server/modules/conversation/conversation.service.js";
 export * as attachmentService from "@server/modules/conversation/conversation-attachment.service.js";
+export * as agentInstructionsService from "@server/modules/conversation/agent-instructions.service.js";
+export * as runningTurnsService from "@server/modules/conversation/running-turns.service.js";
 export * as memoryService from "@server/modules/memory/memory.service.js";
 export * as paymentService from "@server/modules/payment/payment.service.js";
 export { precheckCredits, reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
@@ -44,6 +49,8 @@ export * as notificationService from "@server/modules/notification/notification.
 export * as studioService from "@server/modules/studio/studio.service.js";
 export * as textToolService from "@server/modules/text-tool/text-tool.service.js";
 export * as miniToolPlannedRunService from "@server/modules/mini-tool/planned-run.js";
+export * as timelineExecutionService from "@server/modules/timeline/timeline-execution.service.js";
+export * as documentVersionService from "@server/modules/document-version/document-version.service.js";
 export * as stripeWebhookRecordingService from "@server/modules/stripe-webhook/recording.service.js";
 export * as stripeWebhookDispatchService from "@server/modules/stripe-webhook/dispatch.service.js";
 

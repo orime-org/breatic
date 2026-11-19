@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a turn hands the model, and what it leaves behind however it ends.
@@ -12,8 +12,9 @@
  * say -- unless the record says otherwise.
  *
  * Stopping is driven by a signal here rather than by anything the model
- * produces, because that is how it happens: the reader presses stop or the
- * page goes, the route raises the signal, and the SDK ends the turn. There is
+ * produces, because that is how it happens: the user presses stop (or the
+ * conversation is deleted, or the server shuts down), the run raises the
+ * signal, and the SDK ends the turn. There is
  * no part a model can send that means "the user left".
  */
 
@@ -26,7 +27,7 @@ import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
 const foldIfTooLong = vi.fn(async () => "none");
-const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
+const chargeOnce = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
 const buildAgentConfig = vi.hoisted(() => vi.fn());
 
 /**
@@ -44,7 +45,7 @@ const thisCase = vi.hoisted(() => ({
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));
@@ -64,14 +65,14 @@ vi.mock("@breatic/domain", async () => {
   // Wrapped rather than replaced: what goes into the factory is what these
   // cases read, and what comes out is still the real thing.
   buildAgentConfig.mockImplementation(actual.buildAgentConfig);
+  actual.initProvider((await import("../helpers/fake-provider.js")).assemblyProvider());
   return {
     ...base,
     streamTextRetry: actual.streamTextRetry,
     finalizeTurn: actual.finalizeTurn,
     buildAgentConfig,
-    creditLotService: { chargeOnceForGeneration },
-    resolveProvider: () => "test",
-    getModel: () => {
+    creditLotService: { chargeOnce },
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => {
       const model = new MockLanguageModelV4({
         doStream: async ({ abortSignal }) => ({
           stream: new ReadableStream({
@@ -94,7 +95,7 @@ vi.mock("@breatic/domain", async () => {
       });
       thisCase.model = model;
       return model;
-    },
+    }),
   };
 });
 
@@ -112,10 +113,11 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages,
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  getMessagesForLlm: async () => [],
   titleForTurn: vi.fn(async () => null),
 }));
 
@@ -171,6 +173,7 @@ async function runAndStop(parts: ModelStreamPart[], stopOnce?: string): Promise<
   const { runWithContext } = await import("@breatic/core");
   thisCase.parts = parts;
   thisCase.endsOnItsOwn = false;
+  sent.length = 0;
 
   const stop = new AbortController();
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
@@ -182,6 +185,7 @@ async function runAndStop(parts: ModelStreamPart[], stopOnce?: string): Promise<
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
+        sent.push(value);
         if ((value as { type: string }).type === stopOnce) break;
       }
     }
@@ -189,8 +193,9 @@ async function runAndStop(parts: ModelStreamPart[], stopOnce?: string): Promise<
     // Read on to the end: the stream is ending because of the stop, and what
     // the turn does about it happens as it finishes.
     for (;;) {
-      const { done } = await reader.read();
+      const { done, value } = await reader.read();
       if (done) break;
+      sent.push(value);
     }
   });
 }
@@ -204,7 +209,7 @@ function wrapUpMessages(): Array<Record<string, unknown>> {
 }
 
 beforeEach(() => {
-  [addMessage, foldIfTooLong, chargeOnceForGeneration, buildAgentConfig].forEach((m) => {
+  [addMessage, foldIfTooLong, chargeOnce, buildAgentConfig].forEach((m) => {
     m.mockClear();
   });
 });
@@ -221,6 +226,7 @@ describe("what a plain chat turn hands the model", () => {
     const names = (called?.tools ?? []).map((t) => t.name).sort();
     expect(names).toEqual([
       "ask_user",
+      "delete_memory",
       "get_canvas_capabilities",
       "get_generation_template",
       "get_product_guide",
@@ -228,12 +234,16 @@ describe("what a plain chat turn hands the model", () => {
       "list_project_activity",
       "propose_canvas_action",
       "propose_document_edit",
+      "propose_scene_generation",
       "read_conversation",
+      "read_memory",
       "read_node_history",
       "request_space_content",
       "save_image",
+      "save_memory",
       "search_conversations",
       "search_images",
+      "web_fetch",
       "web_search",
     ]);
   });
@@ -279,6 +289,16 @@ describe("a turn that failed", () => {
     expect(wrapUpMessages()).toHaveLength(1);
   });
 
+  it("logs a failure of its own code once, with what it threw", async () => {
+    const { logger } = await import("@breatic/core");
+    const { buildTurnContext } = await import("@server/agent/turn-context.js");
+    vi.mocked(logger.error).mockClear();
+    vi.mocked(buildTurnContext).mockRejectedValueOnce(new Error("history unreadable"));
+    await runTurn([FINISHED]);
+    const failed = vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "agent_turn_failed");
+    expect(failed.map(([fields]) => (fields as { err: Error }).err.message)).toEqual(["history unreadable"]);
+  });
+
   it("asks about the budget once, before the model and not after it", async () => {
     // Folding belongs in front of the reply, on the turn whose assembled
     // request measured over the budget — that is the turn it can shorten. A
@@ -312,9 +332,9 @@ describe("a turn the ceiling cut off", () => {
     expect(parts?.map((p) => p.type)).toContain("truncated");
   });
 
-  it("says so on the wire, so the reader sees it without reloading", async () => {
+  it("says so on the wire, so the user sees it without reloading", async () => {
     // Whether the model runs out of room is not ours to decide. Whether the
-    // reader is told it happened is, and that half is no different from a
+    // user is told it happened is, and that half is no different from a
     // turn that failed: both are things this side knows and the browser
     // cannot work out for itself.
     await runTurn([
@@ -384,7 +404,7 @@ describe("a turn the user stopped", () => {
       await runAndStop([{ type: "text-start", id: "t1" }]);
 
       // Nothing finished, so nothing is owed.
-      expect(chargeOnceForGeneration).not.toHaveBeenCalled();
+      expect(chargeOnce).not.toHaveBeenCalled();
       // Still a record: the turn happened, and it was stopped.
       expect(wrapUpMessages()).toHaveLength(1);
       await new Promise((resolve) => setImmediate(resolve));
@@ -396,24 +416,185 @@ describe("a turn the user stopped", () => {
 });
 
 
+describe("how long a turn thought, on the wire as in the store", () => {
+  /**
+   * Make every reading of the clock a second after the last, so a stretch of
+   * thinking that opens and closes within one tick still lasts.
+   * @returns A function that puts the clock back.
+   */
+  const tickingClock = (): (() => void) => {
+    let now = 0;
+    const spy = vi.spyOn(Date, "now").mockImplementation(() => (now += 1_000));
+    return () => spy.mockRestore();
+  };
+
+  /**
+   * The thinking time the turn stored.
+   * @returns Its milliseconds, if it stored one.
+   */
+  const storedMs = (): number | undefined =>
+    (wrapUpMessages().at(-1)?.parts as Array<{ type: string; ms?: number }> | undefined)?.find((p) => p.type === "thinking-time")?.ms;
+
+  /**
+   * Where a frame of this type went out, the first time.
+   * @param type - The frame's type.
+   * @returns Its position, -1 when it never went out.
+   */
+  const at = (type: string): number => sent.findIndex((chunk) => chunk.type === type);
+
+  it("closes the thinking still open, then says how long, then the stop, when the user stops mid-thought", async () => {
+    const restore = tickingClock();
+    try {
+      await runAndStop(
+        [
+          { type: "reasoning-start", id: "r1" },
+          { type: "reasoning-delta", id: "r1", delta: "weighing it up" },
+        ],
+        "reasoning-delta",
+      );
+    } finally {
+      restore();
+    }
+
+    const opened = sent.find((chunk) => chunk.type === "reasoning-start") as { id: string } | undefined;
+    const closed = sent.find((chunk) => chunk.type === "reasoning-end") as { id: string } | undefined;
+    expect(closed?.id).toBe(opened?.id);
+    const said = sent.find((chunk) => chunk.type === "data-thinking-time") as { data: { ms: number } } | undefined;
+    expect(said?.data.ms).toBe(storedMs());
+    expect(at("reasoning-end")).toBeLessThan(at("data-thinking-time"));
+    expect(at("data-thinking-time")).toBeLessThan(at("data-interrupted"));
+  });
+
+  it("says how long it thought before the stop when the user stops while it writes", async () => {
+    const restore = tickingClock();
+    try {
+      await runAndStop(
+        [
+          { type: "reasoning-start", id: "r1" },
+          { type: "reasoning-delta", id: "r1", delta: "weighing it up" },
+          { type: "reasoning-end", id: "r1" },
+          { type: "text-start", id: "t1" },
+          { type: "text-delta", id: "t1", delta: "half a s" },
+        ],
+        "text-delta",
+      );
+    } finally {
+      restore();
+    }
+
+    expect(sent.filter((chunk) => chunk.type === "reasoning-end")).toHaveLength(1);
+    const said = sent.find((chunk) => chunk.type === "data-thinking-time") as { data: { ms: number } } | undefined;
+    expect(said?.data.ms).toBe(storedMs());
+    expect(at("data-thinking-time")).toBeLessThan(at("data-interrupted"));
+  });
+
+  it("closes the thinking still open before it says the turn failed", async () => {
+    const restore = tickingClock();
+    try {
+      await runTurn([
+        { type: "reasoning-start", id: "r1" },
+        { type: "reasoning-delta", id: "r1", delta: "weighing it up" },
+        { type: "error", error: new Error("401 expired key") },
+        FINISHED,
+      ]);
+    } finally {
+      restore();
+    }
+
+    expect(at("reasoning-end")).toBeGreaterThan(-1);
+    expect(at("reasoning-end")).toBeLessThan(at("data-thinking-time"));
+    expect(at("data-thinking-time")).toBeLessThan(at("data-failed"));
+  });
+});
+
 describe("decimal shortfall consumption", () => {
   it("M20 keeps a zero decimal shortfall silent", async () => {
     const { logger } = await import("@breatic/core");
     vi.mocked(logger.error).mockClear();
-    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
+    chargeOnce.mockResolvedValueOnce({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
     await runTurn(saidAndSpent("settled", 100));
-    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(chargeOnce).toHaveBeenCalledTimes(1);
     expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([]);
   });
 
   it("M20 preserves a one-micro-credit shortfall in the application log", async () => {
     const { logger } = await import("@breatic/core");
     vi.mocked(logger.error).mockClear();
-    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: "6.999999", shortfall: "0.000001", studioId: "s", lotIds: [] });
+    chargeOnce.mockResolvedValueOnce({ billed: true, charged: "6.999999", shortfall: "0.000001", studioId: "s", lotIds: [] });
     await runTurn(saidAndSpent("settled", 100));
-    expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+    expect(chargeOnce).toHaveBeenCalledTimes(1);
     expect(vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required")).toEqual([
       [expect.objectContaining({ userId: "u1", conversationId: "c1", studioId: "s", charged: "6.999999", shortfall: "0.000001" }), "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required"],
     ]);
+  });
+});
+
+describe("a turn's charge comes before its reply is saved (inner#1617)", () => {
+  it("asks for the charge before it writes the reply", async () => {
+    // The charge request is the turn's earliest durable record: a crash
+    // between the two must leave the charge, not the reply, behind.
+    await runTurn(saidAndSpent("in order", 100));
+
+    expect(chargeOnce).toHaveBeenCalledTimes(1);
+    expect(chargeOnce.mock.calls[0]).toEqual([
+      "operation",
+      expect.stringMatching(/^turn:c1:/),
+      expect.objectContaining({ projectId: "p1", actorUserId: "u1", amount: 101 }),
+    ]);
+    const replyOrder = addMessage.mock.calls
+      .map(([, msg], i) => ({ msg, order: addMessage.mock.invocationCallOrder[i]! }))
+      .filter(({ msg }) => msg.role === "assistant")
+      .map(({ order }) => order);
+    expect(replyOrder).toHaveLength(1);
+    expect(chargeOnce.mock.invocationCallOrder[0]).toBeLessThan(replyOrder[0]!);
+  });
+
+  it("still saves the reply when the charge throws, and logs the failed charge", async () => {
+    const { logger } = await import("@breatic/core");
+    vi.mocked(logger.error).mockClear();
+    const down = new Error("the database is down");
+    chargeOnce.mockRejectedValueOnce(down);
+
+    await runTurn(saidAndSpent("kept anyway", 100));
+
+    expect(wrapUpMessages()).toHaveLength(1);
+    expect(wrapUpMessages()[0]?.parts).toContainEqual({ type: "text", text: "kept anyway" });
+    const [, refKey, charged] = chargeOnce.mock.calls[0] as unknown as [string, string, { amount: number }];
+    expect(refKey).toMatch(/^turn:/);
+    expect(logger.error).toHaveBeenCalledWith(
+      { err: down, userId: "u1", conversationId: "c1", refKey, amount: charged.amount },
+      "credit_charge_settle_failed",
+    );
+  });
+
+  it("charges the full amount when a usage row could not be written, and logs the row", async () => {
+    const { logger } = await import("@breatic/core");
+    const { createUsageRecorder } = await import("@breatic/domain");
+    vi.mocked(logger.error).mockClear();
+    const lost = new Error("usage row insert failed");
+    type Recorder = ReturnType<typeof createUsageRecorder>;
+    const opened = vi.mocked(createUsageRecorder);
+    const double = opened.getMockImplementation()!;
+    opened.mockImplementation((options) => {
+      const recorder: Recorder = double(options);
+      return {
+        ...recorder,
+        settle: async () => {
+          throw lost;
+        },
+        settleForCharge: async () => ({ ...(await recorder.settleForCharge()), writeFailures: [lost] }),
+      };
+    });
+    try {
+      await runTurn(saidAndSpent("rows lost", 100));
+    } finally {
+      opened.mockImplementation(double);
+    }
+
+    expect(chargeOnce).toHaveBeenCalledTimes(1);
+    // One input token and 100 output tokens, a credit each in the double.
+    expect(chargeOnce.mock.calls[0]?.[2]).toMatchObject({ amount: 101 });
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ err: lost }), "agent_usage_record_failed");
+    expect(wrapUpMessages()).toHaveLength(1);
   });
 });

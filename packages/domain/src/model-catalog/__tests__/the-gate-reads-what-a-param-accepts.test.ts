@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The pre-enqueue gate finds a source by what the param accepts (#269).
@@ -32,10 +32,6 @@ const VIDEO = [
   "    takes_prompt: true",
   "    cost_per_call: 1",
   "    generation_time: 10",
-  "    providers:",
-  "      - name: wavespeed",
-  '        model_id: "own-spelling"',
-  "        priority: 1",
   "    params:",
   "      portrait:",
   '        fill: "canvas"',

@@ -8,13 +8,13 @@ import { resolve } from "node:path";
 //
 // `pool: 'forks'` + `poolOptions.forks.singleFork: true` — every package
 // sets these two options for the process count under turbo, measured in
-// packages/web/vitest.config.ts. For a local run of a single file,
+// packages/web/vitest.config.mts. For a local run of a single file,
 // `pnpm build && pnpm --filter @breatic/worker exec vitest run <file>`
 // inherits this config but only loads the requested file. The build is not
 // optional: `--filter` skips turbo's dependency graph, so without it the run
 // resolves `@breatic/*` from whatever dist happens to be on disk.
 // Domain-import plumbing (#1672) — tests that value-import
-// `@worker/providers/shared.js` pull in @breatic/domain (the single model
+// `@worker/handlers/model-params.js` pull in @breatic/domain (the single model
 // config reader). Two pieces make that work under vitest:
 // 1. alias @breatic/domain → its SOURCE entry, so tests never depend on a
 //    stale dist build and the whole chain goes through vite's resolver;

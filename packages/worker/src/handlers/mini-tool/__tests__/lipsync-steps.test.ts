@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 test plan §97 (execution design §9.3, §9.4; multi-person lip-sync DD §7.1; frames-split §7.15, §7.17): the pure

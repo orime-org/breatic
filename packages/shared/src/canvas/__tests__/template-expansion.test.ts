@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * How a generation template becomes nodes (inner#1345): the skeleton, one
@@ -8,13 +8,17 @@
  * locale strings are injected here, so the registry's own templates stay out.
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import fc from 'fast-check';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
-import type { GenerationTemplate, TemplateNodeKey } from '@shared/canvas/generation-templates.js';
+import { GENERATION_TEMPLATES, type GenerationTemplate, type TemplateNodeKey } from '@shared/canvas/generation-templates.js';
 import { TEMPLATE_GUIDE_KEY } from '@shared/types/canvas-proposal.js';
 import {
   expandTemplate,
+  keyStanding,
   matchTemplateInstance,
   templateGuideNode,
   templateNodeDefaults,
@@ -26,8 +30,9 @@ import {
   type TemplateGraphNode,
   type TemplateSkeleton,
 } from '@shared/canvas/template-expansion.js';
-import { resetLocales, setLocale, setLocaleMessages } from '@shared/i18n/index.js';
+import { resetLocales, setLocale, setLocaleMessages, t } from '@shared/i18n/index.js';
 import {
+  markedSegments,
   promptPlainText,
   type ProposalNode,
   type ProposalNodeType,
@@ -649,7 +654,7 @@ describe('templateGuideNode', () => {
     expect(promptPlainText(guide?.prompt ?? [])).toBe('Fixture flow\n1. Split the grid into nine\n2. Animate each panel');
   });
 
-  it('writes the guide in the reader’s language', () => {
+  it('writes the guide in the user’s language', () => {
     setLocale('zh-CN');
     const guide = templateGuideNode(FIXTURE, 0);
     expect(guide?.name).toBe('Fixture flow (zh)');
@@ -1064,5 +1069,464 @@ describe('expandTemplate over random templates', () => {
         ]);
       }),
     );
+  });
+});
+
+/**
+ * A template of the registry by id.
+ * @param id - The id.
+ * @returns The template.
+ */
+const registered = (id: string): GenerationTemplate => {
+  const template = GENERATION_TEMPLATES.find((one) => one.id === id);
+  if (!template) throw new Error(`template ${id} missing`);
+  return template;
+};
+
+describe('expandTemplate on registered templates with shots and slots (inner#1816)', () => {
+  beforeEach(() => {
+    const file = resolve(import.meta.dirname, '../../../../../locales/en.json');
+    setLocaleMessages('en', JSON.parse(readFileSync(file, 'utf-8')) as Record<string, unknown>);
+    setLocale('en');
+  });
+
+  /**
+   * Where an appended node stands in a fresh expansion (anchor at 0, appended from 1).
+   * @param result - The expansion.
+   * @param key - Its template or input key.
+   * @param input - Whether it is an input's node.
+   * @returns Its index, or 0 when nothing was appended for it.
+   */
+  const indexIn = (result: TemplateExpansionResult, key: string, input: boolean): number =>
+    1 + result.appended.findIndex((node) => node.templateNode?.key === key && (node.templateNode.input === true) === input);
+
+  it('writes the two-voice dialogue anchor as three lines, Ava, Leo, Ava, each its line\'s words and no prompt (inner#1825)', () => {
+    const result = expandTemplate(registered('two-voice-dialogue'), FRESH);
+    const anchor = result.rewritten.get(0);
+    expect(anchor).not.toHaveProperty('prompt');
+    const lines = anchor?.lines ?? [];
+    expect(lines.map((line) => line.speaker)).toEqual([1, 2, 1]);
+    for (const [at, line] of lines.entries()) {
+      expect(line.prompt, `line ${String(at + 1)}`).toEqual(markedSegments(t(`canvas.template.two-voice-dialogue.line.${String(at + 1)}`)));
+    }
+  });
+
+  it('writes the quick tip anchor as five shots of three seconds and no prompt, each @ing the subject, its note on top of the first shot only', () => {
+    const result = expandTemplate(registered('vertical-15s-quick-tip'), FRESH);
+    const anchor = result.rewritten.get(0);
+    expect(anchor).toMatchObject({ mode: 'multi_shot', model: 'seedance-2.5-text-to-video' });
+    expect(anchor).not.toHaveProperty('prompt');
+    const shots = anchor?.shots ?? [];
+    expect(shots.map((shot) => shot.duration)).toEqual([3, 3, 3, 3, 3]);
+    const subject = indexIn(result, 'subject', true);
+    expect(subject).toBeGreaterThan(0);
+    expect(result.edges).toEqual([{ fromIndex: subject, toIndex: 0, into: 'pool' }]);
+    const subjectNote = note(t('canvas.template.vertical-15s-quick-tip.input.subject.note'));
+    for (const [at, shot] of shots.entries()) {
+      const where = `shot ${String(at + 1)}`;
+      expect(shot.prompt, where).toContainEqual({ ref: subject });
+      expect(shot.prompt.map((segment) => segment.text ?? '').join('').trim().length, where).toBeGreaterThan(0);
+      if (at === 0) expect(shot.prompt[0], where).toEqual(subjectNote);
+      else expect(shot.prompt, where).not.toContainEqual(subjectNote);
+    }
+  });
+
+  it('expands the carried-object transition into two scene pictures going into the first and last frame, the object in both pools, the anchor noting both and @ing neither', () => {
+    const result = expandTemplate(registered('carried-object-transition'), FRESH);
+    const sceneA = indexIn(result, 'scene-a', false);
+    const sceneB = indexIn(result, 'scene-b', false);
+    const object = indexIn(result, 'object', true);
+    for (const at of [sceneA, sceneB]) {
+      expect(result.appended[at - 1]).toMatchObject({ role: 'generate', type: 'image', mode: 'i2i', model: 'nano-banana-pro-edit-ultra' });
+    }
+    expect(object).toBeGreaterThan(0);
+    expect(result.edges).toEqual([
+      { fromIndex: sceneA, toIndex: 0, into: 'image' },
+      { fromIndex: sceneB, toIndex: 0, into: 'end_image' },
+      { fromIndex: object, toIndex: sceneA, into: 'pool' },
+      { fromIndex: object, toIndex: sceneB, into: 'pool' },
+    ]);
+    const anchor = result.rewritten.get(0);
+    expect(anchor).toMatchObject({ mode: 'first_last', model: 'seedance-2.5-image-to-video' });
+    const prompt = anchor?.prompt ?? [];
+    expect(prompt.filter((segment) => segment.slot?.kind === 'note')).toHaveLength(2);
+    expect(prompt.filter((segment) => segment.ref !== undefined)).toEqual([]);
+    for (const at of [sceneA, sceneB]) {
+      const words = result.appended[at - 1]?.prompt ?? [];
+      expect(words[0], `scene ${String(at)}`).toEqual(note(t('canvas.template.carried-object-transition.input.object.note')));
+      expect(words, `scene ${String(at)}`).toContainEqual({ ref: object });
+    }
+  });
+});
+
+describe('matchTemplateInstance, an input fed only into nodes not placed yet takes a picture wired into the anchor (inner#1816)', () => {
+  const CARRIED = 'carried-object-transition';
+  const carried = (): TemplateSkeleton => templateSkeleton(registered(CARRIED));
+
+  it('gives the carried object the first picture wired into the video node on both scenes, passing a video wired in before it', () => {
+    const graph = graphOf(
+      [plain('V', 'video'), plain('clip', 'video'), plain('photo'), plain('other')],
+      [['clip', 'V'], ['photo', 'V'], ['other', 'V']],
+    );
+    const match = matchTemplateInstance(carried(), graph, 'V');
+    expect(match.keys).toEqual(new Map([['scene-a', { kind: 'missing' }], ['scene-b', { kind: 'missing' }]]));
+    expect(match.inputs.get('object')).toEqual(new Map([['scene-a', 'photo'], ['scene-b', 'photo']]));
+    expect(match.unassigned).toEqual([]);
+  });
+
+  it('passes a node tagged as one of the template’s own nodes, and leaves to inputs fed into the anchor the pictures they take', () => {
+    // The sheet is not placed yet, so pose has no node it feeds on the graph.
+    const graph = graphOf(
+      [plain('A'), tagged('R', 'style'), plain('H'), plain('L'), plain('C'), plain('P')],
+      [['R', 'A'], ['H', 'A'], ['L', 'A'], ['C', 'A'], ['P', 'A']],
+    );
+    const match = matchTemplateInstance(SKELETON, graph, 'A');
+    expect(match.keys.get('sheet')).toEqual({ kind: 'missing' });
+    expect(match.inputs).toEqual(
+      new Map([
+        ['hero', new Map([['final', 'H']])],
+        ['place', new Map([['final', 'L']])],
+        ['palette', new Map([['final', 'C']])],
+        ['pose', new Map([['sheet', 'P']])],
+      ]),
+    );
+    expect(match.unassigned).toEqual([]);
+  });
+
+  it('leaves the picture wired only into the video node alone once both scenes are on the graph', () => {
+    const graph = graphOf(
+      [plain('V', 'video'), tagged('SA', 'scene-a', 'image', CARRIED), tagged('SB', 'scene-b', 'image', CARRIED), plain('photo')],
+      [['SA', 'V', 'image'], ['SB', 'V', 'end_image'], ['photo', 'V']],
+    );
+    const match = matchTemplateInstance(carried(), graph, 'V');
+    expect(match.keys).toEqual(new Map([['scene-a', { kind: 'one', node: 'SA' }], ['scene-b', { kind: 'one', node: 'SB' }]]));
+    expect(match.inputs.has('object')).toBe(false);
+    expect(byInputAndFed(match.unassigned)).toEqual([
+      { input: 'object', fed: 'scene-a' },
+      { input: 'object', fed: 'scene-b' },
+    ]);
+  });
+
+  it('leaves the picture alone when the video node left the template settings, so the scenes are unreached', () => {
+    const graph = graphOf([{ id: 'V', type: 'video', keeps: false }, plain('photo')], [['photo', 'V']]);
+    const match = matchTemplateInstance(carried(), graph, 'V');
+    expect(match.keys).toEqual(new Map([['scene-a', { kind: 'unreached' }], ['scene-b', { kind: 'unreached' }]]));
+    expect(match.inputs.has('object')).toBe(false);
+  });
+
+  describe('expanded the way the panel hands the match over', () => {
+    beforeEach(() => {
+      const file = resolve(import.meta.dirname, '../../../../../locales/en.json');
+      setLocaleMessages('en', JSON.parse(readFileSync(file, 'utf-8')) as Record<string, unknown>);
+      setLocale('en');
+    });
+
+    it('places no Object node, feeds the picture into both scenes and @s it in both, with no note', () => {
+      const graph = graphOf([plain('V', 'video'), plain('photo')], [['photo', 'V']]);
+      const match = matchTemplateInstance(carried(), graph, 'V');
+      // As `useApplyTemplate` does: the anchor at 0, every given node after it in the order asked for.
+      const held = ['V'];
+      const at = (id: string): number => (held.includes(id) ? held.indexOf(id) : held.push(id) - 1);
+      const inputs = new Map([...match.inputs].map(([key, fed]) => [key, new Map([...fed].map(([where, id]) => [where, at(id)]))]));
+      const photo = held.indexOf('photo');
+      expect(photo, 'the picture is given to the object').toBe(1);
+      const result = expandTemplate(registered(CARRIED), {
+        anchorAt: 0,
+        base: held.length,
+        inputs,
+        wired: [{ fromIndex: photo, toIndex: 0 }],
+        reuse: new Map(),
+        guide: true,
+      });
+
+      expect(result.appended.filter((node) => node.templateNode?.input === true)).toEqual([]);
+      const scene = (key: string): number => held.length + result.appended.findIndex((node) => node.templateNode?.key === key);
+      const sceneA = scene('scene-a');
+      const sceneB = scene('scene-b');
+      expect(result.edges).toEqual([
+        { fromIndex: sceneA, toIndex: 0, into: 'image' },
+        { fromIndex: sceneB, toIndex: 0, into: 'end_image' },
+        { fromIndex: photo, toIndex: sceneA, into: 'pool' },
+        { fromIndex: photo, toIndex: sceneB, into: 'pool' },
+      ]);
+      for (const index of [sceneA, sceneB]) {
+        const words = result.appended[index - held.length]?.prompt ?? [];
+        expect(words, `scene at ${String(index)}`).toContainEqual({ ref: photo });
+        expect(words.filter((segment) => segment.slot?.kind === 'note'), `scene at ${String(index)}`).toEqual([]);
+      }
+    });
+  });
+});
+
+// ── nodes downstream of the anchor, standalone nodes and slotted inputs (inner#1825) ──
+
+const SOUND_ID = 'fixture-sound';
+
+/**
+ * The fixture of the design's 4.1 and 4.2: a video anchor, an audio node
+ * downstream of it taking the video into its video slot, a standalone node
+ * wired to nothing, and an input going straight into the anchor's first-frame
+ * slot rather than its pool.
+ */
+const SOUND_FIXTURE: GenerationTemplate = {
+  id: SOUND_ID,
+  anchor: 'clip',
+  nodes: [
+    { key: 'clip', role: 'generate', type: 'video', mode: 't2v', model: 'fixture-video', params: {} },
+    { key: 'foley', role: 'generate', type: 'audio', mode: 'sfx', model: 'fixture-foley', params: {} },
+    { key: 'outro', role: 'generate', type: 'video', mode: 't2v', model: 'fixture-video', params: {} },
+  ],
+  edges: [{ from: 'clip', to: 'foley', into: 'video' }],
+  inputs: [{ key: 'still', type: 'image', into: 'image' }],
+  steps: [],
+  agentNote: 'a fixture with sound',
+  goal: 'character',
+  triggers: { asks: ['a fixture'], offerWhen: [] },
+};
+
+/** The sound fixture's skeleton, written out by hand so the match tests do not lean on `templateSkeleton`. */
+const SOUND_SKELETON: TemplateSkeleton = {
+  id: SOUND_ID,
+  anchor: 'clip',
+  nodes: new Map([
+    ['clip', { role: 'generate', type: 'video' }],
+    ['foley', { role: 'generate', type: 'audio' }],
+    ['outro', { role: 'generate', type: 'video' }],
+  ]),
+  edges: [{ from: 'clip', to: 'foley', into: 'video' }],
+  inputs: [{ key: 'still', type: 'image', feeds: ['clip'], into: 'image' }],
+  steps: [],
+};
+
+const STILL_NOTE = 'Drop a still, then pick it into the first frame';
+
+/** The sound fixture's strings; the input's name equals its key so an appended input node names itself. */
+const SOUND_MESSAGES = {
+  canvas: {
+    template: {
+      [SOUND_ID]: {
+        name: 'Sound fixture',
+        prompt: 'Film the street. {✏️ the action}',
+        node: {
+          foley: { name: 'Foley', prompt: 'Sound every footstep.' },
+          outro: { name: 'Outro', prompt: 'Close on the empty street.' },
+        },
+        input: { still: { name: 'still', note: STILL_NOTE } },
+      },
+    },
+  },
+};
+
+/**
+ * A node of the sound fixture tagged as one of its keys, with the anchor its tag names.
+ * @param id - The node id.
+ * @param key - The key.
+ * @param type - Its type.
+ * @param anchor - The anchor id its tag names, if any.
+ * @returns The node.
+ */
+const soundTagged = (id: string, key: string, type: ProposalNodeType, anchor?: string): TemplateGraphNode =>
+  ({ id, type, tag: { template: SOUND_ID, key, ...(anchor === undefined ? {} : { anchor }) }, keeps: true });
+
+/**
+ * A node given for the sound fixture's still, tagged for the instance at one anchor.
+ * @param id - The node id.
+ * @param anchor - The anchor id its tag names.
+ * @returns The node.
+ */
+const stillFor = (id: string, anchor: string): TemplateGraphNode =>
+  ({ id, type: 'image', inputTag: { template: SOUND_ID, input: 'still', anchor }, keeps: true });
+
+describe('keyStanding (inner#1825)', () => {
+  it('says where each key stands, the same for a template and its skeleton', () => {
+    const upstream: GenerationTemplate = { ...SOUND_FIXTURE, edges: [...SOUND_FIXTURE.edges, { from: 'outro', to: 'clip' }] };
+    for (const shape of [upstream, templateSkeleton(upstream)]) {
+      expect(['foley', 'outro'].map((key) => keyStanding(shape, key))).toEqual(['downstream', 'upstream']);
+    }
+    expect(keyStanding(SOUND_FIXTURE, 'outro')).toBe('standalone');
+    expect(keyStanding(SOUND_SKELETON, 'foley')).toBe('downstream');
+  });
+});
+
+describe('matchTemplateInstance, keys downstream of the anchor and keys wired to nothing (inner#1825)', () => {
+  it('matches a downstream key along the anchor’s outgoing edges', () => {
+    const graph = graphOf([plain('C', 'video'), soundTagged('F', 'foley', 'audio')], [['C', 'F']]);
+    expect(matchTemplateInstance(SOUND_SKELETON, graph, 'C').keys.get('foley')).toEqual({ kind: 'one', node: 'F' });
+  });
+
+  it('reports a downstream key missing when its tagged node hangs off another anchor or off nothing', () => {
+    const elsewhere = graphOf([plain('C', 'video'), plain('C2', 'video'), soundTagged('F', 'foley', 'audio')], [['C2', 'F']]);
+    expect(matchTemplateInstance(SOUND_SKELETON, elsewhere, 'C').keys.get('foley')).toEqual({ kind: 'missing' });
+    const loose = graphOf([plain('C', 'video'), soundTagged('F', 'foley', 'audio')], []);
+    expect(matchTemplateInstance(SOUND_SKELETON, loose, 'C').keys.get('foley')).toEqual({ kind: 'missing' });
+  });
+
+  it('matches a standalone key by the anchor its tag names, and reports it missing when the tag names another anchor', () => {
+    const own = graphOf([plain('C', 'video'), soundTagged('O', 'outro', 'video', 'C')], []);
+    expect(matchTemplateInstance(SOUND_SKELETON, own, 'C').keys.get('outro')).toEqual({ kind: 'one', node: 'O' });
+    const other = graphOf([plain('C', 'video'), plain('C2', 'video'), soundTagged('O', 'outro', 'video', 'C2')], []);
+    expect(matchTemplateInstance(SOUND_SKELETON, other, 'C').keys.get('outro')).toEqual({ kind: 'missing' });
+  });
+});
+
+describe('matchTemplateInstance, inputs that go into a slot (inner#1825)', () => {
+  it('leaves a node tagged for the input and this instance’s anchor unassigned while it is neither wired nor filled in, and passes one tagged for another anchor', () => {
+    const own = matchTemplateInstance(SOUND_SKELETON, graphOf([plain('C', 'video'), stillFor('S', 'C')], []), 'C');
+    expect(own.inputs.get('still')).toBe(undefined);
+    expect(own.unassigned).toEqual([{ input: 'still', fed: 'clip' }]);
+    const other = matchTemplateInstance(SOUND_SKELETON, graphOf([plain('C', 'video'), stillFor('S', 'C2')], []), 'C');
+    expect(other.inputs.get('still')).toBe(undefined);
+  });
+
+  it('assigns the node the fed node’s fills name under the input’s slot', () => {
+    const graph: TemplateGraph = {
+      ...graphOf([plain('C', 'video'), plain('S')], []),
+      fills: new Map([['C', new Map([['image', 'S']])]]),
+    };
+    const match = matchTemplateInstance(SOUND_SKELETON, graph, 'C');
+    expect(match.inputs.get('still')).toEqual(new Map([['clip', 'S']]));
+    expect(match.unassigned).toEqual([]);
+  });
+});
+
+describe('matchTemplateInstance, takes of one template sharing their input (inner#1825 design 8.6)', () => {
+  /**
+   * The still each of two takes is given.
+   * @param graph - The canvas.
+   * @returns Per anchor, the still it was given and what it left unassigned.
+   */
+  const bothTakes = (graph: TemplateGraph): Array<{ still: string | undefined; unassigned: readonly unknown[] }> =>
+    ['C', 'C2'].map((anchor) => {
+      const match = matchTemplateInstance(SOUND_SKELETON, graph, anchor);
+      return { still: match.inputs.get('still')?.get('clip'), unassigned: match.unassigned };
+    });
+
+  it('gives one still wired into two takes to both, whichever anchor its tag names', () => {
+    const graph = graphOf([plain('C', 'video'), plain('C2', 'video'), stillFor('S', 'C')], [['S', 'C'], ['S', 'C2']]);
+    expect(bothTakes(graph)).toEqual([{ still: 'S', unassigned: [] }, { still: 'S', unassigned: [] }]);
+  });
+
+  it('gives one still filled into two takes\' slot to both, whichever anchor its tag names, or none', () => {
+    const fills = new Map([['C', new Map([['image', 'S']])], ['C2', new Map([['image', 'S']])]]);
+    const named = { ...graphOf([plain('C', 'video'), plain('C2', 'video'), stillFor('S', 'C')], []), fills };
+    expect(bothTakes(named)).toEqual([{ still: 'S', unassigned: [] }, { still: 'S', unassigned: [] }]);
+    const unnamed: TemplateGraphNode = { id: 'S', type: 'image', inputTag: { template: SOUND_ID, input: 'still' }, keeps: true };
+    const loose = { ...graphOf([plain('C', 'video'), plain('C2', 'video'), unnamed], []), fills };
+    expect(bothTakes(loose)).toEqual([{ still: 'S', unassigned: [] }, { still: 'S', unassigned: [] }]);
+  });
+
+  it('leaves a still tagged for another take, and neither wired nor filled into this one, to that take', () => {
+    const graph = graphOf([plain('C', 'video'), plain('C2', 'video'), stillFor('S', 'C')], [['S', 'C']]);
+    const match = matchTemplateInstance(SOUND_SKELETON, graph, 'C2');
+    expect(match.inputs.get('still')).toBe(undefined);
+  });
+});
+
+describe('expandTemplate, downstream and standalone nodes and slotted inputs (inner#1825)', () => {
+  beforeEach(() => {
+    setLocaleMessages('en', SOUND_MESSAGES);
+    setLocale('en');
+  });
+
+  it('wires a new input into the slot it goes into and notes it on top of that node', () => {
+    const result = expandTemplate(SOUND_FIXTURE, FRESH);
+    const who = identityIn(result, 1, { 0: 'clip' });
+    expect(edgesBy(result, who)).toEqual([
+      { from: 'clip', to: 'foley', into: 'video' },
+      { from: 'still', to: 'clip', into: 'image' },
+    ]);
+    expect(result.rewritten.get(0)?.prompt?.[0]).toEqual(note(STILL_NOTE));
+  });
+
+  it('fills the slot from a given node that holds material, with no note, and notes a given empty one instead', () => {
+    const given: TemplateExpansionInput = {
+      anchorAt: 0,
+      base: 2,
+      inputs: new Map([['still', new Map([['clip', 1]])]]),
+      wired: [],
+      reuse: new Map(),
+      guide: false,
+    };
+    const held = expandTemplate(SOUND_FIXTURE, given).rewritten.get(0);
+    expect(held?.fills).toEqual({ image: [1] });
+    expect((held?.prompt ?? []).filter((segment) => segment.slot?.kind === 'note')).toEqual([]);
+    const empty = expandTemplate(SOUND_FIXTURE, { ...given, emptyNodes: new Set([1]) }).rewritten.get(0);
+    expect(empty?.fills).toBe(undefined);
+    expect(empty?.prompt?.[0]).toEqual(note(STILL_NOTE));
+  });
+
+  it('writes the anchor’s index into a standalone node’s templateNode', () => {
+    const result = expandTemplate(SOUND_FIXTURE, FRESH);
+    const outro = result.appended.find((node) => node.templateNode?.key === 'outro');
+    expect(outro?.templateNode).toEqual({ template: SOUND_ID, key: 'outro', anchor: 0 });
+  });
+
+  it('finds every node a fresh apply placed when the template is applied again, so none is placed twice', () => {
+    const result = expandTemplate(SOUND_FIXTURE, FRESH);
+    // As the canvas lands it: the anchor at 0 is C, each appended node N<index>; edges carry no into.
+    const idOf = (index: number): string => (index === 0 ? 'C' : `N${String(index)}`);
+    const nodes: TemplateGraphNode[] = [plain('C', 'video')];
+    for (const [at, node] of result.appended.entries()) {
+      const id = idOf(1 + at);
+      const placed = node.templateNode;
+      if (placed === undefined || placed.key === TEMPLATE_GUIDE_KEY) continue;
+      const anchor = placed.anchor === undefined ? {} : { anchor: idOf(placed.anchor) };
+      nodes.push(
+        (placed.input === true
+          ? { id, type: node.type, inputTag: { template: placed.template, input: placed.key, ...anchor }, keeps: true }
+          : { id, type: node.type, tag: { template: placed.template, key: placed.key, ...anchor }, keeps: true }),
+      );
+    }
+    const graph = graphOf(nodes, result.edges.map((edge): GraphEdge => [idOf(edge.fromIndex), idOf(edge.toIndex)]));
+    const again = matchTemplateInstance(templateSkeleton(SOUND_FIXTURE), graph, 'C');
+    expect([...again.keys.values()].map((found) => found.kind)).toEqual(['one', 'one']);
+    expect(again.inputs.get('still')?.get('clip')).toBeDefined();
+    expect(again.unassigned).toEqual([]);
+  });
+});
+
+describe('expandTemplate, optional inputs (inner#1811, CAP-9)', () => {
+  /** The fixture with its palette, which feeds both generate nodes, optional. */
+  const OPTIONAL: GenerationTemplate = {
+    ...FIXTURE,
+    inputs: FIXTURE.inputs.map((input) => (input.key === 'palette' ? { ...input, optional: true } : input)),
+  };
+
+  /**
+   * A node's references in order, each named by identity and keeping whether it is optional.
+   * @param node - The node.
+   * @param who - Names an index.
+   * @returns The references.
+   */
+  const refsOf = (node: ProposalNode | undefined, who: (index: number) => string): unknown[] =>
+    (node?.prompt ?? []).flatMap((segment) => (segment.ref === undefined ? [] : [{ ref: who(segment.ref), ...(segment.optional === true ? { optional: true } : {}) }]));
+
+  it('marks every reference to an optional input optional, in every node it feeds, and no other reference', () => {
+    const result = expandTemplate(OPTIONAL, FRESH);
+    const who = identityIn(result, 1, { 0: 'final' });
+    expect(refsOf(result.rewritten.get(0), who)).toEqual([{ ref: 'hero' }, { ref: 'place' }, { ref: 'palette', optional: true }]);
+    expect(refsOf(appendedAs(result, 1, 'sheet'), who)).toEqual([{ ref: 'pose' }, { ref: 'style' }, { ref: 'palette', optional: true }]);
+  });
+
+  it('marks the reference optional when the caller already has the optional input’s node, on every node it feeds', () => {
+    // 0 anchor, 1 a node the caller already wired into the anchor for the palette.
+    const result = expandTemplate(OPTIONAL, {
+      anchorAt: 0,
+      base: 2,
+      inputs: new Map([['palette', new Map([['final', 1]])]]),
+      wired: [{ fromIndex: 1, toIndex: 0 }],
+      reuse: new Map(),
+      guide: false,
+      emptyNodes: new Set([1]),
+    });
+    const who = identityIn(result, 2, { 0: 'final', 1: 'palette' });
+    expect(refsOf(result.rewritten.get(0), who)).toContainEqual({ ref: 'palette', optional: true });
+    expect(refsOf(appendedAs(result, 2, 'sheet'), who)).toContainEqual({ ref: 'palette', optional: true });
+  });
+
+  it('marks no reference optional on a template with no optional input', () => {
+    const result = expandTemplate(FIXTURE, FRESH);
+    const all = [...result.rewritten.values(), ...result.appended].flatMap((node) => node.prompt ?? []);
+    expect(all.some((segment) => segment.ref !== undefined && segment.optional === true)).toBe(false);
   });
 });

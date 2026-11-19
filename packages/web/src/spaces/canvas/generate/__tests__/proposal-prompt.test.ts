@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a placed proposal or a picked template leaves in the prompt box
@@ -8,8 +8,8 @@
  * The prompt is written straight into the Yjs types, without an editor, so
  * every case here reads it back through a real prompt editor bound to the same
  * fragment: a hand-built shape the schema rejects would vanish the moment the
- * reader opens the panel. A proposal's ref lands as the same mention the
- * reader would insert with @ (inner#1315); the marks only tell them what to do.
+ * user opens the panel. A proposal's ref lands as the same mention the
+ * user would insert with @ (inner#1315); the marks only tell them what to do.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -71,7 +71,7 @@ function typesIn(node: JSONContent): string[] {
   return [node.type ?? '', ...(node.content ?? []).flatMap(typesIn)];
 }
 
-describe('words with nothing left for the reader', () => {
+describe('words with nothing left for the user', () => {
   it('reach the editor as the model wrote them', () => {
     expect(roundTrip([{ text: 'a still life on a white ground' }]).sent).toBe('a still life on a white ground');
   });
@@ -89,11 +89,11 @@ describe('a reference and a fill-in', () => {
     { slot: { kind: 'tweak', label: 'the mood', note: 'write the mood' } },
   ];
 
-  it('stand in the prompt as words telling the reader what to do', () => {
+  it('stand in the prompt as words telling the user what to do', () => {
     expect(roundTrip(SEGMENTS).sent).toBe('[📎 Use @ to pick the uploaded photo] at night, {✏️ the mood}');
   });
 
-  it('@ nothing for the reader', () => {
+  it('@ nothing for the user', () => {
     expect(typesIn(roundTrip(SEGMENTS).json)).not.toContain(REFERENCE_MENTION_NODE);
   });
 });
@@ -128,7 +128,7 @@ describe('a ref to another proposed node', () => {
   const PHOTO: ProposalMention = { sourceNodeId: 'n-photo', label: 'Photo', kind: 'image', thumbnail: 'https://r2.example/p.png' };
   const mentionOf = (index: number): ProposalMention | undefined => [SCRIPT, PHOTO][index];
 
-  it('lands as the mention the reader would insert with @, in the line where it was written', () => {
+  it('lands as the mention the user would insert with @, in the line where it was written', () => {
     const { json } = roundTrip([{ text: 'Repaint ' }, { ref: 1 }, { text: ' as a watercolour.' }], mentionOf);
     const line = json.content?.[0]?.content ?? [];
     expect(line.map((part) => part.type)).toEqual(['text', REFERENCE_MENTION_NODE, 'text']);
@@ -147,5 +147,60 @@ describe('a ref to another proposed node', () => {
   it('leaves a ref to a node that was not placed out of the prompt', () => {
     const { json } = roundTrip([{ text: 'Repaint ' }, { ref: 5 }], mentionOf);
     expect(typesIn(json)).not.toContain(REFERENCE_MENTION_NODE);
+  });
+});
+
+describe('a ref to an optional input (inner#1811, CAP-9)', () => {
+  const PRODUCT: ProposalMention = { sourceNodeId: 'n-product', label: 'Product', kind: 'image' };
+  const PERSON: ProposalMention = { sourceNodeId: 'n-person', label: 'Person', kind: 'image' };
+  const mentionOf = (index: number): ProposalMention | undefined => [PRODUCT, PERSON][index];
+  /**
+   * The product ad's words: the person in a paragraph of its own between two others.
+   * @param optional - Whether the person ref is marked optional.
+   * @returns The segments.
+   */
+  const words = (optional = true): PromptSegment[] => [
+    { text: 'An ad for ' },
+    { ref: 0 },
+    { text: '.\nThe person looks like ' },
+    optional ? { ref: 1, optional: true } : { ref: 1 },
+    { text: '.\nLit softly.' },
+  ];
+  /**
+   * The pool, the product holding a picture and the person as given.
+   * @param personPicture - The person's picture, or none.
+   * @returns The rows.
+   */
+  const pool = (personPicture?: string): ReferenceRailItem[] => [
+    { refId: 'e0', sourceNodeId: 'n-product', sourceNodeType: 'image', sourceNodeName: 'Product', mediaUrl: 'https://r2.example/product.png' },
+    { refId: 'e1', sourceNodeId: 'n-person', sourceNodeType: 'image', sourceNodeName: 'Person', ...(personPicture === undefined ? {} : { mediaUrl: personPicture }) },
+  ];
+
+  it('lands as a mention carrying optional, and only that one', () => {
+    const { json } = roundTrip(words(), mentionOf);
+    const mentions = (json.content ?? []).flatMap((block) => (block.content ?? []).filter((part) => part.type === REFERENCE_MENTION_NODE));
+    expect(mentions.map((mention) => [mention.attrs?.['sourceNodeId'], mention.attrs?.['optional'] ?? null])).toEqual([
+      ['n-product', null],
+      ['n-person', true],
+    ]);
+  });
+
+  it('leaves its paragraph out of what generation gets while the person holds no picture', () => {
+    const { sent } = roundTrip(words(), mentionOf, pool());
+    expect(sent).toContain('An ad for');
+    expect(sent).toContain('Lit softly.');
+    expect(sent).not.toContain('The person looks like');
+    expect(sent.split('\n\n')).toHaveLength(2);
+  });
+
+  it('sends its paragraph once the person holds a picture', () => {
+    const { sent } = roundTrip(words(), mentionOf, pool('https://r2.example/person.png'));
+    expect(sent).toContain('The person looks like');
+    expect(sent.split('\n\n')).toHaveLength(3);
+  });
+
+  it('keeps the sentence of a mention the user picked, its empty node read as nothing', () => {
+    const { sent } = roundTrip(words(false), mentionOf, pool());
+    expect(sent).toContain('The person looks like');
   });
 });

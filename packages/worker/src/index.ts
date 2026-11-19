@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * BullMQ Worker entry point.
@@ -33,6 +33,9 @@ import {
   runGracefulShutdown,
   getAgentConfig,
   getWorkerConfig,
+  getTimelineConfig,
+  TIMELINE_QUEUE,
+  type TimelineExecutionJobData,
   assertKnownQueues,
   installDeadlineBoundDispatcher,
   flushServerAnalytics,
@@ -45,6 +48,7 @@ import {
   type AdsConversionJob,
   MINI_TOOL_SETTLEMENT_QUEUE,
 } from "@breatic/core";
+import { onDatabaseWaitTimeout } from "@breatic/core";
 import { googleDataManagerSink, runAdsConversion, type AdsConversionSink } from "@worker/handlers/ads-conversion.js";
 import {
   modelCatalog,
@@ -54,6 +58,7 @@ import {
   VIDEO_PRESENTATION_QUEUE,
   MAIL_QUEUE,
   UPLOAD_FINISH_QUEUE,
+  initProvider,
   type AudioPeaksJob,
   type VideoPresentationJob,
   type MailJob,
@@ -67,6 +72,7 @@ import {
 const monitoring = initSentry();
 
 initLogger("worker");
+onDatabaseWaitTimeout((event) => logger.error(event, "db_wait_timeout"));
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
 const analytics = initServerAnalytics({
   apiKey: env.AMPLITUDE_API_KEY,
@@ -109,6 +115,16 @@ try {
   await exitProcess(1);
 }
 
+// Every model call goes through provider (inner#1743); its configuration is
+// checked whole when it is built, so a bad upstream, route or binding fails
+// here, naming every problem, instead of inside the first call that needs it.
+try {
+  initProvider();
+} catch (err) {
+  logger.error({ err }, "provider_config_invalid");
+  await exitProcess(1);
+}
+
 // Same preflight for config/models/*.yaml (#1966). Every model must declare
 // `takes_prompt`, and the catalog is lazy like agent.yaml above —
 // lazy here means a missing declaration surfaces inside whichever job first
@@ -118,6 +134,15 @@ try {
   modelCatalog.getModelCatalog();
 } catch (err) {
   logger.error({ err }, "model_catalog_invalid");
+  await exitProcess(1);
+}
+
+// A default frame outside the presets (#1502) would otherwise throw uncaught from startWorker() when it schedules the
+// Timeline sweep, with no named log line.
+try {
+  getTimelineConfig();
+} catch (err) {
+  logger.error({ err }, "timeline_config_invalid");
   await exitProcess(1);
 }
 import { runTask } from "@worker/handlers/dispatch.js";
@@ -138,6 +163,16 @@ import {
   runLongMediaDispatchSweep,
   type LongMediaOperationJob,
 } from "@worker/handlers/long-media-dispatch.js";
+import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
+import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
+import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
+import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
+
+/** Queue holding the recurring sweep of Timeline executions that have not ended (inner#1711). */
+const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
+
+/** Queue holding the recurring sweep of charge requests still pending (inner#1617). */
+const CREDIT_CHARGE_SWEEP_QUEUE = "credit-charge-sweep";
 
 /** Every BullMQ queue this process runs a worker for. */
 const WORKER_QUEUES: readonly string[] = [
@@ -152,6 +187,9 @@ const WORKER_QUEUES: readonly string[] = [
   ADS_CONVERSION_QUEUE,
   MINI_TOOL_SETTLEMENT_QUEUE,
   LONG_MEDIA_DISPATCH_QUEUE,
+  TIMELINE_QUEUE,
+  TIMELINE_SWEEP_QUEUE,
+  CREDIT_CHARGE_SWEEP_QUEUE,
 ];
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
@@ -224,6 +262,20 @@ export async function startWorker(): Promise<void> {
     logger.error({ err }, "long_media_dispatch_sweep_schedule_failed");
   });
 
+  const creditChargeSweepQueue = createQueue(CREDIT_CHARGE_SWEEP_QUEUE);
+  const creditChargeSweep = createWorker<Record<string, never>>(CREDIT_CHARGE_SWEEP_QUEUE, () => sweepCreditCharges());
+  creditChargeSweep.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "credit_charge_sweep_failed");
+  });
+  const creditChargeSweepJob = "credit-charge-sweep";
+  void creditChargeSweepQueue.upsertJobScheduler(
+    creditChargeSweepJob,
+    { every: getWorkerConfig().credit_charge_sweep.interval_ms },
+    { name: creditChargeSweepJob, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "credit_charge_sweep_schedule_failed");
+  });
+
   const miniToolSettlement = await startMiniToolSettlementWorker();
   const worker = createWorker<TasksQueueJobData>("tasks", runTask);
   try {
@@ -234,9 +286,39 @@ export async function startWorker(): Promise<void> {
     throw err;
   }
 
-  // Its own queue: the ordinary generation branches record a provider result,
-  // bill the studio and write generation activity. Pasted links follow their
-  // own transfer lifecycle, alongside the separately dispatched analyses.
+  // Timeline web-animation executions (inner#1711). A job waiting on its container goes back to the queue as
+  // delayed; one that used up its retries is only logged, and the sweep adds it again under the original deadline.
+  const timelineQueue = createQueue(TIMELINE_QUEUE);
+  const timelineWorker = createWorker<TimelineExecutionJobData>(TIMELINE_QUEUE, runTimelineExecution);
+  timelineWorker.on("failed", (job, err) => {
+    logger.error(
+      { err, executionId: job?.data.executionId, attemptsMade: job?.attemptsMade, attemptsAllowed: job?.opts?.attempts },
+      "timeline_job_failed",
+    );
+  });
+  const timelineEvents = createQueueEvents(TIMELINE_QUEUE);
+  timelineEvents.on("failed", ({ jobId, failedReason }) => {
+    void reportTimelineJobFailed(timelineQueue, jobId, failedReason).catch((err: unknown) => {
+      logger.error({ err, jobId }, "timeline_failed_job_report_error");
+    });
+  });
+  const timelineSweepQueue = createQueue(TIMELINE_SWEEP_QUEUE);
+  const timelineSweep = createWorker<Record<string, never>>(TIMELINE_SWEEP_QUEUE, () => sweepTimelineExecutions(timelineQueue));
+  timelineSweep.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "timeline_sweep_failed");
+  });
+  const timelineSweepJob = "timeline-sweep";
+  void timelineSweepQueue.upsertJobScheduler(
+    timelineSweepJob,
+    { every: getTimelineConfig().web_animation.sweep_interval_ms },
+    { name: timelineSweepJob, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "timeline_sweep_schedule_failed");
+  });
+
+  // Its own queue, because `runTask` is a generation: past the dispatch it
+  // records a provider result, bills the studio and writes a generation
+  // activity row whatever ran, and none of those belong to a pasted link.
   //
   // Delivered once. `attempts` bounds retries after a throw; a worker judged
   // to have died is counted separately, and a re-run there is a second full
@@ -279,15 +361,15 @@ export async function startWorker(): Promise<void> {
     settleWhenStalled(job);
   });
 
-  // The later lookup of an OpenRouter call whose cost was not in hand (#296). Its retries
-  // are the waiting: the job throws until OpenRouter has the cost.
+  // The later lookup of a model call whose cost was not in hand (#296). Its retries are the
+  // waiting: the job throws while provider answers the cost pending.
   const usageLookup = createWorker<UsageLookupJob>(USAGE_LOOKUP_QUEUE, (job) => runUsageLookup(job));
 
   usageLookup.on("failed", (job, err) => {
     logger.warn(
       {
         err,
-        generationId: job?.data.generationId,
+        lookup: job === undefined ? undefined : "lookup" in job.data ? job.data.lookup : { generationId: job.data.generationId },
         attemptsMade: job?.attemptsMade,
         attemptsAllowed: job?.opts?.attempts,
       },
@@ -513,6 +595,10 @@ export async function startWorker(): Promise<void> {
       drains: [
         () => worker.close(),
         () => miniToolSettlement.close(),
+        () => timelineWorker.close(),
+        () => timelineSweep.close(),
+        () => creditChargeSweep.close(),
+        () => timelineEvents.close(),
         () => urlIngest.close(),
         () => uploadFinish.close(),
         () => usageLookup.close(),

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 // The fixed package ships dist declarations but omits its package.json types
 // entry. This declaration covers only the public API used by our adapter.

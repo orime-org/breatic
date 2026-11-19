@@ -19,16 +19,21 @@
       "import": "./dist/media/index.js",
       "types": "./src/media/index.ts",
       "default": "./dist/media/index.js"
+    },
+    "./messages": {
+      "import": "./dist/messages/index.js",
+      "types": "./src/messages/index.ts",
+      "default": "./dist/messages/index.js"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/pricing/index.ts src/media/index.ts --format esm --clean --sourcemap",
-    "dev": "tsup src/index.ts src/pricing/index.ts src/media/index.ts --format esm --watch",
+    "build": "tsup src/index.ts src/pricing/index.ts src/media/index.ts src/messages/index.ts --format esm --clean --sourcemap",
+    "dev": "tsup src/index.ts src/pricing/index.ts src/media/index.ts src/messages/index.ts --format esm --watch",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "clean": "rm -rf dist",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.coverage.config.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "catalog:",
@@ -43,6 +48,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
     "fast-check": "catalog:",
     "tsup": "catalog:",
     "vitest": "catalog:",

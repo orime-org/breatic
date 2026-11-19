@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** An exact time in seconds: an integer numerator over a positive integer denominator, as decimal text. */
 export interface MeasuredTime { numerator: string; denominator: string }

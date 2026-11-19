@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A turn sends the history as it was sent, and keeps its own message as sent
@@ -42,7 +42,7 @@ const modelSays = vi.hoisted(() => ({
 vi.mock("@server/agent/turn-context.js", () => ({
   // The running turn is not its own history, as the real read leaves it out.
   buildTurnContext: vi.fn(async (_u: string, _c: string, _p: string, runningTurn: number) => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: modelSays.history.filter((row) => row.turnIndex < runningTurn),
     watermark: 0,
   })),
@@ -66,7 +66,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     buildAgentConfig: () => ({ modelId: "test", instructions: { base: "system" }, tools: modelSays.tools }),
     // The real one, so the reply is written down.
     finalizeTurn: actual.finalizeTurn,
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(
         // Called once the call's prompt is pushed, so the call is the last one.
         () => (modelSays.byCall[modelSays.prompts.length - 1] ?? modelSays.parts) as ModelStreamPart[],
@@ -75,17 +75,18 @@ vi.mock("@breatic/domain", async (importOriginal) => {
           if (modelSays.prompts.length - 1 === modelSays.stopAtCall) modelSays.stopper?.abort();
         },
         () => modelSays.openLast && modelSays.prompts.length === modelSays.byCall.length,
-      ),
+      )),
   };
 });
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   setUserForModel,
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  getMessagesForLlm: async () => [],
   titleForTurn: vi.fn(async () => null),
 }));
 vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong: vi.fn(async () => "none") }));
@@ -222,7 +223,7 @@ describe("a turn keeps its own message as it was sent", () => {
     expect(JSON.stringify(sent)).toContain(JSON.stringify(message?.content).slice(1, -1));
   });
 
-  it("answers the reader even when keeping that copy fails, and says so in the log", async () => {
+  it("answers the user even when keeping that copy fails, and says so in the log", async () => {
     setUserForModel.mockImplementation(async () => {
       throw new Error("database away");
     });
@@ -289,7 +290,7 @@ describe("a turn sends the open Space once while it stays the same", () => {
 
   /**
    * Run one turn with the Space open.
-   * @param current - The Space as the reader has it.
+   * @param current - The Space as the user has it.
    */
   async function runWithSpaceOpen(current: typeof open): Promise<void> {
     modelSays.parts = saying("the reply");

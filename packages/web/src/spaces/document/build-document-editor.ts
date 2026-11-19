@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The one place a document editor is assembled.
@@ -32,13 +32,19 @@
 
 import {
   BlockNoteEditor,
+  createExtension,
   type ExtensionFactoryInstance,
 } from '@blocknote/core';
 import { withCollaboration } from '@blocknote/core/yjs';
+import { ySyncPluginKey } from 'y-prosemirror';
 import type * as Y from 'yjs';
+
+import { docNameOf } from '@web/data/yjs/manager';
+import { spaceSizeFilterPlugin } from '@web/features/collab-editor/space-size-gate';
 
 import { buildDocumentSchema } from '@web/spaces/document/document-schema-blocknote';
 import { documentNodeCompositionExtension } from '@web/spaces/document/document-node-composition';
+import { documentMathEditingExtension } from '@web/spaces/document/document-math-editing';
 import { documentDividerInputExtension } from '@web/spaces/document/document-divider';
 import { documentBodyEdgePointerExtension } from '@web/spaces/document/document-body-edge-pointer';
 import { documentDragAutoScrollExtension } from '@web/spaces/document/document-drag-autoscroll';
@@ -51,6 +57,12 @@ import { documentSelectionPaintExtension } from '@web/spaces/document/document-s
 import { documentEnterExtension } from '@web/spaces/document/document-enter';
 import { documentKeyboardMoveExtension } from '@web/spaces/document/document-keyboard-move';
 import { documentTabExtension } from '@web/spaces/document/document-tab';
+import { documentColumnCellWidthExtension } from '@web/spaces/document/document-column-cell-width';
+import { documentColumnKeysExtension } from '@web/spaces/document/document-column-keys';
+import { columnDropHook } from '@web/spaces/document/document-column-landing';
+import { documentColumnRepairExtension } from '@web/spaces/document/document-column-repair';
+import { documentMarginDropExtension, DROP_MARGIN } from '@web/spaces/document/document-margin-drop';
+import { documentColumnSpanSelectionExtension } from '@web/spaces/document/document-column-span-selection';
 import { documentTableKeysExtension } from '@web/spaces/document/document-table-keys';
 import { documentTableColumnWidthsExtension } from '@web/spaces/document/document-table-column-widths';
 import { documentTableTargetExtension } from '@web/spaces/document/document-table-target';
@@ -58,20 +70,24 @@ import { documentTableHandlesExtension } from '@web/spaces/document/document-tab
 import { documentTableCopyExtension } from '@web/spaces/document/document-table-copy';
 import { documentTableSideMenuExtension } from '@web/spaces/document/document-table-side-menu';
 import { documentTableLeaveSelectionExtension } from '@web/spaces/document/document-table-leave-selection';
+import { documentCellContentSelectionExtension } from '@web/spaces/document/document-cell-content-selection';
 import { STRIP_SIZE, TABLE_STRIP_OUTSET } from '@web/spaces/document/document-strip-alignment';
 import { documentTableDragExtension, holdDropLineInTableDrags } from '@web/spaces/document/document-table-drag';
-import { documentPasteHandler } from '@web/spaces/document/document-table-paste';
+import { documentPasteHandler } from '@web/spaces/document/document-paste-html';
+import { canvasPasteHandler, type CanvasPasteSink } from '@web/spaces/document/document-canvas-paste-handler';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
 import { documentLinkEditMarkExtension } from '@web/spaces/document/document-link-edit-mark';
-import { documentDragDropExtension } from '@web/spaces/document/document-drag-drop';
-import { documentCommentMarkExtension } from '@web/spaces/document/document-comment-mark';
+import { documentDragDropExtension, flyingRowId } from '@web/spaces/document/document-drag-drop';
+import { documentCommentLiveMarkExtension, documentCommentMarkExtension } from '@web/spaces/document/document-comment-mark';
+import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
 import {
   documentCommentsExtension,
   type DocumentCommentsOptions,
 } from '@web/spaces/document/document-comment-thread-store';
 import { documentCommentDraftRange } from '@web/spaces/document/document-comment-draft-range';
+import { documentAiRange } from '@web/spaces/document/document-ai-range';
 import { documentCommentPasteExtension } from '@web/spaces/document/document-comment-paste';
 import { documentCommentSelection } from '@web/spaces/document/document-comment-selection';
 import { documentNoNodeClickExtension } from '@web/spaces/document/document-no-node-click';
@@ -80,11 +96,13 @@ import {
   documentPastedMediaExtension,
   type PastedMediaOptions,
 } from '@web/spaces/document/document-external-media';
+import { documentTableFullscreenExtension, inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 import {
   documentFileDropExtension,
   fileDropPosition,
   filesPasteHandler,
   type FilesSink,
+  type PasteHandler,
 } from '@web/spaces/document/document-file-input';
 
 /** What a caller has to supply to open a document. */
@@ -107,10 +125,22 @@ export interface DocumentEditorOptions {
    */
   readonly onFiles?: FilesSink;
   /**
-   * How pasted media are judged (inner#1127 A18). Left out, every pasted
-   * medium is left out.
+   * How pasted media are judged (inner#1351 design §5.4). Left out, every
+   * pasted medium with an address is left out; a pending block copied from a
+   * body is kept.
    */
   readonly media?: PastedMediaOptions;
+  /**
+   * Where a pasted canvas clipboard's uploads start (inner#1351). Left out, a
+   * canvas clipboard pastes as the plain text it is.
+   */
+  readonly onCanvasPaste?: CanvasPasteSink;
+  /**
+   * The editor shows bodies as they were saved (the version preview), so the
+   * column repair (inner#1314) stays off: a saved column holding only its
+   * empty line is shown as it was saved.
+   */
+  readonly showsSavedBodies?: boolean;
 }
 
 /**
@@ -159,19 +189,31 @@ export function buildDocumentEditor(
       fragment: options.fragment,
       user: UNUSED_USER,
     },
-    // The Enter binding goes in first so that a caller's extension can still
-    // sit after it; the built-in list bindings it overrides are registered
-    // with the blocks themselves.
+    // Full screen leads: its handlers answer drops, keys and edges before
+    // anyone else while a table is open full screen. The size filter's key
+    // handling is a DOM handler, which runs before every keymap wherever it
+    // sits. The Enter binding comes next so that a caller's extension can
+    // still sit after it; the built-in list bindings it overrides are
+    // registered with the blocks themselves.
     extensions: [
+      documentTableFullscreenExtension(),
+      sizeFilterExtension(options.fragment),
       documentEnterExtension(),
+      documentMathEditingExtension(),
       documentSafariImeExtension(),
       documentTabExtension(),
+      documentColumnKeysExtension(),
       documentTableKeysExtension(),
+      ...(options.showsSavedBodies === true ? [] : [documentColumnRepairExtension()]),
+      documentColumnSpanSelectionExtension(),
+      documentColumnCellWidthExtension(),
+      documentMarginDropExtension(),
       documentTableTargetExtension(),
       documentTableHandlesExtension(),
       documentTableCopyExtension(),
       documentTableSideMenuExtension(),
       documentTableLeaveSelectionExtension(),
+      documentCellContentSelectionExtension(),
       documentTableColumnWidthsExtension(),
       documentTableDragExtension(),
       documentKeyboardMoveExtension(),
@@ -194,8 +236,10 @@ export function buildDocumentEditor(
       // answered before the library's own handler takes the first of them.
       documentCommentSelection(),
       commentWiring(options.comments),
+      ...(options.comments === undefined ? [] : [documentCommentLiveMarkExtension(options.comments.doc)]),
       documentCommentPasteExtension(),
       documentCommentDraftRange(),
+      documentAiRange(),
       documentFileDropExtension(options.onFiles),
       documentPastedMediaExtension(options.media),
       ...(options.extensions ?? []),
@@ -215,11 +259,21 @@ export function buildDocumentEditor(
       // store; inside BlockNote only its own Tab and Shift-Tab bindings do,
       // and they decline the key while the toolbar judges it should be on
       // screen — a selection that is non-empty, holds text, and does not
-      // reach into plain content like a code block — so a reader can tab
+      // reach into plain content like a code block — so a user can tab
       // INTO the toolbar.
       'formattingToolbar',
     ],
   });
+
+  // A table open full screen takes every drop (#1427), so no line says
+  // where one would land; a table's own row and column drags draw none either.
+  const tableDrags = holdDropLineInTableDrags(columnDropHook(fileDropPosition, flyingRowId));
+  /**
+   * Where the drop line stands, or nowhere while a table is full screen.
+   * @param context - The drag the library is asking about.
+   * @returns The line's position, or null for none.
+   */
+  const dropLine: typeof tableDrags = (context) => (inTableFullscreen(context.view.state) ? null : tableDrags(context));
 
   return BlockNoteEditor.create({
     schema: buildDocumentSchema(),
@@ -238,18 +292,40 @@ export function buildDocumentEditor(
     // draws a band across the whole 768px column; two reads as a line, which
     // is all this has to say and is how the rest of this product's chrome is
     // drawn.
-    dropCursor: { color: false, width: 2, hooks: { computeDropPosition: holdDropLineInTableDrags(fileDropPosition) } },
+    dropCursor: { color: false, width: 2, hooks: { computeDropPosition: dropLine } },
     // The gutter left of the body counts as the row beside it, as far out as
     // a strip stands, a table's own being the furthest: it is reached there,
     // level with the table and past its first column's strips, since over its
     // cells the strip belongs to their blocks (inner#1619 design 5.3).
-    sideMenu: { hoverMargin: TABLE_STRIP_OUTSET + STRIP_SIZE },
-    pasteHandler:
-      options.onFiles === undefined
-        ? documentPasteHandler
-        : filesPasteHandler(options.onFiles, documentPasteHandler),
+    sideMenu: { hoverMargin: TABLE_STRIP_OUTSET + STRIP_SIZE, dropMargin: DROP_MARGIN },
+    pasteHandler: pasteChain(options),
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;
+}
+
+/**
+ * The size filter on the body (inner#1790): every local edit is judged
+ * against the Space's size before it reaches the state.
+ * @param fragment - The body's fragment, whose document names the Space.
+ * @returns The extension, for the assembly to register.
+ */
+function sizeFilterExtension(fragment: Y.XmlFragment): ExtensionFactoryInstance {
+  return createExtension(() => ({
+    key: 'space-size-filter',
+    prosemirrorPlugins: [spaceSizeFilterPlugin({ syncKey: ySyncPluginKey, docName: () => docNameOf(fragment.doc), derivedMarks: [COMMENT_MARK] })],
+  }) as never)();
+}
+
+/**
+ * The body's paste hooks, in the order a paste is tried (inner#1351 design
+ * §5.1): files, then a canvas clipboard, then everything else.
+ * @param options - The editor's options.
+ * @returns The first hook.
+ */
+function pasteChain(options: DocumentEditorOptions): PasteHandler {
+  const rest =
+    options.onCanvasPaste === undefined ? documentPasteHandler : canvasPasteHandler(options.onCanvasPaste, documentPasteHandler);
+  return options.onFiles === undefined ? rest : filesPasteHandler(options.onFiles, rest);
 }
 
 /**

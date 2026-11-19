@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Who pays a container job is read from what admission froze (inner#1306 test plan §67.2 A03, §67.3 W02, W03; frames-split
@@ -22,7 +22,7 @@ import type * as sharedModule from "@breatic/shared";
 import type { AcceptedMiniToolExecution, miniToolAnalysisService, OpenMiniToolPlanJobInput } from "@breatic/domain";
 import type { MiniToolPlanJobRequest } from "@breatic/shared";
 import { videoContainerJobId } from "@breatic/shared/mini-tools";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 import { advanceAnalysisJob } from "../run-container-analysis.js";
 import { runMiniToolVideoTool } from "../run-video-tool.js";
 

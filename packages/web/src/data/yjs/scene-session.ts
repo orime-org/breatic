@@ -1,18 +1,27 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type * as Y from 'yjs';
 import { z } from 'zod';
 import type { Awareness } from 'y-protocols/awareness';
 
-import { SceneObjectSchema, type SceneObject } from '@breatic/shared';
+import { SceneObjectSchema, type SceneObject, type ScenePose, type SceneRotation, type SceneVector } from '@breatic/shared';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import type { FollowFieldValue } from '@web/data/yjs/follow-presence';
+import { runHistoryStep } from '@web/data/yjs/history-step';
 import {
   applySceneCommand, createSceneHistory, readSceneDocument,
-  type SceneCommand, type SceneCommandResult, type SceneDocumentSnapshot, type ScenePatch,
+  type SceneCommand, type SceneCommandLimits, type SceneCommandResult, type SceneDocumentSnapshot, type ScenePatch,
 } from '@web/data/yjs/scene-document';
+import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle } from '@web/lib/publish-throttle';
 import { userPaletteColor } from '@web/lib/user-color';
 import type { WriteAccess } from '@web/data/yjs/use-socket';
+
+/** This page's personal 3D camera as published in `camera3d` for followers (#920); `fov` is in degrees. */
+export type SceneCamera = Omit<FollowFieldValue<'camera3d'>, 'at'>;
+
+/** A gesture draft: the transform fields a drag previews, or the whole pose a joint drag shows. */
+type SceneGestureDraft = ScenePatch & { pose?: ScenePose };
 
 export interface SceneEnvironment {
   readOnly: boolean;
@@ -37,6 +46,8 @@ export interface SceneSessionSnapshot extends SceneDocumentSnapshot {
   canUndo: boolean;
   canRedo: boolean;
   remotePeers: readonly ScenePeer[];
+  /** Other pages' whole-percent upload progress, by task row (inner#1690). */
+  remoteUploads: Readonly<Record<string, number>>;
   commandError: Extract<SceneCommandResult, { ok: false }> | null;
 }
 
@@ -56,19 +67,29 @@ export class SceneSession {
   private environment: SceneEnvironment = { readOnly: true, connected: false, hasEverSynced: false,
     writeAccess: 'unknown', refused: false, awareness: null };
   private selectedIds: string[] = [];
-  private gesture: ScenePatch[] | null = null;
+  private gesture: SceneGestureDraft[] | null = null;
+  /** A camera's pilot draft (inner#1694 design 6.2): published to collaborators, never laid over the committed record. */
+  private pilot: { id: string; position: SceneVector; rotation: SceneRotation } | null = null;
+  /** Each gesture target's committed pose when the drag began; a release writes only bones this drag changed. */
+  private gestureStartPoses = new Map<string, ScenePose>();
+  /** Drag previews reach awareness at most once per frame and per interval, as the canvas publishes its own. */
+  private readonly previewPublish = createPublishThrottle(() => this.publishNow(), PRESENCE_WRITE_INTERVAL_MS);
   private cancelRevision = 0;
+  /** The personal camera to publish as `camera3d`, or null to publish none. */
+  private camera: SceneCamera | null = null;
   private visible = false;
   private focused = false;
   private destroyed = false;
   private commandError: Extract<SceneCommandResult, { ok: false }> | null = null;
+  private limits: SceneCommandLimits | undefined;
   private snapshot!: SceneSessionSnapshot;
 
   /**
    * Attach in-memory editing state to the same live document held by its provider.
    * @param doc - Live collaborative scene document.
+   * @param name - Its canonical document name, whose size gates writes.
    */
-  constructor(readonly doc: Y.Doc) {
+  constructor(readonly doc: Y.Doc, readonly name: string) {
     this.history = createSceneHistory(doc, this.origin);
     doc.on('update', this.refresh);
     this.history.on('stack-item-added', this.refresh);
@@ -103,6 +124,7 @@ export class SceneSession {
       && (this.environment.refused || this.environment.writeAccess !== 'denied');
     this.replaceSelection(nextSelection);
     if (this.gesture && (!canEdit || this.selectedIds.some((id) => byId.get(id)?.locked))) this.clearGesture();
+    if (this.pilot && (!canEdit || byId.get(this.pilot.id)?.locked !== false)) this.pilot = null;
     const objects = scene.objects.map((object) => {
       const patch = this.gesture?.find((item) => item.id === object.id);
       return patch ? { ...object, ...patch } : object;
@@ -110,7 +132,7 @@ export class SceneSession {
     this.snapshot = { ...scene, objects, selectedIds: this.selectedIds,
       gestureActive: this.gesture !== null, cancelRevision: this.cancelRevision, canEdit,
       canUndo: this.history.undoStack.length > 0, canRedo: this.history.redoStack.length > 0,
-      remotePeers: this.readPeers(byId), commandError: this.commandError };
+      remotePeers: this.readPeers(byId), remoteUploads: this.stableUploads(), commandError: this.commandError };
     this.publishPresence();
     this.listeners.forEach((listener) => listener());
   };
@@ -136,18 +158,116 @@ export class SceneSession {
     return peers.sort((a, b) => a.userId.localeCompare(b.userId) || a.clientId - b.clientId);
   }
 
-  /** Publish one complete presence snapshot; ineligible views withdraw synchronously. */
+  /**
+   * Read other pages' upload progress; an entry that is not a whole percent is ignored.
+   * @returns Whole percent by task row.
+   */
+  private readUploads(): Record<string, number> {
+    const awareness = this.environment.awareness;
+    const uploads: Record<string, number> = {};
+    if (!awareness) return uploads;
+    awareness.getStates().forEach((state: Record<string, unknown>, clientId: number) => {
+      if (clientId === awareness.clientID) return;
+      const published = state.sceneUploads;
+      if (typeof published !== 'object' || published === null) return;
+      for (const [taskId, percent] of Object.entries(published)) {
+        if (Number.isInteger(percent) && (percent as number) >= 0 && (percent as number) <= 100) uploads[taskId] = percent as number;
+      }
+    });
+    return uploads;
+  }
+
+  /**
+   * Read other pages' upload progress, keeping the previous object while nothing changed so memoized readers stay still.
+   * @returns Whole percent by task row.
+   */
+  private stableUploads(): Readonly<Record<string, number>> {
+    const next = this.readUploads();
+    const previous = this.snapshot?.remoteUploads;
+    return previous !== undefined && JSON.stringify(previous) === JSON.stringify(next) ? previous : next;
+  }
+
+  /**
+   * Follow a presence or progress change without reading the scene again: an
+   * upload's progress ticks for as long as it sends, and no object changed.
+   */
+  private onAwareness = (): void => {
+    if (this.destroyed) return;
+    const byId = new Map(this.snapshot.objects.map((object) => [object.id, object]));
+    const remotePeers = this.readPeers(byId);
+    const remoteUploads = this.stableUploads();
+    if (JSON.stringify(remotePeers) === JSON.stringify(this.snapshot.remotePeers)
+      && remoteUploads === this.snapshot.remoteUploads) return;
+    this.snapshot = { ...this.snapshot, remotePeers, remoteUploads };
+    this.listeners.forEach((listener) => listener());
+  };
+
+  /**
+   * Publish this page's progress for the uploads it is sending into this Space.
+   * @param uploads - Whole percent by task row; an empty map withdraws the field.
+   */
+  setUploadProgress(uploads: Readonly<Record<string, number>>): void {
+    const awareness = this.environment.awareness;
+    const state = awareness?.getLocalState();
+    if (!awareness || state === null || state === undefined) return;
+    const { sceneUploads: previous, ...rest } = state;
+    if (JSON.stringify(previous ?? {}) === JSON.stringify(uploads)) return;
+    awareness.setLocalState(Object.keys(uploads).length === 0 ? rest : { ...rest, sceneUploads: uploads });
+  }
+
+  /**
+   * Publish presence: a drag preview through the throttle, anything else (selection,
+   * a withdrawal, an ineligible view) at once, dropping a preview still waiting.
+   */
   private publishPresence(): void {
+    if ((this.gesture !== null || this.pilot !== null) && !this.destroyed) {
+      this.previewPublish.schedule();
+      return;
+    }
+    this.previewPublish.cancel();
+    this.publishNow();
+  }
+
+  /**
+   * Publish one complete presence snapshot; ineligible views withdraw synchronously.
+   * `camera3d` goes out while the body is visible and connected whatever the
+   * window focus, so a leader who clicked away still publishes it.
+   */
+  private publishNow(): void {
     const awareness = this.environment.awareness;
     if (!awareness) return;
-    const eligible = this.visible && this.focused && this.environment.connected && !this.destroyed;
-    const scenePresence = eligible ? { selectedIds: this.selectedIds,
-      gesture: this.gesture ? this.snapshot.objects.filter((object) => this.selectedIds.includes(object.id)) : null }
-      : { selectedIds: [], gesture: null };
+    const shown = this.visible && this.environment.connected && !this.destroyed;
+    const eligible = shown && this.focused;
+    const pilot = this.pilot;
+    const piloted = pilot ? this.snapshot.objects.find((object) => object.id === pilot.id) : undefined;
+    const gesture = this.gesture ? this.snapshot.objects.filter((object) => this.selectedIds.includes(object.id))
+      : pilot && piloted ? [{ ...piloted, position: pilot.position, rotation: pilot.rotation }] : null;
+    const scenePresence = eligible ? { selectedIds: this.selectedIds, gesture } : { selectedIds: [], gesture: null };
     const state = awareness.getLocalState();
-    if (state !== null && JSON.stringify(state.scenePresence) !== JSON.stringify(scenePresence)) {
-      awareness.setLocalState({ ...state, scenePresence });
+    if (state === null) return;
+    const { camera3d: published, ...rest } = state;
+    const camera = shown ? this.camera : null;
+    const { at: _at, ...publishedCamera } = (published ?? {}) as { at?: unknown };
+    const cameraSame = camera === null ? published === undefined || published === null
+      : JSON.stringify(publishedCamera) === JSON.stringify(camera);
+    if (cameraSame && JSON.stringify(state.scenePresence) === JSON.stringify(scenePresence)) return;
+    awareness.setLocalState({ ...rest, scenePresence,
+      ...(camera === null ? {} : { camera3d: cameraSame ? published : { ...camera, at: Date.now() } }) });
+  }
+
+  /**
+   * Set the personal camera published as `camera3d`; it goes out through the presence throttle.
+   * @param camera - The camera, or null to withdraw it.
+   */
+  setCamera(camera: SceneCamera | null): void {
+    if (this.destroyed) return;
+    this.camera = camera === null ? null : { position: [...camera.position], target: [...camera.target], fov: camera.fov };
+    if (camera === null) {
+      this.previewPublish.cancel();
+      this.publishNow();
+      return;
     }
+    this.previewPublish.schedule();
   }
 
   /**
@@ -162,8 +282,8 @@ export class SceneSession {
       this.visible = false;
       this.publishPresence();
       this.visible = wasVisible;
-      previous.awareness?.off('change', this.refresh);
-      environment.awareness?.on('change', this.refresh);
+      previous.awareness?.off('change', this.onAwareness);
+      environment.awareness?.on('change', this.onAwareness);
     }
     if (previous.connected && !environment.connected) this.clearGesture();
     this.environment = environment;
@@ -224,15 +344,17 @@ export class SceneSession {
       return false;
     }
     this.gesture = this.selectedIds.map((id) => ({ id }));
+    this.gestureStartPoses = new Map(this.snapshot.objects
+      .filter((object) => this.selectedIds.includes(object.id)).map((object) => [object.id, object.pose ?? {}]));
     this.refresh();
     return true;
   }
 
   /**
    * Preview only fields supplied by the active control, keeping committed values independent.
-   * @param patches - Complete transform fields previewed by the active local gesture.
+   * @param patches - The active gesture's draft per object: the transform fields a drag supplies, or the whole pose a joint drag shows.
    */
-  previewGesture(patches: readonly ScenePatch[]): void {
+  previewGesture(patches: readonly SceneGestureDraft[]): void {
     if (!this.gesture) return;
     if (patches.some((patch) => !this.selectedIds.includes(patch.id))) return;
     const committed = readSceneDocument(this.doc).objects;
@@ -250,13 +372,71 @@ export class SceneSession {
 
   /**
    * Finish through one exit; cancellation never creates a document transaction.
+   * A commit first publishes the final value past the throttle, then writes the
+   * document, then withdraws the gesture, so a collaborator's model never steps
+   * back to the start value in between (canvas #2010).
    * @param commit - Whether to apply the completed draft as one command.
    */
   endGesture(commit: boolean): void {
     const gesture = this.gesture;
+    const startPoses = this.gestureStartPoses;
+    this.previewPublish.cancel();
+    if (!commit || !gesture) {
+      this.clearGesture();
+      this.refresh();
+      return;
+    }
+    this.publishNow();
+    const transforms = gesture.map(({ pose: _pose, ...transform }) => transform)
+      .filter((transform) => Object.keys(transform).length > 1);
+    const poses = gesture.flatMap((patch) => (patch.pose ? [poseChange(patch.id, startPoses.get(patch.id) ?? {}, patch.pose)] : []))
+      .filter((command) => Object.keys(command.set).length > 0);
+    // The gesture stays published while the document is written: the undo stack
+    // refreshes this session inside the transaction, before the document update
+    // goes out, and a withdrawal there would reach collaborators first.
+    if (transforms.length > 0) this.execute({ type: 'patch', patches: transforms });
+    poses.forEach((command) => this.execute(command));
+    this.previewPublish.cancel();
     this.clearGesture();
     this.refresh();
-    if (commit && gesture) this.execute({ type: 'patch', patches: gesture });
+  }
+
+  /**
+   * Take the configured command limits; until they arrive no light can be added.
+   * @param limits - The scene's configured limits.
+   */
+  setLimits(limits: SceneCommandLimits): void {
+    this.limits = limits;
+  }
+
+  /**
+   * Hold a camera's pilot draft and show it to collaborators; a locked camera or a user who cannot edit gets none.
+   * @param id - The camera being piloted.
+   * @param position - The draft position.
+   * @param rotation - The draft rotation.
+   */
+  previewPilot(id: string, position: SceneVector, rotation: SceneRotation): void {
+    const camera = this.snapshot.objects.find((object) => object.id === id);
+    if (!this.snapshot.canEdit || camera?.model.kind !== 'camera' || camera.locked) return;
+    this.pilot = { id, position: [...position], rotation: [...rotation] };
+    this.publishPresence();
+  }
+
+  /**
+   * End the pilot draft: a commit writes it as one patch when it differs from the record (design 3.4.1), publishing
+   * the final value first and withdrawing it after, as an object drag does; a drop writes nothing.
+   * @param commit - Whether to write the draft.
+   */
+  endPilot(commit: boolean): void {
+    const pilot = this.pilot;
+    this.previewPublish.cancel();
+    const record = pilot ? this.snapshot.objects.find((object) => object.id === pilot.id) : undefined;
+    if (commit && pilot && record && poseDiffers(record, pilot)) {
+      this.publishNow();
+      this.execute({ type: 'patch', patches: [{ id: pilot.id, position: pilot.position, rotation: pilot.rotation }] });
+    }
+    this.pilot = null;
+    this.publishPresence();
   }
 
   /**
@@ -265,7 +445,7 @@ export class SceneSession {
    * @returns Affected identities or a refusal from the fresh command gate.
    */
   execute(command: SceneCommand): SceneCommandResult {
-    const result = applySceneCommand(this.doc, command, this.origin, this.snapshot.canEdit);
+    const result = applySceneCommand(this.doc, command, this.origin, this.snapshot.canEdit, this.name, this.limits);
     this.commandError = result.ok ? null : result;
     if (result.ok && (command.type === 'create' || command.type === 'duplicate')) this.replaceSelection(result.ids);
     this.refresh();
@@ -275,31 +455,63 @@ export class SceneSession {
   /**
    * Undo or redo one personal operation even when the object has become explicitly locked.
    * @param direction - Personal undo or redo operation to invoke.
+   * @returns The step's outcome; a size refusal (its toast shown once) leaves the history untouched.
    */
-  historyStep(direction: 'undo' | 'redo'): void {
-    if (!this.snapshot.canEdit) return;
+  historyStep(direction: 'undo' | 'redo'): SceneCommandResult {
+    if (!this.snapshot.canEdit) return { ok: false, reason: 'readOnly' };
     this.endGesture(false);
-    this.history[direction]();
+    const written = runHistoryStep(this.name, this.history, direction);
+    this.commandError = written.ok ? null : written;
     this.refresh();
+    return written.ok ? { ok: true, ids: [] } : written;
   }
 
   /** Detach all owned listeners once the manager releases this document. */
   destroy(): void {
     if (this.destroyed) return;
+    this.previewPublish.cancel();
     this.clearGesture();
     this.visible = false;
     this.publishPresence();
     this.destroyed = true;
     this.doc.off('update', this.refresh);
-    this.environment.awareness?.off('change', this.refresh);
+    this.environment.awareness?.off('change', this.onAwareness);
     this.history.destroy();
     this.listeners.clear();
   }
 
 }
 
-const sessions = createDocScopedCache<SceneSession>(
-  (doc) => new SceneSession(doc), (session) => session.destroy(),
+/**
+ * The pose command for the bones one joint drag changed, compared with the pose
+ * the drag started from; bones another member committed meanwhile are left alone.
+ * @param id - The posed object.
+ * @param start - Its committed pose when the drag began.
+ * @param draft - The pose the drag ended with: the start pose with the dragged bone's new value.
+ * @returns The bones to set.
+ */
+function poseChange(id: string, start: ScenePose, draft: ScenePose): Extract<SceneCommand, { type: 'pose' }> {
+  const set = Object.fromEntries(Object.entries(draft).filter(([key, value]) => JSON.stringify(start[key]) !== JSON.stringify(value)));
+  return { type: 'pose', id, set, replace: false };
+}
+
+/**
+ * Whether a pilot draft differs from the record enough to write: past 1e-5 of position, or a rotation whose
+ * quaternion dot falls below 1 − 1e-9.
+ * @param record - The committed camera.
+ * @param draft - The draft pose.
+ * @param draft.position - Its position.
+ * @param draft.rotation - Its rotation.
+ * @returns True when it should be written.
+ */
+function poseDiffers(record: SceneObject, draft: { position: SceneVector; rotation: SceneRotation }): boolean {
+  const moved = Math.hypot(...record.position.map((value, index) => value - (draft.position[index] ?? value)));
+  const dot = record.rotation.reduce((sum, value, index) => sum + value * (draft.rotation[index] ?? 0), 0);
+  return moved > 1e-5 || Math.abs(dot) < 1 - 1e-9;
+}
+
+const sessions = createDocScopedCache<SceneSession, string>(
+  (doc, name) => new SceneSession(doc, name), (session) => session.destroy(),
 );
 
 /**
@@ -309,7 +521,7 @@ const sessions = createDocScopedCache<SceneSession>(
  * @returns The document's existing session or its new in-memory owner.
  */
 export function getSceneSession(doc: Y.Doc, name: string): SceneSession {
-  return sessions.get(doc, name, undefined);
+  return sessions.get(doc, name, name);
 }
 
 /**

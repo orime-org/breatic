@@ -1,0 +1,4 @@
+{
+  "source": "https://api.fal.ai/v1/models/pricing?endpoint_id=openai/gpt-image-2.5/sunburst/text-to-image",
+  "unit": "units"
+}

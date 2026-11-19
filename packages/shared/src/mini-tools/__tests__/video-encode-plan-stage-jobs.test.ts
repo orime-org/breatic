@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 test plan §97 item 2 (frames-split §5.4 上限/预算 rows; D11-2, D12-1): the frozen layout, now a union by tool

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { extname, resolve } from 'node:path';
@@ -70,7 +70,7 @@ describe('ModelIcon — per-vendor brand marks for the model picker', () => {
     .filter((dir) => existsSync(dir))
     .flatMap((dir) =>
       readdirSync(dir)
-        .filter((file) => extname(file) === '.yaml' && file !== 'providers.yaml')
+        .filter((file) => extname(file) === '.yaml')
         .map((file) => resolve(dir, file)),
     )
     .flatMap((file) => {

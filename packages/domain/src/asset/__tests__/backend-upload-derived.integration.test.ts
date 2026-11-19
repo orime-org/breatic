@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A derived write leaves no asset row and no storage usage (inner#1306 test plan §97 D21-1, D23-1; root AGENTS.md Storage,

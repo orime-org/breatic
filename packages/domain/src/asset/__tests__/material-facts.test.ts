@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the registration behind a material address says (inner#1315): read for
@@ -62,6 +62,18 @@ describe("materialFacts", () => {
 
     expect(findLiveByKeyInStudio).toHaveBeenCalledWith("s1", "image/a.png");
     expect(table.get("https://ours.example/image/a.png")).toEqual({
+      kind: "image",
+      media: { coverUrl: null, width: 640, height: 480, duration: null, mimeType: "image/png", size: 100 },
+    });
+  });
+
+  it("reads a generation result registered in the studio like an upload, so a result on the canvas can be material (breatic#1361)", async () => {
+    findLiveByKeyInStudio.mockResolvedValue(row("image", { source: "ai", generationTaskId: "task-1" }));
+
+    const table = await materialFacts("s1", ["https://ours.example/image/result.png"]);
+
+    expect(findLiveByKeyInStudio).toHaveBeenCalledWith("s1", "image/result.png");
+    expect(table.get("https://ours.example/image/result.png")).toEqual({
       kind: "image",
       media: { coverUrl: null, width: 640, height: 480, duration: null, mimeType: "image/png", size: 100 },
     });

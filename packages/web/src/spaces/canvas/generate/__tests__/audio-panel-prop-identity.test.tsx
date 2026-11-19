@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The audio container's props for its memoized children keep their identity
@@ -56,6 +56,12 @@ const seenPromptSlots: unknown[] = [];
 const seenParams: unknown[] = [];
 /** Every `references` array it has been handed, newest last. */
 const seenReferences: unknown[] = [];
+/**
+ * Every `slots` array it has been handed, newest last. The slots a song model
+ * draws hang on its stored params (breatic#1393), so they are read off the
+ * content-stable params rather than the ones the view model rebuilds.
+ */
+const seenSlots: unknown[] = [];
 
 // Standing in for the real panel is what lets the case read the prop objects
 // themselves. Deliberately NOT wrapped in React.memo: a memo here would hide
@@ -65,8 +71,10 @@ vi.mock('@web/spaces/canvas/generate/AudioGeneratePanel', () => ({
     params: unknown;
     references: unknown;
     promptSlot: unknown;
+    slots: unknown;
   }): null => {
     seenParams.push(props.params);
+    seenSlots.push(props.slots);
     seenReferences.push(props.references);
     seenPromptSlots.push(props.promptSlot);
     return null;
@@ -118,7 +126,8 @@ const ELEVEN: ModelEntry = {
     voice_id: { description: '', default: 'Alice', remote_source: 'voices' },
     stability: { description: '', values: [0, 0.5, 1], default: 0.5 },
   },
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
 };
 
 /**
@@ -184,7 +193,7 @@ function tree(stability = 1): React.ReactElement {
             edges={[{ id: 'e1', source: 'src', target: 'target' }]}
             nodes={nodes(stability)}
             getLastWriteWasLocal={returnsTrue}
-            placeTemplate={() => undefined}
+            placeTemplate={() => ({ nodeIds: [], rects: [] })}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -205,6 +214,7 @@ describe('the audio container keeps its memoized panel bail-able', () => {
     seenParams.length = 0;
     seenReferences.length = 0;
     seenPromptSlots.length = 0;
+    seenSlots.length = 0;
     _resetForTests();
     canvasSessions.of('s').setState({
       panelHostId: null,
@@ -247,7 +257,7 @@ describe('the audio container keeps its memoized panel bail-able', () => {
     expect(seenPromptSlots[0]).not.toBeNull();
   });
 
-  it('hands down the SAME params and references while their content is unchanged', async () => {
+  it('hands down the SAME params, references and slots while their content is unchanged', async () => {
     vi.spyOn(modelsApi, 'list').mockResolvedValue(catalog());
     const { rerender } = mount();
     act(() => {
@@ -258,6 +268,7 @@ describe('the audio container keeps its memoized panel bail-able', () => {
     });
     const paramsBefore = seenParams.at(-1);
     const referencesBefore = seenReferences.at(-1);
+    const slotsBefore = seenSlots.at(-1);
 
     // What a node drag does: the same board, a new nodes array.
     rerender(tree());
@@ -267,6 +278,7 @@ describe('the audio container keeps its memoized panel bail-able', () => {
     });
     expect(seenParams.at(-1)).toBe(paramsBefore);
     expect(seenReferences.at(-1)).toBe(referencesBefore);
+    expect(seenSlots.at(-1)).toBe(slotsBefore);
   });
 
   it('hands down a NEW params object once the content changes', async () => {

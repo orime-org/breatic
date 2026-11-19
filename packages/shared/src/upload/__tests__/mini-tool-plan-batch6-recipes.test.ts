@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 test plan §97 D15-5 to D15-8 (frames-split §7.17 recipe table and 转场输出档 row, §5.4; execution design §8.1):

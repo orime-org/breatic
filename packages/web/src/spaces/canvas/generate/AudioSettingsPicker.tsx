@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { ChevronDown, Volume2 } from 'lucide-react';
 import * as React from 'react';
@@ -27,6 +27,7 @@ import {
 } from '@web/spaces/canvas/generate/audio-settings';
 import { PARAMS_PILL_CLASS } from '@web/spaces/canvas/generate/generate-tools';
 import { fixedEntries } from '@web/spaces/canvas/generate/fixed-entries';
+import { speakerColour } from '@web/spaces/canvas/generate/dialogue-line';
 import { ItemsEditor } from '@web/spaces/canvas/generate/ItemsEditor';
 import { modelControls, ownControlSummary, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
@@ -39,11 +40,14 @@ import { useSamplePlayer } from '@web/spaces/canvas/generate/use-sample-player';
 import { VoiceList } from '@web/spaces/canvas/generate/VoiceList';
 import { SecondPanelFrame, SecondPanelRow, useSecondPanelSide } from '@web/spaces/canvas/generate/second-panel';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
-import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
+import { voiceDisplayName, type VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 import { useDraftBox } from '@web/spaces/canvas/generate/use-draft-box';
 
 /** The second panel's width in pixels. */
 const SECOND_PANEL_WIDTH = 288;
+
+/** The second panel's width when the voice list carries a sample language picker beside its search box (#1521). */
+const SAMPLE_LANGUAGE_PANEL_WIDTH = 320;
 
 /** What this picker's shared controls edit, by the catalog's own param names. */
 export type AudioParamsValue = Record<string, number>;
@@ -142,10 +146,6 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
 
   const layout = React.useMemo(() => settingsLayout(model, mode, value), [model, mode, value]);
   const standIn = layout.standIn;
-  // The language the reader picked, for a voice that has a sample in each: the
-  // model's param whose values name languages.
-  const languageParam = Object.keys(model.params).find((name) => model.params[name]?.value_locales !== undefined);
-  const language = languageParam === undefined ? undefined : asChoice(value[languageParam]);
   const dialogue = standIn !== null && isStandInOn(value);
   const shared = React.useMemo(() => audioParamControls(model), [model]);
 
@@ -177,7 +177,8 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
     [showPanel],
   );
 
-  const [firstPanelRef, secondOnLeft] = useSecondPanelSide(panel, SECOND_PANEL_WIDTH);
+  const secondPanelWidth = model.sample_languages === undefined ? SECOND_PANEL_WIDTH : SAMPLE_LANGUAGE_PANEL_WIDTH;
+  const [firstPanelRef, secondOnLeft] = useSecondPanelSide(panel, secondPanelWidth);
 
   const inlineOnly = React.useCallback(
     (control: ModelControl) => layout.inline.some((c) => c.name === control.name),
@@ -216,23 +217,17 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
     const held = field === undefined ? undefined : speakers[index]?.[field];
     return typeof held === 'string' ? held : '';
   };
-  /**
-   * A voice as the voice list names it.
-   * @param id - The voice id the node holds.
-   * @returns Its name, or the id when the list does not carry it.
-   */
-  const voiceNameOf = (id: string): string => voice.list.voices.find((v) => v.id === id)?.name ?? id;
 
   if (!hasSettings(model, mode)) return null;
 
   /**
    * What a row of the first panel says it is set to.
    * @param row - The row.
-   * @returns The value as the reader reads it.
+   * @returns The value as the user reads it.
    */
   const rowValue = (row: SettingsRow): string => {
     if (row.kind === 'speaker') {
-      return [speakerText(row.index, nameField), voiceNameOf(speakerText(row.index, voiceField))]
+      return [speakerText(row.index, nameField), voiceDisplayName(voice.list.voices, speakerText(row.index, voiceField))]
         .filter((part) => part !== '')
         .join(' · ');
     }
@@ -336,8 +331,17 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
             <SecondPanelRow
               key={panelKey(row)}
               label={
-                row.kind === 'speaker'
-                  ? t('canvas.generatePanel.audioSpeakerRow', { n: row.index + 1 })
+                row.kind === 'speaker' ? (
+                  <>
+                    {/* The colour its lines carry in the prompt box. */}
+                    <span
+                      data-testid='generate-audio-speaker-dot'
+                      className='mr-1.5 inline-block size-2 rounded-full align-middle'
+                      style={{ background: speakerColour(row.index + 1) }}
+                    />
+                    {t('canvas.generatePanel.audioSpeakerRow', { n: row.index + 1 })}
+                  </>
+                )
                   : row.kind === 'voice'
                     ? t('canvas.generatePanel.audioVoice')
                     : t(`canvas.generatePanel.param.${row.name}`)
@@ -349,9 +353,6 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
               onClick={() => showPanel(panel === panelKey(row) ? null : panelKey(row))}
             />
           ))}
-          {dialogue ? (
-            <p className='px-1 pt-1 text-xs text-muted-foreground'>{t('canvas.generatePanel.audioSpeakersNote')}</p>
-          ) : null}
           {(shared.length > 0 || layout.inline.length > 0) && layout.rows.length > 0 ? (
             <div className='mx-1 my-1 h-px bg-border' />
           ) : null}
@@ -380,7 +381,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
         {openRow !== undefined ? (
           <SecondPanelFrame
             onLeft={secondOnLeft}
-            maxWidth={SECOND_PANEL_WIDTH}
+            maxWidth={secondPanelWidth}
             testId='generate-audio-second-panel'
             className='overflow-hidden'
           >
@@ -396,7 +397,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                 onLoadMore={voice.onLoadMore}
                 onRetry={() => voice.onOpenChange(true)}
                 player={player}
-                language={language}
+                sampleLanguages={model.sample_languages}
               />
             ) : openRow.kind === 'choice' ? (
               <OptionList
@@ -435,7 +436,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                   onLoadMore={voice.onLoadMore}
                   onRetry={() => voice.onOpenChange(true)}
                   player={player}
-                  language={language}
+                  sampleLanguages={model.sample_languages}
                 />
               </>
             ) : (
@@ -500,9 +501,9 @@ interface SpeakerNameBoxProps {
 }
 
 /**
- * A speaker's name, written when the reader leaves the box or presses Enter,
+ * A speaker's name, written when the user leaves the box or presses Enter,
  * so each edit is one canvas undo step. The Enter that confirms an IME word
- * is not the reader finishing the name.
+ * is not the user finishing the name.
  * @param root0 - Props.
  * @param root0.label - The box's name.
  * @param root0.placeholder - What the empty box says.

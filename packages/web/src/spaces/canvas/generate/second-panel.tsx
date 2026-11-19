@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import * as React from 'react';
@@ -43,7 +43,7 @@ export function useSecondPanelSide(
 
 interface SecondPanelRowProps {
   /** The row's name, in the first column. */
-  label: string;
+  label: React.ReactNode;
   /** What the row stands on, in the second column. */
   value: React.ReactNode;
   /** Whether this row's second panel is open. */

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 
@@ -24,6 +24,7 @@ describe('storage-keys registry', () => {
       deferredAppVersions: 'breatic.deferredAppVersions',
       reloadDrafts: 'breatic.reloadDrafts',
       attribution: 'breatic.attribution',
+      referralCode: 'breatic.referralCode',
     });
   });
 

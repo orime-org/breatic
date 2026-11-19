@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Batch-6 container recipes on real media: the expand `model_composite` (erase is in erase-expand-recipes.node.test.ts), the GL `transition_window` and the transition

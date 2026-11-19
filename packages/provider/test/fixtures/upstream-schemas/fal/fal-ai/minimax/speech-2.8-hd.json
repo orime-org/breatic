@@ -1,0 +1,331 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/minimax/speech-2.8-hd",
+  "fields": {
+    "audio_setting": [
+      {
+        "type": "object"
+      }
+    ],
+    "audio_setting.bitrate": [
+      {
+        "type": "integer",
+        "enum": [
+          32000,
+          64000,
+          128000,
+          256000
+        ],
+        "default": 128000
+      }
+    ],
+    "audio_setting.channel": [
+      {
+        "type": "integer",
+        "enum": [
+          1,
+          2
+        ],
+        "default": 1
+      }
+    ],
+    "audio_setting.format": [
+      {
+        "type": "string",
+        "enum": [
+          "mp3",
+          "pcm",
+          "flac"
+        ],
+        "default": "mp3"
+      }
+    ],
+    "audio_setting.sample_rate": [
+      {
+        "type": "integer",
+        "enum": [
+          8000,
+          16000,
+          22050,
+          24000,
+          32000,
+          44100
+        ],
+        "default": 32000
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "language_boost": [
+      {
+        "type": "string",
+        "enum": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Afrikaans",
+          "auto"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "normalization_setting": [
+      {
+        "type": "object"
+      }
+    ],
+    "normalization_setting.enabled": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "normalization_setting.target_loudness": [
+      {
+        "type": "number",
+        "minimum": -70,
+        "maximum": -10,
+        "default": -18
+      }
+    ],
+    "normalization_setting.target_peak": [
+      {
+        "type": "number",
+        "minimum": -3,
+        "maximum": 0,
+        "default": -0.5
+      }
+    ],
+    "normalization_setting.target_range": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 20,
+        "default": 8
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "url",
+          "hex"
+        ],
+        "default": "hex"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 10000
+      }
+    ],
+    "pronunciation_dict": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "pronunciation_dict.tone_list": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "voice_modify": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "voice_modify.intensity": [
+      {
+        "type": "integer",
+        "minimum": -100,
+        "maximum": 100,
+        "default": 0
+      }
+    ],
+    "voice_modify.pitch": [
+      {
+        "type": "integer",
+        "minimum": -100,
+        "maximum": 100,
+        "default": 0
+      }
+    ],
+    "voice_modify.timbre": [
+      {
+        "type": "integer",
+        "minimum": -100,
+        "maximum": 100,
+        "default": 0
+      }
+    ],
+    "voice_setting": [
+      {
+        "type": "object",
+        "default": {
+          "pitch": 0,
+          "speed": 1,
+          "voice_id": "Wise_Woman",
+          "english_normalization": false,
+          "vol": 1
+        }
+      }
+    ],
+    "voice_setting.emotion": [
+      {
+        "type": "string",
+        "enum": [
+          "happy",
+          "sad",
+          "angry",
+          "fearful",
+          "disgusted",
+          "surprised",
+          "neutral"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "voice_setting.english_normalization": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "voice_setting.pitch": [
+      {
+        "type": "integer",
+        "minimum": -12,
+        "maximum": 12,
+        "default": 0
+      }
+    ],
+    "voice_setting.speed": [
+      {
+        "type": "number",
+        "minimum": 0.5,
+        "maximum": 2,
+        "default": 1
+      }
+    ],
+    "voice_setting.voice_id": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "default": "Wise_Woman"
+      }
+    ],
+    "voice_setting.vol": [
+      {
+        "type": "number",
+        "minimum": 0.01,
+        "maximum": 10,
+        "default": 1
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "outputs": {
+    "audio": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "audio.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "duration_ms": [
+      {
+        "type": "integer"
+      }
+    ]
+  }
+}

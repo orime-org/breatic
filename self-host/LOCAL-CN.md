@@ -4,7 +4,7 @@
 
 适用：自己使用，或分享给家庭、私密小组、同一组织内的同事。主站安装在一台电脑上，其他人通过浏览器访问这台电脑。**使用发布镜像，不启动源码开发服务器。** 修改源码请看 [开发环境](DEVELOPMENT-CN.md)。
 
-[LICENSE](../LICENSE) 允许个人、非公开招募的私密群体及组织内部使用；未经另行授权，不能向公众提供 Breatic，收费和免费都不允许。局域网部署也应限定到自己的授权使用群体。
+Breatic 采用 [GNU Affero General Public License v3.0](../LICENSE)。如果你修改了 Breatic，并让其他人通过网络使用修改后的版本，就必须按同一许可证向他们提供完整源代码。Breatic 名称和标识的使用规则见 [TRADEMARKS.md](../TRADEMARKS.md)。
 
 ## 1. 部署完成后是什么样
 
@@ -83,7 +83,7 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 自带的 Nginx 拒收超过 1 MiB 的请求体（`docker/breatic-locations.conf` 的 `client_max_body_size 1m`），与 `config/limits.yaml` 的 `request_body_max_bytes` 是同一个上限，两处要一起改。
 
-供应商密钥必须替换为自己的有效值；不使用的密钥留空。配置 `OPENROUTER_API_KEY` 可以为未配置厂商直连密钥的文本模型提供调用入口，具体仍受模型可用性和账户额度限制。图像、视频等按 `config/models/<类型>/providers.yaml` 的 `api_key_env` 配置；例如 WaveSpeed 对应模型需要 `WAVESPEED_API_KEY`。
+供应商密钥必须替换为自己的有效值；不使用的密钥留空。配置 `OPENROUTER_API_KEY` 可以为未配置厂商直连密钥的文本模型提供调用入口，具体仍受模型可用性和账户额度限制。每家上游读的环境变量名写在 `config/provider/upstreams.yaml` 的 `key_env`；图像、视频等生成模型至少要配上它在 `config/provider/media/<类型>.yaml` 里列出的一家上游的密钥，例如 `WAVESPEED_API_KEY` 或 `FAL_KEY`。
 
 <a id="cloudflare"></a>
 ## 4. 正式部署 Cloudflare 上传服务
@@ -98,7 +98,9 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 当前资产通过公开 URL 读取；Breatic 实例私有并不自动使 R2 文件私有。不要把需要私密访问控制的素材放入这套公开读取配置。
 
-一次请求装不下的大段文字（很长的粘贴文本节点、它的历史快照、带大附件的 Agent 消息）会作为临时传输文件上传到 `transfer/` 前缀下，由服务端用 S3 凭据读回。在 bucket 上加一条 R2 生命周期规则：前缀 `transfer/` 的对象 1 天后删除。使用自己的资产域名时，再加一条 Cloudflare WAF 自定义规则，拦掉路径以 `/transfer/` 开头的请求；`r2.dev` 地址配不了这条规则。参考 [对象生命周期](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)。
+一次请求装不下的大段文字（很长的粘贴文本节点、它的历史快照、带大附件的 Agent 消息、长 Document 的快照）会作为临时传输文件上传到 `transfer/` 前缀下，由服务端用 S3 凭据读回。在 bucket 上加一条 R2 生命周期规则：前缀 `transfer/` 的对象 1 天后删除。使用自己的资产域名时，再加一条 Cloudflare WAF 自定义规则，拦掉路径以 `/transfer/` 开头的请求；`r2.dev` 地址配不了这条规则。参考 [对象生命周期](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)。
+
+Timeline 网页动画是可选功能，默认关闭，开启方法见 [packages/ingest/README.md](../packages/ingest/README.md#web-animation)。它的源包存放在私有的 `web-animation/` 前缀下，只能经 Worker 的签名预览路由读取。在自己的资产域名上开启时，再加一条 Cloudflare WAF 自定义规则，拦掉路径以 `/web-animation/` 开头的请求；`r2.dev` 地址配不了这条规则。
 
 在 bucket 的 CORS 设置中保存：
 
@@ -132,7 +134,7 @@ pnpm --filter @breatic/ingest exec wrangler whoami
 name = "creator-ingest-config"
 main = "src/index.ts"
 compatibility_date = "2026-03-10"
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = ["nodejs_compat", "enable_request_signal"]
 account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
 
 [env.production]
@@ -159,9 +161,69 @@ class_name = "MediaContainer"
 [env.production.exports.MediaContainer]
 type = "durable-object"
 storage = "sqlite"
+
+[[env.production.containers]]
+class_name = "MiniToolContainerStd1"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-1"
+max_instances = 3
+
+[[env.production.containers]]
+class_name = "MiniToolContainerStd4"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-4"
+max_instances = 1
+
+[[env.production.durable_objects.bindings]]
+name = "MINI_TOOL_STD1"
+class_name = "MiniToolContainerStd1"
+
+[[env.production.durable_objects.bindings]]
+name = "MINI_TOOL_STD4"
+class_name = "MiniToolContainerStd4"
+
+[env.production.exports.MiniToolContainerStd1]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.MiniToolContainerStd4]
+type = "durable-object"
+storage = "sqlite"
+
+[[env.production.containers]]
+class_name = "LongMediaContainer"
+image = "./Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-4"
+max_instances = 2
+
+[[env.production.durable_objects.bindings]]
+name = "LONG_MEDIA"
+class_name = "LongMediaContainer"
+
+[env.production.exports.LongMediaContainer]
+type = "durable-object"
+storage = "sqlite"
+
+[[env.production.containers]]
+class_name = "WebReaderContainer"
+image = "./web-reader/Dockerfile"
+image_build_context = "../.."
+instance_type = "standard-2"
+max_instances = 3
+
+[[env.production.durable_objects.bindings]]
+name = "WEB_READER"
+class_name = "WebReaderContainer"
+
+[env.production.exports.WebReaderContainer]
+type = "durable-object"
+storage = "sqlite"
 ```
 
-`compatibility_flags` 必须有：缺了它 Worker 加载失败（`No such module "node:async_hooks"`）。在加这一行之前建的配置，下次部署前要补上。不需要配置错误上报；没有 `SENTRY_DSN` 时 Worker 什么都不上报。
+`compatibility_flags` 必须有：缺了 `nodejs_compat`，Worker 加载失败（`No such module "node:async_hooks"`）；`enable_request_signal` 让 Agent 的请求结束时网页读取跟着停下。上面每个容器类也都必须有：缺了 `MEDIA`、`MINI_TOOL_STD1`、`MINI_TOOL_STD4`、`LONG_MEDIA`、`WEB_READER` 任何一个绑定，Worker 对每个请求都回 500 并写出缺的名字。在加这些行之前建的配置，下次部署前要补上。`max_instances` 是每个类同时运行的实例上限，同时使用的人多就调大；`LongMediaContainer` 除外，它保持 `config/understand.yaml` 里 `container_max_instances` 的值。不需要配置错误上报；没有 `SENTRY_DSN` 时 Worker 什么都不上报。
 
 同一 Cloudflare 账户安装多套实例时，为每套使用不同的 production `name`、bucket 和密钥；不要覆盖已有 Worker。正式配置没有 `[dev].port`、`remote=true` 或 `.dev.vars`。
 
@@ -178,7 +240,7 @@ pnpm --filter @breatic/ingest exec wrangler secret put INGEST_SHARED_SECRET --en
 pnpm --filter @breatic/ingest deploy:worker
 ```
 
-首次设置 secret 若询问是否创建尚不存在的 Worker，确认名称是你本次的新实例后创建。首次发布会构建并上传媒体容器，最后输出 Worker HTTPS 地址。使用输出的实际地址，例如 `https://creator-ingest-personal.YOUR_SUBDOMAIN.workers.dev`，不要猜账户子域名。有关发布行为见 [Cloudflare Containers 部署说明](https://developers.cloudflare.com/containers/guides/deploy/)。
+首次设置 secret 若询问是否创建尚不存在的 Worker，确认名称是你本次的新实例后创建。首次发布会构建并上传媒体容器和网页读取容器，最后输出 Worker HTTPS 地址。使用输出的实际地址，例如 `https://creator-ingest-personal.YOUR_SUBDOMAIN.workers.dev`，不要猜账户子域名。有关发布行为见 [Cloudflare Containers 部署说明](https://developers.cloudflare.com/containers/guides/deploy/)。
 
 如果账户未开通 Containers、镜像构建或发布失败，先解决错误；不要通过禁用媒体容器来宣称上传链路完整。
 
@@ -198,6 +260,8 @@ INGEST_SHARED_SECRET=YOUR_GENERATED_SECRET
 ```
 
 替换全部 `YOUR_...`。共享密钥必须与刚设置到 Cloudflare 的完全相同，bucket 必须一致；公开读取地址和 S3 endpoint 不能互换，URL 不带末尾 `/`。不要把密钥提交到仓库。
+
+开启网页动画时，再把 `WEB_ANIMATION_PREVIEW_BASE_URL` 设为提供 Worker 预览路由的 HTTPS 地址，最好是单独的域名。
 
 Cloudflare Worker 不需要回调你的本机主站，因此个人使用不需要端口映射、内网穿透或公网主站域名。
 

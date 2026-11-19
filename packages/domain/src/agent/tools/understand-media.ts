@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Media understanding tool — ask one question about ordered images, video and audio.
@@ -16,7 +16,8 @@
 
 import { tool, type Tool } from "ai";
 import { z } from "zod";
-import { budgetDeadlineFrom, getAgentConfig, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
+import { budgetDeadlineFrom, getAgentConfig, getUnderstandConfig } from "@breatic/core";
+import type { Cost } from "@breatic/provider";
 import { FAILURE_LINES, type FailureLine, type LongMediaSourceReference } from "@breatic/shared";
 import { isStop, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
@@ -95,7 +96,7 @@ function unsupportedSentence(declaredType: string | undefined): string {
  * added without a sentence of its own would otherwise inherit whichever one
  * happens to be last, and say something false about it.
  * @param err - What the fetch refused with.
- * @returns The sentence for the model, and the line a reader is shown.
+ * @returns The sentence for the model, and the line a user is shown.
  */
 function unavailableFailure(err: MediaUnavailable): Error {
   const item = err.itemIndex === undefined ? "" : `Item ${String(err.itemIndex)} (${err.url ?? "unknown address"}): `;
@@ -142,14 +143,14 @@ function unavailableFailure(err: MediaUnavailable): Error {
  * Naming the address would send the model to blame a url that was fine, and
  * the endpoint has no business in a conversation.
  * @param cause - What was caught.
- * @param readerKey - Whether the service failed (`busy`) or never answered
+ * @param userKey - Whether the service failed (`busy`) or never answered
  *   at all (`noConnection`).
- * @returns The sentence for the model, and the line a reader is shown.
+ * @returns The sentence for the model, and the line a user is shown.
  */
-function serviceSilent(cause: unknown, readerKey: FailureLine): Error {
+function serviceSilent(cause: unknown, userKey: FailureLine): Error {
   return toolFailed(
     "The media understanding service did not answer. Tell the user to try again shortly.",
-    readerKey,
+    userKey,
     cause,
   );
 }
@@ -164,7 +165,7 @@ function serviceSilent(cause: unknown, readerKey: FailureLine): Error {
  * than no words, since "do not send this file again" on a question the model
  * could simply reword takes away the only step that would have worked.
  * @param err - What the service refused with.
- * @returns The sentence for the model, and the line a reader is shown.
+ * @returns The sentence for the model, and the line a user is shown.
  */
 function refusedFailure(err: UnderstandRefused): Error {
   switch (err.kind) {
@@ -217,13 +218,14 @@ function refusedFailure(err: UnderstandRefused): Error {
 /**
  * What to add to an answer that stopped before the model was finished.
  *
- * Keyed by the endpoint's own vocabulary, and absent for every reason that
- * means the model said what it had to say.
+ * Keyed by the AI SDK's finish reasons, which provider answers for every
+ * upstream, and absent for every reason that means the model said what it had
+ * to say.
  */
 const STOPPED_SHORT: Readonly<Record<string, string>> = {
   length: "This description was cut off at the length limit.",
   error: "This description stopped part way: the service failed while writing it.",
-  content_filter: "The rest of this description was withheld by a content filter.",
+  "content-filter": "The rest of this description was withheld by a content filter.",
 };
 
 /** The caller capabilities the media tool may use during one turn. */
@@ -295,35 +297,23 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
       { abortSignal, context, toolCallId }: { abortSignal?: AbortSignal; context: UnderstandMediaContext; toolCallId: string },
     ): Promise<string> => {
       /**
-       * Record one billed call.
-       * @param costUsd - What the service said it charged, when it said.
+       * Record one billed answer.
+       * @param cost - What it cost.
+       * @param upstream - The upstream that billed it.
        */
-      const recordBilled = (costUsd: number | undefined): void => {
-        context.usage.recordServiceCall({
-          source: "tool:understand_media",
-          service: UNDERSTAND_PINS.model,
-          provider: "openrouter",
-          requests: 1,
-          ...(costUsd === undefined ? {} : { costUsd }),
-        });
+      const recordBilled = (cost: Cost, upstream: string): void => {
+        context.usage.recordModelCall({ source: "tool:understand_media", model: UNDERSTAND_PINS.model, upstream, cost, requests: 1 });
       };
 
       if (abortSignal?.aborted) throw stoppedByUser();
       const input = inputSchema.parse({ items, question });
-      const apiKey = getRawEnvVar("OPENROUTER_API_KEY") ?? "";
-      if (!apiKey) {
-        // Defensive: `buildToolSet` leaves this tool out of the set entirely
-        // when the key is missing, so a turn should not reach here.
-        throw toolFailed(
-          "Media understanding is not available on this deployment: it has no credentials. " +
-            "Tell the user, and do not try again.",
-          FAILURE_LINES.unavailable,
-        );
-      }
+      // A deployment with no understanding upstream has this tool left out of
+      // the set (`buildToolSet`); one that reaches it anyway is refused as a
+      // deployment matter by `understandMedia`.
 
       if (running) {
         // Turned away, not failed: nothing went wrong, the model is told to wait,
-        // and the reader is shown nothing for it. Past tense, and no mention of
+        // and the user is shown nothing for it. Past tense, and no mention of
         // a turn. This sentence is stored on the call and read again by every
         // later turn that reads the record — the same rule `web-search.ts`
         // states for its own reasons — so one saying something is running now
@@ -346,9 +336,6 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
           readFloorMs: config.understand_media_read_floor_ms,
           timeoutMs: config.understand_media_call_timeout_ms,
           model: UNDERSTAND_PINS.model,
-          backend: UNDERSTAND_PINS.backend,
-          apiKey,
-          baseUrl: UNDERSTAND_PINS.baseUrl,
           maxOutputTokens: config.understand_media_max_output_tokens,
           ...(abortSignal ? { signal: abortSignal } : {}),
           onBilled: recordBilled,
@@ -380,7 +367,6 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
             question: input.question,
             context,
             config,
-            apiKey,
             userActionKey: toolCallId,
             signal: abortSignal,
             onBilled: recordBilled,
@@ -402,7 +388,6 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
               question: input.question,
               context,
               config,
-              apiKey,
               userActionKey: toolCallId,
               signal: abortSignal,
               onBilled: recordBilled,
@@ -478,7 +463,6 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
  * @param input.question - The user's understanding question.
  * @param input.context - The turn's ownership and storage capabilities.
  * @param input.config - The caller's byte, item and request limits.
- * @param input.apiKey - The model provider key.
  * @param input.userActionKey - The stable SDK tool-call identity for retries.
  * @param input.signal - The turn cancellation signal, when present.
  * @param input.onBilled - The per-request billing recorder.
@@ -491,10 +475,9 @@ async function understandLongMedia(input: {
   question: string;
   context: UnderstandMediaContext;
   config: ReturnType<typeof getAgentConfig>;
-  apiKey: string;
   userActionKey: string;
   signal?: AbortSignal;
-  onBilled: (costUsd: number | undefined) => void;
+  onBilled: (cost: Cost, upstream: string) => void;
 }): Promise<Awaited<ReturnType<typeof understandMediaAt>>> {
   if (!input.context.projectId || !input.context.actorUserId) throw new Error("Long-media ownership context is missing.");
   const deadlineAt = budgetDeadlineFrom(Date.now());
@@ -541,9 +524,6 @@ async function understandLongMedia(input: {
         readFloorMs: input.config.understand_media_read_floor_ms,
         timeoutMs: input.config.understand_media_call_timeout_ms,
         model: UNDERSTAND_PINS.model,
-        backend: UNDERSTAND_PINS.backend,
-        apiKey: input.apiKey,
-        baseUrl: UNDERSTAND_PINS.baseUrl,
         maxOutputTokens: input.config.understand_media_max_output_tokens,
         checkpoint: durableOperation.checkpoint,
         signal: input.signal ? AbortSignal.any([input.signal, durableOperation.signal]) : durableOperation.signal,

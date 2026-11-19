@@ -1,0 +1,45 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=mureka/api/voice/clone",
+  "fields": {
+    "audio_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "description": [
+      {
+        "type": "string",
+        "maxLength": 1024
+      },
+      {
+        "type": "null"
+      }
+    ]
+  },
+  "required": [
+    "audio_url"
+  ],
+  "outputs": {
+    "created_at": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "description": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "vocal_id": [
+      {
+        "type": "string"
+      }
+    ]
+  }
+}

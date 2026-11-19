@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 test plan §97 D15-4 (frames-split §5.4 切块 and 派发 rows, §7.17 转场输出档 row): `planTransitionChunks(timeline,

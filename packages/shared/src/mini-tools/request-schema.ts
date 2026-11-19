@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The body of `POST /mini-tools`, generated from the registry (inner#888
@@ -18,6 +18,7 @@ import { isModelTool } from "@shared/mini-tools/derive.js";
 import { mostOutputsOf, outputsOf } from "@shared/mini-tools/outputs.js";
 import { MINI_TOOLS } from "@shared/mini-tools/tools.js";
 import type { MiniToolParam, MiniToolSpec } from "@shared/mini-tools/types.js";
+import { routeSchema, type RunRoute } from "@shared/schemas/route.js";
 
 const URL_SCHEMA = z.string().url().max(2048);
 
@@ -108,7 +109,7 @@ function slotsSchema(spec: MiniToolSpec): z.ZodType {
 }
 
 /**
- * The drawing field of one tool: what was uploaded from what the reader drew
+ * The drawing field of one tool: what was uploaded from what the user drew
  * — a mask tool's mask, a sketch tool's composite — required on a tool that
  * draws and absent everywhere else.
  * @param spec - The tool.
@@ -149,6 +150,7 @@ function memberObject(spec: MiniToolSpec): z.ZodObject {
     ...(spec.expand === undefined
       ? {}
       : { expand: z.strictObject({ image: URL_SCHEMA, mask: URL_SCHEMA }) }),
+    ...(isModelTool(spec) ? { route: routeSchema.optional() } : {}),
   });
 }
 
@@ -175,12 +177,14 @@ export interface MiniToolRequest {
   params: Record<string, unknown>;
   slots: Record<string, MiniToolRequestSlot | MiniToolRequestSlot[] | undefined>;
   /**
-   * What was uploaded from the reader's drawing, on a tool that draws: a mask
+   * What was uploaded from the user's drawing, on a tool that draws: a mask
    * tool's mask, or a sketch tool's composite.
    */
   drawing?: { mask: string } | { image: string } | undefined;
   /** An expand tool's padded picture and the mask of its new area. */
   expand?: { image: string; mask: string } | undefined;
+  /** How a model tool's run chooses its upstream; the deployment's weights when left out. */
+  route?: RunRoute | undefined;
 }
 
 /**

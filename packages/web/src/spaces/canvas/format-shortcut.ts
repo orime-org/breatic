@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { isMac } from '@web/lib/is-mac';
 
 /** A keyboard shortcut descriptor for display in a menu. */
 export interface ShortcutSpec {
@@ -11,16 +13,6 @@ export interface ShortcutSpec {
   alt?: boolean;
   /** The base key, e.g. `'V'`, `'C'`, `'G'`, or the special `'Delete'`. */
   key: string;
-}
-
-/**
- * Whether the current platform is macOS / iOS (Cmd-based) vs Windows / Linux
- * (Ctrl-based). Reads `navigator.platform` (falling back to the user agent).
- * @returns True on macOS / iOS.
- */
-function isMac(): boolean {
-  const id = navigator.platform || navigator.userAgent || '';
-  return /mac|iphone|ipad|ipod/i.test(id);
 }
 
 /**

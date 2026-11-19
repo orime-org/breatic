@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The three deferred-decision request tables and the uniqueness they rest on.
@@ -99,14 +99,7 @@ const EXPECTED_INDEXES = [
 ] as const;
 
 // These three catalog queries use postgres.js's `IN ${sql([...])}` list form,
-// which expands to one scalar parameter per element. The tempting
-// `= ANY(${sql.array([...])})` is TIMING-DEPENDENT and must not be used here:
-// `sql.array` types a string array as OID 25 (scalar text — `inferType` has no
-// string branch, so it falls through to the `|| 25` default), and the real
-// array OID is patched in from `typeArrayMap`, a shared map that starts empty
-// and is filled by a `pg_type` query when a pooled connection comes up. Serialize
-// a parameter before that lands and Postgres receives scalar text, answering
-// "op ANY/ALL (array) requires array on right side".
+// which expands to one scalar parameter per element.
 describe("the three request tables exist with their uniqueness", () => {
   it("all three tables are present", async () => {
     const rows = await sql<{ table_name: string }[]>`

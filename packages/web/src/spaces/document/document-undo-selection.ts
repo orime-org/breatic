@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Undo restores the SELECTION, not only the text.
@@ -66,14 +66,13 @@
  * The same handover carries other plugins' Yjs names across undo and redo:
  * `keepOnUndoStack` keeps any value on each stack item, and `namesOnUndoStack`
  * takes a plugin's names when a Yjs transaction begins and hands them back on
- * the undo or redo of that edit. The upload placeholders keep their gaps this
- * way (`document-upload-slots.ts`), the comment draft its range
+ * the undo or redo of that edit. The comment draft keeps its range this way
  * (`document-comment-draft-range.ts`).
  */
 
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
-import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
+import { getRelativeSelection, ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 
 import { undoRedo } from '@web/spaces/document/document-yjs-origin';
 
@@ -109,6 +108,8 @@ function undoStackOf(state: EditorState): { binding: SyncBinding; undoManager: U
 interface StackItemEvent {
   /** The item just pushed. */
   readonly stackItem: { readonly meta: Map<unknown, unknown> };
+  /** The origin of the transaction that pushed it; the manager itself on undo and redo. */
+  readonly origin: unknown;
 }
 
 /** The undo manager fields this fix reads. */
@@ -133,25 +134,30 @@ interface YTransactionLike {
  * @param doc - The bound Yjs document.
  * @param undoManager - The undo manager.
  * @param key - The key the value is kept under on each item's meta.
- * @param capture - Gives the value for an item just pushed, or null to keep none.
+ * @param capture - Gives the value for an item just pushed, from the origin of
+ *   the transaction that pushed it, or null to keep none.
  * @param restore - Takes the value kept on the item being undone or redone, or
  *   undefined when it has none; called on every undo and redo transaction.
+ * @param begin - Called as every Yjs transaction begins
+ *   (`beforeAllTransactions`), before the body changes under it.
  * @returns A function that stops keeping and handing back.
  */
 function keepOnUndoStack(
   doc: YDocLike,
   undoManager: UndoManagerLike,
   key: unknown,
-  capture: () => unknown,
+  capture: (origin: unknown) => unknown,
   restore: (stored: unknown) => void,
+  begin: () => void,
 ): () => void {
   /**
    * Keeps the captured value on the item just pushed.
    * @param event - The event payload.
    * @param event.stackItem - The item just pushed.
+   * @param event.origin - The origin of the transaction that pushed it.
    */
-  const onAdded = ({ stackItem }: StackItemEvent): void => {
-    const value = capture();
+  const onAdded = ({ stackItem, origin }: StackItemEvent): void => {
+    const value = capture(origin);
     if (value != null) stackItem.meta.set(key, value);
   };
   /**
@@ -164,9 +170,11 @@ function keepOnUndoStack(
   };
   undoManager.on('stack-item-added', onAdded);
   doc.on('beforeObserverCalls', onBeforeObserverCalls);
+  doc.on('beforeAllTransactions', begin);
   return (): void => {
     undoManager.off('stack-item-added', onAdded);
     doc.off('beforeObserverCalls', onBeforeObserverCalls);
+    doc.off('beforeAllTransactions', begin);
   };
 }
 
@@ -175,7 +183,7 @@ export interface NamesOnUndoStack<T> {
   /**
    * The names as they stood before the edit an undo or redo takes back.
    * @param tr - The transaction being applied.
-   * @returns Those names on the reader's undo or redo of an edit that kept
+   * @returns Those names on the user's undo or redo of an edit that kept
    *   some; null for every other transaction.
    */
   readonly handedFor: (tr: Transaction) => T | null;
@@ -205,18 +213,18 @@ export function namesOnUndoStack<T>(current: (state: EditorState) => T | null): 
       const stack = undoStackOf(view.state);
       if (stack === null) return () => undefined;
       const { doc } = stack.binding;
-      const stopKeeping = keepOnUndoStack(doc, stack.undoManager, {}, () => before, (stored) => {
-        handed = (stored as T | undefined) ?? null;
-      });
-      /** Takes the names as they stand before a Yjs transaction. */
-      const onBeforeAll = (): void => {
-        before = current(view.state);
-      };
-      doc.on('beforeAllTransactions', onBeforeAll);
-      return () => {
-        stopKeeping();
-        doc.off('beforeAllTransactions', onBeforeAll);
-      };
+      return keepOnUndoStack(
+        doc,
+        stack.undoManager,
+        {},
+        () => before,
+        (stored) => {
+          handed = (stored as T | undefined) ?? null;
+        },
+        () => {
+          before = current(view.state);
+        },
+      );
     },
   };
 }
@@ -225,7 +233,19 @@ export function namesOnUndoStack<T>(current: (state: EditorState) => T | null): 
 interface PreEditState {
   /** The relative selection from before the user's edit, or null. */
   preEditSel: unknown;
+  /** Whether a caret move asked to keep the selection before it for the next edit. */
+  held?: boolean;
 }
+
+/**
+ * The meta a caret move carries (`true`) when the edit that follows it in the
+ * same event is to undo back to where the caret was before the move: a drop
+ * puts the caret at the drop point and then pastes there (inner#1351 design
+ * §5.4.1). That edit takes the held selection and lets it go; a transaction
+ * marked `false`, which the event dispatches when it ends, lets it go when no
+ * edit followed.
+ */
+export const HOLD_PRE_EDIT_SELECTION = 'documentHoldPreEditSelection';
 
 const key = new PluginKey<PreEditState>('documentUndoSelection');
 
@@ -252,6 +272,9 @@ export function documentUndoSelectionPlugin(): Plugin<PreEditState> {
        * Copies the undo plugin's freshly computed selection, but only off the
        * transaction that carries the user's own edit — the appended follow-ups
        * of the same dispatch would replace "before the edit" with "after it".
+       * A caret move marked {@link HOLD_PRE_EDIT_SELECTION} `true` keeps the
+       * selection from before it for the next edit instead, which takes it
+       * and lets it go; a transaction marked `false` lets it go unused.
        * @param tr - The transaction being applied.
        * @param value - The previous state.
        * @param _oldState - The state before the transaction.
@@ -259,18 +282,23 @@ export function documentUndoSelectionPlugin(): Plugin<PreEditState> {
        * @returns The next state.
        */
       apply: (tr, value, _oldState, newState): PreEditState => {
-        if (!tr.docChanged || tr.getMeta('appendedTransaction') !== undefined) {
-          return value;
-        }
         const undo = yUndoPluginKey.getState(newState) as
           | { prevSel?: unknown }
           | undefined;
+        // The undo plugin's selection for this transaction is the one before it.
+        const hold = tr.getMeta(HOLD_PRE_EDIT_SELECTION) as boolean | undefined;
+        if (hold === true) return { preEditSel: undo?.prevSel ?? value.preEditSel, held: true };
+        if (hold === false) return { preEditSel: value.preEditSel };
+        if (!tr.docChanged || tr.getMeta('appendedTransaction') !== undefined) {
+          return value;
+        }
+        if (value.held === true) return { preEditSel: value.preEditSel };
         return undo?.prevSel != null ? { preEditSel: undo.prevSel } : value;
       },
     },
 
     /**
-     * Subscribes the two handlers for as long as the editor lives.
+     * Subscribes its handlers for as long as the editor lives.
      * @param view - The editor view.
      * @returns The plugin view, whose destroy unsubscribes them.
      */
@@ -281,15 +309,25 @@ export function documentUndoSelectionPlugin(): Plugin<PreEditState> {
       }
       const { binding, undoManager } = stack;
 
+      // The item an undo or redo pushes keeps the selection from when the user
+      // pressed it, as prosemirror-history keeps it for the other branch. It is
+      // read as the Yjs transaction begins: by the time the restore
+      // transaction reaches the undo plugin, the Yjs text has already changed
+      // under the old selection, and its `prevSel` lands off by the words the
+      // undo took out.
+      let atUndoRedo: unknown = null;
       // Keyed by the binding, which is where upstream keeps the selection, so
       // this overwrites what it stored.
       const stop = keepOnUndoStack(
         binding.doc,
         undoManager,
         binding,
-        () => key.getState(view.state)?.preEditSel ?? null,
+        (origin) => (origin === undoManager ? atUndoRedo : key.getState(view.state)?.preEditSel ?? null),
         (stored) => {
           if (stored != null) binding.beforeTransactionSelection = stored;
+        },
+        () => {
+          atUndoRedo = getRelativeSelection(binding as never, view.state);
         },
       );
       return { destroy: stop };

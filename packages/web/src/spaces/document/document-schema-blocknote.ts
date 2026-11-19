@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The BlockNote schema this Space runs on.
@@ -35,8 +35,10 @@ import {
 
 import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
 import { buildListItemSpecs } from '@web/spaces/document/document-list-block';
+import { mathBlockSpec, mathInlineSpec } from '@web/spaces/document/document-math';
 import { withMediaView } from '@web/spaces/document/document-media-blocknote';
 import { legacyTableSpec } from '@web/spaces/document/document-table-legacy';
+import { docColumnSpecs } from '@web/spaces/document/document-column-nodes';
 import { docTableSpecs } from '@web/spaces/document/document-table-nodes';
 import {
   unsupportedBlockSpec,
@@ -72,6 +74,15 @@ const MEDIA_SIZE_PROPS: Record<string, PropDecl> = {
   mediaHeight: { default: undefined, type: 'number' },
 };
 
+/**
+ * The id of the upload a media block waits for (inner#1351 design §5.5): set
+ * while the block is pending (its `url` empty), cleared when the address is
+ * written.
+ */
+const UPLOAD_ID_PROP: Record<string, PropDecl> = {
+  uploadId: { default: '' },
+};
+
 /** Lets a list item pin a user-set number. */
 const NUMBER_PROP: Record<string, PropDecl> = {
   number: { default: undefined, type: 'number' },
@@ -97,7 +108,7 @@ function withProps<T extends SpecWithProps>(
 }
 
 /**
- * Builds the schema: twelve block types, five added props, the rest turned off.
+ * Builds the schema: thirteen block types, five added props, the rest turned off.
  * @returns The schema to hand `BlockNoteEditor.create`.
  * @throws {Error} Whatever BlockNote throws while validating the specs.
  */
@@ -143,7 +154,7 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     checkListItem: withProps(lists.checkListItem, QUOTED_PROP),
     // The library's own `---` rule is dropped: its wrapper always ends by
     // putting the caret at the start of the new block, which for a block with
-    // no text is a node selection the reader cannot type into
+    // no text is a node selection the user cannot type into
     // (`ExtensionManager/index.ts:565-583`). `documentDividerInputExtension`
     // places the divider and the caret in one transaction instead.
     divider: { ...withProps(enabled.divider, QUOTED_PROP), extensions: [] },
@@ -151,11 +162,19 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     // (inner#1619).
     table: legacyTableSpec(),
     ...docTableSpecs(),
+    // Column groups (inner#1314).
+    ...docColumnSpecs(),
     // The library's own props: image and video carry a width and an
     // alignment, audio neither (inner#1127 A8, A9).
-    image: withMediaView(withProps(enabled.image, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS })),
-    video: withMediaView(withProps(enabled.video, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS })),
-    audio: withMediaView(withProps(enabled.audio, QUOTED_PROP)),
+    image: withMediaView(
+      withProps(enabled.image, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS, ...UPLOAD_ID_PROP }),
+    ),
+    video: withMediaView(
+      withProps(enabled.video, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS, ...UPLOAD_ID_PROP }),
+    ),
+    audio: withMediaView(withProps(enabled.audio, { ...QUOTED_PROP, ...UPLOAD_ID_PROP })),
+    // A formula on a line of its own (inner#1423).
+    mathBlock: mathBlockSpec(),
     unsupportedBlock: unsupportedBlockSpec,
   };
 
@@ -163,6 +182,8 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     blockSpecs,
     inlineContentSpecs: {
       ...defaultInlineContentSpecs,
+      // A formula inside a line (inner#1423).
+      math: mathInlineSpec(),
       unsupportedInline: unsupportedInlineSpec,
     },
     styleSpecs: { ...defaultStyleSpecs },

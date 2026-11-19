@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
 import { type ModelEntry, type ParamDescriptor } from '@breatic/shared';
@@ -41,7 +41,8 @@ function entry(params: Record<string, ParamDescriptor>, takesPrompt = false): Mo
     generation_time: 10,
     takes_prompt: takesPrompt,
     params,
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
   } as ModelEntry;
 }
 
@@ -101,7 +102,7 @@ describe('resolvedParams', () => {
     });
   });
 
-  it('sends the size tier the reader picked', () => {
+  it('sends the size tier the user picked', () => {
     expect(
       resolvedParams(tool('image.upscale'), upscaler, { target_megapixels: '8K' }, { width: 1024, height: 1536 }),
     ).toEqual({ target_megapixels: 44.74, creativity: 0 });
@@ -365,7 +366,7 @@ describe('the markup tool', () => {
 });
 
 describe('BLOCKING_REFUSALS', () => {
-  it('disables Execute for the reasons the reader fixes in the panel', () => {
+  it('disables Execute for the reasons the user fixes in the panel', () => {
     expect([...BLOCKING_REFUSALS].sort()).toEqual([
       'adjustNeutral',
       'drawingEmpty',

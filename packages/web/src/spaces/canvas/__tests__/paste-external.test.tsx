@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Pasting a node whose content is an address outside our storage.
@@ -95,7 +95,7 @@ describe('pasting a node from outside', () => {
   });
 
   it('creates an empty image node and asks for the address to be fetched into it', async () => {
-    const paste = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {} });
+    const paste = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: {}, media: {} });
     const ingestUrl = vi
       .spyOn(canvasApi, 'ingestUrl')
       .mockResolvedValue({ task_id: 't1' });

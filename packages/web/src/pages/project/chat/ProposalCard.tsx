@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight } from 'lucide-react';
@@ -30,7 +30,7 @@ interface ProposalCardProps {
 /**
  * One press that puts a whole wired group on the canvas (#229).
  *
- * The card exists for the reader who has said what they want in the chat and
+ * The card exists for the user who has said what they want in the chat and
  * does not know the canvas: it says what would be built, which model it runs
  * on, and what is left for them afterwards -- all before they press. Pressing
  * posts the proposal to the canvas, which owns the viewport and decides where
@@ -55,7 +55,7 @@ export const ProposalCard = React.memo(function ProposalCard({
   const { data: catalog } = useQuery(modelCatalogQuery());
 
   const shape = React.useMemo(() => shapeOf(proposal), [proposal]);
-  // Where each generation's setup is found, in the reader's language. The
+  // Where each generation's setup is found, in the user's language. The
   // name in it is the one the canvas's right-click menu shows.
   const panelLines = React.useMemo(
     () => ({ prompt: t('chat.proposal.promptReady'), settings: t('chat.proposal.settingsReady') }),
@@ -78,14 +78,18 @@ export const ProposalCard = React.memo(function ProposalCard({
   // the card that is waiting reads it: placing runs to completion inside one
   // synchronous effect, so no second card can have posted in between. A
   // failure is told in a toast as it is answered (inner#1530); the button is
-  // free to press again.
+  // free to press again. A Space without room for it is told the same way,
+  // as a warning (inner#1790), except while a refused document is rebuilt,
+  // which said its own sentence once.
   const failedLine = t('chat.proposal.failed');
+  const fullLine = t('spaces.sizeCap.proposal');
   React.useEffect(() => {
     if (!building || outcome === null) return;
     setBuilding(false);
     if (outcome === 'failed') toast.error(failedLine);
+    else if (typeof outcome === 'object' && outcome.reason !== 'resyncing') toast.warning(fullLine);
     clearOutcome();
-  }, [building, outcome, clearOutcome, failedLine]);
+  }, [building, outcome, clearOutcome, failedLine, fullLine]);
 
   const onUse = React.useCallback((): void => {
     // Nobody is holding the mailbox when no canvas is open. Said out loud
@@ -177,7 +181,7 @@ export const ProposalCard = React.memo(function ProposalCard({
             <div key={`todo-${String(g)}`} data-testid='proposal-todo-group'>
               {/* Named wherever the proposal places more than one node: with
                   two on screen and one line under them, an unheaded line
-                  leaves the reader unable to tell which it is about. A
+                  leaves the user unable to tell which it is about. A
                   proposal of one node has nothing to tell it apart from. */}
               {proposal.nodes.length > 1 ? (
                 <div className='font-medium text-foreground'>
@@ -208,7 +212,7 @@ export const ProposalCard = React.memo(function ProposalCard({
 /**
  * One node's words, already written, drawn in full under its name.
  *
- * Read here rather than after placing: a reader who wants another version
+ * Read here rather than after placing: a user who wants another version
  * asks for one in the chat, with nothing of theirs on the canvas to undo. Not
  * truncated -- a note they cannot finish reading is one they cannot judge,
  * and the chat column scrolls.

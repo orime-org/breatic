@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Where the presence rules meet Hocuspocus.
@@ -19,7 +19,7 @@
  * The refresh that does it is the only one exported, so nothing can quietly
  * wire the roster back onto something the browser is free to throttle.
  *
- * ## There is deliberately no disconnect function here
+ * ## There is deliberately no presence disconnect function here
  *
  * A socket closing is not evidence that its owner left: they may hold another
  * one, on this machine or another, and this machine can only see its own. So
@@ -27,15 +27,22 @@
  * from nobody anywhere refreshing the timestamp — see `presence.ts`. The
  * absence of a function here IS the enforcement; a test cannot easily prove a
  * hook was left unwired, but code that does not exist cannot be called.
+ *
+ * Whom a connection follows is keyed on the SOCKET, not the person, so its
+ * close is exactly the evidence that entry needs
+ * ({@link forgetFollowingOnDisconnect}).
  */
 
-import { parseDocName } from "@breatic/shared";
+import { followingDeclarationSchema, parseDocName } from "@breatic/shared";
 
 import { stampConnectionIdentity } from "@collab/hooks/awareness-identity.js";
 import {
+  deleteFollowing,
   markOnline,
+  touchFollowing,
   touchLastSeen,
   sweepStalePresence,
+  writeFollowing,
 } from "@collab/hooks/presence.js";
 
 /** Minimum of a Y.Doc this module needs; avoids importing yjs types here. */
@@ -195,24 +202,29 @@ export interface SocketConnection {
  * for as long as anyone was in it, so the pass never came round again. Riding
  * the refresh turns the threshold into a delay instead of a single missed
  * chance, and costs one walk of a per-project map per refresh per person.
+ *
+ * The same sign of life moves this socket's following entry, whether or not
+ * its owner has a presence record to touch.
  * @param connections - Everything this socket carries, by document name.
  * @param policy - Clock and presence threshold.
  * @param heardAt - Wall-clock time the socket was last heard, in ms.
+ * @param socketId - The socket that showed it; connections do not carry it.
  */
 export function refreshPresenceForSocket(
   connections: ReadonlyMap<string, SocketConnection>,
   policy: PresencePolicy,
   heardAt: number,
+  socketId: string,
 ): void {
   for (const [documentName, connection] of connections) {
     if (!isMetaDoc(documentName)) continue;
+    const { document } = connection;
     const userId = userIdOf({ context: connection.context });
-    if (!userId) return;
-    if (!touchLastSeen({ document: connection.document, userId, heardAt })) return;
-    sweepStalePresence({
-      document: connection.document,
-      now: policy.now(),
-      staleAfterMs: policy.staleAfterMs,
+    // One transaction: every meta update is broadcast to the whole project.
+    document.transact(() => {
+      touchFollowing({ document, socketId, heardAt });
+      if (!userId || !touchLastSeen({ document, userId, heardAt })) return;
+      sweepStalePresence({ document, now: policy.now(), staleAfterMs: policy.staleAfterMs });
     });
     return;
   }
@@ -241,4 +253,78 @@ export function stampIdentityOnAwareness(payload: {
   if (!userId || !payload.connection) return;
 
   stampConnectionIdentity({ states: payload.states, userId });
+}
+
+/**
+ * Whether an awareness entry is the scratch awareness's own: the framework
+ * decodes each frame into a fresh awareness whose local entry is `{}`, and
+ * after {@link stampIdentityOnAwareness} it holds only `user`. It is no
+ * declaration of anything, so reading its missing `following` as "stopped
+ * following" would erase the sender's real one.
+ * @param state - One entry of the frame.
+ * @returns True for the scratch entry.
+ */
+function isScratchEntry(state: Record<string, unknown>): boolean {
+  return Object.keys(state).every((key) => key === "user");
+}
+
+/**
+ * Record whom the sending connection follows, from one meta awareness frame.
+ *
+ * Read here rather than from applied awareness updates because this hook sees
+ * the frame before the awareness clock filter: a reconnecting tab resends its
+ * state under an unchanged clock, which the document drops, and its new
+ * socket would otherwise never get an entry. A frame relayed from another
+ * instance has no connection and was recorded where it arrived.
+ * @param payload - The meta document's `beforeHandleAwareness` payload, after identity stamping.
+ * @param payload.states - Per-client states decoded from the inbound frame.
+ * @param payload.connection - The originating connection, absent for relayed frames.
+ * @param payload.context - Connection context, when the hook provides it directly.
+ * @param payload.socketId - The sending socket.
+ * @param payload.documentName - The document the frame is for.
+ * @param payload.document - That document.
+ * @param policy - Clock for `lastSeenAt`.
+ */
+export function recordFollowingFromAwareness(
+  payload: {
+    states: Map<number, Record<string, unknown>>;
+    connection?: ConnectionLike;
+    context?: PresenceContext;
+    socketId: string;
+    documentName: string;
+    document: PresenceDoc;
+  },
+  policy: PresencePolicy,
+): void {
+  if (!payload.connection || !isMetaDoc(payload.documentName)) return;
+  const userId = userIdOf(payload);
+  if (!userId) return;
+  const { document, socketId } = payload;
+  for (const state of payload.states.values()) {
+    if (state === null || typeof state !== "object" || isScratchEntry(state)) continue;
+    const following = followingDeclarationSchema.safeParse(state.following);
+    if (following.success) {
+      writeFollowing({ document, socketId, userId, target: following.data.id, at: following.data.at, now: policy.now() });
+    } else {
+      deleteFollowing({ document, socketId });
+    }
+  }
+}
+
+/**
+ * Drop a closing connection's following entry. The caller has already ruled
+ * out a refused duplicate, which shares the socket id of the connection it
+ * duplicated.
+ * @param payload - The `onDisconnect` payload.
+ * @param payload.documentName - The document the connection was for.
+ * @param payload.socketId - The closing socket.
+ * @param payload.document - That document.
+ */
+export function forgetFollowingOnDisconnect(payload: {
+  documentName: string;
+  socketId: string;
+  document: PresenceDoc;
+}): void {
+  if (!isMetaDoc(payload.documentName)) return;
+  deleteFollowing({ document: payload.document, socketId: payload.socketId });
 }

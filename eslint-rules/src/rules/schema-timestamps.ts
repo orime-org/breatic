@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
 
@@ -16,6 +16,9 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
   ["creditCompensations", "immutable funding evidence; deleting a receipt hides the provenance of credits already issued"],
   ["creditGifts", "immutable registration claim or operator funding evidence; removing a registration claim would permit a second grant"],
   ["creditGrantOperations", "immutable original grant decisions retain their idempotency keys permanently; deleting a decision would permit duplicate funding"],
+  ["referralCodes", "a code is only disabled, re-enabled or removed; bindings and future commissions point at it permanently"],
+  ["referralBindings", "a binding is permanent by the promoter terms; commissions are computed from it"],
+  ["referralOperations", "immutable back-office decisions retain their idempotency keys permanently; deleting one would let a replay act twice"],
   ["payments", "append-only financial record; deleting one breaks the audit trail"],
   [
     "membershipTierChanges",
@@ -42,6 +45,10 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "credits reserved for running work (0099, inner#1611): a hold ends by being released, and `status` records that; soft-deleting a row would release a hold without saying so, and the admission it was counted in could no longer be reconstructed",
   ],
   [
+    "creditChargeRequests",
+    "internal charge outbox (0121, inner#1617): appended in the delivery transaction and settled by the credit engine, kept as the record that the charge was asked for; soft-deleting a pending row would drop a charge without saying so",
+  ],
+  [
     "projectLifecycleOutbox",
     "internal transactional-outbox command queue, not a business entity: appended in a business tx, marked sent_at by the relay, retained as an audit trail",
   ],
@@ -59,7 +66,7 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
   ],
   [
     "presentationPinObjects",
-    "the object set of a presentation pin (0115, inner#1306 §7.15): a row is a key the pin references now, and whether the reference is live is the parent pin's deleted_at; a row leaves only when the pin stops referencing the key (a selected pin's whole-set Mv, a stitch's Drop), in the transaction that registers the key for reclaim, so a soft-deleted row would be a second, stale answer to whether a key is pinned",
+    "the object set of a presentation pin (0130, inner#1306 §7.15): a row is a key the pin references now, and whether the reference is live is the parent pin's deleted_at; a row leaves only when the pin stops referencing the key (a selected pin's whole-set Mv, a stitch's Drop), in the transaction that registers the key for reclaim, so a soft-deleted row would be a second, stale answer to whether a key is pinned",
   ],
   [
     "storageReclaimQueue",

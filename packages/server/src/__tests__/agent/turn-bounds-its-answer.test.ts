@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The ceiling on what one model call may write back (#148, G3).
@@ -23,7 +23,7 @@ const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
     watermark: 0,
   })),
@@ -55,14 +55,14 @@ vi.mock("@breatic/domain", async () => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
   const actual = await vi.importActual<typeof DomainModule>("@breatic/domain");
+  actual.initProvider((await import("../helpers/fake-provider.js")).assemblyProvider());
   return {
     ...base,
     streamTextRetry,
     finalizeTurn: actual.finalizeTurn,
     buildAgentConfig: actual.buildAgentConfig,
-    creditLotService: { chargeOnceForGeneration: vi.fn(async () => null) },
-    resolveProvider: () => "test",
-    getModel: () => ({ modelId: "test" }),
+    creditLotService: { chargeOnce: vi.fn(async () => null) },
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => ({ modelId: "test" })),
   };
 });
 
@@ -72,10 +72,11 @@ vi.mock("@server/modules", async (importOriginal) => {
 });
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  getMessagesForLlm: async () => [],
   titleForTurn: vi.fn(async () => null),
 }));
 vi.mock("@server/agent/turn-fold.js", () => ({

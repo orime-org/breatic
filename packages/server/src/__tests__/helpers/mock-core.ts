@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Shared @breatic/core mock for route-level tests.
@@ -21,13 +21,16 @@ import { vi } from "vitest";
 // it); test code is exempt from the alias rule.
 import {
   ASK_USER as REAL_ASK_USER,
-  AWAITS_READER as REAL_AWAITS_READER,
+  AWAITS_USER as REAL_AWAITS_USER,
   REQUEST_SPACE_CONTENT as REAL_REQUEST_SPACE_CONTENT,
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT as REAL_PROPOSE_DOCUMENT_EDIT,
+  PROPOSE_SCENE_GENERATION as REAL_PROPOSE_SCENE_GENERATION,
   SAVE_IMAGE as REAL_SAVE_IMAGE,
   RECORD_TOOL_NAMES as REAL_RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES as REAL_MEMORY_TOOL_NAMES,
   UNDERSTAND_MEDIA as REAL_UNDERSTAND_MEDIA,
+  WEB_FETCH as REAL_WEB_FETCH,
 } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
 // Pure rules about an address a caller hands over, which the routes read off
@@ -36,7 +39,7 @@ import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/
 import {
   extFromUrl as REAL_EXT_FROM_URL,
   labelForUrl as REAL_LABEL_FOR_URL,
-  readerUrlSchema as REAL_READER_URL_SCHEMA,
+  userUrlSchema as REAL_USER_URL_SCHEMA,
   safeExt as REAL_SAFE_EXT,
 } from "../../../../domain/src/asset/source-url.js";
 // The reading's pinned model, passed through rather than typed out: the
@@ -59,11 +62,7 @@ import {
 } from "../../../../domain/src/agent/project-agent-request.js";
 import { pictureMiddleware as REAL_PICTURE_MIDDLEWARE } from "../../../../domain/src/agent/picture-middleware.js";
 import { containerCostUsd as REAL_CONTAINER_COST_USD } from "../../../../domain/src/credit/container-cost.js";
-// Real: the tracker is pure, and what a turn hands off depends on it.
-import {
-  isGenerationId as realIsGenerationId,
-  trackOpenGeneration as realTrackOpenGeneration,
-} from "../../../../domain/src/credit/open-generation.js";
+import { fakeProvider } from "./fake-provider.js";
 
 const mockPipeline = {
   zremrangebyscore: () => mockPipeline,
@@ -175,6 +174,8 @@ export const mocks = {
     deleteConversation: vi.fn(),
     createConversation: vi.fn(),
     rename: vi.fn(),
+    // Read by the turn for the links web_fetch may read (inner#1664).
+    getMessagesForLlm: vi.fn().mockResolvedValue([]),
   },
   conversationRepo: {
     getConversation: vi.fn().mockResolvedValue({ id: "conv-1", lastConsolidatedTurn: 0 }),
@@ -195,6 +196,13 @@ export const mocks = {
   // #1735 server reference-count gate (too many reference images). Default: no
   // violation (null) — existing tests stay green; the #1735 test flips it.
   violatesReferenceCountForModel: vi.fn().mockReturnValue(null),
+  // inner#1825 text-length gate: default no violation.
+  violatesTextLengthForModel: vi.fn().mockReturnValue(null),
+  // breatic#1393 server gate (a style prompt with Mureka composing from a
+  // melody). Default: no violation; the breatic#1393 test flips it.
+  sendsUntakenPrompt: vi.fn().mockReturnValue(false),
+  // #1521 gate (no upstream here takes the run). Default: one does; the #1521 test flips it.
+  inputRefusalFor: vi.fn().mockResolvedValue(null),
   nodeHistoryService: {
     listByNode: vi.fn(),
     recordGenerationSuccess: vi.fn(),
@@ -249,7 +257,7 @@ export const mocks = {
     consumeTicket: vi.fn(),
   },
   memoryService: {
-    buildContext: vi.fn().mockResolvedValue({ projectMemory: "", conversationMemory: "" }),
+    buildContext: vi.fn().mockResolvedValue({ entries: [], migrated: [], olderCount: 0, progress: "" }),
   },
   // User identity read fns. Routes reach these through `authService`
   // (prohibition #1 — routes call services, not repos); the auth service
@@ -290,14 +298,7 @@ export const mocks = {
     }),
     getUnassignedCredits: vi.fn().mockResolvedValue("0.000000"),
     getGrantedCredits: vi.fn().mockResolvedValue("0.000000"),
-    chargeForGeneration: vi.fn().mockResolvedValue({
-      billed: true,
-      charged: "5.000000",
-      shortfall: "0.000000",
-      studioId: "s0000000-0000-4000-8000-000000000001",
-      lotIds: ["l0000000-0000-4000-8000-000000000001"],
-    }),
-    chargeOnceForGeneration: vi.fn().mockResolvedValue({
+    chargeOnce: vi.fn().mockResolvedValue({
       billed: true,
       charged: "5.000000",
       shortfall: "0.000000",
@@ -516,7 +517,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     MONOREPO_ROOT: actual.MONOREPO_ROOT,
     // The real config underneath, so every field the code reads exists; only
     // the values these suites depend on are set here.
-    getAgentConfig: () => ({ ...(actual.getAgentConfig as () => Record<string, unknown>)(), default_model: "test", main_model_sees_pictures: "no", max_tool_iterations: 5, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_keep_tokens: 500000, user_message_max_chars: 15000, user_message_max_references: 100, attachment_max_chars: 200000, attachment_max_items: 10, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
+    getAgentConfig: () => ({ ...(actual.getAgentConfig as () => Record<string, unknown>)(), default_model: "test", main_model_sees_pictures: "no", max_tool_iterations: 5, memory_index_max_entries: 10, memory_progress_max_chars: 410, max_output_tokens: 16384, memory_keep_tokens: 500000, user_message_max_chars: 15000, user_message_max_references: 100, attachment_max_chars: 200000, attachment_max_items: 10, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
     // Values intentionally differ from config/storage.yaml so route tests
     // prove the endpoint reads config instead of hardcoding.
     getStorageConfig: () => ({
@@ -561,7 +562,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
  * A usage recorder for turns built on `domainMock` (#296): it writes nothing
  * and counts a credit per token a model call reports, so a turn that spent
  * something settles to a positive amount and one that spent nothing to zero.
- * What a call really costs is `usage-cost.ts`'s to say and is tested there.
+ * What a call really costs is provider's to say and is tested there.
  * @returns A recorder with the real interface.
  */
 function usageRecorderDouble(options: {
@@ -571,30 +572,34 @@ function usageRecorderDouble(options: {
   projectId: string | null;
 }): {
   operation: { operationKey: string; feature: string; actorUserId: string; projectId: string | null };
-  recordModelCall: (call: { usage: { inputTokens?: number; outputTokens?: number } }) => void;
+  recordModelCall: (call: { cost: { tokens?: { input: number; output: number } } }) => void;
   recordServiceCall: () => void;
   recordLookedUpCall: () => void;
-  awaitingLookup: () => readonly string[];
+  awaitingLookup: () => readonly unknown[];
   settle: () => Promise<number>;
+  settleForCharge: () => Promise<{ credits: number; writeFailures: unknown[] }>;
 } {
   let credits = 0;
   const { operationKey, feature, actorUserId, projectId } = options;
   return {
     operation: { operationKey, feature, actorUserId, projectId },
     recordModelCall: (call) => {
-      credits += (call.usage.inputTokens ?? 0) + (call.usage.outputTokens ?? 0);
+      credits += (call.cost.tokens?.input ?? 0) + (call.cost.tokens?.output ?? 0);
     },
     recordServiceCall: () => {},
     recordLookedUpCall: () => {},
     awaitingLookup: () => [],
     settle: async () => credits,
+    settleForCharge: async () => ({ credits, writeFailures: [] }),
   };
 }
 
-export const domainMock = () => ({
+export const domainMock = async () => ({
+  // The real entry schemas and MemoryRefused. Loaded here: that file imports
+  // @breatic/core, whose mock factory lives in this file, so a top-level
+  // import waits on itself and the suite hangs.
+  ...(await import("../../../../domain/src/agent/memory-entries.js")),
   createUsageRecorder: vi.fn(usageRecorderDouble),
-  trackOpenGeneration: realTrackOpenGeneration,
-  isGenerationId: realIsGenerationId,
   handOffLookups: mocks.handOffLookups,
   // The same shape as the real one: every tool in the set gets the recorder.
   usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
@@ -610,7 +615,6 @@ export const domainMock = () => ({
     findByStudioAndHash: vi.fn().mockResolvedValue(null),
     findCoverOf: vi.fn().mockResolvedValue(null),
     setCoverAsset: vi.fn(),
-    findKindByStorageKey: vi.fn().mockResolvedValue("video"),
     findLiveByStorageKey: vi.fn().mockResolvedValue(null),
     findLiveByKeyInStudio: vi.fn().mockResolvedValue(null),
   },
@@ -626,27 +630,23 @@ export const domainMock = () => ({
   creditHoldService: mocks.creditHoldService,
   nodeHistoryService: mocks.nodeHistoryService,
   nodeHistoryRepo: mocks.nodeHistoryRepo,
-  modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
+  modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [], tts: [], three_d: [], total: 0 }) },
   // #1580 #7 credit pre-check inputs (canvas + mini-tools routes).
   MIN_TASK_CREDIT_COST: 5,
   // Arithmetic, so the real one: a double would be a second copy of the rate.
   creditsForUsd: REAL_CREDITS_FOR_USD,
   containerCostUsd: REAL_CONTAINER_COST_USD,
   estimateTaskCredits: vi.fn().mockResolvedValue(5),
+  // Every model here is servable; the refusal of one that is not is tested on its own (model-servable.test.ts).
+  servability: vi.fn(() => ({ servable: true })),
+  llmServability: vi.fn(() => ({ servable: true })),
   violatesSourceRequirementForModel: mocks.violatesSourceRequirementForModel,
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,
-  getModel: vi.fn(),
-  resolveProvider: vi.fn(),
-  // Shaped like the real return so a turn built on this stub spreads the
-  // same key it would in production. A bare `{}` would spread to nothing,
-  // which reads as "this turn sent no provider options" -- the one thing
-  // the real function never does.
-  callOptionsFor: vi.fn().mockReturnValue({ providerOptions: {} }),
-  // What the real one sends where nothing is marked, as with
-  // `callOptionsFor` above: the prompt whole, as one message.
-  systemFor: vi.fn((_model: string, parts: { base: string; project?: string; conversation?: string }) => [
-    { role: "system", content: REAL_INSTRUCTIONS_TEXT(parts) },
-  ]),
+  violatesTextLengthForModel: mocks.violatesTextLengthForModel,
+  sendsUntakenPrompt: mocks.sendsUntakenPrompt,
+  inputRefusalFor: mocks.inputRefusalFor,
+  // A provider whose calls run on no model until a test hands one over.
+  provider: fakeProvider(() => undefined),
   instructionsText: REAL_INSTRUCTIONS_TEXT,
   instructionsForAgentMemory: REAL_INSTRUCTIONS_FOR_AGENT_MEMORY,
   createAgentPicturePreparer: REAL_CREATE_AGENT_PICTURE_PREPARER,
@@ -665,22 +665,28 @@ export const domainMock = () => ({
   // and a copy that drifts throws nothing: the match simply never happens and
   // a turn carries on talking past the question it just asked.
   ASK_USER: REAL_ASK_USER,
-  // The same reason: the tools a turn stops at for the reader (inner#1552).
-  AWAITS_READER: REAL_AWAITS_READER,
+  // The same reason: the tools a turn stops at for the user (inner#1552).
+  AWAITS_USER: REAL_AWAITS_USER,
   REQUEST_SPACE_CONTENT: REAL_REQUEST_SPACE_CONTENT,
   // Read by the turn when it hands the tools their context.
   PROPOSE_CANVAS_ACTION: REAL_PROPOSE_CANVAS_ACTION,
   // Read by the turn when it hands the document proposal the open document (inner#1509).
   PROPOSE_DOCUMENT_EDIT: REAL_PROPOSE_DOCUMENT_EDIT,
+  // Read by the turn when it hands the 3D generation proposal the project (inner#1691).
+  PROPOSE_SCENE_GENERATION: REAL_PROPOSE_SCENE_GENERATION,
   // Read by the turn when it hands the save its context (inner#1315).
   SAVE_IMAGE: REAL_SAVE_IMAGE,
   // Read by the turn when it hands the media tool its project and owner context.
   UNDERSTAND_MEDIA: REAL_UNDERSTAND_MEDIA,
+  // Read by the turn when it hands the page read its reader (inner#1664).
+  WEB_FETCH: REAL_WEB_FETCH,
   // Read by the turn when it hands the record tools the turn's records (inner#1469).
   RECORD_TOOL_NAMES: REAL_RECORD_TOOL_NAMES,
+  // Read by the turn when it hands the memory tools the turn's memory (#1363).
+  MEMORY_TOOL_NAMES: REAL_MEMORY_TOOL_NAMES,
   extFromUrl: REAL_EXT_FROM_URL,
   labelForUrl: REAL_LABEL_FOR_URL,
-  readerUrlSchema: REAL_READER_URL_SCHEMA,
+  userUrlSchema: REAL_USER_URL_SCHEMA,
   safeExt: REAL_SAFE_EXT,
   // Real so that a turn built on this stub throws the same detail the real
   // one does when a tool reports the stop itself.

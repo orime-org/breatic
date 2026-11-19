@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The sign-up routes with no email backend (#287): register creates the
@@ -57,7 +57,7 @@ afterAll(async () => {
 describe("sign-up without an email backend", () => {
   it("tells the page that sign-up needs no code", async () => {
     const res = await app.request("/api/v1/auth/options");
-    expect(await res.json()).toEqual({ data: { emailVerification: false } });
+    expect(await res.json()).toEqual({ data: { emailVerification: false, referralEnabled: expect.any(Boolean) } });
   });
 
   it("creates the account at once and returns a recovery code", async () => {

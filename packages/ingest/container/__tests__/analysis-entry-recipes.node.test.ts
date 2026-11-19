@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * S6d D5-8: the people and scene_cuts recipes on full-ledger entries (inner#1306 test plan §93 D5-8; frames-split design

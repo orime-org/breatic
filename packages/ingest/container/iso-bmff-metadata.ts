@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { IsoBmffEdit, IsoBmffCompositionShift, IsoBmffSampleTiming, IsoBmffTrackMetadata } from "@shared/upload/video-source-ledger-types.js";
 export type { IsoBmffEdit, IsoBmffDecodeRun, IsoBmffCompositionRun, IsoBmffCompositionShift, IsoBmffSampleTiming, IsoBmffTrackMetadata } from "@shared/upload/video-source-ledger-types.js";

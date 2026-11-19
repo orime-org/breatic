@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1127 A20, A21 (inner#1319, inner#1327): whether the body holds the
@@ -260,17 +260,17 @@ describe('whether the body holds the focus', () => {
     expect(focus.bodyHolds(view.state)).toBe(true);
   });
 
-  it('has no reader selection while it does not hold', () => {
+  it('has no user selection while it does not hold', () => {
     const { editor, scroller } = open(TEXT);
     const view = editor.prosemirrorView!;
     selectWords(editor);
-    expect(focus.readerSelection(view.state)?.from).toBe(3);
+    expect(focus.userSelection(view.state)?.from).toBe(3);
 
     act(() => {
       scroller.focus();
     });
 
-    expect(focus.readerSelection(view.state)).toBeNull();
+    expect(focus.userSelection(view.state)).toBeNull();
   });
 
   it('tells the page each time it changes, for the parts drawn outside the editor', () => {
@@ -313,6 +313,24 @@ describe('a press on blank space in the body (A20)', () => {
 
     expect(press.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(scroller);
+  });
+
+  it.each([
+    ['MacIntel', true],
+    ['Win32', false],
+  ] as const)('takes Control with the main button as the right button on %s: %s', (platform, leaves) => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
+    const { editor, scroller } = open(TEXT);
+    selectWords(editor);
+    const before = document.activeElement;
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, ctrlKey: true });
+
+    act(() => {
+      scroller.dispatchEvent(press);
+    });
+
+    expect(before).not.toBe(scroller);
+    expect(document.activeElement === scroller).toBe(leaves);
   });
 
   it('leaves a middle press to the browser', () => {
@@ -360,6 +378,23 @@ describe('what a press is on', () => {
     Object.defineProperty(event, 'target', { value: target });
 
     expect(pressTargetOf(opened.editor.prosemirrorView!, event).kind).toBe(kind);
+  });
+
+  it('reads the divider between two columns as a column resize (inner#1314 design 5.4)', () => {
+    const opened = open([
+      {
+        type: 'docColumnList',
+        children: [
+          { type: 'docColumn', children: [{ type: 'paragraph', content: 'left' }] },
+          { type: 'docColumn', children: [{ type: 'paragraph', content: 'right' }] },
+        ],
+      },
+    ]);
+    const divider = opened.editor.prosemirrorView!.dom.querySelector('.doc-column-divider')!;
+    const event = new MouseEvent('mousedown', { bubbles: true });
+    Object.defineProperty(event, 'target', { value: divider });
+
+    expect(pressTargetOf(opened.editor.prosemirrorView!, event).kind).toBe('column-resize');
   });
 
   it('reads a divider as wordless, a media display, a media control, a body layer and a scrollbar', () => {

@@ -1,0 +1,38 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "language": [
+      {
+        "type": "string",
+        "enum": [
+          "auto",
+          "Chinese",
+          "English",
+          "German",
+          "Italian",
+          "Portuguese",
+          "Spanish",
+          "Japanese",
+          "Korean",
+          "French",
+          "Russian"
+        ],
+        "default": "auto"
+      }
+    ],
+    "text": [
+      {
+        "type": "string"
+      }
+    ],
+    "voice_description": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "text",
+    "voice_description"
+  ]
+}

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Where a run takes its material is the model's to declare (#269).
@@ -32,10 +32,6 @@ const VIDEO = [
   "    takes_prompt: true",
   "    cost_per_call: 1",
   "    generation_time: 10",
-  "    providers:",
-  "      - name: wavespeed",
-  '        model_id: "pool-fed"',
-  "        priority: 1",
   "    params:",
   "      images:",
   '        fill: "pool"',
@@ -101,10 +97,6 @@ const IMAGE = [
   "    takes_prompt: true",
   "    cost_per_call: 1",
   "    generation_time: 10",
-  "    providers:",
-  "      - name: wavespeed",
-  '        model_id: "style"',
-  "        priority: 1",
   "    params:",
   "      style_images:",
   '        fill: "canvas"',

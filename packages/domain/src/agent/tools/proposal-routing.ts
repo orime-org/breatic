@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * How the nodes of a proposal reach one generation (design 5.7).
@@ -8,7 +8,7 @@
  * whether the canvas lets that kind be wired into the generation
  * (`canConnect`), and what the node holds -- material reaches a slot through
  * fills, everything else by an edge or, where no edge may be drawn, by the
- * reader picking it. `entriesFor` puts the three together into everything a
+ * user picking it. `entriesFor` puts the three together into everything a
  * proposal does to send a node one way: the edge or fills, the ref and the
  * note. The check accepts a node only when it arrives as one of its entries,
  * and every refusal that tells the agent how a node goes in says what
@@ -18,11 +18,12 @@ import {
   canConnect,
   proposalMarkSegments,
   type CanvasProposal,
+  type ParamGate,
   type ProposalNode,
 } from "@breatic/shared";
 
-import { fixOn, refuse, type NodeLabel, type NodeFix, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
-import { modelsForMode, waysIn, type ModelInfo, type WayIn, type WayKind } from "@domain/model-catalog/mode-catalog.js";
+import { fixOn, gateWords, refuse, type NodeLabel, type NodeFix, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
+import { modelsForMode, placeGate, waysIn, type ModelInfo, type WayIn, type WayKind } from "@domain/model-catalog/mode-catalog.js";
 
 /**
  * What a node holds, which decides how it may go into a generation. A
@@ -86,17 +87,18 @@ export function holdingOf(node: ProposalNode): Holding {
  * @param chosen - The generation's model.
  * @param kind - The node's kind.
  * @param holding - What it holds.
+ * @param params - The generation's params, for only the places its panel draws.
  * @returns Each way, with how the proposal sends the node by it.
  * @throws {never} Never.
  */
-export function entriesFor(chosen: ModelInfo, kind: string, holding: Holding): Entry[] {
+export function entriesFor(chosen: ModelInfo, kind: string, holding: Holding, params?: Readonly<Record<string, unknown>>): Entry[] {
   const wired = canConnect(kind, chosen.nodeType);
-  return (waysIn(chosen).get(kind as WayKind) ?? []).flatMap((way): Entry[] => {
+  return (waysIn(chosen, params).get(kind as WayKind) ?? []).flatMap((way): Entry[] => {
     if (way.mark === "ref") return wired ? [poolEntry(way, holding)] : [];
     // The lyrics box is @'d at landing.
     if (way.mark === "placed") return wired && holding !== "material" ? [{ way, by: "edge", ref: false, note: false }] : [];
     // A slot: material fills it as a pick would; anything else is picked by
-    // the reader, whom a note tells which node goes there.
+    // the user, whom a note tells which node goes there.
     if (holding === "material") return [{ way, by: "fills", ref: false, note: false }];
     return [{ way, by: wired ? "edge" : "unwired", ref: false, note: true }];
   });
@@ -170,7 +172,7 @@ export function waysSentence(subject: string, generation: ProposalNode, entries:
  * @throws {never} Never.
  */
 export function waysOrNone(node: ProposalNode, generation: ProposalNode, chosen: ModelInfo): string {
-  const entries = entriesFor(chosen, node.type, holdingOf(node));
+  const entries = entriesFor(chosen, node.type, holdingOf(node), generation.params ?? {});
   return entries.length > 0
     ? waysSentence(`"${node.name}"`, generation, entries)
     : `"${chosen.name}" takes no ${node.type} node, so "${node.name}" has no way into "${generation.name}".`;
@@ -196,23 +198,25 @@ export function waysAcrossGroup(proposal: CanvasProposal, node: ProposalNode, aw
 
 /**
  * The slots a model fills straight from material nodes: every way in that the
- * reader would pick a node into, which is every way carrying a note.
+ * user would pick a node into, which is every way carrying a note.
  * @param chosen - The model.
+ * @param params - The generation's params, for only the slots its panel draws.
  * @returns Each slot with the kind it takes.
  * @throws {never} Never.
  */
-function slotsOf(chosen: ModelInfo): { kind: WayKind; way: WayIn }[] {
-  return [...waysIn(chosen)].flatMap(([kind, list]) => list.filter((way) => way.mark === "note").map((way) => ({ kind, way })));
+function slotsOf(chosen: ModelInfo, params?: Readonly<Record<string, unknown>>): { kind: WayKind; way: WayIn }[] {
+  return [...waysIn(chosen, params)].flatMap(([kind, list]) => list.filter((way) => way.mark === "note").map((way) => ({ kind, way })));
 }
 
 /**
  * The slots of a model, said for the agent.
  * @param chosen - The model.
+ * @param params - The generation's params, for only the slots its panel draws.
  * @returns The phrase.
  * @throws {never} Never.
  */
-function slotsPhrase(chosen: ModelInfo): string {
-  const names = slotsOf(chosen).map(({ way }) => `"${way.into}"`);
+function slotsPhrase(chosen: ModelInfo, params: Readonly<Record<string, unknown>>): string {
+  const names = slotsOf(chosen, params).map(({ way }) => `"${way.into}"`);
   return names.length > 0 ? `its slots: ${names.join(", ")}` : "it has no slot";
 }
 
@@ -249,7 +253,7 @@ export function spaced(sentence: string): string {
  */
 export function slotSentence(chosen: ModelInfo, generation: ProposalNode, kind: string, into: string): string {
   return holdingsOf(kind)
-    .map((holding) => [holdingSubject(kind, holding), entriesFor(chosen, kind, holding).filter((entry) => entry.way.into === into)] as const)
+    .map((holding) => [holdingSubject(kind, holding), entriesFor(chosen, kind, holding, generation.params ?? {}).filter((entry) => entry.way.into === into)] as const)
     .filter(([, entries]) => entries.length > 0)
     .map(([subject, entries]) => waysSentence(subject, generation, entries))
     .join(" ");
@@ -290,7 +294,7 @@ export function capitalised(phrase: string): string {
 }
 
 /**
- * The refusal for a value set on a box the reader writes in on the panel.
+ * The refusal for a value set on a box the user writes in on the panel.
  * @param chosen - The model.
  * @param generation - The generation node.
  * @param key - The box's parameter.
@@ -313,7 +317,24 @@ type EdgeRoute =
   | { kind: "link" }
   | { kind: "nowhere" }
   | { kind: "ambiguous" }
-  | { kind: "no-entry"; into: string };
+  | { kind: "no-entry"; into: string }
+  | { kind: "hidden"; into: string; gate: ParamGate };
+
+/**
+ * Why a node sent into a place the generation's settings hide reaches nothing:
+ * the panel does not draw that place, and the condition it waits on.
+ * @param from - The node sent in.
+ * @param into - The place it is sent into.
+ * @param generation - The generation.
+ * @param chosen - Its model.
+ * @param gate - What the place waits on.
+ * @returns The refusal.
+ * @throws {never} Never.
+ */
+function hiddenPlaceRefusal(from: ProposalNode, into: string, generation: ProposalNode, chosen: ModelInfo, gate: ParamGate): Refusal {
+  const drawn = into === "pool" ? `its prompt box, where the pool is @'d,` : `"${into}"`;
+  return refuse("slot-gated-off", `"${from.name}" goes into "${into}" of "${generation.name}", and "${chosen.name}" draws ${drawn} only while ${gateWords(gate)}.`);
+}
 
 /**
  * What an edge from a node does for a generation, judged without words: the
@@ -321,13 +342,21 @@ type EdgeRoute =
  * @param chosen - The generation's model.
  * @param from - The node at the edge's other end.
  * @param into - What the edge says.
+ * @param params - The generation's params, which say which places its panel draws.
  * @returns The entry it arrives by, or why it arrives by none.
  * @throws {never} Never.
  */
-function edgeRoute(chosen: ModelInfo, from: ProposalNode, into: string | undefined): EdgeRoute {
+function edgeRoute(chosen: ModelInfo, from: ProposalNode, into: string | undefined, params: Readonly<Record<string, unknown>>): EdgeRoute {
   // A slot of a kind the canvas will not wire in is filled by picking, and
   // the edge itself is refused with the rest of the wiring.
-  const options = canConnect(from.type, chosen.nodeType) ? (waysIn(chosen).get(from.type) ?? []) : [];
+  const wired = canConnect(from.type, chosen.nodeType);
+  const options = wired ? (waysIn(chosen, params).get(from.type) ?? []) : [];
+  // Named outright, a place the settings hide is said as such, once the node
+  // could go there by an edge at all.
+  const gate = into === undefined ? undefined : placeGate(chosen, into);
+  if (into !== undefined && gate !== undefined && !options.some((way) => way.into === into) && entriesFor(chosen, from.type, holdingOf(from)).some((e) => e.by === "edge" && e.way.into === into)) {
+    return { kind: "hidden", into, gate };
+  }
   // An edge the model takes nothing from still carries the creative link
   // (user 2026-08-13); saying where it goes is a claim the model refutes.
   const [first] = options;
@@ -337,7 +366,7 @@ function edgeRoute(chosen: ModelInfo, from: ProposalNode, into: string | undefin
   // The edge stands only as one of the node's entries: material reaches a
   // slot through fills, which leaves the snapshot a pick would, so an edge
   // into a slot is no entry of a node holding material.
-  const entry = entriesFor(chosen, from.type, holdingOf(from)).find((e) => e.by === "edge" && e.way.into === resolved);
+  const entry = entriesFor(chosen, from.type, holdingOf(from), params).find((e) => e.by === "edge" && e.way.into === resolved);
   return entry === undefined ? { kind: "no-entry", into: resolved } : { kind: "entry", entry };
 }
 
@@ -361,7 +390,7 @@ export function routeEdges(
   for (const edge of proposal.edges.filter((e) => e.toIndex === index)) {
     const from = proposal.nodes[edge.fromIndex];
     if (!from) continue;
-    const route = edgeRoute(chosen, from, edge.into);
+    const route = edgeRoute(chosen, from, edge.into, generation.params ?? {});
     switch (route.kind) {
       case "entry":
         routed.push({ node: from, entry: route.entry });
@@ -377,6 +406,8 @@ export function routeEdges(
       }
       case "ambiguous":
         return refuse("edge-into-ambiguous", `The edge from "${from.name}" says no into, and "${chosen.name}" takes ${aNode(from.type)} more than one way. ${waysOrNone(from, generation, chosen)}`);
+      case "hidden":
+        return hiddenPlaceRefusal(from, route.into, generation, chosen, route.gate);
       case "no-entry":
         return refuse("edge-not-an-entry", `"${from.name}" does not go into "${route.into}" of "${generation.name}" by an edge. ${waysOrNone(from, generation, chosen)}`);
     }
@@ -435,7 +466,9 @@ export function fillsOf(
   chosen: ModelInfo,
   at: NodeLabel,
 ): { filled: Arriving[] } | Refusal {
+  const params = node.params ?? {};
   const slots = slotsOf(chosen);
+  const drawn = slotsOf(chosen, params);
   const filled: Arriving[] = [];
   for (const [param, indices] of Object.entries(node.fills ?? {})) {
     const off = fixOn(at, `take fills "${param}" off.`);
@@ -453,8 +486,8 @@ export function fillsOf(
     const slot = slots.find(({ way }) => way.into === param);
     if (slot === undefined) {
       return chosen.params[param]?.fromReferencePool === true
-        ? refuse("fill-into-pool", `"${param}" is the reference pool of "${chosen.name}", which takes no fills; ${slotsPhrase(chosen)}.`, off)
-        : refuse("fill-not-a-slot", `"${chosen.name}" has no slot "${param}"; ${slotsPhrase(chosen)}.`, off);
+        ? refuse("fill-into-pool", `"${param}" is the reference pool of "${chosen.name}", which takes no fills; ${slotsPhrase(chosen, params)}.`, off)
+        : refuse("fill-not-a-slot", `"${chosen.name}" has no slot "${param}"; ${slotsPhrase(chosen, params)}.`, off);
     }
     const seen = new Map<string, ProposalNode>();
     for (const index of indices) {
@@ -475,6 +508,12 @@ export function fillsOf(
       }
       seen.set(from.material, from);
       filled.push({ node: from, entry: { way: slot.way, by: "fills", ref: false, note: false } });
+    }
+    // Each node could fill the slot; whether the settings draw it comes after.
+    const gate = placeGate(chosen, param);
+    const first = proposal.nodes[indices[0] ?? -1];
+    if (gate !== undefined && first !== undefined && !drawn.some(({ way }) => way.into === param)) {
+      return hiddenPlaceRefusal(first, param, node, chosen, gate);
     }
   }
   return { filled };
@@ -508,21 +547,26 @@ export interface NoteAsked {
 
 /**
  * The notes one generation needs: one for each node arriving by an entry that
- * carries a note -- a node going into a slot, which the reader picks there,
+ * carries a note -- a node going into a slot, which the user picks there,
  * and a node in the pool that lands empty, an empty source to put a file in or
  * a generation still to run. Every check counting notes reads this, so the
  * two never count differently.
  * @param arriving - The nodes going into the generation, each with its entry.
+ * @param optional - Whether a node stands for a template input the user may leave empty (inner#1811), whose note says so.
  * @returns One entry per note asked for.
  * @throws {never} Never.
  */
-export function notesAsked(arriving: readonly Arriving[]): NoteAsked[] {
+export function notesAsked(arriving: readonly Arriving[], optional: (node: ProposalNode) => boolean = () => false): NoteAsked[] {
   return arriving
     .filter(({ entry }) => entry.note)
     .map(({ node, entry }) => ({
       node,
-      why: entry.ref
-        ? node.role === "generate" ? "@'d, and empty until it is generated" : "@'d, and empty until a file is put in it"
-        : `going into ${entry.way.into}`,
+      why: !entry.ref
+        ? `going into ${entry.way.into}`
+        : node.role === "generate"
+          ? "@'d, and empty until it is generated"
+          : optional(node)
+            ? "@'d, optional and can be left empty"
+            : "@'d, and empty until a file is put in it",
     }));
 }

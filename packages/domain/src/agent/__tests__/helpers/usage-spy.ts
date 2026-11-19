@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { vi } from "vitest";
 
@@ -24,6 +24,7 @@ export function usageSpy(): UsageSpy {
     recordLookedUpCall: vi.fn(),
     awaitingLookup: () => [],
     settle: vi.fn(async () => 0),
+    settleForCharge: vi.fn(async () => ({ credits: 0, writeFailures: [] })),
   };
   return { recorder, serviceCalls };
 }

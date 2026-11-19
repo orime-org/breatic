@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Orime, Inc.
-# SPDX-License-Identifier: Elastic-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 set -euo pipefail
 : "${TEST_IMAGE:?}" "${IMAGE_KIND:?}" "${ARCH:?}" "${VERSION:?}" "${REVISION:?}"
 [[ "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$TEST_IMAGE")" == "linux/$ARCH" ]] || exit 1
@@ -40,6 +40,13 @@ case "$IMAGE_KIND" in
       'test -s /usr/share/ffmpeg-source/COPYING.GPLv2 && test -s /usr/share/ffmpeg-source/COPYING.LGPLv2.1 && test -s /usr/share/ffmpeg-source/SOURCE && test -s /usr/share/doc/breatic/THIRD-PARTY.md'
     docker run --rm --network none -v "$PWD/scripts/ingest-media-smoke.mjs:/tmp/media-smoke.mjs:ro" --entrypoint node "$TEST_IMAGE" /tmp/media-smoke.mjs
     [[ "$IMAGE_KIND" != ingestGl ]] || docker run --rm --entrypoint sh "$TEST_IMAGE" -c 'test -s /app/gl-renderer/render.mjs && command -v Xvfb'
+    ;;
+  ingestWebReader)
+    docker run --rm --entrypoint sh "$TEST_IMAGE" -c 'test -s /usr/share/doc/breatic/THIRD-PARTY.md'
+    docker run --rm --network none -v "$PWD/scripts/ingest-web-reader-smoke.mjs:/tmp/web-reader-smoke.mjs:ro" --entrypoint node "$TEST_IMAGE" /tmp/web-reader-smoke.mjs
+    ;;
+  ingestWebAnimation)
+    docker run --rm --network none -v "$PWD/scripts/ingest-web-animation-smoke.mjs:/tmp/web-animation-smoke.mjs:ro" --entrypoint node "$TEST_IMAGE" /tmp/web-animation-smoke.mjs
     ;;
   *) echo 'Unknown image kind' >&2; exit 1 ;;
 esac

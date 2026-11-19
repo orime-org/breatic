@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The one line a finished turn leaves behind, and the two fields on it.
@@ -33,7 +33,7 @@ const modelSays = vi.hoisted(() => ({ parts: [] as unknown[], failsToStart: null
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));
@@ -62,20 +62,21 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({ modelId: "test", instructions: { base: "system" }, tools: {} }),
     finalizeTurn: async () => [],
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelSays.failsToStart
         ? modelFailingToStart(modelSays.failsToStart)
-        : modelProducing(() => modelSays.parts as ModelStreamPart[]),
+        : modelProducing(() => modelSays.parts as ModelStreamPart[])),
   };
 });
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage: vi.fn(async () => 1),
-  addReaderMessage: vi.fn(async () => ({ turnIndex: 1, closedAsks: [] })),
+  addUserMessage: vi.fn(async () => ({ turnIndex: 1, closedAsks: [] })),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  getMessagesForLlm: async () => [],
   titleForTurn: vi.fn(async () => "一条会话"),
 }));
 

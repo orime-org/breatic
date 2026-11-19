@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * S5: real admission/authorization/PG/Redis/holds/queue/settlement; only external presentation delivery is controlled.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -16,6 +16,7 @@ import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { chatApi } from '@web/data/api/chat';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
+import { PendingTray } from '@web/pages/project/chat/PendingTray';
 import type { SpaceContextChipProps } from '@web/pages/project/chat/SpaceContextChip';
 import { usePasteCanvas } from '@web/pages/project/chat/use-paste-canvas';
 import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHistorySheet';
@@ -28,6 +29,7 @@ import type { ReadSpaces } from '@web/pages/project/chat/space-context';
 import { SpaceRequestAnswerContext } from '@web/pages/project/chat/space-request-answer';
 import type { SpaceRequestAnswering } from '@web/pages/project/chat/space-request-answer';
 import { readRequestedSpaces } from '@web/pages/project/chat/space-request-read';
+import { useRunningConversations } from '@web/pages/project/chat/use-running-conversations';
 import type { ChatSpaceRequest } from '@web/pages/project/chat/types';
 
 /**
@@ -110,7 +112,7 @@ export function ChatPanel({
   // new onSubmit.
   const spaceSource = React.useRef({ activeSpace, spaces });
   spaceSource.current = { activeSpace, spaces };
-  /** The reader's Spaces as they stand; called at the press. */
+  /** The user's Spaces as they stand; called at the press. */
   const readSpaces = React.useCallback(
     (): ReadSpaces =>
       readSpaceContext({
@@ -132,6 +134,9 @@ export function ChatPanel({
     answer,
     shareSpaces,
     abort,
+    stopping,
+    waiting,
+    takeBack,
     conversations,
     hasMoreConversations,
     loadMoreConversations,
@@ -201,7 +206,7 @@ export function ChatPanel({
     const showing = setTimeout(() => setSkeleton(true), SKELETON_AFTER_MS);
     return () => clearTimeout(showing);
   }, [ready, status]);
-  // Sending is something the reader does, and this is where they do it. The
+  // Sending is something the user does, and this is where they do it. The
   // message list needs to know it happened — it is the one thing that should
   // bring the column back to the bottom after they have scrolled up to read.
   const [sentCount, setSentCount] = React.useState(0);
@@ -215,6 +220,7 @@ export function ChatPanel({
     [currentId],
   );
   const attachFiles = useAttachFiles(projectId);
+  const runningConversations = useRunningConversations(projectId, historyOpen);
 
   /**
    * Send what is in the box.
@@ -255,7 +261,7 @@ export function ChatPanel({
   /**
    * Fetch the list afresh every time it is opened.
    *
-   * Where the reader had paged to, and what they saw, belong to the last time
+   * Where the user had paged to, and what they saw, belong to the last time
    * they opened it -- and another tab of theirs may have started, renamed or
    * deleted conversations since.
    */
@@ -313,10 +319,19 @@ export function ChatPanel({
           />
         </SpaceRequestAnswerContext.Provider>
       </QuestionnaireAnswerContext.Provider>
+      <PendingTray
+        items={waiting.pending}
+        awaiting={waiting.awaiting}
+        blocked={waiting.blocked}
+        busy={waiting.busy}
+        onTakeBack={takeBack}
+      />
       <ChatComposer
         conversationId={currentId ?? null}
+        projectId={projectId}
         draft={draft}
         turnPhase={turnPhase}
+        stopping={stopping}
         navigating={navigating}
         onChange={setDraft}
         onSubmit={submit}
@@ -341,6 +356,7 @@ export function ChatPanel({
         loadingMore={loadingMore}
         nextPageFailed={nextPageFailed}
         listLoading={listLoading}
+        running={runningConversations}
       />
     </div>
   );

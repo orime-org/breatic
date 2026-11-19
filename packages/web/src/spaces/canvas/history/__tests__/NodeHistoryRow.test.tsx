@@ -1,15 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import {
-  render,
-  screen,
-  act,
-  cleanup,
-  fireEvent,
-  within,
-} from '@testing-library/react';
+import { screen, act, cleanup, fireEvent, within } from '@testing-library/react';
+
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
 import { resetPreviewRecords } from '@web/lib/preview-src';
@@ -91,7 +86,7 @@ function renderRow(
   e: NodeHistoryEntry,
   modality: HistoryModality = 'image',
 ): void {
-  render(
+  renderWithTooltips(
     <NodeHistoryRow
       entry={e}
       modality={modality}
@@ -106,6 +101,19 @@ describe('NodeHistoryRow (#1619)', () => {
   it('shows what a generation cost to at most two decimals, rounded up (inner#1666)', () => {
     renderRow(entry({ status: 'success', errorMessage: null, metadata: { credits: 3.4512 } }));
     expect(screen.getByText('3.46')).toBeInTheDocument();
+  });
+
+  // inner#1743: delivered before its upstream billed it, the run shows what is known so far.
+  it('marks a generation still being billed, its known part as a lower bound', () => {
+    renderRow(entry({ status: 'success', errorMessage: null, metadata: { credits: 12.5, billing: 'pending' } }));
+    expect(screen.getByText('≥ 12.5')).toBeInTheDocument();
+    expect(screen.getByText('credits.billingPending')).toBeInTheDocument();
+  });
+
+  it('shows a billed generation without the mark', () => {
+    renderRow(entry({ status: 'success', errorMessage: null, metadata: { credits: 18 } }));
+    expect(screen.getByText('18')).toBeInTheDocument();
+    expect(screen.queryByText('credits.billingPending')).toBeNull();
   });
 
   // #1 (user 2026-07-22): the type chip states ONLY the type (Generated /
@@ -131,10 +139,10 @@ describe('NodeHistoryRow (#1619)', () => {
   });
 
   // A cause this product knows travels as a code and becomes a sentence
-  // where the reader's language is. The task list beside this panel has
-  // always done that; a row here printing the identifier shows the reader
+  // where the user's language is. The task list beside this panel has
+  // always done that; a row here printing the identifier shows the user
   // `understand_over_cap` in every language.
-  it('says a cause this product knows in the reader language', () => {
+  it('says a cause this product knows in the user language', () => {
     renderRow(entry({ status: 'failed', errorMessage: 'understand_over_cap' }));
     expect(
       screen.getByText('canvas.task.failure.understand_over_cap'),
@@ -151,7 +159,7 @@ describe('NodeHistoryRow (#1619)', () => {
   });
 
   it('fills the row the node is on past the fill the others take under the pointer', () => {
-    render(
+    renderWithTooltips(
       <>
         <NodeHistoryRow
           entry={entry()}
@@ -231,6 +239,22 @@ describe('NodeHistoryRow — unified hover preview (#1814)', () => {
     expect(within(card).queryByTestId('media-element')).not.toBeInTheDocument();
   });
 
+  // inner#1844: full screen shows the original, not the thumbnail.
+  it('image row → full screen shows the original from content', () => {
+    vi.useFakeTimers();
+    renderRow(
+      entry({
+        status: 'success',
+        content: '/pic.png',
+        thumbnailUrl: '/thumb.png',
+      }),
+      'image',
+    );
+    openPreview(thumbTrigger());
+    fireEvent.click(screen.getByTestId('media-fullscreen-button'));
+    expect(screen.getByTestId('media-fullscreen-image').getAttribute('src')).toBe('/pic.png');
+  });
+
   it('video row → PLAYABLE MediaPlayer <video> from content, poster = thumbnailUrl', () => {
     vi.useFakeTimers();
     renderRow(
@@ -299,7 +323,7 @@ describe('a text node’s rows (#2175)', () => {
     expect(row.querySelector('svg.lucide-file-text')).not.toBeNull();
   });
 
-  // The words themselves are the preview: an icon tells the reader nothing
+  // The words themselves are the preview: an icon tells the user nothing
   // about which of several reads this row is.
   it('previews the words the row holds', () => {
     vi.useFakeTimers();
@@ -314,9 +338,9 @@ describe('a text node’s rows (#2175)', () => {
     expect(card.textContent).toContain('A red bicycle against a wall.');
   });
 
-  // A row a reader asked to keep is neither of the two the chip knew: nothing
+  // A row a user asked to keep is neither of the two the chip knew: nothing
   // generated it and nobody uploaded it — they typed it and said keep this.
-  it('states Snapshot on a row the reader asked to keep', () => {
+  it('states Snapshot on a row the user asked to keep', () => {
     renderRow(
       entry({ entryType: 'snapshot', status: 'success', content: 'kept' }),
       'text',
@@ -333,7 +357,7 @@ describe('reading a row against its fill (#2186)', () => {
   const MUTED = /(^|\s)text-muted-foreground(\s|$)/;
 
   it('sets the chip, time, operator and Current tag in foreground-secondary on the current row', () => {
-    render(
+    renderWithTooltips(
       <NodeHistoryRow
         entry={entry({ entryType: 'snapshot', status: 'success', content: 'kept', operatorName: 'Lin' })}
         modality='text'
@@ -352,7 +376,7 @@ describe('reading a row against its fill (#2186)', () => {
   });
 
   it('turns the same text foreground-secondary while the pointer is on another row', () => {
-    render(
+    renderWithTooltips(
       <NodeHistoryRow
         entry={entry({ entryType: 'snapshot', status: 'success', content: 'kept', operatorName: 'Lin' })}
         modality='text'

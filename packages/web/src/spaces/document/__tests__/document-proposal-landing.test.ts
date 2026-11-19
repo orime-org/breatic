@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A document proposal landing (inner#1509): checked against the document as
- * it is when the reader presses, written (a rewrite or an insert as one undo
+ * it is when the user presses, written (a rewrite or an insert as one undo
  * step, a comment off the undo stack), and recognised as
  * landed from the marks it left -- a thread carrying its id, or a block whose
  * id was derived from it.
@@ -24,6 +24,8 @@ import {
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
 import { landedAt, landProposal, sourceAt, sourceSpot } from '@web/spaces/document/document-proposal-landing';
+import { setTableFullscreen, tableFullscreenIn } from '@web/spaces/document/document-table-fullscreen';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 afterEach(() => {
   _resetDocumentEditorCacheForTests();
@@ -40,7 +42,7 @@ async function open(markdown: string): Promise<DocumentEditorHandle> {
   const doc = new Y.Doc();
   const handle = getDocumentEditor(doc, `project-p/document-${String(Math.random())}`, {
     caretProvider: { awareness: new Awareness(doc) },
-    readWho: () => ({ role: 'editor', viewerId: 'reader-1' }),
+    readWho: () => ({ role: 'editor', viewerId: 'user-1' }),
     editable: true,
   });
   const root = document.createElement('div');
@@ -137,7 +139,7 @@ function proposalOn(handle: DocumentEditorHandle, index: number | null, fields: 
 }
 
 describe('a comment', () => {
-  it('hangs on the quoted words, written by the reader and marked as from the Agent', async () => {
+  it('hangs on the quoted words, written by the user and marked as from the Agent', async () => {
     const handle = await open('The hero arrives at the gate.');
     const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'the gate', body: 'Which gate?' });
 
@@ -146,7 +148,7 @@ describe('a comment', () => {
     const [thread] = threads(handle);
     expect(result).toEqual({ outcome: 'applied', how: 'comment', blockId: blocks(handle)[0]!.id, threadId: thread!.id });
     expect(thread?.metadata).toEqual({ proposalId: proposal.proposalId });
-    expect(thread?.comments[0]).toMatchObject({ userId: 'reader-1', metadata: { fromAgent: true } });
+    expect(thread?.comments[0]).toMatchObject({ userId: 'user-1', metadata: { fromAgent: true } });
     expect(marked(handle)).toEqual([{ threadId: thread!.id, text: 'the gate' }]);
   });
 
@@ -198,7 +200,7 @@ describe('a rewrite', () => {
 });
 
 describe('one undo step', () => {
-  it('takes back the landing and leaves what the reader typed just before it', async () => {
+  it('takes back the landing and leaves what the user typed just before it', async () => {
     const handle = await open('Typed here.\n\nTarget.');
     const proposal = proposalOn(handle, 1, { kind: 'rewrite', body: 'Rewritten.' });
     const view = handle.editor.prosemirrorView!;
@@ -380,7 +382,7 @@ describe('the block a landed proposal is shown at (inner#1509 review round 1)', 
 });
 
 describe('a comment that lands', () => {
-  it('stays off the undo stack, like a comment the reader writes', async () => {
+  it('stays off the undo stack, like a comment the user writes', async () => {
     const handle = await open('Alpha bravo.');
     const before = handle.undoManager.undoStack.length;
 
@@ -594,5 +596,37 @@ describe('where a proposal points in the document, before anything lands (inner#
     expect(handle.editor.prosemirrorState.doc.toJSON()).toEqual(before);
     expect(threads(handle)).toHaveLength(0);
     expect(handle.undoManager.undoStack).toHaveLength(0);
+  });
+});
+
+describe('a table opened full screen while a proposal lands (#1427)', () => {
+  it('ends full screen again and writes, when the table went full screen during the wait', async () => {
+    const handle = await open('Before.\n\nMorning light falls on the table.\n\nAfter.');
+    const { editor } = handle;
+    editor.insertBlocks([tableBlock({ rows: [{ cells: ['a1', 'b1'] }] })] as never, (editor.document as { id: string }[])[0]!.id, 'after');
+    const table = (editor.document as unknown as { id: string; type: string }[]).find((block) => block.type === 'docTable')!.id;
+    const proposal = proposalOn(handle, 2, { kind: 'rewrite', body: 'Light on the table.' });
+
+    const landing = landProposal(handle, proposal, 'write', () => ({ available: true, writeAccess: 'granted' }));
+    setTableFullscreen(editor, { table, scrollTop: 0, offset: 0 });
+    await landing;
+
+    expect(blocks(handle).map((b) => b.text)).toContain('Light on the table.');
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBeNull();
+  });
+
+  it('ends full screen again and hangs the comment, when the table went full screen during the wait', async () => {
+    const handle = await open('Before.\n\nMorning light falls on the table.\n\nAfter.');
+    const { editor } = handle;
+    editor.insertBlocks([tableBlock({ rows: [{ cells: ['a1', 'b1'] }] })] as never, (editor.document as { id: string }[])[0]!.id, 'after');
+    const table = (editor.document as unknown as { id: string; type: string }[]).find((block) => block.type === 'docTable')!.id;
+    const proposal = proposalOn(handle, 2, { kind: 'rewrite', body: 'Light on the table.' });
+
+    const landing = landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
+    setTableFullscreen(editor, { table, scrollTop: 0, offset: 0 });
+    await landing;
+
+    expect(marked(handle).length).toBeGreaterThan(0);
+    expect(tableFullscreenIn(editor.prosemirrorState).table).toBeNull();
   });
 });

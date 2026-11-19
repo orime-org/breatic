@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Reading a proposal off a turn, so the card survives a reload (#229).
@@ -8,7 +8,7 @@
  * the message is read, which is what makes it the same card after a refresh
  * and several turns later. A call that was refused carries a reason instead of
  * a group, and a row stored before this tool existed carries the model's own
- * text -- reading either as a proposal would put a card in front of the reader
+ * text -- reading either as a proposal would put a card in front of the user
  * that builds nothing, or take the whole conversation down while it is built.
  */
 
@@ -63,7 +63,7 @@ describe('a turn that proposed a group', () => {
 
   it('carries whether each generation draws a prompt box, which the canvas reads', () => {
     // The canvas reads it off the answer rather than the model catalog, which
-    // may not have loaded when the reader presses Use.
+    // may not have loaded when the user presses Use.
     const message = toChatMessage(
       turnWith({
         ...ACCEPTED,
@@ -87,7 +87,7 @@ describe('a turn that proposed a group', () => {
   });
 });
 
-describe('a turn whose proposal never reached the reader', () => {
+describe('a turn whose proposal never reached the user', () => {
   it('draws no card for one the tool refused', () => {
     const message = toChatMessage(
       turnWith({ placed: false, reason: '"i2i" needs a node to put it in.' }),
@@ -130,5 +130,20 @@ describe('a turn whose proposal was stored in a shape this build no longer place
 
   it('says nothing has expired on a proposal the tool refused', () => {
     expect(toChatMessage(turnWith({ placed: false, reason: 'no' })).hasExpiredProposal).toBeUndefined();
+  });
+});
+
+describe('a proposal with a ref to an optional input (inner#1811, CAP-9)', () => {
+  it('keeps the ref marked optional, which tells the canvas to leave its paragraph out while the node is empty', () => {
+    const message = toChatMessage(
+      turnWith({
+        ...ACCEPTED,
+        nodes: [
+          ACCEPTED.nodes[0]!,
+          { ...ACCEPTED.nodes[1]!, prompt: [{ text: 'Looks like ' }, { ref: 0, optional: true }, { text: '.' }] },
+        ],
+      }),
+    );
+    expect(message.proposals?.[0]?.nodes[1]?.prompt?.[1]).toEqual({ ref: 0, optional: true });
   });
 });

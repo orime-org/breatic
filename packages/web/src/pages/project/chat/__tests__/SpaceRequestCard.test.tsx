@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The card an Agent's request to look at Spaces is drawn as (inner#1552,
@@ -101,7 +101,7 @@ function rows(): HTMLElement[] {
   return screen.queryAllByTestId('space-request-row');
 }
 
-describe('a card waiting for the reader', () => {
+describe('a card waiting for the user', () => {
   it('sits in the same frame as the questionnaire card', () => {
     draw(REQUEST);
 
@@ -361,7 +361,7 @@ describe('a settled card', () => {
     expect(within(rows()[0]!).getByTestId('space-request-state')).toHaveTextContent(t('chat.spaceRequest.state.gone'));
   });
 
-  it('is one line when the reader declined', () => {
+  it('is one line when the user declined', () => {
     draw({ ...REQUEST, state: 'declined' });
     const card = screen.getByTestId('space-request-card');
 
@@ -370,7 +370,7 @@ describe('a settled card', () => {
     expect(within(card).queryAllByRole('button')).toHaveLength(0);
   });
 
-  it('is one line when the reader replied in the chat', () => {
+  it('is one line when the user replied in the chat', () => {
     draw({ ...REQUEST, state: 'replied' });
     const card = screen.getByTestId('space-request-card');
 

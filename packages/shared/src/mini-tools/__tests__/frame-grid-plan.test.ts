@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 test plan §64.4 SC02, SC03, SC05, SC06, SC12 (frames-split design §5.4 上限/派发 rows, §7.1 route table,

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Asset repository — the studio ledger and permanent Project asset references.
@@ -16,6 +16,7 @@ import { and, desc, eq, gt, isNotNull, isNull, inArray, or, sql, type SQL } from
 import { alias } from "drizzle-orm/pg-core";
 import { db, type DbTx } from "@core/db/client.js";
 import { projectAssetRefs, studioAssets } from "@core/db/schema.js";
+import { coverKeyFor } from "@core/infra/storage/index.js";
 import * as maintenanceRepo from "@core/maintenance/maintenance.repo.js";
 import type { ProjectAssetReferenceEntity, ProjectRegisteredAsset, StudioAssetEntity } from "@breatic/shared";
 
@@ -255,34 +256,6 @@ export async function findLiveByStorageKey(storageKey: string, tx?: DbTx): Promi
 }
 
 /**
- * The content hash of the bytes stored under a key, from any studio's live
- * asset row.
- * @param storageKey - The object's storage key.
- * @returns The sha256 hex, or null when no live asset is stored under it.
- * @throws {Error} When the database query fails.
- */
-export async function findHashByStorageKey(storageKey: string): Promise<string | null> {
-  return (await findLiveByStorageKey(storageKey))?.contentHash ?? null;
-}
-
-/**
- * The kind of the bytes stored under a key, from any studio's live asset row.
- * The kind is read off the stored bytes, so every row under one key holds the
- * same one.
- * @param storageKey - The object's storage key.
- * @returns The kind, or null when no live asset is stored under it.
- * @throws {Error} When the database query fails.
- */
-export async function findKindByStorageKey(storageKey: string): Promise<string | null> {
-  const [row] = await db
-    .select({ kind: studioAssets.kind })
-    .from(studioAssets)
-    .where(and(eq(studioAssets.storageKey, storageKey), isNull(studioAssets.deletedAt)))
-    .limit(1);
-  return row?.kind ?? null;
-}
-
-/**
  * Register a physical asset with WITHIN-STUDIO dedup. If the studio
  * already has a live asset with this content hash, nothing new is stored
  * and the existing row is returned (`deduped: true`); otherwise the new
@@ -406,6 +379,47 @@ export async function findCoverOf(
 }
 
 /**
+ * One live row for each storage key, and the cover row under each key that
+ * names a video, in two queries.
+ * @param keys - The storage keys.
+ * @returns Per key found, its live row and cover row.
+ * @throws {Error} When the database query fails.
+ */
+export async function findByStorageKeys(
+  keys: readonly string[],
+): Promise<Map<string, { asset: StudioAssetEntity; cover: StudioAssetEntity | null }>> {
+  const found = new Map<string, { asset: StudioAssetEntity; cover: StudioAssetEntity | null }>();
+  if (keys.length === 0) return found;
+  const unique = [...new Set(keys)];
+  // Rows under one key describe the same bytes, so one per key is enough.
+  const rows = await db
+    .selectDistinctOn([studioAssets.storageKey])
+    .from(studioAssets)
+    .where(and(inArray(studioAssets.storageKey, unique), isNull(studioAssets.deletedAt)))
+    .orderBy(studioAssets.storageKey);
+  for (const row of rows) found.set(row.storageKey, { asset: toEntity(row), cover: null });
+  const cover = alias(studioAssets, "cover");
+  const covers = await db
+    .select({ videoKey: studioAssets.storageKey, cover })
+    .from(studioAssets)
+    .innerJoin(cover, eq(cover.id, studioAssets.coverAssetId))
+    .where(
+      and(
+        inArray(studioAssets.storageKey, unique),
+        eq(studioAssets.kind, "video"),
+        isNull(studioAssets.deletedAt),
+        inArray(cover.storageKey, unique.map(coverKeyFor)),
+        isNull(cover.deletedAt),
+      ),
+    );
+  for (const { videoKey, cover: row } of covers) {
+    const entry = found.get(videoKey);
+    if (entry !== undefined && entry.cover === null && row.storageKey === coverKeyFor(videoKey)) entry.cover = toEntity(row);
+  }
+  return found;
+}
+
+/**
  * Total live storage a studio uses, in bytes (sum of its assets' sizes).
  * @param studioId - Studio to sum.
  * @returns The byte total (0 when the studio owns no live assets).
@@ -481,6 +495,8 @@ export interface ProjectMediaQuery {
   projectId: string;
   studioId: string;
   assetId?: string;
+  /** The kind a list reads; a read by `assetId` ignores it. Defaults to video. */
+  kind?: "image" | "video";
   cursor?: ProjectAssetCursor;
   limit: number;
 }
@@ -649,7 +665,7 @@ export async function readProjectMedia(input: ProjectMediaQuery, tx?: DbTx): Pro
     isNull(studioAssets.deletedAt),
   ];
   if (input.assetId !== undefined) conditions.push(eq(studioAssets.id, input.assetId));
-  else conditions.push(eq(studioAssets.kind, "video"));
+  else conditions.push(eq(studioAssets.kind, input.kind ?? "video"));
   if (input.cursor !== undefined) {
     conditions.push(sql`(${projectAssetRefs.createdAt}, ${projectAssetRefs.id}) < (${input.cursor.createdAt}::timestamptz, ${input.cursor.id}::uuid)`);
   }

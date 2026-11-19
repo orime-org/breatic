@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What each tool of a turn is handed (inner#1315): every tool keeps the
@@ -22,12 +22,17 @@ const tools = {
   read_conversation: {},
   read_node_history: {},
   list_project_activity: {},
+  save_memory: {},
+  delete_memory: {},
+  read_memory: {},
 };
 const records = { spaceName: () => undefined } as never;
+const memory = { read: async () => [] } as never;
 
 describe("turnToolsContext", () => {
   const openDocument = { spaceId: "d1", spaceName: "Storyboard", blocks: [] };
-  const context = turnToolsContext(tools, usage, { saveToStorage, studioId: "s1", openDocument, records });
+  const readPages = async () => ({ pages: [], usage: { wallMs: 0, cpuUsec: null } });
+  const context = turnToolsContext(tools, usage, { saveToStorage, studioId: "s1", openDocument, records, memory, readPages });
 
   it("keeps the usage recorder on every tool", () => {
     for (const name of Object.keys(tools)) expect(context[name]).toMatchObject({ usage });
@@ -56,8 +61,31 @@ describe("turnToolsContext", () => {
     }
   });
 
+  it("hands the three memory tools the turn's memory (#1363)", () => {
+    for (const name of ["save_memory", "delete_memory", "read_memory"]) {
+      expect(context[name]).toEqual({ usage, memory });
+    }
+  });
+
   it("gives other tools nothing more", () => {
     expect(Object.keys(context.web_search ?? {})).toEqual(["usage"]);
+  });
+});
+
+describe("turnToolsContext for web_fetch (inner#1664)", () => {
+  const readPages = async () => ({ pages: [], usage: { wallMs: 0, cpuUsec: null } });
+  // Held in a variable, not written inline: the turn argument gains
+  // `readPages` with the implementation, and an inline literal would not
+  // compile against the argument as it is declared today.
+  const turn = { saveToStorage, studioId: "s1", openDocument: null, records, memory, readPages };
+  const context = turnToolsContext({ web_search: {}, web_fetch: {} }, usage, turn);
+
+  it("hands web_fetch the turn's page read beside its usage recorder", () => {
+    expect(context.web_fetch).toEqual({ usage, readPages });
+  });
+
+  it("gives web_search nothing more than its usage recorder", () => {
+    expect(context.web_search).toEqual({ usage });
   });
 });
 
@@ -65,7 +93,7 @@ describe("openDocumentOf", () => {
   const blocks = [{ id: "b1", type: "paragraph", text: "x", lossy: false, partial: false }];
   const base = { id: "d1", name: "Storyboard", kind: "document" as const };
 
-  it("is the loaded document the reader has open, with its blocks", () => {
+  it("is the loaded document the user has open, with its blocks", () => {
     expect(
       openDocumentOf({ current_space: { ...base, state: "loaded", content: "<!-- b:1 -->\nx", total_chars: 14, blocks } }),
     ).toEqual({ spaceId: "d1", spaceName: "Storyboard", blocks });

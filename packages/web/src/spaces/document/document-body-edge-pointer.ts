@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Drags and Shift+clicks that go past the first or last block of the body
@@ -48,7 +48,10 @@ import { bodyHolds } from '@web/spaces/document/document-body-focus';
 import { bodyScrollerOf, type PointerAt } from '@web/spaces/document/document-body-autoscroll';
 import { autoScrollOf } from '@web/spaces/document/document-drag-autoscroll';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { TABLES } from '@web/spaces/document/document-table-nodes';
+import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
+import { FORMULA_BOX } from '@web/spaces/document/document-math';
 
 /**
  * How far the pointer can travel before a press is a drag rather than a click:
@@ -108,35 +111,38 @@ function edgeLine(view: EditorView, edge: BodyEdge): Element | null {
  */
 function zoneAt(view: EditorView, y: number): PointerZone {
   const { doc } = view.state;
+  // A table open full screen is the whole body on screen; the blocks around
+  // it are hidden and measure nothing.
+  if (inTableFullscreen(view.state)) return 'body';
   if (bodyEdgeNeedsTakeover(doc, 'end')) {
     const last = edgeLine(view, 'end');
     if (last) {
       const box = last.getBoundingClientRect();
-      if (y >= (edgeBlockIsTable(view, 'end') ? box.bottom : box.top)) return 'end';
+      if (y >= (edgeBlockIsTableOrColumns(view, 'end') ? box.bottom : box.top)) return 'end';
     }
   }
   if (bodyEdgeNeedsTakeover(doc, 'start')) {
     const first = edgeLine(view, 'start');
     if (first) {
       const box = first.getBoundingClientRect();
-      if (y <= (edgeBlockIsTable(view, 'start') ? box.top : box.bottom)) return 'start';
+      if (y <= (edgeBlockIsTableOrColumns(view, 'start') ? box.top : box.bottom)) return 'start';
     }
   }
   return 'body';
 }
 
 /**
- * Whether the block at one end of the body is a table. A press over a table
- * is its cells': the browser selects the words in them, and only a press past
- * the table's box reaches for the edge.
+ * Whether the block at one end of the body is a table or a column group. A
+ * press over either is its words': the browser selects the words in it, and
+ * only a press past its box reaches for the edge (inner#1314 design 5.5).
  * @param view - The view.
  * @param edge - Which end.
- * @returns True for a table.
+ * @returns True for a table or a column group.
  */
-function edgeBlockIsTable(view: EditorView, edge: BodyEdge): boolean {
+function edgeBlockIsTableOrColumns(view: EditorView, edge: BodyEdge): boolean {
   const pos = bodyEdgeBlockPos(view.state.doc, edge);
   const name = pos === null ? undefined : view.state.doc.nodeAt(pos)?.type.name;
-  return name === 'table' || name === DOC_TABLE;
+  return name !== undefined && (TABLES.has(name) || name === DOC_COLUMN_LIST);
 }
 
 /**
@@ -181,12 +187,13 @@ function isPlainPress(event: MouseEvent): boolean {
 /**
  * Whether a press lands on a control a block draws — a check-list checkbox, a
  * toggle heading's button, a media block's toolbar, resize knob or caption
- * field: the press is the control's, and the text selection stays as it is.
+ * field, a formula's box: the press is the control's, and the text selection
+ * stays as it is.
  * @param event - The press.
  * @returns True for a press on such a control.
  */
 function onControl(event: MouseEvent): boolean {
-  return event.target instanceof Element && event.target.closest(`input, button, ${MEDIA_CHROME}`) !== null;
+  return event.target instanceof Element && event.target.closest(`input, button, textarea, ${MEDIA_CHROME}, ${FORMULA_BOX}`) !== null;
 }
 
 /**

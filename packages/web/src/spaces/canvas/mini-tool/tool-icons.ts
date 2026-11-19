@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import {
   AudioLines,
   Brush,
   Clapperboard,
+  Combine,
   Crop,
   Crosshair,
   Eraser,
@@ -33,7 +34,6 @@ import {
   SquarePen,
   StretchHorizontal,
   Sun,
-  Timer,
   UserRound,
   Volume2,
   Wand2,
@@ -47,6 +47,7 @@ export const MINI_TOOL_ICONS: Readonly<Record<MiniToolIcon, LucideIcon>> = {
   AudioLines,
   Brush,
   Clapperboard,
+  Combine,
   Crop,
   Crosshair,
   Eraser,
@@ -75,7 +76,6 @@ export const MINI_TOOL_ICONS: Readonly<Record<MiniToolIcon, LucideIcon>> = {
   SquarePen,
   StretchHorizontal,
   Sun,
-  Timer,
   UserRound,
   Volume2,
   Wand2,

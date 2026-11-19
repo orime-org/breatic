@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** Actual production composition acceptance, rather than another hook-factory fixture. */
 import { randomBytes, randomUUID } from "node:crypto";
@@ -54,6 +54,9 @@ async function connect(fixture: ActivityCollabFixture, mode: "read-write" | "rea
   const client = await connectCollabActivity(active.server, fixture, name, mode);
   clients.push(client);
   client.socket.send(syncFrame(name, WIRE.sync, SYNC.step1, Y.encodeStateVector(client.document)));
+  // A real provider answers the server's SyncStep1 with its SyncStep2; collab
+  // drops Updates sent before that handshake frame (inner#1790).
+  client.socket.send(syncFrame(name, WIRE.sync, SYNC.step2, Y.encodeStateAsUpdate(client.document)));
   await waitFor(() => client.document.getMap("activity-test").get("existing") === "preserved", "production initial content sync");
   return client;
 }
@@ -118,11 +121,11 @@ describe("P19/P20 createCollabServer real composition acceptance", () => {
 
   it("preserves the production viewer read-only gate and excludes its mutation from activity", async () => {
     const fixture = await seedCollabActivity();
-    const reader = await viewer(fixture);
-    const client = await connect(reader, "readonly");
+    const viewerFixture = await viewer(fixture);
+    const client = await connect(viewerFixture, "readonly");
     client.socket.send(syncFrame(client.documentName, WIRE.sync, SYNC.update, mutation(client)));
     await confirm(client, false);
-    expect(await collabActivityRows(reader)).toEqual([]);
+    expect(await collabActivityRows(viewerFixture)).toEqual([]);
     expect(await collabActivityRows(fixture)).toEqual([]);
     expect(active.hocuspocus.documents.get(client.documentName)?.getMap("activity-test").get("actor")).toBeUndefined();
   });

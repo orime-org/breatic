@@ -1,0 +1,13 @@
+# Database connection pools (#1435, #1047).
+#
+# Both limits apply to every postgres.js pool the services build through
+# `createPgClient` (packages/core/src/db/client.ts): the main and the Yjs pool.
+pool:
+  # Seconds a query, transaction or reserve may wait for a pooled connection
+  # before it fails with QUEUE_TIMEOUT, unsent. postgres.js waits without limit
+  # by default, so a pool whose connections are all held would hang every
+  # request behind it.
+  queue_timeout_s: 30
+  # Seconds opening a connection (TCP, TLS, startup and authentication) may take
+  # before it fails with CONNECT_TIMEOUT.
+  connect_timeout_s: 30

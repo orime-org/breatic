@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A turn run against a scripted model and a small fake conversation, for the
@@ -11,8 +11,8 @@
  * parts or a rejection, which is how a provider turns a request away before a
  * stream exists (H1, H2 in the probe). The conversation is `world.history`,
  * read through a fake `buildTurnContext` that honours the watermark, and a
- * fold is a fake `consolidateWindow` that moves the watermark and rewrites
- * the conversation memory the way a written fold does.
+ * fold is a fake `consolidateWindow` that moves the watermark and replaces
+ * the progress note the way a written fold does.
  *
  * A test file mocks each module with the factories below and reads
  * everything that happened off `world`.
@@ -181,7 +181,7 @@ export function callsFetch(toolCallId: string, input = 100, output = 10, thinks 
 }
 
 /**
- * A call that puts a questionnaire to the reader.
+ * A call that puts a questionnaire to the user.
  * @param toolCallId - The call's id.
  * @param input - Input tokens reported.
  * @param output - Output tokens reported.
@@ -250,8 +250,10 @@ export interface World {
   history: Array<MessageData & { forModel: unknown }>;
   /** How far the conversation is folded. */
   watermark: number;
-  /** The conversation memory a fold wrote last. */
+  /** The progress note a fold wrote last. */
   memory: string;
+  /** The Project Instructions each read of the context finds, if any (#1400). */
+  projectInstructions: string | undefined;
   /** What the model does, call by call. */
   script: ScriptedCall[];
   /** What each model call was handed. */
@@ -259,7 +261,7 @@ export interface World {
   /** The order things happened in: `call`, `fold`, `tool`, `context`. */
   events: string[];
   /** How the folds end, fold by fold; `written` once this runs out. */
-  foldOutcomes: Array<"written" | "discarded" | "superseded" | "aborted" | "untouched">;
+  foldOutcomes: Array<"written" | "failed" | "superseded" | "aborted" | "untouched">;
   /** What each fold was handed. */
   folds: Array<Record<string, unknown>>;
   /** Reads of the context after which every further read throws. */
@@ -272,10 +274,10 @@ export interface World {
   toolOutput: string;
   /** How many times `fetch_page` ran. */
   toolRuns: number;
-  /** The turn index the next reader message is filed under. */
+  /** The turn index the next user message is filed under. */
   nextTurn: number;
-  /** Reader messages written, with their turn. */
-  readerMessages: Array<{ turnIndex: number; message: { parts: MessageData["parts"] } }>;
+  /** User messages written, with their turn. */
+  userMessages: Array<{ turnIndex: number; message: { parts: MessageData["parts"] } }>;
   /** Every `setUserForModel` write. */
   userForModel: Array<{ turnIndex: number; kept: { messages: ModelMessage[]; snapshot?: unknown } }>;
   /** Every reply row written, with what was kept for the model. */
@@ -283,7 +285,7 @@ export interface World {
   /** Every model call a usage recorder was handed, under the recorder's key. */
   recorded: Array<{ key: string; usage: { inputTokens?: number; outputTokens?: number } }>;
   /** Every charge taken. */
-  charges: Array<{ key: string; amount: number }>;
+  charges: Array<{ kind: string; key: string; amount: number }>;
   /** The type of every chunk on the wire so far, in order, as it arrives. */
   wire: string[];
   /** Awaited inside each fold before it ends. */
@@ -301,6 +303,7 @@ function emptyWorld(): World {
     history: [],
     watermark: 0,
     memory: "",
+    projectInstructions: undefined,
     script: [],
     prompts: [],
     events: [],
@@ -312,7 +315,7 @@ function emptyWorld(): World {
     toolOutput: "the page",
     toolRuns: 0,
     nextTurn: 1,
-    readerMessages: [],
+    userMessages: [],
     userForModel: [],
     replies: [],
     recorded: [],
@@ -333,12 +336,12 @@ export const BASE_CONFIG: Record<string, unknown> = {
   fold_trigger_tokens: 750_000,
   // Above the window less the output reserve, so the window term sets the fold target.
   memory_keep_tokens: 2_000_000,
-  memory_conversation_max_size: 1000,
-  memory_project_max_size: 1000,
+  // A reserve of 2 × (10 × 159 + 410) = 4000 tokens.
+  memory_index_max_entries: 10,
+  memory_progress_max_chars: 410,
   max_tool_iterations: 8,
   llm_max_retries: 0,
   overflow_folds_per_turn: 2,
-  consolidation_shrink_attempts: 3,
   context_window_fallback_tokens: 1_000_000,
 };
 
@@ -363,13 +366,13 @@ export const TOOLS = {
     },
   }),
   ask_user: tool({
-    description: "Ask the reader.",
+    description: "Ask the user.",
     inputSchema: z.object({ questions: z.array(z.unknown()) }),
   }),
 };
 
 /**
- * The model, as the turn gets it from `getModel`.
+ * The model, as the turn gets it from `provider().llm.prepare`.
  * @returns A model that plays `world.script`.
  */
 export function scriptedModel(): MockLanguageModelV4 {
@@ -420,16 +423,16 @@ export function plainTurn(turnIndex: number, size: number): Array<MessageData & 
 /**
  * The rows a turn this world ran left behind, as the repository reads them back.
  * @param turnIndex - The turn.
- * @returns Its reader row and every reply row, oldest first.
- * @throws {Error} When the turn left no reader message.
+ * @returns Its user row and every reply row, oldest first.
+ * @throws {Error} When the turn left no user message.
  */
 export function rowsOf(turnIndex: number): Array<MessageData & { forModel: unknown }> {
-  const reader = world.readerMessages.find((one) => one.turnIndex === turnIndex);
+  const userMessage = world.userMessages.find((one) => one.turnIndex === turnIndex);
   const kept = world.userForModel.filter((one) => one.turnIndex === turnIndex).at(-1)?.kept;
   const rows: Array<MessageData & { forModel: unknown }> = [];
-  if (reader !== undefined) {
-    const text = reader.message.parts.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("");
-    rows.push({ role: "user", content: text, parts: reader.message.parts, ts: "", turnIndex, forModel: kept ?? null });
+  if (userMessage !== undefined) {
+    const text = userMessage.message.parts.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("");
+    rows.push({ role: "user", content: text, parts: userMessage.message.parts, ts: "", turnIndex, forModel: kept ?? null });
   }
   for (const reply of world.replies.filter((one) => one.message.turnIndex === turnIndex)) {
     const text = reply.message.parts.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("");
@@ -475,11 +478,14 @@ export async function overflowCore(importOriginal: <T>() => Promise<T>): Promise
  */
 export async function overflowDomain(): Promise<Record<string, unknown>> {
   const { domainMock } = await import("./mock-core.js");
-  const base = domainMock() as Record<string, unknown>;
+  const base = (await domainMock()) as Record<string, unknown>;
   const actual = await vi.importActual<Record<string, unknown>>("@breatic/domain");
-  const instructionsForAgentMemory = actual.instructionsForAgentMemory as (
+  // The one the turn's own reassembly reads off the mocked barrel, so the
+  // first assembly and a reassembly build the prompt the same way.
+  const instructionsForAgentMemory = base.instructionsForAgentMemory as (
     base: string,
-    memory?: { projectMemory: string; conversationMemory: string },
+    memory?: { entries: Array<{ id: string; title: string }>; migrated: Array<{ id: string; title: string; content: string }>; olderCount: number; progress: string },
+    projectInstructions?: string,
   ) => unknown;
   const recorderOf = base.createUsageRecorder as (options: { operationKey: string }) => {
     recordModelCall: (call: { usage: { inputTokens?: number; outputTokens?: number } }) => void;
@@ -488,11 +494,14 @@ export async function overflowDomain(): Promise<Record<string, unknown>> {
     ...base,
     streamTextRetry: actual.streamTextRetry,
     finalizeTurn: actual.finalizeTurn,
-    resolveProvider: () => "test",
-    getModel: () => scriptedModel(),
-    buildAgentConfig: async (request: { basePrompt: string; memoryContext?: { projectMemory: string; conversationMemory: string } }) => ({
+    provider: (await import("./fake-provider.js")).fakeProvider(() => scriptedModel()),
+    buildAgentConfig: async (request: {
+      basePrompt: string;
+      memoryContext?: { entries: Array<{ id: string; title: string }>; migrated: Array<{ id: string; title: string; content: string }>; olderCount: number; progress: string };
+      projectInstructions?: string;
+    }) => ({
       modelId: "test",
-      instructions: instructionsForAgentMemory(request.basePrompt, request.memoryContext),
+      instructions: instructionsForAgentMemory(request.basePrompt, request.memoryContext, request.projectInstructions),
       tools: TOOLS,
       seesPictures: false,
       contextWindow: world.window,
@@ -508,8 +517,8 @@ export async function overflowDomain(): Promise<Record<string, unknown>> {
       };
     },
     creditLotService: {
-      chargeOnceForGeneration: async (key: string, charge: { amount: number }) => {
-        world.charges.push({ key, amount: charge.amount });
+      chargeOnce: async (kind: string, key: string, charge: { amount: number }) => {
+        world.charges.push({ kind, key, amount: charge.amount });
         return null;
       },
     },
@@ -522,9 +531,9 @@ export async function overflowDomain(): Promise<Record<string, unknown>> {
  */
 export function overflowRepo(): Record<string, unknown> {
   return {
-    addReaderMessage: async (_conversationId: string, message: { parts: MessageData["parts"] }) => {
+    addUserMessage: async (_conversationId: string, message: { parts: MessageData["parts"] }) => {
       const turnIndex = world.nextTurn;
-      world.readerMessages.push({ turnIndex, message });
+      world.userMessages.push({ turnIndex, message });
       return { turnIndex, closedAsks: [] };
     },
     setUserForModel: async (_conversationId: string, turnIndex: number, kept: World["userForModel"][number]["kept"]) => {
@@ -550,9 +559,10 @@ export function overflowTurnContext(): Record<string, unknown> {
         throw new Error("connection terminated unexpectedly");
       }
       return {
-        memoryContext: { projectMemory: "", conversationMemory: world.memory },
+        memoryContext: { entries: [], migrated: [], olderCount: 0, progress: world.memory },
         history: world.history.filter((row) => row.turnIndex > world.watermark && row.turnIndex < before),
         watermark: world.watermark,
+        projectInstructions: world.projectInstructions,
       };
     },
   };
@@ -569,9 +579,9 @@ export function overflowConsolidator(): Record<string, unknown> {
       world.folds.push(window);
       await world.duringFold?.();
       const outcome = world.foldOutcomes.shift() ?? "written";
-      if (outcome === "written" || outcome === "superseded" || outcome === "discarded") {
+      if (outcome === "written" || outcome === "superseded") {
         world.watermark = window.newWatermark as number;
-        if (outcome !== "discarded") world.memory = `MEMORY-THROUGH-${String(window.newWatermark)}`;
+        world.memory = `MEMORY-THROUGH-${String(window.newWatermark)}`;
       }
       if (outcome === "aborted") world.controller.abort();
       return outcome;
@@ -580,9 +590,9 @@ export function overflowConsolidator(): Record<string, unknown> {
 }
 
 /**
- * Send one reader message and read the turn to its end.
- * @param said - What the reader wrote.
- * @param space - The reader's Spaces.
+ * Send one user message and read the turn to its end.
+ * @param said - What the user wrote.
+ * @param space - The user's Spaces.
  * @returns Every chunk the turn put on the wire.
  */
 export async function sendMessage(said = "hi", space: Record<string, unknown> = {}): Promise<UIMessageChunk[]> {
@@ -606,7 +616,7 @@ export async function sendMessage(said = "hi", space: Record<string, unknown> = 
  * Resume a turn that stopped at a questionnaire and read it to its end.
  * @param toolCallId - The questionnaire answered.
  * @param turnIndex - The turn that asked.
- * @param space - The reader's Spaces when they answered.
+ * @param space - The user's Spaces when they answered.
  * @returns Every chunk the segment put on the wire.
  */
 export async function sendAnswer(toolCallId: string, turnIndex: number, space: Record<string, unknown> = {}): Promise<UIMessageChunk[]> {

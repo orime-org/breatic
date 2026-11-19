@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Maths in an assistant reply.
@@ -31,7 +31,7 @@ interface Copied {
 
 /**
  * Copies what these ranges cover, the way a keystroke would.
- * @param ranges - What the reader has selected. Several stand in for Gecko,
+ * @param ranges - What the user has selected. Several stand in for Gecko,
  *   which is the one engine that makes more than one out of a ctrl-drag —
  *   neither jsdom nor Blink will hold a second.
  * @returns What reached the clipboard, and the event that carried it.
@@ -69,6 +69,17 @@ function around(node: Node): Range {
   const range = document.createRange();
   range.selectNodeContents(node);
   return range;
+}
+
+/**
+ * The words some copied markup shows, attributes left out.
+ * @param html - The markup.
+ * @returns Its text.
+ */
+function shownText(html: string): string {
+  const held = document.createElement('div');
+  held.innerHTML = html;
+  return held.textContent ?? '';
 }
 
 describe('MarkdownMessage — maths', () => {
@@ -126,14 +137,14 @@ describe('MarkdownMessage — maths', () => {
   it('gives a copier the formula source, once (A8)', () => {
     // KaTeX draws a formula three times over: MathML for a screen reader, the
     // LaTeX it came from, and the glyphs. Measured in Chrome, a selection
-    // across a formula serialises two of the three, so a reader copying a
+    // across a formula serialises two of the three, so a user copying a
     // reply gets the formula twice and neither copy is readable.
     const body = draw('$$\nE = mc^2\n$$').querySelector('[data-testid="markdown-body"]');
     expect(body?.querySelector('.katex-display'), 'the formula is rendered at all').not.toBeNull();
 
-    // Selected the way a reader drags across a whole reply, which takes in the
+    // Selected the way a user drags across a whole reply, which takes in the
     // scroller around the formula — and Radix gives each scroller a `style`
-    // element of its own, which the browser never renders and a reader must
+    // element of its own, which the browser never renders and a user must
     // never be handed.
     const { written, event } = copy(around(body as Element));
 
@@ -145,11 +156,72 @@ describe('MarkdownMessage — maths', () => {
     // The source as the model wrote it, delimiters and line breaks included,
     // so a copied reply pastes back as the same reply.
     expect(html, 'the copy carries the LaTeX the model wrote').toContain('$$\nE = mc^2\n$$');
-    expect(html.match(/E = mc\^2/g) ?? [], 'and carries it once').toHaveLength(1);
-    expect(html, 'and carries nothing the reader cannot see').not.toContain('scrollbar-width');
+    // Once in what is shown: the element around it also names the source in
+    // `data-math-block`, which the document body reads back (inner#1423).
+    expect(shownText(html).match(/E = mc\^2/g) ?? [], 'and carries it once').toHaveLength(1);
+    expect(html, 'and carries nothing the user cannot see').not.toContain('scrollbar-width');
     // What is written only reaches the clipboard if the browser's own copy is
     // stopped, and its own is the three-times-over one this replaces.
     expect(event.defaultPrevented, 'and the browser writes nothing over it').toBe(true);
+  });
+
+  /**
+   * Starts a drag from an element while a selection covers a range.
+   * @param range - What the user has selected.
+   * @param from - Where the drag starts.
+   * @returns What the drag carries, and the event.
+   */
+  function dragFrom(range: Range, from: Node, types: readonly string[] = ['text/html', 'text/plain']): Copied {
+    const held = {
+      isCollapsed: false,
+      rangeCount: 1,
+      getRangeAt: (): Range => range,
+      containsNode: (node: Node): boolean => range.intersectsNode(node),
+    } as unknown as Selection;
+    const realSelection = window.getSelection.bind(window);
+    window.getSelection = (): Selection => held;
+    const written = new Map<string, string>();
+    const event = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', {
+      value: { types, setData: (type: string, data: string): Map<string, string> => written.set(type, data), getData: (type: string): string => written.get(type) ?? '' },
+    });
+    from.dispatchEvent(event);
+    window.getSelection = realSelection;
+    return { written, event };
+  }
+
+  it('gives a drag of a reply the formula source a copy gives, and lets the drag go on (A8)', () => {
+    const body = draw('area $$a^2+b$$ end').querySelector('[data-testid="markdown-body"]') as Element;
+    const range = around(body);
+    const copied = copy(range).written.get('text/html');
+
+    const { written, event } = dragFrom(range, body.querySelector('p') as Element);
+
+    expect(written.get('text/html'), 'the drag carries what a copy writes').toBe(copied);
+    expect(event.defaultPrevented, 'and the drag is not cancelled').toBe(false);
+  });
+
+  it('leaves a drag that starts outside the selection to the browser (A8)', () => {
+    const body = draw('area $$a^2+b$$ end\n\n[link](https://example.com/doc)').querySelector('[data-testid="markdown-body"]') as Element;
+    const range = document.createRange();
+    range.selectNodeContents(body.querySelector('p') as Element);
+
+    const { written } = dragFrom(range, body.querySelector('a') as Element);
+
+    expect(written.size, 'a link dragged while a formula is selected carries the link').toBe(0);
+  });
+
+  it('leaves the drag of a link the selection only reaches into to the browser (A8)', () => {
+    const body = draw('area $$a^2+b$$ [link](https://example.com/doc)').querySelector('[data-testid="markdown-body"]') as Element;
+    const link = body.querySelector('a') as Element;
+    const range = document.createRange();
+    range.setStart(body.querySelector('p') as Element, 0);
+    range.setEnd(link.firstChild as Node, 2);
+
+    // Dragged from the unselected end, the browser drags the link, not the selection.
+    const { written } = dragFrom(range, link, ['text/uri-list', 'text/html', 'text/plain']);
+
+    expect(written.size, 'the drag carries the link').toBe(0);
   });
 
   it('leaves a copy with no formula in it to the browser (A8)', () => {
@@ -167,7 +239,7 @@ describe('MarkdownMessage — maths', () => {
   });
 
   it('leaves markup in a reply inert on the clipboard (A8)', () => {
-    // The pipeline renders no inline HTML, so this reaches the reader as
+    // The pipeline renders no inline HTML, so this reaches the user as
     // characters. Building the markup flavour by hand would hand it on as
     // live markup instead — the browser escapes what it serialises.
     const body = draw('A tag <img src=x onerror=alert(1)> and $$x$$ after.').querySelector(
@@ -291,7 +363,7 @@ describe('MarkdownMessage — maths', () => {
 
   it('gives back the whole formula when a drag starts inside one (A8)', () => {
     // The start of the drag is a glyph in the middle of the rendered
-    // formula; what the reader meant is the formula.
+    // formula; what the user meant is the formula.
     const body = draw('before $$E = mc^2$$ after').querySelector(
       '[data-testid="markdown-body"]',
     ) as Element;
@@ -307,7 +379,7 @@ describe('MarkdownMessage — maths', () => {
     expect(html, 'not an empty pair of delimiters').not.toContain('$$$$');
   });
 
-  it('keeps two ranges the reader picked apart apart (A8)', () => {
+  it('keeps two ranges the user picked apart apart (A8)', () => {
     // What a drag hands over is the words inside a paragraph, not the
     // paragraph — so two of them appended one after the other read as one
     // run-on line, and the browser's own copy puts them on separate lines.
@@ -327,7 +399,7 @@ describe('MarkdownMessage — maths', () => {
 
   it('copies a formula two ranges both reach into only once (A8)', () => {
     // Two ctrl-drags that cut through the same formula leave two ranges the
-    // reader drew as disjoint. Each is widened to the whole formula, and the
+    // user drew as disjoint. Each is widened to the whole formula, and the
     // widening is what makes them overlap.
     const body = draw('before $$E = mc^2$$ after').querySelector(
       '[data-testid="markdown-body"]',
@@ -346,6 +418,6 @@ describe('MarkdownMessage — maths', () => {
     const html = copy(first, second).written.get('text/html') ?? '';
 
     expect(html, 'the formula is there').toContain('$$E = mc^2$$');
-    expect(html.match(/E = mc\^2/g) ?? [], 'once').toHaveLength(1);
+    expect(shownText(html).match(/E = mc\^2/g) ?? [], 'once').toHaveLength(1);
   });
 });

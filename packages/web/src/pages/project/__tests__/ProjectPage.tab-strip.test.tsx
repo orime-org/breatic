@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The Space tab strip, on a browser that has not opened this project before.
@@ -74,6 +74,7 @@ vi.mock('@web/data/yjs/project-meta', async () => {
     > => ({
       spaces: meta.spaces,
       users: new Map(),
+      following: new Map(),
       synced: meta.synced,
       provider: fakeProvider,
       status: 'connected',
@@ -346,7 +347,7 @@ describe('ProjectPage — the strip on a browser that has not been here', () => 
 });
 
 // The two lines that join the strip to the browser's storage: the seed the
-// page opens on, and the write that follows every change the reader makes.
+// page opens on, and the write that follows every change the user makes.
 // Both modules either side of them are covered on their own, so nothing goes
 // red when the join itself is cut.
 describe('ProjectPage — the strip the browser was holding', () => {
@@ -421,7 +422,7 @@ describe('ProjectPage — the strip the browser was holding', () => {
     await waitFor(() => expect(shownOrder()).toEqual([SPACE_C]));
   });
 
-  it('stores the strip the reader is left with after closing a tab', async () => {
+  it('stores the strip the user is left with after closing a tab', async () => {
     setup();
     await waitFor(() => expect(shownOrder()).toEqual([SPACE_C]));
     await act(async () => {

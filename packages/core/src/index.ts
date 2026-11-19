@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * `@breatic/core` — shared backend runtime.
@@ -22,6 +22,7 @@
 export { db, rawPg, pingDb, closeDb, createPgClient } from "@core/db/client.js";
 export { MINI_TOOL_SETTLEMENT_QUEUE, MINI_TOOL_SETTLEMENT_JOB, MINI_TOOL_SETTLEMENT_DISCOVERY_JOB, miniToolSettlementWakeSchema, miniToolSettlementDiscoverySchema, type MiniToolSettlementWake, type MiniToolSettlementDiscovery } from "@core/infra/mini-tool-settlement.js";
 export { MINI_TOOL_DELIVERY_JOB, MINI_TOOL_DELIVERY_DISCOVERY_JOB, miniToolDeliveryWakeSchema, miniToolDeliveryDiscoverySchema, type MiniToolDeliveryWake, type MiniToolDeliveryDiscovery } from "@core/infra/mini-tool-delivery.js";
+export { onDatabaseWaitTimeout, type DatabaseWaitTimeout } from "@core/db/wait-timeouts.js";
 export { yjsDb, yjsRawPg, closeYjsDb } from "@core/db/client.js";
 export type { DbTx, YjsDbTx } from "@core/db/client.js";
 export { runMigrations, runYjsMigrations } from "@core/db/migrate.js";
@@ -85,7 +86,6 @@ export {
   getUsagePricing,
   parseUsagePricing,
   type UsagePricing,
-  type ModelPrice,
 } from "@core/config/usage-pricing.js";
 export type { StorageConfig } from "@core/config/storage.js";
 export {
@@ -108,8 +108,7 @@ export type {
   SubscriptionPlans,
 } from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
-export { getAgentConfig, memoryReserveTokens } from "@core/config/loader.js";
-export type { PromptCacheTtl } from "@core/config/loader.js";
+export { getAgentConfig, memoryReserveTokens, MEMORY_TITLE_MAX_CHARS, MEMORY_CONTENT_MAX_CHARS } from "@core/config/loader.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
 export {
@@ -162,6 +161,7 @@ export {
 export {
   publishActivityNew,
   publishCreditsChanged,
+  publishSpaceTasksChanged,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
   sessionsRevokedChannelName,
@@ -211,6 +211,15 @@ export * as projectAssetReferenceService from "@core/asset/project-asset-referen
 export * as assetRepo from "@core/asset/asset.repo.js";
 export { StorageKeyRetiredError, type RegisterAssetInput } from "@core/asset/asset.repo.js";
 export * as projectEditsRepo from "@core/project/project-edits.repo.js";
+export * as timelineExecutionRepo from "@core/timeline/timeline-execution.repo.js";
+export { announceExecutionChange } from "@core/timeline/execution-change.js";
+export {
+  TIMELINE_QUEUE,
+  TIMELINE_EXECUTION_JOB,
+  addTimelineExecutionJob,
+  type TimelineExecutionJobData,
+} from "@core/timeline/timeline-queue.js";
+export type { TimelineExecutionEvent, TimelineExecutionTransition, NewTimelineExecution } from "@core/timeline/timeline-execution.repo.js";
 export {
   projectActivitiesRepo,
   encodeActivityCursor,
@@ -244,6 +253,7 @@ export type { EnterpriseMembershipWrite, EnterpriseMembershipProfile, Enterprise
 // ceilings above are read here too, and a subscription whose paid period ran
 // out says the tier on the account is stale.
 export {
+  hasPaidMembership,
   listSubscriptions,
   markFirstActive,
   upsertSubscription,

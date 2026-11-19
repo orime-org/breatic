@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Understanding through OpenRouter's chat completions: the question, then each
@@ -43,6 +43,8 @@ const FINISH: Readonly<Record<string, FinishReason>> = {
  * @throws {Error} For an audio type OpenRouter has no format name for.
  */
 function partOf(media: UnderstandCall["media"][number]): Record<string, unknown> {
+  // An image handed over by its address goes as that address; OpenRouter fetches it.
+  if ("read" in media) return { type: "image_url", image_url: { url: media.url } };
   const data = base64Of(media.bytes);
   if (media.contentType.startsWith("video/")) return { type: "video_url", video_url: { url: `data:${wireTypeOf(media.contentType)};base64,${data}` } };
   if (media.contentType.startsWith("audio/")) {
@@ -102,7 +104,7 @@ export const openRouterUnderstand: UnderstandAdapter = {
       model: call.modelId,
       max_tokens: call.maxOutputTokens,
       messages: [{ role: "user", content }],
-      ...(call.backend === undefined ? {} : { provider: call.backend }),
+      ...(call.provider === undefined ? {} : { provider: call.provider }),
     };
     return exchange(
       {
@@ -117,9 +119,10 @@ export const openRouterUnderstand: UnderstandAdapter = {
 
   read(body) {
     const parsed = completionSchema.safeParse(body);
-    if (!parsed.success) return { unreadable: `OpenRouter's answer has an unexpected shape: ${parsed.error.issues[0]?.message ?? "unknown"}` };
+    if (!parsed.success) return { unreadable: `OpenRouter's answer has an unexpected shape: ${z.prettifyError(parsed.error)}` };
     const completion = parsed.data;
-    // An error may sit at the top of the body or on the choice; words written before it are a stop.
+    // An error may sit at the top of the body or on the choice; words written before a choice's error are kept as the
+    // answer, with that choice's finish reason.
     if (completion.error !== undefined && completion.error !== null) return { error: completion.error };
     const choice = completion.choices?.[0];
     if (choice === undefined) return { unreadable: "OpenRouter's answer has no choice" };
@@ -127,6 +130,12 @@ export const openRouterUnderstand: UnderstandAdapter = {
     if (text === "" && choice.error !== undefined && choice.error !== null) return { error: choice.error };
     const reason = choice.finish_reason ?? "";
     return { text, finishReason: Object.hasOwn(FINISH, reason) ? FINISH[reason]! : "other" };
+  },
+
+  contentBlocked(error) {
+    // The words its refusal uses for blocked content, which the understand before provider read (domain understand.ts errorType).
+    const type = (error as { metadata?: { error_type?: unknown } } | null | undefined)?.metadata?.error_type;
+    return type === "content_policy_violation" || type === "refusal";
   },
 
   billing(body) {

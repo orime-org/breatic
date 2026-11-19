@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import * as Y from 'yjs';
@@ -15,9 +15,13 @@ import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
 import type * as ToastModule from '@web/lib/toast';
 
+const NAME = 'project-p1/3d-s1';
+
 const { reportError } = vi.hoisted(() => ({ reportError: vi.fn() }));
 
-vi.mock('@web/data/api/scene', () => ({
+vi.mock('@web/data/api/scene', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/scene')>()),
+  listSpaceTasks: vi.fn(async () => ({ serverNow: new Date().toISOString(), tasks: [] })),
   getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1 })),
   resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary' })),
 }));
@@ -49,7 +53,7 @@ function BoundEditor({ session }: { session: SceneSession }): React.JSX.Element 
 function renderVersion(version: number): void {
   const doc = new Y.Doc();
   doc.getMap('scene').set('formatVersion', version);
-  const session = new SceneSession(doc);
+  const session = new SceneSession(doc, NAME);
   session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true,
     writeAccess: 'granted', refused: false, awareness: null });
   sessions.push(session);

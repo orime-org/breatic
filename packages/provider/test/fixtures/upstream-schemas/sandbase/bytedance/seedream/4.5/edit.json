@@ -1,0 +1,80 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/bytedance/seedream/4.5/edit",
+  "fields": {
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "21:9",
+          "16:9",
+          "3:2",
+          "4:3",
+          "1:1",
+          "3:4",
+          "2:3",
+          "9:16"
+        ]
+      }
+    ],
+    "image_size": [
+      {
+        "type": "object"
+      }
+    ],
+    "image_size.height": [
+      {
+        "type": "integer",
+        "minimum": 512,
+        "maximum": 8192
+      }
+    ],
+    "image_size.width": [
+      {
+        "type": "integer",
+        "minimum": 512,
+        "maximum": 8192
+      }
+    ],
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png"
+        ],
+        "default": "png"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000,
+        "default": "Replace the clothing in image 1 with the outfit from image 2."
+      }
+    ]
+  },
+  "required": [
+    "images",
+    "prompt"
+  ],
+  "modes": [
+    "async"
+  ],
+  "owned_by": "bytedance"
+}

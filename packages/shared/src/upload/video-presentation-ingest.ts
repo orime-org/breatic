@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ContainerUsage } from '@shared/upload/mini-tool-job.js';
+import type { ContainerUsage } from '@shared/upload/container-usage.js';
 import { z } from 'zod';
 import { videoPresentationOriginalSchema } from '@shared/upload/video-presentation.js';
 import { rationalTimeSchema, videoPresentationVersionSchema, type VideoPresentationVersion } from '@shared/upload/video-presentation-version.js';

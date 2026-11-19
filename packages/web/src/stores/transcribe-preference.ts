@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The transcription panel's filler switch (inner#856).
  *
- * One for the whole page: a reader who turned fillers off in one canvas
+ * One for the whole page: a user who turned fillers off in one canvas
  * expects them off in the next. A canvas session is one per Space and is
  * dropped with its tab, so the switch lives here, until the page reloads.
  */

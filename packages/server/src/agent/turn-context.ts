@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a turn is given before it starts: the memory and the history.
@@ -11,16 +11,18 @@
  * be a turn behaving differently depending on which entrance it came through.
  */
 
-import { conversationService, memoryService } from "@server/modules";
+import { agentInstructionsService, conversationService, memoryService } from "@server/modules";
 import type { MemoryContext } from "@breatic/shared";
 import type { ReplayRow } from "@server/agent/history-replay.js";
 
 /** Everything a turn reads before its first token. */
 export interface TurnContext {
-  /** Both memory layers, loaded once for this turn. */
+  /** The memory entries and this conversation's progress note, loaded once for this turn. */
   memoryContext: MemoryContext;
   /** What has been said since the watermark, as stored. */
   history: ReplayRow[];
+  /** The Project's instructions as stored, read with the memory (#1400). */
+  projectInstructions: string | undefined;
   /**
    * How far the conversation is already folded into memory.
    *
@@ -37,7 +39,7 @@ export interface TurnContext {
  * @param conversationId - The conversation, already checked as this user's.
  * @param projectId - The project it belongs to.
  * @param runningTurn - The turn being run, left out of the history it builds
- * @returns The memory, the history and the watermark the turn runs against.
+ * @returns The memory, the history, the watermark the turn runs against and the Project's instructions.
  */
 export async function buildTurnContext(
   userId: string,
@@ -69,9 +71,12 @@ export async function buildTurnContext(
     runningTurn,
   );
 
+  const projectInstructions = await agentInstructionsService.textFor(projectId);
+
   return {
     memoryContext,
     history,
+    projectInstructions,
     watermark: conversation?.lastConsolidatedTurn ?? 0,
   };
 }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 
@@ -9,17 +9,17 @@ import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 /** The props a text box takes from {@link useDraftBox}. */
 export interface DraftBoxProps {
   value: string;
-  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
   onBlur: () => void;
-  onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
 }
 
 /**
- * A text box whose value is written when the reader leaves it or presses
+ * A text box whose value is written when the user leaves it or presses
  * Enter, so each edit is one canvas undo step. The Enter that confirms an IME
- * word is not the reader finishing.
+ * word is not the user finishing.
  *
- * Its Space hidden by a switch of Space is not the reader leaving: the words
+ * Its Space hidden by a switch of Space is not the user leaving: the words
  * typed so far stay in the box (inner#1235 A13).
  * @param held - The value the node holds.
  * @param onCommit - Called with a changed value.
@@ -32,14 +32,14 @@ export function useDraftBox(held: string, onCommit: (next: string) => void): Dra
     if (draft !== null && draft !== held) onCommit(draft);
     setDraft(null);
   }, [draft, held, onCommit]);
-  const onChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => {
+  const onChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>): void => {
     setDraft(event.target.value);
   }, []);
   const onBlur = React.useCallback((): void => {
     whenBlurLeaves(spaceId, commit);
   }, [spaceId, commit]);
   const onKeyDown = React.useCallback(
-    (event: React.KeyboardEvent<HTMLInputElement>): void => {
+    (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>): void => {
       if (event.key === 'Enter' && !event.nativeEvent.isComposing) commit();
     },
     [commit],

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 
@@ -15,14 +15,14 @@ interface SourceBoxProps {
   sources: ChatSource[];
   /** Whether the box is up. */
   open: boolean;
-  /** Called when the reader shuts it. */
+  /** Called when the user shuts it. */
   onOpenChange: (open: boolean) => void;
 }
 
 /**
  * Every source the turn found, opened from the line under the reply.
  *
- * Titles and full addresses, and no page text: what a reader follows a source
+ * Titles and full addresses, and no page text: what a user follows a source
  * for is the page itself, and a few extracted lines here would be a worse
  * version of it that they have to read first.
  *
@@ -35,7 +35,7 @@ interface SourceBoxProps {
  * @param root0 - The component props.
  * @param root0.sources - Every page this turn found.
  * @param root0.open - Whether the box is up.
- * @param root0.onOpenChange - Called when the reader shuts it.
+ * @param root0.onOpenChange - Called when the user shuts it.
  * @returns The box.
  */
 export const SourceBox = React.memo(function SourceBox({
@@ -52,7 +52,9 @@ export const SourceBox = React.memo(function SourceBox({
       title={t('chat.sources.count', { count: sources.length })}
     >
       <ScrollArea className='min-h-0 flex-1' viewportClassName='px-2 py-2'>
-        <div className='flex flex-col gap-0.5'>
+        {/* Every row's numbers share one column, so the titles share one
+            left edge whichever row carries more numbers. */}
+        <div className='grid grid-cols-[fit-content(40%)_minmax(0,1fr)] gap-y-0.5'>
           {sources.map((s) => (
             <a
               key={s.url}
@@ -60,7 +62,7 @@ export const SourceBox = React.memo(function SourceBox({
               href={s.url}
               target='_blank'
               rel='noreferrer noopener'
-              className='flex gap-2 rounded-chrome px-3 py-2 no-underline hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+              className='col-span-2 grid grid-cols-subgrid gap-x-2 rounded-chrome px-3 py-2 no-underline hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
             >
               {/* Every number the turn handed this page, so a marker in the
                   prose can be found here whichever of them it carries. They
@@ -71,7 +73,7 @@ export const SourceBox = React.memo(function SourceBox({
                   out of the line. */}
               <span
                 data-testid='source-box-marks'
-                className='mt-px flex max-w-[40%] shrink-0 flex-wrap gap-0.5'
+                className='mt-px flex flex-wrap gap-0.5'
               >
                 {s.indexes.map((n) => (
                   <span key={n} className={CITATION_RING}>
@@ -80,7 +82,7 @@ export const SourceBox = React.memo(function SourceBox({
                 ))}
               </span>
               <span className='flex min-w-0 flex-col gap-0.5'>
-                <span className='truncate text-xs text-foreground'>{s.title}</span>
+                <span className='truncate text-xs text-foreground'>{s.title || s.url}</span>
                 <span className='truncate text-2xs text-muted-foreground'>{s.url}</span>
               </span>
             </a>

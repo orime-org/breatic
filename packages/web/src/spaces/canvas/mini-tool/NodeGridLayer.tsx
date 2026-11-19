@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { useStore } from '@xyflow/react';
 import * as React from 'react';
@@ -13,16 +13,16 @@ import { OUTSIDE_DIM, handleScale } from '@web/spaces/canvas/crop/crop-geometry'
 
 /** A frame inside the tile whose checkbox has the keyboard focus, one line wide in each tone. */
 const FOCUS_FRAME = [
-  'has-[:focus-visible]:after:content-[\'\']',
-  'has-[:focus-visible]:after:pointer-events-none',
-  'has-[:focus-visible]:after:absolute',
-  'has-[:focus-visible]:after:[inset:calc(var(--grid-line)*4)]',
-  'has-[:focus-visible]:after:border-solid',
-  'has-[:focus-visible]:after:border-foreground',
-  'has-[:focus-visible]:after:[border-width:var(--grid-line)]',
-  'has-[:focus-visible]:after:outline',
-  'has-[:focus-visible]:after:outline-background',
-  'has-[:focus-visible]:after:[outline-width:var(--grid-line)]',
+  'has-focus-visible:after:content-[\'\']',
+  'has-focus-visible:after:pointer-events-none',
+  'has-focus-visible:after:absolute',
+  'has-focus-visible:after:[inset:calc(var(--grid-line)*4)]',
+  'has-focus-visible:after:border-solid',
+  'has-focus-visible:after:border-foreground',
+  'has-focus-visible:after:[border-width:var(--grid-line)]',
+  'has-focus-visible:after:outline',
+  'has-focus-visible:after:outline-background',
+  'has-focus-visible:after:[outline-width:var(--grid-line)]',
 ].join(' ');
 
 /** The ring of a tile's mark, white on the picture in either theme. */
@@ -59,7 +59,7 @@ function cutFractions(side: number | undefined, parts: number): number[] {
 /**
  * The grid tool's layer over the node's picture while its panel is open on it
  * (inner#1303 §6.4, A15): the lines the picture is cut along, and one tile per
- * cell the reader picks or leaves out. The tile's checkbox is its one control
+ * cell the user picks or leaves out. The tile's checkbox is its one control
  * (Tab, Space); a click anywhere on the tile toggles it too. A tile left out is
  * dimmed; one too small on screen for its checkbox shows the dimming alone.
  * @param root0 - Component props.

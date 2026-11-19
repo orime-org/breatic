@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import en from '@locales/en.json';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
@@ -112,12 +113,35 @@ const ELEVEN: ModelEntry = {
       value_labels: { 0: 'Creative', 0.5: 'Natural', 1: 'Robust' },
     },
   },
-  providers: [],
-  prompt_upstream: 'text',
-  pricing: {
-    base_price: 50000,
-    formula: '{"total_price": $ceil(base_price * $length(text) / 1000)}',
-    discount_rate: 100,
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: true, envVar: 'WAVESPEED_API_KEY' }] },
+  // As provider prices it on WaveSpeed: the prompt goes as `text`.
+  pricing_rules: {
+    model: 'elevenlabs-v3',
+    upstreams: [{
+      upstream: 'wavespeed',
+      prompt_field: 'text',
+      fields: {},
+      pricing: { kind: 'formula', base_price: 50000, formula: '{"total_price": $ceil(base_price * $length(text) / 1000)}', discount_rate: 100 },
+      steps: [],
+    }],
+  },
+};
+
+/** ElevenLabs as an upstream here that takes at most five characters would carry it (#1521). */
+const CAPPED: ModelEntry = {
+  ...ELEVEN,
+  name: 'capped-tts',
+  display_name: 'Capped TTS',
+  pricing_rules: {
+    model: 'capped-tts',
+    upstreams: [{
+      upstream: 'wavespeed',
+      prompt_field: 'text',
+      fields: {},
+      pricing: { kind: 'formula', base_price: 50000, formula: '{"total_price": base_price}', discount_rate: 100 },
+      steps: [],
+      rejects: [{ when: '$length(text) > 5', reason: 'WaveSpeed text maxLength 5', limit: { field: 'prompt', measure: 'characters', max: 5 } }],
+    }],
   },
 };
 
@@ -142,6 +166,14 @@ const CLONE: ModelEntry = {
   },
 };
 
+/** A voice-cloning model that reads no prompt, as ElevenLabs Voice Changer does. */
+const CHANGER: ModelEntry = {
+  ...CLONE,
+  name: 'elevenlabs-voice-changer',
+  display_name: 'ElevenLabs Voice Changer',
+  takes_prompt: false,
+};
+
 /** The sound-effect model, as `config/models/audio/sonilo.yaml` declares it. */
 const SFX: ModelEntry = {
   ...ELEVEN,
@@ -157,11 +189,15 @@ const SFX: ModelEntry = {
     },
     audio_format: { description: '', default: 'mp3' },
   },
-  // As the catalog prices it: $0.002 a second, three seconds at least.
-  pricing: {
-    base_price: 2000,
-    formula: '{"total_price": base_price * $max([3, $min([duration, 180])])}',
-    discount_rate: 100,
+  // As provider prices it: $0.002 a second, three seconds at least.
+  pricing_rules: {
+    model: 'sonilo-sfx-v1',
+    upstreams: [{
+      upstream: 'wavespeed',
+      fields: {},
+      pricing: { kind: 'formula', base_price: 2000, formula: '{"total_price": base_price * $max([3, $min([duration, 180])])}', discount_rate: 100 },
+      steps: [],
+    }],
   },
 };
 
@@ -185,21 +221,51 @@ const BGM: ModelEntry = {
   params: {},
 };
 
-/** Reference to music: three audio slots, and lyrics the gateway insists on. */
+/**
+ * Reference to music: three audio slots, and lyrics the gateway insists on.
+ * It serves text to music as well, as `config/models/audio/models.yaml` has it.
+ */
 const A2M: ModelEntry = {
   ...T2M,
   name: 'mureka-v9.5-generate-song',
   display_name: 'Mureka V9.5 Song',
-  mode: 'a2m',
+  mode: ['t2m', 'a2m'],
+  // A melody takes no style, song or vocals (breatic#1393), as the catalog has it.
+  prompt_when: { equals: { compose_from: 'references' } },
   params: {
+    compose_from: {
+      description: '',
+      label: 'Compose from',
+      default: 'references',
+      values: ['references', 'melody'],
+      value_labels: { references: 'Style & references', melody: 'Melody' },
+      modes: ['a2m'],
+      fill: 'panel',
+    },
     lyrics: { description: '', default: null, fill: 'editor' },
-    song: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
-    melody: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
-    vocal: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true },
+    song: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true, modes: ['a2m'], when: { equals: { compose_from: 'references' } } },
+    melody: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true, modes: ['a2m'], when: { equals: { compose_from: 'melody' } } },
+    vocal: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true, modes: ['a2m'], when: { equals: { compose_from: 'references' } } },
   },
   // The mode takes any one of its three places, which is what lets a submit
   // carrying only a song through.
   source_groups: [{ mode: 'a2m', any_of: ['song', 'melody', 'vocal'] }],
+  // As provider has it: the vendor refuses a melody beside a style (#1521).
+  pricing_rules: {
+    model: 'mureka-v9.5-generate-song',
+    rejects: [
+      { when: '$exists(melody) and $exists(prompt)', reason: 'Mureka melody combination' },
+      // The vendor's lyrics cap, shortened so a test can write past it.
+      { when: '$length(lyrics) > 20', limit: { field: 'lyrics', measure: 'characters', max: 20 }, reason: 'Mureka lyrics cap' },
+    ],
+    upstreams: [{
+      upstream: 'wavespeed',
+      prompt_field: 'prompt',
+      fields: {},
+      pricing: { kind: 'formula', base_price: 50000, formula: '{"total_price": base_price}', discount_rate: 100 },
+      steps: [],
+    }],
+  },
 };
 
 /**
@@ -213,7 +279,7 @@ function catalog(): ModelCatalog {
     // The audio bucket really does hold models outside text to speech today
     // (`config/models/audio/`), and this panel reads both buckets.
     audio: [SFX, T2M, BGM, A2M],
-    tts: [ELEVEN, FISH, CLONE],
+    tts: [ELEVEN, FISH, CLONE, CHANGER, CAPPED],
     three_d: [],
     total: 2,
     credit_multiplier: 1,
@@ -387,7 +453,7 @@ function panelTree(
             projectId='p'
             spaceId='s'
             getLastWriteWasLocal={lastWriteWasLocal}
-            placeTemplate={() => undefined}
+            placeTemplate={() => ({ nodeIds: [], rects: [] })}
             edges={board.edges ?? []}
             nodes={[
               {
@@ -532,8 +598,8 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
   it('states the price per thousand characters while the prompt is still empty', async () => {
     // A model priced by its text has no figure for a run with no text, so the
     // panel states the rate instead: $0.05 per thousand characters is five
-    // credits. What it does as text arrives is `estimateCredits`, and its own
-    // tests cover the pricing formulas.
+    // credits. What it does as text arrives is provider's `estimateCost`, and its
+    // own tests cover the pricing formulas.
     await openPanel({ model: 'fish-s2-pro' });
     await waitFor(() =>
       expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent(
@@ -698,6 +764,25 @@ describe('AudioGeneratePanelContainer — submitting', () => {
       expect(toast.warning).toHaveBeenCalledWith('Choose a voice', expect.anything()),
     );
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('says which limit an upstream here holds the lines to, and sends nothing (#1521)', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({ model: 'capped-tts', paramsByModel: { 'capped-tts': { voice_id: 'Aria' } } });
+    typePrompt('Good evening.');
+    // The refusal is worked out off the render path, once the rules have loaded.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    expect(toast.warning).toHaveBeenCalledWith('Capped TTS takes at most 5 characters in the text.', expect.anything());
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('sends a run the upstream takes', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({ model: 'capped-tts', paramsByModel: { 'capped-tts': { voice_id: 'Aria' } } });
+    typePrompt('Hi.');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
   });
 
   it('sends the task once a voice and lines are in place', async () => {
@@ -973,6 +1058,145 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     expect(payload?.params.lyrics).toBe('[Verse]\nmorning light');
   });
 
+  it('composes from a melody and the lyrics alone, with no style box', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({
+      mode: 'a2m',
+      model: 'mureka-v9.5-generate-song',
+      paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } },
+      musicMelody: { url: 'https://x/m.mp3' },
+      // Picked while composing from style and references; kept, not sent.
+      musicSong: { url: 'https://x/y.mp3' },
+    });
+    expect(screen.queryByTestId('generate-prompt-group-prompt')).toBeNull();
+    expect(screen.getByTestId('generate-audio-tool-music-melody')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-audio-tool-music-song')).toBeNull();
+    expect(screen.queryByTestId('generate-audio-tool-music-vocal')).toBeNull();
+    typeLyrics('la la la');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const params = create.mock.calls[0]?.[0]?.params;
+    expect(params?.melody).toBe('https://x/m.mp3');
+    // An undrawn slot travels as null, which the worker leaves out of the request.
+    expect(params?.song ?? null).toBeNull();
+    expect(params?.prompt ?? '').toBe('');
+  });
+
+  it('says which limit the lyrics break, and sends nothing (#1521)', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({
+      mode: 'a2m',
+      model: 'mureka-v9.5-generate-song',
+      paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } },
+      musicMelody: { url: 'https://x/m.mp3' },
+    });
+    typeLyrics('la la la la la la la la');
+    // The refusal is worked out off the render path, once the rules have loaded.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    expect(toast.warning).toHaveBeenCalledWith('Mureka V9.5 Song takes at most 20 characters in the lyrics.', expect.anything());
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('offers song and vocals, and no melody, when composing from style and references', async () => {
+    await openPanel({ mode: 'a2m', model: 'mureka-v9.5-generate-song' });
+    expect(screen.getByTestId('generate-prompt-group-prompt')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-audio-tool-music-song')).toBeInTheDocument();
+    expect(screen.getByTestId('generate-audio-tool-music-vocal')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-audio-tool-music-melody')).toBeNull();
+    expect(screen.getByTestId('generate-audio-settings-trigger')).toBeInTheDocument();
+  });
+
+  it('keeps its one box open for a model that takes no prompt and has no lyrics box', async () => {
+    await openPanel({ mode: 'voice_clone', model: 'elevenlabs-voice-changer' });
+    expect(screen.getByTestId('generate-prompt-editor')).toBeVisible();
+  });
+
+  it('keeps and sends the style in Text to Music after a melody was chosen in Reference to Music', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({
+      mode: 't2m',
+      model: 'mureka-v9.5-generate-song',
+      paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } },
+    });
+    expect(screen.getByTestId('generate-prompt-group-prompt')).toBeInTheDocument();
+    typePrompt('lo-fi piano');
+    typeLyrics('la la la');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const params = create.mock.calls[0]?.[0]?.params;
+    expect(params?.prompt).toBe('lo-fi piano');
+    // A setting of Reference to Music alone stays off a Text to Music run.
+    expect(params).not.toHaveProperty('compose_from');
+  });
+
+  it('sends no style written before switching to a melody, and keeps it on the node', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    const node = { mode: 'a2m', model: 'mureka-v9.5-generate-song', musicMelody: { url: 'https://x/m.mp3' } };
+    const view = await openPanel(node);
+    typePrompt('lo-fi piano');
+    await waitFor(() => expect(screen.getByTestId('generate-prompt-editor')).toHaveTextContent('lo-fi piano'));
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-param-compose_from-option-melody'));
+    // The canvas hands the panel the node the setting was written to.
+    view.rerender(panelTree({ ...node, paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } } }));
+    await waitFor(() => expect(screen.queryByTestId('generate-prompt-group-prompt')).toBeNull());
+    typeLyrics('la la la');
+    // The vendor refuses a melody beside a style; the style left on the node is
+    // not sent, so it refuses nothing (#1521). Pressed once the rules have read the run.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(toast.warning).not.toHaveBeenCalled();
+    const params = create.mock.calls[0]?.[0]?.params;
+    expect(params?.melody).toBe('https://x/m.mp3');
+    expect(params?.prompt ?? '').toBe('');
+    expect(getPromptFragment('p', 's', 'target', storedMode())?.toString()).toContain('lo-fi piano');
+  });
+
+  it('inserts a rail row into the lyrics when composing from a melody, with no style box drawn', async () => {
+    const board = textSource('src', 'let the river carry me home');
+    await openPanel(
+      { mode: 'a2m', model: 'mureka-v9.5-generate-song', paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } } },
+      returnsTrue,
+      board,
+    );
+    expect(await screen.findByTestId('generate-lyrics-editor')).toBeVisible();
+    fireEvent.click(screen.getByTestId('generate-ref-insert-e-src'));
+
+    await waitFor(() =>
+      expect(getLyricsFragment('p', 's', 'target', storedMode())?.toString()).toContain('sourceNodeId="src"'),
+    );
+  });
+
+  it('asks for the melody when composing from one with nothing picked', async () => {
+    await openPanel({
+      mode: 'a2m',
+      model: 'mureka-v9.5-generate-song',
+      paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } },
+      // Picked while composing from style and references; not on screen now.
+      musicSong: { url: 'https://x/y.mp3' },
+    });
+    typeLyrics('la la la');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Pick a melody first', expect.anything()));
+  });
+
+  it('asks for a song or vocals when composing from style and references with nothing picked', async () => {
+    await openPanel({
+      mode: 'a2m',
+      model: 'mureka-v9.5-generate-song',
+      musicMelody: { url: 'https://x/m.mp3' },
+    });
+    typePrompt('warm indie folk');
+    typeLyrics('la la la');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Pick a song or vocals first', expect.anything()));
+  });
+
   it('carries a picked reference under the name its vendor reads', async () => {
     const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
     await openPanel({
@@ -1033,24 +1257,23 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     );
   });
 
-  // The rail row's insert button puts the chip where the writer was last
-  // typing. Both boxes take references, so a button that always aims at the
-  // style box drops the chip into the wrong one whenever the writer is in the
-  // lyrics.
-  it('inserts a rail row into the lyrics box when that is where the caret was', async () => {
+  // The rail row's insert button puts the chip into the box on show (#1201).
+  // Only one of the two is open at a time, and a chip landing in the hidden
+  // one is a chip the writer never sees arrive.
+  it('opens on the style box, with the lyrics as one row', async () => {
+    await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    expect(screen.getByTestId('generate-prompt-editor')).toBeVisible();
+    expect(await screen.findByTestId('generate-lyrics-editor')).not.toBeVisible();
+  });
+
+  it('inserts a rail row into the lyrics once their row is opened', async () => {
     const board = textSource('src', 'let the river carry me home');
     await openPanel(
       { mode: 't2m', model: 'minimax-music-3.0' },
       returnsTrue,
       board,
     );
-    const box = await screen.findByTestId('generate-lyrics-editor');
-    // A real focus move: ProseMirror reports focus off the DOM event that
-    // follows it, and a dispatched `focus` alone leaves the document's
-    // activeElement where it was.
-    act(() => {
-      (box.querySelector('.ProseMirror') as HTMLElement).focus();
-    });
+    fireEvent.click(screen.getByTestId('generate-prompt-group-lyrics-toggle'));
     fireEvent.click(screen.getByTestId('generate-ref-insert-e-src'));
 
     // Yjs lower-cases element names when it serializes, so the chip reads as
@@ -1065,10 +1288,7 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     );
   });
 
-  it('inserts a rail row into the style box when that is where the caret was', async () => {
-    // The mirror of the case above. Both boxes take references, so the button
-    // has to follow the caret in both directions; aiming it at either box
-    // unconditionally is wrong half the time.
+  it('inserts a rail row into the open style box, wherever the caret was before', async () => {
     const board = textSource('src', 'let the river carry me home');
     await openPanel(
       { mode: 't2m', model: 'minimax-music-3.0' },
@@ -1076,12 +1296,9 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
       board,
     );
     const lyrics = await screen.findByTestId('generate-lyrics-editor');
-    const style = screen.getByTestId('generate-prompt-editor');
+    // A real focus move into the hidden box: the open one still decides.
     act(() => {
       (lyrics.querySelector('.ProseMirror') as HTMLElement).focus();
-    });
-    act(() => {
-      (style.querySelector('.ProseMirror') as HTMLElement).focus();
     });
     fireEvent.click(screen.getByTestId('generate-ref-insert-e-src'));
 
@@ -1095,20 +1312,63 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     );
   });
 
-  it('still inserts once the box the caret was in goes away', async () => {
-    // The caret was in the lyrics box, and then the box left — a mode switch
-    // takes it away.
-    // The remembered box is gone; the button still has to land the chip.
+  it('puts the caret in the lyrics box when the writer opens it', async () => {
+    await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    fireEvent.click(screen.getByTestId('generate-prompt-group-lyrics-toggle'));
+    const lyrics = screen.getByTestId('generate-lyrics-editor');
+    await waitFor(() =>
+      expect(lyrics.contains(document.activeElement)).toBe(true),
+    );
+  });
+
+  it('shows the lyrics row their first line with words, and follows what is typed', async () => {
+    const board = textSource('src', 'let the river carry me home');
+    await openPanel(
+      { mode: 't2m', model: 'minimax-music-3.0' },
+      returnsTrue,
+      board,
+    );
+    act(() => typeLyrics('', 'Walking down the empty street', 'second line'));
+    await waitFor(() =>
+      expect(screen.getByTestId('generate-prompt-group-lyrics-toggle')).toHaveTextContent(
+        'Walking down the empty street',
+      ),
+    );
+    expect(screen.getByTestId('generate-prompt-group-lyrics-toggle')).not.toHaveTextContent('second line');
+  });
+
+  it('opens the style box when the mode switches to another pair of boxes (#1201)', async () => {
+    const view = await openPanel({ mode: 't2m', model: 'mureka-v9.5-generate-song' });
+    fireEvent.click(screen.getByTestId('generate-prompt-group-lyrics-toggle'));
+    expect(screen.getByTestId('generate-lyrics-editor')).toBeVisible();
+
+    view.rerender(panelTree({ mode: 'a2m', model: 'mureka-v9.5-generate-song' }));
+
+    await waitFor(() => expect(screen.getByTestId('generate-prompt-editor')).toBeVisible());
+    expect(screen.getByTestId('generate-lyrics-editor')).not.toBeVisible();
+  });
+
+  it('keeps the lyrics open when the model switches within the mode (#1201)', async () => {
+    const view = await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    fireEvent.click(screen.getByTestId('generate-prompt-group-lyrics-toggle'));
+
+    view.rerender(panelTree({ mode: 't2m', model: 'mureka-v9.5-generate-song' }));
+
+    await screen.findByTestId('generate-lyrics-editor');
+    expect(screen.getByTestId('generate-lyrics-editor')).toBeVisible();
+    expect(screen.getByTestId('generate-prompt-editor')).not.toBeVisible();
+  });
+
+  it('still inserts once the open box goes away', async () => {
+    // The lyrics were open, and then the box left: a mode switch takes it
+    // away, and the style box left standing is the one on show.
     const board = textSource('src', 'let the river carry me home');
     const view = await openPanel(
       { mode: 't2m', model: 'minimax-music-3.0' },
       returnsTrue,
       board,
     );
-    const lyrics = await screen.findByTestId('generate-lyrics-editor');
-    act(() => {
-      (lyrics.querySelector('.ProseMirror') as HTMLElement).focus();
-    });
+    fireEvent.click(screen.getByTestId('generate-prompt-group-lyrics-toggle'));
 
     // Re-render on a mode that collects no lyrics. Clicking the mode picker
     // writes to Yjs, and this suite feeds the node in as a prop, so the panel
@@ -1128,4 +1388,142 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     );
   });
 
+});
+
+describe('AudioGeneratePanelContainer — a dialogue written line by line (inner#1825)', () => {
+  const GEMINI: ModelEntry = {
+    ...ELEVEN,
+    name: 'gemini-3.8-flash-text-to-speech',
+    display_name: 'Gemini 3.1 Flash TTS',
+    params: {
+      speakers: {
+        description: '',
+        default: null,
+        type: 'items',
+        min_items: 2,
+        max_items: 2,
+        replaces: 'voice_id',
+        fields: { speaker: { type: 'text' }, voice: { values: ['Kore', 'Puck'] } },
+      },
+      voice_id: { description: '', default: 'Kore', remote_source: 'voices' },
+    },
+  } as ModelEntry;
+  const PAIR = [{ speaker: 'Ava', voice: 'Kore' }, { speaker: 'Leo', voice: 'Puck' }];
+
+  /**
+   * Opens the panel on a Gemini node whose tts prompt holds the given lines.
+   * @param lines - Each line's speaker and words.
+   * @param standInOn - Which side the record is on.
+   */
+  async function openDialogue(lines: Array<[number, string]>, standInOn = true): Promise<void> {
+    vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), tts: [GEMINI, ...catalog().tts] });
+    const data = { mode: 'tts', model: GEMINI.name, paramsByModel: { [GEMINI.name]: { speakers: PAIR, _stand_in_on: standInOn } } };
+    seedAudioNode(data);
+    const fragment = getPromptFragment('p', 's', 'target', 'tts');
+    if (!fragment) throw new Error('the node has no tts prompt');
+    fragment.insert(
+      0,
+      lines.map(([speaker, text]) => {
+        const paragraph = new Y.XmlElement('paragraph');
+        paragraph.setAttribute('speaker', speaker as unknown as string);
+        if (text !== '') paragraph.insert(0, [new Y.XmlText(text)]);
+        return paragraph;
+      }),
+    );
+    render(panelTree(data));
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
+    });
+    await screen.findByTestId('generate-audio-execute');
+  }
+
+  /**
+   * The tts prompt as stored: each paragraph's speaker and words.
+   * @returns One entry per paragraph.
+   */
+  function stored(): Array<[unknown, string]> {
+    return (getPromptFragment('p', 's', 'target', 'tts')?.toArray() ?? [])
+      .filter((block): block is Y.XmlElement => block instanceof Y.XmlElement && block.nodeName === 'paragraph')
+      .map((block) => [block.getAttribute('speaker') ?? null, block.toArray().map((child) => (child instanceof Y.XmlText ? child.toString() : '')).join('')]);
+  }
+
+  it('says to write a line when every line is blank, and sends nothing', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openDialogue([[1, ''], [2, '   ']]);
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+    expect(create).not.toHaveBeenCalled();
+    // The sentence, not just that one appeared: an empty dialogue would
+    // otherwise say the prompt one.
+    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(t('canvas.generatePanel.refuseExecuteNoLines'));
+    expect((en.canvas.generatePanel as unknown as Record<string, string | undefined>).refuseExecuteNoLines).toBe(t('canvas.generatePanel.refuseExecuteNoLines'));
+  });
+
+  it('sends the lines written out after each speaker\'s name', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openDialogue([[1, 'Hi.'], [2, 'Hello.']]);
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0]?.[0]?.params.prompt).toBe('Ava: Hi.\nLeo: Hello.');
+    expect(create.mock.calls[0]?.[0]?.params.speakers).toEqual(PAIR);
+  });
+
+  it('names each speaker\'s voice beside it in a line\'s speaker menu', async () => {
+    await openDialogue([[1, 'Hi.'], [2, 'Hello.']]);
+    const user = userEvent.setup();
+    await user.click((await screen.findAllByTestId('dialogue-line-speaker'))[0] as HTMLElement);
+    expect(await screen.findByTestId('dialogue-line-speaker-option-1')).toHaveTextContent('Kore');
+    expect(screen.getByTestId('dialogue-line-speaker-option-2')).toHaveTextContent('Puck');
+  });
+
+  it('keeps the lines\' words and speakers as they are when the reading mode goes to single and back', async () => {
+    await openDialogue([[1, 'Hi.'], [2, 'Hello.']]);
+    const before = stored();
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-audio-reading-single'));
+    await waitFor(() => {
+      const node = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target');
+      expect((node?.data as { paramsByModel?: Record<string, Record<string, unknown>> }).paramsByModel?.[GEMINI.name]?._stand_in_on).toBe(false);
+    });
+    expect(stored()).toEqual(before);
+    fireEvent.click(screen.getByTestId('generate-audio-reading-dialogue'));
+    await waitFor(() => {
+      const node = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target');
+      expect((node?.data as { paramsByModel?: Record<string, Record<string, unknown>> }).paramsByModel?.[GEMINI.name]?._stand_in_on).toBe(true);
+    });
+    expect(stored()).toEqual(before);
+  });
+});
+
+describe('AudioGeneratePanelContainer — a text setting a model needs written (inner#1825)', () => {
+  const DESIGN: ModelEntry = {
+    ...ELEVEN,
+    name: 'qwen3-tts-voice-design',
+    display_name: 'Qwen3 TTS Voice Design',
+    params: {
+      voice_description: { description: '', default: 'A warm narrator', type: 'text', min_length: 1, fill: 'panel' },
+    },
+  } as ModelEntry;
+
+  it('says to fill the setting in when it is emptied, and sends nothing', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), tts: [DESIGN, ...catalog().tts] });
+    const data = { mode: 'tts', model: DESIGN.name, paramsByModel: { [DESIGN.name]: { voice_description: '' } } };
+    seedAudioNode(data);
+    const fragment = getPromptFragment('p', 's', 'target', 'tts');
+    if (!fragment) throw new Error('the node has no tts prompt');
+    const paragraph = new Y.XmlElement('paragraph');
+    paragraph.insert(0, [new Y.XmlText('Hello.')]);
+    fragment.insert(0, [paragraph]);
+    render(panelTree(data));
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
+    });
+    fireEvent.click(await screen.findByTestId('generate-audio-execute'));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
+      t('canvas.generatePanel.refuseExecuteParamEmpty', { name: t('canvas.generatePanel.param.voice_description') }),
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
 });

@@ -30,7 +30,9 @@ Check: is the code I changed in a different package from the one I am building o
 
 **tsup, vite and vitest only transpile; types are checked only by `pnpm typecheck`.** CI runs `pnpm turbo typecheck`, which reaches a package only through its own `typecheck` script, so a new package without one is never typechecked.
 
-**A new workspace library that a service imports must be added to the runtime stage of `Dockerfile`.** The runtime stage copies each library's `dist` and `package.json` by name, and the `sentry-cli sourcemaps inject` line lists each `dist`; the build stage copies the whole workspace and does not need it. A missing copy builds locally and fails only in the Docker job.
+**A new workspace library that a service imports must be added to the runtime stage of `Dockerfile`.** The runtime stage copies each library's `dist` and `package.json` by name, and the `sentry-cli sourcemaps inject` line lists each `dist`; the build stage copies the whole workspace and does not need it. `scripts/backend-sourcemaps.mjs` reads the libraries from each service's `dependencies`, so a missing copy or injection builds locally and fails only in the Docker job's image check.
+
+**A new workspace library that web imports must have its `package.json` copied in `Dockerfile.web` before `pnpm install`.** The web image copies package manifests by name and then builds `@breatic/web^...`; without the manifest, pnpm never links the library and vite fails with `Rollup failed to resolve import`.
 
 ## Dependencies
 
@@ -56,7 +58,9 @@ Check: can the mocked module be imported on its own?
 
 **A package's `test` script is `vitest run`.** Bare `vitest` starts watch mode and turbo waits on it forever.
 
-**Adding an alias to `packages/web/vite.config.mts` means adding the same alias to `packages/web/vitest.config.ts` in the same change.** The vitest config has its own `resolve.alias`; without the mirror every test importing through the alias fails with `Failed to resolve import`.
+**`Error: [vitest-worker]: Timeout calling "onTaskUpdate"` after a few files means one file kept the single fork busy too long, not that the machine is loaded.** Time the file the log printed last on your branch and on `main` (`pnpm exec vitest run <file>` in each); a file several times slower on the branch is the change's own regression, usually per-case setup that redoes expensive work such as parsing every config file before each case.
+
+**Adding an alias to `packages/web/vite.config.mts` means adding the same alias to `packages/web/vitest.config.mts` in the same change.** The vitest config has its own `resolve.alias`; without the mirror every test importing through the alias fails with `Failed to resolve import`.
 
 **A partial `vi.mock` must spread the real module.** The factory replaces the whole module, so any export it does not list becomes `undefined`, including exports added later.
 
@@ -64,7 +68,7 @@ Check: can the mocked module be imported on its own?
 vi.mock('@core/x', async (importOriginal) => ({ ...(await importOriginal<typeof import('@core/x')>()), fn: vi.fn() }));
 ```
 
-**Each package except `@breatic/ingest` runs all its unit test files in one process (`singleFork: true`), and `isolate` resets only module caches and mocks; server's integration tests run one file at a time, each in a fresh fork, because a single fork grows past the heap limit (`packages/server/vitest.integration.config.ts`).** Within a single-fork package these survive from file to file:
+**Each package except `@breatic/ingest` runs all its unit test files in one process (`singleFork: true`; web's `size-perf` and collab's `size-cap` projects each get a fork of its own, since vitest starts a fresh fork per project), and `isolate` resets only module caches and mocks; server's integration tests run one file at a time, each in a fresh fork, because a single fork grows past the heap limit (`packages/server/vitest.integration.config.ts`).** Within a single-fork package these survive from file to file:
 
 | Shared state | Example |
 |---|---|
@@ -78,6 +82,10 @@ Look plugins up by key object (`key.get(state)`), never by printed name. Resets 
 Check: does this test change something that exists once per process and does not belong to this file?
 
 **In `vitest.setup.ts`, run the resets that must always happen before any hygiene step that can throw.** One exception in an `afterEach` skips the lines after it for every later file in the package, not only the failing test.
+
+**A suite that leaves the fork's heap large slows every file that runs after it in the same fork, and vitest's file order changes from run to run; give such a suite a vitest project of its own.** A test that fails on its timeout only on some runs, and passes alone, points here. A project with `extends: true` adds its `include` to the root's, so declare `include` in each project and none at the root, and clear `projects` in a config that spreads this one (`packages/collab/vitest.integration.config.ts`).
+
+**Run web's unit tests in four shards as CI does: an unsharded run puts the `size-perf` timing cases beside every other file, and their warning-to-full ratios can fail under that load.** `pnpm turbo run test --filter=@breatic/web -- --shard=N/4` for N from 1 to 4. Web's forks get an 8 GB heap from the root `poolOptions.forks.execArgv` in `vitest.config.mts`; vitest ignores an `execArgv` set inside one project, and the root value overrides `NODE_OPTIONS`.
 
 **vitest 3.2.7 has no `list` reporter.** `--reporter=list` makes it look for a package named `list`, it runs no tests, and the exit looks like a finished run. Use one of vitest's own reporter names (`default`, `verbose`, `dot`, `json`).
 

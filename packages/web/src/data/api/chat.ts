@@ -1,10 +1,20 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ConversationEntity, StoredMessageMetadata } from '@breatic/shared';
+import type {
+  AgentModelChoice,
+  ChatQueueRemoveAnswer,
+  ChatRunningAnswer,
+  ChatSendAnswer,
+  ChatStopAnswer,
+  ChatSyncAnswer,
+  ConversationEntity,
+  StoredMessageMetadata,
+} from '@breatic/shared';
 import type { UIMessage } from 'ai';
 
-import { apiDelete, apiGet, apiPatch, apiPost, runOnceRequest } from '@web/data/api/request';
+import { API_BASE_PATH } from '@web/data/api/base-path';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut, runOnceRequest } from '@web/data/api/request';
 
 /**
  * What a stored message carries besides its parts.
@@ -42,9 +52,24 @@ export type ConversationOnTheWire = Omit<
   deletedAt: string | null;
 };
 
+/**
+ * A conversation as the open, read and create calls hand it over: with the
+ * model it is answered by (#1363). The list's rows carry the stored pick only.
+ */
+export type ChatConversationOnTheWire = Omit<ConversationOnTheWire, 'agentModel'> & {
+  agentModel: AgentModelChoice;
+};
+
+/** The models the user can pick, and the one a new conversation starts on (#1363). */
+export interface ChatModels {
+  models: AgentModelChoice[];
+  /** The id of the model a new conversation of the user's starts on. */
+  lastUsed: string;
+}
+
 /** One conversation with the newest page of what was said in it. */
 export interface ConversationRead {
-  conversation: ConversationOnTheWire;
+  conversation: ChatConversationOnTheWire;
   messages: StoredUiMessage[];
   /** The conversation reaches back further than these messages do. */
   hasMore: boolean;
@@ -72,7 +97,7 @@ export interface OpenChatResult {
   hasMoreConversations: boolean;
   /** The one to show, and what has been said in it. */
   current: {
-    conversation: ConversationOnTheWire;
+    conversation: ChatConversationOnTheWire;
     messages: StoredUiMessage[];
     /** The conversation reaches back further than these messages do. */
     hasMore: boolean;
@@ -93,6 +118,10 @@ export interface StreamConfig {
   spaceListMaxItems: number;
   /** How long one requested Space may take to sync before it is given up on, in milliseconds. */
   spaceReadTimeoutMs: number;
+  /** How often an open conversation list asks which conversations are running, in milliseconds (#1394). */
+  runningPollIntervalMs: number;
+  /** How often the conversation on screen asks where it stands until a sync says otherwise, in milliseconds (inner#1717). */
+  syncIntervalMs: number;
 }
 
 /**
@@ -135,7 +164,7 @@ export const chatApi = {
    * @param projectId - Project to open chat in
    * @param signal - Raised when nobody is waiting for this answer any more.
    *   The answer replaces what is on screen, so one belonging to a visit the
-   *   reader has already left must not arrive at all.
+   *   user has already left must not arrive at all.
    * @returns The conversation list and the current conversation with its messages
    */
   openChat(projectId: string, signal?: AbortSignal): Promise<OpenChatResult> {
@@ -177,7 +206,7 @@ export const chatApi = {
    * @param after - The last row already held, or nothing for the first page.
    * @param after.updatedAt - When that row was last used.
    * @param after.id - Which row it is, for the rows that share an instant.
-   * @param signal - Raised when the reader leaves the project.
+   * @param signal - Raised when the user leaves the project.
    * @returns The page, and whether the list goes on past it.
    */
   listConversations(
@@ -192,6 +221,17 @@ export const chatApi = {
       },
       signal,
     });
+  },
+  /**
+   * The user's conversations in a project with an Agent turn running now, on
+   * this page or any other tab or device (#1394).
+   * @param projectId - The project.
+   * @param signal - Aborts the request.
+   * @returns Their ids, each once.
+   */
+  async running(projectId: string, signal?: AbortSignal): Promise<string[]> {
+    const answer = await apiGet<ChatRunningAnswer>('/chat/running', { params: { project_id: projectId }, signal });
+    return answer.conversation_ids;
   },
   /**
    * Read one conversation with the newest page of its messages.
@@ -216,8 +256,8 @@ export const chatApi = {
    * @param key - The press's `Idempotency-Key`; a re-send with it makes nothing new
    * @returns The conversation that was just created
    */
-  createConversation(projectId: string, key: string): Promise<ConversationOnTheWire> {
-    return apiPost<ConversationOnTheWire, { project_id: string }>(
+  createConversation(projectId: string, key: string): Promise<ChatConversationOnTheWire> {
+    return apiPost<ChatConversationOnTheWire, { project_id: string }>(
       '/chat/conversations',
       { project_id: projectId },
       runOnceRequest(key),
@@ -240,6 +280,87 @@ export const chatApi = {
       `/chat/conversations/${id}`,
       { project_id: projectId, title },
     );
+  },
+  /**
+   * The models the user can pick in the chat panel, in order, and the one a
+   * new conversation of theirs starts on (#1363).
+   * @returns The list and the starting model's id
+   */
+  models(): Promise<ChatModels> {
+    return apiGet<ChatModels>('/chat/models');
+  },
+  /**
+   * Pick the model a conversation is answered by; it becomes the user's
+   * last pick too (#1363).
+   * @param id - The conversation
+   * @param projectId - Project it lives in; the server checks this before writing
+   * @param model - The model id
+   * @returns The model the server saved for the conversation
+   */
+  async setModel(id: string, projectId: string, model: string): Promise<AgentModelChoice> {
+    const saved = await apiPut<ChatConversationOnTheWire, { project_id: string; model: string }>(
+      `/chat/conversations/${id}/model`,
+      { project_id: projectId, model },
+    );
+    return saved.agentModel;
+  },
+  /**
+   * Send a message, or a card's answer, to a conversation (inner#1717).
+   *
+   * The answer comes once the message is queued, and once a run it opened has
+   * got through its opening; what the run says is read from `streamPath`.
+   * No time limit: the opening may take as long as its checks do.
+   * @param body - What is sent, or the reference a body over the size limit was stored under.
+   * @param key - The press's `Idempotency-Key`; a re-send carries the same key and the same body.
+   * @returns The status and the messages still waiting
+   */
+  sendMessage(body: object, key: string): Promise<ChatSendAnswer> {
+    return apiPost<ChatSendAnswer, object>('/chat/message', body, runOnceRequest(key));
+  },
+  /**
+   * Ask where a conversation stands; the server opens a run for what waits
+   * when none holds it (inner#1717).
+   * @param conversationId - The conversation
+   * @param projectId - Project it lives in
+   * @returns The waiting area, whether a run or a card holds it, and when to ask again
+   */
+  sync(conversationId: string, projectId: string): Promise<ChatSyncAnswer> {
+    return apiPost<ChatSyncAnswer, { project_id: string }>(`/chat/conversations/${conversationId}/sync`, { project_id: projectId });
+  },
+  /**
+   * Stop the run that holds a conversation, on whichever server it runs (inner#1717).
+   * @param conversationId - The conversation
+   * @param projectId - Project it lives in
+   * @param runId - The run the page reads; a stop for it leaves any other run alone
+   * @returns Whether a run was there to stop
+   */
+  stop(conversationId: string, projectId: string, runId?: string): Promise<ChatStopAnswer> {
+    return apiPost<ChatStopAnswer, { conversation_id: string; project_id: string; run_id?: string }>('/chat/stop', {
+      conversation_id: conversationId,
+      project_id: projectId,
+      ...(runId === undefined ? {} : { run_id: runId }),
+    });
+  },
+  /**
+   * Take a waiting message out of a conversation's queue (inner#1717).
+   * @param conversationId - The conversation
+   * @param messageId - The message
+   * @param projectId - Project it lives in
+   * @returns `removed` while it waited, `taken` once a run has read it, `gone` when it is nowhere
+   */
+  async removeQueued(conversationId: string, messageId: string, projectId: string): Promise<ChatQueueRemoveAnswer['status']> {
+    const answer = await apiDelete<ChatQueueRemoveAnswer>(`/chat/conversations/${conversationId}/queue/${messageId}`, {
+      data: { project_id: projectId },
+    });
+    return answer.status;
+  },
+  /**
+   * Where the run that holds a conversation is read from (inner#1717).
+   * @param conversationId - The conversation
+   * @returns The path, under the API prefix
+   */
+  streamPath(conversationId: string): string {
+    return `${API_BASE_PATH}/chat/conversations/${conversationId}/stream`;
   },
   /**
    * Delete a conversation.

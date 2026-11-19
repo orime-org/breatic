@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Wires the body's autoscroll (`document-body-autoscroll.ts`) to the page
@@ -33,7 +33,7 @@
  * `dragend` that reaches the document.
  *
  * A column drag scrolls the frame its table scrolls sideways in, and holds
- * the body still: the browser's own drag autoscroll scrolls any box a reader
+ * the body still: the browser's own drag autoscroll scrolls any box a user
  * could scroll that the pointer nears, and one with `overflow-y: hidden` is not
  * one. Everything else scrolls the body.
  *
@@ -56,6 +56,7 @@ import {
   type DragTarget,
   type PointerAt,
 } from '@web/spaces/document/document-body-autoscroll';
+import { isSynthetic } from '@web/spaces/document/document-margin-drop';
 import { clearTableDropLine, dragSourceOf, tableFrameOf } from '@web/spaces/document/document-table-drag';
 
 /**
@@ -122,15 +123,6 @@ export class DragWindow {
     this.over = false;
     return true;
   }
-}
-
-/**
- * Whether an event is one BlockNote re-dispatched, by the mark it sets.
- * @param event - The event.
- * @returns Whether it is synthetic.
- */
-function isSynthetic(event: Event): boolean {
-  return (event as Event & { synthetic?: boolean }).synthetic === true;
 }
 
 /** Each view's session loop. */

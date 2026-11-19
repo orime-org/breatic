@@ -1,18 +1,28 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The template button in a generate panel's corner (inner#977, inner#1345,
  * inner#1807): the panel lists creative goals, each opening its templates;
  * picking one sets the panel up, @s the reference already wired in or places
  * an empty one beside the node, wired and @'d, places the generations a
- * template runs first, and picking it again reuses what it placed; a panel
- * with no templates says so.
+ * template runs first, and picking it again reuses what it placed; a template
+ * with a shot list writes its shots, and one whose pictures go into the first
+ * and end frame notes which frame each goes into (inner#1816). The sound
+ * templates (inner#1825) wire an input into a slot instead of the prompt, or
+ * fill that slot with the material already wired in, place a node past the
+ * anchor or nodes beside it wired to nothing, and set a model's own params.
+ *
+ * Every node type now has templates, so the empty state is pinned by the unit
+ * case in `TemplateMenu.test.tsx` alone.
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
  *   pnpm --filter @breatic/web test:smoke
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
@@ -20,7 +30,7 @@ import { openSmokeProject } from '../helpers/project';
 import { expectNodesInView, expectPanelInView } from '../helpers/canvas-chrome';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
-import { wire } from '../helpers/mini-tool';
+import { setNodeContent, wire } from '../helpers/mini-tool';
 
 test.use({ viewport: { width: 1440, height: 1080 } });
 
@@ -103,6 +113,19 @@ async function openGoal(goal: string): Promise<void> {
   await expect(trigger).toBeVisible({ timeout: 15_000 });
   await trigger.click();
   await pointAtGoal(goal);
+}
+
+/**
+ * Close the template menu and its goal submenu the way a user does, one Escape
+ * per level, until neither is on screen: a menu left open takes every press
+ * on the page, the cleanup's included.
+ */
+async function closeTemplateMenu(): Promise<void> {
+  await expect(async () => {
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-testid^="generate-template-goal-"]')).toHaveCount(0, { timeout: 500 });
+    await expect(page.getByTestId('generate-template-trigger')).toHaveAttribute('aria-expanded', 'false', { timeout: 500 });
+  }).toPass({ timeout: 5_000 });
 }
 
 /**
@@ -311,12 +334,466 @@ test('picking the single-view scene feeds a photo already wired into the video n
   await expect(prompt.locator('[data-reference-mention]').filter({ hasText: 'Hero photo' })).toHaveCount(1);
 });
 
-test('a panel with no templates says so', async () => {
+test('picking the quick tip writes its five shots of three seconds, each @ing the subject it places', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('social-hooks');
+  await page.getByTestId('generate-template-vertical-15s-quick-tip').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
+  // The anchor and the empty subject; one new node forms no group.
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, { timeout: 15_000 });
+  expect(await graph()).toEqual({ names: ['Subject', 'video-template'], edges: ['Subject -> video-template'] });
+  await expect(page.getByTestId('generate-storyboard-shots')).toBeVisible();
+  for (const n of [1, 2, 3, 4, 5]) {
+    await expect(page.getByTestId(`generate-storyboard-shot-${String(n)}-seconds`)).toContainText('3');
+    const editor = page.getByTestId(`generate-storyboard-shot-${String(n)}-editor`);
+    await expect(editor.locator('[data-reference-mention]').filter({ hasText: 'Subject' })).toHaveCount(1);
+    // What to put in the subject sits on top of the first shot only.
+    await expect(editor.locator('[data-prompt-note]')).toHaveCount(n === 1 ? 1 : 0);
+  }
+  await expect(page.getByTestId('generate-storyboard-shot-6')).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath('quick-tip-applied.png') });
+});
+
+test('picking the carried-object transition places two scene pictures for the first and end frame, noted and left to pick', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('social-hooks');
+  await page.getByTestId('generate-template-carried-object-transition').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
+  // The anchor, the empty object, the two scenes and the group the three new nodes form.
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(5, { timeout: 15_000 });
+  expect(await graph()).toEqual({
+    names: ['Object', 'Object-carried transition', 'Scene A', 'Scene B', 'video-template'],
+    edges: ['Object -> Scene A', 'Object -> Scene B', 'Scene A -> video-template', 'Scene B -> video-template'],
+  });
+  const prompt = page.getByTestId('generate-prompt-editor');
+  // The scenes go into frames, not the pool: nothing is @'d, and each note names its frame.
+  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(0);
+  const notes = prompt.locator('[data-prompt-note]');
+  await expect(notes).toHaveCount(2);
+  await expect(notes.nth(0)).toContainText('First frame');
+  await expect(notes.nth(1)).toContainText('End frame');
+  // The frames stay empty until the user picks the generated scenes in.
+  await expect(page.getByTestId('generate-video-tool-first-frame')).toBeVisible();
+  await expect(page.getByTestId('generate-video-tool-end-frame')).toBeVisible();
+  await expect(page.getByTestId('generate-video-first-frame-thumbnail')).toHaveCount(0);
+  await expect(page.getByTestId('generate-video-end-frame-thumbnail')).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath('carried-object-applied.png') });
+});
+
+test('picking the carried-object transition feeds a picture already wired into the video node into both scenes', async () => {
+  const nodeId = await openPanelOnNewNode('video');
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  const photoId = crypto.randomUUID();
+  await page.evaluate(
+    async ([pid, sid, id, at]: [string, string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        addNode: (p: string, s: string, n: unknown) => void;
+      };
+      canvas.addNode(pid, sid, {
+        id,
+        type: 'image',
+        position: { x: -600, y: 0 },
+        data: { name: 'Hero photo', createdAt: Date.now(), createdBy: 'template-e2e', locked: false, state: 'idle', attachments: [] },
+      });
+    },
+    [projectId, spaceId, photoId, canvasAt] as [string, string, string, string],
+  );
+  await wire(page, { projectId, spaceId }, photoId, nodeId);
+  await openGoal('social-hooks');
+  await page.getByTestId('generate-template-carried-object-transition').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
+  // The anchor, the photo, the two scenes and the group the two new scenes form; no empty object.
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(5, { timeout: 15_000 });
+  expect(await graph()).toEqual({
+    names: ['Hero photo', 'Object-carried transition', 'Scene A', 'Scene B', 'video-template'],
+    edges: [
+      'Hero photo -> Scene A',
+      'Hero photo -> Scene B',
+      'Hero photo -> video-template',
+      'Scene A -> video-template',
+      'Scene B -> video-template',
+    ],
+  });
+});
+
+/**
+ * The ids of the templates the open goal submenu lists, in order.
+ * @returns The template ids.
+ */
+async function listedTemplates(): Promise<string[]> {
+  const items = page.locator('[role="menuitem"][data-testid^="generate-template-"]:not([data-testid^="generate-template-goal-"])');
+  await expect(items.first()).toBeVisible();
+  return items.evaluateAll((all) => all.map((el) => (el.getAttribute('data-testid') ?? '').replace('generate-template-', '')));
+}
+
+/**
+ * Seed a node holding a file into the open Space and wire it into another.
+ * @param type - Its node type.
+ * @param name - Its name.
+ * @param content - The file it holds.
+ * @param into - The node it is wired into.
+ * @returns Its id.
+ */
+async function seedWiredMaterial(type: 'image' | 'video', name: string, content: string, into: string): Promise<string> {
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  const id = crypto.randomUUID();
+  await page.evaluate(
+    async ([pid, sid, nodeId, kind, label, url, at]: [string, string, string, string, string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        addNode: (p: string, s: string, n: unknown) => void;
+      };
+      canvas.addNode(pid, sid, {
+        id: nodeId,
+        type: kind,
+        position: { x: -600, y: 0 },
+        data: { name: label, createdAt: Date.now(), createdBy: 'template-e2e', locked: false, state: 'idle', attachments: [], content: url, status: 'ready', duration: 8 },
+      });
+    },
+    [projectId, spaceId, id, type, name, content, canvasAt] as [string, string, string, string, string, string, string],
+  );
+  await wire(page, { projectId, spaceId }, id, into);
+  return id;
+}
+
+/**
+ * The open Space's node names by node type, each list sorted.
+ * @returns The names under each type.
+ */
+async function namesByType(): Promise<Record<string, string[]>> {
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  return page.evaluate(
+    async ([pid, sid, at]: [string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        readCanvasGraph: (p: string, s: string) => { nodes: { id: string; type: string; data: { name?: string } }[] };
+      };
+      const out: Record<string, string[]> = {};
+      for (const n of canvas.readCanvasGraph(pid, sid).nodes) (out[n.type] ??= []).push(n.data.name ?? n.id);
+      for (const list of Object.values(out)) list.sort();
+      return out;
+    },
+    [projectId, spaceId, canvasAt] as [string, string, string],
+  );
+}
+
+/**
+ * The id of the open Space's node with a name.
+ * @param name - The name.
+ * @returns Its id.
+ */
+async function nodeIdNamed(name: string): Promise<string> {
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  const id = await page.evaluate(
+    async ([pid, sid, label, at]: [string, string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        readCanvasGraph: (p: string, s: string) => { nodes: { id: string; data: { name?: string } }[] };
+      };
+      return canvas.readCanvasGraph(pid, sid).nodes.find((n) => n.data.name === label)?.id ?? '';
+    },
+    [projectId, spaceId, name, canvasAt] as [string, string, string, string],
+  );
+  if (id === '') throw new Error(`no node named ${name}`);
+  return id;
+}
+
+test('a video panel lists the two food videos under the food goal', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('food');
+  await expect(page.getByTestId('generate-template-goal-food')).toHaveText(/^Food\s*2$/);
+  expect(await listedTemplates()).toEqual(['food-money-shot', 'recipe-process-montage']);
+  await closeTemplateMenu();
+});
+
+test('an image panel lists the dish hero still under the food goal', async () => {
+  await openPanelOnNewNode('image');
+  await openGoal('food');
+  await expect(page.getByTestId('generate-template-goal-food')).toHaveText(/^Food\s*1$/);
+  expect(await listedTemplates()).toEqual(['dish-hero-still']);
+  await closeTemplateMenu();
+});
+
+test('picking the food money shot places the dish it asks for, wired, @\'d and noted', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('food');
+  await page.getByTestId('generate-template-food-money-shot').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, { timeout: 15_000 });
+  expect(await graph()).toEqual({ names: ['Dish', 'video-template'], edges: ['Dish -> video-template'] });
+  const prompt = page.getByTestId('generate-prompt-editor');
+  await expect(prompt.locator('[data-reference-mention]').filter({ hasText: 'Dish' })).toHaveCount(1);
+  await expect(prompt.locator('[data-prompt-note]')).toHaveCount(1);
+  await expect(prompt).toContainText('{✏️ the most tempting moment');
+  await page.screenshot({ path: test.info().outputPath('food-money-shot-applied.png') });
+});
+
+test('an image panel lists the three poster templates under the posters goal', async () => {
+  await openPanelOnNewNode('image');
+  await openGoal('posters');
+  await expect(page.getByTestId('generate-template-goal-posters')).toHaveText(/^Posters & graphics\s*3$/);
+  expect(await listedTemplates()).toEqual(['name-as-world-typography', 'destination-festival-poster', 'photo-paper-diorama']);
+  await closeTemplateMenu();
+});
+
+test('picking the photo paper diorama places the photo it asks for, wired, @\'d and noted', async () => {
+  await openPanelOnNewNode('image');
+  await openGoal('posters');
+  await page.getByTestId('generate-template-photo-paper-diorama').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('GPT Image 2.5', { timeout: 15_000 });
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, { timeout: 15_000 });
+  expect(await graph()).toEqual({ names: ['Photo', 'image-template'], edges: ['Photo -> image-template'] });
+  const prompt = page.getByTestId('generate-prompt-editor');
+  await expect(prompt.locator('[data-reference-mention]').filter({ hasText: 'Photo' })).toHaveCount(1);
+  await expect(prompt.locator('[data-prompt-note]')).toHaveCount(1);
+  await expect(prompt).toContainText('{✏️ the two lines');
+});
+
+test('a video panel lists the three motion and speed templates under the speed goal', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('speed');
+  await expect(page.getByTestId('generate-template-goal-speed')).toHaveText(/^Motion & speed\s*3$/);
+  expect(await listedTemplates()).toEqual(['vehicle-speed-cutlist', 'sports-live-coverage', 'extreme-sports-run']);
+  await closeTemplateMenu();
+});
+
+test('picking the vehicle speed cut list places the vehicle it asks for, wired, @\'d and noted', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('speed');
+  await page.getByTestId('generate-template-vehicle-speed-cutlist').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, { timeout: 15_000 });
+  expect(await graph()).toEqual({ names: ['Vehicle', 'video-template'], edges: ['Vehicle -> video-template'] });
+  const prompt = page.getByTestId('generate-prompt-editor');
+  await expect(prompt.locator('[data-reference-mention]').filter({ hasText: 'Vehicle' })).toHaveCount(1);
+  await expect(prompt.locator('[data-prompt-note]')).toHaveCount(1);
+  await expect(prompt).toContainText('exactly 12 cuts, one cut per second');
+});
+
+test('a video panel lists the seven e-commerce ad templates under the e-commerce goal', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('ecommerce');
+  await expect(page.getByTestId('generate-template-goal-ecommerce')).toHaveText(/^E-commerce ads\s*7$/);
+  expect(await listedTemplates()).toEqual([
+    'product-ad-15s',
+    'ugc-creator-review',
+    'livestream-pitch',
+    'hype-then-twist-ad',
+    'product-commercial-shotlist',
+    'unboxing-ad',
+    'variant-carousel-ad',
+  ]);
+  await closeTemplateMenu();
+});
+
+test('picking the product ad places the product, an optional person and the still; the person\'s paragraph is greyed and left out until it holds a picture', async () => {
+  const anchorId = await openPanelOnNewNode('video');
+  await openGoal('ecommerce');
+  await page.getByTestId('generate-template-product-ad-15s').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
+  expect(await graph()).toEqual({
+    names: ['15-second product ad', 'Lifestyle still', 'Person', 'Product', 'video-template'],
+    edges: [
+      'Lifestyle still -> video-template',
+      'Person -> Lifestyle still',
+      'Person -> video-template',
+      'Product -> Lifestyle still',
+      'Product -> video-template',
+    ],
+  });
+  const prompt = page.getByTestId('generate-prompt-editor');
+  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(3);
+  // What to put in the product, that the person is optional, and to generate the still first.
+  await expect(prompt.locator('[data-prompt-note]')).toHaveCount(3);
+  await expect(prompt.locator('[data-prompt-note]').filter({ hasText: 'Optional:' })).toHaveCount(1);
+  const held = prompt.locator('[data-prompt-held-back]');
+  await expect(held).toHaveCount(1);
+  await expect(held).toContainText('The person in the ad looks like');
+  await held.hover({ position: { x: 4, y: 4 } });
+  await expect(page.getByRole('tooltip').filter({ hasText: 'Sent once Person holds a picture' })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('product-ad-person-empty.png') });
+
+  const where = { projectId, spaceId };
+  await setNodeContent(page, where, await nodeIdNamed('Product'), 'https://smoke-media.test/product.jpg');
+  const bodies: string[] = [];
+  await page.route('**/canvas/tasks', async (route) => {
+    bodies.push(route.request().postData() ?? '');
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { id: crypto.randomUUID(), status: 'queued' } }) });
+  });
+  await page.getByTestId('generate-video-execute').click();
+  await expect.poll(() => bodies.length, { timeout: 15_000 }).toBe(1);
+  expect(bodies[0]).toContain('The place, light and colours follow');
+  expect(bodies[0]).not.toContain('The person in the ad looks like');
+
+  const personPicture = 'https://smoke-media.test/person.jpg';
+  await setNodeContent(page, where, await nodeIdNamed('Person'), personPicture);
+  // A run closes the panel; open it again on the video.
+  await visibleSpace(page).locator(`.react-flow__node[data-id="${anchorId}"]`).click({ button: 'right' });
+  await page.getByTestId('node-menu-generate').click();
+  await expect(prompt).toContainText('The person in the ad looks like', { timeout: 15_000 });
+  await expect(held).toHaveCount(0);
+  await page.getByTestId('generate-video-execute').click();
+  await expect.poll(() => bodies.length, { timeout: 15_000 }).toBe(2);
+  expect(bodies[1]).toContain('The person in the ad looks like');
+  expect(bodies[1]).toContain(personPicture);
+  await page.screenshot({ path: test.info().outputPath('product-ad-person-filled.png') });
+});
+
+test('an audio panel lists the ten sound templates under one goal', async () => {
   await openPanelOnNewNode('audio');
-  await page.getByTestId('generate-template-trigger').click();
-  await expect(page.getByTestId('generate-template-empty')).toHaveText('No templates');
-  await page.keyboard.press('Escape');
-  await expect(page.getByTestId('generate-template-empty')).toBeHidden();
+  await openGoal('sound');
+  await expect(page.locator('[data-testid^="generate-template-goal-"]')).toHaveCount(1);
+  await expect(page.getByTestId('generate-template-goal-sound')).toHaveText(/^Sound, music & voice\s*10$/);
+  expect(await listedTemplates()).toEqual([
+    'ambience-sfx-bed',
+    'voice-line',
+    'two-voice-dialogue',
+    'underscore-bgm',
+    'voice-from-descriptor',
+    'song-cover',
+    'voice-clone-line',
+    'score-for-my-video',
+    'music-mood-from-image',
+    'section-mapped-score',
+  ]);
+  await closeTemplateMenu();
+});
+
+test('a video panel lists the one sound template, the silent shot with foley', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('sound');
+  await expect(page.getByTestId('generate-template-goal-sound')).toHaveText(/^Sound, music & voice\s*1$/);
+  expect(await listedTemplates()).toEqual(['clip-ambience-foley']);
+  await closeTemplateMenu();
+});
+
+test('picking music for your video places the video it asks for, wired into the anchor, and notes to pick it into the Video slot', async () => {
+  await openPanelOnNewNode('audio');
+  await openGoal('sound');
+  await page.getByTestId('generate-template-score-for-my-video').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Sonilo', { timeout: 15_000 });
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, { timeout: 15_000 });
+  expect(await graph()).toEqual({ names: ['Your video', 'audio-template'], edges: ['Your video -> audio-template'] });
+  const prompt = page.getByTestId('generate-prompt-editor');
+  // The note leads the prompt, and the video goes into the slot, not the prompt.
+  const note = prompt.locator('[data-prompt-note]');
+  await expect(note).toHaveCount(1);
+  await expect(note).toContainText('Add your video first, then pick it into the Video slot');
+  // The note is the editor's first block itself.
+  expect(await prompt.locator('.ProseMirror').evaluate((root) => root.firstElementChild?.matches('[data-prompt-note]') === true)).toBe(true);
+  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(0);
+  await expect(page.getByTestId('generate-audio-tool-sound-video')).toBeVisible();
+  await expect(page.getByTestId('generate-audio-sound-video-clear')).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath('score-for-my-video-applied.png') });
+});
+
+test('picking music for your video puts a video already wired in into the Video slot and places nothing new', async () => {
+  await page.route('https://smoke-media.test/**', (route) =>
+    route.fulfill({
+      status: 200,
+      body: readFileSync(join(__dirname, '../fixtures/mini-tools/driving.mp4')),
+      headers: { 'access-control-allow-origin': '*', 'content-type': 'video/mp4' },
+    }),
+  );
+  const nodeId = await openPanelOnNewNode('audio');
+  await seedWiredMaterial('video', 'Ride', 'https://smoke-media.test/ride.mp4', nodeId);
+  await openGoal('sound');
+  await page.getByTestId('generate-template-score-for-my-video').click();
+
+  await expect(page.getByTestId('generate-audio-sound-video-clear')).toBeVisible({ timeout: 15_000 });
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2);
+  expect(await graph()).toEqual({ names: ['Ride', 'audio-template'], edges: ['Ride -> audio-template'] });
+  // Nothing is left to do with the video, so no note asks for it.
+  await expect(page.getByTestId('generate-prompt-editor').locator('[data-prompt-note]')).toHaveCount(0);
+});
+
+test('picking the silent shot with foley places a foley node right of the video, wired from it', async () => {
+  const nodeId = await openPanelOnNewNode('video');
+  await openGoal('sound');
+  await page.getByTestId('generate-template-clip-ambience-foley').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Kling', { timeout: 15_000 });
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, { timeout: 15_000 });
+  expect(await graph()).toEqual({ names: ['Foley', 'video-template'], edges: ['video-template -> Foley'] });
+  expect((await namesByType()).audio).toEqual(['Foley']);
+  const foleyId = await nodeIdNamed('Foley');
+  const anchorBox = await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).boundingBox();
+  const foleyBox = await visibleSpace(page).locator(`.react-flow__node[data-id="${foleyId}"]`).boundingBox();
+  expect(foleyBox?.x ?? 0).toBeGreaterThanOrEqual((anchorBox?.x ?? 0) + (anchorBox?.width ?? 0));
+});
+
+test('picking the score in four sections places three more sections and a guide, wired to nothing, and picking it again places nothing', async () => {
+  await openPanelOnNewNode('audio');
+  await openGoal('sound');
+  await page.getByTestId('generate-template-section-mapped-score').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Mureka', { timeout: 15_000 });
+  await expect.poll(async () => (await namesByType()).audio, { timeout: 15_000 }).toEqual(['Body', 'Outro', 'Reveal', 'audio-template']);
+  const placed = await namesByType();
+  expect(placed.text).toEqual(['Score in four sections']);
+  expect((await graph()).edges).toEqual([]);
+  const count = await visibleSpace(page).locator('.react-flow__node').count();
+  await page.screenshot({ path: test.info().outputPath('section-mapped-score-applied.png') });
+
+  await openGoal('sound');
+  await page.getByTestId('generate-template-section-mapped-score').click();
+  await expect(page.getByTestId('generate-template-goal-sound')).toHaveCount(0);
+  await page.waitForTimeout(1_000);
+  expect(await namesByType()).toEqual(placed);
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(count);
+  expect((await graph()).edges).toEqual([]);
+});
+
+test('picking the two-voice dialogue reads it on Gemini with Ava and Leo, and a run sends the speakers, not a voice', async () => {
+  await openPanelOnNewNode('audio');
+  await openGoal('sound');
+  await page.getByTestId('generate-template-two-voice-dialogue').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Gemini', { timeout: 15_000 });
+  const pill = page.getByTestId('generate-audio-settings-trigger');
+  await expect(pill).toContainText('Dialogue · 2');
+  await pill.click();
+  await expect(page.getByTestId('generate-audio-row-voice_id')).toHaveCount(0);
+  await expect(page.getByTestId('generate-audio-row-speakers-0')).toContainText('Ava · Kore');
+  await expect(page.getByTestId('generate-audio-row-speakers-1')).toContainText('Leo · Puck');
+  await expect(page.getByTestId('generate-audio-row-speakers-2')).toHaveCount(0);
+  await expect(async () => {
+    await page.keyboard.press('Escape');
+    await expect(pill).toHaveAttribute('aria-expanded', 'false', { timeout: 500 });
+  }).toPass({ timeout: 5_000 });
+
+  // The script is three lines, each picked for its speaker (inner#1825 design 8.5).
+  const prompt = page.getByTestId('generate-prompt-editor');
+  await expect(prompt.getByTestId('dialogue-line-speaker')).toHaveText(['Ava', 'Leo', 'Ava']);
+  // Written over the way a user does: a typed name and colon picks the speaker.
+  await prompt.locator('.dialogue-line p').first().click();
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.type('Ava: You are early today.');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Leo: I wanted the first loaf.');
+  await expect(prompt.getByTestId('dialogue-line-speaker')).toHaveText(['Ava', 'Leo']);
+  let sent: { params?: Record<string, unknown> } | null = null;
+  await page.route('**/canvas/tasks', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    sent = route.request().postDataJSON() as { params?: Record<string, unknown> };
+    // A final answer, so the press does not send it again (inner#1490).
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { id: crypto.randomUUID(), status: 'queued' } }),
+    });
+  });
+  await page.getByTestId('generate-audio-execute').click();
+  await expect.poll(() => sent, { timeout: 15_000 }).not.toBeNull();
+  const params = (sent as { params?: Record<string, unknown> } | null)?.params ?? {};
+  expect((params.speakers as { speaker: string; voice: string }[] | undefined)?.map((s) => `${s.speaker}:${s.voice}`)).toEqual(['Ava:Kore', 'Leo:Puck']);
+  expect(params).not.toHaveProperty('voice_id');
+  expect(params.prompt).toBe('Ava: You are early today.\nLeo: I wanted the first loaf.');
 });
 
 test('a note at the top of a prompt shows in orange, and generation does not get it', async () => {

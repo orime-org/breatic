@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from "vitest";
 
@@ -8,8 +8,10 @@ import {
   chatMessageSchema,
   emailSchema,
   projectCreateSchema,
+  sceneGenerationBodySchema,
   taskCreateSchema,
 } from "@shared/schemas/api.js";
+import { REQUEST_SHAPE_PARAMS } from "@shared/api/error-reason.js";
 
 const base = {
   studioId: "11111111-1111-4111-8111-111111111111",
@@ -63,6 +65,32 @@ describe("taskCreateSchema — source", () => {
   });
 });
 
+describe("a run's route is the request's own field, never one of its params", () => {
+  const task = {
+    task_type: "image",
+    params: { prompt: "a cat", route: { mode: "upstream", upstream: "fal" } },
+    project_id: "11111111-1111-4111-8111-111111111111",
+    space_id: "22222222-2222-4222-8222-222222222222",
+    mode: "append" as const,
+  };
+  const scene = { mode: "t23d", model: "tripo-h3.1-t23d", prompt: "a chair", params: { route: "fal" }, origin: "space" };
+
+  it.each([
+    ["a task", taskCreateSchema, task],
+    ["a 3D generation", sceneGenerationBodySchema, scene],
+  ] as const)("refuses %s whose params carry a route, as a request of the wrong shape", (_kind, schema, body) => {
+    const parsed = schema.safeParse(body);
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues).toContainEqual(expect.objectContaining({ path: ["params", "route"], params: REQUEST_SHAPE_PARAMS }));
+  });
+
+  it("keeps a task whose route is its own field", () => {
+    const { route, ...params } = task.params;
+    expect(taskCreateSchema.parse({ ...task, params, route }).route).toEqual(route);
+  });
+});
+
 describe("chatAttachedChipSchema — id", () => {
   const chip = { type: "image", name: "cover.png", data_snapshot: { url: "https://cdn.example/c.png" } };
 
@@ -77,6 +105,7 @@ describe("chatAttachedChipSchema — id", () => {
 
 describe("chatMessageSchema — time_zone", () => {
   const message = {
+    id: "33333333-3333-4333-8333-333333333333",
     message: "what time is it?",
     project_id: "11111111-1111-4111-8111-111111111111",
     conversation_id: "22222222-2222-4222-8222-222222222222",
@@ -97,8 +126,9 @@ describe("chatMessageSchema — time_zone", () => {
   });
 });
 
-describe("chatMessageSchema — the reader's Spaces (inner#1413)", () => {
+describe("chatMessageSchema — the user's Spaces (inner#1413)", () => {
   const message = {
+    id: "33333333-3333-4333-8333-333333333333",
     message: "summarise this",
     project_id: "11111111-1111-4111-8111-111111111111",
     conversation_id: "22222222-2222-4222-8222-222222222222",
@@ -141,6 +171,7 @@ describe("chatMessageSchema — the reader's Spaces (inner#1413)", () => {
 
 describe("chatMessageSchema — how much of an open canvas is shown (inner#1413)", () => {
   const message = {
+    id: "33333333-3333-4333-8333-333333333333",
     message: "what is on this canvas",
     project_id: "11111111-1111-4111-8111-111111111111",
     conversation_id: "22222222-2222-4222-8222-222222222222",
@@ -187,6 +218,7 @@ describe("chatMessageSchema — how much of an open canvas is shown (inner#1413)
 
 describe("chatMessageSchema — an open document's blocks (inner#1509)", () => {
   const message = {
+    id: "33333333-3333-4333-8333-333333333333",
     message: "comment on scene 2",
     project_id: "11111111-1111-4111-8111-111111111111",
     conversation_id: "22222222-2222-4222-8222-222222222222",

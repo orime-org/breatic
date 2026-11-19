@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
 
@@ -101,7 +101,7 @@ describe("the catalog schema's camera_angle", () => {
           tier: "optional",
           generation_time: 60,
           params: {},
-          providers: [],
+          availability: { upstreams: [] },
           takes_prompt: true,
           camera_angle: cameraAngle,
         },

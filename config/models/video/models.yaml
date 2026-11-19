@@ -1,5 +1,7 @@
-# Models of this modality, every one run on WaveSpeed. Within a mode the first
-# model listed is the one a panel opens on, so entries are ordered by how the
+# Models of this modality, in our own param names; which upstreams serve each
+# model, what its params are sent as and what a run costs are in
+# config/provider/media/video.yaml. Within a mode the first model listed is the
+# one a panel opens on, so entries are ordered by how the
 # catalog ranks them for their mode.
 # Guidelines:
 #   model.display_name   — the vendor's name for the model, never the mode it
@@ -9,7 +11,7 @@
 #                          it on only where both appear (`modelLabel`). The
 #                          catalog refuses namesakes in one mode without one.
 #   model.description    — max 40 chars, English. The picker draws it under
-#                          display_name, so it is what tells a reader which of
+#                          display_name, so it is what tells a user which of
 #                          several models for one mode to pick: say what this
 #                          model is good at, never restate the name or the mode.
 #                          Only capabilities the panel reaches.
@@ -18,17 +20,9 @@
 #                          sentence here the catalog or the panel can prove wrong
 #                          is a promise nothing keeps. Guarded by domain's
 #                          guides-name-what-the-model-takes test.
-#   model.prompt_upstream — the upstream field the prompt is sent as, when it is
-#                          not `prompt` (`text`, `text_prompt`).
 #   model.source_groups  — per mode, params of which at least one has to carry
 #                          material, for inputs the upstream schema leaves
 #                          optional one by one but refuses all empty.
-#   model.extra_steps    — upstream calls a run makes besides the model's own
-#                          endpoint, each priced by its own WaveSpeed contract;
-#                          `at` says whether it runs before or after that call.
-#   param.upstream       — the upstream field this param is sent as, when the
-#                          names differ. The one mapping the request builder,
-#                          the price estimate and the voice-sample planner read.
 #   param.label          — marks a control only this model has; on screen it
 #                          is named by canvas.generatePanel.param.<name> in
 #                          locales/*.json, like the shared controls.
@@ -40,22 +34,15 @@
 #                          `fields` and `max_items`), text (a free text field).
 #                          `values: [true, false]` draws a switch; `min`, `max`
 #                          and `step` draw a slider; other `values` an option group.
-#   param.default        — what the param holds when the reader sets nothing;
-#                          a run sends it unless it equals `absent_value`.
-#   param.absent_value   — the value that is sent as nothing: holding it
-#                          leaves the param out of the request (`auto` lets
-#                          the upstream decide).
-#   param.upstream_values — what a value is sent as upstream, keyed by the
-#                          value's string form, when the endpoint spells it
-#                          differently; a value not listed goes as it is.
+#   param.default        — what the param holds when the user sets nothing.
+#   param.absent_value   — the value that stands for "let the upstream decide"
+#                          (`auto`); whether holding it sends nothing is set
+#                          per upstream by the binding's `absent_value` in
+#                          config/provider/media/<type>.yaml.
 #   param.into_prompt    — for an `items` list the endpoint has no field for:
 #                          each entry is written into the prompt with this
 #                          template ({n} its place, {start}/{end} its running
 #                          seconds, {prompt} its text), one per line.
-#   provider.pricing     — the endpoint's WaveSpeed pricing contract, verbatim:
-#                          base_price (1,000,000 = 1 USD), the JSONata formula
-#                          (empty means base_price per call) and discount_rate
-#                          in percent. The price estimate evaluates it.
 #   generation_time      — max generation time in seconds (worst case)
 
 models:
@@ -259,7 +246,7 @@ models:
     takes_prompt: true
     tier: "recommended"
     description: "Top-ranked; synced audio up to 4K"
-    guide: "The default first reach: the highest-rated model on both independent boards, for a short prompt-only shot that arrives with its own soundtrack."
+    guide: "The default for a final prompt-only shot: the highest-rated model on both independent boards, a short shot that arrives with its own soundtrack."
     generation_time: 600
     icon: "gemini"
     params:
@@ -291,14 +278,6 @@ models:
         modes: ["multi_shot"]
         into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
         fill: "storyboard"
-    providers:
-      - name: "wavespeed"
-        model_id: "google/gemini-omni-1.1-flash/text-to-video"
-        priority: 1
-        pricing:
-          base_price: 100000
-          formula: "{\"total_price\": base_price * (duration ? duration : 8) * (resolution = \"360p\" ? 0.3 : resolution = \"1080p\" ? 1.5 : resolution = \"4k\" ? 3 : 1)}"
-          discount_rate: 100
 
   - name: "wan-3.0-text-to-video"
     display_name: "Wan 3.0"
@@ -323,7 +302,6 @@ models:
         max: 30
         fill: "panel"
       generate_audio:
-        upstream: "enable_audio"
         description: "Generate a soundtrack with the video"
         default: true
         values: [true, false]
@@ -345,14 +323,6 @@ models:
         modes: ["multi_shot"]
         into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
         fill: "storyboard"
-    providers:
-      - name: "wavespeed"
-        model_id: "alibaba/wan-3.0/text-to-video"
-        priority: 1
-        pricing:
-          base_price: 500000
-          formula: "{\"total_price\": base_price * (resolution = \"1080p\" ? 2 : (resolution = \"480p\" ? 0.5 : 1)) * $min([$max([$ceil(duration), 2]), 30]) / 5}"
-          discount_rate: 95
 
   - name: "seedance-2.5-text-to-video"
     display_name: "Seedance 2.5"
@@ -382,7 +352,6 @@ models:
         values: [true, false]
         fill: "panel"
       audios:
-        upstream: "reference_audios"
         description: "Reference audios"
         default: null
         type: "list"
@@ -392,7 +361,6 @@ models:
         fill: "pool"
         mention: "@audio{n}"
       images:
-        upstream: "reference_images"
         description: "Reference images"
         default: null
         type: "list"
@@ -413,7 +381,6 @@ models:
         joins: "images"
         prompt_note: "Style references: {list}. Apply their style to the result."
       videos:
-        upstream: "reference_videos"
         description: "Reference videos"
         default: null
         type: "list"
@@ -440,14 +407,6 @@ models:
         modes: ["multi_shot"]
         into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
         fill: "storyboard"
-    providers:
-      - name: "wavespeed"
-        model_id: "bytedance/seedance-2.5/text-to-video"
-        priority: 1
-        pricing:
-          base_price: 900000
-          formula: "{\"total_price\": ($scale := (resolution = \"4k\" ? 10 : resolution = \"1080p\" ? 5 : resolution = \"720p\" ? 2 : 1); $count(reference_videos) > 0 ? ($reference_duration := $min([$ceil(get_duration(reference_videos, min=2, max=30, total=30)), 30]); 110000 * $scale * ($max([2, $reference_duration]) + (duration ? duration : $max([4, $reference_duration])))) : base_price * $scale * duration / 5)}"
-          discount_rate: 90
 
   - name: "minimax-h3-text-to-video"
     display_name: "MiniMax H3"
@@ -489,8 +448,8 @@ models:
       - name: "Static shot"
         sample_key: "camera-previews/minimax-h3/static-shot-640.mp4"
     tier: "optional"
-    description: "Silent 2K, 21:9 through 9:16"
-    guide: "A silent 2K clip in the widest range of framings, for a creator who will cut and score it themselves rather than accept generated audio."
+    description: "2K with sound, 21:9 through 9:16"
+    guide: "A 2K clip with generated sound, in the widest range of framings, from 21:9 through 9:16."
     generation_time: 600
     icon: "minimax"
     params:
@@ -522,14 +481,6 @@ models:
         modes: ["multi_shot"]
         into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
         fill: "storyboard"
-    providers:
-      - name: "wavespeed"
-        model_id: "minimax/h3/text-to-video"
-        priority: 1
-        pricing:
-          base_price: 700000
-          formula: "{\"total_price\": $min([duration, 15]) / 5 * base_price * (resolution = \"768p\" ? 5 / 7 : 1)}"
-          discount_rate: 100
 
   - name: "kling-v3.0-4k-text-to-video"
     display_name: "Kling 3.0 4K"
@@ -574,14 +525,11 @@ models:
         modes: ["multi_shot"]
         fill: "storyboard"
       auto_shots:
-        upstream: "shot_type"
         description: "Let the model split the prompt into several shots itself"
         label: "Auto multi-shot"
         default: false
         values: [true, false]
         absent_value: false
-        upstream_values:
-          "true": "intelligence"
         modes: ["t2v"]
         fill: "panel"
       negative_prompt:
@@ -591,19 +539,10 @@ models:
         type: "text"
         fill: "panel"
       generate_audio:
-        upstream: "sound"
         description: "Generate a soundtrack with the video"
         default: false
         values: [true, false]
         fill: "panel"
-    providers:
-      - name: "wavespeed"
-        model_id: "kwaivgi/kling-v3.0-4k/text-to-video"
-        priority: 1
-        pricing:
-          base_price: 2100000
-          formula: "{\"total_price\": base_price * duration / 5}"
-          discount_rate: 100
 
   - name: "gemini-omni-1.1-flash-image-to-video"
     display_name: "Gemini Omni 1.1 Flash"
@@ -632,7 +571,6 @@ models:
         accepts: "image"
         fill: "canvas"
       end_image:
-        upstream: "last_image"
         description: "Last frame image"
         default: null
         accepts: "image"
@@ -656,14 +594,6 @@ models:
         modes: ["multi_shot"]
         into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
         fill: "storyboard"
-    providers:
-      - name: "wavespeed"
-        model_id: "google/gemini-omni-1.1-flash/image-to-video"
-        priority: 1
-        pricing:
-          base_price: 100000
-          formula: "{\"total_price\": base_price * (duration ? duration : 8) * (resolution = \"360p\" ? 0.3 : resolution = \"1080p\" ? 1.5 : resolution = \"4k\" ? 3 : 1)}"
-          discount_rate: 100
 
   - name: "minimax-h3-image-to-video"
     display_name: "MiniMax H3"
@@ -688,7 +618,6 @@ models:
         accepts: "image"
         fill: "canvas"
       end_image:
-        upstream: "last_image"
         description: "Last frame image"
         default: null
         accepts: "image"
@@ -712,14 +641,6 @@ models:
         modes: ["multi_shot"]
         into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
         fill: "storyboard"
-    providers:
-      - name: "wavespeed"
-        model_id: "minimax/h3/image-to-video"
-        priority: 1
-        pricing:
-          base_price: 700000
-          formula: "{\"total_price\": $min([duration, 15]) / 5 * base_price * (resolution = \"768p\" ? 5 / 7 : 1)}"
-          discount_rate: 100
 
   - name: "wan-3.0-image-to-video"
     display_name: "Wan 3.0"
@@ -745,7 +666,6 @@ models:
         max: 30
         fill: "panel"
       generate_audio:
-        upstream: "enable_audio"
         description: "Generate a soundtrack with the video"
         default: true
         values: [true, false]
@@ -756,7 +676,6 @@ models:
         accepts: "image"
         fill: "canvas"
       end_image:
-        upstream: "last_image"
         description: "Last frame image"
         default: null
         accepts: "image"
@@ -779,14 +698,6 @@ models:
         modes: ["multi_shot"]
         into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
         fill: "storyboard"
-    providers:
-      - name: "wavespeed"
-        model_id: "alibaba/wan-3.0/image-to-video"
-        priority: 1
-        pricing:
-          base_price: 500000
-          formula: "{\"total_price\": base_price * (resolution = \"1080p\" ? 2 : (resolution = \"480p\" ? 0.5 : 1)) * $min([$max([$ceil(duration), 2]), 30]) / 5}"
-          discount_rate: 95
 
   - name: "seedance-2.5-image-to-video"
     display_name: "Seedance 2.5"
@@ -816,7 +727,6 @@ models:
         accepts: "image"
         fill: "canvas"
       end_image:
-        upstream: "last_image"
         description: "Last frame image"
         default: null
         accepts: "image"
@@ -840,14 +750,6 @@ models:
         modes: ["multi_shot"]
         into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
         fill: "storyboard"
-    providers:
-      - name: "wavespeed"
-        model_id: "bytedance/seedance-2.5/image-to-video"
-        priority: 1
-        pricing:
-          base_price: 900000
-          formula: "{\"total_price\": 900000 * (resolution = \"4k\" ? 10 : (resolution = \"1080p\" ? 5 : (resolution = \"720p\" ? 2 : 1))) * duration / 5}"
-          discount_rate: 90
 
   - name: "kling-video-o3-4k-image-to-video"
     display_name: "Kling Video O3 4K"
@@ -865,7 +767,6 @@ models:
         values: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
         fill: "panel"
       elements:
-        upstream: "element_list"
         description: "Images kept consistent across shots"
         default: null
         type: "list"
@@ -902,40 +803,18 @@ models:
         modes: ["multi_shot"]
         fill: "storyboard"
       auto_shots:
-        upstream: "shot_type"
         description: "Let the model split the prompt into several shots itself"
         label: "Auto multi-shot"
         default: false
         values: [true, false]
         absent_value: false
-        upstream_values:
-          "true": "intelligence"
         modes: ["i2v"]
         fill: "panel"
       generate_audio:
-        upstream: "sound"
         description: "Generate a soundtrack with the video"
         default: false
         values: [true, false]
         fill: "panel"
-    extra_steps:
-      - endpoint: "kwaivgi/kling-elements"
-        at: "before"
-        for_param: "elements"
-        per_item: true
-        reused: true
-        pricing:
-          base_price: 10000
-          formula: ""
-          discount_rate: 100
-    providers:
-      - name: "wavespeed"
-        model_id: "kwaivgi/kling-video-o3-4k/image-to-video"
-        priority: 1
-        pricing:
-          base_price: 2100000
-          formula: "{\"total_price\": duration / 5 * base_price }"
-          discount_rate: 100
 
   - name: "wan-2.2-animate-2"
     display_name: "Wan 2.2 Animate 2"
@@ -967,14 +846,6 @@ models:
         default: ""
         type: "text"
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "wavespeed-ai/wan-2.2/animate-2"
-        priority: 1
-        pricing:
-          base_price: 200000
-          formula: "{\"total_price\": $max([3, $min([$ceil(get_duration(video)), 120])]) / 5 * base_price * (resolution = \"720p\" ? 2 : 1)}"
-          discount_rate: 100
 
   - name: "dreamactor-v2"
     display_name: "ByteDance DreamActor V2"
@@ -996,14 +867,6 @@ models:
         default: null
         accepts: "video"
         fill: "canvas"
-    providers:
-      - name: "wavespeed"
-        model_id: "bytedance/dreamactor-v2"
-        priority: 1
-        pricing:
-          base_price: 50000
-          formula: "{\"total_price\": $min([$ceil(get_duration(video)), 30]) * base_price}"
-          discount_rate: 100
 
   - name: "minimax-h3-reference-to-video"
     display_name: "MiniMax H3"
@@ -1013,7 +876,7 @@ models:
     camera_commands: *minimax_h3_camera_commands
     tier: "recommended"
     description: "Top-rated, 2K from mixed refs"
-    guide: "The default reference shot: the highest-rated model in the catalog, at the sharpest single-clip resolution any reference endpoint offers."
+    guide: "The default for a final reference shot: the highest-rated model in the catalog, at the sharpest single-clip resolution any reference endpoint offers."
     generation_time: 600
     icon: "minimax"
     source_groups:
@@ -1033,7 +896,6 @@ models:
         values: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
         fill: "panel"
       audios:
-        upstream: "reference_audios"
         description: "Reference audios"
         default: null
         type: "list"
@@ -1043,7 +905,6 @@ models:
         fill: "pool"
         mention: "<Audio {n}>"
       images:
-        upstream: "reference_images"
         description: "Reference images"
         default: null
         type: "list"
@@ -1064,7 +925,6 @@ models:
         joins: "images"
         prompt_note: "Style references: {list}. Apply their style to the result."
       videos:
-        upstream: "reference_videos"
         description: "Reference videos"
         default: null
         type: "list"
@@ -1091,14 +951,6 @@ models:
         modes: ["multi_shot"]
         into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
         fill: "storyboard"
-    providers:
-      - name: "wavespeed"
-        model_id: "minimax/h3/reference-to-video"
-        priority: 1
-        pricing:
-          base_price: 700000
-          formula: "{\"total_price\": base_price * (($min([duration, 15]) + $ceil($min([get_duration(reference_videos, min=2, max=15, total=15), 15]))) / 5 * (resolution = \"768p\" ? 5 / 7 : 1)) + ($count(reference_images) > 5 ? 50000 * ($count(reference_images) - 5) : 0)}"
-          discount_rate: 100
 
   - name: "gemini-omni-1.1-flash-reference-to-video"
     display_name: "Gemini Omni 1.1 Flash"
@@ -1106,8 +958,8 @@ models:
     mode: ["ref", "multi_shot"]
     takes_prompt: true
     tier: "optional"
-    description: "10 refs, 4K, lip-synced audio"
-    guide: "For a short reference-locked shot that needs the most identity anchors, 4K, and spoken dialogue produced in the same pass."
+    description: "6 refs, 4K, lip-synced audio"
+    guide: "For a short reference-locked shot built from up to six images, at 4K, with spoken dialogue produced in the same pass."
     generation_time: 600
     icon: "gemini"
     source_groups:
@@ -1130,8 +982,8 @@ models:
         description: "Reference images"
         default: null
         type: "list"
-        # The upstream takes 10 images; 3 of them are kept for the style slot.
-        max_items: 7
+        # The upstream takes 6 images (Google, from 2026-12-03); 3 of them are kept for the style slot.
+        max_items: 3
         accepts: "image"
         optional: true
         fill: "pool"
@@ -1147,7 +999,6 @@ models:
         joins: "images"
         prompt_note: "Style references: {list}. Apply their style to the result."
       videos:
-        upstream: "reference_videos"
         description: "Reference videos"
         default: null
         type: "list"
@@ -1174,14 +1025,6 @@ models:
         modes: ["multi_shot"]
         into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
         fill: "storyboard"
-    providers:
-      - name: "wavespeed"
-        model_id: "google/gemini-omni-1.1-flash/reference-to-video"
-        priority: 1
-        pricing:
-          base_price: 100000
-          formula: "{\"total_price\": base_price * (duration ? duration : 8) * (resolution = \"360p\" ? 0.3 : resolution = \"1080p\" ? 1.5 : resolution = \"4k\" ? 3 : 1)}"
-          discount_rate: 100
 
   - name: "wan-3.0-reference-to-video"
     display_name: "Wan 3.0"
@@ -1211,13 +1054,11 @@ models:
         max: 30
         fill: "panel"
       generate_audio:
-        upstream: "enable_audio"
         description: "Generate a soundtrack with the video"
         default: true
         values: [true, false]
         fill: "panel"
       audios:
-        upstream: "reference_audios"
         description: "Reference audios"
         default: null
         type: "list"
@@ -1227,7 +1068,6 @@ models:
         fill: "pool"
         mention: "Audio {n}"
       images:
-        upstream: "reference_images"
         description: "Reference images"
         default: null
         type: "list"
@@ -1248,7 +1088,6 @@ models:
         joins: "images"
         prompt_note: "Style references: {list}. Apply their style to the result."
       videos:
-        upstream: "reference_videos"
         description: "Reference videos"
         default: null
         type: "list"
@@ -1274,14 +1113,6 @@ models:
         modes: ["multi_shot"]
         into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
         fill: "storyboard"
-    providers:
-      - name: "wavespeed"
-        model_id: "alibaba/wan-3.0/reference-to-video"
-        priority: 1
-        pricing:
-          base_price: 500000
-          formula: "{\"total_price\": base_price * (resolution = \"1080p\" ? 2 : (resolution = \"480p\" ? 0.5 : 1)) * ($min([duration, 30]) + $ceil($min([get_duration(reference_videos, min=1, max=15, total=15), 15]))) / 5}"
-          discount_rate: 95
 
   - name: "happyhorse-1.1-reference-to-video"
     display_name: "HappyHorse 1.1"
@@ -1340,14 +1171,6 @@ models:
         modes: ["multi_shot"]
         into_prompt: "Shot {n} [{start}-{end}s]: {prompt}"
         fill: "storyboard"
-    providers:
-      - name: "wavespeed"
-        model_id: "alibaba/happyhorse-1.1/reference-to-video"
-        priority: 1
-        pricing:
-          base_price: 700000
-          formula: "{\"total_price\": 700000 * (resolution = \"1080p\" ? 1.35 : 1) * duration / 5}"
-          discount_rate: 100
 
   - name: "flux-3-start-end-to-video"
     display_name: "FLUX 3"
@@ -1388,19 +1211,10 @@ models:
         values: ["720p", "1080p"]
         fill: "panel"
       image:
-        upstream: "start_image"
         description: "Source image"
         default: null
         accepts: "image"
         fill: "canvas"
-    providers:
-      - name: "wavespeed"
-        model_id: "black-forest-labs/flux-3/start-end-to-video"
-        priority: 1
-        pricing:
-          base_price: 850000
-          formula: "{\"total_price\": base_price * $min([$ceil($number(duration)), 20]) / 5 * ($lowercase($string(resolution)) = \"1080p\" ? 29 / 17 : 1)}"
-          discount_rate: 100
 
   - name: "seedance-2.5-video-extend"
     display_name: "Seedance 2.5"
@@ -1434,14 +1248,6 @@ models:
         default: null
         accepts: "video"
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "bytedance/seedance-2.5/video-extend"
-        priority: 1
-        pricing:
-          base_price: 1100000
-          formula: "{\"total_price\": 110000 * (resolution = \"4k\" ? 10 : resolution = \"1080p\" ? 5 : resolution = \"720p\" ? 2 : 1) * ($max([2, $min([$ceil(get_duration(video, min=2, max=30, total=30)), 30])]) + (duration ? duration : 5))}"
-          discount_rate: 90
 
   - name: "wan-3.0-video-edit"
     display_name: "Wan 3.0"
@@ -1449,7 +1255,7 @@ models:
     takes_prompt: true
     tier: "internal"
     description: "#1 on two blind-vote leaderboards"
-    guide: "The best-judged prompt-driven rewrite of a whole clip — the default choice when a human is going to look at the result"
+    guide: "The best-judged prompt-driven rewrite of a whole clip — the default for a final rewrite a human is going to look at"
     generation_time: 600
     icon: "alibaba"
     params:
@@ -1496,14 +1302,6 @@ models:
         default: "720p"
         values: ["480p", "720p", "1080p"]
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "alibaba/wan-3.0/video-edit"
-        priority: 1
-        pricing:
-          base_price: 500000
-          formula: "{\"total_price\": ($source := $min([$ceil(get_duration(video, min=1, max=15, total=15)), 15]); $output := $min([duration ? duration : $max([2, $source]), 15]); base_price * (resolution = \"1080p\" ? 2 : (resolution = \"480p\" ? 0.5 : 1)) * ($source + $output) / 5)}"
-          discount_rate: 100
 
   - name: "kling-v3-pro-motion"
     display_name: "Kling 3.0 Pro"
@@ -1540,14 +1338,6 @@ models:
         default: ""
         type: "text"
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "kwaivgi/kling-v3.0-pro/motion-control"
-        priority: 1
-        pricing:
-          base_price: 840000
-          formula: "{\"total_price\": $max([3, $min([$ceil(get_duration(video)), character_orientation = \"image\" ? 10 : 30])]) / 5 * base_price}"
-          discount_rate: 100
 
   - name: "omnihuman-1.5"
     display_name: "OmniHuman 1.5"
@@ -1569,14 +1359,6 @@ models:
         default: null
         accepts: "image"
         fill: "canvas"
-    providers:
-      - name: "wavespeed"
-        model_id: "bytedance/avatar-omni-human-1.5"
-        priority: 1
-        pricing:
-          base_price: 160000
-          formula: "{\"total_price\": $min([$ceil(get_duration(audio)), 600]) * base_price}"
-          discount_rate: 100
 
   - name: "seedance-2.5-talking-avatar"
     display_name: "Seedance 2.5 Talking Avatar"
@@ -1603,14 +1385,6 @@ models:
         default: "720p"
         values: ["480p", "720p"]
         fill: "panel"
-    providers:
-      - name: "wavespeed"
-        model_id: "bytedance/seedance-2.5/talking-avatar"
-        priority: 1
-        pricing:
-          base_price: 1100000
-          formula: "{\"total_price\": $max([4, $min([$ceil(get_duration(audio)), 120])]) / 5 * base_price * (resolution = \"480p\" ? 1 : 2)}"
-          discount_rate: 100
 
   - name: "sync-lipsync-3"
     display_name: "Sync Lipsync 3"
@@ -1638,14 +1412,6 @@ models:
         values: ["cut_off"]
         fill: "none"
         note: "The lip-sync step sends cut_off when the selected model accepts it; the result then ends with the audio."
-    providers:
-      - name: "wavespeed"
-        model_id: "sync/lipsync-3"
-        priority: 1
-        pricing:
-          base_price: 135000
-          formula: "{\"total_price\": $min([$ceil(get_duration(video)), 300]) * base_price}"
-          discount_rate: 100
 
   - name: "infinitetalk-video-to-video"
     display_name: "InfiniteTalk"
@@ -1673,14 +1439,6 @@ models:
         default: null
         accepts: "video"
         fill: "canvas"
-    providers:
-      - name: "wavespeed"
-        model_id: "wavespeed-ai/infinitetalk/video-to-video"
-        priority: 1
-        pricing:
-          base_price: 150000
-          formula: "{\"total_price\": $max([3, $min([$ceil(get_duration(audio)), 600])]) / 5 * base_price * (resolution = \"720p\" ? 2 : 1)}"
-          discount_rate: 100
 
   - name: "infinitetalk-multi"
     display_name: "InfiniteTalk"
@@ -1720,14 +1478,6 @@ models:
         default: null
         accepts: "audio"
         fill: "canvas"
-    providers:
-      - name: "wavespeed"
-        model_id: "wavespeed-ai/infinitetalk/multi"
-        priority: 1
-        pricing:
-          base_price: 150000
-          formula: "{\"total_price\": ($left := $ceil(get_duration(left_audio)); $right := $ceil(get_duration(right_audio)); $seconds := (order = \"meanwhile\" ? $max([$left, $right]) : $left + $right); $max([3, $min([$seconds, 600])]) / 5 * base_price * (resolution = \"720p\" ? 2 : 1))}"
-          discount_rate: 100
 
   - name: "sync-react-1"
     display_name: "Sync React 1"
@@ -1761,14 +1511,6 @@ models:
         default: null
         accepts: "video"
         fill: "canvas"
-    providers:
-      - name: "wavespeed"
-        model_id: "sync/react-1"
-        priority: 1
-        pricing:
-          base_price: 835000
-          formula: "{\"total_price\": $min([$ceil(get_duration(audio)), 15]) / 5 * base_price}"
-          discount_rate: 100
 
   - name: "ltx-2.3-lipsync"
     display_name: "LTX 2.3"
@@ -1796,14 +1538,6 @@ models:
         default: "720p"
         values: ["480p", "720p", "1080p"]
         fill: "panel"
-    providers:
-      - name: "wavespeed"
-        model_id: "wavespeed-ai/ltx-2.3/lipsync"
-        priority: 1
-        pricing:
-          base_price: 100000
-          formula: "{\"total_price\": $max([3, $min([$ceil(get_duration(audio)), 20])]) / 5 * base_price * (resolution = \"720p\" ? 1.5 : (resolution = \"480p\" ? 1 : 2))}"
-          discount_rate: 100
 
   - name: "seedvr2-video"
     display_name: "SeedVR2"
@@ -1826,14 +1560,6 @@ models:
         default: null
         accepts: "video"
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "wavespeed-ai/seedvr2/video"
-        priority: 1
-        pricing:
-          base_price: 100000
-          formula: "{\"total_price\": ($billed_duration := $min([$max([$ceil(get_duration(video)), 3]), 600]); $rate := (target_resolution = \"4k\" ? 300000 : target_resolution = \"2k\" ? 250000 : target_resolution = \"1080p\" ? 200000 : 100000); $billed_duration / 5 * $rate)}"
-          discount_rate: 100
 
   - name: "rife-interpolation"
     display_name: "RIFE"
@@ -1850,11 +1576,3 @@ models:
         default: null
         accepts: "video"
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "wavespeed-ai/rife"
-        priority: 1
-        pricing:
-          base_price: 10000
-          formula: "{\"total_price\": $max([1, $min([$ceil(get_duration(video)), 600])]) * base_price}"
-          discount_rate: 100

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a document Space's editor is able to represent, as plain data, plus the
@@ -102,7 +102,7 @@ export interface DocumentSchema {
  * date did not move would be refused wherever an older one is published.
  */
 export const DOCUMENT_SCHEMA: DocumentSchema = {
-  publishedAt: "2026-10-18T09:00:00Z",
+  publishedAt: "2026-11-16T03:27:03Z",
 
   // Attribute names are here because adding an attribute to a node both sides
   // already know (a heading gaining an alignment, say) leaves no trace in the
@@ -113,7 +113,15 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
   // `blockContainer` per block carrying its id, and the block's own node
   // inside that. `@breatic/shared`'s `document-body` draws the shape.
   nodes: {
-    audio: ["backgroundColor", "caption", "name", "quoted", "showPreview", "url"],
+    audio: [
+      "backgroundColor",
+      "caption",
+      "name",
+      "quoted",
+      "showPreview",
+      "uploadId",
+      "url",
+    ],
     blockContainer: ["id"],
     blockGroup: [],
     bulletListItem: [
@@ -132,8 +140,11 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
     codeBlock: ["language", "quoted"],
     divider: ["quoted"],
     doc: [],
-    // The table whose cells hold blocks (inner#1619). Each is a layout block:
-    // its node holds its children directly and carries the block id itself.
+    // The column group and its columns (inner#1314), and the table whose cells
+    // hold blocks (inner#1619). Each is a layout block: its node holds its
+    // children directly and carries the block id itself.
+    docColumn: ["id", "width"],
+    docColumnList: ["id"],
     docTable: ["id", "quoted", "textColor"],
     docTableCell: ["backgroundColor", "colspan", "colwidth", "id", "rowspan"],
     docTableHeader: ["backgroundColor", "colspan", "colwidth", "id", "rowspan"],
@@ -149,6 +160,7 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "quoted",
       "showPreview",
       "textAlignment",
+      "uploadId",
       "url",
     ],
     heading: [
@@ -161,6 +173,10 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "textAlignment",
       "textColor",
     ],
+    // A formula is a leaf holding its LaTeX source (inner#1423): a block of
+    // its own, and one inside a line.
+    math: ["source"],
+    mathBlock: ["quoted", "source"],
     numberedListItem: [
       "backgroundColor",
       "number",
@@ -209,6 +225,7 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "quoted",
       "showPreview",
       "textAlignment",
+      "uploadId",
       "url",
     ],
   },
@@ -222,13 +239,17 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
     codeBlock: "text*",
     divider: "",
     doc: "blockGroup",
+    docColumn: "(blockContainer | docTable)+",
+    docColumnList: "docColumn*",
     docTable: "docTableRow+",
-    docTableCell: "blockContainer+",
-    docTableHeader: "blockContainer+",
+    docTableCell: "(blockContainer | docColumnList)+",
+    docTableHeader: "(blockContainer | docColumnList)+",
     docTableRow: "(docTableCell | docTableHeader)*",
     hardBreak: "",
     heading: "inline*",
     image: "",
+    math: "",
+    mathBlock: "",
     numberedListItem: "inline*",
     paragraph: "inline*",
     table: "tableRow+",

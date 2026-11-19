@@ -101,6 +101,14 @@ y-prosemirror hands the pre-edit selection over on `stack-item-popped`, which yj
 
 **A remote caret that is a direct child of `.ProseMirror` is taken out of flow (`.ProseMirror > .collaboration-carets__caret { position: absolute }` in `index.css`).** At the very start of the document the caret widget sits before the first block, and an inline element there creates an anonymous line box that pushes everything down by an empty line. The child combinator leaves carets inside paragraphs alone.
 
+### A move between siblings is two transactions
+
+**A change that takes a block away from one place among its siblings and puts it in another goes out as two transactions, each touching one place: one that puts the block down (inserting it, or wrapping the target where it stands) and one that only deletes the original (`spaces/document/document-column-drop.ts`).** y-prosemirror's `updateYFragment` pairs a changed list of children by identity from both ends only and rewrites the middle in place by position, so one transaction that both inserts and deletes rewrites every sibling between the two places and drops the words a collaborator is typing in them. The undo manager's capture timeout merges the two into one undo step.
+
+### BlockNote keeps a collaborator's ids
+
+**`patches/@blocknote__core@0.56.0.patch` makes BlockNote's `UniqueID` leave the ids in a collaborator's change alone (y-sync meta with `isChangeOrigin` true and not an undo or redo), as Tiptap's own `UniqueID` does; local edits, undo, redo and redraws from Yjs still renew a repeated id.** Unpatched, a move that briefly holds a block twice gives the copy a new id on every receiving editor and not on the sender, and the ids drift apart. Test it with two real `Y.Doc`s (`spaces/document/__tests__/document-column-collab.test.ts`).
+
 ## Drag and drop
 
 ### Draggable atoms need a drag handle
@@ -111,9 +119,13 @@ y-prosemirror hands the pre-edit selection over on `stack-item-popped`, which yj
 
 **Normalise a pointer or drag event's target to an element before checking it.** Chrome fires `dragstart` on the Text node under the pointer, so an `instanceof Element` guard silently skips the handler (`reference-mention-caret.ts` maps Text to its parent). Safari moves the real document selection to the drop caret while hovering, so ProseMirror's move-delete deletes nothing and a move becomes a copy; record the source at `dragstart` (as a relative position) and restore it in `handleDrop` before ProseMirror's own drop logic.
 
+### Controls inside a selected node cancel their mousedown
+
+**A control drawn inside a node-selected block that handles its own press and pointer moves (a resize knob) cancels its `mousedown`.** The browser selection covers a selected picture, and a press inside a selection may start a native drag of it: Chromium starts it at once on Windows and only after a 150 ms hold on macOS (`kTextDragDelay`), so a quick drag on a Mac never shows it. The drag takes the pointer from the control; cancelling `pointerdown` does not stop it. `spaces/document/DocumentMediaBlock.tsx` does this on its knobs; to reproduce on macOS, hold the press 300 ms before moving.
+
 ### Drag preview styling
 
-**A drag preview clone copies font longhands (`fontFamily`, `fontSize`, `fontWeight`, `lineHeight`, `color`), never `computed.font`, and puts translucency on an inner element.** Chrome often returns an empty `font` shorthand (assigning it is a no-op and the clone falls back to body text), and Chrome ignores opacity on the drag image's root (Safari honours it). The drag image is drawn by the OS, so only a person looking at it can verify it.
+**Every editor's drag image is put on the page by `mountDragImage` (`lib/drag-image.ts`) and drawn at full strength; nothing in it sets an opacity.** Firefox and WebKit draw the root's own opacity into the image while Chrome leaves it out, so any opacity makes the engines disagree. A clone of editor text copies font longhands (`fontFamily`, `fontSize`, `fontWeight`, `lineHeight`, `color`), never `computed.font`: Chrome often returns an empty `font` shorthand, and the clone falls back to body text. The drag image is drawn by the OS, so only a person looking at it can verify how it looks.
 
 ## BlockNote document body
 
@@ -124,6 +136,10 @@ y-prosemirror hands the pre-edit selection over on `stack-item-popped`, which yj
 ### Safari IME and position relative
 
 WebKit's contenteditable deletes an element that becomes empty during a composition when it has `position: relative`; BlockNote sets that on `.bn-block-group .bn-block-group > .bn-block-outer`, so only indented rows split into two while typing with an input method in Safari. Upstream does not fix it, and the document editor installs `prosemirror-safari-ime-span` once per editor through `spaces/document/document-safari-ime.ts`. Check: an IME oddity in Safari that affects only some rows? Look at which selector gives those elements `position: relative`.
+
+### Content inserted outside a paste keeps its block ids
+
+**Clipboard content written into the document by our own code (a menu's paste, a command reading `navigator.clipboard`) goes through `withoutRowIds` (`spaces/document/document-comment-paste.ts`) first.** HTML from BlockNote's full export carries each block's `data-id`; a real paste clears them in UniqueID's `transformPasted`, but a direct `tr.replaceWith` keeps them, and UniqueID's `appendTransaction` renames duplicates only inside the changed range, so pasting the same content twice leaves two blocks with one id. `onTarget` in `document-put.ts` and `clipboardTable` in `document-table-line-clipboard.ts` both clear them.
 
 ### Moving a mounted editor moves its portal
 
@@ -137,7 +153,7 @@ WebKit's contenteditable deletes an element that becomes empty during a composit
 
 **A table sits in a horizontal scroller that clips anything reaching past it, so chrome drawn over a block in a cell (a media toolbar) is placed with floating-ui `strategy: 'fixed'` and stays among the block's own elements.** Moving it into a `FloatingPortal` breaks hover when it already holds a portal (a media toolbar sits in `MediaControlsPortal`): with a portal nested in a portal, React reports the pointer moving from the bar onto its own button as leaving the bar, and the bar closes under the hand. Before relying on `fixed`, check that no ancestor has a `transform`, `filter`, `contain: layout`/`paint` or a `container-type` (which implies layout containment); any of them makes that ancestor the containing block. `DocumentMediaBlock.tsx` does this when the block is in a `docTable`.
 
-**`useFloating` runs `whileElementsMounted` whenever both elements are mounted, whatever `open` says.** Pass `autoUpdate` only while the placement is needed (`whileElementsMounted: inCell ? autoUpdate : undefined`), or every instance keeps its scroll listeners and resize observer.
+**`useFloating` runs `whileElementsMounted` whenever both elements are mounted, whatever `open` says.** Pass `autoUpdate` only while the placement is needed (`whileElementsMounted: toolbarShown ? autoUpdate : undefined`), or every instance keeps its scroll listeners and resize observer.
 
 ### Document body CSS layer
 

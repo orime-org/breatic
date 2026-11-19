@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { useQuery } from '@tanstack/react-query';
 import { useStore } from '@xyflow/react';
@@ -16,10 +16,12 @@ import {
   miniToolEstimateInput,
   tieredParamKeys,
   toolParamKeys,
+  type MiniToolSlotValue,
   type MiniToolSnapshot,
   type MiniToolSpec,
 } from '@breatic/shared/mini-tools';
 
+import { getCachedJoinMaxClips } from '@web/data/api/canvas';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { asContentView } from '@web/data/yjs/node-view';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -30,7 +32,8 @@ import { cropSourceSelector, intrinsicSize, isCropSource } from '@web/spaces/can
 import { canvasRootOf, useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { controlsForKeys } from '@web/spaces/canvas/generate/model-controls';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
-import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { isJoinTool, joinClipsOf } from '@web/spaces/canvas/mini-tool/join';
 import { useMiniToolRunning } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { VideoToolPanelContainer, type VideoToolPanelContainerProps, type VideoToolPresentation, type VideoToolCostText } from '@web/spaces/canvas/mini-tool/video/VideoToolPanelContainer';
 import { MiniToolPanel } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
@@ -64,7 +67,7 @@ export interface MiniToolPanelContainerProps {
   videoBindings?: ReadonlyMap<string, MediaPlayerVideoSnapshot>;
   videoCosts?: ReadonlyMap<string, VideoToolCostText>;
   renderVideoDecoder?: VideoToolPanelContainerProps['renderTimelineDecoder'];
-  /** Whether the last write to the document was this reader's. */
+  /** Whether the last write to the document was this user's. */
   getLastWriteWasLocal: () => boolean;
   /**
    * Run the tool on the snapshot taken at the press, with the drawing at the
@@ -126,7 +129,7 @@ function useShownSize(
  * and hangs the panel under the node.
  * @param root0 - Component props.
  * @param root0.nodes - The canvas's node views.
- * @param root0.getLastWriteWasLocal - Whether the last document write was this reader's.
+ * @param root0.getLastWriteWasLocal - Whether the last document write was this user's.
  * @param root0.onRun - Run the tool on a snapshot.
  * @param root0.onRunVideo - Runs the complete persisted video draft.
  * @param root0.videoBindings - Actual node attachment and independent overlay host.
@@ -179,7 +182,7 @@ interface OpenMiniToolPanelProps {
  * @param root0.nodeId - The source node.
  * @param root0.node - Its view.
  * @param root0.spec - The tool.
- * @param root0.getLastWriteWasLocal - Whether the last document write was this reader's.
+ * @param root0.getLastWriteWasLocal - Whether the last document write was this user's.
  * @param root0.onRun - Run the tool on a snapshot.
  * @returns The mounted panel, or null while the pinned model is not known yet.
  */
@@ -197,6 +200,8 @@ function OpenMiniToolPanel({
   const setMiniToolParam = useCanvasSession((s) => s.setMiniToolParam);
   const setMiniToolPrompt = useCanvasSession((s) => s.setMiniToolPrompt);
   const clearMiniToolSlot = useCanvasSession((s) => s.clearMiniToolSlot);
+  const moveMiniToolSlotItem = useCanvasSession((s) => s.moveMiniToolSlotItem);
+  const removeMiniToolSlotItem = useCanvasSession((s) => s.removeMiniToolSlotItem);
   const resetMiniToolSource = useCanvasSession((s) => s.resetMiniToolSource);
   const startMiniToolSlotPick = useCanvasSession((s) => s.startMiniToolSlotPick);
   const endPick = useCanvasSession((s) => s.endPick);
@@ -280,7 +285,7 @@ function OpenMiniToolPanel({
   }, [expandRatio, sourceWidth, sourceHeight, entry, setExpand, sessionStore]);
 
   // The source took new content while the panel was open: whatever was
-  // measured on the old one is reset, and the reader is told (§7.2).
+  // measured on the old one is reset, and the user is told (§7.2).
   const sourceContent = draft?.sourceContent;
   React.useEffect(() => {
     if (sourceContent === undefined || content === '' || content === sourceContent) return;
@@ -317,21 +322,35 @@ function OpenMiniToolPanel({
     return controlsForKeys(entry, toolParamKeys(spec).filter((key) => !tiered.has(key)), display);
   }, [entry, spec]);
   const prompt = draft?.prompt ?? '';
+  // A join's list cap is served with the canvas limits: a container tool
+  // has no catalog entry to read `max_items` from (inner#1825 §6.3).
+  const join = isJoinTool(spec);
+  const joinCap = join ? (getCachedJoinMaxClips() ?? undefined) : undefined;
   const slotCaps = React.useMemo(
-    () => Object.fromEntries(spec.slots.map((slot) => [slot.key, entry?.params[slot.param]?.max_items])),
-    [spec, entry],
+    () => Object.fromEntries(spec.slots.map((slot) => [slot.key, join ? joinCap : entry?.params[slot.param]?.max_items])),
+    [spec, entry, join, joinCap],
   );
+  // A join's draft is its whole list, the first clip included: the first
+  // clip is what the run reads as its source, the rest its clips (§6.5).
+  const sent = React.useMemo((): Pick<MiniToolSnapshot, 'source' | 'slots'> => {
+    const list = join ? spec.slots.find((slot) => slot.many) : undefined;
+    const held = list === undefined ? undefined : (slots as MiniToolSnapshot['slots'])[list.key];
+    if (list === undefined || !Array.isArray(held)) {
+      return { source: { url: content, ...(source.duration !== undefined && { duration: source.duration }) }, slots };
+    }
+    const [first, ...rest] = held as readonly MiniToolSlotValue[];
+    return {
+      source: { url: first?.url ?? '', ...(first?.duration !== undefined && { duration: first.duration }) },
+      slots: { ...slots, [list.key]: rest },
+    };
+  }, [join, spec, slots, content, source.duration]);
   const snapshot = React.useMemo<MiniToolSnapshot>(
-    () => ({
-      params,
-      prompt,
-      source: { url: content, ...(source.duration !== undefined && { duration: source.duration }) },
-      slots,
-    }),
-    [params, prompt, content, source.duration, slots],
+    () => ({ params, prompt, source: sent.source, slots: sent.slots }),
+    [params, prompt, sent],
   );
   const estimateInput = React.useMemo(() => miniToolEstimateInput(spec, snapshot), [spec, snapshot]);
-  const estimate = useCreditText(entry, estimateInput, catalog?.credit_multiplier ?? 1);
+  // Priced, and asked why no upstream here takes it (#1521), said by the press.
+  const { creditText: estimate, refusalText } = useRunCheck(entry, estimateInput, catalog?.credit_multiplier ?? 1);
   const mode = creditMode(spec);
   const creditText =
     mode === 'free'
@@ -352,7 +371,7 @@ function OpenMiniToolPanel({
     spec,
     entry,
     prompt,
-    slots,
+    slots: sent.slots,
     sourceShown: content !== '' && (!crops || measured !== null),
     source,
     tiers: sizeTiers,
@@ -361,6 +380,7 @@ function OpenMiniToolPanel({
     params,
     expandFrame: draft?.expand?.frame,
     mark: draft?.mark,
+    ...(join && joinCap !== undefined ? { join: { clips: joinClipsOf(slots).length, cap: joinCap } } : {}),
   });
   const pickingSlot = pickSession?.purpose === 'miniToolSlot' ? (pickSession.slotKey ?? null) : null;
 
@@ -395,6 +415,10 @@ function OpenMiniToolPanel({
       toast.warning(t('canvas.miniTool.panel.sourceTooLargeToExpand'));
       return;
     }
+    if (refusal === 'joinTooMany') {
+      toast.warning(t('canvas.miniTool.panel.joinTooMany', { n: joinCap ?? 0 }));
+      return;
+    }
     if (refusal === 'slotTooLong') {
       toast.warning(t('canvas.miniTool.panel.slotTooLong', { limit: slotLengthCap(spec, entry, slots) ?? 0 }));
       return;
@@ -409,7 +433,11 @@ function OpenMiniToolPanel({
       return;
     }
     if (refusal !== null) return;
-    // What the reader made on the node is copied out now, so a later change
+    if (refusalText !== undefined) {
+      toast.warning(refusalText);
+      return;
+    }
+    // What the user made on the node is copied out now, so a later change
     // to the draft does not reach this run.
     const expandFrame = sessionStore.getState().miniTool?.expand?.frame;
     let capture: MiniToolCapture | undefined =
@@ -433,7 +461,7 @@ function OpenMiniToolPanel({
     // Pressing Run leaves picking, as pressing generate does (inner#1304).
     if (sessionStore.getState().pickSession !== null) endPick();
     void onRun(nodeId, spec, snapshot, capture, sourceSize);
-  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source, sessionStore, endPick, t]);
+  }, [refusal, refusalText, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source, sessionStore, endPick, t, joinCap]);
 
   // Escape closes the panel; a running pick takes the press first.
   useEscapeInSpace(pickSession === null, closeActivePanel);
@@ -454,6 +482,8 @@ function OpenMiniToolPanel({
         pickingSlot={pickingSlot}
         onPickSlot={onPickSlot}
         onClearSlot={clearMiniToolSlot}
+        onMoveSlotItem={moveMiniToolSlotItem}
+        onRemoveSlotItem={removeMiniToolSlotItem}
         prompt={prompt}
         onPrompt={setMiniToolPrompt}
         creditText={creditText}

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Delivery around the progress and terminal commits (inner#1306 test plan §93 D6; frames-split design §7.11 「registered，

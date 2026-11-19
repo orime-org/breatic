@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Demo main.tsx guard-message and canvas design §4 (read-only, locked or offline): while the Space is read-only, the node is locked or the

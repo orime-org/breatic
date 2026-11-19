@@ -20,7 +20,7 @@ The protocol layer used by both web and the backend: zod schemas, types, constan
 
 ### Main entry and subpaths
 
-**The main entry `src/index.ts` (bundled by `tsup`) is the default; the subpath entries are `@breatic/shared/canvas/text-body`, `@breatic/shared/mini-tools`, `@breatic/shared/pricing` and `@breatic/shared/space-content`.** The `exports` map in `package.json` and the `build` script list the same five. Timeline Yjs document operations and Space media-reference extraction use `space-content`.
+**The main entry `src/index.ts` (bundled by `tsup`) is the default; the subpath entries are `@breatic/shared/canvas/text-body`, `@breatic/shared/mini-tools`, `@breatic/shared/pricing`, `@breatic/shared/space-content` and `@breatic/shared/update-shape`.** The `exports` map in `package.json` and the `build` and `dev` scripts list the same six. Timeline document initialization and readers, Space media-reference extraction and the web-animation contracts (Manifest, execution input, preview token, container job protocol, frame-ready bridge script) use `space-content`; the web-animation schemas stay out of the main entry because they are built from the Timeline schemas that share a chunk with Yjs. `updateShape`, which imports yjs, uses `update-shape` so that yjs stays out of web's entry chunk.
 
 **A new export exists for other packages only once `src/index.ts` (or a subpath entry) exports it; adding it to a sub-barrel such as `types/index.ts` is not enough.** Consumers resolve `@breatic/shared` to `src/index.ts`, so a symbol missing there can pass locally and fail the CI build.
 
@@ -28,7 +28,9 @@ The protocol layer used by both web and the backend: zod schemas, types, constan
 
 Check: will web call this module's exports? If yes, put it in the barrel, run `pnpm build && pnpm --filter @breatic/web verify:chunks`, and give the module its own subpath entry if the guard fails. Modules web never calls go in the barrel.
 
-**Decide with the guard, never by reading the code.** The main entry builds to one file, so every export web reaches from the barrel ships in the entry chunk that every reader downloads, even if only a lazy page calls it, and what an export drags along depends on everything it calls. `packages/web/verify-chunks.mjs` names known heavy dependencies in `HEAVY` and caps the total with `ENTRY_BUDGET`; the list lags, so a new heavy dependency shows up only as the total going over.
+**A module that both the main entry and a subpath entry reach is moved by tsup into a shared `dist/chunk-*.js`, and everything it imports goes with it.** Web then bundles that chunk into the first page that imports it, so a lazy chunk calling the same export imports it from that page chunk and `verify:chunks` reports a second reader (a `timeline/document.ts` import of `layer-geometry` once pulled the layer geometry out of web's entry this way). Keep a module reached through a subpath from importing what web calls from the main entry; write the few lines it needs where they are used.
+
+**Decide with the guard, never by reading the code.** The main entry builds to one file, so every export web reaches from the barrel ships in the entry chunk that every user downloads, even if only a lazy page calls it, and what an export drags along depends on everything it calls. `packages/web/verify-chunks.mjs` names known heavy dependencies in `HEAVY` and caps the total with `ENTRY_BUDGET`; the list lags, so a new heavy dependency shows up only as the total going over.
 
 ## HTTP transport
 

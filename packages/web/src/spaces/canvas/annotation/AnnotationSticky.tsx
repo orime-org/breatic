@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A collaboration sticky: what somebody said about this part of the canvas,
  * the replies under it, and a box to answer in.
  *
- * What the reader gets when they open a pin (#1881 §8.7). It floats beside the
+ * What the user gets when they open a pin (#1881 §8.7). It floats beside the
  * pin rather than being the node itself, so it keeps one size at every zoom —
  * `getNodeToolbarTransform` (`@xyflow/system@0.0.79:1492`) turns the node's
  * rect into screen coordinates and then only translates, never scales.
@@ -32,6 +32,7 @@ import {
   editAnnotationBody,
   editReply,
   removeReply,
+  runCanvasUndoBatch,
 } from '@web/data/yjs/canvas-space';
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -163,21 +164,28 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
     [profiles],
   );
 
+  // Judged here as one batch so a Space without room keeps the box and its
+  // words open (the size cap says why) rather than reading as a note gone.
+  // A reply and a rewrite are both words the user wrote: an add.
   const write = React.useCallback(
-    (at: DraftTarget, use: DraftState['use'], text: string): boolean => {
+    (at: DraftTarget, use: DraftState['use'], text: string): boolean | 'refused' => {
       const now = Date.now();
-      if (use === 'reply') {
-        return addReply(projectId, spaceId, nodeId, {
-          id: newId(),
-          content: text,
-          createdBy: viewerId ?? '',
-          createdAt: now,
-        });
-      }
-      if (at?.kind === 'reply') {
-        return editReply(projectId, spaceId, nodeId, at.id, text, now);
-      }
-      return editAnnotationBody(projectId, spaceId, nodeId, text, now);
+      let wrote = false;
+      const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
+        if (use === 'reply') {
+          wrote = addReply(projectId, spaceId, nodeId, {
+            id: newId(),
+            content: text,
+            createdBy: viewerId ?? '',
+            createdAt: now,
+          });
+        } else if (at?.kind === 'reply') {
+          wrote = editReply(projectId, spaceId, nodeId, at.id, text, now);
+        } else {
+          wrote = editAnnotationBody(projectId, spaceId, nodeId, text, now);
+        }
+      });
+      return written.ok ? wrote : 'refused';
     },
     [nodeId, projectId, spaceId, viewerId],
   );
@@ -206,8 +214,11 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
       // is told. The entry can go between the last render and this keystroke,
       // and by the time the effect below sees that the box is already closed —
       // the writer's answer is the only account of where the words went.
-      const wrote =
+      const result =
         next.commit !== undefined && write(held.target, next.use, next.commit);
+      // Refused by the size cap: the box stays as it was, words and all.
+      if (result === 'refused') return;
+      const wrote = result;
       // A reply goes on the end of a thread that is capped at 180px, so past
       // the fourth one the author posts into a part of the sticky they cannot
       // see. Their own reply is the one thing they are certainly looking for.
@@ -271,7 +282,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
   // reads "an entry point does not render while a box is open") and it refuses
   // a second open on a live draft, so an Edit offered anywhere is a command
   // that cannot act. Delete goes on ONE entry: the one the box belongs to,
-  // where the "this was deleted" notice would report the reader's own action
+  // where the "this was deleted" notice would report the user's own action
   // back to them as something that had befallen them. Everywhere else Delete
   // stands — it opens no box, and taken off the whole sticky it meant one
   // character in the reply box left nothing on the note deletable.
@@ -454,7 +465,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
               }
               // Escape is this box's only while it holds a reply. With nothing
               // typed it belongs to the sticky, which collapses on it (§8.7.3);
-              // swallowing it here left a reader whose caret sat in this box
+              // swallowing it here left a user whose caret sat in this box
               // unable to collapse the note from the keyboard at all.
               {...replyBoxKeys.box}
             />

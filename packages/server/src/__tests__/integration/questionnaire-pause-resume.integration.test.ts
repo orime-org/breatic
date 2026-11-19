@@ -1,14 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * A questionnaire pauses the turn, and the reader's answer resumes it
+ * A questionnaire pauses the turn, and the user's answer resumes it
  * (inner#1542).
  *
- * The agent's `ask_user` call has no result until the reader gives one: the
+ * The agent's `ask_user` call has no result until the user gives one: the
  * segment of the turn that asked stops there, the call is stored as
  * `awaiting`, and the answer comes back as that call's result -- either from
- * the card, which resumes the same turn, or as word that the reader wrote a
+ * the card, which resumes the same turn, or as word that the user wrote a
  * message instead. Whichever way it comes, the call and its result sit in the
  * same stored row, so every later request in the conversation carries a call
  * with its result; a call left without one makes the SDK refuse every
@@ -27,15 +27,15 @@ const model = vi.hoisted(() => ({
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
+  actual.initProvider((await import("../helpers/fake-provider.js")).assemblyProvider());
   const { modelProducing, saying } = await import("../helpers/model-double.js");
   return {
     ...actual,
-    resolveProvider: () => "deepseek",
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(
         () => model.queue.shift() ?? saying("ok"),
         (asked) => model.calls.push(asked),
-      ),
+      )),
   };
 });
 
@@ -47,6 +47,7 @@ import { initCore, getRedis, setSession, sessionCookieName, loadLocales } from "
 import type { Hono } from "hono";
 import { FINISHED_ASKING_FOR_A_TOOL } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
+import { sendAndRead, type SentAndRead } from "./chat-run-harness.js";
 
 try {
   initCore(process.env);
@@ -151,29 +152,13 @@ async function newChat(): Promise<Chat> {
 }
 
 /**
- * Post to `/chat/message` and read the whole answer.
+ * Post to `/chat/message` and read the run it opens to its end.
  * @param chat - Where.
  * @param body - What, beyond the conversation and project.
- * @returns The status, the stream's chunks when it streamed, and the body otherwise.
+ * @returns The status, the JSON answer, and the run's chunks when it opened or joined one.
  */
-async function post(
-  chat: Chat,
-  body: Record<string, unknown>,
-): Promise<{ status: number; chunks: Array<Record<string, unknown>>; json: Record<string, unknown> | null }> {
-  const res = await app.request("/api/v1/chat/message", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: chat.cookie },
-    body: JSON.stringify({ project_id: chat.projectId, conversation_id: chat.conversationId, ...body }),
-  });
-  const text = await res.text();
-  if (res.headers.get("content-type")?.includes("text/event-stream") !== true) {
-    return { status: res.status, chunks: [], json: text ? (JSON.parse(text) as Record<string, unknown>) : null };
-  }
-  const chunks = text
-    .split("\n")
-    .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
-    .map((line) => JSON.parse(line.slice(6)) as Record<string, unknown>);
-  return { status: res.status, chunks, json: null };
+async function post(chat: Chat, body: Record<string, unknown>): Promise<SentAndRead> {
+  return sendAndRead(app, chat.cookie, { project_id: chat.projectId, conversation_id: chat.conversationId, ...body });
 }
 
 /**
@@ -292,15 +277,13 @@ describe("a turn that asks", () => {
 });
 
 describe("answering on the card", () => {
-  it("resumes the same turn: the result goes to the model, nothing new is said for the reader, and the call is answered in its own row", async () => {
+  it("resumes the same turn: the result goes to the model, nothing new is said for the user, and the call is answered in its own row", async () => {
     const chat = await askedIn("ask-2");
     model.calls = [];
     const { status, chunks } = await post(chat, { message: "", answer: { toolCallId: "ask-2", answers: ANSWERS } });
 
     expect(status).toBe(200);
-    const firstOutput = chunks.findIndex((c) => c.type === "tool-output-available");
-    expect(chunks[firstOutput]).toMatchObject({ toolCallId: "ask-2", output: { answers: ANSWERS } });
-    expect(firstOutput).toBeLessThan(chunks.findIndex((c) => c.type === "text-delta"));
+    expect(chunks.some((c) => c.type === "tool-output-available")).toBe(false);
 
     const result = promptParts().find((p) => p.type === "tool-result" && p.toolCallId === "ask-2");
     expect(result).toMatchObject({ output: { type: "json", value: { answers: ANSWERS } } });
@@ -329,7 +312,7 @@ describe("answering on the card", () => {
     });
 
     expect(again.status).toBe(409);
-    expect(again.json).toMatchObject({ error: { code: 409 }, call: { status: "success", output: { answers: ANSWERS } } });
+    expect(again.json).toMatchObject({ error: { code: 409, call: { status: "success", output: { answers: ANSWERS } } } });
     expect(model.calls).toHaveLength(0);
   });
 
@@ -423,7 +406,7 @@ describe("writing a message instead", () => {
     const late = await post(chat, { message: "", answer: { toolCallId: "ask-8", answers: ANSWERS } });
 
     expect(late.status).toBe(409);
-    expect(late.json).toMatchObject({ call: { status: "success", output: { repliedInChat: true } } });
+    expect(late.json).toMatchObject({ error: { call: { status: "success", output: { repliedInChat: true } } } });
   });
 });
 
@@ -502,7 +485,12 @@ describe("answers racing each other", () => {
           ),
         );
         const answered = results.filter((r, i) => ops[i] === "answer" && r.status === 200).length;
-        const replied = results.filter((r) =>
+        // Every send that reaches the conversation while a run holds it reads
+        // that same run, so a reply is counted once, on the message whose send
+        // opened the run (inner#1717).
+        const replied = results.filter((r, i) =>
+          ops[i] === "message" &&
+          (r.json?.data as { status?: string } | undefined)?.status === "start" &&
           r.chunks.some((c) => c.type === "data-ask-replied" && (c.data as { toolCallId?: string }).toolCallId === id),
         ).length;
         expect(answered + replied).toBe(1);

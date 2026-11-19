@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 心跳间隔怎么到浏览器手里。
@@ -33,6 +33,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
       attachment_max_items: 7,
       current_space_max_chars: 4321,
       space_list_max_items: 12,
+      running_poll_interval_ms: 6543,
+      chat_sync_interval_ms: 3456,
     }),
   };
 });
@@ -80,8 +82,10 @@ describe("GET /chat/stream-config", () => {
       "attachmentMaxItems",
       "currentSpaceMaxChars",
       "heartbeatIntervalMs",
+      "runningPollIntervalMs",
       "spaceListMaxItems",
       "spaceReadTimeoutMs",
+      "syncIntervalMs",
     ]);
   });
 
@@ -97,5 +101,17 @@ describe("GET /chat/stream-config", () => {
 
     expect(data.currentSpaceMaxChars).toBe(4321);
     expect(data.spaceListMaxItems).toBe(12);
+  });
+
+  it("answers how often an open conversation list asks which conversations are running, from config", async () => {
+    const { data } = await askForStreamConfig();
+
+    expect(data.runningPollIntervalMs).toBe(6543);
+  });
+
+  it("answers how often the conversation on screen asks where it stands, from config (inner#1717)", async () => {
+    const { data } = await askForStreamConfig();
+
+    expect(data.syncIntervalMs).toBe(3456);
   });
 });

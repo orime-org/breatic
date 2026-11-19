@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import * as Y from 'yjs';
@@ -10,10 +10,17 @@ import { SceneObjectValuesSchema, t, SCENE_FORMAT_VERSION, type SceneObject } fr
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
 import { SceneInspector } from '@web/spaces/three-d/SceneInspector';
+import { SceneDirectorFields } from '@web/spaces/three-d/SceneDirectorFields';
 import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField';
+
+const NAME = 'project-p1/3d-s1';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const owners: Array<{ doc: Y.Doc; session: SceneSession }> = [];
+// Rename does not depend on the pose section, which stays hidden while no skeleton state is known.
+const NO_SKELETON_STATES: ReadonlyMap<string, 'none' | 'humanoid' | 'other'> = new Map();
+/** Joint mode is owned by the editor and unused by rename. */
+function ignoreJointMode(): void {}
 
 /**
  * Subscribe the real inspector to its real document owner.
@@ -34,9 +41,10 @@ function BoundInspector({ session }: { session: SceneSession }): React.JSX.Eleme
     });
   };
   return <div data-testid='scene-right-panel' tabIndex={-1}>
-    <SceneInspector spaceId='scene' session={session} snapshot={snapshot} namedPeers={[]} Field={SceneField}
+    <SceneInspector DirectorFields={SceneDirectorFields} spaceId='scene' session={session} snapshot={snapshot} namedPeers={[]} Field={SceneField}
       fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
-      readObjects={() => readSceneDocument(session.doc).objects} />
+      readObjects={() => readSceneDocument(session.doc).objects}
+      skeletonStates={NO_SKELETON_STATES} jointMode={false} onJointModeChange={ignoreJointMode} />
     <input autoComplete='off' aria-label='Next field' />
   </div>;
 }
@@ -53,8 +61,8 @@ function setup(): { doc: Y.Doc; session: SceneSession; input: HTMLElement; user:
     id: ID, name: 'Figure', model: { kind: 'builtin', id: 'figure' },
     position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false,
   };
-  applySceneCommand(doc, { type: 'create', objects: [object] }, Symbol('fixture'), true);
-  const session = new SceneSession(doc);
+  applySceneCommand(doc, { type: 'create', objects: [object] }, Symbol('fixture'), true, NAME);
+  const session = new SceneSession(doc, NAME);
   session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
   session.select(ID, false);
   owners.push({ doc, session });
@@ -169,7 +177,7 @@ describe('scene name editing follows the Canvas rename contract (inner#1705)', (
     const { doc, session, input, user } = setup();
     await user.click(input);
     act(() => {
-      applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer title', position: [0, 7, 0] }] }, Symbol('peer'), true);
+      applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer title', position: [0, 7, 0] }] }, Symbol('peer'), true, NAME);
     });
     expect(input).toHaveValue('Figure');
     await user.click(screen.getByLabelText('Next field'));

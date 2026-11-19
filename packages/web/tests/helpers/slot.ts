@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Which pair of accounts a worker uses, and the `test` every spec imports.
@@ -51,5 +51,12 @@ export const test = base.extend({
   // eslint-disable-next-line no-empty-pattern -- Playwright reads a fixture's dependencies from this pattern, and an empty one means it has none.
   storageState: async ({}, provide): Promise<void> => {
     await provide(stateFile('A'));
+  },
+  // The Project page loads more modules than the browser's default 250
+  // resource-timing entries hold, and `liveModuleUrl` reads that list: a
+  // module fetched after the 250th is missing from it although it loaded.
+  context: async ({ context }, provide): Promise<void> => {
+    await context.addInitScript(() => performance.setResourceTimingBufferSize(10_000));
+    await provide(context);
   },
 });

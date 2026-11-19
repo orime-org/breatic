@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The project page sending each pressed document card to its document
@@ -12,7 +12,7 @@
  * unsynced project reads as one with no Spaces, and every card would look
  * like it was for a document that is gone.
  *
- * A locate or "View" press only shows the reader a place, so once the reader
+ * A locate or "View" press only shows the user a place, so once the user
  * leaves its document -- switches to another Space after the document came to
  * the front, or closes its tab -- it ends quietly (inner#1646). A hidden
  * document Space runs no effects, so nothing else would end it.
@@ -27,7 +27,7 @@ import { useDocumentProposals, type PendingDocumentProposal } from '@web/stores/
 type Routed = 'opened' | 'front';
 
 /**
- * Whether a press only shows the reader a place, writing nothing.
+ * Whether a press only shows the user a place, writing nothing.
  * @param waiting - The press.
  * @returns True for a locate or "View" press.
  */

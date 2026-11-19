@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A turn that asks the user something stops there and waits.
  *
  * The model asking a question is not a step on the way to an answer -- it is
- * where this segment of the turn stops, until the reader answers on the card
+ * where this segment of the turn stops, until the user answers on the card
  * or writes a message (inner#1542). `ask_user` has no `execute`, so the SDK
  * stops the step at the call and the call is stored as `awaiting`; the panel
  * is told on the wire which call it is, because it cannot work that out.
@@ -37,7 +37,7 @@ const modelSays = vi.hoisted(() => ({
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));
@@ -105,7 +105,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       },
     }),
     finalizeTurn: async () => [],
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       new MockLanguageModelV4({
         doStream: async () => {
           const script = modelSays.perCall[modelSays.calls] ?? [FINISHED];
@@ -119,17 +119,18 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             }),
           };
         },
-      }),
+      })),
   };
 });
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  getMessagesForLlm: async () => [],
   titleForTurn: vi.fn(async () => null),
 }));
 
@@ -223,7 +224,7 @@ describe("a turn that asked the user something", () => {
   it("stops at the card instead of talking past it", async () => {
     const { modelCalls, answered } = await runTurn([asksFor("ask_user"), carriesOn]);
 
-    // One call, not two, and no result for the card: the reader gives it.
+    // One call, not two, and no result for the card: the user gives it.
     expect(modelCalls).toBe(1);
     expect(answered).toEqual(new Set());
   });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { configDefaults, defineConfig } from "vitest/config";
 import { resolve } from "node:path";
@@ -16,7 +16,7 @@ export default defineConfig({
   test: {
     exclude: [...configDefaults.exclude, "src/**/*.integration.test.ts"],
     // One process for this package instead of one per file — rationale and
-    // measurements in packages/web/vitest.config.ts, where the effect was
+    // measurements in packages/web/vitest.config.mts, where the effect was
     // largest.
     pool: "forks",
     poolOptions: {

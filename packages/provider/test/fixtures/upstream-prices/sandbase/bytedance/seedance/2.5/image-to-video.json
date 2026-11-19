@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/bytedance/seedance/2.5/image-to-video",
+  "price_formula": "(params.draft_id ?? '') != '' ? Math.round(usage.duration ?? 30.0) * 0.90 : (((params.duration ?? 5) == 'auto' ? Math.round(usage.duration ?? 30.0) : (params.duration ?? 5)) * (((params.draft ?? false) == true ? '480p' : (params.resolution ?? '720p')) == '480p' ? 0.18 : ((params.draft ?? false) == true ? '480p' : (params.resolution ?? '720p')) == '720p' ? 0.36 : ((params.draft ?? false) == true ? '480p' : (params.resolution ?? '720p')) == '1080p' ? 0.90 : (0 / 0)))"
+}

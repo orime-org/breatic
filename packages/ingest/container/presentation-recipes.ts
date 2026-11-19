@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The standard-4 presentation recipes (frames-split design §4.3, §5.3, §5.4, §7.17; inner#1306 §91 D3): a chunk or model

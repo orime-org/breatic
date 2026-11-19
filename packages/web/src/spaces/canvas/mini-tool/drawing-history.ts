@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Undo, redo and brush size while a drawing tool is open (inner#1302 §6.3).
  * The canvas has two ways in to its history, the keyboard and the view bar,
  * and both route through here, so neither reaches the canvas's own history
- * while the reader is drawing.
+ * while the user is drawing.
  */
 
 import type { HistoryShortcut } from '@web/spaces/canvas/canvas-history-shortcut';

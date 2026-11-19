@@ -1,0 +1,25 @@
+{
+  "model": "seedream-v4.5-edit",
+  "upstream": "sandbase",
+  "model_id": "bytedance/seedream/4.5/edit",
+  "runs": [
+    {
+      "params": {
+        "images": [
+          "https://example.com/images.png"
+        ]
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "images": [
+          "https://example.com/images.png"
+        ],
+        "prompt": "a red fox running through fresh snow at dawn",
+        "output_format": "jpeg",
+        "mode": "async",
+        "model": "bytedance/seedream/4.5/edit"
+      }
+    }
+  ],
+  "steps": []
+}

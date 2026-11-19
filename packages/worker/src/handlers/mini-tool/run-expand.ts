@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The expand runner on the frozen plan (inner#1306 execution design §10.5), on the tool-independent step runner (§10.7). The
@@ -24,7 +24,7 @@ import {
 } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { audioOf, chunkInputId, segmentTarget, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 import { upstreamBody } from "@worker/providers/upstream-body.js";
 
 type Expand = Extract<AcceptedMiniToolExecution, { tool: "video.expand" }>;

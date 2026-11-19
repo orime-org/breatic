@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What `understand_media` hands back to the model, in each of the ways one
@@ -8,7 +8,7 @@
  * The layer underneath reports and does not interpret: it returns whatever
  * `finish_reason` came back, and throws only when nothing usable did. Turning
  * those into sentences is this file's subject, and every sentence is aimed at
- * the model rather than at a reader. Which of the coarse reader lines each
+ * the model rather than at a user. Which of the coarse user lines each
  * ending picks is pinned here too, though the three of them carry the same
  * sentence today and the panel renders none of them.
  *
@@ -45,18 +45,21 @@ vi.mock("@domain/understand/index.js", async (importOriginal) => {
   };
 });
 
-let apiKey = "test-key";
+/** Whether the deployment has an understanding upstream with its key, per test. */
+const keyed = vi.hoisted(() => ({ current: true }));
+
+vi.mock("@domain/provider/instance.js", () => ({
+  initProvider: () => undefined,
+  provider: () => ({
+    llm: {
+      availability: () => ({ upstreams: [{ upstream: "openrouter", weight: 0, configured: keyed.current, envVar: "OPENROUTER_API_KEY" }] }),
+    },
+  }),
+}));
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof coreModule>();
-  return {
-    ...actual,
-    getRawEnvVar: (name: string) => (name === "OPENROUTER_API_KEY" ? apiKey : undefined),
-    env: new Proxy(
-      {},
-      { get: (_t, prop: string) => (prop === "OPENROUTER_API_KEY" ? apiKey : undefined) },
-    ),
-  };
+  return { ...actual, env: new Proxy({}, { get: () => undefined }) };
 });
 
 const { getAgentConfig } = await import("@breatic/core");
@@ -106,12 +109,12 @@ async function run(
 /**
  * The reason a failed call put in front of the model.
  * @param call - The call to await.
- * @returns The model-facing reason and the reader's line.
+ * @returns The model-facing reason and the user's line.
  */
 async function failureOf(call: Promise<unknown>): Promise<{
   kind: string;
   forModel: string;
-  readerKey: string | undefined;
+  userKey: string | undefined;
 }> {
   try {
     await call;
@@ -121,7 +124,7 @@ async function failureOf(call: Promise<unknown>): Promise<{
     return {
       kind: failure.kind,
       forModel: failure.forModel,
-      readerKey: "readerKey" in failure ? failure.readerKey : undefined,
+      userKey: "userKey" in failure ? failure.userKey : undefined,
     };
   }
   throw new Error("the call did not fail");
@@ -132,7 +135,7 @@ beforeEach(() => {
   vi.mocked(understandMediaInBatches).mockReset();
   vi.mocked(advanceLongMediaSegmentation).mockReset();
   vi.mocked(cancelLongMediaSegmentation).mockReset();
-  apiKey = "test-key";
+  keyed.current = true;
   understandMediaAtMock.mockResolvedValue({
     text: "A black Labrador retriever.",
     finishReason: "stop",
@@ -156,56 +159,53 @@ describe("understand_media context", () => {
 
 describe("understand_media — recording what the service billed", () => {
   const ASKED = { url: "https://example.com/dog.jpg", question: "What is this?" };
-  const RECORDED = {
-    source: "tool:understand_media",
-    service: UNDERSTAND_PINS.model,
-    provider: "openrouter",
-    requests: 1,
-  };
+  const BILLED = { state: "known", usd: 0.003, source: "reported" } as const;
 
   /**
-   * A capability that reports the call billed, the way the real one does
-   * once the answer shows it, and then answers or fails.
-   * @param costUsd - What it reports the call cost.
+   * The model calls a recorder was handed.
+   * @param recorder - The spy's recorder.
+   * @returns Each call's first argument.
+   */
+  const modelCalls = (recorder: UsageRecorder): unknown[] =>
+    vi.mocked(recorder.recordModelCall).mock.calls.map(([call]) => call);
+
+  /**
+   * A capability that reports a billed answer, the way the real one does, and then answers or fails.
+   * @param cost - What it reports the answer cost.
    * @param then - What it does next.
    */
-  function billedThen(costUsd: number | undefined, then: () => unknown): void {
+  function billedThen(cost: unknown, then: () => unknown): void {
     understandMediaAtMock.mockImplementation(
-      async (request: { onBilled: (cost: number | undefined) => void }) => {
-        request.onBilled(costUsd);
+      async (request: { onBilled: (cost: unknown, upstream: string) => void }) => {
+        request.onBilled(cost, "openrouter");
         return then();
       },
     );
   }
 
-  it("records the cost the service reported", async () => {
-    billedThen(0.003, () => ({ text: "A dog.", finishReason: "stop", kind: "image" }));
+  it("records each billed answer at what it cost, under the upstream that billed it", async () => {
+    billedThen(BILLED, () => ({ text: "A dog.", finishReason: "stop", kind: "image" }));
     const spy = usageSpy();
     await turnCopy(spy.recorder)(ASKED);
-    expect(spy.serviceCalls).toEqual([{ ...RECORDED, costUsd: 0.003 }]);
-  });
-
-  it("records a billed call with no figure without one", async () => {
-    billedThen(undefined, () => ({ text: "A dog.", finishReason: "stop", kind: "image" }));
-    const spy = usageSpy();
-    await turnCopy(spy.recorder)(ASKED);
-    expect(spy.serviceCalls).toEqual([RECORDED]);
+    expect(modelCalls(spy.recorder)).toEqual([
+      { source: "tool:understand_media", model: UNDERSTAND_PINS.model, upstream: "openrouter", cost: BILLED, requests: 1 },
+    ]);
   });
 
   it("keeps the record of a billed call that then failed", async () => {
-    billedThen(0.002, () => {
+    billedThen(BILLED, () => {
       throw new UnderstandRefused(200, "Gemini blocked the request: SAFETY", "content-filter");
     });
     const spy = usageSpy();
     await turnCopy(spy.recorder)(ASKED).catch(() => undefined);
-    expect(spy.serviceCalls).toEqual([{ ...RECORDED, costUsd: 0.002 }]);
+    expect(modelCalls(spy.recorder)).toEqual([expect.objectContaining({ cost: BILLED })]);
   });
 
   it("records nothing when the service never billed the call", async () => {
     understandMediaAtMock.mockRejectedValue(new MediaUnavailable("slow", { detail: "TimeoutError" }));
     const spy = usageSpy();
     await turnCopy(spy.recorder)(ASKED).catch(() => undefined);
-    expect(spy.serviceCalls).toEqual([]);
+    expect(modelCalls(spy.recorder)).toEqual([]);
   });
 });
 
@@ -222,11 +222,11 @@ describe("understand_media — reaching a turn at all", () => {
   // every name that was never registered: on its own it would pass against a
   // tool that does not exist. What the requirement entry buys is the
   // difference between the two sets, so the difference is what is pinned.
-  it("is offered where the key is set and left out where it is not", () => {
-    apiKey = "test-key";
+  it("is offered where an understanding upstream has its key and left out where none has", () => {
+    keyed.current = true;
     expect(Object.keys(buildToolSet(["understand_media"]))).toContain("understand_media");
 
-    apiKey = "";
+    keyed.current = false;
     expect(Object.keys(buildToolSet(["understand_media"]))).not.toContain("understand_media");
   });
 });
@@ -261,9 +261,6 @@ describe("understand_media — a call that worked", () => {
       timeoutMs: config.understand_media_call_timeout_ms,
       maxOutputTokens: config.understand_media_max_output_tokens,
       model: "google/gemini-3.8-flash",
-      backend: "google-vertex",
-      apiKey: "test-key",
-      baseUrl: "https://openrouter.ai/api/v1",
       // The call is recorded where the service shows it billed.
       onBilled: expect.any(Function),
     });
@@ -454,8 +451,8 @@ describe("understand_media — a call that worked", () => {
       } }) as never,
     );
 
-    const { readerKey } = await failureOf(call);
-    expect(readerKey).toBe("chat.tool.failure.fileTooLarge");
+    const { userKey } = await failureOf(call);
+    expect(userKey).toBe("chat.tool.failure.fileTooLarge");
     expect(saveToStorage).not.toHaveBeenCalled();
     expect(resolveCanonicalMediaSource).toHaveBeenCalledTimes(1);
   });
@@ -547,7 +544,7 @@ describe("understand_media — one at a time within a turn", () => {
     const { kind, forModel } = await failureOf(
       call({ url: "https://example.com/b.mp4", question: "What is this?" }),
     );
-    // Nothing failed: the model is steered, and the reader is shown nothing.
+    // Nothing failed: the model is steered, and the user is shown nothing.
     expect(kind).toBe("turned_away");
     // Both halves: why this one was turned away, and what to do about it. And
     // in the past tense — the sentence is stored on the call and read again by
@@ -631,17 +628,17 @@ describe("understand_media — a call that came back with nothing", () => {
   it("tells the model the answer was empty, and that rewording may help", async () => {
     understandMediaAtMock.mockResolvedValue({
       text: "",
-      finishReason: "content_filter",
+      finishReason: "content-filter",
       kind: "video",
       });
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/talk.mp3", question: "Transcribe this word for word." }),
     );
 
-    expect(forModel).toContain("content_filter");
+    expect(forModel).toContain("content-filter");
     expect(forModel.toLowerCase()).toContain("differently");
-    expect(readerKey).toBe("chat.tool.failure.badAnswer");
+    expect(userKey).toBe("chat.tool.failure.badAnswer");
   });
 });
 
@@ -651,13 +648,13 @@ describe("understand_media — a call that never reached the model", () => {
       new MediaUnavailable("too-large", { bytes: 26_000_000, limit: 20_000_000 }),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/big.mp4", question: "What is this?" }),
     );
 
     expect(forModel).toContain("26000000");
     expect(forModel).toContain("20000000");
-    expect(readerKey).toBe("chat.tool.failure.fileTooLarge");
+    expect(userKey).toBe("chat.tool.failure.fileTooLarge");
     
   });
 
@@ -679,12 +676,12 @@ describe("understand_media — a call that never reached the model", () => {
       new MediaUnavailable("unreachable", { status: 404, detail: "Not Found" }),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/gone.mp4", question: "What is this?" }),
     );
 
     expect(forModel).toContain("404");
-    expect(readerKey).toBe("chat.tool.failure.linkUnreachable");
+    expect(userKey).toBe("chat.tool.failure.linkUnreachable");
   });
 
   it("says the download ran out of time", async () => {
@@ -704,7 +701,7 @@ describe("understand_media — a call the service refused", () => {
       new UnderstandRefused(413, "Request body exceeds the provider maximum size", "media"),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/clip.mp4", question: "What is this?" }),
     );
 
@@ -712,7 +709,7 @@ describe("understand_media — a call the service refused", () => {
     // The move as well as the words: this is the one kind where sending the
     // same file again reaches the same answer.
     expect(forModel).toContain("do not send the same file again");
-    expect(readerKey).toBe("chat.tool.failure.fileTooLarge");
+    expect(userKey).toBe("chat.tool.failure.fileTooLarge");
   });
 
   it("reports the provider's invalid-body refusal without deciding who caused it", async () => {
@@ -721,9 +718,9 @@ describe("understand_media — a call the service refused", () => {
     // their own paths; this branch holds only the provider's reported facts.
     understandMediaAtMock.mockRejectedValue(new UnderstandRefused(400, "Invalid request body", "media"));
 
-    const { forModel, readerKey } = await failureOf(run({ url: "https://example.com/clip.mp4", question: "What is this?" }));
+    const { forModel, userKey } = await failureOf(run({ url: "https://example.com/clip.mp4", question: "What is this?" }));
 
-    expect(readerKey).toBe(FAILURE_LINES.refused);
+    expect(userKey).toBe(FAILURE_LINES.refused);
     expect(forModel).toContain("Invalid request body");
     expect(forModel).not.toMatch(/fault on our side|fault in the file|our fault|not in the file/i);
     expect(forModel).not.toMatch(/put the file somewhere|give another address|rehost/i);
@@ -739,14 +736,14 @@ describe("understand_media — a call the service refused", () => {
       new UnderstandRefused(200, "Gemini blocked the request: SAFETY", "content-filter"),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/talk.mp3", question: "Transcribe this word for word." }),
     );
 
     expect(forModel).toContain("SAFETY");
     expect(forModel.toLowerCase()).toContain("asking differently");
     expect(forModel).not.toMatch(/do not send/i);
-    expect(readerKey).toBe("chat.tool.failure.declined");
+    expect(userKey).toBe("chat.tool.failure.declined");
   });
 
   it("says nothing about the user's file when the failure is ours", async () => {
@@ -757,13 +754,13 @@ describe("understand_media — a call the service refused", () => {
       new UnderstandRefused(402, "This request requires more credits", "deployment"),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/talk.mp3", question: "What is this?" }),
     );
 
     expect(forModel).not.toMatch(/would not take|do not send|this media|this file/i);
     expect(forModel.toLowerCase()).toContain("not available");
-    expect(readerKey).toBe("chat.tool.failure.unavailable");
+    expect(userKey).toBe("chat.tool.failure.unavailable");
   });
 
   it("tells the model to move a file the service could not reach", async () => {
@@ -776,14 +773,14 @@ describe("understand_media — a call the service refused", () => {
       new UnderstandRefused(400, "Cannot fetch content", "unfetchable"),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/dog.jpg", question: "What is this?" }),
     );
 
     expect(forModel).toContain("Cannot fetch content");
     expect(forModel.toLowerCase()).toContain("reach");
     expect(forModel).not.toMatch(/do not send|convert/i);
-    expect(readerKey).toBe("chat.tool.failure.linkUnreachable");
+    expect(userKey).toBe("chat.tool.failure.linkUnreachable");
   });
 
   it("does not call a missing answer a refusal by the model", async () => {
@@ -796,13 +793,13 @@ describe("understand_media — a call the service refused", () => {
       new UnderstandRefused(429, "Rate limit exceeded", "transient"),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/talk.mp3", question: "What is this?" }),
     );
 
     expect(forModel).not.toMatch(/would not take|do not send/i);
     expect(forModel.toLowerCase()).toContain("again");
-    expect(readerKey).toBe("chat.tool.failure.busy");
+    expect(userKey).toBe("chat.tool.failure.busy");
   });
 });
 
@@ -825,7 +822,7 @@ describe("understand_media — an answer that stopped before it finished", () =>
   it("says a content filter withheld the rest", async () => {
     understandMediaAtMock.mockResolvedValue({
       text: "Two people are talking",
-      finishReason: "content_filter",
+      finishReason: "content-filter",
       kind: "video" as const,
     });
 
@@ -866,11 +863,11 @@ describe("understand_media — stopping", () => {
       Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
     );
 
-    const { readerKey } = await failureOf(
+    const { userKey } = await failureOf(
       run({ url: "https://example.com/dog.jpg", question: "What is this?" }, controller.signal),
     );
 
-    expect(readerKey).toBe("chat.tool.unfinished");
+    expect(userKey).toBe("chat.tool.unfinished");
   });
 
   it("passes the turn's signal all the way down", async () => {
@@ -977,10 +974,10 @@ describe("understand_media — naming the real reason", () => {
 
     expect(forModel).toContain("video/x-msvideo");
     expect(forModel).toContain(`It takes ${VIDEO_FORMAT_NAMES}.`);
-    // Names a reader can act on. The endpoint's own word for a .mov is
+    // Names a user can act on. The endpoint's own word for a .mov is
     // `video/mov`, which is not a type any converter knows; and the audio
     // sentence two branches over says mp3 and wav, so a list of MIME types
-    // here would be two vocabularies for one reader.
+    // here would be two vocabularies for one user.
     expect(VIDEO_FORMAT_NAMES).toBe("MP4 / MPEG / WebM / MOV");
     expect(forModel).not.toMatch(/not an image, a video or audio/i);
   });
@@ -1018,18 +1015,18 @@ describe("understand_media — naming which side failed", () => {
     // Everything about the address arrives as MediaUnavailable, so this branch
     // is reached only by the model call. Reporting it as the address being
     // unreadable sends the model to blame a url that was fine, and it puts the
-    // vendor endpoint into the conversation on its way to the reader.
+    // vendor endpoint into the conversation on its way to the user.
     understandMediaAtMock.mockRejectedValue(
       new Error("http request to https://openrouter.ai/api/v1/chat/completions timed out"),
     );
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/dog.jpg", question: "What is this?" }),
     );
 
     expect(forModel).not.toContain("openrouter");
     expect(forModel).not.toMatch(/that address/i);
-    expect(readerKey).toBe("chat.tool.failure.noConnection");
+    expect(userKey).toBe("chat.tool.failure.noConnection");
   });
 
   it("keeps what our own call threw, and what a passing refusal said, for the turn's log", async () => {
@@ -1079,9 +1076,9 @@ describe("understand_media — naming which side failed", () => {
   });
 });
 
-describe("understand_media — what a reader is shown, and what the panel is told", () => {
+describe("understand_media — what a user is shown, and what the panel is told", () => {
   it("picks the line for a failure that is nobody's fault but the file's", async () => {
-    // Three reader lines carry the same sentence today and the panel renders
+    // Three user lines carry the same sentence today and the panel renders
     // none of them, so nothing about the screen catches a wrong pick. It is
     // still recorded, because the pick is what the panel will read when it
     // starts telling them apart.
@@ -1090,23 +1087,23 @@ describe("understand_media — what a reader is shown, and what the panel is tol
     );
     expect(
       (await failureOf(run({ url: "https://example.com/a.pdf", question: "What is this?" })))
-        .readerKey,
+        .userKey,
     ).toBe(FAILURE_LINES.unsupportedType);
 
     understandMediaAtMock.mockRejectedValueOnce(new MediaUnavailable("slow"));
     expect(
       (await failureOf(run({ url: "https://example.com/b.mp4", question: "What is this?" })))
-        .readerKey,
+        .userKey,
     ).toBe(FAILURE_LINES.tooSlow);
 
     understandMediaAtMock.mockRejectedValueOnce(new MediaUnavailable("empty"));
     expect(
       (await failureOf(run({ url: "https://example.com/c.mp4", question: "What is this?" })))
-        .readerKey,
+        .userKey,
     ).toBe(FAILURE_LINES.emptyFile);
   });
 
-  it("shows the reader nothing when this turn is the one holding the gate", async () => {
+  it("shows the user nothing when this turn is the one holding the gate", async () => {
     // The call was turned away to steer the model, not failed: there is no
     // line for it.
     const call = turnCopy();
@@ -1118,7 +1115,7 @@ describe("understand_media — what a reader is shown, and what the panel is tol
       call({ url: "https://example.com/b.mp4", question: "What is this?" }),
     );
     expect(refused.kind).toBe("turned_away");
-    expect(refused.readerKey).toBeUndefined();
+    expect(refused.userKey).toBeUndefined();
   });
 
   it("tells the panel which sentence to show while this one runs", () => {
@@ -1136,25 +1133,25 @@ describe("understand_media — what a reader is shown, and what the panel is tol
     // ends in a bare colon and a full stop.
     understandMediaAtMock.mockRejectedValueOnce(new MediaUnavailable("unreachable"));
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/gone.mp4", question: "What is this?" }),
     );
     expect(forModel).toContain("no answer");
     expect(forModel).not.toMatch(/: \.$/);
-    expect(readerKey).toBe(FAILURE_LINES.linkUnreachable);
+    expect(userKey).toBe(FAILURE_LINES.linkUnreachable);
   });
 
-  it("says it has no credentials rather than calling the service silent", async () => {
-    // `buildToolSet` leaves the tool out entirely when the key is missing, so
-    // a turn should not reach this branch — but the branch answers the model,
-    // and until now nothing ran it.
-    apiKey = "";
+  it("says the deployment cannot do it, rather than calling the service silent, when no upstream can serve it", async () => {
+    // `buildToolSet` leaves the tool out entirely when no upstream has its
+    // key, so a turn should not reach this branch -- but the branch answers
+    // the model.
+    understandMediaAtMock.mockRejectedValue(new UnderstandRefused(0, "No upstream can serve google/gemini-3.8-flash", "deployment"));
 
-    const { forModel, readerKey } = await failureOf(
+    const { forModel, userKey } = await failureOf(
       run({ url: "https://example.com/a.jpg", question: "What is this?" }),
     );
-    expect(forModel).toContain("no credentials");
-    expect(forModel).toContain("do not try again");
-    expect(readerKey).toBe(FAILURE_LINES.unavailable);
+    expect(forModel).toContain("not available");
+    expect(forModel).toContain("do not blame anything they sent");
+    expect(userKey).toBe(FAILURE_LINES.unavailable);
   });
 });

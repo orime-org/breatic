@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * A proposal carrying the reader's material (inner#1315): a source node that
+ * A proposal carrying the user's material (inner#1315): a source node that
  * lands holding a picture, video or sound from our storage, and the slots a
  * generation fills straight from such nodes through `fills`.
  *
@@ -37,18 +37,21 @@ const PORTRAIT = "https://resource.example/image/2026-10-08/1_portrait.png";
 const VOICE = "https://resource.example/audio/2026-10-08/1_voice.mp3";
 const CLIP = "https://resource.example/video/2026-10-08/1_clip.mp4";
 const SAVED = "https://resource.example/url/2026-10-08/1_found.jpg";
+/** A picture a generation on the canvas made, registered in the studio by the worker. */
+const RESULT = "https://resource.example/image/2026-10-08/1_generated.png";
 
 const FACTS: ReadonlyMap<string, MaterialFacts> = new Map<string, MaterialFacts>([
   [PORTRAIT, { kind: "image", media: { coverUrl: null, width: 768, height: 1024, duration: null, mimeType: "image/png", size: 1000 } }],
   [VOICE, { kind: "audio", media: { coverUrl: null, width: null, height: null, duration: 4, mimeType: "audio/mpeg", size: 2000 } }],
   [CLIP, { kind: "video", media: { coverUrl: "https://resource.example/video/2026-10-08/1_clip_cover.png", width: 1280, height: 720, duration: 5, mimeType: "video/mp4", size: 3000 } }],
   [SAVED, { kind: "image", media: { coverUrl: null, width: 500, height: 375, duration: null, mimeType: "image/jpeg", size: 400 } }],
+  [RESULT, { kind: "image", media: { coverUrl: null, width: 1024, height: 1024, duration: null, mimeType: "image/png", size: 5000 } }],
 ]);
 
 /**
  * A source node holding material.
  * @param type - Its kind.
- * @param name - What the reader sees.
+ * @param name - What the user sees.
  * @param material - The address it holds.
  * @returns The node.
  */
@@ -108,7 +111,7 @@ function refusal(proposal: CanvasProposal): string {
   return verdict.reason;
 }
 
-describe("a talking head filled from the reader's uploads (A1)", () => {
+describe("a talking head filled from the user's uploads (A1)", () => {
   /**
    * The group, built once the catalog is loaded.
    * @returns The proposal.
@@ -140,7 +143,7 @@ describe("a slot a node of its kind cannot be wired into (A2)", () => {
 });
 
 describe("material wired into the reference pool (A3)", () => {
-  it("stands with the ref that @s it for the reader", () => {
+  it("stands with the ref that @s it for the user", () => {
     const proposal = group(
       [
         held("image", "Found photo", SAVED),
@@ -175,7 +178,7 @@ describe("the address is ours (A5)", () => {
     if (verdict.ok) throw new Error("expected a refusal");
 
     expect(verdict.reason).toContain("not registered in this studio");
-    expect(verdict.reason).toContain("files the user uploaded in the chat and pictures saved with save_image");
+    expect(verdict.reason).toContain("files the user uploaded in the chat, pictures saved with save_image, and pictures or clips already on the canvas");
     expect(verdict.reason).not.toContain("On node");
   });
 
@@ -380,6 +383,41 @@ describe("where the description sends the model to learn what material is on the
     const description = String(makeProposeCanvasAction().description);
 
     expect(description).not.toContain("you cannot see their canvas");
-    expect(description).toContain("The Space the reader has open");
+    expect(description).toContain("The Space the user has open");
+  });
+});
+
+/** Material already on the canvas, said for the agent: a picture or clip in a node there, by its address. */
+const ON_THE_CANVAS = /already (?:in a node )?on the canvas|on the canvas already/i;
+
+describe("material taken from a result already on the canvas (breatic#1361)", () => {
+  it("stands as the material of a source node feeding an edit", () => {
+    const proposal = group(
+      [
+        held("image", "Chosen look", RESULT),
+        { role: "generate", type: "image", name: "Full quality", mode: "i2i", model: "nano-banana-pro-edit-ultra", prompt: [{ text: "Redraw " }, { ref: 0 }, { text: " at full quality." }] },
+      ],
+      [{ fromIndex: 0, toIndex: 1, into: "pool" }],
+    );
+
+    expect(checkProposal(proposal, FACTS)).toEqual({ ok: true });
+  });
+
+  it("is named where the material field says what it may hold", () => {
+    const material = inputSchema.shape.nodes.element.shape.material;
+    expect(material.description ?? "").toMatch(ON_THE_CANVAS);
+  });
+
+  it("is named where the tool's description says what a source node can hold", () => {
+    expect(String(makeProposeCanvasAction().description)).toMatch(ON_THE_CANVAS);
+  });
+
+  it("is named where the refusal of an address this studio has not registered says where material comes from", () => {
+    const typo = "https://resource.example/image/2026-10-08/1_portrait-typo.png";
+    const materials: MaterialTable = new Map<string, MaterialFacts | "missing">([...FACTS, [typo, "missing"]]);
+    const verdict = checkProposal(group([held("image", "Portrait", typo), talkingHead({ image: [0] })]), materials);
+    if (verdict.ok) throw new Error("expected a refusal");
+
+    expect(verdict.reason).toMatch(ON_THE_CANVAS);
   });
 });

@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/minimax/speech/2.8/hd",
+  "price_formula": "len((params.text ?? \"Hello, welcome to Sandbase\")) / 1000 * 0.1"
+}

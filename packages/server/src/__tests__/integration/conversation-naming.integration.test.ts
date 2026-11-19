@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a conversation is called, and the two routes that write its record.
@@ -13,6 +13,7 @@
  * top of the name its owner chose.
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 // The SDK is stubbed. These tests POST to /chat/message, which runs a turn and
@@ -26,8 +27,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const { modelProducing, saying } = await import("../helpers/model-double.js");
   return {
     ...actual,
-    resolveProvider: () => "test",
-    getModel: () => modelProducing(() => saying("hi")),
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => modelProducing(() => saying("hi"))),
   };
 });
 
@@ -43,6 +43,7 @@ import {
   getAgentConfig,
 } from "@breatic/core";
 import type { Hono } from "hono";
+import { sendAndRead } from "./chat-run-harness.js";
 
 try {
   initCore(process.env);
@@ -50,6 +51,7 @@ try {
   // already initialised by a sibling suite in this worker — fine.
 }
 loadLocales();
+initConfiguredProvider();
 
 const PG_DRIVER_LOCAL = "conversation-naming-test-driver";
 
@@ -137,7 +139,7 @@ async function openAndGetId(projectId: string, cookie: string): Promise<string> 
 }
 
 /**
- * Say something in a conversation and wait for the stream to close.
+ * Say something in a conversation and wait for the run it opens to end.
  * @param text - What the user typed.
  * @param projectId - Project the conversation is in.
  * @param conversationId - Conversation being written to.
@@ -149,16 +151,11 @@ async function say(
   conversationId: string,
   cookie: string,
 ): Promise<void> {
-  const res = await app.request("/api/v1/chat/message", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: cookie },
-    body: JSON.stringify({
-      message: text,
-      project_id: projectId,
-      conversation_id: conversationId,
-    }),
+  await sendAndRead(app, cookie, {
+    message: text,
+    project_id: projectId,
+    conversation_id: conversationId,
   });
-  await res.text();
 }
 
 /**
@@ -288,27 +285,19 @@ describe("A conversation takes its name from the first thing said in it", () => 
 
   it("tells the client the name on the turn's own stream", async () => {
     // Without this the list and the header go on showing the placeholder
-    // until the reader leaves the project and comes back.
+    // until the user leaves the project and comes back.
     const { projectId, cookie } = await seedProject();
     const conversationId = await openAndGetId(projectId, cookie);
 
-    const res = await app.request("/api/v1/chat/message", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookie },
-      body: JSON.stringify({
-        message: "name this conversation",
-        project_id: projectId,
-        conversation_id: conversationId,
-      }),
+    const { chunks } = await sendAndRead(app, cookie, {
+      message: "name this conversation",
+      project_id: projectId,
+      conversation_id: conversationId,
     });
-    const body = await res.text();
 
     // 服务端给会话取名之后只说这一次。列表是打开项目那一刻取的一页，在它
     // 被重新取一遍之前，那一行会一直显示占位符。
-    const named = body
-      .split("\n")
-      .filter((line) => line.startsWith("data: "))
-      .map((line) => JSON.parse(line.slice(6)) as { type: string; data: Record<string, unknown> })
+    const named = (chunks as Array<{ type: string; data: Record<string, unknown> }>)
       .find((chunk) => chunk.type === "data-conversation-titled");
 
     expect(named).toBeDefined();
@@ -493,7 +482,7 @@ describe("a name whose characters do not fit in one code unit each", () => {
     // 存的时候还有一道按列宽的裁剪,而它数的是 UTF-16 码元 —— 一个 emoji 占两个。
     // 命名那一步按码点裁到上限之内,码元数却可能是它的两倍,于是这道裁剪落在一对
     // 代理项中间,存进去的是一个替换字符,而首句命名(nameIfUnnamed)只在名字
-    // 为空时写一次 —— 读者要摆脱它,只能自己去改名。
+    // 为空时写一次 —— 用户要摆脱它,只能自己去改名。
     const { projectId, cookie } = await seedProject();
     const id = await openAndGetId(projectId, cookie);
     const repo = await import("@server/modules/conversation/conversation.repo.js");

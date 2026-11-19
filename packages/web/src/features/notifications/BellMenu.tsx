@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import {
   useMutation,
@@ -16,6 +16,7 @@ import { formatRelativeTime } from '@web/lib/format-relative-time';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
 import { Button } from '@web/components/ui/button';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import {
   Popover,
   PopoverContent,
@@ -153,9 +154,12 @@ export function BellMenu(): React.JSX.Element {
           ) : null}
         </Button>
       </PopoverTrigger>
+      {/* As tall as its rows, up to the room left under the bell; the title
+          row stays put and the list scrolls under it. */}
       <PopoverContent
         align='end'
-        className='w-80 p-1'
+        collisionPadding={8}
+        className='grid max-h-[var(--radix-popover-content-available-height)] w-80 grid-rows-[auto_minmax(0,1fr)] p-1'
         data-testid='bell-popover'
       >
         <div className='flex items-center justify-between px-2 pb-1 pt-2'>
@@ -192,22 +196,24 @@ export function BellMenu(): React.JSX.Element {
             {t('notifications.empty')}
           </div>
         ) : (
-          <ul className='flex flex-col gap-1'>
-            {notifications.map((n) => (
-              <li key={n.id} data-testid={`bell-notification-${n.id}`}>
-                <NotificationItem
-                  notification={n}
-                  resolved={resolved}
-                  onOpenDecision={(token) => {
-                    setOpen(false);
-                    navigate(`/decision?token=${token}`);
-                  }}
-                  onMarkRead={() => markReadMutation.mutate(n.id)}
-                  pending={markingIds.includes(n.id)}
-                />
-              </li>
-            ))}
-          </ul>
+          <ScrollArea scrollbars='vertical' className='min-h-0'>
+            <ul className='flex flex-col gap-1'>
+              {notifications.map((n) => (
+                <li key={n.id} data-testid={`bell-notification-${n.id}`}>
+                  <NotificationItem
+                    notification={n}
+                    resolved={resolved}
+                    onOpenDecision={(token) => {
+                      setOpen(false);
+                      navigate(`/decision?token=${token}`);
+                    }}
+                    onMarkRead={() => markReadMutation.mutate(n.id)}
+                    pending={markingIds.includes(n.id)}
+                  />
+                </li>
+              ))}
+            </ul>
+          </ScrollArea>
         )}
       </PopoverContent>
     </Popover>
@@ -403,7 +409,7 @@ const PROJECT_ROLE_KEY: Record<string, string> = {
  * line — what you hold if you accept: an invite names the role offered, a
  * transfer the role you take over.
  *
- * The fifth waiting row does not, and cannot. A role upgrade asks the reader
+ * The fifth waiting row does not, and cannot. A role upgrade asks the user
  * to grant something rather than take it, so what is useful there is the
  * message the requester typed, and it has none when they typed nothing —
  * `message` is optional on that route. So a waiting row with no second line is

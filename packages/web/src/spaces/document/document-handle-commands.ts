@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The two block handle commands that act on a whole block: copy it, remove it.
  *
- * Both take the block the pointer is over rather than the reader's selection
+ * Both take the block the pointer is over rather than the user's selection
  * (A5), so both address it by id and neither touches the caret.
  *
  * The shapes every command off this handle takes live here too — the editor it
@@ -17,6 +17,7 @@ import type { BlockNoteEditor } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
+import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 
 /** The editor these commands work on. */
 export type HandleEditor = BlockNoteEditor<never, never, never>;
@@ -121,9 +122,10 @@ export function indentReach(doc: PMNode, blockId: string): IndentReach {
     // A block nests under the block before it only when that one is a
     // container (BlockNote's `sinkItem`); a table holds rows, not a group.
     // A block at the top of a table cell stays in the cell: only a block
-    // nested in a group comes out one level.
+    // nested in a group comes out one level. A column group never stands
+    // under another block (inner#1314 A1).
     reach = {
-      in: $before.nodeBefore?.type.name === 'blockContainer',
+      in: $before.nodeBefore?.type.name === 'blockContainer' && node.type.name !== DOC_COLUMN_LIST,
       out: $before.depth > 1 && $before.parent.type.name === 'blockGroup',
     };
     return false;
@@ -132,11 +134,11 @@ export function indentReach(doc: PMNode, blockId: string): IndentReach {
 }
 
 /**
- * Indents or outdents the named block, leaving the reader's selection where it
+ * Indents or outdents the named block, leaving the user's selection where it
  * was.
  *
  * BlockNote nests whatever `tr.selection` is in (`nestBlock.ts:44,195`), so the
- * selection is put on the block for the step and the reader's own is mapped
+ * selection is put on the block for the step and the user's own is mapped
  * through and put back in the same transaction.
  * @param editor - The editor to write to.
  * @param blockId - The block.
@@ -145,7 +147,7 @@ export function indentReach(doc: PMNode, blockId: string): IndentReach {
  */
 export function indentRow(editor: HandleEditor, blockId: string, inward: boolean): void {
   editor.transact((tr) => {
-    const reader = tr.selection;
+    const userSelection = tr.selection;
     const written = tr.mapping.maps.length;
     tr.setSelection(selectionOverBlockContent(tr.doc, blockId));
     if (inward) {
@@ -153,6 +155,6 @@ export function indentRow(editor: HandleEditor, blockId: string, inward: boolean
     } else {
       editor.unnestBlock();
     }
-    tr.setSelection(reader.map(tr.doc, tr.mapping.slice(written)));
+    tr.setSelection(userSelection.map(tr.doc, tr.mapping.slice(written)));
   });
 }

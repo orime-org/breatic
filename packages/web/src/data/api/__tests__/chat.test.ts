@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the chat client asks for.
@@ -102,5 +102,26 @@ describe('asking for a page of the conversation list', () => {
       params: { project_id: 'p-1' },
       signal: abort.signal,
     });
+  });
+});
+
+describe('asking which conversations are running (#1394)', () => {
+  beforeEach(() => {
+    apiGet.mockClear();
+  });
+
+  it('names the project the way the server reads it and hands back the ids', async () => {
+    // `apiGet` hands back the envelope's `data`, so the ids sit one level in.
+    apiGet.mockImplementationOnce(
+      async () => ({ conversation_ids: ['c-1', 'c-2'] }) as unknown as { conversations: never[]; hasMore: boolean },
+    );
+
+    const ids = await chatApi.running('p-1');
+
+    expect(apiGet).toHaveBeenCalledWith(
+      '/chat/running',
+      expect.objectContaining({ params: { project_id: 'p-1' } }),
+    );
+    expect(ids).toEqual(['c-1', 'c-2']);
   });
 });

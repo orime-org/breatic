@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Where a node wired into a model goes and what mark the reader is asked
+ * Where a node wired into a model goes and what mark the user is asked
  * for there (inner#977, design 5.7 table A), over every model the catalog
  * serves.
  */

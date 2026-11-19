@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { Anchor } from '@radix-ui/react-popover';
@@ -14,6 +14,16 @@ import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 const closeIcon = <X className='size-4' />;
 
 /**
+ * Keep an overlay of the Space open when a Space tab is pressed: Space activation owns hiding, and dismissing on the
+ * tab's pointerdown would end an unfinished edit first.
+ * @param event - Radix's interact-outside event.
+ * @throws {never} Never.
+ */
+export function keepOnSpaceTab(event: Pick<Event, 'target' | 'preventDefault'>): void {
+  if (event.target instanceof Element && event.target.closest('[data-space-tab]')) event.preventDefault();
+}
+
+/**
  * Anchor one non-modal panel to the scene edge and arbitrate its Escape and focus ownership.
  * @param root0 - Scene controls and their current owner bindings.
  * @param root0.open - Whether the shared right panel is open.
@@ -26,14 +36,18 @@ const closeIcon = <X className='size-4' />;
  * @param root0.cancelGesture - Cancels an active scene transform and reports ownership of this press.
  * @param root0.contentRef - Persistent panel container receiving focus before its content changes.
  * @param root0.actions - Contextual controls placed before the panel's close action.
+ * @param root0.top - Where the panel starts below the stage top, in pixels, when something above it must stay clear.
+ * @param root0.bottom - The panel's bottom edge above the stage bottom, as CSS: clear of the minimap and the bottom row.
  * @returns The scene-edge shared floating panel.
  * @throws {never} Never directly.
  */
-export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpenChange, title, automatic, stage, returnTarget, children, cancelGesture, contentRef, actions }: {
+export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpenChange, title, automatic, stage, returnTarget, children, cancelGesture, contentRef, actions, top = null, bottom }: {
   open: boolean; onOpenChange: (open: boolean) => void; title: string; automatic: React.RefObject<boolean>;
   stage: React.RefObject<HTMLDivElement | null>; returnTarget: React.RefObject<HTMLElement | null>; children: React.ReactNode; cancelGesture: () => boolean;
   contentRef: React.RefObject<HTMLDivElement | null>;
   actions?: React.ReactNode;
+  top?: number | null;
+  bottom: string;
 }): React.JSX.Element {
   const t = useTranslation();
   const interactedOutside = React.useRef(false);
@@ -44,7 +58,8 @@ export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpe
    */
   const close = React.useCallback((): void => onOpenChange(false), [onOpenChange]);
   return <Popover open={open} onOpenChange={onOpenChange}>
-    <Anchor asChild><div className='pointer-events-none absolute bottom-[calc(61px_+_142px_+_var(--space-5))] right-[var(--space-5)] top-[var(--space-5)] w-0' /></Anchor>
+    <Anchor asChild><div data-testid='scene-right-panel-anchor' className='pointer-events-none absolute right-[var(--space-5)] top-[var(--space-5)] w-0'
+      style={{ bottom, ...(top === null ? {} : { top: `${top}px` }) }} /></Anchor>
     <PopoverContent ref={contentRef} container={stage.current} side='left' align='start' sideOffset={0} className='flex h-[var(--radix-popover-trigger-height)] w-80 flex-col p-0' data-testid='scene-right-panel'
       onOpenAutoFocus={(event) => { event.preventDefault(); if (!automatic.current) (event.currentTarget as HTMLElement).focus(); }}
       onEscapeKeyDown={(event) => {
@@ -63,8 +78,7 @@ export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpe
       }}
       onInteractOutside={(event) => {
         if (event.target instanceof Node && stage.current?.contains(event.target)) event.preventDefault();
-        // Space activation owns hiding; dismissing on its pointerdown would end an unfinished edit first.
-        if (event.target instanceof Element && event.target.closest('[data-space-tab]')) event.preventDefault();
+        keepOnSpaceTab(event);
         if (!event.defaultPrevented) interactedOutside.current = true;
       }}>
       <div className='flex shrink-0 items-center justify-between gap-2 border-b border-border p-3' data-testid='scene-panel-header'><h2 className='min-w-0 truncate text-sm font-medium'>{title}</h2>

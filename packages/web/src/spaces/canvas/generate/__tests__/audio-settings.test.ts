@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
 
@@ -25,7 +25,8 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
     generation_time: 30,
     takes_prompt: true,
     params,
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
   };
 }
 
@@ -100,7 +101,7 @@ describe('hasSettings', () => {
 describe('choiceLabel', () => {
   const spec = { values: ['English (United States)', 'Japanese (Japan)'], value_locales: ['en-US', 'ja-JP'] };
 
-  it('names a language in the reader\'s own language', () => {
+  it('names a language in the user\'s own language', () => {
     expect(choiceLabel(spec, 'Japanese (Japan)', 'zh-CN')).toBe(
       new Intl.DisplayNames(['zh-CN'], { type: 'language' }).of('ja-JP'),
     );
@@ -114,6 +115,15 @@ describe('choiceLabel', () => {
     const english = { values: ['English (United States)', 'English (India)'], value_locales: ['en-US', 'en-IN'] };
     expect(choiceLabel(english, 'English (United States)', 'en')).toBe('English (United States)');
     expect(choiceLabel(english, 'English (United States)', 'zh-CN')).toBe('英语（美国）');
+  });
+
+  it('names the voice design\'s Chinese as a Chinese screen does, and keeps auto as written (round 2)', () => {
+    const design = {
+      values: ['auto', 'Chinese', 'English', 'German', 'Italian', 'Portuguese', 'Spanish', 'Japanese', 'Korean', 'French', 'Russian'],
+      value_locales: ['', 'zh', 'en', 'de', 'it', 'pt', 'es', 'ja', 'ko', 'fr', 'ru'],
+    };
+    expect(choiceLabel(design, 'Chinese', 'zh-CN')).toBe('中文');
+    expect(choiceLabel(design, 'auto', 'zh-CN')).toBe('Auto');
   });
 
   it('falls back to the declared spelling without a tag', () => {

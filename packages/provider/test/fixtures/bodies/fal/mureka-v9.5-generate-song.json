@@ -1,0 +1,75 @@
+{
+  "model": "mureka-v9.5-generate-song",
+  "upstream": "fal",
+  "model_id": "mureka/v9.5/generate/song",
+  "runs": [
+    {
+      "params": {
+        "compose_from": "references",
+        "lyrics": "sample text",
+        "song": "https://example.com/song.mp3"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "lyrics": "sample text",
+        "reference_id": "upload_reference-id",
+        "prompt": "a red fox running through fresh snow at dawn"
+      }
+    },
+    {
+      "params": {
+        "compose_from": "melody",
+        "lyrics": "sample text",
+        "melody": "https://example.com/melody.mp3"
+      },
+      "prompt": "",
+      "body": {
+        "lyrics": "sample text",
+        "melody_id": "upload_melody-id"
+      }
+    },
+    {
+      "params": {
+        "compose_from": "references",
+        "lyrics": "sample text",
+        "song": "https://example.com/song.mp3",
+        "vocal": "https://example.com/vocal.mp3"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "lyrics": "sample text",
+        "reference_id": "upload_reference-id",
+        "vocal_id": "vocal-id",
+        "prompt": "a red fox running through fresh snow at dawn"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "kind": "upload_reference",
+      "endpoint": "mureka/api/files/upload",
+      "body": {
+        "file_url": "https://example.com/song.mp3",
+        "purpose": "reference"
+      },
+      "run": 0
+    },
+    {
+      "kind": "upload_melody",
+      "endpoint": "mureka/api/files/upload",
+      "body": {
+        "file_url": "https://example.com/melody.mp3",
+        "purpose": "melody"
+      },
+      "run": 1
+    },
+    {
+      "kind": "vocal",
+      "endpoint": "mureka/api/voice/clone",
+      "body": {
+        "audio_url": "https://example.com/vocal.mp3"
+      },
+      "run": 2
+    }
+  ]
+}

@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Writing a proposal's or a template's prompt into a generation node's shared
  * fragment (#229, inner#977).
  *
- * The reader presses one button and the prompt is in the box, with each node
+ * The user presses one button and the prompt is in the box, with each node
  * the proposal wired into the pool already mentioned (inner#1315) and what is
  * still theirs to do marked: a template's reference to @ by hand, words to
  * fill in, and notes on operating the panel at the top.
@@ -20,10 +20,12 @@
 
 import * as Y from 'yjs';
 
-import { markText, type CanvasProposal, type NodeType, type PromptSegment } from '@breatic/shared';
+import { promptLines, type CanvasProposal, type NodeType, type PromptSegment } from '@breatic/shared';
 
 import { PROMPT_NOTE_LABEL_ATTR, PROMPT_NOTE_NODE } from '@web/features/prompt-note/prompt-note';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
+import { SPEAKER_ATTR } from '@web/spaces/canvas/generate/dialogue-line';
+import { MENTION_OPTIONAL_ATTR } from '@web/spaces/canvas/generate/optional-paragraph';
 import {
   MENTION_KIND_ATTR,
   MENTION_LABEL_ATTR,
@@ -43,6 +45,8 @@ export interface ProposalMention {
   kind: NodeType;
   /** Its picture, when it lands holding one. */
   thumbnail?: string;
+  /** The ref is to a template input the user may leave empty (inner#1811). */
+  optional?: true;
 }
 
 /** Answers what a ref at a proposal index mentions; undefined when nothing was placed there. */
@@ -86,27 +90,23 @@ type Part = string | ProposalMention;
  * @throws {never} Never.
  */
 function layOut(segments: readonly PromptSegment[], mentionOf: MentionOf): { notes: string[]; lines: Part[][] } {
-  const notes: string[] = [];
-  const lines: Part[][] = [[]];
-  for (const segment of segments) {
-    if (segment.slot?.kind === 'note') {
-      notes.push(segment.slot.label);
-      continue;
+  const notes = segments.flatMap((segment) => (segment.slot?.kind === 'note' ? [segment.slot.label] : []));
+  const lines = promptLines(segments).map((line) => {
+    const parts: Part[] = [];
+    for (const segment of line) {
+      if (segment.ref !== undefined) {
+        const mention = mentionOf(segment.ref);
+        if (mention) parts.push(segment.optional === true ? { ...mention, optional: true } : mention);
+        continue;
+      }
+      // Words running on from words join them: the schema holds a line's text
+      // as one run between mentions.
+      const last = parts[parts.length - 1];
+      if (typeof last === 'string') parts[parts.length - 1] = last + (segment.text ?? '');
+      else parts.push(segment.text ?? '');
     }
-    if (segment.ref !== undefined) {
-      const mention = mentionOf(segment.ref);
-      if (mention) lines[lines.length - 1]?.push(mention);
-      continue;
-    }
-    const [first = '', ...rest] = (segment.slot ? markText(segment.slot) : segment.text).split('\n');
-    // Words running on from words join them: the schema holds a line's text
-    // as one run between mentions.
-    const line = lines[lines.length - 1] ?? [];
-    const last = line[line.length - 1];
-    if (typeof last === 'string') line[line.length - 1] = last + first;
-    else line.push(first);
-    for (const next of rest) lines.push([next]);
-  }
+    return parts;
+  });
   return { notes, lines };
 }
 
@@ -122,7 +122,37 @@ function mentionElement(mention: ProposalMention): Y.XmlElement {
   element.setAttribute(MENTION_LABEL_ATTR, mention.label);
   element.setAttribute(MENTION_KIND_ATTR, mention.kind);
   if (mention.thumbnail !== undefined) element.setAttribute(MENTION_THUMBNAIL_ATTR, mention.thumbnail);
+  if (mention.optional === true) element.setAttribute(MENTION_OPTIONAL_ATTR, true as unknown as string);
   return element;
+}
+
+/**
+ * A line's parts with a space on each side of every mention, one space shared
+ * by two neighbouring mentions: the prompt editor's whitespace rule
+ * (`planWhitespaceInsertions`), written here so no editor that shows the
+ * prompt adds the spaces on its own afterwards.
+ * @param parts - The line's words and mentions.
+ * @returns The parts as written.
+ * @throws {never} Never.
+ */
+function spacedAroundMentions(parts: readonly Part[]): Part[] {
+  const out: Part[] = [];
+  for (const part of parts) {
+    const last = out[out.length - 1];
+    if (typeof part === 'string') {
+      if (part.length === 0) continue;
+      out.push(last !== undefined && typeof last !== 'string' && !part.startsWith(' ') ? ` ${part}` : part);
+      continue;
+    }
+    if (typeof last === 'string') {
+      if (!last.endsWith(' ')) out[out.length - 1] = `${last} `;
+    } else {
+      out.push(' ');
+    }
+    out.push(part);
+  }
+  if (out.length > 0 && typeof out[out.length - 1] !== 'string') out.push(' ');
+  return out;
 }
 
 /**
@@ -134,9 +164,7 @@ function mentionElement(mention: ProposalMention): Y.XmlElement {
  */
 function lineBlock(parts: readonly Part[]): Y.XmlElement {
   const block = new Y.XmlElement(BLOCK);
-  const children = parts.flatMap((part): (Y.XmlElement | Y.XmlText)[] =>
-    typeof part !== 'string' ? [mentionElement(part)] : part.length > 0 ? [new Y.XmlText(part)] : [],
-  );
+  const children = spacedAroundMentions(parts).map((part) => (typeof part === 'string' ? new Y.XmlText(part) : mentionElement(part)));
   if (children.length > 0) block.insert(0, children);
   return block;
 }
@@ -170,6 +198,47 @@ export function writeProposalPrompt(
 ): void {
   const { notes, lines } = layOut(segments, mentionOf);
   const blocks = [...notes.map(noteBlock), ...lines.map(lineBlock)];
+  /**
+   * Swap the fragment's whole content for the new blocks.
+   */
+  const replace = (): void => {
+    if (prompt.length > 0) prompt.delete(0, prompt.length);
+    prompt.insert(0, blocks);
+  };
+  if (prompt.doc) prompt.doc.transact(replace);
+  else replace();
+}
+
+/**
+ * Write a dialogue's lines into a generation node's prompt fragment
+ * (inner#1825 design 8.5): each line one paragraph carrying its speaker, the
+ * notes of every line on top. Replacement, as {@link writeProposalPrompt}.
+ * @param prompt - The node's prompt fragment for that mode.
+ * @param lines - Each line's speaker, from 1, and words.
+ * @param mentionOf - What each ref mentions; a template's lines have none.
+ * @throws {never} Never.
+ */
+export function writeDialogueLines(
+  prompt: Y.XmlFragment,
+  lines: ReadonlyArray<{ readonly speaker: number; readonly prompt: readonly PromptSegment[] }>,
+  mentionOf: MentionOf = () => undefined,
+): void {
+  const laid = lines.map((line) => ({ speaker: line.speaker, ...layOut(line.prompt, mentionOf) }));
+  const blocks = [
+    ...laid.flatMap(({ notes }) => notes.map(noteBlock)),
+    ...laid.map(({ speaker, lines: parts }) => {
+      // A line is one paragraph: a break inside it reads as a space.
+      const joined: Part[] = [];
+      for (const part of parts.flatMap((line, at) => (at === 0 ? line : [' ', ...line]))) {
+        const last = joined[joined.length - 1];
+        if (typeof part === 'string' && typeof last === 'string') joined[joined.length - 1] = last + part;
+        else joined.push(part);
+      }
+      const block = lineBlock(joined);
+      block.setAttribute(SPEAKER_ATTR, speaker as unknown as string);
+      return block;
+    }),
+  ];
   /**
    * Swap the fragment's whole content for the new blocks.
    */

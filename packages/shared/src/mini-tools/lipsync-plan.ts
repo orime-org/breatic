@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The lip-sync plan both sides compute (inner#1306; execution design §9.2–§9.4, multi-person lip-sync DD): the frozen

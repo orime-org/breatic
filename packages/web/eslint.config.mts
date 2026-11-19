@@ -12,7 +12,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 // flatConfigs.recommended entry is used unchanged.
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import jsdoc from 'eslint-plugin-jsdoc';
-import { breaticPlugin } from '@breatic/eslint-rules';
+import { breaticPlugin, upstreamLiteralOptions } from '@breatic/eslint-rules';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -362,6 +362,66 @@ export default [
       // written above — a rule that lives only there governs nothing in this
       // package, which is exactly how the two rules above went unenforced.
       'breatic/no-naked-fetch': 'error',
+      // Only provider names an upstream (inner#1743); the same rule as in the
+      // root config, for the reason written above.
+      'breatic/no-upstream-literal': ['error', upstreamLiteralOptions(fileURLToPath(new URL('../..', import.meta.url)))],
+    },
+  },
+  {
+    // Every Space document write sits inside a writeSpaceDoc or
+    // runCanvasUndoBatch callback, where the size cap is checked (inner#1790).
+    // The functions below check it another way; each says how.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/__tests__/**', '**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/space-doc-write-gateway': [
+        'error',
+        {
+          exceptions: [
+            {
+              file: 'src/data/yjs/canvas-space.ts',
+              function: 'writeSnapshotNodes',
+              reason: 'Takes a Y.Doc and writes both scratch documents and real Spaces; the real caller checks in its runCanvasUndoBatch.',
+            },
+            {
+              file: 'src/data/yjs/canvas-space.ts',
+              function: 'landHandlingContent',
+              reason: 'Only called inside the already-checked writes of setNodeExtractedText and restoreNodeMedia.',
+            },
+            {
+              file: 'src/spaces/canvas/generate/proposal-prompt.ts',
+              function: 'writeProposalPrompt',
+              reason: 'Only called inside the placeProposalAt batch.',
+            },
+            {
+              file: 'src/spaces/canvas/generate/proposal-prompt.ts',
+              function: 'writeDialogueLines',
+              reason: 'Only called inside the placeProposalAt batch.',
+            },
+            {
+              file: 'src/data/yjs/history-step.ts',
+              function: 'copyRedone',
+              reason: 'Writes only the throwaway copy the undo/redo trial runs on, never a Space document.',
+            },
+            {
+              file: 'src/data/yjs/history-step.ts',
+              function: 'trial',
+              reason: 'Runs undo/redo only on the throwaway copy, never a Space document.',
+            },
+            {
+              file: 'src/spaces/document/document-undo-blocknote.ts',
+              function: 'undo',
+              reason: 'The body manager\'s own undo, reached only through gatedHistoryCommand, which asks the size gate first.',
+            },
+            {
+              file: 'src/spaces/document/document-undo-blocknote.ts',
+              function: 'redo',
+              reason: 'The body manager\'s own redo, reached only through gatedHistoryCommand, which asks the size gate first.',
+            },
+          ],
+        },
+      ],
     },
   },
   {
@@ -564,6 +624,23 @@ export default [
     plugins: { breatic: breaticPlugin },
     rules: {
       'breatic/test-file-location': 'error',
+    },
+  },
+  {
+    // jsdom drives requestAnimationFrame from one setInterval it starts with
+    // the first pending frame. Faked without rAF, that interval lands on the
+    // fake clock, useRealTimers discards it, and no frame fires again in the
+    // rest of the single-fork process: a later file waiting on a frame times
+    // out, depending only on which files share its shard.
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'CallExpression[callee.property.name="useFakeTimers"] Property[key.name="toFake"] > ArrayExpression:has(Literal[value="setInterval"]):not(:has(Literal[value="requestAnimationFrame"]))',
+          message: 'Fake requestAnimationFrame and cancelAnimationFrame together with setInterval, or jsdom stops firing animation frames for every later test file in the process.',
+        },
+      ],
     },
   },
   {

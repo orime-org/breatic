@@ -1,0 +1,113 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/elevenlabs/v3",
+  "fields": {
+    "language_code": [
+      {
+        "type": "string",
+        "enum": [
+          "",
+          "afr",
+          "ara",
+          "hye",
+          "asm",
+          "aze",
+          "bel",
+          "ben",
+          "bos",
+          "bul",
+          "cat",
+          "ceb",
+          "nya",
+          "hrv",
+          "ces",
+          "dan",
+          "nld",
+          "eng",
+          "est",
+          "fil",
+          "fin",
+          "fra",
+          "glg",
+          "kat",
+          "deu",
+          "ell",
+          "guj",
+          "hau",
+          "heb",
+          "hin",
+          "hun",
+          "isl",
+          "ind",
+          "gle",
+          "ita",
+          "jpn",
+          "jav",
+          "kan",
+          "kaz",
+          "kir",
+          "kor",
+          "lav",
+          "lin",
+          "lit",
+          "ltz",
+          "mkd",
+          "msa",
+          "mal",
+          "cmn",
+          "mar",
+          "nep",
+          "nor",
+          "pus",
+          "fas",
+          "pol",
+          "por",
+          "pan",
+          "ron",
+          "rus",
+          "srp",
+          "snd",
+          "slk",
+          "slv",
+          "som",
+          "spa",
+          "swa",
+          "swe",
+          "tam",
+          "tel",
+          "tha",
+          "tur",
+          "ukr",
+          "urd",
+          "vie",
+          "cym"
+        ]
+      }
+    ],
+    "stability": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5
+      }
+    ],
+    "text": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000
+      }
+    ],
+    "voice": [
+      {
+        "type": "string",
+        "default": "Rachel"
+      }
+    ]
+  },
+  "required": [],
+  "modes": [
+    "async"
+  ],
+  "owned_by": "elevenlabs"
+}

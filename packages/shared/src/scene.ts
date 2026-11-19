@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { z } from 'zod';
 
@@ -19,30 +19,311 @@ export const SceneScaleSchema = z.tuple([
   z.number().finite().positive(), z.number().finite().positive(), z.number().finite().positive(),
 ]);
 
-/** Stable model identity; storage addresses are resolved from registered assets. */
+/** The three light types a scene can hold. */
+export const SCENE_LIGHT_TYPES = ['directional', 'point', 'spot'] as const;
+export type SceneLightType = (typeof SCENE_LIGHT_TYPES)[number];
+
+/**
+ * Stable model identity; storage addresses are resolved from registered assets.
+ * Cameras and lights are records of their own kinds that carry no model file.
+ */
 export const SceneModelSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('builtin'), id: z.enum(['figure', 'box']) }).strict(),
   z.object({ kind: z.literal('asset'), assetId: z.string().uuid() }).strict(),
+  z.object({ kind: z.literal('camera') }).strict(),
+  z.object({ kind: z.literal('light'), type: z.enum(SCENE_LIGHT_TYPES) }).strict(),
 ]);
 
-/** Plain scene values shared by the collaboration projection and renderer. */
+/** Frame ratios a viewfinder or a camera can hold, `Free` first. */
+export const VIEWFINDER_RATIOS = ['Free', '16:9', '9:16', '1:1', '4:3', '3:4', '3:2', '2:3'] as const;
+export type ViewfinderRatio = (typeof VIEWFINDER_RATIOS)[number];
+export const DEFAULT_VIEWFINDER_RATIO: ViewfinderRatio = '16:9';
+
+/** Width over height bounds of a free frame, shared by the schema and the viewfinder geometry. */
+export const SCENE_FREE_RATIO_MIN = 0.2;
+export const SCENE_FREE_RATIO_MAX = 5;
+
+/** Camera lens bounds in millimetres on a 36 mm film gauge, and the lens a record without one reads as. */
+export const SCENE_FOCAL_LENGTH_MIN = 8;
+export const SCENE_FOCAL_LENGTH_MAX = 300;
+export const SCENE_FOCAL_LENGTH_DEFAULT = 35;
+
+/** Spotlight cone half-angle bounds in degrees, and the angle a spotlight without one reads as. */
+export const SCENE_SPOT_ANGLE_MIN = 5;
+export const SCENE_SPOT_ANGLE_MAX = 80;
+export const SCENE_SPOT_ANGLE_DEFAULT = 30;
+
+/** Each light type's intensity a new light gets and the most it may hold. */
+export const SCENE_LIGHT_INTENSITY: Readonly<Record<SceneLightType, { initial: number; max: number }>> = {
+  directional: { initial: 3, max: 20 },
+  point: { initial: 40, max: 400 },
+  spot: { initial: 40, max: 400 },
+};
+
+/** The colour a light without one reads as. */
+export const SCENE_LIGHT_COLOR_DEFAULT = '#ffffff';
+
+/** The ambient light a scene without its own setting reads as, and the strongest it may be. */
+export const SCENE_AMBIENT_COLOR_DEFAULT = '#ffffff';
+export const SCENE_AMBIENT_INTENSITY_DEFAULT = 2.7;
+export const SCENE_AMBIENT_INTENSITY_MAX = 10;
+
+/** A colour stored as lowercase `#rrggbb`. */
+export const SceneColorSchema = z.string().regex(/^#[0-9a-f]{6}$/u);
+
+/** The longest name a scene object holds. */
+export const SCENE_OBJECT_NAME_MAX = 256;
+
+/** Every pose entry is its own key on the object record, behind this prefix (inner#1692). */
+export const SCENE_POSE_KEY_PREFIX = 'pose.';
+
+/** The most bones one object's pose may hold. */
+const SCENE_POSE_MAX_KEYS = 256;
+
+/** The longest pose key, counted without {@link SCENE_POSE_KEY_PREFIX}. */
+export const SCENE_POSE_KEY_MAX_LENGTH = 128;
+
+/** The hips translation key; the only pose entry that is a vector. */
+export const SCENE_POSE_HIPS_KEY = 't:hips';
+
+/** A humanoid bone (`h:`) or a node of another rig (`n:`), each carrying a rotation. */
+const ROTATION_KEY = /^[hn]:.+$/su;
+
+/**
+ * Bones changed from rest, keyed `h:<VRM bone>` or `n:<node name>` to a normalized
+ * rotation, plus `t:hips` to the hips translation in hip heights.
+ */
+export type ScenePose = Readonly<Record<string, readonly number[]>>;
+
+/**
+ * Check one pose entry against the shape its key names.
+ * @param key - The pose key without the record prefix.
+ * @param value - The stored value.
+ * @returns Whether the entry is well formed.
+ */
+function isPoseEntry(key: string, value: unknown): boolean {
+  if (key === SCENE_POSE_HIPS_KEY) return SceneVectorSchema.safeParse(value).success;
+  return key.length <= SCENE_POSE_KEY_MAX_LENGTH && ROTATION_KEY.test(key) && SceneRotationSchema.safeParse(value).success;
+}
+
+/**
+ * Check a whole pose; own keys are read as given, so `__proto__` is judged like any other key.
+ * @param value - The candidate pose.
+ * @returns Whether it is a pose of at most {@link SCENE_POSE_MAX_KEYS} well-formed entries.
+ */
+function isScenePose(value: unknown): value is ScenePose {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const entries = Object.entries(value);
+  return entries.length <= SCENE_POSE_MAX_KEYS && entries.every(([key, entry]) => isPoseEntry(key, entry));
+}
+
+/** A pose as one value: the projection and commands carry it, the record stores it flat. */
+export const ScenePoseSchema = z.custom<ScenePose>(isScenePose, 'Invalid scene pose');
+
+/**
+ * Collect a record's flat pose keys into one `pose` value.
+ * @param record - A stored object record's plain values.
+ * @returns A copy without the flat keys, carrying `pose` only when the record had any.
+ */
+export function gatherScenePose(record: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  // Object.fromEntries defines own keys, so a stored `pose.__proto__` is validated like any other key.
+  const entries = Object.entries(record);
+  const pose = entries.filter(([key]) => key.startsWith(SCENE_POSE_KEY_PREFIX))
+    .map(([key, value]) => [key.slice(SCENE_POSE_KEY_PREFIX.length), value]);
+  const values = Object.fromEntries(entries.filter(([key]) => !key.startsWith(SCENE_POSE_KEY_PREFIX)));
+  return pose.length > 0 ? { ...values, pose: Object.fromEntries(pose) } : values;
+}
+
+/**
+ * Spread a pose into the flat record keys it is stored under.
+ * @param pose - The pose to store.
+ * @returns One prefixed key per entry.
+ */
+export function expandScenePose(pose: ScenePose): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(pose).map(([key, value]) => [`${SCENE_POSE_KEY_PREFIX}${key}`, value]));
+}
+
+/**
+ * Plain scene values shared by the collaboration projection and renderer, each checked on its own;
+ * which keys a kind may or must carry is checked by {@link SceneObjectSchema}.
+ */
 export const SceneObjectValuesSchema = z.object({
-  name: z.string().trim().min(1).max(256),
+  name: z.string().trim().min(1).max(SCENE_OBJECT_NAME_MAX),
   model: SceneModelSchema,
   position: SceneVectorSchema,
   rotation: SceneRotationSchema,
   scale: SceneScaleSchema,
   locked: z.boolean(),
+  pose: ScenePoseSchema.optional(),
+  number: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  focalLength: z.number().finite().min(SCENE_FOCAL_LENGTH_MIN).max(SCENE_FOCAL_LENGTH_MAX).optional(),
+  frame: z.enum(VIEWFINDER_RATIOS).optional(),
+  freeRatio: z.number().finite().min(SCENE_FREE_RATIO_MIN).max(SCENE_FREE_RATIO_MAX).optional(),
+  color: SceneColorSchema.optional(),
+  intensity: z.number().finite().min(0).optional(),
+  castShadow: z.boolean().optional(),
+  angle: z.number().finite().min(SCENE_SPOT_ANGLE_MIN).max(SCENE_SPOT_ANGLE_MAX).optional(),
 }).strict();
 
-/** A projected object combines its stable document key with plain values. */
-export const SceneObjectSchema = SceneObjectValuesSchema.extend({ id: z.string().uuid() });
+/** Keys only a camera carries. */
+export const SCENE_CAMERA_KEYS = ['focalLength', 'frame', 'freeRatio'] as const;
+/** Keys only a light carries; `angle` only on a spotlight. */
+export const SCENE_LIGHT_KEYS = ['color', 'intensity', 'castShadow', 'angle'] as const;
+
+/**
+ * Find what breaks the keys a record's kind may and must carry.
+ * @param values - Values that passed the field checks.
+ * @returns The first broken rule, or null.
+ */
+function kindKeysIssue(values: z.infer<typeof SceneObjectValuesSchema>): string | null {
+  const has = (values as Record<string, unknown>);
+  const { model } = values;
+  if (model.kind === 'builtin' || model.kind === 'asset') {
+    return ['number', ...SCENE_CAMERA_KEYS, ...SCENE_LIGHT_KEYS].some((key) => has[key] !== undefined) ? 'A model carries no camera or light keys' : null;
+  }
+  if (values.number === undefined) return 'A camera or light needs a number';
+  if (values.pose !== undefined) return 'A camera or light has no pose';
+  if (values.scale.some((axis) => axis !== 1)) return 'A camera or light keeps a unit scale';
+  if (model.kind === 'camera') return SCENE_LIGHT_KEYS.some((key) => has[key] !== undefined) ? 'A camera carries no light keys' : null;
+  if (SCENE_CAMERA_KEYS.some((key) => has[key] !== undefined)) return 'A light carries no camera keys';
+  if (model.type !== 'spot' && values.angle !== undefined) return 'Only a spotlight has an angle';
+  if (values.intensity !== undefined && values.intensity > SCENE_LIGHT_INTENSITY[model.type].max) return 'Intensity is above the light type maximum';
+  return null;
+}
+
+/** A projected object combines its stable document key with plain values its kind allows. */
+export const SceneObjectSchema = SceneObjectValuesSchema.extend({ id: z.string().uuid() }).superRefine((values, context) => {
+  const message = kindKeysIssue(values);
+  if (message !== null) context.addIssue({ code: z.ZodIssueCode.custom, message });
+});
 
 export type SceneVector = z.infer<typeof SceneVectorSchema>;
 export type SceneRotation = z.infer<typeof SceneRotationSchema>;
 export type SceneModel = z.infer<typeof SceneModelSchema>;
+/** The kinds that load a model file: only these are fetched, cached and reported as loading or failed. */
+export type SceneModelFile = Extract<SceneModel, { kind: 'builtin' | 'asset' }>;
+
+/**
+ * Whether a model loads a model file.
+ * @param model - A record's model.
+ * @returns True for a builtin or a registered asset.
+ */
+export function isSceneModelFile(model: SceneModel): model is SceneModelFile {
+  return model.kind === 'builtin' || model.kind === 'asset';
+}
 export type SceneObjectValues = z.infer<typeof SceneObjectValuesSchema>;
 export type SceneObject = z.infer<typeof SceneObjectSchema>;
 
-/** Record keys that commands overwrite after creation; `model` is fixed at creation. */
-export type SceneEditableField = Exclude<keyof SceneObjectValues, 'model'>;
+/** A camera record as read, with every camera key filled in. */
+export type SceneCameraObject = SceneObject & { model: { kind: 'camera' }; number: number; focalLength: number; frame: ViewfinderRatio; freeRatio: number };
+/** A light record as read, with every light key of its type filled in. */
+export type SceneLightObject = SceneObject & { model: { kind: 'light'; type: SceneLightType }; number: number; color: string; intensity: number; castShadow: boolean };
+
+/**
+ * Whether a read record is a camera.
+ * @param object - A record from the scene projection.
+ * @returns True for a camera.
+ */
+export function isSceneCamera(object: SceneObject): object is SceneCameraObject {
+  return object.model.kind === 'camera';
+}
+
+/**
+ * Whether a read record is a light.
+ * @param object - A record from the scene projection.
+ * @returns True for a light.
+ */
+export function isSceneLight(object: SceneObject): object is SceneLightObject {
+  return object.model.kind === 'light';
+}
+
+/**
+ * The one order of cameras and lights: by number, then by id.
+ * @param a - One record.
+ * @param a.number - Its number.
+ * @param a.id - Its id.
+ * @param b - The other.
+ * @param b.number - Its number.
+ * @param b.id - Its id.
+ * @returns Negative, zero or positive as for `Array.prototype.sort`.
+ */
+export function compareDirectorRecords(a: { number: number; id: string }, b: { number: number; id: string }): number {
+  return a.number - b.number || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+/**
+ * The number a new camera or light takes: one above the highest of its kind, 1 when there is none.
+ * @param objects - The scene's records.
+ * @param kind - Camera or light.
+ * @returns The next number.
+ */
+export function nextDirectorNumber(objects: readonly SceneObject[], kind: 'camera' | 'light'): number {
+  return Math.max(0, ...objects.map((object) => (object.model.kind === kind ? object.number ?? 0 : 0))) + 1;
+}
+
+/** Record keys that commands overwrite after creation; `model` is fixed at creation and a pose is stored as flat `pose.` keys. */
+export type SceneEditableField = Exclude<keyof SceneObjectValues, 'model' | 'pose'>;
+
+/** Configured import budgets carried by the readable Project API. */
+export interface SceneImportLimits {
+  maxInputBytes: number;
+  maxExpandedBytes: number;
+  maxArtifactBytes: number;
+  maxFiles: number;
+  maxEntryJsonBytes: number;
+  decoderWorkerLimit: number;
+  maxTextureEdge: number;
+  maxTextureBytes: number;
+}
+
+/** Configured scene controls and import budgets, served through the readable Project API. */
+export interface SceneControlsConfig {
+  scaleSensitivity: number;
+  import: SceneImportLimits;
+  /** Shortest gap between two upload-progress updates shared with the Space's members. */
+  progressPublishMs: number;
+  capture: SceneCaptureConfig;
+  director: SceneDirectorConfig;
+}
+
+/** The director console's parameters. */
+export interface SceneDirectorConfig {
+  /** Shortest gap between two redraws of a monitor card, in milliseconds. */
+  monitorRefreshMs: number;
+  /** Most lights a scene renders and accepts. */
+  maxLights: number;
+  /** Pause after the last wheel step before a camera dolly is written, in milliseconds. */
+  wheelCommitMs: number;
+  /** Shadow map edge for directional lights and spotlights, in pixels. */
+  shadowMapPx: number;
+  /** Shadow map edge for point lights, in pixels. */
+  pointShadowMapPx: number;
+  /** How far a directional shadow may reach along the ground, in multiples of the casters' box diagonal. */
+  shadowGroundReach: number;
+  /** Depth and normal offsets of directional and spotlight shadows, against shadow acne. */
+  shadowBias: number;
+  shadowNormalBias: number;
+  /** The same offsets for point light shadows. */
+  pointShadowBias: number;
+  pointShadowNormalBias: number;
+}
+
+/** The viewfinder's capture parameters. */
+export interface SceneCaptureConfig {
+  /** Long edge of a captured still, in pixels. */
+  longEdgePx: number;
+  /** Shortest edge the viewfinder can be dragged down to, in screen pixels. */
+  minFramePx: number;
+  /** How long a closed canvas may take to sync before nothing is written. */
+  canvasSyncTimeoutMs: number;
+}
+
+/**
+ * Identify the registered containers that carry a complete scene model.
+ * @param value - A reduced MIME essence from an upload or the asset ledger.
+ * @returns Whether the container is a GLB or a versioned model ZIP.
+ * @throws {never} Never.
+ */
+export function isSceneModelMediaType(value: string): boolean {
+  return value === 'model/gltf-binary' || value === 'application/zip';
+}

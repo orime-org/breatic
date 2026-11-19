@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * How many readings of media one worker process holds at once (inner#1337
@@ -12,7 +12,7 @@
 
 import { getUnderstandConfig, getWorkerConfig } from "@breatic/core";
 
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 
 let taken = 0;
 

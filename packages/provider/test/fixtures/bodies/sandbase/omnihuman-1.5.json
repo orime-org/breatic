@@ -1,0 +1,23 @@
+{
+  "model": "omnihuman-1.5",
+  "upstream": "sandbase",
+  "model_id": "bytedance/omnihuman/1.5",
+  "runs": [
+    {
+      "params": {
+        "audio": "https://example.com/audio.mp3",
+        "image": "https://example.com/image.png"
+      },
+      "prompt": "",
+      "body": {
+        "audio": "https://example.com/audio.mp3",
+        "image": "https://example.com/image.png",
+        "prompt": "",
+        "mode": "async",
+        "resolution": "720p",
+        "model": "bytedance/omnihuman/1.5"
+      }
+    }
+  ],
+  "steps": []
+}

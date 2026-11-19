@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
 import { describe, it, expect, vi } from 'vitest';
@@ -29,7 +29,8 @@ function model(name: string): ModelEntry {
       aspect_ratio: { description: '', values: ['16:9', '9:16'], default: '16:9' },
       duration: { description: '', values: [4, 8], default: 8 },
     },
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
   };
 }
 

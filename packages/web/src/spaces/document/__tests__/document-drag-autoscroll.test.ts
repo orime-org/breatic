@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1350 §5.2: which page events start, feed and end the body's
@@ -294,7 +294,7 @@ describe('the drag session', () => {
     const target = autoScrollOf(view)!.target!;
     expect(target.el).toBe(frame);
     expect(target.axis).toBe('x');
-    // The browser's own drag autoscroll scrolls any box a reader could scroll
+    // The browser's own drag autoscroll scrolls any box a user could scroll
     // that the pointer nears; a column drag leaves the body where it is (A7).
     expect(scroller.style.overflowY).toBe('hidden');
     document.body.addEventListener('drop', (e) => e.stopPropagation(), { once: true });

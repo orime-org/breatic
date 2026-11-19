@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Run one mini-tool container job (inner#888 §8.1).
@@ -42,7 +42,7 @@ import { planReadUntil, planReportingEnd } from "@worker/handlers/mini-tool/adva
 import { storedAsOutput } from "@worker/handlers/persisted-output.js";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
 import type { PersistedOutput } from "@worker/handlers/persisted-output.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 
 /** A container run that ended without its outputs; the message is the row's cause code. */
 export class ContainerJobFailed extends Error {
@@ -74,6 +74,11 @@ export interface ContainerRunInput {
   projectId: string;
   params: Record<string, unknown>;
   sourceKey: string;
+  /**
+   * The stored objects read after the source, in order: a join's further
+   * clips (inner#1825 §6.4). A job queued before joins carries none.
+   */
+  extraKeys?: string[];
   /** When the task runs out: the job is opened with it. */
   deadlineAt: number;
 }
@@ -165,6 +170,7 @@ async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJo
         op,
         params: input.params,
         input: { storageKey: input.sourceKey },
+        ...(input.extraKeys !== undefined && { extra: input.extraKeys.map((storageKey) => ({ storageKey })) }),
         outputs: job.outputs,
       }, bound);
     } catch (err) {

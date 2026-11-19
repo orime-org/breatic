@@ -84,4 +84,9 @@ describe('Select', () => {
     expect(trigger.className).toContain('w-48');
     expect(trigger.className).not.toContain('w-full');
   });
+
+  it('draws the error border when the field is invalid, like Input', () => {
+    setup(false);
+    expect(screen.getByTestId('trigger').className).toContain('aria-invalid:border-status-error-foreground');
+  });
 });

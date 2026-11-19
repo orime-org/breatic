@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Producer and profile versions as sha256 digests, and the reuse route they decide (inner#1306 test plan §65.2 V01–V05;

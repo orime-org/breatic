@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
@@ -34,7 +34,7 @@ vi.mock('@web/data/api/projects', async (original) => {
 vi.mock('@web/data/yjs/project-meta', async (original) => ({
   ...await original<typeof import('@web/data/yjs/project-meta')>(),
   useProjectMeta: (): ReturnType<typeof import('@web/data/yjs/project-meta').useProjectMeta> => ({
-    spaces: [], users: new Map(), synced: true, status: 'connected',
+    spaces: [], users: new Map(), following: new Map(), synced: true, status: 'connected',
     provider: boundary.provider as unknown as HocuspocusProvider, authFailedReason: null,
   }),
 }));

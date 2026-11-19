@@ -1,0 +1,50 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "duration": [
+      {
+        "type": "integer",
+        "minimum": 4,
+        "maximum": 30,
+        "default": 5
+      }
+    ],
+    "generate_audio": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "last_image": [
+      {
+        "type": "string"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string"
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "480p",
+          "720p",
+          "1080p",
+          "4k"
+        ],
+        "default": "720p"
+      }
+    ]
+  },
+  "required": [
+    "image",
+    "prompt"
+  ]
+}

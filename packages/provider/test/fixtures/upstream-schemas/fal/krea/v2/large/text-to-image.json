@@ -1,0 +1,234 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=krea/v2/large/text-to-image",
+  "fields": {
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "1:1",
+          "4:3",
+          "3:2",
+          "16:9",
+          "2.35:1",
+          "4:5",
+          "2:3",
+          "9:16"
+        ],
+        "default": "1:1"
+      }
+    ],
+    "creativity": [
+      {
+        "type": "string",
+        "enum": [
+          "raw",
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "medium"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "image_style_references": [
+      {
+        "type": "array",
+        "maxItems": 10,
+        "default": [],
+        "items": {
+          "fields": {
+            "strength": [
+              {
+                "type": "number",
+                "minimum": -2,
+                "maximum": 2,
+                "default": 1
+              }
+            ],
+            "image_url": [
+              {
+                "type": "string"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "image_url"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "image_url"
+          ]
+        }
+      }
+    ],
+    "moodboards": [
+      {
+        "type": "array",
+        "maxItems": 1,
+        "default": [],
+        "items": {
+          "fields": {
+            "strength": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "default": 0.23
+              }
+            ],
+            "id": [
+              {
+                "type": "string"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 5000
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "styles": [
+      {
+        "type": "array",
+        "maxItems": 10,
+        "default": [],
+        "items": {
+          "fields": {
+            "strength": [
+              {
+                "type": "number",
+                "minimum": -2,
+                "maximum": 2,
+                "default": 1
+              }
+            ],
+            "id": [
+              {
+                "type": "string"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "id"
+          ]
+        }
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ],
+  "outputs": {
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "content_type": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_name": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "width": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "height": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "file_size": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "url": [
+              {
+                "type": "string"
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "url"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "url"
+          ]
+        }
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ]
+  }
+}

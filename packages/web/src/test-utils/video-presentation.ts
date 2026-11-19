@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Wire fixtures of the presentation read (frames-split design §3.5 web→server row, §7.12; inner#1306 test plan §95):

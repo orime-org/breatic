@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
@@ -19,7 +19,7 @@ afterEach(() => setPlatform(''));
 
 /**
  * Render the dialog open.
- * @param readOnly - Whether the reader is a read-only member.
+ * @param readOnly - Whether the user is a read-only member.
  * @returns The render result.
  */
 function renderOpen(readOnly = false): ReturnType<typeof render> {

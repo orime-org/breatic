@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the insert menu does to the row it was opened on.
@@ -15,15 +15,17 @@
 
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 import { runBlockType } from '@web/spaces/document/document-block-run';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 import { DIVIDER } from '@web/spaces/document/document-divider';
-import { rowById } from '@web/spaces/document/document-row-by-id';
+import { quotedAs, type BlockSpec } from '@web/spaces/document/document-file-input';
 import {
   type HandleEditor,
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
 import { QUOTED } from '@web/spaces/document/document-list-block';
+import { MATH_BLOCK } from '@web/spaces/document/document-math';
+import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 import { DOC_TABLE, DOC_TABLE_CELL, DOC_TABLE_ROW } from '@web/spaces/document/document-table-nodes';
-import type { UploadGap } from '@web/spaces/document/document-upload-slots';
 
 /** How many rows and columns a new table has. */
 export interface TableSize {
@@ -31,15 +33,38 @@ export interface TableSize {
   readonly cols: number;
 }
 
-/** One entry of the insert menu: a block type, the divider, or a table of a size. */
-export type InsertChoice = BlockTypeId | typeof DIVIDER | { readonly table: TableSize };
+/** The insert menu's formula entry (inner#1423). */
+export const FORMULA = 'formula';
 
-/** A block for `insertBlocks` / `updateBlock`, as far as this module builds one. */
-interface BlockSpec {
-  readonly type: string;
-  readonly props?: Readonly<Record<string, unknown>>;
-  readonly content?: unknown;
-  readonly children?: readonly BlockSpec[];
+/** The insert menu's columns entry (inner#1314 design §5.3). */
+export const COLUMNS = 'columns';
+
+/** One entry of the insert menu: a block type, the divider, columns, a formula, or a table of a size. */
+export type InsertChoice =
+  | BlockTypeId
+  | typeof DIVIDER
+  | typeof COLUMNS
+  | typeof FORMULA
+  | { readonly table: TableSize };
+
+/**
+ * Two columns, each holding one empty paragraph.
+ * @returns The group block.
+ */
+function emptyColumns(): BlockSpec {
+  const column = { type: DOC_COLUMN, children: [{ type: 'paragraph' }] };
+  return { type: DOC_COLUMN_LIST, children: [column, column] } as BlockSpec;
+}
+
+/**
+ * Puts the caret at the start of a group's first column.
+ * @param editor - The editor.
+ * @param groupId - The group's id.
+ */
+function caretInFirstColumn(editor: HandleEditor, groupId: string): void {
+  const group = editor.getBlock(groupId) as { children?: { children?: { id: string }[] }[] } | undefined;
+  const first = group?.children?.[0]?.children?.[0];
+  if (first !== undefined) editor.setTextCursorPosition(first.id, 'start');
 }
 
 /**
@@ -70,7 +95,7 @@ function emptyTable(size: TableSize, quoted: boolean): BlockSpec {
  * `insertBlocks` with `'after'` — `getInsertionPos` puts it at the
  * container's end (`getBlockInfoFromPos.ts:580-582`), and a container holds its nested blocks
  * (`BlockContainer.ts:71`), so the new row would land below the whole subtree.
- * Referencing the first child with `'before'` is the same place the reader
+ * Referencing the first child with `'before'` is the same place the user
  * gets from pressing Enter.
  *
  * Blocks named in `lead` go in first, in the same place, and the row comes
@@ -96,10 +121,7 @@ export function insertRowForMenu(
   // row goes under the table, as under any block without children.
   const firstChild = row.type === DOC_TABLE ? undefined : row.children?.[0];
   const made = editor.insertBlocks(
-    [...lead, { type: 'paragraph' }].map((block) => ({
-      ...block,
-      props: { ...block.props, [QUOTED]: quoted },
-    })) as never,
+    quotedAs([...lead, { type: 'paragraph' }], quoted) as never,
     firstChild?.id ?? row.id,
     firstChild === undefined ? 'after' : 'before',
   ) as { id: string }[];
@@ -114,11 +136,15 @@ export function insertRowForMenu(
  *
  * A block type is a new row turned into that type; a divider is a divider with
  * the new row under it (#124 A2); a table is the table with the new row under
- * it and the caret in its first cell (inner#1126 A1), so the reader writes in
- * the table and has a line below it to carry on.
+ * it and the caret in its first cell (inner#1126 A1), so the user writes in
+ * the table and has a line below it to carry on. Columns are two empty
+ * columns with the new row under them and the caret in the first column
+ * (inner#1314 design §5.3). A formula is the formula with
+ * the new row under it, its box for the menu to open once it closes (inner#1423).
  * @param editor - The editor to write to.
  * @param row - The block the menu was opened on.
  * @param choice - The entry that was picked.
+ * @returns The id of a formula block made, whose box opens next.
  * @throws {Error} `Block with ID … not found`, from BlockNote's
  *   `insertBlocks`, when the pressed block is no longer in the document.
  */
@@ -126,9 +152,18 @@ export function insertBelow(
   editor: HandleEditor,
   row: PressedBlock,
   choice: InsertChoice,
-): void {
+): string | undefined {
   if (choice === DIVIDER) {
     insertRowForMenu(editor, row, [{ type: DIVIDER }]);
+  } else if (choice === COLUMNS) {
+    const made = insertRowForMenu(editor, row, [emptyColumns()]);
+    const group = editor.getPrevBlock(made) as { id: string } | undefined;
+    if (group !== undefined) caretInFirstColumn(editor, group.id);
+  } else if (choice === FORMULA) {
+    // Like the divider and the table: the formula with a line under it to
+    // carry on in.
+    const made = insertRowForMenu(editor, row, [{ type: MATH_BLOCK }]);
+    return (editor.getPrevBlock(made) as { id: string } | undefined)?.id;
   } else if (typeof choice === 'object') {
     const made = insertRowForMenu(editor, row, [emptyTable(choice.table, false)]);
     const table = editor.getPrevBlock(made) as { id: string } | undefined;
@@ -136,60 +171,51 @@ export function insertBelow(
   } else {
     runBlockType(editor, choice, insertRowForMenu(editor, row), false);
   }
+  return undefined;
 }
 
 /**
- * The gap the insert-below submenu's media entries upload into
- * (inner#1127 A1).
- *
- * The row a divider or a table gets under it is made here, at the pick, with
- * the caret in it; the files go above that row. The upload finishing later
- * then only adds blocks — it moves no caret and makes no row, so the reader
- * typing elsewhere meanwhile is left where they are, and a batch of files
- * lands with nothing between them.
+ * The insert-below submenu's media entries: the blocks the chosen files
+ * become go under the pressed row, with the empty line the menu makes under
+ * them and the caret in that line, in one insert that is an undo step of its
+ * own — one undo takes both away (inner#1351 + inner#1390 design §5.9).
  * @param editor - The editor to write to.
  * @param row - The block the menu was opened on.
- * @returns The gap.
+ * @param blocks - The pending media blocks.
  * @throws {Error} `Block with ID … not found`, from BlockNote's
  *   `insertBlocks`, when the pressed block is no longer in the document.
  */
-export function mediaGapBelow(editor: HandleEditor, row: PressedBlock): UploadGap {
-  return gapAbove(editor, insertRowForMenu(editor, row));
+export function insertMediaBelow(editor: HandleEditor, row: PressedBlock, blocks: readonly BlockSpec[]): void {
+  editor.transact((tr) => {
+    markOwnUndoStep(tr);
+    insertRowForMenu(editor, row, blocks);
+  });
 }
 
 /**
- * The gap the plus menu's media entries upload into: above the empty line it
- * was opened on, which keeps the caret (inner#1127 A1).
+ * The plus menu's media entries: the blocks go above the empty line it was
+ * opened on, quoted as that line, and the caret stays in it; the insert is an
+ * undo step of its own.
  * @param editor - The editor to write to.
  * @param row - The empty paragraph the plus is on.
- * @returns The gap.
+ * @param blocks - The pending media blocks.
  * @throws {Error} `Block with ID … not found`, from BlockNote, when the row is
  *   no longer in the document.
  */
-export function mediaGapOnRow(editor: HandleEditor, row: PressedBlock): UploadGap {
-  const gap = gapAbove(editor, row.id);
-  editor.setTextCursorPosition(row.id, 'start');
-  return gap;
-}
-
-/**
- * The gap just above a block.
- * @param editor - The editor.
- * @param id - The block the gap is above.
- * @returns The gap.
- * @throws {Error} When the document no longer holds the block.
- */
-function gapAbove(editor: HandleEditor, id: string): UploadGap {
-  const row = rowById(editor.prosemirrorState.doc, id);
-  if (row === undefined) throw new Error(`Block with ID ${id} not found`);
-  return row.from;
+export function insertMediaOnRow(editor: HandleEditor, row: PressedBlock, blocks: readonly BlockSpec[]): void {
+  const quoted = row.props?.[QUOTED] === true;
+  editor.transact((tr) => {
+    markOwnUndoStep(tr);
+    editor.insertBlocks(quotedAs(blocks, quoted) as never, row.id, 'before');
+    editor.setTextCursorPosition(row.id, 'start');
+  });
 }
 
 /**
  * Whether the handle shows the plus for this row (#1097, A1): a paragraph
  * with nothing in it. The same emptiness BlockNote's own add button reads
  * (`AddBlockButton.tsx`), held to paragraphs — an empty heading or list item
- * already carries a type the reader chose.
+ * already carries a type the user chose.
  * @param row - The row, as the document holds it now.
  * @returns True for an empty paragraph; false for anything else or no row.
  */
@@ -204,16 +230,18 @@ export function isEmptyParagraph(row: PressedBlock | undefined): boolean {
 /**
  * Puts the chosen block on the empty paragraph itself (#1097, A3/A4).
  *
- * A block type becomes the row's own type, so the row keeps its id. The
- * divider goes above the row, which stays the empty paragraph under it — what
- * typing `---` at the start of a line leaves. The caret is set into the row in
- * both cases: the handle follows the pointer, so the reader's caret can be in
- * any other row, and the menu closing only hands the focus back.
+ * A block type, and the formula, become the row's own type, so the row keeps
+ * its id; the formula's box is the menu's to open once it closes. The divider goes above the row, which stays the empty paragraph under it — what
+ * typing `---` at the start of a line leaves. The caret is set into the row
+ * for a block type and the divider: the handle follows the pointer, so the
+ * user's caret can be in any other row, and the menu closing only hands the
+ * focus back.
  *
  * One transaction, so one undo takes it all back (A6).
  * @param editor - The editor to write to.
  * @param row - The empty paragraph the plus is on, read from the document now.
  * @param choice - The entry that was picked.
+ * @returns The id of a formula block made, whose box opens next.
  * @throws {Error} `Block with ID … not found`, from BlockNote, when the row is
  *   no longer in the document.
  */
@@ -221,8 +249,18 @@ export function fillEmptyRow(
   editor: HandleEditor,
   row: PressedBlock,
   choice: InsertChoice,
-): void {
+): string | undefined {
+  if (choice === FORMULA) {
+    // `updateBlock` keeps the row's id and its quote.
+    editor.updateBlock(row.id, { type: MATH_BLOCK } as never);
+    return row.id;
+  }
   editor.transact(() => {
+    if (choice === COLUMNS) {
+      editor.updateBlock(row.id, emptyColumns() as never);
+      caretInFirstColumn(editor, row.id);
+      return;
+    }
     if (typeof choice === 'object') {
       // `updateBlock` keeps the row's id and merges its props, so the quote
       // stays on the table it becomes.
@@ -238,4 +276,5 @@ export function fillEmptyRow(
     }
     editor.setTextCursorPosition(row.id, 'start');
   });
+  return undefined;
 }

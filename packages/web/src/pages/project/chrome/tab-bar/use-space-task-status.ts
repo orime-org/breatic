@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { SpaceType } from '@breatic/shared';
+import { timelineExecutionEnded } from '@breatic/shared/space-content';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
 import { hasSpaceTaskRequests, useTaskActionsInFlight } from '@web/stores/task-actions-in-flight';
@@ -9,6 +10,7 @@ import { useDocProvider } from '@web/data/yjs/collab-socket';
 import { docName } from '@web/data/yjs/manager';
 import { useCanvasTaskState } from '@web/data/yjs/use-canvas-task-state';
 import { useSpacePeerTaskStatus } from '@web/spaces/canvas/use-space-peer-task-status';
+import { useTimelineExecutions } from '@web/spaces/timeline/use-timeline-executions';
 
 /**
  * Combine the existing task facts this browser knows for one Space.
@@ -27,5 +29,10 @@ export function useSpaceTaskStatus(projectId: string, spaceId: string, type: Spa
   const provider = useDocProvider(canvas ? docName.canvasSpace(projectId, spaceId) : null);
   const tasks = useCanvasTaskState(projectId, spaceId, canvas, provider?.document);
   const peers = useSpacePeerTaskStatus(provider?.awareness ?? null, tasks.contentNodeIds);
-  return operations || waiting || requests || tasks.running || peers;
+  // The tab bar outlives the hidden Space body, so it holds the Timeline's read of its executions, which its document's
+  // change version reads again.
+  const timeline = type === 'timeline';
+  const executions = useTimelineExecutions(projectId, spaceId, { enabled: timeline });
+  const executing = timeline && executions.data?.some((row) => !timelineExecutionEnded(row.status)) === true;
+  return operations || waiting || requests || tasks.running || peers || executing;
 }

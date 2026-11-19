@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Grid recipes on real media (inner#1306 test plan §65.3 R01, R02, R06, R08, R09; frames-split design §4.1, §4.2, §4.3,

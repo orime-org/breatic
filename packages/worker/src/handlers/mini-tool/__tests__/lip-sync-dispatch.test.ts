@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A planned `video.lip-sync` pickup reaches the lip-sync runner (inner#1306 test plan §97; execution design §9.3, §9.4;
@@ -17,7 +17,7 @@ import type * as coreModule from "@breatic/core";
 import type * as domainModule from "@breatic/domain";
 import type { MiniToolExecutionCompletion, MiniToolExecutionJob } from "@breatic/domain";
 import { DeadlinePassed } from "@breatic/shared";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 import { runMiniToolExecutionTask } from "../run-execution-task.js";
 
 const h = vi.hoisted(() => ({

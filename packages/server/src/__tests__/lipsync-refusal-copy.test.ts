@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 test plan §97 D19-2 (frames-split §7.11 fresh row 「否则拒绝并告诉用户原因」; D17-1, D18-1, D23-5): the nine lip-sync

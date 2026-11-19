@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Which picture the camera-angle sphere's card carries, chosen where the
@@ -53,7 +53,8 @@ const QWEN: ModelEntry = {
     images: { description: '', default: null, type: 'list', fill: 'pool', accepts: 'image' },
     ...CAMERA_SPECS,
   },
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
   camera_angle: { azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' },
 };
 
@@ -123,7 +124,7 @@ async function openSphere(mentioned: string[]): Promise<HTMLElement> {
             nodes={[{ id: 'target', type: 'image', data: { handling: false } }, ...SOURCES]}
             edges={WIRES}
             getLastWriteWasLocal={() => true}
-            placeTemplate={() => undefined}
+            placeTemplate={() => ({ nodeIds: [], rects: [] })}
           />
         </CanvasContext.Provider>
       </ReactFlow>

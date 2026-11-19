@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The checks one proposed node answers on its own: the material it names,
  * whether it is what its role says, and whether it types a mark as words.
  */
-import { marksTypedIn, promptPlainText, type PromptSegment, type ProposalNode } from "@breatic/shared";
+import { marksTypedIn, promptPlainText, proposalWordRuns, type PromptSegment, type ProposalNode } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { fixOn, refAsSent, refuse, type NodeLabel } from "@domain/agent/tools/proposal-refusals.js";
@@ -14,7 +14,7 @@ import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import type { MaterialTable } from "@domain/asset/material-facts.js";
 
 /** The fields that configure a generation, named as the agent sends them. */
-const CONFIGURED = ["mode", "model", "params", "fills", "shots"] as const;
+const CONFIGURED = ["mode", "model", "params", "fills", "shots", "lines"] as const;
 
 /** Field names joined for a sentence, the last after "or". */
 const ONE_OF = new Intl.ListFormat("en", { type: "disjunction" });
@@ -61,14 +61,14 @@ export function checkMaterial(node: ProposalNode, at: NodeLabel, materials: Mate
   const facts = materials.get(node.material);
   if (facts === undefined) {
     // Only a picture can be saved from the web; a clip or a track reaches our
-    // storage as a file the reader uploads in the chat.
+    // storage as a file the user uploads in the chat.
     return node.type === "image"
       ? refuse("material-not-ours", `"${node.name}" holds an address that is not in our storage.`, fixOn(at, `save a picture found on the web with ${SAVE_IMAGE} first and use the address it answers with.`))
       : refuse("material-not-ours-media", `"${node.name}" holds an address that is not in our storage. ${capitalised(aNode(node.type))} takes material only from our storage: a file the user uploaded in the chat.`);
   }
   if (facts === "missing") {
     // A mistyped address and one copied from another studio read the same here.
-    return refuse("material-missing", `"${node.name}" holds an address in our storage that is not registered in this studio. Material comes only from this studio's storage: files the user uploaded in the chat and pictures saved with ${SAVE_IMAGE}.`);
+    return refuse("material-missing", `"${node.name}" holds an address in our storage that is not registered in this studio. Material comes only from this studio's storage: files the user uploaded in the chat, pictures saved with ${SAVE_IMAGE}, and pictures or clips already on the canvas.`);
   }
   if (facts.kind !== node.type) {
     return refuse("material-wrong-kind", `"${node.name}" is ${aNode(node.type)} and its material is ${facts.kind}.`);
@@ -82,7 +82,7 @@ export function checkMaterial(node: ProposalNode, at: NodeLabel, materials: Mate
  * The three roles differ in what they carry, not only in what they are called:
  * an empty node holds nothing, a written one holds finished words and so can
  * only be a text node, and a generation is configured. A node whose role and
- * contents disagree lands on the canvas as something the reader cannot use.
+ * contents disagree lands on the canvas as something the user cannot use.
  * @param node - The node being judged.
  * @param at - The node, as a fix names it.
  * @returns Whether it stands, and what is wrong with it when it does not.
@@ -95,11 +95,11 @@ export function checkNodeRole(node: ProposalNode, at: NodeLabel): ProposalVerdic
     // text node is a click away, so proposing one asks for work rather than
     // saving any. Write the words instead, as a written node.
     if (node.type === "text") {
-      return refuse("text-source", `"${node.name}" is an empty text node, which the reader makes in one click; words go on a written node.`);
+      return refuse("text-source", `"${node.name}" is an empty text node, which the user makes in one click; words go on a written node.`);
     }
     const carried = [...configured, ...(node.prompt !== undefined ? ["prompt"] : [])];
     if (carried.length > 0) {
-      return refuse("source-configured", `"${node.name}" is a source node: it holds material or stands empty for the reader, so it takes no ${ONE_OF.format([...CONFIGURED, "prompt"])}; it carries ${carried.join(", ")}.`);
+      return refuse("source-configured", `"${node.name}" is a source node: it holds material or stands empty for the user, so it takes no ${ONE_OF.format([...CONFIGURED, "prompt"])}; it carries ${carried.join(", ")}.`);
     }
     return { ok: true };
   }
@@ -117,9 +117,9 @@ export function checkNodeRole(node: ProposalNode, at: NodeLabel): ProposalVerdic
   // proposal travels with.
   const marks = carriedMarks(node);
   if (marks.length > 0) {
-    return refuse("written-takes-no-mark", `"${node.name}" holds words the reader keeps as they are, so it takes no ref or note; it carries ${marks.join(", ")}.`, fixOn(at, "take out every ref and note it carries, the typed ones included, and say what you meant in your own message."));
+    return refuse("written-takes-no-mark", `"${node.name}" holds words the user keeps as they are, so it takes no ref or note; it carries ${marks.join(", ")}.`, fixOn(at, "take out every ref and note it carries, the typed ones included, and say what you meant in your own message."));
   }
-  // Without them it lands as an empty text node, which is the thing a reader
+  // Without them it lands as an empty text node, which is the thing a user
   // makes in a click and has no use for in a proposal.
   if (promptPlainText(node.prompt ?? []).trim() === "") {
     return refuse("written-empty", `"${node.name}" says it holds words and carries no words.`);
@@ -147,8 +147,8 @@ function segmentAsSent(segment: PromptSegment): string {
 }
 
 /**
- * The marks a node's words carry typed out as text, read from its prompt and
- * every shot.
+ * The marks a node's words carry typed out as text, read from its prompt,
+ * every shot and every dialogue line.
  *
  * Each prompt is read as one string, so a mark typed across two text segments
  * is caught too. Every other segment stands in as a character of its own:
@@ -159,7 +159,7 @@ function segmentAsSent(segment: PromptSegment): string {
  * @throws {never} Never.
  */
 function typedMarks(node: ProposalNode): TypedMark[] {
-  return [node.prompt ?? [], ...(node.shots ?? []).map((shot) => shot.prompt)].flatMap((segments) => {
+  return proposalWordRuns(node).flatMap((segments) => {
     const words = segments.map((segment, i) => segment.text ?? String.fromCodePoint(SEGMENT_MARK + i)).join("");
     return marksTypedIn(words).map(({ slot, text }): TypedMark => ({
       slot,
@@ -175,13 +175,13 @@ function typedMarks(node: ProposalNode): TypedMark[] {
 const SEGMENT_FORMS: Record<NonNullable<PromptSegment["slot"]>["kind"], string> = {
   asset: '{"ref": <index>} for a node',
   note: '{"slot": {"kind": "note", "label": "…"}} for a note',
-  tweak: '{"slot": {"kind": "tweak", "label": "…", "note": "…"}} for words the reader writes',
+  tweak: '{"slot": {"kind": "tweak", "label": "…", "note": "…"}} for a template\'s blank, which is filled before sending',
 };
 
 /**
  * Whether a node's words carry a mark typed out as text.
  *
- * Typed, the bracket is words: the reader gets no line on the card for it,
+ * Typed, the bracket is words: the user gets no line on the card for it,
  * the canvas adds nothing to it, and it reaches the model as it stands.
  * @param node - The node being judged.
  * @returns Whether it stands, and the marks typed with the rule they break when not.

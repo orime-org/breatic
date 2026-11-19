@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Worker YAML configuration loader.
@@ -30,6 +30,15 @@ const workerConfigSchema = z.object({
   /** Base backoff delay (ms) between job retries. */
   job_backoff_delay_ms: z.number().int().positive().default(2000),
   poll_interval: z.number().int().positive().default(3000),
+  /** The sweep that settles charge requests still pending (inner#1617). */
+  credit_charge_sweep: z
+    .object({
+      interval_ms: z.number().int().positive().default(60_000),
+      min_age_ms: z.number().int().nonnegative().default(30_000),
+      batch_size: z.number().int().positive().default(100),
+    })
+    .strict()
+    .prefault({}),
 });
 
 /** Validated worker configuration type. */

@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A request body too large for the API, moved through storage (inner#1006).
  *
- * The server reads at most `maxRequestBodyBytes` of any request. The three
- * routes that can legitimately carry more (paste, snapshot, chat) also take
+ * The server reads at most `maxRequestBodyBytes` of any request. The four
+ * routes that can legitimately carry more (paste, node snapshot, chat,
+ * document snapshot) also take
  * `{ transfer: storageKey }`: the body is written as a transfer file, uploaded
  * through the ingest Worker like any upload, and the route is sent the
  * reference instead. Everything after that — the route's checks, what it

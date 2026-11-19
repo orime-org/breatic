@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Storage YAML configuration loader.
@@ -113,6 +113,7 @@ export const storageConfigSchema = z
           chat_message: z.number().int().positive().default(6291456),
           canvas_paste: z.number().int().positive().default(25165824),
           node_history_snapshot: z.number().int().positive().default(25165824),
+          document_version_save: z.number().int().positive().default(25165824),
         })
         .prefault({}),
       /** How long, in seconds, a finished transfer may be referenced (once). */

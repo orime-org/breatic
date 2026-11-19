@@ -1,0 +1,25 @@
+{
+  "model": "lyria-3-pro-music",
+  "upstream": "fal",
+  "model_id": "fal-ai/lyria3/pro",
+  "runs": [
+    {
+      "params": {},
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "prompt": "a red fox running through fresh snow at dawn"
+      }
+    },
+    {
+      "params": {
+        "image": "https://example.com/image.png"
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "image_url": "https://example.com/image.png",
+        "prompt": "a red fox running through fresh snow at dawn"
+      }
+    }
+  ],
+  "steps": []
+}

@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/xai/grok-imagine-image/2.0/text-to-image",
+  "price_formula": "((params.resolution ?? \"1k\") == \"2k\" ? ((params.quality ?? \"medium\") == \"low\" ? 0.06 : 0.08) : ((params.quality ?? \"medium\") == \"low\" ? 0.04 : 0.06))"
+}

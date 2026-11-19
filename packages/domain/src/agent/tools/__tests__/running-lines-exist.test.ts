@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Every running line a tool declares has a string in every language.
  *
- * The line a reader watches while a tool runs is named by a key the tool
+ * The line a user watches while a tool runs is named by a key the tool
  * carries. A key with a typo, or one added to English alone, reaches the
  * chat column as itself -- and nothing else in the build looks at it.
  */

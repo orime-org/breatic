@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type * as MockModule0 from "@server/modules";
 import type * as MockModule1 from "@server/modules/auth/user.repo.js";
@@ -59,7 +59,7 @@ const USER: UserEntity = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  spies.verifySignupCode.mockResolvedValue(USER);
+  spies.verifySignupCode.mockResolvedValue({ user: USER, referral: null });
   spies.getUserById.mockResolvedValue(USER);
 });
 

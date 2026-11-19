@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
 
@@ -106,6 +106,15 @@ describe('evaluateExecute — which precondition is the one that fails', () => {
     // upstream as a single speaker and is refused after the run started.
     expect(refusalOf({ ...ok, speakersShort: true })).toBe('speakers-missing');
     expect(refusalOf({ ...ok, speakersShort: false })).toBeNull();
+  });
+
+  it('names the lines when a dialogue has no line with words, in place of the prompt', () => {
+    // On the dialogue side the prompt is the lines written out; none written
+    // is said as lines, the box the user sees (inner#1825 design 8.5).
+    expect(refusalOf({ ...ok, promptText: '', linesEmpty: true })).toBe('lines-empty');
+    expect(refusalOf({ ...ok, linesEmpty: false })).toBeNull();
+    expect(refusalToastKey('lines-empty')).toBe('canvas.generatePanel.refuseExecuteNoLines');
+    expect(isExecuteButtonDisabled('lines-empty')).toBe(false);
   });
 
   it('ignores the voice for a model that takes none', () => {
@@ -390,6 +399,7 @@ describe('evaluateExecute — the sources the run still needs', () => {
       'prompt-too-long',
       'voice-missing',
       'speakers-missing',
+      'lines-empty',
       'source-missing',
       'sources-missing',
       'lyrics-missing',
@@ -576,5 +586,25 @@ describe('evaluateExecute — the multi-shot mode', () => {
     ] as const) {
       expect(refusalToastKey(refusal)).toMatch(/^canvas\.generatePanel\./);
     }
+  });
+});
+
+describe('evaluateExecute — a run no upstream here takes (#1521)', () => {
+  const sentence = 'Gemini 3.8 Flash TTS takes at most 8,000 characters in the text.';
+
+  it('refuses with the sentence naming the limit, the button left live so the click can say it', () => {
+    expect(evaluateExecute({ ...ok, inputRefusal: sentence })).toEqual({ refusal: 'input-refused', message: sentence });
+    expect(isExecuteButtonDisabled('input-refused')).toBe(false);
+    expect(refusalToastKey('input-refused')).toBe('server.model.input_limit.unsupported');
+  });
+
+  it('comes after every refusal the panel can name itself', () => {
+    expect(refusalOf({ ...ok, promptText: '', inputRefusal: sentence })).toBe('prompt-missing');
+    expect(refusalOf({ ...ok, voiceRequired: true, voiceChosen: false, inputRefusal: sentence })).toBe('voice-missing');
+    expect(refusalOf({ ...ok, maxInputChars: 3, inputRefusal: sentence })).toBe('prompt-too-long');
+  });
+
+  it('lets the run through when no upstream refusal is known', () => {
+    expect(evaluateExecute({ ...ok, inputRefusal: undefined })).toBeNull();
   });
 });

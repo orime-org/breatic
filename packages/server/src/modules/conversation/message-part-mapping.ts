@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The boundary between the shape we store and the shape the wire carries.
@@ -13,13 +13,13 @@
  * `failed` and `truncated` are things we know about a turn, not things a
  * model streamed, so
  * they travel as data parts -- the one channel the protocol leaves open for
- * what it does not define -- and not transient ones: a reader who reloads has
+ * what it does not define -- and not transient ones: a user who reloads has
  * to still see that a turn was cut off.
  */
 import { getToolName, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
 import { NOTHING_SAID_WHY, attachmentPart, wireLineOf } from "@breatic/shared";
-import type { MessageData, MessagePart, StoredMessageMetadata, ToolFailure } from "@breatic/shared";
+import type { ChatAttachedChip, MessageData, MessagePart, StoredMessageMetadata, ToolFailure } from "@breatic/shared";
 import { NOTHING_OF_IT_RAN } from "@server/agent/tool-ending.js";
 
 /** What one message's parts look like on the wire. */
@@ -48,6 +48,9 @@ const ASK_AWAITING = "data-ask-awaiting";
 
 /** How long the turn thought, as the wire names it. */
 const THINKING_TIME = "data-thinking-time";
+
+/** A message the user sent while the turn ran, taken in at a step (inner#1717). */
+const USER_MESSAGE = "data-user-message";
 
 /**
  * How far a tool got, from the state the SDK last reported.
@@ -107,13 +110,33 @@ function storedTool(part: Extract<UiPart, { toolCallId: string }>): MessagePart 
   if (status === "error") {
     // Written so that a part is never stored `error` with no account of
     // itself, and written as not knowing: what this side of the boundary has
-    // is the wire, and the wire carries the line a reader is shown, not the
+    // is the wire, and the wire carries the line a user is shown, not the
     // reason. The turn replaces this from the callbacks handed the error
     // itself -- one for a tool that ran and failed, one for a call refused
     // before it ran -- and this stands for the case where neither saw it.
     stored.failure = NOTHING_SAID_WHY;
   }
   return stored;
+}
+
+/**
+ * A message the user sent mid-turn, as the store keeps it: what was attached,
+ * then the words, the order a message the user opened a turn with is kept in.
+ * @param data - The data part's payload, as the wire carried it.
+ * @returns The stored part, or undefined when the payload is not one.
+ */
+function storedUserMessage(data: unknown): MessagePart | undefined {
+  const { id, words, chips, sentAt } = (data ?? {}) as { id?: unknown; words?: unknown; chips?: unknown; sentAt?: unknown };
+  if (typeof id !== "string" || typeof words !== "string" || typeof sentAt !== "string") return undefined;
+  return {
+    type: "user-message",
+    id,
+    sentAt,
+    parts: [
+      ...(Array.isArray(chips) ? chips : []).map((chip) => ({ type: "attachment" as const, chip: chip as ChatAttachedChip })),
+      { type: "text", text: words },
+    ],
+  };
 }
 
 /**
@@ -133,7 +156,11 @@ export function toStoredParts(parts: UiParts): MessagePart[] {
     else if (part.type === INTERRUPTED) stored.push({ type: "interrupted" });
     else if (part.type === FAILED) {
       const reason = (part as { data?: { reason?: unknown } }).data?.reason;
-      stored.push(reason === "too_long" ? { type: "failed", reason } : { type: "failed" });
+      stored.push(reason === "too_long" || reason === "shutdown" ? { type: "failed", reason } : { type: "failed" });
+    }
+    else if (part.type === USER_MESSAGE) {
+      const said = storedUserMessage((part as { data?: unknown }).data);
+      if (said !== undefined) stored.push(said);
     }
     else if (part.type === TRUNCATED) stored.push({ type: "truncated" });
     else if (part.type === THINKING_TIME) {
@@ -157,7 +184,7 @@ export function toStoredParts(parts: UiParts): MessagePart[] {
 export function toUiParts(parts: MessagePart[]): UiParts {
   // A questionnaire still waiting reads back the way it went out: the call,
   // and after everything else the segment that asked holds, the mark naming
-  // it as the card the reader is shown.
+  // it as the card the user is shown.
   const ui = parts.map((part): UiPart =>
     part.type === "tool" && part.status === "awaiting"
       ? { type: `tool-${part.toolName}`, toolCallId: part.toolCallId, input: part.input, state: "input-available" }
@@ -167,6 +194,22 @@ export function toUiParts(parts: MessagePart[]): UiParts {
     part.type === "tool" && part.status === "awaiting" ? [{ type: ASK_AWAITING, data: { toolCallId: part.toolCallId } }] : [],
   );
   return [...ui, ...marks];
+}
+
+/**
+ * A stored failure with its line under the name this release reads.
+ *
+ * Carries the pre-#1378 name until #1387 removes it, in the release that also
+ * runs the rename migration again: a row written before migration 0116, or by
+ * a server of the previous release while a deploy rolls out, keeps the line
+ * under `readerKey`.
+ * @param failure - The failure as the row holds it.
+ * @returns The same failure, its line under `userKey`.
+ */
+function underUserKey(failure: ToolFailure): ToolFailure {
+  if ("userKey" in failure || !("readerKey" in failure)) return failure;
+  const { readerKey, ...rest } = failure as ToolFailure & { readerKey: unknown };
+  return { ...rest, userKey: readerKey } as ToolFailure;
 }
 
 /**
@@ -183,6 +226,11 @@ function toUiPart(part: MessagePart): UiPart {
   if (part.type === "blocked") return { type: BLOCKED, data: {} };
   if (part.type === "thinking-time") return { type: THINKING_TIME, data: { ms: part.ms } };
   if (part.type === "attachment") return attachmentPart(part.chip);
+  if (part.type === "user-message") {
+    const words = part.parts.flatMap((one) => (one.type === "text" ? [one.text] : [])).join("");
+    const chips = part.parts.flatMap((one) => (one.type === "attachment" ? [one.chip] : []));
+    return { type: USER_MESSAGE, data: { id: part.id, words, chips, sentAt: part.sentAt } };
+  }
 
 
   const base = {
@@ -206,7 +254,11 @@ function toUiPart(part: MessagePart): UiPart {
     // A row stored before a call that never ran had an ending of its own
     // carries the same reason as one, and reads back as one (inner#1620).
     const failure: ToolFailure | undefined =
-      part.failure?.forModel === NOTHING_OF_IT_RAN ? { kind: "never_ran", forModel: NOTHING_OF_IT_RAN } : part.failure;
+      part.failure?.forModel === NOTHING_OF_IT_RAN
+        ? { kind: "never_ran", forModel: NOTHING_OF_IT_RAN }
+        : part.failure === undefined
+          ? undefined
+          : underUserKey(part.failure);
     return {
       ...base,
       state: "output-error",

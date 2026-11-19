@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -15,7 +15,7 @@ import { appendStep, prepareModelInput } from "@worker/handlers/mini-tool/prepar
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
 import { runPrediction } from "@worker/providers/wavespeed.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 
 const providerOutputsSchema = z.tuple([z.string().url()]);
 const operationResultSchema = z.strictObject({ providerURL: z.string().url() });

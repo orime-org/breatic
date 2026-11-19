@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The people and scene analysis runner (O-* oracle ids below). S6d D5 (inner#1306 test plan §93; frames-split design
@@ -20,7 +20,7 @@ import type { RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/regis
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { verdictStands } from "@worker/handlers/understand-failure.js";
 import { candidateCropRecipeOf, peopleRecipeOf, sceneCutsRecipeOf } from "@worker/handlers/video-presentation-recipes.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 import { runMiniToolContainerAnalysis } from "../run-container-analysis.js";
 
 const h = vi.hoisted(() => ({ config: vi.fn(), list: vi.fn(), ensure: vi.fn(), inline: vi.fn(), grants: vi.fn(),

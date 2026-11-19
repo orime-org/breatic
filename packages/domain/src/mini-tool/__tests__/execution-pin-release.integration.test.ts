@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * End of retryability at the terminal commit (S6e E4-5, inner#1306 test plan §90; frames-split design §7.15 可重试结束).

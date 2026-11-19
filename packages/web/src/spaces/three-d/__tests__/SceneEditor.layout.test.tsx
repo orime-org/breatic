@@ -1,27 +1,40 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 
 import * as React from 'react';
 import * as Y from 'yjs';
 import { Unlock } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { t, SCENE_FORMAT_VERSION, type SceneObject } from '@breatic/shared';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
+import { sceneViewfinderSafeArea } from '@web/spaces/three-d/SceneViewfinder';
 import { useUIStore } from '@web/stores/ui';
 
-vi.mock('@web/data/api/scene', () => ({
-  getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1 })),
-  resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary' })),
+const NAME = 'project-p1/3d-s1';
+
+vi.mock('@web/data/api/scene', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/scene')>()),
+  listSpaceTasks: vi.fn(async () => ({ serverNow: new Date().toISOString(), tasks: [] })),
+  getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1, import: IMPORT_LIMITS })),
+  resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary', sizeBytes: 100 })),
 }));
 vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
   default: (): React.JSX.Element => <canvas tabIndex={0} data-testid='scene-native-boundary' />,
 }));
 vi.mock('@web/lib/scene-view-storage', () => ({ readSceneView: () => null, writeSceneView: () => true }));
+// The generation dialog closes at once on a model list it cannot load, so it is served one.
+vi.mock('@web/data/api/models', async () => {
+  const { sanitizeModelCatalog } = await import('@breatic/shared');
+  const { RAW_CATALOG } = await import('@web/spaces/three-d/__tests__/scene-generate-fixtures');
+  return { modelsApi: { list: async () => sanitizeModelCatalog(RAW_CATALOG) } };
+});
 const ID = '11111111-1111-4111-8111-111111111111';
 const SECOND = '22222222-2222-4222-8222-222222222222';
 const owners: Array<{ doc: Y.Doc; session: SceneSession; client: QueryClient }> = [];
@@ -34,8 +47,8 @@ function Bound({ session }: { session: SceneSession }): React.JSX.Element {
 function setup(): { session: SceneSession; doc: Y.Doc; page: ReturnType<typeof render>; client: QueryClient } {
   const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   const objects: SceneObject[] = [ID, SECOND].map((id, index) => ({ id, name: index ? 'Box' : 'Figure', model: { kind: 'builtin', id: 'box' }, position: [index, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false }));
-  applySceneCommand(doc, { type: 'create', objects }, Symbol('fixture'), true);
-  const session = new SceneSession(doc);
+  applySceneCommand(doc, { type: 'create', objects }, Symbol('fixture'), true, NAME);
+  const session = new SceneSession(doc, NAME);
   session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); owners.push({ doc, session, client });
   const page = render(tree(session, client)); return { session, doc, page, client };
@@ -53,8 +66,56 @@ describe('approved scene layout (inner#1724)', () => {
     expect(screen.queryByTestId('scene-object-menu')).toBeNull();
     expect(screen.queryByTestId('scene-right-panel')).toBeNull();
     expect(within(screen.getByTestId('scene-viewport-toolbar')).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
-      t('spaces.threeD.undo'), t('spaces.threeD.redo'), t('spaces.threeD.properties'), t('spaces.threeD.objects'), t('spaces.threeD.tasks'), t('spaces.threeD.minimap'),
+      t('spaces.threeD.undo'), t('spaces.threeD.redo'), t('spaces.threeD.properties'), t('spaces.threeD.objects'), t('spaces.threeD.tasks'), t('spaces.threeD.director.open'),
+      t('spaces.threeD.viewfinder.open'), t('spaces.threeD.minimap'),
     ]);
+  });
+  it('lays the object toolbar and the bottom-right controls out in one row that keeps them apart', async () => {
+    const { session } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    const row = screen.getByTestId('scene-object-menu').closest('.grid');
+    expect(row).not.toBeNull();
+    expect(row).toBe(screen.getByTestId('scene-viewport-toolbar').closest('.grid'));
+    expect(row?.className).toContain('grid-cols-[1fr_auto_1fr]');
+  });
+  it.each([
+    ['too narrow for one row', 400, true],
+    ['one pixel short of the two toolbars and the 8px between them', 524, true],
+    ['one pixel wider than the two toolbars and the 8px between them', 526, false],
+    ['wide enough for one row', 1180, false],
+  ])('stacks the object toolbar above the bottom-right controls only when the bottom row is %s', async (_, rowWidth, stacked) => {
+    const sizes: Record<string, [number, number]> = { 'scene-bottom-row': [rowWidth, 50], 'scene-object-menu': [223, 42], 'scene-viewport-toolbar': [294, 42] };
+    const size = (element: HTMLElement): [number, number] => sizes[element.dataset.testid ?? ''] ?? [0, 0];
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return size(this)[0]; });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) { return size(this)[1]; });
+    const { session } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    const objectCell = screen.getByTestId('scene-object-menu').parentElement as HTMLElement;
+    const controlsCell = screen.getByTestId('scene-viewport-toolbar').parentElement as HTMLElement;
+    if (stacked) {
+      await waitFor(() => expect(objectCell.className).toContain('row-start-1'));
+      expect(objectCell.className).toContain('col-start-3');
+      expect(controlsCell.className).toContain('row-start-2');
+      expect(screen.getByTestId('scene-map-holder').style.bottom).toBe('111px');
+      expect(screen.getByTestId('scene-right-panel-anchor').style.bottom).toBe('calc(253px + var(--space-5))');
+    } else {
+      expect(objectCell.className).toContain('col-start-2');
+      expect(screen.getByTestId('scene-map-holder').style.bottom).toBe('61px');
+      expect(screen.getByTestId('scene-right-panel-anchor').style.bottom).toBe('calc(203px + var(--space-5))');
+    }
+  });
+  it('keeps the object toolbar and the bottom-right controls the same distance above the stage edge in one row', async () => {
+    const sizes: Record<string, number> = { 'scene-bottom-row': 1180, 'scene-object-menu': 223, 'scene-viewport-toolbar': 294 };
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return sizes[this.dataset.testid ?? ''] ?? 0; });
+    const { session } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    const objectCell = screen.getByTestId('scene-object-menu').parentElement as HTMLElement;
+    const controlsCell = screen.getByTestId('scene-viewport-toolbar').parentElement as HTMLElement;
+    expect(objectCell.className).toContain('mb-[var(--space-5)]');
+    expect(controlsCell.className).toContain('mb-[var(--space-5)]');
+  });
+  it('keeps the viewfinder frame 20px from every stage edge but the bottom controls', () => {
+    expect(sceneViewfinderSafeArea({ width: 1200, height: 900 }, false)).toEqual({ x: 20, y: 20, width: 1160, height: 774 });
   });
   it.each([
     { state: 'unlocked object', ids: [ID], locked: [], action: 'lock', next: [true, false], second: [false, false] },
@@ -115,9 +176,9 @@ describe('approved scene layout (inner#1724)', () => {
     act(() => session.select(ID, false));
     expect(await screen.findByLabelText(t('spaces.threeD.name'))).toHaveValue('Figure');
     fireEvent.click(screen.getByTestId('scene-tasks-trigger'));
-    expect(await screen.findByTestId('scene-tasks-panel')).toHaveTextContent(t('spaces.threeD.generationDev'));
+    expect(await screen.findByText(t('spaces.threeD.taskList.empty'))).toBeVisible();
     act(() => session.execute({ type: 'patch', patches: [{ id: ID, position: [4, 0, 0] }] }));
-    expect(screen.getByTestId('scene-tasks-panel')).toHaveTextContent(t('spaces.threeD.generationDev'));
+    expect(screen.getByTestId('scene-tasks-panel')).toHaveTextContent(t('spaces.threeD.taskList.empty'));
     act(() => session.select(SECOND, true));
     expect(await screen.findByText(t('spaces.threeD.selectedCount', { count: 2 }))).toBeVisible();
     expect(screen.getByTestId('scene-object-menu')).toBeVisible();
@@ -137,24 +198,6 @@ describe('approved scene layout (inner#1724)', () => {
     expect(session.getSnapshot().selectedIds).toEqual([ID]);
     fireEvent.keyDown(canvas, { key: 'Escape' });
     expect(session.getSnapshot().selectedIds).toEqual([]);
-  });
-  it('shows the approved generation capability state with disabled fields', async () => {
-    setup(); await screen.findByTestId('scene-native-boundary');
-    fireEvent.click(screen.getByRole('button', { name: t('spaces.threeD.generate') }));
-    const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent(t('spaces.threeD.generationDev'));
-    expect(within(dialog).getByLabelText(t('spaces.threeD.prompt'))).toBeDisabled();
-    expect(within(dialog).getByLabelText(t('spaces.threeD.reference'))).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: t('spaces.threeD.submit') })).toBeDisabled();
-  });
-  it('shows a translated reference button and hides the browser file control', async () => {
-    setup(); await screen.findByTestId('scene-native-boundary');
-    fireEvent.click(screen.getByRole('button', { name: t('spaces.threeD.generate') }));
-    const dialog = await screen.findByRole('dialog');
-    const file = within(dialog).getByLabelText(t('spaces.threeD.reference'));
-    expect(file).not.toBeVisible();
-    expect(file).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: t('spaces.threeD.chooseReference') })).toBeDisabled();
   });
   it('keeps focus in the shared panel when an object row opens its properties', async () => {
     setup(); await screen.findByTestId('scene-native-boundary');
@@ -287,7 +330,7 @@ describe('approved scene layout (inner#1724)', () => {
     const input = within(group).getByLabelText('X', { exact: true });
     act(() => input.focus()); fireEvent.change(input, { target: { value: '-2' } }); fireEvent.keyDown(input, { key: 'Enter' });
     fireEvent.click(screen.getByRole('button', { name: t('spaces.threeD.generate') }));
-    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: t('common.cancel') }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Close' }));
     fireEvent.click(screen.getByTestId('scene-properties-trigger'));
     const restored = within(within(await screen.findByTestId('scene-properties-panel')).getByRole('group', { name: t('spaces.threeD.scale') })).getByLabelText('X', { exact: true });
     expect(restored).toHaveValue('1'); expect(restored).toHaveAttribute('aria-invalid', 'false');
@@ -299,8 +342,8 @@ describe('approved scene layout (inner#1724)', () => {
     fireEvent.change(input, { target: { value: 'Retained draft' } });
     await act(async () => page.rerender(tree(session, client, 'hidden')));
     act(() => {
-      applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer name' }] }, Symbol('peer'), true);
-      if (change === 'lock') applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol('peer'), true);
+      applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer name' }] }, Symbol('peer'), true, NAME);
+      if (change === 'lock') applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol('peer'), true, NAME);
       if (change === 'role') session.setEnvironment({ readOnly: true, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
     });
     await act(async () => page.rerender(tree(session, client)));
@@ -336,7 +379,7 @@ describe('approved scene layout (inner#1724)', () => {
     const inspector = await screen.findByTestId('scene-properties-panel');
     const field = within(within(inspector).getByRole('group', { name: t('spaces.threeD.position') })).getByLabelText('X', { exact: true });
     act(() => field.focus()); fireEvent.change(field, { target: { value: '2.5' } });
-    act(() => { applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, position: [0, 7, 0] }] }, Symbol('peer'), true); });
+    act(() => { applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, position: [0, 7, 0] }] }, Symbol('peer'), true, NAME); });
     await act(async () => { fireEvent.blur(field); });
     expect(readSceneDocument(doc).objects.find((object) => object.id === ID)?.position).toEqual([2.5, 7, 0]);
   });
@@ -345,7 +388,7 @@ describe('approved scene layout (inner#1724)', () => {
     const { session, doc } = setup(); await screen.findByTestId('scene-native-boundary');
     act(() => session.select(ID, false)); await screen.findByTestId('scene-right-panel');
     act(() => { session.beginGesture(); session.previewGesture([{ id: ID, position: [9, 0, 0] }]); });
-    act(() => { applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer name' }] }, Symbol('peer'), true); });
+    act(() => { applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer name' }] }, Symbol('peer'), true, NAME); });
     const canvas = screen.getByTestId('scene-native-boundary'); act(() => canvas.focus());
     fireEvent.keyDown(canvas, { key: 'Escape' });
     expect(session.getSnapshot().gestureActive).toBe(false);
@@ -353,6 +396,17 @@ describe('approved scene layout (inner#1724)', () => {
     expect(screen.getByTestId('scene-right-panel')).toBeVisible();
     expect(readSceneDocument(doc).objects.find((object) => object.id === ID)).toMatchObject({ name: 'Peer name', position: [0, 0, 0] });
     expect(session.getSnapshot().objects.find((object) => object.id === ID)?.position).toEqual([0, 0, 0]);
+  });
+
+
+  it('keeps the import dialog open when a collaborator changes the selection under it (inner#1690)', async () => {
+    const { session } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    await screen.findByLabelText(t('spaces.threeD.name'));
+    fireEvent.click(screen.getByRole('button', { name: t('spaces.threeD.importModel.title') }));
+    expect(await screen.findByTestId('model-import-dialog')).toBeVisible();
+    act(() => session.select(SECOND, true));
+    expect(screen.getByTestId('model-import-dialog')).toBeVisible();
   });
 
 });

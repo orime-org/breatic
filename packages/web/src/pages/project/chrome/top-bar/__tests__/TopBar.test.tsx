@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { CreditDecimal } from '@breatic/shared';
 
@@ -241,7 +241,7 @@ describe('TopBar', () => {
       expect(screen.queryByRole('button', { name: 'Invite' })).toBeNull();
     });
 
-    it('a reader who may rename can double-click the title into edit mode', async () => {
+    it('a user who may rename can double-click the title into edit mode', async () => {
       const user = userEvent.setup();
       setup({ role: 'editor', canRename: true, projectName: 'Old' });
       await user.dblClick(screen.getByTestId('title-display'));
@@ -259,7 +259,7 @@ describe('TopBar', () => {
       expect(onRename).not.toHaveBeenCalled();
     });
 
-    it('a reader who may not rename stays on the plain title, an editor included', async () => {
+    it('a user who may not rename stays on the plain title, an editor included', async () => {
       const user = userEvent.setup();
       setup({ role: 'editor', canRename: false, projectName: 'Old' });
       await user.dblClick(screen.getByTestId('title-display'));

@@ -66,13 +66,14 @@ transfer:
   #   name) x 6 bytes, about 1.87 MB, and each Space's fixed fields (id,
   #   kind, state, counts, canvas detail), under 1 KB each: about 5.2 MB,
   #   rounded up.
-  # canvas_paste / node_history_snapshot: a 10 MB document
+  # canvas_paste / node_history_snapshot / document_version_save: a 10 MB document
   #   (collab.yaml max_document_bytes) whose quotes, backslashes and line
   #   breaks JSON.stringify doubles, with margin.
   route_max_bytes:
     chat_message: 6291456
     canvas_paste: 25165824
     node_history_snapshot: 25165824
+    document_version_save: 25165824
   # A finished transfer can be referenced only this long, and only once.
   reference_ttl_seconds: 3600
   # How long one user's in-flight transfer read holds its lock.

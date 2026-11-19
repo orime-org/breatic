@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The shape a finished turn leaves in the message store.
@@ -43,13 +43,13 @@ vi.mock("@breatic/core", async (importOriginal) => {
 // 钉的正是「存下来的东西再交给模型时长什么样」，那段转换必须真跑。
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
+  actual.initProvider((await import("../helpers/fake-provider.js")).assemblyProvider());
   const { modelProducing } = await import("../helpers/model-double.js");
   const { tool } = await import("ai");
   const { z } = await import("zod");
   const { makeAskUserTool } = await import("../../../../domain/src/agent/tools/ask-user.js");
   return {
     ...actual,
-    resolveProvider: () => "test",
     // A tool belonging to this file. What these cases check is how any tool's
     // answer reaches the model, and standing that on whichever real tool
     // happens to be registered makes them fail whenever the tool set changes
@@ -83,11 +83,11 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         }),
       },
     }),
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(
         () => stream.parts,
         (asked) => handedToModel.calls.push(asked),
-      ),
+      )),
   };
 });
 
@@ -105,6 +105,7 @@ import {
   loadLocales,
 } from "@breatic/core";
 import type { Hono } from "hono";
+import { sendAndRead } from "./chat-run-harness.js";
 
 try {
   initCore(process.env);
@@ -196,12 +197,12 @@ async function openConversation(projectId: string, cookie: string): Promise<stri
 }
 
 /**
- * Send one message and read its stream to the end, so the turn finishes.
+ * Send one message and read the run it opens to the end, so the turn finishes.
  * @param conversationId - Conversation to append to.
  * @param projectId - Project the conversation belongs to.
  * @param cookie - Caller's session cookie.
  * @param text - What the user says.
- * @throws {Error} When the endpoint does not open a stream.
+ * @throws {Error} When the endpoint refuses the message.
  */
 async function sendAndDrain(
   conversationId: string,
@@ -209,20 +210,12 @@ async function sendAndDrain(
   cookie: string,
   text: string,
 ): Promise<void> {
-  const res = await app.request("/api/v1/chat/message", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: cookie,
-    },
-    body: JSON.stringify({
-      message: text,
-      project_id: projectId,
-      conversation_id: conversationId,
-    }),
+  const res = await sendAndRead(app, cookie, {
+    message: text,
+    project_id: projectId,
+    conversation_id: conversationId,
   });
   if (res.status !== 200) throw new Error(`send failed: ${res.status}`);
-  await res.text();
 }
 
 /**
@@ -367,7 +360,7 @@ describe("the language an error about the request comes back in", () => {
   it("is the one the request asked for, not the browser's own", async () => {
     // Chat posts through the SDK's own transport, which sent no language at
     // all until this task added one. Without it the server negotiates from
-    // whatever the browser advertises, so a reader on an English interface in
+    // whatever the browser advertises, so a user on an English interface in
     // a Chinese browser is told off in Chinese.
     const { projectId, cookie } = await seedProject();
     const conversationId = await openConversation(projectId, cookie);
@@ -380,6 +373,7 @@ describe("the language an error about the request comes back in", () => {
         "Accept-Language": "zh-CN",
       },
       body: JSON.stringify({
+        id: crypto.randomUUID(),
         message: "x".repeat(100_000),
         project_id: projectId,
         conversation_id: conversationId,
@@ -417,7 +411,7 @@ async function readBack(
  * Run one turn on a fresh conversation and read it back.
  * @param parts - What the model streams.
  * @returns The reply the read route hands the panel.
- * @throws {Error} When the read-back has no reply after the reader's message.
+ * @throws {Error} When the read-back has no reply after the user's message.
  */
 async function replyReadBack(parts: ModelStreamPart[]): Promise<Record<string, unknown>[]> {
   stream.parts = parts;
@@ -440,7 +434,7 @@ describe("how a turn's ending reads back when the conversation is reopened", () 
     expect(parts).toEqual([]);
   });
 
-  it("carries a failed tool step with the reader's line and how it ended", async () => {
+  it("carries a failed tool step with the user's line and how it ended", async () => {
     const parts = await replyReadBack([
       { type: "tool-call", toolCallId: "tc-fail", toolName: "always_fails", input: "{}" },
       FINISHED_ASKING_FOR_A_TOOL,
@@ -475,7 +469,7 @@ describe("how a turn that was steered reads back", () => {
     expect(parts.filter((p) => p.type === "text")).toEqual([]);
   });
 
-  it("reads input the SDK refused back as turned away, with no line for the reader", async () => {
+  it("reads input the SDK refused back as turned away, with no line for the user", async () => {
     const parts = await replyReadBack([
       {
         type: "tool-call",

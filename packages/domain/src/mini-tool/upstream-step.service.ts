@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { MiniToolConsumptionIdentity } from "@breatic/shared/mini-tools";
 import type { UpstreamStep } from "@domain/task/upstreamStep.repo.js";

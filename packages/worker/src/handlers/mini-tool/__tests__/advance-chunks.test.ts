@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The shared chunk list of the model runs (`advanceChunks`, model-run-steps.ts; frames-split design §5.4 parallel stage), the
@@ -20,7 +20,7 @@ import type * as domainModule from "@breatic/domain";
 import type { OpenMiniToolPlanJobInput } from "@breatic/domain";
 import type { MiniToolPlanJobRequest } from "@breatic/shared";
 import { advanceChunks, advanceRegistered, type ContainerStep, type ModelStepRun } from "@worker/handlers/mini-tool/model-run-steps.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 import { DeadlinePassed } from "@breatic/shared";
 
 const h = vi.hoisted(() => ({ list: vi.fn(), ensure: vi.fn(), open: vi.fn(), record: vi.fn(), advance: vi.fn(), registered: vi.fn(), grants: vi.fn() }));

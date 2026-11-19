@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { ProjectUpdateNotice } from '@web/pages/project/chrome/ProjectUpdateNotice';
 import type { ConnectionStatus } from '@web/data/yjs/use-socket';
@@ -28,6 +28,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { Skeleton } from '@web/components/ui/skeleton';
 import type { ProjectCreditsView, ProjectRole } from '@breatic/shared';
 import type { Member } from '@web/data/api/members';
+import type { FollowOther } from '@web/stores/follow';
 
 /** Held still so the bar is not handed a fresh object on every render. */
 const BAR_BOX = chromeBarBox({ sides: 'var(--space-6)', gap: 'var(--space-4)' });
@@ -66,15 +67,15 @@ export function toCreditsReadout(query: {
 interface TopBarProps {
   projectId: string;
   projectName: string;
-  /** The role this reader acts with: `viewer` on an archived project. */
+  /** The role this user acts with: `viewer` on an archived project. */
   role: ProjectRole;
-  /** The reader's real role, shown on the role tag even while archived. */
+  /** The user's real role, shown on the role tag even while archived. */
   actualRole: ProjectRole;
   /** The project is archived; the role tag stops taking clicks. */
   archived: boolean;
-  /** The reader may rename the project: the studio's admin or its owner. */
+  /** The user may rename the project: the studio's admin or its owner. */
   canRename: boolean;
-  /** The reader may leave the project: a live project's editor or viewer. */
+  /** The user may leave the project: a live project's editor or viewer. */
   canLeave: boolean;
   credits: CreditsReadout;
   onRename: (next: string) => void;
@@ -86,6 +87,10 @@ interface TopBarProps {
   members: ReadonlyArray<Member>;
   /** Current user's id, used by MembersStack to mark the "me" row. */
   currentUserId?: string;
+  /** User ids online in this project, for the members list's online state and View (#920). */
+  onlineUserIds?: ReadonlySet<string>;
+  /** Whom each member is following here, for the members list's View (#920). */
+  followTargets?: ReadonlyMap<string, FollowOther>;
   /** Realtime failures take priority over release notices. */
   connectionStatus?: ConnectionStatus;
 }
@@ -106,8 +111,8 @@ interface TopBarProps {
  * @param root0 - Top-bar props.
  * @param root0.projectId - Id of the current project, passed to membership, share, role and bell children.
  * @param root0.projectName - Current project name shown in the editable title.
- * @param root0.role - The role the reader acts with; gates share and member management.
- * @param root0.actualRole - The reader's real role, shown on the role tag.
+ * @param root0.role - The role the user acts with; gates share and member management.
+ * @param root0.actualRole - The user's real role, shown on the role tag.
  * @param root0.archived - Whether the project is archived, which freezes the role tag.
  * @param root0.canRename - Whether the title can be edited.
  * @param root0.canLeave - Whether the members list ends with "Leave project".
@@ -116,6 +121,8 @@ interface TopBarProps {
  * @param root0.members - The project's roster, forwarded to both member components.
  * @param root0.connectionStatus - Realtime status giving connection errors priority.
  * @param root0.currentUserId - Current user's id, used by MembersStack to mark the "me" row.
+ * @param root0.onlineUserIds - User ids online in this project, forwarded to MembersStack.
+ * @param root0.followTargets - Whom each member is following here, forwarded to MembersStack.
  * @returns the project chrome top bar with its left identity block and right action groups.
  */
 export function TopBar({
@@ -130,6 +137,8 @@ export function TopBar({
   onRename,
   members,
   currentUserId,
+  onlineUserIds,
+  followTargets,
   connectionStatus = 'connected',
 }: TopBarProps): React.JSX.Element {
   const [leaving, setLeaving] = React.useState(false);
@@ -167,6 +176,8 @@ export function TopBar({
             currentUserId={currentUserId}
             currentUserRole={role}
             onLeave={canLeave ? openLeave : undefined}
+            onlineUserIds={onlineUserIds}
+            followTargets={followTargets}
           />
           <LangSwitcher />
           <ThemeToggle />

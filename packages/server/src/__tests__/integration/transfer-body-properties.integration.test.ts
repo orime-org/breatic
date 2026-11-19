@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Property tests for the transfer-reference entrance (inner#1006 design §4.6,
@@ -129,11 +129,12 @@ async function completed(w: Seeded, declaredSize: number, owner: string = w.a.id
   return transferGrant({ userId: owner, studioId: w.studioId, projectId: w.projectId, declaredSize });
 }
 
-/** The three routes that take a transfer, by their config key. */
+/** The four routes that take a transfer, by their config key. */
 const ROUTES = {
   chat_message: "/chat/message",
   canvas_paste: "/canvas/paste",
   node_history_snapshot: SNAPSHOT,
+  document_version_save: "/documents/versions",
 } as const;
 
 describe("P05: the read cap", () => {

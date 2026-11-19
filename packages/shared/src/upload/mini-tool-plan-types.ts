@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
 import type { EditFileTier } from "@shared/mini-tools/video-encode-plan.js";

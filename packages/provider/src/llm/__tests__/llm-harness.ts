@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ProviderConfigInput } from "../../config/schema.js";
 import { createProvider, type Provider } from "../../provider.js";
@@ -121,8 +121,8 @@ export function llmConfig(fakes: LlmFakes, understandOpenRouterFirst = false): P
       vendor_ids: { "deepseek/deepseek-v4.1-flash-1017": { deepseek: "deepseek-flash" } },
       openrouter_backends: { "google/gemini-3.8-flash": { only: ["google-vertex"], allow_fallbacks: false } },
       prices: {
-        "deepseek/deepseek-v4-pro": { input_cache_hit_per_mtok: 0.044, input_cache_miss_per_mtok: 1.32, output_per_mtok: 3.96 },
-        "google/gemini-3.8-flash": { input_cache_miss_per_mtok: 0.5, output_per_mtok: 3 },
+        "deepseek/deepseek-v4-pro": [{ input_cache_hit_per_mtok: 0.044, input_cache_miss_per_mtok: 1.32, output_per_mtok: 3.96 }],
+        "google/gemini-3.8-flash": [{ input_cache_miss_per_mtok: 0.5, output_per_mtok: 3 }],
       },
     },
   };

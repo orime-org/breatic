@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Getting the media an address points at, and refusing it early where that is
@@ -149,6 +149,57 @@ beforeEach(() => {
   });
 });
 
+describe("fetchMedia — an image's reader, for an upstream that needs its bytes", () => {
+  /**
+   * An image settled by its peek, as fetchMedia hands it over.
+   * @param url - Its address.
+   * @returns The image.
+   */
+  async function settledImage(url = "https://example.com/dog.jpg"): Promise<Extract<Media, { kind: "image" }>> {
+    httpRequestMock.mockResolvedValueOnce(head({ "content-type": "image/jpeg", "content-length": "3" }));
+    const media = await fetchMedia({ ...base, url });
+    if (media.kind !== "image") throw new Error("not an image");
+    return media;
+  }
+
+  it("names the type the image was settled as", async () => {
+    expect((await settledImage()).contentType).toBe("image/jpeg");
+  });
+
+  it("reads the bytes with a GET of the same address", async () => {
+    const image = await settledImage();
+    httpRequestMock.mockResolvedValueOnce(body(new Uint8Array([1, 2, 3])));
+    expect(await image.read(new AbortController().signal)).toEqual(new Uint8Array([1, 2, 3]));
+    expect(methodOf(1)).toBe("GET");
+  });
+
+  it("calls an address that answers the read with a refusal unreachable", async () => {
+    const image = await settledImage();
+    httpRequestMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
+    await expect(image.read(new AbortController().signal)).rejects.toMatchObject({ kind: "unreachable", status: 404 });
+  });
+
+  it("refuses more bytes than the limit", async () => {
+    const image = await settledImage();
+    httpRequestMock.mockResolvedValueOnce(body(new Uint8Array(base.maxBytes + 1)));
+    await expect(image.read(new AbortController().signal)).rejects.toMatchObject({ kind: "too-large" });
+  });
+
+  it("calls a read that carries nothing empty", async () => {
+    const image = await settledImage();
+    httpRequestMock.mockResolvedValueOnce(body(new Uint8Array()));
+    await expect(image.read(new AbortController().signal)).rejects.toMatchObject({ kind: "empty" });
+  });
+
+  it("stops when the model call stops", async () => {
+    const image = await settledImage();
+    const stop = new AbortController();
+    stop.abort();
+    httpRequestMock.mockRejectedValueOnce(new DOMException("aborted", "AbortError"));
+    await expect(image.read(stop.signal)).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
+
 describe("fetchMedia — an image stays an address", () => {
   it("hands the url over without reading a byte of it", async () => {
     httpRequestMock.mockResolvedValueOnce(
@@ -157,7 +208,7 @@ describe("fetchMedia — an image stays an address", () => {
 
     const media = await fetchMedia({ ...base, url: "https://example.com/dog.jpg" });
 
-    expect(media).toEqual({ kind: "image", url: "https://example.com/dog.jpg" });
+    expect(media).toEqual({ kind: "image", url: "https://example.com/dog.jpg", contentType: expect.any(String), read: expect.any(Function) });
     expect(httpRequestMock).toHaveBeenCalledTimes(1);
     expect(methodOf(0)).toBe("HEAD");
   });
@@ -171,7 +222,7 @@ describe("fetchMedia — video and audio become bytes", () => {
 
     const media = await fetchMedia({ ...base, url: "https://example.com/clip.mp4" });
 
-    expect(media).toMatchObject({ kind: "video", format: "video/mp4" });
+    expect(media).toMatchObject({ kind: "video", contentType: "video/mp4" });
     expect([...bytesOf(media)]).toEqual([1, 2, 3, 4]);
     expect(methodOf(1)).toBe("GET");
   });
@@ -183,7 +234,7 @@ describe("fetchMedia — video and audio become bytes", () => {
 
     const media = await fetchMedia({ ...base, url: "https://example.com/talk.mp3" });
 
-    expect(media).toMatchObject({ kind: "audio", format: "mp3" });
+    expect(media).toMatchObject({ kind: "audio", contentType: "audio/mpeg" });
     expect([...bytesOf(media)]).toEqual([9, 9]);
   });
 });
@@ -204,7 +255,7 @@ describe("fetchMedia — a caller that already judged the bytes", () => {
       ledgerType: "video/webm",
     });
 
-    expect(media).toMatchObject({ kind: "video", format: "video/webm" });
+    expect(media).toMatchObject({ kind: "video", contentType: "video/webm" });
   });
 
   // A type the reading does not take is refused on the judged one too, and
@@ -232,7 +283,7 @@ describe("fetchMedia — settling the type", () => {
 
     const media = await fetchMedia({ ...base, url: "https://cdn.example.com/a/b/clip.mp4" });
 
-    expect(media).toMatchObject({ kind: "video", format: "video/mp4" });
+    expect(media).toMatchObject({ kind: "video", contentType: "video/mp4" });
   });
 
   it("falls back to the address when the HEAD brings nothing back", async () => {
@@ -242,7 +293,7 @@ describe("fetchMedia — settling the type", () => {
 
     const media = await fetchMedia({ ...base, url: "https://example.com/talk.mp3" });
 
-    expect(media).toMatchObject({ kind: "audio", format: "mp3" });
+    expect(media).toMatchObject({ kind: "audio", contentType: "audio/mpeg" });
   });
 
   it("ignores parameters on the declared type", async () => {
@@ -253,7 +304,7 @@ describe("fetchMedia — settling the type", () => {
     // parameters left on.
     const media = await fetchMedia({ ...base, url: "https://example.com/a.png" });
 
-    expect(media).toEqual({ kind: "image", url: "https://example.com/a.png" });
+    expect(media).toEqual({ kind: "image", url: "https://example.com/a.png", contentType: expect.any(String), read: expect.any(Function) });
   });
 
   it("refuses a type that is none of the three, naming what it saw", async () => {
@@ -282,7 +333,7 @@ describe("fetchMedia — settling the type", () => {
 
     expect(media).toMatchObject({
       kind: "video",
-      format: "video/mov",
+      contentType: "video/quicktime",
     });
   });
 
@@ -366,7 +417,7 @@ describe("fetchMedia — the size limit", () => {
     // The ceiling is what this server will handle, so it holds for whichever
     // kind an address turns out to hold. An image is settled off the peek and
     // its length arrives with that same peek, so the refusal costs nothing and
-    // the reader is told the size rather than being sent to the endpoint to
+    // the user is told the size rather than being sent to the endpoint to
     // hear a refusal in the endpoint's own words.
     httpRequestMock.mockResolvedValueOnce(
       head({ "content-type": "image/png", "content-length": "31000000" }),
@@ -407,7 +458,7 @@ describe("fetchMedia — the size limit", () => {
 
     const media = await fetchMedia({ ...base, url: "https://example.com/x.webp" });
 
-    expect(media).toEqual({ kind: "image", url: "https://example.com/x.webp" });
+    expect(media).toEqual({ kind: "image", url: "https://example.com/x.webp", contentType: expect.any(String), read: expect.any(Function) });
     expect(httpRequestMock).toHaveBeenCalledTimes(1);
   });
 
@@ -451,7 +502,7 @@ describe("fetchMedia — the size limit", () => {
 
   it("says a file is over the limit without inventing a size it does not know", async () => {
     // The stream path only knows "more than the limit arrived". Reporting the
-    // cut-off point as the file size is a number the reader can act on and it
+    // cut-off point as the file size is a number the user can act on and it
     // would be wrong.
     httpRequestMock
       .mockResolvedValueOnce(head({ "content-type": "video/mp4" }))
@@ -505,7 +556,7 @@ describe("fetchMedia — when it cannot be had", () => {
 
     const media = await fetchMedia({ ...base, url: "https://example.com/clip.mp4" });
 
-    expect(media).toMatchObject({ kind: "video", format: "video/mp4" });
+    expect(media).toMatchObject({ kind: "video", contentType: "video/mp4" });
   });
 
   it("cancels a body it is not going to read", async () => {
@@ -703,7 +754,7 @@ describe("fetchMedia — where it will not go", () => {
   it("says nothing about what it found there, and says why it refused", async () => {
     // A status code is the answer to "is something listening on this port",
     // and that is the question this gate exists to leave unanswered. Why we
-    // declined is a different fact and the reader typed the address, so
+    // declined is a different fact and the user typed the address, so
     // withholding it only leaves the model saying nothing useful.
     const failure = await fetchMedia({ ...base, url: "http://169.254.169.254/x.mp4" }).catch(
       (err: MediaUnavailable) => err,
@@ -750,7 +801,7 @@ describe("fetchMedia — following a redirect", () => {
   });
 
   it("says it was the redirect target that is not public, not the address given", async () => {
-    // The address the reader typed is public — a shortener, or a host with an
+    // The address the user typed is public — a shortener, or a host with an
     // open redirect. Reporting the refusal as if it were about that address
     // sends them to check something they cannot find anything wrong with,
     // while "it redirects somewhere we do not go" is a move they can make.
@@ -807,7 +858,7 @@ describe("fetchMedia — an image whose address is dead", () => {
   it("lets the GET speak for a dead address whose name implies a format we refuse", async () => {
     // The mirror of the case below: a name is a guess, so a guess that says
     // "audio we cannot take" is no more settled than one that says "image".
-    // Telling a reader to convert a file at an address that holds nothing
+    // Telling a user to convert a file at an address that holds nothing
     // sends them to convert and come back to the same dead link.
     httpRequestMock
       .mockResolvedValueOnce(head({}, 404))
@@ -830,7 +881,7 @@ describe("fetchMedia — an image whose address is dead", () => {
 
     const media = await fetchMedia({ ...base, url: "https://picsum.photos/200" });
 
-    expect(media).toEqual({ kind: "image", url: "https://picsum.photos/200" });
+    expect(media).toEqual({ kind: "image", url: "https://picsum.photos/200", contentType: expect.any(String), read: expect.any(Function) });
     expect(methodOf(1)).toBe("GET");
   });
 
@@ -843,7 +894,7 @@ describe("fetchMedia — an image whose address is dead", () => {
 
     const media = await fetchMedia({ ...base, url: "https://example.com/dog.jpg" });
 
-    expect(media).toEqual({ kind: "image", url: "https://example.com/dog.jpg" });
+    expect(media).toEqual({ kind: "image", url: "https://example.com/dog.jpg", contentType: expect.any(String), read: expect.any(Function) });
   });
 
   it("asks with a GET when the HEAD refused, rather than handing the address over", async () => {
@@ -906,14 +957,14 @@ describe("fetchMedia — audio this model cannot be sent", () => {
     ["audio/x-m4a", "m4a"],
     ["audio/m4a", "m4a"],
     ["audio/webm", "webm"],
-  ])("carries the format %s travels as", async (type, format) => {
+  ])("takes %s, carrying its type for provider to name (%s on OpenRouter)", async (type) => {
     httpRequestMock
       .mockResolvedValueOnce(head({ "content-type": type, "content-length": "3" }))
       .mockResolvedValueOnce(body(new Uint8Array([1, 2, 3])));
 
     const media = await fetchMedia({ ...base, url: "https://example.com/a.bin" });
 
-    expect(media).toMatchObject({ kind: "audio", format });
+    expect(media).toMatchObject({ kind: "audio", contentType: type });
   });
 });
 
@@ -945,7 +996,7 @@ describe("fetchMedia — an image this model cannot be sent", () => {
 
       const media = await fetchMedia({ ...base, url: "https://example.com/a.bin" });
 
-      expect(media).toEqual({ kind: "image", url: "https://example.com/a.bin" });
+      expect(media).toEqual({ kind: "image", url: "https://example.com/a.bin", contentType: expect.any(String), read: expect.any(Function) });
     },
   );
 });
@@ -981,14 +1032,14 @@ describe("fetchMedia — video this model cannot be sent", () => {
     ["video/webm", "video/webm"],
     ["video/mov", "video/mov"],
     ["video/quicktime", "video/mov"],
-  ])("carries the name %s travels under", async (type, format) => {
+  ])("takes %s, carrying its type for provider to name (%s on OpenRouter)", async (type) => {
     httpRequestMock
       .mockResolvedValueOnce(head({ "content-type": type, "content-length": "3" }))
       .mockResolvedValueOnce(body(new Uint8Array([1, 2, 3])));
 
     const media = await fetchMedia({ ...base, url: "https://example.com/a.bin" });
 
-    expect(media).toMatchObject({ kind: "video", format });
+    expect(media).toMatchObject({ kind: "video", contentType: type });
   });
 });
 
@@ -1116,7 +1167,7 @@ describe("fetchMedia — when the HEAD settles nothing", () => {
 
     const media = await fetchMedia({ ...base, url: "https://example.com/400/300" });
 
-    expect(media).toEqual({ kind: "image", url: "https://example.com/400/300" });
+    expect(media).toEqual({ kind: "image", url: "https://example.com/400/300", contentType: expect.any(String), read: expect.any(Function) });
     expect(methodOf(1)).toBe("GET");
     expect(cancel).toHaveBeenCalled();
   });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Every way the proposal check can refuse, by name, and whether its reason
@@ -16,6 +16,25 @@
  * its reach. A test keyed by these names holds each reason to its statements
  * and each marked fix to clearing its refusal.
  */
+
+import type { ParamGate } from "@breatic/shared";
+
+/**
+ * The condition a gate states, in words.
+ * @param gate - The gate.
+ * @param quoted - Whether each param name is quoted.
+ * @returns The condition.
+ */
+export function gateWords(gate: ParamGate, quoted = true): string {
+  /**
+   * One param name as written.
+   * @param name - The name.
+   * @returns It, quoted when asked.
+   */
+  const named = (name: string): string => (quoted ? `"${name}"` : name);
+  const equals = Object.entries(gate.equals ?? {}).map(([name, value]) => `${named(name)} is ${JSON.stringify(value)}`);
+  return [...(gate.flag_on !== undefined ? [`${named(gate.flag_on)} is on`] : []), ...equals].join(" and ");
+}
 
 /** Every refusal the proposal check gives, each marked with where its one fix acts, or false for none. */
 export const REFUSALS = {
@@ -36,8 +55,12 @@ export const REFUSALS = {
   "template-key-repeated": false,
   "template-edge-missing": "node",
   "template-edge-into": "node",
+  "template-input-into": "node",
   "template-input-missing": false,
+  "template-optional-input-untagged": "node",
+  "template-optional-input-paragraph": false,
   "template-no-prompt": "node",
+  "template-tweak-unfilled": "node",
   "sources-no-taker": false,
   "sources-over-room": false,
   "material-unused": false,
@@ -45,12 +68,19 @@ export const REFUSALS = {
   "text-generates": false,
   "no-mode-model": false,
   "mode-unbacked": false,
-  "no-model-for-kind": false,
   "model-not-in-mode": false,
   "shots-outside-multishot": "node",
   "multishot-no-shots": "node",
   "shots-with-prompt": "node",
+  "lines-missing": "node",
+  "lines-with-prompt": "node",
+  "lines-without-stand-in": "node",
+  "line-speaker-out-of-range": false,
+  "line-empty": false,
+  "speakers-missing": false,
   "no-prompt-box": "node",
+  "prompt-box-gated-off": false,
+  "slot-gated-off": false,
   "ref-outside": "node",
   "ref-self": "node",
   "ref-arrives-otherwise": false,
@@ -92,6 +122,7 @@ export const REFUSALS = {
   "param-not-number": false,
   "param-out-of-range": false,
   "param-off-step": false,
+  "param-too-short": false,
   "edge-kind-not-taken": false,
   "edge-kind-not-taken-link": false,
   "edge-into-ambiguous": false,

@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>El espacio de trabajo colaborativo con IA, en tiempo real, para equipos creativos.</strong></p>
-<p align="center">Disponible en línea · Código disponible · Navegador de escritorio</p>
+<p align="center">Disponible en línea · Código abierto · Navegador de escritorio</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_es">Sitio web</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -29,6 +29,24 @@ Reúne el brief, las escenas y los archivos multimedia en un mismo Project. Escr
 
 El servicio alojado ofrece un plan Starter gratuito. Los créditos de generación con IA se compran por separado y no están incluidos en las suscripciones. Consulta los [precios y créditos][hosted-pricing].
 
+## Un proyecto, cuatro espacios creativos colaborativos
+
+En Breatic puedes revisar el guion, probar ideas visuales, preparar escenas y ordenar planos mientras avanzas. Si trabajas en equipo, todos pueden intervenir a la vez en el mismo proyecto.
+
+| Función | **Breatic** | Higgsfield | TapNow | LibTV | Luma | LTX Studio |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Documentos colaborativos** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Lienzo colaborativo** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Edición 3D colaborativa** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Línea de tiempo colaborativa** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Previsualización 3D | ✅ | ✅ | ✅ | ✅ | ✗ | ✗ |
+| Edición en línea de tiempo | ✅ | ✗ | ✅ | ✅ | ✗ | ✅ |
+| Agente del proyecto | ✅ | ✅ | ✅ | ✅ | ✅ | ✗ |
+| Revisión de propuestas de redacción | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Uso compartido en equipo | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+Colaborar significa que varias personas pueden editar el mismo espacio de trabajo en tiempo real. Puedes revisar los cambios de redacción que propone el agente antes de decidir si aplicarlos al texto original. La comparación se basa en información pública de los productos disponible al 18 de noviembre de 2026. ✅ indica compatibilidad confirmada y ✗ indica que no se pudo confirmar mediante información pública.
+
 ![Imágenes de una cafetería en el lienzo de Breatic junto al chat del proyecto; interfaz en inglés](docs/images/readme/workspace-en.png)
 
 ## Qué puedes hacer
@@ -39,11 +57,11 @@ El servicio alojado ofrece un plan Starter gratuito. Los créditos de generació
 | **Document Spaces** | Escribe guiones, descripciones de planos y listas de producción con texto formateado. |
 | **Canvas Spaces** | Ordena referencias y archivos en un lienzo infinito; genera y ajusta recursos con instrucciones, modelos y referencias. |
 | **3D (DEV)** | Coloca objetos incorporados en una escena compartida y modifica su posición, rotación y escala. |
-| **Timeline (DEV)** | Añade vídeos del Project o sube vídeos locales a una pista visual compartida, ajusta el fotograma inicial y previsualiza la secuencia. |
+| **Timeline (DEV)** | Organiza vídeos del Project o vídeos locales subidos en pistas compartidas: mueve, recorta, divide, duplica y elimina clips, deshaz tus propios cambios y previsualiza la secuencia. Describe una Web Animation, haz que DeepSeek la cree, síguela en la lista de ejecuciones y añade el resultado como clips que se reproducen con el reloj de la Timeline. Los vídeos y las Web Animations de todas las pistas se reproducen juntos como capas superpuestas; selecciona una capa en la vista previa para moverla, escalarla, estirarla o rotarla, o escribe su posición y tamaño. Elige la relación de aspecto del encuadre entre siete opciones (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) al final de la barra de reproducción; las capas conservan su lugar en el encuadre. |
 | **Agente de IA en el proyecto** | Comenta ideas, aporta contexto de los documentos o del lienzo y revisa sus propuestas junto a tus materiales. |
 | **Colaboración en tiempo real** | Invita a colaboradores, establece permisos y trabaja en lienzos, documentos, escenas 3D y Timelines sincronizados. |
 
-Los recursos pueden ser imágenes, vídeos, audio y archivos 3D. La generación depende de los proveedores configurados y del acceso a sus modelos. Canvas y Document están disponibles; 3D y Timeline llevan la etiqueta **DEV**. Timeline permite organizar y previsualizar vídeos en una sola pista visual. La edición multipista, otros tipos de medios, Web Animation y la exportación de vídeo están previstas. La generación con modelos y las anotaciones dentro de la escena 3D están en desarrollo.
+Los recursos pueden ser imágenes, vídeos, audio y archivos 3D. La generación depende de los proveedores configurados y del acceso a sus modelos. Canvas y Document están disponibles; 3D y Timeline llevan la etiqueta **DEV**. Timeline permite editar y previsualizar vídeos y Web Animations en varias pistas visuales; Web Animation solo está disponible en las instalaciones que la activan. Otros tipos de medios y la exportación de vídeo están previstos. La generación con modelos y las anotaciones dentro de la escena 3D están en desarrollo.
 
 ## Revisar los cambios juntos
 
@@ -96,7 +114,7 @@ Para vulnerabilidades, utiliza el canal privado de [SECURITY.md](SECURITY.md). E
 
 ## Licencia y usos permitidos
 
-El código fuente de Breatic está disponible bajo la [Elastic License 2.0](LICENSE) (Elastic-2.0). Puedes leerlo, modificarlo, redistribuirlo y ejecutarlo para ti o dentro de tu organización, incluido el trabajo comercial. No puedes ofrecer Breatic a terceros como servicio alojado o gestionado. Consulta los términos completos en la licencia.
+Breatic es de código abierto bajo la [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only). Puedes usar, estudiar, modificar y autoalojar Breatic con cualquier fin, incluido el uso comercial. Si modificas Breatic y permites que otras personas usen la versión modificada a través de una red, debes ofrecerles su código fuente completo bajo la misma licencia. Consulta los términos completos en la licencia.
 
 El nombre y el logotipo son marcas de Orime, Inc. y no están cubiertos por esta licencia; consulta [TRADEMARKS.md](TRADEMARKS.md). La licencia no restringe el contenido que creas con Breatic.
 

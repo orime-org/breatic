@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Reading a failed understand run as something the node's row can hold
@@ -7,14 +7,14 @@
  *
  * The capability says why it failed in its own vocabulary — five ways an
  * address yields nothing, five ways a service refuses. The row stores one of
- * ours, which is turned into a sentence where the reader is. The two
+ * ours, which is turned into a sentence where the user is. The two
  * vocabularies meet here and nowhere else.
  */
 
 import { MediaUnavailable, UnderstandRefused } from "@breatic/domain";
 import type { RefusalKind, UnavailableKind } from "@breatic/domain";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
-import { UpstreamTaskFailed } from "@worker/providers/http.js";
+import { MediaRunFailed } from "@worker/handlers/media-run.js";
 import { DeadlinePassed } from "@breatic/shared";
 import {
   assetNameFromUrl,
@@ -141,8 +141,9 @@ const REFUSAL_ANSWER_STANDS: Readonly<Record<RefusalKind, boolean>> = {
  * @returns True when another attempt would land on the same answer.
  */
 export function verdictStands(err: unknown): boolean {
-  // A redelivery resumes the same prediction and reads the same failure.
-  if (err instanceof UpstreamTaskFailed) return true;
+  // provider answered the run failed: an upstream refused or failed it, or none can take it. A redelivery reads the
+  // same answer.
+  if (err instanceof MediaRunFailed) return true;
   // A redelivery reads the same job, which has already ended.
   if (err instanceof ContainerJobFailed) return true;
   // The task's two hours do not come back.
@@ -157,7 +158,7 @@ export function verdictStands(err: unknown): boolean {
 /**
  * Read what a run threw as the code its row holds.
  * @param err - Whatever the run threw.
- * @returns The stored code, which the reader is told in their own language.
+ * @returns The stored code, which the user is told in their own language.
  */
 export function understandFailureCode(err: unknown): TaskFailureReason {
   if (err instanceof MediaUnavailable) return UNAVAILABLE_AS[err.kind];
@@ -167,7 +168,7 @@ export function understandFailureCode(err: unknown): TaskFailureReason {
   if (err instanceof StoppedPartWay) return "internal";
   if (err instanceof AnsweredNothing) return "no_result";
   // Something on our side broke, and which part is in the log rather than on
-  // the node: a reader has the same thing to do either way.
+  // the node: a user has the same thing to do either way.
   return "internal";
 }
 
@@ -175,7 +176,7 @@ export function understandFailureCode(err: unknown): TaskFailureReason {
  * Which causes say something about the file itself.
  *
  * Every cause is named, so a cause added to the vocabulary does not compile
- * until somebody decides whether its sentence names a file — the reader is
+ * until somebody decides whether its sentence names a file — the user is
  * asking which of theirs this happened to, and a list of today's two would
  * answer that for two of them forever.
  */
@@ -200,12 +201,14 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
   tool_failed: false,
   no_audio_track: false,
   cut_short: false,
+  input_refused: false,
+  model_not_configured: false,
 };
 
 /**
  * What a failed read's row holds: the code, and the file it was about.
  *
- * A refusal over a file leaves the reader asking which of theirs this was,
+ * A refusal over a file leaves the user asking which of theirs this was,
  * and what about it we would not take. This run holds every part of that
  * answer at the moment it refuses — the address it was handed names the
  * asset, and the classification carries the type it judged and the size it
@@ -215,7 +218,7 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
  * A cause that says nothing about a file adds nothing; `encodeTaskFailure`
  * settles that, and stores the bare code.
  * Which reading failed travels whatever the cause: the sentence names the act
- * the reader asked for, on the row and in the history alike (inner#856).
+ * the user asked for, on the row and in the history alike (inner#856).
  * @param err - Whatever the run threw.
  * @param sourceUrl - The address this run was handed.
  * @param reading - Which reading this was, when it was not an understanding.

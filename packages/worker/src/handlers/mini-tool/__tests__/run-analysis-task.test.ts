@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { DelayedError, type Job } from "bullmq";
@@ -9,7 +9,7 @@ import type { MiniToolAnalysisJob, miniToolAnalysisService } from "@breatic/doma
 import { DeadlinePassed } from "@breatic/shared";
 import { miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { runMiniToolAnalysisTask } from "../run-analysis-task.js";
 import { FROZEN_PRESENTATION } from "./frozen-presentation.js";

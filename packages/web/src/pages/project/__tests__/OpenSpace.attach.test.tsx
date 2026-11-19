@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, act } from '@testing-library/react';
 import * as React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import * as Y from 'yjs';
 
-import type { SpaceType } from '@breatic/shared';
+import { SPACE_TASKS_KEY, SPACE_TASKS_VERSION, type SpaceType } from '@breatic/shared';
 
 // Spy transport — record every per-doc HocuspocusProvider + its destroy().
 // Teardown is DEFERRED by the manager, so detach assertions run the timers.
@@ -44,7 +46,8 @@ import { OpenSpace } from '@web/pages/project/OpenSpace';
 import {
   _resetCollabSocketForTests,
 } from '@web/data/yjs/collab-socket';
-import { _resetForTests } from '@web/data/yjs/manager';
+import { _resetForTests, getDoc } from '@web/data/yjs/manager';
+import { spaceTasksQueryKey } from '@web/data/api/scene';
 
 interface Tab {
   id: string;
@@ -54,13 +57,18 @@ interface Tab {
 /** Render the open-tab attachment list inside a shared-socket provider. */
 function tree(tabs: ReadonlyArray<Tab>): React.JSX.Element {
   return (
-    <CollabSocketProvider userId='u1'>
-      {tabs.map((t) => (
-        <OpenSpace key={t.id} projectId='p1' spaceId={t.id} type={t.type} active={false} visited={false} />
-      ))}
-    </CollabSocketProvider>
+    <QueryClientProvider client={queryClient}>
+      <CollabSocketProvider userId='u1'>
+        {tabs.map((t) => (
+          <OpenSpace key={t.id} projectId='p1' spaceId={t.id} type={t.type} active={false} visited={false} />
+        ))}
+      </CollabSocketProvider>
+    </QueryClientProvider>
   );
 }
+
+/** The page's query cache, which the tabs of Space types that watch their background work read. */
+const queryClient = new QueryClient();
 
 describe('OpenSpace — attach lifecycle follows OPEN tabs, not the active tab', () => {
   beforeEach(() => {
@@ -100,6 +108,25 @@ describe('OpenSpace — attach lifecycle follows OPEN tabs, not the active tab',
       'project-p1/timeline-t',
     ]);
     expect(providerInstances[1]!.config.websocketProvider).toBe(providerInstances[0]!.config.websocketProvider);
+  });
+
+  it('reads the task lists again when a Timeline document records a change, and leaves other types alone', () => {
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
+    render(
+      tree([
+        { id: 't', type: 'timeline' },
+        { id: 'c', type: 'canvas' },
+        { id: 'd', type: 'document' },
+      ]),
+    );
+    // Collab writes the version, so it reaches the tab as a remote update.
+    const fromCollab = new Y.Doc();
+    fromCollab.getMap(SPACE_TASKS_KEY).set(SPACE_TASKS_VERSION, '1-0');
+    for (const name of ['project-p1/timeline-t', 'project-p1/canvas-c', 'project-p1/document-d']) {
+      act(() => { Y.applyUpdate(getDoc(name), Y.encodeStateAsUpdate(fromCollab)); });
+    }
+    expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([spaceTasksQueryKey('p1', 't')]);
+    invalidate.mockRestore();
   });
 
   it('gives a canvas and a document tab their own separate documents', () => {

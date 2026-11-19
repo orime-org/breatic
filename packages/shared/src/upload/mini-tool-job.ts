@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The mini-tool container job protocol between our worker and the ingest
@@ -13,6 +13,7 @@
 
 import { z } from "zod";
 import type { UntilDeadline } from "@shared/http/deadline.js";
+import { containerUsageSchema, type ContainerUsage } from "@shared/upload/container-usage.js";
 
 import { CONTAINER_FAILURES, CONTAINER_OPS, MINI_TOOL_JOB_MAX_OUTPUTS, type ContainerFailure, type ContainerOp } from "@shared/mini-tools/types.js";
 import {
@@ -39,15 +40,13 @@ export interface MiniToolJobRequest {
   op: ContainerOp;
   params: Record<string, unknown>;
   input: { storageKey: string };
+  /**
+   * The inputs after `input`, in order: a join's clips after the first
+   * (inner#1825). A job without them reads one input, as every job queued
+   * before the join does.
+   */
+  extra?: { storageKey: string }[];
   outputs: MiniToolJobOutput[];
-}
-
-/** What the container measured about its own run. */
-export interface ContainerUsage {
-  /** From just before the container started to its destroy, cold start included. */
-  wallMs: number;
-  /** cgroup `cpu.stat` `usage_usec`; null when the container could not read it. */
-  cpuUsec: number | null;
 }
 
 /** What a job answers. */
@@ -58,6 +57,13 @@ export type MiniToolJobReport =
 
 // Declared beside the container ops so zod-free code the media container bundles can read it too.
 export { MINI_TOOL_JOB_MAX_OUTPUTS };
+
+/**
+ * The most inputs one container job may read after its first (inner#1825):
+ * a join of `join_max_clips` clips sends all but its source here, and core
+ * refuses to start with a `join_max_clips` above this plus one.
+ */
+export const MINI_TOOL_JOB_MAX_EXTRA_INPUTS = 19;
 
 /**
  * The request as the ingest Worker reads it before believing it. The op's
@@ -72,6 +78,7 @@ export const miniToolJobRequestSchema = z.object({
   op: z.enum(CONTAINER_OPS),
   params: z.record(z.string(), z.unknown()),
   input: z.object({ storageKey: z.string().min(1).max(500) }),
+  extra: z.array(z.object({ storageKey: z.string().min(1).max(500) })).max(MINI_TOOL_JOB_MAX_EXTRA_INPUTS).optional(),
   outputs: z
     .array(
       z.object({
@@ -84,10 +91,6 @@ export const miniToolJobRequestSchema = z.object({
     .max(MINI_TOOL_JOB_MAX_OUTPUTS),
 });
 
-const usage = z.object({
-  wallMs: z.number().nonnegative(),
-  cpuUsec: z.number().nonnegative().nullable(),
-});
 
 const report = z.discriminatedUnion("state", [
   z.object({ state: z.literal("starting") }),
@@ -95,9 +98,9 @@ const report = z.discriminatedUnion("state", [
   z.object({
     state: z.literal("done"),
     outputs: z.array(ingestMeasurements.extend({ storageKey: z.string().min(1).max(500) })),
-    usage,
+    usage: containerUsageSchema,
   }),
-  z.object({ state: z.literal("failed"), reason: z.enum(CONTAINER_FAILURES), usage: usage.nullable() }),
+  z.object({ state: z.literal("failed"), reason: z.enum(CONTAINER_FAILURES), usage: containerUsageSchema.nullable() }),
 ]);
 
 /**

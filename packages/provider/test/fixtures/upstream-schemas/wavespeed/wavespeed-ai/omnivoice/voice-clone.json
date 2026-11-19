@@ -1,0 +1,32 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "audio": [
+      {
+        "type": "string"
+      }
+    ],
+    "reference_text": [
+      {
+        "type": "string"
+      }
+    ],
+    "speed": [
+      {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 5,
+        "default": 1
+      }
+    ],
+    "text": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "audio",
+    "text"
+  ]
+}

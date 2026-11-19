@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from "vitest";
 
@@ -47,6 +47,8 @@ const BATCH_ONE = {
   ],
   video: [
     "video.cut",
+    // inner#1825: each join sits right after its medium's cut.
+    "video.join",
     "video.crop",
     "video.speed",
     "video.adjust",
@@ -73,6 +75,7 @@ const BATCH_ONE = {
     "audio.normalize",
     "audio.speed",
     "audio.cut",
+    "audio.join",
     "audio.eq",
     "audio.compress",
     "audio.pan",
@@ -81,7 +84,6 @@ const BATCH_ONE = {
     "audio.pitch",
     "audio.enhance",
     "audio.separate",
-    "audio.extend",
   ],
 } as const;
 
@@ -208,7 +210,8 @@ describe("MINI_TOOLS registry", () => {
         "video.audio-denoise",
         "video.stabilize",
         "video.hdr",
-        ...BATCH_ONE.audio.slice(0, 10),
+        "video.join",
+        ...BATCH_ONE.audio.slice(0, 11),
       ].sort(),
     );
   });
@@ -217,6 +220,7 @@ describe("MINI_TOOLS registry", () => {
 describe("miniToolsFor", () => {
   it("lists a modality's tools in registry order", () => {
     expect(miniToolsFor("image").map((tool) => tool.id)).toEqual(BATCH_ONE.image);
+    expect(miniToolsFor("video").map((tool) => tool.id)).toEqual(BATCH_ONE.video);
     expect(miniToolsFor("audio").map((tool) => tool.id)).toEqual(BATCH_ONE.audio);
   });
 
@@ -369,6 +373,17 @@ describe("miniToolRequestSchema", () => {
 });
 
 describe("miniToolEstimateInput", () => {
+  it("asks about the prompt the worker sends: the tool's own words around what the user typed, cleaned (#1521)", () => {
+    const run = (id: string, typed: string): string | undefined => {
+      const spec = miniToolById(id);
+      return spec && miniToolEstimateInput(spec, { params: {}, prompt: typed, source: { url: "https://cdn.example.com/a.png" }, slots: {} }).prompt;
+    };
+    const restyle = miniToolById("image.restyle")?.prompt?.preamble ?? "";
+    expect(run("image.restyle", "  bold   ink  ")).toBe(`${restyle} Also: bold ink`);
+    expect(run("image.restyle", "   ")).toBe(restyle);
+    expect(run("video.motion", "a  dancer\n\n\n\u200Bspins")).toBe("a dancer\n\nspins");
+  });
+
   it("puts the source url and its duration under the pinned model's source param", () => {
     const separate = miniToolById("audio.separate");
     const input =
@@ -399,7 +414,7 @@ describe("miniToolEstimateInput", () => {
   });
 });
 
-// inner#1302: the three tools the reader draws on the node for.
+// inner#1302: the three tools the user draws on the node for.
 describe("drawing tools", () => {
   const SOURCE = "https://cdn.example.com/a.png";
   const COPY = "https://cdn.example.com/upright.png";
@@ -610,7 +625,7 @@ describe("batch-four tools", () => {
     }
   });
 
-  it("keeps the server-filled aspect param out of what the reader sends", () => {
+  it("keeps the server-filled aspect param out of what the user sends", () => {
     for (const tool of MINI_TOOLS) {
       if (tool.sourceAspectParam === undefined) continue;
       expect(toolParamKeys(tool), tool.id).not.toContain(tool.sourceAspectParam);

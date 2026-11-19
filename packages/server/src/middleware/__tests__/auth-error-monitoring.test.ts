@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,7 +45,7 @@ describe("requireAuth and error monitoring", () => {
   it("attaches only the account id to errors raised while serving the request", async () => {
     accounts.getUserByToken.mockResolvedValue({
       id: "user-1",
-      email: "reader@example.test",
+      email: "user@example.test",
       membershipTier: "base",
       locale: "en",
     });

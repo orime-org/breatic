@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 import type * as React from 'react';
@@ -18,6 +18,7 @@ vi.mock('@web/components/ui/tooltip', () => ({
 }));
 
 import { AudioSettingsPicker } from '@web/spaces/canvas/generate/AudioSettingsPicker';
+import { speakerColour } from '@web/spaces/canvas/generate/dialogue-line';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 import { initialVoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 
@@ -53,7 +54,8 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
     generation_time: 30,
     takes_prompt: true,
     params,
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
   };
 }
 
@@ -492,7 +494,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
     expect(screen.queryByTestId('generate-audio-row-voice_id')).toBeNull();
   });
 
-  it('names each language in the reader\'s language and picks one from a searchable list beside', () => {
+  it('names each language in the user\'s language and picks one from a searchable list beside', () => {
     const onChange = vi.fn();
     render(<AudioSettingsPicker mode='tts' voice={NO_VOICE} model={GEMINI} value={resolveParamsForModel(GEMINI, {})} onChange={onChange} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
@@ -506,7 +508,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
     fireEvent.click(screen.getByText(nameOf('ja-JP')));
     expect(onChange).toHaveBeenCalledWith({ language: 'lang ja-JP' });
     expect(screen.queryByTestId('generate-audio-second-panel')).toBeNull();
-    // The first panel stays: the reader may have more to set.
+    // The first panel stays: the user may have more to set.
     expect(screen.getByTestId('generate-audio-row-language')).toBeInTheDocument();
   });
 
@@ -528,7 +530,7 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
   };
   const DIALOGUE = { _stand_in_on: true, speakers: [{ speaker: 'Ana', voice: 'Kore' }, { speaker: '', voice: 'Puck' }] };
 
-  it('gives each speaker a row reading the name and the voice, with the script hint under them (#2256)', () => {
+  it('gives each speaker a row reading the name and the voice, with no script hint under them (#2256, inner#1825)', () => {
     render(<AudioSettingsPicker mode='tts' voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={() => {}} />);
     fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
     expect(screen.getByTestId('generate-audio-row-speakers-0')).toHaveTextContent('Speaker 1');
@@ -536,8 +538,19 @@ describe('AudioSettingsPicker â€” a model that reads a dialogue (#2156, design Â
     expect(screen.getByTestId('generate-audio-row-speakers-1')).toHaveTextContent('Speaker 2');
     expect(screen.getByTestId('generate-audio-row-speakers-1').textContent).not.toContain('Â·');
     expect(screen.queryByTestId('generate-audio-row-speakers-2')).toBeNull();
-    expect(screen.getByText('Write each line as "Name: line"')).toBeInTheDocument();
+    // The lines say who speaks each one in the prompt box now (inner#1825 design 8.5).
+    expect(screen.queryByText('Write each line as "Name: line"')).toBeNull();
     expect(screen.getByTestId('generate-audio-settings-trigger')).toHaveTextContent('Dialogue Â· 2');
+  });
+
+  it('marks each speaker row with the colour dot its lines carry in the prompt box', () => {
+    render(<AudioSettingsPicker mode='tts' voice={SPEAKER_VOICES} model={GEMINI} value={DIALOGUE} onChange={() => {}} />);
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    for (const at of [0, 1]) {
+      const dot = within(screen.getByTestId(`generate-audio-row-speakers-${String(at)}`)).getByTestId('generate-audio-speaker-dot');
+      expect(dot.style.background).toBe(speakerColour(at + 1));
+    }
+    expect(screen.getByTestId('generate-audio-row-language').querySelector('[data-testid="generate-audio-speaker-dot"]')).toBeNull();
   });
 
   it('opens a speaker with a name box over the same voice list, the speaker\'s voice chosen (#2256)', () => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -35,7 +35,8 @@ function model(
     generation_time: 30,
     takes_prompt: true,
     params: {},
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
   };
 }
 
@@ -194,7 +195,7 @@ describe('ModelPicker — pick the generation model from the catalog', () => {
   });
 
   // When one mode offers several models, the name alone does not tell a
-  // reader which to pick — the catalog's `description` is what says what
+  // user which to pick — the catalog's `description` is what says what
   // each one is good at, so the row has to show it.
   describe('the capability line under each model name', () => {
     it('shows what the model is good at under its name', () => {

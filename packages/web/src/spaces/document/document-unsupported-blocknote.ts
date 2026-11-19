@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Stand-ins for vocabulary this build does not know.
@@ -79,14 +79,18 @@ export const UnsupportedBlock = Node.create({
     return { [ORIGINAL_NAME]: { default: null } };
   },
 
+  // An element, not an array spec: BlockNote renders and exports a block
+  // made from a bare node through `renderHTML`, reading `{ dom }` off it, and
+  // a copy or a drag of a selection holding the block goes through that
+  // export. BlockNote also finds the block under the pointer by its
+  // `data-content-type`, which the side menu needs to reach this row.
   renderHTML({ HTMLAttributes }) {
-    return [
-      'div',
-      {
-        'data-unsupported-block': '',
-        'data-original-name': HTMLAttributes[ORIGINAL_NAME],
-      },
-    ];
+    const dom = document.createElement('div');
+    dom.setAttribute('data-unsupported-block', '');
+    dom.setAttribute('data-content-type', UNSUPPORTED_BLOCK);
+    const name = HTMLAttributes[ORIGINAL_NAME] as unknown;
+    if (typeof name === 'string') dom.setAttribute('data-original-name', name);
+    return { dom };
   },
 });
 
@@ -225,7 +229,7 @@ const LABELLED = new Set([UNSUPPORTED_BLOCK, UNSUPPORTED_INLINE]);
  * The label decorations for every stand-in in the document.
  *
  * A stand-in holds nothing this build can draw, so without a label it renders
- * as an empty box and the reader has no way to know something is there.
+ * as an empty box and the user has no way to know something is there.
  *
  * The text travels as a `data-label` DECORATION painted by index.css through
  * `content: attr(data-label)`, rather than as text baked into `renderHTML`.

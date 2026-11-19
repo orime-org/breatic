@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The rows the block handle menu holds, in the order it holds them.
@@ -15,13 +15,16 @@
  */
 
 import {
+  ClipboardCopy,
   Copy,
   IndentDecrease,
   IndentIncrease,
+  Maximize2,
   MessageSquarePlus,
   MessageSquareText,
   Palette,
   Plus,
+  Scissors,
   TextAlignStart,
   Trash2,
   Type,
@@ -34,6 +37,8 @@ export interface BlockMenuRow {
   readonly id:
     | 'blockType'
     | 'duplicate'
+    | 'copy'
+    | 'cut'
     | 'insertBelow'
     | 'align'
     | 'color'
@@ -41,7 +46,8 @@ export interface BlockMenuRow {
     | 'unindent'
     | 'comment'
     | 'addToAgent'
-    | 'delete';
+    | 'delete'
+    | 'fullscreen';
   /** i18n key for the row's name. */
   readonly labelKey: string;
   /** The icon the demo draws for it. */
@@ -53,8 +59,10 @@ export interface BlockMenuRow {
  * Comment (inner#936).
  *
  * Comment opens a draft over the hovered row (A2), and reads unavailable on
- * a row with no words in it (A3) — the same two answers the bubble bar's own
- * comment entry gives.
+ * a row with no text in it, spaces counting as text (A3) — the same two
+ * answers the bubble bar's own comment entry gives. An uploaded picture,
+ * video or audio takes a comment whole, and a pending one greys it
+ * (inner#1316).
  *
  * Alignment and colour open what the bubble bar's own two slots open, down to
  * the rows and the panel, and each carries the icon the demo draws for it.
@@ -65,7 +73,7 @@ export interface BlockMenuRow {
  * other rows keep the icon this table gives them, because none of them
  * has a reading to show — "duplicate" and "delete" look the same whatever
  * block is under the pointer, and the type row's face would have to repeat
- * what the reader can already see in the body.
+ * what the user can already see in the body.
  */
 export const BLOCK_MENU_ROWS: readonly BlockMenuRow[] = [
   {
@@ -123,10 +131,15 @@ function rowOf(id: BlockMenuRow['id']): BlockMenuRow {
  * The rows of a table's entry (inner#1126 A5). A table is not a text block,
  * so the rows that set a block's type, its alignment and its colour have
  * nothing to act on; indenting takes their place, and delete names what goes.
+ * Copy and cut put the whole table on the clipboard (inner#1239).
  */
 export const TABLE_MENU_ROWS: readonly BlockMenuRow[] = [
+  // Opens the table over the whole window for editing (#1427).
+  { id: 'fullscreen', labelKey: 'spaces.document.table.fullscreen', Icon: Maximize2 },
   rowOf('insertBelow'),
   rowOf('duplicate'),
+  { id: 'copy', labelKey: 'canvas.contextMenu.copy', Icon: ClipboardCopy },
+  { id: 'cut', labelKey: 'spaces.document.table.cut', Icon: Scissors },
   { id: 'indent', labelKey: 'spaces.document.blockHandle.indent', Icon: IndentIncrease },
   { id: 'unindent', labelKey: 'spaces.document.blockHandle.unindent', Icon: IndentDecrease },
   rowOf('comment'),

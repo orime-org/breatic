@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The numbers a document shows, computed from the document alone.
@@ -29,6 +29,8 @@
  */
 
 import type { Node as PMNode } from '@tiptap/pm/model';
+
+import { bodiesOf } from '@web/spaces/document/document-column-geometry';
 
 import type { QuoteRun } from '@web/spaces/document/document-quote-runs';
 
@@ -98,7 +100,7 @@ function describe(container: PMNode): Block {
  * between the levels already say what the string is.
  * @param counters - The live per-level counters.
  * @param level - The level to build the path for.
- * @returns The string the reader sees, such as `1.` or `1.1`.
+ * @returns The string the user sees, such as `1.` or `1.1`.
  */
 function headingPath(counters: readonly number[], level: number): string {
   const shown: number[] = [];
@@ -153,22 +155,21 @@ function drawsAHeadingNumber(block: Block): boolean {
 
 /**
  * Walks one `blockGroup` and everything nested under it, in reading order,
- * the cells of a table in it included.
- * @param group - The group to walk, or a table cell.
+ * the cells of a table and the columns of a column group in it included.
+ * @param group - The group to walk, a table cell or a column.
  * @param parentKey - Identifies the list this group's blocks share.
  * @param walk - The running state, advanced in place.
  */
 function walkGroup(group: PMNode, parentKey: string, walk: Walk): void {
   group.forEach((container) => {
     if (container.type.name !== 'blockContainer') {
-      // A table: a block that is no list item, so it cuts the line it stands
-      // on. Each of its cells is a body of its own, its lists keyed by it.
+      // A table or a column group: a block that is no list item, so it cuts
+      // the line it stands on. Each of its cells or columns is a body of its
+      // own, its lists keyed by it.
       const run = walk.runOf.get(String(container.attrs['id']));
       walk.runs.delete(`${parentKey}|${run === undefined ? NOT_QUOTED : `quote${String(run)}`}`);
-      container.forEach((row) => {
-        row.forEach((cell) => {
-          walkGroup(cell, String(cell.attrs['id']), walk);
-        });
+      bodiesOf(container).forEach((body) => {
+        walkGroup(body, String(body.attrs['id']), walk);
       });
       return;
     }
@@ -206,7 +207,7 @@ function walkGroup(group: PMNode, parentKey: string, walk: Walk): void {
  * @param runs - The document's quote runs. Taken as an argument because the
  *   decoration plugin reads them too, and reading them is a walk of the whole
  *   document that then happened twice per keystroke.
- * @returns Block id to the literal string the reader sees.
+ * @returns Block id to the literal string the user sees.
  */
 export function computeNumbering(
   doc: PMNode,

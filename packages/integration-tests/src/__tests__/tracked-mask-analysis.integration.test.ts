@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The tracked mask analysis executor (inner#1306 execution design §10.2, §10.3): `runMiniToolTrackedMaskAnalysis(execution,

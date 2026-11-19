@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** An expansion frame as shares of the source: the source is the rectangle from 0,0 to 1,1 and the frame contains it. */
 export interface ExpandFrameShares { x: number; y: number; width: number; height: number }

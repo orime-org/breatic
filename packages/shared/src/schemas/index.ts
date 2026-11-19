@@ -1,11 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** Shared Zod schemas for API request validation. */
 export {
   normalizeEmail,
   emailSchema,
   registerSchema,
+  REFERRAL_CODE_INPUT_MAX,
+  PROMOTER_CHANNELS_MAX,
+  PROMOTER_CHANNEL_INPUT_MAX,
+  PROMOTER_PLAN_INPUT_MAX,
+  SIGNUP_REFERRAL_SOURCES,
   signupVerifySchema,
   SIGNUP_CODE_REGEX,
   setupStudioSchema,
@@ -25,6 +30,11 @@ export {
   understandSchema,
   transcribeSchema,
   nodeHistorySnapshotSchema,
+  DOCUMENT_VERSION_NAME_MAX_CHARS,
+  documentVersionSaveSchema,
+  documentVersionRenameSchema,
+  documentVersionListQuerySchema,
+  documentVersionScopeSchema,
   canvasPasteSchema,
   pastePairSchema,
   pasteHistoryItemSchema,
@@ -41,14 +51,23 @@ export {
   chatEarlierMessagesQuerySchema,
   chatCreateConversationSchema,
   chatRenameConversationSchema,
+  chatSetModelSchema,
   CHAT_MESSAGE_MAX_CHARS,
+  AGENT_INSTRUCTIONS_MAX_CHARS,
+  agentInstructionsQuerySchema,
+  agentInstructionsSaveSchema,
+  chatRunningQuerySchema,
   PROJECT_NAME_MAX_CHARS,
   projectNameSchema,
   CONVERSATION_TITLE_MAX_CHARS,
+  sceneGenerationBodySchema,
 } from "@shared/schemas/api.js";
 
 export type {
+  SceneGenerationAnswer,
+  SceneGenerationBody,
   RegisterInput,
+  SignupReferralSource,
   SignupVerifyInput,
   SetupStudioInput,
   CreateTeamStudioInput,
@@ -68,6 +87,7 @@ export type {
   UnderstandInput,
   TranscribeInput,
   CanvasPasteInput,
+  CanvasPasteAnswer,
   PastePair,
   PasteHistoryItem,
   ProjectCreateInput,
@@ -79,4 +99,13 @@ export type {
   ChatConversationsQueryInput,
   ChatCreateConversationInput,
   ChatRenameConversationInput,
+  ChatSetModelInput,
+  AgentInstructionsSaveInput,
+  AgentInstructionsView,
+  ChatRunningAnswer,
+  ChatPendingItem,
+  ChatSendAnswer,
+  ChatSyncAnswer,
+  ChatStopAnswer,
+  ChatQueueRemoveAnswer,
 } from "@shared/schemas/api.js";

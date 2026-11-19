@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a transcription asks the model (inner#856).
@@ -32,7 +32,7 @@ describe("the question a transcription asks", () => {
     expect(asked).not.toContain("Keep filler words");
   });
 
-  it("writes Chinese in traditional characters for a zh-TW reader only", () => {
+  it("writes Chinese in traditional characters for a zh-TW user only", () => {
     expect(transcribeQuestion("audio", true, "zh-TW")).toContain(
       "Write any Chinese in Traditional Chinese characters.",
     );

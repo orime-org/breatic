@@ -1,0 +1,122 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "auto_size": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "delight": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "export_uv": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "face_limit": [
+      {
+        "type": "integer",
+        "minimum": 48,
+        "maximum": 2000000
+      }
+    ],
+    "generate_parts": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "geometry_quality": [
+      {
+        "type": "string",
+        "enum": [
+          "standard",
+          "detailed"
+        ],
+        "default": "standard"
+      }
+    ],
+    "image_seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "model_seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "negative_prompt": [
+      {
+        "type": "string",
+        "maxLength": 255
+      }
+    ],
+    "pbr": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "maxLength": 1024
+      }
+    ],
+    "quad": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "smart_low_poly": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "texture": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "texture_quality": [
+      {
+        "type": "string",
+        "enum": [
+          "standard",
+          "detailed",
+          "extreme",
+          "fast"
+        ],
+        "default": "standard"
+      }
+    ],
+    "texture_seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "texture_version": [
+      {
+        "type": "string",
+        "enum": [
+          "v3.0-20250812",
+          "v3.5-20260815"
+        ],
+        "default": "v3.0-20250812"
+      }
+    ]
+  },
+  "required": [
+    "prompt"
+  ]
+}

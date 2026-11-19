@@ -1,0 +1,114 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/kwaivgi/kling-video/o3/4k/image-to-video",
+  "fields": {
+    "duration": [
+      {
+        "type": "integer",
+        "enum": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "default": 5
+      }
+    ],
+    "end_image": [
+      {
+        "type": "string"
+      }
+    ],
+    "generate_audio": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "image": [
+      {
+        "type": "string"
+      }
+    ],
+    "multi_prompt": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "prompt": [
+              {
+                "type": "string"
+              }
+            ],
+            "duration": [
+              {
+                "type": "integer",
+                "enum": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15
+                ],
+                "default": 5
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "prompt"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "prompt"
+          ]
+        }
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "maxLength": 2500
+      }
+    ],
+    "shot_type": [
+      {
+        "type": "string",
+        "enum": [
+          "customize",
+          "intelligent"
+        ],
+        "default": "customize"
+      }
+    ]
+  },
+  "required": [
+    "image",
+    "prompt"
+  ],
+  "modes": [
+    "async"
+  ],
+  "owned_by": "kwaivgi"
+}

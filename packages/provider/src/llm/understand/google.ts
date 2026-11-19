@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Understanding through Gemini's own generateContent. Each item goes inline,
@@ -10,8 +10,9 @@
 
 import type { FinishReason } from "ai";
 import { z } from "zod";
-import { deliver, SIDE_REQUEST_MS, wait, type OutgoingRequest } from "@provider/http/request.js";
+import { deliver, sideBounds, wait, type OutgoingRequest } from "@provider/http/request.js";
 import {
+  bytesOf,
   AnswerUnread,
   assertSucceeded,
   base64Of,
@@ -21,6 +22,7 @@ import {
   wireTypeOf,
   type Answered,
   type UnderstandAdapter,
+  type MediaBytes,
   type UnderstandCall,
   type UploadedFile,
 } from "@provider/llm/understand/adapter.js";
@@ -50,13 +52,16 @@ const generatedSchema = z.looseObject({
   promptFeedback: z.looseObject({ blockReason: z.string().nullish() }).nullish(),
 });
 
-/** The answer's usage; an answer without one it can read is costed as missing. */
+/**
+ * The answer's usage, refused when it carries neither an input nor an output count, so an answer that reports no counts
+ * is costed as missing, never a known $0; one count alone is read, the other as none.
+ */
 const usageSchema = z.looseObject({
   promptTokenCount: z.number().optional(),
   cachedContentTokenCount: z.number().optional(),
   candidatesTokenCount: z.number().optional(),
   thoughtsTokenCount: z.number().optional(),
-});
+}).refine((u) => u.promptTokenCount !== undefined || u.candidatesTokenCount !== undefined);
 
 /**
  * Gemini's finish reason in the AI SDK's words.
@@ -110,7 +115,7 @@ function fileOf(answered: Answered, wrapped: boolean): GeminiFile {
   const body = answered.body;
   const file = wrapped ? (typeof body === "object" && body !== null ? (body as { file?: unknown }).file : undefined) : body;
   const parsed = fileSchema.safeParse(file);
-  if (!parsed.success) throw new UnreadableAnswer(`Google's Files API answered no file it can read: ${parsed.error.issues[0]?.message ?? "unknown"}`);
+  if (!parsed.success) throw new UnreadableAnswer(`Google's Files API answered no file it can read: ${z.prettifyError(parsed.error)}`);
   return parsed.data;
 }
 
@@ -138,7 +143,7 @@ function sessionOf(session: string | null): string {
  * @throws {UnreadableAnswer} When the start names no session address or the upload no file.
  * @throws {NotSent | NoAnswer | Aborted | BodyTooLarge} As provider's HTTP module classifies a failure.
  */
-async function upload(call: UnderstandCall, media: UnderstandCall["media"][number], index: number, files: UploadedFile[]): Promise<{ entry: UploadedFile; file: GeminiFile }> {
+async function upload(call: UnderstandCall, media: MediaBytes, index: number, files: UploadedFile[]): Promise<{ entry: UploadedFile; file: GeminiFile }> {
   const base = new URL(call.decl.base_url);
   const type = wireTypeOf(media.contentType);
   // The start's promise is its session header; its body says nothing.
@@ -165,7 +170,7 @@ async function upload(call: UnderstandCall, media: UnderstandCall["media"][numbe
   // Deleted once the whole call ends; each delete is sent once in its own window, apart from the
   // call's deadline and signal, and a file left behind expires on Google's side.
   call.session.cleanups.push(() => {
-    deliver({ url: entry.url, method: "DELETE", headers: { "x-goog-api-key": call.key } }, { replaySafe: false, deadlineAt: Date.now() + SIDE_REQUEST_MS })
+    deliver({ url: entry.url, method: "DELETE", headers: { "x-goog-api-key": call.key } }, { replaySafe: false, ...sideBounds() })
       .then((r) => r.body?.cancel())
       .catch(() => undefined);
   });
@@ -203,6 +208,8 @@ async function activate(call: UnderstandCall, entry: UploadedFile, known?: Gemin
 export const googleUnderstand: UnderstandAdapter = {
   async ask(call) {
     const url = `${call.decl.base_url}/models/${call.modelId}:generateContent`;
+    // Gemini takes bytes, so an image handed over by its address is read first.
+    const media = await bytesOf(call.media, call.signal);
     /**
      * The request with the media in the given parts.
      * @param items - One part per item.
@@ -212,28 +219,28 @@ export const googleUnderstand: UnderstandAdapter = {
       contents: [{ role: "user", parts: [{ text: call.question }, ...items.flatMap((item, index) => [{ text: `Item ${index + 1}` }, item])] }],
       generationConfig: { maxOutputTokens: call.maxOutputTokens },
     });
-    const inline = request(call.media.map((m) => ({ inlineData: { mimeType: wireTypeOf(m.contentType), data: base64Of(m.bytes) } })));
+    const inline = request(media.map((m) => ({ inlineData: { mimeType: wireTypeOf(m.contentType), data: base64Of(m.bytes) } })));
     let body = inline;
     if (Buffer.byteLength(inline) > call.inlineMaxBytes) {
       // Uploaded once per call: a later attempt on this upstream reuses the registered files,
       // asks again about one not yet ready, and uploads from the first item not registered.
       const files = call.session.uploads.get(call.decl.base_url) ?? [];
       call.session.uploads.set(call.decl.base_url, files);
-      for (const [index, media] of call.media.entries()) {
+      for (const [index, item] of media.entries()) {
         const registered = files[index];
         if (registered === undefined) {
-          const { entry, file } = await upload(call, media, index, files);
+          const { entry, file } = await upload(call, item, index, files);
           await activate(call, entry, file);
         } else if (registered.uri === undefined) await activate(call, registered);
       }
-      body = request(call.media.map((m, i) => ({ fileData: { mimeType: wireTypeOf(m.contentType), fileUri: files[i]!.uri } })));
+      body = request(media.map((m, i) => ({ fileData: { mimeType: wireTypeOf(m.contentType), fileUri: files[i]!.uri } })));
     }
     return exchange({ url, method: "POST", headers: headers(call), body }, call);
   },
 
   read(body) {
     const generated = generatedSchema.safeParse(body);
-    if (!generated.success) return { unreadable: `Google's answer has an unexpected shape: ${generated.error.issues[0]?.message ?? "unknown"}` };
+    if (!generated.success) return { unreadable: `Google's answer has an unexpected shape: ${z.prettifyError(generated.error)}` };
     const candidate = generated.data.candidates?.[0];
     if (candidate === undefined) {
       const blockReason = generated.data.promptFeedback?.blockReason;

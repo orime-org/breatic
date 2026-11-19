@@ -1,14 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A turn that asks to read Spaces stops there and waits, the way a turn that
  * asks a questionnaire does (inner#1552).
  *
  * `request_space_content` has no `execute`, so the SDK stops the step at the
- * call. The tools a turn waits on the reader for are one named set
- * (`AWAITS_READER`): of every such call in one step only the first is put to
- * the reader, whichever tool made it, and the rest are turned away -- each
+ * call. The tools a turn waits on the user for are one named set
+ * (`AWAITS_USER`): of every such call in one step only the first is put to
+ * the user, whichever tool made it, and the rest are turned away -- each
  * told so under its own tool's name, since a result filed under another
  * tool's name is a result the provider pairs with nothing.
  */
@@ -39,7 +39,7 @@ const SPACES = vi.hoisted(() => [
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));
@@ -71,7 +71,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     ...base,
     ASK_USER: actual.ASK_USER,
     REQUEST_SPACE_CONTENT: actual.REQUEST_SPACE_CONTENT,
-    AWAITS_READER: actual.AWAITS_READER,
+    AWAITS_USER: actual.AWAITS_USER,
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({
       modelId: "test",
@@ -83,7 +83,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     }),
     // The real one, so the reply is stored the way production stores it.
     finalizeTurn: actual.finalizeTurn,
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       new MockLanguageModelV4({
         doStream: async () => {
           const script = modelSays.perCall[modelSays.calls] ?? [FINISHED];
@@ -97,13 +97,13 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             }),
           };
         },
-      }),
+      })),
   };
 });
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>, settle: Settle) => {
+  addUserMessage: async (id: string, msg: Record<string, unknown>, settle: Settle) => {
     settles.last = settle;
     return { turnIndex: await addMessage(id, msg), closedAsks: [] };
   },
@@ -111,6 +111,7 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
 }));
 
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  getMessagesForLlm: async () => [],
   titleForTurn: vi.fn(async () => null),
 }));
 

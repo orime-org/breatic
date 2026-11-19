@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import type { VideoPresentationSourceBinding } from '@breatic/shared';
 import { presentedSizeOf, runtimeSourceKeyOf, type VideoPresentationSource, type MediaSurfaceSnapshot, type PresentedMediaFrame, type MediaSurfaceBinding } from '@web/spaces/canvas/video-presentation/types';
-import { Camera, Play, Pause, Volume2, VolumeX, Maximize } from 'lucide-react';
+import { Camera, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 
 import { VideoPresentationSurface } from '@web/spaces/canvas/video-presentation/VideoPresentationSurface';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -22,14 +22,28 @@ import { usePreviewSrc, usePreviewWidth } from '@web/lib/preview-src';
 import { cn } from '@web/lib/utils';
 import { formatSeconds } from '@web/spaces/canvas/lib/duration';
 import type { NodeResolution } from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
-import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/use-media-player';
+import { useMediaPlayer, writePlayerState, type MediaPlayerState } from '@web/spaces/canvas/nodes/_shared/use-media-player';
 import { Waveform } from '@web/spaces/canvas/nodes/_shared/Waveform';
 import { MediaControlsPortal, useSeekPointer, type VideoControlsTarget } from '@web/spaces/canvas/nodes/_shared/media-video-controls';
+
+/** What a player lets its owner do from outside (inner#1844). */
+export interface MediaPlayerHandle {
+  /** Where the player stands now. */
+  read: () => MediaPlayerState;
+  /** Pause it. */
+  pause: () => void;
+  /** Move it to a time and set its sound, leaving it paused or playing as it is. */
+  apply: (state: MediaPlayerState) => void;
+}
 
 /** Actual resource notice plus an independently React-owned overlay host. */
 export interface MediaPlayerVideoSnapshot extends MediaSurfaceSnapshot { overlayTarget: HTMLElement | null; sourceBinding?: VideoPresentationSourceBinding }
 
 export interface MediaPlayerProps {
+  /** The handle a full-screen view reads and writes the player through. */
+  ref?: React.Ref<MediaPlayerHandle>;
+  /** Where to start: a full-screen view goes on from its source player. */
+  start?: MediaPlayerState;
   /** Resolved canonical video; null waits for trusted classification. */
   videoSource?: VideoPresentationSource | null;
   /** Whether this resource is currently displayed. */
@@ -61,13 +75,10 @@ export interface MediaPlayerProps {
    */
   duration?: number;
   /**
-   * `'full'` (default) — the node player with volume + fullscreen.
-   * `'preview'` (#1622) — the hover-preview player: play + seek only, NO
-   * volume popover and NO fullscreen. Both are dropped because a hover
-   * preview is a quick "sense what it is" surface, and both would fight a
-   * HoverCard: the volume is a portaled Popover (a DOM sibling of the
-   * card, so moving to it leaves the card) and fullscreen takes over the
-   * screen (exiting it leaves the card). See the hover-preview spec.
+   * `'full'` (default) — the player with volume.
+   * `'preview'` (#1622) — the hover-preview player: play + seek only, no
+   * volume popover. The volume is a portaled Popover, a DOM sibling of the
+   * card, so moving to it would leave the HoverCard.
    */
   variant?: 'full' | 'preview';
   /**
@@ -173,6 +184,8 @@ function useOriginalCover(url: string | undefined): CoverOutcome {
  * rather than the node.
  * Zero third-party player dependency.
  * @param root0 - Component props.
+ * @param root0.ref - The handle a full-screen view reads and writes the player through.
+ * @param root0.start - Where to start.
  * @param root0.videoSource - Resolved canonical presentation; null remains unknown.
  * @param root0.active - Whether this resource is displayed.
  * @param root0.onVideoBinding - Actual resource and independent overlay target.
@@ -184,7 +197,7 @@ function useOriginalCover(url: string | undefined): CoverOutcome {
  * @param root0.fullPoster - Show the poster's original, not its preview.
  * @param root0.size - The video's own size, which reserves the box.
  * @param root0.duration - The running time the ledger measured, if any.
- * @param root0.variant - `'full'` (node player, default) or `'preview'` (hover preview: no volume / fullscreen).
+ * @param root0.variant - `'full'` (default) or `'preview'` (hover preview: no volume).
  * @param root0.onDimensions - Reports the video's intrinsic pixel size on metadata load (video only).
  * @param root0.controlsHidden - Slide the control bar out and make it unreachable (video only, #1987).
  * @param root0.videoControls - The document-owned control destination and interaction callbacks.
@@ -192,6 +205,8 @@ function useOriginalCover(url: string | undefined): CoverOutcome {
  * @returns The media player element.
  */
 export function MediaPlayer({
+  ref: handleRef,
+  start,
   modality,
   src,
   videoSource,
@@ -210,6 +225,7 @@ export function MediaPlayer({
   onPickFrame,
 }: MediaPlayerProps): React.JSX.Element {
   const ref = React.useRef<HTMLMediaElement>(null);
+
   const isVideo = modality === 'video';
   const ownsVideo = isVideo && videoSource !== undefined;
   const key = videoSource ? runtimeSourceKeyOf(videoSource) : JSON.stringify([src, null]);
@@ -266,7 +282,30 @@ export function MediaPlayer({
   }, []);
   const snapshot = notice?.key === key && active ? notice.value : null;
   const binding = snapshot?.binding ?? null;
-  const p = useMediaPlayer(ref, duration, ownsVideo ? binding : undefined);
+  const p = useMediaPlayer(ref, duration, start, ownsVideo ? binding : undefined);
+  // A presented video is read and moved through its owned element; the native ref is the original's.
+  React.useImperativeHandle(handleRef, () => ({
+    read: () => {
+      const el = binding?.element ?? ref.current;
+      return el
+        ? { time: el.currentTime, playing: !el.paused, muted: el.muted, volume: el.volume }
+        : { time: 0, playing: false, muted: false, volume: 1 };
+    },
+    pause: () => {
+      if (binding) binding.pause();
+      else ref.current?.pause();
+    },
+    apply: (state) => {
+      if (binding) {
+        binding.seek(state.time);
+        binding.element.muted = state.muted;
+        binding.element.volume = state.volume;
+        return;
+      }
+      const el = ref.current;
+      if (el) writePlayerState(el, state);
+    },
+  }), [binding]);
   const unavailable = ownsVideo && binding === null;
   const t = useTranslation();
   const pointer = useSeekPointer(p.seekFraction, videoControls);
@@ -297,12 +336,11 @@ export function MediaPlayer({
   // Under the skeleton the video is hidden: a half-loaded or stretched poster
   // would show through it.
   const covered = loading || awaitsCover;
-  // #1622: the hover-preview variant drops volume (a portaled Popover) and
-  // fullscreen so it can live inside an auto-close HoverCard.
+  // #1622: the hover-preview variant drops volume (a portaled Popover) so it
+  // can live inside an auto-close HoverCard.
   const showVolume = variant !== 'preview';
-  const showFullscreen = variant !== 'preview';
   // The times give way only in the full player, which shares its row with the
-  // volume and full-screen buttons; the preview row has room for them.
+  // volume button; the preview row has room for them.
   const timeCls =
     variant === 'preview'
       ? 'shrink-0 text-2xs tabular-nums'
@@ -317,7 +355,7 @@ export function MediaPlayer({
   // The focus ring is the one thing the video branch has to restate. `Button`
   // rings in `--ring`, a themed colour read against a themed surface — and this
   // bar's surface is the video's own dark scrim in either theme, so in light
-  // theme the ring is dark on dark and a keyboard reader cannot see where they
+  // theme the ring is dark on dark and a keyboard user cannot see where they
   // are.
   const btnCls = `inline-flex ${BUTTON_SIZE} shrink-0 items-center justify-center rounded-chrome ${
     isVideo && !themedControls
@@ -427,20 +465,6 @@ export function MediaPlayer({
         {formatSeconds(p.duration)}
       </span>
       {showVolume ? <span className='hidden @min-[11rem]:contents'>{volumeControl}</span> : null}
-      {showFullscreen ? (
-        <Button
-          type='button'
-          variant={null}
-          size={null}
-          onClick={p.requestFullscreen}
-          disabled={unavailable}
-          aria-label='Fullscreen'
-          data-testid='fullscreen'
-          className={btnCls}
-        >
-          <Maximize className='h-4 w-4' />
-        </Button>
-      ) : null}
       {variant === 'full' && onPickFrame !== undefined ? <FrameCaptureMenu className={btnCls} onPickFrame={onPickFrame} /> : null}
     </div>
   );
@@ -477,7 +501,7 @@ export function MediaPlayer({
   if (isVideo) {
     return (
       // Sized as a container: narrower players drop the times, then the
-      // volume, keeping play, seek and full screen (the breakpoints a
+      // volume, keeping play and seek (the breakpoints a
       // responsive Video.js or Plyr player uses the same way).
       <div className='group/player @container relative' data-testid='media-player'>
         {/* eslint-disable-next-line jsx-a11y/media-has-caption -- user-uploaded asset; no caption track until caption authoring lands. */}

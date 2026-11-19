@@ -1,0 +1,101 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/elevenlabs/voice-changer",
+  "fields": {
+    "audio_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "mp3_22050_32",
+          "mp3_44100_32",
+          "mp3_44100_64",
+          "mp3_44100_96",
+          "mp3_44100_128",
+          "mp3_44100_192",
+          "pcm_8000",
+          "pcm_16000",
+          "pcm_22050",
+          "pcm_24000",
+          "pcm_44100",
+          "pcm_48000",
+          "ulaw_8000",
+          "alaw_8000",
+          "opus_48000_32",
+          "opus_48000_64",
+          "opus_48000_96",
+          "opus_48000_128",
+          "opus_48000_192"
+        ],
+        "default": "mp3_44100_128"
+      }
+    ],
+    "remove_background_noise": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "voice": [
+      {
+        "type": "string",
+        "default": "Rachel"
+      }
+    ]
+  },
+  "required": [
+    "audio_url"
+  ],
+  "outputs": {
+    "audio": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "audio.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "seed": [
+      {
+        "type": "integer"
+      }
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Project service — business logic for canvas projects.
@@ -21,6 +21,7 @@ import { pictureUrl } from "@server/modules/asset/picture.service.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { projectAuthService, projectAssetReferenceService } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
+import * as timelineGrantRepo from "@server/modules/timeline/execution-grant.repo.js";
 import { studioAuthService } from "@breatic/domain";
 import { accountActivityRepo, claimFirstMilestone, db, enqueueAdsConversion, getAccountAttribution, getLimitsForStudio, logger, projectEditsRepo, trackServerEvent } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
@@ -338,7 +339,7 @@ export interface StudioProjectListOptions {
   cursor?: string;
   /** Page size; clamped to the configured bounds, the default when omitted. */
   limit?: number;
-  /** The reader's interface language, which decides how names compare. */
+  /** The user's interface language, which decides how names compare. */
   locale: string;
   /**
    * Told when a cursor was sent but could not be read; the first page is
@@ -592,6 +593,8 @@ export async function duplicate(
     const isFirst = await claimFirstMilestone("first-project", userId, tx);
     const copy = await projectRepo.duplicateProject(tx, userId, source, copyName(source.name));
     await projectAssetReferenceService.copyProjectAssetReferences(sourceId, copy.id, tx);
+    // A copy resolves and previews the web animations its source could (inner#1711).
+    await timelineGrantRepo.copyGrants(sourceId, copy.id, tx);
     await accountActivityRepo.recordActivity({ userId, projectId: copy.id, kind: "project_action" }, tx);
     return { project: copy, isFirst };
   });

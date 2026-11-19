@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Following a video node's shots from a React component.
@@ -48,6 +48,30 @@ export function useShots(projectId: string, spaceId: string, nodeId: string): St
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [projectId, spaceId, nodeId, version],
   );
+}
+
+/**
+ * A count that moves on every change to a video node's shots, words typed inside a shot included, for what reads the
+ * shots' words during render (the run a press would send).
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The video node.
+ * @returns The count.
+ */
+export function useShotWords(projectId: string, spaceId: string, nodeId: string): number {
+  const [version, setVersion] = React.useState(0);
+  React.useEffect(() => {
+    const shots = shotListOf(projectId, spaceId, nodeId);
+    if (!shots) return undefined;
+    /** Ask for a fresh read. */
+    const bump = (): void => {
+      setVersion((v) => v + 1);
+    };
+    shots.observeDeep(bump);
+    bump();
+    return () => shots.unobserveDeep(bump);
+  }, [projectId, spaceId, nodeId]);
+  return version;
 }
 
 /**

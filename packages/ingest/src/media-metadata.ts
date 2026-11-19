@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the media container reports, and which of it the ledger keeps
@@ -45,6 +45,12 @@ export interface ProbeStream {
   channels?: number;
   /** A video stream's `alpha_mode` tag, when it carries one (a VP9 or VP8 WebM with alpha says "1"). */
   alphaMode?: string;
+  /**
+   * A video stream's frame rate in frames per second, when ffprobe read one:
+   * its `avg_frame_rate`, or `r_frame_rate` where that is `0/0`. A join
+   * writes at its first clip's rate (inner#1825 §6.4).
+   */
+  frameRate?: number;
 }
 
 /** One /probe answer, minus the cover bytes. */

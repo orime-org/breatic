@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** Real SQL registration, history, node-task settlement and Redis publication for inner#1306. */
 import { randomUUID } from "node:crypto";

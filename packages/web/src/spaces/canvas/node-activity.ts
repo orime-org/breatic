@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Who is doing what on an empty node (inner#1303 §6.8, A14).
@@ -11,7 +11,7 @@
  * the marks store stays the one place that decides it.
  */
 
-import { readUserId } from '@web/spaces/canvas/awareness-user';
+import { readUserId } from '@web/data/yjs/awareness-user';
 import type { UploadMark, UploadMarkAction } from '@web/stores/upload-marks';
 
 /** One node this client is working on, as it goes on the wire. */

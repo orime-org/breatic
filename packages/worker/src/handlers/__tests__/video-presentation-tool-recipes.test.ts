@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * S6d D4-3/D4-4 worker builders (inner#1306 test plan §92 D4-9/D4-10; frames-split design §7.17 「唯一写点：worker的配方构造」,

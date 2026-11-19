@@ -1,6 +1,6 @@
 # @breatic/provider
 
-The model provider layer: every model call (media generation, understanding, LLM chat, the decisions endpoint) goes through it, and it answers which upstream serves it, how our params become that upstream's fields, what a run is estimated to cost and what it actually cost. These rules apply when you change anything under `packages/provider/`, `config/provider/` or the two `scripts/provider-*.ts` generators.
+The model provider layer: every model call (media generation, understanding, LLM chat, the decisions endpoint, the web-animation Messages relay) goes through it (inner#1743), and it answers which upstream serves it, how our params become that upstream's fields, what a run is estimated to cost and what it actually cost. These rules apply when you change anything under `packages/provider/`, `config/provider/` or the `scripts/provider-*` generators.
 
 ### It stands alone
 
@@ -8,23 +8,28 @@ The model provider layer: every model call (media generation, understanding, LLM
 
 ### Its own HTTP module
 
-**Every outgoing request goes through `src/http/request.ts`: adapters call `send` and the readers beside it, and every AI SDK provider is built with its `aiSdkFetch` (`src/llm/vendors.ts`).** That file is the one place in the repository besides `@breatic/shared`'s transport allowed to call the platform `fetch` (the `breatic/no-naked-fetch` exemption in `eslint.config.ts`). A submit is sent with `replaySafe: false`; media polls, result and billing queries are replay-safe; every understand request, Gemini Files API steps included, is delivered once (`exchange`).
+**Every outgoing request goes through `src/http/request.ts`: adapters call `send` and the readers beside it, and every AI SDK provider is built with its `aiSdkFetch` (each upstream adapter's `build` in `src/llm/upstreams/`).** That file is the one non-test file the `breatic/no-naked-fetch` exemption in `eslint.config.ts` names besides `@breatic/shared`'s transport directory (`packages/shared/src/http/`). A submit is sent with `replaySafe: false`; media polls, result and billing queries are replay-safe; every understand request, Gemini Files API steps included, is delivered once (`exchange`).
 
-### Three entry points
+### Four entry points
 
 | Entry | Who may import it |
 |---|---|
 | `@breatic/provider` | domain, server, worker: `createProvider`, LLM calls, costs, errors |
 | `@breatic/provider/pricing` | web as well: it runs in the browser, so `src/pricing/` imports only itself, `zod` and `jsonata` (`provider-pricing-browser-safe`) |
 | `@breatic/provider/media` | worker only (`provider-media-worker-only`): media runs happen only in the worker, per [AGENTS.md#aigc-generation-runs-in-the-worker](../../AGENTS.md#aigc-generation-runs-in-the-worker) |
+| `@breatic/provider/messages` | ingest only (`provider-messages-ingest-only`): the web-animation container's Messages relay runs in the ingest Cloudflare Worker, so the relay and every file it reaches import only one another, `zod` and `node:async_hooks` (`provider-messages-worker-safe`) |
 
 ### Configuration is checked whole at load
 
 **`config/provider/upstreams.yaml`, `llm.yaml` and `media/*.yaml` are parsed by `src/config/schema.ts` with strict objects: an unknown key, a weight used twice for one model, an upstream kind no adapter speaks to or a pricing rule of the wrong shape fails `createProvider` with every problem named.** The deployment's weight overrides live in `config/provider/routing.yaml`, which is not distributed; the repository ships `routing.yaml.template`. Every shipped LLM route and its key variable is locked by `src/config/__tests__/shipped-config.test.ts`; renaming an upstream renames what calls are charged under.
 
+### Vendor limits live on the model
+
+**A model vendor's input limits are written once, as the model's `rejects` in `config/provider/media/*.yaml` (our param names, the prompt as `prompt`, the vendor's words and the vendor page as `source`); a binding's `rejects` hold only what that reseller enforces beyond the vendor.** Each reseller forwards to the vendor, so a limit copied per binding drifts and a reseller that misses it sends runs the vendor refuses. A limit the vendor has announced for a date carries `from` and holds from then on, in the estimate and the browser alike. Whether a param is filled at all is never a reject, at the model or a binding, and stays the application's check at submit: such a reject would blank the estimate before the user has typed. A limit an upstream is measured to serve past is not the vendor's: it goes on the bindings that refuse it (`supported` or the binding's `rejects`), with a test that runs the measured value on the upstream that serves it. A reject whose condition counts characters or lines (of the whole value, each line or each list item) states that count as its `limit` (our param, measure, `max` or `min`, `per` line or item), which `inputRefusal` hands the application to tell the user; `src/config/__tests__/reject-limits.test.ts` holds each such limit to its `when` and lets no `$length(` condition go without one. A reject on how many items a list holds (`$count(images)`) has no `limit`, and the application tells it with the general sentence. Check: is the limit the vendor's, or only this reseller's? The vendor's goes on the model, whatever the reseller's schema says.
+
 ### Moving to the next upstream
 
-**Weight 0 is the model's official API where it has one (a model reached only through a reseller, such as the catch-all LLM route, has the reseller at 0), and smaller weights are tried first; a call moves on only when the upstream has no key configured, was never reached, answered 408, 429 or 5xx, said it has no such model, or said the balance is too low; an LLM call also moves on 409, and retries on the same upstream first (`llmMaxRetries`).** A 400 or 422, a request that left without an answer, a passed deadline, and anything after the upstream accepted a submit or sent its first content stay on that upstream. Each upstream's "no such model" and "balance too low" answers are matched in its own adapter, never across upstreams.
+**Weight 0 is reserved for the model's official API, and smaller weights are tried first; an LLM route only a reseller serves (the catch-all route) has that reseller at 0, while media models have no official adapter yet, so their resellers start at 1 and weight 0 stays empty; a call moves on only when the upstream has no key configured, was never reached, answered 408, 429 or 5xx, said it has no such model, or said the balance is too low; an LLM call also moves on 409, and retries on the same upstream first (`llmMaxRetries`).** Any other 400 or 422, a request that left without an answer, a passed deadline, and anything after the upstream accepted a submit or sent its first content stay on that upstream. Each upstream's "no such model" and "balance too low" answers are matched in its own adapter, never across upstreams.
 
 ### Every billed answer reaches the caller once
 
@@ -32,7 +37,7 @@ The model provider layer: every model call (media generation, understanding, LLM
 
 ### One reader per answer shape
 
-**Each upstream answer shape has one reader (`costedOf` for OpenRouter's id and usage, the zod schemas in `src/llm/understand/google.ts` for Gemini, `messageOf` and `errorOf` in `src/llm/vendors.ts` for an error body, `pricingRuleSchema` and `upstreamPricingSchema` for pricing); a field of that shape is read through it, never through a second cast elsewhere.** A second reader drifts from the first, and the field it reads often decides whether a billed answer is recorded or a call moves on.
+**Each upstream answer shape has one reader (`costedOf` for OpenRouter's id and usage, the zod schemas in `src/llm/understand/google.ts` for Gemini, `messageOf` and `errorOf` in `src/llm/upstreams/common.ts` for an error body, `pricingRuleSchema` and `upstreamPricingSchema` for pricing); a field of that shape is read through it, never through a second cast elsewhere.** A second reader drifts from the first, and the field it reads often decides whether a billed answer is recorded or a call moves on.
 
 ### The ticket carries the state
 
@@ -41,4 +46,7 @@ The model provider layer: every model call (media generation, understanding, LLM
 ### Tests
 
 - **Upstreams are faked with the loopback server in `src/media/__tests__/fake-upstream.ts` (`hold`, `cut`, `reset`, `hang`) and the LLM fakes in `src/llm/__tests__/llm-harness.ts`; nothing in the test suites calls a real upstream.**
-- **`test/fixtures/*.json` are frozen answers of the code provider replaces, written by `scripts/provider-fixtures.ts`; never edit them by hand.** `scripts/provider-config-migration.ts` writes `config/provider/` from the `config/models/` catalog the same way.
+- **`pnpm test:integration` runs both suites in one run under `vitest.coverage.config.ts`, which fails, naming each file and its uncovered lines, below 100% coverage of the files its `include` lists: the estimate and the formula evaluator, routing, the media runner and its adapters, and every reader of an actual cost.** A branch no input can reach (a fallback only the types need) carries `/* v8 ignore next -- @preserve */` under a comment saying why; anything an input can reach gets a test.
+- **`test/fixtures/upstream-*.json` are frozen answers of the code provider replaced, written once before the move; the `upstream-schemas/` and `upstream-prices/` snapshots are what the upstreams state, written by `pnpm provider:prices`; the `bodies/` samples are what the runner sends each reseller, written by `pnpm provider:reseller-bodies`; never edit any of them by hand.** A model or param added to the catalog after the freeze has no frozen sample: list its params in `ADDED_AFTER_FREEZE` (`src/media/wavespeed/__tests__/departures.ts`) and check its WaveSpeed body in its own test beside it (`seedream-v5.5.test.ts`). `pnpm provider:prices` writes fal's `base_price` and the OpenRouter fields of `llm.yaml`; every other line of `config/provider/` (bindings, routes, direct prices, each model's `rejects`) is written by hand.
+- **A model that leaves the catalog keeps its bindings until no run opened on it can still be inside its task budget; every bound model outside the catalog is listed in `RETIRED` (`src/media/wavespeed/__tests__/departures.ts`), which `gemini-3.8-tts.test.ts` holds, and the schema, reseller and generator checks skip it.** Its frozen `upstream-*.json` cases keep running against its kept WaveSpeed binding.
+- **The base run of the config tests (`takenRun`, `withDefaults`) and every body sample are resolved as the application resolves them, through `resolvedParams` in `src/config/__tests__/shipped.ts`: defaults, the model's `forces`, then every param whose `when` fails dropped; a body sample also carries the prompt only while the model's `prompt_when` holds (`promptOf` in `scripts/provider-reseller-bodies.ts`); the per-value schema and evaluation checks vary one param on that base unresolved, so a param a condition drops is still checked; a VENDOR row marked `unforced` skips the forces, to reach a vendor limit the catalog's forces keep away from the application, since provider can be given any run.** `resolvedParams` mirrors shared's `resolveParams` and `promptOf` its `promptTaken` (`packages/shared/src/param-resolution.ts`), which provider may not import; a change to that flow changes these copies in the same PR.

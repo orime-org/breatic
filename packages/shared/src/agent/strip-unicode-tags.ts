@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Unicode tag characters (U+E0000–E007F) taken out of text before a model
  * reads it.
  *
  * They render as nothing, and U+E0020–E007E mirror printable ASCII, so a run
- * of them spells a line no reader sees but a model can still read as words. Their one legitimate use left is the England, Scotland and Wales
+ * of them spells a line no user sees but a model can still read as words. Their one legitimate use left is the England, Scotland and Wales
  * flags (black flag, tag letters, cancel tag), and those three pass through
  * whole.
  */

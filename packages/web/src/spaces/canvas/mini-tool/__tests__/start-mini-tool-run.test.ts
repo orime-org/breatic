@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * One press of Run (inner#888 §7.5): what is built, what is sent, and what
@@ -12,7 +12,10 @@ import { miniToolById, type MiniToolSnapshot, type MiniToolSpec } from '@breatic
 const canvas = vi.hoisted(() => ({
   addNode: vi.fn(),
   addEdge: vi.fn((_p: string, _s: string, _edge: { source: string; toolId?: string }) => true),
-  runCanvasUndoBatch: vi.fn((_p: string, _s: string, body: () => void) => body()),
+  runCanvasUndoBatch: vi.fn((_p: string, _s: string, _o: unknown, body: () => void) => {
+    body();
+    return { ok: true };
+  }),
   createGroup: vi.fn(),
 }));
 vi.mock('@web/data/yjs/canvas-space', () => canvas);
@@ -336,10 +339,11 @@ describe('startMiniToolRun', () => {
     // inside the one batch.
     let inBatch = false;
     const writtenInBatch: boolean[] = [];
-    canvas.runCanvasUndoBatch.mockImplementationOnce((_p: string, _s: string, body: () => void) => {
+    canvas.runCanvasUndoBatch.mockImplementationOnce((_p: string, _s: string, _o: unknown, body: () => void) => {
       inBatch = true;
       body();
       inBatch = false;
+      return { ok: true };
     });
     for (let i = 0; i < 4; i++) canvas.addNode.mockImplementationOnce(() => void writtenInBatch.push(inBatch));
     canvas.createGroup.mockImplementationOnce(() => void writtenInBatch.push(inBatch));
@@ -416,7 +420,7 @@ describe('startMiniToolRun', () => {
     expectAllFailed({ key: 'canvas.miniTool.panel.sourceGone' });
   });
 
-  // inner#1302 §6.5: a reader who closed the panel and opened another keeps its selection.
+  // inner#1302 §6.5: a user who closed the panel and opened another keeps its selection.
   it('builds the nodes without selecting them once the panel was opened again', async () => {
     const run = press({ stillOpen: () => false });
     await startMiniToolRun(run);

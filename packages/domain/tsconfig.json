@@ -6,7 +6,8 @@
     "paths": {
       "@shared/*": ["../shared/src/*"],
       "@core/*": ["../core/src/*"],
-      "@domain/*": ["./src/*"]
+      "@domain/*": ["./src/*"],
+      "@provider/*": ["../provider/src/*"]
     }
   },
   "include": [

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the node says when a job comes back after the provider was called.
@@ -7,10 +7,10 @@
  * The queue can hand the same job over twice — a worker that called the
  * provider and died before billing leaves a task with a result URL and no
  * charge. Policy is to stop there rather than call the provider again, and
- * the run has to end somewhere the reader can see.
+ * the run has to end somewhere the user can see.
  *
  * Where it ends is a node's history row, which is read in whatever language
- * the reader set. So what lands there is one of our causes, not the sentence
+ * the user set. So what lands there is one of our causes, not the sentence
  * an operator would want: which part of the queue did what is the log's to
  * say, and the log already says it.
  *
@@ -21,12 +21,15 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 import type * as coreModule from "@breatic/core";
 import type * as sharedModule from "@breatic/shared";
 
-const mockMarkFailed = vi.hoisted(() => vi.fn());
+const mockMarkFailed = vi.hoisted(() => vi.fn(async () => true));
 const mockRecordFailure = vi.hoisted(() => vi.fn());
 const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 const mockGetByIdInternal = vi.hoisted(() => vi.fn());
 const mockWarn = vi.hoisted(() => vi.fn());
 const mockReleaseHold = vi.hoisted(() => vi.fn(async () => undefined));
+const mockError = vi.hoisted(() => vi.fn());
+const mockPendingChargeRequestId = vi.hoisted(() => vi.fn(async (..._args: unknown[]): Promise<string | null> => null));
+const mockSettleCharge = vi.hoisted(() => vi.fn(async (_requestId: string): Promise<unknown> => null));
 
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...await importOriginal<typeof coreModule>(),
@@ -51,11 +54,10 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   storageKey: vi.fn(),
   env: {},
   NotFoundError: class extends Error {},
-  logger: { info: vi.fn(), warn: mockWarn, error: vi.fn(), debug: vi.fn() },
+  logger: { info: vi.fn(), warn: mockWarn, error: mockError, debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", () => ({
   buildAgentConfig: vi.fn(),
-  getModel: vi.fn(),
   generateTextRetry: vi.fn(),
   taskService: {
     markFailed: mockMarkFailed,
@@ -63,9 +65,11 @@ vi.mock("@breatic/domain", () => ({
   },
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: {},
-  creditLotService: {},
+  creditLotService: {
+    pendingChargeRequestId: mockPendingChargeRequestId,
+    settleCharge: mockSettleCharge,
+  },
   creditHoldService: { releaseHold: mockReleaseHold },
-  resolveActiveProvider: vi.fn(),
   nodeHistoryService: { recordGenerationFailure: mockRecordFailure },
   settleTaskForNode: mockSettleTaskForNode,
   understandMediaAt: vi.fn(),
@@ -73,13 +77,14 @@ vi.mock("@breatic/domain", () => ({
   extractPromptText: vi.fn(),
 }));
 vi.mock("@breatic/shared", async (importOriginal) => ({
-  ...await importOriginal<typeof sharedModule>(),
+  ...(await importOriginal<typeof SharedModule>()),
   NO_CONSENT: { analytics: false, ads: false },
   canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,
   extractPromptText: vi.fn(),
 }));
 
 import type { Job } from "bullmq";
+import type * as SharedModule from "@breatic/shared";
 
 import { runTask } from "@worker/handlers/dispatch.js";
 
@@ -115,8 +120,8 @@ describe("a job redelivered after the provider was already called", () => {
     });
   });
 
-  // A cause travels as a code and becomes a sentence where the reader is.
-  // An operator's sentence stored here reaches every reader in one language
+  // A cause travels as a code and becomes a sentence where the user is.
+  // An operator's sentence stored here reaches every user in one language
   // and tells them nothing they can act on — resending is what they do next,
   // which is exactly what `internal` says.
   it("leaves the node a cause this product knows, not an operator sentence", async () => {
@@ -152,14 +157,17 @@ describe("a job redelivered after it was charged", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetByIdInternal.mockResolvedValue({ billedAt: new Date(), billedCredits: 5, result: null });
+    mockPendingChargeRequestId.mockResolvedValue(null);
   });
 
-  // A worker that died between marking the task billed and charging it
-  // leaves the run's hold standing; this exit is the last code that sees the
-  // run, and the job completes, so no failure handler runs after it.
-  it("releases the run's credit hold", async () => {
+  // With no request left pending the charge was settled (or there was none):
+  // a hold still standing is this exit's to release, because the job
+  // completes and no failure handler runs after it.
+  it("releases the run's credit hold when no charge request is pending", async () => {
     await runTask(JOB);
 
+    expect(mockPendingChargeRequestId).toHaveBeenCalledWith("task", "user-1", "task-1");
+    expect(mockSettleCharge).not.toHaveBeenCalled();
     expect(mockReleaseHold).toHaveBeenCalledWith("task-1");
   });
 
@@ -167,5 +175,38 @@ describe("a job redelivered after it was charged", () => {
     mockReleaseHold.mockRejectedValueOnce(new Error("db down"));
 
     await expect(runTask(JOB)).resolves.toEqual({ alreadyCompleted: true });
+  });
+});
+
+// inner#1617: a worker that died between completing the task and settling its
+// charge left the request pending. The redelivery settles it, which charges
+// once and releases the hold in the settle's own commit.
+describe("a job redelivered with its charge still pending", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetByIdInternal.mockResolvedValue({ billedAt: new Date(), billedCredits: 5, result: null });
+    mockPendingChargeRequestId.mockResolvedValue("req-1");
+    mockSettleCharge.mockResolvedValue({ billed: true, charged: "5.000000", shortfall: "0.000000", studioId: "s", lotIds: [] });
+  });
+
+  it("settles the pending request and leaves the hold to that settle", async () => {
+    await expect(runTask(JOB)).resolves.toEqual({ alreadyCompleted: true });
+
+    expect(mockPendingChargeRequestId).toHaveBeenCalledWith("task", "user-1", "task-1");
+    expect(mockSettleCharge).toHaveBeenCalledExactlyOnceWith("req-1");
+    expect(mockReleaseHold).not.toHaveBeenCalled();
+  });
+
+  it("keeps the hold, logs the failure, and still returns the stored outcome when the settle fails", async () => {
+    const down = new Error("db down");
+    mockSettleCharge.mockRejectedValueOnce(down);
+
+    await expect(runTask(JOB)).resolves.toEqual({ alreadyCompleted: true });
+
+    expect(mockError).toHaveBeenCalledWith(
+      { taskId: "task-1", userId: "user-1", projectId: "proj-1", amount: 5, wasFirst: false, err: down, requestId: "req-1" },
+      "credit_charge_settle_failed",
+    );
+    expect(mockReleaseHold).not.toHaveBeenCalled();
   });
 });

@@ -1,8 +1,32 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import type { MediaSurfaceBinding } from '@web/spaces/canvas/video-presentation/types';
+
+/** Where a player stands: what one player hands another (inner#1844). */
+export interface MediaPlayerState {
+  /** Playback position, seconds. */
+  time: number;
+  /** Whether it is playing. */
+  playing: boolean;
+  /** Whether it is muted. */
+  muted: boolean;
+  /** Volume, 0..1. */
+  volume: number;
+}
+
+/**
+ * Writes where a player stands into an element: what one player hands
+ * another, at a start and at a hand-back.
+ * @param el - The media element.
+ * @param state - Where it is to stand.
+ */
+export function writePlayerState(el: HTMLMediaElement, state: MediaPlayerState): void {
+  el.currentTime = state.time;
+  el.muted = state.muted;
+  el.volume = state.volume;
+}
 
 /** Reactive transport state + imperative actions for a native media element. */
 export interface MediaPlayerApi {
@@ -28,8 +52,6 @@ export interface MediaPlayerApi {
   setVolumeLevel: (volume: number) => void;
   /** Toggle mute. */
   toggleMute: () => void;
-  /** Request fullscreen for the element (video). */
-  requestFullscreen: () => void;
 }
 
 /**
@@ -45,12 +67,14 @@ export interface MediaPlayerApi {
  *   render, because a task can replace the medium on a node that is already
  *   mounted and the new clip's duration arrives in the same write as its
  *   content. The element is what answers for a medium the node knows none of.
+ * @param start - Where to start, written once at mount (inner#1844).
  * @param owned - An optional actual native or alpha transport owner.
  * @returns Reactive player state plus transport actions.
  */
 export function useMediaPlayer(
   ref: React.RefObject<HTMLMediaElement | null>,
   knownDuration?: number,
+  start?: MediaPlayerState,
   owned?: MediaSurfaceBinding | null,
 ): MediaPlayerApi {
   const [playing, setPlaying] = React.useState(false);
@@ -63,31 +87,45 @@ export function useMediaPlayer(
   // native audio/independent-player contract. Ref identity is irrelevant for
   // an owned transport and must not pause it on a control re-render.
   const nativeRef = owned === undefined ? ref : undefined;
+  // A hidden Space keeps its media element, and an element left playing goes
+  // on sounding from a Space nobody is looking at. Only an actual owner change
+  // ends this transport lifetime, not a new ref wrapper from the caller.
   React.useEffect(() => {
     const el = owned?.element ?? nativeRef?.current;
     return () => {
       if (owned) owned.pause();
       else el?.pause();
     };
-    // Native ref wrappers may change on render; only an actual owner change
-    // ends this transport lifetime, matching the existing native mount contract.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [owned]);
+
+  // Written in the commit of the click that opened this player, before any
+  // metadata: a time set at HAVE_NOTHING becomes the start position, and play()
+  // still counts as answering the click, which Safari requires for sound.
+  // Mount only: a later `start` belongs to a player that has moved on.
+  React.useLayoutEffect(() => {
+    const el = owned?.element ?? nativeRef?.current;
+    if (!el || !start) return;
+    writePlayerState(el, start);
+    if (start.playing) void (owned ? owned.play() : el.play()).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   React.useEffect(() => {
     const el = owned?.element ?? nativeRef?.current;
     if (!el) { setPlaying(false); setCurrentTime(0); setElementDuration(0); return undefined; }
-    /**
-     * Reads the current actual element, including resource reset events.
-     * @throws {never} Never.
-     */
-    function sync(): void {
-      setPlaying(!el!.paused);
-      setCurrentTime(el!.currentTime);
-      setElementDuration(Number.isFinite(el!.duration) ? el!.duration : 0);
-      setVolume(el!.volume);
-      setMuted(el!.muted);
-    }
+
+    /** Mirror the current native state, including a resource load/reset. */
+    const sync = (): void => {
+      setPlaying(!el.paused);
+      setCurrentTime(el.currentTime);
+      setElementDuration(Number.isFinite(el.duration) ? el.duration : 0);
+      setVolume(el.volume);
+      setMuted(el.muted);
+    };
+    // Loading a new src resets paused without requiring a pause event. Read
+    // the element rather than event names: queued events can describe an old
+    // resource or a transport action that has already been superseded.
     const events = [
       'play', 'pause', 'ended', 'emptied', 'loadstart',
       'timeupdate', 'loadedmetadata', 'durationchange', 'volumechange',
@@ -141,16 +179,6 @@ export function useMediaPlayer(
     if (el) el.muted = !el.muted;
   }, [nativeRef, owned]);
 
-  const requestFullscreen = React.useCallback((): void => {
-    const el = (owned?.container ?? nativeRef?.current) as
-      | (HTMLElement & { webkitRequestFullscreen?: () => void })
-      | null;
-    if (!el) return;
-    // Standard API (Chrome / Edge / Firefox) + Safari-desktop webkit fallback.
-    if (el.requestFullscreen) void el.requestFullscreen();
-    else el.webkitRequestFullscreen?.();
-  }, [nativeRef, owned]);
-
   // The same figure the scrubber is positioned against, so a drag lands where
   // it was released. The element takes a time before it has any metadata: with
   // `readyState` at HAVE_NOTHING it keeps the write as the default playback
@@ -169,6 +197,5 @@ export function useMediaPlayer(
     seekFraction,
     setVolumeLevel,
     toggleMute,
-    requestFullscreen,
   };
 }

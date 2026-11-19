@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the web, the server and the worker read off the registry (inner#888
@@ -8,11 +8,12 @@
  */
 
 import { defaultAdjustValue } from "@shared/adjust-value.js";
+import { extractPromptText } from "@shared/agent/extract-prompt.js";
 import { defaultDynamicsValue } from "@shared/audio-dynamics.js";
 import { defaultEqValue } from "@shared/audio-eq.js";
 import { MINI_TOOLS } from "@shared/mini-tools/tools.js";
 import type { MiniToolParam, MiniToolSpec, ModelToolSpec, SizeTier } from "@shared/mini-tools/types.js";
-import type { EstimateInput } from "@shared/pricing/estimate.js";
+import type { EstimateInput } from "@shared/pricing/prepare.js";
 import type { ModelCatalog, ModelEntry, ParamDescriptor } from "@shared/types/model-catalog.js";
 import { paramValueAllowed } from "@shared/types/param-values.js";
 
@@ -22,8 +23,12 @@ export interface MiniToolSlotValue {
   readonly cover?: string;
   /** Seconds, when the medium has a length. */
   readonly duration?: number;
-  /** The canvas node it was picked from; another node may hold the same address. */
+  /**
+   * The canvas node it was picked from and that node's name (inner#1825):
+   * the browser's draft wires and orders by them, and the request leaves them out.
+   */
   readonly nodeId?: string;
+  readonly name?: string;
 }
 
 /** What a run was started with: the panel's draft at the moment Execute was pressed. */
@@ -33,7 +38,7 @@ export interface MiniToolSnapshot {
   readonly source: { readonly url: string; readonly duration?: number };
   readonly slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined>>;
   /**
-   * Where what the reader drew was uploaded: a mask tool's mask, sent beside
+   * Where what the user drew was uploaded: a mask tool's mask, sent beside
    * the source, or a sketch tool's composite, sent in place of it.
    */
   readonly drawing?: { readonly mask: string } | { readonly image: string };
@@ -196,7 +201,7 @@ export interface SizeTierOption {
   readonly usable: boolean;
 }
 
-/** The tier picked when the reader has not chosen one. */
+/** The tier picked when the user has not chosen one. */
 const DEFAULT_SIZE_TIER = "4K";
 
 /**
@@ -236,7 +241,7 @@ export function tieredParamKeys(spec: MiniToolSpec): string[] {
 }
 
 /**
- * The tier a run takes when the reader has not picked one: 4K when it can be
+ * The tier a run takes when the user has not picked one: 4K when it can be
  * used, otherwise the first that can.
  * @param options - The tiers on the source.
  * @returns The tier's label, or undefined when none enlarges the source.
@@ -257,13 +262,28 @@ function knownDurations(values: readonly MiniToolSlotValue[]): number[] | undefi
 }
 
 /**
+ * The prompt a run is sent: an empty one on a tool that has its own is sent as that one, and a tool's preamble goes
+ * before whatever the user wrote.
+ * @param spec - The tool.
+ * @param typed - What the user wrote.
+ * @returns The prompt, before the worker cleans it.
+ * @throws {never} Never.
+ */
+export function miniToolPrompt(spec: MiniToolSpec, typed: string): string {
+  const empty = typed.trim() === "";
+  const preamble = spec.prompt?.preamble;
+  if (preamble !== undefined) return empty ? preamble : `${preamble} Also: ${typed.trim()}`;
+  return empty && spec.prompt?.defaultText !== undefined ? spec.prompt.defaultText : typed;
+}
+
+/**
  * The estimate input of one run: the draft params first, then the source and
  * every filled slot written under the model params they fill. A sketch's
  * composite stands in for the source and a mask fills the mask param; an
  * expand's padded picture stands in for the source beside its mask.
  * @param spec - The tool.
- * @param snapshot - What the run reads.
- * @returns The input `estimateCredits` takes for the pinned model.
+ * @param snapshot - What the run reads, its prompt as the user typed it.
+ * @returns The run as set up, which `prepareRunParams` prepares for the pinned model.
  */
 export function miniToolEstimateInput(spec: MiniToolSpec, snapshot: MiniToolSnapshot): EstimateInput {
   const drawing = snapshot.drawing;
@@ -292,7 +312,8 @@ export function miniToolEstimateInput(spec: MiniToolSpec, snapshot: MiniToolSnap
   }
   return {
     params,
-    prompt: snapshot.prompt,
+    // The prompt as the worker sends it, so a limit on its length reads what the upstream is sent.
+    prompt: extractPromptText(miniToolPrompt(spec, snapshot.prompt)),
     durations,
     sources: toolFilledParams(spec),
   };

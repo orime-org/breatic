@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Hono application factory.
@@ -20,6 +20,7 @@ import { errorHandler } from "@server/middleware/error-handler.js";
 import { authRoute } from "@server/routes/auth.js";
 import { chatRoute } from "@server/routes/chat.js";
 import { canvasRoute } from "@server/routes/canvas.js";
+import { documentsRoute } from "@server/routes/documents.js";
 import { miniToolsRoute } from "@server/routes/mini-tools.js";
 import { miniToolRunsRoute } from "@server/routes/mini-tool-runs.js";
 import { miniToolAnalysesRoute } from "@server/routes/mini-tool-analyses.js";
@@ -34,8 +35,11 @@ import { assetsRoute } from "@server/routes/assets.js";
 import { videoPresentationRoute } from "@server/routes/video-presentation.js";
 import { accountRoute } from "@server/routes/account.js";
 import { subscriptionRoute } from "@server/routes/subscription.js";
+import { referralRoute } from "@server/routes/referral.js";
 import { activitiesRoute } from "@server/routes/activities.js";
 import { projectAssetsRoute } from "@server/routes/project-assets.js";
+import { threeDTasksRoute } from "@server/routes/three-d-tasks.js";
+import { timelineRoute } from "@server/routes/timeline.js";
 import { membersRoute } from "@server/routes/members.js";
 import { usersRoute } from "@server/routes/users.js";
 import { studiosRoute, studioRoute } from "@server/routes/studios.js";
@@ -82,6 +86,7 @@ export function createApp(): Hono {
   app.route("/api/v1/canvas", canvasRoute);
   app.route("/api/v1/mini-tools/analyses", miniToolAnalysesRoute);
   app.route("/api/v1/projects/:projectId/mini-tool-runs", miniToolRunsRoute);
+  app.route("/api/v1/documents", documentsRoute);
   app.route("/api/v1/mini-tools", miniToolsRoute);
   app.route("/api/v1/mini-tools/text", textToolsRoute);
   app.route("/api/v1/projects", projectsRoute);
@@ -111,9 +116,12 @@ export function createApp(): Hono {
   app.route("/api/v1/models", modelsRoute);
   app.route("/api/v1/assets", assetsRoute);
   app.route("/api/v1/account/subscription", subscriptionRoute);
+  app.route("/api/v1/account/referral", referralRoute);
   app.route("/api/v1/account", accountRoute);
   app.route("/api/v1/projects", activitiesRoute);
   app.route("/api/v1/projects", projectAssetsRoute);
+  app.route("/api/v1/projects", threeDTasksRoute);
+  app.route("/api/v1/timeline", timelineRoute);
 
   return app;
 }

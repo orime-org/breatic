@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 (frames-split design §5.4 待实测 row, `lipsync_clip` and `lipsync_composite` decode work): a shared function

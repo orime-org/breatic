@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
@@ -17,6 +17,7 @@ export type {
   ProjectRegisteredAsset,
   ProjectAssetPage,
   ConversationAttachmentEntity,
+  ProjectAgentInstructionsEntity,
   AssetKind,
   PaymentEntity,
   CreditLotEntity,
@@ -33,6 +34,9 @@ export type {
   StudioProjectPage,
   RecentItem,
   MemoryContext,
+  AgentMemoryEntity,
+  AgentModelChoice,
+  ChatConversation,
   StoredMessageMetadata,
 } from "@shared/types/entities.js";
 
@@ -86,13 +90,17 @@ export type {
   ModelModality,
   ModelTier,
   ParamDescriptor,
+  ParamGate,
+  ThreeDGenerationMode,
+  SceneViewSlot,
+  ParamBound,
+  ParamForce,
+  ParamScalar,
   RemoteParamSource,
-  ModelProvider,
   ModelEntry,
+  ModelAvailability,
   CameraCommandEntry,
   CameraAngleParams,
-  PricingContract,
-  ExtraStep,
   SourceGroup,
   ItemField,
   ModelCatalog,
@@ -107,6 +115,8 @@ export {
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
   AUDIO_GENERATION_MODES,
+  THREE_D_GENERATION_MODES,
+  SCENE_VIEW_SLOTS,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   isGenerationNodeType,
@@ -116,12 +126,12 @@ export { paramValueAllowed, paramValues } from "@shared/types/param-values.js";
 export {
   PANEL_EDITOR_PARAM,
 } from "@shared/types/generate-panel.js";
-export type { ControlGate } from "@shared/types/generate-panel.js";
 export type { ParamOptionValue } from "@shared/types/param-values.js";
 
 export type {
   PromptSegment,
   ProposalNode,
+  ProposalLine,
   ProposalShot,
   ProposalNodeType,
   CanvasProposal,
@@ -136,16 +146,20 @@ export {
   TEMPLATE_GUIDE_KEY,
   markReadsBack,
   markText,
+  promptLines,
   writtenMark,
   markedSegments,
   marksTypedIn,
   proposalMarkSegments,
+  proposalWordRuns,
   promptPlainText,
   promptTextOf,
 } from "@shared/types/canvas-proposal.js";
 
 export type { DocumentProposal } from "@shared/types/document-proposal.js";
 export { documentProposalSchema, hasWords, occurrences } from "@shared/types/document-proposal.js";
+export type { SceneGenerationOrigin, SceneGenerationProposal, SceneTaskNotice } from "@shared/types/scene-generation-proposal.js";
+export { SCENE_GENERATION_ORIGINS, SCENE_TASK_NOTICES, sceneGenerationProposalSchema } from "@shared/types/scene-generation-proposal.js";
 
 export type {
   ReferenceRefusal,
@@ -223,12 +237,15 @@ export type {
 } from "@shared/types/project-invite.js";
 
 export type { SpaceType, Space } from "@shared/types/space.js";
+export { SPACE_TASKS_KEY, SPACE_TASKS_TYPES, SPACE_TASKS_VERSION } from "@shared/types/space-tasks.js";
+export type { SpaceTasksVersionEvent } from "@shared/types/space-tasks.js";
 export { SpaceTypeSchema } from "@shared/types/space.js";
 
 export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
+  SPACE_TASKS_CHANGED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -244,6 +261,7 @@ export type {
   ProjectActivityPage,
   ActivityNewSignal,
   CreditsChangedSignal,
+  SpaceTasksChangedSignal,
 } from "@shared/types/project-activity.js";
 
 export {
@@ -272,6 +290,7 @@ export type {
 export {
   activityNewChannel,
   creditsChangedChannel,
+  spaceTasksChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
@@ -279,6 +298,7 @@ export {
 export type {
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
+  SpaceTasksChangedControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
   ProjectConnectionsCloseReason,

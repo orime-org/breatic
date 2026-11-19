@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -19,7 +19,8 @@ import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFr
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
-import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import { MediaPlayer, type MediaPlayerHandle } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
+import { useMediaFullscreen } from '@web/spaces/canvas/nodes/_shared/use-media-fullscreen';
 import { useZoomedPastPreview } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/use-node-resolution';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
@@ -107,7 +108,7 @@ interface VideoNodeProps {
 
 /**
  * Video node — renders the unified {@link MediaPlayer} (native `<video>` +
- * cover poster + a scrubber, volume and fullscreen control bar, zero
+ * cover poster + a scrubber and volume control bar, zero
  * third-party player dependency).
  * @param root0 - Video node props.
  * @param root0.data - Video node payload (asset URL, cover poster).
@@ -135,6 +136,12 @@ export const VideoNode = React.memo(function VideoNode({
   const focusPicking = useCanvasSession(
     (s) => s.pickSession?.purpose === 'focus',
   );
+  const player = React.useRef<MediaPlayerHandle>(null);
+  const fullscreen = useMediaFullscreen({ name: data.name ?? '', currentSrc: data.content, player });
+  const size =
+    typeof data.width === 'number' && typeof data.height === 'number'
+      ? { width: data.width, height: data.height }
+      : undefined;
   return (
     <ContentNodeFrame
       modality='video'
@@ -151,23 +158,25 @@ export const VideoNode = React.memo(function VideoNode({
           <NodePlaceholder modality='video' onActivate={onActivate} />
         }
         content={
-          <NodeMediaInset>
+          <NodeMediaInset
+            onFullscreen={() =>
+              fullscreen.open({ kind: 'video', src: data.content ?? '', poster: data.coverUrl, size })
+            }
+          >
             <Player
+              ref={player}
               projectId={projectId}
               nodeId={nodeId ?? ''}
               modality='video'
               src={data.content ?? ''}
               poster={data.coverUrl}
               fullPoster={fullPoster}
-              size={
-                typeof data.width === 'number' && typeof data.height === 'number'
-                  ? { width: data.width, height: data.height }
-                  : undefined
-              }
+              size={size}
               duration={data.duration}
               onDimensions={setResolution}
               controlsHidden={focusPicking}
             />
+            {fullscreen.layer}
           </NodeMediaInset>
         }
       />

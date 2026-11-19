@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
-import { Activity, AlertCircle, Film, Music, RotateCcw, Star } from 'lucide-react';
+import { Activity, AlertCircle, Film, Music, RotateCcw } from 'lucide-react';
 import { useEffect, useRef, type JSX } from 'react';
 import {
   useInfiniteQuery,
@@ -30,12 +30,12 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@web/components/ui/sheet';
+import { CreditChip } from '@web/components/CreditChip';
 import { Button } from '@web/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { usePendingKeys } from '@web/lib/use-pending-keys';
 import { asFiniteCredits } from '@web/lib/as-finite-credits';
-import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -151,11 +151,16 @@ function entryMessage(entry: ProjectActivityEntry): {
         },
       };
     case 'asset:uploaded': {
-      // A browser tool's export arrives as an upload; what the reader did was
+      // A browser tool's export arrives as an upload; what the user did was
       // run the tool.
       const tool = toolNameOf(p);
       if (tool !== undefined) {
         return { key: 'activity.type.generationSucceededTool', params: { actor, toolName: tool } };
+      }
+      // A 3D model is named as the user called it (inner#1690).
+      const model = p['model'];
+      if (typeof model === 'object' && model !== null && typeof (model as { name?: unknown }).name === 'string') {
+        return { key: 'activity.type.assetUploadedModel', params: { actor, name: (model as { name: string }).name } };
       }
       // Specific copy per media kind (image / video / audio); a `file` kind or
       // an absent kind falls back to the generic upload message (#1622).
@@ -482,16 +487,11 @@ export function ProjectActivityButton({
                         {/* What the run consumed (spec §6.4 / INV-8): raw
                             value, 0 shown, hidden when there is no cost. */}
                         {credits != null ? (
-                          <span
+                          <CreditChip
                             data-testid={`project-activity-credits-${m.id}`}
-                            className='inline-flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-foreground'
-                          >
-                            <Star
-                              className='h-3 w-3 text-muted-foreground'
-                              aria-hidden='true'
-                            />
-                            {formatCreditAmount(credits)}
-                          </span>
+                            credits={credits}
+                            billingPending={m.payload['billing'] === 'pending'}
+                          />
                         ) : null}
                       </div>
                     </div>

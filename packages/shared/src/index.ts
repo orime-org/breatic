@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 
 export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
@@ -42,6 +42,7 @@ export type {
   ProjectRegisteredAsset,
   ProjectAssetPage,
   ConversationAttachmentEntity,
+  ProjectAgentInstructionsEntity,
   AssetKind,
   PaymentEntity,
   CreditLotEntity,
@@ -58,6 +59,9 @@ export type {
   StudioProjectPage,
   RecentItem,
   MemoryContext,
+  AgentMemoryEntity,
+  AgentModelChoice,
+  ChatConversation,
   NodeType,
   AttachRef,
   FocusImage,
@@ -69,16 +73,21 @@ export type {
   NodeMediaNumbers,
   NodeTaskCountsEvent,
   NodeEvent,
+  SpaceTasksVersionEvent,
   ModelModality,
   ModelTier,
   ParamDescriptor,
+  ParamGate,
+  ThreeDGenerationMode,
+  SceneViewSlot,
+  ParamBound,
+  ParamForce,
+  ParamScalar,
   RemoteParamSource,
-  ModelProvider,
   ModelEntry,
+  ModelAvailability,
   CameraCommandEntry,
   CameraAngleParams,
-  PricingContract,
-  ExtraStep,
   SourceGroup,
   ItemField,
   ModelCatalog,
@@ -123,6 +132,7 @@ export type {
   Space,
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
+  SpaceTasksChangedControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
   ProjectConnectionsCloseReason,
@@ -156,8 +166,12 @@ export {
   MAX_NODE_NAME_LEN,
   canGenerate,
   CANVAS_NODES_KEY,
+  SPACE_TASKS_KEY,
+  SPACE_TASKS_TYPES,
+  SPACE_TASKS_VERSION,
   activityNewChannel,
   creditsChangedChannel,
+  spaceTasksChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
@@ -189,6 +203,7 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
+  SPACE_TASKS_CHANGED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -198,7 +213,6 @@ export {
   ProjectActivityPageSchema,
   isMemberLeave,
 } from "@shared/types/index.js";
-export type { ControlGate } from "@shared/types/index.js";
 export type { GenerationSource } from "@shared/types/project-activity.js";
 export type { GenerationNodeType } from "@shared/types/index.js";
 export type {
@@ -206,10 +220,14 @@ export type {
   ReferenceUsabilityContext,
   PromptSegment,
   ProposalNode,
+  ProposalLine,
   ProposalShot,
   ProposalNodeType,
   CanvasProposal,
   DocumentProposal,
+  SceneGenerationOrigin,
+  SceneTaskNotice,
+  SceneGenerationProposal,
   ProposalRefused,
   ProposalAnswer,
 } from "@shared/types/index.js";
@@ -221,6 +239,7 @@ export type {
   ProjectActivityPage,
   ActivityNewSignal,
   CreditsChangedSignal,
+  SpaceTasksChangedSignal,
 } from "@shared/types/index.js";
 
 export {
@@ -230,6 +249,8 @@ export {
   IMAGE_GENERATION_MODES,
   VIDEO_GENERATION_MODES,
   AUDIO_GENERATION_MODES,
+  THREE_D_GENERATION_MODES,
+  SCENE_VIEW_SLOTS,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   isGenerationNodeType,
@@ -240,6 +261,9 @@ export {
   isReferenceMaterial,
   canvasProposalSchema,
   documentProposalSchema,
+  SCENE_GENERATION_ORIGINS,
+  SCENE_TASK_NOTICES,
+  sceneGenerationProposalSchema,
   hasWords,
   occurrences,
   feedsOf,
@@ -247,8 +271,10 @@ export {
   layoutFeedsOf,
   TEMPLATE_GUIDE_KEY,
   proposalMarkSegments,
+  proposalWordRuns,
   markReadsBack,
   markText,
+  promptLines,
   writtenMark,
   markedSegments,
   marksTypedIn,
@@ -292,6 +318,12 @@ export {
   normalizeEmail,
   emailSchema,
   registerSchema,
+  googleAuthSchema,
+  REFERRAL_CODE_INPUT_MAX,
+  PROMOTER_CHANNELS_MAX,
+  PROMOTER_CHANNEL_INPUT_MAX,
+  PROMOTER_PLAN_INPUT_MAX,
+  SIGNUP_REFERRAL_SOURCES,
   signupVerifySchema,
   SIGNUP_CODE_REGEX,
   setupStudioSchema,
@@ -310,6 +342,11 @@ export {
   understandSchema,
   transcribeSchema,
   nodeHistorySnapshotSchema,
+  DOCUMENT_VERSION_NAME_MAX_CHARS,
+  documentVersionSaveSchema,
+  documentVersionRenameSchema,
+  documentVersionListQuerySchema,
+  documentVersionScopeSchema,
   canvasPasteSchema,
   pastePairSchema,
   pasteHistoryItemSchema,
@@ -326,14 +363,21 @@ export {
   chatEarlierMessagesQuerySchema,
   chatCreateConversationSchema,
   chatRenameConversationSchema,
+  chatSetModelSchema,
   CHAT_MESSAGE_MAX_CHARS,
+  AGENT_INSTRUCTIONS_MAX_CHARS,
+  agentInstructionsQuerySchema,
+  agentInstructionsSaveSchema,
+  chatRunningQuerySchema,
   CONVERSATION_TITLE_MAX_CHARS,
   PROJECT_NAME_MAX_CHARS,
   projectNameSchema,
+  sceneGenerationBodySchema,
 } from "@shared/schemas/index.js";
 
 export type {
   RegisterInput,
+  SignupReferralSource,
   SignupVerifyInput,
   SetupStudioInput,
   CreateTeamStudioInput,
@@ -353,6 +397,7 @@ export type {
   UnderstandInput,
   TranscribeInput,
   CanvasPasteInput,
+  CanvasPasteAnswer,
   PastePair,
   PasteHistoryItem,
   ProjectCreateInput,
@@ -364,6 +409,17 @@ export type {
   ChatConversationsQueryInput,
   ChatCreateConversationInput,
   ChatRenameConversationInput,
+  ChatSetModelInput,
+  AgentInstructionsSaveInput,
+  AgentInstructionsView,
+  ChatRunningAnswer,
+  ChatPendingItem,
+  ChatSendAnswer,
+  ChatSyncAnswer,
+  ChatStopAnswer,
+  ChatQueueRemoveAnswer,
+  SceneGenerationAnswer,
+  SceneGenerationBody,
 } from "@shared/schemas/index.js";
 
 export {
@@ -374,6 +430,8 @@ export {
   getActiveLocale,
   getAvailableLocales,
   setLocaleMessages,
+  setEveryLocaleMessages,
+  EVERY_LOCALE_KEYS,
   setLocaleResolver,
   onLocaleChange,
   resetLocales,
@@ -393,8 +451,12 @@ export {
 } from "@shared/yjs-doc-names.js";
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
-export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
+export { COLLAB_DOCUMENT_TOO_LARGE_REASON, COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
+export { DOC_SIZE_ACK_PARAM, DOC_SIZE_EVENT_BYTES, DocSizeSeenSchema, DocSizeStatusSchema } from "@shared/doc-size.js";
+export type { DocSizeSeen, DocSizeStatus } from "@shared/doc-size.js";
 export { READ_ONLY_COLLAB_TOKEN } from "@shared/collab-read-only-token.js";
+export { FOLLOWING_TABLE, followingDeclarationSchema, followingEntrySchema } from "@shared/following-table.js";
+export type { FollowingDeclaration, FollowingEntry } from "@shared/following-table.js";
 export { COLLAB_CHUNK_ACK, COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema, sendInChunks } from "@shared/collab-frame-chunks.js";
 
 export {
@@ -404,6 +466,13 @@ export {
 export type { SyncConfirmRequest, SyncConfirmedResponse } from "@shared/sync-receipt.js";
 
 export { REQUEST_SHAPE_PARAMS, REQUEST_SHAPE_REASON } from "@shared/api/error-reason.js";
+export {
+  TEXT_TOOL_INSTRUCTIONS_MAX,
+  TEXT_TOOL_LANGUAGES,
+  TEXT_TOOL_TONES,
+  type TextToolLanguage,
+  type TextToolTone,
+} from "@shared/text-tools.js";
 
 export {
   addressWithoutQuery,
@@ -428,8 +497,14 @@ export {
   TimelineTrackSchema,
   TimelineVideoSourceSchema,
   TimelineVideoClipSchema,
-  TimelineEditCommandSchema,
+  TimelineWebAnimationClipSchema,
+  TimelineUploadClipSchema,
+  TimelineClipSchema,
+  TimelineOperationReceiptSchema,
   TimelineDocumentV1Schema,
+  TIMELINE_MAIN_TRACK_ID,
+  TIMELINE_SCHEMA_VERSIONS,
+  isTimelineSchemaVersion,
 } from "@shared/timeline/schema.js";
 export type {
   TimelineRate,
@@ -437,16 +512,35 @@ export type {
   TimelineTrack,
   TimelineVideoSource,
   TimelineVideoClip,
-  TimelineEditCommand,
+  TimelineWebAnimationClip,
+  TimelineWebAnimationContentBinding,
+  TimelineUploadClip,
+  TimelineClip,
+  TimelineOperationReceipt,
   TimelineDocumentV1,
 } from "@shared/timeline/schema.js";
-export { durationToFrames, timelineSourceSeconds, validateTimelineRange } from "@shared/timeline/time.js";
-export type { TimelineRangeValidation } from "@shared/timeline/time.js";
-
-export { resolveTimelineArrangement } from "@shared/timeline/arrangement.js";
-export type { TimelineArrangement, TimelineArrangementClip, TimelineArrangementReason, TimelinePlacement } from "@shared/timeline/arrangement.js";
-export { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@shared/timeline/api.js";
-export type { TimelineClientLimits } from "@shared/timeline/api.js";
+// The web-animation contracts are exported from `@breatic/shared/space-content` only: their schemas are built at
+// module load from the Timeline schemas, which share a bundle chunk with Yjs, and the main entry is in every page.
+export { assertTimelineRate, durationToFrames, timelineDurationFraction } from "@shared/timeline/time.js";
+export type { TimelineFraction } from "@shared/timeline/time.js";
+export { MAX_TIMELINE_ASSET_PAGE_SIZE, TIMELINE_PREVIEW_DEFAULTS } from "@shared/timeline/api.js";
+export type { TimelineClientLimits, TimelinePreviewSyncLimits } from "@shared/timeline/api.js";
+export {
+  TIMELINE_LAYER_TRANSFORM_LIMITS,
+  clampTimelineScale,
+  normalizeTimelineLayerTransform,
+  roundTimelineFrameOffset,
+  sameTimelineLayerTransform,
+  timelineLayerBase,
+  timelineLayerContains,
+  timelineLayerCorners,
+  timelineLayerFrameOffset,
+  timelineLayerOffsetPixels,
+  timelineLayerStyle,
+} from "@shared/timeline/layer-geometry.js";
+export type { TimelineLayerBox, TimelineLayerFrame, TimelineLayerStyle, TimelineLayerTransform } from "@shared/timeline/layer-geometry.js";
+export { TIMELINE_FRAME_PRESETS, TIMELINE_FRAME_PRESET_KEYS, timelineFramePresetOf } from "@shared/timeline/frame-presets.js";
+export type { TimelineFramePreset } from "@shared/timeline/frame-presets.js";
 
 export {
   DOCUMENT_SCHEMA,
@@ -526,7 +620,8 @@ export { newId, deriveId } from "@shared/ids.js";
 // so a submission the panel allowed is never the one the worker truncates.
 export { completeEntries, itemCap, isPresent, usableUrls } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
-export { joinSlotFiles } from "@shared/join-slot-files.js";
+export { joinSlotFiles, neutralReference } from "@shared/join-slot-files.js";
+export { cameraPrompt, paramsToSend, type SendableModel, type SendableParam, type SendableRun } from "@shared/send-params.js";
 export type { JoinDeclarations, JoinedRun } from "@shared/join-slot-files.js";
 export {
   addShot,
@@ -594,7 +689,10 @@ export {
 // called dead. How often they arrive is `config/agent.yaml`'s, served to the
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
-export { extractPromptText } from "@shared/agent/extract-prompt.js";
+export { cleanTextParams, extractPromptText, type TextParamSpec } from "@shared/agent/extract-prompt.js";
+export { applyForces, checkParamCombination, gateHolds, gateParams, promptTaken, resolveParams } from "@shared/param-resolution.js";
+export { modesOf, picturesOf } from "@shared/scene-generation.js";
+export type { AppliedForces, ParamViolation, ResolvableModel, ResolvableParam } from "@shared/param-resolution.js";
 export { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
 export { dsmlBlockStart, dsmlHeldFrom, stripDsml } from "@shared/agent/dsml.js";
 export {
@@ -623,7 +721,7 @@ export type { AskUserAnswer, AskUserInput, AskUserQuestion, AskUserResult } from
 export {
   carrying,
   FAILURE_LINES,
-  isReaderLine,
+  isUserLine,
   LEGACY_FAILURE_LINES,
   NEVER_RAN,
   NOTHING_SAID_WHY,
@@ -631,6 +729,25 @@ export {
   TURNED_AWAY,
   wireLineOf,
 } from "@shared/agent/tool-failure.js";
+// The key two spellings of a page share, and the pages the Agent reads (inner#1664).
+export { pageLinkKey } from "@shared/agent/page-links.js";
+export {
+  READ_PAGE_STATUSES,
+  READ_PAGE_MAX_URL_CHARS,
+  READ_PAGE_MAX_TITLE_CHARS,
+  READER_UNREACHABLE_HEADER,
+  webPageUrlSchema,
+  readPagesRequestSchema,
+  readPageResultSchema,
+  readPagesAnswerSchema,
+  readerServiceAnswerSchema,
+  READER_SERVICE_PORT,
+  type ReaderServiceAnswer,
+  type ReadPageStatus,
+  type ReadPagesRequest,
+  type ReadPageResult,
+  type ReadPagesAnswer,
+} from "@shared/agent/read-pages.js";
 export type {
   FailureLine,
   LegacyFailureLine,
@@ -759,7 +876,7 @@ export {
   type GridSeekInput, type GridTimeRange, type SeekGrid, type SourceKeyframeStats, type SourcePacket,
 } from "@shared/upload/frame-grid.js";
 // Why a task failed, as a code rather than a sentence: the writer is a server
-// and the reader is whoever opens the list, in their own language.
+// and the user is whoever opens the list, in their own language.
 export {
   TASK_FAILURE_REASONS,
   encodeTaskFailure,
@@ -826,9 +943,10 @@ export {
   type LongMediaSourceReference,
 } from "@shared/media/long-media-job.js";
 // The media fields a result puts on a node, written the same way by collab
-// when a task settles and by the canvas when a reader restores one.
+// when a task settles and by the canvas when a user restores one.
 export {
   NODE_MEDIA_KEYS,
+  nodeMediaEntries,
   writeNodeMedia,
   type NodeMediaFields,
 } from "@shared/canvas/node-media.js";
@@ -837,6 +955,7 @@ export {
   TEMPLATE_GOALS,
   templateAnchor,
   templateGoalsFor,
+  templateNodeWords,
   templatesFor,
   type GenerationTemplate,
   type TemplateEdge,
@@ -844,11 +963,35 @@ export {
   type TemplateGoal,
   type TemplateInput,
   type TemplateNodeKey,
+  type TemplateNodeWords,
   type TemplateResourceNode,
+  type TemplateLine,
+  type TemplateShot,
   type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
+export { RETIRED_MODELS, currentModelName, withCurrentModelNames, type NodeModelFields } from "@shared/canvas/retired-models.js";
+export { inputRefusalText, type InputLimitShape, type InputRefusalShape } from "@shared/input-refusal.js";
+export {
+  STAND_IN_ON,
+  dialogueSideOf,
+  dialogueSpeakers,
+  dialogueText,
+  isStandInOn,
+  lineSpeakers,
+  planDialogueLines,
+  speakersShort,
+  standInOf,
+  typedSpeaker,
+  wireParams,
+  withStandInOn,
+  type DialogueLine,
+  type LinePlan,
+  type StandIn,
+  type StandInModel,
+} from "@shared/canvas/dialogue.js";
 export {
   expandTemplate,
+  keyStanding,
   matchTemplateInstance,
   templateGuideNode,
   templateMarkTargets,
@@ -884,6 +1027,7 @@ export {
   sendBytesToIngest,
   finishUploadAtIngest,
   fetchUrlToIngest,
+  readPagesAtIngest,
   readStoredMediaAtIngest,
   IngestAnswerError,
   UploadHttpError,
@@ -906,8 +1050,8 @@ export {
   readMiniToolJob,
   readMiniToolJobReport,
   submitMiniToolJob,
+  MINI_TOOL_JOB_MAX_EXTRA_INPUTS,
   MINI_TOOL_JOB_MAX_OUTPUTS,
-  type ContainerUsage,
   type MiniToolJobOutput,
   type MiniToolJobReport,
   type MiniToolJobRequest,
@@ -943,6 +1087,7 @@ export {
   type MiniToolPlanAccess,
 } from "@shared/upload/mini-tool-plan-job.js";
 export { submitMiniToolPlanJob, readMiniToolPlanJob } from "@shared/upload/mini-tool-plan-client.js";
+export { containerUsageSchema, type ContainerUsage } from "@shared/upload/container-usage.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,
 // and a storage key's extension comes from a filename we let be any Unicode.
@@ -1172,8 +1317,12 @@ export {
   type VideoPresentationPricing,
   type VideoPresentationUsageFact,
 } from "@shared/upload/video-presentation-ingest.js";
-export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema } from "@shared/scene.js";
-export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField } from "@shared/scene.js";
+export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType,
+  SCENE_LIGHT_TYPES, VIEWFINDER_RATIOS, DEFAULT_VIEWFINDER_RATIO, SCENE_FREE_RATIO_MIN, SCENE_FREE_RATIO_MAX, SCENE_FOCAL_LENGTH_MIN, SCENE_FOCAL_LENGTH_MAX, SCENE_FOCAL_LENGTH_DEFAULT,
+  SCENE_SPOT_ANGLE_MIN, SCENE_SPOT_ANGLE_MAX, SCENE_SPOT_ANGLE_DEFAULT, SCENE_LIGHT_INTENSITY, SCENE_LIGHT_COLOR_DEFAULT, SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, SCENE_AMBIENT_INTENSITY_MAX,
+  SceneColorSchema, SCENE_CAMERA_KEYS, SCENE_LIGHT_KEYS, isSceneCamera, isSceneLight, compareDirectorRecords, nextDirectorNumber, isSceneModelFile } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, ScenePose, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig, SceneCaptureConfig,
+  SceneLightType, ViewfinderRatio, SceneModelFile, SceneCameraObject, SceneLightObject, SceneDirectorConfig } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
 
 export * from "@shared/credit-amount.js";
@@ -1182,3 +1331,7 @@ export { purchaseRowSchema, creditLotViewSchema, studioLotViewSchema, creditLedg
 export { projectVisitRequestSchema, projectVisitReceiptSchema, projectVisitOpenedSchema, projectVisitLookupSchema } from "@shared/project-visit-contract.js";
 export type { ProjectVisitRequest, ProjectVisitReceipt, ProjectVisitOpened, ProjectVisitLookup } from "@shared/project-visit-contract.js";
 export type { AccountActivityEntity, AccountActivityKind, AccountActivityCoverageEntity } from "@shared/types/entities.js";
+export type {
+  TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, WebAnimationSourceVersion, DocumentVersion,
+} from "@shared/types/entities.js";
+export { routeSchema, type RunRoute } from "@shared/schemas/route.js";

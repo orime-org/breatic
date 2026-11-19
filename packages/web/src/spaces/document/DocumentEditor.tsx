@@ -1,15 +1,22 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
+import { cn } from '@web/lib/utils';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
+import { BODY_ROW_CLASS, BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import {
   adoptDocumentEditor,
+  type DocumentEditorHandle,
   type ShowableEditor,
 } from '@web/spaces/document/document-editor-cache';
 import { DocumentBlockControls } from '@web/spaces/document/DocumentBlockControls';
 import { DocumentMenuEntry } from '@web/spaces/document/DocumentMenuEntry';
+import { DocumentTableFullscreenExit } from '@web/spaces/document/DocumentTableFullscreenExit';
+import { useTableFullscreen } from '@web/spaces/document/use-table-fullscreen';
+import { useTableFullscreenShell } from '@web/spaces/document/use-table-fullscreen-shell';
+import { DocumentOutline } from '@web/spaces/document/DocumentOutline';
+import { BODY_ROW_VARS } from '@web/spaces/document/document-columns';
 import { SelectionBubbleBar } from '@web/spaces/document/SelectionBubbleBar';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
@@ -30,26 +37,42 @@ import { useCommentRail } from '@web/spaces/document/use-comment-rail';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 import { DocumentTableCellButton } from '@web/spaces/document/DocumentTableCellButton';
 import { type FocusReturn, useFocusReturn } from '@web/lib/use-focus-return';
-import { viewOf } from '@web/spaces/document/document-editor-view';
+import { DocumentAiDialog } from '@web/spaces/document/DocumentAiDialog';
 import { DocumentMediaPicker } from '@web/spaces/document/DocumentMediaPicker';
-import { DocumentUploadPlaceholders } from '@web/spaces/document/DocumentUploadPlaceholders';
 import { DocumentMediaViews } from '@web/spaces/document/DocumentMediaViews';
 import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { BODY_GUTTER_START } from '@web/spaces/document/document-strip-alignment';
 import { bodyPartMark, recomputeBodyFocus, releaseBodyFocus } from '@web/spaces/document/document-body-focus';
 import { attachBodyScroller, BODY_BLANK } from '@web/spaces/document/document-body-press';
-import type { DocumentUploader } from '@web/spaces/document/document-uploads';
+import { viewOf } from '@web/spaces/document/document-editor-view';
+import type { FileUploads } from '@web/spaces/document/document-uploads';
+import { PendingUploadsContext, type PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
 import { isCurrentProposalLocation, type ProposalLocation } from '@web/spaces/document/document-proposal-location';
 import { sourceSpot } from '@web/spaces/document/document-proposal-landing';
 import { revealInTable, tableViewportOf } from '@web/spaces/document/document-table-reveal';
+import type { DocumentScope } from '@web/data/api/documents';
+import { DocumentSnapshotNameDialog } from '@web/spaces/document/DocumentSnapshotNameDialog';
+import { useDocumentVersions } from '@web/spaces/document/use-document-versions';
+import { DocumentVersionAreaUnavailable } from '@web/spaces/document/DocumentVersionAreaUnavailable';
+import { useDocumentFollow } from '@web/spaces/document/use-document-follow';
+import { usePublishTopBlock } from '@web/spaces/document/use-publish-top-block';
+import { useFollowStore } from '@web/stores/follow';
+import type { Awareness } from 'y-protocols/awareness';
+
+// The snapshot panel, its preview editor and the diff renderer load when the
+// panel first opens (inner#1129 design §7.1); a chunk that cannot be fetched
+// says so in the panel's place.
+const DocumentVersionArea = React.lazy(() =>
+  import('@web/spaces/document/DocumentVersionArea').catch(() => ({ default: DocumentVersionAreaUnavailable })),
+);
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
-  handle: ShowableEditor;
+  handle: ShowableEditor & Pick<DocumentEditorHandle, 'onEvict'>;
   /** True for a viewer. */
   readOnly?: boolean;
   /**
-   * The reader's role on the project.
+   * The user's role on the project.
    *
    * `readOnly` answers "may this person write at all", which the carriers
    * gate on. The draft card asks a second question — whether the right to
@@ -58,10 +81,16 @@ interface DocumentEditorProps {
    * does.
    */
   myRole?: ProjectRole;
-  /** What takes files into this body; a body without one offers no media entries. */
-  uploader?: DocumentUploader | null;
-  /** Where an Agent proposal just landed, to show the reader (inner#1509). */
+  /** What admits files into this body; a body without it offers no media entries. */
+  files?: FileUploads | null;
+  /** What the body's pending media blocks read; null shows each as not finished. */
+  pending?: PendingUploadsStore | null;
+  /** Where an Agent proposal just landed, to show the user (inner#1509). */
   landed?: ProposalLocation | null;
+  /** The document, for its snapshots; without it the snapshot commands are not drawn. */
+  scope?: DocumentScope | null;
+  /** This document Space's awareness, for following a member (#920); null before it is attached. */
+  awareness?: Awareness | null;
 }
 
 /** How long a block an Agent proposal landed stays marked. */
@@ -126,9 +155,12 @@ function cutTo(box: DOMRect, frame: DOMRect): DOMRect {
  * @param root0 - Editor chrome props.
  * @param root0.handle - The editor to render, with its surface.
  * @param root0.readOnly - True for a viewer.
- * @param root0.myRole - The reader's role on the project.
- * @param root0.uploader - What takes files into this body.
+ * @param root0.myRole - The user's role on the project.
+ * @param root0.files - What admits files into this body.
+ * @param root0.pending - What the body's pending media blocks read.
  * @param root0.landed - The block an Agent proposal just landed.
+ * @param root0.scope - The document, for its snapshots.
+ * @param root0.awareness - This document Space's awareness.
  * @returns The editor body, the comment panel beside it, the entry and the
  *   bubble bar.
  */
@@ -136,11 +168,24 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   handle,
   readOnly = false,
   myRole = 'viewer',
-  uploader = null,
+  files = null,
+  pending = null,
   landed = null,
+  scope = null,
+  awareness = null,
 }: DocumentEditorProps): React.JSX.Element {
   const body = React.useRef<HTMLDivElement>(null);
-  // The one bit that says whether the panel is on screen, and the reader is
+  // The same element as state, for the hooks that wait for it to exist.
+  const [bodyRoot, setBodyRoot] = React.useState<HTMLDivElement | null>(null);
+  const bodyRef = React.useCallback((element: HTMLDivElement | null): void => {
+    body.current = element;
+    setBodyRoot(element);
+  }, []);
+  // The snapshot panel takes the body's place while open; the comment panel
+  // and it are never up together (inner#1129 design §7.2).
+  const versions = useDocumentVersions(handle.editor, scope);
+  const { panelOpen, restoring, closePanel } = versions;
+  // The one bit that says whether the panel is on screen, and the user is
   // the only one who writes it: a comment arriving from a peer marks the `⋯`
   // button and moves nothing (design §5). Held here because the menu opens
   // the panel and the panel closes itself, so neither owns it.
@@ -157,8 +202,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     selectedThreadsIn(handle.editor.prosemirrorState),
   );
   React.useEffect(() => {
-    if (pressed.length > 0) setRailOpen(true);
-  }, [pressed]);
+    if (pressed.length === 0 || restoring) return;
+    if (panelOpen) closePanel();
+    setRailOpen(true);
+  }, [pressed, panelOpen, restoring, closePanel]);
   // A comment being written is written in the panel, so the panel is up
   // whenever a draft is open, aimed or dropped (A1 · A2, design §9.6). The
   // entries dispatch the range and nothing else; this is the one place that
@@ -168,8 +215,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     draftIn(handle.editor.prosemirrorState),
   );
   React.useEffect(() => {
-    if (draft !== null) setRailOpen(true);
-  }, [draft]);
+    if (draft === null || restoring) return;
+    if (panelOpen) closePanel();
+    setRailOpen(true);
+  }, [draft, panelOpen, restoring, closePanel]);
   // Closing it ends both the reading and the pointer, because the panel is
   // the only thing that releases either and it is about to be gone. The
   // reading, left standing, makes the next press on the same highlight read
@@ -184,14 +233,14 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     hoverThread(handle.editor, null);
     // And the draft with them: the card it is written in lives in the panel,
     // so closing the panel is throwing it away. Left standing, the range
-    // would put an empty card back on screen the next time the reader opens
+    // would put an empty card back on screen the next time the user opens
     // the panel, with nothing to explain where it came from (§9.4).
     const view = handle.editor.prosemirrorView;
     if (view !== null) {
       view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, null));
     }
     // And every reply box's unsent words. They are kept by the editor so a
-    // Space tab switch does not take them; closing the panel is the reader's
+    // Space tab switch does not take them; closing the panel is the user's
     // own doing, and it does (§9.6).
     clearReplies(handle.editor);
   }, [handle.editor]);
@@ -199,6 +248,33 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // ScrollArea owns this viewport; pass it to document surfaces so a table's
   // nested horizontal viewport cannot become their vertical scroll boundary.
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
+  // The snapshot preview takes the body's place in this scroller, which pulls
+  // the scroll back; the body's place is noted on the way in and given back
+  // on the way out, before the effects below scroll to anything of their own.
+  const bodyTop = React.useRef<number | null>(null);
+  const { openPanel } = versions;
+  const openVersions = React.useCallback(() => {
+    bodyTop.current = viewport?.scrollTop ?? null;
+    openPanel();
+  }, [openPanel, viewport]);
+  React.useLayoutEffect(() => {
+    if (panelOpen || viewport === null || bodyTop.current === null) return;
+    viewport.scrollTop = bodyTop.current;
+    bodyTop.current = null;
+  }, [panelOpen, viewport]);
+  // Following a member (#920): their top block kept at the top of this body,
+  // and this body's own top block published for whoever follows this user.
+  // Both rest while the snapshot panel shows in the same viewport; the
+  // follower aligns after the layout effect above gave the body its place back.
+  const leaderUserId = useFollowStore((s) => s.targetUserId);
+  useDocumentFollow({ awareness, leaderUserId, viewport, root: bodyRoot, paused: panelOpen });
+  usePublishTopBlock({ awareness, viewport, root: bodyRoot, paused: panelOpen });
+
+  // A table open full screen (#1427): this area covers the window and
+  // shows that table alone; what it leaves out is listed in design §5.1.
+  const fullscreen = useTableFullscreen(handle.editor);
+  const inFullscreen = fullscreen.table !== null;
+  useTableFullscreenShell(handle.editor, fullscreen, viewport, readOnly);
 
   // The link toolbar stands aside while the selection holds anything: that is
   // what puts the bubble bar on screen, and the link panel only ever opens
@@ -223,7 +299,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   }, [handle]);
 
   // Where an Agent proposal landed is shown once per landing: a hidden Space
-  // runs its effects again when shown, and the reader may have scrolled away
+  // runs its effects again when shown, and the user may have scrolled away
   // since. Comment selection is issued once by the pickup's command outlet;
   // the rail consumes its current plugin state. A written block is scrolled
   // to a third of the way down the viewport and outlined for a moment. A
@@ -239,6 +315,13 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       : { blockId: landed.blockId, ranges: null };
     const block = spot === null ? null : body.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(spot.blockId)}"]`);
     if (viewport === null || spot === null || block === null || block === undefined) return undefined;
+    // There is a block to show and the body is unseen behind the snapshot
+    // panel: close it, and this runs again once the body can be measured. A
+    // restore being written finishes first.
+    if (panelOpen || restoring) {
+      if (!restoring) closePanel();
+      return undefined;
+    }
     shown.current = landed;
     // A landed block's own content leaves its indented children out. A
     // layout table is already its own content frame; descendants belong to
@@ -313,7 +396,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       window.clearTimeout(timer);
       setLandedBox((current) => current?.location === landed ? null : current);
     };
-  }, [landed, viewport, handle.editor]);
+  }, [landed, viewport, handle.editor, panelOpen, restoring, closePanel]);
 
   // The scroller is where a press on blank space leaves the focus, and where
   // a press in the body is first read (inner#1127 A20). A Space hidden
@@ -322,14 +405,16 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // focus is.
   React.useEffect(() => {
     const view = handle.editor.prosemirrorView;
-    if (viewport === null || view === null || readOnly) return;
+    // With the snapshot panel open the scroller shows the preview, and a
+    // Cmd/Ctrl+Z there must not undo the body nobody can see.
+    if (viewport === null || view === null || readOnly || panelOpen) return;
     const detach = attachBodyScroller(view, viewport, handle.editor);
     recomputeBodyFocus(view);
     return () => {
       detach();
       releaseBodyFocus(view);
     };
-  }, [handle, viewport, readOnly]);
+  }, [handle, viewport, readOnly, panelOpen]);
 
   // Back on screen after a switch of Space, the caret goes back in if it was
   // here when the Space was hidden (inner#1235 A1): hiding takes focus out of
@@ -348,17 +433,20 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     () => viewOf(handle.editor)?.focus(),
   );
 
-  const viewOfEditor = React.useCallback(
-    () => viewOf(handle.editor),
-    [handle.editor],
-  );
-
   const chrome = (
     // `isolate` keeps the z-values below local: the entry has to paint over
     // the body and the bubble bar over the entry, and neither of those two
     // relationships is anyone else's business. Without it both numbers would
     // be compared against every other layer on the page.
-    <div className='relative isolate flex min-h-0 flex-1 flex-col'>
+    // Full screen covers the window with `fixed`, which holds while no ancestor
+    // up to <html> has a transform, filter, contain or will-change (each would
+    // become the containing block) and while z-30 sits above the project chrome
+    // (z-10) and below the workspace mask (z-40) and connection banner (z-50).
+    // Should either change, the area has to move into a portal on the body.
+    <div
+      className={cn(inFullscreen ? 'fixed inset-0 z-30 bg-background' : 'relative', 'isolate flex min-h-0 flex-1 flex-col')}
+      data-table-fullscreen={inFullscreen ? '' : undefined}
+    >
       {/* Overlay scrollbar (#1773): appears only while scrolling, takes no
           layout space. The side gutters live on the viewport — they are the
           margin OUTSIDE the page, and a click there is outside the document.
@@ -370,8 +458,21 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           strip stands, past its first column's (`BODY_GUTTER_START`). */}
       {/* One scroller over both columns, so the scrollbar sits at the far
           right of the Space rather than between the text and the panel, and a
-          wheel anywhere in here moves both sides together. */}
-      <div className='flex min-h-0 flex-1'>
+          wheel anywhere in here moves both sides together. The heading outline
+          stands left of it, outside the scroller, so it stays put while the
+          body scrolls (inner#1149). */}
+      <div className={`${BODY_ROW_CLASS} flex min-h-0 flex-1`} style={BODY_ROW_VARS}>
+        {/* It lists the body's headings. Behind the snapshot panel, and under a
+            full-screen table, it steps aside the way a hidden Space does:
+            hidden rather than unmounted, folds and tuck kept. */}
+        <React.Activity mode={panelOpen || inFullscreen ? 'hidden' : 'visible'}>
+          <DocumentOutline
+            editor={handle.editor}
+            viewport={viewport}
+            readOnly={readOnly}
+            commentsOpen={railOpen}
+          />
+        </React.Activity>
         <ScrollArea
           viewportRef={setViewport}
           className={`${BODY_SCROLLER_CLASS} flex-1`}
@@ -396,36 +497,67 @@ export const DocumentEditor = React.memo(function DocumentEditor({
                 style={{ ...landedBox.style, ...LANDED_MARK_FADE }}
               />
             )}
+            {/* Behind the snapshot panel the body stays mounted and
+                collaborating, out of sight and out of the flow (tiptap skill
+                "Hide a container, do not unmount it"). */}
             <div
               {...{ [BODY_BLANK]: '' }}
-              className='flex min-w-0 flex-1 flex-col pr-[var(--doc-body-gutter)]'
+              data-testid='document-body-column'
+              className={panelOpen
+                ? 'pointer-events-none invisible absolute inset-x-0 top-0 h-0 overflow-hidden'
+                : 'flex min-w-0 flex-1 flex-col pr-[var(--doc-body-gutter)]'}
               style={GUTTER_START}
             >
-              <DocumentMenuEntry
-                commentsOpen={railOpen}
-                onOpenComments={openRail}
-                unresolvedComments={rail.unresolved.length}
-              />
+              {inFullscreen ? null : (
+                <DocumentMenuEntry
+                  commentsOpen={railOpen}
+                  onOpenComments={openRail}
+                  unresolvedComments={rail.unresolved.length}
+                  versionsOpen={panelOpen}
+                  onSaveSnapshot={scope === null || readOnly ? null : versions.requestSave}
+                  onRestoreSnapshot={scope === null ? null : openVersions}
+                />
+              )}
               <div
-                ref={body}
+                ref={bodyRef}
                 data-testid='document-editor-content'
                 // The body and the row handles that stand beside it: the
                 // focus on a handle has not left the body.
                 {...bodyPartMark(handle.editor)}
-                className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
+                className={cn('doc-body-editor mx-auto [&_.ProseMirror]:outline-none', !inFullscreen && 'max-w-3xl')}
               />
             </div>
+            {/* Takes the body column's place while open; the body stays
+              mounted behind it. */}
+            {panelOpen && scope !== null && (
+              <React.Suspense fallback={null}>
+                <DocumentVersionArea
+                  editor={handle.editor}
+                  onEvict={handle.onEvict}
+                  scope={scope}
+                  versions={versions}
+                  readOnly={readOnly}
+                  viewport={viewport}
+                  columnStyle={GUTTER_START}
+                />
+              </React.Suspense>
+            )}
             {/* Beside the body rather than over it, so opening it narrows the
               text column and closing it widens the column again (A18). */}
-            {railOpen && (
-              <DocumentCommentRail
-                editor={handle.editor}
-                rail={rail}
-                myRole={myRole}
-                onClose={closeRail}
-                scroller={viewport}
-              />
-            )}
+            {/* Under a full-screen table the panel steps aside the way a
+              hidden Space does: what it was reading, its filter and a draft
+              stay, and it measures again on coming back. */}
+            <React.Activity mode={inFullscreen ? 'hidden' : 'visible'}>
+              {railOpen && (
+                <DocumentCommentRail
+                  editor={handle.editor}
+                  rail={rail}
+                  myRole={myRole}
+                  onClose={closeRail}
+                  scroller={viewport}
+                />
+              )}
+            </React.Activity>
           </div>
         </ScrollArea>
       </div>
@@ -443,20 +575,24 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       {/* Every image, video and audio block, drawn into its node view's
           container from inside this tree (inner#1127). A viewer sees them
           too; editing controls follow permission while playback stays available. */}
-      <DocumentMediaViews editor={handle.editor} readOnly={readOnly} viewport={viewport} />
-      {/* What each upload in flight shows, in the body where it will land
-          (inner#1127 A4). Kept for a body that turned read-only meanwhile:
-          a failed file still has its placeholder to remove. */}
-      {uploader !== null && (
-        <DocumentUploadPlaceholders
-          editor={handle.editor}
-          uploader={uploader}
-          readOnly={readOnly}
-        />
+      {pending === null ? (
+        <DocumentMediaViews editor={handle.editor} readOnly={readOnly} viewport={viewport} />
+      ) : (
+        <PendingUploadsContext.Provider value={pending}>
+          <DocumentMediaViews editor={handle.editor} readOnly={readOnly} viewport={viewport} />
+        </PendingUploadsContext.Provider>
       )}
       {/* The strip beside the row under the pointer. A viewer gets none of it
           (A3): every command in the handle's menu writes to the document. */}
       {!readOnly && <DocumentBlockControls editor={handle.editor} />}
+      <DocumentSnapshotNameDialog
+        mode={versions.naming ? 'save' : null}
+        currentName=''
+        pending={versions.saving}
+        onClose={versions.cancelSave}
+        onSubmit={(name) => void versions.save(name)}
+      />
+      {inFullscreen ? <DocumentTableFullscreenExit editor={handle.editor} /> : null}
       {/* The button on the cell the caret is in; a viewer gets none of it
           either (inner#1126 A18). */}
       {viewport !== null && !readOnly && (
@@ -482,8 +618,12 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // A viewer gets no media entries (A11); the menus that offer them are not
   // drawn for one either.
   return (
-    <DocumentMediaPicker uploader={readOnly ? null : uploader} view={viewOfEditor}>
-      {chrome}
+    <DocumentMediaPicker files={readOnly ? null : files}>
+      {/* The AI output dialog, reached from the bubble bar's AI menu
+          (inner#1860). */}
+      <DocumentAiDialog editor={handle.editor} viewport={viewport}>
+        {chrome}
+      </DocumentAiDialog>
     </DocumentMediaPicker>
   );
 });

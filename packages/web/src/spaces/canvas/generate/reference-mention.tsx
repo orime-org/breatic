@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * TipTap custom node for an `@`-picked reference image in the prompt. It renders
@@ -10,7 +10,7 @@
  * container's `data-mode` + CSS, so the chip itself never reads the mode.
  */
 
-import { Node, getTextBetween, getTextSerializersFromSchema, mergeAttributes, type Editor } from '@tiptap/core';
+import { Node, getTextBetween, getTextSerializersFromSchema, mergeAttributes, type Editor, type TextSerializer } from '@tiptap/core';
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin } from '@tiptap/pm/state';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
@@ -18,19 +18,23 @@ import type { NodeViewProps } from '@tiptap/react';
 import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
 import { Crop } from 'lucide-react';
 import * as React from 'react';
+import type * as Y from 'yjs';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { PROMPT_NOTE_NODE } from '@web/features/prompt-note/prompt-note';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
+import { blockMentions, heldBackBy, MENTION_OPTIONAL_ATTR } from '@web/spaces/canvas/generate/optional-paragraph';
 import { FOCUS_REF_PREFIX } from '@web/spaces/canvas/generate/derive-references';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
 import { createReferenceMentionCaret } from '@web/features/reference-mention/reference-mention-caret';
 import { createLocalUserInputTracker } from '@web/features/reference-mention/reference-mention-local-input';
 import { createReferenceMentionRangeHighlight } from '@web/features/reference-mention/reference-mention-range-decoration';
+import { SPEAKER_ATTR } from '@web/spaces/canvas/generate/dialogue-line';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
-import type { NodeType } from '@breatic/shared';
+import type { MediaFullscreenSource } from '@web/spaces/canvas/nodes/_shared/MediaFullscreen';
+import { dialogueText, type NodeType } from '@breatic/shared';
 import { PreviewImg } from '@web/components/PreviewImg';
 
 /** Options for the {@link ReferenceMention} node. */
@@ -55,6 +59,31 @@ export const MENTION_THUMBNAIL_ATTR = 'thumbnail';
 export const MENTION_LABEL_ATTR = 'label';
 /** Attr key on a reference-mention node carrying the source node modality (icon fallback). */
 export const MENTION_KIND_ATTR = 'kind';
+
+/**
+ * A stored reference chip read as the name its pill shows.
+ * @param element - An element inside a prompt fragment.
+ * @param fallback - The name for a chip that carries none.
+ * @returns `@` and the name, or undefined when the element is not a chip.
+ */
+export function chipDisplayText(element: Y.XmlElement, fallback: string): string | undefined {
+  if (element.nodeName !== REFERENCE_MENTION_NODE) return undefined;
+  const label = element.getAttribute(MENTION_LABEL_ATTR);
+  return `@${typeof label === 'string' && label !== '' ? label : fallback}`;
+}
+
+/**
+ * What a chip opens full screen (inner#1844): its source itself, where the
+ * chip and its preview carry only a thumbnail.
+ * @param row - The source's live pool row, if it is still in the pool.
+ * @returns The image or video to show, or null when there is none.
+ */
+export function referenceFullscreen(row: ReferenceRailItem | undefined): MediaFullscreenSource | null {
+  if (!row?.mediaUrl) return null;
+  if (row.sourceNodeType === 'video') return { kind: 'video', src: row.mediaUrl, poster: row.thumbnail };
+  if (row.sourceNodeType === 'image') return { kind: 'image', src: row.mediaUrl };
+  return null;
+}
 
 /**
  * Builds the ProseMirror content for a reference-mention atom from a pool row,
@@ -88,7 +117,8 @@ export function referenceMentionContent(item: ReferenceRailItem): {
  * way the model reads it (`tokens`, #2156) and adds nothing when the model names
  * no way; its file travels in the pool lists either way. A text chip whose
  * pool row vanished (edge removed mid-flight) or whose node is empty resolves
- * to an empty string. Pool content is read at CALL time, so invoking this at
+ * to an empty string. A paragraph an empty optional template input holds back
+ * is left out (`heldBackBy`). Pool content is read at CALL time, so invoking this at
  * execute-click picks up the text node's latest words even when the prompt doc
  * itself never changed.
  * @param editor - The prompt editor.
@@ -105,25 +135,69 @@ export function serializePromptText(
   blockSeparator = '\n\n',
   tokens: MentionTokens = NO_MENTION_TOKENS,
 ): string {
-  const words = chipWordsReader(pool, tokens);
   const { doc } = editor.state;
-  // Notes sit above the words and are never sent: reading starts after the
-  // last of them, so no block separator is left behind in their place.
-  let from = 0;
+  const textSerializers = promptSerializers(editor, pool, tokens);
+  // Notes are never sent, nor a paragraph an empty optional input holds back (inner#1811).
+  const sent: string[] = [];
   doc.forEach((block, offset) => {
-    if (block.type.name === PROMPT_NOTE_NODE) from = offset + block.nodeSize;
+    if (block.type.name === PROMPT_NOTE_NODE || heldBackBy(blockMentions(block), pool).length > 0) return;
+    sent.push(getTextBetween(doc, { from: offset, to: offset + block.nodeSize }, { blockSeparator, textSerializers }));
   });
-  return getTextBetween(doc, { from, to: doc.content.size }, {
-    blockSeparator,
-    textSerializers: {
-      ...getTextSerializersFromSchema(editor.schema),
-      [REFERENCE_MENTION_NODE]: ({ node }): string =>
-        words(
-          node.attrs[MENTION_SOURCE_ID_ATTR] as string | null,
-          node.attrs[MENTION_KIND_ATTR] as string | null,
-        ),
-    },
+  return sent.join(blockSeparator);
+}
+
+/**
+ * How each node of a prompt reads in the string the model gets: a chip as
+ * {@link chipWordsReader} says, everything else as the schema says.
+ * @param editor - The prompt editor.
+ * @param pool - The current reference pool.
+ * @param tokens - Each media chip's words by pool id.
+ * @returns The serializers.
+ */
+function promptSerializers(
+  editor: Editor,
+  pool: ReadonlyArray<ReferenceRailItem>,
+  tokens: MentionTokens,
+): Record<string, TextSerializer> {
+  const words = chipWordsReader(pool, tokens);
+  return {
+    ...getTextSerializersFromSchema(editor.schema),
+    [REFERENCE_MENTION_NODE]: ({ node }): string =>
+      words(
+        node.attrs[MENTION_SOURCE_ID_ATTR] as string | null,
+        node.attrs[MENTION_KIND_ATTR] as string | null,
+      ),
+  };
+}
+
+/**
+ * Serializes a dialogue for the backend (inner#1825 design 8.5): each line's
+ * words, chips read as {@link serializePromptText} reads them, after its
+ * speaker's name, as `dialogueText` writes the script.
+ * @param editor - The prompt editor on the dialogue side.
+ * @param pool - The current reference pool.
+ * @param names - The speakers' names, from speaker 1.
+ * @param tokens - Each media chip's words by pool id.
+ * @returns The script.
+ */
+export function serializeDialogueText(
+  editor: Editor,
+  pool: ReadonlyArray<ReferenceRailItem>,
+  names: readonly string[],
+  tokens: MentionTokens = NO_MENTION_TOKENS,
+): string {
+  const textSerializers = promptSerializers(editor, pool, tokens);
+  const lines: Array<{ speaker: number | null; text: string }> = [];
+  editor.state.doc.forEach((block, offset) => {
+    // A line an empty optional input holds back is left out, as the box greys it (inner#1811).
+    if (block.type.name !== 'paragraph' || heldBackBy(blockMentions(block), pool).length > 0) return;
+    const speaker = Number(block.attrs[SPEAKER_ATTR]);
+    lines.push({
+      speaker: Number.isInteger(speaker) ? speaker : null,
+      text: getTextBetween(editor.state.doc, { from: offset + 1, to: offset + block.nodeSize - 1 }, { textSerializers }),
+    });
   });
+  return dialogueText(lines, names.map((speaker) => ({ speaker })));
 }
 
 /**
@@ -251,6 +325,14 @@ function ReferenceMentionChip({
       ? { text: content }
       : { emptyHint: t('canvas.generatePanel.emptyTextReference') };
   }, [options, sourceId, t]);
+  // Read at hover-open from the live pool, as the text body is.
+  const resolveFullscreen = React.useCallback(
+    (): MediaFullscreenSource | null =>
+      referenceFullscreen(
+        sourceId != null ? options.getPool?.().find((r) => r.sourceNodeId === sourceId) : undefined,
+      ),
+    [options, sourceId],
+  );
   return (
     <HoverPreview
       // A text chip previews its source text live; every other chip (image /
@@ -263,6 +345,7 @@ function ReferenceMentionChip({
       alt={label}
       emptyHint={staticEmptyHint}
       resolveOnOpen={kind === 'text' ? resolveTextHover : undefined}
+      fullscreen={isVisual ? resolveFullscreen : undefined}
       // The preview is NOT dimmed, in either mode. Its job is to say what this
       // chip IS; whether the mode can use it is said by the chip body's own
       // grey-out and by the rail (user 2026-08-13). Greying it made the one
@@ -395,6 +478,12 @@ export const ReferenceMention = Node.create<ReferenceMentionOptions>({
           attrs[MENTION_KIND_ATTR]
             ? { 'data-kind': attrs[MENTION_KIND_ATTR] as string }
             : {},
+      },
+      // A template's mention of an input the user may leave empty (inner#1811).
+      [MENTION_OPTIONAL_ATTR]: {
+        default: null,
+        parseHTML: (el) => (el.getAttribute('data-optional') === 'true' ? true : null),
+        renderHTML: (attrs) => (attrs[MENTION_OPTIONAL_ATTR] === true ? { 'data-optional': 'true' } : {}),
       },
     };
   },

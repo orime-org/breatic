@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Generation models tool — which models back one mode of one node, and how.
@@ -14,25 +14,35 @@ import {
   GENERATION_NODE_MODES,
   PANEL_EDITOR_PARAM,
   STATIC_SHOT,
+  standInOf,
   type GenerationNodeType,
+  type ProposalNode,
 } from "@breatic/shared";
 import type { CreditEstimate } from "@breatic/shared/pricing";
 
 import {
   modelsForMode,
+  sceneModelsForMode,
   waysIn,
   type ModelInfo,
   type ModelsForMode,
   type WayKind,
 } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
+import { proposalModelEntry } from "@domain/agent/tools/proposal-dialogue.js";
+import { gateWords, nodeLabel } from "@domain/agent/tools/proposal-refusals.js";
 import { entriesFor, entryPhrase, holdingsOf, holdingSubject, type Entry } from "@domain/agent/tools/proposal-routing.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
 
-/** One model with what a run at its defaults costs, when the catalog prices it. */
-export type PricedModelInfo = ModelInfo & { price?: CreditEstimate };
+/**
+ * A model with its price: at the params a call gave (`atParams`) or its
+ * defaults, the keys it turned away, and for each setting whose value moves
+ * the price, the value it is lowest at.
+ */
+export type PricedModelInfo = ModelInfo & { price?: CreditEstimate; atParams?: true; rejected?: string[]; lowestAt?: Record<string, unknown> };
 
-/** The tool's answer: the mode's models, each priced at its defaults. */
+/** The tool's answer: the mode's models, each priced. */
 export type PricedModelsForMode = ModelsForMode<PricedModelInfo>;
 
 const NODE_TYPES = Object.keys(GENERATION_NODE_MODES) as [
@@ -40,35 +50,62 @@ const NODE_TYPES = Object.keys(GENERATION_NODE_MODES) as [
   ...GenerationNodeType[],
 ];
 
+// One object root: the OpenAI-compatible endpoint the agent calls takes no
+// other, so which fields a target needs is judged in `execute`.
 const inputSchema = z
   .object({
+    target: z
+      .enum(["canvas", "3d"])
+      .optional()
+      .describe(
+        "Where the generation runs: canvas (the default) for a generation node, or 3d for the 3D Space's " +
+          "generate dialog, which only generates 3D models (t23d text-to-3D, i23d image-to-3D) and takes no nodeType",
+      ),
     nodeType: z
       .enum(NODE_TYPES)
-      .describe("The kind of generation node, from get_canvas_capabilities"),
+      .optional()
+      .describe("The kind of generation node, from get_canvas_capabilities; required for canvas, left out for 3d"),
     mode: z
       .string()
       .min(1)
-      .describe("The mode on that node, from get_canvas_capabilities"),
+      .describe("The mode on that node, from get_canvas_capabilities; for 3d, t23d or i23d"),
+    params: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe("Settings a step will run at, to price each model at them; left out, each is priced at its defaults"),
   })
   .strict();
 
 /**
  * A run's estimate in the words the panel shows it in.
- * @param price - The estimate at the model's defaults.
+ * @param price - The estimate.
+ * @param at - What it was priced at, as words that follow the credits.
  * @returns The credits, with how they bound the charge.
  */
-function renderPrice(price: CreditEstimate): string {
+export function renderPrice(price: CreditEstimate, at = "at its defaults"): string {
   const credits = formatCredits(price.credits, "en-US");
   switch (price.bound) {
     case "exact":
-      return `${credits} credits at its defaults`;
+      return `${credits} credits ${at}`;
     case "at_least":
-      return `at least ${credits} credits at its defaults, more with more or longer sources or more text`;
+      return `at least ${credits} credits ${at}, more with more or longer sources or more text`;
     case "at_most":
-      return `up to ${credits} credits at its defaults, less when a source was used before`;
+      return `up to ${credits} credits ${at}, less when a source was used before`;
     case "per_thousand_chars":
       return `${credits} credits per 1000 characters of prompt`;
   }
+}
+
+/**
+ * What a dialogue asks of a proposal on a model whose speakers stand in for
+ * its voice (inner#1825 design 8.5).
+ * @param model - The model to describe.
+ * @returns A sentence to append to its line, or the empty string for a model reading in one voice.
+ */
+function renderDialogue(model: PricedModelInfo): string {
+  const standIn = standInOf(proposalModelEntry({ model: model.name }));
+  if (standIn === null) return "";
+  return ` Once params ${standIn.name} name the speakers, give lines, one per turn, each { speaker, prompt }: speaker the number of a speaker counted from 1, prompt only the words said, with no name or colon in front; leave prompt out.`;
 }
 
 /**
@@ -147,8 +184,12 @@ function entryWords(kind: WayKind, entry: Entry, box: string): string {
  * @returns Its name, what it is for, what it costs, and its parameters.
  */
 function renderModel(model: PricedModelInfo): string {
-  const price = model.price ? `${renderPrice(model.price)}, ` : "";
-  const prompt = model.takesPrompt ? "" : " Takes no prompt: its words come from its sources.";
+  const at = model.atParams ? (model.rejected === undefined ? "at the params given" : "at the params it takes") : undefined;
+  const refused = model.rejected === undefined ? "" : ` (${model.rejected.map((name) => `"${name}"`).join(", ")} not priced: not a setting or value it takes)`;
+  const price = model.price ? `${renderPrice(model.price, at)}${refused}, ` : "";
+  const prompt = !model.takesPrompt
+    ? " Takes no prompt: its words come from its sources."
+    : model.promptWhen === undefined ? "" : ` Takes a prompt only while ${gateWords(model.promptWhen, false)}.`;
   const cap =
     model.maxInputChars !== undefined
       ? `, takes at most ${model.maxInputChars} characters of prompt`
@@ -163,7 +204,7 @@ function renderModel(model: PricedModelInfo): string {
   const beyond = Object.entries(model.params)
     .filter(([, spec]) => spec.noControl && !spec.fromStoryboard)
     .map(([name]) => name);
-  // A reader picks a model off this line. A capability its prose sells whose
+  // A user picks a model off this line. A capability its prose sells whose
   // parameter nothing can set is one they cannot have, and the per-parameter
   // line saying so is read after the choice.
   const unreachable =
@@ -194,7 +235,10 @@ function renderModel(model: PricedModelInfo): string {
     model.takesPrompt && !mediaToAt
       ? " Nothing wired in but a text node can be @'d here, so a ref can only @ words."
       : "";
-  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderNeeds(model)}${wordsOnly}${renderStoryboard(model)}${renderCameraCommands(model)}`;
+  const notHere = model.missingKeys === undefined
+    ? ""
+    : ` Not set up on this deployment: a run of it is refused until ${model.missingKeys.join(" or ")} is set.`;
+  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${notHere}${prompt}${unreachable}${also}${routing}${renderNeeds(model)}${wordsOnly}${renderStoryboard(model)}${renderDialogue(model)}${renderCameraCommands(model)}`;
   const params = Object.entries(model.params).filter(([, spec]) => !spec.fromStoryboard).map(([name, spec]) => {
     // Shape and cap belong to the parameter, so they are stated whatever else
     // it says about itself -- including for a slot, where together they are
@@ -221,7 +265,8 @@ function renderModel(model: PricedModelInfo): string {
       const how = spec.fromReferencePool
         ? `filled on the canvas, not typed here, by an edge into this node, then a mention of it in ${wordsBox(model)}`
         : "filled from another node on the canvas through a source slot, not typed here; leave it unset";
-      return `    ${name}:${shape}${howMany} ${how}. ${spec.what}`;
+      const drawn = spec.gate === undefined ? "" : `; it applies only while ${gateWords(spec.gate, false)}`;
+      return `    ${name}:${shape}${howMany} ${how}${drawn}. ${spec.what}`;
     }
     // Nothing on screen sets it, so what the run uses is the default and the
     // only useful thing to say is that asking for another value goes nowhere.
@@ -236,16 +281,37 @@ function renderModel(model: PricedModelInfo): string {
           ? ` ${spec.min} to ${spec.max}${spec.step !== undefined ? ` in steps of ${spec.step}` : ""};`
           : shape;
     // The control exists but does not count yet, which asks something of the
-    // reader that "no control" does not: satisfy the gate and setting it works.
-    const waits = spec.gate === undefined ? "" : ` it applies only while ${spec.gate.param} is on;`;
+    // user that "no control" does not: satisfy the gate and setting it works.
+    const waits = spec.gate === undefined ? "" : ` it applies only while ${gateWords(spec.gate, false)};`;
+    // Takes go out at the lowest value of every setting that moves the price,
+    // which the agent cannot tell from the values alone.
+    const lowest = model.lowestAt !== undefined && name in model.lowestAt ? ` sets the price, lowest at ${JSON.stringify(model.lowestAt[name])};` : "";
     // A field served from upstream stands on the first entry of that list
-    // until the reader picks one in the panel.
+    // until the user picks one in the panel.
     const tail = spec.valuesFrom
       ? " defaults to the first entry of that list."
       : ` defaults to ${JSON.stringify(spec.default)}.`;
-    return `    ${name}:${domain}${howMany}${waits}${tail} ${spec.what}`;
+    return `    ${name}:${domain}${howMany}${waits}${lowest}${tail} ${spec.what}`;
   });
-  return params.length > 0 ? [head, "  parameters:", ...params].join("\n") : head;
+  const forces = renderForces(model);
+  return params.length > 0 ? [head, "  parameters:", ...params, ...forces].join("\n") : [head, ...forces].join("\n");
+}
+
+/**
+ * The values the model forces, in the order they apply, as lines under its
+ * parameters: a value given against one is refused, naming its id.
+ * @param model - The model.
+ * @returns The lines, or none for a model that forces nothing.
+ */
+function renderForces(model: PricedModelInfo): string[] {
+  if (model.forces === undefined || model.forces.length === 0) return [];
+  return [
+    "  forced values (applied in this order; a value given against one is refused):",
+    ...model.forces.map((force) => {
+      const sets = Object.entries(force.set).map(([name, value]) => `${name} to ${JSON.stringify(value)}`).join(" and ");
+      return `    ${force.id}: while ${gateWords(force.when, false)}, ${sets}${force.lock ? ", locked in the dialog" : ""}.`;
+    }),
+  ];
 }
 
 /**
@@ -266,13 +332,67 @@ export function renderGenerationModelsForModel(answer: PricedModelsForMode): str
   return answer.models.map(renderModel).join("\n");
 }
 
+/**
+ * The params a model takes out of the ones a call named, judged one by one
+ * the way a proposal's are, so a price is never computed from a value the
+ * model's controls would not offer. A key turned away is judged again once
+ * another is kept, since a setting gated by a switch counts only beside it,
+ * wherever the call names the switch.
+ * @param model - The model.
+ * @param nodeType - The node type the call named.
+ * @param mode - The mode the call named.
+ * @param params - The params the call named.
+ * @returns The ones it takes, and the names of the rest.
+ */
+function takenParams(model: ModelInfo, nodeType: GenerationNodeType, mode: string, params: Readonly<Record<string, unknown>>): { kept: Record<string, unknown>; rejected: string[] } {
+  const kept: Record<string, unknown> = {};
+  let waiting = Object.entries(params);
+  for (let before = Number.POSITIVE_INFINITY; waiting.length < before; ) {
+    before = waiting.length;
+    waiting = waiting.filter(([key, value]) => {
+      const node: ProposalNode = { role: "generate", type: nodeType, name: model.name, mode, model: model.name, params: { ...kept, [key]: value } };
+      if (!checkParams(model, node, nodeLabel([node], 0)).ok) return true;
+      kept[key] = value;
+      return false;
+    });
+  }
+  return { kept, rejected: waiting.map(([key]) => key) };
+}
+
+/**
+ * For each setting whose value moves the model's price, the value it is
+ * lowest at, every other setting at its default; ties go to the value listed
+ * first. A setting given as a range is probed at its two ends.
+ * @param model - The model.
+ * @returns The settings that move the price, each with its cheapest value.
+ */
+export async function lowestValues(model: ModelInfo): Promise<Record<string, unknown>> {
+  const settable = Object.entries(model.params).filter(([, spec]) => spec.filledBySource !== true && spec.noControl !== true);
+  const found = await Promise.all(
+    settable.map(async ([name, spec]) => {
+      // ponytail: a range is probed at its ends only, which holds while range prices only rise or fall;
+      // probe every step across it if a model's price ever dips inside one.
+      const options = spec.options ?? (spec.min !== undefined && spec.max !== undefined ? [spec.min, spec.max] : []);
+      const credits = await Promise.all(options.map(async (value) => (await estimateModelCredits(model.name, { params: { [name]: value } }))?.credits));
+      const known = credits.filter((one): one is number => one !== undefined);
+      if (new Set(known).size <= 1) return [];
+      return [[name, options[credits.indexOf(Math.min(...known))]] as const];
+    }),
+  );
+  return Object.fromEntries(found.flat());
+}
+
 export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsForMode> = tool({
   description:
     "List the models behind one mode of one generation node, with what each " +
     "is good at, what a call costs, how long it takes, and every parameter " +
     "with its default. Ask get_canvas_capabilities first for the node type " +
     "and mode to pass here. Propose only a model this returns, and only " +
-    `parameters it names. How the reader fills a source parameter on screen is in ${GET_PRODUCT_GUIDE}.`,
+    `parameters it names. How the user fills a source parameter on screen is in ${GET_PRODUCT_GUIDE}, section "Source slots". ` +
+    "To price a step at the settings it will run at, pass them as params. " +
+    "What a model is good at is what its line here says; a strength its line does not name, such as lettering, is not one of its strengths. " +
+    "With target 3d it lists the 3D Space's models for t23d or i23d instead, with no nodeType, each with " +
+    "the values it forces and why; propose those with propose_scene_generation.",
   inputSchema,
   metadata: { runningLine: "chat.tool.checkingModels" },
   // The SDK's own conversion, which is what a running turn reaches -- the
@@ -284,19 +404,42 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
     value: renderGenerationModelsForModel(output),
   }),
   execute: async (
-    { nodeType, mode }: z.infer<typeof inputSchema>,
+    { target = "canvas", nodeType, mode, params }: z.infer<typeof inputSchema>,
     // Unused: reads a cached catalog and prices it locally, so there is
     // nothing to abandon. Declared so every tool has the same shape.
     _options: { abortSignal?: AbortSignal },
   ): Promise<PricedModelsForMode> => {
-    const answer = modelsForMode(nodeType, mode);
+    if (target === "3d" && nodeType !== undefined) {
+      throw new Error(`target 3d takes no nodeType: the 3D Space has no nodes, so ask with target "3d" and mode t23d or i23d alone, not nodeType "${nodeType}".`);
+    }
+    if (target === "canvas" && nodeType === undefined) {
+      throw new Error("target canvas needs a nodeType, from get_canvas_capabilities.");
+    }
+    const answer = nodeType === undefined ? sceneModelsForMode(mode) : modelsForMode(nodeType, mode);
     if (!answer.available) return answer;
     const models = await Promise.all(
-      answer.models.map(async (model): Promise<PricedModelInfo> => {
-        const price = await estimateModelCredits(model.name, { params: {} });
-        return price === undefined ? model : { ...model, price };
-      }),
+      answer.models.map(async (model): Promise<PricedModelInfo> => priceModel(model, await lowestValues(model), params === undefined || nodeType === undefined ? undefined : takenParams(model, nodeType, mode, params))),
     );
     return { available: true, models };
   },
 });
+
+/**
+ * A model priced at the params a call gave, or at its defaults when it gave none.
+ * @param model - The model.
+ * @param lowestAt - Its settings that move the price, each with its cheapest value.
+ * @param taken - The params of the call it takes and the names of the rest, when the call gave params.
+ * @returns The model with its price and what it was priced at.
+ */
+async function priceModel(model: ModelInfo, lowestAt: Record<string, unknown>, taken: { kept: Record<string, unknown>; rejected: string[] } | undefined): Promise<PricedModelInfo> {
+  const marked = Object.keys(lowestAt).length === 0 ? model : { ...model, lowestAt };
+  if (taken === undefined) {
+    const price = await estimateModelCredits(model.name, { params: {} });
+    return price === undefined ? marked : { ...marked, price };
+  }
+  const { kept, rejected } = taken;
+  const price = await estimateModelCredits(model.name, { params: kept });
+  const named = rejected.length === 0 ? {} : { rejected };
+  if (price === undefined) return { ...marked, ...named };
+  return Object.keys(kept).length === 0 ? { ...marked, price, ...named } : { ...marked, price, atParams: true as const, ...named };
+}

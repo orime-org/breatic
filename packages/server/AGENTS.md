@@ -50,13 +50,15 @@ Check: will a user read this sentence? Then it must come from `t()`.
 
 ## Streaming and chat
 
-### SSE streams are private and stop on abort
+### SSE streams carry no ownership ids
 
-**SSE is used only by agent chat (`routes/chat.ts`, `/message`) and the text mini-tool (`routes/text-tools.ts`); each request gets its own private stream, and event `data` carries no ownership ids.** Ownership is held by the `conversations` row (`user_id`, `project_id`); per-operation audit goes to the application logger, not onto the wire.
+**SSE is used only by agent chat (`GET /chat/conversations/:id/stream` in `routes/chat.ts`) and the text mini-tool (`routes/text-tools.ts`), and event `data` carries no ownership ids.** Ownership is held by the `conversations` row (`user_id`, `project_id`); per-operation audit goes to the application logger, not onto the wire.
 
-**Every SSE entry opens its stream with `streamUntilClientLeaves` (`src/utils/sse-stream.ts`) and passes the signal it hands `run` down to the layer doing the work.** When the client leaves, `StreamingApi.write` swallows the write error, so a loop that only watches its own writes never notices and keeps calling the model, running tools and charging the user; and on Node `s.onAbort` alone never hears a client that left before the body began (a read-lock wait), whose writes then hang.
+**A chat run belongs to its conversation, not to a request: it runs to its end on the server whoever reads, its resumable stream (`src/agent/run-stream.ts`) replays every frame to each page that attaches, and only `POST /chat/stop`, deleting the conversation or a shutdown stops it.** A page that leaves only lets go of its read, so the answer the user pays for is still there when they come back.
 
-Check: will this stream's producer stop by itself when nobody is listening? If not, it must receive the signal.
+**The text mini-tool opens its stream with `streamUntilClientLeaves` (`src/utils/sse-stream.ts`) and passes the signal it hands `run` down to the layer doing the work.** When the client leaves, `StreamingApi.write` swallows the write error, so a loop that only watches its own writes never notices and keeps calling the model, running tools and charging the user; and on Node `s.onAbort` alone never hears a client that left before the body began (a read-lock wait), whose writes then hang.
+
+Check: is this stream tied to the request that opened it? Then its producer must receive the signal and stop when nobody is listening.
 
 ### SSE finalization is a plain async function
 
@@ -78,9 +80,13 @@ Check: am I asserting a call certainly ran, or certainly did not? First establis
 
 Check: am I writing to a conversation id the client gave me? Were all three checked? Details: [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#chat-conversation-ownership).
 
-### The system prompt names no tool
+### The system prompt names no product tool
 
-**The system prompt (`src/agent/context.ts`) holds only rules that apply to every tool (call tools rather than writing the call out, read errors, say what you could not get); it says nothing about any particular tool, even without naming it.** A tool's guidance lives in its own definition ([domain rule](../domain/AGENTS.md#tool-guidance-lives-in-the-tool-definition)); `__tests__/agent/system-prompt.test.ts` catches only tool names, so an unnamed description is caught by this rule alone.
+**The whole system prompt (the `src/agent/context.ts` template plus the memory sections and the closing `## Project Instructions` section that `instructionsForAgentMemory` in `packages/domain/src/agent/instructions.ts` assembles) holds rules that apply to every tool (call tools rather than writing the call out, read errors, say what you could not get), how the Agent co-creates (the `## How You Co-create` method and, under `### By medium`, one paragraph per medium giving Ask, Takes, Craft, Keep and Reach in that order, written as results and judgements) and the memory protocol: when to use the Agent's own memory tools (`save_memory`, `delete_memory`, `read_memory`) and that turns which left the context are read with `read_conversation`; it says nothing about any product tool, even without naming it.** Each piece of guidance then has one home: the memory tools' timing lives in the protocol, every other tool's in its own definition ([domain rule](../domain/AGENTS.md#tool-guidance-lives-in-the-tool-definition)). `__tests__/agent/system-prompt.test.ts` lets the prompt name only those memory tools and the two record tools, so an unnamed description is caught by this rule alone. A new Space type or model medium gets its paragraph under `### By medium` in that five-part shape, and a Space that gains something the Agent can do there has its paragraph rewritten the same way; the same test maps every `SpaceTypeSchema` option and every `MODALITIES` entry to a paragraph and fails until one is written.
+
+### Prompt changes run the co-create suite
+
+**A change to the system prompt, a tool's description or a template's words to the model runs `packages/web/tests/smoke/agent-cocreation.spec.ts` (`@needs-model @needs-internet`) on the dev stack before the PR, and the PR carries its per-row pass counts and overall rates.** Unit tests pin the words; only real turns show what a model does with them, and a wording that fixes one row often moves another. A behaviour newly expected of the agent gets a row in `agent-cocreation.scenarios.json`, and the judge is checked against hand labels (the suite's last case) whenever the criteria change. A series of PRs that each add generation templates and change no other words to the model runs the suite once, before the series' last PR, which carries the counts for the whole series; each earlier PR names the series it belongs to.
 
 ## Payments
 

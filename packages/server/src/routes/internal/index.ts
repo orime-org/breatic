@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The internal API's authorisation table (inner#1410 §4.3, §4.5): every
@@ -12,6 +12,7 @@
 
 import type { Context, Hono, MiddlewareHandler } from "hono";
 import { z } from "zod";
+import { storableText } from "@server/utils/storable-text.js";
 import { creditLotService } from "@breatic/domain";
 import "@server/middleware/internal-auth.js";
 import { validate } from "@server/middleware/validate.js";
@@ -28,18 +29,19 @@ import { RefundRefusal } from "@server/modules/credit-refund/refusal.js";
 import { registerMaintenanceRoutes } from "@server/routes/internal/maintenance.js";
 import { registerCreditGrantRoutes } from "@server/routes/internal/credit-grant.js";
 import { registerEnterpriseMembershipRoutes } from "@server/routes/internal/enterprise-membership.js";
+import { registerReferralRoutes } from "@server/routes/internal/referral.js";
+import { registerDeploymentVersionRoute } from "@server/routes/internal/deployment-version.js";
 
 const LOT = "/internal/v1/credit-lots/:lotId/refund";
 const RESEND = "/internal/v1/refund-operations/:operationId/mail/resend";
 
 /**
- * A non-empty string field. Postgres text cannot hold NUL, so a NUL is
- * refused here as a malformed body.
+ * A non-empty string field the database can store.
  * @param max - The longest value accepted.
  * @returns The schema.
  */
 function text(max: number): z.ZodType<string> {
-  return z.string().min(1).max(max).refine((s) => !s.includes("\u0000"));
+  return storableText(z.string().min(1).max(max));
 }
 const reason = text(500);
 const refundIds = z.array(text(255)).max(100);
@@ -193,4 +195,6 @@ export function registerInternalRoutes(app: Hono): void {
   registerEnterpriseMembershipRoutes(app);
   registerCreditGrantRoutes(app);
   registerMaintenanceRoutes(app);
+  registerReferralRoutes(app);
+  registerDeploymentVersionRoute(app);
 }

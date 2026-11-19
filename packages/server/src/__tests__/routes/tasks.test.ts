@@ -1,11 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Tasks route tests — list, get, canvas task creation.
  */
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { resetLocales, setLocale, setLocaleMessages } from "@breatic/shared";
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(), generateText: vi.fn(), stepCountIs: vi.fn(),
@@ -169,8 +173,37 @@ describe("Tasks routes", () => {
       expect(domain.estimateTaskCredits).toHaveBeenCalledWith(
         "test-model",
         { params: { duration: 10, prompt: "<p>a slow pan</p>" }, prompt: "a slow pan" },
+        // No route in the request: priced on the upstream the weights choose.
+        undefined,
       );
       expect(mocks.taskService.create).not.toHaveBeenCalled();
+    });
+
+    it("hands the worker the route the run was checked, priced and held on", async () => {
+      mockQueueAdd.mockClear();
+      const route = { mode: "upstream", upstream: "fal" };
+      const res = await createApp().request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "video",
+          params: { duration: 10, prompt: "a slow pan" },
+          model: "test-model",
+          source: "task",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+          route,
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(domain.estimateTaskCredits).toHaveBeenCalledWith("test-model", expect.anything(), route);
+      expect(mockQueueAdd).toHaveBeenCalledWith(
+        "execute-task",
+        expect.objectContaining({ params: { duration: 10, prompt: "a slow pan", route } }),
+        expect.anything(),
+      );
     });
 
     it("rejects an i2i/edit model with no source image BEFORE enqueue (#1675) — no task, no bill", async () => {
@@ -219,6 +252,57 @@ describe("Tasks routes", () => {
       expect(mocks.taskService.create).toHaveBeenCalled();
     });
 
+    it("rejects a style prompt sent while Mureka composes from a melody BEFORE enqueue (breatic#1393)", async () => {
+      mocks.sendsUntakenPrompt.mockReturnValue(true);
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "audio",
+          params: { compose_from: "melody", prompt: "lo-fi piano", lyrics: "la", melody: "https://cdn/m.mp3" },
+          model: "mureka-v9.5-generate-song",
+          source: "task",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+        }),
+      });
+
+      expect(res.status).toBe(422);
+      expect(mocks.sendsUntakenPrompt).toHaveBeenCalledWith("mureka-v9.5-generate-song", expect.objectContaining({ compose_from: "melody" }));
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+      mocks.sendsUntakenPrompt.mockReturnValue(false);
+    });
+
+    it("rejects a run no upstream here takes BEFORE enqueue, naming the limit (#1521) — no task, no hold", async () => {
+      const tts = [{ name: "gemini-3.8-flash-text-to-speech", display_name: "Gemini 3.8 Flash TTS" }];
+      vi.mocked(domain.modelCatalog.getModelCatalog).mockReturnValueOnce({ image: [], video: [], audio: [], tts, three_d: [], total: 1 } as never);
+      mocks.inputRefusalFor.mockResolvedValueOnce({ reason: "WaveSpeed text maxLength 8000", limit: { field: "prompt", measure: "characters", max: 8000 } });
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "audio",
+          params: { prompt: "x".repeat(8001), voice_id: "Kore" },
+          model: "gemini-3.8-flash-text-to-speech",
+          source: "task",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+        }),
+      });
+
+      expect(res.status).toBe(422);
+      expect(((await res.json()) as { error: { message: string } }).error.message).toBe("server.model.input_limit.characters_max");
+      expect(mocks.inputRefusalFor).toHaveBeenCalledWith("gemini-3.8-flash-text-to-speech", expect.objectContaining({ prompt: "x".repeat(8001) }), undefined);
+      expect(mocks.creditHoldService.reserveCredits).not.toHaveBeenCalled();
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+    });
+
     it("rejects a submission with too many reference images BEFORE enqueue (#1735) — no task, no bill", async () => {
       // The submission over-fills a capped list param; the gate must fire
       // before taskService.create + enqueue so nothing is created / queued /
@@ -244,6 +328,37 @@ describe("Tasks routes", () => {
       });
 
       expect(res.status).toBe(422);
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+    });
+
+    it("rejects a submission with a text setting emptied below its least length BEFORE enqueue (inner#1825)", async () => {
+      setLocaleMessages("en", JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../../../locales/en.json"), "utf8")) as Record<string, unknown>);
+      setLocale("en");
+      // The case above leaves the reference gate refusing; this one is about the text gate.
+      mocks.violatesReferenceCountForModel.mockReturnValue(null);
+      mocks.violatesTextLengthForModel.mockReturnValueOnce({ param: "voice_description", min: 1 });
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "audio",
+          params: { voice_description: "", text: "Hello." },
+          model: "qwen3-tts-voice-design",
+          source: "task",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+        }),
+      });
+
+      expect(mocks.violatesTextLengthForModel).toHaveBeenCalledWith("qwen3-tts-voice-design", expect.objectContaining({ voice_description: "" }));
+      expect(res.status).toBe(422);
+      // Said with the control's name the panel shows (round 3).
+      const said = JSON.stringify(await res.json());
+      resetLocales();
+      expect(said).toContain("Fill in Voice description first");
       expect(mocks.taskService.create).not.toHaveBeenCalled();
       expect(mockQueueAdd).not.toHaveBeenCalled();
     });
@@ -419,7 +534,7 @@ describe("Tasks routes", () => {
       );
     });
 
-    // A snapshot of nothing is not one: the row would show the reader a
+    // A snapshot of nothing is not one: the row would show the user a
     // blank line they cannot tell apart from any other. The browser greys
     // the item out on a node saying nothing; this is the same rule where it
     // is authoritative.
@@ -512,10 +627,14 @@ describe("Tasks routes", () => {
     });
   });
 
-  // The reader's language is known at one end only — the browser — and the
+  // The user's language is known at one end only — the browser — and the
   // sentence it decides is written at the other, by the model. This route
   // carries it between them without reading it.
-  it("carries the reader's locale through to the job", async () => {
+  it.each([
+    ["a page of this release", { user_locale: "ja", reader_locale: "ja" }],
+    ["a page from before #1378", { reader_locale: "ja" }],
+    ["a request naming only the new field", { user_locale: "ja" }],
+  ])("carries the user's locale through to the job under both names, from %s", async (_from, locale) => {
     const app = createApp();
     await app.request("/api/v1/canvas/understand", {
       method: "POST",
@@ -526,20 +645,22 @@ describe("Tasks routes", () => {
         source_type: "image",
         source_url: "https://cdn/x.png",
         node_ids: [READ_INTO],
-        reader_locale: "ja",
+        ...locale,
       }),
     });
 
+    // Both names until the follow-up to #1378: a worker of the previous
+    // release still running during the deploy reads only reader_locale.
     expect(mockQueueAdd).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        params: expect.objectContaining({ reader_locale: "ja" }),
+        params: expect.objectContaining({ user_locale: "ja", reader_locale: "ja" }),
       }),
       expect.anything(),
     );
   });
 
-  // The label is what the reader sees naming this run in the node's task
+  // The label is what the user sees naming this run in the node's task
   // list, and the two other writers of that column put the model or the tool
   // there — a proper noun, the same in every language. A reading is a model
   // call like any other, so it names the model it pins.
@@ -722,6 +843,7 @@ describe("Tasks routes", () => {
       source_url: "https://cdn/x.m4a",
       node_ids: [READ_INTO],
       keep_fillers: false,
+      user_locale: "zh-TW",
       reader_locale: "zh-TW",
     };
 
@@ -755,6 +877,7 @@ describe("Tasks routes", () => {
           params: expect.objectContaining({
             reading: "transcribe",
             keep_fillers: false,
+            user_locale: "zh-TW",
             reader_locale: "zh-TW",
             source_type: "audio",
           }),
@@ -828,7 +951,7 @@ describe("Tasks routes", () => {
     // up, read the media and bill for it. The job's id is recorded for
     // whoever has to find that job by hand — no code reads it — so a run
     // whose id went unrecorded still runs, and marking it failed would put
-    // "failed" on a node the reader
+    // "failed" on a node the user
     // then watches produce a reading, and bill them for it.
     it("leaves a queued run running when its job id cannot be recorded", async () => {
       mocks.taskService.setJobId.mockRejectedValueOnce(new Error("db down"));
@@ -876,7 +999,7 @@ describe("Tasks routes", () => {
 
     // A row on the node is the only thing that carries a cause back to the
     // canvas, so a run that names no node is refused before anything is
-    // created: it would bill and answer into nowhere while the reader
+    // created: it would bill and answer into nowhere while the user
     // watches a node that never changes.
     it("refuses a run that named no node", async () => {
       const app = createApp();
@@ -899,7 +1022,7 @@ describe("Tasks routes", () => {
     // The task row is written before the node's row is opened, so opening
     // that row is one more way out that has to end the first: a task left
     // `pending` is one no worker will pick up and no sweep will end, and the
-    // reader is told by the rejection, there being no row to hold the cause.
+    // user is told by the rejection, there being no row to hold the cause.
     it("does not leave the task pending when the node's row cannot be opened", async () => {
       mocks.nodeTaskService.open.mockRejectedValueOnce(new Error("collab down"));
       const app = createApp();

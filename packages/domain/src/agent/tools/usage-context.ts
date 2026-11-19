@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a tool that spends money is handed alongside its input (#296).
@@ -33,9 +33,12 @@ function isRecorder(value: unknown): value is UsageRecorder {
   );
 }
 
+/** The recorder field, for a paying tool whose context carries more than it. */
+export const usageRecorderSchema = z.custom<UsageRecorder>(isRecorder, "a usage recorder");
+
 /** The `contextSchema` every paying tool declares. */
 export const usageContextSchema: z.ZodType<UsageContext> = z.object({
-  usage: z.custom<UsageRecorder>(isRecorder, "a usage recorder"),
+  usage: usageRecorderSchema,
 });
 
 /**

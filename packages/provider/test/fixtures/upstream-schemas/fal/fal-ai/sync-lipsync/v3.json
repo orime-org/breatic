@@ -1,0 +1,258 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=fal-ai/sync-lipsync/v3",
+  "fields": {
+    "audio_url": [
+      {
+        "type": "string"
+      }
+    ],
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "options": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.active_speaker_detection": [
+      {
+        "type": "object"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.active_speaker_detection.auto_detect": [
+      {
+        "type": "boolean"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.active_speaker_detection.bounding_boxes": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "array",
+                "items": {
+                  "fields": {
+                    "": [
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "required": []
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "required": []
+        }
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.active_speaker_detection.bounding_boxes_url": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.active_speaker_detection.coordinates": [
+      {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "required": []
+        }
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.active_speaker_detection.face_image": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.active_speaker_detection.frame_number": [
+      {
+        "type": "integer",
+        "minimum": 0
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.active_speaker_detection.use_v2": [
+      {
+        "type": "boolean"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.active_speaker_detection.v3": [
+      {
+        "type": "boolean"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.model_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "lips",
+          "face",
+          "head",
+          "lipsync",
+          "emotion",
+          "talking_head"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.occlusion_detection_enabled": [
+      {
+        "type": "boolean"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.prompt": [
+      {
+        "type": "string",
+        "enum": [
+          "happy",
+          "sad",
+          "angry",
+          "disgusted",
+          "surprised",
+          "neutral"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.sync_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "cut_off",
+          "loop",
+          "bounce",
+          "silence",
+          "remap"
+        ]
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "options.temperature": [
+      {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "sync_mode": [
+      {
+        "type": "string",
+        "enum": [
+          "cut_off",
+          "loop",
+          "bounce",
+          "silence",
+          "remap"
+        ],
+        "default": "cut_off"
+      }
+    ],
+    "video_url": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "audio_url",
+    "video_url"
+  ],
+  "outputs": {
+    "video": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "video.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "video.url": [
+      {
+        "type": "string"
+      }
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Which segments of a proposed node can carry a mark (#2218).
@@ -9,6 +9,7 @@ import {
   feedsOf,
   layersOf,
   layoutFeedsOf,
+  promptLines,
   proposalMarkSegments,
   type CanvasProposal,
   type ProposalNode,
@@ -94,5 +95,29 @@ describe("a template's guide text node (inner#1345)", () => {
     const proposal: CanvasProposal = { nodes: [anchor, guide], edges: [], rationale: "" };
     expect(feedsOf(proposal)).toEqual([]);
     expect(layoutFeedsOf(proposal)).toEqual([{ fromIndex: 1, toIndex: 0 }]);
+  });
+});
+
+describe("a prompt's lines, as the box lays them out (inner#1811)", () => {
+  it("starts a line at each line break in words or a mark, keeps refs in their line and leaves notes out", () => {
+    const lines = promptLines([
+      { slot: { kind: "note", label: "Put the product in first" } },
+      { text: "An ad for " },
+      { ref: 0 },
+      { text: ".\nThe person looks like " },
+      { ref: 1, optional: true },
+      { text: ".\n" },
+      { slot: { kind: "tweak", label: "the scene", note: "e.g. a kitchen" } },
+      { text: ", lit like " },
+      { ref: 2 },
+    ]);
+    expect(lines.map((line) => line.flatMap((segment) => (segment.ref === undefined ? [] : [segment.ref])))).toEqual([[0], [1], [2]]);
+    expect(lines[1]).toContainEqual({ ref: 1, optional: true });
+    expect(lines.flat().some((segment) => segment.text?.includes("Put the product in first"))).toBe(false);
+    expect(lines[2]?.some((segment) => segment.text?.includes("the scene"))).toBe(true);
+  });
+
+  it("gives one empty line for no segments", () => {
+    expect(promptLines([])).toEqual([[]]);
   });
 });

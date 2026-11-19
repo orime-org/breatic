@@ -5,7 +5,7 @@
 ## Package boundary
 **Imports flow one way: `app → pages → spaces → features → stores → data → ui`, and `components`, `theme`, `i18n`, `lib` form one bottom group whose members may import each other.** The `web-layer-*` rules of `lint:dependency-cruiser` fail CI on an upward import; read [docs/ARCHITECTURE.md#layered-architecture](../../docs/ARCHITECTURE.md#layered-architecture) before moving code between layers.
 
-**The only workspace package web source imports is `@breatic/shared`; inside the package every import uses the `@web/*` alias.** Core, server, worker and collab are Node code and cannot run in a browser.
+**The only workspace packages web source imports are `@breatic/shared` and `@breatic/provider/pricing`, the browser-safe estimate ([packages/provider/AGENTS.md#four-entry-points](../provider/AGENTS.md#four-entry-points)); inside the package every import uses the `@web/*` alias.** Core, domain, server, worker and collab are Node code and cannot run in a browser.
 
 **Configuration comes from `import.meta.env` (typed by `src/vite-env.d.ts`).** There is no `process.env` in the browser.
 
@@ -13,20 +13,23 @@
 
 **A Space is a type (a template), not a route: one Project page hosts many Space instances.** Spaces open inside `/project/:projectId/*`; a Space type never gets a route of its own.
 
-**The agent chat panel is per-user and never bound to Yjs; only a GenerativeNode's prompt is collaborative.** Chat history belongs to one reader.
+**The agent chat panel is per-user and never bound to Yjs; only a GenerativeNode's prompt is collaborative.** Chat history belongs to one user.
 
 ## Production standards
 **Scene object commands use `planSceneCommand` and `applySceneCommand` in `data/yjs/scene-document.ts`; each object record stores plain current values, edits overwrite fields and deletes remove the record.** Writing anywhere else bypasses the format version, lock and permission checks. The record format and personal-history origin are described in [docs/ARCHITECTURE.md#scene-document-format-and-commands](../../docs/ARCHITECTURE.md#scene-document-format-and-commands).
 
-**Critical paths and invariants (StrictMode-safe resource hooks, Yjs collaboration, optimistic-update races) have 100% tests; markup is semantic, focus is visible and every action is keyboard-reachable; all copy is ICU in the five locales, never hard-coded; colours come from semantic tokens.** Raw brand colours are for the logo only; repo-lint `no-brand-usage` scans `src` `.ts/.tsx/.css` with comments stripped.
+**Critical paths and invariants (StrictMode-safe resource hooks, Yjs collaboration, optimistic-update races) have 100% tests; markup is semantic, every action works with the mouse and focus is visible wherever the keyboard reaches; all copy is ICU in the five locales, never hard-coded; colours come from semantic tokens.** Raw brand colours are for the logo only; repo-lint `no-brand-usage` scans `src` `.ts/.tsx/.css` with comments stripped.
 
-**A web change is done only after a real-browser pass in light and dark themes (plus collaboration and the auth flow when touched), the main flow walked by keyboard, and no bundle regression (`pnpm build && pnpm --filter @breatic/web verify:chunks`).** Unit tests do not see themes, focus order or chunk splits.
+**A web change is done only after a real-browser pass in light and dark themes (plus collaboration and the auth flow when touched), the main flow walked with the mouse, and no bundle regression (`pnpm build && pnpm --filter @breatic/web verify:chunks`).** Unit tests do not see themes, focus order or chunk splits.
+
+## Space writes go through the size gate
+**Every local write to a Space document outside the ProseMirror editors runs inside `writeSpaceDoc(name, { kind, notify }, write)` (`data/yjs/space-write.ts`) or `runCanvasUndoBatch` (`data/yjs/canvas-space.ts`), with the kind of what it writes in Yjs (`add`, `edit`, `compound`, `delete`, `remove`), never a size estimate; ESLint `breatic/space-doc-write-gateway` enforces it, and editor transactions are judged by the filter in `features/collab-editor/space-size-gate.ts`.** A write with the wrong kind slips past the gate and is refused by collab, which rebuilds the user's document and loses the change. Read [docs/ARCHITECTURE.md#space-document-writes-and-the-size-cap](../../docs/ARCHITECTURE.md#space-document-writes-and-the-size-cap) before adding a write.
 
 ## Memoize what children receive
 **`React.memo`, `useMemo` and `useCallback` are applied wherever a value or callback built during render reaches a child prop or a dependency array, even where no speed-up is measurable.** Every prop of a memoized component must be stable or the memo never bails, which is a defect; in high-frequency lists (canvas nodes) reuse the previous object for unchanged items. Check: is it rebuilt every render and passed down or into deps?
 
 ## Accessibility scope
-**Screen-reader support is out of scope and keyboard, focus, contrast, errors and semantic HTML are in scope, as [the root rules](../../AGENTS.md#product-scope) define.** Answer screen-reader findings with that policy.
+**Screen-reader support and keyboard routes that do not make creating faster are out of scope; mouse operation, contrast, errors, semantic HTML and visible focus on what the keyboard reaches are in scope, as [the root rules](../../AGENTS.md#product-scope) define.** Answer screen-reader and keyboard-reach findings with that policy.
 
 ## Never render user HTML
 **No user-controlled content reaches the DOM as markup; rendering user HTML needs an agreed protection design first.** Nothing on the chat path sanitizes, so markup would be live XSS. Check, both questions: am I putting user content in via `dangerouslySetInnerHTML`/`innerHTML`/`insertAdjacentHTML`/`document.write`? Am I handing it to a renderer that renders embedded HTML (e.g. `react-markdown` with `rehype-raw`)? `MarkdownMessage.tsx` is safe only while `rehype-raw` is in no `package.json`.
@@ -81,7 +84,7 @@ ESLint `breatic/no-raw-button` scans `src/**/*.{ts,tsx}` and exempts only `compo
 ## Waiting buttons show loading
 **A button whose press waits for the server uses the `loading` prop of `Button` (or `AlertDialogAction`) from press until the result is on screen; give its icon to `icon`.** A press with no visible wait invites a second press. Set the flag before the request and clear it on success and failure; wait only for the read that shows the result (see `absorb` in `use-studio-settings.ts`, `invalidateProjectListings` in `data/api/projects.ts`); track several buttons in one list per object (`mutationKey` + `useMutationState`, `lib/use-pending-keys.ts`); a confirm dialog stays open while waiting, closes on success, stays on failure. Check: does this press wait for the server? Yes → `loading`.
 
-**Presses that create something or spend money (generate, understand, transcribe, mini-tool run, new conversation, membership checkout or tier change, new project, credit checkout) run once: the wait lives in `runOnce` (`stores/task-actions-in-flight.ts`), the request carries an `Idempotency-Key` reused on resend, and the button reads `useRunning(intentId)`.** Reopening a panel must not allow a second run.
+**Presses that create something or spend money (generate, understand, transcribe, mini-tool run, new conversation, membership checkout or tier change, new project, credit checkout, referral code binding, promoter application, web animation execution) run once: the wait lives in `runOnce` (`stores/task-actions-in-flight.ts`), the request carries an `Idempotency-Key` reused on resend, and the button reads `useRunning(intentId)`.** Reopening a panel must not allow a second run.
 
 ## Button borders
 **A standalone text button gets `variant='outline'`, including a dialog's Cancel; when the surrounding menu row, card or tab strip already draws the frame, it draws none.** A borderless word does not read as a button. This is judged on screen and has no lint rule, because the container lives in another file. Check: standalone text? → `outline`; unsure → `outline`.
@@ -98,7 +101,7 @@ ESLint `breatic/no-raw-button` scans `src/**/*.{ts,tsx}` and exempts only `compo
 ## Locked colours and motion
 **`--color-palette-red` and every `--color-status-error*` token are locked.** Only this red is locked; every other colour may be tuned. It measures 4.00:1 (light) and 3.87:1 (dark) on menu surfaces, below AA, because raising it to 4.5:1 turns the dark-theme red pink. Its contrast is not a defect: a review that measures it judges the finding not a problem, citing this rule, and proposes nothing.
 
-**No component adds a `prefers-reduced-motion` fallback.** Motion is part of the product; keyboard, semantics and contrast still apply.
+**No component adds a `prefers-reduced-motion` fallback.** Motion is part of the product; semantics and contrast still apply.
 
 ## Scope rules sit in a layer
 **Every scope rule in `index.css` (`.scope el { … }`) is inside an `@layer`.** Unlayered rules beat every layered rule, including all Tailwind utilities, so utilities on elements inside the scope silently stop working. A property both the scope and its elements' utilities set belongs on the element. `chat-markdown-css.test.ts` guards only `.chat-markdown` and `document-body-layer-css.test.ts` only `.doc-body`'s layering; any other scope is unguarded. Check: is it in `@layer`? Does any property overlap with element utilities?
@@ -163,7 +166,7 @@ ICU placeholders (`{studio}`) and URLs never change. repo-lint `no-translated-pr
 **In the document space a command acts on exactly the selected range: no trimming, no word expansion; spaces are content and vote on whether a mark is present; typing at the end of a formatted region continues it.** Toggle commands: all marked → shows on → click removes all; partly marked → shows off → click adds all. Cross-block selection is handled separately. Check: am I deciding the range from content? Early signals: `trim()`, `/^\s*/`, "all whitespace so it doesn't count" branches.
 
 ## Inputs send what they show
-**What an input box displays is exactly what is sent; the program never performs an invisible action the reader did not ask for.** The reader cannot see the difference.
+**What an input box displays is exactly what is sent; the program never performs an invisible action the user did not ask for.** The user cannot see the difference.
 
 ## Lists render from data
 **Lists always render from data and show an empty state when empty; never hide a section because it is empty today.** Later data then needs no display change. Check: is this branch a special case for "no data today"? → delete it.
@@ -173,7 +176,7 @@ ICU placeholders (`{studio}`) and URLs never change. repo-lint `no-translated-pr
 **Client/server version drift is answered by a reload the user presses, never an automatic one: while the page still works, a new release opens a dialog the user can postpone (`ProjectUpdateNotice`); once a request is refused with `error.reason: 'request_shape'` and a newer build is live, `StaleReleaseDialog` offers only Update.** Both reload through `reloadForUpdate`, which carries the Agent draft across.
 
 ## Product guide follows the UI
-**A change to how users operate the canvas, document space, project page or chat panel updates `packages/domain/src/agent/tools/product-guide.ts` in the same PR.** The Agent answers "how do I…" from that guide alone. Check: which sentence in the guide becomes false? Is each quoted name shown on screen as text? Invoke `/product-guide-sync` ([skill](../../.claude/skills/product-guide-sync/SKILL.md)) for what the guide may quote and which tests cover it.
+**A change to how users operate the canvas, document space, project page or chat panel updates `packages/domain/src/agent/tools/product-guide.ts` in the same PR.** The Agent answers "how do I…" from that guide alone. Check: which sentence in the guide becomes false? Is each quoted name shown on screen as text? Invoke `/product-guide-sync` ([skill](../../.claude/skills/product-guide-sync/SKILL.md)) for how the guide is split into sections, what it may quote and which tests cover it.
 
 ## Tests and smoke
 **`test:smoke` and `test:visual` exist only in `packages/web`: run `pnpm --filter @breatic/web test:smoke` (or `test:visual`).** From the repo root either fails with exit code 254 ("command not found"), which is not a test failure.

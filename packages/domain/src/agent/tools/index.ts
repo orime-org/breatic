@@ -1,17 +1,21 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Tool registry — maps tool names to AI SDK tool definitions.
  */
 import type { Tool } from "ai";
 import { env } from "@breatic/core";
+import { UNDERSTAND_MODEL } from "@breatic/shared";
+import { provider } from "@domain/provider/instance.js";
 
 import { makeAskUserTool, type AskUserContext } from "@domain/agent/tools/ask-user.js";
 import { makeRequestSpaceContentTool, type RequestSpaceContentContext } from "@domain/agent/tools/request-space-content.js";
 import { makeSaveImageTool } from "@domain/agent/tools/save-image.js";
 import { recordTools, makeReadNodeHistoryTool } from "@domain/agent/tools/record-tools.js";
+import { memoryTools } from "@domain/agent/tools/memory-tools.js";
 import type { ToolPictureContext } from "@domain/agent/prepare-agent-pictures.js";
+import type { PageUrlFor } from "@domain/agent/tools/web-fetch.js";
 import {
   ASK_USER,
   REQUEST_SPACE_CONTENT,
@@ -23,15 +27,22 @@ import {
   LIST_PROJECT_ACTIVITY,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  PROPOSE_SCENE_GENERATION,
   READ_CONVERSATION,
   READ_NODE_HISTORY,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
+  SAVE_MEMORY,
+  DELETE_MEMORY,
+  READ_MEMORY,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
   SEARCH_CONVERSATIONS,
+  WEB_FETCH,
 } from "@domain/agent/tools/tool-names.js";
 import { imageSearch, makeImageSearchTool } from "@domain/agent/tools/image-search.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
+import { makeWebTools } from "@domain/agent/tools/web-tools.js";
 import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js";
 import { canvasCapabilities } from "@domain/agent/tools/canvas-capabilities.js";
 import { generationModels } from "@domain/agent/tools/generation-models.js";
@@ -39,10 +50,14 @@ import { getGenerationTemplate } from "@domain/agent/tools/get-generation-templa
 import { productGuide } from "@domain/agent/tools/product-guide.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { makeProposeDocumentEdit } from "@domain/agent/tools/propose-document-edit.js";
+import { makeProposeSceneGeneration } from "@domain/agent/tools/propose-scene-generation.js";
 import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 
 /** The document proposal tool; it holds nothing between calls. */
 const proposeDocumentEdit = makeProposeDocumentEdit();
+
+/** The 3D generation proposal tool; it holds nothing between calls. */
+const proposeSceneGeneration = makeProposeSceneGeneration();
 
 /**
  * What a turn knows that a tool needs when it is built.
@@ -50,10 +65,18 @@ const proposeDocumentEdit = makeProposeDocumentEdit();
  * Optional at every build site: a tool built without it (a test, a probe)
  * gets `NO_TOOL_CONTEXT`, which vouches for no media address at all.
  */
-export type ToolContext = AskUserContext & ToolPictureContext & RequestSpaceContentContext;
+export type ToolContext = AskUserContext & ToolPictureContext & RequestSpaceContentContext & {
+  /**
+   * The spelling the conversation recorded for a link, or undefined when it
+   * does not hold it; `web_fetch` reads only those, in that spelling
+   * (inner#1664). It answers asynchronously, so a turn can read what it
+   * looks in only when a link first needs it.
+   */
+  pageUrlFor?: PageUrlFor;
+};
 
 /** The context a tool gets when its caller has none: no media is vouched for. */
-export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false };
+export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false, pageUrlFor: async () => undefined };
 
 /**
  * Complete mapping of tool name to tool instance.
@@ -69,7 +92,10 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   // length of a turn -- the search tools share one space of citation numbers
   // -- gets a fresh one per turn from here. Tools may also bind per-turn
   // capabilities; context-independent tools can reuse one object.
-  web_search: () => makeSearchTools().web_search,
+  // The two web tools share one run of citation numbers, so `buildToolSet`
+  // builds them together; built one at a time, each starts its own run.
+  web_search: (context = NO_TOOL_CONTEXT) => makeWebTools(context).web_search,
+  [WEB_FETCH]: (context = NO_TOOL_CONTEXT) => makeWebTools(context).web_fetch,
   [UNDERSTAND_MEDIA]: (context = NO_TOOL_CONTEXT) => makeUnderstandMediaTool({ seesPictures: context.seesPictures === true }),
   // The name a tool answers to is this key, and it is the constant rather
   // than the string: the lists below and the turn's own test for whether to
@@ -92,6 +118,8 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   [PROPOSE_CANVAS_ACTION]: () => proposeCanvasAction,
   // Holds nothing between calls, so one object serves every turn.
   [PROPOSE_DOCUMENT_EDIT]: () => proposeDocumentEdit,
+  // Holds nothing between calls, so one object serves every turn.
+  [PROPOSE_SCENE_GENERATION]: () => proposeSceneGeneration,
   // Built per turn: it holds whether a save is running, so one turn saves one
   // picture at a time.
   [SAVE_IMAGE]: () => makeSaveImageTool(),
@@ -103,16 +131,22 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   [READ_CONVERSATION]: () => recordTools[READ_CONVERSATION],
   [READ_NODE_HISTORY]: (context = NO_TOOL_CONTEXT) => makeReadNodeHistoryTool(context),
   [LIST_PROJECT_ACTIVITY]: () => recordTools[LIST_PROJECT_ACTIVITY],
+  // The Agent's own memory, through the turn's execution context. Stateless,
+  // so one object serves every turn.
+  [SAVE_MEMORY]: () => memoryTools[SAVE_MEMORY],
+  [DELETE_MEMORY]: () => memoryTools[DELETE_MEMORY],
+  [READ_MEMORY]: () => memoryTools[READ_MEMORY],
 } as const;
 
 /**
  * The tools that do work on their own, in a stable order.
  *
  * Narrower than `TOOL_MAP`: the canvas tools below are about the spaces in
- * front of the reader, so they are kept apart.
+ * front of the user, so they are kept apart.
  */
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
+  WEB_FETCH,
   "search_images",
   UNDERSTAND_MEDIA,
   ASK_USER,
@@ -121,10 +155,13 @@ export const BASELINE_TOOLS: readonly string[] = [
   // The user's own records: about the project, not the Space in front of
   // them, so offered whatever is open.
   ...RECORD_TOOL_NAMES,
+  // The Agent's own memory: about the user and the Project, offered on every
+  // turn.
+  ...MEMORY_TOOL_NAMES,
 ];
 
 /**
- * The tools that describe the spaces the reader is looking at.
+ * The tools that describe the spaces the user is looking at.
  *
  * What makes a tool belong here is that its answer is about the product in
  * front of someone, which is why the search tools are not in it even though
@@ -137,6 +174,7 @@ export const CANVAS_TOOLS: readonly string[] = [
   GET_GENERATION_TEMPLATE,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  PROPOSE_SCENE_GENERATION,
   SAVE_IMAGE,
 ];
 
@@ -144,7 +182,7 @@ export { makeRequestSpaceContentTool };
 
 export {
   ASK_USER,
-  AWAITS_READER,
+  AWAITS_USER,
   REQUEST_SPACE_CONTENT,
   GET_CANVAS_CAPABILITIES,
   GET_GENERATION_TEMPLATE,
@@ -153,9 +191,12 @@ export {
   LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  PROPOSE_SCENE_GENERATION,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
+  WEB_FETCH,
 } from "@domain/agent/tools/tool-names.js";
 
 /**
@@ -175,16 +216,25 @@ export {
  * Only genuinely required configuration goes here. Something a tool merely
  * prefers would silently remove the tool on a deployment that works fine.
  */
-const TOOL_REQUIREMENTS: Readonly<Record<string, string>> = {
-  web_search: "BRAVE_SEARCH_API_KEY",
+const TOOL_REQUIREMENTS: Readonly<Record<string, () => boolean>> = {
+  web_search: () => hasEnv("BRAVE_SEARCH_API_KEY"),
   // The same key, which the service accepts on the image endpoint too
   // (measured 2026-09-11).
-  search_images: "BRAVE_SEARCH_API_KEY",
-  [UNDERSTAND_MEDIA]: "OPENROUTER_API_KEY",
-  // The same key: the decisions endpoint sits on the same host and accepts it
-  // (measured 2026-09-23).
-  [JUDGE_LIKELIHOOD]: "OPENROUTER_API_KEY",
+  search_images: () => hasEnv("BRAVE_SEARCH_API_KEY"),
+  // Model calls are reachable when provider has an upstream for them with its key.
+  [UNDERSTAND_MEDIA]: () => provider().llm.availability(UNDERSTAND_MODEL.id, "understand").upstreams.some((u) => u.configured),
+  [JUDGE_LIKELIHOOD]: () => provider().llm.judgeAvailability().upstreams.some((u) => u.configured),
 };
+
+/**
+ * Whether the deployment sets an environment variable.
+ * @param name - The variable.
+ * @returns True when it holds a value.
+ */
+function hasEnv(name: string): boolean {
+  const value = (env as unknown as Record<string, unknown>)[name];
+  return typeof value === "string" && value.length > 0;
+}
 
 /**
  * Whether a tool has what it needs to run.
@@ -192,10 +242,7 @@ const TOOL_REQUIREMENTS: Readonly<Record<string, string>> = {
  * @returns True when the tool needs no configuration, or has it.
  */
 function isConfigured(name: string): boolean {
-  const required = TOOL_REQUIREMENTS[name];
-  if (!required) return true;
-  const value = (env as unknown as Record<string, unknown>)[required];
-  return typeof value === "string" && value.length > 0;
+  return TOOL_REQUIREMENTS[name]?.() ?? true;
 }
 
 /**
@@ -217,9 +264,17 @@ export function buildToolSet(
   context: ToolContext = NO_TOOL_CONTEXT,
 ): Record<string, Tool> {
   const result: Record<string, Tool> = {};
+  // One pair of web tools for the whole set, so their citation numbers never collide.
+  let web: ReturnType<typeof makeWebTools> | undefined;
   for (const name of toolNames) {
     const build = TOOL_MAP[name];
-    if (build && isConfigured(name)) result[name] = build(context);
+    if (!build || !isConfigured(name)) continue;
+    if (name === "web_search" || name === WEB_FETCH) {
+      web ??= makeWebTools(context);
+      result[name] = web[name];
+    } else {
+      result[name] = build(context);
+    }
   }
   return result;
 }
@@ -228,6 +283,7 @@ export {
   makeAskUserTool,
   imageSearch,
   makeSearchTools,
+  makeWebTools,
   canvasCapabilities,
   generationModels,
   makeProposeDocumentEdit,

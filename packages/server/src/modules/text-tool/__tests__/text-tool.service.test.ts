@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 一次文本工具跑完之后，钱那一步失败了会留下什么。
@@ -20,7 +20,12 @@ const modelRun = vi.hoisted(() => ({
   failsWith: null as Error | null,
   /** When set, the call sends this generation id and breaks off unrecorded. */
   cutOffAfter: null as string | null,
-  provider: "",
+  /**
+   * When set, the stream reports this error as a part, the way the SDK does
+   * for a call the provider refused or broke off: after `textBefore`, if any.
+   */
+  streamError: null as Error | null,
+  textBefore: "",
 }));
 
 const handOffLookups = vi.hoisted(() => vi.fn(async () => undefined));
@@ -29,6 +34,8 @@ const handOffLookups = vi.hoisted(() => vi.fn(async () => undefined));
 const charge = vi.hoisted(() => ({
   fail: null as Error | null,
   calls: [] as unknown[][],
+  /** What the settled charge says it took. */
+  charged: "2000.000000",
 }));
 
 vi.mock("@breatic/core", async (importOriginal) => {
@@ -42,13 +49,29 @@ vi.mock("@breatic/core", async (importOriginal) => {
 });
 
 /** What each recorder was opened with, and what it was told. */
-const recorders = vi.hoisted(() => ({ opened: [] as unknown[], calls: [] as unknown[] }));
+const recorders = vi.hoisted(() => ({
+  opened: [] as unknown[],
+  calls: [] as unknown[],
+  /** When set, the recorder's usage row could not be written. */
+  writeFailure: null as Error | null,
+}));
 
 vi.mock("@breatic/domain", async () => ({
-  // Real: the tracker is pure, and what the run hands off depends on it.
-  ...(await import("../../../../../domain/src/credit/open-generation.js")),
   handOffLookups,
-  getModel: () => ({}),
+  // A run cut off before its finish leaves its generation among the prepared call's pending costs.
+  provider: () => ({
+    llm: {
+      prepare: () => ({
+        model: {},
+        options: { providerOptions: {}, maxRetries: 0 },
+        system: () => [],
+        pendingCosts: () =>
+          modelRun.cutOffAfter === null ? [] : [{ state: "pending", lookup: { upstream: "openrouter", generationId: modelRun.cutOffAfter } }],
+      }),
+      costOf: () => ({ state: "known", usd: 0.01, source: "reported", tokens: { input: 0, cachedInput: 0, output: modelRun.tokens, reasoning: 0 } }),
+      servedBy: () => "served-upstream",
+    },
+  }),
   // The model call reports its usage as its response arrives, the way the SDK
   // calls `onLanguageModelCallEnd`, before the stream is drained.
   streamTextRetry: (opts: {
@@ -63,6 +86,11 @@ vi.mock("@breatic/domain", async () => ({
     if (modelRun.failsWith) throw modelRun.failsWith;
     return {
       fullStream: (async function* () {
+        if (modelRun.streamError !== null) {
+          if (modelRun.textBefore !== "") yield { type: "text-delta", text: modelRun.textBefore };
+          yield { type: "error", error: modelRun.streamError };
+          return;
+        }
         if (modelRun.cutOffAfter !== null) {
           if (opts.includeRawChunks) {
             opts.onChunk?.({ chunk: { type: "raw", rawValue: { id: modelRun.cutOffAfter } } });
@@ -80,7 +108,7 @@ vi.mock("@breatic/domain", async () => ({
       })(),
     };
   },
-  // Counts a credit per output token; pricing is `usage-cost.ts`'s to test.
+  // Counts a credit per output token; pricing is provider's to test.
   createUsageRecorder: (options: {
     operationKey: string;
     feature: string;
@@ -92,33 +120,43 @@ vi.mock("@breatic/domain", async () => ({
     const { operationKey, feature, actorUserId, projectId } = options;
     return {
       operation: { operationKey, feature, actorUserId, projectId },
-      recordModelCall: (call: { usage: { outputTokens: number } }) => {
+      recordModelCall: (call: { cost: { tokens?: { output: number } } }) => {
         recorders.calls.push(call);
-        credits += call.usage.outputTokens;
+        credits += call.cost.tokens?.output ?? 0;
       },
       recordServiceCall: () => {},
       awaitingLookup: () => [],
-      settle: async () => credits,
+      settle: async () => {
+        if (recorders.writeFailure) throw recorders.writeFailure;
+        return credits;
+      },
+      settleForCharge: async () => ({
+        credits,
+        writeFailures: recorders.writeFailure ? [recorders.writeFailure] : [],
+      }),
     };
   },
-  // The real one routes on which API keys the deployment has, so a name
-  // derived from the model string would assert the double, not the wiring.
-  resolveProvider: (model: string) => modelRun.provider || `routed:${model}`,
   creditLotService: {
-    chargeOnceForGeneration: async (...args: unknown[]) => {
+    chargeOnce: async (...args: unknown[]) => {
       charge.calls.push(args);
       if (charge.fail) throw charge.fail;
-      return { charged: "0.000000", shortfall: "0.000000", studioId: null, lotIds: [] };
+      return { billed: true, charged: charge.charged, shortfall: "0.000000", studioId: null, lotIds: [] };
     },
   },
 }));
 
 vi.mock("ai", () => ({ stepCountIs: () => () => false }));
 
-vi.mock("@server/config/text-tools.js", () => ({
+// Partial: whatever else the service reads from its config (the thinking level,
+// inner#1860) comes from the shipped file.
+vi.mock("@server/config/text-tools.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getModelForTool: () => "openai/gpt-4o-mini",
   getPromptForTool: () => "system",
 }));
+
+/** The project the run belongs to; its studio pays (inner#1860). */
+const PROJECT = "11111111-1111-4111-8111-111111111111";
 
 const { executeTextTool } = await import(
   "@server/modules/text-tool/text-tool.service.js"
@@ -132,6 +170,7 @@ async function run(): Promise<{ type: string }[]> {
   const events: { type: string }[] = [];
   for await (const event of executeTextTool(
     "u-1",
+    PROJECT,
     "generate",
     { instructions: "写点什么" },
     new AbortController().signal,
@@ -146,12 +185,15 @@ beforeEach(() => {
   vi.clearAllMocks();
   charge.fail = null;
   charge.calls = [];
+  charge.charged = "2000.000000";
+  recorders.writeFailure = null;
   recorders.opened = [];
   recorders.calls = [];
   modelRun.tokens = 2000;
   modelRun.failsWith = null;
   modelRun.cutOffAfter = null;
-  modelRun.provider = "";
+  modelRun.streamError = null;
+  modelRun.textBefore = "";
 });
 
 describe("扣费失败", () => {
@@ -168,9 +210,43 @@ describe("扣费失败", () => {
       Record<string, unknown>,
       string,
     ];
-    expect(message).toBe("text_tool_credit_charge_failed");
+    expect(message).toBe("credit_charge_settle_failed");
     expect(ctx).toMatchObject({ userId: "u-1", tool: "generate", tokens: 2000 });
     expect(ctx.err).toBe(charge.fail);
+    // What finds the pending request the sweep will settle: its key and amount.
+    expect(charge.calls).toHaveLength(1);
+    expect(ctx).toMatchObject({ refKey: charge.calls[0]![1], amount: (charge.calls[0]![2] as { amount: number }).amount });
+  });
+
+  it("reports zero credits used when the charge fails", async () => {
+    charge.fail = new Error("boom");
+
+    const events = await run();
+
+    expect(events.at(-1)).toMatchObject({ type: "done", creditsUsed: "0.000000" });
+  });
+
+  it("reports what the settled charge took as the credits used", async () => {
+    charge.charged = "1500.000000";
+
+    const events = await run();
+
+    expect(events.at(-1)).toMatchObject({ type: "done", tokens: 2000, creditsUsed: "1500.000000" });
+  });
+
+  it("charges the full amount when a usage row could not be written, and logs the row", async () => {
+    // inner#1617: a lost usage row must not lose the charge.
+    recorders.writeFailure = new Error("usage row insert failed");
+
+    const events = await run();
+
+    expect(events.at(-1)).toMatchObject({ type: "done", creditsUsed: "2000.000000" });
+    expect(charge.calls).toHaveLength(1);
+    expect(charge.calls[0]?.[2]).toMatchObject({ amount: 2000 });
+    expect(logError).toHaveBeenCalledWith(
+      expect.objectContaining({ err: recorders.writeFailure }),
+      "agent_usage_record_failed",
+    );
   });
 
   it("扣费成功时不记错误", async () => {
@@ -184,9 +260,10 @@ describe("扣费失败", () => {
     // 画布生成写进同一张表，两边都得填。
     await run();
 
-    expect(charge.calls[0]?.[1]).toMatchObject({
+    expect(charge.calls[0]?.[0]).toBe("operation");
+    expect(charge.calls[0]?.[2]).toMatchObject({
       model: "openai/gpt-4o-mini",
-      provider: "routed:openai/gpt-4o-mini",
+      provider: "served-upstream",
     });
   });
 
@@ -198,6 +275,25 @@ describe("扣费失败", () => {
 
     expect(charge.calls).toHaveLength(0);
     expect(logError).not.toHaveBeenCalled();
+  });
+});
+
+describe("a model call the provider refuses or breaks off", () => {
+  it("ends with an error event when the call is refused before any words", async () => {
+    modelRun.streamError = new Error("provider refused");
+
+    const events = await run();
+
+    expect(events.map((event) => event.type)).toEqual(["error"]);
+  });
+
+  it("ends with an error event, not done, when it breaks off after some words", async () => {
+    modelRun.streamError = new Error("provider broke off");
+    modelRun.textBefore = "half an ans";
+
+    const events = await run();
+
+    expect(events.map((event) => event.type)).toEqual(["text_delta", "error"]);
   });
 });
 
@@ -220,6 +316,7 @@ describe("一次跑到一半就死掉的运行", () => {
     // 模型的账已经产生，谁读走了结果不改变这件事。
     const gen = executeTextTool(
       "u-1",
+      PROJECT,
       "generate",
       { instructions: "写点什么" },
       new AbortController().signal,
@@ -233,31 +330,28 @@ describe("一次跑到一半就死掉的运行", () => {
     expect(thrown.value).toMatchObject({ type: "error" });
     expect(charge.calls).toHaveLength(2);
     // 同一个幂等键，所以两次里只有一次真扣得下去。
-    expect(charge.calls[1]?.[0]).toBe(charge.calls[0]?.[0]);
-    expect(charge.calls[1]?.[1]).toMatchObject({ amount: 2000 });
+    expect(charge.calls[1]?.[1]).toBe(charge.calls[0]?.[1]);
+    expect(charge.calls[1]?.[2]).toMatchObject({ amount: 2000 });
   });
 });
 
 describe("a run cut off before the model reported its cost", () => {
-  it("hands an OpenRouter call to the later lookup", async () => {
-    modelRun.provider = "openrouter";
+  it("hands the call to the later lookup", async () => {
     modelRun.cutOffAfter = "gen-42";
 
     await run();
 
     expect(handOffLookups).toHaveBeenCalledWith(
-      ["gen-42"],
-      { operationKey: "texttool:key-1", feature: "text_tool", actorUserId: "u-1", projectId: null },
-      { model: "openai/gpt-4o-mini", description: "Text tool: generate", charge: true },
+      [{ lookup: { upstream: "openrouter", generationId: "gen-42" }, source: "model", model: "openai/gpt-4o-mini" }],
+      { operationKey: "texttool:key-1", feature: "text_tool", actorUserId: "u-1", projectId: PROJECT },
+      { description: "Text tool: generate", charge: true },
     );
   });
 
   it("hands nothing off when the call ended and was recorded", async () => {
-    modelRun.provider = "openrouter";
-
     await run();
 
-    expect(handOffLookups).toHaveBeenCalledWith([], expect.anything(), expect.anything());
+    expect(handOffLookups).not.toHaveBeenCalled();
   });
 });
 
@@ -270,18 +364,19 @@ describe("what a run records", () => {
         operationKey: "texttool:key-1",
         feature: "text_tool",
         actorUserId: "u-1",
-        projectId: null,
+        projectId: PROJECT,
       }),
     ]);
     expect(recorders.calls).toEqual([
       expect.objectContaining({
         source: "model",
         model: "openai/gpt-4o-mini",
-        provider: "routed:openai/gpt-4o-mini",
+        upstream: "served-upstream",
       }),
     ]);
-    expect(charge.calls[0]?.[0]).toBe("texttool:key-1");
-    expect(charge.calls[0]?.[1]).toMatchObject({ amount: 2000 });
+    expect(charge.calls[0]?.[0]).toBe("operation");
+    expect(charge.calls[0]?.[1]).toBe("texttool:key-1");
+    expect(charge.calls[0]?.[2]).toMatchObject({ amount: 2000, projectId: PROJECT, actorUserId: "u-1" });
   });
 });
 

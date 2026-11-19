@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import {
@@ -25,7 +25,7 @@ import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /**
- * The presets the reader picks from, between the ends the canvas allows. The
+ * The presets the user picks from, between the ends the canvas allows. The
  * box clamps what they type to those same ends, so a number it accepts is one
  * the canvas will hold.
  */
@@ -441,7 +441,7 @@ function ZoomMenu({ zoom, onZoomChange }: ZoomMenuProps): React.JSX.Element {
             aria-label={t('viewportToolbar.zoomCustomAria')}
             placeholder='100'
             data-testid='zoom-custom-input'
-            className='h-7 w-full rounded-chrome border border-border bg-transparent px-2 text-xs tabular-nums text-foreground outline-none transition-colors focus-visible:border-active-border'
+            className='h-7 w-full rounded-chrome border border-border bg-transparent px-2 text-xs tabular-nums text-foreground outline-none transition-colors focus:border-active-border'
           />
           <span className='text-xs text-muted-foreground'>%</span>
         </div>

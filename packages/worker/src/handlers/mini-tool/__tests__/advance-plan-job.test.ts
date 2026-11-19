@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,7 +20,7 @@ vi.mock("@breatic/core", async (original) => ({
 
 import { BodyTooLarge, DEFAULT_TIMEOUT_MS, DeadlinePassed, EmptyBody, HttpRetryError, UploadHttpError, miniToolPlanJobRequestSchema, type UntilDeadline } from "@breatic/shared";
 import { advanceMiniToolPlanJob, planReadUntil } from "../advance-plan-job.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 
 const inputId = "20000000-0000-4000-8000-000000000001";
 const DEADLINE = 1792920000000;

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A press on a highlight opens the comment it belongs to (#18, A6 · A20).
@@ -23,6 +23,8 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
 import { commentsOn } from '@web/spaces/document/document-comment-extension';
 import { postComment } from '@web/spaces/document/document-comment-post';
+import { setTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 import {
   hoverThread,
   onSelectedThreadsChange,
@@ -133,7 +135,7 @@ describe('pressing a highlight', () => {
 
   it('names both where two comments cover the same words', async () => {
     // A20: the library's handler takes the first mark it finds, so the second
-    // thread would be unreachable. Both are named and the reader picks.
+    // thread would be unreachable. Both are named and the user picks.
     const editor = open();
     const first = await comment(editor, 0, 11);
     const second = await comment(editor, 6, 19);
@@ -202,7 +204,7 @@ describe('pressing a comment that is already open', () => {
     expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([threadId]);
   });
 
-  it('answers again once the reader presses a different comment', async () => {
+  it('answers again once the user presses a different comment', async () => {
     const editor = open();
     await comment(editor, 0, 5);
     const second = await comment(editor, 6, 11);
@@ -224,7 +226,7 @@ describe('pressing a comment that is already open', () => {
     expect(librarySelection(editor)).toBe(threadId);
   });
 
-  it('tells the library the reader has looked away', async () => {
+  it('tells the library the user has looked away', async () => {
     const editor = open();
     await comment(editor, 0, 5);
     press(editor, 2);
@@ -242,7 +244,7 @@ describe('selecting from elsewhere', () => {
     // mark it nests inside — so naming a settled thread paints the words A8
     // promises read as prose. Its own handler passes settled marks by, so
     // there is nothing to ask it to stand aside from either. A9 sends the
-    // reader here: the "all" filter is where they open one.
+    // user here: the "all" filter is where they open one.
     const editor = open();
     const threadId = await comment(editor, 0, 5);
     const view = editor.prosemirrorView!;
@@ -346,7 +348,7 @@ describe('resting on a card in the panel', () => {
   });
 
   it('is not the same thing as having the comment open', async () => {
-    // Resting on a card says where a reader is looking; it does not open
+    // Resting on a card says where a user is looking; it does not open
     // anything, and letting it go leaves an open comment open.
     const editor = open();
     const first = await comment(editor, 0, 5);
@@ -413,3 +415,26 @@ describe('a click beside a picture', () => {
   });
 });
 
+describe('a press on blank space while a table is open full screen (#1427)', () => {
+  it('keeps the comment that was open, the way a press in a cell does', async () => {
+    const { attachBodyScroller } = await import('@web/spaces/document/document-body-press');
+    const editor = open();
+    const threadId = await comment(editor, 0, 5);
+    press(editor, 2);
+    editor.insertBlocks([tableBlock({ rows: [{ cells: ['a1'] }] })] as never, (editor.document as { id: string }[])[0]!.id, 'after');
+    const table = (editor.document as { id: string; type: string }[]).find((block) => block.type === 'docTable')!.id;
+    const view = editor.prosemirrorView!;
+    const scroller = document.createElement('div');
+    const host = view.dom.parentElement === document.body ? view.dom : view.dom.parentElement!;
+    host.parentElement!.insertBefore(scroller, host);
+    scroller.appendChild(host);
+    const detach = attachBodyScroller(view, scroller, editor);
+    setTableFullscreen(editor, { table, scrollTop: 0, offset: 0 });
+
+    scroller.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    scroller.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+
+    expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([threadId]);
+    detach();
+  });
+});

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The two models erase and expand run (inner#1306 execution design §10.4, §10.5 model rows): `bria-video-eraser-mask` on

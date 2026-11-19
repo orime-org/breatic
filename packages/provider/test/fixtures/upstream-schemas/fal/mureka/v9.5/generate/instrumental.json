@@ -1,0 +1,221 @@
+{
+  "source": "https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=mureka/v9.5/generate/instrumental",
+  "fields": {
+    "enable_safety_checker": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "instrumental_id": [
+      {
+        "type": "string",
+        "minLength": 1
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      {
+        "type": "null"
+      }
+    ]
+  },
+  "required": [],
+  "outputs": {
+    "audio": [
+      {
+        "type": "object",
+        "required": [
+          "url"
+        ]
+      }
+    ],
+    "audio.content_type": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.file_name": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.file_size": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "audio.url": [
+      {
+        "type": "string"
+      }
+    ],
+    "duration": [
+      {
+        "type": "integer"
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "lyrics_sections": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "section_type": [
+              {
+                "type": "string",
+                "enum": [
+                  "intro",
+                  "verse",
+                  "pre-chorus",
+                  "chorus",
+                  "bridge",
+                  "break",
+                  "outro"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "start": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "end": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "lines": [
+              {
+                "type": "array",
+                "items": {
+                  "fields": {
+                    "text": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "start": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "end": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "words": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "fields": {
+                            "text": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "start": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "end": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "": [
+                              {
+                                "type": "object"
+                              }
+                            ]
+                          },
+                          "required": []
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "": [
+                      {
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "required": []
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "": [
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "required": []
+        }
+      },
+      {
+        "type": "null"
+      }
+    ],
+    "song_id": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "null"
+      }
+    ]
+  }
+}

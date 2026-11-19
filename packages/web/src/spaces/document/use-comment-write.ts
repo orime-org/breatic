@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Where every write to a comment thread ends (#18).
@@ -10,7 +10,7 @@
  * the time the press lands.
  *
  * Whether that happens is not ours to promise — a peer may do what they like
- * with their own document. Whether the reader is told is ours, and it is the
+ * with their own document. Whether the user is told is ours, and it is the
  * whole of what this does: a press that changes nothing and says nothing is
  * the one answer a card must never give.
  *
@@ -22,6 +22,7 @@ import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
+import { SpaceFullError } from '@web/spaces/document/document-comment-thread-store';
 
 /** Sees a write through, saying so if it was refused. */
 export type CommentWrite = <T>(written: Promise<T>) => Promise<T | undefined>;
@@ -35,8 +36,10 @@ export function useCommentWrite(): CommentWrite {
   return React.useCallback(
     <T,>(written: Promise<T>): Promise<T | undefined> =>
       written.catch((reason: unknown) => {
+        // The Space's size refused it and already said so (inner#1790).
+        if (reason instanceof SpaceFullError) return undefined;
         toast.error(t('spaces.document.comment.writeFailed'));
-        // The reader is told what happened; this is for whoever has to work
+        // The user is told what happened; this is for whoever has to work
         // out why, and the reason is the store's own.
         console.error('a comment write was refused', reason);
         return undefined;

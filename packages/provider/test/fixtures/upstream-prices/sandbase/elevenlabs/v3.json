@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/elevenlabs/v3",
+  "price_formula": "Math.max(1.0, Math.ceil(len(params.text ?? \"\") / 1000.0)) * 0.2"
+}

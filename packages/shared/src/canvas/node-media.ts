@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The six media fields a result puts on a node besides its content (#2184).
  *
  * Two writers put a result on a node: collab when a task settles, and the
- * canvas when a reader restores a history row or replaces from the task list.
+ * canvas when a user restores a history row or replaces from the task list.
  * Both go through this function, so the same result leaves the node holding
  * the same fields whichever way it arrived.
  */
@@ -37,12 +37,23 @@ export const NODE_MEDIA_KEYS = ['coverUrl', 'mediaWidth', 'mediaHeight', 'durati
  * @param media - The result's media fields.
  */
 export function writeNodeMedia(data: Y.Map<unknown>, media: NodeMediaFields): void {
-  setOrRemove(data, 'coverUrl', media.coverUrl);
-  setOrRemove(data, 'mediaWidth', media.width);
-  setOrRemove(data, 'mediaHeight', media.height);
-  setOrRemove(data, 'duration', media.duration);
-  setOrRemove(data, 'mimeType', media.mimeType);
-  setOrRemove(data, 'size', media.size);
+  for (const [key, value] of nodeMediaEntries(media)) setOrRemove(data, key, value);
+}
+
+/**
+ * A result's media fields under the node-data keys they land on.
+ * @param media - The result's media fields.
+ * @returns Each node key with its value, null when the medium has none.
+ */
+export function nodeMediaEntries(media: NodeMediaFields): Array<[(typeof NODE_MEDIA_KEYS)[number], string | number | null]> {
+  return [
+    ['coverUrl', media.coverUrl],
+    ['mediaWidth', media.width],
+    ['mediaHeight', media.height],
+    ['duration', media.duration],
+    ['mimeType', media.mimeType],
+    ['size', media.size],
+  ];
 }
 
 /**

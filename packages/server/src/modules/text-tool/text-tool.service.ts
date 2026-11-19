@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Text mini-tool service — streaming AI text operations.
@@ -11,32 +11,36 @@
  */
 
 import { accountActivityRepo } from "@breatic/core";
-import { serializeCreditMicro, type CreditDecimal } from "@breatic/shared";
+import { serializeCreditMicro, type CreditDecimal, type TextToolLanguage } from "@breatic/shared";
 
 import { stepCountIs } from "ai";
-import { streamTextRetry } from "@breatic/domain";
-import { t } from "@breatic/shared";
-import { getModel, resolveProvider } from "@breatic/domain";
-import { getModelForTool, getPromptForTool } from "@server/config/text-tools.js";
-import { env, logger } from "@breatic/core";
+import { provider, streamTextRetry } from "@breatic/domain";
+import { getModelForTool, getPromptForTool, getTextToolsConfig } from "@server/config/text-tools.js";
+import { logger } from "@breatic/core";
 import { creditLotService, createUsageRecorder } from "@breatic/domain";
 import type { UsageRecorder } from "@breatic/domain";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
-import { getRedis } from "@breatic/core";
 
 /** SSE event yielded during text tool execution. */
 export type TextToolEvent =
   | { type: "text_delta"; text: string }
   | { type: "done"; tokens: number; creditsUsed: CreditDecimal }
   | { type: "aborted"; tokens: number; creditsUsed: CreditDecimal }
-  | { type: "error"; message: string; err: unknown };
+  | { type: "error"; err: unknown };
 
-const LOCK_TTL_SECONDS = 120;
+/** The UI locales a selection can be translated into, as the model reads them. */
+const TRANSLATE_TARGET_NAMES: Record<TextToolLanguage, string> = {
+  en: "English",
+  "zh-CN": "Simplified Chinese",
+  "zh-TW": "Traditional Chinese",
+  ja: "Japanese",
+  ko: "Korean",
+};
 
 /**
  * Build the user message from tool params.
  *
- * For operation tools: includes full document + marked selection.
+ * For operation tools: the document around the selection, then the selection itself.
  * For generation tools: includes instructions + tool-specific params.
  * @param tool - Tool name selecting the prompt shape (e.g. "translate", "character", "script").
  * @param params - Raw tool params such as `document`, `selection`, `instructions`, and tool-specific extras.
@@ -54,8 +58,8 @@ function buildUserMessage(tool: string, params: Record<string, unknown>): string
     if (instructions) msg += `\nAdditional instructions: ${instructions}`;
 
     // Tool-specific extras
-    if (tool === "translate" && params.language) {
-      msg += `\nTranslate to: ${params.language as string}`;
+    if (tool === "translate" && typeof params.language === "string") {
+      msg += `\nTranslate into: ${TRANSLATE_TARGET_NAMES[params.language as TextToolLanguage]}`;
     }
     if (tool === "rewrite" && params.style) {
       msg += `\nTarget style: ${params.style as string}`;
@@ -75,12 +79,6 @@ function buildUserMessage(tool: string, params: Record<string, unknown>): string
       if (document) msg += `\n\nReference document:\n---\n${document}\n---`;
       return msg;
     }
-    case "storyboard": {
-      let msg = instructions ?? "Create a storyboard.";
-      if (params.scene_count) msg += `\nTarget scene count: ${params.scene_count as number}`;
-      if (document) msg += `\n\nReference document:\n---\n${document}\n---`;
-      return msg;
-    }
     case "script": {
       let msg = `Scene: ${params.scene_description as string}`;
       const chars = params.characters as string[] | undefined;
@@ -94,68 +92,38 @@ function buildUserMessage(tool: string, params: Record<string, unknown>): string
 }
 
 /**
- * Acquire a per-user concurrency lock for text tools.
- * @param userId - Authenticated user ID the lock is scoped to.
- * @returns `true` if lock acquired, `false` if user already has an active request
- */
-async function acquireLock(userId: string): Promise<boolean> {
-  const redis = getRedis();
-  const key = `${env.ENV}:text-tool-lock:${userId}`;
-  const result = await redis.set(key, "1", "EX", LOCK_TTL_SECONDS, "NX");
-  return result === "OK";
-}
-
-/**
- * Release the per-user concurrency lock.
- * @param userId - Authenticated user ID whose lock is released.
- */
-async function releaseLock(userId: string): Promise<void> {
-  const redis = getRedis();
-  await redis.del(`${env.ENV}:text-tool-lock:${userId}`);
-}
-
-/**
  * Execute a text mini-tool with streaming output.
  * @param userId - Authenticated user ID
+ * @param projectId - The project whose studio pays for the run.
  * @param tool - Tool name (e.g. "polish", "generate")
- * @param params - Tool parameters (document, selection, etc.)
+ * @param params - Tool parameters (document, selection, etc.).
  * @param signal - AbortSignal for cancellation on client disconnect
- * @param idempotencyKey - Per-request key used to bill the run at most once across success and error paths.
+ * @param operationKey - The key the run is recorded and charged under, minted
+ *   by the route for every request.
  * @yields TextToolEvent stream
  */
 export async function* executeTextTool(
   userId: string,
+  projectId: string,
   tool: string,
   params: Record<string, unknown>,
   signal: AbortSignal,
-  idempotencyKey: string,
+  operationKey: string,
 ): AsyncGenerator<TextToolEvent> {
-  // Concurrency lock
-  const locked = await acquireLock(userId);
-  if (!locked) {
-    yield {
-      type: "error",
-      message: t("server.text_tool.already_running"),
-      err: new Error("acquireLock returned false (already_running)"),
-    };
-    return;
-  }
-
   let totalTokens = 0;
   // Declared out here so both exits reach them. The model call is recorded
-  // when its response arrives. A run that died before that is recorded later
-  // when the model routes through OpenRouter (the cut-off call goes to the
-  // generation lookup), and not at all on a direct route; a run that died
-  // after it is charged the same as the success path. The second case is reached when the consumer throws while
-  // taking an event: the throw comes back out of the suspended `yield`, by
-  // which point the model has already billed us.
+  // when its response arrives. A call cut off before that is handed over by
+  // provider's pending costs: looked up later when its upstream can say what
+  // it billed, recorded as missing when it cannot. A run that died after the
+  // response is charged the same as the success path; that is reached when
+  // the consumer throws while taking an event: the throw comes back out of the
+  // suspended `yield`, by which point the model has already billed us.
   let modelString: string | null = null;
   const usage = createUsageRecorder({
-    operationKey: `texttool:${idempotencyKey}`,
+    operationKey: `texttool:${operationKey}`,
     feature: "text_tool",
     actorUserId: userId,
-    // Null because this route never took one (#122); see `chargeRecorded`.
-    projectId: null,
+    projectId,
     onMissingCost: (row) => logger.error({ row, userId, tool }, "agent_usage_cost_missing"),
   });
   // Set once the model is known; records the run's model calls.
@@ -165,19 +133,20 @@ export async function* executeTextTool(
     const model = getModelForTool(tool);
     await accountActivityRepo.recordActivity({ userId, projectId: null, kind: "agent_started" });
     modelString = model;
-    const watch = watchModelCalls(usage, { model, description: `Text tool: ${tool}` });
+    // No temperature: Gemini 3.8 deprecates the sampling parameters.
+    const prepared = provider().llm.prepare(model, { thinking: true, thinkingLevel: getTextToolsConfig().thinking_level, cache: false });
+    const watch = watchModelCalls(usage, { model, description: `Text tool: ${tool}` }, prepared.pendingCosts);
     calls = watch;
     const systemPrompt = getPromptForTool(tool);
     const userMessage = buildUserMessage(tool, params);
 
     const result = streamTextRetry({
-      model: getModel(modelString),
+      model: prepared.model,
       system: systemPrompt,
       messages: [{ role: "user" as const, content: userMessage }],
       stopWhen: stepCountIs(1),
-      temperature: 0.7,
+      ...prepared.options,
       abortSignal: signal,
-      ...watch.streamOptions,
       onLanguageModelCallEnd: (event) => {
         totalTokens += event.usage.totalTokens ?? 0;
         watch.callEnded(event);
@@ -190,10 +159,14 @@ export async function* executeTextTool(
       if (part.type === "text-delta") {
         yield { type: "text_delta", text: part.text };
       }
+      // The SDK reports a call the provider refused or broke off as a part of
+      // the stream, not by throwing; the catch below turns it into the error event.
+      if (part.type === "error") throw part.error;
     }
 
     const creditsUsed = await chargeRecorded(
       userId,
+      projectId,
       usage,
       calls,
       tool,
@@ -214,6 +187,7 @@ export async function* executeTextTool(
     // double-charge if somehow both run for the same request.
     const creditsUsed = await chargeRecorded(
       userId,
+      projectId,
       usage,
       calls,
       tool,
@@ -224,26 +198,21 @@ export async function* executeTextTool(
     if (signal.aborted) {
       yield { type: "aborted", tokens: totalTokens, creditsUsed };
     } else {
-      const message = err instanceof Error ? err.message : String(err);
-      // Embed the raw error on the event so the application caller
-      // (server SSE route) can log it with full request context.
-      yield { type: "error", message, err };
+      // The raw error rides the event so the application caller (the SSE
+      // route) can log it with full request context.
+      yield { type: "error", err };
     }
-  } finally {
-    await releaseLock(userId);
   }
 }
 
 /**
  * Charge a text-tool run what its recorder adds up to.
  *
- * Which pool pays is decided by the project a generation runs in, and this
- * route carries no project id (#122). Until it does, a run records its usage
- * and charges nobody, so the number returned here is zero.
- *
- * The recorder's operation key carries the per-request idempotency key, so a
- * retry of the same HTTP request charges at most once.
+ * The project the run belongs to decides which studio's pool pays. The
+ * operation key is minted per request by the route, so every run is charged
+ * once under a key of its own.
  * @param userId - Authenticated user ID the usage is recorded against.
+ * @param projectId - The project whose studio pays.
  * @param usage - The run's recorder.
  * @param calls - The run's model-call watch, once the model was known.
  * @param tool - Tool name recorded on the ledger row.
@@ -254,40 +223,46 @@ export async function* executeTextTool(
  */
 async function chargeRecorded(
   userId: string,
+  projectId: string,
   usage: UsageRecorder,
   calls: ModelCallWatch | undefined,
   tool: string,
   modelString: string | null,
   tokens: number,
 ): Promise<CreditDecimal> {
-  // An OpenRouter call whose cost is not in hand is looked up and charged
-  // later, under a key of its own.
+  // A call whose cost is not in hand is looked up and charged later, under a
+  // key of its own.
   await calls?.handOff().catch((err: unknown) =>
     logger.error({ err, userId, tool }, "usage_lookup_enqueue_failed"),
   );
+  let credits = 0;
   try {
-    const credits = await usage.settle();
+    const settled = await usage.settleForCharge();
+    credits = settled.credits;
+    const { writeFailures } = settled;
+    for (const err of writeFailures) {
+      logger.error({ err, userId, tool }, "agent_usage_record_failed");
+    }
     if (credits <= 0) return serializeCreditMicro(0n);
-    const outcome = await creditLotService.chargeOnceForGeneration(
+    const outcome = await creditLotService.chargeOnce(
+      "operation",
       usage.operation.operationKey,
       {
-        projectId: null,
+        projectId,
         actorUserId: userId,
         amount: credits,
         model: modelString ?? undefined,
-        provider: modelString === null ? undefined : resolveProvider(modelString),
+        provider: calls?.served(),
         description: `Text tool: ${tool}`,
       },
     );
     return outcome?.charged ?? serializeCreditMicro(0n);
   } catch (err) {
-    // The text is already generated and already streamed, so this failure
-    // has nowhere to go: the caller gets its `done` event either way and
-    // sees nothing. This line is the only trace the run leaves of money it
-    // used and did not collect.
+    // The text is already generated and already streamed. A request that was
+    // recorded waits pending for the sweep, which settles it.
     logger.error(
-      { err, userId, tool, tokens },
-      "text_tool_credit_charge_failed",
+      { err, userId, tool, tokens, refKey: usage.operation.operationKey, amount: credits },
+      "credit_charge_settle_failed",
     );
     return serializeCreditMicro(0n);
   }

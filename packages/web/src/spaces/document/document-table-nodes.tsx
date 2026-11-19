@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The table, as four layout blocks whose cells hold blocks (inner#1619):
@@ -37,12 +37,13 @@ import {
   tableEditing,
 } from '@tiptap/pm/tables';
 import { ReplaceStep, type Step } from '@tiptap/pm/transform';
-import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import { createRoot, type Root } from 'react-dom/client';
 
 import { DocumentTableScroller } from '@web/spaces/document/DocumentTableScroller';
 import { heldTables } from '@web/spaces/document/document-table-leave-selection';
+import { DOC_COLUMN } from '@web/spaces/document/document-column-geometry';
 
 /** The narrowest a column can be dragged. */
 const CELL_MIN_WIDTH = 35;
@@ -63,6 +64,9 @@ export const DOC_TABLE_ROW = 'docTableRow';
 export const DOC_TABLE_CELL = 'docTableCell';
 export const DOC_TABLE_HEADER = 'docTableHeader';
 
+/** Table nodes: ours, and the stored (legacy) one documents from before hold. */
+export const TABLES: ReadonlySet<string> = new Set([DOC_TABLE, 'table']);
+
 /** The prosemirror-tables role of each table node. */
 const TABLE_ROLES: Readonly<Record<string, string>> = {
   [DOC_TABLE]: 'table',
@@ -82,12 +86,13 @@ export function isTableCell(node: PMNode): boolean {
 }
 
 /**
- * Whether a node holds blocks as a body does: a block group or a table cell.
+ * Whether a node holds blocks as a body does: a block group, a table cell or
+ * a column (inner#1314).
  * @param node - The node.
- * @returns True for either.
+ * @returns True for any of them.
  */
 export function holdsBlocks(node: PMNode): boolean {
-  return node.type.name === 'blockGroup' || isTableCell(node);
+  return node.type.name === 'blockGroup' || node.type.name === DOC_COLUMN || isTableCell(node);
 }
 
 /**
@@ -202,9 +207,10 @@ function drawColumns(colgroup: HTMLElement, table: HTMLElement, block: TableBloc
  * when the frame commits. A view can be created inside a React effect.
  * @param host - The element the frame is drawn in.
  * @param table - The `<table>`.
+ * @param scrollLeft - Where the frame starts scrolled to sideways.
  * @returns The React root, to unmount when the view goes.
  */
-function mountScroller(host: HTMLElement, table: HTMLElement): Root {
+function mountScroller(host: HTMLElement, table: HTMLElement, scrollLeft = 0): Root {
   const chrome = document.createElement('div');
   chrome.className = 'contents';
   host.append(table, chrome);
@@ -214,12 +220,41 @@ function mountScroller(host: HTMLElement, table: HTMLElement): Root {
       <div
         className='tableWrapper'
         ref={(slot) => {
-          if (slot !== null && table.parentElement !== slot) slot.appendChild(table);
+          if (slot === null || table.parentElement === slot) return;
+          slot.appendChild(table);
+          const viewport = slot.closest<HTMLElement>('[data-radix-scroll-area-viewport]');
+          if (viewport !== null && scrollLeft > 0) viewport.scrollLeft = scrollLeft;
         }}
       />
     </DocumentTableScroller>,
   );
   return root;
+}
+
+/**
+ * Puts a table drawn as static HTML (`blocksToFullHTML`) in the frame the
+ * body's node view draws around its own: the same `doc-table` and
+ * `doc-table-scroller` elements, scrolled sideways by
+ * `DocumentTableScroller`. The serialiser stamps the block's attributes on
+ * the `<table>`; the node view has them on the frame, where the body's table
+ * rules look for them, so they move there.
+ * @param table - The `<table>`, in its place.
+ * @param scrollLeft - Where the frame starts scrolled to sideways.
+ * @returns The React root, to unmount when the copy goes.
+ */
+export function frameStaticTable(table: HTMLTableElement, scrollLeft = 0): Root {
+  const dom = document.createElement('div');
+  dom.className = 'doc-table';
+  for (const { name, value } of [...table.attributes]) {
+    if (!name.startsWith('data-')) continue;
+    dom.setAttribute(name, value);
+    table.removeAttribute(name);
+  }
+  const host = document.createElement('div');
+  host.className = 'doc-table-scroller';
+  dom.appendChild(host);
+  table.replaceWith(dom);
+  return mountScroller(host, table, scrollLeft);
 }
 
 /**
@@ -276,26 +311,35 @@ function unwrapOpenSides(slice: Slice): Slice {
 }
 
 /**
- * Keeps a pasted table whole. A layout block's node is never isolating
- * (BlockNote `meta.ts`), so a slice opened through a table would join its
- * first or last cell's block with the block around the caret and leave the
- * cell without it. Closing the slice at the table lands the table as a block:
- * in the middle of a line the line splits around it, at its end the table
- * goes under it, and at its start above it, the line kept whole.
+ * A pasted slice with its tables kept whole. A layout block's node is never
+ * isolating (BlockNote `meta.ts`), so a slice opened through a table would
+ * join its first or last cell's block with the block around the caret and
+ * leave the cell without it. Closing the slice at the table lands the table
+ * as a block: in the middle of a line the line splits around it, at its end
+ * the table goes under it, and at its start above it, the line kept whole.
+ * It reads its target from the selection, so it runs once the selection is
+ * on the target (inner#1351 design §5.4.3 "the slice transformed once on the
+ * target").
+ * @param slice - The slice.
+ * @param view - The view, its selection on the target.
+ * @returns The slice.
  */
+export function keepTablesWhole(slice: Slice, view: EditorView): Slice {
+  const start = openAboveTables(slice.content, slice.openStart, -1);
+  const end = openAboveTables(slice.content, slice.openEnd, 1);
+  if (start === slice.openStart && end === slice.openEnd) return slice;
+  const closed = new Slice(slice.content, start, end);
+  const { selection } = view.state;
+  // A cell holds blocks but no table, so a table pasted in a cell is fitted
+  // into the cell; what a paste into a cell does is inner#1312's.
+  return cellDepthOf(selection.$from) > 0 && heldTables(selection) === null ? closed : unwrapOpenSides(closed);
+}
+
+/** Keeps tables whole on ProseMirror's own paste (`keepTablesWhole`). */
 const keepPastedTablesWhole = new Plugin({
   key: new PluginKey('doc-table-paste-whole'),
   props: {
-    // A cell holds blocks but no table, so a table pasted in a cell is fitted
-    // into the cell as before; what a paste into a cell does is inner#1312's.
-    transformPasted: (slice, view) => {
-      const start = openAboveTables(slice.content, slice.openStart, -1);
-      const end = openAboveTables(slice.content, slice.openEnd, 1);
-      if (start === slice.openStart && end === slice.openEnd) return slice;
-      const closed = new Slice(slice.content, start, end);
-      const { selection } = view.state;
-      return cellDepthOf(selection.$from) > 0 && heldTables(selection) === null ? closed : unwrapOpenSides(closed);
-    },
+    transformPasted: (slice, view) => keepTablesWhole(slice, view),
     // At the start of a line with words, ProseMirror splits the line before
     // the table and leaves its empty first half above it.
     handlePaste: (view, _event, slice) => {

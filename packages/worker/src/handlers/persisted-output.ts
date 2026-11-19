@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * One output of a generation, as it is written down (#209 + #210).
@@ -21,6 +21,11 @@ import type { StoredAsset } from "@breatic/domain";
  */
 export interface PersistedOutput {
   url?: string;
+  /**
+   * The asset the file registered as (inner#1691): a 3D Space's row holds
+   * the asset, and a billed run delivered again settles it from here.
+   */
+  asset_id?: string;
   /**
    * The text a read answered with, for a run that produces no file.
    *
@@ -54,6 +59,7 @@ export function storedAsOutput(
 ): PersistedOutput & { url: string } {
   return {
     url: stored.fileUrl,
+    asset_id: stored.assetId,
     // Absent rather than null when there is none, so a caller spreading this
     // over an output that already carries one does not blank it.
     ...(stored.coverUrl !== null && { cover_url: stored.coverUrl }),
@@ -121,6 +127,7 @@ export function nodeResultsFrom(
  * @param run.durationMs - How long the run took from its first start, in milliseconds.
  * @param run.params - What the run was given.
  * @param run.toolId - The mini-tool that made the result; the row is named by it.
+ * @param run.billingPending - Whether the task still waits on its cost: `credits` is then what is known so far.
  * @returns The metadata, in the shape the history row holds.
  */
 export function generationMetadata(run: {
@@ -130,9 +137,11 @@ export function generationMetadata(run: {
   durationMs: number | undefined;
   params: Record<string, unknown> | undefined;
   toolId: string | undefined;
+  billingPending?: boolean;
 }): {
   model?: string;
   credits?: number;
+  billing?: "pending";
   durationMs?: number;
   params?: Record<string, unknown>;
   toolId?: string;
@@ -140,6 +149,7 @@ export function generationMetadata(run: {
   return {
     model: run.reportedModel ?? run.jobModel,
     credits: run.credits,
+    ...(run.billingPending === true && { billing: "pending" as const }),
     durationMs: run.durationMs,
     params: run.params,
     ...(run.toolId !== undefined && { toolId: run.toolId }),

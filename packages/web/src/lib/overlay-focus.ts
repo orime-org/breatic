@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 
@@ -30,14 +30,16 @@ export function suppressTooltipFocusOpen(event: React.FocusEvent): void {
 }
 
 /**
- * Hands focus back to whatever opened an overlay that has no Radix `Trigger`.
+ * Hands focus back to whatever opened an overlay that has no Radix `Trigger`, when focus went down with the overlay to
+ * the body; focus that another element already holds (an overlay that took the shared slot, a box opened from it) stays
+ * there, as `useKeepMovedFocus` keeps it for the overlay contents.
  *
  * Radix restores focus by focusing its own trigger and nothing else: on close
  * it calls `event.preventDefault()` on the FocusScope's restoration and then
  * `context.triggerRef.current?.focus()` (`@radix-ui/react-dialog@1.1.23`,
  * `dist/index.mjs:154`). An overlay opened from state rather than from
  * `DialogTrigger` / `SheetTrigger` has no such ref, so that call reaches
- * nothing and focus lands on the body -- a keyboard reader who pressed Escape
+ * nothing and focus lands on the body -- a keyboard user who pressed Escape
  * has to Tab back through the whole page to where they were.
  *
  * Several things open the same overlay in places -- every square in a row of
@@ -61,8 +63,35 @@ export function useReturnFocus(open: boolean): (event: Event) => void {
     event.preventDefault();
     const target = opener.current;
     opener.current = null;
+    if (focusMovedOn()) return;
     // Gone from the document if the row it sat in re-rendered while the
     // overlay was up; the body is then where focus was headed anyway.
     if (target !== null && document.contains(target)) target.focus();
   }, []);
+}
+
+/**
+ * Whether focus has moved on to another element, rather than going down with a closing overlay to the body.
+ * @returns True when something other than the body holds focus.
+ */
+function focusMovedOn(): boolean {
+  const active = document.activeElement;
+  return active !== null && active !== document.body;
+}
+
+/**
+ * The `onCloseAutoFocus` that the focus-taking overlay contents in `components/ui` (Dialog, AlertDialog, Sheet, Popover,
+ * DropdownMenu) pass to Radix: the caller's own handler first, then focus goes back to the trigger only when it went down
+ * with the overlay. An overlay that another one closed
+ * (a panel taking the shared overlay slot, a Space opened from a menu that hands focus to its own panel) otherwise
+ * pulls focus back to its trigger once its exit ends and closes the overlay that now holds it. react-aria's
+ * `FocusScope` restores focus on the same condition.
+ * @param handler - The caller's `onCloseAutoFocus`, if any.
+ * @returns The handler to pass to the Radix content.
+ */
+export function useKeepMovedFocus(handler?: (event: Event) => void): (event: Event) => void {
+  return React.useCallback((event: Event): void => {
+    handler?.(event);
+    if (focusMovedOn()) event.preventDefault();
+  }, [handler]);
 }

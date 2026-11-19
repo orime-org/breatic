@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The transitions runner (inner#1306 test plan §97 D12-1, D15-3..D15-7, D16-1; frames-split design §5.4 派发, 预算 and 作业身份
@@ -32,7 +32,7 @@ import type { MiniToolPlanJobRequest, StudioAssetEntity, VideoPresentationLedger
 import { planTransitionChunks, plannedStageJobs, planVideoTimeline, transitionOutputProfile, type FrameWindow } from "@breatic/shared/mini-tools";
 import type { RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { readJobLedger } from "@worker/handlers/video-presentation-recipes.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 import { runMiniToolExecutionTask } from "../run-execution-task.js";
 
 const h = vi.hoisted(() => ({

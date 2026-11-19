@@ -76,7 +76,7 @@ export function Slider({
           // the thumb do: this control sits on a themed surface in some places
           // and on a video's dark scrim in others, and `--ring` is a themed
           // colour. On the scrim in light theme it rings dark on dark, so a
-          // keyboard reader cannot see which control they are on.
+          // keyboard user cannot see which control they are on.
           className='block size-3 rounded-full bg-current shadow-sm outline-none transition-transform hover:scale-110 focus-visible:ring-1 focus-visible:ring-current'
         />
       ))}

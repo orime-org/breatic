@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Lip-sync execution configuration (inner#1306 test plan §97 D11-5; execution design §9.1, §9.3; canvas design §4 lip-sync

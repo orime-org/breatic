@@ -1,18 +1,19 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the composer takes up when there is nothing in it.
  *
  * It sits at the foot of the column and everything above it is the
  * conversation, so every row it keeps for itself is a row of the conversation
- * the reader does not get. Empty, it is one line of box and one row of
+ * the user does not get. Empty, it is one line of box and one row of
  * controls; the row that carries references appears when there are references
  * to carry.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import type { TrayItem } from '@web/stores/chat-attachments';
@@ -71,7 +72,7 @@ describe('the row of controls under the box', () => {
   it('holds only attach and send', () => {
     render(<ChatComposer {...BASICS} />);
 
-    // Only these two: the reader picks no template, mode or model here
+    // Only these two: the user picks no template, mode or model here
     // (inner#977), the agent does.
     const buttons = within(screen.getByTestId('chat-composer')).getAllByRole('button');
     expect(buttons.map((b) => b.getAttribute('data-testid'))).toEqual([
@@ -81,7 +82,7 @@ describe('the row of controls under the box', () => {
   });
 });
 
-describe('the box the reader types in', () => {
+describe('the box the user types in', () => {
   it('starts one line tall', () => {
     render(<ChatComposer {...BASICS} />);
 
@@ -109,7 +110,7 @@ describe('the box the reader types in', () => {
     if (viewport === null) throw new Error('the composer has no scrolling viewport');
 
     // Stand in for a scroller that has been scrolled down: nothing about
-    // writing more may move the reader off the line they were on.
+    // writing more may move the user off the line they were on.
     const written: number[] = [];
     let held = 120;
     Object.defineProperty(viewport, 'scrollTop', {

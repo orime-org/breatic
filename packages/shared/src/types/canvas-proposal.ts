@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The shape of a proposed group of canvas nodes (#229).
@@ -17,16 +17,16 @@ import { t, tInEveryLocale } from "@shared/i18n/index.js";
 import { isGenerationNodeType, type GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /**
- * What a marked spot in the prompt asks of the reader (inner#977): `asset`
+ * What a marked spot in the prompt asks of the user (inner#977): `asset`
  * names something to @ by hand, `tweak` words to fill in, and `note` how to
- * operate the panel -- shown to the reader and never sent to the model.
+ * operate the panel -- shown to the user and never sent to the model.
  */
 export type SlotKind = NonNullable<PromptSegment["slot"]>["kind"];
 
 /**
- * One stretch of the prompt: plain words, a place the reader acts on, or an
+ * One stretch of the prompt: plain words, a place the user acts on, or an
  * @ of another node in the proposal by its index (inner#1315), which lands as
- * the same mention the reader would insert by hand.
+ * the same mention the user would insert by hand.
  */
 const promptSegmentSchema = z.union([
   z.object({ text: z.string(), slot: z.undefined().optional(), ref: z.undefined().optional() }),
@@ -38,7 +38,17 @@ const promptSegmentSchema = z.union([
       z.object({ kind: z.literal("note"), label: z.string(), note: z.undefined().optional() }),
     ]),
   }),
-  z.object({ ref: z.number().int().nonnegative(), text: z.undefined().optional(), slot: z.undefined().optional() }),
+  z.object({
+    ref: z.number().int().nonnegative(),
+    /**
+     * The ref is to a template input the user may leave empty (inner#1811,
+     * CAP-9): it lands as a mention marked optional, and the panel leaves out
+     * its paragraph while the node it names holds nothing.
+     */
+    optional: z.literal(true).optional(),
+    text: z.undefined().optional(),
+    slot: z.undefined().optional(),
+  }),
 ]);
 
 /** One stretch of the prompt, as {@link promptSegmentSchema} describes it. */
@@ -53,10 +63,10 @@ const MARK_FORM: Readonly<Record<SlotKind, { open: string; symbol: string; close
 
 /**
  * A mark as words: the bracket, symbol and label of its kind, the label of a
- * reference wrapped in the words asking the reader to @ it. A template's
+ * reference wrapped in the words asking the user to @ it. A template's
  * locale prompt writes marks this way, and so does the prompt handed to the
  * agent; {@link markedSegments} reads them back.
- * @param slot - The spot the reader acts on.
+ * @param slot - The spot the user acts on.
  * @returns The bracketed text.
  * @throws {never} Never.
  */
@@ -76,8 +86,8 @@ export function writtenMark(slot: NonNullable<PromptSegment["slot"]>): string {
  *
  * A note puts nothing in the text: it lands as a block of its own that is
  * left out of what the model receives.
- * @param slot - The spot the reader acts on.
- * @returns The bracketed text, as the reader will see it.
+ * @param slot - The spot the user acts on.
+ * @returns The bracketed text, as the user will see it.
  * @throws {never} Never.
  */
 export function markText(slot: NonNullable<PromptSegment["slot"]>): string {
@@ -85,10 +95,35 @@ export function markText(slot: NonNullable<PromptSegment["slot"]>): string {
 }
 
 /**
+ * A prompt's lines as the box lays them out: a line break in words or in a
+ * mark's text starts the next line, a ref stays in the line it is written
+ * in, and a note is left out (it lands above the words). The canvas writes
+ * the box from these lines and the proposal check judges paragraphs by them
+ * (inner#1811), so the two cannot split a prompt differently.
+ * @param segments - The prompt as the model or a template wrote it.
+ * @returns Each line's words and refs, a mark's text as words.
+ * @throws {never} Never.
+ */
+export function promptLines(segments: readonly PromptSegment[]): PromptSegment[][] {
+  const lines: PromptSegment[][] = [[]];
+  for (const segment of segments) {
+    if (segment.slot?.kind === "note") continue;
+    if (segment.ref !== undefined) {
+      lines[lines.length - 1]?.push(segment);
+      continue;
+    }
+    const [first = "", ...rest] = (segment.slot === undefined ? segment.text : markText(segment.slot)).split("\n");
+    lines[lines.length - 1]?.push({ text: first });
+    for (const next of rest) lines.push([{ text: next }]);
+  }
+  return lines;
+}
+
+/**
  * Whether a mark written as words reads back as the same mark: a label
  * holding the bracket that closes its kind would read back cut short, and one
  * holding a line break is split across two paragraphs by the box.
- * @param slot - The spot the reader acts on.
+ * @param slot - The spot the user acts on.
  * @returns True when {@link markedSegments} gives the same kind and label back.
  * @throws {never} Never.
  */
@@ -102,7 +137,7 @@ const MARK_KINDS = Object.keys(MARK_FORM) as SlotKind[];
 
 /**
  * A mark as a template's locale prompt writes it, its label captured in the
- * group of its kind: the symbol picks the kind, so brackets the reader types
+ * group of its kind: the symbol picks the kind, so brackets the user types
  * stay words.
  */
 const MARK_PATTERN = new RegExp(
@@ -114,7 +149,7 @@ const MARK_PATTERN = new RegExp(
 );
 
 /**
- * A reference mark's label with the words {@link markText} asks the reader
+ * A reference mark's label with the words {@link markText} asks the user
  * with taken back off. Tried in every language, since the box may have been
  * filled in another one than the language reading it now.
  * @param label - What sits between `[📎 ` and `]`.
@@ -186,7 +221,7 @@ export function markedSegments(text: string): PromptSegment[] {
  * Projected the way the canvas writes it and the editor gives it back: a line
  * break in a proposed stretch of text starts a new block, and the editor puts
  * two between blocks. Counted any other way, a proposal sits inside the
- * model's input cap here and past it by the time the reader presses Generate.
+ * model's input cap here and past it by the time the user presses Generate.
  * @param segments - The proposed prompt.
  * @param refWords - What an @ of the node at an index sends, as the panel
  *   serialises it.
@@ -211,7 +246,7 @@ export function promptTextOf(
  * cuts its own blocks on single breaks, so doubling them there turns a note
  * with three breaks in it into six loose lines.
  *
- * The marks stay in the words either way -- a place the reader rewrites is
+ * The marks stay in the words either way -- a place the user rewrites is
  * bracketed in the body exactly as it is in a prompt.
  * @param segments - The proposed words.
  * @returns The text to write into the body.
@@ -222,7 +257,7 @@ export function promptPlainText(segments: readonly PromptSegment[]): string {
 }
 
 /**
- * What a proposed node is, in the group the reader is about to place.
+ * What a proposed node is, in the group the user is about to place.
  *
  * `source` stands empty for them to drop material into, `generate` waits for
  * them to press Generate, and `written` already holds the words -- the only
@@ -261,14 +296,23 @@ const proposalShotSchema = z.object({
 /** One shot, as {@link proposalShotSchema} describes it. */
 export type ProposalShot = z.infer<typeof proposalShotSchema>;
 
+/** One line of a proposed dialogue: who says it, from 1, and its words. */
+const proposalLineSchema = z.object({
+  speaker: z.number(),
+  prompt: z.array(promptSegmentSchema),
+});
+
+/** One line, as {@link proposalLineSchema} describes it. */
+export type ProposalLine = z.infer<typeof proposalLineSchema>;
+
 /** One node of a proposal, before anything is placed. */
 const proposalNodeSchema = z.object({
   role: proposalRoleSchema,
   type: proposalNodeTypeSchema,
   name: z.string(),
   /**
-   * The reader's material a source node lands holding: an address in our
-   * storage. A source node without it lands empty for the reader to fill.
+   * The user's material a source node lands holding: an address in our
+   * storage. A source node without it lands empty for the user to fill.
    */
   material: z.string().optional(),
   /**
@@ -294,10 +338,17 @@ const proposalNodeSchema = z.object({
    */
   shots: z.array(proposalShotSchema).optional(),
   /**
+   * The lines of a dialogue, each naming its speaker by number and holding
+   * its words with no name in front; given on the dialogue side of a model
+   * whose speakers stand in for its voice, where they stand in for the main
+   * prompt (inner#1825 design 8.5).
+   */
+  lines: z.array(proposalLineSchema).optional(),
+  /**
    * Whether the panel will draw a prompt box here, answered by the check.
    *
    * Carried on the node because the catalog is the authority, the check has
-   * just read it, and a reader can press Use before the catalog has loaded on
+   * just read it, and a user can press Use before the catalog has loaded on
    * the canvas. A model drawing no box mounts no editor, so the canvas writes
    * nothing there and the card lists the marks instead. Absent on a node that
    * generates nothing.
@@ -312,7 +363,8 @@ const proposalNodeSchema = z.object({
   /**
    * The template node this node stands for (inner#1345): its template and key,
    * and for the guide text node the index of the anchor it explains; an input
-   * node carries its input's key with `input`, and its instance's anchor index. Written after the template
+   * node carries its input's key with `input`, and its instance's anchor index,
+   * as does a node no template edge touches (inner#1825). Written after the template
    * check, never by the model.
    */
   templateNode: z
@@ -355,14 +407,30 @@ export const canvasProposalSchema = z.object({
 export type CanvasProposal = z.infer<typeof canvasProposalSchema>;
 
 /**
+ * Each run of words a node sends, kept apart: the main prompt, then each shot
+ * (#2218), then each dialogue line (inner#1825 design 8.5). A mark is read
+ * within one run, never across two.
+ * @param node - The proposed node.
+ * @returns The runs, prompt first; a node with none has none.
+ * @throws {never} Never.
+ */
+export function proposalWordRuns(node: ProposalNode): PromptSegment[][] {
+  return [
+    ...(node.prompt === undefined ? [] : [node.prompt]),
+    ...(node.shots ?? []).map((shot) => shot.prompt),
+    ...(node.lines ?? []).map((line) => line.prompt),
+  ];
+}
+
+/**
  * Every segment of a node that can carry a mark: the main prompt, then each
- * shot in turn (#2218).
+ * shot in turn (#2218), then each dialogue line.
  * @param node - The proposed node.
  * @returns The segments, prompt first.
  * @throws {never} Never.
  */
 export function proposalMarkSegments(node: ProposalNode): PromptSegment[] {
-  return [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)];
+  return proposalWordRuns(node).flat();
 }
 
 /**

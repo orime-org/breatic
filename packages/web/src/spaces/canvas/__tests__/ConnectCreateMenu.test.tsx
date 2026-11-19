@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -25,11 +25,11 @@ describe('ConnectCreateMenu', () => {
         onPick={onPick}
       />,
     );
-    // image feeds text / image / video — an image is what audio refuses.
+    // image feeds every creatable type, audio included (inner#1825).
     expect(await screen.findByTestId('create-node-text')).toBeInTheDocument();
     expect(screen.getByTestId('create-node-image')).toBeInTheDocument();
+    expect(screen.getByTestId('create-node-audio')).toBeInTheDocument();
     expect(screen.getByTestId('create-node-video')).toBeInTheDocument();
-    expect(screen.queryByTestId('create-node-audio')).toBeNull();
     await user.click(screen.getByTestId('create-node-video'));
     expect(onPick).toHaveBeenCalledWith('video');
   });

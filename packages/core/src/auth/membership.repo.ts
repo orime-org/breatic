@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Membership identity, negotiated records and entitlement reads shared by
@@ -419,7 +419,7 @@ export type TierChangeReason = (typeof TIER_CHANGE_REASONS)[number];
  * call; it compares tiers, not event identity, so it cannot tell a redelivered
  * webhook from a new event and converges on whichever call arrives last.
  * Subscription handling keys idempotency on the event itself, the way
- * `updatePaymentStatusCAS` and `chargeOnceForGeneration` already do.
+ * `updatePaymentStatusCAS` and `creditLotService.chargeOnce` already do.
  * @param userId - The account to move
  * @param toTier - The tier it should end up on
  * @param reason - What caused the move

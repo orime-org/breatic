@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
@@ -14,6 +14,8 @@ import {
   setNodeParams,
   type CanvasEdge,
 } from '@web/data/yjs/canvas-space';
+import { checkAdd, strongestKind } from '@web/data/yjs/space-write';
+import { docName } from '@web/data/yjs/manager';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import {
   addStoryboardShot,
@@ -22,9 +24,10 @@ import {
   removeStoryboardShot,
   retotalStoryboard,
   stepStoryboardShot,
+  storyboardEntryKind,
   type StoryboardShotView,
 } from '@web/data/yjs/node-storyboard';
-import { useShots } from '@web/data/yjs/use-storyboard';
+import { useShots, useShotWords } from '@web/data/yjs/use-storyboard';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
@@ -38,7 +41,7 @@ import {
   type ReferencePool,
   type StoryboardSpec,
 } from '@breatic/shared';
-import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
@@ -66,7 +69,7 @@ import {
   PromptEditor,
   type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
-import { AddShotRow, ShotList, addBlockedKey } from '@web/spaces/canvas/generate/storyboard-controls';
+import { AddShotRow, ShotList, addBlockedKey, nextOpenShot } from '@web/spaces/canvas/generate/storyboard-controls';
 import { mentionedSourceIds } from '@web/spaces/canvas/generate/fragment-prompt';
 import { storyboardRun } from '@web/spaces/canvas/generate/storyboard-run';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
@@ -280,12 +283,6 @@ function VideoGeneratePanelBody({
       buildVideoPanelViewModel({ nodeId, nodes, edges, models, mode, textById }),
     [nodeId, nodes, edges, models, mode, textById],
   );
-  const creditText = useCreditText(
-    vm.modelEntry,
-    videoEstimateInput(vm, extractPromptText(promptText)),
-    catalog?.credit_multiplier ?? 1,
-  );
-
   // The node's shots, which only the multi-shot mode shows and sends: `spec`
   // is defined there alone, for a model that takes shots.
   const spec = React.useMemo(() => specOf(vm.modelEntry, mode), [vm.modelEntry, mode]);
@@ -294,20 +291,39 @@ function VideoGeneratePanelBody({
   // other seconds; words typed in a shot leave it as it is (`useShots`).
   const shots = useShots(projectId, spaceId, nodeId);
 
-  // The box the caret was last in, so the rail's insert button lands there:
-  // the main prompt, or one shot's box by its id. Same shape as the audio
-  // panel's `lastFocusedBox`.
-  const lastFocusedBox = React.useRef<string>('main');
+  // The shot whose box is open (#1201): the first when the mode opens, then
+  // the one the user opens or adds, kept by `nextOpenShot` across every
+  // change to the list. Leaving the mode forgets it, so coming back opens the
+  // first shot again.
+  const [openedShot, setOpenedShot] = React.useState<string | null>(null);
+  const [seenShots, setSeenShots] = React.useState(shots);
+  if (shots !== seenShots) setSeenShots(shots);
+  const nextShot = spec && shots ? nextOpenShot(seenShots ?? [], shots, openedShot) : null;
+  if (nextShot !== openedShot) setOpenedShot(nextShot);
+  const expandedShot = nextShot ?? '';
+  const expandedShotRef = React.useRef(expandedShot);
+  expandedShotRef.current = expandedShot;
   const shotEditors = React.useRef(new Map<string, PromptEditorHandle>());
+  // Set by the user's own open, add or remove, and spent once that shot's
+  // box is shown; a collaborator's change never moves the caret.
+  const focusOnOpen = React.useRef(false);
+  React.useEffect(() => {
+    if (!focusOnOpen.current) return;
+    focusOnOpen.current = false;
+    shotEditors.current.get(expandedShot)?.focus();
+  }, [expandedShot]);
+  const onExpandShot = React.useCallback((shotId: string) => {
+    focusOnOpen.current = true;
+    setOpenedShot(shotId);
+  }, []);
   // The rail refuses a row the prompt cannot take itself (#1966), so this
-  // only routes the insert: the shot box the caret was last in, else the
-  // first shot box, else the main prompt. Shot boxes are mounted only in the
-  // multi-shot mode and leave the map when they unmount.
+  // only routes the insert: the open shot's box, else the main prompt. A chip
+  // put into a closed shot would arrive where the user cannot see it. Shot
+  // boxes are mounted only in the multi-shot mode and leave the map when
+  // they unmount.
   const insertTarget = React.useCallback(
     (): PromptEditorHandle | null =>
-      shotEditors.current.get(lastFocusedBox.current) ??
-      shotEditors.current.values().next().value ??
-      promptEditorRef.current,
+      shotEditors.current.get(expandedShotRef.current) ?? promptEditorRef.current,
     [promptEditorRef],
   );
   const handleInsertReference = React.useCallback(
@@ -401,6 +417,22 @@ function VideoGeneratePanelBody({
   // the latest rows the editors were handed.
   const referencesRef = React.useRef(stableReferences);
   referencesRef.current = stableReferences;
+  // A media chip's words follow the pool, and a new record on every derive
+  // would rebuild the prompt slot each time the canvas moves.
+  const stableMentionTokens = useContentStable(vm.mentionTokens);
+  // What the multi-shot mode sends, read as the click reads it: the shots in Kling's field, or written into the prompt
+  // for a model with no field for them. Words typed in a shot change it (`useShotWords`).
+  const shotWords = useShotWords(projectId, spaceId, nodeId);
+  const shotRun = React.useMemo(
+    () => (spec && shots ? storyboardRun(spec, shots, total, stableReferences, stableMentionTokens) : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `shotWords` is the signal that the shots' words changed.
+    [spec, shots, total, stableReferences, stableMentionTokens, shotWords],
+  );
+  // The run as the click sends it: no prompt for a model taking none, the shots in the multi-shot mode, else the main
+  // prompt. Priced, and asked why no upstream here takes it (#1521), for the button and the click.
+  const sentPrompt = !vm.promptRequired ? '' : shotRun ? (shotRun.writtenPrompt ?? '') : promptText;
+  const estimateInput = videoEstimateInput(vm, extractPromptText(sentPrompt), shotRun?.params);
+  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
   // The picked slot URLs are a fresh object per view-model build, on the same
   // terms as the references above — at most one short string per slot, so a
   // stringify key is cheap and exact. Before the slots were collected into one
@@ -432,7 +464,9 @@ function VideoGeneratePanelBody({
       // In the multi-shot mode the shots follow the new model's total, in the
       // same undo step as the switch.
       const pickedSpec = specOf(picked, liveMode);
-      runCanvasUndoBatch(projectId, spaceId, () => {
+      // One write for the size cap: the switch and the re-split shots both
+      // edit fields of the node.
+      runCanvasUndoBatch(projectId, spaceId, { kind: 'edit' }, () => {
         setNodeModel(projectId, spaceId, nodeId, liveMode, modelId, paramsByModel);
         if (pickedSpec) retotalStoryboard(projectId, spaceId, nodeId, totalOf(pickedSpec, params));
       });
@@ -466,7 +500,8 @@ function VideoGeneratePanelBody({
       // Entering the multi-shot mode with no shots lays out two, splitting
       // the model's total, in the same step as the switch.
       const targetSpec = specOf(models.find((m) => m.name === model), target);
-      runCanvasUndoBatch(projectId, spaceId, () => {
+      const kind = targetSpec ? strongestKind('edit', storyboardEntryKind(projectId, spaceId, nodeId)) : 'edit';
+      runCanvasUndoBatch(projectId, spaceId, { kind }, () => {
         setNodeMode(projectId, spaceId, nodeId, target, model, paramsByModel);
         if (targetSpec) {
           enterStoryboardShots(projectId, spaceId, nodeId, totalOf(targetSpec, paramsByModel[model] ?? {}));
@@ -497,7 +532,8 @@ function VideoGeneratePanelBody({
       const next = liveSpec?.totalParam === undefined
         ? undefined
         : (partial as Record<string, unknown>)[liveSpec.totalParam];
-      runCanvasUndoBatch(projectId, spaceId, () => {
+      // Re-splitting the shots only rewrites their seconds, an edit.
+      runCanvasUndoBatch(projectId, spaceId, { kind: 'edit' }, () => {
         setNodeParams(projectId, spaceId, nodeId, paramsByModel);
         if (typeof next === 'number') retotalStoryboard(projectId, spaceId, nodeId, next);
       });
@@ -515,14 +551,20 @@ function VideoGeneratePanelBody({
   }, [freshVm]);
   const onAddShot = React.useCallback(() => {
     const { spec: liveSpec, total: liveTotal } = liveShots();
-    if (liveSpec) addStoryboardShot(projectId, spaceId, nodeId, liveTotal, liveSpec.maxShots);
-  }, [projectId, spaceId, nodeId, liveShots]);
+    const added = liveSpec ? addStoryboardShot(projectId, spaceId, nodeId, liveTotal, liveSpec.maxShots) : null;
+    // A shot the user adds is one they are about to write.
+    if (added !== null) onExpandShot(added);
+  }, [projectId, spaceId, nodeId, liveShots, onExpandShot]);
   const onStepShot = React.useCallback(
     (shotId: string, delta: 1 | -1) => stepStoryboardShot(projectId, spaceId, nodeId, shotId, delta),
     [projectId, spaceId, nodeId],
   );
   const onRemoveShot = React.useCallback(
-    (shotId: string) => removeStoryboardShot(projectId, spaceId, nodeId, shotId, liveShots().total),
+    (shotId: string) => {
+      // Removing the open shot opens its neighbour, where the caret follows.
+      if (shotId === expandedShotRef.current) focusOnOpen.current = true;
+      removeStoryboardShot(projectId, spaceId, nodeId, shotId, liveShots().total);
+    },
     [projectId, spaceId, nodeId, liveShots],
   );
 
@@ -684,7 +726,7 @@ function VideoGeneratePanelBody({
     const liveSpec = specOf(probe.modelEntry, probe.mode);
     const shotsNow = liveSpec ? (readShots(projectId, spaceId, nodeId) ?? []) : [];
     const mentioned = liveSpec
-      ? shotsNow.flatMap((shot) => mentionedSourceIds(shot.prompt))
+      ? shotsNow.flatMap((shot) => mentionedSourceIds(shot.prompt, referencesRef.current))
       : atMentionedRef.current;
     const fresh = freshVm(new Set(mentioned));
     const run = storyboardRun(
@@ -746,7 +788,12 @@ function VideoGeneratePanelBody({
       ),
       pools: poolCounts(fresh.pool, fresh.referenceUrls),
       storyboard: run.gate,
+      inputRefusal: latestRefusal.current,
     });
+    if (verdict?.message !== undefined) {
+      toast.warning(verdict.message);
+      return;
+    }
     if (verdict != null) {
       // The limit is written out here so the check that every id reaches a
       // real message in all five catalogs can see it.
@@ -771,6 +818,9 @@ function VideoGeneratePanelBody({
       }
       return;
     }
+    // The result is written into this node by the server, past the size
+    // gate, so a Space that cannot take an add sends nothing (design 5.2).
+    if (!checkAdd(docName.canvasSpace(projectId, spaceId)).ok) return;
     submitGeneration({
       spaceId,
       nodeId,
@@ -802,6 +852,7 @@ function VideoGeneratePanelBody({
     // where the linter cannot see that for itself.
     promptEditorRef,
     promptTextRef,
+    latestRefusal,
   ]);
 
   // EVERY localized string below is depended on BY VALUE, not via `t`: `t` is a
@@ -841,9 +892,6 @@ function VideoGeneratePanelBody({
   // there is nothing to type into it here, and a mounted collaborative editor
   // costs a TipTap instance plus its bindings. The cost is the prompt's undo
   // history, which lives on the editor instance and dies with it (#1961).
-  // A media chip's words follow the pool, and a new record on every derive
-  // would rebuild the prompt slot each time the canvas moves.
-  const stableMentionTokens = useContentStable(vm.mentionTokens);
   const shotPlaceholder = t('canvas.generatePanel.storyboard.shotPlaceholder');
   const mainEditor = React.useMemo(
     () =>
@@ -854,9 +902,6 @@ function VideoGeneratePanelBody({
           placeholder={promptPlaceholder}
           onTextChange={onPromptChange}
           onAtMentionsChange={handleAtMentionsChange}
-          onFocus={() => {
-            lastFocusedBox.current = 'main';
-          }}
           references={stableReferences}
           // Same signal as the rail's: a media `@` chip is a model input only
           // where the model's pool takes its kind. Both outlets have to agree,
@@ -901,9 +946,6 @@ function VideoGeneratePanelBody({
         placeholder={shotPlaceholder}
         onTextChange={IGNORE}
         onAtMentionsChange={IGNORE}
-        onFocus={() => {
-          lastFocusedBox.current = shot.id;
-        }}
         references={stableReferences}
         referenceKinds={referenceKinds}
         mentionEmptyLabel={mentionEmptyLabel}
@@ -930,7 +972,15 @@ function VideoGeneratePanelBody({
     if (!spec || !shots) return mainEditor;
     return (
       <>
-        <ShotList shots={shots} onStep={onStepShot} onRemove={onRemoveShot} renderEditor={renderShotEditor} />
+        <ShotList
+          shots={shots}
+          expanded={expandedShot}
+          onExpand={onExpandShot}
+          placeholder={shotPlaceholder}
+          onStep={onStepShot}
+          onRemove={onRemoveShot}
+          renderEditor={renderShotEditor}
+        />
         <AddShotRow maxShots={spec.maxShots} addBlocked={addBlocked} onAdd={onAddShot} />
       </>
     );
@@ -940,6 +990,9 @@ function VideoGeneratePanelBody({
     spec,
     addBlocked,
     mainEditor,
+    expandedShot,
+    onExpandShot,
+    shotPlaceholder,
     renderShotEditor,
     onStepShot,
     onRemoveShot,
@@ -997,6 +1050,7 @@ function VideoGeneratePanelBody({
             vm.referenceUrls,
           ),
           pools: poolCounts(vm.pool, vm.referenceUrls),
+          inputRefusal: refusalText,
         })?.refusal ?? null
       }
       promptSlot={promptSlot}

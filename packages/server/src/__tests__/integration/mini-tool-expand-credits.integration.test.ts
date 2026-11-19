@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Model mini-tools' credit precheck (expand: inner#1303 A11, design §8; the
@@ -9,6 +9,7 @@
  * /api/v1/mini-tools` on a real database and Redis.
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 // Fulfilment asks Stripe what the session is; every fixture payment is 1000 / usd.
@@ -60,6 +61,7 @@ beforeAll(async () => {
     WAVESPEED_API_KEY: "unused_by_this_suite",
   });
   loadLocales();
+  initConfiguredProvider();
   sql = postgres(inject("DATABASE_URL"), {
     max: 4,
     prepare: false,

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The pure rules of the tracking, erase and expand steps (inner#1306 execution design §10.3–§10.5, §10.7), shared by the

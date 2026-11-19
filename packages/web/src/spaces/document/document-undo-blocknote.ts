@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The document body's undo manager, and the plugin that uses it.
@@ -36,8 +36,12 @@ import { defaultDeleteFilter, redoCommand, undoCommand, ySyncPluginKey, yUndoPlu
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
+import { docNameOf } from '@web/data/yjs/manager';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
+import { SPACE_DELETE_META } from '@web/features/collab-editor/space-delete-executor';
+import { gatedHistoryCommand } from '@web/features/collab-editor/space-size-gate';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { isOwnUndoStep } from '@web/spaces/document/document-undo-step';
 import { isCommentMarkWrite } from '@web/spaces/document/document-comment-undo-filter';
 import { documentUndoSelectionPlugin } from '@web/spaces/document/document-undo-selection';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
@@ -73,6 +77,9 @@ function protectedNodes(): Set<string> {
   }
 }
 
+/** One step on an undo or redo stack. */
+type UndoStep = NonNullable<ReturnType<Y.UndoManager['undo']>>;
+
 /**
  * What undo is allowed to delete.
  *
@@ -81,14 +88,18 @@ function protectedNodes(): Set<string> {
  * container's attributes: an attribute is a map entry, so it fails the test for
  * a `ContentType` and stays deletable.
  *
- * So an attribute is kept exactly when its container is — the same question is
- * put to upstream about the parent rather than restated here, which leaves one
- * rule in one place. A container with no `_item` is a root type, which undo
- * never deletes.
+ * So an attribute that came in with its container is kept exactly when its
+ * container is — the same question is put to upstream about the parent rather
+ * than restated here, which leaves one rule in one place. An attribute the
+ * step gave a container that was there before goes, as an attribute changed
+ * on it comes back: a newly set table column width is taken back
+ * (inner#1314). A container with no `_item` is a root type, which undo never
+ * deletes.
  * @param item - The yjs item undo proposes to delete.
+ * @param popping - The steps on the stack being taken back.
  * @returns True to allow the deletion, false to keep the item.
  */
-function isDeletableByUndo(item: Y.Item): boolean {
+function isDeletableByUndo(item: Y.Item, popping: readonly UndoStep[]): boolean {
   const nodes = protectedNodes();
   if (!defaultDeleteFilter(item, nodes)) {
     return false;
@@ -97,7 +108,47 @@ function isDeletableByUndo(item: Y.Item): boolean {
     return true;
   }
   const container = (item.parent as { _item?: Y.Item | null } | null)?._item;
-  return container == null || defaultDeleteFilter(container, nodes);
+  if (container == null || defaultDeleteFilter(container, nodes)) {
+    return true;
+  }
+  const step = popping.find((candidate) => Y.isDeleted(candidate.insertions, item.id));
+  return step !== undefined && !Y.isDeleted(step.insertions, container.id);
+}
+
+/**
+ * The undo manager of a document's body: while it takes a step back it tells
+ * its delete filter which steps are on the stack, since yjs only says which
+ * step it took once the step is done (`UndoManager.js` `popStackItem`).
+ */
+class BodyUndoManager extends Y.UndoManager {
+  /** The steps on the stack being taken back, while an undo or a redo runs. */
+  popping: readonly UndoStep[] = [];
+
+  /**
+   * Undoes the last step.
+   * @returns The step, or null.
+   */
+  override undo(): UndoStep | null {
+    this.popping = [...this.undoStack];
+    try {
+      return super.undo();
+    } finally {
+      this.popping = [];
+    }
+  }
+
+  /**
+   * Redoes the last undone step.
+   * @returns The step, or null.
+   */
+  override redo(): UndoStep | null {
+    this.popping = [...this.redoStack];
+    try {
+      return super.redo();
+    } finally {
+      this.popping = [];
+    }
+  }
 }
 
 /** Whether the dispatch now reaching Yjs is one the user made. */
@@ -147,17 +198,22 @@ export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
   // Wrapped so `destroy()` also detaches the doc listener yjs leaks — see
   // `withDestroyListenerCleanup`; the canvas manager has the same problem and
   // the same wrapper.
-  const manager: Y.UndoManager = withDestroyListenerCleanup(
+  const manager: BodyUndoManager = withDestroyListenerCleanup(
     doc,
     () =>
-      new Y.UndoManager(documentBodyFragment(doc), {
+      new BodyUndoManager(documentBodyFragment(doc), {
         trackedOrigins: new Set([ySyncPluginKey]),
-        deleteFilter: isDeletableByUndo,
+        deleteFilter: (item) => isDeletableByUndo(item, manager.popping),
         // The marker answers for a ProseMirror dispatch, and the manager's
         // own write-back is not one — it carries the content an undo took
         // out, and asking a question about somebody else's dispatch keeps
-        // that content off the redo stack.
-        captureTransaction: (tr) => tr.origin === manager || marker.userDriven,
+        // that content off the redo stack. Neither is the delete executor's
+        // write while the Space is full (inner#1790): the dispatch it stands
+        // for was refused, so the marker never saw it, and the write says
+        // itself whether it is the user's — a deletion, never a comment
+        // highlight, so `addToHistory` is the whole answer.
+        captureTransaction: (tr) => tr.origin === manager
+          || (tr.meta.has(SPACE_DELETE_META) ? tr.meta.get('addToHistory') !== false : marker.userDriven),
       }),
   );
   return { manager, extension: undoExtension(manager, marker) };
@@ -182,7 +238,7 @@ export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
  * so it is named false instead of passed over: a transaction that only moves
  * comment highlights. A comment is withdrawn from the card that holds it, so
  * Cmd+Z is not the way back from one, and the library's own `orphan` rewrites
- * are not the reader's doing at all — {@link isCommentMarkWrite} carries both
+ * are not the user's doing at all — {@link isCommentMarkWrite} carries both
  * halves of that reasoning. Passing over would not help: the marker would
  * keep the `true` their last real edit left, and the highlight write would be
  * captured anyway.
@@ -220,6 +276,79 @@ function userDrivenPlugin(marker: UserDrivenMarker): Plugin {
   });
 }
 
+/** The events whose edits are an undo step of their own. */
+const OWN_STEP_EVENTS = ['paste', 'drop'] as const;
+
+/**
+ * The plugin that closes the undo step around a paste, a drop or a marked
+ * insert, so it is one step and typing on either side is another.
+ *
+ * A paste or a drop is closed around by its event, whichever hook writes it:
+ * a capturing listener closes the step before any handler runs, and a
+ * listener added after ProseMirror's own closes it once that one is done.
+ * Listeners on one element in one phase run in the order they were added,
+ * and the view adds its own before it builds plugin views
+ * (`prosemirror-view` `initInput`, then `updatePluginViews`). A microtask
+ * queued at the start would not do: a browser runs microtasks after each
+ * listener of an event the user caused, before ProseMirror's.
+ *
+ * A marked insert is closed before the edit reaches Yjs — state apply runs
+ * before the sync plugin's view update writes the edit through — and again
+ * in this plugin's own view update, which runs after the sync plugin's in the
+ * same dispatch, whether or not the edit came to any Yjs change.
+ * @param manager - The manager whose steps are closed.
+ * @returns The ProseMirror plugin.
+ */
+function ownStepPlugin(manager: Y.UndoManager): Plugin {
+  let closeAfter = false;
+  return new Plugin({
+    key: new PluginKey('documentUndoOwnStep'),
+    state: {
+      /**
+       * Contributes no state of its own.
+       * @returns Null.
+       */
+      init: (): null => null,
+      /**
+       * Closes the step before a marked insert, and asks the view update to
+       * close it again once the insert is written through.
+       * @param tr - The transaction being applied.
+       * @returns Null.
+       */
+      apply: (tr): null => {
+        if (isOwnUndoStep(tr)) {
+          manager.stopCapturing();
+          closeAfter = true;
+        }
+        return null;
+      },
+    },
+    view: (view) => {
+      /** Closes the step a paste or a drop opens or ends. */
+      const close = (): void => {
+        manager.stopCapturing();
+      };
+      for (const event of OWN_STEP_EVENTS) {
+        view.dom.addEventListener(event, close, true);
+        view.dom.addEventListener(event, close);
+      }
+      return {
+        update: () => {
+          if (!closeAfter) return;
+          closeAfter = false;
+          manager.stopCapturing();
+        },
+        destroy: () => {
+          for (const event of OWN_STEP_EVENTS) {
+            view.dom.removeEventListener(event, close, true);
+            view.dom.removeEventListener(event, close);
+          }
+        },
+      };
+    },
+  });
+}
+
 /**
  * The extension that registers the undo plugin over one manager.
  * @param manager - The manager the plugins drive.
@@ -241,9 +370,13 @@ function undoExtension(
       yUndoPlugin({ undoManager: manager }),
       documentUndoSelectionPlugin(),
       userDrivenPlugin(marker),
+      ownStepPlugin(manager),
     ],
     dependsOn: ['yCursor', 'ySync'],
-    undoCommand,
-    redoCommand,
+    // Judged against the Space's size before the manager runs (inner#1790):
+    // what the step writes decides whether a full Space lets it through. The
+    // keymap and `editor.undo()` / `editor.redo()` both go through these.
+    undoCommand: gatedHistoryCommand(() => docNameOf(manager.doc), manager, 'undo', undoCommand),
+    redoCommand: gatedHistoryCommand(() => docNameOf(manager.doc), manager, 'redo', redoCommand),
   }) as never)();
 }

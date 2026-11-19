@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * What the reader sees of where an answer came from.
+ * What the user sees of where an answer came from.
  *
  * Two places. A marker sits where the claim it supports is written, and the
  * line under the reply says how many pages the turn found -- including the
@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
@@ -295,7 +295,7 @@ describe('the line at the foot of the reply', () => {
   });
 
   it('draws no publisher and no mark of the site anywhere', () => {
-    // 一个站点图形要显示就得去第三方取图，那次请求把读者交给了第三方；
+    // 一个站点图形要显示就得去第三方取图，那次请求把用户交给了第三方；
     // 圆圈里只有数字，所以这条路整条不存在。
     const many = [1, 2].map(source);
     render(
@@ -377,14 +377,14 @@ describe('the line at the foot of the reply', () => {
 
     const row = (await screen.findAllByTestId('source-box-row'))[0];
     const marks = row?.querySelector('[data-testid="source-box-marks"]');
-    // 一页的几个号是一组，跟标题是另一件事：并排摊在行里，读者看到的是
+    // 一页的几个号是一组，跟标题是另一件事：并排摊在行里，用户看到的是
     // 三个平权的东西。
     expect(marks?.textContent).toBe('15');
     expect(row?.children.length).toBe(2);
   });
 
   it('offers no copy on a turn that wrote nothing', () => {
-    // 那一行是为了留住「来源 N」才画的；把空字符串放进剪贴板会顶掉读者
+    // 那一行是为了留住「来源 N」才画的；把空字符串放进剪贴板会顶掉用户
     // 原来复制的东西，而界面还说复制成功了。
     render(
       <MessageBubble
@@ -439,5 +439,34 @@ describe('what the marker rewriting leaves alone', () => {
     const annotation = document.querySelector('annotation');
     expect(annotation?.textContent ?? '').toContain('[1]');
     expect(annotation?.querySelector('citation-chip')).toBeNull();
+  });
+});
+
+describe('a source whose page has no title', () => {
+  const untitled: ChatSource = { url: 'https://untitled.example/page', title: '', publisher: 'Untitled', indexes: [1] };
+
+  it('shows its address in the title line of the source box', async () => {
+    render(
+      <MessageBubble message={{ id: 'm', role: 'assistant', content: 'answer', sources: [untitled] }} />,
+    );
+
+    await userEvent.click(screen.getByTestId('turn-sources'));
+
+    const row = screen.getByTestId('source-box-row');
+    // Once as the title line, once as the address line under it.
+    expect(within(row).getAllByText(untitled.url)).toHaveLength(2);
+  });
+
+  it('shows its address in the title line of the hover card on its marker', async () => {
+    render(
+      <MessageBubble
+        message={{ id: 'm', role: 'assistant', content: 'A claim [1].', citations: { 1: untitled } }}
+      />,
+    );
+
+    await userEvent.hover(screen.getByTestId('citation-chip'));
+
+    const card = await screen.findByTestId('source-hover-card');
+    expect(within(card).getAllByText(untitled.url)).toHaveLength(2);
   });
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The one AAC encode estimate (inner#1306 test plan §97 D24-3, D7-1; frames-split §5.4 估算 and 待实测 rows).

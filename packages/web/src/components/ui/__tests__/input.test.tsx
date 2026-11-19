@@ -11,7 +11,7 @@ describe('Input', () => {
     expect(el).toHaveAttribute('type', 'email');
   });
 
-  it('applies project token classes (border-border default + focus-visible swaps to active-border + no shadow + no ring)', () => {
+  it('applies project token classes (border-border default + focus swaps to active-border + no shadow + no ring)', () => {
     render(<Input data-testid='input' />);
     const el = screen.getByTestId('input');
     // Per 2026-05-25 (PR #135 final): Input mirrors the segmented-
@@ -21,7 +21,7 @@ describe('Input', () => {
     // 1 px on focus (no ring layered on top — that visibly thickened
     // the input edge).
     expect(el.className).toContain('border-border');
-    expect(el.className).toContain('focus-visible:border-active-border');
+    expect(el.className).toContain('focus:border-active-border');
     expect(el.className).toContain('bg-transparent');
     expect(el.className).not.toContain('shadow-sm');
     expect(el.className).not.toContain('focus-visible:ring-1');

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The canonical-key presentation Durable Object store (inner#1306; frames-split design §7.1–§7.4). Every write goes

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Shared API request schemas.
@@ -14,6 +14,7 @@
 import { creditAmountFormatQuerySchema } from "@shared/credit-amount.js";
 
 import { z } from "zod";
+import { routeSchema } from "@shared/schemas/route.js";
 import {
   BILLING_PERIODS,
   SUBSCRIBABLE_MEMBERSHIP_TIERS,
@@ -24,6 +25,10 @@ import { GENERATION_SOURCES } from "@shared/types/project-activity.js";
 import { SpaceTypeSchema } from "@shared/types/space.js";
 import { SPACE_NAME_MAX_LEN } from "@shared/types/space-rpc.js";
 import { REQUEST_SHAPE_PARAMS } from "@shared/api/error-reason.js";
+import { THREE_D_GENERATION_MODES } from "@shared/types/model-catalog.js";
+import { SCENE_GENERATION_ORIGINS } from "@shared/types/scene-generation-proposal.js";
+import type { NodeMediaFields } from "@shared/canvas/node-media.js";
+import { currentModelName } from "@shared/canvas/retired-models.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
 
@@ -50,14 +55,44 @@ export const emailSchema = z.string().transform(normalizeEmail).pipe(z.email().m
  */
 const attributionField = z.unknown().optional();
 
+/**
+ * The longest referral code text any request carries (inner#1868): room for a
+ * code with stray spaces, well short of a pasted link. Inputs stop at it too,
+ * so too-long text gets the field's own refusal.
+ */
+export const REFERRAL_CODE_INPUT_MAX = 40;
+
+/** How many channels a promoter application lists (inner#1868 §7). */
+export const PROMOTER_CHANNELS_MAX = 10;
+
+/** The longest one channel of a promoter application may be. */
+export const PROMOTER_CHANNEL_INPUT_MAX = 200;
+
+/** The longest the promotion plan of a promoter application may be. */
+export const PROMOTER_PLAN_INPUT_MAX = 2000;
+
+/** Where a sign-up's referral code came from: a share link, or typed by the user. */
+export const SIGNUP_REFERRAL_SOURCES = ["signup_link", "signup_typed"] as const;
+export type SignupReferralSource = (typeof SIGNUP_REFERRAL_SOURCES)[number];
+
+/**
+ * A referral code a sign-up carries (inner#1868): from a share link, or typed.
+ * Blank means none; the server parses the code itself.
+ */
+const signupReferralFields = {
+  referralCode: z.string().max(REFERRAL_CODE_INPUT_MAX).optional(),
+  referralSource: z.enum(SIGNUP_REFERRAL_SOURCES).optional(),
+};
+
 export const registerSchema = z.object({
   email: emailSchema,
   password: z.string().min(8),
   attribution: attributionField,
+  ...signupReferralFields,
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
-/** The code a reader types to finish an email sign-up (#287). */
+/** The code a user types to finish an email sign-up (#287). */
 export const SIGNUP_CODE_REGEX = /^\d{6}$/;
 export const signupVerifySchema = z.object({
   code: z.string().regex(SIGNUP_CODE_REGEX),
@@ -180,6 +215,8 @@ export type LoginInput = z.infer<typeof loginSchema>;
 
 export const googleAuthSchema = z.object({
   credential: z.string().min(1),
+  attribution: attributionField,
+  ...signupReferralFields,
 });
 export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 
@@ -189,9 +226,10 @@ export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 const ATTACHED_CHIP_ID_MAX = 128;
 
 /**
- * One item attached to a chat message: a piece of the canvas the reader added
- * to the agent, or a file picked with the attach button. The snapshot is taken
- * when it is attached; later edits to the canvas do not reach it.
+ * One item attached to a chat message: a piece of the canvas or of a Document
+ * the user added to the agent, or a file picked with the attach button. The
+ * snapshot is taken when it is attached; later edits to the Space do not
+ * reach it.
  */
 export const chatAttachedChipSchema = z.object({
   /** Made up for the item: from the picked node ids, or fresh for a file. */
@@ -199,7 +237,7 @@ export const chatAttachedChipSchema = z.object({
   type: z.enum(["canvas", "image", "video", "audio", "text"]),
   /** Display name for the chip; LLM context renders this as the section title. Same cap as an upload's file name. */
   name: z.string().max(255),
-  /** A canvas piece's `{ nodes, edges }`, or a file's `{ url }` or `{ text }`. */
+  /** A canvas piece's `{ nodes, edges }`; a file's `{ url }` or `{ text }`; a Document's text as `{ text }`, or its picture, video or audio as `{ url, name?, caption? }`. */
   data_snapshot: z.record(z.string(), z.unknown()),
 });
 export type ChatAttachedChip = z.infer<typeof chatAttachedChipSchema>;
@@ -220,7 +258,7 @@ const count = z.number().int().nonnegative();
  */
 const chatCanvasDetailSchema = z
   .object({
-    /** Nodes the reader has selected; a selected group counts its members. */
+    /** Nodes the user has selected; a selected group counts its members. */
     selected_total: count,
     /** Selected nodes sent with the rest because an attachment holds them unchanged. */
     selected_attached: count,
@@ -279,7 +317,7 @@ const chatLoadedSpaceSchema = chatSpaceSchema
   });
 
 /**
- * The Space the reader has open, as the browser read it at the press. The
+ * The Space the user has open, as the browser read it at the press. The
  * content is already cut to the limit; the server checks that limit, since
  * it lives in config this package cannot read.
  */
@@ -376,14 +414,22 @@ export const sharedSpaceSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
-/** The reader's answer to a request to read Spaces: what they shared, or that they declined. */
+/** The user's answer to a request to read Spaces: what they shared, or that they declined. */
 export const spaceRequestAnswerSchema = z.discriminatedUnion("decision", [
   z.object({ toolCallId: z.string().min(1), decision: z.literal("shared"), spaces: z.array(sharedSpaceSchema) }),
   z.object({ toolCallId: z.string().min(1), decision: z.literal("declined") }),
 ]);
 
 export const chatMessageSchema = z.object({
-  /** What the reader wrote; empty when the request carries `answer` instead. */
+  /**
+   * The message's id, made by the page when the user pressed send and sent
+   * again unchanged on a resend (inner#1717): the queue answers a resend it
+   * has seen as a duplicate, and the user row it opens a run with, or the
+   * reply part it is taken in as, is keyed by it. Required
+   * on a new message; a card's answer carries none.
+   */
+  id: z.string().uuid().optional(),
+  /** What the user wrote; empty when the request carries `answer` instead. */
   message: z.string(),
   project_id: z.string().uuid(),
   /**
@@ -403,40 +449,43 @@ export const chatMessageSchema = z.object({
    */
   attached_chips: z.array(chatAttachedChipSchema).default([]),
   /**
-   * A model override for this message. The composer does not send it, and
-   * the `/message` handler does not read it: the model comes from the
-   * agent config.
-   */
-  model: z.string().optional(),
-  /**
-   * The IANA time zone the reader's browser reports, so the agent can tell
+   * The IANA time zone the user's browser reports, so the agent can tell
    * them what time it is where they are. Optional: a turn without one is told
    * the time in UTC and that the zone is unknown. The length cap matches the
    * credit purchase's `time_zone`.
    */
   time_zone: z.string().min(1).max(64).optional(),
   /**
+   * The model the user has picked for this conversation (#1363). Absent
+   * from a page that predates the picker, which is answered by the
+   * conversation's own model.
+   */
+  model: z.string().min(1).max(100).optional(),
+  /**
    * The project's Spaces, newest first, cut to the list limit; `spaces_total`
    * is how many there were before the cut. Sent on every turn.
    */
   spaces: z.array(chatSpaceSchema).optional(),
   spaces_total: z.number().int().nonnegative().optional(),
-  /** The Space the reader has open, when the chip beside "+" is enabled. */
+  /** The Space the user has open, when the chip beside "+" is enabled. */
   current_space: chatCurrentSpaceSchema.optional(),
   /**
-   * The reader's answers to a questionnaire the agent is waiting on
+   * The user's answers to a questionnaire the agent is waiting on
    * (inner#1542). A request carrying it resumes the turn that asked, adds no
-   * message of the reader's, and has an empty `message`.
+   * message of the user's, and has an empty `message`.
    */
   answer: askUserAnswerSchema.optional(),
   /**
-   * The reader's answer to the agent's request to read Spaces (inner#1552),
+   * The user's answer to the agent's request to read Spaces (inner#1552),
    * resuming the turn that asked the way `answer` does.
    */
   shared_spaces: spaceRequestAnswerSchema.optional(),
 }).superRefine((value, ctx) => {
   if (value.answer === undefined && value.shared_spaces === undefined && value.message.length === 0) {
     ctx.addIssue({ code: "custom", path: ["message"], message: "A message needs words." });
+  }
+  if (value.answer === undefined && value.shared_spaces === undefined && value.id === undefined) {
+    ctx.addIssue({ code: "custom", path: ["id"], message: "A new message carries its id.", params: REQUEST_SHAPE_PARAMS });
   }
   if (value.answer !== undefined && value.message.length > 0) {
     ctx.addIssue({ code: "custom", path: ["message"], message: "An answer to a questionnaire carries no message." });
@@ -464,8 +513,8 @@ export type ChatCurrentSpace = z.infer<typeof chatCurrentSpaceSchema>;
 export type ChatCanvasDetail = z.infer<typeof chatCanvasDetailSchema>;
 export type ChatDocumentBlock = z.infer<typeof chatDocumentBlockSchema>;
 /**
- * The reader's Spaces as one message carries them (inner#1413): the project's
- * Spaces, and the open one when the reader has it on. Read when they pressed
+ * The user's Spaces as one message carries them (inner#1413): the project's
+ * Spaces, and the open one when the user has it on. Read when they pressed
  * send and never stored, so each message says what is there now.
  */
 export type ChatSpaceContext = Pick<ChatMessageInput, "spaces" | "spaces_total" | "current_space">;
@@ -475,12 +524,23 @@ export type SpaceRequestAnswer = z.infer<typeof spaceRequestAnswerSchema>;
 
 // ── Canvas ───────────────────────────────────────────────────────────
 
+/**
+ * Refuse a run's params that carry `route`: the worker reads the route the server wrote there from the request's
+ * own field, after checking, pricing and holding against it, so one a caller put there itself would skip all three.
+ * @param params - The run's params.
+ * @param ctx - The refinement context.
+ */
+function refuseRouteInParams(params: Readonly<Record<string, unknown>>, ctx: z.RefinementCtx): void {
+  if (!("route" in params)) return;
+  ctx.addIssue({ code: z.ZodIssueCode.custom, message: "a run's route is its own field, not a param", path: ["params", "route"], params: REQUEST_SHAPE_PARAMS });
+}
+
 export const taskCreateSchema = z
   .object({
     /** `tasks.task_type` is varchar(50). */
     task_type: z.string().max(50),
-    /** `tasks.model` is varchar(100). */
-    model: z.string().max(100).optional(),
+    /** `tasks.model` is varchar(100). A retired model is asked for under its replacement (#1521). */
+    model: z.string().max(100).optional().transform((name) => (name === undefined ? name : currentModelName(name))),
     params: z.record(z.string(), z.unknown()),
     /**
      * Result nodes this task will update on completion (1..N).
@@ -521,8 +581,11 @@ export const taskCreateSchema = z
      *     want from the node's task list.
      */
     mode: z.enum(["append", "overwrite"]),
+    /** How the run chooses its upstream; the deployment's weights when left out. Written into the task's params. */
+    route: routeSchema.optional(),
   })
   .superRefine((val, ctx) => {
+    refuseRouteInParams(val.params, ctx);
     if (val.mode === "overwrite" && !val.target_node_id) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -538,9 +601,9 @@ export const understandSchema = z.object({
   source_type: z.enum(["image", "video", "audio"]),
   /**
    * Where the media is. The run reads the file's name off it and writes that
-   * name into the sentence on the reader's row, so this is bound the same way
+   * name into the sentence on the user's row, so this is bound the same way
    * `source_mime_type` below is: uncapped, it is text a caller chooses and
-   * every reader of that node is shown. The ceiling is the one
+   * every user of that node is shown. The ceiling is the one
    * `/canvas/ingest-url` already holds an address to. That sibling also
    * demands https, which this one cannot: the address here is our own
    * storage, and a local deployment serves it over http.
@@ -554,7 +617,7 @@ export const understandSchema = z.object({
   //
   // Required, because a row on that node is the only thing that carries a
   // cause back to the canvas: a run naming none bills and answers into
-  // nowhere, and the reader watches a node that never changes.
+  // nowhere, and the user watches a node that never changes.
   node_ids: z.array(z.string().uuid()).min(1).max(1),
   /**
    * What the ledger judged this file to be, off the bytes that landed.
@@ -565,8 +628,8 @@ export const understandSchema = z.object({
    * before the ledger reported it.
    *
    * Capped at what the ledger's own column holds (`mime_type varchar(100)`):
-   * the run names this type in the sentence it writes onto the reader's row,
-   * so an uncapped value is text a caller chooses and every reader of that
+   * the run names this type in the sentence it writes onto the user's row,
+   * so an uncapped value is text a caller chooses and every user of that
    * node is shown.
    */
   source_mime_type: z.string().min(1).max(100).optional(),
@@ -578,6 +641,12 @@ export const understandSchema = z.object({
    * this build does not ship names none — the same as a request carrying no
    * locale at all.
    */
+  user_locale: z.string().optional(),
+  /**
+   * The same locale under its pre-#1378 name, sent by a page loaded before
+   * the deploy. Carries the old name until #1387 removes it, in the release
+   * that also runs the rename migration again.
+   */
   reader_locale: z.string().optional(),
   project_id: z.string().uuid(),
   /** Same as taskCreateSchema.space_id (v10 multi-doc). Required. */
@@ -588,7 +657,7 @@ export type UnderstandInput = z.infer<typeof understandSchema>;
 /**
  * One transcription press (inner#856): a reading of an audio or video node
  * with the fixed transcription question, and the panel's one switch. Bound
- * the same way as a reading; it carries no question of the reader's own.
+ * the same way as a reading; it carries no question of the user's own.
  */
 export const transcribeSchema = understandSchema.omit({ prompt: true, source_type: true }).extend({
   source_type: z.enum(["audio", "video"]),
@@ -607,7 +676,7 @@ export const nodeHistorySnapshotSchema = z.object({
   node_id: z.string().uuid(),
   // A snapshot of an empty node is not one, and the menu greys the item out
   // for the same reason — this is the half of that rule the server keeps.
-  // What a node holds is whatever the reader typed, blank lines included, so
+  // What a node holds is whatever the user typed, blank lines included, so
   // the floor is emptiness rather than blankness. No ceiling either: a text
   // node's words have none, and this row holds exactly them.
   text: z.string().min(1),
@@ -615,6 +684,54 @@ export const nodeHistorySnapshotSchema = z.object({
 export type NodeHistorySnapshotInput = z.infer<
   typeof nodeHistorySnapshotSchema
 >;
+
+/** The longest name a document snapshot may carry (inner#1129). */
+export const DOCUMENT_VERSION_NAME_MAX_CHARS = 100;
+
+/** A snapshot name as typed; blank reads as no name. */
+const documentVersionNameSchema = z
+  .string()
+  .max(DOCUMENT_VERSION_NAME_MAX_CHARS)
+  .transform((name) => name.trim());
+
+/**
+ * The body a snapshot keeps: the editor's ProseMirror JSON, comment marks and
+ * all, since those are where the comments stood when it was taken.
+ */
+const documentVersionContentSchema = z.object({ type: z.literal("doc") }).passthrough();
+
+/** The project and document a snapshot belongs to. */
+const documentVersionScope = {
+  project_id: z.string().uuid(),
+  space_id: z.string().uuid(),
+};
+
+/** `POST /documents/versions`. */
+export const documentVersionSaveSchema = z.object({
+  ...documentVersionScope,
+  name: documentVersionNameSchema.optional().transform((name) => (name ? name : undefined)),
+  content: documentVersionContentSchema,
+  schema_version: z.string().min(1).max(200),
+});
+export type DocumentVersionSaveInput = z.infer<typeof documentVersionSaveSchema>;
+
+/** `PATCH /documents/versions/:id`; null or blank clears the name. */
+export const documentVersionRenameSchema = z.object({
+  ...documentVersionScope,
+  name: documentVersionNameSchema.nullable().transform((name) => (name ? name : null)),
+});
+export type DocumentVersionRenameInput = z.infer<typeof documentVersionRenameSchema>;
+
+/** `GET /documents/versions`, one page at a time. */
+export const documentVersionListQuerySchema = z.object({
+  ...documentVersionScope,
+  cursor: z.string().max(512).optional(),
+});
+export type DocumentVersionListQuery = z.infer<typeof documentVersionListQuerySchema>;
+
+/** The scope every read, rename and delete of one snapshot names. */
+export const documentVersionScopeSchema = z.object(documentVersionScope);
+export type DocumentVersionScope = z.infer<typeof documentVersionScopeSchema>;
 
 /** A storage address a paste names: a stored object's public URL. */
 const pasteAddressSchema = z.string().url().max(2048);
@@ -651,6 +768,14 @@ export const canvasPasteSchema = z.object({
   history: z.array(pasteHistoryItemSchema).max(1000),
 });
 export type CanvasPasteInput = z.infer<typeof canvasPasteSchema>;
+
+/** `POST /canvas/paste`'s answer (inner#1349, inner#1537). */
+export interface CanvasPasteAnswer {
+  /** Old address → address in the target Studio; null for a cover that could not be filed. */
+  map: Record<string, string | null>;
+  /** Each mapped address in the target Studio and what its ledger row holds, cover included for a video. */
+  media: Record<string, NodeMediaFields>;
+}
 
 // ── Projects ─────────────────────────────────────────────────────────
 
@@ -815,7 +940,7 @@ export const chatConversationsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
   // Where the last page stopped, rather than how many rows to skip. The list
   // is ordered by when each conversation was last used, so it moves under a
-  // reader who is paging through it: someone speaks and a row rises, someone
+  // user who is paging through it: someone speaks and a row rises, someone
   // starts one and everything shifts down. Counting rows to skip then lands
   // in the wrong place -- the same conversation comes back twice, or one is
   // stepped over and cannot be reached at all. A position does not move.
@@ -852,12 +977,12 @@ export type ChatCreateConversationInput = z.infer<typeof chatCreateConversationS
 /**
  * How long a conversation's name may be.
  *
- * One number, because six places enforce it: the two boxes a reader can type
+ * One number, because six places enforce it: the two boxes a user can type
  * a name into, the schema this sits beside, the two writes that cut a name to
  * the column's width before storing it, and the bound on the configurable
  * limit, which cannot be set past what the column takes. Two numbers means the
  * shorter one silently rewrites names the longer one accepted -- and the
- * reader never asked for that, they only opened a box and closed it again.
+ * user never asked for that, they only opened a box and closed it again.
  * The column is `varchar(200)`; keep them in step.
  */
 export const CONVERSATION_TITLE_MAX_CHARS = 200;
@@ -871,6 +996,91 @@ export const CONVERSATION_TITLE_MAX_CHARS = 200;
  * and has room above this for that content.
  */
 export const CHAT_MESSAGE_MAX_CHARS = 10_000;
+
+/** How long a Project's instructions for the Agent may be, by `.length` (#1400). */
+export const AGENT_INSTRUCTIONS_MAX_CHARS = 10_000;
+
+/** Query for reading a Project's instructions for the Agent. */
+export const agentInstructionsQuerySchema = z.object({
+  project_id: z.string().uuid(),
+});
+
+/** Query for asking which of the caller's conversations in a project have an Agent turn running (#1394). */
+export const chatRunningQuerySchema = z.object({
+  project_id: z.string().uuid(),
+});
+
+/** What `GET /chat/running` answers: the caller's conversations in that project with a turn running. */
+export interface ChatRunningAnswer {
+  /** Each conversation once, in no particular order. */
+  conversation_ids: string[];
+}
+
+/** One message waiting in a conversation's queue, as the waiting area draws it (inner#1717). */
+export interface ChatPendingItem {
+  id: string;
+  /** When the user sent it. */
+  sentAt: string;
+  /** What they typed. */
+  words: string;
+  /** What they attached, which taking it back puts back above the box. */
+  chips: ChatAttachedChip[];
+}
+
+/** What `POST /chat/message` answers once a message or a card's answer is in (inner#1717). */
+export interface ChatSendAnswer {
+  /** `start`: it opened a run; `queued`: a run holds the conversation; `duplicate`: it was in already. */
+  status: "start" | "queued" | "duplicate";
+  /** The messages still waiting, the one a run opened with not among them. */
+  pending: ChatPendingItem[];
+  /** Whether a run holds the conversation, so there is a stream to attach to. */
+  running: boolean;
+}
+
+/** What `POST /chat/conversations/:id/sync` answers (inner#1717). */
+export interface ChatSyncAnswer {
+  pending: ChatPendingItem[];
+  running: boolean;
+  /** A card waits for the user's answer. */
+  awaiting: boolean;
+  /** Present when what waits could not open a run because the balance cannot pay for it. */
+  blocked?: "credits";
+  /** When to ask again, in milliseconds. */
+  next_sync_ms: number;
+}
+
+/** What `POST /chat/stop` answers: whether a run was there to stop (inner#1717). */
+export interface ChatStopAnswer {
+  stopped: boolean;
+}
+
+/**
+ * What taking a waiting message back answers (inner#1717): `removed` while it
+ * waited, `taken` once a run has read it, `gone` when it is nowhere.
+ */
+export interface ChatQueueRemoveAnswer {
+  status: "removed" | "taken" | "gone";
+}
+
+/**
+ * Body for saving a Project's instructions for the Agent. The text is kept
+ * exactly as typed; one that is empty or only whitespace clears them.
+ */
+export const agentInstructionsSaveSchema = z.object({
+  project_id: z.string().uuid(),
+  text: z.string().max(AGENT_INSTRUCTIONS_MAX_CHARS),
+});
+export type AgentInstructionsSaveInput = z.infer<typeof agentInstructionsSaveSchema>;
+
+/** A Project's instructions as the editor shows them. */
+export interface AgentInstructionsView {
+  /** The text as saved; empty when there are none. */
+  text: string;
+  /** Display name of whoever saved them last, or null when there are none. */
+  updatedBy: string | null;
+  /** When they were last saved (ISO), or null when there are none. */
+  updatedAt: string | null;
+}
 
 /**
  * Body for naming a conversation.
@@ -891,6 +1101,13 @@ export const chatRenameConversationSchema = z.object({
 });
 export type ChatRenameConversationInput = z.infer<typeof chatRenameConversationSchema>;
 
+/** Body for picking the model a conversation is answered by (#1363). */
+export const chatSetModelSchema = z.object({
+  project_id: z.string().uuid(),
+  model: z.string().min(1).max(100),
+});
+export type ChatSetModelInput = z.infer<typeof chatSetModelSchema>;
+
 /**
  * Query for the page of a conversation that comes before the one in hand.
  *
@@ -902,3 +1119,30 @@ export const chatEarlierMessagesQuerySchema = z.object({
   before_turn: z.coerce.number().int().positive(),
 });
 export type ChatEarlierMessagesQueryInput = z.infer<typeof chatEarlierMessagesQuerySchema>;
+
+// ── 3D generation (inner#1691) ───────────────────────────────────────
+
+/** What the generation dialog submits. */
+export const sceneGenerationBodySchema = z.object({
+  mode: z.enum(THREE_D_GENERATION_MODES),
+  /** `tasks.model` is varchar(100). */
+  model: z.string().min(1).max(100),
+  prompt: z.string().max(8192).optional(),
+  // The settings, `negative_prompt` among them; each is judged against the
+  // model's own declarations, so the shape here only bounds the values.
+  params: z.record(z.string().max(64), z.union([z.string().max(8192), z.number(), z.boolean(), z.null()])),
+  // The views in front, left, back, right order. How many the model takes is
+  // its rule, said with its name when broken; the cap here only bounds work.
+  image_asset_ids: z.array(z.string().uuid()).max(16).optional(),
+  origin: z.enum(SCENE_GENERATION_ORIGINS),
+}).superRefine((val, ctx) => refuseRouteInParams(val.params, ctx));
+
+/** A submission, as {@link sceneGenerationBodySchema} describes it. */
+export type SceneGenerationBody = z.infer<typeof sceneGenerationBodySchema>;
+
+/** What a submission answers: the task, its row, and whether the job was queued. */
+export interface SceneGenerationAnswer {
+  task_id: string;
+  row_id: string;
+  status: "pending" | "failed";
+}

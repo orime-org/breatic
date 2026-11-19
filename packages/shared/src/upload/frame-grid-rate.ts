@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The frame-grid rate rule and the probe facts read beside it (inner#1306 frames-split design §4.1 frame rate row, §4.2,

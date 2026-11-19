@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { DelayedError, type Job } from "bullmq";
 import { getStreamRedis, getWorkerConfig, logger } from "@breatic/core";
@@ -12,7 +12,7 @@ import { verdictStands } from "@worker/handlers/understand-failure.js";
 import { finishMiniToolAnalysisAndNotify } from "@worker/handlers/mini-tool/analysis-completion.js";
 import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { TrackedMaskFailed } from "@worker/handlers/mini-tool/model-run-steps.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 
 /** The original analysis computation is selected after loading its SQL identity. */
 export type MiniToolAnalysisExecutor = (execution: miniToolAnalysisService.MiniToolAnalysisExecution, deadlineAt: number) => Promise<MiniToolAnalysisResult>;

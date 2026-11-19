@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A mini-tool run refused with 413 (inner#1006 design §5, test spec §7.4
@@ -16,7 +16,10 @@ import type * as RequestModule from '@web/data/api/request';
 const canvas = vi.hoisted(() => ({
   addNode: vi.fn(),
   addEdge: vi.fn((_p: string, _s: string, _edge: { source: string; toolId?: string }) => true),
-  runCanvasUndoBatch: vi.fn((_p: string, _s: string, body: () => void) => body()),
+  runCanvasUndoBatch: vi.fn((_p: string, _s: string, _o: unknown, body: () => void) => {
+    body();
+    return { ok: true };
+  }),
   createGroup: vi.fn(),
 }));
 vi.mock('@web/data/yjs/canvas-space', () => canvas);

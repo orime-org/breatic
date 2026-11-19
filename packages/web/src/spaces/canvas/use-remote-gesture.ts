@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Awareness } from 'y-protocols/awareness';
 
 import type { GestureTable } from '@web/spaces/canvas/gesture-table';
 import { collectRemoteGesture, sameGestureTable } from '@web/spaces/canvas/gesture-table';
-import { useAwarenessSlice } from '@web/spaces/canvas/use-awareness-slice';
+import { useAwarenessSlice } from '@web/data/yjs/use-awareness-slice';
 
 /** The table every node reads while nobody else is moving anything. */
 const EMPTY: GestureTable = new Map();

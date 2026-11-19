@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The store keeps our shape; the wire carries the SDK's. Two functions between.
@@ -16,11 +16,12 @@
  * Three of our parts have no counterpart in the SDK's list. `interrupted` and
  * `failed` are things we know about a turn, not things a model streamed, so
  * they travel as data parts -- the one channel the protocol leaves open for
- * what it does not define. They are not transient: a reader who reloads has
+ * what it does not define. They are not transient: a user who reloads has
  * to still see that a turn was cut off.
  */
 import { LEGACY_FAILURE_LINES, NEVER_RAN, TURNED_AWAY } from "@breatic/shared";
 import { describe, it, expect } from "vitest";
+import fc from "fast-check";
 import type { UIMessage } from "ai";
 import { ATTACHMENT_DATA_PART, NOTHING_SAID_WHY } from "@breatic/shared";
 import { NOTHING_OF_IT_RAN } from "@server/agent/tool-ending.js";
@@ -149,7 +150,7 @@ describe("what a finished turn writes down", () => {
       },
     ]);
 
-    // What the wire carries on that field is the line a reader is shown, not
+    // What the wire carries on that field is the line a user is shown, not
     // the reason the model needs -- two different things, and this side of
     // the boundary only ever has the first. The turn fills in the reason
     // afterwards from the callback handed the error itself; what is written
@@ -265,7 +266,7 @@ describe("what a conversation hands back when it is opened", () => {
     expect(JSON.stringify(ui)).not.toContain("the models, as the model read them");
   });
 
-  it("carries a stopped turn back as something the reader can see", () => {
+  it("carries a stopped turn back as something the user can see", () => {
     const ui = toUiParts([{ type: "text", text: "写到一半" }, { type: "interrupted" }]);
 
     // A data part, because the protocol has no part meaning "this was cut
@@ -322,7 +323,7 @@ describe("a message that goes out and comes back", () => {
         failure: {
           kind: "tool_failed",
           forModel: "读不到",
-          readerKey: "chat.tool.failure.generic",
+          userKey: "chat.tool.failure.generic",
         },
       },
       { type: "interrupted" },
@@ -330,7 +331,7 @@ describe("a message that goes out and comes back", () => {
 
     // One field does not survive, deliberately: the model's copy of the
     // reason does not go out to the browser, so what comes back carries the
-    // reader's key in its place. Everything else is the same message.
+    // user's key in its place. Everything else is the same message.
     const back = toStoredParts(toUiParts(original));
     expect(back.map((p) => p.type)).toEqual(original.map((p) => p.type));
     expect(back[0]).toEqual(original[0]);
@@ -339,7 +340,7 @@ describe("a message that goes out and comes back", () => {
     expect(back[3]).toMatchObject({
       toolCallId: "call-2",
       status: "error",
-      failure: { kind: "tool_failed", readerKey: "chat.tool.failure.ourFault" },
+      failure: { kind: "tool_failed", userKey: "chat.tool.failure.ourFault" },
     });
     expect(back[4]).toEqual(original[4]);
   });
@@ -359,7 +360,7 @@ describe("a message that goes out and comes back", () => {
         failure: {
           kind: "tool_failed",
           forModel: "Fetching https://example.com failed: the site answered HTTP 404.",
-          readerKey: "chat.tool.failure.upstream",
+          userKey: "chat.tool.failure.upstream",
         },
       },
     ]);
@@ -387,7 +388,7 @@ describe("a message that goes out and comes back", () => {
         failure: {
           kind: "user_aborted",
           forModel: "The user stopped this turn while the tool was still running.",
-          readerKey: "chat.tool.unfinished",
+          userKey: "chat.tool.unfinished",
         },
       },
     ]);
@@ -505,15 +506,43 @@ describe("a call that never ran (inner#1620)", () => {
         toolName: "web_search",
         input: { query: "q" },
         status: "error",
-        failure: { kind: "tool_failed", forModel: NOTHING_OF_IT_RAN, readerKey: LEGACY_FAILURE_LINES.generic },
+        failure: { kind: "tool_failed", forModel: NOTHING_OF_IT_RAN, userKey: LEGACY_FAILURE_LINES.generic },
       },
     ]);
     expect(part).toMatchObject({ state: "output-error", errorText: NEVER_RAN, failureKind: "never_ran" });
   });
 });
 
-describe("a questionnaire waiting for the reader (inner#1542)", () => {
-  it("reads back as the call, followed by the mark naming it as the card the reader is shown", () => {
+describe("a failure stored under the pre-#1378 name", () => {
+  it.each([
+    ["tool_failed", "chat.tool.failure.upstream"],
+    ["tool_failed", LEGACY_FAILURE_LINES.generic],
+    ["user_aborted", "chat.tool.unfinished"],
+  ])("reads a %s row keyed readerKey the same as one keyed userKey (%s)", (kind, key) => {
+    /**
+     * One stored failed call whose line sits under the given field name.
+     * @param field - The name the row stored the line under.
+     * @returns The part as the browser receives it.
+     */
+    const read = (field: "readerKey" | "userKey"): unknown =>
+      toUiParts([
+        {
+          type: "tool",
+          toolCallId: "tc-old",
+          toolName: "web_search",
+          input: { query: "q" },
+          status: "error",
+          failure: { kind, forModel: "the site answered 503", [field]: key },
+        } as unknown as MessagePart,
+      ])[0];
+
+    expect(read("readerKey")).toEqual(read("userKey"));
+    expect(read("readerKey")).toMatchObject({ errorText: key, failureKind: kind });
+  });
+});
+
+describe("a questionnaire waiting for the user (inner#1542)", () => {
+  it("reads back as the call, followed by the mark naming it as the card the user is shown", () => {
     const parts = toUiParts([
       { type: "tool", toolCallId: "ask-1", toolName: "ask_user", input: { questions: [] }, status: "awaiting" },
     ]);
@@ -534,7 +563,7 @@ describe("a questionnaire waiting for the reader (inner#1542)", () => {
     expect(parts.map((p) => p.type)).toEqual(["text", "tool-ask_user", "data-thinking-time", "data-ask-awaiting"]);
   });
 
-  it("reads back as an answered call once the reader has answered", () => {
+  it("reads back as an answered call once the user has answered", () => {
     const parts = toUiParts([
       {
         type: "tool",
@@ -549,5 +578,54 @@ describe("a questionnaire waiting for the reader (inner#1542)", () => {
     expect(parts).toEqual([
       { type: "tool-ask_user", toolCallId: "ask-2", input: { questions: [] }, state: "output-available", output: { repliedInChat: true } },
     ]);
+  });
+});
+
+describe("a message taken in while the turn ran (inner#1717)", () => {
+  const CHIP_A = { kind: "file", name: "brief.pdf", assetId: "a-1" } as never;
+  const CHIP_B = { kind: "file", name: "moodboard.png", assetId: "a-2" } as never;
+  const WIRE = {
+    type: "data-user-message",
+    data: { id: "m-2", words: "Make it blue", chips: [CHIP_A, CHIP_B], sentAt: "2026-11-12T08:00:00.000Z" },
+  } as unknown as UIMessage["parts"][number];
+
+  it("is stored as one part holding its attachments and words, and read back as it came (PT-01)", () => {
+    const stored = toStoredParts([WIRE]);
+    expect(stored).toEqual([
+      {
+        type: "user-message",
+        id: "m-2",
+        sentAt: "2026-11-12T08:00:00.000Z",
+        parts: [
+          { type: "attachment", chip: CHIP_A },
+          { type: "attachment", chip: CHIP_B },
+          { type: "text", text: "Make it blue" },
+        ],
+      },
+    ]);
+    expect(toUiParts(stored)).toEqual([WIRE]);
+  });
+
+  it("survives the round trip for any words and attachments (PT-02)", () => {
+    const chip = fc.record({ kind: fc.constant("file"), name: fc.string(), assetId: fc.uuid() });
+    fc.assert(
+      fc.property(
+        fc.uuid(),
+        fc.oneof(fc.string(), fc.constantFrom("", "改成蓝色\n第二行", "line\r\nbreak")),
+        fc.array(chip, { maxLength: 5 }),
+        fc.date({ noInvalidDate: true }).map((d) => d.toISOString()),
+        (id, words, chips, sentAt) => {
+          const wire = { type: "data-user-message", data: { id, words, chips, sentAt } } as unknown as UIMessage["parts"][number];
+          expect(toUiParts(toStoredParts([wire]))).toEqual([wire]);
+        },
+      ),
+    );
+  });
+
+  it("keeps a shutdown as the reason a turn failed (PT-03)", () => {
+    const wire = { type: "data-failed", data: { reason: "shutdown" } } as unknown as UIMessage["parts"][number];
+    const stored = toStoredParts([wire]);
+    expect(stored).toEqual([{ type: "failed", reason: "shutdown" }]);
+    expect(toUiParts(stored)).toEqual([wire]);
   });
 });

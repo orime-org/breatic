@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Publishing what this client is doing: which nodes it holds and where its
@@ -12,13 +12,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import type { ActiveNodeSources } from '@web/spaces/canvas/active-node-ids';
 import type { GestureGeometry } from '@web/spaces/canvas/gesture-table';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
+import { useFollowStore } from '@web/stores/follow';
 
 /** The three fields this client writes into awareness. */
 interface Published {
@@ -989,5 +990,155 @@ describe('usePublishPresence, the activity', () => {
     );
     rendered.unmount();
     expect((awareness.getLocalState() as { activity?: unknown }).activity).toEqual([{ nodeId: 'n1', action: 'upload', at: 1 }]);
+  });
+});
+
+describe('usePublishPresence, the camera', () => {
+  /**
+   * Read the published camera.
+   * @param awareness - The awareness to read.
+   * @returns The camera field, or null.
+   */
+  function camera(awareness: Awareness): Record<string, unknown> | null {
+    const state = awareness.getLocalState() as { camera?: Record<string, unknown> | null } | null;
+    return state?.camera ?? null;
+  }
+
+  it('publishes the visible rectangle it is mounted with, stamped with wall-clock time', async () => {
+    const awareness = makeAwareness();
+    const { container } = makeCanvas();
+    const before = Date.now();
+    renderHook(() =>
+      usePublishPresence({
+        awareness,
+        sources: NOTHING,
+        synced: true,
+        containerRef: { current: container },
+        toFlowPosition: SHIFTED,
+        readCamera: () => ({ x: 10, y: 20, width: 800, height: 600 }),
+      }),
+    );
+    await vi.waitFor(() => {
+      expect(camera(awareness)).toMatchObject({ x: 10, y: 20, width: 800, height: 600 });
+    });
+    expect(camera(awareness)?.at as number).toBeGreaterThanOrEqual(before);
+  });
+
+  it('publishes no camera while this tab follows a member, and its own once following stops', async () => {
+    useFollowStore.getState().reset();
+    useFollowStore.getState().start('leader', 'Leader');
+    const awareness = makeAwareness();
+    const { container } = makeCanvas();
+    renderHook(() =>
+      usePublishPresence({
+        awareness,
+        sources: NOTHING,
+        synced: true,
+        containerRef: { current: container },
+        toFlowPosition: SHIFTED,
+        readCamera: () => ({ x: 10, y: 20, width: 800, height: 600 }),
+      }),
+    );
+    await vi.waitFor(() => expect(awareness.getLocalState()).toHaveProperty('activeNodeIds'));
+    expect(camera(awareness)).toBeNull();
+    act(() => useFollowStore.getState().stop('button'));
+    await vi.waitFor(() => expect(camera(awareness)).toMatchObject({ x: 10, y: 20 }));
+    act(() => useFollowStore.getState().start('leader', 'Leader'));
+    await vi.waitFor(() => expect(camera(awareness)).toBeNull());
+    useFollowStore.getState().reset();
+  });
+
+  it('republishes when the viewport pans', async () => {
+    const awareness = makeAwareness();
+    const { container, viewport } = makeCanvas();
+    let rect = { x: 0, y: 0, width: 800, height: 600 };
+    renderHook(() =>
+      usePublishPresence({
+        awareness,
+        sources: NOTHING,
+        synced: true,
+        containerRef: { current: container },
+        toFlowPosition: SHIFTED,
+        readCamera: () => rect,
+      }),
+    );
+    await vi.waitFor(() => expect(camera(awareness)).toMatchObject({ x: 0 }));
+    rect = { x: 300, y: 0, width: 800, height: 600 };
+    viewport.setAttribute('style', 'transform: translate(-300px, 0px) scale(1)');
+    await vi.waitFor(() => expect(camera(awareness)).toMatchObject({ x: 300 }));
+  });
+
+  it('republishes when the container is resized without the transform moving', async () => {
+    const awareness = makeAwareness();
+    const { container } = makeCanvas();
+    let rect = { x: 0, y: 0, width: 800, height: 600 };
+    renderHook(() =>
+      usePublishPresence({
+        awareness,
+        sources: NOTHING,
+        synced: true,
+        containerRef: { current: container },
+        toFlowPosition: SHIFTED,
+        readCamera: () => rect,
+      }),
+    );
+    await vi.waitFor(() => expect(camera(awareness)).toMatchObject({ width: 800 }));
+    rect = { x: 0, y: 0, width: 1200, height: 600 };
+    resizeContainer(container);
+    await vi.waitFor(() => expect(camera(awareness)).toMatchObject({ width: 1200 }));
+  });
+
+  it('keeps the camera when the window loses focus', async () => {
+    const awareness = makeAwareness();
+    const { container } = makeCanvas();
+    renderHook(() =>
+      usePublishPresence({
+        awareness,
+        sources: NOTHING,
+        synced: true,
+        containerRef: { current: container },
+        toFlowPosition: SHIFTED,
+        readCamera: () => ({ x: 1, y: 1, width: 10, height: 10 }),
+      }),
+    );
+    await vi.waitFor(() => expect(camera(awareness)).not.toBeNull());
+    window.dispatchEvent(new Event('blur'));
+    await settled();
+    expect(camera(awareness)).not.toBeNull();
+  });
+
+  it('takes the camera down at once when it unmounts', async () => {
+    const awareness = makeAwareness();
+    const { container } = makeCanvas();
+    const { unmount } = renderHook(() =>
+      usePublishPresence({
+        awareness,
+        sources: NOTHING,
+        synced: true,
+        containerRef: { current: container },
+        toFlowPosition: SHIFTED,
+        readCamera: () => ({ x: 1, y: 1, width: 10, height: 10 }),
+      }),
+    );
+    await vi.waitFor(() => expect(camera(awareness)).not.toBeNull());
+    unmount();
+    expect(camera(awareness)).toBeNull();
+    expect(stillListed(awareness)).toBe(true);
+  });
+
+  it('publishes no camera when the canvas gives no reading', async () => {
+    const awareness = makeAwareness();
+    const { container } = makeCanvas();
+    renderHook(() =>
+      usePublishPresence({
+        awareness,
+        sources: NOTHING,
+        synced: true,
+        containerRef: { current: container },
+        toFlowPosition: SHIFTED,
+      }),
+    );
+    await settled();
+    expect(camera(awareness)).toBeNull();
   });
 });

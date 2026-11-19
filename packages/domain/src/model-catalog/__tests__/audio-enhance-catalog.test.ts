@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the audio enhance model declares (inner#1305 §4.3): WaveSpeed's
  * veed/clean-audio, which takes at most 30 minutes and 512 MB, cleans speech
- * at a strength the reader picks, levels it to -16 LUFS and returns a WAV,
+ * at a strength the user picks, levels it to -16 LUFS and returns a WAV,
  * priced per started minute.
  *
  * These read the REAL config files, as the sibling catalog tests do.
@@ -35,10 +35,10 @@ function enhance(): ReturnType<typeof getModelCatalog>["audio"][number] {
 }
 
 describe("veed-clean-audio", () => {
-  it("is a tool-only model in the enhance mode, on WaveSpeed", () => {
+  it("is a tool-only model in the enhance mode, served through fal", () => {
     expect(enhance().mode).toBe("enhance");
     expect(enhance().tier).toBe("internal");
-    expect(enhance().providers.map((p) => p.name)).toEqual(["wavespeed"]);
+    expect(enhance().availability.upstreams.map((u) => u.upstream)).toEqual(["fal"]);
   });
 
   it("caps the source at the model's 30 minutes and 512 MB", () => {
@@ -50,7 +50,7 @@ describe("veed-clean-audio", () => {
     });
   });
 
-  it("lets the reader set the strength from 0 to 1 and fixes the level and the format", () => {
+  it("lets the user set the strength from 0 to 1 and fixes the level and the format", () => {
     expect(enhance().params.strength).toMatchObject({ fill: "tool", min: 0, max: 1, step: 0.05, default: 0.85 });
     expect(enhance().params.target_lufs).toMatchObject({ fill: "none", default: -16 });
     expect(enhance().params.output_format).toMatchObject({ fill: "none", default: "wav" });
@@ -67,12 +67,13 @@ describe("what enhancing costs", () => {
     (await estimateModelCredits("veed-clean-audio", { params: { audio: "a" }, durations: { audio: [seconds] }, sources: ["audio"] }))
       ?.credits;
 
-  // $0.014 for every started minute, at least one and at most thirty.
-  it("charges per started minute, from one minute up to thirty", async () => {
-    expect(await at(0)).toBeCloseTo(1.4, 6);
-    expect(await at(59)).toBeCloseTo(1.4, 6);
-    expect(await at(61)).toBeCloseTo(2.8, 6);
-    expect(await at(1800)).toBeCloseTo(42, 6);
-    expect(await at(3600)).toBeCloseTo(42, 6);
+  // fal's $0.0125 for every started minute, at least one; WaveSpeed no longer serves it.
+  it("charges per started minute, from one minute up to thirty, and prices nothing longer", async () => {
+    expect(await at(0)).toBeCloseTo(1.25, 6);
+    expect(await at(59)).toBeCloseTo(1.25, 6);
+    expect(await at(61)).toBeCloseTo(2.5, 6);
+    expect(await at(1800)).toBeCloseTo(37.5, 6);
+    // VEED takes up to thirty minutes, so a longer source is refused before any price.
+    expect(await at(3600)).toBeUndefined();
   });
 });

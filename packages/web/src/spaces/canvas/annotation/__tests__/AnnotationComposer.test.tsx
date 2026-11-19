@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -18,7 +18,7 @@ const CANVAS: CanvasContextValue = {
   caretProvider: null,
 };
 
-const onCommit = vi.fn();
+const onCommit = vi.fn((_content: string): boolean => true);
 const onClose = vi.fn();
 
 /**
@@ -41,6 +41,16 @@ describe('the box that opens at the drop point', () => {
     fireEvent.keyDown(box, { key: 'Enter' });
     expect(onCommit).toHaveBeenCalledWith('a cooler shot here');
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('keeps the box and its words when the Space has no room for the note', () => {
+    onCommit.mockReturnValueOnce(false);
+    const box = open();
+    fireEvent.change(box, { target: { value: 'a cooler shot here' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(onCommit).toHaveBeenCalledWith('a cooler shot here');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByTestId('annotation-composer-input')).toHaveValue('a cooler shot here');
   });
 
   it('keeps the Enter that confirms an IME candidate to itself', () => {
@@ -108,7 +118,7 @@ describe('the box that opens at the drop point', () => {
 
   it('keeps them when the blur comes from its Space being hidden', async () => {
     // Switching Space hides this one, which takes focus out of the box; the
-    // words are waiting for the reader when they come back (inner#1235 A14).
+    // words are waiting for the user when they come back (inner#1235 A14).
     const outlet = document.body.appendChild(document.createElement('div'));
     outlet.setAttribute('data-space-outlet', 's1');
     render(

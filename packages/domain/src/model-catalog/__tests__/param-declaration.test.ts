@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a parameter declares about how it gets filled (#269).
@@ -108,6 +108,22 @@ describe("a parameter declaration", () => {
     ).toThrow(/a-model.*lens.*enable_camera/s);
   });
 
+  it("is refused when the prompt's condition names a parameter the model does not declare", () => {
+    expect(() =>
+      assertParamDeclarations("audio", [
+        { name: "a-model", mode: "a2m", prompt_when: { equals: { compose: "references" } }, params: { compose_from: { fill: "panel", values: ["references", "melody"], default: "references" } } },
+      ]),
+    ).toThrow(/a-model.*prompt_when.*compose/s);
+  });
+
+  it("passes a prompt condition on a parameter the model declares", () => {
+    expect(() =>
+      assertParamDeclarations("audio", [
+        { name: "a-model", mode: "a2m", prompt_when: { equals: { compose_from: "references" } }, params: { compose_from: { fill: "panel", values: ["references", "melody"], default: "references" } } },
+      ]),
+    ).not.toThrow();
+  });
+
   it("is refused when it limits itself to a mode the model does not serve", () => {
     expect(() =>
       assertParamDeclarations(
@@ -209,16 +225,13 @@ describe("a parameter declaration", () => {
     ).toThrow(/a-model.*style_images.*\{list\}/s);
   });
 
-  it("passes an item_key that wraps each entry of a list", () => {
+  it.each(["upstream", "upstream_values", "item_key"])("refuses %s, which says how an upstream takes the param and belongs in its binding", (key) => {
     expect(() =>
       assertParamDeclarations(
         "image",
-        modelWith(
-          { style_images: { fill: "canvas", accepts: "image", type: "list", max_items: 3, upstream: "reference", item_key: "image" } },
-          "t2i",
-        ),
+        modelWith({ style_images: { fill: "canvas", accepts: "image", type: "list", max_items: 3, [key]: "image" } }, "t2i"),
       ),
-    ).not.toThrow();
+    ).toThrow(new RegExp(`a-model\\.style_images.*${key}`, "s"));
   });
 
   it("is refused when it caps how many it takes without saying it takes a list", () => {
@@ -544,25 +557,6 @@ describe("a panel parameter's default", () => {
     expect(() => assertParamDeclarations("video", modelWith({ auto_shots: toggle }, "t2v"))).not.toThrow();
   });
 
-  it("lets a value be sent as another spelling only when the choice offers that value", () => {
-    const toggle = { fill: "panel", values: [true, false], default: false, upstream: "shot_type" };
-    expect(() =>
-      assertParamDeclarations(
-        "video",
-        modelWith({ auto_shots: { ...toggle, upstream_values: { true: "intelligence" } } }, "t2v"),
-      ),
-    ).not.toThrow();
-    expect(() =>
-      assertParamDeclarations("video", modelWith({ auto_shots: { ...toggle, upstream_values: { on: "x" } } }, "t2v")),
-    ).toThrow(/a-model\.auto_shots.*upstream_values/s);
-    expect(() =>
-      assertParamDeclarations(
-        "video",
-        modelWith({ seed: { fill: "panel", min: 0, max: 9, default: 0, upstream_values: { "1": "x" } } }, "t2v"),
-      ),
-    ).toThrow(/a-model\.seed.*upstream_values/s);
-  });
-
   it("lets only a list of entries write them into the prompt, and only with a place for each one's text", () => {
     const shots = {
       fill: "storyboard",
@@ -627,6 +621,119 @@ describe("the loader refuses what these checks refuse", () => {
     const mod = await import("../model-catalog.js");
     expect(() => mod.getFullModelConfig("video")).toThrow(/no-kind.*image.*accepts/s);
   });
+
+  /**
+   * A t2v model yaml with the given params and forced values.
+   * @param name - The model name.
+   * @param params - Yaml lines of its params, already indented under `params:`.
+   * @param forces - Yaml lines of its forced values, already indented under `forces:`.
+   * @returns The whole yaml file.
+   */
+  function forcedModel(name: string, params: string[], forces: string[]): string {
+    return [
+      "models:",
+      `  - name: "${name}"`,
+      '    mode: "t2v"',
+      "    takes_prompt: true",
+      "    params:",
+      ...params,
+      "    forces:",
+      ...forces,
+    ].join("\n");
+  }
+
+  /**
+   * Yaml lines of one panel switch.
+   * @param name - The param name.
+   * @param on - Its default.
+   * @returns The lines, indented under `params:`.
+   */
+  function switchParam(name: string, on: boolean): string[] {
+    return [
+      `      ${name}:`,
+      '        fill: "panel"',
+      "        values: [true, false]",
+      `        default: ${on}`,
+    ];
+  }
+
+  // inner#1691 (design 2.3): forced values are applied round after round until
+  // nothing changes, so two that keep rewriting the same param never settle
+  // and the run they describe has no single set of params.
+  it("throws on two forced values that keep rewriting the same param", async () => {
+    vi.resetModules();
+    vi.doMock("node:fs", () =>
+      fsWith(
+        forcedModel(
+          "flip-flop",
+          [...switchParam("a", true), ...switchParam("b", false)],
+          [
+            "      - id: b_on_with_a",
+            "        when: { flag_on: a }",
+            "        set: { b: true }",
+            "        lock: true",
+            "      - id: b_off_when_on",
+            "        when: { flag_on: b }",
+            "        set: { b: false }",
+            "        lock: true",
+          ],
+        ),
+      ),
+    );
+    const mod = await import("../model-catalog.js");
+    expect(() => mod.getFullModelConfig("video")).toThrow(/flip-flop.*(b_on_with_a|b_off_when_on)/s);
+  });
+
+  it("loads the three forced values Tripo H3.1 declares, in their order", async () => {
+    vi.resetModules();
+    vi.doMock("node:fs", () =>
+      fsWith(
+        forcedModel(
+          "tripo-forces",
+          [
+            ...switchParam("texture", true),
+            ...switchParam("pbr", true),
+            "      texture_quality:",
+            '        fill: "panel"',
+            '        values: ["standard", "fast", "detailed", "extreme"]',
+            '        default: "standard"',
+            "        when: { flag_on: texture }",
+            "      texture_version:",
+            '        fill: "panel"',
+            '        values: ["v3.0", "v3.5"]',
+            '        default: "v3.0"',
+            "        when: { flag_on: texture }",
+            ...switchParam("generate_parts", false),
+          ],
+          [
+            "      - id: parts_geometry_only",
+            "        when: { flag_on: generate_parts }",
+            "        set: { texture: false, pbr: false }",
+            "        lock: true",
+            "      - id: pbr_needs_texture",
+            "        when: { flag_on: pbr }",
+            "        set: { texture: true }",
+            "        lock: true",
+            "      - id: fast_uses_v35",
+            '        when: { flag_on: texture, equals: { texture_quality: "fast" } }',
+            '        set: { texture_version: "v3.5" }',
+            "        lock: true",
+          ],
+        ),
+      ),
+    );
+    const mod = await import("../model-catalog.js");
+    expect(mod.getFullModelConfig("video").models[0]?.forces).toEqual([
+      { id: "parts_geometry_only", when: { flag_on: "generate_parts" }, set: { texture: false, pbr: false }, lock: true },
+      { id: "pbr_needs_texture", when: { flag_on: "pbr" }, set: { texture: true }, lock: true },
+      {
+        id: "fast_uses_v35",
+        when: { flag_on: "texture", equals: { texture_quality: "fast" } },
+        set: { texture_version: "v3.5" },
+        lock: true,
+      },
+    ]);
+  });
 });
 
 describe("a parameter declaration with a key nobody reads", () => {
@@ -637,5 +744,89 @@ describe("a parameter declaration with a key nobody reads", () => {
         modelWith({ images: { fill: "pool", accepts: "image", max_item: 7 } }),
       ),
     ).toThrow(/max_item/);
+  });
+});
+
+// inner#1691 (design 2.3): the declarations the 3D entries need.
+describe("the declarations 3D generation adds", () => {
+  it("lets a condition also require another param to hold a value", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "three_d",
+        modelWith(
+          {
+            texture: { fill: "panel", values: [true, false], default: true },
+            texture_version: { fill: "panel", values: ["v3.0", "v3.5"], default: "v3.0", when: { flag_on: "texture" } },
+            delight: {
+              fill: "panel",
+              values: [true, false],
+              default: true,
+              when: { flag_on: "texture", equals: { texture_version: "v3.5" } },
+            },
+          },
+          "t23d",
+        ),
+      ),
+    ).not.toThrow();
+  });
+
+  it("lets an integer that may be left blank state bounds that depend on other params", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "three_d",
+        modelWith(
+          {
+            smart_low_poly: { fill: "panel", values: [true, false], default: false },
+            geometry_quality: { fill: "panel", values: ["standard", "detailed"], default: "standard" },
+            face_limit: {
+              fill: "panel",
+              type: "integer",
+              min: 1,
+              max: 1_500_000,
+              default: null,
+              bounds: [
+                { when: { flag_on: "smart_low_poly" }, min: 500, max: 20_000 },
+                { when: { equals: { geometry_quality: "detailed" } }, max: 2_000_000 },
+              ],
+            },
+            model_seed: { fill: "panel", type: "integer", min: 0, max: 2_147_483_647, default: null },
+          },
+          "t23d",
+        ),
+      ),
+    ).not.toThrow();
+  });
+
+  it("lets a free text param cap its length", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "three_d",
+        modelWith({ negative_prompt: { fill: "panel", type: "text", max_length: 255, default: null } }, "t23d"),
+      ),
+    ).not.toThrow();
+  });
+
+  it("still refuses a key a condition does not have", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "three_d",
+        modelWith(
+          {
+            texture: { fill: "panel", values: [true, false], default: true },
+            delight: { fill: "panel", values: [true, false], default: true, when: { flag_on: "texture", equal: { texture: true } } },
+          },
+          "t23d",
+        ),
+      ),
+    ).toThrow(/a-model\.delight.*equal/s);
+  });
+
+  it("still refuses a key no declaration has beside the new ones", () => {
+    expect(() =>
+      assertParamDeclarations(
+        "three_d",
+        modelWith({ negative_prompt: { fill: "panel", type: "text", max_length: 255, maxLength: 255, default: null } }, "t23d"),
+      ),
+    ).toThrow(/a-model\.negative_prompt.*maxLength/s);
   });
 });

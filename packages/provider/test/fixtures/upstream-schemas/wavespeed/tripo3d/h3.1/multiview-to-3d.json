@@ -1,0 +1,148 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "auto_size": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "delight": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "enable_image_autofix": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "export_uv": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "face_limit": [
+      {
+        "type": "integer",
+        "minimum": 48,
+        "maximum": 2000000
+      }
+    ],
+    "generate_parts": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "geometry_quality": [
+      {
+        "type": "string",
+        "enum": [
+          "standard",
+          "detailed"
+        ],
+        "default": "standard"
+      }
+    ],
+    "images": [
+      {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 4,
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "model_seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "orientation": [
+      {
+        "type": "string",
+        "enum": [
+          "default",
+          "align_image"
+        ],
+        "default": "default"
+      }
+    ],
+    "pbr": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "quad": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "smart_low_poly": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "texture": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "texture_alignment": [
+      {
+        "type": "string",
+        "enum": [
+          "original_image",
+          "geometry"
+        ],
+        "default": "original_image"
+      }
+    ],
+    "texture_quality": [
+      {
+        "type": "string",
+        "enum": [
+          "standard",
+          "detailed",
+          "extreme",
+          "fast"
+        ],
+        "default": "standard"
+      }
+    ],
+    "texture_seed": [
+      {
+        "type": "integer"
+      }
+    ],
+    "texture_version": [
+      {
+        "type": "string",
+        "enum": [
+          "v3.0-20250812",
+          "v3.5-20260815"
+        ],
+        "default": "v3.0-20250812"
+      }
+    ]
+  },
+  "required": [
+    "images"
+  ]
+}

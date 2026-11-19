@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Understand and Transcribe refused with 413 (inner#1006 design §5, test
@@ -16,8 +16,9 @@ import type * as RequestModule from '@web/data/api/request';
 vi.mock('@web/data/yjs/canvas-space', () => ({
   addNode: vi.fn(() => true),
   addEdge: vi.fn(() => true),
-  runCanvasUndoBatch: vi.fn((_p: string, _s: string, run: () => void) => {
+  runCanvasUndoBatch: vi.fn((_p: string, _s: string, _o: unknown, run: () => void) => {
     run();
+    return { ok: true };
   }),
 }));
 vi.mock('@web/data/api/canvas', () => ({

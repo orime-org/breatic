@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The tool-independent step runner of the model runs (inner#1306 execution design §10.7) and the pure rules of their failures
@@ -25,7 +25,7 @@ import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/reg
 import { registered } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { chunkInputId, FullLedgerInvalid, readJobLedger, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 import { runPrediction } from "@worker/providers/wavespeed.js";
 
 /** A model's configured asynchronous rejection field: a dot path into the structured error and the value it holds. */

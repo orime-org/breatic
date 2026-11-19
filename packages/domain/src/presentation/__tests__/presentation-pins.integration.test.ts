@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Presentation pins and `derived` reclaim registration (S6e E4, inner#1306 test plan §90 E4-3, E4-4, E4-8; frames-split

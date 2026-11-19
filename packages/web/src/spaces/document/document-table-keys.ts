@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The keys at and around tables: Tab, Shift-Tab, Enter and the arrows in a
@@ -33,6 +33,7 @@ import { Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { ResolvedPos } from '@tiptap/pm/model';
+import { takeAwayCellContent } from '@web/spaces/document/document-cell-content-selection';
 import { squareSelectedTable } from '@web/spaces/document/document-table-nodes';
 import { cellAt, wholeEmptyTableSelected } from '@web/spaces/document/document-table-run';
 import {
@@ -47,6 +48,7 @@ import { cellDepthOf, isTableCell, tableAround } from '@web/spaces/document/docu
 import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
 import { heldTables, tableAtLeavingHead, tableEdgeText, takeAwayHeldTables } from '@web/spaces/document/document-table-leave-selection';
 import { BodyEdgeSelection, bodyEdgeAt, bodyEdgeBetween, headOnEdgeLine, textOrEdge } from '@web/spaces/document/document-body-edge-selection';
+import { inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 
 /** The parts of the editor these bindings use. */
 interface KeysEditor {
@@ -145,7 +147,7 @@ function breakLine(view: EditorView): boolean {
  * @param $pos - The position.
  * @returns The depth, or -1 outside any block.
  */
-function containerDepth($pos: ResolvedPos): number {
+export function containerDepth($pos: ResolvedPos): number {
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
     if ($pos.node(depth).type.name === 'blockContainer') return depth;
   }
@@ -162,7 +164,7 @@ function containerDepth($pos: ResolvedPos): number {
  * @returns False to leave the key to the body, true once the quote is taken
  *   off, undefined for a plain paragraph.
  */
-function firstStepAtStart(view: EditorView, $head: ResolvedPos, depth: number): boolean | undefined {
+export function firstStepAtStart(view: EditorView, $head: ResolvedPos, depth: number): boolean | undefined {
   const content = $head.node(depth).firstChild;
   if (content?.type.name !== 'paragraph') return false;
   if (content.attrs['quoted'] !== true) return undefined;
@@ -306,6 +308,8 @@ function tableExit(view: EditorView, $head: ResolvedPos, dir: EdgeArrow): { bloc
 function leaveEdgeTable(editor: KeysEditor, dir: EdgeArrow): boolean {
   const view = editor.prosemirrorView;
   const { selection } = view.state;
+  // A table open full screen is the whole body on screen: the caret stays in it.
+  if (inTableFullscreen(view.state)) return false;
   const exit = selection.empty ? tableExit(view, selection.$head, dir) : null;
   if (exit === null) return false;
   const before = dir === 'up' || dir === 'left';
@@ -379,6 +383,7 @@ const EXTENDING: Readonly<Record<string, Extending>> = {
  */
 function extendAcrossTable(view: EditorView, key: Extending): boolean {
   const { selection, doc } = view.state;
+  if (inTableFullscreen(view.state)) return false;
   if (!(selection instanceof TextSelection) && !(selection instanceof BodyEdgeSelection)) return false;
   const { $head, anchor } = selection;
   const step = key.back ? -1 : 1;
@@ -447,9 +452,9 @@ export const documentTableKeysExtension = createExtension(() => ({
     // Over a selection holding a whole table, through the selection's own
     // replace (inner#1619 T14): the body's deletes the range by position.
     Backspace: ({ editor }: { editor: KeysEditor }) =>
-      takeAwayHeldTables(editor.prosemirrorView) || deleteSelectedCells(editor) || backspaceAtEdge(editor.prosemirrorView),
+      takeAwayHeldTables(editor.prosemirrorView) || takeAwayCellContent(editor.prosemirrorView) || deleteSelectedCells(editor) || backspaceAtEdge(editor.prosemirrorView),
     Delete: ({ editor }: { editor: KeysEditor }) =>
-      takeAwayHeldTables(editor.prosemirrorView) || deleteSelectedCells(editor) || deleteAtEdge(editor.prosemirrorView),
+      takeAwayHeldTables(editor.prosemirrorView) || takeAwayCellContent(editor.prosemirrorView) || deleteSelectedCells(editor) || deleteAtEdge(editor.prosemirrorView),
     // The word and line deletes the body binds (Tiptap `keymap.ts:73-91`,
     // macOS ones included) delete the range by position as well.
     ...Object.fromEntries(
@@ -463,7 +468,7 @@ export const documentTableKeysExtension = createExtension(() => ({
         'Ctrl-Alt-Backspace',
         'Alt-Delete',
         'Alt-d',
-      ].map((key) => [key, ({ editor }: { editor: KeysEditor }) => takeAwayHeldTables(editor.prosemirrorView)]),
+      ].map((key) => [key, ({ editor }: { editor: KeysEditor }) => takeAwayHeldTables(editor.prosemirrorView) || takeAwayCellContent(editor.prosemirrorView)]),
     ),
     ArrowLeft: ({ editor }: { editor: KeysEditor }) =>
       collapseInCell(editor.prosemirrorView, -1) || leaveEdgeTable(editor, 'left'),

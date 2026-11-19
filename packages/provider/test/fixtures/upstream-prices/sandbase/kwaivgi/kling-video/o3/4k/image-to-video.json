@@ -1,0 +1,4 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/kwaivgi/kling-video/o3/4k/image-to-video",
+  "price_formula": "(params.duration ?? 5) * 0.42"
+}

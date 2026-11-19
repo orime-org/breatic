@@ -1,0 +1,6 @@
+# Static assets of the ingest Worker (inner#1711 design §7.1). The font set is
+# loaded by sandboxed preview pages, whose origin is null, so every font is a
+# CORS request; a version's files never change, so they cache for a year.
+/web-animation/fonts/*
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=31536000, immutable

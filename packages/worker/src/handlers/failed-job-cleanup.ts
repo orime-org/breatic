@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Node write-back safety net for jobs BullMQ judged dead (#1569 hole ②;
@@ -32,10 +32,12 @@
  * task-listener; re-applying it to an already-idle node is harmless.
  */
 import { reportCollaboratorFirstAction } from "@breatic/core";
-import { NO_CONSENT } from "@breatic/shared";
+import { NO_CONSENT, type TaskFailureReason } from "@breatic/shared";
 import type { getStreamRedis } from "@breatic/core";
 import { logger, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import {
+  nodeHistoryService,
+  sceneTaskService,
   taskService,
   settleTaskForNode,
 } from "@breatic/domain";
@@ -46,11 +48,16 @@ import {
   type PersistedOutput,
 } from "@worker/handlers/persisted-output.js";
 import {
+  billWaitingTask,
+  deliverWaiting,
   mediaKindForActivity,
   recordGenerationForNodes,
   releaseRunHold,
+  runContextOf,
+  settleSceneRow,
   type TaskJobData,
 } from "@worker/handlers/dispatch.js";
+import { costWaitOf } from "@worker/handlers/cost-wait.js";
 import { storedFailure } from "@worker/handlers/stored-failure.js";
 import { isTranscription } from "@worker/handlers/transcribe-question.js";
 import { miniToolExecutionService, type MiniToolAnalysisJob, type MiniToolExecutionJob } from "@breatic/domain";
@@ -133,13 +140,45 @@ export async function cleanupFailedJobNodes(
     return current.execution.outputs.length;
   }
   if ("hostNodeId" in job.data) throw new Error("Analysis recovery requires its execution discriminator");
+  let task = null as Awaited<ReturnType<typeof taskService.getByIdInternal>>;
+  try {
+    task = await taskService.getByIdInternal(job.data.taskId);
+  } catch (err) {
+    // Best-effort: fall through to the standard failure write-back below.
+    logger.warn({ err, taskId: job.data.taskId }, "crash_net_task_read_failed");
+  }
+
+  // A task completed and waiting on its cost, whose own job will not come back
+  // (inner#1743): delivered if its run never did, then billed on what is known
+  // and what its lookups found so far. Its hold is released by that charge.
+  // Nothing comes after this net, so a delivery that fails is logged and the
+  // task is billed all the same, and each write after the charge is tried.
+  const waiting = task && !task.billedAt ? costWaitOf(task.result) : null;
+  if (task && waiting !== null) {
+    const run = runContextOf(job.data, streamRedis);
+    const result = task.result ?? {};
+    const durationMs = task.durationMs ?? undefined;
+    let wait = waiting.wait;
+    try {
+      wait = await deliverWaiting(run, job.data.taskType, result, durationMs, waiting.wait);
+    } catch (err) {
+      logger.error({ err, taskId: job.data.taskId }, "crash_net_waiting_delivery_failed");
+    }
+    try {
+      await billWaitingTask(run, job.data.taskType, result, durationMs, wait, waiting.pending, "last");
+    } catch (err) {
+      // The billing commit itself failed: the task stays unbilled and its hold expires.
+      logger.error({ err, taskId: job.data.taskId }, "crash_net_waiting_billing_failed");
+    }
+    return run.nodeIds.length;
+  }
 
   // The run is over whatever it was, so what was held for it is free again
   // (inner#1611). Released before the canvas checks below, which only decide
   // what the nodes are told. A release that fails leaves the hold to expire.
   await releaseRunHold(job.data.taskId, job.data.userId);
 
-  const { projectId, spaceId, targetNodeIds } = job.data;
+  const { projectId, spaceId, targetNodeIds, sceneRowId } = job.data;
   if (!projectId) return 0;
 
   // #1618 A / adversarial hole ①: a task that billed (Stage 3) then
@@ -152,28 +191,24 @@ export async function cleanupFailedJobNodes(
   // task-row reconcile sweep (#1621) is the final backstop for that infra
   // boundary. The task fetch is wrapped so a lookup error just falls through
   // to the standard failure write-back.
-  let task = null as Awaited<ReturnType<typeof taskService.getByIdInternal>>;
-  try {
-    task = await taskService.getByIdInternal(job.data.taskId);
-  } catch {
-    // best-effort — fall through to the standard failure write-back below.
-  }
   const billedResult = task?.billedAt
     ? (task.result as {
         model?: string;
         cost?: number;
+        notice?: unknown;
         outputs?: PersistedOutput[];
       } | null)
     : null;
+  // A 3D Space's generation (inner#1691) holds its result on the Space's own
+  // row rather than on a node, and recovers the same way.
+  const nodeIds = targetNodeIds ?? [];
   if (
     task?.billedAt &&
     spaceId &&
-    targetNodeIds &&
-    targetNodeIds.length > 0 &&
+    (nodeIds.length > 0 || sceneRowId !== undefined) &&
     billedResult?.outputs
   ) {
     const outputs = billedResult.outputs;
-    const docName = canvasSpaceDocName(projectId, spaceId);
     // #1622: this is the SECOND billed-then-crashed recovery path (the first is
     // the dispatch.ts redelivery). Thread the same preview + ACTUAL billed
     // credits so a crash-net recovered success row is not preview-less /
@@ -186,7 +221,7 @@ export async function cleanupFailedJobNodes(
         actorUserId: task.userId,
         type: "generation:succeeded",
         spaceId: spaceId ?? null,
-        nodeId: targetNodeIds.length === 1 ? targetNodeIds[0] : null,
+        nodeId: nodeIds.length === 1 ? nodeIds[0] : null,
         taskId: job.data.taskId,
         payload: {
           source: job.data.source ?? "task",
@@ -205,12 +240,17 @@ export async function cleanupFailedJobNodes(
         { projectId, userId: task.userId, action: "generation" },
         job.data.analyticsConsent ?? NO_CONSENT,
       );
-    } catch {
+    } catch (err) {
       // Best-effort activity; the node re-record + write-back below is critical.
+      logger.error({ err, taskId: job.data.taskId, projectId }, "crash_net_success_activity_failed");
+    }
+    if (sceneRowId !== undefined) {
+      await settleSceneRow(job.data.taskId, sceneRowId, sceneTaskService.generationOutcome(billedResult));
+      return 0;
     }
     await recordGenerationForNodes(
       streamRedis,
-      docName,
+      canvasSpaceDocName(projectId, spaceId),
       {
         projectId,
         userId: task.userId,
@@ -228,9 +268,18 @@ export async function cleanupFailedJobNodes(
           toolId: job.data.source === "mini_tool" ? job.data.toolId : undefined,
         }),
       },
-      nodeResultsFrom(targetNodeIds, outputs),
+      nodeResultsFrom(nodeIds, outputs),
     );
-    return targetNodeIds.length;
+    // A task billed after waiting on its cost wrote its rows with the part
+    // known then (inner#1743); they carry the billed amount from here on.
+    if (costWaitOf(task.result) !== null) {
+      try {
+        await nodeHistoryService.updateGenerationCredits(job.data.taskId, task.billedCredits ?? 0);
+      } catch (err) {
+        logger.error({ err, taskId: job.data.taskId }, "crash_net_billed_credits_write_failed");
+      }
+    }
+    return nodeIds.length;
   }
 
   // Crash-net activity row: the worker that died never reached its
@@ -273,6 +322,11 @@ export async function cleanupFailedJobNodes(
     );
   }
   if (!spaceId) return 0;
+  if (sceneRowId !== undefined) {
+    // The row is read in each member's own language, so it holds our code.
+    await settleSceneRow(job.data.taskId, sceneRowId, { outcome: "failed", errorMessage: "internal" satisfies TaskFailureReason });
+    return 0;
+  }
   if (!targetNodeIds || targetNodeIds.length === 0) return 0;
 
   const docName = canvasSpaceDocName(projectId, spaceId);
@@ -286,7 +340,7 @@ export async function cleanupFailedJobNodes(
         outcome: "failed",
         // The same exit the handler's own failure path uses, so a lane whose
         // causes are stored as codes keeps storing codes when the net is what
-        // settles the row: a reader opens this list in their own language, and
+        // settles the row: a user opens this list in their own language, and
         // BullMQ's sentence is in one.
         errorMessage: storedFailure(
           job.data.taskType,

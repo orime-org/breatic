@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Project routes — CRUD, duplicate, and membership-aware reads.
@@ -37,7 +37,7 @@ import * as projectTransferService from "@server/modules/project/projectTransfer
 import { getSceneConfig, projectAuthService } from "@breatic/core";
 import { AppError, logger, NotFoundError } from "@breatic/core";
 import { projectNameSchema, t } from "@breatic/shared";
-import type { ProjectDetail } from "@breatic/shared";
+import type { ProjectDetail, SceneControlsConfig } from "@breatic/shared";
 
 const projects = new Hono<{ Variables: AuthVariables }>();
 
@@ -45,18 +45,53 @@ projects.use(requireAuth);
 
 /**
  * `GET /projects/:id/three-d/config` — scene controls configuration for a Viewer.
- * @returns The scale sensitivity used by the versioned controls adapter.
+ * @returns The configured scene controls, model import budgets, capture and director parameters, the same for every Project.
  */
 projects.get(
   "/:id/three-d/config",
   validate("param", z.object({ id: z.string().uuid() })),
   requireRoleOnParam("id", "viewer"),
-  (c) => c.json({ data: { scaleSensitivity: getSceneConfig().scale_sensitivity } }),
+  (c) => {
+    const config = getSceneConfig();
+    const limits = config.import;
+    const data: SceneControlsConfig = {
+      scaleSensitivity: config.scale_sensitivity,
+      import: {
+        maxInputBytes: limits.max_input_bytes,
+        maxExpandedBytes: limits.max_expanded_bytes,
+        maxArtifactBytes: limits.max_artifact_bytes,
+        maxFiles: limits.max_files,
+        maxEntryJsonBytes: limits.max_entry_json_bytes,
+        decoderWorkerLimit: limits.decoder_worker_limit,
+        maxTextureEdge: limits.max_texture_edge,
+        maxTextureBytes: limits.max_texture_bytes,
+      },
+      progressPublishMs: limits.progress_publish_ms,
+      capture: {
+        longEdgePx: config.capture.long_edge_px,
+        minFramePx: config.capture.min_frame_px,
+        canvasSyncTimeoutMs: config.capture.canvas_sync_timeout_ms,
+      },
+      director: {
+        monitorRefreshMs: config.director.monitor_refresh_ms,
+        maxLights: config.director.max_lights,
+        wheelCommitMs: config.director.wheel_commit_ms,
+        shadowMapPx: config.director.shadow_map_px,
+        pointShadowMapPx: config.director.point_shadow_map_px,
+        shadowGroundReach: config.director.shadow_ground_reach,
+        shadowBias: config.director.shadow_bias,
+        shadowNormalBias: config.director.shadow_normal_bias,
+        pointShadowBias: config.director.point_shadow_bias,
+        pointShadowNormalBias: config.director.point_shadow_normal_bias,
+      },
+    };
+    return c.json({ data });
+  },
 );
 
 /**
  * `GET /projects/:id/three-d/assets/:assetId` — resolve a registered scene model.
- * @returns The registered model URL and MIME type in the standard data envelope.
+ * @returns The registered model URL, MIME type and registered size in the standard data envelope.
  */
 projects.get(
   "/:id/three-d/assets/:assetId",

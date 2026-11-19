@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Fitting an open canvas into the limit by level of detail (inner#1413
@@ -56,7 +56,7 @@ function group(id: string, createdAt: number): Record<string, unknown> & { id: s
 /**
  * A canvas to fit.
  * @param entries - Its nodes.
- * @param selected - The ids the reader selected.
+ * @param selected - The ids the user selected.
  * @param links - Its links as [source, target].
  * @returns The input.
  */
@@ -158,6 +158,7 @@ function fit(input: FitInput, max: number): ReturnType<typeof fitCanvas> {
   expect(listedWholeOrSlim + d.names_only + d.nodes_not_listed + d.groups_not_listed).toBe(input.nodes.length);
   expect(
     chatMessageSchema.safeParse({
+      id: '33333333-3333-4333-8333-333333333333',
       message: 'hi',
       project_id: '11111111-1111-4111-8111-111111111111',
       conversation_id: '22222222-2222-4222-8222-222222222222',
@@ -203,7 +204,7 @@ describe('marking the selection', () => {
    */
   const marked = (text: string): string[] => parsed(text).nodes.filter((n) => n.selected === true).map((n) => n.id);
 
-  it('marks the nodes the reader selected, whole, slim or by name', () => {
+  it('marks the nodes the user selected, whole, slim or by name', () => {
     const input = canvasOf([group('g', 0), image('a', 1), image('b', 2), image('c', 3)], ['g', 'b']);
 
     expect(marked(fit(input, 100_000).text)).toEqual(['g', 'b']);

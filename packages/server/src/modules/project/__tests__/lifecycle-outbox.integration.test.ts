@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Forwarding the project-lifecycle outbox from several server instances
@@ -44,7 +44,7 @@ async function seed(count: number): Promise<string[]> {
   for (let i = 0; i < count; i++) {
     const projectId = randomUUID();
     const event: ProjectLifecycleEvent = { type: "project:archived", projectId, ts: Date.now() };
-    await sql`INSERT INTO project_lifecycle_outbox (kind, payload) VALUES (${event.type}, ${sql.json(event as unknown as postgres.JSONValue)})`;
+    await sql`INSERT INTO project_lifecycle_outbox (kind, payload) VALUES (${event.type}, ${sql.json(event)})`;
     ids.push(projectId);
   }
   return ids;

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Which of a model's params apply in a mode. A param naming `modes` applies in
@@ -30,7 +30,7 @@ export function appliesInMode(spec: Pick<ParamDescriptor, "modes">, mode: string
  */
 export function paramsForMode(
   params: Readonly<Record<string, unknown>>,
-  declared: Readonly<Record<string, ParamDescriptor>>,
+  declared: Readonly<Record<string, Pick<ParamDescriptor, "modes">>>,
   mode: string,
 ): Record<string, unknown> {
   return Object.fromEntries(

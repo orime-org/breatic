@@ -1,22 +1,29 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Real runs of the character templates, for judging a prompt by the pictures it gets (inner#1846).
+ * Real runs of the generation templates, for judging a prompt by the pictures it gets (inner#1846, inner#1816).
  * Each run applies the template from the panel, fills the braces, checks that the editor shows the
  * prompt the locale file holds, presses Generate and saves the picture with its prompt. It spends
- * credits, so it carries @needs-model and the default smoke run leaves it out.
+ * credits, so it carries @needs-model and the default smoke run leaves it out; each generate node runs at
+ * its model's lowest resolution and quality, keeping the template's duration and ratio.
  *
  * Environment: TEMPLATE_RUN_ONLY picks one template, TEMPLATE_RUN_REPEAT runs each that many times,
  * TEMPLATE_RUN_LABEL tags the files of one round, TEMPLATE_RUN_OUT is where they go (default
  * test-results/template-runs), TEMPLATE_RUN_IMAGE is the character picture (default the fixture),
- * TEMPLATE_RUN_LOCALE switches the interface language for the run. TEMPLATE_RUN_ASK instead sends that request to the
- * Agent with the picture attached and generates the node its proposal places.
+ * TEMPLATE_RUN_LOCALE switches the interface language for the run (a run's `localeFills` give that language's words),
+ * TEMPLATE_RUN_DEFAULT_TIER runs at the tier the template leaves in effect, for templates whose text in the picture is judged; the sound templates' words are Chinese, written for
+ * TEMPLATE_RUN_LOCALE=zh-CN (their braces come in the same order in every locale). TEMPLATE_RUN_ASK instead sends that request to the
+ * Agent with the picture attached (TEMPLATE_RUN_ASK_IMAGE names other fixtures, comma-separated, empty for none) and generates the node
+ * its proposal places; TEMPLATE_RUN_ASK_REPLY is the user's answer when the agent asks first, and
+ * TEMPLATE_RUN_ASK_ONLY stops once the turn is recorded. TEMPLATE_RUN_LEAVE_EMPTY names optional inputs (comma-separated) a run
+ * leaves empty (inner#1811): every generation request is recorded, and the paragraph of an optional input must be in each
+ * request of a node it feeds exactly when that input holds a picture.
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
-import { expect, type Page } from 'playwright/test';
-import { markedSegments } from '@breatic/shared';
+import { expect, type Locator, type Page } from 'playwright/test';
+import { GENERATION_TEMPLATES, markedSegments, templateAnchor } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { switchLanguage } from '../helpers/language';
 
@@ -24,15 +31,18 @@ import { openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { dropFile } from '../helpers/upload';
-import { startNewConversation } from '../helpers/conversation';
+import { TURN_BUDGET_MS, askInNewConversation, storedMessages } from '../helpers/conversation';
 import { seedNode, wire } from '../helpers/mini-tool';
 
 const OUT = process.env.TEMPLATE_RUN_OUT ?? join(__dirname, '../../test-results/template-runs');
-const CHARACTER = process.env.TEMPLATE_RUN_IMAGE ?? join(__dirname, '../fixtures/character.jpg');
+const FIXTURES = join(__dirname, '../fixtures');
+const CHARACTER = process.env.TEMPLATE_RUN_IMAGE ?? join(FIXTURES, 'character.jpg');
 const LABEL = process.env.TEMPLATE_RUN_LABEL ?? 'run';
 const REPEAT = Number(process.env.TEMPLATE_RUN_REPEAT ?? '1');
 const LOCALE = process.env.TEMPLATE_RUN_LOCALE;
+const DEFAULT_TIER = process.env.TEMPLATE_RUN_DEFAULT_TIER !== undefined;
 const LOCALE_FILE = join(__dirname, `../../../../locales/${LOCALE ?? 'en'}.json`);
+const LEAVE_EMPTY = new Set((process.env.TEMPLATE_RUN_LEAVE_EMPTY ?? '').split(',').filter((key) => key !== ''));
 mkdirSync(OUT, { recursive: true });
 
 /**
@@ -48,12 +58,13 @@ function fromLocale(key: string): string {
 }
 
 /**
- * A prompt cut at every chip and brace into the literal pieces the editor must show in order.
+ * A prompt cut at every chip, brace and line break into the literal pieces the editor must show in order.
  * @param key - The prompt's key.
  * @returns The pieces.
  */
 function draftPieces(key: string): string[] {
-  return markedSegments(fromLocale(key)).flatMap((segment) => (segment.text?.trim() ? [segment.text.trim()] : []));
+  // A line break starts a new paragraph in the editor, so the pieces are cut at it too.
+  return markedSegments(fromLocale(key)).flatMap((segment) => (segment.text ?? '').split('\n').map((piece) => piece.trim()).filter((piece) => piece !== ''));
 }
 
 /**
@@ -72,6 +83,9 @@ function assertDraftSent(key: string, shown: string): void {
 
 test.use({ viewport: { width: 1600, height: 1000 } });
 
+/** A generate node's type. */
+type Kind = 'image' | 'video' | 'audio';
+
 let page: Page;
 let projectId = '';
 let spaceId = '';
@@ -79,7 +93,7 @@ let spaceId = '';
 interface NodeView {
   id: string;
   type: string;
-  data: { name?: string; content?: string; templateNode?: { key: string }; taskCounts?: { running: number; done: number; failed: number } };
+  data: { name?: string; content?: string; templateNode?: { template: string; key: string; input?: true }; taskCounts?: { running: number; done: number; failed: number } };
 }
 
 /** The open Space's nodes and edges. */
@@ -112,22 +126,29 @@ async function openPanel(nodeId: string): Promise<void> {
   if (!box) throw new Error(`node ${nodeId} has no box`);
   await node.dispatchEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: box.x + box.width / 2, clientY: box.y + 8 });
   await page.getByTestId('node-menu-generate').click();
-  await expect(page.getByTestId('generate-prompt-editor')).toBeVisible({ timeout: 15_000 });
+  // A node in multi-shot mode shows its shots in place of the prompt.
+  await expect(page.getByTestId('generate-prompt-editor').or(page.getByTestId('generate-storyboard-shot-1-editor'))).toBeVisible({ timeout: 15_000 });
 }
 
-/** Pick a template from the open panel's character goal. */
+/** Pick a template from the open panel, under its own goal. */
 async function applyTemplate(id: string): Promise<void> {
+  const goal = GENERATION_TEMPLATES.find((template) => template.id === id)?.goal;
+  if (goal === undefined) throw new Error(`no template ${id}`);
   await page.getByTestId('generate-template-trigger').click();
-  const box = await page.getByTestId('generate-template-goal-character').boundingBox();
-  if (!box) throw new Error('no character goal row');
+  const box = await page.getByTestId(`generate-template-goal-${goal}`).boundingBox();
+  if (!box) throw new Error(`no ${goal} goal row`);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
   await page.getByTestId(`generate-template-${id}`).click();
   await page.waitForTimeout(1500);
 }
 
-/** Replace each brace span in the open prompt, in order, the way a reader selects and types. */
-async function fillBraces(values: string[]): Promise<void> {
-  const editor = page.getByTestId('generate-prompt-editor');
+/**
+ * Replace each brace span in one editor of the open panel, in order, the way a user selects and types.
+ * @param values - What each brace span becomes.
+ * @param editorId - The editor's test id: the prompt, or one shot's.
+ */
+async function fillBraces(values: string[], editorId = 'generate-prompt-editor'): Promise<void> {
+  const editor = page.getByTestId(editorId);
   for (const value of values) {
     const found = await editor.evaluate((root) => {
       const ce = (root.matches('[contenteditable="true"]') ? root : root.querySelector('[contenteditable="true"]')) as HTMLElement | null;
@@ -156,11 +177,98 @@ async function fillBraces(values: string[]): Promise<void> {
   await expect(editor).not.toContainText('{');
 }
 
+/**
+ * Open one shot of the open multi-shot panel through its row, the way a user does, unless it is open already:
+ * only one shot is open at a time, and a folded shot takes no typing.
+ * @param n - The shot's number, from 1.
+ */
+async function openShot(n: number): Promise<void> {
+  const toggle = page.getByTestId(`generate-storyboard-shot-${String(n)}-toggle`);
+  if ((await toggle.getAttribute('aria-expanded')) === 'true') return;
+  await bringIntoView(toggle);
+  await toggle.click();
+  await expect(page.getByTestId(`generate-storyboard-shot-${String(n)}-editor`).locator('.ProseMirror')).toBeFocused();
+}
+
+/**
+ * Scroll the canvas up over an empty spot until a control of the open panel clears the viewport toolbar, the way
+ * a user does when a tall panel (five shots) runs off the bottom of the screen; a plain wheel pans the canvas.
+ * @param control - The control to reach.
+ */
+async function bringIntoView(control: Locator): Promise<void> {
+  /**
+   * How far the control still reaches past the top of the viewport toolbar.
+   * @returns The overlap in pixels; zero or less once it is clear.
+   */
+  const overlap = async (): Promise<number> => {
+    const box = await control.boundingBox();
+    const toolbar = await page.getByTestId('viewport-toolbar').boundingBox();
+    return box && toolbar ? box.y + box.height - toolbar.y + 8 : 0;
+  };
+  if ((await overlap()) <= 0) return;
+  const spot = await visibleSpace(page).evaluate((root) => {
+    const pane = root.querySelector('.react-flow__pane')?.getBoundingClientRect();
+    if (!pane) return null;
+    for (let y = pane.top + 20; y < pane.bottom - 20; y += 20) {
+      for (let x = pane.left + 80; x < pane.right - 80; x += 40) {
+        if (document.elementFromPoint(x, y)?.classList.contains('react-flow__pane')) return { x, y };
+      }
+    }
+    return null;
+  });
+  if (spot === null) throw new Error('no empty spot to scroll the canvas over');
+  await page.mouse.move(spot.x, spot.y);
+  // The canvas pans by a fraction of each wheel step, so it scrolls until the control is clear.
+  for (let step = 0; step < 10 && (await overlap()) > 0; step += 1) {
+    await page.mouse.wheel(0, (await overlap()) + 100);
+    await page.waitForTimeout(400);
+  }
+  expect(await overlap()).toBeLessThanOrEqual(0);
+}
+
+/**
+ * Pick the open panel's cheapest tier, the way a user does: its lowest resolution and, when its model has one,
+ * its lowest quality, the first of the values the model declares. A run judges a template's words against its
+ * duration and ratio, which it keeps; resolution and quality change neither, so the run pays for the cheapest tier.
+ */
+async function cheapestTier(): Promise<void> {
+  // The image panel keeps resolution under its ratio popover, the video panel under its params popover.
+  const popovers = [
+    { trigger: 'generate-ratio-trigger', prefix: 'generate-resolution-option-' },
+    { trigger: 'generate-video-params-trigger', prefix: 'generate-video-resolution-option-' },
+  ];
+  for (const { trigger: id, prefix } of popovers) {
+    const trigger = page.getByTestId(id);
+    if ((await trigger.count()) === 0) continue;
+    await trigger.click();
+    const values = (await page.locator(`[data-testid^="${prefix}"]`).evaluateAll((all) => all.map((one) => one.getAttribute('data-testid') ?? '')))
+      .map((value) => value.slice(prefix.length));
+    const size = (value: string): number => Number.parseFloat(value) * (/k$/i.test(value) ? 1000 : 1);
+    const lowest = [...values].sort((a, b) => size(a) - size(b))[0];
+    if (lowest !== undefined) await page.getByTestId(`${prefix}${lowest}`).click();
+    // Quality sits in the same popover as resolution, so it is picked before the popover closes.
+    const quality = page.locator('[data-testid^="generate-param-quality-option-"]');
+    if ((await quality.count()) > 0) await quality.first().click();
+    await trigger.click();
+  }
+}
+
+/** Each node type's Generate button. */
+const EXECUTE: Record<Kind, string> = { image: 'generate-execute', video: 'generate-video-execute', audio: 'generate-audio-execute' };
+
+/** How long one generation may take to land on its node. */
+const GENERATION_WAIT_MS = 1_500_000;
+
+/** Each node type's file extension for a saved result. */
+const EXTENSION: Record<Kind, string> = { image: 'png', video: 'mp4', audio: 'mp3' };
+
 /** Press Generate on the open panel and wait until the node holds a new result. */
-async function generate(nodeId: string, kind: 'image' | 'video'): Promise<string> {
+async function generate(nodeId: string, kind: Kind): Promise<string> {
   const before = (await graph()).nodes.find((n) => n.id === nodeId)?.data.content ?? '';
-  const button = page.getByTestId(kind === 'video' ? 'generate-video-execute' : 'generate-execute');
+  if (!DEFAULT_TIER) await cheapestTier();
+  const button = page.getByTestId(EXECUTE[kind]);
   await expect(button).toBeEnabled({ timeout: 20_000 });
+  await bringIntoView(button);
   await button.click();
   let content = '';
   let state = '';
@@ -175,16 +283,66 @@ async function generate(nodeId: string, kind: 'image' | 'video'): Promise<string
           : content !== '' && content !== before && (node?.data.taskCounts?.running ?? 0) === 0 ? 'done' : 'waiting';
         return state;
       },
-      { timeout: 1_500_000, intervals: [5_000] },
+      { timeout: GENERATION_WAIT_MS, intervals: [5_000] },
     )
     .not.toBe('waiting');
   expect(state).toBe('done');
   return content;
 }
 
-/** The prompt text the open panel shows. */
-async function promptText(): Promise<string> {
-  return (await page.getByTestId('generate-prompt-editor').innerText()).trim();
+/**
+ * The text one editor of the open panel shows.
+ * @param editorId - The editor's test id: the prompt, or one shot's.
+ * @returns Its text.
+ */
+async function promptText(editorId = 'generate-prompt-editor'): Promise<string> {
+  return (await page.getByTestId(editorId).innerText()).trim();
+}
+
+/**
+ * The dialogue lines the prompt editor shows, each its speaker as the picker
+ * names it and its words (inner#1825 design 8.5).
+ * @returns One entry per line.
+ */
+async function dialogueLines(): Promise<{ speaker: string; text: string }[]> {
+  const lines = page.getByTestId('generate-prompt-editor').locator('.dialogue-line');
+  const shown: { speaker: string; text: string }[] = [];
+  for (const line of await lines.all()) {
+    shown.push({
+      speaker: (await line.getByTestId('dialogue-line-speaker').innerText()).trim(),
+      text: (await line.locator('p').innerText()).trim(),
+    });
+  }
+  return shown;
+}
+
+/** A slot of the video panel a template node is picked into, by its test-id stem. */
+type VideoSlotId = 'first-frame' | 'end-frame' | 'character-image' | 'driving-audio' | 'left-audio' | 'right-audio';
+
+/**
+ * Pick a node into one slot of the open video panel, the way a user does: the slot, then the
+ * part of the node still showing, since a tall result next to it can cover its centre.
+ * @param slot - The slot.
+ * @param nodeId - The node.
+ * @throws {Error} When no part of the node is showing.
+ */
+async function pickIntoFrame(slot: VideoSlotId, nodeId: string): Promise<void> {
+  await page.getByTestId(`generate-video-tool-${slot}`).click();
+  const point = await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    for (let y = 0.1; y < 1; y += 0.1) {
+      for (let x = 0.1; x < 1; x += 0.1) {
+        const at = { x: box.left + box.width * x, y: box.top + box.height * y };
+        if (document.elementFromPoint(at.x, at.y)?.closest('.react-flow__node') === node) return at;
+      }
+    }
+    return null;
+  });
+  if (point === null) throw new Error(`no part of node ${nodeId} is showing`);
+  await page.mouse.click(point.x, point.y);
+  // An audio slot paints no thumbnail; its clear button shows once it holds the pick.
+  const filled = slot.endsWith('-audio') ? `generate-video-${slot}-clear` : `generate-video-${slot}-thumbnail`;
+  await expect(page.getByTestId(filled)).toBeVisible({ timeout: 30_000 });
 }
 
 /**
@@ -212,16 +370,73 @@ async function keyed(key: string): Promise<string> {
   return node.id;
 }
 
-/** Drop the character picture onto the canvas and return its node once it holds the upload. */
-async function dropCharacter(): Promise<string> {
+/**
+ * The words that open the paragraph of each optional input in one generate node's prompt, as the locale file
+ * holds them: what a request carries exactly when that input holds a picture (inner#1811).
+ * @param id - The template.
+ * @param key - The generate node's key.
+ * @returns Input key to the paragraph's opening words.
+ */
+function optionalLeads(id: string, key: string): Map<string, string> {
+  const template = GENERATION_TEMPLATES.find((one) => one.id === id);
+  const leads = new Map<string, string>();
+  if (template === undefined) return leads;
+  const optional = template.inputs.filter((input) => input.optional === true && (input.feeds ?? [template.anchor]).includes(key));
+  // A node no optional input feeds is not read: a shot-list node has no prompt string.
+  if (optional.length === 0) return leads;
+  const words = fromLocale(`canvas.template.${id}.${key === template.anchor ? '' : `node.${key}.`}prompt`).split('\n');
+  for (const input of optional) {
+    const name = fromLocale(`canvas.template.${id}.input.${input.key}.name`);
+    const paragraph = words.find((line) => markedSegments(line).some((s) => s.slot?.kind === 'asset' && s.slot.label === name));
+    const lead = paragraph === undefined ? undefined : markedSegments(paragraph).find((s) => s.text?.trim())?.text?.trim();
+    if (lead !== undefined) leads.set(input.key, lead);
+  }
+  return leads;
+}
+
+/** The prompt of each generation request the page has sent, in order. */
+const requests: string[] = [];
+
+/**
+ * Check one node's last request against its optional inputs: each one's paragraph is sent exactly when the input
+ * holds a picture.
+ * @param id - The template.
+ * @param key - The generate node's key.
+ * @param prompt - What the request carried.
+ * @param empty - The optional inputs left empty.
+ */
+function expectOptionalParagraphs(id: string, key: string, prompt: string, empty: ReadonlySet<string> = LEAVE_EMPTY): void {
+  for (const [input, lead] of optionalLeads(id, key)) {
+    if (empty.has(input)) expect(prompt, `${key} leaves out the ${input} paragraph`).not.toContain(lead);
+    else expect(prompt, `${key} sends the ${input} paragraph`).toContain(lead);
+  }
+}
+
+/** Each dropped file's type and node type, by extension. */
+const DROPPED: Record<string, { mime: string; kind: Kind }> = {
+  '.png': { mime: 'image/png', kind: 'image' },
+  '.jpg': { mime: 'image/jpeg', kind: 'image' },
+  '.mp4': { mime: 'video/mp4', kind: 'video' },
+  '.mp3': { mime: 'audio/mpeg', kind: 'audio' },
+};
+
+/**
+ * Drop a file onto the canvas and return its node once it holds the upload.
+ * @param file - The file's path.
+ * @param bytes - Its bytes, when they are not the file's own.
+ * @returns The node's id.
+ */
+async function dropMedia(file: string, bytes: Buffer = readFileSync(file)): Promise<string> {
   const before = new Set((await graph()).nodes.map((n) => n.id));
-  const ext = extname(CHARACTER).toLowerCase();
-  await dropFile(page, `character-${Date.now()}${ext}`, ext === '.png' ? 'image/png' : 'image/jpeg', readFileSync(CHARACTER));
+  const ext = extname(file).toLowerCase();
+  const dropped = DROPPED[ext];
+  if (dropped === undefined) throw new Error(`no file type for ${ext}`);
+  await dropFile(page, `${dropped.kind}-${Date.now()}${ext}`, dropped.mime, bytes);
   let id = '';
   await expect
     .poll(
       async () => {
-        const node = (await graph()).nodes.find((n) => !before.has(n.id) && n.type === 'image');
+        const node = (await graph()).nodes.find((n) => !before.has(n.id) && n.type === dropped.kind);
         id = node?.id ?? '';
         return node?.data.content ?? '';
       },
@@ -235,6 +450,12 @@ const STYLE = '3D cartoon';
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage();
+  requests.length = 0;
+  page.on('request', (request) => {
+    if (request.method() !== 'POST' || !/\/canvas\/tasks(\?|$)/.test(request.url())) return;
+    const body = request.postDataJSON() as { params?: { prompt?: unknown } } | null;
+    requests.push(typeof body?.params?.prompt === 'string' ? body.params.prompt : JSON.stringify(body));
+  });
   await openSmokeProject(page);
   if (LOCALE) await switchLanguage(page, LOCALE);
   projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] ?? '';
@@ -259,49 +480,160 @@ test.afterEach(async () => {
 const INFO = 'Mika, bicycle courier, 25, cheerful, stubborn, curious, quick; racing the rain to deliver on time';
 
 const AGENT_ASK = process.env.TEMPLATE_RUN_ASK;
+const ASK_IMAGE = process.env.TEMPLATE_RUN_ASK_IMAGE === undefined ? CHARACTER : process.env.TEMPLATE_RUN_ASK_IMAGE === '' ? undefined : process.env.TEMPLATE_RUN_ASK_IMAGE.split(',').map((name) => join(FIXTURES, name));
+const ASK_REPLY = process.env.TEMPLATE_RUN_ASK_REPLY;
 
 if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
-  test.setTimeout(1_800_000);
-  const composer = page.getByTestId('chat-composer-box');
-  await expect(composer).toBeVisible({ timeout: 20_000 });
-  await startNewConversation(page);
-  await expect(page.getByTestId('chat-composer-attach')).toBeEnabled({ timeout: 20_000 });
-  await page.getByTestId('chat-composer-file-input').setInputFiles(CHARACTER);
-  await expect(page.getByTestId('chat-composer-chips')).toContainText('character', { timeout: 30_000 });
-  await composer.fill(AGENT_ASK);
-  const send = page.getByTestId('chat-composer-send');
-  await expect(send).toBeEnabled({ timeout: 60_000 });
-  await send.click();
-  await expect(page.getByTestId('message-bubble')).toHaveCount(2, { timeout: 200_000 });
-  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 600_000 });
+  // Up to two turns, then one generation, plus setup.
+  test.setTimeout(2 * TURN_BUDGET_MS + GENERATION_WAIT_MS + 120_000);
+  // The agent asks what only the user knows before it fills a template.
+  await askInNewConversation(page, AGENT_ASK, { file: ASK_IMAGE, reply: ASK_REPLY });
+  const parts = (await storedMessages(page)).filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []);
+  record({ template: 'agent', label: LABEL, ask: AGENT_ASK, reply: ASK_REPLY, parts });
+  // Recorded first, so a turn that ends without a proposal still shows what it did.
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 30_000 });
-  const turn = await page.evaluate(async () => {
-    const list = await (await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })).json();
-    const id = list?.data?.conversations?.[0]?.id as string;
-    const read = await (await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })).json();
-    return JSON.stringify((read?.data?.messages ?? []).filter((m: { role?: string }) => m.role === 'assistant').flatMap((m: { parts?: unknown[] }) => m.parts ?? []));
-  });
-  record({ template: 'agent', label: LABEL, ask: AGENT_ASK, parts: JSON.parse(turn) as unknown });
+  if (process.env.TEMPLATE_RUN_ASK_ONLY !== undefined) return;
   const before = new Set((await graph()).nodes.map((n) => n.id));
   await page.getByTestId('proposal-card').last().getByTestId('proposal-use').click();
-  let target = '';
-  await expect
-    .poll(async () => {
-      target = (await graph()).nodes.find((n) => !before.has(n.id) && n.type === 'image' && (n.data.content ?? '') === '')?.id ?? '';
-      return target;
-    }, { timeout: 60_000 })
-    .not.toBe('');
-  await openPanel(target);
-  const prompt = await promptText();
-  const url = await generate(target, 'image');
-  record({ template: 'agent', label: LABEL, result: { prompt, url } });
-  await save(url, `agent-${LABEL}.png`);
+  await expect.poll(async () => (await graph()).nodes.filter((n) => !before.has(n.id)).length, { timeout: 60_000 }).toBeGreaterThan(0);
+  const landed = (await graph()).nodes.filter((n) => !before.has(n.id));
+  // A template landing: its input nodes carry their keys, and its anchor carries none.
+  const template = GENERATION_TEMPLATES.find((one) => one.id === landed.find((n) => n.data.templateNode !== undefined)?.data.templateNode?.template);
+  const empty = new Set(
+    landed.filter((n) => n.data.templateNode?.input === true && (n.data.content ?? '') === '').map((n) => n.data.templateNode?.key ?? ''),
+  );
+  // Each generation the proposal placed, pictures first so a video finds its still made.
+  const order: Kind[] = ['image', 'video', 'audio'];
+  const targets = landed
+    .filter((n) => n.data.templateNode?.input !== true && (n.data.content ?? '') === '' && order.includes(n.type as Kind))
+    .sort((a, b) => order.indexOf(a.type as Kind) - order.indexOf(b.type as Kind));
+  expect(targets.length, 'the proposal places a generation').toBeGreaterThan(0);
+  for (const target of template === undefined ? targets.slice(0, 1) : targets) {
+    const key = target.data.templateNode?.key ?? template?.anchor ?? '';
+    await openPanel(target.id);
+    const prompt = await promptText();
+    if (template !== undefined) {
+      // An optional input left empty greys its paragraph in the box.
+      const optional = [...optionalLeads(template.id, key).keys()].filter((input) => empty.has(input));
+      await expect(page.getByTestId('generate-prompt-editor').locator('[data-prompt-held-back]')).toHaveCount(optional.length > 0 ? 1 : 0);
+    }
+    const sent = requests.length;
+    const url = await generate(target.id, target.type as Kind);
+    const sentPrompt = requests.at(-1) ?? '';
+    expect(requests.length, 'one request per generation').toBe(sent + 1);
+    if (template !== undefined) expectOptionalParagraphs(template.id, key, sentPrompt, empty);
+    record({ template: 'agent', label: LABEL, node: key, empty: [...empty], result: { prompt, sent: sentPrompt, url } });
+    await save(url, `agent-${LABEL}-${key || 'result'}.${EXTENSION[target.type as Kind]}`);
+  }
 });
 
 const FEATURES = 'short black bob, red hooded raincoat, grey hoodie, yellow sneakers';
 
-/** How each template is run: its anchor's node type, whether the character picture is wired in, the template nodes generated before the anchor, and what each one's braces are filled with, in order. */
-const RUNS: Record<string, { type: 'image' | 'video'; photo: boolean; first: string[]; fills: Record<string, string[]> }> = {
+/** What every section of the score in four sections shares: genre, tempo, key and instruments. */
+const SECTION_SHARED = ['温暖的原声民谣', '96 BPM', 'A 大调', '原声吉他、钢琴和轻打击乐'];
+
+/** The intro's words before its length: the film, then what every section shares. */
+const SECTION_FILM = ['一支两分钟的咖啡品牌片', ...SECTION_SHARED];
+
+/**
+ * The voice to clone: the speech fixture played twice over, 12.3 seconds of one speaker, since a clone takes 10
+ * seconds or more and the fixture runs 6.1. Its frames are constant-rate MP3 with no tag, so the two copies join
+ * into one playable file.
+ */
+const VOICE_SAMPLE = 'voice sample';
+
+/**
+ * A file a run wires in, from the fixtures.
+ * @param media - Its path under the fixtures, or `voice sample`.
+ * @returns The path it is dropped under and its bytes.
+ */
+function mediaOf(media: string): { file: string; bytes: Buffer } {
+  if (media !== VOICE_SAMPLE) return { file: join(FIXTURES, media), bytes: readFileSync(join(FIXTURES, media)) };
+  const speech = readFileSync(join(FIXTURES, 'mini-tools/speech.mp3'));
+  return { file: join(FIXTURES, 'voice-sample.mp3'), bytes: Buffer.concat([speech, speech]) };
+}
+
+/**
+ * Generate a short song with vocals on a node of its own, for a cover to redo: the lowest-cost model that sings
+ * lyrics it is given.
+ * @returns The node's id.
+ */
+async function generateSong(): Promise<string> {
+  const id = crypto.randomUUID();
+  // Close to the anchor seeded at 600: opening this panel centres the canvas
+  // on the song, and a node seeded outside the viewport is never rendered.
+  await seedNode(page, { projectId, spaceId }, id, 'audio', 250, { name: 'song-run', state: 'idle' });
+  await openPanel(id);
+  await page.getByTestId('generate-audio-mode-trigger').click();
+  await page.getByTestId('generate-audio-mode-t2m').click();
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-mureka-v9.5-generate-song').click();
+  await page.getByTestId('generate-prompt-editor').click();
+  await page.keyboard.type('温暖的流行民谣，女声，原声吉他伴奏');
+  await page.getByTestId('generate-prompt-group-lyrics-toggle').click();
+  await expect(page.getByTestId('generate-lyrics-editor').locator('.ProseMirror')).toBeFocused();
+  await page.keyboard.type('清晨的街角，面包刚出炉，我们慢慢走，不赶路');
+  const url = await generate(id, 'audio');
+  record({ template: 'song-cover', node: 'song', label: LABEL, result: { url } });
+  return id;
+}
+
+/**
+ * Pick the anchor's result into one slot of the open audio panel, the way a user does: the slot, then the part
+ * of the anchor still showing.
+ * @param slot - The slot's test-id stem, e.g. `sound-video`.
+ * @param nodeId - The anchor.
+ * @throws {Error} When no part of the anchor is showing.
+ */
+async function pickIntoAudioSlot(slot: string, nodeId: string): Promise<void> {
+  await page.getByTestId(`generate-audio-tool-${slot}`).click();
+  const point = await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    for (let y = 0.1; y < 1; y += 0.1) {
+      for (let x = 0.1; x < 1; x += 0.1) {
+        const at = { x: box.left + box.width * x, y: box.top + box.height * y };
+        if (document.elementFromPoint(at.x, at.y)?.closest('.react-flow__node') === node) return at;
+      }
+    }
+    return null;
+  });
+  if (point === null) throw new Error(`no part of node ${nodeId} is showing`);
+  await page.mouse.click(point.x, point.y);
+  await expect(page.getByTestId(`generate-audio-${slot}-clear`)).toBeVisible({ timeout: 30_000 });
+}
+
+/** How a template is run. */
+interface Run {
+  /** The anchor's node type. */
+  type: Kind;
+  /** Whether a picture is wired in: the character picture, or `image` from the fixtures. */
+  photo: boolean;
+  image?: string;
+  /**
+   * A picture from the fixtures for each input, wired in the order the template declares its inputs (inner#1811),
+   * in place of `photo`; an optional input in TEMPLATE_RUN_LEAVE_EMPTY is left out and the template places it empty.
+   */
+  inputs?: Record<string, string>;
+  /** A file of another kind wired in, from the fixtures: `voice sample` is the speech fixture played twice over. */
+  media?: string;
+  /** A song with vocals generated first and wired in: covers refuse an instrumental ("Cover mode needs a song with vocals"). */
+  song?: boolean;
+  /** The template nodes generated before the anchor. */
+  first: string[];
+  /** The template nodes generated after the anchor, each with the anchor's result picked into one of its slots first. */
+  after?: { key: string; slot: string }[];
+  /** What each node's braces are filled with, in order; `anchor` for the anchor. */
+  fills: Record<string, string[]>;
+  /** Other words for the braces when the run's interface language is the key, in the same shape as `fills`. */
+  localeFills?: Record<string, Record<string, string[]>>;
+  /** What each of the anchor's shots' braces are filled with, in order. */
+  shots?: string[][];
+  /** The template nodes picked into the anchor's slots once generated. */
+  frames?: Partial<Record<VideoSlotId, string>>;
+}
+
+/** How each template is run. */
+const RUNS: Record<string, Run> = {
   'character-bible': { type: 'image', photo: true, first: [], fills: { anchor: [INFO, STYLE] } },
   'expression-sheet': { type: 'image', photo: true, first: [], fills: { anchor: [STYLE] } },
   'costume-sheet': { type: 'image', photo: true, first: [], fills: { anchor: ['the hands'] } },
@@ -340,6 +672,434 @@ const RUNS: Record<string, { type: 'image' | 'video'; photo: boolean; first: str
     },
   },
   'character-showcase-orbit': { type: 'video', photo: true, first: [], fills: { anchor: ['a rooftop with railings in front and city towers far away'] } },
+  'food-money-shot': {
+    type: 'video',
+    photo: true,
+    image: 'dish.jpg',
+    first: [],
+    fills: { anchor: ['steam rising off the melted cheese', 'a slice lifted with a long cheese pull', 'a soft sizzle and a crisp crunch of the crust'] },
+  },
+  'recipe-process-montage': {
+    type: 'video',
+    photo: true,
+    image: 'dish.jpg',
+    first: [],
+    fills: {
+      anchor: [
+        'top-down over the counter',
+        'dough pressed out into a round',
+        'tomato sauce spread to the edge',
+        'mozzarella torn over the top and basil leaves added',
+        'it slides out of the oven, bubbling',
+      ],
+    },
+  },
+  'dish-hero-still': { type: 'image', photo: true, image: 'dish.jpg', first: [], fills: { anchor: ['a dark slate table with a linen napkin'] } },
+  'name-as-world-typography': {
+    type: 'image',
+    photo: false,
+    first: [],
+    fills: { anchor: ['ROME', 'the Colosseum forms the O, aqueduct arches run through the M', 'terracotta red'] },
+    localeFills: { 'zh-CN': { anchor: ['成都', '熊猫趴在「成」字的横上，火锅的红汤流过「都」字', '砖红'] } },
+  },
+  'destination-festival-poster': {
+    type: 'image',
+    photo: false,
+    first: [],
+    fills: { anchor: ['Kyoto', 'the autumn maple season', 'KYOTO · AUTUMN'] },
+    localeFills: { 'zh-CN': { anchor: ['京都', '秋季红叶季', '京都·红叶'] } },
+  },
+  'photo-paper-diorama': {
+    type: 'image',
+    photo: true,
+    image: 'pet.jpg',
+    first: [],
+    fills: { anchor: ['the dog', 'Sunday walks / smell like grass'] },
+    localeFills: { 'zh-CN': { anchor: ['那只狗', '周日的散步 / 有青草的味道'] } },
+  },
+  'vehicle-speed-cutlist': {
+    type: 'video',
+    photo: true,
+    image: 'vehicle.jpg',
+    first: [],
+    fills: { anchor: ['a driver in sunglasses, both hands on the wheel', 'a dry coastal highway at sunset, cliffs on one side and the sea on the other', 'a low sun ahead at the end of the road'] },
+    localeFills: { 'zh-CN': { anchor: ['戴墨镜、双手握方向盘的司机', '日落时干燥的海边公路，一边是悬崖，一边是大海', '路尽头前方低垂的太阳'] } },
+  },
+  'sports-live-coverage': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: {
+      anchor: [
+        'an obstacle course over a pool: a balance beam, a swinging bag, a foam wall',
+        'the swinging bag',
+        'she falls into the water with a big splash',
+        'she climbs out soaked, laughing, and waves to the crowd',
+      ],
+    },
+    localeFills: { 'zh-CN': { anchor: ['水池上的闯关赛道：平衡木、摆锤沙袋、泡沫墙', '摆过来的沙袋', '她掉进水里，水花四溅', '她浑身湿透地爬上岸，笑着向观众挥手'] } },
+  },
+  'extreme-sports-run': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: {
+      anchor: [
+        'snowboarding off a kicker on a sunny mountain slope',
+        'the board edge carving the snow, spray flying off each turn',
+        'one grab of the board',
+        'snow bursting out around the board',
+      ],
+    },
+    localeFills: { 'zh-CN': { anchor: ['阳光下的雪山坡，单板滑雪冲上跳台', '板刃切进雪里，每次转弯扬起雪雾', '抓一次板', '雪从板边炸开'] } },
+  },
+  'pet-selfie-vlog': {
+    type: 'video',
+    photo: false,
+    inputs: { pet: 'pet.jpg', person: 'character.jpg' },
+    first: [],
+    fills: { anchor: ['a sunny living room', 'jumps onto the sofa and sniffs the phone'] },
+  },
+  // inner#1811: the e-commerce ads, on the product photo and its colours made in the product (§9).
+  'product-ad-15s': {
+    type: 'video',
+    photo: false,
+    inputs: { product: 'product.jpg', person: 'character.jpg' },
+    first: ['still'],
+    fills: { still: ['a sunlit kitchen counter'], anchor: ['a hand sets the bottle down hard on the counter', 'a sunlit kitchen', 'keeps water ice-cold for 24 hours'] },
+    localeFills: { 'zh-CN': { still: ['阳光充足的厨房台面'], anchor: ['一只手把水瓶重重放在台面上', '阳光充足的厨房', '24 小时保冷'] } },
+  },
+  'ugc-creator-review': {
+    type: 'video',
+    photo: false,
+    inputs: { creator: 'character.jpg', product: 'product.jpg' },
+    first: [],
+    fills: { anchor: ['Okay, I did not expect this', 'how the bamboo cap clicks shut', 'It stayed cold all day', 'Honestly, I am keeping it'] },
+    localeFills: { 'zh-CN': { anchor: ['说真的，我没想到会这样', '竹盖咔哒一声拧紧', '一整天都是冰的', '这个我留着自己用了'] } },
+  },
+  'product-hero-still': { type: 'image', photo: false, inputs: { product: 'product.jpg' }, first: [], fills: { anchor: ['a slab of pale travertine'] } },
+  'product-hero-motion': {
+    type: 'video',
+    photo: false,
+    inputs: { product: 'product.jpg' },
+    first: ['still'],
+    fills: { still: ['dark wet stone'], anchor: ['a band of light slides slowly across the bottle'] },
+    frames: { 'first-frame': 'still' },
+  },
+  'product-turntable-360': {
+    type: 'video',
+    photo: false,
+    // One photo stands in for all three angles: the fixtures hold no side or back view of the product.
+    inputs: { front: 'product.jpg', side: 'product.jpg', back: 'product.jpg' },
+    first: [],
+    fills: { anchor: ['steady and smooth, for a premium bottle', 'the bamboo cap'] },
+  },
+  'product-particle-reveal': {
+    type: 'video',
+    photo: false,
+    inputs: { product: 'product.jpg' },
+    first: ['render'],
+    fills: { render: [], anchor: ['cyan', 'its bamboo cap lifts off'] },
+    frames: { 'first-frame': 'render' },
+  },
+  'product-hero-direct-i2v': { type: 'video', photo: true, image: 'product.jpg', first: [], fills: { anchor: ['cold mist curls off the bottle'] } },
+  'product-state-change': {
+    type: 'video',
+    photo: false,
+    inputs: { product: 'product.jpg' },
+    first: ['before', 'after'],
+    fills: { before: ['a white oak table'], after: ['with its bamboo cap off, lying beside it'], anchor: ['a hand unscrews the cap and sets it down beside the bottle', 'the same hand'] },
+    frames: { 'first-frame': 'before', 'end-frame': 'after' },
+  },
+  'cartoon-gag': {
+    type: 'video',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: [],
+    fills: { anchor: ['flat 2D cartoon with thick outlines', 'a tiny kitchen at breakfast', 'she tiptoes toward the last cookie', 'the jar snaps shut on her nose and her eyes pop out'] },
+  },
+  '3d-cartoon-short': {
+    type: 'video',
+    photo: false,
+    first: ['design'],
+    fills: {
+      design: ['a small round hedgehog', 'a red knitted scarf'],
+      anchor: ['an autumn orchard', 'the last apple on a high branch', 'the branch springs back and flings it into the leaves'],
+    },
+  },
+  'stop-motion-short': {
+    type: 'video',
+    photo: false,
+    inputs: { subject: 'object.jpg' },
+    first: [],
+    fills: { anchor: ['plasticine clay', 'it hops across a tabletop and climbs onto a teacup'] },
+  },
+  'anime-scene': {
+    type: 'video',
+    photo: false,
+    first: ['scene'],
+    fills: { scene: ['a hillside town at dusk after rain'], anchor: ['a slow push toward the town', 'clouds drifting, leaves stirring, a train passing far away'] },
+    frames: { 'first-frame': 'scene' },
+  },
+  'anime-action-climax': {
+    type: 'video',
+    photo: false,
+    inputs: { hero: 'character.jpg' },
+    first: [],
+    fills: { anchor: ['a ruined rooftop at night', 'a flaming sword slash'] },
+  },
+  'anime-opening-15s': {
+    type: 'video',
+    photo: false,
+    inputs: { lead: 'character.jpg', second: 'mini-tools/portrait.jpg', third: 'pet.jpg' },
+    first: [],
+    fills: {},
+    shots: [['a bright summer sky over a seaside town'], ['on a school rooftop'], ['runs and leaps across the rooftops'], [], ['the sunset sky']],
+  },
+  'storyboard-sheet-9': {
+    type: 'image',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: [],
+    fills: {
+      anchor: [
+        '1 she wakes late, 2 grabs her bag, 3 runs down the stairs, 4 misses the bus, 5 borrows a bike, 6 races through the market, 7 skids round a corner, 8 arrives at the school gate, 9 the gate opens just in time',
+      ],
+    },
+  },
+  'comic-page': {
+    type: 'image',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: [],
+    fills: {
+      anchor: [
+        'left to right, top to bottom',
+        'black-and-white manga with screentone',
+        '1 a wide shot of a rainy street, 2 she finds a soaked kitten, 3 close-up of the kitten\'s eyes, 4 she hides it in her coat, 5 she smiles at home with it',
+      ],
+    },
+  },
+  'comic-4koma': {
+    type: 'image',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: [],
+    fills: {
+      anchor: ['she proudly bakes her first cake', 'she carries it carefully to the table', 'the cat leaps onto the table', 'the cat sits in the cake looking pleased'],
+    },
+  },
+  'storyboard-to-video': {
+    type: 'video',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: ['sheet'],
+    fills: {
+      sheet: ['1 she spots a kite in a tree, 2 climbs the trunk, 3 the branch bends, 4 she grabs the kite, 5 slides down, 6 runs off with it'],
+      anchor: ['upbeat music and the sounds of each action'],
+    },
+  },
+  // TEMPLATE_RUN_IMAGE names the comic page the run wires in.
+  'comic-page-to-motion': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: { anchor: ['left to right, top to bottom', 'rain falls, her hair lifts in the wind, the kitten blinks'] },
+  },
+  // TEMPLATE_RUN_IMAGE names the comic page the run wires in.
+  'comic-panels-to-shots': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: {},
+    shots: [['rain starts to fall on the street'], ['she kneels and reaches for the kitten'], ['the kitten blinks slowly'], ['she smiles and hugs the kitten']],
+  },
+  'talking-presenter': {
+    type: 'video',
+    photo: false,
+    inputs: { person: 'mini-tools/portrait.jpg' },
+    first: ['portrait', 'voice'],
+    fills: {
+      portrait: ['a bright home office with a bookshelf'],
+      voice: ['Hi, I am Mika. Here are three quick ways to keep your desk tidy, and the first one takes ten seconds.'],
+      anchor: ['warm and confident, a slight smile at the end'],
+    },
+    frames: { 'character-image': 'portrait', 'driving-audio': 'voice' },
+  },
+  'talking-head-pitch': {
+    type: 'video',
+    photo: false,
+    inputs: { person: 'mini-tools/portrait.jpg' },
+    first: [],
+    fills: { anchor: ['English', 'a sunlit café', 'This one changed my mornings', 'Try it for a week and see'] },
+  },
+  'two-speaker-talk': {
+    type: 'video',
+    photo: false,
+    inputs: { 'left-person': 'character.jpg', 'right-person': 'mini-tools/portrait.jpg' },
+    first: ['scene', 'left-voice', 'right-voice'],
+    fills: {
+      scene: ['a podcast desk with two microphones'],
+      'left-voice': ['So, what got you into making videos?'],
+      'right-voice': ['Honestly, I just wanted to show my friends what I cook.'],
+      anchor: [],
+    },
+    frames: { 'character-image': 'scene', 'left-audio': 'left-voice', 'right-audio': 'right-voice' },
+  },
+  'talking-own-voice': {
+    type: 'video',
+    photo: false,
+    inputs: { portrait: 'mini-tools/portrait.jpg', recording: 'voice.mp3' },
+    first: [],
+    fills: { anchor: ['relaxed, with small natural nods'] },
+  },
+  'livestream-pitch': {
+    type: 'video',
+    photo: false,
+    inputs: { host: 'mini-tools/portrait.jpg', product: 'product.jpg' },
+    first: [],
+    fills: { anchor: ['excited and fast', 'it keeps drinks cold for 24 hours and the bamboo cap never leaks'] },
+    localeFills: { 'zh-CN': { anchor: ['兴奋、语速快', '24 小时保冷，竹盖拧紧一滴不漏'] } },
+  },
+  'hype-then-twist-ad': {
+    type: 'video',
+    photo: false,
+    inputs: { product: 'product.jpg' },
+    first: [],
+    fills: { anchor: ['the plain bottle sits on a cluttered kitchen table under a bare bulb', 'a fridge hums'] },
+    localeFills: { 'zh-CN': { anchor: ['朴素的水瓶摆在一张乱糟糟的厨房桌上，头顶一个裸灯泡', '冰箱嗡嗡响'] } },
+  },
+  'product-commercial-shotlist': {
+    type: 'video',
+    photo: false,
+    inputs: { product: 'product.jpg' },
+    first: [],
+    fills: { anchor: ['cool, minimal, soft grey and steel', 'the bamboo cap lifts off'] },
+    localeFills: { 'zh-CN': { anchor: ['冷调极简、柔和的灰色和金属', '竹盖缓缓抬起'] } },
+  },
+  'unboxing-ad': {
+    type: 'video',
+    photo: false,
+    inputs: { product: 'product.jpg' },
+    first: [],
+    fills: { anchor: ['a matte black box with a gold ribbon', 'the bamboo cap and the printed label'] },
+    localeFills: { 'zh-CN': { anchor: ['哑光黑盒子系着金色丝带', '竹盖和印刷标签'] } },
+  },
+  'variant-carousel-ad': {
+    type: 'video',
+    photo: false,
+    inputs: { 'variant-1': 'product.jpg', 'variant-2': 'variant-2.jpg', 'variant-3': 'variant-3.jpg' },
+    first: [],
+    fills: { anchor: ['warm beige', 'a quick spin'] },
+    localeFills: { 'zh-CN': { anchor: ['暖米色', '快速旋转'] } },
+  },
+  'phone-vlog-realism': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: { anchor: ['getting ready in the morning, then grabbing a coffee', 'tying her shoes by the door; ordering at a coffee counter; walking out with the cup'] },
+  },
+  'retro-found-footage': { type: 'video', photo: false, first: [], fills: { anchor: ['a backyard birthday party at dusk', 'the cake slides off the table'] } },
+  'time-freeze-rewind': { type: 'video', photo: true, first: [], fills: { anchor: ['a café terrace', 'a waiter trips and a tray of drinks flies into the air'] } },
+  'bullet-time-mishap': { type: 'video', photo: false, first: [], fills: { anchor: ['a cat knocks a full glass of milk off the kitchen table'] } },
+  'beat-sync-outfit-change': { type: 'video', photo: true, first: [], fills: { anchor: ['street wear, red carpet, astronaut, knight'] } },
+  'pov-continuous-shot': {
+    type: 'video',
+    photo: false,
+    first: [],
+    fills: { anchor: ['through a night market to a lantern-lit temple gate', 'passes steaming food stalls and squeezes past a crowd', 'the temple gate glowing with lanterns'] },
+  },
+  'carried-object-transition': {
+    type: 'video',
+    photo: true,
+    image: 'object.jpg',
+    first: ['scene-a', 'scene-b'],
+    fills: { 'scene-a': ['a sunny beach'], 'scene-b': ['a snowy mountain hut at night'], anchor: ['a hand tosses it up'] },
+    frames: { 'first-frame': 'scene-a', 'end-frame': 'scene-b' },
+  },
+  'fisheye-clone-pov': { type: 'image', photo: true, first: [], fills: { anchor: ['a basketball court'] } },
+  'flash-photo-dump-grid': { type: 'image', photo: true, first: [], fills: { anchor: ['a house party at night'] } },
+  'game-ui-livestream': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: { anchor: ['a stylised 3D action game', 'a boss fight in a ruined castle', 'a winning move and a burst of light'] },
+  },
+  'travel-city-walk': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: {
+      anchor: [
+        'Lisbon', 'climbing a steep tiled street', 'riding the yellow tram', 'buying a pastry at a bakery',
+        'crossing a square with a fountain', 'walking along the river',
+      ],
+    },
+  },
+  'twist-comedy-skit': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: {
+      anchor: [
+        'the burglar was the dog all along', 'a fridge door stands open at midnight', 'a burglar is stealing food',
+        'the dog wipes its mouth and looks away',
+      ],
+    },
+  },
+  'vertical-15s-quick-tip': {
+    type: 'video',
+    photo: true,
+    image: 'object.jpg',
+    first: [],
+    fills: {},
+    shots: [['the mug spotless and shining inside, the coffee stain gone'], ['a spoon of baking soda into the wet mug'], ['scrubbing the stain and the rim with a damp sponge'], ['rinsing it under the tap'], []],
+  },
+  'underscore-bgm': {
+    type: 'audio',
+    photo: false,
+    first: [],
+    fills: { anchor: ['一段 40 秒的咖啡店产品讲解', '40 秒', 'lo-fi 爵士', '85 BPM', 'F 大调', '电钢琴、柔和的贝斯和刷子鼓', '开头轻，中段稍微推起来，结尾收住'] },
+  },
+  'ambience-sfx-bed': {
+    type: 'audio',
+    photo: false,
+    first: [],
+    fills: { anchor: ['老城区下雨的夜晚街道', '雨打在石板路上、远处低低的车流', '远处一扇门关上、近处有人踩水走过'] },
+  },
+  'voice-line': { type: 'audio', photo: false, first: [], fills: { anchor: ['欢迎来到我们的小店。今天，新烤的面包刚刚出炉。'] } },
+  'two-voice-dialogue': {
+    type: 'audio',
+    photo: false,
+    first: [],
+    fills: { anchor: ['你今天怎么来得这么早？', '想赶在人多之前，买到第一炉面包。', '那你运气好，刚好出炉。'] },
+  },
+  'voice-from-descriptor': { type: 'audio', photo: false, first: [], fills: { anchor: ['今晚的星星特别亮，我们一起去山顶看看吧。'] } },
+  'section-mapped-score': {
+    type: 'audio',
+    photo: false,
+    first: ['body', 'reveal', 'outro'],
+    fills: {
+      anchor: [...SECTION_FILM, '15 秒'],
+      body: [...SECTION_SHARED, '60 秒'],
+      reveal: [...SECTION_SHARED, '25 秒'],
+      outro: [...SECTION_SHARED, '15 秒'],
+    },
+  },
+  'song-cover': { type: 'audio', photo: false, song: true, first: [], fills: { anchor: ['指弹吉他伴奏、轻声演唱的慢板民谣'] } },
+  'voice-clone-line': { type: 'audio', photo: false, media: VOICE_SAMPLE, first: [], fills: { anchor: ['今天的风很轻，我们沿着河边慢慢走吧。'] } },
+  'score-for-my-video': { type: 'audio', photo: false, media: 'mini-tools/driving.mp4', first: [], fills: { anchor: ['带轻打击乐的温暖原声民谣'] } },
+  'music-mood-from-image': { type: 'audio', photo: true, image: 'pet.jpg', first: [], fills: { anchor: ['慢、梦幻'] } },
+  'clip-ambience-foley': {
+    type: 'video',
+    photo: false,
+    first: [],
+    after: [{ key: 'foley', slot: 'sound-video' }],
+    fills: {
+      anchor: ['厨师在木砧板上切黄瓜', '刀起落切下第一片', '把切好的片推到一边，再切两刀', '缓慢推近', '左边的窗户'],
+      foley: ['刀落在砧板上的清脆声、黄瓜片滑开的声音、远处厨房轻微的环境声'],
+    },
+  },
 };
 
 if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [process.env.TEMPLATE_RUN_ONLY] : Object.keys(RUNS)) for (let n = 1; n <= REPEAT; n += 1) {
@@ -347,31 +1107,90 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     test.setTimeout(3_600_000);
     const run = RUNS[id];
     if (run === undefined) throw new Error(`no run settings for ${id}`);
+    // The words for the braces in the run's interface language, when the run gives some.
+    const fills = (LOCALE === undefined ? undefined : run.localeFills?.[LOCALE]) ?? run.fills;
     // The picture is dropped first: dropped onto an empty node, it would upload into that node instead.
-    const photo = run.photo ? await dropCharacter() : undefined;
+    const photo = run.photo ? await dropMedia(run.image === undefined ? CHARACTER : join(FIXTURES, run.image)) : undefined;
+    // Each input's picture, in the order the template declares its inputs, so the panel matches them in turn.
+    const declared = GENERATION_TEMPLATES.find((template) => template.id === id)?.inputs ?? [];
+    const pictures: string[] = [];
+    for (const input of declared) {
+      const file = run.inputs?.[input.key];
+      if (file === undefined || LEAVE_EMPTY.has(input.key)) continue;
+      pictures.push(await dropMedia(join(FIXTURES, file)));
+    }
+    const media = run.media === undefined ? undefined : mediaOf(run.media);
+    const material = media === undefined ? undefined : await dropMedia(media.file, media.bytes);
+    const song = run.song === true ? await generateSong() : undefined;
     const anchor = crypto.randomUUID();
     await seedNode(page, { projectId, spaceId }, anchor, run.type, 600, { name: `${run.type}-run`, state: 'idle' });
-    if (photo !== undefined) await wire(page, { projectId, spaceId }, photo, anchor);
+    // Wired in before the template is picked, so it lands in the template's slot.
+    for (const wired of [photo, ...pictures, material, song]) if (wired !== undefined) await wire(page, { projectId, spaceId }, wired, anchor);
     await openPanel(anchor);
     await applyTemplate(id);
     for (const key of run.first) {
       const node = await keyed(key);
       await openPanel(node);
-      await fillBraces(run.fills[key] ?? []);
+      await fillBraces(fills[key] ?? []);
       const prompt = await promptText();
       assertDraftSent(`canvas.template.${id}.node.${key}.prompt`, prompt);
-      const url = await generate(node, 'image');
+      const kind = ((await graph()).nodes.find((one) => one.id === node)?.type ?? 'image') as Kind;
+      const url = await generate(node, kind);
       expect(url).toMatch(/^https?:/);
-      record({ template: id, node: key, label: LABEL, n, result: { prompt, url } });
-      await save(url, `${id}-${key}-${LABEL}-${n}.png`);
+      const sentPrompt = requests[requests.length - 1] ?? '';
+      record({ template: id, node: key, label: LABEL, n, empty: [...LEAVE_EMPTY], result: { prompt, sent: sentPrompt, url } });
+      expectOptionalParagraphs(id, key, sentPrompt);
+      await save(url, `${id}-${key}-${LABEL}-${n}.${EXTENSION[kind]}`);
     }
     await openPanel(anchor);
-    await fillBraces(run.fills.anchor ?? []);
-    const prompt = await promptText();
-    assertDraftSent(`canvas.template.${id}.prompt`, prompt);
+    for (const [slot, key] of Object.entries(run.frames ?? {})) await pickIntoFrame(slot as VideoSlotId, await keyed(key));
+    let prompt = '';
+    const registered = GENERATION_TEMPLATES.find((template) => template.id === id);
+    if (registered === undefined) throw new Error(`no template "${id}" in the registry`);
+    const anchorNode = templateAnchor(registered);
+    if (anchorNode.lines !== undefined) {
+      // A dialogue: one line per turn, each for the template's speaker, its blank filled in order.
+      await fillBraces(fills.anchor ?? []);
+      const names = ((anchorNode.params.speakers ?? []) as { speaker: string }[]).map((one) => one.speaker);
+      const shown = await dialogueLines();
+      expect(shown.map((line) => line.speaker)).toEqual(anchorNode.lines.map((line) => names[line.speaker - 1]));
+      for (const [i, line] of shown.entries()) assertDraftSent(`canvas.template.${id}.line.${String(i + 1)}`, line.text);
+      prompt = shown.map((line) => `${line.speaker}: ${line.text}`).join('\n');
+    } else if (run.shots === undefined) {
+      await fillBraces(fills.anchor ?? []);
+      prompt = await promptText();
+      assertDraftSent(`canvas.template.${id}.prompt`, prompt);
+    } else {
+      const shown: string[] = [];
+      for (const [i, values] of run.shots.entries()) {
+        const editorId = `generate-storyboard-shot-${String(i + 1)}-editor`;
+        // Opened before it is read too: a folded shot's box is hidden, and its text then loses the line breaks.
+        await openShot(i + 1);
+        if (values.length > 0) await fillBraces(values, editorId);
+        const text = await promptText(editorId);
+        assertDraftSent(`canvas.template.${id}.shot.${String(i + 1)}`, text);
+        shown.push(text);
+      }
+      prompt = shown.join('\n');
+    }
     const url = await generate(anchor, run.type);
     expect(url).toMatch(/^https?:/);
-    record({ template: id, label: LABEL, n, result: { prompt, url } });
-    await save(url, `${id}-${LABEL}-${n}.${run.type === 'video' ? 'mp4' : 'png'}`);
+    const sentPrompt = requests[requests.length - 1] ?? '';
+    record({ template: id, label: LABEL, n, empty: [...LEAVE_EMPTY], result: { prompt, sent: sentPrompt, url } });
+    expectOptionalParagraphs(id, registered.anchor, sentPrompt);
+    await save(url, `${id}-${LABEL}-${n}.${EXTENSION[run.type]}`);
+    for (const { key, slot } of run.after ?? []) {
+      const node = await keyed(key);
+      await openPanel(node);
+      await pickIntoAudioSlot(slot, anchor);
+      await fillBraces(fills[key] ?? []);
+      const shown = await promptText();
+      assertDraftSent(`canvas.template.${id}.node.${key}.prompt`, shown);
+      const kind = ((await graph()).nodes.find((one) => one.id === node)?.type ?? 'audio') as Kind;
+      const result = await generate(node, kind);
+      expect(result).toMatch(/^https?:/);
+      record({ template: id, node: key, label: LABEL, n, result: { prompt: shown, url: result } });
+      await save(result, `${id}-${key}-${LABEL}-${n}.${EXTENSION[kind]}`);
+    }
   });
 }

@@ -1,7 +1,7 @@
 # Third-Party Notices
 
-Breatic itself is distributed under the Elastic License 2.0
-(`Elastic-2.0`, see [LICENSE](./LICENSE)). This file lists third-party components we ship, the
+Breatic itself is distributed under the GNU Affero General Public License v3.0
+(`AGPL-3.0-only`, see [LICENSE](./LICENSE)). This file lists third-party components we ship, the
 licence each one carries, and where to obtain its source.
 
 A component is listed here when we distribute it — in a published container
@@ -15,15 +15,21 @@ beside the bundle at `/third-party-licences.txt`.
 
 ## Programs in our container images
 
-We publish four images. Two of them, the media container and the transition
-renderer's image built on it, carry FFmpeg and vips:
+We publish five images, and a deployment that enables web animation builds a
+sixth, the web-animation container, from source. The media container and the
+transition renderer's image built on it carry FFmpeg and vips; the page reader
+carries a Chromium headless shell and the FFmpeg build Playwright installs
+beside it; the web-animation container carries Chromium and the DeepSeek
+Harness:
 
 | Image | Built from | Base | Carries FFmpeg |
 |---|---|---|---|
 | `ghcr.io/<owner>/breatic` | [Dockerfile](./Dockerfile) | `node:24-bookworm-slim` | no |
 | the media container | [packages/ingest/Dockerfile](./packages/ingest/Dockerfile) | `alpine:3.23` | yes |
 | the MiniToolContainerGl image | [packages/ingest/Dockerfile](./packages/ingest/Dockerfile) with `VARIANT=gl` | the media container | yes |
+| the page reader | [packages/ingest/web-reader/Dockerfile](./packages/ingest/web-reader/Dockerfile) | `node:24-bookworm-slim` | yes — Playwright's LGPL build, which the reader never runs |
 | `ghcr.io/<owner>/breatic-web` | [Dockerfile.web](./Dockerfile.web) | `nginx:1.27-alpine` | no — it serves the built front-end and nothing else |
+| the web-animation container | [packages/ingest/web-animation.Dockerfile](./packages/ingest/web-animation.Dockerfile) | `node:24-bookworm-slim` | no — see [Web animation](#web-animation) |
 
 Breatic invokes the `ffmpeg` executable as a separate process and does not link
 against its libraries. The program and Breatic are separate works that happen to
@@ -45,10 +51,10 @@ every new dependency, which is what that review is for.
 | Source | `https://ffmpeg.org/releases/ffmpeg-8.0.1.tar.xz` for the program, and `https://gitlab.alpinelinux.org/alpine/aports/-/tree/8623c9968f3fca48863eb9d3a355c2baaba7b20b/community/ffmpeg` for the recipe Alpine built it with |
 
 It reads media numbers, cuts cover frames, and runs the mini-tools' video
-operations: crop, speed, cut, colour adjustment, audio denoise, stabilisation
-(`libvidstab`) and HDR conversion (`zimg` and `libx265`), and the audio
-operations: denoise, loudness, speed, cut, equaliser, compressor, pan and
-voice enhance.
+operations: crop, speed, cut, join, colour adjustment, audio denoise,
+stabilisation (`libvidstab`) and HDR conversion (`zimg` and `libx265`), and the
+audio operations: denoise, loudness, speed, cut, join, equaliser, compressor,
+pan and voice enhance.
 
 Version 3 of the GPL: Alpine configures this build with `--enable-gpl` **and**
 `--enable-version3`, and asked directly it answers
@@ -167,6 +173,58 @@ built: every module's version and declared licence, and every Alpine package the
 image adds to its base with its version, licence and the aports commit it was
 built from.
 
+
+### Chromium and its libraries in the page reader
+
+| Component | Version | Licence | Source |
+|---|---|---|---|
+| Chrome Headless Shell (Chrome for Testing) | `151.0.7922.34`, Playwright browser revision `1234` | **BSD-3-Clause** for Chromium, with each bundled third-party component under its own licence | `https://chromium.googlesource.com/chromium/src/+/refs/tags/151.0.7922.34` |
+| Playwright's FFmpeg | `n7.0.1-playwright-build-1011` | **LGPL-2.1-or-later** (`ffmpeg -L`); built without `--enable-gpl`, statically linked with libvpx (BSD-3-Clause) and zlib | `https://ffmpeg.org/releases/ffmpeg-7.0.1.tar.xz`; the full `configure` line is printed by `ffmpeg-linux -version` in the image |
+| Debian 12 packages installed by `playwright-core install --with-deps` | the versions Debian 12 serves when the image is built | each package's own, mostly MIT, BSD, LGPL and MPL; three fonts (`fonts-freefont-ttf`, `fonts-wqy-zenhei`, `fonts-tlwg-loma-otf`) are **GPL with a font exception**, `fonts-unifont` is **GPL-2.0-or-later**, and `fonts-ipafont-gothic` is under the **IPA Font License** | `https://sources.debian.org/` |
+
+`npx playwright-core install --with-deps --only-shell chromium`
+([packages/ingest/web-reader/Dockerfile](./packages/ingest/web-reader/Dockerfile))
+installs all three: the browser and FFmpeg under `/ms-playwright/`, and about 110
+Debian packages of shared libraries, fonts and X11 parts the browser loads.
+The browser carries its full notices in
+`/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-linux64/LICENSE.headless_shell`,
+FFmpeg carries `COPYING.LGPLv2.1` beside its binary, and each Debian package
+carries its copyright file at `/usr/share/doc/<package>/copyright`.
+
+The reader's service drives the browser as a separate process over the
+DevTools protocol and loads none of these libraries; Playwright runs its FFmpeg
+only to record video, which the reader never does. The service's own process
+loads the five npm packages listed in the next section.
+
+### Web animation
+
+The web-animation container, the ingest Worker and the web preview carry these
+for web-animation execution:
+
+| Component | Version | Licence | How it ships | Source |
+|---|---|---|---|---|
+| Chromium | Debian bookworm's `chromium` package; the image's `/usr/share/chromium-source/SOURCE` records the exact version | **BSD-3-Clause** and the licences of the components it bundles, listed in the image at `/usr/share/doc/chromium/copyright` | A separate program the runner starts to check a package; none of its libraries is loaded into our process | `https://snapshot.debian.org/package/chromium/` at the recorded version |
+| `@deepseek-ai/dsh` (DeepSeek Harness) and its `node_modules` | `0.2.2-rc.1`, installed with `--ignore-scripts` | **MIT**; within its closure, besides MIT, Apache-2.0, BSD and ISC: `argparse` (**Python-2.0**), `fast-sha256` (**Unlicense**), `lru-cache` (**BlueOak-1.0.0**), `tslib` (**0BSD**), `type-fest` (**MIT OR CC0-1.0**). `@deepseek-ai/libreoffice-kit*` (MPL-2.0) and sharp's native `@img/*` packages (libvips is LGPL-3.0) are removed while the image is built | A separate program the runner starts; our service imports none of it | https://github.com/deepseek-ai/deepseek-harness |
+| `@hyperframes/core` runtime (`dist/hyperframe.runtime.iife.js`) | `0.8.186` | **Apache-2.0**, per the tarball's `LICENSE`, copied to `/app/runtime/LICENSE` in the image | Inlined into every web-animation package, which is served to browsers | https://github.com/heygen-com/hyperframes |
+| `@hyperframes/player` | `0.8.186` | Reported as **Unknown**, because its `package.json` names no licence; the tarball's `LICENSE` is **Apache-2.0** | Bundled into the web app as its own chunk, loaded the first time a web-animation copy or a finished result is shown in a Timeline preview | https://github.com/heygen-com/hyperframes |
+| `@fontsource-variable/noto-sans-sc`, `@fontsource-variable/noto-serif-sc`, `@fontsource-variable/inter`, `@fontsource-variable/noto-sans-kr`, `@fontsource-variable/noto-sans-jp`, `@fontsource-variable/noto-sans-tc` | `5.3.1`, `5.3.1`, `5.3.0`, `5.3.1`, `5.3.1`, `5.3.1` | **OFL-1.1** | Their `wght-normal` woff2 files are served as the ingest Worker's static assets and carried by the image; each package's licence text travels beside the files as `<package>-OFL.txt` | https://github.com/notofonts/noto-cjk, https://github.com/rsms/inter |
+
+The runner bundles nothing but Node and our own code
+(`breatic/media-container-own-code-only` holds it to that, as for the media
+container). The OFL's one prohibition, selling the fonts on their own, is not
+something Breatic does, and none of the six copyright lines declares a
+Reserved Font Name.
+
+`@hyperframes/player` 0.8.186 declares `@hyperframes/core` as a dependency
+although its published file imports nothing from it; the only mention is the
+CDN address of a runtime fallback our pages never reach, because every package
+inlines the runtime. The `pnpm.overrides` entry
+`"@hyperframes/player@0.8.186>@hyperframes/core": "-"` in the root
+`package.json` keeps that tree out of the install.
+Delete the entry once the player stops declaring `@hyperframes/core`. The
+web-animation image takes the runtime file from the `@hyperframes/core` tarball
+with `npm pack`, which installs none of its dependencies.
+
 ## Packages in our container images
 
 The `breatic` image carries the production `node_modules` of `server`, `worker`
@@ -174,7 +232,12 @@ and `collab` beside our own code, so every production dependency of those three
 is distributed with it. These are the ones whose licence is not one of the four
 permissive ones. The media container carries no `node_modules` at all — its
 service is bundled into a single file — and the `breatic-web` image carries the
-front-end bundle covered by the next section. The MiniToolContainerGl image adds
+front-end bundle covered by the next section. The page reader's service is
+bundled the same way and runs beside five installed packages, all under
+permissive licences: `playwright-core` 1.62.1 and `@mozilla/readability` 0.6.0
+(Apache-2.0), `turndown` 7.2.0 and `unpdf` 1.1.0 (MIT), and `@mixmark-io/domino`
+2.2.0 (BSD-2-Clause), which `turndown` depends on.
+The MiniToolContainerGl image adds
 the transition renderer's `node_modules`, installed with `npm ci` from
 [packages/ingest/container/gl-renderer/package-lock.json](./packages/ingest/container/gl-renderer/package-lock.json);
 its packages under other licences are listed after the server-side ones.
@@ -184,8 +247,8 @@ its packages under other licences are listed after the server-side ones.
 | Package | Version | Reached through | Licence | Source |
 |---|---|---|---|---|
 | `@sesamecare-oss/redlock` | `1.4.0` | `packages/collab` → `@hocuspocus/extension-redis` | Reported as **UNLICENSED**, which is what its `package.json` declares. The published tarball carries a `LICENSE.md`, and that file is the MIT licence. The metadata is wrong about the package, not the other way round | https://github.com/sesamecare/redlock |
-| `json-schema` | `0.4.0` | `packages/core` → `@ai-sdk/*` → `@ai-sdk/provider` | AFL-2.1 **or** BSD-3-Clause, at the recipient's option. **Our election: BSD-3-Clause** | https://github.com/kriszyp/json-schema |
-| `postgres` | `3.4.9` | Declared by `packages/core`; also the peer `drizzle-orm` resolves | **Unlicense**, a dedication to the public domain, which asks nothing of us | https://github.com/porsager/postgres |
+| `json-schema` | `0.4.0` | `packages/provider` → `@ai-sdk/*` → `@ai-sdk/provider` | AFL-2.1 **or** BSD-3-Clause, at the recipient's option. **Our election: BSD-3-Clause** | https://github.com/kriszyp/json-schema |
+| `postgres` | `4.1.0` | Declared by `packages/core`; also the peer `drizzle-orm` resolves | **Unlicense**, a dedication to the public domain, which asks nothing of us | https://github.com/porsager/postgres |
 | `argparse` | `2.0.1` | `packages/server` → `mjml` → `mjml-core` → `htmlnano` → `cosmiconfig` | **Python-2.0**; the tarball's `LICENSE` is the PSF licence text | https://github.com/nodeca/argparse |
 | `caniuse-lite` | `1.0.30001809` | `packages/server` → `mjml` → `mjml-core` → `cssnano` | **CC-BY-4.0**; this entry is the attribution the licence asks for | https://github.com/browserslist/caniuse-lite |
 | `glob` | `13.0.6` | `packages/server` → `mjml` → `mjml-cli`; also `mjml-core` → `js-beautify` | **BlueOak-1.0.0**, per the tarball's `LICENSE.md` | https://github.com/isaacs/node-glob |
@@ -220,7 +283,7 @@ its packages under other licences are listed after the server-side ones.
 | | |
 |---|---|
 | What | The `patterns` and `exclusions` regular-expression lists that recognise a provider's "prompt is over the context window" error |
-| Where it lives here | [packages/server/src/agent/context-overflow.ts](./packages/server/src/agent/context-overflow.ts), between the comment that names the source and the one that ends the copy; the full licence text is repeated there |
+| Where it lives here | [packages/provider/src/llm/context-overflow.ts](./packages/provider/src/llm/context-overflow.ts), between the comment that names the source and the one that ends the copy; the full licence text is repeated there |
 | Copied from | `packages/ai/src/provider-error.ts` of https://github.com/anomalyco/opencode at commit `16cd50db2278fc9b780808e44d40d1ceaf2f5e80` |
 | Changes | The `request_too_large` entry is left out (it is a byte limit, which shortening the conversation cannot fix); the one entry carrying Chinese characters is written with `\u` escapes |
 | Licence | **MIT**, Copyright (c) 2025 opencode |
@@ -247,6 +310,75 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+### GDQuest Mannequiny, the built-in 3D figure
+
+| | |
+|---|---|
+| What | The rigged mannequin a 3D Space adds as its built-in figure |
+| Where it lives here | [packages/web/src/spaces/three-d/viewport/assets/figure.glb](./packages/web/src/spaces/three-d/viewport/assets/figure.glb) |
+| Copied from | `godot/assets/3d/mannequiny/mannequiny-0.3.0.glb` of https://github.com/GDQuest/godot-3d-mannequin at commit `d48a4fdb49a3930f38cdbeb854cf5be3ae4b6b2a` (SHA-256 `8005cc2ab9221ad605be2d1cbb89eea894583e72bd5f50a5fbe40243a64f0493`) |
+| Changes | Animations, vertex colours and texture coordinates removed and the mesh quantized (`KHR_mesh_quantization`) with `@gltf-transform`; each joint's transform set to its bind pose from the skin's inverse bind matrices, and the root scaled to 1.75 m tall with the soles at the origin; geometry, skin weights and bone hierarchy unchanged |
+| Licence | The project's art assets are **CC-BY-4.0**, attributed to "GDQuest and contributors (https://www.gdquest.com/)"; its code is **MIT**. This entry is the attribution CC-BY-4.0 asks for, and the MIT notice follows |
+
+```
+MIT License
+
+Copyright (c) 2020 GDQuest
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### three-vrm's Mixamo bone-name map
+
+| | |
+|---|---|
+| What | The Mixamo bone names and the VRM humanoid bone each stands for, used to recognise a Mixamo rig when posing a 3D model |
+| Where it lives here | [packages/web/src/spaces/three-d/viewport/pose-bone-names.ts](./packages/web/src/spaces/three-d/viewport/pose-bone-names.ts) |
+| Copied from | `packages/three-vrm/examples/humanoidAnimation/mixamoVRMRigMap.js` of https://github.com/pixiv/three-vrm at commit `b6f3d136577f200652a87d57b320c59598b1d418` |
+| Changes | The name pairs are folded into shared lookup tables: a name loses its `mixamorig` prefix and its side, and the rest is looked up as a VRM 1.0 bone name |
+| Licence | **MIT**, Copyright (c) 2019-2026 pixiv Inc. |
+
+```
+Copyright (c) 2019-2026 pixiv Inc.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
 ## Packages reachable from the front-end bundle

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Candidate and selected pins from the worker's prepare answer (S6e E4-3, inner#1306 test plan §90; frames-split

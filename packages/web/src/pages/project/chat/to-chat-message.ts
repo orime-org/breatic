@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * One message, from what the protocol carries to what the panel draws.
@@ -18,19 +18,22 @@ import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
 import type { z } from 'zod';
 import {
+  attachmentPart,
   canvasProposalSchema,
   chipOfPart,
   documentProposalSchema,
   FAILURE_LINES,
-  isReaderLine,
+  isUserLine,
   LEGACY_FAILURE_LINES,
   NEVER_RAN,
+  pageLinkKey,
   readQuestionnaire,
+  sceneGenerationProposalSchema,
   spaceRequestInputSchema,
   stripDsml,
   TURNED_AWAY,
 } from '@breatic/shared';
-import type { CanvasProposal, ChatAttachedChip, DocumentProposal } from '@breatic/shared';
+import type { CanvasProposal, ChatAttachedChip, DocumentProposal, SceneGenerationProposal } from '@breatic/shared';
 import type {
   ChatAsset,
   ChatFailureLine,
@@ -58,17 +61,38 @@ const BLOCKED = 'data-blocked';
 /** The mark naming the questionnaire a turn stopped at (inner#1542). */
 const ASK_AWAITING = 'data-ask-awaiting';
 
-/** The tool that puts a questionnaire to the reader. */
+/** The part a reply carries a message the user sent while it ran on (inner#1717). */
+const USER_MESSAGE = 'data-user-message';
+
+/**
+ * The user's message a reply took in, as a message of its own.
+ * @param reply - The reply.
+ * @param part - The part carrying it.
+ * @returns The message, or null when the part is not one.
+ */
+function takenMessageOf(reply: UIMessage, part: UIMessage['parts'][number]): UIMessage | null {
+  const data = (part as { data?: { id?: unknown; words?: unknown; chips?: unknown; sentAt?: unknown } }).data;
+  if (typeof data?.id !== 'string' || typeof data.words !== 'string') return null;
+  const chips = Array.isArray(data.chips) ? (data.chips as ChatAttachedChip[]) : [];
+  return {
+    id: `${reply.id}~${data.id}`,
+    role: 'user',
+    parts: [...chips.map(attachmentPart), { type: 'text', text: data.words }],
+    metadata: { ...(typeof data.sentAt === 'string' ? { ts: data.sentAt } : {}), takenIn: true },
+  };
+}
+
+/** The tool that puts a questionnaire to the user. */
 const ASK_TOOL = 'ask_user';
 
-/** The tool that asks the reader to let the Agent look at Spaces (inner#1552). */
+/** The tool that asks the user to let the Agent look at Spaces (inner#1552). */
 const REQUEST_SPACE_TOOL = 'request_space_content';
 
 /**
- * The tools whose card stops the turn until the reader answers; a step keeps
+ * The tools whose card stops the turn until the user answers; a step keeps
  * only the first card of either and the server names it with one mark.
  */
-const AWAITS_READER: ReadonlySet<string> = new Set([ASK_TOOL, REQUEST_SPACE_TOOL]);
+const AWAITS_USER: ReadonlySet<string> = new Set([ASK_TOOL, REQUEST_SPACE_TOOL]);
 
 /** How long the turn thought, as the wire names it. */
 const THINKING_TIME = 'data-thinking-time';
@@ -76,18 +100,24 @@ const THINKING_TIME = 'data-thinking-time';
 /** The tool whose results the source row and the citation chips are built from. */
 const SEARCH_TOOL = 'web_search';
 
-/** The tool that finds pictures and puts them in front of the reader. */
+/** The tool that reads pages; its pages join the same source row (inner#1664). */
+const FETCH_TOOL = 'web_fetch';
+
+/** The tool that finds pictures and puts them in front of the user. */
 const RESULTS_TOOL = 'search_images';
 
-/** The tool that proposes a group of canvas nodes for the reader to place. */
+/** The tool that proposes a group of canvas nodes for the user to place. */
 const PROPOSE_TOOL = 'propose_canvas_action';
 
 /** The tool that proposes a comment, rewrite or insert for the open document. */
 const PROPOSE_DOCUMENT_TOOL = 'propose_document_edit';
 
+/** The tool that proposes a 3D generation for the 3D Space in front (inner#1691). */
+const PROPOSE_SCENE_TOOL = 'propose_scene_generation';
+
 /**
- * The proposal one finished `propose_canvas_action` or `propose_document_edit`
- * call carries, if any.
+ * The proposal one finished `propose_canvas_action`, `propose_document_edit` or
+ * `propose_scene_generation` call carries, if any.
  *
  * Read defensively, like the pictures above: a refused proposal answers with a
  * reason instead of a proposal, and a row stored before the tool existed
@@ -141,7 +171,7 @@ function assetsOf(output: unknown): ChatAsset[] {
 }
 
 /**
- * The pages one finished search returned, or nothing.
+ * The pages one finished search or page read returned, or nothing.
  *
  * A result gets here in three shapes and only one of them holds sources: what
  * the tool answers with today, the model's own text on a row stored before
@@ -186,12 +216,14 @@ function runningLineOf(part: unknown): { runningLine?: string } {
  */
 const STEP_KEYS: Readonly<Record<string, string>> = {
   web_search: 'chat.tool.step.webSearch',
+  web_fetch: 'chat.tool.step.webFetch',
   search_images: 'chat.tool.step.searchImages',
   understand_media: 'chat.tool.step.understandMedia',
   save_image: 'chat.tool.step.saveImage',
   judge_likelihood: 'chat.tool.step.judge',
   propose_canvas_action: 'chat.tool.step.proposeCanvas',
   propose_document_edit: 'chat.tool.step.proposeDocument',
+  propose_scene_generation: 'chat.tool.step.proposeScene',
   list_generation_models: 'chat.tool.step.listModels',
   get_canvas_capabilities: 'chat.tool.step.canvasCapabilities',
   get_product_guide: 'chat.tool.step.productGuide',
@@ -200,6 +232,9 @@ const STEP_KEYS: Readonly<Record<string, string>> = {
   read_conversation: 'chat.tool.step.readConversation',
   read_node_history: 'chat.tool.step.readNodeHistory',
   list_project_activity: 'chat.tool.step.readActivity',
+  save_memory: 'chat.tool.step.saveMemory',
+  delete_memory: 'chat.tool.step.deleteMemory',
+  read_memory: 'chat.tool.step.readMemory',
   request_space_content: 'chat.tool.step.requestSpace',
 };
 
@@ -238,7 +273,7 @@ function failureLineOf(part: { state: string; input?: unknown }, name: string): 
   // the table is what answers that. The same field carries the SDK's own
   // fixed English sentence when it has nothing else to put there, which is
   // never put on the screen.
-  const reason = isReaderLine(errorText) ? (LEGACY.has(errorText) ? null : errorText) : FAILURE_LINES.ourFault;
+  const reason = isUserLine(errorText) ? (LEGACY.has(errorText) ? null : errorText) : FAILURE_LINES.ourFault;
   return { step, reason, count: 1 };
 }
 
@@ -282,7 +317,7 @@ function statusOf(state: string, stillRunning: boolean): ToolCall['status'] {
 }
 
 /**
- * The call a mark names as the card the reader is shown, for each mark.
+ * The call a mark names as the card the user is shown, for each mark.
  * @param parts - The message's parts.
  * @returns The named call ids, in order.
  */
@@ -305,7 +340,7 @@ function awaitedCalls(parts: UIMessage['parts']): Set<string> {
  * @param part.state - Where it stands.
  * @param part.input - What the model sent.
  * @param part.output - What it ended with, once it has.
- * @param awaited - The calls named as the card the reader is shown.
+ * @param awaited - The calls named as the card the user is shown.
  * @returns The questionnaire, or null.
  */
 function questionnaireOf(
@@ -351,7 +386,7 @@ function summariesOf(list: unknown[]): ChatSharedSpaceSummary[] {
  * @param part.state - Where it stands.
  * @param part.input - What the model sent.
  * @param part.output - What it ended with, once it has.
- * @param awaited - The calls named as the card the reader is shown.
+ * @param awaited - The calls named as the card the user is shown.
  * @returns The request, or null.
  */
 function spaceRequestOf(
@@ -373,8 +408,10 @@ function spaceRequestOf(
 
 /**
  * A reply as the panel lays it out: whole, or split where each segment that
- * asked a questionnaire ended, once the reader answered on the card and the
- * turn went on in the same message (inner#1542).
+ * asked a questionnaire ended, once the user answered on the card and the
+ * turn went on in the same message (inner#1542), and around each message the
+ * reply took in while it ran, which becomes a user view of its own
+ * (inner#1717).
  *
  * The server stores the two segments as two rows, so a reload reads them as
  * two messages; splitting the live one the same way keeps the card above what
@@ -384,14 +421,24 @@ function spaceRequestOf(
  * @param options.open - The turn is still writing it: a card answered last
  *   in it opens an empty part below, where what the turn says next arrives
  *   and the wait for it is drawn.
- * @returns It, or its parts, split after each card answered in it; each part
- *   after the first named after the call it follows.
+ * @returns It, or its parts: split after each card answered in it and around
+ *   each message it took in; a part after a card is named after the call, the
+ *   part after a taken message `<its id>~after`.
  */
 export function splitAtAnswer(message: UIMessage, { open = false }: { open?: boolean } = {}): UIMessage[] {
   const views: UIMessage[] = [];
   let from = 0;
   let id = message.id;
   for (const [at, part] of message.parts.entries()) {
+    if (part.type === USER_MESSAGE) {
+      const taken = takenMessageOf(message, part);
+      if (taken === null) continue;
+      if (at > from) views.push({ ...message, id, parts: message.parts.slice(from, at) });
+      views.push(taken);
+      from = at + 1;
+      id = `${taken.id}~after`;
+      continue;
+    }
     if (part.type !== ASK_AWAITING || (!open && at === message.parts.length - 1)) continue;
     const callId = (part as { data?: { toolCallId?: unknown } }).data?.toolCallId;
     const answered = message.parts.some(
@@ -403,6 +450,9 @@ export function splitAtAnswer(message: UIMessage, { open = false }: { open?: boo
     id = `${message.id}~${callId}`;
   }
   if (from === 0) return [message];
+  // What the reply says after the last split; a reply stopped right after
+  // taking a message in has nothing there, unless it is still being written.
+  if (from === message.parts.length && !open) return views;
   return [...views, { ...message, id, parts: message.parts.slice(from) }];
 }
 
@@ -412,7 +462,7 @@ export function splitAtAnswer(message: UIMessage, { open = false }: { open?: boo
  * @param options - What is true of this message right now rather than of the
  *   message itself.
  * @param options.streaming - Its bubble is still receiving tokens.
- * @param options.failedJustNow - This failure is happening with the reader
+ * @param options.failedJustNow - This failure is happening with the user
  *   waiting on it, rather than being read back out of the history.
  * @returns The same message in the panel's shape.
  */
@@ -470,16 +520,19 @@ export function toChatMessage(
   const assets: ChatAsset[] = [];
   const proposals: CanvasProposal[] = [];
   const documentProposals: DocumentProposal[] = [];
+  const sceneProposals: SceneGenerationProposal[] = [];
   const questionnaires: ChatQuestionnaire[] = [];
   const spaceRequests: ChatSpaceRequest[] = [];
   // Read before the loop, because the mark comes after the call it names.
   const awaited = awaitedCalls(message.parts);
   let hasExpiredProposal = false;
   const attachments: ChatAttachedChip[] = [];
-  // The server writes it onto the stored message; a message this reader has
+  // The server writes it onto the stored message; a message this user has
   // only just sent is not stored yet and carries none.
   const written = (message.metadata as { ts?: unknown } | undefined)?.ts;
   const sentAt = typeof written === 'string' ? written : undefined;
+  // A message the user sent while a reply ran, drawn inside that reply's turn.
+  const takenIn = (message.metadata as { takenIn?: unknown } | undefined)?.takenIn === true;
 
   // Read before the loop because a tool part can come before the mark. A call
   // this turn cut short has nothing on it saying so — the SDK client leaves it
@@ -488,8 +541,8 @@ export function toChatMessage(
 
   for (const part of message.parts) {
     if (isToolUIPart(part)) {
-      const isCard = AWAITS_READER.has(getToolName(part));
-      // A card waiting for the reader is not a call that came to nothing; a
+      const isCard = AWAITS_USER.has(getToolName(part));
+      // A card waiting for the user is not a call that came to nothing; a
       // second card in the step, of either tool, which the server named
       // nothing for, was turned away rather than failed.
       const waiting = isCard && part.state === 'input-available' && awaited.has(part.toolCallId);
@@ -543,7 +596,12 @@ export function toChatMessage(
         if (proposal === 'expired') hasExpiredProposal = true;
         else if (proposal !== null) documentProposals.push(proposal);
       }
-      if (status === 'success' && getToolName(part) === SEARCH_TOOL) {
+      if (status === 'success' && getToolName(part) === PROPOSE_SCENE_TOOL) {
+        const proposal = placedOf(part.output, sceneGenerationProposalSchema);
+        if (proposal === 'expired') hasExpiredProposal = true;
+        else if (proposal !== null) sceneProposals.push(proposal);
+      }
+      if (status === 'success' && (getToolName(part) === SEARCH_TOOL || getToolName(part) === FETCH_TOOL)) {
         found.push(...sourcesOf(part.output));
       }
       if (getToolName(part) === ASK_TOOL) {
@@ -593,23 +651,29 @@ export function toChatMessage(
   placeOpen();
   placeDeferred(true);
 
-  // A page found by two searches was handed two numbers, and the prose can
-  // carry either: one line answers to both, and both numbers resolve to that
-  // line. Rebuilt rather than pushed to as the loop goes, so no line is ever
-  // handed out before it knows every number it answers to.
+  // A page found by two searches, or by a search and a read, was handed two
+  // numbers, and the prose can carry either: one line answers to both, and
+  // both numbers resolve to that line. Two spellings of one link are one page
+  // (`pageLinkKey`). Rebuilt rather than pushed to as the loop goes, so no
+  // line is ever handed out before it knows every number it answers to.
+  // Sources are taken by number rather than by when the page turned up: two
+  // searches in one step take their numbers when their answers arrive, and
+  // the parts arrive in the order the model asked. So each line is the source
+  // with its smallest number (its address and title, unless that title is
+  // empty and a later source has one), its numbers rise, and the lines follow
+  // the numbers in the prose.
   const byUrl = new Map<string, ChatSource>();
-  for (const [index, source] of found) {
-    const kept = byUrl.get(source.url);
+  for (const [index, source] of [...found].sort(([a], [b]) => a - b)) {
+    const key = pageLinkKey(source.url);
+    const kept = byUrl.get(key);
     byUrl.set(
-      source.url,
-      kept === undefined ? source : { ...kept, indexes: [...kept.indexes, index] },
+      key,
+      kept === undefined
+        ? source
+        : { ...kept, title: kept.title || source.title, indexes: [...kept.indexes, index] },
     );
   }
-  // By number rather than by when the page turned up: two searches in one
-  // step take their numbers when their answers arrive, and the parts arrive
-  // in the order the model asked. Reading down the list follows the numbers
-  // in the prose.
-  const sources = [...byUrl.values()].sort((a, b) => (a.indexes[0] ?? 0) - (b.indexes[0] ?? 0));
+  const sources = [...byUrl.values()];
   const citations: Record<number, ChatSource> = {};
   for (const line of sources) for (const n of line.indexes) citations[n] = line;
 
@@ -621,6 +685,7 @@ export function toChatMessage(
     content,
     ...(failureLines.length > 0 ? { body, failureLines } : {}),
     ...(sentAt === undefined ? {} : { sentAt }),
+    ...(takenIn ? { takenIn: true as const } : {}),
     ...(thinking !== '' ? { thinking } : {}),
     ...(thinkingMs === undefined ? {} : { thinkingMs }),
     ...(thinkingNow ? { thinkingNow: true as const } : {}),
@@ -634,6 +699,7 @@ export function toChatMessage(
     ...(assets.length > 0 ? { assets } : {}),
     ...(proposals.length > 0 ? { proposals } : {}),
     ...(documentProposals.length > 0 ? { documentProposals } : {}),
+    ...(sceneProposals.length > 0 ? { sceneProposals } : {}),
     ...(questionnaires.length > 0 ? { questionnaires } : {}),
     ...(spaceRequests.length > 0 ? { spaceRequests } : {}),
     ...(hasExpiredProposal ? { hasExpiredProposal: true as const } : {}),
@@ -653,7 +719,7 @@ const endedViews = new WeakMap<ChatMessage, { text: string; view: ChatMessage }>
  * reads as one reply going on, live and read back, so it offers one copy, at
  * its end, of everything it said.
  *
- * Replies of one turn sit next to each other with no message of the reader's
+ * Replies of one turn sit next to each other with no message of the user's
  * between them, which is the only way two replies sit next to each other.
  * Views that need nothing are handed back as they came, and a view marked
  * once is the same object every time, so the bubbles' memo holds.
@@ -666,11 +732,16 @@ export function joinContinued(views: readonly ChatMessage[]): ChatMessage[] {
   let start = 0;
   for (let i = 0; i <= out.length; i += 1) {
     const view = out[i];
-    if (view !== undefined && view.role === 'assistant') continue;
-    // out[start..i) is a run of replies; a run of one is an ordinary turn.
-    if (i - start > 1) {
-      const said = out.slice(start, i).map((v) => v.content).filter((c) => c !== '');
-      for (let j = start; j < i - 1; j += 1) {
+    // A message the user sent while the turn ran is inside the turn.
+    if (view !== undefined && (view.role === 'assistant' || view.takenIn === true)) continue;
+    // out[start..i) is one turn's replies and the messages it took in; a
+    // stopped turn can end on a taken message, so the last reply is found,
+    // not assumed to be the last view.
+    const replies = out.slice(start, i).map((v, k) => ({ v, at: start + k })).filter(({ v }) => v.role === 'assistant');
+    if (replies.length > 1) {
+      const said = replies.map(({ v }) => v.content).filter((c) => c !== '');
+      const lastAt = replies.at(-1)!.at;
+      for (const { at: j } of replies.slice(0, -1)) {
         const earlier = out[j]!;
         let marked = continuedViews.get(earlier);
         if (marked === undefined) {
@@ -679,15 +750,15 @@ export function joinContinued(views: readonly ChatMessage[]): ChatMessage[] {
         }
         out[j] = marked;
       }
-      const last = out[i - 1]!;
+      const last = out[lastAt]!;
       const text = said.join('\n\n');
       const cached = endedViews.get(last);
       if (cached?.text === text) {
-        out[i - 1] = cached.view;
+        out[lastAt] = cached.view;
       } else {
         const ended = { ...last, copyText: text };
         endedViews.set(last, { text, view: ended });
-        out[i - 1] = ended;
+        out[lastAt] = ended;
       }
     }
     start = i + 1;

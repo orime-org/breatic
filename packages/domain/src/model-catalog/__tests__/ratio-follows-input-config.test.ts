@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The output shape of a model that works from an input image (#2156).
@@ -8,7 +8,7 @@
  * image it was given: the edit and image-to-video schemas say so for two of
  * them, and a real run on 2026-09-29 showed it for the other three (a 3:4
  * input came back 3:4, two 9:16 frames came back 9:16). A fixed ratio as the
- * default would reshape the reader's picture, so each one starts on "auto" and
+ * default would reshape the user's picture, so each one starts on "auto" and
  * sends nothing for it.
  */
 
@@ -21,6 +21,7 @@ const FOLLOWS_INPUT = [
   { category: "image", name: "gpt-image-2.5-sunburst-edit" },
   { category: "image", name: "muse-image-edit" },
   { category: "image", name: "nano-banana-pro-edit-ultra" },
+  { category: "image", name: "seedream-v5.5-edit" },
   { category: "video", name: "wan-3.0-image-to-video" },
   { category: "video", name: "flux-3-start-end-to-video" },
 ] as const;

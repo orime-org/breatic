@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type * as Y from 'yjs';
 import { newId } from '@breatic/shared';
@@ -16,6 +16,8 @@ import {
 } from '@breatic/shared/mini-tools';
 
 import { CANVAS_UNDO, nodeDataMap } from '@web/data/yjs/canvas-space';
+import { docNameOf } from '@web/data/yjs/manager';
+import { writeSpaceDoc } from '@web/data/yjs/space-write';
 import { SCENE_ANALYSIS_APPLIED_PREFIX } from '@web/data/yjs/canvas-field-keys';
 
 const ANALYSIS_METADATA_WRITE = Symbol('mini-tool-analysis-metadata');
@@ -45,11 +47,13 @@ export function commitVideoSceneAnalysis(doc: Y.Doc, nodeId: string, record: unk
   const key = `${SCENE_ANALYSIS_APPLIED_PREFIX}${accepted.analysisRunId}`;
   if (data.get(key) === true) return false;
   const next = videoToolDraftSchema('video.split').parse({ ...draft, revision: newId(), params: { ...draft.params, cuts: accepted.result.cuts.map((cut) => cut.pts) } });
-  doc.transact(() => {
-    data.set(key, true);
-    data.set('miniToolDraft:video.split', next);
-  }, CANVAS_UNDO);
-  return true;
+  const name = docNameOf(doc);
+  return name !== null && writeSpaceDoc(name, { kind: 'add' }, () => {
+    doc.transact(() => {
+      data.set(key, true);
+      data.set('miniToolDraft:video.split', next);
+    }, CANVAS_UNDO);
+  }).ok;
 }
 
 /**
@@ -76,7 +80,7 @@ export function readVideoToolDraft<K extends VideoToolId>(
  * @param toolId - The tool being edited.
  * @param draft - A complete snapshot with its caller-generated revision.
  * @param undoable - Whether the write is the user's own edit, an undo step; false for a seeded draft or an automatic freeze.
- * @returns Whether the host exists and received the snapshot.
+ * @returns Whether the host exists and the size gate let it receive the snapshot.
  * @throws {Error} When the snapshot does not match the tool's schema.
  */
 export function commitVideoToolDraft<K extends VideoToolId>(
@@ -89,8 +93,10 @@ export function commitVideoToolDraft<K extends VideoToolId>(
   const data = nodeDataMap(doc, nodeId);
   if (data === null) return false;
   const parsed = videoToolDraftSchema(toolId).parse(draft);
-  doc.transact(() => data.set(`miniToolDraft:${toolId}`, parsed), undoable ? CANVAS_UNDO : DRAFT_SEED_WRITE);
-  return true;
+  const name = docNameOf(doc);
+  return name !== null && writeSpaceDoc(name, { kind: 'add' }, () => {
+    doc.transact(() => data.set(`miniToolDraft:${toolId}`, parsed), undoable ? CANVAS_UNDO : DRAFT_SEED_WRITE);
+  }).ok;
 }
 
 /**
@@ -98,7 +104,7 @@ export function commitVideoToolDraft<K extends VideoToolId>(
  * @param doc - The live canvas document.
  * @param nodeId - The host node.
  * @param reference - The identity returned by an accepted analysis request.
- * @returns Whether the host exists and holds the reference.
+ * @returns Whether the host exists and holds the reference; false when the size gate refused it.
  * @throws {Error} When the reference is invalid or the run holds another identity.
  */
 export function commitVideoToolAnalysisRef(
@@ -120,8 +126,10 @@ export function commitVideoToolAnalysisRef(
       && held.data.kind === parsed.kind) return true;
     throw new Error('An accepted analysis run already holds a different reference');
   }
-  doc.transact(() => data.set(key, parsed), ANALYSIS_METADATA_WRITE);
-  return true;
+  const name = docNameOf(doc);
+  return name !== null && writeSpaceDoc(name, { kind: 'add' }, () => {
+    doc.transact(() => data.set(key, parsed), ANALYSIS_METADATA_WRITE);
+  }).ok;
 }
 
 /**
@@ -142,9 +150,11 @@ export function clearVideoToolDraft(doc: Y.Doc, nodeId: string, toolId: VideoToo
     : undefined;
   const references = videoToolAnalysisRefs(Object.fromEntries(data.entries()))
     .filter((reference) => reference.draftId === draftId && reference.toolId === toolId);
-  doc.transact(() => {
-    data.delete(key);
-    for (const reference of references) data.delete(`miniToolAnalysis:${reference.analysisRunId}`);
-  }, CANVAS_UNDO);
-  return true;
+  const name = docNameOf(doc);
+  return name !== null && writeSpaceDoc(name, { kind: 'remove' }, () => {
+    doc.transact(() => {
+      data.delete(key);
+      for (const reference of references) data.delete(`miniToolAnalysis:${reference.analysisRunId}`);
+    }, CANVAS_UNDO);
+  }).ok;
 }

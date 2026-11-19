@@ -258,7 +258,7 @@ describe('ScrollArea', () => {
     // keeps a non-scrollable edge from swallowing clicks.
     expect(rail.getAttribute('data-scrollable')).toBe('false');
     // Nothing here is scrollable, so the pointer coming in reveals nothing:
-    // a bar that appears over content the reader cannot scroll says something
+    // a bar that appears over content the user cannot scroll says something
     // untrue about that content. Reported on an empty document Space, where
     // a bar came out on hover with nothing to scroll (user 2026-08-29).
     fireEvent.pointerEnter(root);

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Activity feed panel tests (ADR 2026-07-04 project-activity-feed).
@@ -339,7 +339,7 @@ describe('ProjectActivityButton (activity feed)', () => {
   });
 
   it('settles the Restore button after a refused restore without leaving a rejection behind', async () => {
-    // The host has already told the reader (`callRpc` toasts before it
+    // The host has already told the user (`callRpc` toasts before it
     // throws); the button only has to come back.
     const unhandled = vi.fn();
     process.on('unhandledRejection', unhandled);
@@ -471,6 +471,13 @@ describe('entryMessage specificity (#1622)', () => {
     expect(key('file')).toBe('activity.type.assetUploaded');
   });
 
+  it('asset:uploaded of a 3D model → names the model as the user called it (inner#1690)', () => {
+    const message = entryMessage(entry({ type: 'asset:uploaded', payload: { fileUrl: 'x', kind: 'file', model: { name: 'Barn lamp' } } }));
+    expect(message.key).toBe('activity.type.assetUploadedModel');
+    expect(message.params).toMatchObject({ name: 'Barn lamp' });
+    expect(message.params).toHaveProperty('actor');
+  });
+
   it('generation:succeeded → kind-specific key; toolName still wins; generic fallback', () => {
     expect(
       entryMessage(entry({ type: 'generation:succeeded', payload: { source: 'task', kind: 'image' } })).key,
@@ -594,6 +601,25 @@ describe('activity feed row: thumbnail + credits (#1622)', () => {
     expect(screen.getByTestId('project-activity-credits-g-2')).toHaveTextContent(/^3\.46$/);
   });
 
+  // inner#1743: delivered before its upstream billed it, the run shows what is known so far.
+  it('marks a generation still being billed, its known part as a lower bound', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'p-1',
+          type: 'generation:succeeded',
+          payload: { source: 'task', kind: 'image', fileUrl: 'https://x/i.png', credits: 12.5, billing: 'pending' },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(<ProjectActivityButton projectId={PID} />);
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    await screen.findByTestId('project-activity-entry-p-1');
+    expect(screen.getByTestId('project-activity-credits-p-1')).toHaveTextContent(/^≥ 12\.5Billing$/);
+  });
+
   it('plain rows (space / member) have no thumbnail and no credits', async () => {
     listMock.mockResolvedValue({
       items: [entry({ id: 's-1', type: 'space:created', payload: { spaceName: 'Main' } })],
@@ -658,7 +684,7 @@ describe('activity feed: failure icon + trigger icon (#1820 polish)', () => {
 });
 
 describe('relativeTime', () => {
-  it('dates an entry older than a year by the day of the reader', () => {
+  it('dates an entry older than a year by the day of the user', () => {
     const real = process.env['TZ'];
     try {
       process.env['TZ'] = 'Asia/Shanghai';

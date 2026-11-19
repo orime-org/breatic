@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Orime, Inc.
-# SPDX-License-Identifier: Elastic-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 #
 # Run the media container's Node tests inside the image built from packages/ingest/Dockerfile, so FFmpeg is the
 # production build (8.0 on Alpine) rather than the developer's local one (inner#1306 test plan §91 D-5).

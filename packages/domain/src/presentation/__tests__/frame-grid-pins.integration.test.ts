@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Presentation pins on the frame grid (inner#1306 test plan §66 P01, P02, P04; frames-split design §7.15 钉住行、事件表、不变量,
- * §10.12 rows for `0115_presentation_pins.sql`, `presentation-pin.repo.ts`, `presentation-pin.service.ts`,
+ * §10.12 rows for `0130_presentation_pins.sql`, `presentation-pin.repo.ts`, `presentation-pin.service.ts`,
  * `storage-reclaim.repo.ts`).
  *
  * What changes from the ledger pins:

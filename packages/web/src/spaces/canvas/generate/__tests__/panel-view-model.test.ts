@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
 import type { FocusImage, ModelEntry, NodeType } from '@breatic/shared';
@@ -42,7 +42,8 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
     tier: 'optional',
     generation_time: 10,
     takes_prompt: true,
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
     ...over,
     mode,
     // i2i / edit take the reference pool and cannot run without it, the way
@@ -242,7 +243,7 @@ describe('buildGeneratePanelViewModel', () => {
       models: editModels,
       atMentionedSourceIds: new Set(['b', 'a']),
     });
-    expect(vm.mentionTokens).toEqual({ a: 'image 1', b: 'image 2' });
+    expect(vm.mentionTokens).toEqual({ a: '{{ref:images:1}}', b: '{{ref:images:2}}' });
   });
 
   it('i2i with an incoming edge but NO @-mention submits no source image (design B)', () => {

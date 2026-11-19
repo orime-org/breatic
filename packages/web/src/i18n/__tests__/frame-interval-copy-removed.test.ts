@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Frame extraction keeps only First, Last and Current (inner#1306 test plan §97; frames-split design §10.6 删除行, tools

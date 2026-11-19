@@ -1,28 +1,31 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import {
   assertBindsCatalog,
   candidatesOf,
+  droppedValues,
   parseProviderConfig,
   type CatalogShape,
   type ProviderConfig,
   type MediaBinding,
   type ProviderConfigInput,
 } from "@provider/config/schema.js";
-import { z } from "zod";
-import { numberLeaf, type Cost, type CostLookup, type TokenBuckets } from "@provider/cost.js";
-import { fetchJson, SIDE_REQUEST_MS } from "@provider/http/request.js";
+import type { Cost, CostLookup } from "@provider/cost.js";
+import { sideBounds } from "@provider/http/request.js";
 import type { LlmApi } from "@provider/llm/api.js";
 import { createLlm } from "@provider/llm/llm.js";
-import { billed } from "@provider/media/wavespeed/adapter.js";
+import { hasLlmAdapter, vendorOf } from "@provider/llm/vendors.js";
+import { mediaAdapter } from "@provider/media/adapters.js";
 import {
   estimateCost,
+  inputRefusal,
   type Availability,
   type Estimate,
   type EstimateInput,
   type PricingRule,
   type PricingRules,
+  type RejectedInput,
   type Route,
   type UpstreamPricing,
 } from "@provider/pricing/estimate.js";
@@ -34,7 +37,7 @@ export interface ProviderOptions {
   keyOf: (envName: string) => string | undefined;
   /** Retries on one upstream before an LLM call moves on. */
   llmMaxRetries: number;
-  /** Applied to every text provider sends to an LLM. */
+  /** Applied to the question of an understand call and to every string and key of a decisions request; a prepared call's messages go to the upstream as the caller built them. */
   cleanText: (text: string) => string;
 }
 
@@ -55,10 +58,17 @@ export interface Provider {
   pricingRules(model: string): PricingRules;
   /** The estimate of the upstream the route would choose; null when it reaches none. */
   estimate(model: string, input: EstimateInput, route: Route): Promise<Estimate | null>;
+  /** Why no configured upstream the route may use takes the run; null when one does, none is configured or none configured is priced. */
+  refusal(model: string, input: EstimateInput, route: Route): Promise<RejectedInput | null>;
   readonly llm: LlmApi;
   readonly cost: {
     /** Ask the upstream again for a cost that was pending; the last attempt answers known or missing. */
     lookup(lookup: CostLookup, options: { lastAttempt: boolean }): Promise<Cost>;
+    /**
+     * The lookup of a generation queued before lookups named their upstream: the first upstream that keeps
+     * generations to look a cost up by, or undefined when none does.
+     */
+    fromGeneration(generationId: string): CostLookup | undefined;
   };
 }
 
@@ -83,7 +93,11 @@ export function createProvider(options: ProviderOptions): Provider {
    * @param model - Our model id.
    * @returns The rules.
    */
-  const pricingRules = (model: string): PricingRules => ({ model, upstreams: (config.models[model] ?? []).map(pricingOf) });
+  const pricingRules = (model: string): PricingRules => ({
+    model,
+    ...(config.rejects[model] === undefined ? {} : { rejects: config.rejects[model] }),
+    upstreams: (config.models[model] ?? []).map(pricingOf),
+  });
   return {
     config,
     keyOf: options.keyOf,
@@ -91,8 +105,15 @@ export function createProvider(options: ProviderOptions): Provider {
     assertBindsCatalog: (catalog) => assertBindsCatalog(config, catalog),
     pricingRules,
     estimate: (model, input, route) => estimateCost(pricingRules(model), availability(model), input, route),
+    refusal: (model, input, route) => inputRefusal(pricingRules(model), availability(model), input, route),
     llm: createLlm(config, options),
-    cost: { lookup: (lookup, { lastAttempt }) => lookupCost(config, options, lookup, lastAttempt) },
+    cost: {
+      lookup: (lookup, { lastAttempt }) => lookupCost(config, options, lookup, lastAttempt),
+      fromGeneration(generationId) {
+        const upstream = Object.keys(config.upstreams).find((u) => hasLlmAdapter(config.upstreams[u]!.kind) && vendorOf(config.upstreams[u]!.kind).costs !== undefined);
+        return upstream === undefined ? undefined : { upstream, generationId };
+      },
+    },
   };
 }
 
@@ -108,32 +129,43 @@ function pricingOf(binding: MediaBinding): UpstreamPricing {
     fields: Object.fromEntries(Object.entries(binding.params ?? {}).map(([param, bound]) => [param, bound.field])),
     pricing: binding.pricing as PricingRule,
     steps: (binding.extra_steps ?? []).map((step) => ({
+      kind: step.kind,
       ...(step.for_param === undefined ? {} : { for_param: step.for_param }),
       ...(step.per_item === undefined ? {} : { per_item: step.per_item }),
-      ...(step.reused === undefined ? {} : { reused: step.reused }),
       ...(step.pricing === undefined ? {} : { pricing: step.pricing as PricingRule }),
     })),
     ...(binding.reused_by === undefined ? {} : { reused_by: binding.reused_by }),
+    ...limitsOf(binding),
+    ...(binding.rejects === undefined ? {} : { rejects: binding.rejects }),
+    ...(binding.dialogue === undefined ? {} : { dialogue: binding.dialogue }),
+    ...(binding.mentions === undefined ? {} : { mentions: binding.mentions }),
   };
 }
 
-/** OpenRouter's generation answer, as far as it is read. */
-const generationSchema = z.looseObject({
-  data: z.looseObject({
-    total_cost: numberLeaf,
-    native_tokens_prompt: numberLeaf,
-    native_tokens_cached: numberLeaf,
-    native_tokens_completion: numberLeaf,
-    native_tokens_reasoning: numberLeaf,
-  }),
-});
-
-/** The largest generation answer read. */
-const MAX_LOOKUP_BYTES = 1024 * 1024;
+/**
+ * The input limits a binding puts on a run: each param's supported values or the values a drop serves, and each voice map's voices.
+ * @param binding - The binding.
+ * @returns The limits and voices, each left out when empty.
+ */
+function limitsOf(binding: MediaBinding): Pick<UpstreamPricing, "limits" | "voices"> {
+  const limits: NonNullable<UpstreamPricing["limits"]> = {};
+  for (const [param, bound] of Object.entries(binding.params ?? {})) {
+    if (bound.supported !== undefined) limits[param] = bound.supported;
+  }
+  for (const [param, drop] of Object.entries(binding.drops ?? {})) {
+    const values = droppedValues(drop);
+    if (values !== undefined) limits[param] = [...values];
+  }
+  const voices = Object.fromEntries(Object.entries(binding.voice_map ?? {}).map(([param, map]) => [param, Object.keys(map)]));
+  return {
+    ...(Object.keys(limits).length === 0 ? {} : { limits }),
+    ...(Object.keys(voices).length === 0 ? {} : { voices }),
+  };
+}
 
 /**
- * Ask the upstream again for a cost that was pending: OpenRouter
- * by generation id, WaveSpeed by its billing search. Until the last attempt an
+ * Ask the upstream again for a cost that was pending: an LLM upstream that reports its costs
+ * by generation id, a media upstream through its adapter. Until the last attempt an
  * unanswered lookup stays pending; on it, it is missing.
  * @param config - The validated configuration.
  * @param options - The caller's options.
@@ -142,40 +174,14 @@ const MAX_LOOKUP_BYTES = 1024 * 1024;
  * @returns The cost.
  */
 async function lookupCost(config: ProviderConfig, options: ProviderOptions, lookup: CostLookup, lastAttempt: boolean): Promise<Cost> {
-  /**
-   * The answer when the upstream did not say: pending, or missing on the last attempt.
-   * @param reason - Why.
-   * @returns The cost.
-   */
-  const unanswered = (reason: string): Cost => (lastAttempt ? { state: "missing", reason } : { state: "pending", lookup });
   const decl = config.upstreams[lookup.upstream];
   if (decl === undefined) return { state: "missing", reason: `unknown upstream ${lookup.upstream}` };
   const key = options.keyOf(decl.key_env) ?? "";
-  if (decl.kind === "wavespeed" && typeof lookup.predictionId === "string") {
-    return (await billed({ name: lookup.upstream, decl, key }, lookup.predictionId, {}, lastAttempt)).cost;
+  const media = mediaAdapter(decl.kind);
+  if (media !== undefined && typeof lookup.predictionId === "string") {
+    return (await media.billed({ name: lookup.upstream, decl, key }, lookup.predictionId, sideBounds(), lastAttempt)).cost;
   }
-  if (decl.kind !== "openrouter" || typeof lookup.generationId !== "string") return { state: "missing", reason: "the lookup names nothing to ask" };
-  try {
-    const body = await fetchJson(
-      { url: `${decl.base_url}/generation?id=${encodeURIComponent(lookup.generationId)}`, method: "GET", headers: { authorization: `Bearer ${key}` } },
-      { replaySafe: true, maxBodyBytes: MAX_LOOKUP_BYTES, idleMs: SIDE_REQUEST_MS },
-    );
-    const parsed = generationSchema.safeParse(body);
-    if (!parsed.success) return unanswered("the generation answer is not shaped as a generation");
-    const data = parsed.data.data;
-    const tokens: TokenBuckets = {
-      input: data.native_tokens_prompt ?? 0,
-      cachedInput: data.native_tokens_cached ?? 0,
-      output: data.native_tokens_completion ?? 0,
-      reasoning: data.native_tokens_reasoning ?? 0,
-    };
-    const cost = data.total_cost;
-    if (cost === undefined) {
-      const reason = "the generation carries no cost yet";
-      return lastAttempt ? { state: "missing", reason, tokens } : { state: "pending", lookup };
-    }
-    return { state: "known", usd: cost, tokens, source: "billing" };
-  } catch (error) {
-    return unanswered(error instanceof Error ? error.message : String(error));
-  }
+  const costs = hasLlmAdapter(decl.kind) ? vendorOf(decl.kind).costs : undefined;
+  if (costs === undefined || typeof lookup.generationId !== "string") return { state: "missing", reason: "the lookup names nothing to ask" };
+  return costs.lookup(decl, key, lookup.generationId, lookup, lastAttempt);
 }

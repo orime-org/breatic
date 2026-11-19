@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Drizzle ORM schema definitions for all database tables.
@@ -13,6 +13,7 @@ import {
   pgTable,
   uuid,
   varchar,
+  char,
   text,
   boolean,
   doublePrecision,
@@ -46,7 +47,7 @@ import type { CreditGrantResult, CreditGrantWrite } from "@core/credit/credit-gr
 import type { EnterpriseMembershipResult, EnterpriseMembershipWrite } from "@core/auth/enterprise-membership-contract.js";
 import type { ReclaimScope, ReclaimDecision, ReclaimControlDecision, ReclaimItemResult, ReclaimRun } from "@core/maintenance/types.js";
 import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
-import type { StripeWebhookResult } from "@breatic/shared";
+import type { SignupReferralSource, StripeWebhookResult } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -112,6 +113,10 @@ export const users = pgTable(
     membershipTier: varchar("membership_tier", { length: 16 })
       .default("base")
       .notNull(),
+    // The Agent model this account last picked (0114, #1363). Only a new
+    // conversation reads it, as its starting model; each conversation keeps
+    // its own pick in `conversations.agent_model`. Null until the first pick.
+    agentModel: varchar("agent_model", { length: 100 }),
     // Recovery code (GitHub backup-codes pattern, PR-a 2026-05-26):
     // bcrypt-hashed single-use code shown once at registration so users
     // can reset their password without an SMTP backend (self-host
@@ -178,7 +183,7 @@ export const users = pgTable(
  * NOT what makes a redelivered webhook safe: comparing tiers converges on the
  * last call and cannot tell a replay from a new event, so the subscription
  * work keys idempotency on event identity the way `updatePaymentStatusCAS`
- * and `chargeOnceForGeneration` already do.
+ * and `creditLotService.chargeOnce` already do.
  */
 export const membershipTierChanges = pgTable(
   "membership_tier_changes",
@@ -463,7 +468,7 @@ export const conversations = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    // Null while the conversation has no name of its own. What the reader
+    // Null while the conversation has no name of its own. What the user
     // sees in that case is decided where their language is known, which is
     // not here.
     title: varchar("title", { length: 200 }),
@@ -471,6 +476,9 @@ export const conversations = pgTable(
       onDelete: "set null",
     }),
     lastConsolidatedTurn: integer("last_consolidated_turn").default(0).notNull(),
+    // The Agent model this conversation is answered by (0114, #1363). Null
+    // for a conversation from before the picker until its next message.
+    agentModel: varchar("agent_model", { length: 100 }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -778,10 +786,21 @@ export const tasks = pgTable(
      */
     providerTaskId: text("provider_task_id"),
     /**
-     * Idempotency guard for credit deduction. Set via CAS when the task
-     * is marked completed AND the file is persisted to storage. If set,
-     * `chargeOnce()` is a no-op. Prevents double-charge on BullMQ retries,
-     * stalled-job redelivery, or duplicate Worker instances.
+     * provider's ticket for this task's media run (inner#1743): opaque to us,
+     * stored before every paid request and handed back on every pickup.
+     * Never read by anything but the worker's dispatch, and never sent to a
+     * browser.
+     */
+    providerTicket: jsonb("provider_ticket").$type<Record<string, unknown>>(),
+    /** The stored ticket's version: a ticket is written only over an older one. */
+    providerTicketVersion: integer("provider_ticket_version"),
+    /** Set while a send of the stored ticket is in flight; a pickup that finds it set recovers instead of sending. */
+    providerSendingAt: timestamp("provider_sending_at", { withTimezone: true }),
+    /**
+     * Set by the CAS that completes the task once its file is persisted.
+     * Only the attempt that sets it records the task's charge request
+     * (`credit_charge_requests`), in the same transaction, so BullMQ retries,
+     * stalled-job redelivery or a duplicate worker cannot record a second.
      */
     billedAt: timestamp("billed_at", { withTimezone: true }),
     /**
@@ -819,13 +838,13 @@ export const tasks = pgTable(
 
 /**
  * The upstream calls one task makes, in order (#2156): a Mureka upload, a
- * cloned voice, vocal or element, then the model's own call, and for Voice
- * Cloning the speech after it. Written by the worker on the task's first run
+ * cloned voice, vocal or element, then the model's own call, and after it the
+ * speech for Voice Cloning or the rig for a 3D generation asked to rig a skeleton. Written by the worker on the task's first run
  * and advanced only by its step executor, so a redelivered job resumes from
  * the first step that is not done and never submits a step twice.
  *
- * The kind and status CHECKs live in migration 0085 only, as 0061 does for
- * its tables.
+ * The kind CHECK was last redefined by migration 0123 (0085 added it, 0092
+ * extended it); the status CHECK lives in 0085.
  */
 export const taskUpstreamSteps = pgTable(
   "task_upstream_steps",
@@ -860,7 +879,7 @@ export const taskUpstreamSteps = pgTable(
  * source they were cloned from (#2156): the first run on a source clones it,
  * every later run reuses the id. Read and written only by the worker.
  *
- * At most one live row per (studio, kind, source): the partial unique index
+ * At most one live row per (studio, upstream, kind, source): the partial unique index
  * is what settles two runs cloning the same source at once — the first insert
  * wins and the second keeps its own id for its own run.
  */
@@ -871,6 +890,8 @@ export const studioUpstreamClones = pgTable(
     studioId: uuid("studio_id")
       .notNull()
       .references(() => studios.id, { onDelete: "restrict" }),
+    /** The upstream that made the clone; a source has at most one live clone on each. */
+    upstream: text("upstream").notNull(),
     kind: varchar("kind", { length: 16 }).notNull(),
     /** The source asset's sha256; an element adds its name after a colon. */
     sourceKey: text("source_key").notNull(),
@@ -880,7 +901,7 @@ export const studioUpstreamClones = pgTable(
   },
   (table) => [
     uniqueIndex("studio_upstream_clones_live_key")
-      .on(table.studioId, table.kind, table.sourceKey)
+      .on(table.studioId, table.upstream, table.kind, table.sourceKey)
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 );
@@ -891,7 +912,7 @@ export const studioUpstreamClones = pgTable(
  * Per-node content timeline.
  *
  * Records every content change on a canvas node: successful/failed
- * AIGC generations, user uploads, and the copies a reader asks to keep.
+ * AIGC generations, user uploads, and the copies a user asks to keep.
  * Queried by frontend to show version history and support restore. Node
  * soft-deletes don't cascade - history is preserved until the project is
  * deleted.
@@ -998,13 +1019,16 @@ export const nodeTasks = pgTable(
     // Rides the event so collab can name the document. Not a foreign key:
     // spaces live in Yjs, not in a table.
     spaceId: uuid("space_id").notNull(),
-    // Same: the node lives in the canvas document.
-    nodeId: uuid("node_id").notNull(),
+    // Same: the node lives in the canvas document. Null on a 3D Space's
+    // model upload (inner#1690) or generation (inner#1691), which belong to
+    // the Space's own list; 0113 and 0117 allow that for the scene import and
+    // generate actions only.
+    nodeId: uuid("node_id"),
 
     kind: varchar("kind", { length: 20 }).notNull(), // 'upload' | 'generation'
     // What the row's first line names: 'upload' | 'generate' | 'understand'
-    // | 'mini_tool' (inner#888) | 'transcribe' (inner#856). Its CHECK lives in
-    // 0092, widened in 0101.
+    // | 'mini_tool' (inner#888) | 'transcribe' (inner#856) | 'scene_import'
+    // (inner#1690). Its CHECK lives in 0092, widened in 0101 and 0113.
     action: varchar("action", { length: 20 }).notNull(),
     // 'running' | 'done' | 'failed' | 'expired'
     status: varchar("status", { length: 20 }).notNull(),
@@ -1046,6 +1070,18 @@ export const nodeTasks = pgTable(
     taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
     // The upload grant this task was opened for; null on generations.
     storageKey: text("storage_key"),
+    // The registered model a Space-level row holds (inner#1690): written once,
+    // when a dedup hit opens the row already done, by the settle into `done`,
+    // or onto an expired row its result outlived.
+    assetId: uuid("asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
+    // Where a 3D Space's generation was started from (inner#1691): 'space'
+    // (the Space's own dialog) or 'agent' (a proposal card). Set on those rows
+    // only, null on every other row; its CHECK lives in 0117.
+    origin: varchar("origin", { length: 16 }),
+    // What the user is told beside a done 3D generation (inner#1692):
+    // 'rig_failed' when the model was delivered without the skeleton it was
+    // asked for. Null on every other row; its CHECK lives in 0123.
+    notice: varchar("notice", { length: 24 }),
 
     ...timestamps,
     // Stamped when the user clears the record. The row stays: the system only
@@ -1066,6 +1102,10 @@ export const nodeTasks = pgTable(
     index("node_tasks_job_node_idx")
       .on(table.taskId, table.nodeId)
       .where(sql`${table.taskId} IS NOT NULL`),
+    // A Space's own list.
+    index("node_tasks_space_live_idx")
+      .on(table.projectId, table.spaceId, table.startedAt)
+      .where(sql`${table.nodeId} IS NULL AND ${table.deletedAt} IS NULL`),
   ],
 );
 
@@ -1158,6 +1198,57 @@ export const creditGrantOperations = pgTable("credit_grant_operations", {
   requestedBy: uuid("requested_by").notNull(),
   requestBody: jsonb("request_body").$type<CreditGrantWrite>().notNull(),
   result: jsonb("result").$type<CreditGrantResult>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** One promoter application; partial unique indexes and CHECKs live in 0118 (inner#1868). */
+export const promoterApplications = pgTable("promoter_applications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  status: text("status").$type<"pending" | "approved" | "rejected">().notNull(),
+  country: char("country", { length: 2 }).notNull(),
+  channels: jsonb("channels").$type<string[]>().notNull(),
+  plan: text("plan").notNull(),
+  termsVersion: varchar("terms_version", { length: 32 }).notNull(),
+  termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }).notNull(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  decidedBy: varchar("decided_by", { length: 64 }),
+  decisionReason: text("decision_reason"),
+  applicantNote: text("applicant_note"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  ...timestamps,
+});
+
+/** An approved promoter's code; stored upper-case, never deleted because bindings point at it. */
+export const referralCodes = pgTable("referral_codes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  code: varchar("code", { length: 20 }).notNull().unique(),
+  promoterId: uuid("promoter_id").notNull().unique().references(() => users.id, { onDelete: "restrict" }),
+  applicationId: uuid("application_id").notNull().unique().references(() => promoterApplications.id, { onDelete: "restrict" }),
+  status: text("status").$type<"active" | "disabled" | "removed">().default("active").notNull(),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  ...timestamps,
+});
+
+/** The one code an account carries, written once and kept for commission. */
+export const referralBindings = pgTable("referral_bindings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull().unique().references(() => users.id, { onDelete: "restrict" }),
+  referralCodeId: uuid("referral_code_id").notNull().references(() => referralCodes.id, { onDelete: "restrict" }),
+  source: text("source").$type<SignupReferralSource | "later">().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Every back-office referral write under its idempotency key, with its original answer. */
+export const referralOperations = pgTable("referral_operations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  kind: text("kind").$type<"approve" | "reject" | "disable" | "enable" | "remove">().notNull(),
+  targetId: uuid("target_id").notNull(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  requestedBy: varchar("requested_by", { length: 64 }).notNull(),
+  requestBody: jsonb("request_body").$type<Record<string, unknown>>().notNull(),
+  result: jsonb("result").$type<{ status: "applied" | "refused" } & Record<string, unknown>>().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -1904,8 +1995,9 @@ export const creditRefundReconcileStatus = pgTable("credit_refund_reconcile_stat
  * `operation_key` groups a turn, a consolidation, a text-tool run or a task;
  * it is the same key handed to the credit engine, so what was charged for an
  * operation is the `credit_ledger` rows whose `reference_id` equals it, plus
- * one row per later-looked-up OpenRouter call under
- * `<operation_key>:gen:<generation id>`. This
+ * one row per later-looked-up model call under
+ * `<operation_key>:lookup:<sha256 of its lookup>` (a job queued before
+ * provider keeps `<operation_key>:gen:<generation id>`). This
  * table records cost; it does not record whether a charge was made.
  *
  * `created_at` only, and no `deleted_at`: an append-only usage record, the
@@ -2044,6 +2136,44 @@ export const creditHolds = pgTable(
   ],
 );
 
+// ── 8f. Credit charge requests (0121, inner#1617) ─────────────────────
+
+export const creditChargeRequests = pgTable(
+  "credit_charge_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // 'task' | 'timeline_execution' | 'operation'. CHECK in 0121.
+    kind: varchar("kind", { length: 24 }).$type<"task" | "timeline_execution" | "operation">().notNull(),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    // What the settlement's ledger rows carry as their reference.
+    referenceId: varchar("reference_id", { length: 255 }).notNull(),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
+    // Above zero. CHECK in 0121.
+    amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
+    description: text("description"),
+    model: varchar("model", { length: 100 }),
+    provider: varchar("provider", { length: 50 }),
+    tokensUsed: integer("tokens_used"),
+    // The credit hold the settlement releases, if any.
+    releaseHold: varchar("release_hold", { length: 255 }),
+    // 'pending' | 'settled'. CHECK in 0121.
+    status: varchar("status", { length: 16 }).$type<"pending" | "settled">().default("pending").notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    lastError: text("last_error"),
+    // Set exactly when settled. CHECK in 0121.
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("credit_charge_requests_key_idx").on(table.kind, table.actorUserId, table.referenceId),
+    index("credit_charge_requests_pending_idx")
+      .on(table.updatedAt)
+      .where(sql`${table.status} = 'pending'`),
+  ],
+);
+
 // ── 9. Conversation Memories ─────────────────────────────────────────
 
 export const conversationMemories = pgTable(
@@ -2085,12 +2215,10 @@ export const memoryHistoryEntries = pgTable(
 // ── 11. Project Memories ─────────────────────────────────────────────
 
 /**
- * What one member's agent has summarised about one project.
- *
- * Keyed by member as well as project: the content is written by reading that
- * member's own conversations, so a row shared across a project hands what one
- * person's agent learned to the next person's system prompt, and the next
- * consolidation overwrites it.
+ * The block of memory each member's agent kept about one project before
+ * memory entries (#1363). Migration 0115 copied every row into
+ * `agent_memories` word for word; nothing reads or writes this table now, and
+ * it stays as that migration's source.
  */
 export const projectMemories = pgTable(
   "project_memories",
@@ -2112,6 +2240,208 @@ export const projectMemories = pgTable(
       table.userId,
       table.projectId,
     ),
+  ],
+);
+
+// ── 11b. Agent Memories ──────────────────────────────────────────────
+
+/**
+ * The Agent's memory, one fact per row (0114, #1363).
+ *
+ * A row with no conversation belongs to the member's Project and is read in
+ * every conversation of theirs there; a row with one belongs to that
+ * conversation alone. `origin` says who wrote it: the Agent through its
+ * memory tools, a consolidation, or the migration that carried each earlier
+ * block of memory over word for word. The scope rule (a conversation or a
+ * Project, at least one) and the three origins are CHECK constraints written
+ * in 0114 only.
+ */
+export const agentMemories = pgTable(
+  "agent_memories",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
+    conversationId: uuid("conversation_id").references(() => conversations.id, { onDelete: "restrict" }),
+    sourceConversationId: uuid("source_conversation_id").references(() => conversations.id, {
+      onDelete: "restrict",
+    }),
+    title: varchar("title", { length: 200 }).notNull(),
+    content: text("content").notNull(),
+    origin: varchar("origin", { length: 20 }).notNull(),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("agent_memories_project_idx")
+      .on(table.userId, table.projectId, desc(table.updatedAt))
+      .where(sql`${table.deletedAt} IS NULL AND ${table.conversationId} IS NULL`),
+    index("agent_memories_conversation_idx")
+      .on(table.conversationId, desc(table.updatedAt))
+      .where(sql`${table.deletedAt} IS NULL AND ${table.conversationId} IS NOT NULL`),
+  ],
+);
+
+/**
+ * A Project's instructions for the Agent (0122, #1400): one row per Project,
+ * sent at the end of the system prompt on every request there. Clearing sets
+ * `deleted_at`; a later save brings the same row back.
+ */
+export const projectAgentInstructions = pgTable("project_agent_instructions", {
+  projectId: uuid("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "restrict" }),
+  content: text("content").notNull(),
+  updatedByUserId: uuid("updated_by_user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "restrict" }),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+
+/**
+ * One Timeline execution the user accepted (0119, inner#1711).
+ *
+ * `status` moves only through `timelineExecutionRepo.transition`; `fence`
+ * names the attempt allowed to finish it and `billed_at` lets it be charged
+ * at most once. `space_id` has no foreign key, as with `tasks.space_id`. The
+ * kind, engine, status and phase CHECKs are written in 0119 only; the index
+ * declarations below mirror 0119, which is what runs.
+ */
+export const timelineExecutions = pgTable(
+  "timeline_executions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    spaceId: uuid("space_id").notNull(),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    kind: text("kind").notNull(),
+    actionId: text("action_id").notNull(),
+    input: jsonb("input").$type<Record<string, unknown>>().notNull(),
+    inputHash: text("input_hash").notNull(),
+    engine: text("engine").notNull(),
+    status: text("status").notNull().default("awaiting_landing"),
+    phase: text("phase"),
+    steps: jsonb("steps").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
+    attempt: integer("attempt").notNull().default(0),
+    fence: uuid("fence"),
+    deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
+    resultSourceVersionId: uuid("result_source_version_id"),
+    failureReason: text("failure_reason"),
+    billedCredits: numeric("billed_credits"),
+    billedAt: timestamp("billed_at", { withTimezone: true }),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("timeline_executions_action_idx")
+      .on(table.projectId, table.spaceId, table.actionId)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_executions_space_idx")
+      .on(table.projectId, table.spaceId, table.status, desc(table.createdAt))
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_executions_open_idx")
+      .on(table.createdAt)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.status} IN ('awaiting_landing', 'queued', 'running', 'cancelling')`),
+  ],
+);
+
+/**
+ * The immutable source version a web-animation execution produced (0120, inner#1711).
+ *
+ * At most one per execution: every settlement of the same terminal report
+ * lands on the row the first wrote. Insert-only, so `created_at` alone.
+ */
+export const timelineWebAnimationSources = pgTable(
+  "timeline_web_animation_sources",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    executionId: uuid("execution_id")
+      .notNull()
+      .unique("timeline_web_animation_sources_execution_id_key")
+      .references(() => timelineExecutions.id, { onDelete: "restrict" }),
+    packageKey: text("package_key").notNull(),
+    manifestKey: text("manifest_key").notNull(),
+    packageSha256: text("package_sha256").notNull(),
+    packageBytes: bigint("package_bytes", { mode: "number" }).notNull(),
+    manifestSha256: text("manifest_sha256").notNull(),
+    runtimeVersion: text("runtime_version").notNull(),
+    fontSetVersion: integer("font_set_version").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    fpsNum: integer("fps_num").notNull(),
+    fpsDen: integer("fps_den").notNull(),
+    durationFrames: integer("duration_frames").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+);
+
+/**
+ * A snapshot a user keeps of a document Space's body (0124, inner#1129).
+ *
+ * `content` is the editor's ProseMirror JSON with comment marks, so a restore
+ * puts comments back where they stood. `space_id` has no foreign key: Spaces
+ * live in Yjs. The list index is declared in 0124, which is what runs.
+ */
+export const documentVersions = pgTable(
+  "document_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    spaceId: uuid("space_id").notNull(),
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    name: text("name"),
+    content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+    schemaVersion: text("schema_version").notNull(),
+    contentBytes: integer("content_bytes").notNull(),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedByUserId: uuid("deleted_by_user_id").references(() => users.id, { onDelete: "restrict" }),
+  },
+  (table) => [
+    index("document_versions_space_list_idx")
+      .on(table.projectId, table.spaceId, table.createdAt, table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
+/**
+ * Which Projects may resolve and preview an execution's result (0120, inner#1711).
+ *
+ * One live row per execution and Project; duplicating a Project copies every
+ * live row of its source.
+ */
+export const timelineExecutionGrants = pgTable(
+  "timeline_execution_grants",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    executionId: uuid("execution_id")
+      .notNull()
+      .references(() => timelineExecutions.id, { onDelete: "restrict" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("timeline_execution_grants_live_idx")
+      .on(table.executionId, table.projectId)
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_execution_grants_project_idx")
+      .on(table.projectId)
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 );
 
@@ -2841,7 +3171,7 @@ export const studioAssets = pgTable(
      * a video's first-class cover asset — a normal row that counts toward
      * storage, kind judged from the cover itself) | 'project_cover' /
      * 'studio_avatar' (a picture uploaded to be a project's cover or a
-     * studio's avatar) | 'agent' (a link the chat agent saved for the reader,
+     * studio's avatar) | 'agent' (a link the chat agent saved for the user,
      * inner#1315; usually a picture, but the row keeps whatever uploadable
      * type the link held). A dedup hit keeps the first uploader's value, so this
      * does not say what a row is used as. varchar, no schema change.
@@ -3160,7 +3490,7 @@ export const storageReclaimQueue = pgTable(
   ],
 );
 
-// ── Presentation pins (0115, inner#1306 §7.15) ───────────────────────
+// ── Presentation pins (0130, inner#1306 §7.15) ───────────────────────
 
 /**
  * One holder's reference to derived presentation objects of one toolInputId

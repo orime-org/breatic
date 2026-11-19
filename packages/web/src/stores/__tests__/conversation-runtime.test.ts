@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 一条会话在没人渲染它的时候都做些什么。
@@ -15,16 +15,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type * as ChatApiModule from '@web/data/api/chat';
 
-vi.mock('@web/data/api/chat', async (importOriginal) => ({
-  ...(await importOriginal<typeof ChatApiModule>()),
-  chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 })),
-    openChat: vi.fn(),
-    messagesBefore: vi.fn(),
-    readConversation: vi.fn(),
-    listConversations: vi.fn(),
-  },
-}));
+vi.mock('@web/data/api/chat', async (importOriginal) => {
+  const actual = await importOriginal<typeof ChatApiModule>();
+  return {
+    ...actual,
+    chatApi: {
+      streamPath: actual.chatApi.streamPath,
+      streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 })),
+      openChat: vi.fn(),
+      messagesBefore: vi.fn(),
+      readConversation: vi.fn(),
+      listConversations: vi.fn(),
+      sync: vi.fn(async () => ({ pending: [], running: false, awaiting: false, next_sync_ms: 3000 })),
+      stop: vi.fn(async () => ({ stopped: true })),
+    },
+  };
+});
 
 const toastSpy = vi.hoisted(() => ({ error: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({ toast: { error: toastSpy.error, warning: vi.fn(), success: vi.fn(), info: vi.fn() } }));
@@ -39,27 +45,33 @@ import {
 } from '@web/stores/conversation-runtime';
 import { watchChatMishaps } from '@web/stores/chat-mishaps';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
-import { chatSessionFor, evictAllChatSessions, sendInSession } from '@web/stores/chat-sessions';
+import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
+import { chatLive, resetChatLiveForTests } from '@web/stores/chat-live';
+import { settle, stubRunWire, type RunWire } from '@web/test-utils/chat-run-wire';
 
-/** 这一轮请求拿到的中止信号。 */
-let sent: AbortSignal | null | undefined;
+/** The run streams the page reads. */
+let wire: RunWire;
 
 /**
- * 在一条会话里开一轮，并等到请求真的出去了。
- * @param conversationId - 哪一条。
+ * Attach to a run that holds a conversation, as the page does for the one on
+ * screen (inner#1717), and wait until its stream is being read. The history
+ * read back before attaching is what the store already holds, so it joins
+ * onto the list and changes nothing there.
+ * @param conversationId - Which one.
  */
-async function aTurnIsRunningIn(conversationId: string): Promise<void> {
-  chatSessionFor({
-    projectId: 'p-1',
-    conversationId,
-    history: [],
-    onTitled: () => undefined,
-    onFirstFrame: () => undefined,
-  });
-  void sendInSession(conversationId, '一个要答很久的问题');
-  await vi.waitFor(() => {
-    expect(sent).toBeDefined();
-  });
+async function aRunIsReadIn(conversationId: string): Promise<void> {
+  const held = useConversationRuntime.getState().conversations[conversationId];
+  const history = held?.messages ?? [];
+  chatSessionFor({ projectId: 'p-1', conversationId, history, onTitled: () => undefined });
+  vi.mocked(chatApi.readConversation).mockResolvedValueOnce({
+    conversation: { id: conversationId },
+    messages: history,
+    hasMore: held?.hasMore ?? false,
+  } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
+  vi.mocked(chatApi.sync).mockResolvedValueOnce({ pending: [], running: true, awaiting: false, next_sync_ms: 3000 });
+  chatLive.show('p-1', conversationId);
+  await settle();
+  expect(wire.streams().filter((x) => x.conversationId === conversationId)).toHaveLength(1);
 }
 
 /**
@@ -71,7 +83,7 @@ function openChatAnswers({ hasMore = false }: { hasMore?: boolean } = {}): void 
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations: [{ id: 'c-1' }],
     current: {
-      conversation: { id: 'c-1' },
+      conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [
         {
           id: 'm1',
@@ -97,29 +109,19 @@ beforeEach(() => {
   vi.clearAllMocks();
   _resetForTests();
   evictAllChatSessions();
-  sent = undefined;
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (_url: string, init?: RequestInit) => {
-      sent = init?.signal;
-      // 永不结束，跟真的那条一样：socket 不关它就不结束。一调用就 resolve 的
-      // 替身会当场跑完这一轮的收尾，而收尾正是这些用例要看的东西。
-      return new Response(new ReadableStream<Uint8Array>({ start() {} }), {
-        status: 200,
-        headers: { 'Content-Type': 'text/event-stream' },
-      });
-    }),
-  );
+  wire = stubRunWire();
 });
 
 afterEach(() => {
+  resetChatLiveForTests();
+  evictAllChatSessions();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
 describe('saying something when the chat has not opened', () => {
   it('opens one and hands it back, rather than refusing', async () => {
-    // 项目打开的时候聊天没读出来 —— 网络断了,或者服务器不在。这拦不住读者
+    // 项目打开的时候聊天没读出来 —— 网络断了,或者服务器不在。这拦不住用户
     // 打字按发送,而按发送正该让他动起来。
     vi.mocked(chatApi.openChat).mockRejectedValueOnce(new Error('offline'));
     await conversationRuntime.ensureLoaded('p-1');
@@ -142,7 +144,7 @@ describe('saying something when the chat has not opened', () => {
     stop();
 
     // 一行字,别的什么都没发生:没有会话可写,所以面板一个字都不发出去,
-    // 而读者的话还在框里 —— 没有任何东西把它拿走过。
+    // 而用户的话还在框里 —— 没有任何东西把它拿走过。
     expect(told).toEqual([expect.objectContaining({ projectId: 'p-1', conversationId: null, kind: 'network' })]);
     expect(writeInto).toBeUndefined();
   });
@@ -150,7 +152,7 @@ describe('saying something when the chat has not opened', () => {
 
 describe('pressing send twice while the conversation is still being opened', () => {
   it('opens one conversation, not two', async () => {
-    // 第一次按发送要先把会话开出来,那是一整个来回。读者看不到任何动静,
+    // 第一次按发送要先把会话开出来,那是一整个来回。用户看不到任何动静,
     // 又按了一次 —— 人就是这么做的。
     let openIt: (r: Awaited<ReturnType<typeof chatApi.openChat>>) => void = () => {};
     vi.mocked(chatApi.openChat).mockReturnValueOnce(
@@ -163,10 +165,10 @@ describe('pressing send twice while the conversation is still being opened', () 
     const second = conversationRuntime.conversationForSending('p-1');
     openIt({
       conversations: [{ id: 'c-1' }],
-      current: { conversation: { id: 'c-1' }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
 
-    // 开出两条,第二次按下就会落进一条读者从没看见过的会话里。
+    // 开出两条,第二次按下就会落进一条用户从没看见过的会话里。
     expect(await first).toBe('c-1');
     expect(await second).toBe('c-1');
     expect(chatApi.openChat).toHaveBeenCalledTimes(1);
@@ -206,7 +208,7 @@ describe('what the message column is told while a chat is re-opened', () => {
 
 describe('one line per failed request, however many callers were waiting', () => {
   it('says it once, not once per caller', async () => {
-    // 面板挂载时问一次聊天。读者在它落地之前打字按了发送,而发送问的是
+    // 面板挂载时问一次聊天。用户在它落地之前打字按了发送,而发送问的是
     // 同一件事 —— 它加入那个已经在飞的请求,不另发一个。一个请求失败了,
     // 欠一行字。
     let refuse: (e: unknown) => void = () => {};
@@ -231,7 +233,7 @@ describe('one line per failed request, however many callers were waiting', () =>
 });
 
 describe('an answer that did not come from our server', () => {
-  it('is not passed off as a sentence written for the reader', async () => {
+  it('is not passed off as a sentence written for the user', async () => {
     // 网关超时会用它自己的 body 答话,里面没有我们的任何东西 —— 库留下的是
     // 写给开发者看的英文,从来没过 `t()`。
     //
@@ -266,20 +268,20 @@ describe('an answer that did not come from our server', () => {
 });
 
 describe('leaving the project', () => {
-  it('stops the turn and forgets the conversation', async () => {
+  it('lets go of the run it was reading, without stopping it, and forgets the conversation (WB-39)', async () => {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
-    await aTurnIsRunningIn('c-1');
+    await aRunIsReadIn('c-1');
 
     conversationRuntime.leaveProject('p-1');
 
-    // Stopped, not abandoned: once the project is off the screen there is no
-    // stop button anywhere for this turn, so leaving it running would keep
-    // the model going on the user's account with the switch out of reach.
-    expect(sent?.aborted).toBe(true);
+    // Let go of, not stopped: the run is the server's and goes on there
+    // (inner#1717); this page only stops reading it.
+    expect(wire.last()?.abandoned()).toBe(true);
+    expect(chatApi.stop).not.toHaveBeenCalled();
     // And forgotten, because nothing keyed by conversation ever drops itself
     // -- the messages would sit in memory until the page closed, and loading
-    // earlier lets a reader make that list as long as they like.
+    // earlier lets a user make that list as long as they like.
     expect(conversation()).toBeUndefined();
     expect(useConversationRuntime.getState().currentByProject['p-1']).toBeUndefined();
   });
@@ -300,13 +302,13 @@ describe('loading what came before', () => {
    * 让服务端把这条会话整个重新交一遍,新的那一页从某一轮开始。
    *
    * 一条会话的历史被整片换掉,今天只有一条路:重新读它 —— 切走再切回来、
-   * 重开项目、或者删掉当前这条之后落到别处。读者拉上来的更早那些跟着一起
+   * 重开项目、或者删掉当前这条之后落到别处。用户拉上来的更早那些跟着一起
    * 换掉了。
    * @param firstTurnIndex - 新的那一页最老的那一轮。
    */
   async function theConversationIsReadAgainFrom(firstTurnIndex: number): Promise<void> {
     vi.mocked(chatApi.readConversation).mockResolvedValue({
-      conversation: { id: 'c-1' },
+      conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
       messages: [
         {
           id: `m${firstTurnIndex}`,
@@ -322,7 +324,7 @@ describe('loading what came before', () => {
     vi.mocked(chatApi.readConversation).mockImplementationOnce(
       async () =>
         ({
-          conversation: { id: 'c-2' },
+          conversation: { id: 'c-2', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
           messages: [],
           hasMore: false,
         }) as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>,
@@ -331,10 +333,10 @@ describe('loading what came before', () => {
     await conversationRuntime.switchTo('p-1', 'c-1');
   }
 
-  it('puts it at the head, leaving the turn in flight alone', async () => {
+  it('puts it at the head, leaving the run being read alone', async () => {
     openChatAnswers({ hasMore: true });
     await conversationRuntime.ensureLoaded('p-1');
-    await aTurnIsRunningIn('c-1');
+    await aRunIsReadIn('c-1');
 
     vi.mocked(chatApi.messagesBefore).mockResolvedValue({
       messages: [
@@ -353,21 +355,23 @@ describe('loading what came before', () => {
     // newest end: the cursor is the oldest turn on screen.
     expect(chatApi.messagesBefore).toHaveBeenCalledWith('c-1', 7, expect.any(AbortSignal));
 
-    // 两个写者,两端。更早的那一页接在头上,而尾端那一轮在会话实例里照常跑
-    // 着 —— 这一页落地不该碰它。
+    // Two writers, two ends. The earlier page goes on at the head, while the
+    // run at the tail is read on as before: this page landing must not touch it.
     expect(conversation()?.messages.map((m) => m.id)).toEqual(['m0', 'm1']);
     expect(conversation()?.hasMore).toBe(false);
-    expect(sent?.aborted).toBe(false);
+    expect(wire.last()?.abandoned()).toBe(false);
   });
 
-  it('会话实例还在时，重新读它不许把「还能往前翻吗」覆盖回去', async () => {
-    // 这三样(列表、还能不能往前翻、翻到哪一轮了)是一体的:读者已经把这条
-    // 会话翻到了头,而服务端交回来的永远是最新那一页、它自己那份 `hasMore`
-    // 说的是「这一页之前还有」。只保住列表、让这一个跟着服务端走,屏幕上就
-    // 会重新出现一个「加载更早」按钮,按下去请求的是列表里已经有的那一页。
+  it('does not put back whether more can be loaded when the conversation is read again while its session is held', async () => {
+    // The list, whether more can be loaded and how far back it reaches belong
+    // together: the user has paged this conversation back to its start, while
+    // the server always hands back the newest page, whose own `hasMore` says
+    // "there is more before this page". Keeping only the list and letting this
+    // one follow the server would bring a "load earlier" button back on
+    // screen, whose press asks for a page the list already holds.
     openChatAnswers({ hasMore: true });
     await conversationRuntime.ensureLoaded('p-1');
-    await aTurnIsRunningIn('c-1');
+    await aRunIsReadIn('c-1');
 
     vi.mocked(chatApi.messagesBefore).mockResolvedValue({
       messages: [
@@ -385,7 +389,7 @@ describe('loading what came before', () => {
     await conversationRuntime.loadEarlier('c-1');
     expect(conversation()?.hasMore).toBe(false);
 
-    // 服务端这次交回来的那一页自称还有更早的。
+    // The page the server hands back this time says there is more before it.
     await theConversationIsReadAgainFrom(60);
 
     expect(conversation()?.hasMore).toBe(false);
@@ -463,7 +467,7 @@ describe('loading what came before', () => {
 
     // Joining the one still on its way would be waiting on an answer that is
     // going to be dropped -- it was asked from a list that no longer exists.
-    // The reader pressed a button and nothing at all would happen.
+    // The user pressed a button and nothing at all would happen.
     await vi.waitFor(() => expect(chatApi.messagesBefore).toHaveBeenCalledTimes(2));
     expect(chatApi.messagesBefore).toHaveBeenLastCalledWith('c-1', 60, expect.any(AbortSignal));
     expect(conversation()?.messages.map((m) => m.id)).toEqual(['m59', 'm60']);
@@ -502,14 +506,14 @@ describe('loading what came before', () => {
     ]);
 
     // Two requests would answer with the same page and both would write it to
-    // the head, so the reader would be shown every earlier message twice.
+    // the head, so the user would be shown every earlier message twice.
     expect(chatApi.messagesBefore).toHaveBeenCalledTimes(1);
     expect(conversation()?.messages.map((m) => m.id)).toEqual(['m0', 'm1']);
   });
 
 });
 
-describe('an answer that arrives after the reader has left', () => {
+describe('an answer that arrives after the user has left', () => {
   it('is dropped, rather than putting the project back', async () => {
     let answer: (r: Awaited<ReturnType<typeof chatApi.openChat>>) => void = () => {};
     vi.mocked(chatApi.openChat).mockReturnValue(
@@ -522,7 +526,7 @@ describe('an answer that arrives after the reader has left', () => {
     conversationRuntime.leaveProject('p-1');
     answer({
       conversations: [{ id: 'c-1' }],
-      current: { conversation: { id: 'c-1' }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
     await opened;
 
@@ -564,7 +568,7 @@ describe('a request left over from a previous visit to the project', () => {
     return {
       conversations: [{ id: 'c-1' }],
       current: {
-        conversation: { id: 'c-1' },
+        conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
         messages: texts.map((text, i) => ({
           id: `srv-${text}`,
           role: 'user',
@@ -585,23 +589,25 @@ describe('a request left over from a previous visit to the project', () => {
     );
     const firstVisit = conversationRuntime.ensureLoaded('p-1');
 
-    // Slow to open, which is the reason the reader backs out and comes in
+    // Slow to open, which is the reason the user backs out and comes in
     // again -- so this is not an unusual sequence, it is the usual answer to
     // a project that is taking too long.
     conversationRuntime.leaveProject('p-1');
     vi.mocked(chatApi.openChat).mockResolvedValueOnce(answer(['hello again']));
     await conversationRuntime.ensureLoaded('p-1');
 
-    await aTurnIsRunningIn('c-1');
+    await aRunIsReadIn('c-1');
 
     landFirstVisit(answer(['hello again', 'my question']));
     await firstVisit;
 
-    // 落地会把这条会话整个重建一遍。放它进来,读者这一次访问读到的那一页就
-    // 被上一次访问的答复顶掉了 —— 而那一页是上一次访问的,读者已经离开过。
+    // Landing rebuilds the whole conversation. Let in, it would replace the
+    // page this visit read with the answer to the previous visit, which the
+    // user has already left.
     expect(conversation()?.messages.map((m) => m.id)).toEqual(['srv-hello again']);
-    // 那一轮不在这个 store 里,所以它连碰都碰不到 —— 请求照常跑着。
-    expect(sent?.aborted).toBe(false);
+    // The run is not in this store, so the answer cannot touch it: its stream
+    // is read on as before.
+    expect(wire.last()?.abandoned()).toBe(false);
   });
 
   it('does not take the next visit\'s request off the books when it lands', async () => {
@@ -649,7 +655,7 @@ describe('a request left over from a previous visit to the project', () => {
 
     // Otherwise the conversation on screen is replaced by an empty column
     // saying the chat could not be opened -- about a request made for a
-    // screen the reader already left.
+    // screen the user already left.
     expect(useConversationRuntime.getState().openStatus['p-1']).toBe('ready');
   });
 
@@ -704,7 +710,7 @@ describe('opening again after it failed', () => {
   });
 });
 
-describe('telling the reader that something went wrong', () => {
+describe('telling the user that something went wrong', () => {
   /**
    * Collect every mishap told while the given work runs.
    * @param work - Run with a watcher attached.
@@ -726,7 +732,7 @@ describe('telling the reader that something went wrong', () => {
     const told = await whatIsTold(() => conversationRuntime.loadEarlier('c-1'));
 
     expect(told).toEqual([expect.objectContaining({ projectId: 'p-1', conversationId: 'c-1', kind: 'network' })]);
-    // Still offering, because the reader may simply press it again.
+    // Still offering, because the user may simply press it again.
     expect(conversation()?.hasMore).toBe(true);
   });
 });
@@ -735,7 +741,7 @@ describe('the next page of the conversation list not arriving (inner#1530)', () 
   it('says so in a toast, and keeps the mark that holds the end-of-list watcher back', async () => {
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [{ id: 'c-1', updatedAt: '2026-08-13T00:00:00Z' }],
-      current: { conversation: { id: 'c-1' }, messages: [], hasMore: false },
+      current: { conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
       hasMoreConversations: true,
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
     await conversationRuntime.ensureLoaded('p-1');

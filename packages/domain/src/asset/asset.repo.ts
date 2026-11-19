@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** Compatibility exports from the single backend asset repository. */
 import { assetRepo } from "@breatic/core";
@@ -18,16 +18,14 @@ export const findById: typeof assetRepo.findById = assetRepo.findById;
 export const fillMediaNumbers: typeof assetRepo.fillMediaNumbers = assetRepo.fillMediaNumbers;
 /** The shared repository implementation of findLiveByStorageKey. */
 export const findLiveByStorageKey: typeof assetRepo.findLiveByStorageKey = assetRepo.findLiveByStorageKey;
-/** The shared repository implementation of findHashByStorageKey. */
-export const findHashByStorageKey: typeof assetRepo.findHashByStorageKey = assetRepo.findHashByStorageKey;
-/** The shared repository implementation of findKindByStorageKey. */
-export const findKindByStorageKey: typeof assetRepo.findKindByStorageKey = assetRepo.findKindByStorageKey;
 /** The shared repository implementation of registerWithDedup. */
 export const registerWithDedup: typeof assetRepo.registerWithDedup = assetRepo.registerWithDedup;
 /** The shared repository implementation of setCoverAsset. */
 export const setCoverAsset: typeof assetRepo.setCoverAsset = assetRepo.setCoverAsset;
 /** The shared repository implementation of findCoverOf. */
 export const findCoverOf: typeof assetRepo.findCoverOf = assetRepo.findCoverOf;
+/** The shared repository implementation of findByStorageKeys. */
+export const findByStorageKeys: typeof assetRepo.findByStorageKeys = assetRepo.findByStorageKeys;
 /** The shared repository implementation of usageByStudio. */
 export const usageByStudio: typeof assetRepo.usageByStudio = assetRepo.usageByStudio;
 /** The shared repository implementation of usageByStudios. */

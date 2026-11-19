@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
 
@@ -29,13 +29,19 @@ const AUDIO_TOOLS = [
 ] as const;
 
 describe("batch-five audio tools", () => {
-  it("lists the ten container edits, then enhance, separate and extend", () => {
+  it("lists the ten container edits with the join right after cut (inner#1825), then enhance and separate", () => {
+    const edits: string[] = AUDIO_TOOLS.map(([id]) => id);
+    edits.splice(edits.indexOf("audio.cut") + 1, 0, "audio.join");
     expect(miniToolsFor("audio").map((tool) => tool.id)).toEqual([
-      ...AUDIO_TOOLS.map(([id]) => id),
+      ...edits,
       "audio.enhance",
       "audio.separate",
-      "audio.extend",
     ]);
+  });
+
+  // The upstream extend-audio endpoint was delisted, so the tool is gone.
+  it("offers no audio extend", () => {
+    expect(miniToolById("audio.extend")).toBeUndefined();
   });
 
   it("runs each edit in the container on its own operation, one audio out, with its prefix and icon", () => {

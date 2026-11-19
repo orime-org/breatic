@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as Y from "yjs";
 import type { SpaceType } from "@shared/types/space.js";
 import { CANVAS_NODES_KEY } from "@shared/types/canvas-node.js";
 import { existingDocumentBodyFragment } from "@shared/document-body.js";
-import { TimelineVideoSourceSchema } from "@shared/timeline/schema.js";
+import { timelineRecordJson } from "@shared/timeline/document.js";
+import { isTimelineSchemaVersion, TimelineVideoSourceSchema } from "@shared/timeline/schema.js";
 
 const PHYSICAL_NODE_TYPES = new Set(["image", "audio", "video", "3d"]);
 const CANVAS_NODE_TYPES = new Set([...PHYSICAL_NODE_TYPES, "text", "web", "annotation", "group"]);
@@ -36,11 +37,11 @@ export function readSpaceMediaReferences(kind: SpaceType, doc: Y.Doc): SpaceMedi
       break;
     }
     case "timeline": {
-      if (existingMap(doc, "timeline")?.get("schemaVersion") !== 1) break;
+      if (!isTimelineSchemaVersion(existingMap(doc, "timeline")?.get("schemaVersion"))) break;
       const sources = existingMap(doc, "sources");
       if (sources === undefined) break;
       for (const value of sources.values()) {
-        const parsed = TimelineVideoSourceSchema.safeParse(value instanceof Y.Map ? value.toJSON() : value);
+        const parsed = TimelineVideoSourceSchema.safeParse(timelineRecordJson(value));
         if (parsed.success) assetIds.add(parsed.data.assetId);
       }
       break;

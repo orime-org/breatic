@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The two entries that open a comment (#18, A1 · A2 · A3, design §6).
  *
  * They differ in one thing: where the range comes from. The bubble bar acts
- * on what the reader selected, the block handle on a range over the hovered
+ * on what the user selected, the block handle on a range over the hovered
  * row's own content — which the handle's menu computes without dispatching a
- * selection, leaving the reader's caret where it was. From the moment the
+ * selection, leaving the user's caret where it was. From the moment the
  * draft opens the two are one operation, and that is what A2 asks for:
  * commenting on a whole block reads as selecting its text by hand.
  *
@@ -27,6 +27,7 @@ import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
   DRAFT_THREAD_ID,
 } from '@web/spaces/document/document-comment-draft-range';
+import { canCommentOnMedia } from '@web/spaces/document/document-comment-media';
 import { DOCUMENT_COMMENT_SELECTION } from '@web/spaces/document/document-comment-selection';
 import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import type { DraftRange } from '@web/spaces/document/document-comment-draft-range';
@@ -39,7 +40,7 @@ import type {
  * Opens a comment draft aimed at one range.
  *
  * The dispatch carries only metas: no steps, so the document does not
- * change, the reader's selection and caret stay where they are, and nothing
+ * change, the user's selection and caret stay where they are, and nothing
  * lands on the undo stack. One of them makes the draft the card being read,
  * in the same transaction that opens it, so there is no moment where the
  * draft is open and some other card is the one being read (design §9.4.1).
@@ -58,7 +59,7 @@ export function openCommentDraft(
   // A selection built to ask the question with, never dispatched — the same
   // thing `selectionOverBlockContent` builds for the commands behind the
   // block handle, and for the same reason: the predicate reads a range, and
-  // the reader's own caret is not it.
+  // the user's own caret is not it.
   const { doc } = view.state;
   const holdsWords = ranges.some(({ from, to }) =>
     canCommentOver(doc, TextSelection.create(doc, from, to)),
@@ -72,7 +73,27 @@ export function openCommentDraft(
   return true;
 }
 
-/** The bubble bar's comment entry, acting on the reader's selection. */
+/**
+ * Opens a comment draft aimed at a whole picture, video or audio block, the
+ * way {@link openCommentDraft} opens one on words: metas only, and the draft
+ * is the card being read from the transaction that opens it (inner#1316 §5.3).
+ * @param editor - The document editor.
+ * @param blockId - The media block.
+ * @returns True when a draft opened; false when no uploaded media block has
+ *   that id, in which case nothing happened.
+ */
+export function openMediaCommentDraft(editor: ToolEditor, blockId: string): boolean {
+  const view = editor.prosemirrorView;
+  if (view === null || !canCommentOnMedia(view.state.doc, blockId)) return false;
+  view.dispatch(
+    view.state.tr
+      .setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, { mediaBlockId: blockId })
+      .setMeta(DOCUMENT_COMMENT_SELECTION, [DRAFT_THREAD_ID]),
+  );
+  return true;
+}
+
+/** The bubble bar's comment entry, acting on the user's selection. */
 export const commentTool: ToolDef = {
   id: 'comment',
   labelKey: 'spaces.document.commands.comment',
@@ -100,7 +121,7 @@ export const commentTool: ToolDef = {
   isActive: (): boolean => false,
 
   /**
-   * Opens a draft on the reader's selection.
+   * Opens a draft on the user's selection.
    * @param editor - The editor.
    */
   run: (editor: ToolEditor): void => {

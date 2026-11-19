@@ -1,26 +1,26 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The product guide answers how the reader operates our product.
+ * The product guide answers how the user operates our product.
  *
  * It is the one place that says where to click: the model cannot see the
- * reader's screen, and before this tool it guessed. What can be worked out
+ * user's screen, and before this tool it guessed. What can be worked out
  * from a rule the canvas itself enforces is worked out from that rule, and
- * every control with words on it is named by the message the reader's screen
- * shows, in the reader's language.
+ * every control with words on it is named by the message the user's screen
+ * shows, in the user's language.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { getAgentConfig, loadLocales, runWithLocale } from "@breatic/core";
+import { getAgentConfig, getMiniToolsConfig, loadLocales, runWithLocale } from "@breatic/core";
 import { CHAT_MESSAGE_MAX_CHARS, GENERATION_TEMPLATES, TEMPLATE_GOALS, canConnect, canGenerate, t, templateGoalsFor } from "@breatic/shared";
 import { MINI_TOOLS } from "@breatic/shared/mini-tools";
 
 import { CANVAS_TOOLS, TOOL_MAP } from "@domain/agent/tools/index.js";
 import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
-import { CREATABLE, productGuide, renderProductGuide } from "@domain/agent/tools/product-guide.js";
+import { CREATABLE, documentPasteRules, productGuide, renderProductGuide } from "@domain/agent/tools/product-guide.js";
 
 /**
  * One section of the guide, as the model reads it.
@@ -94,11 +94,13 @@ type MessageCall = [id: string, values: Record<string, number> | undefined];
  * @returns The calls, in source order.
  */
 function messageCalls(): MessageCall[] {
+  // A value the guide reads from the deployment's config, by the local it names it with.
+  const locals: Record<string, number> = { joinCap: getMiniToolsConfig().join_max_clips };
   return [...source.matchAll(/\bt\("([\w.-]+)"(?:, (\{[^}]*\}))?\)/g)].map((m) => [
     m[1] ?? "",
     m[2] === undefined
       ? undefined
-      : (JSON.parse(m[2].replace(/(\w+):/g, '"$1":')) as Record<string, number>),
+      : (JSON.parse(m[2].replace(/: ([a-z]\w*)/g, (_, name: string) => `: ${String(locals[name])}`).replace(/(\w+):/g, '"$1":')) as Record<string, number>),
   ]);
 }
 
@@ -206,13 +208,15 @@ describe("the guide as a tool", () => {
     // The guide has a Mini-tools section; a description that leaves them out
     // let "scale this picture up" go unlooked-up (#1366).
     expect(said).toMatch(/mini-tools/i);
-    expect(said).toMatch(/cannot see/i);
     expect(said).toMatch(/icon/i);
+    // The open Space comes with each message and the tools read the rest, so
+    // the description says nothing of what the model can or cannot see.
+    expect(said).not.toMatch(/\b(can|cannot|can't) see\b/i);
   });
 });
 
 describe("what the guide says", () => {
-  it("covers every part the reader asks about", () => {
+  it("covers every part the user asks about", () => {
     const text = renderProductGuide();
     for (const heading of [
       "## The top bar",
@@ -251,7 +255,7 @@ describe("what the guide says", () => {
   it("says a reference is wired, then chosen from the prompt's list", () => {
     // Three halves, each of which has been the whole sentence at some point and
     // read as complete: the edge that offers the node, the @ that opens the
-    // list, and the choice that inserts the mention. Without the edge a reader
+    // list, and the choice that inserts the mention. Without the edge a user
     // types @ over a node nothing points at; without the @ they wire and submit
     // a run with no source; told to type the name instead of choosing, they get
     // no mention at all, and a name with a space in it closes the list.
@@ -289,7 +293,7 @@ describe("what the guide says", () => {
   });
 
   it("says a placed proposal arrives with its mode, model and prompt written", () => {
-    // Steps written from a guide that left this out told the reader to write a
+    // Steps written from a guide that left this out told the user to write a
     // prompt the placing had already written.
     const proposals = section("Proposal cards");
     expect(proposals).toMatch(/prompt written/i);
@@ -303,11 +307,11 @@ describe("what the guide says", () => {
   });
 
   it("tells the three kinds of mark apart", () => {
-    // A paperclip asks the reader to @ a node, a pencil is words they write,
+    // A paperclip asks the user to @ a node, a pencil is words they write,
     // and an orange note says how to operate the panel and is never sent.
     const proposals = section("Proposal cards");
-    expect(proposals).toMatch(/A 📎 mark in square brackets, where a prompt carries one, asks the reader to @ a node/);
-    expect(proposals).toMatch(/A ✏️ mark in braces is words only the reader can write/);
+    expect(proposals).toMatch(/A 📎 mark in square brackets, where a prompt carries one, asks the user to @ a node/);
+    expect(proposals).toMatch(/A ✏️ mark in braces is words only the user can write/);
     expect(proposals).toMatch(/orange note[^.]*it is never sent to the model/);
   });
 
@@ -373,23 +377,36 @@ describe("what the guide says", () => {
     expect(section("Mentions")).toMatch(/narrow the list, which shows up to eight rows/i);
   });
 
-  it("describes the selection bar by its icons, since its buttons show no name", () => {
+  it("describes the selection bar by its icons, comment last, and names what hovering a button shows", () => {
     const doc = section("Document spaces");
-    expect(doc).toMatch(/The other buttons show no name on hover/);
-    expect(doc).not.toMatch(/each nam(es|ing) itself when hovered/i);
+    expect(doc).toMatch(/and alone at the far right a speech-bubble icon \(comment\)/);
+    expect(doc).toMatch(/Hovering a button with no arrow shows its name, greyed or not: "Bold"/);
+    expect(doc).not.toMatch(/show no name on hover/);
     expect(doc).toMatch(/The speech bubble starts a comment/);
-    expect(doc).toMatch(/AI menu's commands look available but do nothing yet/);
+    expect(doc).not.toMatch(/looks available but does nothing yet/);
+  });
+
+  it("says what the shot list command writes and that it is no longer missing", () => {
+    const doc = section("Document spaces");
+    expect(doc).toMatch(
+      /"Draft a shot list" turns the selection into a shot list: one table with a header row and a row per shot, its columns shot number, shot size, camera angle, camera movement, what is on screen, dialogue and sound, duration in seconds and notes/,
+    );
+    expect(doc).toMatch(/to draft it from the whole text, press Cmd\+A twice first to select the whole body/);
+    expect(doc).toMatch(/"Polish", "Expand", "Shorten", "Translate" and "Change tone" keep the structure/);
+    expect(doc).not.toMatch(/Rewrite the selection|Make something from the selection/);
+    expect(doc).not.toMatch(/The fixed commands keep the structure/);
+    expect(doc).toMatch(/The AI menu has three groups divided by lines: "Polish", "Expand", "Shorten", "Translate" and "Change tone"; "Draft a shot list"; and "Custom instruction…"\./);
+    expect(doc).not.toMatch(/illustrat/i);
   });
 
   it("walks through comments in a document: start, post, the panel, resolve and who may delete", () => {
-    const doc = section("Document spaces");
-    expect(doc).toMatch(/- Comments: select text and press the speech bubble/);
+    const doc = section("Document comments");
+    expect(doc).toMatch(/^Select text and press the speech bubble/m);
     expect(doc).toMatch(/"Comments" panel opens beside the text/);
     expect(doc).toMatch(/"Resolve" takes the highlight away and moves the card under "All", where "Reopen" brings it back/);
     expect(doc).toMatch(/for whoever wrote the first comment or a project owner/);
     expect(doc).toMatch(/Viewers can open the panel and read/);
-    expect(doc).toMatch(/Not available yet: the AI commands/);
-    expect(doc).not.toMatch(/Not available yet: comments/);
+    expect(doc).not.toMatch(/Not available yet|There is no slash menu/);
     expect(doc).not.toMatch(/marked not open yet\)/);
   });
 
@@ -407,8 +424,16 @@ describe("what the guide says", () => {
 
   it("says when each storyboard control is greyed and what happens when the shots stop fitting", () => {
     const panel = section("Inside the generation panel");
-    // VideoGeneratePanelContainer.tsx: one lastFocusedBox, written by the shots and by the main prompt.
-    expect(panel).toMatch(/puts it in the shot box clicked into last, or in the first shot/);
+    // VideoGeneratePanelContainer.tsx: one shot open at a time, and every insert goes into it (#1201).
+    expect(panel).toMatch(/Only one shot is open at a time/);
+    expect(panel).toMatch(/one row showing its number, its seconds and the first line of its words/);
+    expect(panel).toMatch(/clicking a chip in the strip puts it in the open shot's box/);
+    expect(panel).toMatch(/in Multi-Shot it goes into the open shot/);
+    // VideoGeneratePanelContainer.tsx: `shots[at] ?? shots[at - 1]`.
+    expect(panel).toMatch(/removing the open shot opens the one after it, or the one before it when it was the last/);
+    expect(panel).not.toMatch(/clicked into last/);
+    // AudioGeneratePanel.tsx: the style and lyrics boxes, one open at a time.
+    expect(panel).toMatch(/Only one of the two is open at a time/);
     expect(panel).toMatch(/minus is greyed at one second or when there is only one shot/);
     expect(panel).toMatch(/plus is greyed when no other shot has a second to spare/);
     expect(panel).toMatch(/"Remove" is greyed while only one shot is left/);
@@ -434,16 +459,16 @@ describe("what the guide says", () => {
   });
 
   it("says which comment controls depend on the thread or the panel being open", () => {
-    const doc = section("Document spaces");
-    expect(doc).toMatch(/a resolved card takes no replies until it is reopened/);
+    const comments = section("Document comments");
+    expect(comments).toMatch(/a resolved card takes no replies until it is reopened/);
     // DocumentCommentDraftCard.tsx: the outside-press check is against the whole card.
-    expect(doc).toMatch(/With nothing typed yet, clicking anywhere outside its card also drops it/);
-    expect(doc).toMatch(/The three dots are hidden while the comments panel is open/);
+    expect(comments).toMatch(/With nothing typed yet, clicking anywhere outside its card also drops it/);
+    expect(section("Document spaces")).toMatch(/The three dots are hidden while the comments panel or the snapshots panel is open/);
   });
 
   it("quotes no name the screen only gives a screen reader", () => {
     // Each of these is an aria-label, a sr-only span or a fallback the pill
-    // never shows (measured in a real browser); a reader cannot see them.
+    // never shows (measured in a real browser); a user cannot see them.
     const text = renderProductGuide();
     for (const id of [
       "canvas.generatePanel.audioSettings",
@@ -510,6 +535,15 @@ describe("what the guide says", () => {
     expectRowsInOrder(sentence, ids);
   });
 
+  it("offers joining in the selection menu, above Copy (inner#1825)", () => {
+    const join = MINI_TOOLS.find((tool) => tool.id === "video.join");
+    expect(join).toBeDefined();
+    const sentence = section("Node menus").split("inside that frame opens")[1]?.split(". ")[0] ?? "";
+    const at = sentence.indexOf(`"${t(join?.labelKey ?? "")}"`);
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(at).toBeLessThan(sentence.indexOf(`"${t("canvas.contextMenu.copy")}"`));
+  });
+
   it("names the view bar's buttons by their tooltips, in the bar's order", () => {
     const bar = webSource("pages/project/chrome/viewport-toolbar/ViewportToolbar.tsx");
     const ids = [...bar.matchAll(/tooltip=\{t\('([\w.]+)'\)\}/g)].map((m) => [m[1] ?? ""]);
@@ -519,7 +553,7 @@ describe("what the guide says", () => {
   });
 
   it("says the left menu's upload picker lists only what its accept list takes", () => {
-    // Dropping takes any file; the picker is narrower, and the reader told to
+    // Dropping takes any file; the picker is narrower, and the user told to
     // pick a PDF there finds it greyed out.
     const page = webSource("pages/project/ProjectPage.tsx");
     expect(page).toContain("accept={`${uploadAcceptFor('all')},text/*`}");
@@ -539,7 +573,7 @@ describe("what the guide says", () => {
 
   it("names the picture panel's settings pill by the word it shows when there is nothing to summarise", () => {
     // The pill falls back to this word when the model has no values to show,
-    // so a reader with such a model sees it on screen.
+    // so a user with such a model sees it on screen.
     expect(webSource("spaces/canvas/generate/RatioResolutionPicker.tsx")).toContain(
       ".join(' · ') || t('canvas.generatePanel.imageParams')",
     );
@@ -548,9 +582,12 @@ describe("what the guide says", () => {
     );
   });
 
-  it("says the reader is an editor, since people who can only view get no chat", () => {
+  it("says the user is an editor, since people who can only view get no chat, in the tool's description every call carries", () => {
     expect(webSource("pages/project/ProjectPage.tsx")).toContain("collapsed || isViewer ? null");
-    expect(renderProductGuide()).toMatch(/^You are talking to someone who can edit this project/);
+    const description: unknown = productGuide.description;
+    expect(typeof description === "string" ? description.replace(/\s+/g, " ") : "").toContain(
+      "You are talking to someone who can edit this project: people who can only view it do not get this chat.",
+    );
   });
 
   it("says only a list's own shortcut turns it back to plain text", () => {
@@ -602,7 +639,19 @@ describe("what the guide says", () => {
     expect(box).toContain("else wiring.onEnter();");
     const chat = section("The chat panel");
     expect(chat).toMatch(/Enter sends the message and Shift\+Enter starts a new line/);
-    expect(chat).toMatch(/red square, which stops the reply/);
+    expect(chat).toMatch(/the user can go on writing and sending: a red square left of\s+the send button \(hovering it shows [^)]+\) stops the reply/);
+    expect(chat).toMatch(/Switching to another conversation or leaving the page does not stop a reply/);
+  });
+
+  it("says a message sent while a reply runs waits above the box, and how to take it back", () => {
+    const composer = webSource("pages/project/chat/ChatComposer.tsx");
+    expect(composer).toMatch(/turnPhase === 'running' \? \([\s\S]*data-testid='chat-composer-abort'[\s\S]*t\('chat\.composer\.stop'\)[\s\S]*\) : null\}\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<Tooltip[^>]*>\s*<TooltipTrigger asChild>\s*<Button/);
+    expect(composer).toContain("turnPhase === 'running' ? t('chat.composer.sendWhileRunning') : t('chat.composer.send')");
+    expect(webSource("pages/project/chat/ChatPanel.tsx")).toMatch(/<PendingTray[\s\S]*<ChatComposer/);
+    const chat = section("The chat panel");
+    expect(chat).toMatch(/read by the Agent at its next step,\s+inside the reply being written/);
+    expect(chat).toMatch(/waits in a list above the box headed/);
+    expect(chat).toMatch(/puts its words and attachments back in the box/);
   });
 
   it("says how @ references an attachment", () => {
@@ -645,7 +694,7 @@ describe("what the guide says", () => {
 
   it("says a proposal @s every node it wires into the pool, and a node not @'d is not used", () => {
     const cards = section("Proposal cards");
-    expect(cards).toMatch(/A proposal @s for the reader every node it wires into the reference list/);
+    expect(cards).toMatch(/A proposal @s for the user every node it wires into the reference list/);
     // Generating early sends nothing for it; the panel stops the run only when
     // nothing else in that source holds a node and the model needs one there.
     expect(cards).toMatch(/A node @'d that lands empty[^.]*comes with a note saying what to do first; generating before then sends nothing for it, and the run stops only where nothing else in that source holds a node and the model runs only when one does\./);
@@ -659,21 +708,35 @@ describe("what the guide says", () => {
     expect(list).toMatch(/a list under that heading of creative goals; pointing at a goal opens the templates for it/);
     const picture = list.slice(list.indexOf("A picture node"), list.indexOf("A video node"));
     const video = list.slice(list.indexOf("A video node"), list.indexOf("A sound node"));
-    for (const [type, text] of [["image", picture], ["video", video]] as const) {
+    // inner#1825: sound nodes have templates of their own, listed like the others.
+    const sound = list.slice(list.indexOf("A sound node"));
+    for (const [type, text] of [["image", picture], ["video", video], ["audio", sound]] as const) {
       const rows = templateGoalsFor(type).flatMap(({ goal, templates }) => [
         [`canvas.template.goal.${goal}`],
         ...templates.map((template) => [`canvas.template.${template.id}.name`]),
       ]);
       expectRowsInOrder(text, rows);
     }
-    expect(list.slice(list.indexOf("A sound node"))).toMatch(new RegExp(`^A sound node shows "${t("canvas.template.empty")}"`));
+    expect(sound).not.toMatch(new RegExp(`^A sound node shows "${t("canvas.template.empty")}"`));
     expect(list).not.toMatch(/video and sound nodes list none/);
   });
 
-  it("says a template may place generations upstream to run first, wired and @'d, and an input fed upstream reuses a picture already connected", () => {
+  it("lists the sound goal under the sound node and, for the foley template, under the video node (inner#1825)", () => {
+    expect(TEMPLATE_GOALS).toContain("sound");
     const generating = section("Generating");
-    expect(generating).toMatch(/A template may also place picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt says to generate them first\./);
-    expect(generating).toMatch(/When a template feeds what it needs into those nodes too, a picture already connected to the node is connected to them as well\./);
+    const list = generating.slice(generating.indexOf(`"${t("canvas.template.title")}"`));
+    const video = list.slice(list.indexOf("A video node"), list.indexOf("A sound node"));
+    const sound = list.slice(list.indexOf("A sound node"));
+    expect(sound).toContain(`"${t("canvas.template.goal.sound")}"`);
+    expect(video).toContain(`"${t("canvas.template.goal.sound")}"`);
+    expect(video).toContain(`"${t("canvas.template.clip-ambience-foley.name")}"`);
+  });
+
+  it("says a template may place generations upstream to run first, wired and @'d, and nodes it places to take what it needs reuse a picture already connected, even one the node itself does not use", () => {
+    const generating = section("Generating");
+    expect(generating).toMatch(/A template may also place picture, video or sound nodes to the left that generate first, connected and @'d; a note at the top of the prompt says to generate them first\./);
+    expect(generating).toMatch(/A picture or sound such a template generates for one of the model's slots, such as the first or end frame, the character or the audio the face speaks, is connected but not @'d, and its note says to pick it into that slot once it has generated\./);
+    expect(generating).toMatch(/When a template places nodes that take what it needs, a picture already connected to the node is connected to them as well, also when the node itself does not use it\./);
     expect(generating).not.toMatch(/the two listed here do neither/);
   });
 
@@ -729,6 +792,14 @@ describe("what the guide says", () => {
     expect(line).toBe(`Nodes that generate: ${generating.join(", ")}.`);
   });
 
+  it("says a sound node takes connections from video and picture nodes (inner#1825)", () => {
+    expect(canConnect("video", "audio")).toBe(true);
+    expect(canConnect("image", "audio")).toBe(true);
+    const line = renderProductGuide().split("\n").find((l) => l.startsWith(`- into ${label("audio")}:`)) ?? "";
+    expect(line).toContain(label("video"));
+    expect(line).toContain(label("image"));
+  });
+
   it("lists what connects into each node, from the rule the canvas enforces", () => {
     const text = renderProductGuide();
     for (const target of CREATABLE) {
@@ -738,7 +809,14 @@ describe("what the guide says", () => {
   });
 });
 
-describe("in the reader's language", () => {
+describe("in the user's language", () => {
+  it("names the instructions editor's cancel button the way the screen shows it (#1400)", () => {
+    const text = runWithLocale("zh-CN", () => section("The chat panel"));
+    const cancel = runWithLocale("zh-CN", () => t("common.cancel"));
+    expect(text).toContain(`"${cancel}" or Esc leaves without saving`);
+    expect(text).not.toContain("Cancel or Esc");
+  });
+
   it("names every control it quotes the way a Chinese screen shows it", () => {
     // Every quoted name in the guide comes from quoted(t(...)), so in a locale
     // whose words differ from English each quoted fragment must be one of the
@@ -810,8 +888,14 @@ describe("the guide's source", () => {
     for (const call of registry) expect(source.split(call), call).toHaveLength(2);
     const calls = (source.match(/\bt\([^)]*\)/g) ?? []).filter((call) => !registry.includes(call));
     expect(calls.length).toBeGreaterThan(0);
-    // A sample number may fill a message that carries one; nothing else goes in.
-    for (const call of calls) expect(call).toMatch(/^t\("[\w.-]+"(?:, \{(?: ?\w+: \d+,?)+ ?\})?\)$/);
+    // A sample number, or a number read from the deployment's config into a
+    // local of the guide, may fill a message that carries one; nothing else goes in.
+    for (const call of calls) expect(call).toMatch(/^t\("[\w.-]+"(?:, \{(?: ?\w+: (?:\d+|[a-z]\w*),?)+ ?\})?\)$/);
+  });
+
+  it("names the join's clip cap the deployment serves (round 2)", () => {
+    expect(renderProductGuide()).toContain(t("canvas.miniTool.panel.joinTooMany", { n: getMiniToolsConfig().join_max_clips }));
+    expect(source).toContain('t("canvas.miniTool.panel.joinTooMany", { n: joinCap })');
   });
 
   it("does not name the generate button by its hidden label", () => {
@@ -820,6 +904,18 @@ describe("the guide's source", () => {
 });
 
 describe("what the guide says about each surface", () => {
+  it("names a missing video among the Timeline conflict reasons (inner#1708 M3)", () => {
+    expect(t("timeline.conflictReason.missing_source")).toBe("Its video is missing");
+    expect(section("Timeline spaces")).toContain(`"${t("timeline.conflictReason.missing_source")}"`);
+  });
+
+  it("says how the Timeline adds a top track, cancels a drag and snaps (inner#1708 G1)", () => {
+    const timeline = section("Timeline spaces");
+    expect(timeline).toMatch(/Alt\+Up on the top visual track adds a new visual track/);
+    expect(timeline).toMatch(/Esc cancels a drag without changing anything/);
+    expect(timeline).toMatch(/other clip edges, the playhead and frame 0/);
+  });
+
   it("reads the message and attachment limits off their sources", () => {
     const chat = section("The chat panel");
     expect(chat).toContain(`up to ${CHAT_MESSAGE_MAX_CHARS.toLocaleString("en")} characters`);
@@ -829,8 +925,8 @@ describe("what the guide says about each surface", () => {
       `at most ${getAgentConfig().current_space_max_chars.toLocaleString("en")} characters of the open Space's content`,
     );
     expect(chat).toContain("then without their links, and on the largest canvases some nodes are left out");
-    expect(chat).toContain("the nodes the reader has selected go last at every step");
-    expect(chat).toContain(`the reader adds them with "${t("canvas.contextMenu.addToAgent")}"`);
+    expect(chat).toContain("the nodes the user has selected go last at every step");
+    expect(chat).toContain(`the user adds them with "${t("canvas.contextMenu.addToAgent")}"`);
     expect(renderProductGuide()).not.toMatch(/at most 50 connections/);
     // Written out by hand, the numbers would stay behind when their sources change.
     expect(source).not.toMatch(/10,000|up to ten|at most 50/);
@@ -847,7 +943,8 @@ describe("what the guide says about each surface", () => {
   it("says the send button is a dark square and when a message can go", () => {
     const chat = section("The chat panel");
     expect(chat).toMatch(/dark square button with an upward arrow/);
-    expect(chat).toMatch(/only when the box has some words, no reply is being written and every attachment has finished uploading/);
+    expect(chat).toMatch(/only when the box has some words and every\s+attachment has finished uploading/);
+    expect(chat).toMatch(/While a message\s+is on its way the box cannot be changed and a spinner stands in place of the button/);
     expect(chat).not.toMatch(/a Sources button/);
   });
 
@@ -858,7 +955,7 @@ describe("what the guide says about each surface", () => {
   });
 
   it("says a transfer waits for the other member to accept", () => {
-    expect(section("The top bar")).toMatch(/Nothing changes until that member accepts: then they become the owner and the reader becomes an editor/);
+    expect(section("The top bar")).toMatch(/Nothing changes until that member accepts: then they become the owner and the user becomes an editor/);
   });
 
   it("says a restored space comes back to the list, not as a tab", () => {
@@ -913,7 +1010,7 @@ describe("what the guide says about each surface", () => {
 
   it("says what the read-only notice counts and what the leave prompt covers", () => {
     const wrong = section("When something is wrong");
-    expect(wrong).toMatch(/every browser tab that has the space open counts, the reader's own included/);
+    expect(wrong).toMatch(/every browser tab that has the space open counts, the user's own included/);
     expect(wrong).toMatch(/local Canvas or Document edits have not synced/);
     expect(wrong).toMatch(/background Space tabs of the current Project/);
     expect(wrong).toMatch(/connection banner's refresh button asks/);
@@ -962,7 +1059,7 @@ describe("what the guide says about each surface", () => {
 
 // inner#888 §7.8, §9: the node shows no task state, the task row's buttons
 // changed, and the node menu gained a Tools submenu. The guide is what the
-// agent tells the reader, so each of these has to be true there too.
+// agent tells the user, so each of these has to be true there too.
 describe("mini-tools and the task rows", () => {
   it("quotes none of the controls that left the screen", () => {
     const ids = messageIds();
@@ -984,6 +1081,15 @@ describe("mini-tools and the task rows", () => {
     }
   });
 
+  it("names the join tools for video and sound among the tools (inner#1825)", () => {
+    const tools = section("Mini-tools");
+    for (const id of ["video.join", "audio.join"]) {
+      const tool = MINI_TOOLS.find((one) => one.id === id);
+      expect(tool, id).toBeDefined();
+      expect(tools).toContain(`"${t(tool?.labelKey ?? "")}": ${tool?.guide ?? ""}`);
+    }
+  });
+
   // Each tool says what it is for, so the agent can match a need to a tool.
   it("says what every tool is for, next to its name", () => {
     const tools = section("Mini-tools");
@@ -996,7 +1102,7 @@ describe("mini-tools and the task rows", () => {
   // tools, so only the mark says which tools are billed by run time.
   it("marks exactly the tools run in the media container as billed by run time", () => {
     const tools = section("Mini-tools");
-    expect(tools).toMatch(/the tools marked \(billed by how long it runs\) in the list above are billed that way/);
+    expect(tools).toMatch(/the tools marked \(billed by how long it runs\) in this section's list are billed that way/);
     for (const tool of MINI_TOOLS) {
       const line = `"${t(tool.labelKey)}": ${tool.guide} (billed by how long it runs).`;
       expect(tools.includes(line), tool.id).toBe(tool.run.kind === "container");
@@ -1004,13 +1110,13 @@ describe("mini-tools and the task rows", () => {
   });
 
   // The crop box is clamped to the picture (NodeCropLayer). Read as "a size in
-  // pixels" alone, the Agent told a reader to crop a 500-wide picture to 2100
+  // pixels" alone, the Agent told a user to crop a 500-wide picture to 2100
   // wide (#1366).
   it("says a crop's size is the box inside the picture and never makes it larger", () => {
     expect(section("Mini-tools")).toMatch(/the size is the box's, inside the picture, so a crop never makes the picture larger/i);
   });
 
-  // The canvas moves by itself on these two presses; the reader may ask why.
+  // The canvas moves by itself on these two presses; the user may ask why.
   it("says the canvas zooms in when Adjust opens and moves to show what a press built", () => {
     const tools = section("Mini-tools");
     expect(tools).toMatch(/opening it on a picture zooms the canvas in until the node and its panel fill the view/i);
@@ -1023,5 +1129,46 @@ describe("mini-tools and the task rows", () => {
     expect(generating).toContain(`"${t("canvas.task.action.finish")}"`);
     expect(generating).toContain(`"${t("canvas.task.action.view")}"`);
     expect(generating).toMatch(/opens the node's history at that result/i);
+  });
+});
+
+/**
+ * The paste rules the web examples show, each id with the guide's sentence
+ * written beside it, read from the example file's source.
+ * @returns Each id and its sentence, in the file's order.
+ */
+function pasteExamples(): { id: string; sentence: string }[] {
+  const file = webSource("spaces/document/__tests__/document-paste-guide.test.ts");
+  return [...file.matchAll(/id: '([^']+)',\s*sentence: '((?:[^'\\]|\\.)*)'/g)].map(([, id, sentence]) => ({
+    id: id!,
+    sentence: sentence!.replace(/\\(.)/g, "$1"),
+  }));
+}
+
+describe("where pasted content lands in the document", () => {
+  it("states each rule exactly as its web example writes it beside the paste that shows it", () => {
+    const examples = pasteExamples();
+    expect(examples.length).toBeGreaterThan(0);
+    expect(runWithLocale("en", () => documentPasteRules())).toEqual(examples);
+  });
+
+  it("puts every rule in the document section", () => {
+    const document = section("Document spaces");
+    for (const { sentence } of runWithLocale("en", () => documentPasteRules())) expect(document).toContain(sentence);
+  });
+});
+
+// inner#1844: one full-screen view, opened from the top-right corner of a
+// node, of a hover preview and from a document's row of icons.
+describe("product guide: full screen", () => {
+  it("says where full screen opens and how it closes", () => {
+    const text = renderProductGuide();
+    expect(text).toMatch(/Hovering a picture or video node shows a full-screen button/);
+    expect(text).toMatch(/large preview that pops up on hovering a small picture or video[^.]*same button at its top-right corner/);
+    expect(text).toContain(`"${t("common.mediaViewer.fullscreen")}" (two arrows pointing out to opposite corners, pictures and videos`);
+    expect(text).toMatch(/an X at the top right of the screen closes it/);
+    expect(text).toMatch(/row of icons over a picture or video holds only full screen/);
+    expect(text).not.toMatch(/full-screen controls/);
+    expect(text).not.toMatch(/play, seek and fullscreen/);
   });
 });

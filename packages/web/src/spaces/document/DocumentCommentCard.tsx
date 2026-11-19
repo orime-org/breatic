@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * One comment thread, as the panel draws it (#18, A4 · A7 – A13 · A17).
  *
  * The quote comes first, then the opening comment and every reply below it,
- * then what this reader may do about it. A thread whose words were deleted
+ * then what this user may do about it. A thread whose words were deleted
  * has no card (A13).
  *
  * WHAT IS OFFERED IS `annotationRights`, delivered with canvas annotations
@@ -16,7 +16,7 @@
  *
  * The thread store asks its own auth before every write, so a control drawn
  * by mistake would fail rather than damage anything. Drawing the right ones
- * is what keeps a reader from being offered something that cannot happen.
+ * is what keeps a user from being offered something that cannot happen.
  *
  * The quote does not say whether the comment was made on a selection or on a
  * whole block. Design §6.1 settles that the two entries are the same
@@ -25,7 +25,7 @@
  * WHAT IT OFFERS IS ONLY OFFERED ON THE THREAD BEING READ (user 2026-09-22).
  * The panel is a column of threads to read; a reply box and two buttons on
  * every one of them makes it a column of controls, and only the thread the
- * reader is on is the one they are about. Opening a thread — a press here, a
+ * user is on is the one they are about. Opening a thread — a press here, a
  * press on its highlight in the body — is what brings them out.
  *
  * A THREAD NOBODY IS READING IS FOLDED, for the same reason: a column where
@@ -43,6 +43,7 @@ import * as React from 'react';
 
 import type { ProjectRole } from '@breatic/shared';
 
+import { PreviewImg } from '@web/components/PreviewImg';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
@@ -52,6 +53,8 @@ import {
   canPostAnnotations,
 } from '@web/spaces/canvas/annotation/rights';
 import { openedBy } from '@web/spaces/document/document-comment-auth';
+import { mediaNameOf, type MediaQuote } from '@web/spaces/document/document-comment-media';
+import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
 import type {
   CommentCardView,
@@ -62,7 +65,7 @@ import type {
  * The box every card in the rail is drawn on.
  *
  * Shared with the draft card: one comment being written and one already
- * written are the same object to a reader, and a surface described twice
+ * written are the same object to a user, and a surface described twice
  * drifts.
  */
 export const CARD_SURFACE =
@@ -98,6 +101,36 @@ export function CommentQuote({
   );
 }
 
+/**
+ * The picture, video or audio a card is about, one line at the top of it in
+ * the place of quoted words: a picture's thumbnail or the kind's icon, then
+ * its name (inner#1316 §5.4).
+ * @param root0 - The media and the test hook.
+ * @param root0.media - What the comment is on.
+ * @param root0.testId - Test hook for the line.
+ * @returns The line.
+ */
+export function MediaCommentQuote({ media, testId }: { media: MediaQuote; testId: string }): React.JSX.Element {
+  const t = useTranslation();
+  const Icon = getNodeIcon(media.type);
+  return (
+    <p
+      data-testid={testId}
+      className='mb-2 flex min-w-0 items-center gap-1.5 border-l border-note-border pl-1.5 text-2xs text-muted-foreground'
+    >
+      {media.type === 'image'
+        ? <PreviewImg src={media.url} alt='' className='h-6 w-6 shrink-0 rounded object-cover' />
+        : (
+          // The thumbnail's size, so every card's name starts on one line.
+          <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted'>
+            <Icon className='h-3 w-3' aria-hidden='true' />
+          </span>
+        )}
+      <span className='truncate'>{mediaNameOf(media, t)}</span>
+    </p>
+  );
+}
+
 interface DocumentCommentCardProps {
   /** The thread this card is for. */
   card: CommentCardView;
@@ -109,25 +142,25 @@ interface DocumentCommentCardProps {
    */
   marked: boolean;
   /**
-   * Whether this is the thread the reader is reading.
+   * Whether this is the thread the user is reading.
    *
    * One at a time, even where a press marked two: two reply boxes open at
-   * once and neither is the one they meant. Everything a reader can do to a
+   * once and neither is the one they meant. Everything a user can do to a
    * thread is offered here and nowhere else.
    */
   reading: boolean;
-  /** This reader's role on the project. */
+  /** This user's role on the project. */
   myRole: ProjectRole;
-  /** This reader's account id, absent until the session resolves. */
+  /** This user's account id, absent until the session resolves. */
   viewerId: string | undefined;
   /**
-   * What the reader has written into this thread's reply box and not sent.
+   * What the user has written into this thread's reply box and not sent.
    *
    * Held by the editor (`document-comment-unsent.ts`) and handed down by the
    * panel: a thread settled by a peer takes its card out of the open filter,
    * and the panel can be mounted again (StrictMode mounts it twice), so a
    * reply living in the card's state or the panel's would go with either —
-   * words the reader typed and never agreed to throw away.
+   * words the user typed and never agreed to throw away.
    */
   draft: string;
   /** Remembers what has been written into the reply box. */
@@ -165,7 +198,7 @@ const FOLDED_LINE_CLAMP = 'line-clamp-3';
 interface EntryProps {
   /** The comment to draw. */
   entry: CommentEntryView;
-  /** Whether this reader may withdraw it. */
+  /** Whether this user may withdraw it. */
   canDelete: boolean;
   /** Whether to cut it to three lines, which every unread card does. */
   shortened: boolean;
@@ -177,7 +210,7 @@ interface EntryProps {
  * One comment or reply.
  * @param root0 - See {@link EntryProps}.
  * @param root0.entry - The comment to draw.
- * @param root0.canDelete - Whether this reader may withdraw it.
+ * @param root0.canDelete - Whether this user may withdraw it.
  * @param root0.shortened - Whether to cut it to three lines.
  * @param root0.onDelete - Withdraws it.
  * @returns The entry.
@@ -244,8 +277,8 @@ function Entry({
  * @param root0.card - The thread to draw.
  * @param root0.marked - Whether the press in the body landed on this thread.
  * @param root0.reading - Whether this is the thread being read.
- * @param root0.myRole - This reader's role.
- * @param root0.viewerId - This reader's account id.
+ * @param root0.myRole - This user's role.
+ * @param root0.viewerId - This user's account id.
  * @param root0.draft - What has been written into the reply box and not sent.
  * @param root0.onDraft - Remembers what has been written there.
  * @param root0.onReply - Adds a reply.
@@ -314,7 +347,9 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
       data-selected={marked}
       className={`${CARD_SURFACE} ${CARD_READING_OUTLINE} data-[settled=true]:text-muted-foreground`}
     >
-      <CommentQuote words={card.quote} testId='doc-comment-card-quote' />
+      {card.media === null
+        ? <CommentQuote words={card.quote} testId='doc-comment-card-quote' />
+        : <MediaCommentQuote media={card.media} testId='doc-comment-card-quote' />}
 
       {drawn.map((entry, index) => (
         <React.Fragment key={entry.id}>

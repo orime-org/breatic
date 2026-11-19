@@ -1,0 +1,4 @@
+{
+  "source": "https://api.fal.ai/v1/models/pricing?endpoint_id=alibaba/wan-3.0/text-to-video",
+  "unit": "seconds"
+}

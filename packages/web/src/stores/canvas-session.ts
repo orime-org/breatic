@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * One canvas's session: the node-anchored panel it has open, the pick or note
@@ -8,7 +8,7 @@
  *
  * Every open Space tab that has been on screen keeps its canvas mounted,
  * hidden while another tab is shown, so several canvases live at once and each keeps its own session: a panel open on one
- * canvas is still open when the reader comes back to it, and nothing one
+ * canvas is still open when the user comes back to it, and nothing one
  * canvas does reaches another. Everything inside a canvas reaches its store
  * by the canvas's Space id (`useCanvasSession` in `canvas-context.tsx`), and so
  * does the chrome outside it (the left menu reads the active Space's).
@@ -17,7 +17,7 @@
 import type { NodeType } from '@breatic/shared';
 import { castDraft } from 'immer';
 
-import { miniToolById, type MiniToolSlotValue } from '@breatic/shared/mini-tools';
+import { defaultParamsOf, miniToolById, type MiniToolSlotValue } from '@breatic/shared/mini-tools';
 
 import {
   EMPTY_DRAWING,
@@ -60,7 +60,7 @@ import { createSpaceRegistry } from '@web/stores/space-registry';
  * DOM, and a draft held in that component went with it -- measured on a real
  * board, two screens away and back left the box closed and half a reply gone,
  * with nothing said about it. The node is still in the document the whole
- * time, so what the reader is writing has to outlive the element as well.
+ * time, so what the user is writing has to outlive the element as well.
  *
  * Same reason the crop marquee's target sits in `CanvasSpace` rather than in
  * the node being cropped (#1782 adversarial round 8).
@@ -155,7 +155,7 @@ export interface PickSession {
   purpose: PickPurpose;
   /**
    * How many files the slot being filled holds, for a slot holding several
-   * (inner#826): the pick keeps going until the slot is full or the reader
+   * (inner#826): the pick keeps going until the slot is full or the user
    * exits. Absent for every one-file slot, whose pick ends on the first click.
    */
   capacity?: number;
@@ -180,11 +180,11 @@ export interface MiniToolDraft {
    * the box and source pixels with it, the same size the export crops in.
    */
   readonly sourceSize: { readonly width: number; readonly height: number } | null;
-  /** What the reader has drawn; null on a tool without a drawing (inner#1302 §6.1). */
+  /** What the user has drawn; null on a tool without a drawing (inner#1302 §6.1). */
   readonly drawing: DrawingDraft | null;
   /** The expand frame and its ratio; null on a tool that does not expand (inner#1303 §6.3). */
   readonly expand: ExpandDraft | null;
-  /** What the reader has marked up; null on a tool that is not markup (inner#1303 §6.2). */
+  /** What the user has marked up; null on a tool that is not markup (inner#1303 §6.2). */
   readonly mark: MarkDraft | null;
   /**
    * Run was pressed and what it makes in the browser (a browser tool's file,
@@ -364,6 +364,16 @@ export interface CanvasSessionState {
   fillMiniToolSlot: (slotKey: string, value: MiniToolSlotValue, many: boolean) => void;
   /** Take one item out of a draft slot. */
   clearMiniToolSlot: (slotKey: string, url?: string) => void;
+  /**
+   * Open a join tool's panel on the first clip with the whole ordered list in
+   * its `clips` slot, the first clip included (inner#1825 §6.5); whatever that
+   * panel held before is replaced.
+   */
+  openJoinPanel: (toolId: string, clips: readonly MiniToolSlotValue[]) => void;
+  /** Move the list item picked from this node to a new place in the list, the panel staying where it is. */
+  moveMiniToolSlotItem: (slotKey: string, nodeId: string, toIndex: number) => void;
+  /** Take the list item picked from this node out, leaving another item holding the same file. */
+  removeMiniToolSlotItem: (slotKey: string, nodeId: string) => void;
   /** The source changed under the open panel: reset what depends on its geometry. */
   resetMiniToolSource: (sourceContent: string, params: Readonly<Record<string, unknown>>) => void;
   /** Record the source size the crop box read off the shown element. */
@@ -435,7 +445,7 @@ export interface CanvasSessionState {
    *
    * The fifth node-anchored panel in the same exclusive slot, and the reason
    * "one sticky open at a time" needs no rule of its own. Local only: which
-   * note this reader has open never goes into the document.
+   * note this user has open never goes into the document.
    */
   openAnnotationPanel: (nodeId: string) => void;
   /** Open the transcribe panel on an audio or video node (inner#856). */
@@ -450,7 +460,7 @@ export interface CanvasSessionState {
   closePanelOn: (nodeId: string, kind: NonNullable<CanvasSessionState['panelKind']>) => void;
   /**
    * The text node being written in, or null. Here rather than on the node:
-   * one text node per canvas is written in at a time, and the reader who comes
+   * one text node per canvas is written in at a time, and the user who comes
    * back to a hidden Space is still writing (inner#1235 A13).
    */
   editingTextNode: string | null;
@@ -735,6 +745,45 @@ export function createCanvasSessionStore(): CanvasSessionStore {
           else delete slots[slotKey];
           s.miniTool = { ...s.miniTool, slots };
         }),
+      openJoinPanel: (toolId, clips) =>
+        set((s) => {
+          const [first] = clips;
+          const spec = miniToolById(toolId);
+          const list = spec?.slots.find((slot) => slot.many);
+          if (first?.nodeId === undefined || spec === undefined || list === undefined) return;
+          if (s.panelKind === 'miniTool' && s.panelHostId === first.nodeId) s.panelSession += 1;
+          openPanel(s, first.nodeId, 'miniTool');
+          s.miniTool = {
+            toolId,
+            sourceContent: first.url,
+            prompt: '',
+            params: { ...defaultParamsOf(spec) },
+            slots: { [list.key]: castDraft([...clips]) },
+            sourceSize: null,
+            drawing: null,
+            expand: null,
+            mark: null,
+            exporting: false,
+          };
+        }),
+      moveMiniToolSlotItem: (slotKey, nodeId, toIndex) =>
+        set((s) => {
+          const held = s.miniTool?.slots[slotKey];
+          if (!s.miniTool || !Array.isArray(held)) return;
+          const list = held as readonly MiniToolSlotValue[];
+          const item = list.find((value) => value.nodeId === nodeId);
+          if (item === undefined) return;
+          const rest = list.filter((value) => value !== item);
+          rest.splice(Math.max(0, Math.min(toIndex, rest.length)), 0, item);
+          s.miniTool = { ...s.miniTool, slots: { ...s.miniTool.slots, [slotKey]: castDraft(rest) } };
+        }),
+      removeMiniToolSlotItem: (slotKey, nodeId) =>
+        set((s) => {
+          const held = s.miniTool?.slots[slotKey];
+          if (!s.miniTool || !Array.isArray(held)) return;
+          const list = (held as readonly MiniToolSlotValue[]).filter((value) => value.nodeId !== nodeId);
+          s.miniTool = { ...s.miniTool, slots: { ...s.miniTool.slots, [slotKey]: castDraft(list) } };
+        }),
       resetMiniToolSource: (sourceContent, params) =>
         set((s) => {
           if (s.miniTool) {
@@ -746,7 +795,7 @@ export function createCanvasSessionStore(): CanvasSessionStore {
               sourceSize: null,
               drawing,
               expand: s.miniTool.expand === null ? null : castDraft(EMPTY_EXPAND),
-              // The tool, colour and size stay as the reader set them; what was drawn goes.
+              // The tool, colour and size stay as the user set them; what was drawn goes.
               mark:
                 s.miniTool.mark === null
                   ? null

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -24,7 +24,8 @@ function model(params: Record<string, ParamDescriptor>): ModelEntry {
     generation_time: 30,
     takes_prompt: true,
     params,
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
   };
 }
 
@@ -73,7 +74,7 @@ describe('CameraPicker — the camera panel the params popover opens (#1788, #22
     expect(onChange).toHaveBeenCalledWith({ camera: 'Sony A7' });
   });
 
-  it('coerces focal_length back to a NUMBER (guards the validateParams silent-reset trap)', () => {
+  it('coerces focal_length back to a NUMBER (guards the validateModelParams silent-reset trap)', () => {
     // The catalog focal_length values are numeric; a string would fail the
     // worker's `spec.values.includes()` check and be silently reset to default.
     const onChange = vi.fn();
@@ -112,6 +113,15 @@ describe('CameraPicker — the camera panel the params popover opens (#1788, #22
       />,
     );
     fireEvent.click(screen.getByTestId('generate-camera-toggle'));
+    expect(onChange).toHaveBeenCalledWith({ enable_camera: true });
+  });
+
+  it('throws the master switch only from the switch itself, never from its state word', () => {
+    const onChange = vi.fn();
+    render(<CameraPicker model={FULL} value={{ enable_camera: false }} onChange={onChange} />);
+    fireEvent.click(screen.getByText('Off'));
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('switch', { name: 'Camera' }));
     expect(onChange).toHaveBeenCalledWith({ enable_camera: true });
   });
 

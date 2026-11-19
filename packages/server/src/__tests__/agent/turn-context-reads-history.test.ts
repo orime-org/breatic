@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the assembly reads for a turn.
@@ -58,7 +58,11 @@ vi.mock("@server/modules", () => ({
     getMessagesForLlm: vi.fn(async () => HISTORY),
   },
   memoryService: {
-    buildContext: vi.fn(async () => ({ projectMemory: "", conversationMemory: "" })),
+    buildContext: vi.fn(async () => ({ entries: [], migrated: [], olderCount: 0, progress: "" })),
+  },
+  // One Project has instructions, every other has none (#1400).
+  agentInstructionsService: {
+    textFor: vi.fn(async (projectId: string) => (projectId === "p1" ? "Always reply in English." : undefined)),
   },
 }));
 
@@ -102,12 +106,34 @@ describe("what the assembly hands the turn", () => {
     });
     vi.mocked(memoryService.buildContext).mockImplementationOnce(async () => {
       order.push("memory:start");
-      return { projectMemory: "", conversationMemory: "" };
+      return { entries: [], migrated: [], olderCount: 0, progress: "" };
     });
 
     const { buildTurnContext } = await import("@server/agent/turn-context.js");
     await buildTurnContext("u1", "c1", "p1", 7);
 
     expect(order).toEqual(["watermark:start", "watermark:done", "memory:start"]);
+  });
+
+  it("hands over the instructions of the Project the turn is in (#1400)", async () => {
+    const { agentInstructionsService } = await import("@server/modules");
+    const { buildTurnContext } = await import("@server/agent/turn-context.js");
+
+    const context = await buildTurnContext("u1", "c1", "p1", 7);
+
+    expect(agentInstructionsService.textFor).toHaveBeenCalledWith("p1");
+    expect(context.projectInstructions).toBe("Always reply in English.");
+  });
+
+  it("hands over none in a Project that has none, though another Project of the same user has some (#1400)", async () => {
+    const { agentInstructionsService } = await import("@server/modules");
+    const { buildTurnContext } = await import("@server/agent/turn-context.js");
+    vi.mocked(agentInstructionsService.textFor).mockClear();
+
+    const context = await buildTurnContext("u1", "c2", "p2", 7);
+
+    expect(agentInstructionsService.textFor).toHaveBeenCalledWith("p2");
+    expect(agentInstructionsService.textFor).not.toHaveBeenCalledWith("p1");
+    expect(context.projectInstructions).toBeUndefined();
   });
 });

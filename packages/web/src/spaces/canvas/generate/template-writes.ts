@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The params picking a generation template in a panel puts on each of its
  * generate nodes (inner#977, inner#1345): the anchor and every upstream
  * generation it reuses.
  *
- * The same kind of write as the reader picking the node's model by hand
+ * The same kind of write as the user picking the node's model by hand
  * (`resolveModelSwitch`), with the template params laid over that model's
  * record first: every other model keeps its own record (#1948). The prompts
  * come from the template's expansion.
@@ -15,6 +15,7 @@
 import type { GenerationTemplate, ModelEntry, TemplateGenerateNode } from '@breatic/shared';
 
 import { paramsStoreOf, resolveModelSwitch, type ParamsStoreSource } from '@web/spaces/canvas/generate/model-params';
+import { withStandInOn } from '@web/spaces/canvas/generate/stand-in';
 
 /**
  * The params a template puts on one of its generate nodes, by model.
@@ -30,7 +31,7 @@ export function templateParams(
 ): Record<string, Record<string, unknown>> {
   const store = paramsStoreOf(content);
   return resolveModelSwitch(
-    { paramsByModel: { ...store, [picked.name]: { ...store[picked.name], ...node.params } } },
+    { paramsByModel: { ...store, [picked.name]: { ...store[picked.name], ...withStandInOn(picked, node.params ?? {}) } } },
     picked,
   ).paramsByModel;
 }

@@ -1,0 +1,185 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+/**
+ * The page's one upload controller, against the real network (inner#1351 +
+ * inner#1390 design §5.5): every open body on the page shares it, so a
+ * result is kept for the page's lifetime whichever body the block turns up
+ * in. Each upload runs against the project and Space it was started in.
+ */
+
+import type { HocuspocusProvider } from '@hocuspocus/provider';
+import type * as Y from 'yjs';
+
+import { assetsApi } from '@web/data/api/assets';
+import { canvasApi } from '@web/data/api/canvas';
+import { uploadMedia } from '@web/data/upload/media-upload';
+import { waitForUploadEnding } from '@web/data/upload/upload-status';
+import { renewOnWorker } from '@web/lib/upload-claims';
+import { readDocFacts, readWriteAccess } from '@web/data/yjs/collab-socket';
+import { docName } from '@web/data/yjs/manager';
+import { canAdd } from '@web/data/yjs/space-write';
+import { useSpaceOperationsStore } from '@web/stores/space-operations';
+import {
+  openBodyUploads,
+  type BodyAwareness,
+  type BodyConnection,
+  type BodyUploads,
+} from '@web/spaces/document/document-body-uploads';
+import {
+  createUploadController,
+  type UploadController,
+  type UploadControllerDeps,
+  type UploadOutcome,
+} from '@web/spaces/document/document-upload-controller';
+import { createUploadSources } from '@web/spaces/document/document-upload-sources';
+
+/** Where an upload lands. */
+export interface UploadTarget {
+  readonly projectId: string;
+  readonly spaceId: string;
+}
+
+/** The project and Space each upload this page started lands in. */
+const targets = new Map<string, UploadTarget>();
+
+/** One run function per Space, so a paste's addresses of ours go in one request. */
+const runners = new Map<string, UploadControllerDeps['run']>();
+
+/**
+ * Reads a `data:` or `blob:` address. Nothing crosses the
+ * network, so there is nothing for the shared transport to retry, and it
+ * takes only `http(s)` addresses; `XMLHttpRequest` reads both kinds.
+ * @param url - The address.
+ * @returns The bytes.
+ * @throws {Error} When the address cannot be read: a `blob:` its page revoked.
+ */
+function readLocalAddress(url: string): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', url);
+    xhr.responseType = 'blob';
+    xhr.onload = (): void => {
+      resolve(xhr.response as Blob);
+    };
+    xhr.onerror = (): void => {
+      reject(new Error('The address could not be read'));
+    };
+    xhr.send();
+  });
+}
+
+/** How an upload ends when its Space could not take an add when it was asked for. */
+const SPACE_FULL: UploadOutcome = { ok: false, failure: { reason: 'spaceFull', retryable: true } };
+
+/**
+ * The run function for uploads landing in a Space. What it brings back is
+ * written into the body, so nothing is asked of the server while the Space
+ * cannot take an add (inner#1790, design 5.2); the block fails and offers
+ * Retry, which asks again.
+ * @param target - The project and Space.
+ * @returns The run function.
+ */
+function runnerFor(target: UploadTarget): UploadControllerDeps['run'] {
+  const key = `${target.projectId}:${target.spaceId}`;
+  let run = runners.get(key);
+  if (run === undefined) {
+    const name = docName.documentSpace(target.projectId, target.spaceId);
+    const sources = createUploadSources({
+      uploadFile: (file, onProgress) => uploadMedia(file, target, onProgress),
+      ingest: async (url) =>
+        (await assetsApi.ingestUrl({ url, project_id: target.projectId, space_id: target.spaceId })).storage_key,
+      waitForEnding: waitForUploadEnding,
+      register: async ({ urls, pairs }) =>
+        (await canvasApi.paste({ project_id: target.projectId, urls, pairs, history: [] })).map,
+      assetUrlPrefix: () =>
+        assetsApi
+          .fetchUploadConfig()
+          .then((cfg) => cfg.assetUrlPrefix)
+          .catch(() => null),
+      readAddress: readLocalAddress,
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    });
+    run = (uploadId, source, onProgress) => (canAdd(name) ? sources(uploadId, source, onProgress) : Promise.resolve(SPACE_FULL));
+    runners.set(key, run);
+  }
+  return run;
+}
+
+let controller: UploadController | null = null;
+
+/**
+ * The page's controller, built the first time a body asks.
+ * @returns The controller.
+ */
+function pageController(): UploadController {
+  if (controller === null) {
+    const operations = useSpaceOperationsStore.getState();
+    controller = createUploadController({
+      // `start` records an upload's target before it runs (see openPageBodyUploads).
+      run: (uploadId, source, onProgress) => runnerFor(targets.get(uploadId)!)(uploadId, source, onProgress),
+      register: (spaceId, uploadId) => {
+        operations.register(spaceId, uploadId);
+      },
+      unregister: (spaceId, uploadId) => {
+        operations.unregister(spaceId, uploadId);
+      },
+      renew: renewOnWorker,
+    });
+  }
+  return controller;
+}
+
+/**
+ * What this page's provider says about a body.
+ * @param name - The body's document name.
+ * @param provider - Its provider; absent, the body is taken as writable.
+ * @returns The connection.
+ */
+function connectionOf(name: string, provider: HocuspocusProvider | undefined): BodyConnection {
+  if (provider === undefined) {
+    return { writeAccess: () => 'granted', refused: () => false, onChange: () => () => {} };
+  }
+  /**
+   * Whether the server refused the body, read off the provider registry.
+   * @returns True while its last handshake was refused.
+   */
+  const refused = (): boolean => readDocFacts(name).authFailure !== null;
+  return {
+    awareness: provider.awareness as unknown as BodyAwareness,
+    writeAccess: () => (refused() ? 'denied' : readWriteAccess(provider, readDocFacts(name).authFailure)),
+    refused,
+    onChange: (listener) => {
+      provider.on('authenticated', listener);
+      provider.on('authenticationFailed', listener);
+      return () => {
+        provider.off('authenticated', listener);
+        provider.off('authenticationFailed', listener);
+      };
+    },
+  };
+}
+
+/**
+ * Opens a body's link to the page's uploads.
+ * @param target - Where its uploads land.
+ * @param doc - Its document.
+ * @param name - Its document name.
+ * @param provider - This page's provider for it, when there is one.
+ * @returns The link.
+ */
+export function openPageBodyUploads(
+  target: UploadTarget,
+  doc: Y.Doc,
+  name: string,
+  provider: HocuspocusProvider | undefined,
+): BodyUploads {
+  const link = openBodyUploads(pageController(), { spaceId: target.spaceId, doc, name, connection: connectionOf(name, provider) });
+  return {
+    ...link,
+    start: (uploadId, source) => {
+      targets.set(uploadId, target);
+      link.start(uploadId, source);
+    },
+  };
+}

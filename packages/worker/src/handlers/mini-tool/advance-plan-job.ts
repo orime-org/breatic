@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { env, getMiniToolsConfig, logger } from "@breatic/core";
 import {
@@ -8,7 +8,7 @@ import {
   EmptyBody, HttpRetryError, UploadHttpError,
   type MiniToolPlanJobReport, type MiniToolPlanJobRequest,
 } from "@breatic/shared";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 
 /** A terminal report retains the successful indexed subset even when computation failed. */
 export type EndedMiniToolPlanJob = Extract<MiniToolPlanJobReport, { state: "done" | "failed" }>;

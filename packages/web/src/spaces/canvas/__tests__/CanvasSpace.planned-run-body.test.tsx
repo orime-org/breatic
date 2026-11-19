@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 test plan §97 D27-1 (D26-1 quote; canvas design §4 对口型 and 转场 rows): the quote and the Run send one body, made by

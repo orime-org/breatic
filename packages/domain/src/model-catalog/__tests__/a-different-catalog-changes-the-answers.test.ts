@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Swap the catalog and every answer follows, with no code changed (#269).
@@ -37,10 +37,6 @@ const VIDEO = [
   '    mode: "i2v"',
   "    takes_prompt: true",
   "    generation_time: 10",
-  "    providers:",
-  "      - name: wavespeed",
-  '        model_id: "own-words"',
-  "        priority: 1",
   "    params:",
   "      portrait:",
   '        fill: "canvas"',
@@ -73,10 +69,6 @@ const VIDEO = [
   '    mode: "orbit"',
   "    takes_prompt: true",
   "    generation_time: 10",
-  "    providers:",
-  "      - name: wavespeed",
-  '        model_id: "orbiting"',
-  "        priority: 1",
   "    params:",
   "      subject:",
   '        fill: "canvas"',

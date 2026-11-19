@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * S6d D3: the standard-4 presentation recipes on real media (inner#1306 test plan §91 D3; frames-split design §4.3, §5.3

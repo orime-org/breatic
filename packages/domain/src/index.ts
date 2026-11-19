@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * `@breatic/domain` — AIGC business kernel shared by server + worker.
  *
  * Holds the business logic both server and worker need but collab never
  * touches: the credit "spend" side (credit + `markCompletedAndBill`
- * atomic deduction) / tasks / node history / agent (model · tools) /
+ * recording a task's charge request with its completion) / tasks / node history / agent (model · tools) /
  * model-catalog.
  *
  * Dependency direction `shared ← core ← domain ← {server, worker}`:
@@ -24,6 +24,9 @@ export * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 export * as creditLotService from "@domain/credit/creditLot.service.js";
 export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 export * as creditHoldService from "@domain/credit/creditHold.service.js";
+export { sumCreditsByOperationKeys } from "@domain/credit/agentUsage.repo.js";
+export * as webAnimationSourceRepo from "@domain/timeline/web-animation-source.repo.js";
+export { timelineOperationKey } from "@domain/timeline/operation-key.js";
 export { SMALLEST_CREDIT, toChargeCredits } from "@domain/credit/credit-math.js";
 export {
   containerCostUsd,
@@ -32,6 +35,7 @@ export {
 } from "@domain/credit/container-cost.js";
 export {
   createUsageRecorder,
+  type AwaitedLookup,
   type RecordedOperation,
   type UsageRecorder,
   type UsageRow,
@@ -39,23 +43,20 @@ export {
   type UsageSource,
 } from "@domain/credit/usage-recorder.js";
 export { usageContextFor } from "@domain/agent/tools/usage-context.js";
-export { creditsForUsd, type ModelCallUsage } from "@domain/credit/usage-cost.js";
-export { agentModelIds, assertModelsPriced } from "@domain/credit/priced-models.js";
+export { creditsForUsd } from "@domain/credit/usage-cost.js";
+export { agentModelIds } from "@domain/credit/priced-models.js";
 export {
   USAGE_LOOKUP_QUEUE,
   handOffLookups,
-  lookupGeneration,
-  type GenerationAnswer,
   type UsageLookupJob,
 } from "@domain/credit/generation-lookup.js";
-export { isGenerationId, trackOpenGeneration, type OpenGeneration } from "@domain/credit/open-generation.js";
 export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.js";
 
 // ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──
 export * as studioAuthService from "@domain/auth/studioAuth.service.js";
 export * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 
-// ── Task (+ markCompletedAndBill: task·credit cross-table atomic) ─
+// ── Task (+ markCompletedAndBill: completion and charge request in one commit) ─
 export * as taskService from "@domain/task/task.service.js";
 export * as taskRepo from "@domain/task/task.repo.js";
 export * as miniToolAnalysisService from "@domain/mini-tool/analysis.service.js";
@@ -117,6 +118,7 @@ export * as nodeHistoryRepo from "@domain/node-history/node-history.repo.js";
 export * as assetService from "@domain/asset/asset.service.js";
 export * as assetRepo from "@domain/asset/asset.repo.js";
 export * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
+export { materialFacts, type MaterialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
 export * as uploadGrantService from "@domain/asset/upload-grant.service.js";
 export { createBusinessProjectMediaBackfillSources } from "@domain/asset/project-media-backfill.service.js";
 export * as uploadStatusService from "@domain/asset/upload-status.service.js";
@@ -133,8 +135,8 @@ export { openContainerOutputs } from "@domain/asset/container-outputs.service.js
 export * as mediaReadService from "@domain/asset/media-read.service.js";
 export * as videoPresentationService from "@domain/asset/video-presentation.service.js";
 export { VIDEO_PRESENTATION_QUEUE, VideoPresentationSourceChanged, type VideoPresentationJob } from "@domain/asset/video-presentation.service.js";
-export { extFromUrl, labelForUrl, readerUrlSchema, safeExt } from "@domain/asset/source-url.js";
-export { isReaderLinkFault, storedTypeOf, TYPE_UNKNOWN, urlIngestFailureLevel } from "@domain/asset/reader-source.js";
+export { extFromUrl, labelForUrl, userUrlSchema, safeExt } from "@domain/asset/source-url.js";
+export { isUserLinkFault, storedTypeOf, TYPE_UNKNOWN, urlIngestFailureLevel } from "@domain/asset/user-source.js";
 export {
   MEDIA_READ_QUEUE,
   type MediaReadJob,
@@ -158,25 +160,36 @@ export type {
 } from "@domain/asset/upload-grant.repo.js";
 
 // ── Agent (AIGC execution kernel: model / tools / prompt extraction) ──
-export { getModel, resolveProvider, callOptionsFor, systemFor } from "@domain/agent/llm.js";
-export type { CallWants } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
 export {
   buildToolSet,
   BASELINE_TOOLS,
   TOOL_MAP,
   ASK_USER,
-  AWAITS_READER,
+  AWAITS_USER,
   REQUEST_SPACE_CONTENT,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  PROPOSE_SCENE_GENERATION,
   SAVE_IMAGE,
   UNDERSTAND_MEDIA,
   RECORD_TOOL_NAMES,
+  MEMORY_TOOL_NAMES,
 } from "@domain/agent/tools/index.js";
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 export { SaveRefused, type SavedMaterial, type SaveToStorage } from "@domain/agent/tools/save-image.js";
+export { makeWebTools, publisherOf } from "@domain/agent/tools/web-tools.js";
+export {
+  ReadPagesRefused,
+  renderFetchForModel,
+  type ReadPages,
+  type FetchStatus,
+  type FetchedPage,
+  type FetchSource,
+  type FetchAnswer,
+} from "@domain/agent/tools/web-fetch.js";
+export { WEB_FETCH } from "@domain/agent/tools/tool-names.js";
 export { MAX_TURN_INDEX, RecordsRefused } from "@domain/agent/tools/project-records.js";
 export type {
   ProjectRecords,
@@ -191,6 +204,15 @@ export type {
   NodeRecords,
   ActivityPage,
 } from "@domain/agent/tools/project-records.js";
+export { MemoryRefused, countCharacters, memoryContent, memoryTitle } from "@domain/agent/memory-entries.js";
+export type {
+  AgentMemory,
+  MemoryEntry,
+  MemoryOrigin,
+  MemoryRefusalKind,
+  MemoryScope,
+  MemorySearchPage,
+} from "@domain/agent/memory-entries.js";
 export { buildAgentConfig, instructionsForAgentMemory } from "@domain/agent/agent-config.js";
 export {
   createAgentPicturePreparer,
@@ -203,7 +225,6 @@ export {
   type ToolPictureContext,
   type AgentPicturePreparation,
 } from "@domain/agent/prepare-agent-pictures.js";
-export { resolveModelPictureCapability } from "@domain/agent/model-picture-capability.js";
 export { pictureMiddleware } from "@domain/agent/picture-middleware.js";
 export {
   projectAgentRequest,
@@ -227,14 +248,12 @@ export type { Instructions } from "@domain/agent/instructions.js";
 
 // ── Model catalog (incl. per-call credit cost: cost_per_call) ────
 export * as modelCatalog from "@domain/model-catalog/model-catalog.js";
-export { estimateTaskCredits, violatesSourceRequirementForModel, violatesReferenceCountForModel, MIN_TASK_CREDIT_COST, getFullModelConfig } from "@domain/model-catalog/model-catalog.js";
+export { estimateTaskCredits, inputRefusalFor, llmServability, sendsUntakenPrompt, servability, violatesSourceRequirementForModel, violatesReferenceCountForModel, violatesTextLengthForModel, MIN_TASK_CREDIT_COST, getFullModelConfig, type Servability } from "@domain/model-catalog/model-catalog.js";
 export type { ReferenceCountViolation } from "@domain/model-catalog/reference-count.js";
-export type { FullModalityConfig, FullModelEntry, FullProviderEndpoint, FullParamSpec, ProviderConnectionConfig } from "@domain/model-catalog/model-catalog.js";
+export type { FullModalityConfig, FullModelEntry, FullParamSpec } from "@domain/model-catalog/model-catalog.js";
 // Which upstream a model runs on in this deployment. One rule, two callers:
 // the worker sends the generation, the voice endpoint lists voices in that
 // same upstream's value domain.
-export { resolveActiveProvider } from "@domain/model-catalog/resolve-active-provider.js";
-export type { ActiveProvider } from "@domain/model-catalog/resolve-active-provider.js";
 
 // The voices a tts model offers, in one shape whichever vendor answers.
 export { listVoices, getVoice } from "@domain/model-catalog/voice-catalog.js";
@@ -245,6 +264,14 @@ export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-c
 
 // ── Node tasks (one row per task on a node; the four counts the node shows) ──
 export * as nodeTaskService from "@domain/node-task/node-task.service.js";
+export * as sceneTaskService from "@domain/node-task/scene-task.service.js";
+export type { SceneTaskRow } from "@domain/node-task/node-task.repo.js";
+export { resolveProjectImageInputs, type ProjectImageInput } from "@domain/asset/project-image-inputs.js";
+export {
+  planSceneGeneration,
+  type SceneGenerationPlan,
+  type SceneGenerationProblem,
+} from "@domain/model-catalog/scene-generation.js";
 export { settleTaskForNode } from "@domain/node-task/settle-for-node.js";
 export { failureOutcome } from "@domain/node-task/failure-outcome.js";
 export type {
@@ -345,3 +372,6 @@ export * as storageReclaimRepo from "@domain/asset/storage-reclaim.repo.js";
 // ── Presentation pins (inner#1306 §7.15) ──
 export * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
 export { syncPresentationPins } from "@domain/presentation/presentation-pin.service.js";
+// ── Provider (every model call goes through it, inner#1743) ──
+export { initProvider, provider } from "@domain/provider/instance.js";
+export { readProviderConfig } from "@domain/provider/provider-config-loader.js";

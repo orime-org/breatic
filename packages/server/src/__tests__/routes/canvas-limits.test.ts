@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Canvas limits route tests — the knobs the frontend reads before it can
@@ -42,6 +42,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
         "video.split": { container_class: "MiniToolContainerStd4", precheck_seconds: 300, max_outputs: 9, max_outputs_per_job: 8 },
         ...(lipSyncHolder.execution === undefined ? {} : { "video.lip-sync": lipSyncHolder.execution }),
       },
+      // Not the shipped 20, so the case proves the route reads the accessor.
+      join_max_clips: 17,
     })),
   };
 });
@@ -114,6 +116,7 @@ describe("GET /canvas/limits", () => {
         waveformMaxBytes: number;
         waveformPeaksRetryMs: number;
         waveformPeaksRetryMaxMs: number;
+        joinMaxClips: number;
       };
     };
     expect(body.data.referencePoolCap).toBe(42);
@@ -129,6 +132,8 @@ describe("GET /canvas/limits", () => {
     // An open band reads peaks not yet written this often, for this long.
     expect(body.data.waveformPeaksRetryMs).toBe(5000);
     expect(body.data.waveformPeaksRetryMaxMs).toBe(600_000);
+    // inner#1825 §6.3: the join panel's add tile and slot pick stop at this many clips.
+    expect(body.data.joinMaxClips).toBe(17);
   });
 
   it("serves the remove-background model the config names", async () => {

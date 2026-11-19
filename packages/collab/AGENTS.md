@@ -62,6 +62,10 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 
 **A presence record in meta `users` holds only `id`, `online` and `lastSeenAt`, and only the server writes it.** Names and avatars come from the member roster on each client, so a copy here would go stale on rename.
 
+### Following table
+
+**Whom each connection follows lives in meta `following`, keyed by socket id (`{ userId, target, at, lastSeenAt }`, schema `followingEntrySchema` in `@breatic/shared`), and only the server writes it: from the sender's own `following` declaration in `beforeHandleAwareness`, refreshed by the same signs of life as presence, deleted on disconnect (never for a refused duplicate, which shares the socket id) and by the stale sweep.** A browser's awareness ages a hidden tab out on throttled timers while the socket stays alive, so peers learn whom a member follows from this table, never from the `following` in each other's awareness.
+
 ### Liveness follows the transport
 
 **Online is asserted by the socket's own signs of life (a pong, a ping or any message, the events crossws counts before it would close the socket), offline is only inferred by the sweep, and nothing writes offline when a socket closes.** One user may hold other sockets, some on other instances, so a close proves nothing. The same signal drives seats: a seat's score is written when the seat is taken and afterwards only when its own socket shows one of those signs, to the time that sign was heard rather than the time a held-back refresh runs (`lastSeenAt` likewise), and nothing else writes it; a narrower signal than the transport's lets a socket the transport keeps open lose its seat while it can still write. Keep presence off browser timers (`refreshPresenceForSocket` is the only refresh entry in `presence-wiring.ts`): a tab hidden for over five minutes has its timers throttled to about once a minute, and the awareness heartbeat drops to about 60 s, so any "silent for N means gone" threshold built on browser timing must exceed that. Pongs come from the browser's network stack and are not throttled, so a hidden tab that sends nothing still refreshes.
@@ -95,6 +99,12 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 ### Socket versus client id
 
 **One browser tab shares one WebSocket across all its documents, so a socket id covers several Yjs client ids.** Judge whether a connection is alive from the seat registry (`services/connection-registry.ts`), not from awareness (transient states cause false kills) and not from this instance's own connection list (it cannot see other instances).
+
+## Document formats
+
+### Old formats are upgraded on load
+
+**When the stored format of a Space document changes, the same PR ships an upgrade that collab runs in its load hook before any client syncs, and the editor keeps reading the old format until that upgrade has run; never leave documents written before the change unreadable or wrong.** The product is live, so every older document is someone's work. Follow `convertStoredTablesOnLoad` (`services/legacy-table-conversion.ts`, wired in `hocuspocus.ts`): it does nothing on a document already in the new format, takes a per-document lock in collab Redis so one instance converts, reads the stored state again under the lock, and on failure logs and lets the load go on in the old format, trying again on the next load. Check: would a document written before this change open wrong after it? Then this PR carries its on-load upgrade.
 
 ## Space lifecycle
 

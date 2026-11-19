@@ -225,7 +225,7 @@ test.describe('a dialog taller than the viewport', () => {
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
 
-    // Dragging the thumb is what a reader does with a bar. The rail claims
+    // Dragging the thumb is what a user does with a bar. The rail claims
     // this one for itself, so it never reaches Radix at all.
     await page.mouse.move(cx, cy);
     await page.mouse.down();
@@ -236,7 +236,7 @@ test.describe('a dialog taller than the viewport', () => {
 
     // The middle and secondary buttons both reach the dialog's own veto and
     // are both refused there. Either is a press outside the content, and the
-    // rail is the dialog's own — neither may throw away what the reader was
+    // rail is the dialog's own — neither may throw away what the user was
     // filling in.
     for (const button of ['middle', 'right'] as const) {
       await page.mouse.click(cx, cy, { button });

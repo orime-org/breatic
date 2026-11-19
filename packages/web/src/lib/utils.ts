@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { type ClassValue, clsx } from 'clsx';
 import { extendTailwindMerge } from 'tailwind-merge';
@@ -31,8 +31,8 @@ const customTwMerge = extendTailwindMerge({
       ],
       color: [
         // Active-state border color used by NewSpaceDialog selected
-        // card + ChatComposer focus-within. See `--color-active-border`
-        // in tokens.css (#388).
+        // card + the ChatComposer box while its text has focus. See
+        // `--color-active-border` in tokens.css (#388).
         'active-border',
       ],
     },

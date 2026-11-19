@@ -1,0 +1,91 @@
+{
+  "source": "https://api.sandbase.ai/v1/models/google/nano-banana-2/edit",
+  "fields": {
+    "aspect_ratio": [
+      {
+        "type": "string",
+        "enum": [
+          "21:9",
+          "16:9",
+          "3:2",
+          "4:3",
+          "5:4",
+          "1:1",
+          "4:5",
+          "3:4",
+          "2:3",
+          "9:16",
+          "4:1",
+          "1:4",
+          "8:1",
+          "1:8"
+        ]
+      }
+    ],
+    "enable_image_search": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "enable_web_search": [
+      {
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "images": [
+      {
+        "type": "array",
+        "items": {
+          "fields": {
+            "": [
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "required": []
+        }
+      }
+    ],
+    "output_format": [
+      {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png"
+        ],
+        "default": "png"
+      }
+    ],
+    "prompt": [
+      {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 50000,
+        "default": "Make a 3 panel comic in a gritty, noir art style with high-contrast black and white inks. Put the character in a humurous scene."
+      }
+    ],
+    "resolution": [
+      {
+        "type": "string",
+        "enum": [
+          "0.5K",
+          "1K",
+          "2K",
+          "4K"
+        ],
+        "default": "1K"
+      }
+    ]
+  },
+  "required": [
+    "images",
+    "prompt"
+  ],
+  "modes": [
+    "async"
+  ],
+  "owned_by": "google"
+}

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { tool, wrapLanguageModel } from "ai";
@@ -33,7 +33,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const { modelProducing } = await import("../../__tests__/helpers/model-double.js");
   return {
     ...actual,
-    ...domainMock(),
+    ...(await domainMock()),
     finalizeTurn: actual.finalizeTurn,
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: async () => ({
@@ -41,13 +41,13 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       seesPictures: true,
       picturePolicy: { seesPictures: true, maxPictures: h.maxPictures, maxBytes: h.maxBytes, pictureTokensEstimate: 1000 },
     }),
-    getModel: () => wrapLanguageModel({
+    provider: (await import("../../__tests__/helpers/fake-provider.js")).fakeProvider(() => wrapLanguageModel({
       model: modelProducing(
         () => (h.byCall[h.prompts.length - 1] ?? saying("done")) as ModelStreamPart[],
         (request) => h.prompts.push(request.prompt),
       ),
       middleware: actual.pictureMiddleware as Parameters<typeof wrapLanguageModel>[0]["middleware"],
-    }),
+    })),
   };
 });
 vi.mock("@server/agent/turn-context.js", () => ({ buildTurnContext: h.context }));
@@ -62,11 +62,11 @@ vi.mock("@server/agent/prepare-pictures.js", () => ({
 }));
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage: h.add,
-  addReaderMessage: async (id: string, message: Record<string, unknown>) => ({ turnIndex: await h.add(id, message), closedAsks: [] }),
+  addUserMessage: async (id: string, message: Record<string, unknown>) => ({ turnIndex: await h.add(id, message), closedAsks: [] }),
   setUserForModel: h.setUser,
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
-vi.mock("@server/modules/conversation/conversation.service.js", () => ({ titleForTurn: vi.fn(async () => null) }));
+vi.mock("@server/modules/conversation/conversation.service.js", () => ({ getMessagesForLlm: async () => [], titleForTurn: vi.fn(async () => null) }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");
@@ -142,7 +142,7 @@ beforeEach(() => {
   h.add.mockReset().mockImplementation(async () => h.turnIndex);
   h.setUser.mockReset().mockResolvedValue(undefined);
   h.fold.mockReset().mockResolvedValue("none");
-  h.context.mockReset().mockImplementation(async () => ({ memoryContext: { projectMemory: "", conversationMemory: "" }, history: h.history, watermark: 0 }));
+  h.context.mockReset().mockImplementation(async () => ({ memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" }, history: h.history, watermark: 0 }));
   h.makePreparer.mockReset().mockReturnValue(h.prepare);
   h.prepare.mockReset().mockImplementation(async (sources: Array<{ label: string; sourceUrl: string }>): Promise<PreparedAgentPicture[]> => sources.map((source) => {
     const index = Number(new URL(source.sourceUrl).pathname.split("/").pop()?.split(".")[0]);

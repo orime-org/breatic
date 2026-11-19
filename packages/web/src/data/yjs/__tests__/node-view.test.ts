@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
 import {
@@ -241,7 +241,7 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     // Two people replying in the same sync window converge on an order Yjs
     // decides from their client ids, not from the clock: measured on yjs
     // 13.6.32, the same pair of pushes lands `newer, older` one way round and
-    // `older, newer` with the ids swapped. The reader is promised time order,
+    // `older, newer` with the ids swapped. The user is promised time order,
     // so it is settled here rather than in the document.
     const v = toNodeView(
       fields('annotation', {
@@ -427,5 +427,24 @@ describe('toNodeView — the template node a node stands for (inner#1345)', () =
     const v = toNodeView(fields('image'));
 
     expect(v?.type === 'image' ? v.data.templateNode : 'not an image view').toBeUndefined();
+  });
+});
+
+describe('toNodeView — a node saved on a retired model reads as its replacement (#1521)', () => {
+  const OLD = 'gemini-3.1-flash-text-to-speech';
+  const NEW = 'gemini-3.8-flash-text-to-speech';
+  const pair = [{ speaker: 'Ava', voice: 'Kore' }, { speaker: 'Leo', voice: 'Puck' }];
+
+  it('gives the panel the replacement and its records, before collab has upgraded the stored node', () => {
+    const typed = toNodeView(fields('audio', {
+      mode: 'tts',
+      model: OLD,
+      modelByMode: { tts: OLD },
+      paramsByModel: { [OLD]: { speakers: pair, voice_id: 'Kore' } },
+    }));
+    const data = typed?.data as { model?: string; modelByMode?: Record<string, string>; paramsByModel?: Record<string, Record<string, unknown>> };
+    expect(data.model).toBe(NEW);
+    expect(data.modelByMode).toEqual({ tts: NEW });
+    expect(data.paramsByModel).toEqual({ [NEW]: { speakers: pair, voice_id: 'Kore' } });
   });
 });

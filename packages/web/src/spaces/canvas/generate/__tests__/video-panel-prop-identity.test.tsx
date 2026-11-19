@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The container's props for its memoized children keep their identity while
@@ -119,7 +119,8 @@ function catalog(): ModelCatalog {
         generation_time: 10,
         takes_prompt: true,
         params: {},
-        providers: [],
+        availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+        pricing_rules: undefined,
       },
     ],
     audio: [],
@@ -177,7 +178,7 @@ function mount(): ReturnType<typeof render> {
             edges={[]}
             nodes={nodes()}
             getLastWriteWasLocal={LAST_WRITE_LOCAL}
-            placeTemplate={() => undefined}
+            placeTemplate={() => ({ nodeIds: [], rects: [] })}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -254,7 +255,7 @@ describe('the container keeps its memoized children bail-able', () => {
               edges={[]}
               nodes={nodes()}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
-              placeTemplate={() => undefined}
+              placeTemplate={() => ({ nodeIds: [], rects: [] })}
             />
           </CanvasContext.Provider>
         </ReactFlow>
@@ -316,7 +317,7 @@ describe('the container keeps its memoized children bail-able', () => {
                 >[0]['nodes']
               }
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
-              placeTemplate={() => undefined}
+              placeTemplate={() => ({ nodeIds: [], rects: [] })}
             />
           </CanvasContext.Provider>
         </ReactFlow>

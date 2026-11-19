@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Model catalog wire contract — the shape of the `GET /api/v1/models`
@@ -47,30 +47,6 @@ export type ModelTier = 'recommended' | 'optional' | 'internal';
  */
 export type RemoteParamSource = "voices";
 
-/** An endpoint's WaveSpeed pricing contract, as the catalog yaml writes it. */
-export interface PricingContract {
-  /** Price basis in millionths of a US dollar. */
-  readonly base_price: number;
-  /** JSONata formula WaveSpeed publishes; empty means `base_price` per call. */
-  readonly formula: string;
-  /** Percent of the formula's price actually charged. */
-  readonly discount_rate: number;
-}
-
-/** An upstream call a run of this model makes besides the model's own. */
-export interface ExtraStep {
-  readonly endpoint: string;
-  /** Whether the call runs before or after the model's own endpoint. */
-  readonly at: "before" | "after";
-  readonly pricing: PricingContract;
-  /** The param whose value makes the run take this step; absent means every run does. */
-  readonly for_param?: string;
-  /** One call per item of `for_param`. */
-  readonly per_item?: boolean;
-  /** Skipped when the same source was sent through it before. */
-  readonly reused?: boolean;
-}
-
 /** Params of which at least one has to carry material in one mode. */
 export interface SourceGroup {
   readonly mode: string;
@@ -96,10 +72,42 @@ export const PARAM_FILLS = ["canvas", "pool", "editor", "panel", "remote", "stor
 /** One way a parameter's value reaches the run. */
 export type ParamFill = (typeof PARAM_FILLS)[number];
 
-/** What has to hold before a declared control counts for anything (#269). */
+/** A value a choice or a switch can hold. */
+export type ParamScalar = string | number | boolean;
+
+/**
+ * What has to hold before a declared control counts for anything (#269);
+ * every part given has to hold (inner#1691).
+ */
 export interface ParamGate {
   /** That switch has to be on; the value is dropped while it is off. */
   flag_on?: string;
+  /** Each named param has to hold the given value. */
+  equals?: Readonly<Record<string, ParamScalar>>;
+}
+
+/**
+ * A range that applies while its condition holds (inner#1691): the first
+ * entry whose condition holds wins, and a bound it leaves out falls back to
+ * the param's own.
+ */
+export interface ParamBound {
+  readonly when: ParamGate;
+  readonly min?: number;
+  readonly max?: number;
+}
+
+/**
+ * A value the model forces while a condition holds (inner#1691). Applied in
+ * declaration order, round after round until nothing changes; `lock` draws
+ * the params it sets as locked while it applies.
+ */
+export interface ParamForce {
+  /** Names the rule; the panel's reason and the refusals say it. */
+  readonly id: string;
+  readonly when: ParamGate;
+  readonly set: Readonly<Record<string, ParamScalar>>;
+  readonly lock: boolean;
 }
 
 export interface ParamDescriptor {
@@ -122,11 +130,6 @@ export interface ParamDescriptor {
    * from 1, `{i}` counted from 0. Absent, the chip adds nothing to the text.
    */
   mention?: string;
-  /**
-   * The key each entry of this list travels under upstream, when the upstream
-   * takes objects rather than bare URLs (Krea's `reference: [{ image }]`).
-   */
-  item_key?: string;
   /**
    * The pool this slot's files are appended to on their way upstream, for a
    * model with no field of its own for them (inner#826).
@@ -157,10 +160,18 @@ export interface ParamDescriptor {
   /**
    * The shape of the value when it is not a single scalar: `list` carries
    * several sources (the reference pool), `items` is a list editor whose
-   * entries carry `fields`, `text` is a free text control. Readers compare
-   * against these exact strings, and the loader refuses any other value.
+   * entries carry `fields`, `text` is a free text control, `integer` a whole
+   * number that may be left blank, which then is not sent (inner#1691).
+   * Readers compare against these exact strings, and the loader refuses any
+   * other value.
    */
-  type?: "list" | "items" | "text";
+  type?: "list" | "items" | "text" | "integer";
+  /** Ranges that replace `min` and `max` while their condition holds (inner#1691). */
+  bounds?: readonly ParamBound[];
+  /** The most characters a text param takes, counted on the cleaned text (inner#1691). */
+  max_length?: number;
+  /** The fewest characters a text param takes, counted on the cleaned text (inner#1825). */
+  min_length?: number;
   max_items?: number;
   /** The longest the picked clips may run together, in seconds. */
   max_total_duration?: number;
@@ -172,14 +183,6 @@ export interface ParamDescriptor {
   replaces?: string;
   /** The fields of one entry of an `items` list. */
   fields?: Readonly<Record<string, ItemField>>;
-  /** The upstream field this param is sent as, when the names differ. */
-  upstream?: string;
-  /**
-   * What a value is sent as upstream, keyed by the value's string form, when
-   * the panel's value is not the endpoint's (Kling's switch sends
-   * `shot_type: "intelligence"`). A value not listed goes as it is.
-   */
-  upstream_values?: Readonly<Record<string, string>>;
   /**
    * For an `items` list the endpoint has no field for: each entry is written
    * into the prompt with this template instead (`{n}` its place from 1,
@@ -190,7 +193,7 @@ export interface ParamDescriptor {
   label?: string;
   /** How a value of `values` reads on screen, when its spelling is not that; English. */
   value_labels?: Readonly<Record<string, string>>;
-  /** The BCP-47 tag each value of `values` is, by position, so the panel names it in the reader's language. */
+  /** The BCP-47 tag each value of `values` is, by position, so the panel names it in the user's language. */
   value_locales?: readonly string[];
   /**
    * Names the picker that fills this param, for params whose value domain
@@ -203,12 +206,12 @@ export interface ParamDescriptor {
   default: unknown;
 }
 
-/** One provider backing a model (with resolved availability). */
-export interface ModelProvider {
-  name: string;
-  model_id: string;
-  priority: number;
-  available: boolean;
+/**
+ * Which of a model's upstreams this deployment can reach, in effective weight order: one with `configured` false
+ * names the environment variable its key is missing from.
+ */
+export interface ModelAvailability {
+  upstreams: { upstream: string; weight: number; configured: boolean; envVar: string }[];
 }
 
 /** A kind of node a source slot takes. */
@@ -246,7 +249,13 @@ export interface ModelEntry {
   tier: ModelTier;
   generation_time: number;
   params: Record<string, ParamDescriptor>;
-  providers: ModelProvider[];
+  /** Which upstreams can serve the model here; a model none can serve is still listed. */
+  availability: ModelAvailability;
+  /**
+   * The model's pricing on each upstream, opaque here: the panel, the proposal card and the balance gate estimate a
+   * run with it through `@breatic/provider/pricing` (`parsePricingRules`, `estimateCost`).
+   */
+  pricing_rules?: unknown;
   /**
    * Whether this model consumes the text the user writes (#1966). Declared
    * per model in yaml, never derived: it used to be read off a `prompt` entry
@@ -261,18 +270,15 @@ export interface ModelEntry {
    */
   takes_prompt: boolean;
   /**
-   * The WaveSpeed pricing contract of the model's endpoint, which the panel,
-   * the proposal card, the agent and the balance gate all estimate a run by.
-   * Absent only on a version-skewed or corrupted wire: the panel then states
-   * no price.
+   * The condition the prompt is taken under, when a choice of the model's own
+   * turns it off (breatic#1393: Mureka V9.5 Song composing from a melody).
+   * Read through `promptTaken`, never directly.
    */
-  pricing?: PricingContract;
-  /** The upstream field the prompt is sent as, when it is not `prompt`. */
-  prompt_upstream?: string;
-  /** Upstream calls a run makes besides the model's own. */
-  extra_steps?: readonly ExtraStep[];
-  /** The param whose source, once sent, lets later runs skip the model's own call. */
-  reused_by?: string;
+  prompt_when?: ParamGate;
+  /** Values the model forces while their conditions hold, in order (inner#1691). */
+  forces?: readonly ParamForce[];
+  /** The most characters the prompt takes, counted on the cleaned text (inner#1691). */
+  prompt_max_length?: number;
   /** Per mode, params of which at least one has to carry material. */
   source_groups?: readonly SourceGroup[];
   /**
@@ -285,6 +291,12 @@ export interface ModelEntry {
    * invented here would refuse text the vendor accepts.
    */
   max_input_chars?: number;
+  /**
+   * The languages this model's voice samples speak, as language tags (#1521):
+   * the voice list offers them as the sample language. Absent on a model whose
+   * voices have one sample each.
+   */
+  sample_languages?: readonly string[];
   /**
    * The longest side, in pixels, of a picture this model is known to take and
    * answer at its own size (inner#1303), so the expand tool stops a picture
@@ -415,6 +427,21 @@ export const AUDIO_GENERATION_MODES = [
   'a2m',
 ] as const;
 
+/**
+ * The modes the 3D Space's generation dialog offers (inner#1691): text to 3D
+ * and image to 3D, a product decision like the three lists above.
+ */
+export const THREE_D_GENERATION_MODES = ['t23d', 'i23d'] as const;
+
+/** One of {@link THREE_D_GENERATION_MODES}. */
+export type ThreeDGenerationMode = (typeof THREE_D_GENERATION_MODES)[number];
+
+/** The views of an image-to-3D run, in the order the upstream reads them (inner#1691). */
+export const SCENE_VIEW_SLOTS = ['front', 'left', 'back', 'right'] as const;
+
+/** One of {@link SCENE_VIEW_SLOTS}. */
+export type SceneViewSlot = (typeof SCENE_VIEW_SLOTS)[number];
+
 /** A node type that anchors a Generate panel. */
 export type GenerationNodeType = 'image' | 'video' | 'audio';
 
@@ -472,10 +499,24 @@ const itemFieldSchema = z.object({
   max_chars: z.number().optional(),
 });
 
-const pricingContractSchema = z.object({
-  base_price: z.number(),
-  formula: z.string(),
-  discount_rate: z.number(),
+const paramScalarSchema = z.union([z.string(), z.number(), z.boolean()]);
+
+const paramGateSchema = z.object({
+  flag_on: z.string().optional(),
+  equals: z.record(z.string(), paramScalarSchema).optional(),
+});
+
+const paramBoundSchema = z.object({
+  when: paramGateSchema,
+  min: z.number().optional(),
+  max: z.number().optional(),
+});
+
+const paramForceSchema = z.object({
+  id: z.string(),
+  when: paramGateSchema,
+  set: z.record(z.string(), paramScalarSchema),
+  lock: z.boolean(),
 });
 
 const paramDescriptorSchema = z
@@ -488,15 +529,16 @@ const paramDescriptorSchema = z
     min: z.number().optional().catch(undefined),
     max: z.number().optional().catch(undefined),
     step: z.number().optional().catch(undefined),
-    type: z.enum(["list", "items", "text"]).optional().catch(undefined),
+    type: z.enum(["list", "items", "text", "integer"]).optional().catch(undefined),
+    bounds: z.array(paramBoundSchema).optional().catch(undefined),
+    max_length: z.number().optional().catch(undefined),
+    min_length: z.number().optional().catch(undefined),
     max_items: z.number().optional().catch(undefined),
     max_total_duration: z.number().optional().catch(undefined),
     max_bytes: z.number().optional().catch(undefined),
     min_items: z.number().optional().catch(undefined),
     replaces: z.string().optional().catch(undefined),
     fields: z.record(z.string(), itemFieldSchema).optional().catch(undefined),
-    upstream: z.string().optional().catch(undefined),
-    upstream_values: z.record(z.string(), z.string()).optional().catch(undefined),
     into_prompt: z.string().optional().catch(undefined),
     label: z.string().optional().catch(undefined),
     value_labels: z.record(z.string(), z.string()).optional().catch(undefined),
@@ -513,16 +555,10 @@ const paramDescriptorSchema = z
       .catch(undefined),
     accepts: z.enum(["image", "video", "audio"]).optional().catch(undefined),
     mention: z.string().optional().catch(undefined),
-    item_key: z.string().optional().catch(undefined),
     joins: z.string().optional().catch(undefined),
     prompt_note: z.string().optional().catch(undefined),
     optional: z.boolean().optional().catch(undefined),
-    when: z
-      .object({
-        flag_on: z.string().optional(),
-      })
-      .optional()
-      .catch(undefined),
+    when: paramGateSchema.optional().catch(undefined),
     modes: z.array(z.string()).optional().catch(undefined),
     default: z.unknown(),
   })
@@ -534,11 +570,8 @@ const SAFE_DESCRIPTOR: z.infer<typeof paramDescriptorSchema> = {
   default: undefined,
 };
 
-const modelProviderSchema = z.object({
-  name: z.string().catch(""),
-  model_id: z.string().catch(""),
-  priority: z.number().catch(0),
-  available: z.boolean().catch(false),
+const modelAvailabilitySchema = z.object({
+  upstreams: z.array(z.object({ upstream: z.string(), weight: z.number(), configured: z.boolean(), envVar: z.string() })),
 });
 
 const modelEntrySchema = z.object({
@@ -569,7 +602,10 @@ const modelEntrySchema = z.object({
       }
       return out;
     }),
-  providers: z.array(modelProviderSchema).catch([]),
+  // A malformed availability degrades to none configured: the panel then names no upstream it cannot vouch for.
+  availability: modelAvailabilitySchema.catch({ upstreams: [] }),
+  // Read by `parsePricingRules` where an estimate is made; one that does not parse states no price.
+  pricing_rules: z.unknown().optional(),
   // Whether the model consumes the user's text (#1966). The backend refuses to
   // load a catalog where a model omits it, so this `.catch` only fires on a
   // corrupted or version-skewed wire — and there it degrades OPEN.
@@ -584,25 +620,14 @@ const modelEntrySchema = z.object({
   // editor and then happily submit a paid generation with an empty prompt from
   // a model that actually wanted one.
   takes_prompt: z.boolean().catch(true),
-  // A malformed contract degrades to absent: the panel then states no price,
-  // where a half-parsed one would state a wrong one.
-  pricing: pricingContractSchema.optional().catch(undefined),
-  prompt_upstream: z.string().optional().catch(undefined),
-  extra_steps: z
-    .array(
-      z.object({
-        endpoint: z.string(),
-        at: z.enum(["before", "after"]),
-        pricing: pricingContractSchema,
-        for_param: z.string().optional(),
-        per_item: z.boolean().optional(),
-        reused: z.boolean().optional(),
-      }),
-    )
-    .optional()
-    .catch(undefined),
-  reused_by: z.string().optional().catch(undefined),
-  source_groups: z
+  // A malformed condition degrades to absent: the prompt is then taken, which
+  // at worst sends text the model was not to get, the side takes_prompt errs on.
+  prompt_when: paramGateSchema.optional().catch(undefined),
+  // A malformed list degrades to absent, as a malformed contract does: half
+  // the forced values would lock half a rule (inner#1691).
+  forces: z.array(paramForceSchema).optional().catch(undefined),
+  prompt_max_length: z.number().optional().catch(undefined),
+    source_groups: z
     .array(z.object({ mode: z.string(), any_of: z.array(z.string()) }))
     .optional()
     .catch(undefined),
@@ -610,6 +635,9 @@ const modelEntrySchema = z.object({
   // malformed one degrades to absent for the same reason a bad rate does: a
   // number this side invented would refuse text the vendor accepts.
   max_input_chars: z.number().optional().catch(undefined),
+  // A malformed list degrades to absent: the voice list then offers no sample
+  // language, where a half-parsed one would offer tags with no sample (#1521).
+  sample_languages: z.array(z.string()).optional().catch(undefined),
   // The longest side the expand tool may grow to (inner#1303); a malformed one
   // degrades to absent, as a bad text cap does.
   max_output_side: z.number().optional().catch(undefined),

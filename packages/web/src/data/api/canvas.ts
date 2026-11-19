@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
-import type { CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
+import type { CanvasPasteAnswer, CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
 
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 import { noteCreditsChanged } from '@web/data/api/credits';
@@ -63,6 +63,11 @@ export interface CanvasLimits {
   expand?: CanvasExpandLimits | null;
   /** The most outputs one run creates, per configured planned tool (config `executions[tool].max_outputs`). */
   maxOutputs?: Partial<Record<string, number>>;
+  /**
+   * The most clips one join takes, its source included (inner#1825 §6.3);
+   * absent from a server that predates the join, which then leaves the list uncapped here.
+   */
+  joinMaxClips?: number;
 }
 
 /**
@@ -179,6 +184,15 @@ export function getCachedWaveformLimits(): WaveformLimits | null {
     : null;
 }
 
+/**
+ * Sync accessor for the join's clip cap, or `null` before the canvas knobs
+ * load; until then the list is not capped here and the server judges it.
+ * @returns The most clips one join takes, its source included, or null before the first fetch.
+ */
+export function getCachedJoinMaxClips(): number | null {
+  return limitsCache?.joinMaxClips ?? null;
+}
+
 /** The cut band's waveform ceilings and how it reads peaks not yet written. */
 export interface WaveformLimits {
   maxSeconds: number;
@@ -234,7 +248,8 @@ export const canvasApi = {
    * @param body.source_type - Which of the three kinds the read node holds.
    * @param body.source_url - The address of what it is showing.
    * @param body.node_ids - The node this run writes to, which already exists.
-   * @param body.reader_locale - The language the answer is read in.
+   * @param body.user_locale - The language the answer is read in.
+   * @param body.reader_locale - The same locale under its pre-#1378 name, until #1387.
    * @param body.source_mime_type - What the ledger judged the file to be.
    * @param key - The press's `Idempotency-Key`; a re-send with it runs nothing new.
    * @returns The queued task.
@@ -246,6 +261,7 @@ export const canvasApi = {
     source_type: 'image' | 'video' | 'audio';
     source_url: string;
     node_ids: string[];
+    user_locale: string;
     reader_locale: string;
     source_mime_type?: string;
   }, key: string): Promise<CanvasTask> {
@@ -262,7 +278,8 @@ export const canvasApi = {
    * @param body.source_type - Whether the node holds audio or a video.
    * @param body.source_url - The address of what it is showing.
    * @param body.node_ids - The node this run writes to, which already exists.
-   * @param body.reader_locale - The reader's language, which picks the Chinese script.
+   * @param body.user_locale - The user's language, which picks the Chinese script.
+   * @param body.reader_locale - The same locale under its pre-#1378 name, until #1387.
    * @param body.keep_fillers - Whether filler words stay as spoken.
    * @param body.source_mime_type - What the ledger judged the file to be.
    * @param key - The press's `Idempotency-Key`; a re-send with it runs nothing new.
@@ -275,6 +292,7 @@ export const canvasApi = {
     source_type: 'video' | 'audio';
     source_url: string;
     node_ids: string[];
+    user_locale: string;
     reader_locale: string;
     keep_fillers: boolean;
     source_mime_type?: string;
@@ -335,13 +353,14 @@ export const canvasApi = {
    * Register what a paste or duplicate brings into this project's Studio and
    * write each copy's history (inner#1349).
    * @param body - The project, the addresses the copies name, and their history.
-   * @returns Old address → address in this Studio; null for a cover that could not be filed.
+   * @returns Old address → address in this Studio (null for a cover that could not be filed), and what
+   *   this Studio's ledger holds for each address it maps to.
    * @throws {import('@web/data/api/types').ApiException} On a refused request (400 / 403 / 404 / 413 / 429 / 502 / 507), or when the transfer ticket is refused.
    * @throws {Error} When a body over the request limit could not be moved through storage.
    */
-  async paste(body: CanvasPasteInput): Promise<{ map: Record<string, string | null> }> {
+  async paste(body: CanvasPasteInput): Promise<CanvasPasteAnswer> {
     // Long text history goes through storage when it is over the request limit (inner#1006).
-    return apiPost<{ map: Record<string, string | null> }>(
+    return apiPost<CanvasPasteAnswer>(
       '/canvas/paste',
       await bodyOrTransfer(body.project_id, body),
     );

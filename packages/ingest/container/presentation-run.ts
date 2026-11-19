@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The basic container's presentation probe (inner#1306 test plan §91 D1; frames-split design §5.1 step 2, §4.1, §4.2,

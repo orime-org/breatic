@@ -38,4 +38,9 @@ describe('Checkbox', () => {
     const cb = screen.getByRole('checkbox', { name: 'Accept' });
     expect(cb.className).toContain('data-[state=checked]:bg-primary');
   });
+
+  it('draws the error border when the box is invalid, like Input', () => {
+    render(<Checkbox aria-label='Accept' aria-invalid />);
+    expect(screen.getByRole('checkbox', { name: 'Accept' }).className).toContain('aria-invalid:border-status-error-foreground');
+  });
 });

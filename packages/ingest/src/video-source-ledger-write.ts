@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { PresentationCapability, SourceLedgerDeclaration, SourceLedgerMeasurement, SourceLedgerWriteClaim } from '@ingest/video-presentation-store.js';
 import { hashStoredObject } from '@ingest/stored-object.js';

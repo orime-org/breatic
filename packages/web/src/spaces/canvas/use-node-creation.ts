@@ -1,17 +1,20 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import * as Y from 'yjs';
 
 import {
   CANVAS_NODES_KEY,
+  currentModelName,
   newId,
   PANEL_EDITOR_PARAM,
   promptPlainText,
   proposalMarkSegments,
   type CanvasProposal,
+  type ModelCatalog,
 } from '@breatic/shared';
+
 
 import {
   addEdge,
@@ -38,11 +41,19 @@ import {
   type SnapshotNode,
 } from '@web/data/yjs/canvas-space';
 import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
+import {
+  checkAdd,
+  writeSpaceDoc,
+  type SpaceRefusal,
+} from '@web/data/yjs/space-write';
 import { setStoryboardShots } from '@web/data/yjs/node-storyboard';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
+import { catalogEntryOf } from '@breatic/shared/mini-tools';
 import { writeProposalFills } from '@web/spaces/canvas/generate/proposal-fills';
+import { withStandInOn } from '@web/spaces/canvas/generate/stand-in';
 import {
   proposalMentionOf,
+  writeDialogueLines,
   writeProposalPrompt,
   type MentionOf,
   type ProposalMention,
@@ -61,7 +72,7 @@ import {
   type ClipboardPayload,
   type CloneOptions,
 } from '@web/spaces/canvas/node-clipboard';
-import { collectAddresses, historyItems, replaceAddresses } from '@web/spaces/canvas/paste-addresses';
+import { collectAddresses, fillMissingMedia, historyItems, replaceAddresses } from '@web/spaces/canvas/paste-addresses';
 import {
   centerToTopLeft,
   createEmptyNode,
@@ -132,8 +143,9 @@ export interface NodeCreation {
    * step, stepped past nodes already where they land — the step is read at
    * write time, so two pastes made before either answered do not stack.
    * Resolves to the new node ids, or null when the registration request fails
-   * (a toast says so, with the server's reason when it gave one) or the Space
-   * went away first.
+   * (a toast says so, with the server's reason when it gave one), the Space
+   * went away first, or the Space cannot take an add (inner#1790: asked
+   * before the server is and again at the write; the size cap says why).
    */
   pastePayload: (
     payload: ClipboardPayload,
@@ -162,7 +174,10 @@ export interface NodeCreation {
    * `proposal.groupName`. `order` stacks each column in the template's own
    * order, so a node put back takes the cell its template gives it. If a
    * write fails part way, everything this press wrote is taken back, out of
-   * undo history, and the error is rethrown.
+   * undo history, and the error is rethrown. The whole flow is one `add` for
+   * the size cap (inner#1790): when it does not fit nothing is written and the
+   * refusal is returned, with its toast unless `notify` is false (an Agent
+   * proposal reports it through its card instead).
    * @throws {Error} When a write fails part way; nothing is left on the canvas
    *   or in undo history.
    */
@@ -172,7 +187,8 @@ export interface NodeCreation {
     occupied: readonly Rect[],
     existing?: ReadonlyMap<number, ExistingNode>,
     order?: readonly number[],
-  ) => PlacedProposal;
+    notify?: boolean,
+  ) => PlacedProposal | SpaceRefusal;
 }
 
 /** A proposal index that stands for a node already on the canvas. */
@@ -269,13 +285,13 @@ function arrangeProposal(
   };
   // The anchor's own group first. An anchor in no unlocked group lends the new
   // nodes the group this template's reused nodes sit in, which a first apply
-  // made, so the instance stays one piece the reader drags as one. A
-  // reference the reader wired in keeps its own group to itself.
+  // made, so the instance stays one piece the user drags as one. A
+  // reference the user wired in keeps its own group to itself.
   const joinGroup = unlockedGroupOf(anchorId)
     ?? [...existing.values()].filter((node) => node.instance === true).map((node) => unlockedGroupOf(node.nodeId)).find((group) => group !== undefined);
   // When a reused node of this instance sits in the group the new nodes join,
   // the flow lines up on it, so a node put back lands in its place in the
-  // instance wherever the reader has since moved the anchor.
+  // instance wherever the user has since moved the anchor.
   const alignIndex = (joinGroup
     && [...existing].find(([index, node]) => index !== anchorIndex && node.instance === true && unlockedGroupOf(node.nodeId)?.id === joinGroup.id)?.[0])
     ?? anchorIndex;
@@ -347,6 +363,16 @@ export interface PlacedProposal {
 }
 
 /**
+ * A proposal with every node's model under its current name.
+ * @param proposal - The proposal as the Agent sent it.
+ * @returns The proposal, the same object when no node names a retired model.
+ */
+function withCurrentProposalModels(proposal: CanvasProposal): CanvasProposal {
+  if (!proposal.nodes.some((node) => node.model !== undefined && currentModelName(node.model) !== node.model)) return proposal;
+  return { ...proposal, nodes: proposal.nodes.map((node) => (node.model === undefined ? node : { ...node, model: currentModelName(node.model) })) };
+}
+
+/**
  * Canvas node-creation core — composes the empty-node factory with the
  * frontend-owned Yjs `addNode` write. Kept as a hook (not inline in the
  * canvas) so the create path stays unit-testable without mounting ReactFlow:
@@ -354,11 +380,13 @@ export interface PlacedProposal {
  * the pure factory cannot supply.
  * @param projectId - Owning project id.
  * @param spaceId - Canvas space id.
+ * @param catalog - The model catalog, once loaded; a proposed node's params are read against its model's entry.
  * @returns The `createNodeAt` action bound to this project / space.
  */
 export function useNodeCreation(
   projectId: string,
   spaceId: string,
+  catalog?: ModelCatalog,
 ): NodeCreation {
   const userId = useCurrentUserStore((s) => s.user?.id) ?? '';
   const t = useTranslation();
@@ -419,6 +447,10 @@ export function useNodeCreation(
       options: PastePayloadOptions = {},
     ): Promise<string[] | null> => {
       const cloned = cloneForPaste(payload, userId, offset, { ...options, targetProjectId: projectId });
+      const name = docName.canvasSpace(projectId, spaceId);
+      // Asked before the server is, so a paste into a Space that cannot take
+      // an add costs no request (inner#1790).
+      if (!checkAdd(name).ok) return null;
       // An external clone carries no address yet (cloneForPaste drops it), so
       // it adds nothing here; its fetch into storage follows the write.
       const addresses = collectAddresses(cloned.nodes);
@@ -426,21 +458,21 @@ export function useNodeCreation(
       let nodes: SnapshotNode[] = cloned.nodes;
       if (addresses.urls.length > 0 || addresses.pairs.length > 0 || history.length > 0) {
         try {
-          const { map } = await canvasApi.paste({
+          const { map, media } = await canvasApi.paste({
             project_id: projectId,
             urls: addresses.urls,
             pairs: addresses.pairs,
             history,
           });
-          nodes = replaceAddresses(nodes, new Map(Object.entries(map)));
+          nodes = fillMissingMedia(replaceAddresses(nodes, new Map(Object.entries(map))), media);
         } catch (err) {
           toast.error(err instanceof ApiException && err.fromServer ? err.message : t('canvas.paste.failed'));
           return null;
         }
       }
       // A paste waits on the server; a Space closed meanwhile is not written.
-      if (!hasDoc(docName.canvasSpace(projectId, spaceId))) return null;
-      const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+      if (!hasDoc(name)) return null;
+      const doc = getDoc(name);
       const nodesMap = doc.getMap<Y.Map<unknown>>(CANVAS_NODES_KEY);
       const placed = stepClones(
         nodes,
@@ -449,10 +481,12 @@ export function useNodeCreation(
         (id) => liveGroup(nodesMap, id),
         stepPaste,
       );
-      runCanvasUndoBatch(projectId, spaceId, () => {
+      // The Space can fill while the server answers; the write is judged again.
+      const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
         writeSnapshotNodes(doc, placed, cloned.edges);
         options.afterWrite?.(placed, cloned.idMap);
       });
+      if (!written.ok) return null;
       for (const source of payload.nodes) {
         const target = cloned.idMap.get(source.id);
         const url = source.data.content;
@@ -469,12 +503,16 @@ export function useNodeCreation(
   );
   const placeProposalAt = React.useCallback(
     (
-      proposal: CanvasProposal,
+      asked: CanvasProposal,
       start: Spot,
       occupied: readonly Rect[],
       existing: ReadonlyMap<number, ExistingNode> = new Map(),
       order?: readonly number[],
-    ): PlacedProposal => {
+      notify = true,
+    ): PlacedProposal | SpaceRefusal => {
+      // A proposal kept in the chat history may name a model since retired; it
+      // lands on the replacement, whose entry decides the dialogue side (#1521).
+      const proposal = withCurrentProposalModels(asked);
       const fresh = proposal.nodes.map((_, i) => !existing.has(i));
       const arrangement = arrangeProposal(projectId, spaceId, proposal, start, occupied, existing, order);
       const { spots, bounds, aimedGroup, joinGroup } = arrangement;
@@ -483,10 +521,13 @@ export function useNodeCreation(
       // Takes back everything this press writes when a write fails part way.
       // The failed transaction is marked so the canvas undo manager skips it,
       // and the rollback's own undo is an origin that manager does not track,
-      // so the reader's undo history holds no trace of either.
+      // so the user's undo history holds no trace of either.
       const rollback = createCanvasRollback(projectId, spaceId);
+      // The whole flow is one add, judged before anything is written; the
+      // prompts, lyrics and shots written inside it are part of it.
+      let written: ReturnType<typeof runCanvasUndoBatch>;
       try {
-        runCanvasUndoBatch(projectId, spaceId, (tr) => {
+        written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add', notify }, (tr) => {
           try {
             proposal.nodes.forEach((node, i) => {
               const settled = existing.get(i);
@@ -502,7 +543,7 @@ export function useNodeCreation(
                 });
                 nodeIds[i] = id;
                 setNodeName(projectId, spaceId, id, node.name);
-                // The reader's material, with the numbers its registration
+                // The user's material, with the numbers its registration
                 // holds, the same write a restored result goes through
                 // (inner#1315). The tool answers with both or neither.
                 if (node.material !== undefined && node.materialMedia !== undefined) {
@@ -515,7 +556,9 @@ export function useNodeCreation(
               // defaulted to. A source node carries neither. A node already on
               // the canvas keeps its records for other models.
               if (node.mode && node.model && (settled === undefined || node.role === 'generate')) {
-                const params = settled?.paramsByModel ?? { [node.model]: node.params ?? {} };
+                const params = settled?.paramsByModel ?? {
+                  [node.model]: withStandInOn(catalog && catalogEntryOf(catalog, node.model), node.params ?? {}),
+                };
                 setNodeMode(projectId, spaceId, id, node.mode, node.model, params);
                 // And record it as a choice: written only as a mode switch it
                 // is forgotten the moment they look at another mode and come back.
@@ -583,20 +626,22 @@ export function useNodeCreation(
               if (!id) return;
               // A node already there that does not generate keeps what it holds.
               if (!fresh[i] && node.role !== 'generate') return;
-              if (fresh[i]) writeProposalFills(projectId, spaceId, id, node, proposal.nodes);
+              // A reused generation takes its fills too: a template input already
+              // holding material lands in its slot this way (inner#1825 §4.1).
+              writeProposalFills(projectId, spaceId, id, node, proposal.nodes);
               if (node.role === 'written') {
                 // A written node's words are its body, not a prompt: nothing
-                // generates there, and the body is what the reader reads and edits.
+                // generates there, and the body is what the user reads and edits.
                 const body = getTextBody(projectId, spaceId, id);
                 if (body && node.prompt) writePlainTextIntoBody(body, promptPlainText(node.prompt));
                 return;
               }
               if (!node.mode) return;
               // Words sent into a song model's lyrics box are @'d there, the way
-              // the reader would @ them, and nowhere else.
+              // the user would @ them, and nowhere else.
               const lyrics = proposal.edges.filter((edge) => edge.toIndex === i && edge.into === PANEL_EDITOR_PARAM);
               const lyricsBox = lyrics.length > 0 ? getLyricsFragment(projectId, spaceId, id, node.mode) : null;
-              // One line each, the way a reader @'ing them by hand would: two
+              // One line each, the way a user @'ing them by hand would: two
               // mentions on one line send their words run together.
               const lyricsLines = lyrics.flatMap((edge, k) =>
                 k === 0 ? [{ ref: edge.fromIndex }] : [{ text: '\n' }, { ref: edge.fromIndex }],
@@ -609,6 +654,7 @@ export function useNodeCreation(
               // each shot.
               const fragment = getPromptFragment(projectId, spaceId, id, node.mode);
               if (fragment && node.prompt) writeProposalPrompt(fragment, node.prompt, mentionOf);
+              if (fragment && node.lines) writeDialogueLines(fragment, node.lines, mentionOf);
               if (node.shots) {
                 const shotFragments = setStoryboardShots(projectId, spaceId, id, node.shots.map((shot) => shot.duration));
                 node.shots.forEach((shot, k) => {
@@ -634,13 +680,19 @@ export function useNodeCreation(
           }
         });
       } catch (error) {
-        rollback.undo();
+        // The rollback takes back this client's own writes of this tick, which
+        // the gate already let in: it must never be refused half way, so it
+        // goes as a removal, which every state but a rebuild admits.
+        writeSpaceDoc(docName.canvasSpace(projectId, spaceId), { kind: 'remove' }, () => {
+          rollback.undo();
+        });
         throw error;
       } finally {
         rollback.destroy();
       }
+      if (!written.ok) return written;
       fetchTemplateResources(projectId, spaceId, proposal, nodeIds, fresh, (key) => toast.error(t(key)));
-      // Words in braces are the reader's to write. Saying so is all: what
+      // Words in braces are the user's to write. Saying so is all: what
       // they leave as it is goes out as it is (inner#977). A proposal's
       // references land as mentions and its notes show in the box, so only
       // braces are left to point at (inner#1315). Where no prompt box is drawn
@@ -656,7 +708,7 @@ export function useNodeCreation(
         rects: proposal.nodes.map((_, i) => spots[i] ?? { x: start.x, y: start.y, ...EMPTY_NODE_SIZE }),
       };
     },
-    [projectId, spaceId, createNodeAt, userId, t],
+    [projectId, spaceId, createNodeAt, userId, t, catalog],
   );
   return {
     createNodeAt,

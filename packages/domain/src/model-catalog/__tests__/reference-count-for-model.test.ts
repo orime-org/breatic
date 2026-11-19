@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * violatesReferenceCountForModel (#1735 server reference-count gate) — the
@@ -89,6 +89,7 @@ describe("violatesReferenceCountForModel — a pool a style slot joins", () => {
     ["gpt-image-2.5-sunburst-edit", 13],
     ["nano-banana-pro-edit-ultra", 11],
     ["muse-image-edit", 7],
+    ["seedream-v5.5-edit", 7],
   ])("passes %s with a full pool and three style images, refuses one more @", (name, pool) => {
     expect(violatesReferenceCountForModel(name, { images: files(pool, "r"), style_images: files(3, "s") })).toBeNull();
     expect(violatesReferenceCountForModel(name, { images: files(pool + 1, "r"), style_images: files(3, "s") })).toEqual({

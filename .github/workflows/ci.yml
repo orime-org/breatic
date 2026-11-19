@@ -122,7 +122,7 @@ jobs:
 
       - name: Route entries still ship as their own chunks
         # The unit tests pin how routes.tsx is written; this reads what the
-        # build emitted, which is what decides a reader's download (#142).
+        # build emitted, which is what decides a user's download (#142).
         run: pnpm --filter @breatic/web verify:chunks
 
 
@@ -180,6 +180,9 @@ jobs:
 
       - name: Test maintenance command arguments
         run: node --import tsx --test scripts/__tests__/backfill-project-media-options.test.ts scripts/__tests__/activity-coverage-options.test.ts
+
+      - name: Test provider scripts
+        run: node --test scripts/provider-price-drift.test.mjs scripts/provider-llm-prices.test.mjs scripts/provider-endpoint-docs.test.mjs
 
   test-web:
     name: Test (web, shard ${{ matrix.shard }}/4)
@@ -337,6 +340,8 @@ jobs:
           - {image: web, arch: arm64, runner: ubuntu-24.04-arm, file: Dockerfile.web, suffix: '-web'}
           - {image: ingestMedia, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/Dockerfile, suffix: '-ingest-media'}
           - {image: ingestGl, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/Dockerfile, suffix: '-ingest-gl', variant: gl}
+          - {image: ingestWebReader, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/web-reader/Dockerfile, suffix: '-ingest-web-reader'}
+          - {image: ingestWebAnimation, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/web-animation.Dockerfile, suffix: '-ingest-web-animation'}
     permissions:
       contents: read
       packages: write

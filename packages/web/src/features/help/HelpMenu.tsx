@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { BookOpen, CircleHelp, ExternalLink, Mail } from 'lucide-react';
 import type * as React from 'react';
@@ -45,7 +45,7 @@ export function HelpMenu(): React.JSX.Element {
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           {/* Opened beside this page: a mail link in this document would run the
-              project page's leave guard and ask the reader to leave first. */}
+              project page's leave guard and ask the user to leave first. */}
           <a href={`mailto:${SUPPORT_EMAIL}`} target='_blank' rel='noopener noreferrer' className='items-start'>
             <Mail className='mt-0.5' aria-hidden='true' />
             <span className='flex flex-col'>

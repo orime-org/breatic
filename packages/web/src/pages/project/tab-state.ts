@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import {
   applyTabMove,
@@ -26,17 +26,24 @@ export interface TabState {
   /** The tab whose Space the page is showing, null only when the strip is empty. */
   activeId: string | null;
   /**
-   * Whether this strip is the reader's own doing, and so worth storing.
+   * Whether this strip is the user's own doing, and so worth storing.
    *
    * False for a strip that changed because Spaces arrived or left: dropping
    * the tab of a Space somebody deleted is not a choice, and storing what it
-   * leaves behind would record an empty strip as "the reader closed every
+   * leaves behind would record an empty strip as "the user closed every
    * tab". The record then answers the next visit with an empty strip, where
    * the rule for a list whose Spaces are all gone is the newest Space
    * (user 2026-09-16). Leaving the record alone keeps the deleted ids in it,
    * and the next visit filters them out and reaches that rule.
    */
   persist: boolean;
+  /**
+   * Whether the tab in front was put there by an open that following asked
+   * for, so the follow routing can tell a landing it caused from the user's
+   * own switch. Changes only when the tab in front changes; never stored, as
+   * it describes how that tab came to the front, not the strip.
+   */
+  byFollow: boolean;
   /**
    * What the browser was holding for this project when the page opened, spent
    * by the first `spaces` action and null from then on.
@@ -53,7 +60,7 @@ export type TabAction =
   /** The live Spaces, as a whole. The first arrival settles the strip; later ones drop tabs whose Space is gone. */
   | { type: 'spaces'; spaces: ReadonlyArray<TabOrderEntry> }
   /** Show a Space: from the drawer, from the strip, or straight after creating one. */
-  | { type: 'open'; spaceId: string }
+  | { type: 'open'; spaceId: string; byFollow?: true }
   /** Close one tab. */
   | { type: 'close'; spaceId: string }
   /** Drop a tab in front of another, or at the end when `beforeSpaceId` is null. */
@@ -70,6 +77,7 @@ export function initialTabState(restored: RestoredTabs | null): TabState {
     openIds: [],
     activeId: null,
     persist: false,
+    byFollow: false,
     restored,
   };
 }
@@ -128,7 +136,7 @@ function restoredOpenIds(
  * opened, because a Space somebody else created is not a tab of mine.
  *
  * A strip emptied this way stays empty for the rest of the visit, and so does
- * one the account emptied before it left: refilling it in front of the reader
+ * one the account emptied before it left: refilling it in front of the user
  * would take back a choice they made, and an empty tab bar costs a click on
  * the drawer. What the two leave behind differs — see `persist`.
  * @param state - The state as it stands.
@@ -149,17 +157,20 @@ function foldSpaces(
       openIds,
       activeId: settleActive(openIds, state.restored?.activeId ?? null),
       persist: true,
+      byFollow: false,
       restored: null,
     };
   }
   const live = new Set(spaces.map((s) => s.id));
   const openIds = state.openIds.filter((id) => live.has(id));
   if (openIds.length === state.openIds.length) return state;
+  const activeId = settleActive(openIds, state.activeId);
   return {
     ...state,
     openIds,
-    activeId: settleActive(openIds, state.activeId),
+    activeId,
     persist: false,
+    byFollow: activeId === state.activeId && state.byFollow,
   };
 }
 
@@ -175,23 +186,27 @@ export function reduceTabState(state: TabState, action: TabAction): TabState {
       return foldSpaces(state, action.spaces);
     case 'open': {
       if (state.activeId === action.spaceId) return state;
+      const byFollow = action.byFollow === true;
       if (state.openIds.includes(action.spaceId)) {
-        return { ...state, activeId: action.spaceId, persist: true };
+        return { ...state, activeId: action.spaceId, persist: true, byFollow };
       }
       return {
         ...state,
         openIds: [...state.openIds, action.spaceId],
         activeId: action.spaceId,
         persist: true,
+        byFollow,
       };
     }
     case 'close': {
       const openIds = state.openIds.filter((id) => id !== action.spaceId);
+      const activeId = settleActive(openIds, state.activeId);
       return {
         ...state,
         openIds,
-        activeId: settleActive(openIds, state.activeId),
+        activeId,
         persist: true,
+        byFollow: activeId === state.activeId && state.byFollow,
       };
     }
     case 'reorder': {

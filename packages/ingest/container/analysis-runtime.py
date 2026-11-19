@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Orime, Inc.
-# SPDX-License-Identifier: Elastic-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 
 """Isolated pinned detectors: trusted JSON request, complete BGR24 stdin, owned JSON stdout."""
 import hashlib

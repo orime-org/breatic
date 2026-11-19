@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A turn's obligations survive its consumer walking away mid-stream.
@@ -14,10 +14,11 @@
  * catches and discards the error a dead socket produces, so the route's
  * `for await` keeps going and never calls `.return()` — a probe had the
  * generator 357 iterations further along two seconds after the client left,
- * with `finally` never entered. A disconnect now travels the other way, by
- * `s.onAbort` raising the turn's signal so the SDK ends the stream and the
- * loop leaves through its own `abort` branch; `routes/chat.stop.test.ts`
- * covers that ring and `turn-exit-paths.test.ts` covers what the turn then
+ * with `finally` never entered. A disconnect no longer reaches the turn at
+ * all: the run belongs to its conversation and runs to its end whoever reads
+ * it (inner#1717). A stop, a delete or a shutdown raises the turn's signal so
+ * the SDK ends the stream and the loop leaves through its own `abort` branch;
+ * `turn-exit-paths.test.ts` covers what the turn then
  * owes.
  *
  * What is left here is the language's own mechanism, which any consumer that
@@ -35,7 +36,7 @@ const addMessage = vi.fn(
   async (_id: string, _msg: Record<string, unknown>) => 1,
 );
 const foldIfTooLong = vi.fn(async () => "none");
-const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => ({
+const chargeOnce = vi.fn(async (..._args: unknown[]) => ({
   billed: true,
   charged: "5.000000",
   shortfall: "0.000000",
@@ -47,7 +48,7 @@ const usageRead = vi.fn();
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));
@@ -96,9 +97,8 @@ vi.mock("@breatic/domain", async () => {
       instructions: { base: "sys" },
       tools: {},
     }),
-    creditLotService: { chargeOnceForGeneration },
-    resolveProvider: () => "test",
-    getModel: () => new MockLanguageModelV4({}),
+    creditLotService: { chargeOnce },
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => new MockLanguageModelV4({})),
   };
 });
 
@@ -121,7 +121,7 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
   setUserForModel: vi.fn(async () => undefined),
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
 
 vi.mock("@server/agent/turn-fold.js", () => ({
   foldIfTooLong,
@@ -133,13 +133,14 @@ vi.mock("@server/agent/context.js", () => ({
 }));
 
 beforeEach(() => {
-  [addMessage, foldIfTooLong, chargeOnceForGeneration, usageRead].forEach((m) => m.mockClear());
+  [addMessage, foldIfTooLong, chargeOnce, usageRead].forEach((m) => m.mockClear());
 });
 
 // The turn asks the conversation what it is called, so it can say so in the
 // event that opens the turn. Answered with a name already set: these tests are
 // about what a turn streams, not about how a conversation comes by its name.
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  getMessagesForLlm: async () => [],
   titleForTurn: vi.fn(async () => "already named"),
 }));
 
@@ -215,11 +216,11 @@ describe("a turn cut short by the client", () => {
         const agent = new MainAgent();
         const reader = (await agent.chat("hi")).getReader();
         // Read far enough in to have passed the step the billing figure comes
-        // from, then walk away: the name the turn gave the conversation, the
-        // start of the message, and one piece of prose.
-        await reader.read();
-        await reader.read();
-        await reader.read();
+        // from, then walk away: up to the first piece of prose.
+        for (;;) {
+          const { value } = await reader.read();
+          if ((value as { type?: string } | undefined)?.type === "text-delta") break;
+        }
         // The browser goes away.
         await reader.cancel();
       },
@@ -235,11 +236,11 @@ describe("a turn cut short by the client", () => {
           ),
       ),
     ).toBe(true);
-    expect(chargeOnceForGeneration).toHaveBeenCalled();
+    expect(chargeOnce).toHaveBeenCalled();
     // What it billed for is the call the stream actually reported (the
     // recorder double counts a credit per token), not the figure the
     // consuming getter would have produced.
-    expect(chargeOnceForGeneration.mock.calls[0]?.[1]).toMatchObject({ amount: 900 });
+    expect(chargeOnce.mock.calls[0]?.[2]).toMatchObject({ amount: 900 });
     expect(usageRead).not.toHaveBeenCalled();
   });
 });
@@ -249,7 +250,7 @@ describe("一个回合扣不满时", () => {
     // domain 不写日志，短扣以返回值表达，由知道任务和用户的这一层记。worker
     // 那条路照做了；少了这一处，池子见底那一刻花掉的部分没有任何东西能让人
     // 事后发现。
-    chargeOnceForGeneration.mockResolvedValueOnce({
+    chargeOnce.mockResolvedValueOnce({
       billed: true,
       charged: "30.000000",
       shortfall: "70.000000",
@@ -280,8 +281,8 @@ describe("一个回合扣不满时", () => {
     expect(line?.[0]).toMatchObject({ shortfall: "70.000000", charged: "30.000000" });
   });
 
-  it("logs a turn charge whose readers could not be told", async () => {
-    chargeOnceForGeneration.mockResolvedValueOnce({
+  it("logs a turn charge whose users could not be told", async () => {
+    chargeOnce.mockResolvedValueOnce({
       billed: true,
       charged: "30.000000",
       shortfall: "0.000000",

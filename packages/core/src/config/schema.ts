@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Core configuration schema + pure validator.
@@ -233,14 +233,6 @@ export const coreConfigSchema = z.object({
   // session cookie.
   COOKIE_DOMAIN: z.string().default(""),
 
-  // ── AI Providers (all optional) ──────────────────
-  OPENROUTER_API_KEY: z.string().default(""),
-  ANTHROPIC_API_KEY: z.string().default(""),
-  OPENAI_API_KEY: z.string().default(""),
-  GOOGLE_API_KEY: z.string().default(""),
-  DEEPSEEK_API_KEY: z.string().default(""),
-  WAVESPEED_API_KEY: z.string().default(""),
-
   // ── Error monitoring ─────────────────────────────
   // Blank keeps Sentry off, which is what a self-hosted instance gets. A
   // value that is not a DSN also leaves it off; each service logs that once.
@@ -331,6 +323,13 @@ export const coreConfigSchema = z.object({
   // through `wrangler secret put` (`.dev.vars` locally); both sides
   // read it from their own runtime's injection point.
   INGEST_SHARED_SECRET: z.string().default(""),
+  // Where a Timeline web-animation preview is read (inner#1711): the ingest
+  // Worker's signed `/web-animation/<token>/index.html` route, on a host of its
+  // own in production so the sandboxed page shares no origin with the app.
+  WEB_ANIMATION_PREVIEW_BASE_URL: z
+    .string()
+    .default("")
+    .transform((value) => value.replace(/\/+$/, "")),
   // ── Upload Size Limits (MB, per asset kind) ─────
   UPLOAD_MAX_IMAGE_MB: numeric(z.coerce.number().positive().default(50)),
   UPLOAD_MAX_VIDEO_MB: numeric(z.coerce.number().positive().default(1024)),

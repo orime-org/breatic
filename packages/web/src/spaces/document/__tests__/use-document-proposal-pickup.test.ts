@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The document Space taking up the cards pressed for it (inner#1509, design
@@ -37,6 +37,12 @@ vi.mock('@web/spaces/document/document-editor-cache', async (readActual) => ({
 vi.mock('@web/spaces/document/document-comment-selection', async (readActual) => ({
   ...await readActual<typeof import('@web/spaces/document/document-comment-selection')>(),
   requestCommentLocation: bindings.locate,
+}));
+
+const setTableFullscreen = vi.hoisted(() => vi.fn());
+vi.mock('@web/spaces/document/document-table-fullscreen', async (readActual) => ({
+  ...(await readActual<Record<string, unknown>>()),
+  setTableFullscreen,
 }));
 
 const { useDocumentProposalPickup } = await import('@web/spaces/document/use-document-proposal-pickup');
@@ -123,6 +129,22 @@ describe('taking up the cards pressed for this document', () => {
     expect(cards().p2?.state).toBe('applied');
     expect(cards().p3?.state).toBe('working');
     expect(result.current).toMatchObject({ how: 'write', blockId: 'b9' });
+  });
+
+  it('ends a table full screen before taking up a card, so the body it acts on is on screen (#1427)', async () => {
+    const order: string[] = [];
+    setTableFullscreen.mockImplementation(() => order.push('exit'));
+    landProposal.mockImplementation(() => {
+      order.push('land');
+      return Promise.resolve({ outcome: 'applied', how: 'write', blockId: 'b9' });
+    });
+    useDocumentProposals.getState().start(proposal('p1'), 'write');
+
+    renderHook(() => useDocumentProposalPickup('d1', HANDLE, 'granted', false, NAME));
+
+    await waitFor(() => expect(order).toContain('land'));
+    expect(order[0]).toBe('exit');
+    expect(setTableFullscreen).toHaveBeenCalledWith((HANDLE as { editor: unknown }).editor, null);
   });
 
   it('takes up a card pressed after the document is already open', async () => {

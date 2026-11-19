@@ -1,16 +1,19 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import type * as Y from 'yjs';
-import { type TimelineDocumentV1 } from '@breatic/shared';
-import { readTimelineDocument } from '@breatic/shared/space-content';
+import { isTimelineSchemaVersion, type TimelineDocumentV1 } from '@breatic/shared';
+import { readTimelineContent, type TimelineDamagedRecords } from '@web/data/yjs/timeline-document';
 
 /** The current supported content or the format error reported by its reader. */
 export interface TimelineDocumentState {
   document: TimelineDocumentV1 | null;
+  damaged: TimelineDamagedRecords;
   error: Error | null;
 }
+
+const NONE: TimelineDamagedRecords = { clips: [] };
 
 /**
  * Read a supported version before binding its collection handles.
@@ -20,14 +23,16 @@ export interface TimelineDocumentState {
  * @throws {never} Never.
  */
 function readState(doc: Y.Doc, enabled: boolean): TimelineDocumentState {
-  if (!enabled) return { document: null, error: null };
+  if (!enabled) return { document: null, damaged: NONE, error: null };
   try {
-    if (!doc.share.has('timeline') || doc.getMap('timeline').get('schemaVersion') !== 1) {
+    // Checked before reading: reading opens the record roots, which an unsupported document must keep as stored.
+    if (!doc.share.has('timeline') || !isTimelineSchemaVersion(doc.getMap('timeline').get('schemaVersion'))) {
       throw new Error('Unsupported Timeline content');
     }
-    return { document: readTimelineDocument(doc), error: null };
+    const { document, damaged } = readTimelineContent(doc);
+    return { document, damaged: damaged.clips.length === 0 ? NONE : damaged, error: null };
   } catch (error) {
-    return { document: null, error: error instanceof Error ? error : new Error('Invalid Timeline content') };
+    return { document: null, damaged: NONE, error: error instanceof Error ? error : new Error('Invalid Timeline content') };
   }
 }
 

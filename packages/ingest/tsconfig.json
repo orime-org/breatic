@@ -12,6 +12,7 @@
     "paths": {
       "@ingest/container/*": ["./container/*"],
       "@shared/*": ["../shared/src/*"],
+      "@provider/*": ["../provider/src/*"],
       "@ingest/*": ["./src/*"]
     }
   },

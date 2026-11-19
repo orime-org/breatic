@@ -9,6 +9,7 @@
       "@shared/*": ["../shared/src/*"],
       "@core/*": ["../core/src/*"],
       "@domain/*": ["../domain/src/*"],
+      "@provider/*": ["../provider/src/*"],
       "@worker/*": ["../worker/src/*"]
     }
   },

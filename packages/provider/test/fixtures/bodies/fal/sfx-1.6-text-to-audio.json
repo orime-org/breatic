@@ -1,0 +1,76 @@
+{
+  "model": "sfx-1.6-text-to-audio",
+  "upstream": "fal",
+  "model_id": "mirelo-ai/sfx1.6/text-to-audio",
+  "runs": [
+    {
+      "params": {
+        "loop": false,
+        "double_output": false,
+        "duration": 10,
+        "num_samples": 1
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "ambience": false,
+        "double_output": false,
+        "duration": 10,
+        "num_samples": 1,
+        "text_prompt": "a red fox running through fresh snow at dawn",
+        "upload_audio_format": "mp3"
+      }
+    },
+    {
+      "params": {
+        "loop": true,
+        "double_output": false,
+        "duration": 10,
+        "num_samples": 1
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "ambience": true,
+        "double_output": false,
+        "duration": 10,
+        "num_samples": 1,
+        "text_prompt": "a red fox running through fresh snow at dawn",
+        "upload_audio_format": "mp3"
+      }
+    },
+    {
+      "params": {
+        "loop": false,
+        "double_output": false,
+        "duration": 0.1,
+        "num_samples": 1
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "ambience": false,
+        "double_output": false,
+        "duration": 0.1,
+        "num_samples": 1,
+        "text_prompt": "a red fox running through fresh snow at dawn",
+        "upload_audio_format": "mp3"
+      }
+    },
+    {
+      "params": {
+        "loop": false,
+        "double_output": false,
+        "duration": 60,
+        "num_samples": 1
+      },
+      "prompt": "a red fox running through fresh snow at dawn",
+      "body": {
+        "ambience": false,
+        "double_output": false,
+        "duration": 60,
+        "num_samples": 1,
+        "text_prompt": "a red fox running through fresh snow at dawn",
+        "upload_audio_format": "mp3"
+      }
+    }
+  ],
+  "steps": []
+}

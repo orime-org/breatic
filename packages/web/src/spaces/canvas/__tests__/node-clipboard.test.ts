@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
 
@@ -301,6 +301,32 @@ describe('cloneForPaste', () => {
     const [clone] = cloneForPaste(p, 'u', { dx: 0, dy: 0 }).nodes;
     expect(clone?.data.name).toBe('found');
     expect(clone?.data).not.toHaveProperty('content');
+  });
+
+  // Document media (inner#1537 §5.3): not a copy of a node, and the address is already stored.
+  it('pastes an original node with its name and its stored address, no COPY- prefix', () => {
+    const stored = 'https://resource.example/image/2026-11-09/1_a.png';
+    const p = payload([node('x', 'image', { x: 0, y: 0 }, { name: 'probe.png', content: stored }, { original: true })], { source: undefined });
+    const [clone] = cloneForPaste(p, 'u', { dx: 0, dy: 0 }).nodes;
+    expect(clone?.data.name).toBe('probe.png');
+    expect(clone?.data.content).toBe(stored);
+  });
+
+  it('names an original node with no name after its type', () => {
+    const p = payload([node('x', 'video', { x: 0, y: 0 }, { content: 'https://resource.example/video/2026-11-09/1_a.mp4' }, { original: true })], { source: undefined });
+    expect(cloneForPaste(p, 'u', { dx: 0, dy: 0 }).nodes[0]?.data.name).toBe('Video');
+  });
+
+  it('keeps an original group and its members free of the COPY- prefix', () => {
+    const p = payload(
+      [
+        node('g', 'group', { x: 0, y: 0 }, { name: '2 files', width: 600, height: 300 }, { original: true }),
+        node('a', 'image', { x: 20, y: 40 }, { name: 'one.png', content: 'https://resource.example/image/2026-11-09/1_a.png' }, { parentId: 'g', original: true }),
+        node('b', 'image', { x: 300, y: 40 }, { name: 'two.png', content: 'https://resource.example/image/2026-11-09/2_b.png' }, { parentId: 'g', original: true }),
+      ],
+      { source: undefined },
+    );
+    expect(cloneForPaste(p, 'u', { dx: 0, dy: 0 }).nodes.map((n) => n.data.name)).toEqual(['2 files', 'one.png', 'two.png']);
   });
 });
 

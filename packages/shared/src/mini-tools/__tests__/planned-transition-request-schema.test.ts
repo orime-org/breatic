@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1306 test plan §97 item 2 (frames-split §7.11 fresh row, §7.13; canvas design invariant 11.2; D11-3, D12-2): the

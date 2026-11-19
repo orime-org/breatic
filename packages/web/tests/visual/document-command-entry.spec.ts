@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * End-to-end coverage for the whole-document command entry (task #129).
@@ -10,8 +10,9 @@
  * whether a wheel over it scrolls the body. The DOM structure those rest on is
  * asserted in `DocumentEditor.test.tsx` and re-read here as a precondition,
  * since a measurement of the wrong element would otherwise look like a
- * measurement. Which two commands the menu opens onto, and how their
- * not-open-yet state looks, are pinned in `document-menu-entry.test.tsx`.
+ * measurement. Which commands the menu opens onto, for an editor and for a
+ * viewer, is pinned in `document-menu-entry.test.tsx`; what the snapshot
+ * commands do, in `tests/smoke/document-version-snapshots.spec.ts`.
  *
  * Needs the dev server and a smoke account:
  *   pnpm --filter @breatic/web test:visual
@@ -84,8 +85,9 @@ async function waitForSettledEntry(p: Page): Promise<void> {
 
 test('the entry sticks inside the scroller, not beside it', async () => {
   // It has to be inside for the wheel to reach the body, and stuck to the top
-  // so it keeps its corner while the text scrolls under it. Anything added as
-  // a direct child of the shell turns the first assertion red, whatever it is
+  // so it keeps its corner while the text scrolls under it. The shell holds
+  // the heading outline's column and the scroller (inner#1149); anything else
+  // added as a direct child turns the first assertion red, whatever it is
   // called. Two things do not: portalled layers, which are not children, and
   // the bubble bar, which the editor appends to this same shell but only while
   // a selection exists — there is none here.
@@ -98,7 +100,7 @@ test('the entry sticks inside the scroller, not beside it', async () => {
     )!;
     const layer = trigger.parentElement!;
     return {
-      shellChildren: scroller.parentElement!.children.length,
+      shellChildren: [...scroller.parentElement!.children].map((c) => c.getAttribute('data-testid') ?? c.classList.contains('doc-body-scroller')),
       insideViewport: viewport.contains(trigger),
       // Compared directly rather than inferred from being in the first child:
       // the entry has to precede the page for the text to scroll under it.
@@ -112,7 +114,7 @@ test('the entry sticks inside the scroller, not beside it', async () => {
     };
   }, VISIBLE_SPACE);
 
-  expect(layout.shellChildren).toBe(1);
+  expect(layout.shellChildren).toEqual(['doc-outline-column', true]);
   expect(layout.insideViewport).toBe(true);
   expect(layout.beforeThePage).toBe(true);
   expect(layout.position).toBe('sticky');
@@ -181,12 +183,40 @@ test('rests as a single 32×32 button in the top right corner', async () => {
     });
 
     // Size and inset come from `--doc-entry-size` / `--doc-entry-inset`
-    // (`index.css`); the 20 is `top-5` on the layer itself, which is the one
+    // (`BODY_ROW_VARS`, `document-columns.ts`); the 20 is `top-5` on the layer itself, which is the one
     // number those variables do not carry. Asserted exactly: a range wide
     // enough to swallow a changed token proves nothing.
     expect(geometry.width).toBe(32);
     expect(geometry.height).toBe(32);
     expect(geometry.insetRight).toBe(16);
+    expect(geometry.insetTop).toBe(20);
+  }).toPass({ timeout: 5_000 });
+});
+
+test('the heading outline icon mirrors the entry in the top left corner', async () => {
+  // inner#1149 A11: the same 32×32 button, the same 20px from the top, and the
+  // entry's 16px inset from the left edge of the body area instead of the right.
+  await openFreshDocument(page);
+  const toggle = page.getByTestId('doc-outline-toggle');
+  await expect(toggle).toBeVisible({ timeout: 10_000 });
+
+  await expect(async () => {
+    const geometry = await page.evaluate((space: string) => {
+      const t = document.querySelector(`${space} [data-testid="doc-outline-toggle"]`)!;
+      const row = document.querySelector(`${space} .doc-body-row`)!;
+      const tb = t.getBoundingClientRect();
+      const rb = row.getBoundingClientRect();
+      return {
+        width: Math.round(tb.width),
+        height: Math.round(tb.height),
+        insetLeft: Math.round(tb.left - rb.left),
+        insetTop: Math.round(tb.top - rb.top),
+      };
+    }, VISIBLE_SPACE);
+
+    expect(geometry.width).toBe(32);
+    expect(geometry.height).toBe(32);
+    expect(geometry.insetLeft).toBe(16);
     expect(geometry.insetTop).toBe(20);
   }).toPass({ timeout: 5_000 });
 });
@@ -227,27 +257,6 @@ test('opens a menu below the trigger, uncropped', async () => {
   expect(placement.below).toBe(true);
   expect(placement.insideWindow).toBe(true);
   expect(placement.hitsItself).toBe(true);
-});
-
-test('clicking a not-open-yet item leaves menu and document alone', async () => {
-  await openFreshDocument(page);
-  await page.getByTestId('doc-doc-menu-trigger').click();
-  const item = page.getByTestId('doc-doc-menu-save-snapshot');
-  await expect(item).toBeVisible({ timeout: 5_000 });
-
-  const editor = page.locator(`${DOCUMENT_EDITOR}`);
-  const before = await editor.innerHTML();
-  // `force` skips playwright's own actionability check, which treats
-  // `aria-disabled` as unclickable. Browsers do not read that attribute: a real
-  // click dispatches, and `onSelect`'s preventDefault is what stops it. Without
-  // force this waits for an "enabled" that never comes, and what gets measured
-  // is the framework's guard rather than the product's behaviour.
-  await item.click({ force: true });
-
-  // preventDefault inside `onSelect`: the menu stays put, the document is
-  // untouched.
-  await expect(item).toBeVisible();
-  expect(await editor.innerHTML()).toBe(before);
 });
 
 test('clicking the body both dismisses the menu and lands the caret', async () => {
@@ -344,7 +353,10 @@ test('keeps a fixed gap between the page and the entry', async () => {
   expect(narrow.pageWidth).toBeLessThan(768);
   expect(narrow.gap).toBe(8);
 
-  const wide = await shoot(1440);
+  // Wide enough that the open heading outline beside the page still leaves it
+  // its full 768px with the Agent column open: 1680 less the 320px column
+  // leaves the Space more than the 1136px that takes (inner#1149).
+  const wide = await shoot(1680);
   expect(wide.pageWidth).toBe(768);
   expect(wide.gap).toBeGreaterThan(8);
 

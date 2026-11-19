@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * One row of the node's task list (#186 §7.1).
@@ -69,7 +69,7 @@ function entry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
  * @param over - Entry overrides.
  * @param props - Row props beyond the entry.
  * @param props.canRetry - Whether the failed task can run again.
- * @param props.readOnly - Whether this reader may write.
+ * @param props.readOnly - Whether this user may write.
  * @param props.onView - Open the node's history at this task's result.
  * @param props.onRetry - Send the stashed File again.
  * @param props.onDismiss - Drop the row.
@@ -122,7 +122,7 @@ describe('TaskRow', () => {
   });
 
   it('opens with a badge naming the kind, then what it acted on, in every state', () => {
-    // inner#1454: the reader tells an upload from a generation from a tool
+    // inner#1454: the user tells an upload from a generation from a tool
     // run by the badge alone, whatever state the row is in.
     for (const status of ['running', 'done', 'failed', 'expired'] as const) {
       renderRow({ status, settledAt: status === 'running' ? null : OPENED });
@@ -197,7 +197,7 @@ describe('TaskRow', () => {
     );
   });
 
-  it('says a cause we recognise in the reader’s own language', () => {
+  it('says a cause we recognise in the user’s own language', () => {
     // The row is read by whoever opens the list, so a cause this product
     // knows travels as a code and becomes a sentence here. A sentence written
     // where the failure happened is frozen into whatever language that server
@@ -214,7 +214,7 @@ describe('TaskRow', () => {
   // The browser's own two gates say the number and list the formats before
   // anything is built. A node restored from history carries neither type nor
   // size, so those gates stay silent and the run is what refuses — landing
-  // the reader on this row, which has to say as much as the toast would.
+  // the user on this row, which has to say as much as the toast would.
   it('names the ceiling a reading refused this file against', () => {
     vi.mocked(getCachedUnderstandMaxBytes).mockReturnValue(20 * 1024 * 1024);
     renderRow(
@@ -372,7 +372,7 @@ describe('TaskRow', () => {
 
   it('says which instant it is showing', () => {
     // The same slot carries two different facts: a running row shows when the
-    // task began, a settled one when it ended. Without the word the reader has
+    // task began, a settled one when it ended. Without the word the user has
     // no way to tell which one is in front of them (user 2026-09-06).
     renderRow({
       status: 'running',
@@ -386,9 +386,9 @@ describe('TaskRow', () => {
     expect(screen.getByTestId('task-instant')).toHaveTextContent('Ended');
   });
 
-  it('shows a settled task’s end instant in the reader’s own day', () => {
+  it('shows a settled task’s end instant in the user’s own day', () => {
     // 2026-09-04T18:30Z is still the 4th in UTC+8 and the 4th in UTC-4, so
-    // this asserts the date the reader is in rather than a fixed slice of the
+    // this asserts the date the user is in rather than a fixed slice of the
     // ISO string.
     renderRow({ status: 'done', settledAt: '2026-09-04T18:30:00.000Z' });
 
@@ -399,7 +399,7 @@ describe('TaskRow', () => {
   });
 });
 
-describe('a reader who cannot write', () => {
+describe('a user who cannot write', () => {
   // The flag makes four hops (canvas → container → panel → row → the rule),
   // and any one of them can be hardcoded to false without a type error.
   it('renders a settled row with no buttons at all', () => {
@@ -412,7 +412,7 @@ describe('a reader who cannot write', () => {
   });
 
   it('names what we would have taken when a format is refused', () => {
-    // Knowing the format is refused leaves the reader holding a file with
+    // Knowing the format is refused leaves the user holding a file with
     // nowhere to go — and this row has no Retry, so the sentence is the only
     // place left to say what would have worked.
     renderRow(

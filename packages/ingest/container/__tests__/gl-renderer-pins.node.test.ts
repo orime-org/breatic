@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The GL renderer's own modules (the `gl` stage of packages/ingest/Dockerfile) install from a committed package.json and lockfile with

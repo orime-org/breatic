@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Listening for committed changes to `project_members` (inner#911).
@@ -10,11 +10,11 @@
  * sessions listening at that moment, so a caller re-checks what it holds each
  * time listening starts.
  *
- * postgres.js gives `listen` a dedicated connection and re-listens when it
- * drops. On a re-listen it registers new callback objects, so the `unlisten`
- * handed back at start no longer reaches them; this module keeps its own
- * stopped flag instead. It also does not say whether it is listening right now,
- * so liveness is answered by a real round trip on a probe channel.
+ * postgres.js gives `listen` a dedicated connection, re-listens when it drops
+ * (retrying with backoff) and calls the listen callback again each time. This
+ * module keeps its own stopped flag to ignore late notifications after `stop`.
+ * postgres.js does not say whether it is listening right now, so liveness is
+ * answered by a real round trip on a probe channel.
  */
 
 import { randomUUID } from "node:crypto";

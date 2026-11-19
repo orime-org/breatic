@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { act, cleanup, render, renderHook, waitFor } from '@testing-library/react';
@@ -67,8 +67,11 @@ vi.mock('@hocuspocus/provider', () => ({
       for (const listener of [...(this.listeners[event] ?? [])]) listener(payload);
     }
 
-    constructor(config: { document: Y.Doc }) {
+    configuration: { document: Y.Doc; flushDelay?: number | false };
+
+    constructor(config: { document: Y.Doc; flushDelay?: number | false }) {
       this.document = config.document;
+      this.configuration = config;
       transport.providers.push(this);
     }
   },
@@ -139,7 +142,7 @@ function open(doc: Y.Doc = getDoc(NAME)): DocumentEditorHandle {
   awareness.push(cursor);
   const handle = getDocumentEditor(doc, NAME, {
     caretProvider: { awareness: cursor },
-    readWho: () => ({ role: 'editor', viewerId: 'reader-1' }),
+    readWho: () => ({ role: 'editor', viewerId: 'user-1' }),
     editable: true,
   });
   const host = document.createElement('div');
@@ -464,7 +467,7 @@ describe('proposal pickup admission while its body is hidden', () => {
     it(`uses the registry's current ${event} facts when preparation finishes under Activity`, async () => {
       // The registry binds its connections to the signed-in account before any
       // is opened (`CollabSocketProvider`), as the Project page does.
-      render(<CollabSocketProvider userId='reader-1'>{null}</CollabSocketProvider>);
+      render(<CollabSocketProvider userId='user-1'>{null}</CollabSocketProvider>);
       const handle = open();
       const provider = transport.providers[0]!;
       const waiting = gate();
@@ -491,7 +494,7 @@ describe('proposal pickup admission while its body is hidden', () => {
       /** Retains the body and its preparation across a normal Space switch. */
       function App({ visible }: { visible: boolean }): React.JSX.Element {
         return (
-          <CollabSocketProvider userId='reader-1'>
+          <CollabSocketProvider userId='user-1'>
             <Keeper />
             <React.Activity mode={visible ? 'visible' : 'hidden'}><Body /></React.Activity>
           </CollabSocketProvider>
@@ -584,8 +587,8 @@ describe('locating a proposal in its document (inner#1646)', () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it('does not run a locate the reader left before the hidden body took it up', async () => {
-    render(<CollabSocketProvider userId='reader-1'>{null}</CollabSocketProvider>);
+  it('does not run a locate the user left before the hidden body took it up', async () => {
+    render(<CollabSocketProvider userId='user-1'>{null}</CollabSocketProvider>);
     const handle = open();
     const provider = transport.providers[0]!;
     const locate = vi.spyOn(landing, 'sourceAt');
@@ -609,7 +612,7 @@ describe('locating a proposal in its document (inner#1646)', () => {
     /** The document Space, hidden while another Space is in front. */
     function App({ visible }: { visible: boolean }): React.JSX.Element {
       return (
-        <CollabSocketProvider userId='reader-1'>
+        <CollabSocketProvider userId='user-1'>
           <Keeper />
           <React.Activity mode={visible ? 'visible' : 'hidden'}><Body /></React.Activity>
         </CollabSocketProvider>

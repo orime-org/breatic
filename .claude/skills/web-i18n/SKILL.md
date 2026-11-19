@@ -17,11 +17,15 @@ The product nouns that never translate (the do-not-translate table), the rule th
 
 **After editing the root `locales/*.json`, restart the Vite dev server before checking the page.** The web package imports the catalogs through the `@locales` alias (`packages/web/src/i18n/locale-bootstrap.ts`) from outside its Vite root, and a running dev server has kept showing the old sentence after such edits while unit tests, which read the files from disk, pass. Check: the page disagrees with the locale file? See whether dev was started before the edit.
 
+## Line breaks follow the page language
+
+**`<html lang>` is the active locale (`activate` in `src/i18n/locale-bootstrap.ts`), so an element never sets `lang` itself to get the right line breaks.** A short line of copy that must not split a Japanese word (a failure line, a toast title, an empty state) adds `[word-break:auto-phrase]`, which Chrome applies to Japanese only; a centred line adds `text-balance`, a left-aligned one `text-pretty` (the two are values of one property).
+
 ## The language switcher
 
 ### Language names stay native
 
-**The language switcher labels each language with its own native name, which never changes with the interface language.** A reader who cannot read the current language must still find their own. The names are written once in `packages/web/src/features/preferences/supported-langs.ts` (`nativeName`) and are deliberate product data, not catalog entries.
+**The language switcher labels each language with its own native name, which never changes with the interface language.** A user who cannot read the current language must still find their own. The names are written once in `packages/web/src/features/preferences/supported-langs.ts` (`nativeName`) and are deliberate product data, not catalog entries.
 
 ## Do-not-translate details
 
@@ -48,4 +52,4 @@ The name of a group of values (camera movement: pan / tilt / dolly) answers "wha
 
 ### Why value names stay out of the catalogs
 
-Value names are mostly industry terms that, like model names, are used in English anyway, and they belong to the model: putting them in the catalogs would mean five translations for every model added. **The one exception is language names**, which a parameter declares with `value_locales` (`packages/domain/src/model-catalog/param-declaration.ts`) so that `Intl` reads them out in the reader's language; never write those by hand.
+Value names are mostly industry terms that, like model names, are used in English anyway, and they belong to the model: putting them in the catalogs would mean five translations for every model added. **The one exception is language names**, which a parameter declares with `value_locales` (`packages/domain/src/model-catalog/param-declaration.ts`) so that `Intl` reads them out in the user's language; never write those by hand.

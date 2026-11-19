@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { miniToolById } from '@breatic/shared/mini-tools';
 import { useNodeId } from '@xyflow/react';
@@ -119,7 +119,7 @@ export function NodePlaceholder({
         <Icon className='h-5 w-5 shrink-0 opacity-70' aria-hidden='true' />
       )}
       {waiting ? null : failed ? (
-        <span data-testid='node-upload-error' className='text-xs wrap-anywhere'>
+        <span data-testid='node-upload-error' className='text-xs text-balance wrap-anywhere [word-break:auto-phrase]'>
           {'text' in failed ? failed.text : t(failed.key, failed.params)}
         </span>
       ) : (

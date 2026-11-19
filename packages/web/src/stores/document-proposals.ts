@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Each document proposal card's state (inner#1509, design §5.7).
  *
- * A card's state is written by `start` when the reader presses it, `view`
+ * A card's state is written by `start` when the user presses it, `view`
  * when they press "View" on a card that landed, and `report` (or
  * `reportSpace` for every press on one document) when the press ends -- the
  * project page reports a document that is gone or a tab closed before the
@@ -25,9 +25,10 @@
 import { create } from 'zustand';
 import { t, type DocumentProposal } from '@breatic/shared';
 
+import type { SpaceRefusal } from '@web/data/yjs/space-write';
 import { toast } from '@web/lib/toast';
 
-/** What the reader pressed: put it on as a comment, or write it into the body. */
+/** What the user pressed: put it on as a comment, or write it into the body. */
 export type LandingAction = 'comment' | 'write';
 
 /** Where a card stands. */
@@ -37,8 +38,9 @@ export type DocumentProposalCardState = 'working' | 'applied';
  * How a press ended. `gone`: a "View" press found the change no longer in
  * the document. `mediaOnly`: nothing was left to write once the media whose
  * address is not in our storage were left out. `located`: a locate press
- * showed where the proposal points. `left`: the reader switched away from, or
+ * showed where the proposal points. `left`: the user switched away from, or
  * closed, the document a locate or "View" press was waiting on (inner#1646).
+ * `refused`: the Space's size left no room for it (inner#1790).
  */
 export type DocumentProposalOutcome =
   | 'applied'
@@ -50,6 +52,7 @@ export type DocumentProposalOutcome =
   | 'spaceGone'
   | 'gone'
   | 'mediaOnly'
+  | 'refused'
   | 'failed';
 
 /** The warning a press that was stopped is told with: nothing broke, it was not done. */
@@ -82,14 +85,18 @@ const FAILED_KEY: Readonly<Record<PressKind, string>> = {
 };
 
 /**
- * Tells the reader how a press ended, when it is anything a toast says.
+ * Tells the user how a press ended, when it is anything a toast says.
  * @param proposal - The proposal pressed.
  * @param action - What it was pressed to do.
  * @param outcome - How it ended.
  * @param leftOut - How many media were left out of what it wrote.
+ * @param refusal - Why the Space had no room, for `refused`.
  */
-function tell(proposal: DocumentProposal, action: LandingAction, outcome: DocumentProposalOutcome, leftOut: number): void {
-  if (outcome === 'failed') {
+function tell(proposal: DocumentProposal, action: LandingAction, outcome: DocumentProposalOutcome, leftOut: number, refusal: SpaceRefusal | undefined): void {
+  if (outcome === 'refused') {
+    // A rebuild said its own sentence once.
+    if (refusal !== undefined && refusal.reason !== 'resyncing') toast.warning(t('spaces.sizeCap.proposal'));
+  } else if (outcome === 'failed') {
     toast.error(t(FAILED_KEY[pressKind(proposal, action)]));
   } else if (outcome === 'applied' || outcome === 'mediaOnly') {
     if (leftOut > 0) toast.warning(t('chat.documentProposal.mediaLeftOut', { count: leftOut }));
@@ -99,7 +106,7 @@ function tell(proposal: DocumentProposal, action: LandingAction, outcome: Docume
 }
 
 /**
- * Tells the reader how a locate press ended: it writes nothing, so only a
+ * Tells the user how a locate press ended: it writes nothing, so only a
  * passage or Document that is gone or changed, or a failure, is said.
  * @param outcome - How it ended.
  */
@@ -133,7 +140,7 @@ interface DocumentProposalsState {
   /** One document changed. */
   bump: (spaceId: string) => void;
   /** How a press ended, and how many media it left out: ignored for a card with no press waiting. */
-  report: (proposalId: string, outcome: DocumentProposalOutcome, leftOut?: number) => void;
+  report: (proposalId: string, outcome: DocumentProposalOutcome, leftOut?: number, refusal?: SpaceRefusal) => void;
   /** The same ending for every press waiting on one document. */
   reportSpace: (spaceId: string, outcome: DocumentProposalOutcome) => void;
   reset: () => void;
@@ -194,13 +201,13 @@ export const useDocumentProposals = create<DocumentProposalsState>()((set, get) 
       };
     }),
   bump: (spaceId) => set((s) => ({ docVersion: { ...s.docVersion, [spaceId]: (s.docVersion[spaceId] ?? 0) + 1 } })),
-  report: (proposalId, outcome, leftOut = 0) => {
+  report: (proposalId, outcome, leftOut = 0, refusal) => {
     const { pending, cards } = get();
     const waiting = pending[proposalId];
     const card = cards[proposalId];
     if (waiting === undefined) return;
     // A locate press wrote nothing, and a View press that could not reach its
-    // document, or whose document the reader left, wrote nothing while the
+    // document, or whose document the user left, wrote nothing while the
     // change is still there: the card keeps how it was. When the editor could
     // not be built the document Space shows why; a tab closed or switched away
     // from ends the press with nothing to say.
@@ -213,7 +220,7 @@ export const useDocumentProposals = create<DocumentProposalsState>()((set, get) 
       return;
     }
     set((s) => ended(s, proposalId, outcome));
-    if (card !== undefined) tell(waiting.proposal, card.action, outcome, leftOut);
+    if (card !== undefined) tell(waiting.proposal, card.action, outcome, leftOut, refusal);
   },
   reportSpace: (spaceId, outcome) => {
     for (const p of pendingFor(spaceId)) get().report(p.proposal.proposalId, outcome);

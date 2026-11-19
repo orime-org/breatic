@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * One lip-sync step on the frozen plan (multi-person lip-sync DD §7.2; execution design §10.2): prepare, the shared tracking
@@ -34,7 +34,7 @@ import { prepareModelInput, preparedRequest, type PreparingRun } from "@worker/h
 import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { chunkInputId, FullLedgerInvalid, modelInputTarget, readJobLedger, segmentTarget, SOURCE_INPUT_ID, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 import { upstreamBody } from "@worker/providers/upstream-body.js";
 
 /** A lip-sync step kind in stage order. */

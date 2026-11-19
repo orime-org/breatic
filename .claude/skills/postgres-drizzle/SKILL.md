@@ -17,7 +17,7 @@ The rules for where schema, migrations and repos live are in [packages/core/AGEN
 | `deleted_at IS NULL` | Yes: failing the re-check is the correct answer |
 | Any status or role column | No |
 
-**A count invariant ("exactly one admin", "one owner") needs the whole set locked.** A row lock cannot protect "how many rows satisfy X": lock every row of the set with a condition on immutable columns and find the one you need in the returned rows, which also fixes the lock order within the table. Wrapping an unlocked read in a transaction protects nothing; that read can use another connection.
+**A count invariant ("exactly one admin", "one owner") needs the whole set locked.** A row lock cannot protect "how many rows satisfy X": lock every row of the set with a condition on immutable columns and find the one you need in the returned rows, which also fixes the lock order within the table. Wrapping an unlocked read in a transaction protects nothing; it sees a snapshot, and another transaction can still change the rows it read.
 
 Check: does any column in this lock's `WHERE` belong to what the concurrent side changes? Yes → lock the whole set.
 
@@ -28,6 +28,8 @@ Check: which existing locks does the new one cover, and does a test still prove 
 ## Concurrency tests
 
 **`Promise.all` over two short transactions does not run them concurrently.** The first finishes and returns its connection to the pool before the second asks for one, so both run serially on one connection and the test passes with the lock deleted.
+
+**A second session started while the test holds a transaction joins that transaction unless it starts outside it:** take `const outside = AsyncLocalStorage.snapshot()` before `db.transaction`, then start the other request as `outside(() => call())`.
 
 **Build the interleaving with `waitUntilBlockedOn` from `packages/server/src/__tests__/integration/lock-probe.ts`:**
 
@@ -57,7 +59,7 @@ sql`INSERT INTO t (col) VALUES (${sql.json(arr)})`                 // right
 
 The mistake surfaces only on read, as `cannot extract elements from a scalar`. `SELECT jsonb_typeof(col)` must say `array` or `object`, never `string`.
 
-**An ignored `tx` parameter, or a discarded result of a conditional `UPDATE`, is an atomicity hole.** Treat both as review red flags: the call runs outside the transaction, or a lost compare-and-set goes unnoticed. Verify the fix with a real-database integration test.
+**A discarded result of a conditional `UPDATE` is an atomicity hole:** a lost compare-and-set goes unnoticed. A query through `db` or `yjsDb` inside a transaction runs on that transaction even without its `tx` (`packages/core/AGENTS.md#queries-bind-to-the-open-transaction`), so a missed `tx` no longer leaves the transaction. Verify the fix with a real-database integration test.
 
 **Before landing a paginated query, run `EXPLAIN ANALYZE` on the first page and on a late page and compare the rows read.** A cursor applied in `HAVING` filters after grouping, so every page reads and groups every matching row; the plan shows it as a large `Rows Removed by Filter`. Trim the rows from the cursor with an index first, then group that slice. A query of the same shape already in the repository is not evidence that it scales.
 

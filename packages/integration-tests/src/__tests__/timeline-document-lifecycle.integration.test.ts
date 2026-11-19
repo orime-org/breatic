@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Real Yjs-database boundaries for empty Timeline upgrades and Project copies
@@ -8,6 +8,7 @@
  * Project authorization and business asset-reference writes have other tests.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { inArray } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
@@ -57,7 +58,7 @@ function decode(bytes?: Uint8Array): Y.Doc {
 }
 
 /**
- * Prepare a valid V1 seed with explicit service-owned defaults.
+ * Prepare a valid seed with explicit service-owned defaults.
  * @returns A complete encoded Timeline document.
  * @throws {Error} When settings are invalid.
  */
@@ -120,9 +121,9 @@ describe("Timeline initialization in the real Yjs database", () => {
 
     const loaded = present(await yjsRepo.loadTimelineDocData(name, seed()));
     expect(readTimelineDocument(decode(loaded))).toEqual({
-      schemaVersion: 1, settings: SETTINGS,
+      schemaVersion: 2, settings: SETTINGS,
       tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
-      clips: {}, sources: {},
+      clips: {}, sources: {}, operationReceipts: {},
     });
     expect(Array.from(present(await yjsRepo.fetchDocData(name)))).toEqual(Array.from(loaded));
   });
@@ -144,7 +145,7 @@ describe("Timeline initialization in the real Yjs database", () => {
   it("preserves unknown nonempty content without selecting new defaults", async () => {
     const name = own(timelineSpaceDocName(randomUUID(), randomUUID()));
     const unknown = decode();
-    unknown.getMap("timeline").set("schemaVersion", 2);
+    unknown.getMap("timeline").set("schemaVersion", 3);
     unknown.getMap("legacy").set("retained", "original data");
     const bytes = Y.encodeStateAsUpdate(unknown);
     await yjsRepo.seedInitialState(name, bytes);
@@ -161,6 +162,30 @@ describe("Timeline initialization in the real Yjs database", () => {
     const loaded = present(await yjsRepo.loadTimelineDocData(name, seed()));
     expect(Array.from(loaded)).toEqual(Array.from(original));
     expect(readTimelineDocument(decode(loaded)).settings).toEqual(OTHER_SETTINGS);
+  });
+
+  it("keeps a stored version 1 document with a pixel clip as stored, and reads its clip as a frame offset (#1502 design §5)", async () => {
+    const name = own(timelineSpaceDocName(randomUUID(), randomUUID()));
+    const old = decode();
+    initializeTimelineDocument(old, SETTINGS);
+    old.getMap("timeline").set("schemaVersion", 1);
+    const sourceId = randomUUID();
+    old.getMap("sources").set(sourceId, {
+      id: sourceId, kind: "video", assetId: randomUUID(), timebase: SETTINGS.fps, extentFrames: 48, durationSeconds: "2", durationOrigin: "registered",
+    });
+    const clipId = randomUUID();
+    const clip = new Y.Map<unknown>();
+    old.getMap("clips").set(clipId, clip);
+    for (const [key, value] of Object.entries({
+      id: clipId, trackId: "visual-1", kind: "video", sourceId, startFrame: 0, sourceInFrame: 0, durationFrames: 48,
+      rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { x: 192, y: -108, scaleX: 1, scaleY: 1, rotation: 0 },
+    })) clip.set(key, value);
+    const original = Y.encodeStateAsUpdate(old);
+    await yjsRepo.seedInitialState(name, original);
+
+    const loaded = present(await yjsRepo.loadTimelineDocData(name, seed()));
+    expect(Array.from(loaded)).toEqual(Array.from(original));
+    expect(readTimelineDocument(decode(loaded)).clips[clipId]!.transform).toEqual({ frameX: 0.1, frameY: -0.1, scaleX: 1, scaleY: 1, rotation: 0 });
   });
 
   it.each(["missing", "soft-deleted"] as const)("does not recreate a %s Timeline row", async (state) => {
@@ -241,9 +266,11 @@ describe("Project copy association boundary in the real Yjs database", () => {
     const winner = seed(OTHER_SETTINGS);
     await yjsRepo.seedInitialState(fixture.targetContent, winner);
     const observed: string[] = [];
+    // Reads from another connection run in the context from before the copy began.
+    const outside = AsyncLocalStorage.snapshot();
 
     await yjsRepo.duplicateByProjectPrefix(fixture.sourceId, fixture.targetId, async (rows) => {
-      expect(await yjsRepo.fetchDocData(fixture.targetMeta)).toBeNull();
+      expect(await outside(() => yjsRepo.fetchDocData(fixture.targetMeta))).toBeNull();
       expect(rows.map((row) => row.name)).toEqual([fixture.targetContent]);
       for (const row of rows) {
         observed.push(row.name);
@@ -262,10 +289,11 @@ describe("Project copy association boundary in the real Yjs database", () => {
     const fixture = await copyFixture();
     const associationFailure = new Error("Project asset-reference write refused");
     const attempts: string[][] = [];
+    const outside = AsyncLocalStorage.snapshot();
     await expect(yjsRepo.duplicateByProjectPrefix(fixture.sourceId, fixture.targetId, async (rows) => {
       attempts.push(rows.map((row) => row.name));
-      expect(await yjsRepo.fetchDocData(fixture.targetMeta)).toBeNull();
-      expect(await yjsRepo.fetchDocData(fixture.targetContent)).toBeNull();
+      expect(await outside(() => yjsRepo.fetchDocData(fixture.targetMeta))).toBeNull();
+      expect(await outside(() => yjsRepo.fetchDocData(fixture.targetContent))).toBeNull();
       throw associationFailure;
     })).rejects.toThrow(associationFailure.message);
     expect(await yjsRepo.fetchDocData(fixture.targetContent)).toBeNull();
@@ -286,9 +314,10 @@ describe("Project copy association boundary in the real Yjs database", () => {
     sourceLater.getMap("timeline").set("sourceChangedDuringCopy", true);
     const laterBytes = Y.encodeStateAsUpdate(sourceLater);
     const observed: Uint8Array[] = [];
+    const outside = AsyncLocalStorage.snapshot();
 
     await yjsRepo.duplicateByProjectPrefix(fixture.sourceId, fixture.targetId, async (rows) => {
-      await yjsRepo.upsertDocData(fixture.sourceContent, laterBytes);
+      await outside(() => yjsRepo.upsertDocData(fixture.sourceContent, laterBytes));
       for (const row of rows) observed.push(row.data);
       expect(rows.map((row) => Array.from(row.data))).toEqual([Array.from(fixture.bytes)]);
     });

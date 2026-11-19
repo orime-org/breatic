@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Paste and snapshot when their body goes through a transfer upload
@@ -72,9 +72,9 @@ beforeEach(() => {
     membershipTier: 'base',
   });
   // Skipping the transfer would succeed at once: paste answers an empty
-  // map, snapshot a row id.
+  // map and no media, snapshot a row id.
   vi.mocked(apiPost).mockImplementation(async (url: string) =>
-    url === '/canvas/paste' ? { map: {} } : { id: 'h-1' },
+    url === '/canvas/paste' ? { map: {}, media: {} } : { id: 'h-1' },
   );
 });
 

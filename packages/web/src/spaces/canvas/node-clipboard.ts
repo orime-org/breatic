@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Canvas clipboard pure functions (slice 2b).
@@ -83,6 +83,12 @@ export interface ClipboardNode {
    * into storage, which then writes the stored address onto the node.
    */
   external?: boolean;
+  /**
+   * Not a copy of a canvas node (media copied in the document body), so its
+   * paste takes no COPY- prefix; unlike `external`, `data.content` is already
+   * a stored address and stays on the node.
+   */
+  original?: boolean;
 }
 
 /** An edge on the clipboard: the edge as the canvas stores it. */
@@ -93,7 +99,7 @@ export interface ClipboardPayload {
   version: typeof CLIPBOARD_VERSION;
   /** Where it was copied; absent for a picture copied in the chat column. */
   source?: ClipboardSource;
-  /** The ids the reader actually selected; the Agent card is named from them. */
+  /** The ids the user actually selected; the Agent card is named from them. */
   picked: string[];
   nodes: ClipboardNode[];
   /** Edges between copied nodes, and from an uncopied node into a copied one. */
@@ -117,7 +123,7 @@ export interface CaptureNode {
  * `parentId`); a lone member keeps `parentId` so a duplicate can rejoin its
  * Group; members are emitted once. Each node carries its whole stored data;
  * stickies are captured for the Agent box and skipped by the canvas clone.
- * @param targetIds - The ids the reader selected or right-clicked.
+ * @param targetIds - The ids the user selected or right-clicked.
  * @param allNodes - All canvas nodes (to resolve members and absolute positions).
  * @param dataOf - Reads a node's stored data snapshot.
  * @param allEdges - All canvas edges.
@@ -373,7 +379,7 @@ export function cloneForPaste(
       data: {
         attachments: [],
         ...data,
-        name: following || node.external === true ? name : COPY_PREFIX + name,
+        name: following || node.external === true || node.original === true ? name : COPY_PREFIX + name,
         createdAt: now,
         createdBy,
         locked: false,

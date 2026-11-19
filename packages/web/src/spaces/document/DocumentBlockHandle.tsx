@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The strip beside the row under the pointer: the drag handle, or a plus on
@@ -62,9 +62,10 @@ import { itemWithin } from '@web/spaces/document/document-block-menu-parts';
 import {
   fillEmptyRow,
   isEmptyParagraph,
-  mediaGapOnRow,
+  insertMediaOnRow,
   type InsertChoice,
 } from '@web/spaces/document/document-insert-row';
+import { openFormulaBlock } from '@web/spaces/document/document-math';
 import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { QUOTED } from '@web/spaces/document/document-list-block';
@@ -77,6 +78,7 @@ import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useRowNow } from '@web/spaces/document/use-row-now';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
+import { columnsOutOfReach } from '@web/spaces/document/document-column-entry';
 import { blockInTableCell, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /**
@@ -129,6 +131,8 @@ interface RowReading {
   readonly table: boolean;
   /** The row stands in a table cell, so the plus menu greys Table. */
   readonly inCell: boolean;
+  /** Whether "Columns" is out of reach on the row (inner#1314 design §5.3). */
+  readonly noColumns: boolean;
 }
 
 /**
@@ -143,7 +147,8 @@ function sameReading(a: RowReading, b: RowReading): boolean {
     a.quoted === b.quoted &&
     a.lone === b.lone &&
     a.table === b.table &&
-    a.inCell === b.inCell
+    a.inCell === b.inCell &&
+    a.noColumns === b.noColumns
   );
 }
 
@@ -187,18 +192,20 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
   const [menuOpen, setMenuOpen] = React.useState(false);
   // Which menu the strip opened, fixed when it opens: picking an entry can
   // turn the line from empty to not (or back) while the menu is still on
-  // screen, closing included, and that menu stays the one the reader opened.
+  // screen, closing included, and that menu stays the one the user opened.
   const [menuFace, setMenuFace] = React.useState<StripFace>('grip');
   // Ends the drag started from this handle, while one is under way.
   const endDrag = React.useRef<(() => void) | null>(null);
+  // A press on the handle holds the strip until it becomes a click or a drag.
+  const pressHeld = React.useRef(false);
   // Whether the drag off this handle is running. The handle IS the drag's
   // source element, so it cannot leave the document while the drag is on —
   // and the drag's own first act is to select the row it moves, which is what
-  // the gate below would otherwise read as the reader having a selection.
+  // the gate below would otherwise read as the user having a selection.
   const [dragActive, setDragActive] = React.useState(false);
   const source = useDragSourceHidden();
 
-  // A1: a reader holding a selection is served by the bubble bar, and the two
+  // A1: a user holding a selection is served by the bubble bar, and the two
   // are never on screen together. The library's side menu answers to the
   // pointer alone (`SideMenu.ts:314-338` — its `mousemove` listener straight
   // to `update`, with no selection in the judgement; it hides only while a key
@@ -230,6 +237,7 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
             (only.type.name !== 'blockContainer' || only.childCount === 1),
           table: live?.type === DOC_TABLE,
           inCell: live !== undefined && blockInTableCell(current.prosemirrorState.doc, live.id),
+          noColumns: live === undefined || columnsOutOfReach(current.prosemirrorState.doc, live.id),
         };
       },
       [rowNow],
@@ -258,10 +266,14 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
     [hold],
   );
 
+  // A formula block a pick made, whose box opens once the menu has let go of
+  // the focus.
+  const formulaToOpen = React.useRef<string | undefined>(undefined);
   // Held rather than written inline: the menu hands it to the memoised colour
   // panel through two callbacks that list it, so a new identity per render
   // would leave that memo comparing unequal props and unable to bail.
-  const closeMenu = React.useCallback((): void => {
+  const closeMenu = React.useCallback((formula?: string): void => {
+    formulaToOpen.current = formula;
     onMenuOpenChange(false);
   }, [onMenuOpenChange]);
 
@@ -269,8 +281,7 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
   const onFill = React.useCallback(
     (choice: InsertChoice): void => {
       const live = rowNow();
-      if (live !== undefined) fillEmptyRow(editor as never, live, choice);
-      closeMenu();
+      closeMenu(live === undefined ? undefined : fillEmptyRow(editor as never, live, choice));
     },
     [editor, rowNow, closeMenu],
   );
@@ -283,9 +294,11 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
       mediaPick === null
         ? undefined
         : (kind: MediaBlockType): void => {
-          mediaPick(kind, () => {
+          mediaPick(kind, (blocks) => {
             const live = rowNow();
-            return live === undefined ? null : mediaGapOnRow(editor as never, live);
+            if (live === undefined) return false;
+            insertMediaOnRow(editor as never, live, blocks);
+            return true;
           });
           closeMenu();
         },
@@ -303,7 +316,7 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
     return null;
   }
 
-  // The face stays what the reader started with: a drag keeps the face it
+  // The face stays what the user started with: a drag keeps the face it
   // started from, so the drag's own end runs on the button it began on — on
   // drop the row under the pointer's start point can be an empty paragraph;
   // an open menu keeps the face it opened from.
@@ -360,7 +373,34 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
             data-testid={TEST_ID[face]}
             className={drags ? `${STRIP_BUTTON} cursor-grab` : STRIP_BUTTON}
             draggable={drags ? true : undefined}
+            // Held from the press: between the press and the browser starting
+            // the drag the pointer can cross onto another row (a column
+            // group's other column, inner#1314), and the side menu following
+            // it would swap the pressed handle out before the drag starts.
+            onPointerDown={
+              drags
+                ? (event) => {
+                  pressHeld.current = true;
+                  hold.freeze();
+                  // Released wherever it is released, on the button or just
+                  // off it; after the click this press may become (a menu
+                  // opening, or a drag), each of which holds the strip itself.
+                  event.currentTarget.ownerDocument.defaultView?.addEventListener(
+                    'pointerup',
+                    () => {
+                      setTimeout(() => {
+                        if (!pressHeld.current) return;
+                        pressHeld.current = false;
+                        hold.unfreeze();
+                      }, 0);
+                    },
+                    { once: true, capture: true },
+                  );
+                }
+                : undefined
+            }
             onDragStart={(event) => {
+              pressHeld.current = false;
               setDragActive(true);
               setMenuFace(face);
               endDrag.current = startRowDrag(editor as never, event.nativeEvent, block.id);
@@ -379,6 +419,7 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
               endDrag.current = null;
             }}
             onClick={() => {
+              pressHeld.current = false;
               if (!menuOpen) setMenuFace(face);
               onMenuOpenChange(!menuOpen);
             }}
@@ -393,13 +434,18 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
           // 2026-08-27). The bubble bar's own menus are the family this one
           // joins, and theirs measures 4px.
           rowsClassName='flex flex-col gap-1'
-          // Back to the body, at the caret the reader left there: the strip is
+          // Back to the body, at the caret the user left there: the strip is
           // not a place to be after the menu closes, and typing has to land in
           // the document (A11). A row that took the focus somewhere on purpose
           // keeps it there — the comment row's draft box focuses itself before
-          // this runs, and the reader is about to type into it (design §9.4.0).
+          // this runs, and the user is about to type into it (design §9.4.0).
+          // A formula picked here opens its box now, which takes the focus
+          // (inner#1423 A5).
           onCloseAutoFocus={(event) => {
             event.preventDefault();
+            const formula = formulaToOpen.current;
+            formulaToOpen.current = undefined;
+            if (formula !== undefined && openFormulaBlock(editor as never, formula)) return;
             const holder = document.activeElement;
             const unclaimed =
               holder === null ||
@@ -423,6 +469,7 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
                 onPickMedia={onFillMedia}
                 unreachable={row.quoted ? QUOTE_GREYED : undefined}
                 tableUnreachable={row.inCell}
+                columnsUnreachable={row.noColumns}
               />
               {/* The grip menu's delete row, the one command an empty line
                   still needs (A12). Drawn out of reach on the document's only

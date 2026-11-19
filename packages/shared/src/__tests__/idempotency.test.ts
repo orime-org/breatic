@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The idempotency contract both ends read: which requests run once, how long
@@ -26,10 +26,16 @@ describe("idempotency scopes", () => {
         "membership",
         "mini-tool",
         "project",
+        "referral",
+        "timeline-execution",
         "transcribe",
         "understand",
       ].sort(),
     );
+  });
+
+  it("keep a Timeline execution press for a day, like the other runs", () => {
+    expect(IDEMPOTENCY_RETENTION_SECONDS["timeline-execution"]).toBe(24 * 60 * 60);
   });
 
   it("each have a retention", () => {

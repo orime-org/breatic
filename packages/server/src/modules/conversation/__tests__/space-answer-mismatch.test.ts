@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The structural check holding the reader's answer to the request to read
+ * The structural check holding the user's answer to the request to read
  * Spaces it answers (inner#1552). Content length is checked by the route.
  */
 import { describe, it, expect } from "vitest";

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** Project media HTTP contracts backed by real PostgreSQL and Redis (inner#1707). */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -218,7 +218,58 @@ describe("Project registered media HTTP reads", () => {
     expect(await readData<unknown>(limitsPath!, cookie)).toEqual({
       defaults: { width: config.defaults.width, height: config.defaults.height, fps: config.defaults.fps },
       assets: { pageSize: config.assets.page_size, pageMax: config.assets.page_max },
+      webAnimation: {
+        promptMaxLength: config.web_animation.prompt_max_length,
+        durationSeconds: { min: config.web_animation.duration_seconds.min, max: config.web_animation.duration_seconds.max, default: config.web_animation.duration_seconds.default },
+        aspects: Object.keys(config.web_animation.viewports),
+        playerLoadTimeoutMs: config.web_animation.player_load_timeout_ms,
+        sourceRefreshIntervalMs: config.web_animation.source_refresh_interval_ms,
+        previewTokenTtlMs: config.web_animation.preview_token_ttl_ms,
+        premountMs: config.web_animation.preview_premount_ms,
+        idleInstancesMax: config.web_animation.preview_idle_instances_max,
+      },
+      preview: {
+        driftSteerSeconds: config.preview.drift_steer_seconds,
+        driftHardSyncSeconds: config.preview.drift_hard_sync_seconds,
+        driftCatastrophicSeconds: config.preview.drift_catastrophic_seconds,
+        resumeSeekSeconds: config.preview.resume_seek_seconds,
+        driftSteerRate: config.preview.drift_steer_rate,
+      },
     });
+  });
+
+  it("gives web the multi-video preview sync thresholds from config/timeline.yaml (#1410 design §6.4)", async () => {
+    const fixture = await seedFixture();
+    const [, , limitsPath] = readPaths(fixture.projectId, randomUUID());
+    const limits = await readData<Record<string, unknown>>(limitsPath!, fixture.cookie);
+    // toEqual against config alone would accept a key missing on both sides; the approved values pin each one.
+    expect(limits["preview"]).toMatchObject({
+      driftSteerSeconds: 0.04, driftHardSyncSeconds: 0.5, driftCatastrophicSeconds: 3, resumeSeekSeconds: 0.15, driftSteerRate: 0.03,
+    });
+  });
+
+  it("gives web the web animation dialog bounds, preview timings and preview pool limits from config/timeline.yaml (inner#1711 design §7.4, §8, §10)", async () => {
+    const fixture = await seedFixture();
+    const [, , limitsPath] = readPaths(fixture.projectId, randomUUID());
+    const config = getTimelineConfig();
+    const limits = await readData<Record<string, unknown>>(limitsPath!, fixture.cookie);
+    expect(limits["webAnimation"]).toEqual({
+      promptMaxLength: config.web_animation.prompt_max_length,
+      durationSeconds: { min: config.web_animation.duration_seconds.min, max: config.web_animation.duration_seconds.max, default: config.web_animation.duration_seconds.default },
+      aspects: Object.keys(config.web_animation.viewports),
+      playerLoadTimeoutMs: config.web_animation.player_load_timeout_ms,
+      sourceRefreshIntervalMs: config.web_animation.source_refresh_interval_ms,
+      previewTokenTtlMs: config.web_animation.preview_token_ttl_ms,
+      premountMs: config.web_animation.preview_premount_ms,
+      idleInstancesMax: config.web_animation.preview_idle_instances_max,
+    });
+    // The preview reuses an address within the signature validity, premounts two seconds ahead and keeps eight idle
+    // pages; toEqual alone would accept a missing key whose expected value is undefined.
+    expect(limits["webAnimation"]).toMatchObject({ previewTokenTtlMs: 3_600_000, premountMs: 2000, idleInstancesMax: 8 });
+    // The tracked yaml offers the dialog's three aspects in this order; the creation input accepts exactly these.
+    expect(limits["webAnimation"]).toMatchObject({ aspects: ["16:9", "9:16", "1:1"] });
+    // The dialog opens at the approved demo's four seconds.
+    expect(limits["webAnimation"]).toMatchObject({ durationSeconds: { default: 4 } });
   });
 
   it("returns 403 consistently to an authenticated nonmember across all three endpoints", async () => {
@@ -262,7 +313,7 @@ describe("Project registered media HTTP reads", () => {
     }
   });
 
-  it.each(["unassociated", "deleted", "foreign"] as const)("returns 404 for a %s asset to an authorized Project reader", async (state) => {
+  it.each(["unassociated", "deleted", "foreign"] as const)("returns 404 for a %s asset to an authorized Project user", async (state) => {
     const fixture = await seedFixture();
     const asset = await seedAsset(state === "foreign" ? await seedFixture() : fixture);
     if (state === "deleted") {
@@ -313,6 +364,27 @@ describe("Project registered media HTTP reads", () => {
     }
     expect(seen).toEqual(assetIds);
     expect(new Set(seen).size).toBe(4);
+  });
+
+  it("lists only the Project's images when asked for kind=image (inner#1691 design 4.1)", async () => {
+    const fixture = await seedFixture();
+    const video = await seedAsset(fixture, "video");
+    const image = await seedAsset(fixture, "image");
+    await seedAsset(fixture, "image"); // Same Studio, but not accepted by this Project.
+    const refs = await projectAssetReferenceService.recordProjectAssetReferences({
+      projectId: fixture.projectId, assetIds: [video.id, image.id],
+      displayNames: { [image.id]: "front.png" },
+    });
+    const expected: ProjectRegisteredAsset = {
+      assetId: image.id,
+      projectReferenceId: refs.find((ref) => ref.assetId === image.id)!.id,
+      displayName: "front.png", kind: "image", fileUrl: image.fileUrl,
+      coverUrl: null, width: 1280, height: 720, durationSeconds: null,
+      mimeType: "image/png", sizeBytes: 8192,
+    };
+    const [listPath] = readPaths(fixture.projectId, image.id);
+    expect(await readData<ProjectAssetPage>(`${listPath}?kind=image`, fixture.cookie)).toEqual({ items: [expected], nextCursor: null });
+    expect((await readData<ProjectAssetPage>(`${listPath}?kind=video`, fixture.cookie)).items.map((item) => item.assetId)).toEqual([video.id]);
   });
 
   it("rejects query schema violations and the API limit above 1000 with 422", async () => {

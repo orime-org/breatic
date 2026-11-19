@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A call the provider turns away as over its context window is folded for
@@ -9,7 +9,7 @@
  * The rejections are H1 and H2 verbatim: what OpenRouter returned on
  * 2026-10-25 for a first request and for a second step after a tool ran.
  * Neither carries usage, and the step it ends has no output, so what the
- * reader sees is one reply: the waiting dot, "consolidating memory", and the
+ * user sees is one reply: the waiting dot, "consolidating memory", and the
  * answer -- never the error.
  *
  * Window 1,048,576 (the probe's), output reserve 16,384, keep line 2,000,000,
@@ -45,7 +45,7 @@ vi.mock("@breatic/core", async (importOriginal) => (await import("../helpers/ove
 vi.mock("@breatic/domain", async () => (await import("../helpers/overflow-turn.js")).overflowDomain());
 vi.mock("@server/modules", async (importOriginal) => (await import("../helpers/mock-core.js")).serverModulesMock(importOriginal));
 vi.mock("@server/modules/conversation/conversation-message.repo.js", async () => (await import("../helpers/overflow-turn.js")).overflowRepo());
-vi.mock("@server/modules/conversation/conversation.service.js", () => ({ titleForTurn: async () => null }));
+vi.mock("@server/modules/conversation/conversation.service.js", () => ({ getMessagesForLlm: async () => [], titleForTurn: async () => null }));
 vi.mock("@server/agent/turn-context.js", async () => (await import("../helpers/overflow-turn.js")).overflowTurnContext());
 vi.mock("@server/agent/memory-consolidator.js", async () => (await import("../helpers/overflow-turn.js")).overflowConsolidator());
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
@@ -171,7 +171,7 @@ describe("a first call over the window (A2)", () => {
     await sendMessage();
 
     const resent = world.prompts[1] ?? [];
-    expect(systemOf(resent)).toContain("## Conversation Memory\nMEMORY-THROUGH-1");
+    expect(systemOf(resent)).toContain("## Conversation So Far\n\nMEMORY-THROUGH-1");
     expect(JSON.stringify(resent)).not.toContain("TURN-1-REPLY");
     expect(JSON.stringify(resent)).toContain("TURN-2-REPLY");
   });
@@ -397,7 +397,7 @@ describe("a precheck fold that touched nothing (A5)", () => {
   });
 });
 
-describe("the reader stopping during a fold", () => {
+describe("the user stopping during a fold", () => {
   it.each([
     ["an overflow fold", (): void => {
       history(2, 30_000);
@@ -422,15 +422,17 @@ describe("the reader stopping during a fold", () => {
     expect(stored()).toContainEqual({ type: "interrupted" });
   });
 
-  it("does not say how long it thought live when the reader stops an overflow fold, as on any stop", async () => {
+  it("says how long it thought live, as stored, before the stop mark when the user stops an overflow fold", async () => {
     history(2, 30_000);
     world.foldOutcomes = ["aborted"];
     world.script = [callsFetch("c1", 311, 50, true), { reject: h1() }, answers("never asked for")];
 
     const chunks = await sendMessage();
 
-    expect(count(chunks, "data-thinking-time")).toBe(0);
-    expect(stored().filter((part) => part.type === "thinking-time")).toHaveLength(1);
+    const said = chunks.filter((chunk) => chunk.type === "data-thinking-time") as Array<{ data: { ms: number } }>;
+    expect(said).toHaveLength(1);
+    expect(stored().find((part) => part.type === "thinking-time")).toMatchObject({ ms: said[0]?.data.ms });
+    expect(typesOf(chunks).indexOf("data-thinking-time")).toBeLessThan(typesOf(chunks).indexOf("data-interrupted"));
   });
 });
 
@@ -454,7 +456,7 @@ describe("another tab folding first", () => {
     expect(world.folds).toHaveLength(1);
     expect(contextReads()).toBe(2);
     expect(world.prompts).toHaveLength(2);
-    expect(systemOf(world.prompts[1])).toContain("## Conversation Memory\nMEMORY-THROUGH-1");
+    expect(systemOf(world.prompts[1])).toContain("## Conversation So Far\n\nMEMORY-THROUGH-1");
     expect(count(chunks, "error")).toBe(0);
     expect(stored()).toContainEqual({ type: "text", text: "after the other tab" });
   });
@@ -537,7 +539,9 @@ describe("a provider error the stream carried on past", () => {
 
     expect(world.folds).toHaveLength(0);
     expect(count(chunks, "data-memory-consolidating")).toBe(0);
-    expect(count(chunks, "data-failed")).toBe(0);
+    // An ordinary failure, not one whose request could not be made to fit:
+    // its mark carries no reason (inner#1717 puts the mark on every failure).
+    expect(chunks.filter((c) => c.type === "data-failed" && (c as { data?: { reason?: unknown } }).data?.reason !== undefined)).toEqual([]);
     expectFailed(chunks);
     expectSaidThoughtOnceBeforeError(chunks);
   });

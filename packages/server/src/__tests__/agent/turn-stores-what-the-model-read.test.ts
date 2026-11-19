@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A turn writes down what the model was given for every tool call that
@@ -39,7 +39,7 @@ const renders = vi.hoisted(() => ({
 
 vi.mock("@server/agent/turn-context.js", () => ({
   buildTurnContext: vi.fn(async () => ({
-    memoryContext: { projectMemory: "", conversationMemory: "" },
+    memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: [],
   })),
 }));
@@ -101,23 +101,24 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       }
       return [];
     },
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(() => {
         thisCase.modelCalls += 1;
         const later = thisCase.laterParts as ModelStreamPart[] | undefined;
         if (thisCase.modelCalls > 1 && later !== undefined) return later;
         return thisCase.parts as ModelStreamPart[];
-      }),
+      })),
   };
 });
 
 const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
-  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
+  addUserMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages,
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
+  getMessagesForLlm: async () => [],
   titleForTurn: vi.fn(async () => "already named"),
 }));
 vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong }));

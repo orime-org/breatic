@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
-import { readTaskFailure, uploadableFormatList } from '@breatic/shared';
+import { inputRefusalText, readTaskFailure, uploadableFormatList } from '@breatic/shared';
 
 import { getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
 import { formatBytes } from '@web/lib/format-bytes';
@@ -33,13 +33,13 @@ export function refusalClause(about: {
 }
 
 /**
- * What a failed run is told to the reader.
+ * What a failed run is told to the user.
  *
  * A cause this product knows travels as a code and becomes a sentence here,
- * where the reader's language is. Anything else is what some provider said
+ * where the user's language is. Anything else is what some provider said
  * about its own failure, and it travels as itself.
  *
- * One home, because the same failure reaches the reader two ways: on the
+ * One home, because the same failure reaches the user two ways: on the
  * node's task list and in its history. A reading is the first kind of run to
  * store codes rather than a provider's prose, so a surface printing the
  * stored text raw shows `understand_over_cap` in every language.
@@ -48,7 +48,7 @@ export function refusalClause(about: {
  * refuse first — the ceiling, and the file's own name and format. A node
  * restored from history carries neither type nor size, so those gates stay
  * silent about it and the run is what refuses; this row is then the only
- * place the reader is told, and it says as much as the toast would have.
+ * place the user is told, and it says as much as the toast would have.
  *
  * A refusal names the file it happened to and the format it was in rather
  * than the formats a gate takes (user 2026-09-20). Both travel with the
@@ -69,6 +69,8 @@ export function failureSentence(
   const held = readTaskFailure(stored ?? null);
   const reason = held.reason;
   if (reason === null) return stored ?? '';
+  // #1521: the limit a refused run broke, said the way the panel and the server say it.
+  if (reason === 'input_refused' && held.limit !== undefined) return inputRefusalText({ reason: '', limit: held.limit }, held.model ?? '');
   const ceiling = getCachedUnderstandMaxBytes();
   // The formats are named for the sentences that carry them; the rest hold no
   // such placeholder and ICU leaves an unused parameter alone. A node holding
@@ -87,5 +89,8 @@ export function failureSentence(
     // Which reading failed, off the record itself, so the row and history agree
     // (inner#856). Always a value: ICU throws on a select with none.
     reading: held.reading ?? 'other',
+    // The model a refusal or a missing setup is about, and the variables it needs.
+    model: held.model ?? '',
+    envVars: (held.envVars ?? []).join(', '),
   });
 }

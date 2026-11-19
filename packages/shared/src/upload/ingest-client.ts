@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Talking to the ingest Worker (#173 design §4.2, #181 lanes ② and ③).
@@ -30,6 +30,7 @@ import { MAX_TIMER_MS } from "@shared/http/constants.js";
 import { untilDeadline, type UntilDeadline } from "@shared/http/deadline.js";
 import { httpRequest } from "@shared/http/request.js";
 import type { UprightCopy } from "@shared/upload/upright.js";
+import { readPagesAnswerSchema, type ReadPagesAnswer, type ReadPagesRequest } from "@shared/agent/read-pages.js";
 import {
   INGEST_FAILURE_HEADER,
   readIngestFailureCode,
@@ -594,8 +595,8 @@ export async function readStoredMediaAtIngest(
  * @param run - The cover key, and the task deadline the Worker holds the
  *   transfer and the container to, and the wait ends at.
  * @param signal - Raised when the caller no longer wants the transfer, which
- *   a caller with a reader waiting on it passes (the agent's save stops when
- *   the reader stops the turn).
+ *   a caller with a user waiting on it passes (the agent's save stops when
+ *   the user stops the turn).
  * @returns What the Worker measured over the object it pulled.
  * @throws {UploadHttpError} When the Worker could not store the source.
  * @throws {DeadlinePassed} When the deadline has already come.
@@ -610,7 +611,7 @@ export async function fetchUrlToIngest(
   signal?: AbortSignal,
 ): Promise<IngestMeasurements> {
   const deadline = untilDeadline(run.deadlineAt);
-  // A caller with a reader waiting also stops the transfer when the reader does.
+  // A caller with a user waiting also stops the transfer when the user does.
   const bound =
     signal === undefined ? deadline : { ...deadline, signal: AbortSignal.any([deadline.signal, signal]) };
   const answered = await askWorker<unknown>(
@@ -636,6 +637,39 @@ export async function fetchUrlToIngest(
     { replaySafe: false, bound },
   );
   return readMeasurements(answered);
+}
+
+/**
+ * Have the Worker's page reader read a set of pages (inner#1664).
+ * @param baseUrl - The Worker's address.
+ * @param secret - The secret the Worker also holds.
+ * @param request - The pages and the limits to read them within.
+ * @param signal - Raised when the caller no longer wants the pages.
+ * @returns What each page produced, and what the container used.
+ * @throws {UploadHttpError} When the Worker refuses.
+ * @throws {DeadlinePassed} When the deadline has already come.
+ * @throws {z.ZodError} When the answer is not the reader's answer.
+ */
+export async function readPagesAtIngest(
+  baseUrl: string,
+  secret: string,
+  request: ReadPagesRequest,
+  signal?: AbortSignal,
+): Promise<ReadPagesAnswer> {
+  const deadline = untilDeadline(request.deadlineAt);
+  const bound =
+    signal === undefined ? deadline : { ...deadline, signal: AbortSignal.any([deadline.signal, signal]) };
+  const answered = await askWorker<unknown>(
+    `${baseUrl}/read-pages`,
+    {
+      method: "POST",
+      headers: { "x-ingest-secret": secret, "content-type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    // Each delivery starts a container that bills for its run.
+    { replaySafe: false, bound },
+  );
+  return readPagesAnswerSchema.parse(answered);
 }
 
 /**

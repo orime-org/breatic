@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** A failure reason reduced to its categories: one per item (person or window) and the step outside every item. */
 export interface ModelRunFailure { items: readonly { category: string }[]; shared: { category: string } | null }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Video focus crop, the waiting card (frames-split design §5.5 "受理", "结果反馈", "界面状态", §7.18; test plan §68.1).

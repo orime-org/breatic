@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { CircleAlert, Info, TriangleAlert } from 'lucide-react';
@@ -144,6 +144,7 @@ export function TurnEnding({ message }: TurnEndingProps): React.JSX.Element | nu
     message.sources !== undefined ||
     message.proposals !== undefined ||
     message.documentProposals !== undefined ||
+    message.sceneProposals !== undefined ||
     message.questionnaires !== undefined ||
     message.spaceRequests !== undefined;
   if (message.content === '' && !producedSomething && message.role === 'assistant') {

@@ -1,0 +1,17 @@
+{
+  "model": "bria-remove-background",
+  "upstream": "fal",
+  "model_id": "fal-ai/bria/background/remove",
+  "runs": [
+    {
+      "params": {
+        "image": "https://example.com/image.png"
+      },
+      "prompt": "",
+      "body": {
+        "image_url": "https://example.com/image.png"
+      }
+    }
+  ],
+  "steps": []
+}

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** The canvas hands the panels a getter; these trees answer 'this client'. */
 const LAST_WRITE_LOCAL = (): boolean => true;
@@ -109,7 +109,7 @@ type ContainerProps = Parameters<typeof GeneratePanelContainer>[0];
  * case that picks a template passes a spy, every other case this stand-in.
  * @returns Nothing.
  */
-const NO_PLACE = (): undefined => undefined;
+const NO_PLACE: PlaceTemplate = () => ({ nodeIds: [], rects: [] });
 
 /**
  * The container under a QueryClient, inside the Activity a Space body sits in.
@@ -304,7 +304,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
             nodes={[{ id: 'target', type: 'image', data: { handling: false, mode } }]}
             edges={[]}
             getLastWriteWasLocal={author}
-            placeTemplate={() => undefined}
+            placeTemplate={() => ({ nodeIds: [], rects: [] })}
           />
         </ReactFlow>
       </CanvasContext.Provider>
@@ -388,7 +388,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
 
   // A Space switched away from is hidden, and showing it again runs every
   // effect once more (inner#1235). The mode did not change across that, so a
-  // focus pick the reader left running in t2i is still theirs when they come
+  // focus pick the user left running in t2i is still theirs when they come
   // back, the way a reference or style pick is.
   it('keeps a focus pick running in t2i across a hide and a show', async () => {
     const listSpy = vi
@@ -460,7 +460,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
   });
 
   // A style pick outlives its slot when the model changes to one without a
-  // style slot (inner#826): the canvas would keep writing pictures the reader
+  // style slot (inner#826): the canvas would keep writing pictures the user
   // cannot see, and a later switch back would send and bill them.
   it('ends a running style pick when the model changes to one without a style slot', async () => {
     const styled: ModelEntry = {
@@ -491,7 +491,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
               nodes={[{ id: 'target', type: 'image', data: { handling: false, mode: 't2i', model } }]}
               edges={[]}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
-              placeTemplate={() => undefined}
+              placeTemplate={() => ({ nodeIds: [], rects: [] })}
             />
           </ReactFlow>
         </CanvasContext.Provider>
@@ -548,7 +548,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
               ]}
               edges={[]}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
-              placeTemplate={() => undefined}
+              placeTemplate={() => ({ nodeIds: [], rects: [] })}
             />
           </ReactFlow>
         </CanvasContext.Provider>
@@ -638,7 +638,8 @@ const T2I_MODEL: ModelEntry = {
   params: {
     aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' },
   },
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
 };
 
 /** An image-to-image model, so a switch to i2i has something to resolve to. */
@@ -1663,7 +1664,7 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
     canvasSessions.of('s').setState({ panelHostId: null, panelKind: null, pickSession: null });
   });
 
-  it('hands placing the template mode, model, params and prompt, @ing the wired-in image, and reminds the reader', async () => {
+  it('hands placing the template mode, model, params and prompt, @ing the wired-in image, and reminds the user', async () => {
     const listSpy = vi
       .spyOn(modelsApi, 'list')
       .mockResolvedValue(imageCatalog([T2I_MODEL, TEMPLATE_MODEL]));
@@ -1683,7 +1684,7 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
       },
     } as Parameters<typeof addNode>[2]);
     addEdge('p', 's', { id: 'e1', source: 'src', target: 'target' });
-    const placeTemplate = vi.fn();
+    const placeTemplate = vi.fn((..._args: unknown[]) => ({ nodeIds: [], rects: [] }));
     mountContainer(
       {
         nodes: [
@@ -1717,7 +1718,7 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
     });
     const words = (proposal.nodes[0]?.prompt ?? []).map((seg) => seg.text ?? '').join('');
     expect(words).toContain('storyboard grid of exactly 5 rows');
-    // The picture wired in is @'d for the reader (inner#1345 A3), not left to them.
+    // The picture wired in is @'d for the user (inner#1345 A3), not left to them.
     const refs = (proposal.nodes[0]?.prompt ?? []).flatMap((seg) => (seg.ref === undefined ? [] : [seg.ref]));
     expect(refs).toHaveLength(1);
     expect(existing.get(refs[0] ?? -1)).toMatchObject({
@@ -1727,8 +1728,53 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
     // Nothing new, so nothing new is wired.
     expect(proposal.nodes).toHaveLength(existing.size);
     expect(proposal.edges).toEqual([]);
-    // `{✏️ the story}` is still the reader's to write.
+    // `{✏️ the story}` is still the user's to write.
     expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editProposalMarks, expect.anything());
     listSpy.mockRestore();
+  });
+});
+
+describe('GeneratePanelContainer — a run no upstream here takes (#1521)', () => {
+  beforeEach(() => {
+    _resetForTests();
+    canvasSessions.of('s').setState({ panelHostId: null, panelKind: null, pickSession: null });
+    vi.mocked(toast.warning).mockClear();
+  });
+
+  it('says the limit an upstream here holds the prompt to on press, and sends nothing', async () => {
+    const capped: ModelEntry = {
+      ...T2I_MODEL,
+      name: 'capped-image',
+      display_name: 'Capped Image',
+      availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: true, envVar: 'WAVESPEED_API_KEY' }] },
+      pricing_rules: {
+        model: 'capped-image',
+        upstreams: [{
+          upstream: 'wavespeed',
+          prompt_field: 'prompt',
+          fields: {},
+          pricing: { kind: 'formula', base_price: 30000, formula: '{"total_price": base_price}', discount_rate: 100 },
+          steps: [],
+          rejects: [{ when: '$length(prompt) > 5', reason: 'WaveSpeed prompt maxLength 5', limit: { field: 'prompt', measure: 'characters', max: 5 } }],
+        }],
+      },
+    };
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue(imageCatalog([capped]));
+    const createSpy = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({ id: 'task-1' } as Awaited<ReturnType<typeof canvasApi.createTask>>);
+    seedImageNode({ model: 'capped-image' });
+    seedPromptText('a long prompt');
+    mountContainer();
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+    });
+    await screen.findByTestId('generate-prompt-editor');
+    // The refusal is worked out off the render path, once the rules have loaded.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    fireEvent.click(await screen.findByTestId('generate-execute'));
+
+    expect(toast.warning).toHaveBeenCalledWith('Capped Image takes at most 5 characters in the text.', expect.anything());
+    expect(createSpy).not.toHaveBeenCalled();
+    listSpy.mockRestore();
+    createSpy.mockRestore();
   });
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Canvas capabilities tool — which modes each generation node can be set to.
@@ -20,6 +20,11 @@ export interface CanvasCapabilityAnswer {
   nodes: NodeCapability[];
 }
 
+/** Where a result's look or sound comes from: the prompt, whatever style it names. */
+const LOOK_NOTE =
+  "Every mode makes the look or sound its prompt names: a picture or video as a 3D render, anime, live action or " +
+  "watercolour, audio in the voice, music or sound described.";
+
 /**
  * What a text node is for, and what pointing a prompt at one does.
  *
@@ -31,10 +36,10 @@ export interface CanvasCapabilityAnswer {
  */
 const TEXT_NODE_NOTE = [
   "text node: holds words and generates nothing, so no mode applies to it.",
-  "- A mention names the node rather than copying it: what goes out is whatever that node holds at the moment the reader presses Generate, so editing the node changes what every mention of it sends.",
+  "- A mention names the node rather than copying it: what goes out is whatever that node holds at the moment the user presses Generate, so editing the node changes what every mention of it sends.",
   "- Mentioning a text node puts that node's words into the prompt, read as if they had been typed there. Mentioning an image, video or audio node puts it in as reference material instead, for a model whose reference pool takes that kind.",
   "- One text node can be mentioned by several nodes downstream, so wording they share is written once and mentioned from each of them.",
-  "- Three things one carries: a finished piece of writing the reader keeps, a description of what a group of nodes is for or how a script is set up, and a shared prompt fragment the nodes downstream mention.",
+  "- Three things one carries: a finished piece of writing the user keeps, a description of what a group of nodes is for or how a script is set up, and a shared prompt fragment the nodes downstream mention.",
 ].join("\n");
 
 /**
@@ -57,7 +62,7 @@ export function renderCapabilitiesForModel(answer: CanvasCapabilityAnswer): stri
     const lines = node.modes.map((mode) => `- ${mode.mode} (${mode.label}): ${mode.what}`);
     return [`${node.nodeType} node:`, ...lines].join("\n");
   });
-  return [...blocks, TEXT_NODE_NOTE].join("\n\n");
+  return [...blocks, LOOK_NOTE, TEXT_NODE_NOTE].join("\n\n");
 }
 
 export const canvasCapabilities: Tool<

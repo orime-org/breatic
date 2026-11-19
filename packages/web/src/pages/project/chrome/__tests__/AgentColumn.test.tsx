@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The agent column: its header, its chat, and the scrim over both.
@@ -10,29 +10,49 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type * as ChatApiModule from '@web/data/api/chat';
 
-vi.mock('@web/data/api/chat', () => ({
-  chatApi: {
-    openChat: vi.fn(),
-    streamMessage: vi.fn(() => new Promise<void>(() => {})),
-    messagesBefore: vi.fn(),
-    readConversation: vi.fn(),
-    createConversation: vi.fn(),
-    renameConversation: vi.fn(),
-    deleteConversation: vi.fn(),
-  },
-}));
+vi.mock('@web/data/api/chat', async (importOriginal) => {
+  const actual = await importOriginal<typeof ChatApiModule>();
+  return {
+    ...actual,
+    chatApi: {
+      openChat: vi.fn(),
+      messagesBefore: vi.fn(),
+      // Every conversation here opens empty, and reads back the same.
+      readConversation: vi.fn(async (id: string) => ({ conversation: { id }, messages: [], hasMore: false })),
+      createConversation: vi.fn(),
+      renameConversation: vi.fn(),
+      deleteConversation: vi.fn(),
+      // The open conversation list asks which conversations are running (#1394).
+      running: vi.fn(async () => []),
+      streamConfig: vi.fn(async () => ({ runningPollIntervalMs: 5000, syncIntervalMs: 3_000 })),
+      // The conversation on screen asks where it stands (inner#1717); nothing holds it here.
+      sync: vi.fn(async () => ({ pending: [], running: false, awaiting: false, next_sync_ms: 3000 })),
+      sendMessage: vi.fn(),
+      stop: vi.fn(),
+      removeQueued: vi.fn(),
+      streamPath: actual.chatApi.streamPath,
+    },
+  };
+});
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { chatApi } from '@web/data/api/chat';
 import { AgentColumn } from '@web/pages/project/chrome/AgentColumn';
 import { _resetForTests, useConversationRuntime } from '@web/stores/conversation-runtime';
+import { resetChatLiveForTests } from '@web/stores/chat-live';
 import { unexpectedTextIn } from '@web/test-utils/visible-text';
 
 const PROJECT = 'p-1';
+
+// The conversation on screen is synced on a timer; none carries into the next case.
+afterEach(() => {
+  resetChatLiveForTests();
+});
 
 /**
  * Render the column under a tooltip provider, the way the app does.
@@ -85,7 +105,7 @@ describe('when the conversations cannot be read', () => {
     expect(within(column).getByTestId('agent-col-header')).toBeInTheDocument();
   });
 
-  it('does not greet the reader as if this were a new conversation underneath', async () => {
+  it('does not greet the user as if this were a new conversation underneath', async () => {
     // 立项要修的就是这个:打不开的时候,面板长得跟「这是条新会话,说点什么吧」
     // 一模一样。蒙版是 86% 半透的,底下那句问候语会隔着一层露出来,读作「这里
     // 什么都没有」,而实情是「没读到」。
@@ -119,7 +139,7 @@ describe('when the conversations cannot be read', () => {
     expect(header.closest('[inert]')).not.toBeNull();
   });
 
-  it('gives the reader one thing to do about it', async () => {
+  it('gives the user one thing to do about it', async () => {
     vi.mocked(chatApi.openChat).mockRejectedValue(new Error('offline'));
     renderColumn();
     await screen.findByTestId('chat-unreachable');
@@ -130,7 +150,7 @@ describe('when the conversations cannot be read', () => {
     expect(chatApi.openChat).toHaveBeenCalled();
   });
 
-  it('says what went wrong in the language the reader is reading', async () => {
+  it('says what went wrong in the language the user is reading', async () => {
     vi.mocked(chatApi.openChat).mockRejectedValue(new Error('offline'));
     renderColumn();
 
@@ -243,7 +263,7 @@ describe('a history sheet left open when the list goes unreadable', () => {
 
   it('puts the column out of reach behind the scrim, and Escape brings it back', async () => {
     // E2:抽屉是模态的,遮罩挡住后面、后面点不到 —— 包括打开它的那个按钮。
-    // 所以「再按一次关掉」这条路在模态下不存在,读者的出路是遮罩、Escape 和
+    // 所以「再按一次关掉」这条路在模态下不存在,用户的出路是遮罩、Escape 和
     // 抽屉自己的关闭键。这条钉的是两半:按钮真的够不着,以及够不着之后仍有出路。
     renderColumn();
 
@@ -260,7 +280,7 @@ describe('a history sheet left open when the list goes unreadable', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('conversation-history-sheet')).toBeNull(),
     );
-    // 模态把焦点关在抽屉里，所以关掉之后必须交还 —— 否则键盘读者按完 Escape
+    // 模态把焦点关在抽屉里，所以关掉之后必须交还 —— 否则键盘用户按完 Escape
     // 要从头 Tab 回这个按钮。Radix 只把焦点交给它自己的 Trigger，而这个抽屉
     // 是从状态开的、没有 Trigger。
     expect(document.activeElement).toBe(screen.getByTestId('open-conversation-history'));

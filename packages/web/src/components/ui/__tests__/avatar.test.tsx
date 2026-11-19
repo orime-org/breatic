@@ -49,6 +49,18 @@ describe('Avatar', () => {
     expect(screen.getByText('AL')).toBeInTheDocument();
   });
 
+  it('draws a 1px inset edge over a picture, so a light picture keeps its outline', () => {
+    render(
+      <Avatar data-testid='avatar'>
+        <AvatarFallback>AL</AvatarFallback>
+      </Avatar>,
+    );
+    const classes = screen.getByTestId('avatar').className.split(' ');
+    for (const edge of ['has-[img]:after:absolute', 'has-[img]:after:inset-0', 'has-[img]:after:rounded-[inherit]', 'has-[img]:after:ring-1', 'has-[img]:after:ring-inset', 'has-[img]:after:ring-border']) {
+      expect(classes, edge).toContain(edge);
+    }
+  });
+
   it('merges custom size className (h-14 overrides h-10)', () => {
     render(
       <Avatar data-testid='avatar' className='h-14 w-14'>

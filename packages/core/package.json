@@ -22,13 +22,9 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "catalog:",
-    "@ai-sdk/google": "catalog:",
-    "@ai-sdk/openai": "catalog:",
     "@amplitude/analytics-node": "catalog:",
     "@aws-sdk/client-s3": "^3.1107.0",
     "@breatic/shared": "workspace:*",
-    "ai": "catalog:",
     "bcryptjs": "catalog:",
     "bullmq": "catalog:",
     "drizzle-orm": "catalog:",
@@ -48,6 +44,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@types/nodemailer": "catalog:",
+    "ai": "catalog:",
     "dotenv": "catalog:",
     "drizzle-kit": "^0.31.10",
     "fast-check": "catalog:",

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The suites that open real ports and sit through real backoffs: provider's
@@ -15,6 +15,7 @@ export default defineConfig({
   ...base,
   test: {
     ...base.test,
+    name: "integration",
     include: ["src/**/*.integration.test.ts"],
     exclude: [],
     testTimeout: 120_000,

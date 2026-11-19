@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The multi-shot mode, read off the real config: which models run it, and how
@@ -98,8 +98,6 @@ describe("the models the multi-shot mode offers", () => {
 
   it.each(KLING)("%s offers auto multi-shot as a switch only in %s", (name, mode) => {
     expect(videoEntry(name).params?.auto_shots).toMatchObject({
-      upstream: "shot_type",
-      upstream_values: { true: "intelligence" },
       values: [true, false],
       default: false,
       absent_value: false,
@@ -144,7 +142,7 @@ describe("the names the multi-shot mode shows", () => {
 
 describe("which model each mode Seedance 2.5 image-to-video joins opens with", () => {
   // The panel opens a mode on the first model the catalog lists for it, so a
-  // new entry placed ahead of these would change what every reader sees.
+  // new entry placed ahead of these would change what every user sees.
   it.each([
     ["i2v", "gemini-omni-1.1-flash-image-to-video"],
     ["first_last", "gemini-omni-1.1-flash-image-to-video"],
