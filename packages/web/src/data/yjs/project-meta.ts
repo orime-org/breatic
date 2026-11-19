@@ -5,7 +5,7 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 import * as React from 'react';
 import * as Y from 'yjs';
 
-import { FOLLOWING_TABLE, followingEntrySchema, type FollowingEntry, type SpaceType } from '@breatic/shared';
+import { FOLLOWING_TABLE, agentPresenceRecordSchema, followingEntrySchema, parseAgentPresenceKey, type FollowingEntry, type SpaceType } from '@breatic/shared';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket, type ConnectionStatus } from '@web/data/yjs/use-socket';
 
@@ -92,6 +92,23 @@ export interface ProjectUser {
   lastSeenAt?: number;
 }
 
+/**
+ * One external agent's presence (#1488 design 19.2), read from its record
+ * beside its owner's in `meta.users`. Only collab writes it.
+ */
+export interface ProjectAgent {
+  ownerId: string;
+  connectionId: string;
+  online: boolean;
+  /** No call for a while: no highlight, still listed. */
+  idle: boolean;
+  lastSeenAt: number;
+  /** The Space it last named; null before any. */
+  spaceId: string | null;
+  /** The nodes or blocks it last named; empty before any. */
+  focus: readonly string[];
+}
+
 export interface ProjectMetaState {
   spaces: ReadonlyArray<ProjectSpace>;
   /**
@@ -101,6 +118,8 @@ export interface ProjectMetaState {
    * here — resolve them from the project roster by id.
    */
   users: ReadonlyMap<string, ProjectUser>;
+  /** External agents that have acted in this project, online or not. */
+  agents: ReadonlyArray<ProjectAgent>;
   /**
    * Whom each member follows (#920): user id → the user id they follow, from
    * the table collab keeps per connection. A tab's own awareness `following`
@@ -214,7 +233,7 @@ function readUsers(doc: Y.Doc): ReadonlyMap<string, ProjectUser> {
   const usersMap = doc.getMap<Y.Map<unknown>>(USERS_KEY);
   const out = new Map<string, ProjectUser>();
   usersMap.forEach((m, userId) => {
-    if (!(m instanceof Y.Map)) return;
+    if (!(m instanceof Y.Map) || parseAgentPresenceKey(userId) !== null) return;
     const lastSeenRaw = m.get('lastSeenAt');
     out.set(userId, {
       id: String(m.get('id') ?? userId),
@@ -222,6 +241,24 @@ function readUsers(doc: Y.Doc): ReadonlyMap<string, ProjectUser> {
       lastSeenAt:
         typeof lastSeenRaw === 'number' ? lastSeenRaw : undefined,
     });
+  });
+  return out;
+}
+
+/**
+ * Read the external agents' records out of `meta.users`.
+ * @param doc - The project meta Y.Doc to read from.
+ * @returns Every agent record that has the shape collab writes.
+ */
+function readAgents(doc: Y.Doc): ReadonlyArray<ProjectAgent> {
+  const out: ProjectAgent[] = [];
+  doc.getMap(USERS_KEY).forEach((value, key) => {
+    const ids = parseAgentPresenceKey(key);
+    if (ids === null || !(value instanceof Y.Map)) return;
+    const parsed = agentPresenceRecordSchema.safeParse(value.toJSON());
+    if (!parsed.success) return;
+    const { online, idle, lastSeenAt, agent } = parsed.data;
+    out.push({ ownerId: ids.userId, connectionId: ids.connectionId, online, idle: idle === true, lastSeenAt, spaceId: agent.spaceId, focus: agent.focus });
   });
   return out;
 }
@@ -246,7 +283,7 @@ function readFollowingTable(doc: Y.Doc): ReadonlyMap<string, string> {
 }
 
 /** What `useProjectMeta` reads out of the meta doc itself. */
-type MetaProjection = Pick<ProjectMetaState, 'spaces' | 'users' | 'following'>;
+type MetaProjection = Pick<ProjectMetaState, 'spaces' | 'users' | 'agents' | 'following'>;
 
 /**
  * Project the meta doc into the React-facing state shape.
@@ -254,7 +291,7 @@ type MetaProjection = Pick<ProjectMetaState, 'spaces' | 'users' | 'following'>;
  * @returns The spaces, the users map and whom each member follows.
  */
 function readMetaState(doc: Y.Doc): MetaProjection {
-  return { spaces: readSpaces(doc), users: readUsers(doc), following: readFollowingTable(doc) };
+  return { spaces: readSpaces(doc), users: readUsers(doc), agents: readAgents(doc), following: readFollowingTable(doc) };
 }
 
 /**
