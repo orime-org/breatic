@@ -42,7 +42,8 @@ export type CreationDraftEvent =
   | { type: 'accepted'; actionId: string }
   | { type: 'refused'; error: string };
 
-const CLOSED: CreationDraftState = { status: 'closed' };
+/** No dialog: the draft's start and where it returns once closed or accepted. */
+export const CREATION_DRAFT_CLOSED: CreationDraftState = { status: 'closed' };
 
 /**
  * Apply one event to the creation draft.
@@ -58,12 +59,12 @@ export function transitionCreationDraft(state: CreationDraftState, event: Creati
     case 'drafting':
       if (event.type === 'edit') return { ...state, input: { ...state.input, ...event.patch } };
       if (event.type === 'execute') return { status: 'submitting', open: true, input: state.input, actionId: event.actionId };
-      if (event.type === 'close') return CLOSED;
+      if (event.type === 'close') return CREATION_DRAFT_CLOSED;
       return state;
     case 'submitting':
       if (event.type === 'open') return state.open ? state : { ...state, open: true };
       if (event.type === 'close') return state.open ? { ...state, open: false } : state;
-      if (event.type === 'accepted') return event.actionId === state.actionId ? CLOSED : state;
+      if (event.type === 'accepted') return event.actionId === state.actionId ? CREATION_DRAFT_CLOSED : state;
       if (event.type === 'refused') return { status: 'drafting', open: true, input: state.input, error: event.error };
       return state;
   }

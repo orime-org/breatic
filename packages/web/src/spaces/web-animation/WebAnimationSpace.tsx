@@ -39,7 +39,7 @@ import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 import { useTimelineLimits } from '@web/spaces/timeline/use-timeline-limits';
 import { ANNOTATION_DRAFT_IDLE, transitionAnnotationDraft, type AnnotationDraftEvent, type FramePoint } from '@web/spaces/web-animation/annotation-draft';
 import { webAnimationAnnotationStore } from '@web/spaces/web-animation/annotation-thread-store';
-import { transitionCreationDraft, type CreationDraftInput, type CreationDraftState } from '@web/spaces/web-animation/creation-draft';
+import { CREATION_DRAFT_CLOSED, transitionCreationDraft, type CreationDraftInput } from '@web/spaces/web-animation/creation-draft';
 import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, exportIntent, executionStepKeys, isWebAnimationAspect } from '@web/spaces/web-animation/execution-text';
 import { MOTION_PANELS_CLOSED, transitionMotionPanels, type MotionTab } from '@web/spaces/web-animation/motion-panels';
 import { ListLoadError, listShows } from '@web/spaces/web-animation/list-states';
@@ -62,7 +62,6 @@ import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-fli
 
 /** How close to the playhead an annotation's point shows on the frame, in seconds. */
 const PIN_WINDOW_SECONDS = 0.15;
-const CLOSED_DRAFT: CreationDraftState = { status: 'closed' };
 /** An annotation's pin on the frame, saved or being written: a 20px drop whose tip, its bottom-left corner, is the point. */
 const PIN_CLASS = 'absolute size-5 -translate-y-full rounded-full rounded-bl-none border border-background';
 
@@ -417,7 +416,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   }, [readOnly, projectId, refresh, t]);
 
   // New and Modify (design §5.1).
-  const [draft, dispatchDraft] = React.useReducer(transitionCreationDraft, CLOSED_DRAFT);
+  const [draft, dispatchDraft] = React.useReducer(transitionCreationDraft, CREATION_DRAFT_CLOSED);
   const [retryDialog, setRetryDialog] = React.useState(false);
   const openDialog = React.useCallback((input: Partial<CreationDraftInput>, retry = false): void => {
     if (readOnly || limits === undefined) return;
