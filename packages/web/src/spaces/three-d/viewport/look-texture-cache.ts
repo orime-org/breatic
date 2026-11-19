@@ -54,30 +54,65 @@ function close(base: Texture): void {
 /** The decode options three's ImageBitmapLoader uses for glTF textures. */
 const DECODE: ImageBitmapOptions = { premultiplyAlpha: 'none', imageOrientation: 'from-image' };
 
-/** Enough of a file to reach a picture's size: a JPEG may put megabytes of metadata before it. */
+/** The bytes held while a picture's size is read; a JPEG's metadata before its frame header is dropped as it passes. */
 const PICTURE_HEADER_BYTES = 4 * 1024 * 1024;
 
 /**
- * A picture's size and type read from the start of its bytes, stopping as soon as they are known or once the header
- * budget is read; the rest of the stream is cancelled.
+ * Whether a JPEG marker opens its frame header or its scan, where the size is or can no longer be reached.
+ * @param marker - The byte after 0xFF.
+ * @returns True for SOF0-SOF15 (not DHT, JPG or DAC) and SOS.
+ */
+const endsJpegHeader = (marker: number): boolean => marker === 0xda || (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc);
+
+/**
+ * Drop the JPEG segments read in full before its frame header, keeping its start marker and the rest in place. Each
+ * segment states its own length (ITU T.81 B.1.1.4), so the bytes after them read as the same JPEG.
+ * @param buffer - The bytes held, starting with the JPEG's start marker.
+ * @param length - How many are held.
+ * @returns How many are held after.
+ */
+function dropReadJpegSegments(buffer: Uint8Array, length: number): number {
+  let offset = 2;
+  while (offset + 4 <= length && buffer[offset] === 0xff && !endsJpegHeader(buffer[offset + 1]!) && buffer[offset + 1] !== 0xff) {
+    const end = offset + 2 + ((buffer[offset + 2]! << 8) | buffer[offset + 3]!);
+    if (end > length) break;
+    offset = end;
+  }
+  buffer.copyWithin(2, offset, length);
+  return length - (offset - 2);
+}
+
+/**
+ * A picture's size and type read from the start of its bytes, stopping as soon as they are known; the rest of the
+ * stream is cancelled. At most the header budget is held: a JPEG's segments before its frame header are dropped once
+ * read, and any other stream still without a size when the budget is full is not a picture.
  * @param stream - The file's or the response's bytes.
- * @returns The size and type, or null when the start is not a picture header.
+ * @returns The size and type, or null when the bytes are not a picture header.
  */
 export async function readPictureSize(stream: ReadableStream<Uint8Array>): Promise<LookPictureSize | null> {
   const buffer = new Uint8Array(PICTURE_HEADER_BYTES);
   let length = 0;
   const reader = stream.getReader();
   try {
-    while (length < buffer.length) {
+    for (;;) {
       const { done, value } = await reader.read();
-      if (done) break;
-      const taken = value.subarray(0, buffer.length - length);
-      buffer.set(taken, length);
-      length += taken.length;
-      const size = imageDimensionsFromData(buffer.subarray(0, length));
-      if (size) return size;
+      if (done) return null;
+      let chunk = value;
+      while (chunk.length > 0) {
+        if (length === buffer.length) {
+          const jpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+          const kept = jpeg ? dropReadJpegSegments(buffer, length) : length;
+          if (kept === length) return null;
+          length = kept;
+        }
+        const taken = chunk.subarray(0, buffer.length - length);
+        buffer.set(taken, length);
+        length += taken.length;
+        chunk = chunk.subarray(taken.length);
+        const size = imageDimensionsFromData(buffer.subarray(0, length));
+        if (size) return size;
+      }
     }
-    return null;
   } finally {
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();

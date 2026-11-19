@@ -194,6 +194,17 @@ describe('readPictureSize', () => {
     expect(await read()(streamOf(chunks).stream)).toMatchObject({ width: 800, height: 600, type: 'jpeg' });
   });
 
+  it('reads a JPEG whose metadata before its size runs past the header budget', async () => {
+    const segment = (length: number): number[] => [0xff, 0xe1, (length + 2) >> 8, (length + 2) & 0xff, ...new Array<number>(length).fill(0)];
+    const bytes = [0xff, 0xd8];
+    // About 6 MiB of metadata segments, as an editor's history can leave in front of the frame header.
+    for (let i = 0; i < 105; i++) bytes.push(...segment(60_000));
+    bytes.push(0xff, 0xc0, 0x00, 0x11, 0x08, 0x02, 0x58, 0x03, 0x20, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01);
+    const all = new Uint8Array(bytes);
+    const chunks = Array.from({ length: Math.ceil(all.length / 100_000) }, (_, i) => all.subarray(i * 100_000, (i + 1) * 100_000));
+    expect(await read()(streamOf(chunks).stream)).toMatchObject({ width: 800, height: 600, type: 'jpeg' });
+  });
+
   it('stops reading a stream that is not a picture after a bounded amount', async () => {
     const endless = streamOf(() => new Uint8Array(65_536).fill(7));
     expect(await read()(endless.stream)).toBeNull();
