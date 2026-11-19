@@ -273,6 +273,18 @@ function spanWork(version: VideoPresentationVersion, count: number, encodeKey: V
 }
 
 /**
+ * One grid frame's work on the tool source, without the pre-roll: `planVideoEncodeChunks` adds each chunk's own pre-roll
+ * (§5.4 chunking row), so a per-frame cost that already spread a span's pre-roll would count it twice.
+ * @param version - The selected version.
+ * @param rates - The frozen encoder rates.
+ * @returns The seconds per frame.
+ * @throws {RangeError} When a size or rate is out of range.
+ */
+function frameWorkSeconds(version: VideoPresentationVersion, rates: VideoEncoderRates): number {
+  return estimateVideoJobSeconds({ ...spanWork(version, 1), prerollFrames: 0 }, rates) - rates.startSeconds;
+}
+
+/**
  * The grid frames from 0 a source range in grid seconds covers: [0, ceil(end × fps)), at most the grid.
  * @param version - The selected version.
  * @param end - The range's end in grid seconds.
@@ -304,7 +316,7 @@ function runLayout(outputs: MiniToolPlannedRequest["outputs"][number][], version
   const { batches, oversized } = batchVideoRunOutputs(works, { maxOutputsPerJob: perJob, shareSeconds: share, fixedSeconds: rates.startSeconds });
   const encodes = oversized.map((index) => {
     const { first, count } = spans[index]!;
-    const chunks = planVideoEncodeChunks({ frameCount: count, frameSeconds: works[index]! / Math.max(count, 1), prerollFrames: prerollOf(version), targetSeconds: share - rates.startSeconds })
+    const chunks = planVideoEncodeChunks({ frameCount: count, frameSeconds: frameWorkSeconds(version, rates), prerollFrames: prerollOf(version), targetSeconds: share - rates.startSeconds })
       .map((chunk) => ({ start: chunk.start + first, end: chunk.end + first }));
     return { outputIndex: outputs[index]!.outputIndex, chunks };
   });
@@ -325,7 +337,7 @@ function preparationLayout(version: VideoPresentationVersion, config: MiniToolsC
   const work = estimateVideoJobSeconds(spanWork(version, frameCount), rates) - rates.startSeconds;
   const share = shareSeconds(config);
   if (rates.startSeconds + work <= share) return { chunks: [{ start: 0, end: frameCount }], seconds: rates.startSeconds + work };
-  const chunks = planVideoEncodeChunks({ frameCount, frameSeconds: work / frameCount, prerollFrames: prerollOf(version), targetSeconds: share - rates.startSeconds });
+  const chunks = planVideoEncodeChunks({ frameCount, frameSeconds: frameWorkSeconds(version, rates), prerollFrames: prerollOf(version), targetSeconds: share - rates.startSeconds });
   return { chunks, seconds: work + rates.startSeconds * (chunks.length + 1) };
 }
 
@@ -363,7 +375,7 @@ export function lipSyncLayout(version: VideoPresentationVersion,
   const grid = { fps: version.display.fps, frameCount: version.display.frameCount };
   const prepareWork = estimateVideoJobSeconds(spanWork(version, used), rates) - rates.startSeconds;
   const preparation = rates.startSeconds + prepareWork <= share ? [{ start: 0, end: used }]
-    : planVideoEncodeChunks({ frameCount: used, frameSeconds: prepareWork / used, prerollFrames: preroll, targetSeconds: share - rates.startSeconds });
+    : planVideoEncodeChunks({ frameCount: used, frameSeconds: frameWorkSeconds(version, rates), prerollFrames: preroll, targetSeconds: share - rates.startSeconds });
   const { width, height } = version.display;
   const picture = width * height;
   /**
