@@ -210,20 +210,11 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
    * Upload the file and write it on completion when everything still allows (design 6.3).
    * @param input - The upload's start record.
    * @param local - The local file's header size.
-   * @param opened - The Space's session when the upload started, if open.
    * @param startLook - The object's look when the upload started.
    * @param key - The part's entry key.
    */
-  const upload = async (input: SceneLookUploadStart, local: LookPictureSize, opened: SceneSession | undefined,
-    startLook: SceneLook | undefined, key: string): Promise<void> => {
-    // Another explicit picture set on the part meanwhile blocks the write; a reset that deletes the key does not.
-    let partChanged = false;
-    let seen = startLook?.[input.part]?.map;
-    const unwatch = opened?.subscribe(() => {
-      const map = lookOf(opened, input.objectId)?.[input.part]?.map;
-      if (map !== undefined && map !== seen) partChanged = true;
-      seen = map;
-    });
+  const upload = async (input: SceneLookUploadStart, local: LookPictureSize, startLook: SceneLook | undefined,
+    key: string): Promise<void> => {
     const controller = new AbortController();
     let refused = false;
     /** A picture the server does not hold yet is a new picture on the object: judge the total before sending it. */
@@ -249,9 +240,10 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       const overTotal = beforeLook === undefined ? null : await overLimit(input, beforeLook, stored.assetId, local);
       const session = deps.session(input.name);
       const object = session?.getSnapshot().objects.find((item) => item.id === input.objectId);
-      // A Space closed and opened again meanwhile has a session the watch above never saw.
+      // A conditional write against the picture at start: another picture or 'none' there now blocks it; a part with
+      // no picture (reset, or cleared again) or the same picture takes the upload.
       const nowMap = object?.look?.[input.part]?.map;
-      if (nowMap !== undefined && nowMap !== startLook?.[input.part]?.map) partChanged = true;
+      const partChanged = nowMap !== undefined && nowMap !== startLook?.[input.part]?.map;
       if (!session) deps.notify({ key: 'spaces.threeD.look.spaceClosed', severity: 'warning' });
       else if (!object || object.locked) deps.notify({ key: 'spaces.threeD.look.objectGone', severity: 'warning' });
       else if (!session.getSnapshot().canEdit) deps.notify({ key: 'spaces.threeD.look.noLongerEditable', severity: 'warning' });
@@ -263,8 +255,6 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
     } catch (error) {
       if (refused) return;
       deps.notify(pictureUploadFailedNotice(error, input.file.name));
-    } finally {
-      unwatch?.();
     }
   };
 
@@ -296,7 +286,7 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
           return;
         }
         // The object total is judged once the server says whether it already holds this picture.
-        await upload(input, local, opened, opened ? lookOf(opened, input.objectId) : undefined, key);
+        await upload(input, local, opened ? lookOf(opened, input.objectId) : undefined, key);
       } finally {
         if (entries.get(key)?.operationId === operationId) entries.delete(key);
         deps.unregister(input.spaceId, operationId);

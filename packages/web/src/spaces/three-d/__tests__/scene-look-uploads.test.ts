@@ -236,6 +236,75 @@ describe('SceneLookUploads', () => {
     }
   });
 
+  it('does not write after the part was set to no picture meanwhile', async () => {
+    const { doc, session } = editor();
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: 'none' } } as never, Symbol(), true, NAME);
+    h.finish();
+    await done;
+    expect(lookOf(doc)).toEqual({ 0: { map: 'none' } });
+    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.partChanged' }));
+  });
+
+  it('replaces the part’s picture when only other things changed meanwhile', async () => {
+    const { doc, session } = editor();
+    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { color: '#00ff00' } } as never, Symbol(), true, NAME);
+    h.finish();
+    await done;
+    expect(lookOf(doc)).toEqual({ 0: { map: UPLOADED }, 1: { color: '#00ff00' } });
+    expect(h.notify).not.toHaveBeenCalled();
+  });
+
+  it('replaces the part’s picture when the reopened Space still shows the picture it had at start', async () => {
+    const first = editor();
+    applySceneCommand(first.doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
+    let current = first.session;
+    const h = harness(() => current);
+    const done = h.uploads.start(startFor());
+    await settle();
+    const reopened = editor();
+    applySceneCommand(reopened.doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
+    current = reopened.session;
+    h.finish();
+    await done;
+    expect(lookOf(reopened.doc)).toEqual({ 0: { map: UPLOADED } });
+    expect(h.notify).not.toHaveBeenCalled();
+  });
+
+  it('writes when the part was reset and the reset undone meanwhile', async () => {
+    const { doc, session } = editor();
+    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    expect(session.execute({ type: 'look', id: ID, part: '0', set: { map: null } } as never).ok).toBe(true);
+    expect(session.historyStep('undo').ok).toBe(true);
+    expect(lookOf(doc)).toEqual({ 0: { map: OTHER_IMAGE } });
+    h.finish();
+    await done;
+    expect(lookOf(doc)).toEqual({ 0: { map: UPLOADED } });
+    expect(h.notify).not.toHaveBeenCalled();
+  });
+
+  it('writes when another picture set meanwhile was cleared again before completion', async () => {
+    const { doc, session } = editor();
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
+    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: null } } as never, Symbol(), true, NAME);
+    h.finish();
+    await done;
+    expect(lookOf(doc)).toEqual({ 0: { map: UPLOADED } });
+    expect(h.notify).not.toHaveBeenCalled();
+  });
+
   it('does not write a picture that would go over the object budget at completion', async () => {
     const { doc, session } = editor();
     // Each picture fits alone (4096 and 6000 px); together they pass the 256 MiB budget.
