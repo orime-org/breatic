@@ -29,7 +29,7 @@ import type { AgentGenerationStep, AgentPicture, OpenDocument, PrepareAgentPictu
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { userClockNote } from "@server/agent/user-clock.js";
 import { getAgentConfig, getStorageAdapter } from "@breatic/core";
-import { assetService, creditLotService, createUsageRecorder } from "@breatic/domain";
+import { assetService, creditLotService, createUsageRecorder, watchModelCalls, type ModelCallWatch } from "@breatic/domain";
 import { saveToStorageFor } from "@server/agent/save-to-storage.js";
 import { agentMemoryFor } from "@server/agent/agent-memory.js";
 import { projectRecordsFor } from "@server/agent/project-records.js";
@@ -37,7 +37,6 @@ import { makePageLinks, pageLinksForTurn, type PageLinks } from "@server/agent/p
 import { readPagesFor } from "@server/agent/read-pages.js";
 import { openDocumentOf, turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
-import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import type { ChatAttachedChip, ChatSpaceContext, ConsentSnapshot, MessagePart, ToolFailure } from "@breatic/shared";
 import { toolFailureOf, wireLineOf, wordsForTitle } from "@breatic/shared";
 import { continuationMessageForModel, openSpaceKey } from "@server/agent/user-turn.js";

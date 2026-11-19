@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Records a stream's model calls, and hands the calls whose cost is not in hand to the later lookup (#296).
+ * Records the model calls of one language-model use (a server stream, or a worker's prompt rewrite), and hands the
+ * calls whose cost is not in hand to the later lookup (#296).
  *
  * Each call is recorded from its end event at what provider says it cost, under the upstream that served it. A call
  * cut off before it ended has no end event: provider keeps its cost among the prepared call's pending costs, a lookup
@@ -11,7 +12,9 @@
 
 import type { LanguageModelUsage, ProviderMetadata } from "ai";
 import type { PendingCost } from "@breatic/provider";
-import { handOffLookups, provider, type AwaitedLookup, type UsageRecorder } from "@breatic/domain";
+import { handOffLookups } from "@domain/credit/generation-lookup.js";
+import type { AwaitedLookup, UsageRecorder } from "@domain/credit/usage-recorder.js";
+import { provider } from "@domain/provider/instance.js";
 
 /** What a model call's end event carries, as far as this reads it. */
 export interface ModelCallEnd {

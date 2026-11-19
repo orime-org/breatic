@@ -8,18 +8,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type * as DomainModule from "@breatic/domain";
 import type { PendingCost } from "@breatic/provider";
 
 const handOffLookups = vi.hoisted(() => vi.fn(async () => undefined));
 
-vi.mock("@breatic/domain", async (importOriginal) => {
-  const actual = await importOriginal<typeof DomainModule>();
-  return { ...actual, provider: () => ({ llm: { costOf: vi.fn(), servedBy: vi.fn(() => "openrouter") } }), handOffLookups };
-});
+vi.mock("@domain/provider/instance.js", () => ({ provider: () => ({ llm: { costOf: vi.fn(), servedBy: vi.fn(() => "openrouter") } }) }));
+vi.mock("@domain/credit/generation-lookup.js", () => ({ handOffLookups }));
 
-import type { UsageRecorder } from "@breatic/domain";
-import { watchModelCalls } from "@server/agent/model-call-watch.js";
+import type { UsageRecorder } from "@domain/credit/usage-recorder.js";
+import { watchModelCalls } from "@domain/credit/model-call-watch.js";
 
 const OPERATION = { operationKey: "turn:c1:2", feature: "chat_turn" as const, actorUserId: "u-1", projectId: "p-1" };
 const CUT_OFF: PendingCost = { state: "pending", lookup: { upstream: "openrouter", generationId: "gen-9" } };

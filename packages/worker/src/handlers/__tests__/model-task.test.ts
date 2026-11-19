@@ -178,6 +178,7 @@ describe("Nano Banana 2's rewrite", () => {
       { resolution: "1k", enable_camera: true, camera: "ARRI Alexa 35" },
       JSON.stringify({ subject: "a cat", technical: { camera: "ARRI Alexa 35" } }),
       NANO.deadlineAt,
+      undefined,
     );
     expect(input.params).toEqual({ resolution: "1k" });
   });

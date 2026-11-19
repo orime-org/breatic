@@ -12,15 +12,15 @@
  */
 
 import { getStorageAdapter, getUnderstandConfig, getWorkerConfig, logger } from "@breatic/core";
-import { assetRepo, assetService, createUsageRecorder, handOffLookups, keysById, provider, taskRepo, taskService, upstreamCloneRepo, upstreamStepRepo } from "@breatic/domain";
+import { assetRepo, assetService, createUsageRecorder, keysById, provider, taskRepo, taskService, upstreamCloneRepo, upstreamStepRepo, watchModelCalls } from "@breatic/domain";
 import { paramsToSend, routeSchema, type SendableModel } from "@breatic/shared";
-import { ACCOUNT_LLM_UPSTREAM, accountKeyFailureIn, type Cost, type KeySet, type Route } from "@breatic/provider";
+import { accountKeyFailureIn, type Cost, type KeySet, type Route } from "@breatic/provider";
 import { createMediaRunner, type LegacyRows, type LegacyStep, type MediaInput, type MediaRunner } from "@breatic/provider/media";
 
 import { runMedia, type MediaRunDeps, type MediaRunDone } from "@worker/handlers/media-run.js";
 import { entryOf, validateModelParams, type CatalogModality } from "@worker/handlers/model-params.js";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
-import { REWRITE_MODEL, rewrittenPrompt, REWRITTEN_MODELS } from "@worker/handlers/prompt-rewrite.js";
+import { REWRITE_MODEL, rewrittenPrompt, REWRITTEN_MODELS, type RewriteBilled } from "@worker/handlers/prompt-rewrite.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 
 /** A model run a task asks for. */
@@ -135,8 +135,9 @@ export async function runModelTask(task: ModelTask): Promise<MediaRunDone> {
   const input = async (legacy: LegacyRows): Promise<MediaInput> => {
     const sent = paramsToSend(entry, validated, prompt);
     if (!REWRITTEN_MODELS.has(entry.name) || generationSent(legacy)) return sent;
-    const rewrite = await rewrittenPrompt(prompt, validated, sent.prompt, task.deadlineAt, ...(llm === null ? [] : [llm.keys]));
-    if (rewrite.cost !== undefined && task.llmKeyId != null) await recordRewrite(task, task.llmKeyId, rewrite.cost);
+    const { llmKeyId } = task;
+    const account = llm === null || llmKeyId == null ? undefined : { keys: llm.keys, record: (billed: RewriteBilled) => recordRewrite(task, llmKeyId, billed) };
+    const rewrite = await rewrittenPrompt(prompt, validated, sent.prompt, task.deadlineAt, account);
     return { ...sent, prompt: rewrite.prompt };
   };
 
@@ -172,10 +173,10 @@ export async function runModelTask(task: ModelTask): Promise<MediaRunDone> {
  * land is logged; the run goes on.
  * @param task - The task.
  * @param keyId - The language-model key row it ran on.
- * @param cost - What the call cost.
+ * @param billed - The finished call and the answers it was billed for and could not finish.
  * @returns Nothing.
  */
-async function recordRewrite(task: ModelTask, keyId: string, cost: Cost): Promise<void> {
+async function recordRewrite(task: ModelTask, keyId: string, billed: RewriteBilled): Promise<void> {
   try {
     const usage = createUsageRecorder({
       operationKey: `task:${task.taskId}`,
@@ -185,8 +186,9 @@ async function recordRewrite(task: ModelTask, keyId: string, cost: Cost): Promis
       keyId,
       onMissingCost: (row) => logger.error({ row, taskId: task.taskId }, "agent_usage_cost_missing"),
     });
-    usage.recordModelCall({ source: "model", model: REWRITE_MODEL, upstream: ACCOUNT_LLM_UPSTREAM, cost });
-    await handOffLookups(usage.awaitingLookup(), usage.operation, { description: "Task: prompt rewrite", charge: false, keyId });
+    const watch = watchModelCalls(usage, { model: REWRITE_MODEL, description: "Task: prompt rewrite", keyId }, billed.pending);
+    if (billed.ended !== undefined) watch.callEnded(billed.ended);
+    await watch.handOff();
     await usage.settle();
   } catch (err) {
     logger.error({ err, taskId: task.taskId }, "prompt_rewrite_usage_failed");

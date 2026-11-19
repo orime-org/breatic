@@ -2,20 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type * as DomainModule from "@breatic/domain";
 import type { Cost, PendingCost } from "@breatic/provider";
 
 const handOffLookups = vi.hoisted(() => vi.fn(async () => undefined));
 const costOf = vi.hoisted(() => vi.fn((): Cost => ({ state: "known", usd: 0.01, source: "reported" })));
 const servedBy = vi.hoisted(() => vi.fn((): string | undefined => "openrouter"));
 
-vi.mock("@breatic/domain", async (importOriginal) => {
-  const actual = await importOriginal<typeof DomainModule>();
-  return { ...actual, provider: () => ({ llm: { costOf, servedBy } }), handOffLookups };
-});
+vi.mock("@domain/provider/instance.js", () => ({ provider: () => ({ llm: { costOf, servedBy } }) }));
+vi.mock("@domain/credit/generation-lookup.js", () => ({ handOffLookups }));
 
-import type { UsageRecorder } from "@breatic/domain";
-import { watchModelCalls } from "@server/agent/model-call-watch.js";
+import type { UsageRecorder } from "@domain/credit/usage-recorder.js";
+import { watchModelCalls } from "@domain/credit/model-call-watch.js";
 
 const USAGE = {
   inputTokens: 10,

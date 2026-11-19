@@ -10,12 +10,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { KeySet } from "@breatic/provider";
 
-const h = vi.hoisted(() => ({ warn: vi.fn(), prepare: vi.fn(), generate: vi.fn(), costOf: vi.fn() }));
+const h = vi.hoisted(() => ({ warn: vi.fn(), prepare: vi.fn(), generate: vi.fn(), record: vi.fn(async () => undefined) }));
 
 vi.mock("@breatic/core", () => ({ logger: { warn: h.warn } }));
 vi.mock("@breatic/domain", () => ({
   generateTextRetry: h.generate,
-  provider: () => ({ llm: { prepare: h.prepare, costOf: h.costOf } }),
+  provider: () => ({ llm: { prepare: h.prepare } }),
 }));
 
 import { rewrittenPrompt } from "@worker/handlers/prompt-rewrite.js";
@@ -23,19 +23,20 @@ import { rewrittenPrompt } from "@worker/handlers/prompt-rewrite.js";
 const FALLBACK = JSON.stringify({ subject: "a cat" });
 const LATER = Date.now() + 60_000;
 const LLM_KEYS: KeySet = { owner: "account", keyOf: (u: string) => (u === "openrouter" ? "acct-or" : undefined) };
+const ACCOUNT = { keys: LLM_KEYS, record: h.record };
 const rewrite = rewrittenPrompt;
-const BILLED = { state: "known", usd: 0.0001, payer: "account" } as const;
+const CUT_OFF = [{ state: "pending", lookup: { upstream: "openrouter", generationId: "gen-1" } }] as const;
+const pendingCosts = (): readonly unknown[] => CUT_OFF;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  h.prepare.mockReturnValue({ model: "mock-model", options: {} });
-  h.generate.mockResolvedValue({ text: '{"subject":"a cat"}', usage: { totalTokens: 9 }, providerMetadata: {} });
-  h.costOf.mockReturnValue(BILLED);
+  h.prepare.mockReturnValue({ model: "mock-model", options: {}, pendingCosts });
+  h.generate.mockResolvedValue({ text: '{"subject":"a cat"}', usage: { totalTokens: 9 }, providerMetadata: { m: 1 } });
 });
 
 describe("rewrittenPrompt on a key set", () => {
   it("prepares the call on the task's LLM keys", async () => {
-    await rewrite("a cat", {}, FALLBACK, LATER, LLM_KEYS);
+    await rewrite("a cat", {}, FALLBACK, LATER, ACCOUNT);
     expect(h.prepare.mock.calls[0]![3]).toBe(LLM_KEYS);
   });
 
@@ -49,27 +50,35 @@ describe("rewrittenPrompt on a key set", () => {
     ["account_key_missing", {}],
   ])("ends on a %s instead of sending the catalog's shape", async (kind, extra) => {
     h.generate.mockRejectedValue(Object.assign(new Error(kind), { kind, ...extra }));
-    await expect(rewrite("a cat", {}, FALLBACK, LATER, LLM_KEYS)).rejects.toMatchObject({ kind });
+    await expect(rewrite("a cat", {}, FALLBACK, LATER, ACCOUNT)).rejects.toMatchObject({ kind });
   });
 
   it("still sends the catalog's shape when the rewrite fails for any other reason", async () => {
     h.generate.mockRejectedValue(new Error("socket hang up"));
-    expect((await rewrite("a cat", {}, FALLBACK, LATER, LLM_KEYS)).prompt).toBe(FALLBACK);
+    expect((await rewrite("a cat", {}, FALLBACK, LATER, ACCOUNT)).prompt).toBe(FALLBACK);
   });
 });
 
-describe("what a rewrite on the payer's key cost (inner#1953)", () => {
-  it("answers the call's cost beside the prompt, so its usage is recorded", async () => {
-    expect(await rewrite("a cat", {}, FALLBACK, LATER, LLM_KEYS)).toEqual({ prompt: '{"subject":"a cat"}', cost: BILLED });
-    expect(h.costOf).toHaveBeenCalledWith(expect.objectContaining({ model: "deepseek/deepseek-chat", usage: { totalTokens: 9 } }));
+describe("what a rewrite on the payer's key was billed (inner#1953)", () => {
+  it("hands the finished call and the prepared call's cut-off answers to the recorder, so each one is recorded", async () => {
+    expect(await rewrite("a cat", {}, FALLBACK, LATER, ACCOUNT)).toEqual({ prompt: '{"subject":"a cat"}' });
+    expect(h.record).toHaveBeenCalledWith({ ended: { usage: { totalTokens: 9 }, providerMetadata: { m: 1 } }, pending: pendingCosts });
   });
 
-  it("answers the cost of a billed answer that held no prompt too", async () => {
-    h.generate.mockResolvedValue({ text: "no json here", usage: { totalTokens: 3 }, providerMetadata: {} });
-    expect(await rewrite("a cat", {}, FALLBACK, LATER, LLM_KEYS)).toEqual({ prompt: FALLBACK, cost: BILLED });
+  it("hands what was billed before the rewrite fell back to the catalog's shape", async () => {
+    h.generate.mockRejectedValue(new Error("deadline passed"));
+    expect((await rewrite("a cat", {}, FALLBACK, LATER, ACCOUNT)).prompt).toBe(FALLBACK);
+    expect(h.record).toHaveBeenCalledWith({ pending: pendingCosts });
   });
 
-  it("answers no cost on our keys, where a rewrite is never recorded", async () => {
+  it("hands what was billed before a key failure ends the task", async () => {
+    h.generate.mockRejectedValue(Object.assign(new Error("no balance"), { kind: "account_key_failed", reason: "no_balance", upstream: "openrouter" }));
+    await expect(rewrite("a cat", {}, FALLBACK, LATER, ACCOUNT)).rejects.toMatchObject({ kind: "account_key_failed" });
+    expect(h.record).toHaveBeenCalledWith({ pending: pendingCosts });
+  });
+
+  it("hands nothing on our keys, where a rewrite is never recorded", async () => {
     expect(await rewrite("a cat", {}, FALLBACK, LATER)).toEqual({ prompt: '{"subject":"a cat"}' });
+    expect(h.record).not.toHaveBeenCalled();
   });
 });

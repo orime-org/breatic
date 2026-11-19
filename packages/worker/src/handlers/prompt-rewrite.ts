@@ -11,18 +11,33 @@
 
 import { stepCountIs } from "ai";
 import { logger } from "@breatic/core";
-import { generateTextRetry, provider } from "@breatic/domain";
+import { generateTextRetry, provider, type ModelCallEnd } from "@breatic/domain";
 import { cameraPrompt, untilDeadline } from "@breatic/shared";
-import { accountKeyFailureIn, type Cost, type KeySet } from "@breatic/provider";
+import { accountKeyFailureIn, type KeySet, type PendingCost } from "@breatic/provider";
 
 /** The models whose prompt is rewritten: domain's one list, which the server also reads to record the step's key row. */
 export { PROMPT_REWRITTEN_MODELS as REWRITTEN_MODELS } from "@breatic/domain";
 
-/** What the model is asked to write. */
 /** The language model a prompt is rewritten on. */
 export const REWRITE_MODEL = "deepseek/deepseek-chat";
 
+/** What the model is asked to write. */
 const ASK = "Convert this image description into a structured prompt JSON with fields: subject, style, technical, lighting, composition.";
+
+/** What a rewrite on the paying account's key was billed: the call that finished, and the ones it could not finish. */
+export interface RewriteBilled {
+  /** The finished call, when the model answered. */
+  ended?: ModelCallEnd;
+  /** The prepared call's billed answers that never reached a finish (a retried or cut-off answer). */
+  pending: () => readonly PendingCost[];
+}
+
+/** A rewrite on the paying account's key (inner#1953): the keys it runs on, and where what it was billed goes. */
+export interface AccountRewrite {
+  keys: KeySet;
+  /** Records the rewrite's usage; called once the call is over, before a key failure ends the task. */
+  record: (billed: RewriteBilled) => Promise<void>;
+}
 
 /**
  * The LLM's rewrite of a description, or the catalog's own shape when it gives none.
@@ -30,9 +45,9 @@ const ASK = "Convert this image description into a structured prompt JSON with f
  * @param params - The run's params, for the camera the user turned on.
  * @param fallback - The prompt the catalog writes itself.
  * @param deadlineAt - When the task runs out; the call is cut there.
- * @param llmKeys - The account's keys the task's language-model step runs on; ours when absent.
- * @returns The prompt to send and, on the account's keys, what the call cost, which is recorded as usage (inner#1953); a
- *   rewrite on ours is never recorded or charged.
+ * @param account - The paying account's key and its recorder, when the task's language-model step runs on it; ours
+ *   when absent, where a rewrite is never recorded or charged.
+ * @returns The prompt to send.
  * @throws {AccountKeyFailure} When the account's key failed or its row is gone; never answered with the catalog's shape.
  */
 export async function rewrittenPrompt(
@@ -40,11 +55,14 @@ export async function rewrittenPrompt(
   params: Readonly<Record<string, unknown>>,
   fallback: string,
   deadlineAt: number,
-  llmKeys?: KeySet,
-): Promise<{ prompt: string; cost?: Cost }> {
+  account?: AccountRewrite,
+): Promise<{ prompt: string }> {
   const camera = cameraPrompt(params);
+  let pending: RewriteBilled["pending"] | undefined;
+  let ended: ModelCallEnd | undefined;
   try {
-    const prepared = provider().llm.prepare(REWRITE_MODEL, { thinking: false, cache: false, temperature: 0.3 }, undefined, llmKeys);
+    const prepared = provider().llm.prepare(REWRITE_MODEL, { thinking: false, cache: false, temperature: 0.3 }, undefined, account?.keys);
+    pending = prepared.pendingCosts;
     const result = await generateTextRetry({
       model: prepared.model,
       messages: [{ role: "user", content: camera === "" ? `${ASK} Description: "${prompt}"` : `${ASK} Camera info: ${camera}. Description: "${prompt}"` }],
@@ -52,20 +70,22 @@ export async function rewrittenPrompt(
       ...prepared.options,
       abortSignal: untilDeadline(deadlineAt).signal,
     });
-    const billed = llmKeys === undefined ? {} : { cost: provider().llm.costOf({ model: REWRITE_MODEL, usage: result.usage, providerMetadata: result.providerMetadata }) };
+    ended = { usage: result.usage, providerMetadata: result.providerMetadata };
     const json = result.text.trim().match(/\{[\s\S]*\}/)?.[0];
     if (json !== undefined) {
       try {
         JSON.parse(json);
-        return { prompt: json, ...billed };
+        return { prompt: json };
       } catch (err) {
         logger.warn({ err }, "nano_banana_prompt_rewrite_failed");
       }
     }
-    return { prompt: fallback, ...billed };
+    return { prompt: fallback };
   } catch (err) {
     if (accountKeyFailureIn(err) !== undefined) throw err;
     logger.warn({ err }, "nano_banana_prompt_rewrite_failed");
     return { prompt: fallback };
+  } finally {
+    if (pending !== undefined) await account?.record({ ...(ended !== undefined && { ended }), pending });
   }
 }

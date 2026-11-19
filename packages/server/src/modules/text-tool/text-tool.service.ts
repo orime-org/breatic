@@ -17,9 +17,8 @@ import { stepCountIs } from "ai";
 import { provider, streamTextRetry, type ResolvedKeys } from "@breatic/domain";
 import { getModelForTool, getPromptForTool, getTextToolsConfig } from "@server/config/text-tools.js";
 import { logger } from "@breatic/core";
-import { creditLotService, createUsageRecorder } from "@breatic/domain";
+import { creditLotService, createUsageRecorder, watchModelCalls, type ModelCallWatch } from "@breatic/domain";
 import type { UsageRecorder } from "@breatic/domain";
-import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 
 /** SSE event yielded during text tool execution. */
 export type TextToolEvent =

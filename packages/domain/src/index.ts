@@ -50,6 +50,7 @@ export {
   handOffLookups,
   type UsageLookupJob,
 } from "@domain/credit/generation-lookup.js";
+export { watchModelCalls, type ModelCallEnd, type ModelCallWatch } from "@domain/credit/model-call-watch.js";
 export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.js";
 
 // ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──

@@ -22,6 +22,9 @@ const h = vi.hoisted(() => ({
   recordModelCall: vi.fn(),
   createUsageRecorder: vi.fn(),
   handOffLookups: vi.fn(async () => undefined),
+  callEnded: vi.fn(),
+  handOff: vi.fn(async () => undefined),
+  watchModelCalls: vi.fn(),
 }));
 
 vi.mock("@breatic/core", () => ({
@@ -41,6 +44,7 @@ vi.mock("@breatic/domain", () => ({
   assetRepo: { findLiveByStorageKey: vi.fn() },
   createUsageRecorder: h.createUsageRecorder,
   handOffLookups: h.handOffLookups,
+  watchModelCalls: h.watchModelCalls,
 }));
 vi.mock("@breatic/shared", async (importOriginal) => ({ ...(await importOriginal<typeof sharedModule>()) }));
 vi.mock("@breatic/provider/media", () => ({ createMediaRunner: () => ({ name: "runner" }) }));
@@ -83,6 +87,7 @@ beforeEach(() => {
   h.resolveOwnerStudioId.mockResolvedValue("studio-1");
   h.rewrittenPrompt.mockResolvedValue({ prompt: "rewritten" });
   h.listSteps.mockResolvedValue([]);
+  h.watchModelCalls.mockReturnValue({ callEnded: h.callEnded, handOff: h.handOff, served: () => "openrouter" });
   h.keysById.mockImplementation(async (id: string | null) => {
     if (id === MEDIA_KEY_ID) return { keys: MEDIA_KEYS };
     if (id === LLM_KEY_ID) return { keys: LLM_KEYS };
@@ -122,24 +127,35 @@ describe("the keys a model run uses", () => {
     const [run] = h.runMedia.mock.calls[0] as [{ input: (rows: object) => Promise<unknown> }];
     await run.input({});
 
-    expect(h.rewrittenPrompt.mock.calls[0]).toContain(LLM_KEYS);
+    expect((h.rewrittenPrompt.mock.calls[0]![4] as { keys: KeySet }).keys).toBe(LLM_KEYS);
   });
 
-  it("records the rewrite on the payer's OpenRouter key as usage under the LLM key row, at once", async () => {
-    const cost = { state: "known", usd: 0.0002, payer: "account" };
-    h.rewrittenPrompt.mockResolvedValueOnce({ prompt: "{}", cost });
-    h.createUsageRecorder.mockReturnValue({
-      operation: { operationKey: "task:task-1" },
-      recordModelCall: h.recordModelCall,
-      awaitingLookup: () => [],
-      settle: async () => 0,
+  it("records the rewrite on the payer's OpenRouter key under the LLM key row, at once, through the shared watch", async () => {
+    const pending = (): readonly unknown[] => [];
+    const ended = { usage: { totalTokens: 9 }, providerMetadata: {} };
+    h.rewrittenPrompt.mockImplementationOnce(async (_p: string, _q: unknown, _f: string, _d: number, account: { record: (b: object) => Promise<void> }) => {
+      await account.record({ ended, pending });
+      return { prompt: "{}" };
     });
+    const settle = vi.fn(async () => 0);
+    h.createUsageRecorder.mockReturnValue({ operation: { operationKey: "task:task-1" }, settle });
     await runModelTask({ ...TASK, model: "nano-banana-2", params: { prompt: "a cat", resolution: "1k" } });
     const [run] = h.runMedia.mock.calls[0] as [{ input: (rows: object) => Promise<{ prompt: string }> }];
 
     expect((await run.input({})).prompt).toBe("{}");
     expect(h.createUsageRecorder).toHaveBeenCalledWith(expect.objectContaining({ operationKey: "task:task-1", actorUserId: "user-1", keyId: LLM_KEY_ID }));
-    expect(h.recordModelCall).toHaveBeenCalledWith({ source: "model", model: "deepseek/deepseek-chat", upstream: "openrouter", cost });
+    expect(h.watchModelCalls).toHaveBeenCalledWith(expect.anything(), { model: "deepseek/deepseek-chat", description: "Task: prompt rewrite", keyId: LLM_KEY_ID }, pending);
+    expect(h.callEnded).toHaveBeenCalledWith(ended);
+    expect(h.handOff).toHaveBeenCalled();
+    expect(settle).toHaveBeenCalled();
+  });
+
+  it("rewrites on our keys, recording nothing, when the task holds no LLM key row", async () => {
+    await runModelTask({ ...TASK, llmKeyId: null, model: "nano-banana-2", params: { prompt: "a cat", resolution: "1k" } });
+    const [run] = h.runMedia.mock.calls[0] as [{ input: (rows: object) => Promise<unknown> }];
+    await run.input({});
+
+    expect(h.rewrittenPrompt.mock.calls[0]![4]).toBeUndefined();
   });
 
   it("still runs when only the LLM key row is gone, and fails only when a step asks for that key", async () => {

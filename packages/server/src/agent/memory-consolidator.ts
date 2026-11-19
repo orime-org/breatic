@@ -37,12 +37,11 @@ import {
   provider,
   resolveKeys,
 } from "@breatic/domain";
-import type { UsageRecorder } from "@breatic/domain";
+import { watchModelCalls, type UsageRecorder } from "@breatic/domain";
 import { getAgentConfig, logger, MEMORY_CONTENT_MAX_CHARS, MEMORY_TITLE_MAX_CHARS } from "@breatic/core";
 import { memoryService } from "@server/modules";
 import type { ConsolidationInput } from "@server/modules/memory/memory.service.js";
 import { readConsolidationAnswer } from "@server/agent/consolidation-answer.js";
-import { watchModelCalls } from "@server/agent/model-call-watch.js";
 
 const CONSOLIDATION_PROMPT = `\
 You are the memory consolidator for an AI creative assistant. The turns below are leaving the assistant's context. You are given them, the memory entries the assistant keeps about this user, and where the conversation has got to. Record what the turns add as changes to single entries.
