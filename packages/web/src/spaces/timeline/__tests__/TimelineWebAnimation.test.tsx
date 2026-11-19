@@ -166,7 +166,7 @@ beforeEach(() => {
   vi.mocked(timelineApi.listVideos).mockReset().mockResolvedValue({ items: [ASSET], nextCursor: null });
   vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue(ASSET);
   vi.mocked(timelineApi.limits).mockReset().mockResolvedValue(LIMITS as never);
-  vi.mocked(timelineApi.listResults).mockReset().mockResolvedValue({ rows: [], nextCursor: null, totals: { running: 0, succeeded: 0, failed: 0 } });
+  vi.mocked(timelineApi.listResults).mockReset().mockResolvedValue({ rows: [], nextCursor: null, totals: null });
   vi.mocked(timelineApi.resolveWebSources).mockReset().mockResolvedValue(RESOLUTION);
   vi.mocked(timelineApi.previewUrl).mockReset().mockResolvedValue({ url: PREVIEW_URL });
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
@@ -640,7 +640,7 @@ describe('Add web animation', () => {
     vi.mocked(timelineApi.listResults).mockResolvedValue({
       rows: [result(EXEC_A, MOTION_SPACE, 'Gold dot along an arc', 'succeeded', SRC_A),
         result('90000000-0000-4000-8000-0000000000c1', TIMELINE_SPACE, 'Old title card', 'succeeded', SRC_B), result('90000000-0000-4000-8000-0000000000c2', GONE, 'Lost one', 'succeeded', SRC_B)],
-      nextCursor: null, totals: { running: 0, succeeded: 3, failed: 0 },
+      nextCursor: null, totals: null,
     } as never);
     seed();
     showTimeline();
@@ -656,7 +656,7 @@ describe('Add web animation', () => {
   it('places each pick as a new copy bound to the result\'s source', async () => {
     listSpaces([[MOTION_SPACE, 'web_animation', 'Launch motion']]);
     vi.mocked(timelineApi.listResults).mockResolvedValue({
-      rows: [result(EXEC_A, MOTION_SPACE, 'Gold dot along an arc', 'succeeded', SRC_A)], nextCursor: null, totals: { running: 0, succeeded: 1, failed: 0 },
+      rows: [result(EXEC_A, MOTION_SPACE, 'Gold dot along an arc', 'succeeded', SRC_A)], nextCursor: null, totals: null,
     } as never);
     seed();
     showTimeline();
@@ -669,7 +669,7 @@ describe('Add web animation', () => {
 
   it('reads the results again each time the picker opens, so a result finished since shows up', async () => {
     listSpaces([[MOTION_SPACE, 'web_animation', 'Launch motion']]);
-    vi.mocked(timelineApi.listResults).mockResolvedValue({ rows: [], nextCursor: null, totals: { running: 0, succeeded: 0, failed: 0 } } as never);
+    vi.mocked(timelineApi.listResults).mockResolvedValue({ rows: [], nextCursor: null, totals: null } as never);
     seed();
     // The app's client keeps a read fresh for 30 s; the picker reads again on opening anyway.
     showTimeline(false, 30_000);
@@ -677,7 +677,7 @@ describe('Add web animation', () => {
     expect(await within(first).findByText(t('timeline.webAnimation.picker.empty'))).toBeInTheDocument();
     await userEvent.click(within(first).getByRole('button', { name: t('timeline.cancel') }));
     vi.mocked(timelineApi.listResults).mockResolvedValue({
-      rows: [result(EXEC_A, MOTION_SPACE, 'Gold dot along an arc', 'succeeded', SRC_A)], nextCursor: null, totals: { running: 0, succeeded: 1, failed: 0 },
+      rows: [result(EXEC_A, MOTION_SPACE, 'Gold dot along an arc', 'succeeded', SRC_A)], nextCursor: null, totals: null,
     } as never);
     expect(await within(await openPicker()).findByTestId(`timeline-picker-row-${EXEC_A}`)).toBeInTheDocument();
   });
@@ -741,7 +741,7 @@ describe('Add web animation', () => {
     listSpaces([[MOTION_SPACE, 'web_animation', 'Launch motion']]);
     vi.mocked(timelineApi.listResults).mockImplementation(async (_projectId: string, cursor?: string) => {
       if (cursor !== undefined) throw new ApiException({ status: 500, message: 'Boom', fromServer: true });
-      return { rows: [result(EXEC_A, MOTION_SPACE, 'Gold dot along an arc', 'succeeded', SRC_A)], nextCursor: 'next', totals: { running: 0, succeeded: 2, failed: 0 } } as never;
+      return { rows: [result(EXEC_A, MOTION_SPACE, 'Gold dot along an arc', 'succeeded', SRC_A)], nextCursor: 'next', totals: null } as never;
     });
     seed();
     showTimeline();

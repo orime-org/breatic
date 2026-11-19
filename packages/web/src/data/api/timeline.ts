@@ -21,11 +21,12 @@ export interface AcceptedWebAnimation {
   created: boolean;
 }
 
-/** One page of a Motion list, with how many rows each group holds. */
+/** One page of a Motion list; a Space list's first page also says how many rows each group holds. */
 export interface SpaceExecutionPage {
   rows: WebAnimationRowView[];
   nextCursor: string | null;
-  totals: { running: number; succeeded: number; failed: number };
+  /** Null on later pages and for the Timeline picker's results, which never read it. */
+  totals: { running: number; succeeded: number; failed: number } | null;
 }
 
 /** Which Motion list to read: this Space's own, or the group made in a Timeline before Motion existed. */
@@ -75,7 +76,7 @@ export const timelineApi = {
    * One page of a Motion Space's list (#1490 design §4.4).
    * @param query - Which list, group and page.
    * @param signal - Cancellation for this read.
-   * @returns The page and the group totals.
+   * @returns The page, with the group totals on a first page.
    * @throws {ApiException} When the request fails.
    */
   listSpaceExecutions(query: SpaceExecutionQuery, signal?: AbortSignal): Promise<SpaceExecutionPage> {

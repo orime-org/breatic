@@ -72,7 +72,8 @@ export interface AcceptedExecution {
 export interface ExecutionPage {
   rows: WebAnimationRowView[];
   nextCursor: string | null;
-  totals: grantRepo.GroupTotals;
+  /** Counted for a Motion Space list's first page only; null on later pages and for the Timeline picker's results. */
+  totals: grantRepo.GroupTotals | null;
 }
 
 /** The insert lost to a concurrent accept; the transaction is rolled back and the winner read. */
@@ -433,7 +434,7 @@ function pageSize(limit: number | undefined): number {
 }
 
 /**
- * Read a page and its group totals as row views.
+ * Read a page as row views, with the group totals on a Motion Space list's first page, the only page that shows them.
  * @param params - The page.
  * @returns The page.
  * @throws {ValidationError} When the cursor is not one the list wrote.
@@ -448,7 +449,7 @@ async function readPage(params: grantRepo.ListParams): Promise<ExecutionPage> {
   }
   const [rows, totals] = await Promise.all([
     toRowViews(page.rows, { projectId: params.projectId, spaceId: params.scope === "results" ? null : params.spaceId }),
-    grantRepo.countGroups(params),
+    params.cursor === null && params.scope !== "results" ? grantRepo.countGroups(params) : null,
   ]);
   return { rows, nextCursor: page.nextCursor, totals };
 }

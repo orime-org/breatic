@@ -82,7 +82,7 @@ type RowView = TimelineExecution & {
 };
 
 /** A list page. */
-interface Page { rows: RowView[]; nextCursor: string | null; totals: { running: number; succeeded: number; failed: number } }
+interface Page { rows: RowView[]; nextCursor: string | null; totals: { running: number; succeeded: number; failed: number } | null }
 
 /**
  * Ask to accept an execution.
@@ -528,7 +528,8 @@ describe("GET /timeline/space-executions", () => {
       expect(succeeded.ids.length * running.ids.length * failed.ids.length, scope).toBeGreaterThan(0);
     }
     const results = await readAll(`/timeline/results?projectId=${fx.projectId}`);
-    expect(results.totals).toEqual({ running: 0, succeeded: results.ids.length, failed: 0 });
+    expect(results.ids.length).toBeGreaterThan(0);
+    expect(results.totals).toBeNull();
   });
 
   it("pages by creation time and id without skipping rows that share a microsecond", async () => {
@@ -547,6 +548,7 @@ describe("GET /timeline/space-executions", () => {
     const second = await page(fx.viewer.cookie, `${base}&cursor=${encodeURIComponent(first.nextCursor!)}`);
     expect(second.rows).toHaveLength(1);
     expect(second.nextCursor).toBeNull();
+    expect(second.totals).toBeNull();
     expect([...first.rows, ...second.rows].map((row) => row.id).sort()).toEqual(rows.map((row) => row.id).sort());
   });
 

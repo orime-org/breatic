@@ -26,7 +26,7 @@ export interface MotionLists {
   /** Every row loaded in any list, by id. */
   byId: ReadonlyMap<string, WebAnimationRowView>;
   /** How many rows each tab holds, across this Space's own rows and the Timeline-made group. */
-  totals: SpaceExecutionPage['totals'];
+  totals: NonNullable<SpaceExecutionPage['totals']>;
 }
 
 /**
