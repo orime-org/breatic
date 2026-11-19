@@ -48,6 +48,7 @@ const INDEX: readonly { group: string; sections: readonly (readonly [name: strin
       ["Spaces", "space tabs, the spaces list, making, renaming, closing and deleting a space"],
       ["The chat panel", "this chat: sending, attaching, mentions, past conversations, how a reply shows"],
       ["When something is wrong", "a banner, notice or error on screen, and what to do about it"],
+      ["External agents", "connecting an external agent such as Claude Code, its tokens, handing it a comment, mentioning members in comments, and where an agent shows in the project"],
     ],
   },
   {
@@ -2181,6 +2182,39 @@ export function renderProductGuide(): string {
       "were; later ones lose their place as if their text were deleted. " +
       "Deleting a snapshot asks first and cannot be undone.",
     "",
+    "## External agents",
+    "An external agent, such as Claude Code or Codex on the user's own computer, can connect to breatic over MCP and " +
+      "work in the projects the user can open, as the user. Its connections are managed from the account menu on the " +
+      `studio pages, under ${quoted(t("agentTokens.title"))}, which opens a dialog. ` +
+      `${quoted(t("agentTokens.clientsTitle"))} lists each client the user authorized, with ` +
+      `${quoted(t("agentTokens.rename"))} (${quoted(t("agentTokens.save"))} or ${quoted(t("agentTokens.cancel"))}) and ` +
+      `${quoted(t("agentTokens.disconnect"))}; one whose authorization ran out is marked ${quoted(t("agentTokens.expired"))} ` +
+      `and offers ${quoted(t("agentTokens.remove"))} instead. ${quoted(t("agentTokens.tokensTitle"))} is for agents that ` +
+      `cannot authorize in a browser: ${quoted(t("agentTokens.newToken"))} asks for ${quoted(t("agentTokens.tokenName"))} ` +
+      `and ${quoted(t("agentTokens.tokenExpiry"))} (a number of days or ${quoted(t("agentTokens.expiryNever"))}), then ` +
+      `${quoted(t("agentTokens.generate"))} shows the token once, with ${quoted(t("agentTokens.copy"))} and ` +
+      `${quoted(t("agentTokens.done"))}; ${quoted(t("agentTokens.revoke"))} ends a token at once.`,
+    "A thread can be handed to one of the user's external agents. On a canvas note that is open, or a document comment " +
+      `card being read, ${quoted(t("commentHandover.handOver"))} opens ${quoted(t("commentHandover.listTitle"))}; the ` +
+      `agent that answered this thread last is first, as ${quoted(t("commentHandover.again"))}. Picking one hands the ` +
+      `thread over: the one who handed it sees ${quoted(t("commentHandover.waiting"))} on it, with ` +
+      `${quoted(t("commentHandover.cancel"))} to take it back. Its reply is marked ${quoted(t("commentHandover.replied"))}, ` +
+      `and the bell says ${quoted(t("notifications.headline.commentAssignmentAnswered"))}. If the agent's connection ` +
+      `runs out or is disconnected first, the label says ${quoted(t("commentHandover.expiredReconnect"))}, ` +
+      `${quoted(t("commentHandover.expiredToken"))} or ${quoted(t("commentHandover.disconnected"))}. With no agent ` +
+      `connected the list says ${quoted(t("commentHandover.empty"))} with ${quoted(t("commentHandover.connect"))}, which ` +
+      `opens ${quoted(t("agentTokens.title"))}.`,
+    `Typing @ in a comment or reply box on a canvas note or in a document lists ${quoted(t("commentMention.members"))}; ` +
+      "picking one writes their name, and that member's bell shows " +
+      `${quoted(t("notifications.headline.commentMentioned"))} with ${quoted(t("notifications.openComment"))}, which ` +
+      `opens that Space at the comment (${quoted(t("commentLink.gone"))} when it has been deleted).`,
+    `Agents that have worked in the project are listed in ${quoted(t("members.popover.title"))} under ` +
+      `${quoted(t("members.popover.agents"))}, each as its connection's name and its owner's name, with ` +
+      `${quoted(t("members.popover.working"))}, ${quoted(t("members.popover.online"))}, ` +
+      `${quoted(t("members.popover.idle"))} after five minutes without a call, or ${quoted(t("members.popover.offline"))}; ` +
+      `with none it says ${quoted(t("members.popover.noAgents"))}. While an agent works on canvas nodes, its name ` +
+      "tag, with a robot icon, sits above those nodes beside the members holding them; in a document the block it " +
+      "works on is outlined in its colour with its name above. Both go away once it is idle.",
     "## When something is wrong",
     `- ${quoted(t("connection.banner.disconnected.text"))} across the top, with ` +
       `${quoted(t("connection.banner.reload"))}: the connection dropped, and the work area is covered until it ` +
