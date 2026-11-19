@@ -276,13 +276,7 @@ describe('placeWebAnimationClip, through add_web_animation', () => {
 
 });
 
-describe('receipts left in a document by older Timelines', () => {
-  it('carries them through every command unchanged', () => {
-    const doc = { ...timeline([webClip(cid(1), V2, 0, 48)]), operationReceipts: { [ACTION]: RECEIPT } };
-    expect(accepted(plan(doc, move(cid(1), 10))).next.operationReceipts).toEqual({ [ACTION]: RECEIPT });
-    expect(accepted(plan(doc, addResult(cid(2), SRC_A, 0, NEW_TRACK, OFF))).next.operationReceipts).toEqual({ [ACTION]: RECEIPT });
-  });
-
+describe('execution landing', () => {
   it('has no command that lands an execution', () => {
     expect(TimelineEditCommandSchema.safeParse({ operation: 'land_execution', parameters: { actionId: ACTION, receipt: RECEIPT }, placement: OFF }).success).toBe(false);
   });
@@ -323,7 +317,7 @@ describe('copies are independent (fast-check)', () => {
     fc.assert(fc.property(fc.integer({ min: 2, max: 5 }), fc.nat(), edit, (count, pick, change) => {
       const tracks = [track(MAIN, 0), ...Array.from({ length: count }, (_, index) => track(`copy-${index}`, index + 1))];
       const copies = Array.from({ length: count }, (_, index) => webClip(cid(index + 1), `copy-${index}`, index * 10, 24));
-      const doc = { ...timeline(copies, tracks), operationReceipts: { [ACTION]: RECEIPT } };
+      const doc = timeline(copies, tracks);
       const target = copies[pick % count];
       if (target === undefined) return;
       const command: TimelineEditCommand = change.kind === 'move' ? move(target.id, change.start)
@@ -331,8 +325,6 @@ describe('copies are independent (fast-check)', () => {
           : { operation: 'delete', parameters: { clipId: target.id }, placement: OFF };
       const result = accepted(planTimelineEdit(doc, command, idFactory(), RESOLUTION));
       for (const other of copies) if (other.id !== target.id) expect(result.next.clips[other.id]).toEqual(other);
-      // Removing or changing a placement never touches a receipt an older Timeline left.
-      expect(result.next.operationReceipts).toEqual({ [ACTION]: RECEIPT });
     }));
   });
 });

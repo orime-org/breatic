@@ -348,7 +348,6 @@ function timelineDocument(lanes: readonly LaneSpec[]): TimelineDocumentV1 {
     tracks: Object.fromEntries(TRACKS.map((track) => [track.id, track])),
     clips: Object.fromEntries(clips.map((clip) => [clip.id, clip])),
     sources: Object.fromEntries(sources.map((source) => [source.id, source])),
-    operationReceipts: {},
   };
 }
 

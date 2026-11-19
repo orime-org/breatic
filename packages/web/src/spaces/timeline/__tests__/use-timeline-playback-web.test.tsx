@@ -76,7 +76,6 @@ function documentOf(clips: Array<TimelineVideoClip | TimelineWebAnimationClip>):
     tracks: Object.fromEntries(tracks.map((track) => [track.id, track])),
     clips: Object.fromEntries(clips.map((clip) => [clip.id, clip])),
     sources: { [VIDEO_SOURCE.id]: VIDEO_SOURCE },
-    operationReceipts: {},
   };
 }
 

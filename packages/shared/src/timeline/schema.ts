@@ -57,9 +57,6 @@ export interface TimelineUploadClip extends Omit<TimelineVideoClip, "kind" | "so
 /** Any placement on a track, discriminated by `kind`. */
 export type TimelineClip = TimelineVideoClip | TimelineWebAnimationClip | TimelineUploadClip;
 
-/** The record that an accepted action has landed in this document, keyed by its action id. */
-export interface TimelineOperationReceipt { executionId: string; inputHash: string; landedAt: string }
-
 /** The Timeline document versions readers accept; 2 stores clip offsets as fractions of the frame (#1502). */
 export const TIMELINE_SCHEMA_VERSIONS = [1, 2] as const;
 
@@ -84,7 +81,6 @@ export interface TimelineDocumentV1 {
   tracks: Record<string, TimelineTrack>;
   clips: Record<string, TimelineClip>;
   sources: Record<string, TimelineVideoSource>;
-  operationReceipts: Record<string, TimelineOperationReceipt>;
 }
 
 const safeFrame = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -153,13 +149,6 @@ export const TimelineUploadClipSchema = z.object({
 /** Every clip kind, discriminated by `kind`. */
 export const TimelineClipSchema = z.discriminatedUnion("kind", [TimelineVideoClipSchema, TimelineWebAnimationClipSchema, TimelineUploadClipSchema]);
 
-/** One landed action's receipt. */
-export const TimelineOperationReceiptSchema = z.object({
-  executionId: identity,
-  inputHash: z.string().min(1).max(256),
-  landedAt: z.iso.datetime(),
-}).strict();
-
 /** Our complete versioned DTO, independent of a presentation library. */
 export const TimelineDocumentV1Schema: z.ZodType<TimelineDocumentV1> = z.object({
   schemaVersion: z.literal(TIMELINE_SCHEMA_VERSIONS),
@@ -167,5 +156,4 @@ export const TimelineDocumentV1Schema: z.ZodType<TimelineDocumentV1> = z.object(
   tracks: z.record(z.string(), TimelineTrackSchema),
   clips: z.record(z.string(), TimelineClipSchema),
   sources: z.record(z.string(), TimelineVideoSourceSchema),
-  operationReceipts: z.record(z.string(), TimelineOperationReceiptSchema),
 }).strict();

@@ -3,7 +3,8 @@
 
 /**
  * Writing web-animation copies into the shared Timeline (inner#1711 design §3.3, §9; #1490 design §8.2). A copy binds
- * to a succeeded result's source version; the receipts an older Timeline left in `operationReceipts` stay as they are.
+ * to a succeeded result's source version; the `operationReceipts` root an older Timeline left stays as
+ * it is.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -63,9 +64,8 @@ describe('applyTimelineEdit with web-animation copies', () => {
       expect(applyTimelineEdit(doc, addResult(cid(1), SRC_A, 24, 'track-new', OFF), 'test', undefined, RESOLUTION).ok).toBe(true);
     });
     expect(updates).toHaveLength(1);
-    const read = readTimelineDocument(doc);
-    expect(read.operationReceipts).toEqual({ [ACTION]: RECEIPT });
-    expect(read.clips[cid(1)]).toMatchObject({ kind: 'web-animation', contentBinding: boundTo(SRC_A), startFrame: 24 });
+    expect(doc.getMap<unknown>('operationReceipts').toJSON()).toEqual({ [ACTION]: RECEIPT });
+    expect(readTimelineDocument(doc).clips[cid(1)]).toMatchObject({ kind: 'web-animation', contentBinding: boundTo(SRC_A), startFrame: 24 });
   });
 
   it('adds a result as a copy whose content stays out of the document sources', () => {

@@ -502,7 +502,6 @@ export {
   TimelineWebAnimationClipSchema,
   TimelineUploadClipSchema,
   TimelineClipSchema,
-  TimelineOperationReceiptSchema,
   TimelineDocumentV1Schema,
   TIMELINE_MAIN_TRACK_ID,
   TIMELINE_SCHEMA_VERSIONS,
@@ -518,7 +517,6 @@ export type {
   TimelineWebAnimationContentBinding,
   TimelineUploadClip,
   TimelineClip,
-  TimelineOperationReceipt,
   TimelineDocumentV1,
 } from "@shared/timeline/schema.js";
 // The web-animation contracts are exported from `@breatic/shared/space-content` only: their schemas are built at
