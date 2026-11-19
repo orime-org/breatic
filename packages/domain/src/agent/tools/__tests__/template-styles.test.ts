@@ -12,6 +12,7 @@ import { loadLocales } from "@breatic/core";
 import { mergeLocaleMessages, setLocale, templateStyleSet, type GenerationTemplate } from "@breatic/shared";
 
 import { describeTemplate } from "../get-generation-template.js";
+import { proposeCanvasAction } from "../propose-canvas-action.js";
 import { nodeLabel } from "../proposal-refusals.js";
 import { expandAt, templatePlace, templateSegmentsText } from "../template-expansion.js";
 
@@ -89,5 +90,15 @@ describe("a styled template's node sent with no words", () => {
     const out = expandAt(place, { role: "generate", type: "image", name: "Still" }, nodeLabel([{ name: "Still" }], 0));
     expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
     expect(out.ok ? "" : out.reason).toContain("followed by one style's paragraph: read it with get_generation_template and style");
+  });
+});
+
+describe("the template index", () => {
+  it("says a styled template takes one of its set's styles, by category, and where to read them", () => {
+    const description = String(proposeCanvasAction.description);
+    const line = description.split(" | ").find((one) => one.startsWith("film-style-still ")) ?? "";
+    expect(line).toContain(`Takes one of ${String(SET.styles.length)} styles (painting, drawing, print, cartoon, photo, craft); read them with get_generation_template.`);
+    const plain = description.split(" | ").find((one) => one.startsWith("era-walkthrough-montage ")) ?? "";
+    expect(plain).not.toContain("Takes one of");
   });
 });

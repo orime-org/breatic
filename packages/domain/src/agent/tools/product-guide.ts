@@ -877,7 +877,12 @@ export function renderProductGuide(): string {
       "opens a list under that heading of creative goals; pointing at a goal opens the templates for it, each a " +
       `name with a line under it. ${templateMenuLine("image", "A picture node")} ${templateMenuLine("video", "A video node")} ` +
       `${templateMenuLine("audio", "A sound node")} A template whose model this ` +
-      `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
+      `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. A template with styles ` +
+      "is not picked itself: pointing at it opens one more list, its styles, under headings with a small picture for each " +
+      `where it has them; while they load it reads ${quoted(t("common.loading"))} and when they cannot be loaded it reads ` +
+      `${quoted(t("canvas.template.styleLoadFailed"))} and picking applies nothing. Picking a style applies the template and ` +
+      "writes that style's description as a paragraph after the template's own words in the prompt; picking another style " +
+      "for the same node replaces it, as picking a template again does. Picking a template sets " +
       "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
       "template's; nothing asks first. A template with a shot list switches a video node to its multi-shot mode " +
       "and writes the shots in place of the prompt, each with its seconds and its words. A dialogue template " +

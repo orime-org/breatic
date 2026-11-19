@@ -48,8 +48,11 @@ import { COMIC_PANELS_TO_SHOTS } from "@shared/canvas/templates/comic-panels-to-
 import { COSTUME_SHEET } from "@shared/canvas/templates/costume-sheet.js";
 import { DESTINATION_FESTIVAL_POSTER } from "@shared/canvas/templates/destination-festival-poster.js";
 import { DISH_HERO_STILL } from "@shared/canvas/templates/dish-hero-still.js";
+import { ERA_WALKTHROUGH_MONTAGE } from "@shared/canvas/templates/era-walkthrough-montage.js";
 import { EXPRESSION_SHEET } from "@shared/canvas/templates/expression-sheet.js";
 import { EXTREME_SPORTS_RUN } from "@shared/canvas/templates/extreme-sports-run.js";
+import { FILM_STYLE_SHOT } from "@shared/canvas/templates/film-style-shot.js";
+import { FILM_STYLE_STILL } from "@shared/canvas/templates/film-style-still.js";
 import { FISHEYE_CLONE_POV } from "@shared/canvas/templates/fisheye-clone-pov.js";
 import { FLASH_PHOTO_DUMP_GRID } from "@shared/canvas/templates/flash-photo-dump-grid.js";
 import { FOOD_MONEY_SHOT } from "@shared/canvas/templates/food-money-shot.js";
@@ -82,6 +85,7 @@ import { STOP_MOTION_SHORT } from "@shared/canvas/templates/stop-motion-short.js
 import { STORYBOARD_GRID_25 } from "@shared/canvas/templates/storyboard-grid-25.js";
 import { STORYBOARD_SHEET_9 } from "@shared/canvas/templates/storyboard-sheet-9.js";
 import { STORYBOARD_TO_VIDEO } from "@shared/canvas/templates/storyboard-to-video.js";
+import { STYLE_SOUND_BED } from "@shared/canvas/templates/style-sound-bed.js";
 import { TALKING_HEAD_PITCH } from "@shared/canvas/templates/talking-head-pitch.js";
 import { TALKING_OWN_VOICE } from "@shared/canvas/templates/talking-own-voice.js";
 import { TALKING_PRESENTER } from "@shared/canvas/templates/talking-presenter.js";
@@ -102,7 +106,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "animation", "ecommerce", "product-showcase", "food", "social-hooks", "talking", "posters", "speed", "sound"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "animation", "ecommerce", "product-showcase", "food", "social-hooks", "talking", "posters", "film-styles", "speed", "sound"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -280,6 +284,10 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   NAME_AS_WORLD_TYPOGRAPHY,
   DESTINATION_FESTIVAL_POSTER,
   PHOTO_PAPER_DIORAMA,
+  FILM_STYLE_STILL,
+  FILM_STYLE_SHOT,
+  ERA_WALKTHROUGH_MONTAGE,
+  STYLE_SOUND_BED,
   VEHICLE_SPEED_CUTLIST,
   SPORTS_LIVE_COVERAGE,
   EXTREME_SPORTS_RUN,
