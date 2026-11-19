@@ -19,6 +19,7 @@
 import * as Y from 'yjs';
 
 import { markedSegments, writtenMark, type PromptSegment } from '@shared/types/canvas-proposal.js';
+import { dialogueText } from '@shared/canvas/dialogue.js';
 import {
   MENTION_KIND_ATTR,
   MENTION_LABEL_ATTR,
@@ -138,22 +139,54 @@ export function promptPieces(fragment: Y.XmlFragment): PromptPieceBlock[] {
 }
 
 /**
+ * One line's pieces as the model reads them.
+ * @param block - The line.
+ * @param words - What each chip says.
+ * @returns The line's text.
+ */
+function lineText(block: PromptPieceBlock, words: ReturnType<typeof chipWordsReader>): string {
+  return block.pieces.map((piece) => ('text' in piece ? piece.text : words(piece.mention.sourceNodeId, piece.mention.kind))).join('');
+}
+
+/**
  * A prompt's pieces as the model reads them: a text chip as its source's
  * words, a media chip as its token, lines apart.
  * @param blocks - The pieces {@link promptPieces} read.
  * @param pool - The node's reference rows, for what a text chip says.
  * @param tokens - Each media chip's words, by source id.
+ * @param separator - What joins two lines: a blank line for a prompt, a newline for lyrics, as the editors join them.
  * @returns The text.
  */
 export function serializePromptPieces(
   blocks: ReadonlyArray<PromptPieceBlock>,
   pool: ReadonlyArray<ReferenceRailItem>,
   tokens: MentionTokens,
+  separator: string = BLOCK_SEPARATOR,
 ): string {
   const words = chipWordsReader(pool, tokens);
-  return blocks
-    .map((block) => block.pieces.map((piece) => ('text' in piece ? piece.text : words(piece.mention.sourceNodeId, piece.mention.kind))).join(''))
-    .join(BLOCK_SEPARATOR);
+  return blocks.map((block) => lineText(block, words)).join(separator);
+}
+
+/**
+ * A dialogue's pieces as the script the dialogue side sends: each line's
+ * words after its speaker's name, as `dialogueText` writes them.
+ * @param blocks - The pieces {@link promptPieces} read.
+ * @param pool - The node's reference rows, for what a text chip says.
+ * @param names - The speakers' names, from speaker 1.
+ * @param tokens - Each media chip's words, by source id.
+ * @returns The script.
+ */
+export function serializeDialoguePieces(
+  blocks: ReadonlyArray<PromptPieceBlock>,
+  pool: ReadonlyArray<ReferenceRailItem>,
+  names: readonly string[],
+  tokens: MentionTokens,
+): string {
+  const words = chipWordsReader(pool, tokens);
+  return dialogueText(
+    blocks.map((block) => ({ speaker: block.speaker ?? null, text: lineText(block, words) })),
+    names.map((speaker) => ({ speaker })),
+  );
 }
 
 /**

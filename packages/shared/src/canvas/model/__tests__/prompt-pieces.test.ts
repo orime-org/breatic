@@ -16,7 +16,8 @@ import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
 
 import { serializePromptFragment } from "@shared/canvas/model/fragment-prompt.js";
-import { agentPromptSegments, promptMarkup, promptPieces, serializePromptPieces } from "@shared/canvas/model/prompt-pieces.js";
+import { agentPromptSegments, promptMarkup, promptPieces, serializeDialoguePieces, serializePromptPieces } from "@shared/canvas/model/prompt-pieces.js";
+import { dialogueText } from "@shared/canvas/dialogue.js";
 import { writeDialogueLines, writeProposalPrompt, type ProposalMention } from "@shared/canvas/model/proposal-prompt.js";
 import type { ReferenceRailItem } from "@shared/canvas/model/derive-references.js";
 
@@ -119,5 +120,30 @@ describe("agentPromptSegments", () => {
     const mentions: ProposalMention[] = [{ sourceNodeId: "n1", label: "Hero", kind: "image" }];
     writeProposalPrompt(fragment, [{ text: "Paint " }, { ref: 0 }, { text: " at dusk" }], (i) => mentions[i]);
     expect(agentPromptSegments(promptMarkup(fragment), [])).toEqual({ segments: [{ text: "Paint " }, { ref: 0 }, { text: " at dusk" }], mentions: ["n1"] });
+  });
+});
+
+describe("serializing pieces as the editor does", () => {
+  it("joins lines with the separator a box asks for", () => {
+    const blocks = [{ pieces: [{ text: "verse one" }] }, { pieces: [{ text: "verse two" }] }];
+    expect(serializePromptPieces(blocks, [], {})).toBe("verse one\n\nverse two");
+    expect(serializePromptPieces(blocks, [], {}, "\n")).toBe("verse one\nverse two");
+  });
+
+  it("writes a dialogue as the script the dialogue side sends", () => {
+    const blocks = [
+      { pieces: [{ text: "Hello there." }], speaker: 1 },
+      { pieces: [{ text: "Hi!" }], speaker: 2 },
+    ];
+    const names = ["Ann", "Bo"];
+    expect(serializeDialoguePieces(blocks, [], names, {})).toBe(
+      dialogueText(
+        [
+          { speaker: 1, text: "Hello there." },
+          { speaker: 2, text: "Hi!" },
+        ],
+        names.map((speaker) => ({ speaker })),
+      ),
+    );
   });
 });
