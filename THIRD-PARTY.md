@@ -15,9 +15,9 @@ beside the bundle at `/third-party-licences.txt`.
 
 ## Programs in our container images
 
-We publish four images, and a deployment that enables web animation builds two
-more, the web-animation container and the web-animation render container, from
-source. The media container carries FFmpeg and vips; the page reader carries a
+We publish six images: the backend, the web front-end, the media container, the
+page reader, the web-animation container and the web-animation render container.
+The media container carries FFmpeg and vips; the page reader carries a
 Chromium headless shell and the FFmpeg build Playwright installs beside it; the
 web-animation container carries Chromium and the DeepSeek Harness; the render
 container carries a Chromium headless shell, FFmpeg and the HyperFrames
