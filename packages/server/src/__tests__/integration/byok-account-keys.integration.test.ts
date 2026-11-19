@@ -130,6 +130,17 @@ describe("account_provider_keys", () => {
     `).rejects.toMatchObject({ code: "23503" });
   });
 
+  it("refuses a key, a delete and a model choice for an account already deleted, writing nothing", async () => {
+    const userId = await seedUser();
+    await save(userId, "fal", sealedText("before"));
+    await sql`UPDATE users SET deleted_at = now() WHERE id = ${userId}`;
+
+    await expect(save(userId, "wavespeed", sealedText("after"))).rejects.toThrow();
+    await expect(accountProviderKeysRepo.deleteKey(userId, "fal")).rejects.toThrow();
+    await expect(accountModelUpstreamsRepo.setModelUpstream(userId, "seedream-5", "fal")).rejects.toThrow();
+    expect((await rowsOf(userId, "wavespeed")).length).toBe(0);
+  });
+
   it("replaces a key with a new row and clears the old row's sealed text at once", async () => {
     const userId = await seedUser();
     const oldId = await save(userId, "fal", sealedText("old"));
@@ -144,8 +155,8 @@ describe("account_provider_keys", () => {
     ]);
     expect((await accountProviderKeysRepo.liveKeysFor(userId)).map((k) => k.id)).toEqual([newId]);
     // A task still holding the old row's id can no longer read a key from it.
-    expect(await accountProviderKeysRepo.sealedKeyById(oldId)).toBeNull();
-    expect(await accountProviderKeysRepo.sealedKeyById(newId)).toMatchObject({ id: newId, userId, upstream: "fal", ciphertext: newText });
+    expect(await accountProviderKeysRepo.keyRowById(oldId)).toMatchObject({ id: oldId, userId, upstream: "fal", ciphertext: null });
+    expect(await accountProviderKeysRepo.keyRowById(newId)).toMatchObject({ id: newId, userId, upstream: "fal", ciphertext: newText });
   });
 
   it("records a check on the row it checked, never on the row that replaced it meanwhile", async () => {
@@ -187,7 +198,7 @@ describe("account_provider_keys", () => {
     const [row] = await rowsOf(userId, "wavespeed");
     expect(row!.deleted_at).not.toBeNull();
     expect(row!.ciphertext).toBeNull();
-    expect(await accountProviderKeysRepo.sealedKeyById(id)).toBeNull();
+    expect((await accountProviderKeysRepo.keyRowById(id))?.ciphertext).toBeNull();
     // Nothing left to delete.
     expect(await accountProviderKeysRepo.deleteKey(userId, "wavespeed")).toBe(false);
   });
@@ -235,7 +246,7 @@ describe("account_provider_keys", () => {
       throw new Error("roll back");
     })).rejects.toThrow("roll back");
 
-    expect(await accountProviderKeysRepo.sealedKeyById(id)).toMatchObject({ ciphertext: text });
+    expect(await accountProviderKeysRepo.keyRowById(id)).toMatchObject({ ciphertext: text });
     expect((await accountProviderKeysRepo.liveKeysFor(userId)).map((k) => k.id)).toEqual([id]);
   });
 });

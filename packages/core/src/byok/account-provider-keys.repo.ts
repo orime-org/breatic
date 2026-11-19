@@ -4,16 +4,18 @@
 /**
  * Account provider keys repository — data access for `account_provider_keys` (inner#1953): the only
  * place an account's own upstream key is kept, sealed. Replacing, deleting or erasing a key clears its sealed text and
- * soft-deletes its row in one write, so a task still naming the row by id reads nothing. Nothing this module returns
- * for display carries the sealed text; only {@link sealedKeyById} does, for the caller that opens it.
+ * soft-deletes its row in one write, so a task still naming the row by id reads no sealed text. Nothing this module
+ * returns for display carries the sealed text; only {@link keyRowById} and {@link sealedLiveKeyFor} do, for the caller
+ * that opens it.
  */
 
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { TransactionSql } from "postgres";
 import type { AccountProviderKey, ProviderKeyBalanceState } from "@breatic/shared";
 import { db } from "@core/db/client.js";
 import { accountProviderKeys, users } from "@core/db/schema.js";
-import { dropChoicesForUpstream, lockAccount } from "@core/byok/account-model-upstreams.repo.js";
+import { lockAccountRow } from "@core/auth/membership.repo.js";
+import { dropChoicesForUpstream } from "@core/byok/account-model-upstreams.repo.js";
 import { redactSessionError } from "@core/infra/session-error.js";
 
 /** What a check of the key found, stored beside it. */
@@ -99,7 +101,7 @@ function checkColumns(check: ProviderKeyCheckRecord): Partial<typeof accountProv
 export async function saveKey(input: NewAccountProviderKey): Promise<AccountProviderKey> {
   try {
     return await db.transaction(async (tx) => {
-      await lockAccount(tx, input.userId);
+      await lockAccountRow(input.userId, tx);
       await tx
         .update(accountProviderKeys)
         .set({ ciphertext: null, deletedAt: sql`now()` })
@@ -152,19 +154,25 @@ export async function liveKeysFor(userId: string): Promise<AccountProviderKey[]>
 }
 
 /**
- * A key row's sealed text, only while the row and its account are live.
+ * A key row by id in one read: its account and upstream whatever its state, and its sealed text only while the row and
+ * its account are live, so a run on a key that is gone can still say which upstream's key it was.
  * @param id - The `account_provider_keys` row a task or turn recorded.
- * @returns The sealed key, or null when the row was replaced, deleted, erased or never existed, or its account is gone.
+ * @returns The row, its sealed text null once it was replaced, deleted or erased or its account is gone; null when no
+ *   row has the id.
  */
-export async function sealedKeyById(id: string): Promise<SealedProviderKey | null> {
+export async function keyRowById(id: string): Promise<{ id: string; userId: string; upstream: string; ciphertext: string | null } | null> {
   const rows = await db
-    .select({ id: accountProviderKeys.id, userId: accountProviderKeys.userId, upstream: accountProviderKeys.upstream, ciphertext: accountProviderKeys.ciphertext })
+    .select({
+      id: accountProviderKeys.id,
+      userId: accountProviderKeys.userId,
+      upstream: accountProviderKeys.upstream,
+      ciphertext: sql<string | null>`CASE WHEN ${accountProviderKeys.deletedAt} IS NULL AND ${users.deletedAt} IS NULL THEN ${accountProviderKeys.ciphertext} END`,
+    })
     .from(accountProviderKeys)
-    .innerJoin(users, and(eq(users.id, accountProviderKeys.userId), isNull(users.deletedAt)))
-    .where(and(eq(accountProviderKeys.id, id), isNull(accountProviderKeys.deletedAt), isNotNull(accountProviderKeys.ciphertext)))
+    .innerJoin(users, eq(users.id, accountProviderKeys.userId))
+    .where(eq(accountProviderKeys.id, id))
     .limit(1);
-  const row = rows[0];
-  return row === undefined || row.ciphertext === null ? null : { ...row, ciphertext: row.ciphertext };
+  return rows[0] ?? null;
 }
 
 /**
@@ -208,7 +216,7 @@ export async function keyOwnerById(id: string): Promise<{ id: string; userId: st
  */
 export async function deleteKey(userId: string, upstream: string): Promise<boolean> {
   return db.transaction(async (tx) => {
-    await lockAccount(tx, userId);
+    await lockAccountRow(userId, tx);
     const retired = await tx
       .update(accountProviderKeys)
       .set({ ciphertext: null, deletedAt: sql`now()` })

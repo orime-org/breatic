@@ -77,10 +77,7 @@ export async function studioProviderKey(studioId: string, purpose: KeyPurpose): 
  * @returns The live row, the retired row with `ciphertext` null, or null when no row has the id.
  */
 export async function providerKeyById(keyId: string): Promise<ProviderKeyById | null> {
-  const sealed = await accountProviderKeysRepo.sealedKeyById(keyId);
-  if (sealed !== null) return sealed;
-  const owner = await accountProviderKeysRepo.keyOwnerById(keyId);
-  return owner === null ? null : { ...owner, ciphertext: null };
+  return accountProviderKeysRepo.keyRowById(keyId);
 }
 
 /**

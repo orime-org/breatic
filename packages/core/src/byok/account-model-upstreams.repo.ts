@@ -11,7 +11,8 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { AccountModelUpstream } from "@breatic/shared";
 import type { TransactionSql } from "postgres";
 import { db, type DbTx } from "@core/db/client.js";
-import { accountModelUpstreams, accountProviderKeys, users } from "@core/db/schema.js";
+import { lockAccountRow } from "@core/auth/membership.repo.js";
+import { accountModelUpstreams, accountProviderKeys } from "@core/db/schema.js";
 
 const entityColumns = {
   id: accountModelUpstreams.id,
@@ -23,17 +24,6 @@ const entityColumns = {
 };
 
 /**
- * Serialise an account's key and model-choice writes: two replacements of one key cannot both retire the old row, and
- * a choice's check for a live key and a delete of that key cannot interleave.
- * @param tx - The open transaction.
- * @param userId - The account.
- * @returns Nothing once the lock is held.
- */
-export async function lockAccount(tx: DbTx, userId: string): Promise<void> {
-  await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("no key update");
-}
-
-/**
  * Set or clear the upstream an account chose for a model: the live choice is soft-deleted and, unless clearing, a
  * new one inserted, in one transaction. A choice naming an upstream the account holds no live key for is refused
  * under the account's lock, which a key's delete takes too, so a delete cannot slip between the check and the insert
@@ -42,11 +32,12 @@ export async function lockAccount(tx: DbTx, userId: string): Promise<void> {
  * @param model - The catalog model.
  * @param upstream - The chosen upstream, or null to go back to the deployment's keys.
  * @returns False when the account holds no live key for the upstream, and nothing was written; true otherwise.
- * @throws {Error} When the account does not exist (foreign key).
+ * @throws {Error} When no live account has the id.
  */
 export async function setModelUpstream(userId: string, model: string, upstream: string | null): Promise<boolean> {
   return db.transaction(async (tx) => {
-    await lockAccount(tx, userId);
+    // The account's row lock serialises its key and choice writes, and refuses an account already deleted.
+    await lockAccountRow(userId, tx);
     if (upstream !== null) {
       const [held] = await tx
         .select({ id: accountProviderKeys.id })

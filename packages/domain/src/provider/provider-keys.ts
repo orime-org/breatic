@@ -8,7 +8,7 @@
  * with {@link keysById}, never storing it.
  */
 
-import { getConfig, openProviderKey, projectsRepo, providerKeyRingOf, type ProviderKeyRing } from "@breatic/core";
+import { accountProviderKeysRepo, getConfig, openProviderKey, projectsRepo, providerKeyRingOf, type ProviderKeyRing } from "@breatic/core";
 import { AccountKeyFailure, type KeySet, type Route } from "@breatic/provider";
 import { describesInput } from "@breatic/provider/pricing";
 import { provider } from "@domain/provider/instance.js";
@@ -101,7 +101,7 @@ export async function keysById(keyId: string | null): Promise<{ keys: KeySet } |
  * @returns The account's id, or undefined for our keys or an id no row has.
  */
 export async function keyOwnerOf(keyId: string | null): Promise<string | undefined> {
-  return keyId === null ? undefined : (await providerKeyById(keyId))?.userId;
+  return keyId === null ? undefined : (await accountProviderKeysRepo.keyOwnerById(keyId))?.userId;
 }
 
 /**
