@@ -479,6 +479,29 @@ export function Notice({
   );
 }
 
+/** Whether this deployment records credits, which decides what a section that only exists when selling says. */
+interface SellingOffNoticeProps {
+  /** Whether credits are recorded and deducted here. */
+  charging: boolean;
+}
+
+/**
+ * What a section that exists only where credits are sold (buying, purchases,
+ * assigning, refunds) shows where they are not: that nothing is charged at
+ * all, or that credits are charged but not sold here.
+ * @param props - Whether credits are recorded.
+ * @param props.charging - Whether credits are recorded and deducted here.
+ * @returns The notice.
+ */
+export function SellingOffNotice({ charging }: SellingOffNoticeProps): React.JSX.Element {
+  const t = useTranslation();
+  return charging ? (
+    <Notice title={t('credits.notSoldHere.title')} body={t('credits.notSoldHere.body')} tone='info' />
+  ) : (
+    <Notice title={t('credits.billingOff.title')} body={t('credits.billingOff.body')} tone='info' />
+  );
+}
+
 /** The cells of one header row. */
 interface TableHeadProps {
   /** The column headings, in order. */

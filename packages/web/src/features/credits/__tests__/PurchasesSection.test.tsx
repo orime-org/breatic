@@ -107,16 +107,16 @@ beforeEach(() => {
 
 /**
  * Render the purchase history.
- * @param billing - Whether this deployment charges at all.
+ * @param selling - Whether this deployment sells credits.
  * @returns The render result.
  */
-function renderHistory(billing = true): ReturnType<typeof render> {
+function renderHistory(selling = true): ReturnType<typeof render> {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <PurchasesSection userId='u1' billing={billing} />
+      <PurchasesSection userId='u1' charging selling={selling} />
     </QueryClientProvider>,
   );
 }

@@ -53,7 +53,7 @@ export function StudiosSection({
       title={t('credits.section.studios')}
       footer={<Footnote>{t('credits.studiosNote')}</Footnote>}
     >
-      {overview.billing ? null : (
+      {overview.charging ? null : (
         <Notice
           title={t('credits.billingOff.title')}
           body={t('credits.billingOff.body')}
@@ -70,7 +70,7 @@ export function StudiosSection({
                 <StudioRow
                   key={studio.studioId}
                   studio={studio}
-                  billing={overview.billing}
+                  charging={overview.charging}
                 />
               ))}
             </Rows>
@@ -85,18 +85,18 @@ export function StudiosSection({
 interface StudioRowProps {
   /** The studio. */
   studio: StudioCreditSummary;
-  /** Whether this deployment charges for generation at all. */
-  billing: boolean;
+  /** Whether this deployment records and deducts credits at all. */
+  charging: boolean;
 }
 
 /**
  * One studio: what it can spend, what it owes, and what it has spent.
- * @param props - The studio and whether billing is on.
+ * @param props - The studio and whether credits are charged.
  * @param props.studio - The studio.
- * @param props.billing - Whether this deployment charges at all.
+ * @param props.charging - Whether this deployment records and deducts credits at all.
  * @returns The row.
  */
-const StudioRow = React.memo(function StudioRow({ studio, billing }: StudioRowProps): React.JSX.Element {
+const StudioRow = React.memo(function StudioRow({ studio, charging }: StudioRowProps): React.JSX.Element {
   const t = useTranslation();
   const spent = formatCreditAmount(studio.spent);
 
@@ -119,7 +119,7 @@ const StudioRow = React.memo(function StudioRow({ studio, billing }: StudioRowPr
         </>
       }
       sub={
-        !billing
+        !charging
           ? t('credits.billingOff.title')
           : studio.deleted
             ? t('credits.deletedStudioHint')
@@ -130,7 +130,7 @@ const StudioRow = React.memo(function StudioRow({ studio, billing }: StudioRowPr
       right={
         <>
           <span className='block text-sm font-semibold'>
-            {!billing || studio.deleted
+            {!charging || studio.deleted
               ? '—'
               : formatCreditAmount(studio.spendable)}
           </span>

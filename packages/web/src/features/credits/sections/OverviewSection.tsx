@@ -62,7 +62,7 @@ export function OverviewSection({
 
   return (
     <Section title={t('credits.section.overview')}>
-      {overview.billing ? null : (
+      {overview.charging ? null : (
         <Notice
           title={t('credits.billingOff.title')}
           body={t('credits.billingOff.body')}
@@ -76,9 +76,9 @@ export function OverviewSection({
         <div className='border-b border-border pb-4'>
           <Figure
             label={t('credits.total')}
-            value={overview.billing ? formatCreditAmount(total) : dash}
-            {...(overview.billing ? { unit } : {})}
-            {...(overview.billing ? { hint: t('credits.pricingHint') } : {})}
+            value={overview.charging ? formatCreditAmount(total) : dash}
+            {...(overview.charging ? { unit } : {})}
+            {...(overview.charging ? { hint: t('credits.pricingHint') } : {})}
           />
         </div>
         <div className='mt-4 flex flex-wrap gap-x-9 gap-y-4'>
@@ -86,12 +86,12 @@ export function OverviewSection({
             size='part'
             label={t('credits.unassigned')}
             value={
-              overview.billing
+              overview.charging
                 ? formatCreditAmount(overview.unassignedCredits)
                 : dash
             }
-            {...(overview.billing ? { unit } : {})}
-            {...(overview.billing && parseCreditDecimal(overview.unassignedCredits) > 0n
+            {...(overview.charging ? { unit } : {})}
+            {...(overview.charging && parseCreditDecimal(overview.unassignedCredits) > 0n
               ? { hint: t('credits.unassignedHint') }
               : {})}
           />
@@ -99,11 +99,11 @@ export function OverviewSection({
             size='part'
             label={t('credits.assigned')}
             value={
-              overview.billing ? formatCreditAmount(overview.assignedCredits) : dash
+              overview.charging ? formatCreditAmount(overview.assignedCredits) : dash
             }
-            {...(overview.billing ? { unit } : {})}
+            {...(overview.charging ? { unit } : {})}
           />
-          {!overview.billing || parseCreditDecimal(overview.underRefundCredits) === 0n ? null : (
+          {!overview.charging || parseCreditDecimal(overview.underRefundCredits) === 0n ? null : (
             <Figure
               size='part'
               label={t('credits.underRefund')}
@@ -114,7 +114,7 @@ export function OverviewSection({
           )}
         </div>
       </div>
-      {!overview.billing ? null : parseCreditDecimal(total) === 0n ? (
+      {!overview.charging ? null : parseCreditDecimal(total) === 0n ? (
         <Notice
           title={t('credits.overviewEmpty.title')}
           body={t('credits.overviewEmpty.body')}

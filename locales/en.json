@@ -4096,6 +4096,10 @@
       "title": "This deployment does not charge credits",
       "body": "Generating costs nothing and there is nothing to buy. What gets used is still recorded."
     },
+    "notSoldHere": {
+      "title": "This deployment does not sell credits",
+      "body": "Generating uses credits as usual, but none can be bought here."
+    },
     "total": "Account total",
     "unassigned": "Unassigned",
     "unassignedWithNextStep": "Unassigned — use Assign on the left to give it to a Studio",

@@ -408,11 +408,16 @@ export interface CreditOverview {
    */
   underRefundCredits: CreditDecimal;
   /**
-   * Whether this deployment charges for generation at all. Without it a fresh
-   * account and a self-hosted install look identical on the wire: three zeros
-   * and no studios.
+   * Whether this deployment records and deducts credits at all. Without it a
+   * fresh account and a self-hosted install look identical on the wire: three
+   * zeros and no studios.
    */
-  billing: boolean;
+  charging: boolean;
+  /**
+   * Whether this deployment sells credits and memberships (a billing service
+   * is configured). Purchases, assigning, refunds and buying exist only then.
+   */
+  selling: boolean;
   /** Every studio this account has money in or has spent money in. */
   studios: StudioCreditSummary[];
 }
@@ -452,7 +457,7 @@ export const studioCreditsViewSchema = z.object({
 export const studioCreditSummarySchema = z.object({
   studioId: id, studioName: z.string(), studioSlug: z.string(), deleted: z.boolean(), spendable: amount, debt: amount.nullable(), spent: amount, lotCount: z.number().int().nonnegative(),
 });
-export const creditOverviewSchema = z.object({ assignedCredits: amount, unassignedCredits: amount, underRefundCredits: amount, billing: z.boolean(), studios: z.array(studioCreditSummarySchema) });
+export const creditOverviewSchema = z.object({ assignedCredits: amount, unassignedCredits: amount, underRefundCredits: amount, charging: z.boolean(), selling: z.boolean(), studios: z.array(studioCreditSummarySchema) });
 export const creditLotPageSchema = z.object({ items: z.array(creditLotViewSchema), nextCursor: nullableText });
 export const creditLedgerPageSchema = z.object({ items: z.array(creditLedgerViewSchema), nextCursor: nullableText });
 export const purchasePageSchema = z.object({ items: z.array(purchaseRowSchema), nextCursor: nullableText });

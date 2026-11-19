@@ -16,6 +16,7 @@ import {
   ScrollCard,
   ListEnd,
   Notice,
+  SellingOffNotice,
   Row,
   RowBalance,
   Rows,
@@ -31,12 +32,14 @@ import { formatLocalDay } from '@web/lib/format-day';
 import { toast } from '@web/lib/toast';
 import { paymentHistoryKey } from '@web/features/credits/account-reads';
 
-/** Whose purchases, and whether billing is on at all. */
+/** Whose purchases, and whether credits are charged and sold here. */
 interface PurchasesSectionProps {
   /** The signed-in account, for the query key. */
   userId: string | null;
-  /** Whether this deployment charges for generation at all. */
-  billing: boolean;
+  /** Whether this deployment records and deducts credits at all. */
+  charging: boolean;
+  /** Whether this deployment sells credits; the section exists only then. */
+  selling: boolean;
 }
 
 /**
@@ -46,14 +49,16 @@ interface PurchasesSectionProps {
  * abandoned are both here — those are what somebody comes to this screen to
  * ask about. Neither has credits behind it, so the figures that come from a
  * lot are absent on those rows rather than shown as zero.
- * @param props - The account and whether billing is on.
+ * @param props - The account and whether credits are charged and sold here.
  * @param props.userId - The signed-in account, for the query key.
- * @param props.billing - Whether this deployment charges at all.
+ * @param props.charging - Whether this deployment records and deducts credits at all.
+ * @param props.selling - Whether this deployment sells credits.
  * @returns The section.
  */
 export function PurchasesSection({
   userId,
-  billing,
+  charging,
+  selling,
 }: PurchasesSectionProps): React.JSX.Element {
   const t = useTranslation();
   const read = React.useCallback(
@@ -66,7 +71,7 @@ export function PurchasesSection({
     // and ids the refund action cannot use.
     queryKey: paymentHistoryKey(userId),
     read,
-    enabled: billing && userId !== null,
+    enabled: selling && userId !== null,
   });
 
   return (
@@ -74,12 +79,8 @@ export function PurchasesSection({
       scrolls={false}
       title={t('credits.section.lots')}
     >
-      {!billing ? (
-        <Notice
-          title={t('credits.billingOff.title')}
-          body={t('credits.billingOff.body')}
-          tone='info'
-        />
+      {!selling ? (
+        <SellingOffNotice charging={charging} />
       ) : paging.isPending ? (
         <SectionSkeleton />
       ) : paging.isError ? (

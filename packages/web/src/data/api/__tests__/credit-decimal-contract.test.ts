@@ -42,7 +42,7 @@ const position = {
   spendable: '18014398509.470000', held: '0.010000', available: '18014398509.460000',
 };
 const overview = {
-  billing: true, assignedCredits: '18014398509.470000', unassignedCredits: '0.000000',
+  charging: true, selling: true, assignedCredits: '18014398509.470000', unassignedCredits: '0.000000',
   underRefundCredits: '0.000000', studios: [],
 };
 const page = { items: [], nextCursor: null };

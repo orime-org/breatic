@@ -71,7 +71,7 @@ function creditsFigure(
 ): React.ReactNode {
   if (overview.isError) return t('studio.topBar.creditsUnavailable');
   if (overview.isPending) return <Skeleton className='h-3 w-10' />;
-  if (!overview.data.billing) return null;
+  if (!overview.data.charging) return null;
   return formatCreditAmount(accountTotal(overview.data));
 }
 

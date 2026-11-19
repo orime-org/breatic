@@ -85,7 +85,8 @@ function overview(over: Partial<CreditOverview> = {}): CreditOverview {
     assignedCredits: '3640.000000' as CreditDecimal,
     unassignedCredits: '1790.000000' as CreditDecimal,
     underRefundCredits: '0.000000' as CreditDecimal,
-    billing: true,
+    charging: true,
+    selling: true,
     studios: [],
     ...over,
   };
@@ -776,6 +777,18 @@ describe('StudioAccountMenu', () => {
       expect(creditsTrailing()).toBe('Unavailable');
     });
 
+    it('shows the balance where credits are charged but not sold here', async () => {
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      overviewMock.mockResolvedValue(overview({ charging: true, selling: false }));
+      setup();
+      await openMenu(user);
+
+      await waitFor(() => {
+        expect(creditsTrailing()).toBe('5,430');
+      });
+    });
+
     it('says nothing but the word where this deployment does not charge', async () => {
       // Three zeros there mean "we do not bill", not "your money is gone", and
       // rendering the 0 says the second one.
@@ -786,7 +799,8 @@ describe('StudioAccountMenu', () => {
           assignedCredits: '0.000000' as CreditDecimal,
           unassignedCredits: '0.000000' as CreditDecimal,
           underRefundCredits: '0.000000' as CreditDecimal,
-          billing: false,
+          charging: false,
+          selling: false,
         }),
       );
       setup();

@@ -1011,7 +1011,8 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
     assignedCredits: fromMicroCredits(studios.reduce((sum, s) => sum + toMicroCredits(s.spendable), 0n)),
     unassignedCredits: unassigned,
     underRefundCredits: fromMicroCredits(toMicroCredits(underRefund)),
-    billing: env.PAYMENT_ENABLED,
+    charging: env.CHARGING_ENABLED,
+    selling: env.SELLING,
     studios,
   };
 }

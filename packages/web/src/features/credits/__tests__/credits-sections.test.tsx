@@ -151,7 +151,8 @@ function overview(over: Partial<CreditOverview> = {}): CreditOverview {
     assignedCredits: '3640.000000' as CreditDecimal,
     unassignedCredits: '1790.000000' as CreditDecimal,
     underRefundCredits: '0.000000' as CreditDecimal,
-    billing: true,
+    charging: true,
+    selling: true,
     studios: [studio()],
     ...over,
   };
@@ -364,7 +365,7 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('dashes all three where the deployment charges nobody', async () => {
-      fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
+      fetchCreditOverview.mockResolvedValue(overview({ charging: false, selling: false }));
       await openOn('overview');
       const body = await panel();
 
@@ -480,7 +481,7 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('does not reach the endpoint at all where nothing is charged', async () => {
-      fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
+      fetchCreditOverview.mockResolvedValue(overview({ charging: false, selling: false }));
       await openOn('lots');
       const body = await panel();
 
@@ -564,7 +565,7 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('lists usage even where nothing is charged', async () => {
-      fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
+      fetchCreditOverview.mockResolvedValue(overview({ charging: false, selling: false }));
       await openOn('ledger');
       const body = await panel();
 
@@ -1013,7 +1014,7 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('offers no top-up where the deployment charges nobody', async () => {
-      fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
+      fetchCreditOverview.mockResolvedValue(overview({ charging: false, selling: false }));
       await openOn('buy');
       const body = await panel();
 
@@ -1784,5 +1785,41 @@ describe('the credits overlay, section by section', () => {
         ).toBeNull();
       });
     });
+  });
+  describe('a deployment that records credits but sells none', () => {
+    beforeEach(() => {
+      fetchCreditOverview.mockResolvedValue(overview({ charging: true, selling: false }));
+    });
+
+    it('shows the account total, since credits are still recorded and deducted', async () => {
+      await openOn('overview');
+      const body = await panel();
+
+      expect(body).toHaveTextContent('5,430');
+      expect(body).not.toHaveTextContent(/does not charge credits/i);
+      expect(body).not.toHaveTextContent(/does not sell credits/i);
+    });
+
+    it('shows each studio its balance', async () => {
+      await openOn('studios');
+      const body = await panel();
+
+      expect(body).toHaveTextContent('2,400');
+      expect(body).not.toHaveTextContent(/does not charge credits/i);
+    });
+
+    it.each(['lots', 'buy', 'assign', 'refunds'] as const)(
+      'tells the %s section that nothing is sold here and reads nothing for it',
+      async (section) => {
+        await openOn(section);
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/does not sell credits/i);
+        expect(body).not.toHaveTextContent(/does not charge credits/i);
+        expect(paymentHistory).not.toHaveBeenCalled();
+        expect(paymentTiers).not.toHaveBeenCalled();
+        expect(fetchCreditLots).not.toHaveBeenCalled();
+      },
+    );
   });
 });

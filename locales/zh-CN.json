@@ -4096,6 +4096,10 @@
       "title": "这个部署不计积分",
       "body": "生成不扣积分，也不需要充值。用量仍然会记录下来。"
     },
+    "notSoldHere": {
+      "title": "这个部署不出售积分",
+      "body": "生成照常扣积分，但这里不能充值。"
+    },
     "total": "账号总额",
     "unassigned": "未指定",
     "unassignedWithNextStep": "未指定，去左侧「指定」分给要用的 Studio",

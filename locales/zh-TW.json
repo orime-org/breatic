@@ -4096,6 +4096,10 @@
       "title": "這個部署不計點數",
       "body": "生成不扣點數，也不需要儲值。用量仍會記錄下來。"
     },
+    "notSoldHere": {
+      "title": "這個部署不出售點數",
+      "body": "生成照常扣點數，但這裡不能儲值。"
+    },
     "total": "帳號總額",
     "unassigned": "未指定",
     "unassignedWithNextStep": "未指定，到左側「指定」分給要用的 Studio",
