@@ -24,6 +24,7 @@ import { noteFailure } from "@ingest/error-monitoring.js";
 import { askedKey } from "@ingest/object-url.js";
 import { MEDIA_OBJECT_HOST, mediaObjectUrl } from "@ingest/media-object-route.js";
 import { JOB_REPORT_HOST, JobStartFailed } from "@ingest/jobs/mini-tool-container.js";
+import { HeldKeys } from "@ingest/jobs/web-animation-held-keys.js";
 import { MODEL_HOST, relayModelCall } from "@ingest/jobs/web-animation-model-relay.js";
 import {
   WEB_ANIMATION_PORT,
@@ -139,12 +140,8 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
   /** Carries that refusal to HTTPS as well. */
   interceptHttps = true;
 
-  /**
-   * The keys the job's model calls run on, by upstream, as its submit carried them (inner#1953). Memory only: never
-   * written to storage or the job record, and gone when the object restarts, which ends the job's next call as
-   * `key_lost_on_restart`.
-   */
-  private heldKeys: Readonly<Record<string, string>> | null = null;
+  /** The keys the job's model calls run on (inner#1953), in memory only. */
+  private readonly heldKeys = new HeldKeys();
 
   /**
    * Start a job, or answer the one this object already holds, holding the keys its calls run on in memory.
@@ -156,7 +153,7 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
   async submit(request: WebAnimationJobRequest, keys: Readonly<Record<string, string>>): Promise<WebAnimationSubmitAnswer> {
     const next = await this.apply({ type: "submit", request });
     if (next.refused) return { kind: "cancelled_before_submit" };
-    if (next.record?.state === "running") this.heldKeys = keys;
+    this.heldKeys.afterSubmit(next.record?.state, keys);
     if (next.effects.includes("start")) await this.startRun(request);
     return { kind: "report", report: reportOfWebAnimationJob((await this.load()) ?? next.record)! };
   }
@@ -222,7 +219,7 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
    * @returns Them, or null when this object holds none, as after a restart.
    */
   async callKeys(): Promise<Readonly<Record<string, string>> | null> {
-    return this.heldKeys;
+    return this.heldKeys.current();
   }
 
   /**
@@ -406,8 +403,8 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
       // cut off after that.
       await this.schedule(new Date(Date.now() + 2 * callTimeoutMs), "drainJob");
     }
+    this.heldKeys.afterEffects(next.effects);
     if (next.effects.includes("destroy")) {
-      this.heldKeys = null;
       this.deleteSchedules("expireJob");
       this.deleteSchedules("drainJob");
       await this.destroy().catch(() => undefined);
