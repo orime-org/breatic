@@ -381,9 +381,11 @@ function optionalLeads(id: string, key: string): Map<string, string> {
   const template = GENERATION_TEMPLATES.find((one) => one.id === id);
   const leads = new Map<string, string>();
   if (template === undefined) return leads;
+  const optional = template.inputs.filter((input) => input.optional === true && (input.feeds ?? [template.anchor]).includes(key));
+  // A node no optional input feeds is not read: a shot-list node has no prompt string.
+  if (optional.length === 0) return leads;
   const words = fromLocale(`canvas.template.${id}.${key === template.anchor ? '' : `node.${key}.`}prompt`).split('\n');
-  for (const input of template.inputs) {
-    if (input.optional !== true || !(input.feeds ?? [template.anchor]).includes(key)) continue;
+  for (const input of optional) {
     const name = fromLocale(`canvas.template.${id}.input.${input.key}.name`);
     const paragraph = words.find((line) => markedSegments(line).some((s) => s.slot?.kind === 'asset' && s.slot.label === name));
     const lead = paragraph === undefined ? undefined : markedSegments(paragraph).find((s) => s.text?.trim())?.text?.trim();
@@ -808,6 +810,51 @@ const RUNS: Record<string, Run> = {
     first: ['before', 'after'],
     fills: { before: ['a white oak table'], after: ['with its bamboo cap off, lying beside it'], anchor: ['a hand unscrews the cap and sets it down beside the bottle', 'the same hand'] },
     frames: { 'first-frame': 'before', 'end-frame': 'after' },
+  },
+  'cartoon-gag': {
+    type: 'video',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: [],
+    fills: { anchor: ['flat 2D cartoon with thick outlines', 'a tiny kitchen at breakfast', 'she tiptoes toward the last cookie', 'the jar snaps shut on her nose and her eyes pop out'] },
+  },
+  '3d-cartoon-short': {
+    type: 'video',
+    photo: false,
+    first: ['design'],
+    fills: {
+      design: ['a small round hedgehog', 'a red knitted scarf'],
+      anchor: ['an autumn orchard', 'the last apple on a high branch', 'the branch springs back and flings it into the leaves'],
+    },
+  },
+  'stop-motion-short': {
+    type: 'video',
+    photo: false,
+    inputs: { subject: 'object.jpg' },
+    first: [],
+    fills: { anchor: ['plasticine clay', 'it hops across a tabletop and climbs onto a teacup'] },
+  },
+  'anime-scene': {
+    type: 'video',
+    photo: false,
+    first: ['scene'],
+    fills: { scene: ['a hillside town at dusk after rain'], anchor: ['a slow push toward the town', 'clouds drifting, leaves stirring, a train passing far away'] },
+    frames: { 'first-frame': 'scene' },
+  },
+  'anime-action-climax': {
+    type: 'video',
+    photo: false,
+    inputs: { hero: 'character.jpg' },
+    first: [],
+    fills: { anchor: ['a ruined rooftop at night', 'a flaming sword slash'] },
+  },
+  'anime-opening-15s': {
+    type: 'video',
+    photo: false,
+    inputs: { lead: 'character.jpg', second: 'mini-tools/portrait.jpg', third: 'pet.jpg' },
+    first: [],
+    fills: {},
+    shots: [['a bright summer sky over a seaside town'], ['on a school rooftop'], ['runs and leaps across the rooftops'], [], ['the sunset sky']],
   },
   'talking-presenter': {
     type: 'video',

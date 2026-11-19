@@ -1530,6 +1530,7 @@
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
+        "animation": "Animated shorts",
         "ecommerce": "E-commerce ads",
         "product-showcase": "Product showcase",
         "food": "Food",
@@ -1547,6 +1548,86 @@
           "reference": {
             "name": "Character or scene",
             "note": "Add the character or scene reference first, then generate."
+          }
+        }
+      },
+      "cartoon-gag": {
+        "name": "Cartoon gag",
+        "description": "A five-second gag starring your character",
+        "prompt": "A 5-second vertical cartoon gag with sound. The character is [📎 Character]: its shape, colours and features as in the picture, nothing else taken from it. One style: {✏️ the style, e.g. flat 2D cartoon with thick outlines}, nothing mixed in. Setting: {✏️ the situation, e.g. a tiny kitchen at breakfast}. 0–1 s: the character crashes into frame. 1–2.5 s: the setup, {✏️ the setup, e.g. it tiptoes toward the last cookie}. 2.5–4 s: the exaggerated reaction, {✏️ the gag, e.g. the jar snaps shut on its nose and its eyes pop out}. 4–5 s: it shakes it off and recovers. A 0.3–0.5 s anticipation before every big move, squash on every landing, follow-through 0.2 s late on ears and tail. Sound: a cartoon sound effect on each beat, no dialogue. No text on screen.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "3d-cartoon-short": {
+        "name": "3D animated short",
+        "description": "Design a character, then a short where it chases one goal",
+        "prompt": "(💡 Generate Character design first)A 10-second widescreen 3D animated short with sound, in the look of a feature-length animated film. The character is [📎 Character design]: its shape, colours, materials and signature item exactly as in the picture in every shot. Setting: {✏️ the setting, e.g. an autumn orchard}. It wants one thing: {✏️ its goal, e.g. the last apple on a high branch}. 0–4 s: it tries. 4–7 s: a setback, {✏️ the setback, e.g. the branch springs back and flings it into the leaves}. 7–10 s: it gets there and reacts with pure joy. Soft subsurface scattering on the skin, fine fur that moves, a warm key light and a rim light. Sound: playful orchestral music and the sounds of its actions, no dialogue. No text on screen.",
+        "node": {
+          "design": {
+            "name": "Character design",
+            "prompt": "A square full-body character design for a 3D animated short: {✏️ the character, e.g. a small round hedgehog}, wearing its signature item, {✏️ the signature item, e.g. a red knitted scarf}. It stands in a neutral pose facing the camera on a plain light background. A stylised 3D render, big expressive eyes, soft subsurface scattering on the skin, fine fur. No text in the picture."
+          }
+        }
+      },
+      "stop-motion-short": {
+        "name": "Stop-motion short",
+        "description": "Your subject rebuilt in clay or paper, moving frame by frame",
+        "prompt": "An 8-second square stop-motion animation with sound, made of {✏️ the material, e.g. plasticine clay}. The subject is [📎 Subject]: its shape and colours as in the picture, rebuilt in that material, nothing else taken from the picture. Shot at 12 frames a second, each pose held for two frames, so it steps from pose to pose rather than gliding. Fingerprints and small dents on the surfaces, the light flickering slightly from frame to frame. What happens: {✏️ the action, e.g. it hops across a tabletop and climbs onto a teacup}. A tabletop set, a fixed camera at table height, soft lamp light. Sound: a small tap or click on each step, a gentle music box. No text on screen.",
+        "input": {
+          "subject": {
+            "name": "Subject",
+            "note": "Add a photo of the object or character first, then generate."
+          }
+        }
+      },
+      "anime-scene": {
+        "name": "Anime scene",
+        "description": "A hand-painted anime backdrop with a slow drifting shot",
+        "prompt": "(💡 Generate Scene first, then set it as the First frame)The video starts on the first frame. One slow camera move: {✏️ the move, e.g. a slow push toward the town}. Only ambient motion: {✏️ what moves, e.g. clouds drifting, leaves stirring, a train passing far away}. The hand-painted look stays the same to the end, never turning 3D or photographic. Sound: the ambience of the place. No text on screen.",
+        "node": {
+          "scene": {
+            "name": "Scene",
+            "prompt": "A widescreen hand-painted anime background: {✏️ the place and time, e.g. a hillside town at dusk after rain}. Watercolour skies with layered clouds, clean hand-drawn line work on the buildings, warm saturated light, lots of small everyday detail. Not photographic, not a 3D render, no characters in front. No text in the picture."
+          }
+        }
+      },
+      "anime-action-climax": {
+        "name": "Anime action climax",
+        "description": "Your character's anime fight climax with an impact frame",
+        "prompt": "A 10-second widescreen anime action climax with sound, cel-shaded with flat colour and hard shadows, limited animation. The hero is [📎 Hero]: face, hair, clothes and colours as in the picture, drawn in that anime style. Setting: {✏️ the setting, e.g. a ruined rooftop at night}. Their move: {✏️ the move, e.g. a flaming sword slash}. 0–3 s: the hero powers up, an aura flaring around them, the pose held for a beat. 3–6 s: they dash forward, speed lines filling the background, no motion blur. 6–7 s: the impact frame, a flash with a cross-shaped highlight, the picture held for half a second. 7–10 s: they land and hold a final pose as the dust settles. Key poses held for half a second to a second. Sound: a rising charge, a whoosh, one huge hit, then quiet wind. No text on screen.",
+        "input": {
+          "hero": {
+            "name": "Hero",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "anime-opening-15s": {
+        "name": "15-second anime opening",
+        "description": "An anime opening for two or three of your characters",
+        "shot": {
+          "1": "A burst of light and colour sweeps across the frame, leaving an empty space in the middle for a title added later; {✏️ the show's mood, e.g. a bright summer sky over a seaside town}, anime style, an upbeat opening song starting. No text on screen.",
+          "2": "The lead appears: [📎 Lead], drawn in the same anime style, face, hair and clothes as in the picture, turns to the camera with the wind in their hair, {✏️ where, e.g. on a school rooftop}. No text on screen.",
+          "3": "Action cuts: [📎 Lead] {✏️ the lead's action, e.g. runs and leaps across the rooftops}, fast cuts and speed lines. No text on screen.",
+          "4": "The others appear: [📎 Second], then [📎 Third], each drawn in the same anime style, faces, hair and clothes as in their pictures, each striking a short pose. No text on screen.",
+          "5": "Group shot: [📎 Lead], [📎 Second] and [📎 Third] together in a final frozen pose against {✏️ the backdrop, e.g. the sunset sky}. No text on screen."
+        },
+        "input": {
+          "lead": {
+            "name": "Lead",
+            "note": "Add a picture of the lead character first, then generate."
+          },
+          "second": {
+            "name": "Second",
+            "note": "Add a picture of the second character first, then generate."
+          },
+          "third": {
+            "name": "Third",
+            "note": "Add a picture of the third character first, then generate."
           }
         }
       },
