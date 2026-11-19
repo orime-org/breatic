@@ -160,6 +160,8 @@ import { steppedMarkSize } from '@web/stores/mark-draft';
 import { uploadDerivedImage } from '@web/spaces/canvas/upload-derived-image';
 import { failUploadIntoNode, startUploadIntoNode } from '@web/spaces/canvas/upload-into-node';
 import { useCanvasRevealReceiver } from '@web/spaces/canvas/use-canvas-reveal-receiver';
+import { registerViewCapture } from '@web/features/view-capture/registry';
+import { flowAreaOnScreen, visibleNodeIds } from '@web/spaces/canvas/canvas-view-capture';
 import {
   useCommentRevealReceiver,
   type ThreadPresence,
@@ -3019,6 +3021,43 @@ function CanvasSpaceInner({
     [revealNode, openNotePanel],
   );
   useCommentRevealReceiver(spaceId, synced, findNote, showNote);
+
+  // What an external agent sees when it asks for the user's screen (#1488
+  // §19.1): the board as drawn, without the minimap and floating panels, and
+  // the nodes on screen.
+  React.useEffect(() => {
+    if (flowShell === null) return undefined;
+    return registerViewCapture(spaceId, async () => {
+      const { toCanvas } = await import('html-to-image');
+      const canvas = await toCanvas(flowShell, {
+        pixelRatio: 1,
+        filter: (el) =>
+          !(el instanceof HTMLElement) ||
+          !(el.classList.contains('react-flow__minimap') || el.classList.contains('react-flow__panel')),
+      });
+      const box = flowShell.getBoundingClientRect();
+      const transform = rfStoreApi.getState().transform;
+      const rects = nodes.map((node) => {
+        const internal = getInternalNode(node.id);
+        const at = internal?.internals.positionAbsolute ?? node.position;
+        return {
+          id: node.id,
+          x: at.x,
+          y: at.y,
+          width: internal?.measured?.width ?? EMPTY_NODE_SIZE.width,
+          height: internal?.measured?.height ?? EMPTY_NODE_SIZE.height,
+        };
+      });
+      return {
+        canvas,
+        view: {
+          kind: 'canvas',
+          nodeIds: visibleNodeIds(rects, flowAreaOnScreen(transform, box)),
+          viewport: { x: transform[0], y: transform[1], zoom: transform[2] },
+        },
+      };
+    });
+  }, [flowShell, spaceId, nodes, getInternalNode, rfStoreApi]);
 
   // One dispatch for Cmd+V and the menu's Paste (design 5.9): our nodes paste
   // as nodes, media copied in the document body as media nodes (inner#1537),

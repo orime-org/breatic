@@ -65,6 +65,7 @@ import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopB
 import { useDocumentProposalRouting } from '@web/pages/project/use-document-proposal-routing';
 import { useCanvasRevealRouting } from '@web/pages/project/use-canvas-reveal-routing';
 import { useCommentLinkRouting } from '@web/features/comment-reveal/use-comment-link-routing';
+import { useViewCaptureResponder } from '@web/features/view-capture/use-view-capture-responder';
 import { useFollowRouting } from '@web/pages/project/use-follow-routing';
 import { usePublishView } from '@web/pages/project/use-publish-view';
 import { FollowBar } from '@web/features/follow/FollowBar';
@@ -399,6 +400,8 @@ function ProjectWorkspace({
   useCanvasRevealRouting(spaces, tabs.activeId, openSpace, metaSynced);
   // A bell row's Open lands here with the Space and thread to show (#1488 §11.6).
   useCommentLinkRouting(spaces, tabs.activeId, openSpace, metaSynced);
+  // An external agent asking to see this user's screen is answered with the Space in front (#1488 §19.1).
+  useViewCaptureResponder(provider, tabs.activeId);
 
   // ---- Following a member (#920) ----
   // This tab's Space in front and whom this user follows go out on the meta

@@ -100,6 +100,24 @@ export function topBlockId(viewport: HTMLElement, root: HTMLElement): string | n
 }
 
 /**
+ * The blocks whose own line is on screen, in document order (#1488 §19.1).
+ * Blocks with no line of their own (table, row and cell) are skipped, as
+ * `topBlockId` skips them.
+ * @param viewport - The body's scrolling viewport.
+ * @param root - The body element.
+ * @returns Their ids.
+ */
+export function visibleBlockIds(viewport: HTMLElement, root: HTMLElement): string[] {
+  const { top, bottom } = viewport.getBoundingClientRect();
+  const ids: string[] = [];
+  for (const block of root.querySelectorAll<HTMLElement>('.bn-block-outer[data-id]')) {
+    const line = block.querySelector<HTMLElement>(OWN_LINE)?.getBoundingClientRect();
+    if (line !== undefined && line.bottom > top && line.top < bottom && block.dataset.id !== undefined) ids.push(block.dataset.id);
+  }
+  return ids;
+}
+
+/**
  * A block's own line, for a mark that may name no block.
  * @param root - The body element.
  * @param blockId - The block, or null.

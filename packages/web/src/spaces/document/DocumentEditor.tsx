@@ -62,6 +62,8 @@ import { useDocumentVersions } from '@web/spaces/document/use-document-versions'
 import { DocumentVersionAreaUnavailable } from '@web/spaces/document/DocumentVersionAreaUnavailable';
 import { useDocumentFollow } from '@web/spaces/document/use-document-follow';
 import { usePublishTopBlock } from '@web/spaces/document/use-publish-top-block';
+import { registerViewCapture } from '@web/features/view-capture/registry';
+import { visibleBlockIds } from '@web/spaces/document/block-scroll';
 import { useFollowStore } from '@web/stores/follow';
 import type { Awareness } from 'y-protocols/awareness';
 
@@ -303,6 +305,24 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   const leaderUserId = useFollowStore((s) => s.targetUserId);
   useDocumentFollow({ awareness, leaderUserId, viewport, root: bodyRoot, paused: panelOpen });
   usePublishTopBlock({ awareness, viewport, root: bodyRoot, paused: panelOpen });
+
+  // What an external agent sees when it asks for the user's screen (#1488
+  // §19.1): the body as it stands in its scroller, and the blocks on screen.
+  const captureSpaceId = scope?.spaceId ?? null;
+  React.useEffect(() => {
+    if (captureSpaceId === null || viewport === null || bodyRoot === null) return undefined;
+    return registerViewCapture(captureSpaceId, async () => {
+      const { toCanvas } = await import('html-to-image');
+      const content = (viewport.firstElementChild as HTMLElement | null) ?? viewport;
+      const canvas = await toCanvas(content, {
+        pixelRatio: 1,
+        width: viewport.clientWidth,
+        height: viewport.clientHeight,
+        style: { transform: `translate(${-viewport.scrollLeft}px, ${-viewport.scrollTop}px)` },
+      });
+      return { canvas, view: { kind: 'document', blockIds: visibleBlockIds(viewport, bodyRoot) } };
+    });
+  }, [captureSpaceId, viewport, bodyRoot]);
 
   // A table open full screen (#1427): this area covers the window and
   // shows that table alone; what it leaves out is listed in design §5.1.
