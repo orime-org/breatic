@@ -2691,7 +2691,7 @@
         "pickObjectGone": "오브젝트가 삭제되어 이미지가 적용되지 않았습니다",
         "checking": "확인 중",
         "partLimit": "이 오브젝트는 최대 {max}개 부위까지 외형을 바꿀 수 있습니다.",
-        "partNotEditable": "이 부위의 재질 번호가 외형을 저장할 수 있는 범위를 넘어 바꿀 수 없습니다.",
+        "partNotEditable": "이 부위는 바꿀 수 없습니다.",
         "uploadedPartLimit": "이미지는 업로드되었지만 이 오브젝트는 이미 {max}개 부위의 외형을 바꿨습니다. 이미지는 Project 이미지에 있습니다"
       },
       "pose": {

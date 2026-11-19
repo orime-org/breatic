@@ -2691,7 +2691,7 @@
         "pickObjectGone": "对象已被删除，图片没有放上去",
         "checking": "正在检查",
         "partLimit": "这个对象最多给 {max} 个部位改外观。",
-        "partNotEditable": "这个部位的材质序号超出了能保存外观的范围，不能修改。",
+        "partNotEditable": "这个部位不能修改。",
         "uploadedPartLimit": "图片已上传，但这个对象已有 {max} 个部位改过外观；图片在 Project 图片里"
       },
       "pose": {

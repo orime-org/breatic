@@ -1798,7 +1798,7 @@ export function renderProductGuide(): string {
       `Parts are listed in the model's order; ${quoted(t("spaces.threeD.look.defaultPart"))} holds whatever has no material of its own and comes last. Built-in models name every part by number. ` +
       `While the model loads the section says it is reading the parts; when the model did not load it says ${quoted(t("spaces.threeD.look.partsUnavailable"))}. ` +
       `Changes can sit on up to ${String(SCENE_LOOK_MAX_PARTS)} parts of one object; changing one more part is refused with a notice naming that limit. ` +
-      `A part whose material number is above 9999 cannot be changed: its settings are unavailable and a line above them says why. ` +
+      `A part whose material number is above 9999 cannot be changed: its settings are unavailable and a line above them says it cannot be changed. ` +
       `Clicking a row selects that part and opens its settings below the list; clicking it again closes them. ` +
       `When only one object is selected, clicking it again in the scene, without Shift, selects the part under the pointer the same way and opens the properties panel unless the viewfinder or the director console is open. ` +
       `The selected part is tinted in the scene for you alone; Shift-click, a click on another object or on empty space, joint adjustment and the viewfinder's still keep working as before, and the tint never shows in a still or a camera's picture.`,
