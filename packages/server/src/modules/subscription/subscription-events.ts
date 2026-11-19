@@ -338,7 +338,7 @@ async function handleInvoicePaid(event: Stripe.Event): Promise<SubscriptionEvent
   if (!userId) {
     return { status: "noop", reasonCode: "no_account", reason: `no account claims Stripe customer ${customerId ?? "(none named)"}` };
   }
-  const { record } = subscriptionSituation(await listSubscriptions(userId), subscriptionClock());
+  const { record } = subscriptionSituation(await listSubscriptions(db, userId), subscriptionClock());
   if (!record) return { status: "noop", reasonCode: "no_subscription", reason: `account ${userId} holds no subscription` };
   await reportSubscriptionRenewed({ eventId: event.id, userId, subscription: record });
   return { status: "acknowledged", reason: "renewal reported" };

@@ -257,6 +257,7 @@ export {
 } from "@core/auth/subscription.repo.js";
 export type {
   StoredSubscription,
+  SubscriptionConn,
   SubscriptionWrite,
 } from "@core/auth/subscription.repo.js";
 export {

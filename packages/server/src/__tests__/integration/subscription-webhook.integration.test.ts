@@ -65,7 +65,7 @@ vi.mock("@server/utils/send-best-effort-mail.js", () => ({
 import type Stripe from "stripe";
 import postgres from "postgres";
 import { initCore, loadLocales, getUserMembershipTier, getSubscriptionPlan } from "@breatic/core";
-import { upsertSubscription } from "@breatic/core";
+import { db, upsertSubscription } from "@breatic/core";
 import { handleSubscriptionEvent } from "@server/modules/subscription/subscription-events.js";
 import { readStripeSubscription } from "@server/modules/subscription/read-stripe-subscription.js";
 
@@ -737,7 +737,7 @@ describe("并发写入：后取到的快照说了算 (#106 §6.5.5)", () => {
         userId,
       );
       if (!stale.ok) throw new Error(`fixture unreadable: ${stale.reason}`);
-      await upsertSubscription({
+      await upsertSubscription(db, {
         ...stale.write,
         observedAt: new Date(Date.now() - 60_000),
       });

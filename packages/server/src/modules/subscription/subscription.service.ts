@@ -93,7 +93,7 @@ export interface PlanChange {
 async function readSituation(
   userId: string,
 ): Promise<SituationReading<StoredSubscription>> {
-  const rows = await listSubscriptions(userId);
+  const rows = await listSubscriptions(db, userId);
   return subscriptionSituation(rows, subscriptionClock());
 }
 

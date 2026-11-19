@@ -13,6 +13,7 @@
  */
 
 import {
+  db,
   listSubscriptions,
   subscriptionClock,
   subscriptionSituation,
@@ -53,7 +54,7 @@ export async function readStoredSubscriptionSummary(
   userId: string,
 ): Promise<SubscriptionSummary> {
   const { situation, record } = subscriptionSituation(
-    await listSubscriptions(userId),
+    await listSubscriptions(db, userId),
     subscriptionClock(),
   );
   if (!record) return EMPTY_SUMMARY;

@@ -20,6 +20,12 @@ import { and, desc, eq, inArray, isNotNull, isNull, lte, sql, type SQL } from "d
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { BillingPeriod, MembershipTier } from "@breatic/shared";
 import { db, type DbTx } from "@core/db/client.js";
+
+/**
+ * The database a caller reads and writes subscriptions through: the product
+ * hands its projection's client or transaction, the private service its own.
+ */
+export type SubscriptionConn = typeof db | DbTx;
 import { subscriptions } from "@core/db/schema.js";
 import type {
   StripeSubscriptionStatus,
@@ -148,15 +154,15 @@ function toStored(row: SubscriptionRow): StoredSubscription {
  * than a rule anybody depends on: `subscriptionSituation` chooses among live
  * rows by its own total order (paid before unpaid, then tier, then period,
  * then id) precisely so that no reading rests on the order rows arrive in.
+ * @param conn - The database to read, or a transaction on it.
  * @param userId - The account to read.
- * @param tx - Transaction handle, when the caller is inside one.
  * @returns Its subscriptions, newest first; empty when it has never had one.
  */
 export async function listSubscriptions(
+  conn: SubscriptionConn,
   userId: string,
-  tx?: DbTx,
 ): Promise<StoredSubscription[]> {
-  const rows = await (tx ?? db)
+  const rows = await conn
     .select()
     .from(subscriptions)
     .where(
@@ -181,14 +187,14 @@ export async function listSubscriptions(
  * Every field is overwritten, including the ones being cleared. Leaving a
  * stale `payable_invoice_url` behind would put "finish paying" in front of
  * somebody who is already up to date.
+ * @param conn - The database to write, or a transaction on it.
  * @param write - What Stripe says about the subscription now.
- * @param tx - Transaction handle, when the caller is inside one.
  * @returns The stored subscription after the write.
  * @throws {Error} if the write left no row, which the database cannot do here.
  */
 export async function upsertSubscription(
+  conn: SubscriptionConn,
   write: SubscriptionWrite,
-  tx?: DbTx,
 ): Promise<StoredSubscription> {
   const values = {
     userId: write.userId,
@@ -206,14 +212,14 @@ export async function upsertSubscription(
     observedAt: write.observedAt,
   };
 
-  const rows = await insertOrUpdate(values, tx);
+  const rows = await insertOrUpdate(conn, values);
   if (rows[0]) return toStored(rows[0]);
 
   // No row came back because the stored one was taken from a newer view of
   // Stripe than this one, so the write was skipped. That is an ordinary
   // outcome, not a failure — and the caller still wants to know what the
   // subscription looks like, which is the row that won.
-  const current = await readOne(write.stripeSubscriptionId, tx);
+  const current = await readOne(conn, write.stripeSubscriptionId);
   if (!current) {
     // Not reachable: something is there, or the insert would have happened.
     throw new Error(
@@ -265,15 +271,15 @@ export async function hasPaidMembership(userId: string, tx?: DbTx): Promise<bool
 
 /**
  * Reads one subscription by its Stripe id.
+ * @param conn - The database to read, or a transaction on it.
  * @param stripeSubscriptionId - Stripe's id for it.
- * @param tx - Transaction handle, when the caller is inside one.
  * @returns The stored subscription, or null.
  */
 async function readOne(
+  conn: SubscriptionConn,
   stripeSubscriptionId: string,
-  tx: DbTx | undefined,
 ): Promise<StoredSubscription | null> {
-  const rows = await (tx ?? db)
+  const rows = await conn
     .select()
     .from(subscriptions)
     .where(eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId))
@@ -318,14 +324,14 @@ type SubscriptionValues = Required<
  * go from there. Which of two live rows governs the account is decided when
  * they are read (`subscription-state.ts`), where two live rows are a state to
  * describe rather than an error to raise.
+ * @param conn - The database to write, or a transaction on it.
  * @param values - The row to write.
- * @param tx - Transaction handle, when the caller is inside one.
  * @returns The written row in an array of one, or an empty array when a newer
  *   view of this subscription is already stored.
  */
 async function insertOrUpdate(
+  conn: SubscriptionConn,
   values: SubscriptionValues,
-  tx: DbTx | undefined,
 ): Promise<SubscriptionRow[]> {
   // Everything this write carries, minus the two columns that say WHICH row
   // it is. Derived rather than listed a second time: a hand-written set
@@ -336,7 +342,7 @@ async function insertOrUpdate(
   // row went on saying monthly.
   const { userId: _userId, stripeSubscriptionId: _id, ...overwritten } = values;
 
-  return await (tx ?? db)
+  return await conn
     .insert(subscriptions)
     .values(values)
     .onConflictDoUpdate({
