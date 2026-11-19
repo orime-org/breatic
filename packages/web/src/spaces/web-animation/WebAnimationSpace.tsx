@@ -34,7 +34,7 @@ import { DocumentCommentWriteBox } from '@web/spaces/document/DocumentCommentWri
 import { asCommentBody } from '@web/spaces/document/document-comment-extension';
 import { SpaceFullError } from '@web/spaces/document/document-comment-thread-store';
 import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
-import { useTimelineLimits } from '@web/spaces/timeline/use-timeline-limits';
+import { useTimelineLimitsQuery } from '@web/spaces/timeline/use-timeline-limits';
 import { ANNOTATION_DRAFT_IDLE, transitionAnnotationDraft, type AnnotationDraftEvent, type FramePoint } from '@web/spaces/web-animation/annotation-draft';
 import { threadSummary } from '@web/spaces/web-animation/annotation-groups';
 import { webAnimationAnnotationStore } from '@web/spaces/web-animation/annotation-thread-store';
@@ -234,7 +234,12 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const t = useTranslation();
   const queryClient = useQueryClient();
   const viewerId = useCurrentUserStore((state) => state.user?.id);
-  const limits = useTimelineLimits(projectId)?.webAnimation;
+  const limitsRead = useTimelineLimitsQuery(projectId);
+  const limits = limitsRead.data?.webAnimation;
+  // New, Modify and Run again open the dialog these settings bound, so they wait while the settings are read.
+  const limitsWaiting = limits === undefined && (limitsRead.isPending || limitsRead.isFetching);
+  const limitsFailed = limits === undefined && limitsRead.isError;
+  const { refetch: refetchLimits } = limitsRead;
   const lists = useMotionLists(projectId, spaceId);
   const spaces = useProjectSpaceList(projectId);
   const canvases = React.useMemo(() => canvasesOldestFirst(spaces), [spaces]);
@@ -421,11 +426,19 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const [draft, dispatchDraft] = React.useReducer(transitionCreationDraft, CREATION_DRAFT_CLOSED);
   const [retryDialog, setRetryDialog] = React.useState(false);
   const openDialog = React.useCallback((input: Partial<CreationDraftInput>, retry = false): void => {
-    if (readOnly || limits === undefined) return;
+    if (readOnly) return;
+    if (limits === undefined) {
+      // The buttons wait while the settings are read, so only a failed read gets here.
+      if (limitsFailed) {
+        toast.error(t('spaces.webAnimation.limitsUnavailable'));
+        void refetchLimits();
+      }
+      return;
+    }
     const aspect = limits.aspects.find(isWebAnimationAspect) ?? '16:9';
     setRetryDialog(retry);
     dispatchDraft({ type: 'open', input: { base: null, prompt: '', engine: DEFAULT_WEB_ANIMATION_ENGINE, aspect, durationSeconds: limits.durationSeconds.default, ...input } });
-  }, [readOnly, limits]);
+  }, [readOnly, limits, limitsFailed, refetchLimits, t]);
   const openNew = React.useCallback((): void => openDialog({}), [openDialog]);
   const editDraft = React.useCallback((patch: Partial<CreationDraftInput>): void => dispatchDraft({ type: 'edit', patch }), []);
   const closeDraft = React.useCallback((): void => dispatchDraft({ type: 'close' }), []);
@@ -561,7 +574,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
 
   return <div ref={setSpaceElement} data-testid='motion-space' className='relative isolate h-full overflow-hidden bg-muted'>
     {panels.panel === 'executions' && <MotionExecutionsPanel lists={lists} tab={panels.tab} selectedId={selectedId} markedId={panels.marked} spaceId={spaceId} readOnly={readOnly}
-      onTab={pickTab} onPick={pickRow} onCancel={cancel} onRetry={retryRow} onClose={closePanel} />}
+      waitingLimits={limitsWaiting} onTab={pickTab} onPick={pickRow} onCancel={cancel} onRetry={retryRow} onClose={closePanel} />}
     {panels.panel === 'annotations' && <MotionAnnotationsPanel threads={threads} order={order} rowOf={rowById} activeThreadId={activeThread?.thread.id ?? null}
       filter={annotations.filter} onFilter={annotations.setFilter} viewportRef={annotations.viewportRef} onOpen={openThread} onClose={closePanel} />}
     <div ref={setPreviewArea} data-testid='motion-preview-area' className={cn('absolute bottom-[4.5rem] left-6 top-6 flex items-center justify-center', panelOpen ? 'right-[22rem]' : 'right-6')}
@@ -573,7 +586,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
             ? <ListLoadError message={t('spaces.webAnimation.listError')} onRetry={retrySucceeded} />
             : <div data-testid='motion-empty' className='flex flex-col items-center gap-3 text-sm text-muted-foreground'>
               <span>{t('spaces.webAnimation.empty')}</span>
-              {!readOnly && <Button data-testid='motion-empty-new' size='sm' className='gap-1.5' onClick={openNew} icon={<Plus className='size-4' />}>{t('spaces.webAnimation.new')}</Button>}
+              {!readOnly && <Button data-testid='motion-empty-new' size='sm' className='gap-1.5' onClick={openNew} loading={limitsWaiting} icon={<Plus className='size-4' />}>{t('spaces.webAnimation.new')}</Button>}
             </div>
         // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a point on the frame is marked with the mouse only
         : <div data-testid='motion-preview' data-execution-id={row.id} className={cn('relative', annotation.status === 'picking' && 'cursor-crosshair')} style={frameStyle} onClick={clickFrame}>
@@ -631,7 +644,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         {playable(row) && <>
           {!readOnly && <BarButton testId='motion-action-add-annotation' label={t('spaces.webAnimation.addAnnotation')} icon={<MessageSquarePlus className='size-4' />}
             pressed={annotation.status !== 'idle'} onClick={addAnnotation} disabled={!annotationsWritable} loading={!docReady || readingId !== null} />}
-          {!readOnly && <BarButton testId='motion-action-modify' label={t('spaces.webAnimation.modify')} icon={<Pencil className='size-4' />} onClick={modify} />}
+          {!readOnly && <BarButton testId='motion-action-modify' label={t('spaces.webAnimation.modify')} icon={<Pencil className='size-4' />} onClick={modify} loading={limitsWaiting} />}
           {exportRow !== null
             ? <BarButton testId='motion-action-view-video' label={t('spaces.webAnimation.viewVideo')} icon={<Video className='size-4' />} onClick={viewVideo}
               loading={readingId !== null && readingId === exportRow.executionId} />
@@ -651,7 +664,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         count={lists.totals.running} onClick={toggleExecutions} />
       <BarButton testId='motion-open-annotations' label={t('spaces.webAnimation.annotations')} icon={<MessageSquare className='size-4' />} pressed={panels.panel === 'annotations'}
         count={docReady ? annotations.unresolvedCount : 0} onClick={toggleAnnotations} loading={!docReady} />
-      {!readOnly && <BarButton testId='motion-new' label={t('spaces.webAnimation.new')} icon={<Plus className='size-4' />} onClick={openNew} />}
+      {!readOnly && <BarButton testId='motion-new' label={t('spaces.webAnimation.new')} icon={<Plus className='size-4' />} onClick={openNew} loading={limitsWaiting} />}
     </div>
     <AlertDialog open={discardAsked !== null} onOpenChange={keepWriting}>
       <AlertDialogContent onCloseAutoFocus={backToWriting}>

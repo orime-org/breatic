@@ -242,6 +242,7 @@ describe('the bottom bar', () => {
   it('draws New as a plus, apart from the Space type\'s own icon', async () => {
     show();
     const button = await screen.findByTestId('motion-new');
+    await waitFor(() => expect(button).not.toHaveAttribute('aria-busy'));
     expect(button.querySelector('svg.lucide-plus')).not.toBeNull();
     expect(button.querySelector('svg.lucide-clapperboard')).toBeNull();
   });
@@ -1436,6 +1437,51 @@ describe('creating a web animation', () => {
     await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
     act(() => refuse(new Error('refused')));
     expect(await screen.findByTestId('web-animation-prompt')).toHaveValue('A red dot');
+  });
+});
+
+describe('the creation dialog\'s settings', () => {
+  it('keeps New, Modify and Run again waiting while the settings are read', async () => {
+    vi.mocked(timelineApi.limits).mockReset().mockReturnValue(new Promise(() => {}));
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')], { failed: [endedRow(done(FAILED, 'A box', '2026-11-15T07:00:00.000000Z'))] });
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    expect(screen.getByTestId('motion-new')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByTestId('motion-action-modify')).toHaveAttribute('aria-busy', 'true');
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('motion-open-executions'));
+    const panel = await screen.findByTestId('motion-panel-executions');
+    await user.click(within(panel).getByRole('tab', { name: new RegExp(t('spaces.webAnimation.failed')) }));
+    expect(within(await within(panel).findByTestId(`motion-row-${FAILED}`)).getByTestId('motion-retry')).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('keeps New in the empty preview waiting while the settings are read', async () => {
+    vi.mocked(timelineApi.limits).mockReset().mockReturnValue(new Promise(() => {}));
+    show();
+    expect(await screen.findByTestId('motion-empty-new')).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it.each([
+    ['New', async (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByTestId('motion-new'))],
+    ['Modify', async (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByTestId('motion-action-modify'))],
+    ['Run again', async (user: ReturnType<typeof userEvent.setup>) => {
+      await user.click(screen.getByTestId('motion-open-executions'));
+      const panel = await screen.findByTestId('motion-panel-executions');
+      await user.click(within(panel).getByRole('tab', { name: new RegExp(t('spaces.webAnimation.failed')) }));
+      await user.click(within(await within(panel).findByTestId(`motion-row-${FAILED}`)).getByTestId('motion-retry'));
+    }],
+  ] as const)('says the settings could not be loaded on %s, and reads them again', async (_name, press) => {
+    vi.mocked(timelineApi.limits).mockReset().mockRejectedValue(new Error('network'));
+    vi.mocked(toast.error).mockClear();
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')], { failed: [endedRow(done(FAILED, 'A box', '2026-11-15T07:00:00.000000Z'))] });
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    await waitFor(() => expect(screen.getByTestId('motion-new')).not.toHaveAttribute('aria-busy'));
+    const reads = vi.mocked(timelineApi.limits).mock.calls.length;
+    await press(userEvent.setup());
+    expect(toast.error).toHaveBeenCalledWith(t('spaces.webAnimation.limitsUnavailable'));
+    await waitFor(() => expect(vi.mocked(timelineApi.limits).mock.calls.length).toBeGreaterThan(reads));
+    expect(screen.queryByTestId('web-animation-prompt')).toBeNull();
   });
 });
 

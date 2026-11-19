@@ -133,6 +133,8 @@ const MotionRow = React.memo(function MotionRow({ row, selected, onPick }: Motio
 interface RowActions {
   spaceId: string;
   readOnly: boolean;
+  /** Whether the settings the creation dialog needs are being read, which Run again on a create or modification waits for. */
+  waitingLimits: boolean;
   onCancel: (row: WebAnimationRowView) => void;
   onRetry: (row: WebAnimationRowView) => void;
 }
@@ -172,17 +174,19 @@ const ProgressRow = React.memo(function ProgressRow({ row, marked, readOnly, onC
  * @param props.marked - Whether the list marks it.
  * @param props.spaceId - The Motion Space, whose export of a source Export again waits on.
  * @param props.readOnly - Whether the user may act.
+ * @param props.waitingLimits - Whether the creation dialog's settings are being read.
  * @param props.onRetry - Runs it again.
  * @returns The row.
  * @throws {never} Never.
  */
-const FailedRow = React.memo(function FailedRow({ row, marked, spaceId, readOnly, onRetry }: ActionRowProps): React.JSX.Element {
+const FailedRow = React.memo(function FailedRow({ row, marked, spaceId, readOnly, waitingLimits, onRetry }: ActionRowProps): React.JSX.Element {
   const t = useTranslation();
   const exporting = useRunning(row.kind === 'web_animation_export' ? exportIntent(spaceId, row.input.sourceVersionId) : '') !== undefined;
+  const waiting = row.kind === 'web_animation_export' ? exporting : waitingLimits;
   const retry = React.useCallback((): void => onRetry(row), [onRetry, row]);
   return <RowFrame row={row} marked={marked}
     detail={<span className={cn('truncate text-2xs', row.status === 'failed' ? 'text-status-error-foreground' : 'text-muted-foreground')}>{t(endedSentenceKey(row.status, row.failureReason))}</span>}
-    action={readOnly ? null : <Button type='button' data-testid='motion-retry' variant='outline' size='sm' className='gap-1.5' loading={exporting} onClick={retry} icon={<RotateCcw className='size-4' />}>
+    action={readOnly ? null : <Button type='button' data-testid='motion-retry' variant='outline' size='sm' className='gap-1.5' loading={waiting} onClick={retry} icon={<RotateCcw className='size-4' />}>
       {t(row.kind === 'web_animation_export' ? 'spaces.webAnimation.reexport' : 'timeline.webAnimation.retry')}</Button>} />;
 });
 
@@ -269,6 +273,7 @@ interface MotionExecutionsPanelProps extends RowActions {
  * @param props.markedId - The row the list marks.
  * @param props.spaceId - The Motion Space.
  * @param props.readOnly - Whether the user may act.
+ * @param props.waitingLimits - Whether the creation dialog's settings are being read.
  * @param props.onTab - Switches the tab.
  * @param props.onPick - Opens a Completed row.
  * @param props.onCancel - Cancels a row in progress.

@@ -151,6 +151,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.webAnimation.noOpenAnnotations": { excluded: REASONS.EMPTY_OR_SEARCH },
   "spaces.webAnimation.noAnnotations": { excluded: REASONS.EMPTY_OR_SEARCH },
   "spaces.webAnimation.unlistedResult": { excluded: REASONS.FILLS_A_VALUE },
+  "spaces.webAnimation.limitsUnavailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.webAnimation.listError": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.webAnimation.titleModifiedFrom": { described: /named after the request it was modified from followed by its own change/ },
   "spaces.webAnimation.titleVideo": { described: /an exported video after the web animation it renders/ },

@@ -3196,6 +3196,7 @@
       "hasPoint": "有位置",
       "inProgress": "进行中",
       "failed": "失败",
+      "limitsUnavailable": "设置加载失败，请重试。",
       "listError": "列表加载失败。",
       "madeInTimeline": "以前在 Timeline 里做的",
       "modifiedFromLabel": "修改自",

@@ -3196,6 +3196,7 @@
       "hasPoint": "위치 표시",
       "inProgress": "진행 중",
       "failed": "실패",
+      "limitsUnavailable": "설정을 불러오지 못했습니다. 다시 시도하세요.",
       "listError": "목록을 불러오지 못했습니다.",
       "madeInTimeline": "이전에 Timeline에서 만든 것",
       "modifiedFromLabel": "수정 원본",

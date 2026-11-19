@@ -3196,6 +3196,7 @@
       "hasPoint": "Marked on frame",
       "inProgress": "In progress",
       "failed": "Failed",
+      "limitsUnavailable": "Settings could not be loaded. Try again.",
       "listError": "The list could not be loaded.",
       "madeInTimeline": "Made in a Timeline before",
       "modifiedFromLabel": "Modified from",

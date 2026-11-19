@@ -3196,6 +3196,7 @@
       "hasPoint": "位置あり",
       "inProgress": "進行中",
       "failed": "失敗",
+      "limitsUnavailable": "設定を読み込めませんでした。もう一度お試しください。",
       "listError": "一覧を読み込めませんでした。",
       "madeInTimeline": "以前 Timeline で作ったもの",
       "modifiedFromLabel": "修正元",
