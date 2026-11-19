@@ -9,7 +9,8 @@
  * its model's lowest resolution and quality, keeping the template's duration and ratio.
  *
  * Environment: TEMPLATE_RUN_ONLY picks one template, TEMPLATE_RUN_REPEAT runs each that many times,
- * TEMPLATE_RUN_LABEL tags the files of one round, TEMPLATE_RUN_OUT is where they go (default
+ * TEMPLATE_RUN_STYLE picks the style of a styled template (inner#1817): one id, several comma-separated, or `all`,
+ * each its own run named after it; the first style of the set when unset. TEMPLATE_RUN_LABEL tags the files of one round, TEMPLATE_RUN_OUT is where they go (default
  * test-results/template-runs), TEMPLATE_RUN_IMAGE is the character picture (default the fixture),
  * TEMPLATE_RUN_LOCALE switches the interface language for the run (a run's `localeFills` give that language's words),
  * TEMPLATE_RUN_DEFAULT_TIER runs at the tier the template leaves in effect, for templates whose text in the picture is judged; the sound templates' words are Chinese, written for
@@ -23,7 +24,7 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { expect, type Locator, type Page } from 'playwright/test';
-import { GENERATION_TEMPLATES, markedSegments, templateAnchor } from '@breatic/shared';
+import { GENERATION_TEMPLATES, markedSegments, templateAnchor, templateNodeWords, templateStylesOf } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { switchLanguage } from '../helpers/language';
 
@@ -43,6 +44,7 @@ const LOCALE = process.env.TEMPLATE_RUN_LOCALE;
 const DEFAULT_TIER = process.env.TEMPLATE_RUN_DEFAULT_TIER !== undefined;
 const LOCALE_FILE = join(__dirname, `../../../../locales/${LOCALE ?? 'en'}.json`);
 const LEAVE_EMPTY = new Set((process.env.TEMPLATE_RUN_LEAVE_EMPTY ?? '').split(',').filter((key) => key !== ''));
+const STYLES_FILE = join(__dirname, `../../../../locales/template-styles/${LOCALE ?? 'en'}.json`);
 mkdirSync(OUT, { recursive: true });
 
 /**
@@ -65,6 +67,33 @@ function fromLocale(key: string): string {
 function draftPieces(key: string): string[] {
   // A line break starts a new paragraph in the editor, so the pieces are cut at it too.
   return markedSegments(fromLocale(key)).flatMap((segment) => (segment.text ?? '').split('\n').map((piece) => piece.trim()).filter((piece) => piece !== ''));
+}
+
+/**
+ * A style's words as the style catalog on disk holds them (inner#1817).
+ * @param key - The absolute key, `canvas.template.styleSet.<set>.style.<style>.<part>`.
+ * @returns The words.
+ */
+function fromStyles(key: string): string {
+  let at: unknown = JSON.parse(readFileSync(STYLES_FILE, 'utf8'));
+  for (const part of key.split('.')) at = at !== null && typeof at === 'object' ? (at as Record<string, unknown>)[part] : undefined;
+  if (typeof at !== 'string') throw new Error(`no string at ${key} in the style catalog`);
+  return at;
+}
+
+/**
+ * Fail unless the picked style's words follow the node's own in the editor's text.
+ * @param id - The template.
+ * @param key - The node.
+ * @param style - The picked style.
+ * @param shown - The editor's text.
+ */
+function assertStyleSent(id: string, key: string, style: string | undefined, shown: string): void {
+  const template = GENERATION_TEMPLATES.find((one) => one.id === id);
+  const words = template === undefined || style === undefined ? undefined : templateNodeWords(template, key, style);
+  if (words === undefined || !('styleKey' in words) || words.styleKey === undefined) return;
+  const pieces = fromStyles(words.styleKey).split('\n').map((piece) => piece.trim()).filter((piece) => piece !== '');
+  for (const piece of pieces) if (!shown.includes(piece)) throw new Error(`the editor does not show the style words: ${piece.slice(0, 120)}`);
 }
 
 /**
@@ -130,15 +159,28 @@ async function openPanel(nodeId: string): Promise<void> {
   await expect(page.getByTestId('generate-prompt-editor').or(page.getByTestId('generate-storyboard-shot-1-editor'))).toBeVisible({ timeout: 15_000 });
 }
 
-/** Pick a template from the open panel, under its own goal. */
-async function applyTemplate(id: string): Promise<void> {
+/**
+ * Pick a template from the open panel, under its own goal, and for a styled one the style from its third level.
+ * @param id - The template.
+ * @param style - The style to pick, for a styled template.
+ */
+async function applyTemplate(id: string, style?: string): Promise<void> {
   const goal = GENERATION_TEMPLATES.find((template) => template.id === id)?.goal;
   if (goal === undefined) throw new Error(`no template ${id}`);
   await page.getByTestId('generate-template-trigger').click();
   const box = await page.getByTestId(`generate-template-goal-${goal}`).boundingBox();
   if (!box) throw new Error(`no ${goal} goal row`);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
-  await page.getByTestId(`generate-template-${id}`).click();
+  if (style === undefined) {
+    await page.getByTestId(`generate-template-${id}`).click();
+  } else {
+    const row = await page.getByTestId(`generate-template-${id}`).boundingBox();
+    if (!row) throw new Error(`no ${id} row`);
+    await page.mouse.move(row.x + row.width / 2, row.y + row.height / 2, { steps: 8 });
+    const cell = page.getByTestId(`generate-template-style-${style}`);
+    await expect(cell).toBeVisible({ timeout: 30_000 });
+    await cell.click();
+  }
   await page.waitForTimeout(1500);
 }
 
@@ -914,6 +956,35 @@ const RUNS: Record<string, Run> = {
     fills: {},
     shots: [['rain starts to fall on the street'], ['she kneels and reaches for the kitten'], ['the kitten blinks slowly'], ['she smiles and hugs the kitten']],
   },
+  'film-style-still': {
+    type: 'image',
+    photo: false,
+    inputs: { subject: 'mini-tools/portrait.jpg' },
+    first: [],
+    fills: { anchor: ['standing in a quiet street at dusk'] },
+  },
+  'film-style-shot': {
+    type: 'video',
+    photo: false,
+    inputs: { subject: 'mini-tools/portrait.jpg' },
+    first: ['still'],
+    frames: { 'first-frame': 'still' },
+    fills: { still: ['standing in a quiet street at dusk'], anchor: ['his coat lifts in the wind and a few leaves drift past'] },
+  },
+  'era-walkthrough-montage': {
+    type: 'video',
+    photo: false,
+    inputs: { character: 'mini-tools/portrait.jpg' },
+    first: ['silent', 'widescreen', 'nineties', 'today'],
+    fills: {
+      silent: ['a city street with a streetcar'],
+      widescreen: ['a grand hotel staircase'],
+      nineties: ['a neon-lit diner at night'],
+      today: ['a glass tower lobby'],
+      anchor: ['a piano rag, a lush orchestra, a guitar riff, a modern synth pulse'],
+    },
+  },
+  'style-sound-bed': { type: 'audio', photo: false, first: [], fills: { anchor: ['bright and playful'] } },
   'talking-presenter': {
     type: 'video',
     photo: false,
@@ -1102,8 +1173,23 @@ const RUNS: Record<string, Run> = {
   },
 };
 
-if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [process.env.TEMPLATE_RUN_ONLY] : Object.keys(RUNS)) for (let n = 1; n <= REPEAT; n += 1) {
-  test(`${id} ${n} @needs-model`, async () => {
+/**
+ * The styles a run of a template goes through: none for an unstyled one; TEMPLATE_RUN_STYLE's, or the set's first.
+ * @param id - The template.
+ * @returns The styles, or one undefined for an unstyled template.
+ */
+function stylesOf(id: string): (string | undefined)[] {
+  const set = templateStylesOf(GENERATION_TEMPLATES.find((one) => one.id === id) ?? { styles: undefined });
+  if (set === undefined) return [undefined];
+  const asked = process.env.TEMPLATE_RUN_STYLE;
+  if (asked === 'all') return set.styles.map((one) => one.id);
+  if (asked !== undefined && asked !== '') return asked.split(',');
+  return [set.styles[0]?.id];
+}
+
+if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [process.env.TEMPLATE_RUN_ONLY] : Object.keys(RUNS)) for (const style of stylesOf(id)) for (let n = 1; n <= REPEAT; n += 1) {
+  const tag = style === undefined ? id : `${id}-${style}`;
+  test(`${tag} ${n} @needs-model`, async () => {
     test.setTimeout(3_600_000);
     const run = RUNS[id];
     if (run === undefined) throw new Error(`no run settings for ${id}`);
@@ -1127,20 +1213,21 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     // Wired in before the template is picked, so it lands in the template's slot.
     for (const wired of [photo, ...pictures, material, song]) if (wired !== undefined) await wire(page, { projectId, spaceId }, wired, anchor);
     await openPanel(anchor);
-    await applyTemplate(id);
+    await applyTemplate(id, style);
     for (const key of run.first) {
       const node = await keyed(key);
       await openPanel(node);
       await fillBraces(fills[key] ?? []);
       const prompt = await promptText();
       assertDraftSent(`canvas.template.${id}.node.${key}.prompt`, prompt);
+      assertStyleSent(id, key, style, prompt);
       const kind = ((await graph()).nodes.find((one) => one.id === node)?.type ?? 'image') as Kind;
       const url = await generate(node, kind);
       expect(url).toMatch(/^https?:/);
       const sentPrompt = requests[requests.length - 1] ?? '';
       record({ template: id, node: key, label: LABEL, n, empty: [...LEAVE_EMPTY], result: { prompt, sent: sentPrompt, url } });
       expectOptionalParagraphs(id, key, sentPrompt);
-      await save(url, `${id}-${key}-${LABEL}-${n}.${EXTENSION[kind]}`);
+      await save(url, `${tag}-${key}-${LABEL}-${n}.${EXTENSION[kind]}`);
     }
     await openPanel(anchor);
     for (const [slot, key] of Object.entries(run.frames ?? {})) await pickIntoFrame(slot as VideoSlotId, await keyed(key));
@@ -1160,6 +1247,7 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
       await fillBraces(fills.anchor ?? []);
       prompt = await promptText();
       assertDraftSent(`canvas.template.${id}.prompt`, prompt);
+      assertStyleSent(id, registered.anchor, style, prompt);
     } else {
       const shown: string[] = [];
       for (const [i, values] of run.shots.entries()) {
@@ -1176,9 +1264,9 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     const url = await generate(anchor, run.type);
     expect(url).toMatch(/^https?:/);
     const sentPrompt = requests[requests.length - 1] ?? '';
-    record({ template: id, label: LABEL, n, empty: [...LEAVE_EMPTY], result: { prompt, sent: sentPrompt, url } });
+    record({ template: id, style, label: LABEL, n, empty: [...LEAVE_EMPTY], result: { prompt, sent: sentPrompt, url } });
     expectOptionalParagraphs(id, registered.anchor, sentPrompt);
-    await save(url, `${id}-${LABEL}-${n}.${EXTENSION[run.type]}`);
+    await save(url, `${tag}-${LABEL}-${n}.${EXTENSION[run.type]}`);
     for (const { key, slot } of run.after ?? []) {
       const node = await keyed(key);
       await openPanel(node);
