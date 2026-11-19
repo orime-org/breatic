@@ -13,7 +13,7 @@ import { findBoundCode } from "@server/modules/referral/referral-binding.repo.js
 import { findCodeOfPromoter } from "@server/modules/referral/referral-code.repo.js";
 import type { ReferralCodeStatus } from "@server/modules/referral/referral-code.repo.js";
 import { firstPeriodDiscountFor } from "@server/modules/referral/referral-discount.js";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
+import { frontendOrigin } from "@breatic/core";
 
 /** What the membership panel's two referral sections read (inner#1868 §8). */
 export interface AccountReferral {

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { encodeActivityCursor } from "@breatic/core";
+import { encodeActivityCursor } from "@core/activity/project-activities.repo.js";
 import type { CreditPage } from "@breatic/shared";
 
 /**

@@ -350,3 +350,13 @@ export * from "@core/credit/credit-grant-contract.js";
 
 export * as accountActivityRepo from "@core/activity/account-activity.repo.js";
 export * as accountActivityCoverageRepo from "@core/activity/account-activity-coverage.repo.js";
+
+// HTTP building blocks shared by every service that answers HTTP.
+export { validate, RequestShapeError } from "@core/http/validate.js";
+export * from "@core/http/internal-signature.js";
+export { closeAfterRefusal } from "@core/http/close-after-refusal.js";
+export { toPage } from "@core/http/keyset-page.js";
+export { frontendOrigin } from "@core/http/frontend-origin.js";
+export { fingerprint } from "@core/http/request-fingerprint.js";
+export { isKnownTimeZone } from "@core/util/time-zone.js";
+export { asStorable, holdsOnlyStorableText, isStorableText, storableText } from "@core/util/storable-text.js";

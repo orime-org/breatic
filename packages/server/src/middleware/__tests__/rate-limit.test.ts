@@ -23,8 +23,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
     getRedis: () => ({}),
     checkRateLimit: (...args: unknown[]) => checkRateLimit(...args),
     decideClientIdentity: actual.decideClientIdentity,
-    // validate.ts defines its refusal class on load, so it needs the real base.
     ValidationError: actual.ValidationError,
+    validate: actual.validate,
     logger,
   };
 });
@@ -35,7 +35,7 @@ vi.mock("@breatic/shared", async (importOriginal) => ({
 
 import { Hono } from "hono";
 import { rateLimit } from "@server/middleware/rate-limit.js";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 
 /** A request that came through our nginx. */
 const PROXIED = { incoming: { socket: { remoteAddress: "172.18.0.4" } } };

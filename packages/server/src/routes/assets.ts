@@ -18,7 +18,7 @@
 import { accountActivityRepo } from "@breatic/core";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { z } from "zod";
 import {
   verifySessionToken,

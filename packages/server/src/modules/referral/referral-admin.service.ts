@@ -17,7 +17,7 @@ import { insertCode, listCodes, lockCode, setCodeStatus } from "@server/modules/
 import type { ReferralCodeStatus } from "@server/modules/referral/referral-code.repo.js";
 import { findOperation, insertOperation, lockOperationKey } from "@server/modules/referral/referral-operation.repo.js";
 import type { ReferralOperationKind, ReferralOperationResult } from "@server/modules/referral/referral-operation.repo.js";
-import { toPage } from "@server/utils/keyset-page.js";
+import { toPage } from "@breatic/core";
 
 const GENERATION_ATTEMPTS = 5;
 

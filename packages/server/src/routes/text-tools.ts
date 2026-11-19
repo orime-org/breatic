@@ -13,7 +13,7 @@ import { newId } from "@breatic/shared";
 import { Hono } from "hono";
 import type { StreamingApi } from "hono/utils/stream";
 import { streamUntilClientLeaves } from "@server/utils/sse-stream.js";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { textToolSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";

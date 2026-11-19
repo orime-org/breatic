@@ -28,8 +28,8 @@
  */
 
 import { Hono } from "hono";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
-import { validate } from "@server/middleware/validate.js";
+import { frontendOrigin } from "@breatic/core";
+import { validate } from "@breatic/core";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";

@@ -17,8 +17,8 @@
 import { projectVisitRequestSchema, creditAmountFormatQuerySchema } from "@breatic/shared";
 
 import { Hono } from "hono";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
-import { validate } from "@server/middleware/validate.js";
+import { frontendOrigin } from "@breatic/core";
+import { validate } from "@breatic/core";
 import { runOnce } from "@server/middleware/run-once.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { z } from "zod";

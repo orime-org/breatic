@@ -36,7 +36,7 @@ import { HTTPException } from "hono/http-exception";
 import { AppError, TooManyRequestsError } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { REQUEST_SHAPE_REASON, t } from "@breatic/shared";
-import { RequestShapeError } from "@server/middleware/validate.js";
+import { RequestShapeError } from "@breatic/core";
 
 /**
  * Global error handler for the Hono app.

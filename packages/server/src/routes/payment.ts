@@ -10,7 +10,7 @@
  */
 
 import { Hono } from "hono";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { runOnce } from "@server/middleware/run-once.js";
 import {
   idempotencyKeyHeaderSchema,

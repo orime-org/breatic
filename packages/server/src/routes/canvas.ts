@@ -13,7 +13,7 @@ import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { currentConsent } from "@breatic/core";
 import { Hono } from "hono";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { runOnce } from "@server/middleware/run-once.js";
 
 import { z } from "zod";

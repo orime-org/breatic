@@ -14,7 +14,8 @@
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { logger } from "@breatic/core";
-import { closeAfterRefusal } from "@server/middleware/close-after-refusal.js";
+import { closeAfterRefusal } from "@breatic/core";
+import { getRequestBodyLingerSeconds } from "@server/config/limits.js";
 import { internalAuth } from "@server/middleware/internal-auth.js";
 import { internalErrorHandler } from "@server/middleware/internal-errors.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -94,7 +95,7 @@ export function createInternalApp(): Hono {
     bodyLimit({
       maxSize: MAX_BODY_BYTES,
       onError: (c) => {
-        closeAfterRefusal(c);
+        closeAfterRefusal(c, getRequestBodyLingerSeconds);
         return c.json({ code: "invalid_body" }, 413);
       },
     }),

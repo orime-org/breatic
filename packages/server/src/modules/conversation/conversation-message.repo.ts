@@ -33,7 +33,7 @@ import {
 import type { DbTx } from "@breatic/core";
 import { ASK_USER, RECORD_TOOL_NAMES } from "@breatic/domain";
 import { t } from "@breatic/shared";
-import { asStorable } from "@server/utils/storable-text.js";
+import { asStorable } from "@breatic/core";
 import type { MessageData, MessageInput, MessagePart } from "@breatic/shared";
 
 /** Trusted HTTP identity accompanying a first accepted card answer. */

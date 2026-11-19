@@ -26,7 +26,7 @@ import { z } from "zod";
 import { loadLocales, runWithLocale } from "@breatic/core";
 import { REQUEST_SHAPE_REASON, chatMessageSchema } from "@breatic/shared";
 
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { errorHandler } from "@server/middleware/error-handler.js";
 
 loadLocales();

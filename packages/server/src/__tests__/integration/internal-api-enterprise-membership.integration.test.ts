@@ -8,7 +8,7 @@ import { db, getMembershipConfig, getMembershipReadingForUser } from "@breatic/c
 import { tierLimitsSchema } from "@breatic/shared";
 import type { SubscriptionWrite } from "@breatic/core";
 import { applySubscriptionWrite } from "@server/modules/subscription/apply-subscription.js";
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
+import { fingerprint } from "@breatic/core";
 import { call, useInternalApp } from "./internal-api-harness.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 

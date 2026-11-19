@@ -15,8 +15,8 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { randomUUID } from "node:crypto";
 import { runAfterReply } from "@server/utils/after-reply.js";
-import { holdsOnlyStorableText } from "@server/utils/storable-text.js";
-import { validate } from "@server/middleware/validate.js";
+import { holdsOnlyStorableText } from "@breatic/core";
+import { validate } from "@breatic/core";
 import { runOnce } from "@server/middleware/run-once.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 

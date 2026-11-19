@@ -10,8 +10,8 @@
 
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
-import { validate } from "@server/middleware/validate.js";
+import { frontendOrigin } from "@breatic/core";
+import { validate } from "@breatic/core";
 import { OAuth2Client } from "google-auth-library";
 import type { TokenPayload } from "google-auth-library";
 

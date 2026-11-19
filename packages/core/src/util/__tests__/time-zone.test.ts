@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { isKnownTimeZone } from "@server/utils/time-zone.js";
+import { isKnownTimeZone } from "@core/util/time-zone.js";
 
 describe("isKnownTimeZone", () => {
   it("accepts IANA zone names", () => {

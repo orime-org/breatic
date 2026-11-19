@@ -15,7 +15,7 @@
 
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
+import { fingerprint } from "@core/http/request-fingerprint.js";
 
 const TEMPLATE = "/internal/v1/credit-lots/:lotId/refund/approve";
 const LOT = "00000000-0000-4000-8000-000000000001";

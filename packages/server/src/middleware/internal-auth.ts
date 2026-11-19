@@ -10,7 +10,7 @@
 
 import type { MiddlewareHandler } from "hono";
 import { env, getRedis, logger } from "@breatic/core";
-import { WINDOW_SECONDS, verifyInternalRequest } from "@server/middleware/internal-signature.js";
+import { WINDOW_SECONDS, verifyInternalRequest } from "@breatic/core";
 
 /**
  * How long a nonce is remembered. The window compares whole seconds and

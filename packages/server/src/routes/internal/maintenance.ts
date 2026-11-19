@@ -6,9 +6,9 @@
  */
 import type { Context, Hono } from "hono";
 import { z } from "zod";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { maintenanceService } from "@server/modules/index.js";
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
+import { fingerprint } from "@breatic/core";
 const BASE = "/internal/v1/maintenance";
 const uuid = z.string().uuid();
 const key = z.string().regex(/^bo-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);

@@ -21,9 +21,9 @@
  */
 
 import { Hono } from "hono";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
+import { frontendOrigin } from "@breatic/core";
 import { z } from "zod";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { getActiveLocale, t } from "@breatic/shared";
 import { createTeamStudioSchema, emailSchema, updateStudioSchema } from "@breatic/shared";
 import { creditPageQuerySchema, projectListQuerySchema } from "@server/routes/schemas.js";

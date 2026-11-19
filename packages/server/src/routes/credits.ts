@@ -17,7 +17,7 @@
 import { Hono } from "hono";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { creditViewService, paymentService } from "@server/modules";
 import * as studioCreditDesignation from "@server/modules/studio/studioCreditDesignation.service.js";

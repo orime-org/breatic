@@ -13,7 +13,7 @@ export { claimEmailInvitations } from "@server/modules/invitation/claim-email-in
 import { invitationRepo, prepareInvitation, settleSignupInvitationDelivery } from "@server/modules/invitation/invitation-lifecycle.service.js";
 import type { InvitationKind, InvitationRole } from "@server/modules/invitation/invitation.types.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
+import { frontendOrigin } from "@breatic/core";
 import { decisionLink } from "@server/utils/decision-link.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import {

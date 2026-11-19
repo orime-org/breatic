@@ -15,10 +15,10 @@
  */
 
 import { Hono } from "hono";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
+import { frontendOrigin } from "@breatic/core";
 import { z } from "zod";
 import { emailSchema } from "@breatic/shared";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireRole, getProjectId } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";

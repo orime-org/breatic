@@ -19,7 +19,7 @@ import { miniToolById, miniToolRequestSchema, outputTemplateOf } from "@breatic/
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { runOnce } from "@server/middleware/run-once.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { projectService } from "@server/modules";

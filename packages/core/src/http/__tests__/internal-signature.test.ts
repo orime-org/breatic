@@ -28,7 +28,7 @@ import {
   signRequest,
   verifyInternalRequest,
   type SignedParts,
-} from "@server/middleware/internal-signature.js";
+} from "@core/http/internal-signature.js";
 
 const SECRET = "current-secret-0123456789abcdef";
 const PREVIOUS = "previous-secret-fedcba9876543210";

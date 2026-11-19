@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { env } from "@breatic/core";
+import { env } from "@core/config/env.js";
 
 /**
  * Select a configured frontend origin for links sent outside the API.
