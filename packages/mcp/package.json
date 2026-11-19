@@ -20,9 +20,13 @@
     "@hono/node-server": "catalog:",
     "@modelcontextprotocol/hono": "2.0.2",
     "@modelcontextprotocol/server": "2.4.0",
+    "@tiptap/pm": "catalog:",
     "dotenv": "catalog:",
     "hono": "catalog:",
     "jsdom": "catalog:",
+    "y-prosemirror": "catalog:",
+    "y-protocols": "catalog:",
+    "yjs": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -33,7 +37,6 @@
     "testcontainers": "catalog:",
     "tsup": "catalog:",
     "tsx": "catalog:",
-    "vitest": "catalog:",
-    "yjs": "catalog:"
+    "vitest": "catalog:"
   }
 }

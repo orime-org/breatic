@@ -720,6 +720,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 2.4.0
         version: 2.4.0
+      '@tiptap/pm':
+        specifier: 'catalog:'
+        version: 3.31.4
       dotenv:
         specifier: 'catalog:'
         version: 16.6.1
@@ -729,6 +732,15 @@ importers:
       jsdom:
         specifier: 'catalog:'
         version: 29.1.1(canvas@3.2.3)
+      y-prosemirror:
+        specifier: 'catalog:'
+        version: 1.3.7(patch_hash=qqovpfs3tpce6o5etf4b2kkdfi)(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-view@1.42.6(patch_hash=b5ej5jmfcxeucg3jh365cdjlaa))(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)
+      y-protocols:
+        specifier: 'catalog:'
+        version: 1.0.7(yjs@13.6.33)
+      yjs:
+        specifier: 'catalog:'
+        version: 13.6.33
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -757,9 +769,6 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(@vitest/ui@4.1.10)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0)
-      yjs:
-        specifier: 'catalog:'
-        version: 13.6.33
 
   packages/provider:
     dependencies:
