@@ -6,7 +6,7 @@ Before changing any step of how a task runs in `handlers/dispatch.ts`, read the 
 
 ### No throw after the vendor has returned
 
-**Once the "vendor has returned" fact is written for a task, any later failure marks the task failed and returns; it never throws.** A throw makes BullMQ rerun the whole task, which calls the vendor again and pays for the same result twice. Before that fact is written, a thrown error is the retry path and a rerun resumes from the provider ticket stored on the task row (a task from before provider, from `task_upstream_steps`) without resubmitting.
+**Once the "vendor has returned" fact is written for a task, any later failure marks the task failed and returns; it never throws.** A throw makes BullMQ rerun the whole task, which calls the vendor again and pays for the same result twice. Before that fact is written, a thrown error is the retry path and a rerun resumes from the provider ticket stored on the task row (a task from before provider, from `task_upstream_steps`) without resubmitting. A video mini-tool records the fact per model step (its `providerReturn`) and each step resumes from its own ticket, so a throw goes back to the queue whichever steps have returned (`handlers/mini-tool/model-run-steps.ts`).
 
 Check: does this failure fall before or after the vendor-returned fact is written?
 
@@ -24,4 +24,4 @@ Check: does this failure fall before or after the vendor-returned fact is writte
 
 ### Model runs go through provider
 
-**Every model run is a `@breatic/provider` ticket the worker stores on the task row and hands back on each pickup (`handlers/media-run.ts`); the worker sends our params by our names, and only each upstream's binding in `config/provider/media/` names its fields.** A second mapping in the worker would drift from the bindings, and a call the worker made itself would bypass provider's routing and cost readers.
+**Every model run is a `@breatic/provider` ticket the worker stores on the task row, or for a video mini-tool's model step on that step's `task_upstream_steps` row, and hands back on each pickup (`handlers/media-run.ts`); the worker sends our params by our names, and only each upstream's binding in `config/provider/media/` names its fields.** A second mapping in the worker would drift from the bindings, and a call the worker made itself would bypass provider's routing and cost readers.

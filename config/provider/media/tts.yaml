@@ -18,7 +18,7 @@
 # { values, equivalent } serves those values for the reason given and
 # { all_values } any value for the reason given. `fixed` fields are sent on
 # every call, `voice_map` maps our voices to the upstream's, `output_field` is
-# where a fal result puts its files, `extra_steps` and `reused_by` are the
+# where a fal or WaveSpeed result puts its files, `extra_steps` and `reused_by` are the
 # upstream's further calls, and the binding's `rejects` hold only what this
 # upstream enforces beyond the vendor. `dialogue` sends a run that names its
 # speakers as the upstream's turns (`field`, each turn's `speaker_field` and
