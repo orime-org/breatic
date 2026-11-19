@@ -18,12 +18,25 @@ vi.mock("../../../provider/provider-keys.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   runDescribesInput: (model: string, params: Readonly<Record<string, unknown>>) => describes(model, params),
 }));
+// The params each refusal check was asked about; the real check still answers.
+const { refusalAsked } = vi.hoisted(() => ({ refusalAsked: [] as { model: string; params: Readonly<Record<string, unknown>> }[] }));
+vi.mock("@domain/model-catalog/model-catalog.js", async (importOriginal) => {
+  const original = await importOriginal<typeof Catalog>();
+  return {
+    ...original,
+    inputRefusalFor: async (...args: Parameters<typeof original.inputRefusalFor>) => {
+      refusalAsked.push({ model: args[0], params: args[1].params });
+      return original.inputRefusalFor(...args);
+    },
+  };
+});
 
 import { loadLocales } from "@breatic/core";
 import { formatCredits, setLocale, type ProposalAnswer, type ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+import type * as Catalog from "@domain/model-catalog/model-catalog.js";
 
 import { answerFor, checkedAnswerFor, makeProposeCanvasAction, renderProposalForModel, sentParams, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
@@ -400,6 +413,28 @@ describe("the cost read back when sources are wired into a slot the price reads 
 });
 
 describe("the params a proposed run is judged on (inner#1953)", () => {
+  it("judges a run on the payer's key on what the reference pool wires in, through the whole check", async () => {
+    describes.mockReset();
+    describes.mockImplementation((_model, params) => params.elements !== undefined);
+    refusalAsked.length = 0;
+    const proposal = inputSchema.parse({
+      nodes: [
+        { role: "source", type: "image", name: "Photo" },
+        { role: "generate", type: "video", name: "Clip", mode: "i2v", model: "kling-video-o3-4k-image-to-video", params: { duration: 5 }, prompt: [{ ref: 0 }, { slot: { kind: "note", label: "Put the photo in first" } }, { text: " comes alive." }] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
+      rationale: "One clip from the photo.",
+      groupName: "Clip",
+    });
+    const keysFor = async (purpose: KeyPurpose): Promise<{ keyId: string | null; route: { mode: "default" } }> =>
+      ({ keyId: purpose.kind === "media" ? "media-row" : null, route: { mode: "default" } });
+
+    const answer = await checkedAnswerFor(proposal, undefined, undefined, keysFor);
+    if (!answer.placed) throw new Error(answer.reason);
+    expect(answer.describedOnCredits).toEqual([1]);
+    expect(refusalAsked.find((asked) => asked.model === "kling-video-o3-4k-image-to-video")?.params).toHaveProperty("elements");
+  });
+
   it("carries what an edge wires into the reference pool, as the run will send it", () => {
     const clip = { role: "generate", type: "video", name: "Clip", mode: "i2v", model: "kling-video-o3-4k-image-to-video", params: { duration: 5 } } as unknown as ProposalNode;
     const photo = { role: "reference", type: "image", name: "Photo" } as unknown as ProposalNode;
