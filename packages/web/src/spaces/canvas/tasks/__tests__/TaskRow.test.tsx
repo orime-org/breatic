@@ -137,10 +137,10 @@ describe('TaskRow', () => {
   // inner#1968 visual round 3: what the task acted on takes its width before the starter.
   it('lets the starter give way before what the task acted on', () => {
     renderRow({}, {}, { 'u-1': 'alexandria-montgomery-fitzwilliam-the-third' });
+    // jsdom lays nothing out: the name never shrinks and stops 3rem short, the 40px floor the starter keeps plus the gap.
     const detail = screen.getByTestId('task-detail').parentElement!;
-    expect(detail).toHaveClass('flex-auto');
-    expect(detail).not.toHaveClass('flex-1');
-    expect(screen.getByText('alexandria-montgomery-fitzwilliam-the-third')).toHaveClass('shrink-[999]', 'min-w-10');
+    expect(detail).toHaveClass('shrink-0', 'max-w-[calc(100%-3rem)]');
+    expect(screen.getByText('alexandria-montgomery-fitzwilliam-the-third')).toHaveClass('min-w-10', 'max-w-28', 'truncate');
   });
 
   // inner#1968 visual round 3: the user's own task says "You", as the 3D task list does.

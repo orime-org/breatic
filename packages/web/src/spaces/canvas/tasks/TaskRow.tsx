@@ -15,6 +15,7 @@ import * as React from 'react';
 import { getLocale, type NodeTaskEntry } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
+import { cn } from '@web/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
@@ -200,29 +201,29 @@ export const TaskRow = React.memo(function TaskRow({
           label={kind.label}
           colorClassName='text-foreground-secondary'
         />
-        {/* What the task acted on, at the weight of context. What the user
-            came for is the sentence below. */}
-        {kind.detail !== null ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className='min-w-0 flex-auto truncate text-2xs text-foreground-secondary'>
-                <span data-testid='task-detail'>{kind.detail}</span>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent portal className='max-w-xs break-words'>{kind.detail}</TooltipContent>
-          </Tooltip>
-        ) : (
-          <span className='flex-auto' />
-        )}
-        {/* What the task acted on keeps its width; a long starter name gives way first. */}
-        {starter !== null ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className='min-w-10 max-w-28 shrink-[999] truncate text-2xs text-muted-foreground'>{starter}</span>
-            </TooltipTrigger>
-            <TooltipContent portal className='max-w-xs break-words'>{starter}</TooltipContent>
-          </Tooltip>
-        ) : null}
+        {/* What the task acted on keeps its whole width; the starter, at the
+            right end, is the only part that gives way, down to 40px. A shrink
+            weight would still take a fraction of a pixel from the name and cut it. */}
+        <span className='flex min-w-0 flex-1 items-center gap-2'>
+          {kind.detail !== null ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className={cn('min-w-0 shrink-0 truncate text-2xs text-foreground-secondary', starter !== null ? 'max-w-[calc(100%-3rem)]' : 'max-w-full')}>
+                  <span data-testid='task-detail'>{kind.detail}</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent portal className='max-w-xs break-words'>{kind.detail}</TooltipContent>
+            </Tooltip>
+          ) : null}
+          {starter !== null ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className='ml-auto min-w-10 max-w-28 truncate text-right text-2xs text-muted-foreground'>{starter}</span>
+              </TooltipTrigger>
+              <TooltipContent portal className='max-w-xs break-words'>{starter}</TooltipContent>
+            </Tooltip>
+          ) : null}
+        </span>
       </div>
 
       {waiting ? (
