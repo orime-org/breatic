@@ -31,8 +31,7 @@ import {
   users,
 } from "@core/db/schema.js";
 import * as projectsRepo from "@core/project/projects.repo.js";
-import { getMembershipLimits, type MembershipLimits } from "@core/config/membership.js";
-import { subscriptionClock } from "@core/config/subscription.js";
+import { getMembershipLimits, subscriptionClock, type MembershipLimits } from "@core/config/membership.js";
 import { subscriptionFactsForMembership } from "@core/auth/subscription.repo.js";
 import { resolveMembershipReading } from "@core/auth/membership-reading.js";
 import { enterpriseRecordSchema, enterpriseMembershipProfileSchema } from "@core/auth/enterprise-membership-contract.js";

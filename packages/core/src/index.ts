@@ -91,13 +91,13 @@ export {
   getMembershipLimits,
   getDefaultMembershipTier,
   getSubscriptionStaleAfterDays,
+  subscriptionClock,
 } from "@core/config/membership.js";
 export type { MembershipConfig, MembershipLimits } from "@core/config/membership.js";
 export {
   getSubscriptionPlans,
   getSubscriptionPlan,
   findOfferByPriceId,
-  subscriptionClock,
   getStripeCallTimeoutMs,
   resetSubscriptionConfigCache,
 } from "@core/config/subscription.js";

@@ -31,7 +31,7 @@ import {
   studioAuthService,
   creditLotService,
 } from "@breatic/domain";
-import { getTrialGrantCredits } from "@server/config/pricing.js";
+import { getTrialGrantCredits } from "@server/config/credits.js";
 import {
   t,
   SLUG_REGEX,
