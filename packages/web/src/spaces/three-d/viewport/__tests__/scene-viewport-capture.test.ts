@@ -137,6 +137,12 @@ describe('capturing the viewfinder frame (#1411 design 4)', () => {
     expect((runtime as unknown as { renderer: { getRenderTarget: () => unknown } }).renderer.getRenderTarget()).toBeNull();
   });
 
+  it('names the objects inside the captured frame (#1488 design 19.1)', async () => {
+    const { capture } = await open();
+    expect((await capture({ x: 0, y: 0, width: 1000, height: 600 }, { width: 100, height: 60 })).visibleIds).toEqual(['cube']);
+    expect((await capture({ x: 0, y: 0, width: 40, height: 40 }, { width: 40, height: 40 })).visibleIds).toEqual([]);
+  });
+
   it('withdraws the capture function before the runtime is disposed', async () => {
     const host = document.createElement('div'); document.body.append(host);
     Object.defineProperties(host, { clientWidth: { value: 400 }, clientHeight: { value: 300 } });

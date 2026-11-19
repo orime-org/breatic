@@ -3,6 +3,9 @@
 
 import type { CapturedPixels } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
+/** The read-back pixels and their size. */
+type Pixels = Pick<CapturedPixels, 'width' | 'height' | 'pixels'>;
+
 /**
  * WebGL reads rows bottom-up; images are stored top-down.
  * @param pixels - RGBA bytes as read back.
@@ -18,12 +21,28 @@ export function flipRows(pixels: Uint8Array, width: number, height: number): Uin
 }
 
 /**
+ * Draw a capture on a page canvas, rows in image order.
+ * @param capture - The read-back pixels and their size.
+ * @returns The canvas.
+ * @throws {Error} When the browser has no 2D context for a canvas.
+ */
+export function captureToCanvas(capture: Pixels): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = capture.width;
+  canvas.height = capture.height;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('no 2d context for the capture');
+  context.putImageData(new ImageData(flipRows(capture.pixels, capture.width, capture.height), capture.width, capture.height), 0, 0);
+  return canvas;
+}
+
+/**
  * Encode a capture as a PNG.
  * @param capture - The read-back pixels and their size.
  * @returns The PNG.
  * @throws {Error} When the browser has no 2D context for an offscreen canvas.
  */
-export async function encodeCapturePng(capture: CapturedPixels): Promise<Blob> {
+export async function encodeCapturePng(capture: Pixels): Promise<Blob> {
   const canvas = new OffscreenCanvas(capture.width, capture.height);
   const context = canvas.getContext('2d');
   if (!context) throw new Error('no 2d context for the capture');

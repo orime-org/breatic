@@ -18,6 +18,8 @@ import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import type { SpaceBodyProps } from '@web/spaces';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
+import { registerViewCapture } from '@web/features/view-capture/registry';
+import { captureToCanvas } from '@web/spaces/three-d/viewfinder/encode-capture';
 import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
 import { fillFromTask } from '@web/spaces/three-d/scene-generation';
 import { useSceneProposals } from '@web/stores/scene-proposals';
@@ -401,6 +403,20 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   }, [session, figureName, boxName]);
 
   const stage = React.useRef<HTMLDivElement>(null);
+  // What an external agent sees when it asks for the user's screen (#1488
+  // §19.1): the whole stage as rendered, the objects in it and the camera.
+  React.useEffect(() => {
+    if (frameCapture === null) return undefined;
+    return registerViewCapture(spaceId, async () => {
+      const width = stage.current?.clientWidth ?? 0;
+      const height = stage.current?.clientHeight ?? 0;
+      const shot = await frameCapture({ x: 0, y: 0, width, height }, { width, height });
+      return {
+        canvas: captureToCanvas(shot),
+        view: { kind: '3d', visibleObjectIds: shot.visibleIds, camera: shot.pose ?? { ...view.current, fov: fov.current } },
+      };
+    });
+  }, [frameCapture, spaceId]);
   const rightPanel = React.useRef<HTMLDivElement>(null);
   const automaticPanel = React.useRef(false);
   const returnTarget = React.useRef<HTMLElement | null>(null);

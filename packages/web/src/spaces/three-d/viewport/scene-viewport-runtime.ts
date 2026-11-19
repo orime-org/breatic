@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Box3, BoxHelper, Color, DirectionalLight, GridHelper, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, PCFSoftShadowMap, PerspectiveCamera, PlaneGeometry, Quaternion, Raycaster, Scene, ShadowMaterial, SkinnedMesh, SphereGeometry, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, WebGLRenderTarget } from 'three';
+import { Box3, BoxHelper, Color, DirectionalLight, Frustum, GridHelper, Group, HemisphereLight, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, PCFSoftShadowMap, PerspectiveCamera, PlaneGeometry, Quaternion, Raycaster, Scene, ShadowMaterial, SkinnedMesh, SphereGeometry, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControlsGizmo } from 'three/addons/controls/TransformControls.js';
 import type { Bone, Intersection, Object3D } from 'three';
@@ -339,6 +339,7 @@ export class SceneViewportRuntime {
     const camera = live ? this.monitorCamera : this.camera;
     const layers = camera.layers.mask;
     let pose: CapturedPixels['pose'];
+    let visibleIds: string[] = [];
     try {
       if (live) {
         applyCameraRecord(camera, live, size.width / size.height);
@@ -351,6 +352,7 @@ export class SceneViewportRuntime {
       camera.layers.set(0);
       this.renderer.setRenderTarget(target);
       this.withoutHelpers(() => this.renderer.render(this.scene, camera));
+      visibleIds = this.idsInside(camera);
       // Read now: the monitors reuse this camera on the frames that run during the readback.
       pose = live ? { position: camera.position.toArray(), quaternion: camera.quaternion.toArray(), fov: camera.fov, aspect: camera.aspect } : undefined;
     } finally {
@@ -361,11 +363,26 @@ export class SceneViewportRuntime {
     try {
       const pixels = new Uint8Array(size.width * size.height * 4);
       await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, size.width, size.height, pixels);
-      return { width: size.width, height: size.height, pixels, ...(pose ? { pose } : {}) };
+      return { width: size.width, height: size.height, pixels, visibleIds, ...(pose ? { pose } : {}) };
     } finally {
       target.dispose();
     }
   };
+
+  /**
+   * The objects whose bounds reach into what a camera sees, its view offset included.
+   * @param camera - The camera as it was rendered with.
+   * @returns Their ids.
+   */
+  private idsInside(camera: PerspectiveCamera): string[] {
+    camera.updateMatrixWorld();
+    const frustum = new Frustum().setFromProjectionMatrix(new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    const ids: string[] = [];
+    for (const [id, item] of this.items) {
+      if (item.root && frustum.intersectsBox(new Box3().setFromObject(item.root))) ids.push(id);
+    }
+    return ids;
+  }
 
   /**
    * Render with the grid, transform handles, selection outlines and joint dots hidden.

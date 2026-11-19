@@ -21,6 +21,7 @@ import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-docume
 import { SceneSession } from '@web/data/yjs/scene-session';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
+import { viewCapturerOf } from '@web/features/view-capture/registry';
 import { useCanvasRevealStore } from '@web/stores/canvas-reveal';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useUIStore } from '@web/stores/ui';
@@ -76,6 +77,7 @@ vi.mock('@web/stores/chat-attachments', async (importOriginal) => {
 vi.mock('@web/spaces/canvas/upload-derived-image', () => ({ uploadDerivedImage: vi.fn(async () => 'https://cdn.example.test/shot.png') }));
 vi.mock('@web/spaces/three-d/viewfinder/encode-capture', () => ({
   encodeCapturePng: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
+  captureToCanvas: vi.fn(() => document.createElement('canvas')),
 }));
 vi.mock('@web/data/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@web/data/api')>();
@@ -498,5 +500,24 @@ describe('the destinations (acceptance 5 to 8)', () => {
     await act(async () => { finish({ status: 'unreachable' }); await Promise.resolve(); });
     expect(h.toast.error).toHaveBeenCalledWith(t('spaces.threeD.viewfinder.canvasUnreachable', { name: 'First' }));
     expect(screen.queryByTestId('scene-viewfinder-frame')).toBeNull();
+  });
+});
+
+describe('what an external agent sees (#1488 design 19.1)', () => {
+  it('captures the whole stage with the objects on it and the camera', async () => {
+    await setup();
+    h.capture.mockResolvedValue({ width: 1200, height: 800, pixels: new Uint8Array(4), visibleIds: [ID] });
+    const capturer = viewCapturerOf('scene');
+    if (!capturer) throw new Error('the 3D Space offered no capture');
+    const shot = await capturer();
+    expect(h.capture).toHaveBeenCalledWith({ x: 0, y: 0, width: 1200, height: 800 }, { width: 1200, height: 800 });
+    expect(shot.view).toEqual(expect.objectContaining({ kind: '3d', visibleObjectIds: [ID] }));
+    expect(shot.view.camera).toEqual(expect.objectContaining({ position: expect.any(Array) }));
+  });
+
+  it('takes the offer back when the editor goes away', async () => {
+    await setup();
+    cleanup();
+    expect(viewCapturerOf('scene')).toBeUndefined();
   });
 });

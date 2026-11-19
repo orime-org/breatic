@@ -144,6 +144,8 @@ export interface CapturedPixels {
   pixels: Uint8Array;
   /** The camera pose the still was taken with, when it was taken through a camera. */
   pose?: SceneFrozenPose;
+  /** The objects whose bounds reach into the captured frame. */
+  visibleIds: string[];
 }
 
 /** Render one viewport rectangle at a given size, without the editing helpers. */
