@@ -265,3 +265,27 @@ describe('generateLookUvs', () => {
     expect((made.attributes.normal as BufferAttribute).array).toBeInstanceOf(Int8Array);
   });
 });
+
+describe('generated UVs on a mirrored node (inner#1693 design 5.1)', () => {
+  it('reads a mirrored face from outside the way three draws it', async () => {
+    const three = await import('three');
+    const { generateLookUvs } = await import('@web/spaces/three-d/viewport/look-uv');
+    const positions = new Float32Array([0, 0, 0, 0, 1, 0, 0, 0, 1]);
+    /** One triangle under a node with the given x scale and corner order. */
+    const uvsOf = (scaleX: number, order: number[]): number[] => {
+      const geometry = new three.BufferGeometry();
+      geometry.setAttribute('position', new three.BufferAttribute(positions.slice(), 3));
+      geometry.setIndex(order);
+      const mesh = new three.Mesh(geometry, new three.MeshStandardMaterial());
+      mesh.scale.set(scaleX, 1, 1);
+      const root = new three.Group();
+      root.add(mesh);
+      generateLookUvs(root);
+      return [...(mesh.geometry.getAttribute('uv').array as Float32Array)];
+    };
+    // Mirrored, three flips the front face, so the face seen from outside is the reversed winding unmirrored.
+    const reversed = uvsOf(1, [0, 2, 1]);
+    // Its corners come out in the order 0, 2, 1; put them back in vertex order.
+    expect(uvsOf(-1, [0, 1, 2]).map((value) => value + 0)).toEqual([reversed[0], reversed[1], reversed[4], reversed[5], reversed[2], reversed[3]].map((value) => value! + 0));
+  });
+});

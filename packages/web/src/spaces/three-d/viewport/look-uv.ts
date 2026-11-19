@@ -99,11 +99,13 @@ function generateMeshUvs(mesh: Mesh, toRoot: Matrix4): BufferGeometry {
   const rest = new Float32Array(count * 3);
   const point = new Vector3();
   for (let i = 0; i < count; i++) mesh.getVertexPosition(i, point).applyMatrix4(toRoot).toArray(rest, i * 3);
+  // A mirroring transform reverses the winding; three then draws the other side as the front, and so is a face read here.
+  const mirrored = toRoot.determinant() < 0;
   const geometry = new BufferGeometry();
   if (!source.index) {
     const uvs = new Float32Array(count * 2);
     for (let t = 0; t + 2 < count; t += 3) {
-      const axis = faceAxis(rest, t, t + 1, t + 2);
+      const axis = mirrored ? faceAxis(rest, t, t + 2, t + 1) : faceAxis(rest, t, t + 1, t + 2);
       for (let k = 0; k < 3; k++) project(rest, t + k, axis, uvs, t + k);
     }
     for (const [name, attribute] of Object.entries(source.attributes)) geometry.setAttribute(name, attribute);
@@ -120,7 +122,7 @@ function generateMeshUvs(mesh: Mesh, toRoot: Matrix4): BufferGeometry {
   let made = 0;
   for (let t = 0; t < triangles; t += 3) {
     const a = corners[t]!; const b = corners[t + 1]!; const c = corners[t + 2]!;
-    const axis = faceAxis(rest, a, b, c);
+    const axis = mirrored ? faceAxis(rest, a, c, b) : faceAxis(rest, a, b, c);
     for (let k = 0; k < 3; k++) {
       const vertex = k === 0 ? a : k === 1 ? b : c;
       const slot = vertex * AXES + axis;
