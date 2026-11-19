@@ -1083,8 +1083,8 @@ describe("a shutdown during a card's opening", () => {
   });
 });
 
-// Spec R-06 (inner#1968 3.11): a message is sent with no Idempotency-Key and
-// answered with no Idempotency-Status, as before operation metering.
+// Spec R-06 (inner#1968): a message is sent with no Idempotency-Key and
+// answered with no Idempotency-Status.
 describe("a message sent without an Idempotency-Key", () => {
   it("R-06 is queued as usual and answered with no Idempotency-Status", async () => {
     const who = await seedOwner(sql, app);

@@ -310,8 +310,8 @@ describe("POST /assets/upload-ticket", () => {
     expect(verified.ok).toBe(true);
   });
 
-  // Spec R-04 (inner#1968 3.11): the ticket asks for no Idempotency-Key and
-  // answers with no Idempotency-Status, as before operation metering.
+  // Spec R-04 (inner#1968): the ticket asks for no Idempotency-Key and
+  // answers with no Idempotency-Status.
   it("R-04 answers a ticket asked for without an Idempotency-Key, and no Idempotency-Status", async () => {
     const { userId, projectId, cookie } = await seedEditor();
     await sql`UPDATE users SET membership_tier = 'pro' WHERE id = ${userId}`;

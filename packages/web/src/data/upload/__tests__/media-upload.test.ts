@@ -577,10 +577,9 @@ describe('runMediaUpload — the server could not open the upload (inner#1595)',
   });
 });
 
-// 2026-11-17 (inner#1968 3.11): the ticket request is back to what it was
-// before operation metering, so it carries no Idempotency-Key and retries as
-// it did; read through the real API call so the headers it sends are seen.
-describe('runMediaUpload — the ticket request as before operation metering', () => {
+// Spec R-07 (inner#1968): the ticket request carries no Idempotency-Key and
+// retries a 5xx; read through the real API call so the headers it sends are seen.
+describe('runMediaUpload — the ticket request carries no Idempotency-Key', () => {
   const file = new File(['x'], 'photo.png', { type: 'image/png' });
   const context = { projectId: 'p1', nodeId: 'n1', spaceId: 's1' };
 

@@ -319,7 +319,7 @@ describe('startMiniToolRun', () => {
     expect(run.fillUpload).not.toHaveBeenCalled();
   });
 
-  // 2026-11-17 (inner#1968 3.11): the grid stays a browser tool. Its tiles are
+  // Spec R-02 (inner#1968): the grid is a browser tool. Its tiles are
   // cut here and go up in one batch ticket request, and nothing asks the
   // server to run it.
   it('R-02 cuts a 4x4 grid less two tiles in the browser and asks for all 14 tickets in one batch', async () => {
