@@ -83,7 +83,7 @@ export async function resolveKeys(payer: KeyPayer, purpose: KeyPurpose): Promise
 export async function keysById(keyId: string | null): Promise<{ keys: KeySet } | null> {
   if (keyId === null) return null;
   const masterKeys = ring();
-  const found = masterKeys === null ? null : await providerKeyById(keyId);
+  const found = await providerKeyById(keyId);
   // A retired row still names its upstream, so the user is told which key is gone; no other key is used instead.
   if (masterKeys === null || found === null || found.ciphertext === null) {
     throw new AccountKeyFailure("", "account_key_missing", found === null ? {} : { upstream: found.upstream });

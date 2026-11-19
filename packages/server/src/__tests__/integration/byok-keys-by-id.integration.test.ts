@@ -136,6 +136,20 @@ describe("keysById", () => {
     expect(accountKeyFailureIn(err)?.upstream).toBe("openrouter");
   });
 
+  it("names the row's upstream when this deployment no longer opens account keys", async () => {
+    const userId = await seedUser();
+    const keyId = await saveKey(userId, "fal", "fal-ring-off");
+    const { PROVIDER_KEY_SECRET_ID: _id, PROVIDER_KEY_SECRETS: _secrets, ...withoutRing } = process.env;
+    initCore(withoutRing);
+    try {
+      const err = await thrownBy(keysById(keyId));
+      expect(kindOf(err)).toBe("account_key_missing");
+      expect(accountKeyFailureIn(err)?.upstream).toBe("fal");
+    } finally {
+      initCore({ ...process.env, PROVIDER_KEY_SECRET_ID: "t1", PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }) });
+    }
+  });
+
   it("fails as account_key_missing naming no upstream for an id no row has", async () => {
     const err = await thrownBy(keysById(crypto.randomUUID()));
     expect(kindOf(err)).toBe("account_key_missing");
