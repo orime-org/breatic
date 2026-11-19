@@ -4069,5 +4069,25 @@
     "noMatch": "没有匹配的成员",
     "loadFailed": "读取失败",
     "retry": "重试"
+  },
+  "commentHandover": {
+    "handOver": "交给",
+    "cancel": "取消交给",
+    "listTitle": "交给你的外部 Agent",
+    "again": "再交给 {name}",
+    "token": "令牌 {prefix}",
+    "since": "首次授权 {date}",
+    "empty": "还没有连接外部 Agent",
+    "connect": "去连接",
+    "loadFailed": "读取失败",
+    "retry": "重试",
+    "waiting": "等 {name} 处理",
+    "expiredReconnect": "{name} 已过期，重新连接后处理",
+    "expiredToken": "{name} 已过期，不会处理",
+    "expiredTokenHint": "重新连接后再交一次",
+    "disconnected": "{name} 已断开，不会处理",
+    "replied": "{name} 回复",
+    "handedOver": "已交给 {name}",
+    "writeFailed": "没能交出"
   }
 }

@@ -4069,5 +4069,25 @@
     "noMatch": "一致するメンバーがいません",
     "loadFailed": "読み込めませんでした",
     "retry": "再試行"
+  },
+  "commentHandover": {
+    "handOver": "任せる",
+    "cancel": "任せるのをやめる",
+    "listTitle": "あなたの外部 Agent",
+    "again": "{name} にもう一度任せる",
+    "token": "トークン {prefix}",
+    "since": "{date} に接続",
+    "empty": "接続している外部 Agent はまだありません",
+    "connect": "接続する",
+    "loadFailed": "読み込めませんでした",
+    "retry": "再試行",
+    "waiting": "{name} の対応待ち",
+    "expiredReconnect": "{name} の期限切れ。再接続すると対応します",
+    "expiredToken": "{name} の期限切れ。対応しません",
+    "expiredTokenHint": "再接続してからもう一度任せてください",
+    "disconnected": "{name} は切断済み。対応しません",
+    "replied": "{name} が返信",
+    "handedOver": "{name} に任せました",
+    "writeFailed": "任せられませんでした"
   }
 }

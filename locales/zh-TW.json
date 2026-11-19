@@ -4069,5 +4069,25 @@
     "noMatch": "沒有符合的成員",
     "loadFailed": "讀取失敗",
     "retry": "重試"
+  },
+  "commentHandover": {
+    "handOver": "交給",
+    "cancel": "取消交給",
+    "listTitle": "交給你的外部 Agent",
+    "again": "再交給 {name}",
+    "token": "權杖 {prefix}",
+    "since": "首次授權 {date}",
+    "empty": "還沒有連接外部 Agent",
+    "connect": "去連接",
+    "loadFailed": "讀取失敗",
+    "retry": "重試",
+    "waiting": "等 {name} 處理",
+    "expiredReconnect": "{name} 已過期，重新連接後處理",
+    "expiredToken": "{name} 已過期，不會處理",
+    "expiredTokenHint": "重新連接後再交一次",
+    "disconnected": "{name} 已斷開，不會處理",
+    "replied": "{name} 回覆",
+    "handedOver": "已交給 {name}",
+    "writeFailed": "沒能交出"
   }
 }

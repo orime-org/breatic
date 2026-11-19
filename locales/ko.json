@@ -4069,5 +4069,25 @@
     "noMatch": "일치하는 멤버가 없습니다",
     "loadFailed": "불러오지 못했습니다",
     "retry": "다시 시도"
+  },
+  "commentHandover": {
+    "handOver": "맡기기",
+    "cancel": "맡기기 취소",
+    "listTitle": "내 외부 Agent",
+    "again": "{name}에게 다시 맡기기",
+    "token": "토큰 {prefix}",
+    "since": "{date} 연결",
+    "empty": "연결된 외부 Agent가 아직 없습니다",
+    "connect": "연결하기",
+    "loadFailed": "불러오지 못했습니다",
+    "retry": "다시 시도",
+    "waiting": "{name} 처리 대기 중",
+    "expiredReconnect": "{name} 만료됨, 다시 연결하면 처리합니다",
+    "expiredToken": "{name} 만료됨, 처리하지 않습니다",
+    "expiredTokenHint": "다시 연결한 뒤 한 번 더 맡기세요",
+    "disconnected": "{name} 연결 끊김, 처리하지 않습니다",
+    "replied": "{name} 답글",
+    "handedOver": "{name}에게 맡겼습니다",
+    "writeFailed": "맡기지 못했습니다"
   }
 }

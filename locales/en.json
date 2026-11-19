@@ -4069,5 +4069,25 @@
     "noMatch": "No matching members",
     "loadFailed": "Couldn't load",
     "retry": "Retry"
+  },
+  "commentHandover": {
+    "handOver": "Hand to",
+    "cancel": "Take back",
+    "listTitle": "Your external Agents",
+    "again": "Hand to {name} again",
+    "token": "Token {prefix}",
+    "since": "Connected {date}",
+    "empty": "No external Agent connected yet",
+    "connect": "Connect one",
+    "loadFailed": "Couldn't load",
+    "retry": "Retry",
+    "waiting": "Waiting for {name}",
+    "expiredReconnect": "{name} expired, reconnect to continue",
+    "expiredToken": "{name} expired, won't answer",
+    "expiredTokenHint": "Hand it over again after reconnecting",
+    "disconnected": "{name} disconnected, won't answer",
+    "replied": "{name} replied",
+    "handedOver": "Handed to {name}",
+    "writeFailed": "Couldn't hand it over"
   }
 }
