@@ -21,7 +21,7 @@ import {
 import { serve } from "@hono/node-server";
 import { createMcpApp, type AgentCall } from "@mcp/app.js";
 import { createCommandChannel } from "@mcp/command-channel.js";
-import { redisAnswers, serverAnswers } from "@mcp/probes.js";
+import { redisAnswers, serverAnswers, waitUntilReady } from "@mcp/probes.js";
 import { createServerApi } from "@mcp/server-api.js";
 import { ALL_TOOLS, INSTRUCTIONS } from "@mcp/tools/index.js";
 import { createTaskTracker } from "@mcp/tools/task-tracker.js";
@@ -74,18 +74,19 @@ async function main(): Promise<void> {
     { name: "server", check: serverAnswers(serverOrigin) },
     { name: "redis_mcp", check: redisAnswers(commandRedis) },
   ];
+  const mcpConfig = getMcpConfig();
+  const deadlineAt = Date.now() + mcpConfig.startup_wait_ms;
   for (const { name, check } of checks) {
-    const ok = await check().catch((err: unknown) => {
-      logger.fatal({ err, check: name }, "mcp_startup_dependency_unreachable");
-      return false;
-    });
-    if (!ok) {
+    const ready = await waitUntilReady(check, { deadlineAt, intervalMs: mcpConfig.startup_retry_interval_ms });
+    if (ready instanceof Error) {
+      logger.fatal({ err: ready, check: name }, "mcp_startup_dependency_unreachable");
+      await exit(1);
+    } else if (!ready) {
       logger.fatal({ check: name }, "mcp_startup_dependency_unhealthy");
       await exit(1);
     }
   }
 
-  const mcpConfig = getMcpConfig();
   // Template names and words are read from the locale catalogs.
   loadLocales();
   const doneSubscriber = createRedisClient(mcpEnv.REDIS_MCP_URL, { name: "mcp-done" });

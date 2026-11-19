@@ -38,6 +38,10 @@ export const mcpConfigSchema = z.object({
   command_wait_ms: positiveInt.default(10_000),
   /** The whole call's limit. */
   call_timeout_ms: positiveInt.default(45_000),
+  /** How long the MCP service waits at startup for the server and its Redis to answer before it gives up. */
+  startup_wait_ms: positiveInt.default(60_000),
+  /** The wait between those startup asks. */
+  startup_retry_interval_ms: positiveInt.default(1_000),
   /** How long a command's reply (a capture's result included) stays readable. */
   reply_ttl_seconds: positiveInt.default(600),
   task_query_max_ids: positiveInt.default(50),

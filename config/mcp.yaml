@@ -21,6 +21,12 @@ command_wait_ms: 10000
 # The whole call's limit. Stays under the MCP SDK's 60s default request timeout.
 call_timeout_ms: 45000
 
+# How long the MCP service waits at startup for the server and its Redis to
+# answer before it exits; in development every service starts at once.
+startup_wait_ms: 60000
+# The wait between those startup asks.
+startup_retry_interval_ms: 1000
+
 # How long a command's reply, a capture's result included, stays readable.
 reply_ttl_seconds: 600
 

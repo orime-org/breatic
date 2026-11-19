@@ -3,7 +3,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { redisAnswers, serverAnswers } from "@mcp/probes.js";
+import { redisAnswers, serverAnswers, waitUntilReady } from "@mcp/probes.js";
 
 let server: Server | undefined;
 afterEach(() => new Promise<void>((done) => (server ? server.close(() => done()) : done())));
@@ -43,5 +43,29 @@ describe("redisAnswers", () => {
   it("is true only on PONG", async () => {
     expect(await redisAnswers({ ping: async () => "PONG" })()).toBe(true);
     expect(await redisAnswers({ ping: async () => "LOADING" })()).toBe(false);
+  });
+});
+
+describe("waitUntilReady", () => {
+  it("asks again until the dependency answers", async () => {
+    let calls = 0;
+    const ready = await waitUntilReady(async () => {
+      calls += 1;
+      if (calls < 3) throw new Error("connection refused");
+      return true;
+    }, { deadlineAt: Date.now() + 5_000, intervalMs: 1 });
+    expect([ready, calls]).toEqual([true, 3]);
+  });
+
+  it("gives up once the deadline passes, with the last failure", async () => {
+    const failure = new Error("connection refused");
+    const outcome = await waitUntilReady(async () => {
+      throw failure;
+    }, { deadlineAt: Date.now() + 30, intervalMs: 5 });
+    expect(outcome).toBe(failure);
+  });
+
+  it("reports an answer that stays unhealthy as false", async () => {
+    expect(await waitUntilReady(async () => false, { deadlineAt: Date.now() + 20, intervalMs: 5 })).toBe(false);
   });
 });
