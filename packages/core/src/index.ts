@@ -381,6 +381,14 @@ export {
   type InternalAuthEvent,
   type SignerSecrets,
 } from "@core/http/internal-auth.js";
+export {
+  isUnavailable,
+  signedCall,
+  SignedCallError,
+  type SignedCallRequest,
+  type SignedCallResult,
+  type SignedCallTarget,
+} from "@core/http/signed-call.js";
 export { createErrorHandler, type ErrorHandlerEvent } from "@core/http/error-handler.js";
 export { createInternalErrorHandler, type InternalErrorHandlerDeps } from "@core/http/internal-errors.js";
 export { createLogRequest, type InternalRequestLine } from "@core/http/log-request.js";
