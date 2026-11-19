@@ -10,7 +10,7 @@ import { verify, backendPackages, services } from './backend-sourcemaps.mjs';
 const id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 
 /** Each service of the fixture and the workspace libraries its package.json depends on. */
-const graph = { server: ['shared', 'core', 'domain', 'provider'], worker: ['shared', 'core', 'domain', 'provider'], collab: ['shared', 'core'] };
+const graph = { server: ['shared', 'core', 'domain', 'provider'], worker: ['shared', 'core', 'domain', 'provider'], collab: ['shared', 'core'], mcp: ['shared', 'core'] };
 
 /** A backend tree whose services declare `graph`, every package's dist mapped with `id`. */
 function fixture(prefix, files = ['index.js']) {
@@ -34,15 +34,15 @@ function fixture(prefix, files = ['index.js']) {
 test('the backend packages are the services and the workspace libraries their dependencies name', () => {
   const root = fixture('backend-graph-');
   try {
-    assert.deepEqual(services, ['server', 'worker', 'collab']);
-    assert.deepEqual(backendPackages(root), ['server', 'worker', 'collab', 'core', 'domain', 'provider', 'shared']);
+    assert.deepEqual(services, ['server', 'worker', 'collab', 'mcp']);
+    assert.deepEqual(backendPackages(root), ['server', 'worker', 'collab', 'mcp', 'core', 'domain', 'provider', 'shared']);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test('every backend chunk must retain its matching injected map', () => {
   const root = fixture('backend-maps-');
   try {
-    assert.equal(verify(root), 7);
+    assert.equal(verify(root), 8);
     writeFileSync(join(root, 'packages/core/dist/index.js.map'), JSON.stringify({ version: 3, debugId: id.replace('a', 'b') }));
     assert.throws(() => verify(root), /Debug ID mismatch/);
     rmSync(join(root, 'packages/core/dist/index.js.map'));
@@ -69,7 +69,7 @@ test('installed workspace chunks must match the injected originals', () => {
         cpSync(join(root, 'packages', dependency, 'dist'), join(dir, 'dist'), { recursive: true });
       }
     }
-    assert.equal(verify(root, true), 14);
+    assert.equal(verify(root, true), 16);
     writeFileSync(join(root, 'packages/worker/node_modules/@breatic/provider/dist/chunk.js'), 'stale code');
     assert.throws(() => verify(root, true), /worker\/provider\/chunk.js/);
   } finally { rmSync(root, { recursive: true, force: true }); }

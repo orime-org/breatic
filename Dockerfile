@@ -29,7 +29,7 @@ COPY . .
 RUN pnpm install --offline --frozen-lockfile --ignore-scripts=false
 
 # Build backend packages (shared → core → server + collab + worker)
-RUN pnpm turbo build --filter=@breatic/server --filter=@breatic/collab --filter=@breatic/worker
+RUN pnpm turbo build --filter=@breatic/server --filter=@breatic/collab --filter=@breatic/worker --filter=@breatic/mcp
 
 # Build metadata belongs to the artifact, not the operator's runtime .env.
 ARG RELEASE_VERSION=0.0.0-dev
@@ -38,13 +38,14 @@ RUN node scripts/release.mjs build-info "$RELEASE_VERSION" "$VCS_REF" /app/build
 
 # Inject before pnpm deploy copies workspace libraries into node_modules.
 # No Sentry account or upload token is needed to produce the immutable image.
-RUN pnpm exec sentry-cli sourcemaps inject packages/server/dist packages/worker/dist packages/collab/dist packages/core/dist packages/domain/dist packages/provider/dist packages/shared/dist
+RUN pnpm exec sentry-cli sourcemaps inject packages/server/dist packages/worker/dist packages/collab/dist packages/mcp/dist packages/core/dist packages/domain/dist packages/provider/dist packages/shared/dist
 RUN node scripts/backend-sourcemaps.mjs /app
 
 # Deploy production-only deps for server, worker, and collab
 RUN pnpm deploy --filter=@breatic/server --prod /app/deploy/server
 RUN pnpm deploy --filter=@breatic/worker --prod /app/deploy/worker
 RUN pnpm deploy --filter=@breatic/collab --prod /app/deploy/collab
+RUN pnpm deploy --filter=@breatic/mcp --prod /app/deploy/mcp
 
 # ── Stage 2: Runtime (slim) ──────────────────────────────────────────
 FROM node:24-bookworm-slim AS runtime
@@ -65,6 +66,11 @@ COPY --from=builder /app/packages/worker/package.json ./packages/worker/
 COPY --from=builder /app/deploy/collab/node_modules ./packages/collab/node_modules
 COPY --from=builder /app/packages/collab/dist ./packages/collab/dist
 COPY --from=builder /app/packages/collab/package.json ./packages/collab/
+
+# MCP service (external agents): built output + production node_modules
+COPY --from=builder /app/deploy/mcp/node_modules ./packages/mcp/node_modules
+COPY --from=builder /app/packages/mcp/dist ./packages/mcp/dist
+COPY --from=builder /app/packages/mcp/package.json ./packages/mcp/
 
 # Core: built output (consumed by server/worker/collab via node_modules)
 COPY --from=builder /app/packages/core/dist ./packages/core/dist

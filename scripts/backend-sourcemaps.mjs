@@ -5,7 +5,7 @@ import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const services = ['server', 'worker', 'collab'];
+export const services = ['server', 'worker', 'collab', 'mcp'];
 
 /** The workspace libraries a service's runtime dependencies name, read from its package.json. */
 function librariesOf(root, service) {

@@ -180,6 +180,29 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # The MCP service external agents connect to (optional). It starts only with
+  # `docker compose --profile mcp up -d`, after MCP_CLIENT_SECRET and the three
+  # MCP addresses are set in .env; nginx reaches it as `mcp:3003`.
+  mcp:
+    image: ghcr.io/orime-org/breatic:v0.0.33
+    command: ["node", "packages/mcp/dist/index.js"]
+    profiles: ["mcp"]
+    env_file: .env
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      server:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + (process.env.MCP_HEALTH_PORT || 3004) + '/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
 volumes:
   pgdata:
   redisdata:
