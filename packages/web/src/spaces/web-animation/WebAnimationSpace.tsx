@@ -3,7 +3,6 @@
 
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ThreadData } from '@blocknote/core/comments';
 import {
   Check, Download, Ellipsis, LayoutGrid, List, LoaderCircle, MessageSquare,
   MessageSquarePlus, Pause, Pencil, Play, Plus, Undo2, Upload, Video,
@@ -34,10 +33,10 @@ import { placeVideoOnCanvas } from '@web/spaces/canvas/place-video-on-canvas';
 import { DocumentCommentWriteBox } from '@web/spaces/document/DocumentCommentWriteBox';
 import { asCommentBody } from '@web/spaces/document/document-comment-extension';
 import { SpaceFullError } from '@web/spaces/document/document-comment-thread-store';
-import { bodyText } from '@web/spaces/document/use-comment-cards';
 import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 import { useTimelineLimits } from '@web/spaces/timeline/use-timeline-limits';
 import { ANNOTATION_DRAFT_IDLE, transitionAnnotationDraft, type AnnotationDraftEvent, type FramePoint } from '@web/spaces/web-animation/annotation-draft';
+import { threadSummary } from '@web/spaces/web-animation/annotation-groups';
 import { webAnimationAnnotationStore } from '@web/spaces/web-animation/annotation-thread-store';
 import { CREATION_DRAFT_CLOSED, transitionCreationDraft, type CreationDraftInput } from '@web/spaces/web-animation/creation-draft';
 import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, exportIntent, executionStepKeys, isWebAnimationAspect } from '@web/spaces/web-animation/execution-text';
@@ -616,12 +615,12 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         {playable(row) && docReady && resultThreads.map(({ thread, anchor }) => <Tooltip key={thread.id}>
           <TooltipTrigger asChild>
             <Button type='button' variant={null} size={null} data-testid={`motion-marker-${thread.id}`}
-              aria-label={bodyPreview(thread)} onClick={() => openThread(thread.id)} className='absolute top-0 flex h-3 w-6 -translate-x-1/2 justify-center'
+              aria-label={threadSummary(thread)} onClick={() => openThread(thread.id)} className='absolute top-0 flex h-3 w-6 -translate-x-1/2 justify-center'
               style={{ left: `calc(6px + (100% - 12px) * ${anchor.timeSeconds / Math.max(0.01, durationSeconds)})` }}>
               <span className={cn('h-2.5 w-1.5 rounded-sm', thread.resolved ? 'bg-muted-foreground' : 'bg-comment-outline')} />
             </Button>
           </TooltipTrigger>
-          <TooltipContent className='line-clamp-3 max-w-64'>{bodyPreview(thread)}</TooltipContent>
+          <TooltipContent className='line-clamp-3 max-w-64'>{threadSummary(thread)}</TooltipContent>
         </Tooltip>)}
       </div>
       {row !== undefined && <>
@@ -661,17 +660,6 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     {draft.status !== 'closed' && draft.open && limits !== undefined && <WebAnimationDialog projectId={projectId} spaceId={spaceId} draft={draft} retry={retryDialog} limits={limits} baseRow={baseRow} baseRead={baseRead}
       onEdit={editDraft} onExecute={execute} onClose={closeDraft} />}
   </div>;
-}
-
-/**
- * A thread's first comment, as its marker's name.
- * @param thread - The thread.
- * @returns The text.
- * @throws {never} Never.
- */
-function bodyPreview(thread: ThreadData): string {
-  const first = thread.comments.find((comment) => comment.deletedAt === undefined);
-  return first === undefined ? '' : bodyText(first.body);
 }
 
 /** An exported video, driven by the play bar. */

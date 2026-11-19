@@ -9,6 +9,8 @@
 import type { ThreadData } from '@blocknote/core/comments';
 import { readWebAnimationAnchor, type WebAnimationAnchor } from '@breatic/shared/space-content';
 
+import { bodyText } from '@web/spaces/document/use-comment-cards';
+
 /** The part of a BlockNote thread the panel reads. */
 export type AnnotationThread = Pick<ThreadData, 'id' | 'resolved' | 'deletedAt' | 'metadata' | 'comments'>;
 
@@ -51,4 +53,15 @@ export function annotationGroups<T extends AnnotationThread>(
   return [...byResult.entries()]
     .sort(([a], [b]) => (rank.get(a) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b) ?? Number.MAX_SAFE_INTEGER))
     .map(([executionId, listed]) => ({ executionId, threads: listed.sort((a, b) => a.anchor.timeSeconds - b.anchor.timeSeconds) }));
+}
+
+/**
+ * A thread's summary: the text of its first comment that is not deleted, as its marker, tooltip and panel item show it.
+ * @param thread - The thread.
+ * @returns The text, empty when every comment is deleted.
+ * @throws {never} Never.
+ */
+export function threadSummary(thread: Pick<AnnotationThread, 'comments'>): string {
+  const first = thread.comments.find((comment) => comment.deletedAt === undefined);
+  return first === undefined ? '' : bodyText(first.body);
 }

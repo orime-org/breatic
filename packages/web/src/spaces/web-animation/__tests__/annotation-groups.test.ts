@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { annotationGroups, type AnnotationThread } from '@web/spaces/web-animation/annotation-groups';
+import { annotationGroups, threadSummary, type AnnotationThread } from '@web/spaces/web-animation/annotation-groups';
 
 const A = 'e0000000-0000-4000-8000-00000000000a';
 const B = 'e0000000-0000-4000-8000-00000000000b';
@@ -50,5 +50,24 @@ describe('annotationGroups', () => {
   it('lists neither a deleted thread nor one without a readable anchor', () => {
     const groups = annotationGroups([thread('t1', A, 1, { deletedAt: new Date(0) }), { ...thread('t2', A, 1), metadata: {} }, thread('t3', A, 2)], { order: [A], filter: 'all' });
     expect(groups[0]?.threads.map((item) => item.id)).toEqual(['t3']);
+  });
+});
+
+describe('threadSummary', () => {
+  /**
+   * A comment with one paragraph.
+   * @param text - Its words.
+   * @param deleted - Whether it is deleted.
+   * @returns It.
+   */
+  const comment = (text: string, deleted = false): AnnotationThread['comments'][number] =>
+    ({ id: text, body: [{ type: 'paragraph', content: [{ type: 'text', text }] }], deletedAt: deleted ? new Date(0) : undefined }) as unknown as AnnotationThread['comments'][number];
+
+  it('reads the first comment that is not deleted', () => {
+    expect(threadSummary({ comments: [comment('gone', true), comment('first'), comment('second')] })).toBe('first');
+  });
+
+  it('is empty when every comment is deleted', () => {
+    expect(threadSummary({ comments: [comment('gone', true)] })).toBe('');
   });
 });

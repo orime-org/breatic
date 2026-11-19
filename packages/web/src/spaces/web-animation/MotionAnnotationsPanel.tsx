@@ -11,8 +11,7 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useUserProfiles } from '@web/data/use-user-profiles';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
-import { bodyText } from '@web/spaces/document/use-comment-cards';
-import { annotationGroups, type ListedAnnotation } from '@web/spaces/web-animation/annotation-groups';
+import { annotationGroups, threadSummary, type ListedAnnotation } from '@web/spaces/web-animation/annotation-groups';
 import type { AnnotationFilter } from '@web/spaces/web-animation/use-motion-annotations';
 import { MotionPanel, formatMotionTime } from '@web/spaces/web-animation/motion-parts';
 import { webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
@@ -39,7 +38,6 @@ const AnnotationItem = React.memo(function AnnotationItem({ item, author, active
   const t = useTranslation();
   const open = React.useCallback((): void => onOpen(item.id), [onOpen, item.id]);
   const comments = item.thread.comments.filter((comment) => comment.deletedAt === undefined);
-  const first = comments[0];
   const details = [
     author,
     comments.length > 1 ? t('spaces.webAnimation.replies', { count: comments.length - 1 }) : null,
@@ -51,7 +49,7 @@ const AnnotationItem = React.memo(function AnnotationItem({ item, author, active
     className={cn('group/row flex w-full gap-2 px-3 py-2 text-left hover-enabled:bg-accent', active && 'bg-accent-strong hover-enabled:bg-accent-strong')}>
     <span className={cn('mt-0.5 w-10 shrink-0 text-2xs tabular-nums', secondary)}>{formatMotionTime(item.anchor.timeSeconds)}</span>
     <span className='flex min-w-0 flex-1 flex-col gap-0.5'>
-      <span className={cn('line-clamp-2 text-xs', item.thread.resolved && cn('line-through', secondary))}>{first === undefined ? '' : bodyText(first.body)}</span>
+      <span className={cn('line-clamp-2 text-xs', item.thread.resolved && cn('line-through', secondary))}>{threadSummary(item.thread)}</span>
       {details !== '' && <span className={cn('truncate text-2xs', secondary)}>{details}</span>}
     </span>
   </Button>;
