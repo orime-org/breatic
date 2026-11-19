@@ -216,7 +216,6 @@ function tiled(base: Texture, fields: SceneLookPart, kept: Texture[]): Texture {
     texture.wrapS = RepeatWrapping;
     texture.wrapT = RepeatWrapping;
     texture.center.set(0, 0);
-    texture.needsUpdate = true;
   }
   texture.repeat.copy(base.repeat);
   texture.offset.copy(base.offset);
