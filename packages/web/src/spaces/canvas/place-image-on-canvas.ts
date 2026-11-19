@@ -22,14 +22,6 @@ export interface PlaceImageRequest {
 }
 
 /**
- * How the hand-over went: `placed` once the node is written, its upload going
- * on in the background; `unreachable` when the canvas never synced and nothing
- * was written; `refused` when the size gate refused the add (the canvas is
- * full or is being rebuilt; the gate warns except while rebuilding).
- */
-export type PlaceImageOutcome = PlaceNodeOutcome;
-
-/**
  * Place an image on a canvas whether or not its tab is open (#1411 design
  * 5.3): write an empty image node of the image's size beside what is already
  * at the origin, with the upload mark the canvas shows while a file is on its
@@ -39,10 +31,11 @@ export type PlaceImageOutcome = PlaceNodeOutcome;
  * way, and the canvas counts as busy for the leave guard until the upload's
  * own send took over.
  * @param request - The image and where it goes.
- * @returns How the hand-over went.
+ * @returns How the hand-over went: `placed` with the upload going on in the background, `unreachable` when nothing
+ * was written, `refused` when the size gate refused the add (it warns except while the canvas is rebuilt).
  * @throws {Error} When writing the node throws; the document and the leave guard are let go first.
  */
-export function placeImageOnCanvas(request: PlaceImageRequest): Promise<PlaceImageOutcome> {
+export function placeImageOnCanvas(request: PlaceImageRequest): Promise<PlaceNodeOutcome> {
   const { projectId, spaceId, file, size, userId, origin, syncTimeoutMs } = request;
   return placeNodeOnCanvas({
     projectId, spaceId, origin, syncTimeoutMs,
