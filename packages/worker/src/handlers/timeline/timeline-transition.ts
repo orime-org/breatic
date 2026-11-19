@@ -15,7 +15,7 @@ import type { TimelineExecution } from "@breatic/shared";
  * @param row - The execution as written.
  * @returns Nothing.
  */
-export async function signalSpace(row: Pick<TimelineExecution, "id" | "projectId" | "spaceId" | "origin">): Promise<void> {
+async function signalSpace(row: Pick<TimelineExecution, "id" | "projectId" | "spaceId" | "origin">): Promise<void> {
   try {
     await announceExecutionChange(row);
   } catch (err) {

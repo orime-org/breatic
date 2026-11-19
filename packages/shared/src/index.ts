@@ -489,7 +489,6 @@ export {
   documentBodyFragment,
   documentCommentThreads,
   webAnimationAnnotationThreads,
-  WEB_ANIMATION_ANNOTATIONS_KEY,
   encodeInitialSpaceContent,
 } from "@shared/document-body.js";
 

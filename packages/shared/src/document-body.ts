@@ -97,7 +97,7 @@ export function documentCommentThreads(doc: Y.Doc): Y.Map<unknown> {
 }
 
 /** The root of a Motion Space document that holds its annotation threads (#1490). */
-export const WEB_ANIMATION_ANNOTATIONS_KEY = "webAnimationAnnotationThreads";
+const WEB_ANIMATION_ANNOTATIONS_KEY = "webAnimationAnnotationThreads";
 
 /**
  * Where a Motion Space keeps its annotation threads, in the same thread shape as Document comments.
