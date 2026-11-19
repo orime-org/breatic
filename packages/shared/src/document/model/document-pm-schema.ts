@@ -28,7 +28,23 @@ const fallbackMarkExtension = createExtension(() => ({
   tiptapExtensions: [UnsupportedMark],
 }) as never);
 
-let built: Schema | undefined;
+let built: BlockNoteEditor<never, never, never> | undefined;
+
+/**
+ * A headless editor on the document body's schema, built once per process.
+ * Converting between Markdown and blocks (`tryParseMarkdownToBlocks`,
+ * `blocksToMarkdownLossy`) needs a DOM to be installed first; the schema
+ * does not.
+ * @returns The editor.
+ * @throws {Error} Whatever BlockNote throws while validating the specs.
+ */
+export function documentBlockEditor(): BlockNoteEditor<never, never, never> {
+  built ??= BlockNoteEditor.create({
+    schema: buildDocumentSchema(),
+    extensions: [documentCommentMarkExtension(), fallbackMarkExtension()],
+  } as never) as BlockNoteEditor<never, never, never>;
+  return built;
+}
 
 /**
  * The document body's ProseMirror schema, built once per process.
@@ -36,9 +52,5 @@ let built: Schema | undefined;
  * @throws {Error} Whatever BlockNote throws while validating the specs.
  */
 export function documentPmSchema(): Schema {
-  built ??= (BlockNoteEditor.create({
-    schema: buildDocumentSchema(),
-    extensions: [documentCommentMarkExtension(), fallbackMarkExtension()],
-  } as never) as BlockNoteEditor<never, never, never>).pmSchema;
-  return built;
+  return documentBlockEditor().pmSchema;
 }

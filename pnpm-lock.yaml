@@ -693,6 +693,9 @@ importers:
 
   packages/mcp:
     dependencies:
+      '@blocknote/core':
+        specifier: 'catalog:'
+        version: 0.56.0(patch_hash=mfwmy5dw2gewmk4e3isnkabpum)(@types/hast@3.0.5)(@y/prosemirror@2.0.0-15(@y/protocols@1.0.6-rc.1(@y/y@14.0.0-rc.26))(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-transform@1.12.2)(prosemirror-view@1.42.6(patch_hash=b5ej5jmfcxeucg3jh365cdjlaa)))(@y/protocols@1.0.6-rc.1(@y/y@14.0.0-rc.26))(@y/y@14.0.0-rc.26)(highlight.js@11.11.2)(lowlight@3.3.0)(y-prosemirror@1.3.7(patch_hash=qqovpfs3tpce6o5etf4b2kkdfi)(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-view@1.42.6(patch_hash=b5ej5jmfcxeucg3jh365cdjlaa))(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33))(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)
       '@breatic/core':
         specifier: workspace:*
         version: link:../core
@@ -714,6 +717,9 @@ importers:
       hono:
         specifier: ^4.13.1
         version: 4.13.1
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1(canvas@3.2.3)
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -724,6 +730,9 @@ importers:
       '@testcontainers/postgresql':
         specifier: 'catalog:'
         version: 11.14.0
+      '@types/jsdom':
+        specifier: ^21.1.7
+        version: 21.1.7
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.1
@@ -5821,6 +5830,9 @@ packages:
   '@types/js-cookie@3.0.6':
     resolution: {integrity: sha512-wkw9yd1kEXOPnvEeEV1Go1MmxtBJL0RR79aOTAApecWFVu7w0NNXNqhcWgvw2YgZDYadliXkl14pa3WXw5jlCQ==}
 
+  '@types/jsdom@21.1.7':
+    resolution: {integrity: sha512-yOriVnggzrnQ3a9OKOCxaVuSug3w3/SbOj5i7VwXWZEyUNl3bLF9V3MfxGbZKuwqJOQyRfqXyROBB1CoZLFWzA==}
+
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
@@ -5923,6 +5935,9 @@ packages:
 
   '@types/three@0.173.0':
     resolution: {integrity: sha512-KtNjfI/CRB6JVKIVeZM1R3GYDX2wkoV2itNcQu2j4d7qkhjGOuB+s2oF6jl9mztycDLGMtrAnJQYxInC8Bb20A==}
+
+  '@types/tough-cookie@4.0.5':
+    resolution: {integrity: sha512-/Ad8+nIOV7Rl++6f1BdKxFSMgmoqEoYbHRpPcx3JEfv8VRsQe9Z4mCXeJBzxs7mbHY/XOZZuXlRNfhpVPbs6ZA==}
 
   '@types/turndown@5.0.6':
     resolution: {integrity: sha512-ru00MoyeeouE5BX4gRL+6m/BsDfbRayOskWqUvh7CLGW+UXxHQItqALa38kKnOiZPqJrtzJUgAC2+F0rL1S4Pg==}
@@ -15850,6 +15865,12 @@ snapshots:
 
   '@types/js-cookie@3.0.6': {}
 
+  '@types/jsdom@21.1.7':
+    dependencies:
+      '@types/node': 24.19.1
+      '@types/tough-cookie': 4.0.5
+      parse5: 7.3.0
+
   '@types/json-schema@7.0.15': {}
 
   '@types/json5@0.0.29': {}
@@ -15969,6 +15990,8 @@ snapshots:
       '@webgpu/types': 0.1.71
       fflate: 0.8.3
       meshoptimizer: 0.18.1
+
+  '@types/tough-cookie@4.0.5': {}
 
   '@types/turndown@5.0.6': {}
 
