@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { understandRefusal } from '@web/spaces/canvas/node-understand';
+import { understandRefusal } from '@breatic/shared/canvas-model';
 import { NODE_STEP, understandNodePosition } from '@breatic/shared/canvas-model';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 

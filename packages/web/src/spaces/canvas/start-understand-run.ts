@@ -35,7 +35,7 @@ import { createEmptyNode, understandNodePosition } from '@breatic/shared/canvas-
 import {
   understandRefusal,
   type UnderstandableKind,
-} from '@web/spaces/canvas/node-understand';
+} from '@breatic/shared/canvas-model';
 
 /** The node being read, as the canvas holds it. */
 export interface UnderstandSource {

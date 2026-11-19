@@ -46,6 +46,7 @@ export * from "@shared/canvas/model/generation/style-picks.js";
 export * from "@shared/canvas/model/generation/video-panel-view-model.js";
 export * from "@shared/canvas/model/generation/voice-param.js";
 export * from "@shared/canvas/model/node-factory.js";
+export * from "@shared/canvas/model/node-understand.js";
 export * from "@shared/canvas/model/node-gate.js";
 export * from "@shared/canvas/model/node-history.js";
 export * from "@shared/canvas/model/node-view.js";

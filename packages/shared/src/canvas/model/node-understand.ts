@@ -13,14 +13,9 @@
  * up in its row beside the node.
  */
 
-import {
-  IMAGE_TYPES,
-  assetNameFromUrl,
-  audioFormatOf,
-  formatNameOf,
-  videoFormatOf,
-} from '@breatic/shared';
-
+import { assetNameFromUrl } from '@shared/media/asset-name.js';
+import { formatNameOf } from '@shared/media/format-names.js';
+import { IMAGE_TYPES, audioFormatOf, videoFormatOf } from '@shared/understand/media-formats.js';
 
 /** The three modalities a node offers Understand on. */
 export type UnderstandableKind = 'image' | 'video' | 'audio';
