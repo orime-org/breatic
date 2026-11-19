@@ -30,6 +30,7 @@ import {
 import { onDialogueSide } from "@domain/agent/tools/proposal-dialogue.js";
 import { fixOn, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { poolSentence } from "@domain/agent/tools/proposal-routing.js";
+import { GET_GENERATION_TEMPLATE } from "@domain/agent/tools/tool-names.js";
 
 /**
  * Where a node stands in the template it names, as the agent writes it;
@@ -83,10 +84,11 @@ export function quoted(names: readonly string[]): string {
  * fill since it knows which node it wired in for each.
  * @param template - The template.
  * @param key - The generate node's key; the anchor when left out.
+ * @param style - The picked style, whose paragraph follows a node that takes one (inner#1817).
  * @returns The segments, written out as the agent would send them.
  * @throws {never} Never.
  */
-export function templateSegmentsText(template: GenerationTemplate, key: TemplateNodeKey = template.anchor): string {
+export function templateSegmentsText(template: GenerationTemplate, key: TemplateNodeKey = template.anchor, style?: string): string {
   const targets = templateMarkTargets(template, key);
   /**
    * One locale string written out as segments.
@@ -104,8 +106,11 @@ export function templateSegmentsText(template: GenerationTemplate, key: Template
     });
     return `[${parts.join(", ")}]`;
   };
-  const words = templateNodeWords(template, key);
-  if ("prompt" in words) return segments(words.prompt);
+  const words = templateNodeWords(template, key, style);
+  if ("prompt" in words) {
+    const own = segments(words.prompt);
+    return words.styleKey === undefined ? own : `${own.slice(0, -1)}, ${JSON.stringify({ text: `\n\n${t(words.styleKey)}` })}]`;
+  }
   if ("lines" in words) return `lines: [${words.lines.map((line) => `{"speaker": ${String(line.speaker)}, "prompt": ${segments(line.key)}}`).join(", ")}]`;
   return `shots: [${words.shots.map((shot) => `{"duration": ${String(shot.seconds)}, "prompt": ${segments(shot.key)}}`).join(", ")}]`;
 }
@@ -170,7 +175,10 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
     const words = sentWords(filled);
     const pool = keeps ? ` Each node ${words.mentions} goes into the pool. ${poolSentence(rest.name)}` : "";
     const form = own?.role !== "generate" ? "prompt" : own.shots !== undefined ? "shots" : own.lines !== undefined ? "lines" : "prompt";
-    return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no ${words.name}. The template's ${form}, to rewrite in the user's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, words.write));
+    const styled = template.styles !== undefined && own?.role === "generate" && own.styleWords !== undefined
+      ? ` These words are followed by one style's paragraph: read it with ${GET_GENERATION_TEMPLATE} and style.`
+      : "";
+    return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no ${words.name}. The template's ${form}, to rewrite in the user's language with their story or detail in it: ${templateSegmentsText(template, key)}.${styled}${pool}`, fixOn(at, words.write));
   }
   return { ok: true, node: filled };
 }
