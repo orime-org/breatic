@@ -3001,12 +3001,20 @@ function CanvasSpaceInner({
     setSelectAfterCreate([id]);
   }, [getInternalNode, nodes, setCenter, rfStoreApi, clearOpeningFit]);
   useCanvasRevealReceiver(spaceId, synced, hasNode, revealNode);
-  // A link to a note (#1488 §11.6): showing it selects it, which opens it.
+  // A link to a note (#1488 §11.6): the board moves to it and opens it.
   const hasNote = React.useCallback(
     (id: string): boolean => nodes.some((node) => node.id === id && node.type === 'annotation'),
     [nodes],
   );
-  useCommentRevealReceiver(spaceId, synced, hasNote, revealNode);
+  const openNotePanel = useCanvasSession((s) => s.openAnnotationPanel);
+  const showNote = React.useCallback(
+    (id: string): void => {
+      revealNode(id);
+      openNotePanel(id);
+    },
+    [revealNode, openNotePanel],
+  );
+  useCommentRevealReceiver(spaceId, synced, hasNote, showNote);
 
   // One dispatch for Cmd+V and the menu's Paste (design 5.9): our nodes paste
   // as nodes, media copied in the document body as media nodes (inner#1537),

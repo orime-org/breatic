@@ -117,6 +117,7 @@ import { clearDocSize } from '@web/data/yjs/doc-size';
 import { toast as sizeToast } from '@web/lib/toast';
 import { P_FULL, P_OVER, SIZE_COPY_EN, pushSize } from '@web/data/yjs/__tests__/helpers/size-v2-harness';
 import * as downloadLib from '@web/lib/download';
+import { useCommentRevealStore } from '@web/stores/comment-reveal';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { installLayout, relayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
 import { hashFile } from '@web/data/upload/hash';
@@ -4964,6 +4965,37 @@ describe('placing a note (#1881)', () => {
     } finally {
       inside.remove();
     }
+  });
+
+  it('opens the note a link points to (#1488 §11.6)', () => {
+    vi.mocked(useSocket).mockReturnValue({
+      provider: { awareness: new Awareness(getDoc(docName.canvasSpace('p', 's'))) } as unknown as NonNullable<
+        ReturnType<typeof useSocket>['provider']
+      >,
+      synced: true,
+      hasEverSynced: true,
+      status: 'connected',
+      writeAccess: 'granted',
+      authFailedReason: null,
+    });
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          {
+            id: 'n-note',
+            type: 'annotation',
+            position: { x: 0, y: 0 },
+            data: { content: 'a cooler shot here', createdBy: 'u-1', createdAt: 1, replies: [] },
+          },
+        ],
+      }),
+    );
+    renderSpace();
+    act(() => {
+      useCommentRevealStore.getState().reveal('s', 'n-note');
+    });
+    expect(canvasSessions.of('s').getState()).toMatchObject({ panelKind: 'annotation', panelHostId: 'n-note' });
+    expect(useCommentRevealStore.getState().request).toBeNull();
   });
 
   it('hands Escape to the armed tool first, then to the open sticky', () => {
