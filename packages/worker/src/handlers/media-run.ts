@@ -126,7 +126,6 @@ function failureMessage(reason: Error, displayName: string): string {
   return reason.message;
 }
 
-/** A run provider answered failed: an upstream refused or failed it, or no upstream can take it. */
 /**
  * What a row holds for a failure of an account's own key (inner#1953): the key's code, the upstream and why, beside what
  * the caller knows (the model, the reading, whose key it was).
@@ -138,6 +137,7 @@ export function keyFailureStored(keyFailure: NonNullable<ReturnType<typeof accou
   return encodeTaskFailure(keyFailure.kind, { ...about, upstream: keyFailure.upstream, keyReason: keyFailure.reason });
 }
 
+/** A run provider answered failed: an upstream refused or failed it, or no upstream can take it. */
 export class MediaRunFailed extends Error {
   /**
    * Record why, and what the run cost before it failed.
