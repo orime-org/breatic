@@ -39,7 +39,7 @@ import {
   studios,
   studioMembers,
   projects,
-  payments,
+  paymentReceipts,
 } from "@breatic/core";
 import { GRANTED_SOURCE_KINDS, IN_FLIGHT_REFUND_LIFECYCLES } from "@breatic/shared";
 import type {
@@ -1098,19 +1098,19 @@ export async function listLotsByUser(
   const rows = await db
     .select({
       lot: creditLots,
-      // What the buyer paid for it, tax included, which lives on the payment
-      // rather than the lot. Working it back from the credit count would not
-      // do: the price table gets replaced, and an old lot was bought at the
-      // price of its own day.
+      // What the buyer paid for it, tax included, which lives on the payment's
+      // receipt rather than the lot. Working it back from the credit count
+      // would not do: the price table gets replaced, and an old lot was bought
+      // at the price of its own day. The receipt is the product's own copy
+      // (inner#1993 §4.2), so this list reads the same while the billing
+      // service is down.
       //
       // `total_cents` is what Stripe worked out and is the figure the purchase
-      // history prints; a lot only exists on a purchase that landed, so it is
-      // set by the same statement that settled the payment. The face value
-      // stands in for the rare session Stripe gave no total for — and reading
-      // the face value everywhere is what made the same purchase show one
-      // figure here and another in the history.
-      paidCents: sql<number | null>`coalesce(${payments.totalCents}, ${payments.amountCents})`,
-      currency: payments.currency,
+      // history prints. The face value stands in for the rare session Stripe
+      // gave no total for — and reading the face value everywhere is what made
+      // the same purchase show one figure here and another in the history.
+      paidCents: sql<number | null>`coalesce(${paymentReceipts.totalCents}, ${paymentReceipts.amountCents})`,
+      currency: paymentReceipts.currency,
       // A studio that is gone holds nothing: the moment it is deleted its
       // projects stop working, so a purchase pointed at it is pointed
       // nowhere. Both columns answer that way, which is the same answer
@@ -1151,7 +1151,7 @@ export async function listLotsByUser(
     // inward left every granted lot off this list: the credits counted
     // towards what the account holds and appeared on no screen that could
     // act on them.
-    .leftJoin(payments, eq(payments.id, creditLots.sourceId))
+    .leftJoin(paymentReceipts, eq(paymentReceipts.id, creditLots.sourceId))
     .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .where(
       and(
