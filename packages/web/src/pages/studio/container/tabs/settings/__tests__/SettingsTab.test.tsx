@@ -30,8 +30,10 @@ vi.mock('@web/i18n/use-translation', () => ({
 vi.mock('@web/lib/use-debounce', () => ({
   useDebounce: <T,>(value: T): T => value,
 }));
-vi.mock('react-router-dom', () => ({
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-router-dom')>()),
   useNavigate: () => vi.fn(),
+  useSearchParams: () => [new URLSearchParams(), vi.fn()],
 }));
 vi.mock('@web/lib/toast', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
