@@ -29,6 +29,10 @@ executions:
     precheck_seconds: 300
     max_outputs: 8
     max_outputs_per_job: 8
+  # A video focus crop takes one grid frame from the tool source, as frame extraction does; the platform pays for it.
+  video.focus-crop:
+    container_class: "MiniToolContainerStd4"
+    precheck_seconds: 300
   # Lip-sync (inner#1306): each model's schema_fingerprint is the sha256 of its live model_run request_schema
   # serialized with sorted keys; a changed fingerprint means the provider changed the request contract. Both
   # models completed a one-frame clip, so the floor is one frame at 25 fps; the ceilings are the catalog's.
@@ -94,10 +98,9 @@ executions:
 # presentation needing more fails as too_long. Encode jobs run only on
 # standard-4 (basic only probes and copies), so the rates are configured for it:
 # a job's seconds are start_seconds + (encoded + pre-roll frames) x (source
-# pixels / decode-convert rate + output pixels / encode rate). Rates were
-# measured on a maintainer machine held to standard-4 limits; replace them with
-# readings taken on Cloudflare standard-4. The copy route's disk margin is
-# derived from presentation.source_ledger and is not configured here.
+# pixels / decode-convert rate [+ source pixels / tone-map rate] + output pixels
+# / encode rate). Rates were measured on a maintainer machine held to
+# standard-4 limits; replace them with readings taken on Cloudflare standard-4.
 encoding:
   chunk_share: 0.5
   max_parallel_chunks: 8
@@ -116,25 +119,49 @@ encoding:
     # Local Docker readings at nproc 4 (encode-throughput nproc4 and 12-bit runs),
     # to be replaced by measurements on Cloudflare standard-4.
     encode_pixels_per_second: 248000000
-    # Source pixels per second, by source bit depth and dynamic range.
+    # The original's source pixels per second, by its source decode key (frames-split §5.4): each key's slowest covered
+    # codec, 4-thread maintainer readings, to be replaced by measurements on Cloudflare standard-4. sdr_8bit is 8-bit
+    # 4:4:4 VP9, sdr_10bit and sdr_12bit 10- and 12-bit 4:4:4 VP9, sdr_alpha_layer HEVC with an alpha layer,
+    # sdr_prores ProRes 4444, sdr_dnx DNxHR 444, sdr_av1_* 4:4:4 AV1, sdr_jpeg2000 12/16-bit RGB JPEG2000, sdr_ffv1
+    # 16-bit FFV1, sdr_png 16-bit PNG, sdr_other MJPEG.
     decode_convert_pixels_per_second:
-      sdr_8bit: 2200000000
-      sdr_10bit: 1310000000
-      sdr_12bit: 816000000
-      hdr_8bit: 106000000
-      hdr_10bit: 102000000
-      hdr_12bit: 109000000
-      # 16-bit: PNG-in-MOV at 16 bits per channel (rgba64be), the same Docker nproc-4 method.
-      sdr_16bit: 294000000
-      hdr_16bit: 71900000
+      sdr_8bit: 910000000
+      sdr_10bit: 810000000
+      sdr_12bit: 690000000
+      sdr_alpha_layer: 600000000
+      sdr_prores: 820000000
+      sdr_dnx: 735000000
+      sdr_av1_8bit: 740000000
+      sdr_av1_10bit: 570000000
+      sdr_av1_12bit: 610000000
+      sdr_jpeg2000: 25000000
+      sdr_ffv1: 75000000
+      sdr_png: 340000000
+      sdr_other: 1080000000
+    # Source pixels an HDR original's edit-file encode tone maps per second: the slowest measured filter graph (odd sizes).
+    tonemap_pixels_per_second: 420000000
+    # Output pixels per second each edit-file tier encodes; provisional until measured on Cloudflare standard-4.
+    edit_h264_intra_8bit_420_pixels_per_second: 300000000
+    edit_h264_intra_10bit_420_pixels_per_second: 250000000
+    edit_h264_intra_8bit_444_pixels_per_second: 200000000
+    edit_h264_intra_10bit_444_pixels_per_second: 180000000
+    edit_prores_pixels_per_second: 400000000
     # Audio seconds encoded to AAC 48 kHz per second, for the dispatched copy's estimate.
     # Local Docker reading at nproc 4 (aac-encode-rate run), to be replaced by a measurement on Cloudflare standard-4.
     aac_encode_seconds_per_second: 100
     # Picture pixels per second YuNet searches in the lip-sync faces step, one detector thread: a maintainer-machine reading
     # (arm64 Docker at standard-4 limits, 1080p frames), to be replaced by a Cloudflare standard-4 measurement.
     face_detect_pixels_per_second: 13000000
+  # Source pixels per second each edit-file tier decodes when a tool reads the edit file; provisional until measured
+  # on Cloudflare standard-4.
+  decoder:
+    edit_h264_intra_8bit_420_pixels_per_second: 1500000000
+    edit_h264_intra_10bit_420_pixels_per_second: 1200000000
+    edit_h264_intra_8bit_444_pixels_per_second: 1100000000
+    edit_h264_intra_10bit_444_pixels_per_second: 900000000
+    edit_prores_pixels_per_second: 950000000
 
-# Frozen into each planned job; oversized output fails without truncating its ledger.
+# Frozen into each planned job; oversized output fails without being truncated.
 plan_limits:
   probeStdoutBytes: 268435456
   analysisStdoutBytes: 16777216
@@ -149,35 +176,25 @@ presentation:
   probe_sample_frames: 1
   # How long a single-frame source is shown.
   single_frame_duration_ms: 5000
-  # Sources that play as themselves (identity); anything else is normalized. Only combinations official sources
-  # document as playable in desktop browsers: MDN "Web video codec guide" and "Media container formats"
-  # (MP4 + H.264 Baseline/Main/High 8-bit 4:2:0, AAC or no audio). Changing this table changes the policy, so raise
-  # policy_version with it.
-  identity_formats:
-    - container: "mp4"
-      video_codec: "h264"
-      profiles: ["Constrained Baseline", "Baseline", "Main", "High"]
-      pix_fmt: "yuv420p"
-      bit_depth: 8
-      audio_codecs: ["aac", "none"]
-      rotation: 0
-      sar: "1:1"
-      matrix_tagged: true
+  # The frame-rate rule's cap: a source above it gets its rate from its packets.
+  max_fps: 120
+  # The playback file's keyframe interval in seconds.
+  playback_gop_seconds: 2
+  # The most bytes the probe may print.
+  probe_output_max_bytes: 67108864
   # Equal to storage.yaml upload.max_upload_bytes: every uploadable video is presented.
   max_source_bytes: 2147483648
   max_packed_bytes: 1073741824
   crf: 18
   preset: "medium"
-  # Complete source metadata and table budgets; these do not change the task deadline.
-  source_ledger:
-    max_bytes: 16777216
-    probe_stdout_bytes: 67108864
-    metadata_bytes: 16777216
-    iso_box_count: 100000
-    matroska_element_count: 1000000
-    matroska_max_blocks: 250000
-    # Automatic repairs after a transient ledger failure of the selected presentation.
-    max_auto_repairs: 3
+  # The edit file tools read when the original cannot be read frame-accurately: all-intra H.264 or ProRes 4444.
+  # bytes_per_pixel estimates its size before it is written; it and max_edit_bytes are provisional until measured.
+  max_edit_bytes: 21474836480
+  edit:
+    crf: 15
+    preset: "medium"
+    prores_profile: "4444"
+    bytes_per_pixel: 0.5
   # An encoded carrier: short side at most max_short_side, labelled SDR BT.709;
   # it is encoded on encoding.encoder.container_class.
   carrier:

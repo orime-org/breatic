@@ -59,7 +59,7 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
   ],
   [
     "presentationPinObjects",
-    "append-only child of presentation_pins (0114, inner#1306 §7.15): each row is a key a pin referenced when it was acquired, and whether the reference is live is the parent pin's deleted_at; removing a row would let the reclaim job delete an object a live pin still uses",
+    "the object set of a presentation pin (0115, inner#1306 §7.15): a row is a key the pin references now, and whether the reference is live is the parent pin's deleted_at; a row leaves only when the pin stops referencing the key (a selected pin's whole-set Mv, a stitch's Drop), in the transaction that registers the key for reclaim, so a soft-deleted row would be a second, stale answer to whether a key is pinned",
   ],
   [
     "storageReclaimQueue",

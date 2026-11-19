@@ -2,29 +2,31 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * S6b encoding and carrier configuration (inner#1306, test plan §88; frames-split
- * design §5.4 chunk share, parallel cap, throughput and per-job outputs, §5.1
- * copy disk margin, §5.3 model input preparation class, §4.3 and §8.2 carrier
- * settings).
+ * Encoding and carrier configuration (inner#1306; frames-split design §5.4 chunk share, parallel cap, throughput, estimate
+ * row and per-job outputs, §5.3 model input preparation class, §4.2 edit tiers, §4.3 and §8.2 carrier settings).
  *
- * Values the design gives are asserted (design 0fbbe4e0 §5.4 配置初值, 430a4894 and
- * 7e5f20ae 估算): chunk share 0.5, parallel chunk cap 8, `max_outputs_per_job` 8,
- * the remove-bg preparation on standard-4 with precheck 300 s, an encoded carrier
- * on standard-4 with short side at most 1080 and SDR BT.709 labels, a copy disk
- * margin equal to the configured full plus compact byte caps, and the encoder,
- * which runs only on standard-4: start 3 s, encode 163,000,000 output pixels per
- * second, decode-convert 1,950,000,000 / 705,000,000 / 152,000,000 / 103,000,000
- * source pixels per second for 8-bit SDR / 10-bit SDR / 8-bit HDR / 10-bit HDR.
+ * Values the design gives are asserted: chunk share 0.5, parallel chunk cap 8, `max_outputs_per_job` 8, the remove-bg
+ * preparation on standard-4 with precheck 300 s, an encoded carrier on standard-4 with short side at most 1080 and SDR
+ * BT.709 labels, and the rate table the estimate reads, which runs only on standard-4: start 3 s, the encode rate, one
+ * decode rate per source decode key, the HDR tone-map rate, and an encode and a decode rate per edit-file tier.
  */
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
-import { MINI_TOOL_JOB_MAX_OUTPUTS } from '@breatic/shared';
+import { MINI_TOOL_JOB_MAX_OUTPUTS, SOURCE_DECODE_KEYS } from '@breatic/shared';
 import { MONOREPO_ROOT } from '../env.js';
 import { getMiniToolsConfig, miniToolsConfigSchema } from '../mini-tools.js';
 
+// The five edit-file tiers (frames-split §4.2), each with an encode and a decode rate.
+const TIER_KEYS = ['edit_h264_intra_8bit_420', 'edit_h264_intra_10bit_420', 'edit_h264_intra_8bit_444', 'edit_h264_intra_10bit_444', 'edit_prores'] as const;
+/**
+ * One rate per edit-file tier.
+ * @param rate - The first tier's rate; each next tier one less.
+ * @returns The tier rates.
+ */
+const TIERS = (rate: number): Record<string, number> => Object.fromEntries(TIER_KEYS.map((tier, index) => [`${tier}_pixels_per_second`, rate - index]));
 // S6e E1 (§90): the carrier names no class; standard-4 is encoding.encoder.container_class alone.
 const CARRIER = { max_short_side: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } };
 
@@ -39,7 +41,9 @@ function configured(): Record<string, unknown> {
     ...current,
     encoding: {
       chunk_share: 0.25, max_parallel_chunks: 3, chunk_retries: 2,
-      encoder: { container_class: 'MiniToolContainerStd4', start_seconds: 2, encode_pixels_per_second: 9000, decode_convert_pixels_per_second: { sdr_8bit: 8000, sdr_10bit: 7000, sdr_12bit: 6500, hdr_8bit: 6000, hdr_10bit: 5000, hdr_12bit: 4500, sdr_16bit: 4200, hdr_16bit: 4000 } },
+      encoder: { ...TIERS(700), container_class: 'MiniToolContainerStd4', start_seconds: 2, encode_pixels_per_second: 9000,
+        decode_convert_pixels_per_second: Object.fromEntries(SOURCE_DECODE_KEYS.map((key, index) => [key, 8000 - index])), tonemap_pixels_per_second: 3000 },
+      decoder: TIERS(900),
     },
     presentation: { ...current.presentation, policy_version: 1, carrier: { max_short_side: 720, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } } },
     executions: {
@@ -69,15 +73,26 @@ function patched(value: Record<string, unknown>, path: readonly string[], replac
 
 const ENCODER = {
   container_class: 'MiniToolContainerStd4', start_seconds: 3, encode_pixels_per_second: 248_000_000,
-  // S6d D1-3 (§91): all rates re-measured under one condition, nproc 4 as on standard-4 (encode-throughput nproc4 and 12-bit runs).
-  decode_convert_pixels_per_second: { sdr_8bit: 2_200_000_000, sdr_10bit: 1_310_000_000, sdr_12bit: 816_000_000, hdr_8bit: 106_000_000, hdr_10bit: 102_000_000, hdr_12bit: 109_000_000, sdr_16bit: 294_000_000, hdr_16bit: 71_900_000 },
+  // frames-split §5.4: each source decode key's slowest covered codec, 4-thread maintainer readings.
+  decode_convert_pixels_per_second: {
+    sdr_8bit: 910_000_000, sdr_10bit: 810_000_000, sdr_12bit: 690_000_000, sdr_alpha_layer: 600_000_000, sdr_prores: 820_000_000, sdr_dnx: 735_000_000,
+    sdr_av1_8bit: 740_000_000, sdr_av1_10bit: 570_000_000, sdr_av1_12bit: 610_000_000, sdr_jpeg2000: 25_000_000, sdr_ffv1: 75_000_000, sdr_png: 340_000_000,
+    sdr_other: 1_080_000_000,
+  },
+  tonemap_pixels_per_second: 420_000_000,
+  edit_h264_intra_8bit_420_pixels_per_second: 300_000_000, edit_h264_intra_10bit_420_pixels_per_second: 250_000_000,
+  edit_h264_intra_8bit_444_pixels_per_second: 200_000_000, edit_h264_intra_10bit_444_pixels_per_second: 180_000_000, edit_prores_pixels_per_second: 400_000_000,
+};
+const DECODER = {
+  edit_h264_intra_8bit_420_pixels_per_second: 1_500_000_000, edit_h264_intra_10bit_420_pixels_per_second: 1_200_000_000,
+  edit_h264_intra_8bit_444_pixels_per_second: 1_100_000_000, edit_h264_intra_10bit_444_pixels_per_second: 900_000_000, edit_prores_pixels_per_second: 950_000_000,
 };
 
-describe('EC S6b encoding and carrier configuration', () => {
+describe('EC encoding and carrier configuration', () => {
   it('EC01 the shipped YAML, the getter and the loader defaults give the design values', () => {
     const raw = parse(readFileSync(resolve(MONOREPO_ROOT, 'config/mini-tools.yaml'), 'utf8')) as Record<string, Record<string, unknown>>;
     const expected = {
-      encoding: { chunk_share: 0.5, max_parallel_chunks: 8, encoder: ENCODER },
+      encoding: { chunk_share: 0.5, max_parallel_chunks: 8, encoder: ENCODER, decoder: DECODER },
       presentation: { carrier: CARRIER },
       executions: {
         'video.remove-bg': { preparation: { container_class: 'MiniToolContainerStd4', precheck_seconds: 300 } },
@@ -91,16 +106,17 @@ describe('EC S6b encoding and carrier configuration', () => {
     omitted = patched(omitted, ['encoding', 'max_parallel_chunks'], undefined);
     omitted = patched(omitted, ['presentation', 'carrier'], undefined);
     omitted = patched(omitted, ['encoding', 'encoder'], undefined);
+    omitted = patched(omitted, ['encoding', 'decoder'], undefined);
     omitted = patched(omitted, ['executions', 'video.split', 'max_outputs_per_job'], undefined);
     omitted = patched(omitted, ['executions', 'video.extract-frames', 'max_outputs_per_job'], undefined);
     omitted = patched(omitted, ['executions', 'video.remove-bg', 'preparation'], undefined);
     expect(miniToolsConfigSchema.parse(omitted)).toMatchObject({
-      encoding: { chunk_share: 0.5, max_parallel_chunks: 8, encoder: ENCODER }, presentation: { carrier: CARRIER },
+      encoding: { chunk_share: 0.5, max_parallel_chunks: 8, encoder: ENCODER, decoder: DECODER }, presentation: { carrier: CARRIER },
       executions: { 'video.remove-bg': { preparation: { container_class: 'MiniToolContainerStd4', precheck_seconds: 300 } }, 'video.extract-frames': { max_outputs_per_job: 8 }, 'video.split': { max_outputs_per_job: 8 } },
     });
   });
 
-  it('EC02 keeps every configured S6b value', () => {
+  it('EC02 keeps every configured value', () => {
     const input = configured();
     const parsed = miniToolsConfigSchema.parse(input) as unknown as Record<string, Record<string, unknown>>;
     expect(parsed.encoding).toMatchObject(input.encoding as Record<string, unknown>);
@@ -108,17 +124,18 @@ describe('EC S6b encoding and carrier configuration', () => {
     expect(parsed.executions).toEqual(input.executions);
   });
 
-  it('EC03 the copy disk margin is the configured full plus compact byte caps, read from the same configuration', () => {
-    const config = getMiniToolsConfig() as unknown as { encoding: { copy_disk_margin_bytes: number }; presentation: { source_ledger: { max_bytes: number } } };
-    // One `max_bytes` caps the full ledger and the compact table alike, so their sum is twice it.
-    expect(config.encoding.copy_disk_margin_bytes).toBe(config.presentation.source_ledger.max_bytes + config.presentation.source_ledger.max_bytes);
-    const custom = patched(configured(), ['presentation', 'source_ledger', 'max_bytes'], 1000);
-    expect((miniToolsConfigSchema.parse(custom) as unknown as { encoding: { copy_disk_margin_bytes: number } }).encoding.copy_disk_margin_bytes).toBe(2000);
+  it('EC03 decodes by exactly the source decode keys and rates every edit tier on both sides', () => {
+    const { encoder, decoder } = getMiniToolsConfig().encoding;
+    expect(Object.keys(encoder.decode_convert_pixels_per_second).sort()).toEqual([...SOURCE_DECODE_KEYS].sort());
+    for (const tier of TIER_KEYS) {
+      expect((encoder as unknown as Record<string, number>)[`${tier}_pixels_per_second`]).toBeGreaterThan(0);
+      expect((decoder as unknown as Record<string, number>)[`${tier}_pixels_per_second`]).toBeGreaterThan(0);
+    }
   });
 
   it('EC04 encoder rates exist only for standard-4: basic only probes and copies', () => {
     const encoding = (getMiniToolsConfig() as unknown as { encoding: Record<string, unknown> }).encoding;
-    expect(Object.keys(encoding).sort()).toEqual(['chunk_retries', 'chunk_share', 'copy_disk_margin_bytes', 'encoder', 'max_parallel_chunks', 'raw_disk_share', 'reverse_buffer_bytes']);
+    expect(Object.keys(encoding).sort()).toEqual(['chunk_retries', 'chunk_share', 'decoder', 'encoder', 'max_parallel_chunks', 'raw_disk_share', 'reverse_buffer_bytes']);
     expect((encoding.encoder as Record<string, unknown>).container_class).toBe('MiniToolContainerStd4');
   });
 
@@ -129,11 +146,14 @@ describe('EC S6b encoding and carrier configuration', () => {
     ['an encoder on the basic class', ['encoding', 'encoder', 'container_class'], 'MediaContainer'],
     ['a zero encode rate', ['encoding', 'encoder', 'encode_pixels_per_second'], 0],
     ['a zero decode-convert rate', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'sdr_8bit'], 0],
-    ['a missing HDR 10-bit decode-convert rate', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'hdr_10bit'], undefined],
-    ['a missing SDR 12-bit decode-convert rate', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'sdr_12bit'], undefined],
-    ['a missing HDR 12-bit decode-convert rate', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'hdr_12bit'], undefined],
-    ['a missing SDR 16-bit decode-convert rate', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'sdr_16bit'], undefined],
-    ['a missing HDR 16-bit decode-convert rate', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'hdr_16bit'], undefined],
+    ['a missing AV1 10-bit decode-convert rate', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'sdr_av1_10bit'], undefined],
+    ['a missing ProRes decode-convert rate', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'sdr_prores'], undefined],
+    ['a decode-convert rate for a removed HDR key', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'hdr_10bit'], 100],
+    ['a zero tone-map rate', ['encoding', 'encoder', 'tonemap_pixels_per_second'], 0],
+    ['a missing edit-tier encode rate', ['encoding', 'encoder', 'edit_prores_pixels_per_second'], undefined],
+    ['a zero edit-tier decode rate', ['encoding', 'decoder', 'edit_h264_intra_8bit_420_pixels_per_second'], 0],
+    ['an unknown edit tier', ['encoding', 'decoder', 'edit_hevc_pixels_per_second'], 100],
+    ['a configured copy disk margin', ['encoding', 'copy_disk_margin_bytes'], 100],
     ['negative start seconds', ['encoding', 'encoder', 'start_seconds'], -1],
     ['a download rate', ['encoding', 'encoder', 'download_bytes_per_second'], 100],
     ['a zero carrier short side', ['presentation', 'carrier', 'max_short_side'], 0], ['a fractional carrier short side', ['presentation', 'carrier', 'max_short_side'], 1080.5],
@@ -149,29 +169,22 @@ describe('EC S6b encoding and carrier configuration', () => {
   });
 });
 
-describe('EC S6c retry caps (design aed2b550 §5.4 配置初值, §7.1, §7.1.1)', () => {
-  it('EC06 the YAML, the getter and the loader default give chunk_retries 3 and max_auto_repairs 3', () => {
-    const raw = parse(readFileSync(resolve(MONOREPO_ROOT, 'config/mini-tools.yaml'), 'utf8')) as Record<string, Record<string, Record<string, unknown>>>;
+describe('EC retry cap (frames-split §5.4 configuration row)', () => {
+  it('EC06 the YAML, the getter and the loader default give chunk_retries 3', () => {
+    const raw = parse(readFileSync(resolve(MONOREPO_ROOT, 'config/mini-tools.yaml'), 'utf8')) as Record<string, Record<string, unknown>>;
     expect(raw.encoding!.chunk_retries).toBe(3);
-    expect(raw.presentation!.source_ledger!.max_auto_repairs).toBe(3);
-    const config = getMiniToolsConfig() as unknown as { encoding: { chunk_retries: number }; presentation: { source_ledger: { max_auto_repairs: number } } };
-    expect(config.encoding.chunk_retries).toBe(3);
-    expect(config.presentation.source_ledger.max_auto_repairs).toBe(3);
-    const omitted = patched(patched(configured(), ['encoding', 'chunk_retries'], undefined), ['presentation', 'source_ledger', 'max_auto_repairs'], undefined);
-    expect(miniToolsConfigSchema.parse(omitted)).toMatchObject({ encoding: { chunk_retries: 3 }, presentation: { source_ledger: { max_auto_repairs: 3 } } });
+    expect(getMiniToolsConfig().encoding.chunk_retries).toBe(3);
+    expect(miniToolsConfigSchema.parse(patched(configured(), ['encoding', 'chunk_retries'], undefined))).toMatchObject({ encoding: { chunk_retries: 3 } });
   });
 
-  it('EC07 keeps configured caps, zero included', () => {
-    const input = patched(patched(configured(), ['encoding', 'chunk_retries'], 0), ['presentation', 'source_ledger', 'max_auto_repairs'], 5);
-    expect(miniToolsConfigSchema.parse(input)).toMatchObject({ encoding: { chunk_retries: 0 }, presentation: { source_ledger: { max_auto_repairs: 5 } } });
+  it('EC07 keeps a configured cap, zero included', () => {
+    expect(miniToolsConfigSchema.parse(patched(configured(), ['encoding', 'chunk_retries'], 0))).toMatchObject({ encoding: { chunk_retries: 0 } });
   });
 
   it.each([
     ['a negative chunk_retries', ['encoding', 'chunk_retries'], -1], ['a fractional chunk_retries', ['encoding', 'chunk_retries'], 1.5],
-    ['a negative max_auto_repairs', ['presentation', 'source_ledger', 'max_auto_repairs'], -1], ['a fractional max_auto_repairs', ['presentation', 'source_ledger', 'max_auto_repairs'], 2.5],
   ] as const)('EC08 rejects %s after accepting the valid configuration', (_, path, value) => {
     expect(miniToolsConfigSchema.safeParse(configured()).success).toBe(true);
     expect(miniToolsConfigSchema.safeParse(patched(configured(), path, value)).success).toBe(false);
   });
 });
-

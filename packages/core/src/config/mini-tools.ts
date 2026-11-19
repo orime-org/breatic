@@ -14,7 +14,7 @@ import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 import { CONTAINER_OPS, type ContainerOp } from "@breatic/shared/mini-tools";
-import { MINI_TOOL_JOB_MAX_OUTPUTS, miniToolPlanLimitsSchema } from "@breatic/shared";
+import { MINI_TOOL_JOB_MAX_OUTPUTS, SOURCE_DECODE_KEYS, miniToolPlanLimitsSchema, type SourceDecodeKey } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const classSchema = z.object({
@@ -34,6 +34,7 @@ const opSchema = z.strictObject({
 // Initial ceilings reuse the existing per-job output contract and video cut precheck,
 // not measured Std4 throughput; capacity qualification is still outstanding.
 const executionDefaults = { container_class: "MiniToolContainerStd4" as const, precheck_seconds: 300, max_outputs: 8, max_outputs_per_job: 8 };
+const focusCropDefaults = { container_class: executionDefaults.container_class, precheck_seconds: executionDefaults.precheck_seconds };
 const containerExecutionSchema = z.strictObject({
   container_class: z.literal("MiniToolContainerStd4").default(executionDefaults.container_class),
   precheck_seconds: z.number().positive().default(executionDefaults.precheck_seconds),
@@ -75,14 +76,31 @@ const lipSyncSchema = containerExecutionSchema.extend({
 });
 
 // Chunked encoding (design §5.4): encode jobs run only on standard-4, so the encoder's rates are configured once, for it.
+// The five edit-file tiers (frames-split §4.2), each with its own decode and encode rate (§5.4 estimate row).
+const EDIT_TIER_RATE_KEYS = [
+  "edit_h264_intra_8bit_420_pixels_per_second", "edit_h264_intra_10bit_420_pixels_per_second", "edit_h264_intra_8bit_444_pixels_per_second",
+  "edit_h264_intra_10bit_444_pixels_per_second", "edit_prores_pixels_per_second",
+] as const;
 const encoderDefaults = {
   container_class: "MiniToolContainerStd4" as const,
   start_seconds: 3,
   // Local Docker readings at nproc 4 (encode-throughput nproc4 and 12-bit runs), to be replaced by Cloudflare standard-4 measurements.
   encode_pixels_per_second: 248_000_000,
+  // The original's decode rate by its source decode key (frames-split §5.4): each key's slowest covered codec, 4-thread
+  // maintainer readings of 2026-11-18, to be replaced by Cloudflare standard-4 measurements.
   decode_convert_pixels_per_second: {
-    sdr_8bit: 2_200_000_000, sdr_10bit: 1_310_000_000, sdr_12bit: 816_000_000, hdr_8bit: 106_000_000, hdr_10bit: 102_000_000, hdr_12bit: 109_000_000, sdr_16bit: 294_000_000, hdr_16bit: 71_900_000,
+    sdr_8bit: 910_000_000, sdr_10bit: 810_000_000, sdr_12bit: 690_000_000, sdr_alpha_layer: 600_000_000, sdr_prores: 820_000_000, sdr_dnx: 735_000_000,
+    sdr_av1_8bit: 740_000_000, sdr_av1_10bit: 570_000_000, sdr_av1_12bit: 610_000_000, sdr_jpeg2000: 25_000_000, sdr_ffv1: 75_000_000, sdr_png: 340_000_000,
+    sdr_other: 1_080_000_000,
   },
+  // Source pixels an HDR original's edit_encode tone maps per second: the slowest measured filter graph (odd sizes, §5.4).
+  tonemap_pixels_per_second: 420_000_000,
+  // Output pixels per second each edit-file tier encodes; provisional until measured on standard-4 (§5.4).
+  edit_h264_intra_8bit_420_pixels_per_second: 300_000_000,
+  edit_h264_intra_10bit_420_pixels_per_second: 250_000_000,
+  edit_h264_intra_8bit_444_pixels_per_second: 200_000_000,
+  edit_h264_intra_10bit_444_pixels_per_second: 180_000_000,
+  edit_prores_pixels_per_second: 400_000_000,
   // Audio seconds encoded to AAC per second for the dispatched copy (local Docker nproc 4 reading, to be replaced by standard-4).
   aac_encode_seconds_per_second: 100,
   // Picture pixels per second YuNet 2023mar searches in the lip-sync faces step (frames-split §5.4 to-be-measured row), one detector
@@ -90,8 +108,17 @@ const encoderDefaults = {
   // limits (arm64 Docker, --cpus=4), to be replaced by a Cloudflare standard-4 measurement.
   face_detect_pixels_per_second: 13_000_000,
 };
+// Source pixels per second each edit-file tier decodes; provisional until measured on standard-4 (§5.4).
+const decoderDefaults = {
+  edit_h264_intra_8bit_420_pixels_per_second: 1_500_000_000,
+  edit_h264_intra_10bit_420_pixels_per_second: 1_200_000_000,
+  edit_h264_intra_8bit_444_pixels_per_second: 1_100_000_000,
+  edit_h264_intra_10bit_444_pixels_per_second: 900_000_000,
+  edit_prores_pixels_per_second: 950_000_000,
+};
 const pixelRate = z.number().positive().finite();
-const encodingDefaults = { chunk_share: 0.5, max_parallel_chunks: 8, chunk_retries: 3, reverse_buffer_bytes: 2_147_483_648, raw_disk_share: 0.5, encoder: encoderDefaults };
+const tierRates = z.strictObject(Object.fromEntries(EDIT_TIER_RATE_KEYS.map((key) => [key, pixelRate])) as Record<(typeof EDIT_TIER_RATE_KEYS)[number], typeof pixelRate>);
+const encodingDefaults = { chunk_share: 0.5, max_parallel_chunks: 8, chunk_retries: 3, reverse_buffer_bytes: 2_147_483_648, raw_disk_share: 0.5, encoder: encoderDefaults, decoder: decoderDefaults };
 const encodingSchema = z.strictObject({
   chunk_share: z.number().positive().max(1).default(encodingDefaults.chunk_share),
   max_parallel_chunks: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(encodingDefaults.max_parallel_chunks),
@@ -103,17 +130,17 @@ const encodingSchema = z.strictObject({
   // The share of a job's instance disk its raw decoded frames may fill, computed into a lip-sync plan once at admission: a
   // clip's reused crops and a composite chunk's raw source window stay within it (execution design paragraph before §9.4).
   raw_disk_share: z.number().positive().max(1).default(encodingDefaults.raw_disk_share),
-  encoder: z.strictObject({
+  encoder: tierRates.extend({
     container_class: z.literal("MiniToolContainerStd4").default(encoderDefaults.container_class),
     start_seconds: z.number().nonnegative().finite().default(encoderDefaults.start_seconds),
     encode_pixels_per_second: pixelRate.default(encoderDefaults.encode_pixels_per_second),
-    decode_convert_pixels_per_second: z.strictObject({ sdr_8bit: pixelRate, sdr_10bit: pixelRate, sdr_12bit: pixelRate, hdr_8bit: pixelRate, hdr_10bit: pixelRate, hdr_12bit: pixelRate, sdr_16bit: pixelRate, hdr_16bit: pixelRate })
+    decode_convert_pixels_per_second: z.strictObject(Object.fromEntries(SOURCE_DECODE_KEYS.map((key) => [key, pixelRate])) as Record<SourceDecodeKey, typeof pixelRate>)
       .default(encoderDefaults.decode_convert_pixels_per_second),
+    tonemap_pixels_per_second: pixelRate.default(encoderDefaults.tonemap_pixels_per_second),
     aac_encode_seconds_per_second: z.number().positive().finite().default(encoderDefaults.aac_encode_seconds_per_second),
     face_detect_pixels_per_second: pixelRate.default(encoderDefaults.face_detect_pixels_per_second),
   }).default(encoderDefaults),
-  // Derived from the ledger byte caps, never configured: a value carried by an already parsed configuration is replaced.
-  copy_disk_margin_bytes: z.number().optional(),
+  decoder: tierRates.default(decoderDefaults),
 });
 
 // The encoded presentation carrier (design §4.3, §8.2); it is encoded on encoding.encoder.container_class.
@@ -124,30 +151,19 @@ const carrierSchema = z.strictObject({
   color: z.strictObject({ primaries: colorTag, transfer: colorTag, matrix: colorTag, range: colorTag }).default(carrierDefaults.color),
 });
 
-// The identity qualification table (design §4.1): a source plays as itself only when its container, video codec,
-// profile, pixel format, bit depth and audio are in this table, with no rotation, square samples and a tagged matrix.
-// Only combinations official sources document as playable in desktop browsers belong here: MDN "Web video codec guide"
-// and "Media container formats" (MP4 + H.264 Baseline/Main/High 8-bit 4:2:0, AAC or no audio). Changing the table
-// changes the policy: raise presentation.policy_version with it.
-const identityFormatSchema = z.strictObject({
-  container: z.string().min(1),
-  video_codec: z.string().min(1),
-  profiles: z.array(z.string().min(1)).min(1),
-  pix_fmt: z.string().min(1),
-  bit_depth: z.number().int().positive().max(16),
-  audio_codecs: z.array(z.string().min(1)).min(1),
-  rotation: z.literal(0),
-  sar: z.literal("1:1"),
-  matrix_tagged: z.literal(true),
-});
-const identityFormatDefaults = [{
-  container: "mp4", video_codec: "h264", profiles: ["Constrained Baseline", "Baseline", "Main", "High"], pix_fmt: "yuv420p", bit_depth: 8,
-  audio_codecs: ["aac", "none"], rotation: 0 as const, sar: "1:1" as const, matrix_tagged: true as const,
-}];
 // One sampled frame classified alpha and colour of every measured fixture (inner#1306 test plan §91 D-6), so it is the default.
 const probeSampleFramesDefault = 1;
 // A single-frame source is shown this long (design §4.2.1).
 const singleFrameDurationMsDefault = 5000;
+const x264Preset = z.enum(["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"]);
+// The edit file (frames-split §4.2, §8.2): crf 15 / medium H.264, ProRes 4444; the size factor and cap are provisional
+// until measured on the §8.1 samples.
+const editDefaults = { crf: 15, preset: "medium" as const, prores_profile: "4444", bytes_per_pixel: 0.5 };
+const presentationDefaults = {
+  container_class: "MediaContainer", policy_version: 1, probe_sample_frames: probeSampleFramesDefault, single_frame_duration_ms: singleFrameDurationMsDefault,
+  max_fps: 120, playback_gop_seconds: 2, probe_output_max_bytes: 67_108_864, max_source_bytes: 2_147_483_648, max_packed_bytes: 1_073_741_824,
+  max_edit_bytes: 21_474_836_480, crf: 18, preset: "medium" as const, edit: editDefaults, carrier: carrierDefaults,
+};
 
 const analysisProfileSchema = z.strictObject({
   id: z.string().min(1),
@@ -179,38 +195,6 @@ const expandSchema = containerExecutionSchema.extend({
   max_target_side: z.number().int().positive(),
 });
 
-const sourceLedgerDefaults = {
-  max_bytes: 16_777_216,
-  probe_stdout_bytes: 67_108_864,
-  metadata_bytes: 16_777_216,
-  iso_box_count: 100_000,
-  matroska_element_count: 1_000_000,
-  matroska_max_blocks: 250_000,
-  max_auto_repairs: 3,
-};
-const sourceLedgerConfigSchema = z.strictObject({
-  max_bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.max_bytes),
-  probe_stdout_bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.probe_stdout_bytes),
-  metadata_bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.metadata_bytes),
-  iso_box_count: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.iso_box_count),
-  matroska_element_count: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.matroska_element_count),
-  matroska_max_blocks: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.matroska_max_blocks),
-  // Automatic ledger repairs after a transient ledger failure of a selected presentation (design §7.1).
-  max_auto_repairs: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.max_auto_repairs),
-});
-
-/**
- * The disk a basic copy keeps free beyond twice the source (design §5.4): the full ledger and compact table caps added,
- * the only objects a copy writes besides the carrier; one `max_bytes` caps both today.
- * @param ledger - The source ledger byte caps.
- * @param ledger.max_bytes - The cap of each ledger object.
- * @returns The margin in bytes.
- * @throws {never} Never.
- */
-function copyDiskMarginBytes(ledger: { max_bytes: number }): number {
-  return ledger.max_bytes + ledger.max_bytes;
-}
-
 export const miniToolsConfigSchema = z
   .object({
     poll_interval_ms: z.number().int().positive(),
@@ -218,13 +202,15 @@ export const miniToolsConfigSchema = z
       "video.remove-bg": removeBackgroundSchema,
       "video.extract-frames": containerExecutionSchema.default(executionDefaults),
       "video.split": containerExecutionSchema.default(executionDefaults),
+      // A video focus crop takes one frame on standard-4, as frame extraction does (frames-split §5.5 configuration row).
+      "video.focus-crop": opSchema.extend({ container_class: z.literal("MiniToolContainerStd4") }).default(focusCropDefaults),
       "video.lip-sync": lipSyncSchema.optional(),
       "video.erase": eraseSchema.optional(),
       "video.expand": expandSchema.optional(),
       // Transitions encode on one class and render their overlap windows on the GL image's class (frames-split §5.4).
       "video.transitions": z.strictObject({ container_class: z.string().min(1), window_container_class: z.string().min(1), precheck_seconds: z.number().positive(),
         max_outputs: z.number().int().positive() }).optional(),
-    }).default({ "video.remove-bg": removeBackgroundDefaults, "video.extract-frames": executionDefaults, "video.split": executionDefaults }),
+    }).default({ "video.remove-bg": removeBackgroundDefaults, "video.extract-frames": executionDefaults, "video.split": executionDefaults, "video.focus-crop": focusCropDefaults }),
     encoding: encodingSchema.default(encodingDefaults),
     presentation: z.strictObject({
       container_class: z.string().min(1).default("MediaContainer"),
@@ -232,16 +218,28 @@ export const miniToolsConfigSchema = z
       policy_version: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
       probe_sample_frames: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(probeSampleFramesDefault),
       single_frame_duration_ms: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(singleFrameDurationMsDefault),
-      identity_formats: z.array(identityFormatSchema).default(identityFormatDefaults),
-      // Every uploadable video gets a presentation and a ledger: this equals storage.upload.max_upload_bytes.
-      max_source_bytes: z.number().int().positive().default(2_147_483_648),
-      max_packed_bytes: z.number().int().positive().default(1_073_741_824),
-      crf: z.number().int().min(0).max(51).default(18),
-      preset: z.enum(["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"]).default("medium"),
-      source_ledger: sourceLedgerConfigSchema.default(sourceLedgerDefaults),
+      // The frame-rate rule's cap (frames-split §4.1 frame rate row).
+      max_fps: z.number().int().positive().max(1000).default(presentationDefaults.max_fps),
+      // The playback file's keyframe interval (§4.3).
+      playback_gop_seconds: z.number().positive().finite().default(presentationDefaults.playback_gop_seconds),
+      // The probe's output cap (§5.1 step 2).
+      probe_output_max_bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(presentationDefaults.probe_output_max_bytes),
+      // Every uploadable video gets a presentation: this equals storage.upload.max_upload_bytes.
+      max_source_bytes: z.number().int().positive().default(presentationDefaults.max_source_bytes),
+      max_packed_bytes: z.number().int().positive().default(presentationDefaults.max_packed_bytes),
+      // The edit file's size cap (§4.2 size cap row).
+      max_edit_bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(presentationDefaults.max_edit_bytes),
+      crf: z.number().int().min(0).max(51).default(presentationDefaults.crf),
+      preset: x264Preset.default(presentationDefaults.preset),
+      // The edit file's encode settings and size estimate factor (§4.2).
+      edit: z.strictObject({
+        crf: z.number().int().min(0).max(51).default(editDefaults.crf),
+        preset: x264Preset.default(editDefaults.preset),
+        prores_profile: z.string().min(1).default(editDefaults.prores_profile),
+        bytes_per_pixel: z.number().positive().finite().default(editDefaults.bytes_per_pixel),
+      }).default(editDefaults),
       carrier: carrierSchema.default(carrierDefaults),
-    }).default({ container_class: "MediaContainer", policy_version: 1, probe_sample_frames: probeSampleFramesDefault, single_frame_duration_ms: singleFrameDurationMsDefault,
-      identity_formats: identityFormatDefaults, max_source_bytes: 2_147_483_648, max_packed_bytes: 1_073_741_824, crf: 18, preset: "medium", source_ledger: sourceLedgerDefaults, carrier: carrierDefaults }),
+    }).default(presentationDefaults),
     plan_limits: miniToolPlanLimitsSchema.extend({
       probeStdoutBytes: miniToolPlanLimitsSchema.shape.probeStdoutBytes.default(268_435_456),
       analysisStdoutBytes: miniToolPlanLimitsSchema.shape.analysisStdoutBytes.default(16_777_216),
@@ -295,7 +293,7 @@ export const miniToolsConfigSchema = z
     if (transitions !== undefined && !(transitions.window_container_class in config.classes)) {
       ctx.addIssue({ code: "custom", path: ["executions", "video.transitions", "window_container_class"], message: "Execution names an undeclared container class" });
     }
-    for (const tool of ["video.extract-frames", "video.split", "video.lip-sync", "video.transitions", "video.erase", "video.expand"] as const) {
+    for (const tool of ["video.extract-frames", "video.split", "video.focus-crop", "video.lip-sync", "video.transitions", "video.erase", "video.expand"] as const) {
       const execution = config.executions[tool];
       if (execution !== undefined && !(execution.container_class in config.classes)) {
         ctx.addIssue({ code: "custom", path: ["executions", tool, "container_class"], message: "Execution names an undeclared container class" });
@@ -315,8 +313,7 @@ export const miniToolsConfigSchema = z
         ctx.addIssue({ code: "custom", path: ["analyses", kind, "container_class"], message: "Analysis names an undeclared container class" });
       }
     }
-  })
-  .transform((config) => ({ ...config, encoding: { ...config.encoding, copy_disk_margin_bytes: copyDiskMarginBytes(config.presentation.source_ledger) } }));
+  });
 
 /** Validated container mini-tool configuration. */
 export type MiniToolsConfig = z.infer<typeof miniToolsConfigSchema>;

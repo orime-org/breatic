@@ -3174,7 +3174,8 @@ export const presentationPins = pgTable(
     holderKind: text("holder_kind").$type<"execution" | "analysis" | "prepared" | "candidate" | "selected">().notNull(),
     /** A task id, a presentation job id, or the canonical key of a `selected` pin. */
     holderId: text("holder_id").notNull(),
-    toolInputId: varchar("tool_input_id", { length: 64 }).notNull(),
+    /** Recorded only, never a release key; a `candidate` pin may not know it yet (§7.15). */
+    toolInputId: varchar("tool_input_id", { length: 64 }),
     /** The prepared model input a `prepared` pin keeps. */
     preparedKey: text("prepared_key"),
     /** The selected version of a `selected` pin. */
@@ -3186,14 +3187,16 @@ export const presentationPins = pgTable(
     check("presentation_pins_holder_kind_check", sql`${table.holderKind} IN ('execution', 'analysis', 'prepared', 'candidate', 'selected')`),
     check("presentation_pins_prepared_key_check", sql`(${table.holderKind} = 'prepared') = (${table.preparedKey} IS NOT NULL)`),
     check("presentation_pins_version_check", sql`(${table.holderKind} = 'selected') = (${table.versionId} IS NOT NULL)`),
+    check("presentation_pins_tool_input_check", sql`${table.holderKind} = 'candidate' OR ${table.toolInputId} IS NOT NULL`),
     uniqueIndex("presentation_pins_selected_live_unique").on(table.holderId).where(sql`holder_kind = 'selected' AND deleted_at IS NULL`),
     uniqueIndex("presentation_pins_holder_live_unique").on(table.holderKind, table.holderId, table.toolInputId)
-      .where(sql`holder_kind IN ('execution', 'analysis', 'candidate') AND deleted_at IS NULL`),
+      .where(sql`holder_kind IN ('execution', 'analysis') AND deleted_at IS NULL`),
+    uniqueIndex("presentation_pins_candidate_live_unique").on(table.holderKind, table.holderId).where(sql`holder_kind = 'candidate' AND deleted_at IS NULL`),
     uniqueIndex("presentation_pins_prepared_live_unique").on(table.holderId, table.preparedKey).where(sql`holder_kind = 'prepared' AND deleted_at IS NULL`),
   ],
 );
 
-/** The object keys a pin references, appended when it is acquired; whether they are live is the parent's `deletedAt`. */
+/** The object keys a pin references now (Add appends, Mv replaces, Drop removes); whether they are live is the parent's `deletedAt`. */
 export const presentationPinObjects = pgTable(
   "presentation_pin_objects",
   {

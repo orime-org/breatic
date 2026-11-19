@@ -4,7 +4,7 @@
 /**
  * Direct R2 API operations exposed exclusively to the maintenance executor.
  */
-import { DeleteObjectCommand, HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { r2ConfigFromEnv, type S3CompatibleConfig } from "@core/infra/storage/s3.js";
 
 /**
@@ -13,6 +13,8 @@ import { r2ConfigFromEnv, type S3CompatibleConfig } from "@core/infra/storage/s3
 export interface MaintenanceStorage {
   head(key: string): Promise<"missing" | "present">;
   delete(key: string): Promise<void>;
+  /** A small stored object's text, or null when it is absent (a canonical key's presentation descriptor, inner#1306 §7.15). */
+  read(key: string): Promise<string | null>;
   /** Release the maintenance client at graceful shutdown. */
   close?(): void;
 }
@@ -33,7 +35,7 @@ export class MaintenanceDeleteError extends Error {
 }
 
 /**
- * Build direct signed HEAD/DELETE operations; no CDN or suffix expansion.
+ * Build direct signed HEAD/GET/DELETE operations; no CDN or suffix expansion.
  * @param timeoutMs - Deadline for each physical API call.
  * @param config - Explicit compatible endpoint, or the production R2 environment.
  * @returns Maintenance-only storage operations.
@@ -61,6 +63,17 @@ export function createR2MaintenanceStorage(timeoutMs: number, config:S3Compatibl
           httpStatusCode?: number;
         }).httpStatusCode === 404)
           return "missing";
+        throw err;
+      }
+    },
+    async read(key: string): Promise<string | null> {
+      try {
+        const answer = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key }), { abortSignal: AbortSignal.timeout(timeoutMs) });
+        return answer.Body === undefined ? null : await answer.Body.transformToString();
+      }
+      catch (err) {
+        if (typeof err === "object" && err !== null && "$metadata" in err && (err.$metadata as { httpStatusCode?: number }).httpStatusCode === 404)
+          return null;
         throw err;
       }
     },
