@@ -10,15 +10,14 @@ export {
 export { readSpaceMediaReferences, type SpaceMediaReferences } from "@shared/space-media-references.js";
 export {
   WEB_ANIMATION_RUNTIME, WebAnimationManifestSchema, matchWebAnimationManifest, encodePreviewToken, decodePreviewToken,
-  webAnimationDurationFrames, WEB_ANIMATION_MANIFEST_MAX_BYTES, WebAnimationExecutionStatusSchema, webAnimationExecutionEnded,
+  webAnimationDurationFrames, WEB_ANIMATION_MANIFEST_MAX_BYTES, WebAnimationExecutionStatusSchema,
   WEB_ANIMATION_FAILED_STATUSES, WEB_ANIMATION_OPEN_STATUSES,
-  webAnimationExecutionFailed, WebAnimationExecutionKindSchema, WebAnimationExecutionRequestSchema, WebAnimationExecutionInputSchema,
+  webAnimationExecutionFailed, WebAnimationAspectSchema, WebAnimationExecutionRequestSchema, WebAnimationExecutionInputSchema,
   executionInputOf, WebAnimationPhaseSchema, WebAnimationRowViewSchema, WebAnimationAnchorSchema, readWebAnimationAnchor, anchorTimeWithin,
   type WebAnimationManifest, type WebAnimationExpectation, type WebAnimationManifestMismatch, type WebAnimationExecutionStatus,
   type WebAnimationExecutionKind, type WebAnimationExecutionOrigin, type WebAnimationExecutionRequest, type WebAnimationExecutionInput,
-  type WebAnimationRowView, type WebAnimationAnchor,
+  type WebAnimationRowView, type WebAnimationAnchor, type WebAnimationAspect,
 } from "@shared/timeline/web-animation.js";
-export { unpackWebAnimationSource } from "@shared/timeline/web-animation-source.js";
 export {
   WEB_ANIMATION_CONTAINER_CLASS, WEB_ANIMATION_RENDER_CONTAINER_CLASS, webAnimationJobRequestSchema, webAnimationJobCancelSchema,
   webAnimationJobReportSchema, webAnimationRenderJobRequestSchema, webAnimationRenderJobReportSchema,

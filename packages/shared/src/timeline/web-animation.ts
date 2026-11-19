@@ -38,16 +38,6 @@ const ENDED: ReadonlySet<WebAnimationExecutionStatus> = new Set(["succeeded", ..
 export const WEB_ANIMATION_OPEN_STATUSES: readonly WebAnimationExecutionStatus[] = WebAnimationExecutionStatusSchema.options.filter((status) => !ENDED.has(status));
 
 /**
- * Whether an execution has ended: it succeeded, failed, was cancelled or expired.
- * @param status - Its status.
- * @returns True once it can no longer change.
- * @throws {never} Never.
- */
-export function webAnimationExecutionEnded(status: WebAnimationExecutionStatus): boolean {
-  return ENDED.has(status);
-}
-
-/**
  * Whether an execution ended without a result: it failed, was cancelled or expired.
  * @param status - Its status.
  * @returns True when it ended and did not succeed.
@@ -108,11 +98,8 @@ const CREATE = "web_animation_create" as const;
 const MODIFY = "web_animation_modify" as const;
 const EXPORT = "web_animation_export" as const;
 
-/** The three kinds of web-animation execution. */
-export const WebAnimationExecutionKindSchema = z.enum([CREATE, MODIFY, EXPORT]);
-
-/** One kind of web-animation execution. */
-export type WebAnimationExecutionKind = z.infer<typeof WebAnimationExecutionKindSchema>;
+/** One of the three kinds of web-animation execution. */
+export type WebAnimationExecutionKind = typeof CREATE | typeof MODIFY | typeof EXPORT;
 
 const OriginSchema = z.enum(["timeline", "web_animation_space"]);
 
@@ -120,7 +107,13 @@ const OriginSchema = z.enum(["timeline", "web_animation_space"]);
 export type WebAnimationExecutionOrigin = z.infer<typeof OriginSchema>;
 
 const engine = z.literal("deepseek");
-const aspect = z.enum(["16:9", "9:16", "1:1"]);
+/** The frame ratios a web animation is made at. */
+export const WebAnimationAspectSchema = z.enum(["16:9", "9:16", "1:1"]);
+
+/** One frame ratio a web animation is made at. */
+export type WebAnimationAspect = z.infer<typeof WebAnimationAspectSchema>;
+
+const aspect = WebAnimationAspectSchema;
 const keyed = { spaceId: z.uuid(), actionId: z.uuid() };
 const createFields = { prompt: z.string().min(1), engine, aspect, durationSeconds: positiveInteger };
 const modifyFields = { baseSourceVersionId: z.uuid(), instruction: z.string().min(1), engine, aspect, durationSeconds: positiveInteger };

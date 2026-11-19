@@ -40,7 +40,7 @@ import { useTimelineLimits } from '@web/spaces/timeline/use-timeline-limits';
 import { ANNOTATION_DRAFT_IDLE, transitionAnnotationDraft, type AnnotationDraftEvent, type FramePoint } from '@web/spaces/web-animation/annotation-draft';
 import { webAnimationAnnotationStore } from '@web/spaces/web-animation/annotation-thread-store';
 import { transitionCreationDraft, type CreationDraftInput, type CreationDraftState } from '@web/spaces/web-animation/creation-draft';
-import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, exportIntent, executionStepKeys } from '@web/spaces/web-animation/execution-text';
+import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, exportIntent, executionStepKeys, isWebAnimationAspect } from '@web/spaces/web-animation/execution-text';
 import { MOTION_PANELS_CLOSED, transitionMotionPanels, type MotionTab } from '@web/spaces/web-animation/motion-panels';
 import { ListLoadError, listShows } from '@web/spaces/web-animation/list-states';
 import { BarButton, PreviewUnavailable, formatMotionTime, playable, rowSeconds } from '@web/spaces/web-animation/motion-parts';
@@ -421,7 +421,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const [retryDialog, setRetryDialog] = React.useState(false);
   const openDialog = React.useCallback((input: Partial<CreationDraftInput>, retry = false): void => {
     if (readOnly || limits === undefined) return;
-    const aspect = limits.aspects.find((value): value is CreationDraftInput['aspect'] => value === '16:9' || value === '9:16' || value === '1:1') ?? '16:9';
+    const aspect = limits.aspects.find(isWebAnimationAspect) ?? '16:9';
     setRetryDialog(retry);
     dispatchPanels({ type: 'new' });
     dispatchDraft({ type: 'open', input: { base: null, prompt: '', engine: DEFAULT_WEB_ANIMATION_ENGINE, aspect, durationSeconds: limits.durationSeconds.default, ...input } });

@@ -11,6 +11,8 @@
  * the user's input and the reason.
  */
 
+import type { WebAnimationAspect } from '@breatic/shared/space-content';
+
 import type { WebAnimationEngine } from '@web/spaces/web-animation/execution-text';
 
 /** What the user fills in. */
@@ -20,7 +22,7 @@ export interface CreationDraftInput {
   /** The prompt of a new animation, or the instruction of a modification. */
   prompt: string;
   engine: WebAnimationEngine;
-  aspect: '16:9' | '9:16' | '1:1';
+  aspect: WebAnimationAspect;
   durationSeconds: number;
 }
 

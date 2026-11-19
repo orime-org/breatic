@@ -7,7 +7,7 @@
  */
 
 import type { TimelineExecutionStatus } from '@breatic/shared';
-import type { WebAnimationRowView } from '@breatic/shared/space-content';
+import { WebAnimationAspectSchema, type WebAnimationAspect, type WebAnimationRowView } from '@breatic/shared/space-content';
 
 /** The engines a user picks from, with their display names. */
 export const WEB_ANIMATION_ENGINE_NAMES = { deepseek: 'DeepSeek' } as const satisfies Readonly<Record<string, string>>;
@@ -26,6 +26,16 @@ export const DEFAULT_WEB_ANIMATION_ENGINE: WebAnimationEngine = 'deepseek';
  */
 export function isWebAnimationEngine(value: string): value is WebAnimationEngine {
   return Object.hasOwn(WEB_ANIMATION_ENGINE_NAMES, value);
+}
+
+/**
+ * Whether a picked value names a frame ratio a web animation is made at.
+ * @param value - The value.
+ * @returns True for a frame ratio.
+ * @throws {never} Never.
+ */
+export function isWebAnimationAspect(value: string): value is WebAnimationAspect {
+  return WebAnimationAspectSchema.safeParse(value).success;
 }
 
 /** The phases a create or modify reports, in order. */

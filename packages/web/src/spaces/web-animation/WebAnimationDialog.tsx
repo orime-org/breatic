@@ -16,7 +16,7 @@ import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
 import type { CreationDraftInput, CreationDraftState } from '@web/spaces/web-animation/creation-draft';
-import { WEB_ANIMATION_ENGINE_NAMES, isWebAnimationEngine } from '@web/spaces/web-animation/execution-text';
+import { WEB_ANIMATION_ENGINE_NAMES, isWebAnimationAspect, isWebAnimationEngine } from '@web/spaces/web-animation/execution-text';
 import { PreviewUnavailable, playable } from '@web/spaces/web-animation/motion-parts';
 import { MotionResultPlayer } from '@web/spaces/web-animation/MotionResultPlayer';
 
@@ -70,7 +70,7 @@ export function WebAnimationDialog({ projectId, spaceId, draft, retry, limits, b
   const changePrompt = React.useCallback((event: React.ChangeEvent<HTMLTextAreaElement>): void => onEdit({ prompt: event.target.value }), [onEdit]);
   const changeEngine = React.useCallback((value: string): void => { if (isWebAnimationEngine(value)) onEdit({ engine: value }); }, [onEdit]);
   const changeAspect = React.useCallback((value: string): void => {
-    if (value === '16:9' || value === '9:16' || value === '1:1') onEdit({ aspect: value });
+    if (isWebAnimationAspect(value)) onEdit({ aspect: value });
   }, [onEdit]);
   // An emptied field is not a number; Execute stays unavailable until it holds a whole number in range.
   const changeDuration = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => {
