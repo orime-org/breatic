@@ -34,7 +34,7 @@ interface SpaceTaskCommon {
   status: "running" | "done" | "failed" | "expired";
   startedByUserId: string;
   startedAt: string;
-  /** When its budget runs out; null while it waits for a free running slot, whose budget starts when it runs (inner#1968, design 3.11). */
+  /** When its budget runs out; null while it waits for a free running slot, whose budget starts when it runs (inner#1968, design 3.9). */
   deadlineAt: string | null;
   /** Since when it waits for a free running slot; null once it runs (inner#1968). */
   waitingSince: string | null;

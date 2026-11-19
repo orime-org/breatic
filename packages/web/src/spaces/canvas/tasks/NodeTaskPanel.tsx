@@ -7,8 +7,8 @@
  *
  * It holds one state's rows: the user asked for the failures, so the
  * successes are not what they are looking at. The rows are fetched from the
- * server rather than read off the shared document — the document carries four
- * numbers and nothing else (§3.3), so the detail behind a number is only
+ * server rather than read off the shared document — the document carries only
+ * the node's task counts (§3.3), so the detail behind a number is only
  * pulled when somebody asks for it.
  */
 
