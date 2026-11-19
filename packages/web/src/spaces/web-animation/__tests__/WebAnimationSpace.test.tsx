@@ -1303,6 +1303,33 @@ describe('the marked row of the execution list', () => {
     await waitFor(() => expect(onList(calls)).toEqual([{ top: 740, behavior: 'smooth' }]));
   });
 
+  it('turns an open list to Failed and marks a failed run an open request names while another result shows, and keeps it there when focus comes back to another tab', async () => {
+    const shown = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');
+    const failed = endedRow(done(FAILED, 'A box', '2026-11-15T07:00:00.000000Z'), 'cancelled', null);
+    vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string }) => (
+      params.scope === 'timeline' && params.group === 'failed'
+        ? { rows: [failed], nextCursor: null, totals: { running: 0, succeeded: 0, failed: 1 } }
+        : params.scope === 'space' && params.group === 'succeeded'
+          ? { rows: [shown], nextCursor: null, totals: { running: 0, succeeded: 1, failed: 0 } }
+          : { rows: [], nextCursor: null, totals: { running: 0, succeeded: 1, failed: 1 } }
+    ) as never);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('motion-open-executions'));
+    const panel = await screen.findByTestId('motion-panel-executions');
+    await user.click(within(panel).getByRole('tab', { name: /^Completed/ }));
+    await waitFor(() => expect(within(panel).getByRole('tab', { name: /^Failed/ })).toHaveTextContent('1'));
+    act(() => useSpaceOpenRequestStore.setState({ state: { status: 'opened', request: { type: 'web_animation', select: FAILED }, spaceId: SPACE } }));
+    await waitFor(() => expect(within(panel).getByRole('tab', { name: /^Failed/ })).toHaveAttribute('aria-selected', 'true'));
+    expect(within(within(panel).getByTestId('motion-legacy-group')).getByTestId(`motion-row-${FAILED}`)).toHaveAttribute('data-marked', 'true');
+    // Showing the Space again puts the caret back on the element focused before it was hidden (SpaceOutlet).
+    const completed = within(panel).getByRole('tab', { name: /^Completed/ });
+    act(() => completed.focus());
+    fireEvent.focusIn(completed);
+    expect(within(panel).getByRole('tab', { name: /^Failed/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('leaves the list where it is when the marked row already shows', async () => {
     const shown = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');
     const made = { ...exported(shown), status: 'queued', resultAssetId: null };

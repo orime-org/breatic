@@ -306,7 +306,9 @@ export const MotionExecutionsPanel = React.memo(function MotionExecutionsPanel({
     revealWithin(viewport, row);
   }, [markedId, tab, current]);
   return <MotionPanel testId='motion-panel-executions' title={t('spaces.webAnimation.executions')} onClose={onClose}>
-    <Tabs value={tab} onValueChange={changeTab} className='shrink-0 border-b border-border px-2 py-1.5'>
+    {/* The tab is also set by the page (an accepted run, Open in Motion); focus coming back to a trigger when the Space
+        shows again must not move it, so only a press picks a tab. */}
+    <Tabs value={tab} onValueChange={changeTab} activationMode='manual' className='shrink-0 border-b border-border px-2 py-1.5'>
       <TabsList>
         {TABS.map((entry) => <TabsTrigger key={entry.tab} value={entry.tab}>{t(entry.name)}<span className='tabular-nums'>{lists.totals[entry.tab]}</span></TabsTrigger>)}
       </TabsList>
