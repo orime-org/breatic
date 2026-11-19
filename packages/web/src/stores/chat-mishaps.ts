@@ -12,7 +12,7 @@
  */
 
 import { t } from '@breatic/shared';
-import { ourSentence } from '@web/stores/credit-refusals';
+import { ourSentence } from '@web/data/api/server-message';
 
 /**
  * Something that went wrong, told once to whoever is looking.

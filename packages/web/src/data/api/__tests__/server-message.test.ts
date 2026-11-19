@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { ApiException } from '@web/data/api/types';
 import { StreamRefusedError } from '@web/data/stream/sse';
 import { spendCapMessage } from '@web/lib/spend-cap-message';
-import { ourSentence, refusalSentence } from '@web/stores/credit-refusals';
+import { ourSentence, refusalSentence } from '@web/data/api/server-message';
 
 const CAP = { reason: 'spend_cap_reached', scope: 'member', limit: '10', resetsAt: '2026-12-01T00:00:00.000Z' } as const;
 

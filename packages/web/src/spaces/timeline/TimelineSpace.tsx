@@ -23,7 +23,7 @@ import { Separator } from '@web/components/ui/separator';
 import { Slider } from '@web/components/ui/slider';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { spaceTasksQueryKey } from '@web/data/api/scene';
-import { serverMessage } from '@web/data/api/server-message';
+import { refusalSentence, serverMessage } from '@web/data/api/server-message';
 import { timelineApi } from '@web/data/api/timeline';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { checkAdd } from '@web/data/yjs/space-write';
@@ -34,7 +34,6 @@ import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusi
 import { useTranslation } from '@web/i18n/use-translation';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { toast } from '@web/lib/toast';
-import { refusalSentence } from '@web/stores/credit-refusals';
 import { cn } from '@web/lib/utils';
 import { runOnce } from '@web/stores/task-actions-in-flight';
 import type { SpaceBodyProps } from '@web/spaces';

@@ -20,7 +20,7 @@ import {
 
 import { miniToolsApi } from '@web/data/api/mini-tools';
 import { ApiException } from '@web/data/api/types';
-import { ourSentence } from '@web/stores/credit-refusals';
+import { ourSentence } from '@web/data/api/server-message';
 import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';

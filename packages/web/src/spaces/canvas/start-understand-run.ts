@@ -25,7 +25,7 @@ import {
   getCachedUnderstandMaxBytes,
 } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
-import { ourSentence } from '@web/stores/credit-refusals';
+import { ourSentence } from '@web/data/api/server-message';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';

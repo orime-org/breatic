@@ -11,7 +11,7 @@
 
 import { assetsApi, requestBodyLimitOf } from '@web/data/api/assets';
 import { ApiException } from '@web/data/api/types';
-import { refusalSentence } from '@web/stores/credit-refusals';
+import { refusalSentence } from '@web/data/api/server-message';
 import { formatBytes } from '@web/lib/format-bytes';
 
 /** The translate function, with ICU values. */
