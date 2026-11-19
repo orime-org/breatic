@@ -55,6 +55,7 @@ import * as mailRepo from "@server/modules/payment/purchase-mail.repo.js";
 import { randomUUID } from "node:crypto";
 import { enqueueAdsConversion, trackServerEvent } from "@breatic/core";
 import { readCheckoutSnapshot, takeCheckoutSnapshot } from "@server/modules/analytics/checkout-snapshot.js";
+import { runAfterReply } from "@server/utils/after-reply.js";
 import type Stripe from "stripe";
 
 /**
@@ -397,7 +398,7 @@ export async function fulfillPayment(
     // 2xx, and the overlay's shared gate is holding. The send records its own
     // outcome, and a row left behind by a process that went away still offers
     // its resend.
-    void startConfirmationMail(payment.id);
+    runAfterReply({ task: "purchase_mail", paymentId: payment.id }, () => startConfirmationMail(payment.id));
     reportPurchase(payment);
   }
   return outcome;
@@ -473,7 +474,8 @@ async function sendConfirmationFor(paymentId: string): Promise<boolean> {
  * Build and send one purchase's confirmation, swallowing whatever happens.
  *
  * Separated from the fulfillment path so that nothing here can fail a request
- * that has already taken money and granted credits.
+ * that has already taken money and granted credits. Started as after-reply
+ * work, so a shutdown waits for it before closing the pools.
  * @param paymentId - The purchase to confirm.
  */
 async function startConfirmationMail(paymentId: string): Promise<void> {

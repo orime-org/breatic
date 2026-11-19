@@ -6,7 +6,9 @@
  * webhook handles from `config/stripe-catchup.yaml`'s lookback before
  * `--since`, skips the processed set and processes the rest the way the
  * webhook does, oldest first. Exits non-zero while any event failed; a rerun
- * skips what succeeded.
+ * skips what succeeded. The process starts and stops the way the server
+ * does, so the work a handler starts after it answers (mails, refund
+ * reports, ads conversions) finishes and its analytics are sent.
  */
 
 import { findRoot, loadEnv } from "./load-env.js";
@@ -22,9 +24,15 @@ if (options.help) {
   core.initCore(process.env);
   core.initLogger("stripe-catchup");
   core.loadLocales();
+  const analytics = core.initServerAnalytics({
+    apiKey: core.env.AMPLITUDE_API_KEY,
+    onError: (message) => core.logger.warn({ message }, "analytics_events_rejected"),
+  });
+  if (analytics === "invalid") core.logger.error({}, "amplitude_api_key_invalid");
   const { catchUpStripeEvents, handleLikeWebhook, processedEventIds } = await import("../packages/server/src/modules/stripe-webhook/catch-up.js");
   const { getStripeClient } = await import("../packages/server/src/infra/stripe.js");
   const { getStripeCatchUpLookbackHours } = await import("../packages/server/src/config/stripe-catchup.js");
+  const { settleAfterReply } = await import("../packages/server/src/utils/after-reply.js");
   const stripe = getStripeClient();
   try {
     const outcome = await catchUpStripeEvents(
@@ -43,6 +51,13 @@ if (options.help) {
     core.logger.error({ err, since: options.since.toISOString() }, "stripe_catchup_failed");
     process.exitCode = 1;
   } finally {
-    await core.closeDb();
+    await settleAfterReply();
+    await Promise.allSettled([
+      core.flushServerAnalytics(),
+      core.closeDb(),
+      core.closeRedis(),
+      core.closeQueueRedis(),
+      core.closeQueues(),
+    ]);
   }
 }
