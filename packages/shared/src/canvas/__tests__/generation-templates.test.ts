@@ -197,6 +197,15 @@ const SOCIAL_HOOK_VIDEOS = SOCIAL_HOOKS.filter((id) => id !== 'fisheye-clone-pov
 /** The poster and graphics templates (inner#1809), in registry order. */
 const POSTERS = ['name-as-world-typography', 'destination-festival-poster', 'photo-paper-diorama'];
 
+/** The comic and storyboard templates (inner#1815), after storyboard-grid-25, in registry order. */
+const COMICS = ['storyboard-sheet-9', 'comic-page', 'comic-4koma', 'storyboard-to-video', 'comic-page-to-motion', 'comic-panels-to-shots'];
+
+/** The comic and storyboard templates an image panel lists. */
+const COMICS_IMAGES = ['storyboard-grid-25', 'storyboard-sheet-9', 'comic-page', 'comic-4koma'];
+
+/** The comic and storyboard templates a video panel lists. */
+const COMICS_VIDEOS = ['storyboard-to-video', 'comic-page-to-motion', 'comic-panels-to-shots'];
+
 /** The animated short templates (inner#1814), in registry order. */
 const ANIMATION = ['cartoon-gag', '3d-cartoon-short', 'stop-motion-short', 'anime-scene', 'anime-action-climax', 'anime-opening-15s'];
 
@@ -332,7 +341,7 @@ describe('generation templates', () => {
       'character-bible',
       'expression-sheet',
       'character-design-from-text',
-      'storyboard-grid-25',
+      ...COMICS_IMAGES,
       'product-hero-still',
       'dish-hero-still',
       'fisheye-clone-pov',
@@ -343,6 +352,7 @@ describe('generation templates', () => {
       'single-view-refs-scene',
       'identity-locked-sequence',
       'character-showcase-orbit',
+      ...COMICS_VIDEOS,
       ...ANIMATION,
       ...ECOMMERCE,
       ...PRODUCT_SHOWCASE_VIDEOS,
@@ -435,6 +445,23 @@ describe('generation templates', () => {
       'anime-scene': {
         result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 6, generate_audio: true } },
         scene: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '16:9' } },
+      },
+      'storyboard-sheet-9': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9', resolution: '4k' } } },
+      'comic-page': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '2:3', resolution: '4k' } } },
+      'comic-4koma': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16', resolution: '4k' } } },
+      'storyboard-to-video': {
+        result: { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 15, generate_audio: true } },
+        sheet: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+      },
+      'comic-page-to-motion': t2v(10, '16:9'),
+      'comic-panels-to-shots': {
+        result: {
+          type: 'video',
+          mode: 'multi_shot',
+          model: T2V,
+          params: { aspect_ratio: '16:9', duration: 12, generate_audio: true },
+          shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
+        },
       },
       'anime-action-climax': t2v(10, '16:9'),
       'anime-opening-15s': {
@@ -594,7 +621,7 @@ describe('creative goals and triggers', () => {
       ...Object.fromEntries(POSTERS.map((id) => [id, 'posters'])),
       ...Object.fromEntries(SPEED.map((id) => [id, 'speed'])),
       ...Object.fromEntries(SOUND.map((id) => [id, 'sound'])),
-      'storyboard-grid-25': 'comics-storyboards',
+      ...Object.fromEntries(['storyboard-grid-25', ...COMICS].map((id) => [id, 'comics-storyboards'])),
       'costume-sheet': 'character',
       'character-bible': 'character',
       'expression-sheet': 'character',
@@ -638,7 +665,7 @@ describe('creative goals and triggers', () => {
   it('groups a node type\'s templates under their goals in goal order, leaving out goals with none', () => {
     expect(templateGoalsFor('image').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['costume-sheet', 'character-bible', 'expression-sheet', 'character-design-from-text']],
-      ['comics-storyboards', ['storyboard-grid-25']],
+      ['comics-storyboards', COMICS_IMAGES],
       ['product-showcase', ['product-hero-still']],
       ['food', ['dish-hero-still']],
       ['social-hooks', ['fisheye-clone-pov', 'flash-photo-dump-grid']],
@@ -646,6 +673,7 @@ describe('creative goals and triggers', () => {
     ]);
     expect(templateGoalsFor('video').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['single-view-refs-scene', 'identity-locked-sequence', 'character-showcase-orbit']],
+      ['comics-storyboards', COMICS_VIDEOS],
       ['animation', ANIMATION],
       ['ecommerce', ECOMMERCE],
       ['product-showcase', PRODUCT_SHOWCASE_VIDEOS],
@@ -841,8 +869,8 @@ describe('optional template inputs (inner#1811, CAP-9)', () => {
   const optionalInputs = (): string[] =>
     GENERATION_TEMPLATES.flatMap((template) => template.inputs.filter((input) => input.optional === true).map((input) => `${template.id}.${input.key}`));
 
-  it('marks the person of the product ad and of the pet selfie vlog optional, and no other input', () => {
-    expect(optionalInputs()).toEqual(['product-ad-15s.person', 'pet-selfie-vlog.person']);
+  it('marks the setting of the nine-panel storyboard and the person of the product ad and of the pet selfie vlog optional, and no other input', () => {
+    expect(optionalInputs()).toEqual(['storyboard-sheet-9.setting', 'product-ad-15s.person', 'pet-selfie-vlog.person']);
   });
 
   it('feeds the pet selfie vlog an optional person after its pet', () => {
