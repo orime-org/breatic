@@ -61,9 +61,10 @@ const PICTURE_PARSERS = [['jpeg', jpegFormat.Parser], ['png', pngFormat.Parser],
 
 /**
  * A picture's size and type read from the start of its bytes, stopping as soon as they are known; the rest of the
- * stream is cancelled. Each format's parser walks its header the way libjpeg, Go and Blink do: a JPEG's segments
- * before its frame header are skipped by length, never held, so the parsers hold a few bytes whatever the header's
- * size. Bytes that are no picture's start fail every parser at once; reading also ends after `maxBytes`.
+ * stream is cancelled. A JPEG's segments before its frame header are skipped by length, never held, as libjpeg, Go and
+ * Blink read headers, so the parsers hold a few bytes whatever the header's size; bytes other than 0xFF and 0xFF fill
+ * bytes between segments are skipped, and a stuffed FF 00 there fails the JPEG parser. Bytes that are no picture's start
+ * fail every parser at once; reading also ends after `maxBytes`.
  * @param stream - The file's or the response's bytes.
  * @param maxBytes - The most bytes read for one size (config/scene.yaml `import.max_picture_header_bytes`).
  * @returns The size and type, or null when the bytes are not a PNG, JPEG or WebP header within `maxBytes`.

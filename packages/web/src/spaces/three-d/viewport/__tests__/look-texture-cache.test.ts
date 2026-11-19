@@ -195,7 +195,7 @@ describe('readPictureSize', () => {
     expect(await read()(streamOf(chunks).stream, CAP)).toMatchObject({ width: 800, height: 600, type: 'jpeg' });
   });
 
-  it('reads a JPEG whose metadata before its size runs past the header budget', async () => {
+  it('reads a JPEG whose metadata before its size runs to several MiB', async () => {
     const segment = (length: number): number[] => [0xff, 0xe1, (length + 2) >> 8, (length + 2) & 0xff, ...new Array<number>(length).fill(0)];
     const bytes = [0xff, 0xd8];
     // About 6 MiB of metadata segments, as an editor's history can leave in front of the frame header.
@@ -220,18 +220,13 @@ describe('readPictureSize', () => {
     expect(await read()(streamOf(chunks).stream, CAP)).toMatchObject({ width: 512, height: 256, type: 'jpeg' });
   });
 
-  it.each([1, 3])('reads a JPEG whose metadata ends exactly at 4 MiB and is followed by %i stray bytes', async (strays) => {
-    const segment = (length: number): number[] => [0xff, 0xe1, (length + 2) >> 8, (length + 2) & 0xff, ...new Array<number>(length).fill(0)];
-    const bytes = [0xff, 0xd8];
-    while (bytes.length + 60_004 <= 4 * 1024 * 1024) bytes.push(...segment(60_000));
-    const rest = 4 * 1024 * 1024 - bytes.length - 4;
-    bytes.push(...segment(rest));
-    expect(bytes.length).toBe(4 * 1024 * 1024);
-    bytes.push(...new Array<number>(strays).fill(0));
-    bytes.push(0xff, 0xc0, 0x00, 0x11, 0x08, 0x01, 0x00, 0x02, 0x00, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01);
-    const all = new Uint8Array(bytes);
-    const chunks = Array.from({ length: Math.ceil(all.length / 65_536) }, (_, i) => all.subarray(i * 65_536, (i + 1) * 65_536));
-    expect(await read()(streamOf(chunks).stream, CAP)).toMatchObject({ width: 512, height: 256, type: 'jpeg' });
+  it('reads a header that ends at the byte limit and refuses one that ends a byte past it', async () => {
+    const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x0a, ...new Array<number>(8).fill(0),
+      0xff, 0xc0, 0x00, 0x11, 0x08, 0x01, 0x00, 0x02, 0x00, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01]);
+    // The frame header's size fields end 7 bytes into the SOF segment.
+    const end = 14 + 9;
+    expect(await read()(streamOf([bytes]).stream, end)).toMatchObject({ width: 512, height: 256, type: 'jpeg' });
+    expect(await read()(streamOf([bytes]).stream, end - 1)).toBeNull();
   });
 
   it.each([
