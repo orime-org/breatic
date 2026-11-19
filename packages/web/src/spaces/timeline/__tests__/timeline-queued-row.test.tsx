@@ -7,8 +7,7 @@
  *
  * A row carrying `slotWaitSince` says "排队中" without the working spinner, its
  * detail says why ("你同时运行的任务已达上限（{limit} 个），前面的任务结束后自动开始")
- * and it offers "取消". The limit is not pinned to a number: the row does not
- * carry it in the design.
+ * and it offers "取消", with the limit the row carries in `slotWaitLimit`.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -59,7 +58,7 @@ describe('G-39 a Timeline execution waiting for a slot', () => {
     expect(status).toHaveTextContent('排队中');
     expect(status.querySelector('.animate-spin')).toBeNull();
     const detail = screen.getByTestId(`timeline-execution-detail-${ID}`);
-    expect(detail.textContent).toMatch(/你同时运行的任务已达上限（\d+ 个），前面的任务结束后自动开始/);
+    expect(detail.textContent).toContain('你同时运行的任务已达上限（2 个），前面的任务结束后自动开始');
     expect(within(detail).getByRole('button', { name: '取消' })).toBeInTheDocument();
   });
 });

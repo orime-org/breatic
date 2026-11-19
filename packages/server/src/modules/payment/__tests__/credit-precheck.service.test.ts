@@ -88,6 +88,12 @@ beforeEach(() => {
 });
 
 describe("reserveForRun", () => {
+  it("holds nothing while payments are off", async () => {
+    env.PAYMENT_ENABLED = false;
+    await reserveForRun(PROJECT, USER, "t", 1);
+    expect(reserveCredits).not.toHaveBeenCalled();
+  });
+
   it("holds the estimate under the run's key for the task budget", async () => {
     await reserveForRun(PROJECT, USER, "task-1", 40);
     expect(reserveCredits).toHaveBeenCalledWith({
@@ -202,12 +208,5 @@ describe("precheckCredits", () => {
     judgeBalanceAdmission.mockResolvedValue({ reason: "spend_cap", cap: { scope: "member", limit: "10.000000", resetsAt: "2026-12-01T00:00:00.000Z" } });
     const err = await precheckCredits(PROJECT, USER, 0.000001).catch((e: unknown) => e);
     expect(err).toMatchObject({ statusCode: 402, reason: "spend_cap_reached" });
-  });
-
-  // precheckCredits leaves payments off to judgeBalanceAdmission (spend-caps E-09).
-  it("holds nothing while payments are off", async () => {
-    env.PAYMENT_ENABLED = false;
-    await reserveForRun(PROJECT, USER, "t", 1);
-    expect(reserveCredits).not.toHaveBeenCalled();
   });
 });
