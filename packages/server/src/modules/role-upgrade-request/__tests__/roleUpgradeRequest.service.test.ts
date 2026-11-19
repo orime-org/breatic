@@ -74,7 +74,10 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 // The email is queued for the worker; the job carries the built mail.
-vi.mock("@breatic/domain", () => ({ enqueueMail: vi.fn(async () => {}) }));
+vi.mock("@breatic/domain", async () => ({
+  ...(await import("../../../../../domain/src/mail/mail-shell.js")),
+  enqueueMail: vi.fn(async () => {}),
+}));
 vi.mock("../roleUpgradeRequests.repo.js", () => ({
   createPending: vi.fn(),
   attachNotification: vi.fn(),

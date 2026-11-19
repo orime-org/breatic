@@ -10,7 +10,7 @@
  * enhancement that only fires when an SMTP backend is configured. Each renders
  * in the recipient's language, passed in as `locale` (the recipient's
  * `users.locale`), from the `server.mail.*` catalog entries; the branded layout
- * and escaping live in `mail-shell.ts`.
+ * and escaping live in `@domain/mail/mail-shell.ts`.
  *
  * Auth emails (password reset / email verification) are built in
  * `modules/auth/auth-mail.ts`: those are the primary delivery channel (no bell
@@ -19,7 +19,7 @@
  */
 
 import { getDecisionWindowDays } from "@server/config/limits.js";
-import { renderMail, type MailMessage, type RenderedMail } from "@server/utils/mail-shell.js";
+import { renderMail, type MailMessage, type RenderedMail } from "@breatic/domain";
 
 /**
  * Build the closing line of an invitation, transfer or request email.

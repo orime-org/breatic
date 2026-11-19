@@ -309,6 +309,7 @@ export type {
 
 // ── Mail (notification mail sent by the worker) ──
 export { MAIL_QUEUE, enqueueMail, type MailJob } from "@domain/mail/mail-queue.js";
+export { escapeHtml, renderMail, type MailMessage, type MailSpec, type RenderedMail } from "@domain/mail/mail-shell.js";
 
 export * as storageReclaimRepo from "@domain/asset/storage-reclaim.repo.js";
 
