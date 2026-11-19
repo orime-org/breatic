@@ -180,8 +180,10 @@ describe("account_provider_keys", () => {
   });
 
   it("keeps the sealed text out of the error a failed save throws", async () => {
+    // A live account, so the save gets past the account lock and its INSERT itself fails (a hint over 32 characters).
+    const userId = await seedUser();
     const text = sealedText("leak");
-    const thrown = await accountProviderKeysRepo.saveKey({ userId: crypto.randomUUID(), upstream: "fal", ciphertext: text, displayHint: "x" }).then(() => null, (err: unknown) => err);
+    const thrown = await accountProviderKeysRepo.saveKey({ userId, upstream: "fal", ciphertext: text, displayHint: "x".repeat(33) }).then(() => null, (err: unknown) => err);
 
     expect(thrown).toBeInstanceOf(Error);
     const seen = JSON.stringify(thrown, Object.getOwnPropertyNames(thrown)) + String(thrown) + (thrown as Error).stack;
@@ -269,6 +271,17 @@ describe("account_model_upstreams", () => {
     await accountModelUpstreamsRepo.setModelUpstream(userId, "nano-banana-2", null);
     expect(await accountModelUpstreamsRepo.modelUpstreamFor(userId, "nano-banana-2")).toBeNull();
     expect(await accountModelUpstreamsRepo.liveModelUpstreamsFor(userId)).toEqual([]);
+  });
+
+  it("writes nothing when the same choice is sent again", async () => {
+    const userId = await seedUser();
+    await save(userId, "fal", sealedText("same"));
+    expect(await accountModelUpstreamsRepo.setModelUpstream(userId, "seedream-5", "fal")).toBe(true);
+    expect(await accountModelUpstreamsRepo.setModelUpstream(userId, "seedream-5", "fal")).toBe(true);
+    expect(await accountModelUpstreamsRepo.setModelUpstream(userId, "nano-banana-2", null)).toBe(true);
+
+    const rows = await sql`SELECT model FROM account_model_upstreams WHERE user_id = ${userId}`;
+    expect(rows.map((row) => row.model)).toEqual(["seedream-5"]);
   });
 
   it("keeps one choice per model and account apart from every other", async () => {

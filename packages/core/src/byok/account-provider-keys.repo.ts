@@ -96,7 +96,7 @@ function checkColumns(check: ProviderKeyCheckRecord): Partial<typeof accountProv
  * cleared and the row soft-deleted, and a new row is inserted.
  * @param input - The key.
  * @returns The saved key, without its sealed text.
- * @throws {Error} When the account does not exist (foreign key).
+ * @throws {Error} When no live account has the id, or the write fails; the error never carries the sealed text.
  */
 export async function saveKey(input: NewAccountProviderKey): Promise<AccountProviderKey> {
   try {
@@ -213,6 +213,7 @@ export async function keyOwnerById(id: string): Promise<{ id: string; userId: st
  * @param userId - The account.
  * @param upstream - The upstream.
  * @returns True when a live key was deleted.
+ * @throws {Error} When no live account has the id.
  */
 export async function deleteKey(userId: string, upstream: string): Promise<boolean> {
   return db.transaction(async (tx) => {
