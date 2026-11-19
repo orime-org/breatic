@@ -59,7 +59,7 @@ import {
 import { StillRunning } from "@worker/handlers/still-running.js";
 import { move } from "@worker/handlers/timeline/timeline-transition.js";
 import { runExport } from "@worker/handlers/timeline/web-animation-export.js";
-import { chargeExecution, owns, take, type Held } from "@worker/handlers/timeline/web-animation-pickup.js";
+import { chargeExecution, ended, endsAtOf, owns, storedStep, take, type Ended, type Held } from "@worker/handlers/timeline/web-animation-pickup.js";
 import {
   cancelWebAnimationJob,
   readWebAnimationJob,
@@ -98,38 +98,7 @@ type RunEnd = TimelineExecutionEvent | ({ type: "result" } & ValidResult);
 type ReportedCall = WebAnimationJobReport["calls"][number];
 
 /** A report that ended; only these settle. */
-type EndedReport = WebAnimationJobReport & { state: "done" | "failed" | "cancelled" | "expired" | "cancelled_before_submit" };
-
-const ENDED: ReadonlySet<WebAnimationJobReport["state"]> = new Set(["done", "failed", "cancelled", "expired", "cancelled_before_submit"]);
-
-/**
- * Whether a report ended.
- * @param report - The report.
- * @returns True for a terminal state.
- * @throws {never} Never.
- */
-function ended(report: WebAnimationJobReport): report is EndedReport {
-  return ENDED.has(report.state);
-}
-
-/**
- * The job step a row already holds. Its request is read back through its schema, which also restores the field
- * order jsonb does not keep, so every attempt submits the same bytes. Anything else a stored step carries beside its
- * request is ignored.
- * @param steps - The row's steps.
- * @returns The step, or undefined when none was written yet.
- * @throws {never} Never.
- */
-function storedStep(steps: unknown[]): JobStep | undefined {
-  for (const step of steps) {
-    const candidate = step as Partial<JobStep> | null;
-    if (candidate?.kind !== "container_job") continue;
-    const request = webAnimationJobRequestSchema.safeParse(candidate.request);
-    if (!request.success) return undefined;
-    return { kind: "container_job", request: request.data };
-  }
-  return undefined;
-}
+type EndedReport = Ended<WebAnimationJobReport>;
 
 /**
  * The job an execution runs: fixed from its accepted input, the yaml and provider's plan of the attempt that first
@@ -505,7 +474,7 @@ async function pickUp(job: Job<TimelineExecutionJobData>, token: string | undefi
     return;
   }
   if (input.kind === "web_animation_export") return runExport({ job, token, row }, input);
-  let step = storedStep(row.steps);
+  let step = storedStep(row.steps, "container_job", webAnimationJobRequestSchema);
   if (step === undefined) {
     try {
       step = await newStep(row, input);
@@ -523,7 +492,7 @@ async function pickUp(job: Job<TimelineExecutionJobData>, token: string | undefi
     token,
     row,
     step,
-    endsAt: step.request.deadlineAt + 2 * getTimelineConfig().web_animation.poll_interval_ms,
+    endsAt: endsAtOf(step.request.deadlineAt),
   };
   if (row.status === "cancelling") return cancelling(pickup);
   return running(pickup);

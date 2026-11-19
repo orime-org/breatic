@@ -24,7 +24,7 @@ import {
 import { StillRunning } from "@worker/handlers/still-running.js";
 import { move } from "@worker/handlers/timeline/timeline-transition.js";
 import { cancelRenderJob, readRenderJob, submitRenderJob, type IngestAnswer } from "@worker/handlers/timeline/web-animation-ingest.js";
-import { chargeExecution, owns, type Held } from "@worker/handlers/timeline/web-animation-pickup.js";
+import { chargeExecution, ended, endsAtOf, owns, storedStep, type Ended, type Held } from "@worker/handlers/timeline/web-animation-pickup.js";
 
 /** The service an export's container use is recorded and charged under. */
 const RENDER_SERVICE = "cloudflare-container:web_animation_render";
@@ -43,38 +43,10 @@ interface RenderPickup extends Held {
 }
 
 /** A render report that ended; only these settle. */
-type EndedRender = WebAnimationRenderJobReport & { state: "done" | "failed" | "cancelled" | "expired" | "cancelled_before_submit" };
-
-const ENDED: ReadonlySet<WebAnimationRenderJobReport["state"]> = new Set(["done", "failed", "cancelled", "expired", "cancelled_before_submit"]);
+type EndedRender = Ended<WebAnimationRenderJobReport>;
 
 /** An ended report that carries nothing, for a job the Worker cannot run. */
 const DISABLED: EndedRender = { state: "failed", phase: null, progress: null, container: null, video: null, failureReason: "feature_disabled" };
-
-/**
- * Whether a render report ended.
- * @param report - The report.
- * @returns True for a terminal state.
- * @throws {never} Never.
- */
-function ended(report: WebAnimationRenderJobReport): report is EndedRender {
-  return ENDED.has(report.state);
-}
-
-/**
- * The render step a row already holds, read back through its schema so every attempt submits the same bytes.
- * @param steps - The row's steps.
- * @returns The step, or undefined when none was written yet.
- * @throws {never} Never.
- */
-function storedStep(steps: unknown[]): RenderStep | undefined {
-  for (const step of steps) {
-    const candidate = step as Partial<RenderStep> | null;
-    if (candidate?.kind !== "render_job") continue;
-    const request = webAnimationRenderJobRequestSchema.safeParse(candidate.request);
-    return request.success ? { kind: "render_job", request: request.data } : undefined;
-  }
-  return undefined;
-}
 
 /**
  * The render job an export runs, fixed from its frozen input and its source version.
@@ -251,12 +223,12 @@ async function running(pickup: RenderPickup): Promise<void> {
  */
 export async function runExport(held: Held, input: Extract<WebAnimationExecutionInput, { kind: "web_animation_export" }>): Promise<void> {
   const { row } = held;
-  let step = storedStep(row.steps);
+  let step = storedStep(row.steps, "render_job", webAnimationRenderJobRequestSchema);
   if (step === undefined) {
     step = await newStep(row, input);
     if (!(await timelineExecutionRepo.recordSteps({ id: row.id, fence: row.fence, steps: [step, ...row.steps] }))) return;
   }
-  const pickup: RenderPickup = { ...held, step, endsAt: step.request.deadlineAt + 2 * getTimelineConfig().web_animation.poll_interval_ms };
+  const pickup: RenderPickup = { ...held, step, endsAt: endsAtOf(step.request.deadlineAt) };
   if (row.status === "cancelling") return cancelling(pickup);
   return running(pickup);
 }

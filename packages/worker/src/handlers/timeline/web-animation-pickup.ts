@@ -3,11 +3,12 @@
 
 /**
  * What every pickup of a web-animation execution does, whatever container job it runs (inner#1711 design §5.3; #1490
- * design §6): take the row with a new attempt, re-check the job lock before each write, and charge actual use once.
+ * design §6): take the row with a new attempt, read back the job its steps fixed, wait for its report until two polls
+ * past the deadline, settle only an ended report, re-check the job lock before each write, and charge actual use once.
  */
 
 import type { Job } from "bullmq";
-import { db, getWorkerConfig, logger, timelineExecutionRepo, type TimelineExecutionJobData } from "@breatic/core";
+import { db, getTimelineConfig, getWorkerConfig, logger, timelineExecutionRepo, type TimelineExecutionJobData } from "@breatic/core";
 import { creditLotService, sumCreditsByOperationKeys, timelineOperationKey, toChargeCredits } from "@breatic/domain";
 import type { TimelineExecution } from "@breatic/shared";
 import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
@@ -18,6 +19,61 @@ export interface Held {
   job: Pick<Job<TimelineExecutionJobData>, "extendLock">;
   token: string | undefined;
   row: TimelineExecution;
+}
+
+/** The states a container job's report ends in. */
+type EndedState = "done" | "failed" | "cancelled" | "expired" | "cancelled_before_submit";
+
+const ENDED_STATES: ReadonlySet<string> = new Set<EndedState>(["done", "failed", "cancelled", "expired", "cancelled_before_submit"]);
+
+/** A report that ended; only these settle. */
+export type Ended<R extends { state: string }> = R & { state: EndedState };
+
+/**
+ * Whether a container job's report ended.
+ * @param report - The report.
+ * @returns True for a terminal state.
+ * @throws {never} Never.
+ */
+export function ended<R extends { state: string }>(report: R): report is Ended<R> {
+  return ENDED_STATES.has(report.state);
+}
+
+/** A job request's schema, as `storedStep` reads it. */
+type RequestSchema<R> = { safeParse(value: unknown): { success: true; data: R } | { success: false } };
+
+/**
+ * The job step of a kind a row already holds. Its request is read back through its schema, which also restores the
+ * field order jsonb does not keep, so every attempt submits the same bytes. Anything else a stored step carries beside
+ * its request is ignored.
+ * @param steps - The row's steps.
+ * @param kind - The step's kind.
+ * @param schema - The request's schema.
+ * @returns The step, or undefined when none was written yet or it no longer reads.
+ * @throws {never} Never.
+ */
+export function storedStep<K extends string, R>(
+  steps: unknown[],
+  kind: K,
+  schema: RequestSchema<R>,
+): { kind: K; request: R } | undefined {
+  for (const step of steps) {
+    const candidate = step as { kind?: unknown; request?: unknown } | null;
+    if (candidate?.kind !== kind) continue;
+    const request = schema.safeParse(candidate.request);
+    return request.success ? { kind, request: request.data } : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * When a job's last report is due: two polls past its deadline.
+ * @param deadlineAt - The job's deadline, epoch ms.
+ * @returns The time, epoch ms.
+ * @throws {never} Never.
+ */
+export function endsAtOf(deadlineAt: number): number {
+  return deadlineAt + 2 * getTimelineConfig().web_animation.poll_interval_ms;
 }
 
 /**
