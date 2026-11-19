@@ -229,24 +229,47 @@ export function DocumentSlashMenu({ editor }: DocumentSlashMenuProps): React.JSX
   React.useEffect(() => {
     // On the document, since the body may not be mounted yet: the capture
     // phase runs before ProseMirror's own `compositionend`, which writes the
-    // committed text in a microtask; two hops land after that write.
+    // committed text in a microtask; two hops land after that write. The
+    // capture phase also reads the selection at the composition's start,
+    // before the body's span selections take it away: a composition over a
+    // selection replaces it, and its trigger opens nothing.
+    let overSelection = false;
+    /**
+     * Whether an event comes from inside the body.
+     * @param event - The event.
+     * @returns True when the body holds its target.
+     */
+    const inBody = (event: Event): boolean => {
+      const dom = domElementOf(editor);
+      return dom !== null && event.target instanceof Node && dom.contains(event.target);
+    };
+    /**
+     * Notes whether a composition starts over a selection.
+     * @param event - The composition's start.
+     */
+    const onStart = (event: CompositionEvent): void => {
+      if (inBody(event)) overSelection = viewOf(editor)?.state.selection.empty === false;
+    };
     /**
      * Catches a trigger a composition ended with.
      * @param event - The composition's end.
      */
     const onEnd = (event: CompositionEvent): void => {
-      const dom = domElementOf(editor);
-      if (dom === null || !(event.target instanceof Node) || !dom.contains(event.target)) return;
+      if (!inBody(event)) return;
+      const replaced = overSelection;
+      overSelection = false;
       const trigger = SLASH_TRIGGERS.find((char) => event.data.endsWith(char));
-      if (trigger === undefined) return;
+      if (replaced || trigger === undefined) return;
       queueMicrotask(() => {
         queueMicrotask(() => {
           openAfterComposition(editor, menu, trigger);
         });
       });
     };
+    document.addEventListener('compositionstart', onStart, true);
     document.addEventListener('compositionend', onEnd, true);
     return () => {
+      document.removeEventListener('compositionstart', onStart, true);
       document.removeEventListener('compositionend', onEnd, true);
     };
   }, [editor, menu]);

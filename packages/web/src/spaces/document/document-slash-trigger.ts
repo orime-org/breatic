@@ -27,31 +27,20 @@ function leafText(leaf: PMNode): string {
 }
 
 /**
- * Whether a trigger typed into a text selection may open the menu: where the
- * caret, or the start of the words the trigger replaces, is at the start of a
- * line or after whitespace. Read before the trigger is inserted.
+ * Whether a trigger typed at the caret may open the menu: where the caret is
+ * at the start of a line or after whitespace. A trigger typed over a
+ * selection replaces it as any other character does. Read before the
+ * trigger is inserted.
  * @param tr - A transaction on the state the trigger is typed into.
  * @returns True when the menu may open.
  */
 export function slashMayOpen(tr: Transaction): boolean {
-  if (!(tr.selection instanceof TextSelection)) return false;
-  const { $from } = tr.selection;
-  if ($from.parentOffset === 0) return true;
+  const $cursor = tr.selection instanceof TextSelection ? tr.selection.$cursor : null;
+  if ($cursor === null) return false;
+  if ($cursor.parentOffset === 0) return true;
   // A line break made by Shift+Enter starts a line as a block start does.
-  const before = $from.parent.textBetween($from.parentOffset - 1, $from.parentOffset, undefined, leafText);
+  const before = $cursor.parent.textBetween($cursor.parentOffset - 1, $cursor.parentOffset, undefined, leafText);
   return /\s/u.test(before);
-}
-
-/**
- * Whether typed text is a trigger that opens the slash menu where it is
- * typed. Plugins that take typed text over their own selections leave such
- * a trigger to the menu, which inserts it through the same selection.
- * @param state - The editor state the text is typed into.
- * @param text - The typed text.
- * @returns True when the menu takes it.
- */
-export function slashTakesTrigger(state: EditorState, text: string): boolean {
-  return SLASH_TRIGGERS.includes(text) && slashMayOpen(state.tr);
 }
 
 /**

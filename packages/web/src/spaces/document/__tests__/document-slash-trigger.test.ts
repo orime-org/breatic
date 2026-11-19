@@ -73,15 +73,15 @@ describe('where a trigger may open the menu', () => {
     expect(slashMayOpen(caretIn('苹果', 2).prosemirrorView.state.tr)).toBe(false);
   });
 
-  it('reads a selection the trigger replaces by what stands before it', () => {
+  it('stays closed over any selection the trigger replaces', () => {
     const select = (text: string, start: number, end: number): boolean => {
       const view = caretIn(text, 0).prosemirrorView;
       const from = view.state.selection.from;
       view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from + start, from + end)));
       return slashMayOpen(view.state.tr);
     };
-    expect(select('words', 0, 3)).toBe(true);
-    expect(select('say hello', 4, 9)).toBe(true);
+    expect(select('words', 0, 3)).toBe(false);
+    expect(select('say hello', 4, 9)).toBe(false);
     expect(select('words', 2, 4)).toBe(false);
   });
 

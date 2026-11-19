@@ -23,6 +23,7 @@ import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote
 import { pendingBlock, type FileUploads } from '@web/spaces/document/document-uploads';
 import { DocumentMediaPicker } from '@web/spaces/document/DocumentMediaPicker';
 import { DocumentSlashMenu } from '@web/spaces/document/DocumentSlashMenu';
+import { extendToBodyEdge } from '@web/spaces/document/document-body-edge-selection';
 import { columnsBlock, para } from '@web/spaces/document/__tests__/column-fixtures';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
@@ -667,12 +668,36 @@ function selectBetween(editor: Editor, anchor: number, head: number): void {
   });
 }
 
+/** Every text in the document, in order, with the marks it carries. */
+function marked(editor: Editor): string[] {
+  const out: string[] = [];
+  editor.prosemirrorState.doc.descendants((node: PMNode) => {
+    if (node.isText) out.push(`${node.text}[${node.marks.map((mark) => mark.type.name).join(',')}]`);
+    return true;
+  });
+  return out;
+}
+
 describe('a trigger typed over a selection (design 5.1)', () => {
-  it('opens the menu over a selection run across columns from a line start', () => {
-    const { editor } = open([columnsBlock(['hello'], ['world'])]);
-    selectBetween(editor, textAt(editor, 'hello', 0), textAt(editor, 'world', 3));
+  it('types a plain slash over words selected after a space, with no menu', () => {
+    const { editor } = open([para('say hello')]);
+    const id = read(editor)[0]!.id;
+    selectBetween(editor, textAt(editor, 'say hello', 4), textAt(editor, 'say hello', 9));
     type(editor, '/');
-    expect(menu()).not.toBeNull();
+    expect(textOf(editor, id)).toBe('say /');
+    expect(menu()).toBeNull();
+  });
+
+  it('types a slash over a selection run across columns from a line start as any letter, with no menu', () => {
+    const typed = (char: string): string[] => {
+      const { editor } = open([columnsBlock(['hello'], ['world'])]);
+      selectBetween(editor, textAt(editor, 'hello', 0), textAt(editor, 'world', 3));
+      type(editor, char);
+      return marked(editor).map((text) => text.replace(char, '?'));
+    };
+    expect(typed('x')).toEqual(['?ld[]']);
+    expect(typed('/')).toEqual(['?ld[]']);
+    expect(menu()).toBeNull();
   });
 
   it('types the slash over a selection run across columns from inside a word, with no menu', () => {
@@ -680,34 +705,50 @@ describe('a trigger typed over a selection (design 5.1)', () => {
     selectBetween(editor, textAt(editor, 'hello', 2), textAt(editor, 'world', 3));
     type(editor, '/');
     expect(menu()).toBeNull();
-    let typed = '';
-    editor.prosemirrorState.doc.descendants((node: PMNode) => {
-      if (node.isText) typed += node.text;
-      return true;
-    });
-    expect(typed).toBe('he/ld');
+    expect(marked(editor)).toEqual(['he/[]', 'ld[]']);
   });
 
-  it('opens the menu over a selection that takes a table whole, from a line start', () => {
+  it('types a plain slash over a selection that takes a table whole, with no menu', () => {
     const { editor } = open([para('lead'), tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }), para('below')]);
     selectBetween(editor, textAt(editor, 'lead', 0), textAt(editor, 'a2', 1));
     type(editor, '/');
     expect(read(editor).some((block) => block.type === 'docTable')).toBe(false);
-    expect(menu()).not.toBeNull();
+    expect(menu()).toBeNull();
   });
 
-  it('opens the menu where the replaced words began after a space', () => {
-    const { editor } = open([para('say hello')]);
-    const id = read(editor)[0]!.id;
-    caretAtEnd(editor, id);
+  it('types a slash with no marks over a selection starting in a table, as any letter there', () => {
+    const bold = { blocks: [{ type: 'paragraph', content: [{ type: 'text', text: 'a1', styles: { bold: true } }] }] };
+    const { editor } = open([tableBlock({ rows: [{ cells: [bold as never, 'b1'] }] }), para('below')]);
+    selectBetween(editor, textAt(editor, 'a1', 0), textAt(editor, 'below', 2));
+    type(editor, '/');
+    expect(menu()).toBeNull();
+    expect(marked(editor)).toEqual(['/low[]']);
+  });
+
+  it('types a plain slash over a selection dragged to the end of the body, with no menu', () => {
+    const { editor } = open([para('first'), para('hello'), para('')]);
     const view = editor.prosemirrorView!;
     act(() => {
-      const end = view.state.selection.from;
-      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end - 5, end)));
+      view.dispatch(view.state.tr.setSelection(extendToBodyEdge(view.state.doc, textAt(editor, 'hello', 0), 'end')));
     });
     type(editor, '/');
-    expect(textOf(editor, id)).toBe('say /');
-    expect(menu()).not.toBeNull();
+    expect(menu()).toBeNull();
+    expect(marked(editor)).toEqual(['first[]', '/[]']);
+  });
+
+  it('opens nothing for a trigger an input method commits over selected words', async () => {
+    const { editor } = open([para('say hello')]);
+    const id = read(editor)[0]!.id;
+    selectBetween(editor, textAt(editor, 'say hello', 4), textAt(editor, 'say hello', 9));
+    const view = editor.prosemirrorView!;
+    await act(async () => {
+      view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }));
+      view.dispatch(view.state.tr.insertText('\u3001'));
+      view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '\u3001' }));
+      for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+    });
+    expect(textOf(editor, id)).toBe('say \u3001');
+    expect(menu()).toBeNull();
   });
 });
 
