@@ -174,4 +174,3 @@ describe("extractPromptText — time in proportion to the text", () => {
     expect(extractPromptText("a <!-- one --> b <!-- two")).toBe("a b <!-- two");
   });
 });
-
