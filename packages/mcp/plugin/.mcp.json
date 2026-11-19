@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "breatic": {
+      "type": "http",
+      "url": "${BREATIC_MCP_URL:-https://breatic.ai/mcp}"
+    }
+  }
+}

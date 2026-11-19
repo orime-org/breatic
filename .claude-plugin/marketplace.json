@@ -1,0 +1,12 @@
+{
+  "name": "breatic",
+  "owner": { "name": "Orime, Inc.", "url": "https://breatic.ai" },
+  "description": "The breatic plugin: the breatic MCP server and the skills for working in breatic projects.",
+  "plugins": [
+    {
+      "name": "breatic",
+      "source": "./packages/mcp/plugin",
+      "description": "Work in breatic projects from your agent: canvases, documents, generation, uploads and the comments handed to you."
+    }
+  ]
+}

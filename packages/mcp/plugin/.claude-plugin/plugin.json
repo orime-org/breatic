@@ -1,0 +1,11 @@
+{
+  "name": "breatic",
+  "displayName": "breatic",
+  "version": "0.1.0",
+  "description": "Work in breatic projects from your agent: read and change canvases and documents, generate with breatic's models, upload what you make on your machine, and answer the comments people hand to you.",
+  "author": { "name": "Orime, Inc.", "url": "https://breatic.ai" },
+  "homepage": "https://breatic.ai",
+  "repository": "https://github.com/orime-org/breatic",
+  "license": "AGPL-3.0-only",
+  "keywords": ["breatic", "canvas", "content creation", "mcp"]
+}
