@@ -375,7 +375,12 @@ export { getRateLimit, rateLimitsConfigSchema } from "@core/config/rate-limits.j
 export { createRunOnce, type RunContext, type RunOnceDeps, type RunOnceEvent } from "@core/http/run-once.js";
 export { getRunningLeaseMs, idempotencyConfigSchema } from "@core/config/idempotency.js";
 export { createAfterReply, type AfterReply, type AfterReplyDeps } from "@core/http/after-reply.js";
-export { createInternalAuth, type InternalAuthDeps, type InternalAuthEvent } from "@core/http/internal-auth.js";
+export {
+  createInternalAuth,
+  type InternalAuthDeps,
+  type InternalAuthEvent,
+  type SignerSecrets,
+} from "@core/http/internal-auth.js";
 export { createErrorHandler, type ErrorHandlerEvent } from "@core/http/error-handler.js";
 export { createInternalErrorHandler, type InternalErrorHandlerDeps } from "@core/http/internal-errors.js";
 export { createLogRequest, type InternalRequestLine } from "@core/http/log-request.js";

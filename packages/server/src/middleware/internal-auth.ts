@@ -14,12 +14,21 @@ import { createInternalAuth, env, getRedis, logger, type InternalAuthEvent } fro
  * @param event - What the authentication saw.
  */
 function report(event: InternalAuthEvent): void {
-  if (event.kind === "rejected") logger.warn({ step: event.step, path: event.path }, "internal_auth_rejected");
-  else logger.error({ err: event.err }, "internal_nonce_unavailable");
+  switch (event.kind) {
+    case "rejected":
+      logger.warn({ step: event.step, path: event.path }, "internal_auth_rejected");
+      return;
+    case "forbidden":
+      logger.warn({ signer: event.signer, path: event.path }, "internal_auth_forbidden");
+      return;
+    case "nonce_unavailable":
+      logger.error({ err: event.err }, "internal_nonce_unavailable");
+  }
 }
 
 export const internalAuth = createInternalAuth({
-  secrets: () => ({ current: env.INTERNAL_API_SECRET, previous: env.INTERNAL_API_SECRET_PREVIOUS }),
+  secretsFor: () => ({ current: env.INTERNAL_API_SECRET, previous: env.INTERNAL_API_SECRET_PREVIOUS }),
+  mayAccess: () => true,
   redis: getRedis,
   keyPrefix: () => env.ENV,
   report,
