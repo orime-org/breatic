@@ -10,6 +10,7 @@
  */
 
 import type Stripe from "stripe";
+import type * as RecordingService from "@server/modules/stripe-webhook/recording.service.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocked = vi.hoisted(() => ({
@@ -20,7 +21,7 @@ const mocked = vi.hoisted(() => ({
 }));
 
 vi.mock("@server/modules/stripe-webhook/recording.service.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@server/modules/stripe-webhook/recording.service.js")>()),
+  ...(await importOriginal<typeof RecordingService>()),
   startWebhookAttempt: (...args: unknown[]) => {
     mocked.order.push("start");
     return mocked.start(...args);
