@@ -20,6 +20,10 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
   ["referralBindings", "a binding is permanent by the promoter terms; commissions are computed from it"],
   ["referralOperations", "immutable back-office decisions retain their idempotency keys permanently; deleting one would let a replay act twice"],
   ["payments", "append-only financial record; deleting one breaks the audit trail"],
+  ["paymentReceipts", "immutable receipt of a completed payment (0128, inner#1993); a lot's source points at it, so removing one hides where credits already issued came from"],
+  ["commerceRequests", "immutable record of a billing-service write and its answer (0128, inner#1993); removing one would let a replay of the same key act a second time"],
+  ["commerceOutbox", "internal transactional-outbox queue (0128, inner#1993), like projectLifecycleOutbox: appended in a business transaction, marked sent by the relay, retained as an audit trail"],
+  ["commerceOutboxDeadLetters", "outbox rows refused for good (0128, inner#1993), kept for a person to resolve; a deleted one is an event that silently never happened"],
   [
     "membershipTierChanges",
     "append-only ledger of tier moves, the same carve-out as payments above: the column on users holds the current tier and every change to it is appended here, so deleting a row leaves a history that no longer adds up to the value on the account",

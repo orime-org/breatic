@@ -1270,6 +1270,29 @@ export const creditGifts = pgTable("credit_gifts", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [foreignKey({ name: "credit_gifts_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict")]);
 
+/**
+ * The product's record of a completed payment (inner#1993 §4.2): written when
+ * the billing service grants the payment, shaped like the gift and
+ * compensation receipts so a lot's source reads without the billing tables.
+ * CHECKs, the backfill and the index live in 0128.
+ */
+export const paymentReceipts = pgTable("payment_receipts", {
+  id: uuid("id").primaryKey(),
+  sourceKind: varchar("source_kind", { length: 16 }).default("payment").notNull(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  amountCents: integer("amount_cents").notNull(),
+  taxCents: integer("tax_cents"),
+  totalCents: integer("total_cents"),
+  currency: varchar("currency", { length: 10 }).notNull(),
+  creditsGranted: numeric("credits_granted", { precision: 20, scale: 6 }).notNull(),
+  /** When the payment was ordered; the purchase history sorts by it. */
+  orderedAt: timestamp("ordered_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("payment_receipts_user_ordered_idx").on(table.userId, table.orderedAt, table.id),
+  foreignKey({ name: "payment_receipts_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict"),
+]);
+
 export const payments = pgTable(
   "payments",
   {
@@ -2506,6 +2529,59 @@ export const projectLifecycleOutbox = pgTable(
       .where(sql`${table.sentAt} IS NULL`),
   ],
 );
+
+/**
+ * One write the billing service asked of the product, claimed in the same
+ * transaction as the write and holding its answer, so a repeat of the key
+ * replays it (inner#1993 §3.3). The status CHECK lives in 0128.
+ */
+export const commerceRequests = pgTable("commerce_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  kind: text("kind").notNull(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  status: text("status").$type<"applied" | "refused">().notNull(),
+  answer: jsonb("answer").$type<unknown>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * Events for the billing service, appended in the business transaction and
+ * sent by the relay (inner#1993 §5.1). `id` is the delivery id the receiver
+ * keys on; `seq` orders the rows of one aggregate.
+ */
+export const commerceOutbox = pgTable(
+  "commerce_outbox",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    seq: bigint("seq", { mode: "bigint" }).generatedAlwaysAsIdentity().notNull().unique(),
+    aggregateKey: text("aggregate_key").notNull(),
+    type: text("type").notNull(),
+    payload: jsonb("payload").$type<unknown>().notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).defaultNow().notNull(),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("commerce_outbox_unsent_idx").on(table.aggregateKey, table.seq).where(sql`${table.sentAt} IS NULL`),
+  ],
+);
+
+/** Outbox rows the billing service refused for good, kept for a person to look at. */
+export const commerceOutboxDeadLetters = pgTable("commerce_outbox_dead_letters", {
+  id: uuid("id").primaryKey(),
+  seq: bigint("seq", { mode: "bigint" }).notNull().unique(),
+  aggregateKey: text("aggregate_key").notNull(),
+  type: text("type").notNull(),
+  payload: jsonb("payload").$type<unknown>().notNull(),
+  attempts: integer("attempts").notNull(),
+  lastError: text("last_error"),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  failedAt: timestamp("failed_at", { withTimezone: true }).defaultNow().notNull(),
+});
 
 // ── Notifications ──────────────────────────────────────────────────
 //
