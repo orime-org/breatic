@@ -745,6 +745,18 @@ export {
   type UploadStatusResult,
 } from "@shared/upload/upload-status.js";
 export { uprightKeyFor, type UprightCopy } from "@shared/upload/upright.js";
+export {
+  chooseFrameGridRate, isVariableFrameRate, medianFrameRate, needsEditFile, snapFrameRate, sourceDecodeKey, trimmedMeanFrameRate,
+  SOURCE_DECODE_KEYS,
+  type DecodeKeySource, type EditFileFacts, type FrameGridRate, type FrameGridRateInput, type FrameGridRateStep,
+  type FrameGridScanReason, type FrameRate, type SourceDecodeKey, type VariableFrameRateFacts,
+} from "@shared/upload/frame-grid-rate.js";
+export {
+  audioGridEnd, decodePrerollFrames, gridFilterChain, gridFrameTime, gridLandingLate, gridRangeFrames, gridRangeTimes,
+  gridSeekPosition, planFrameGrid, sourceKeyframeStats,
+  type AudioLastPacket, type DecodePrerollInput, type FrameGrid, type FrameGridInput, type GridFrameRange, type GridLanding,
+  type GridSeekInput, type GridTimeRange, type SeekGrid, type SourceKeyframeStats, type SourcePacket,
+} from "@shared/upload/frame-grid.js";
 // Why a task failed, as a code rather than a sentence: the writer is a server
 // and the reader is whoever opens the list, in their own language.
 export {

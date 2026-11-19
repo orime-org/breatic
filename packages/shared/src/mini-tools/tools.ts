@@ -824,3 +824,13 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     prompt: { placeholderKey: key("audio.extend", "prompt") },
   },
 ];
+
+/**
+ * The task type a planned tool's task row is opened with: the two frame tools produce a picture, every other planned
+ * tool a video (frames-split design §5.5 "计划形状").
+ * @param tool - The planned tool id.
+ * @returns The task type.
+ */
+export function miniToolTaskType(tool: string): "image" | "video" {
+  return tool === "video.extract-frames" || tool === "video.focus-crop" ? "image" : "video";
+}
