@@ -258,9 +258,9 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
             const atCap = !former && member.effective !== null && Number(member.spent) >= Number(member.effective);
             return (
               <tr key={member.userId} className={former ? 'border-t border-border text-muted-foreground' : 'border-t border-border'}>
-                <td className='max-w-48 py-2.5'>
+                <td className='max-w-40 py-2.5 pr-3'>
                   <span className='flex min-w-0 items-center gap-2'>
-                    <StudioAvatar name={nameOf.get(member.userId) ?? '—'} type='personal' avatarUrl={avatarOf.get(member.userId) ?? null} size='sm' />
+                    <StudioAvatar name={nameOf.get(member.userId) ?? '—'} type='personal' avatarUrl={avatarOf.get(member.userId) ?? null} size='xs' />
                     <span className='truncate'>{nameOf.get(member.userId) ?? '—'}</span>
                     {member.userId === selfId ? <span className='shrink-0 text-xs text-muted-foreground'>{t('members.modal.isMe')}</span> : null}
                   </span>
@@ -279,7 +279,7 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
                 <td className='text-right'>
                   {former ? null : (
                     // Set own limit stays at the row's right edge, so it lines up down the table.
-                    <span className='inline-flex gap-1 whitespace-nowrap'>
+                    <span className='flex flex-wrap justify-end gap-1'>
                       {member.override === null ? null : (
                         <Button size='compact' variant='ghost' loading={restoring.isPending(member.userId)} onClick={() => void restore(member.userId)}>
                           {t(`${KEY}.restoreDefault`)}
