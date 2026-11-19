@@ -291,7 +291,9 @@ async function cheapestTier(): Promise<void> {
     // Quality sits in the same popover as resolution, so it is picked before the popover closes.
     const quality = page.locator('[data-testid^="generate-param-quality-option-"]');
     if ((await quality.count()) > 0) await quality.first().click();
-    await trigger.click();
+    // The open popover can sit over its own trigger, so it is closed the way a user dismisses it.
+    await page.keyboard.press('Escape');
+    await expect(trigger).toHaveAttribute('data-state', 'closed');
   }
 }
 
