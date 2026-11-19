@@ -454,6 +454,26 @@ describe("assertStorageAllowance — telling the admin", () => {
     `;
   }
 
+  // inner#1968: an active agreement caps storage, and its admin has no upgrade
+  // to buy, so the mail ends on the agreement's sentence.
+  it("ends the mail on the agreement for an admin whose enterprise agreement is full", async () => {
+    const { userId, personalStudioId } = await insertUser("enterprise");
+    await sql`
+      INSERT INTO enterprise_memberships (user_id, expires_at, entry_timezone, contract_number, team_studios, projects_per_studio,
+        concurrent_editors, studio_members, project_members, storage_bytes, fallback_tier, revision, running_tasks_per_user)
+      VALUES (${userId}, now() + interval '30 days', 'UTC', 'TEST-SQ-1968', 8, 20, 30, 200, 80, 1024, 'base', 1, 10)
+    `;
+    const projectId = await insertProject(personalStudioId, userId);
+    await seedAsset(personalStudioId, userId, 2048);
+
+    await expect(assertStorageAllowance(projectId, "upload")).rejects.toMatchObject({ statusCode: 507 });
+
+    expect(sentMail).toHaveBeenCalledTimes(1);
+    const [mail] = sentMail.mock.calls[0] as [{ text: string }];
+    expect(mail.text).toContain("Your storage is set by your agreement. Contact us to change it.");
+    expect(mail.text).not.toContain("Raise your membership");
+  });
+
   it("puts a row in the admin's bell and sends the mail", async () => {
     const { adminUserId, adminEmail, studioId, studioName, projectId } =
       await fullAccount();
