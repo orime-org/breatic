@@ -76,6 +76,10 @@ const FROZEN_TERMS: ReadonlyArray<readonly [string, string]> = [
  * decisions and its role hints and per-kind request lines lost their reader.
  */
 const REMOVED_DEAD_KEYS: readonly string[] = [
+  // Handing a thread to an external agent shows the thread's own label; a
+  // refused write is told by the size gate (#1488 design 11.7).
+  'commentHandover.handedOver',
+  'commentHandover.writeFailed',
   // Finishing an upload answers 202 and its ending reaches the page through
   // the upload status query, which names the reason (inner#1367).
   'server.error.upload_empty',

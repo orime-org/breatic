@@ -4094,9 +4094,7 @@
     "expiredToken": "{name} expired, won't answer",
     "expiredTokenHint": "Hand it over again after reconnecting",
     "disconnected": "{name} disconnected, won't answer",
-    "replied": "{name} replied",
-    "handedOver": "Handed to {name}",
-    "writeFailed": "Couldn't hand it over"
+    "replied": "{name} replied"
   },
   "commentLink": {
     "gone": "This comment is no longer here"

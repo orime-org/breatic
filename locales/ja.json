@@ -4094,9 +4094,7 @@
     "expiredToken": "{name} の期限切れ。対応しません",
     "expiredTokenHint": "再接続してからもう一度任せてください",
     "disconnected": "{name} は切断済み。対応しません",
-    "replied": "{name} が返信",
-    "handedOver": "{name} に任せました",
-    "writeFailed": "任せられませんでした"
+    "replied": "{name} が返信"
   },
   "commentLink": {
     "gone": "このコメントはもうありません"

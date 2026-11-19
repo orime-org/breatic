@@ -4094,9 +4094,7 @@
     "expiredToken": "{name} 已过期，不会处理",
     "expiredTokenHint": "重新连接后再交一次",
     "disconnected": "{name} 已断开，不会处理",
-    "replied": "{name} 回复",
-    "handedOver": "已交给 {name}",
-    "writeFailed": "没能交出"
+    "replied": "{name} 回复"
   },
   "commentLink": {
     "gone": "这条批注已不在了"

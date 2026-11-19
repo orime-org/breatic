@@ -4094,9 +4094,7 @@
     "expiredToken": "{name} 만료됨, 처리하지 않습니다",
     "expiredTokenHint": "다시 연결한 뒤 한 번 더 맡기세요",
     "disconnected": "{name} 연결 끊김, 처리하지 않습니다",
-    "replied": "{name} 답글",
-    "handedOver": "{name}에게 맡겼습니다",
-    "writeFailed": "맡기지 못했습니다"
+    "replied": "{name} 답글"
   },
   "commentLink": {
     "gone": "이 댓글은 더 이상 없습니다"
