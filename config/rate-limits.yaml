@@ -177,9 +177,10 @@ promoter-apply: { max: 5, window_seconds: 3600 }
 # adds a handful of keys and refreshes a balance now and then.
 byok-key-write: { max: 10, window_seconds: 600 }
 byok-key-check: { max: 30, window_seconds: 600 }
-# Pointing a model at an upstream writes a row each time it changes; a person
-# sets a few models at a sitting.
-byok-model-write: { max: 60, window_seconds: 600 }
+# Pointing a model at an upstream writes a row each time it changes, one model
+# per request. One key opens every model its upstream runs (WaveSpeed about 70),
+# so a window lets a person switch them all and back, with room to compare.
+byok-model-write: { max: 300, window_seconds: 600 }
 
 # Starting a conversation and creating a project (inner#1490, post-auth,
 # user-keyed). Each call writes a row, and its run-once record is kept in
