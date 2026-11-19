@@ -60,12 +60,7 @@ import { StillRunning } from "@worker/handlers/still-running.js";
 import { move } from "@worker/handlers/timeline/timeline-transition.js";
 import { runExport } from "@worker/handlers/timeline/web-animation-export.js";
 import { chargeExecution, ended, endsAtOf, owns, storedStep, take, type Ended, type Held } from "@worker/handlers/timeline/web-animation-pickup.js";
-import {
-  cancelWebAnimationJob,
-  readWebAnimationJob,
-  submitWebAnimationJob,
-  type IngestAnswer,
-} from "@worker/handlers/timeline/web-animation-ingest.js";
+import { creationJobs, type IngestAnswer } from "@worker/handlers/timeline/web-animation-ingest.js";
 
 /** The step that fixes an execution's container job, written before its first submission. */
 interface JobStep {
@@ -411,7 +406,7 @@ async function noteProgress(pickup: Pickup, report: WebAnimationJobReport): Prom
  * @throws {Error} When a write fails.
  */
 async function cancelling(pickup: Pickup): Promise<void> {
-  const answer = await cancelWebAnimationJob(pickup.step.request.jobId, { deadlineAt: pickup.step.request.deadlineAt }, pickup.endsAt);
+  const answer = await creationJobs.cancel(pickup.step.request.jobId, { deadlineAt: pickup.step.request.deadlineAt }, pickup.endsAt);
   if (answer.kind === "disabled") return featureDisabled(pickup);
   if (answer.kind === "report" && ended(answer.report)) return settle(pickup, answer.report, { type: "cancelAck" });
   throw new StillRunning(Date.now() + getTimelineConfig().web_animation.poll_interval_ms);
@@ -427,14 +422,14 @@ async function cancelling(pickup: Pickup): Promise<void> {
 async function running(pickup: Pickup): Promise<void> {
   const { step: { request }, endsAt } = pickup;
   const poll = getTimelineConfig().web_animation.poll_interval_ms;
-  let answer: IngestAnswer = await readWebAnimationJob(request.jobId, endsAt);
+  let answer: IngestAnswer = await creationJobs.read(request.jobId, endsAt);
   if (answer.kind === "missing") {
     // The Worker holds no job, so it never ran; past the deadline it is not started.
     if (Date.now() >= request.deadlineAt) {
       if (await owns(pickup)) await move(pickup.row, { type: "deadline" });
       return;
     }
-    answer = await submitWebAnimationJob(request, endsAt);
+    answer = await creationJobs.submit(request, endsAt);
     if (answer.kind === "unavailable") logger.warn({ executionId: pickup.row.id, jobId: request.jobId }, "web_animation_container_start_refused");
   }
   if (answer.kind === "disabled") return featureDisabled(pickup);
@@ -443,7 +438,7 @@ async function running(pickup: Pickup): Promise<void> {
   if (report !== null && ended(report)) return finish(pickup, report);
   if (Date.now() >= endsAt) {
     // Out of time and still going: stop it, and read its ending on a later pickup.
-    const stopped = await cancelWebAnimationJob(request.jobId, { deadlineAt: request.deadlineAt }, endsAt);
+    const stopped = await creationJobs.cancel(request.jobId, { deadlineAt: request.deadlineAt }, endsAt);
     if (stopped.kind === "disabled") return featureDisabled(pickup);
     if (stopped.kind === "report" && ended(stopped.report)) return finish(pickup, stopped.report);
   } else if (report !== null) {

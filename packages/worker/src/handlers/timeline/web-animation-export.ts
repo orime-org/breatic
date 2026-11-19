@@ -23,7 +23,7 @@ import {
 } from "@breatic/shared/space-content";
 import { StillRunning } from "@worker/handlers/still-running.js";
 import { move } from "@worker/handlers/timeline/timeline-transition.js";
-import { cancelRenderJob, readRenderJob, submitRenderJob, type IngestAnswer } from "@worker/handlers/timeline/web-animation-ingest.js";
+import { renderJobs, type IngestAnswer } from "@worker/handlers/timeline/web-animation-ingest.js";
 import { chargeExecution, ended, endsAtOf, owns, storedStep, type Ended, type Held } from "@worker/handlers/timeline/web-animation-pickup.js";
 
 /** The service an export's container use is recorded and charged under. */
@@ -178,7 +178,7 @@ async function finish(pickup: RenderPickup, report: EndedRender): Promise<void> 
  */
 async function cancelling(pickup: RenderPickup): Promise<void> {
   const { request } = pickup.step;
-  const answer = await cancelRenderJob(request.jobId, { deadlineAt: request.deadlineAt }, pickup.endsAt);
+  const answer = await renderJobs.cancel(request.jobId, { deadlineAt: request.deadlineAt }, pickup.endsAt);
   if (answer.kind === "disabled" || answer.kind === "unconfigured") return settle(pickup, DISABLED, { type: "failure", fence: pickup.row.fence, reason: "feature_disabled" });
   if (answer.kind === "report" && ended(answer.report)) return settle(pickup, answer.report, { type: "cancelAck" });
   throw new StillRunning(Date.now() + getTimelineConfig().web_animation.poll_interval_ms);
@@ -193,20 +193,20 @@ async function cancelling(pickup: RenderPickup): Promise<void> {
  */
 async function running(pickup: RenderPickup): Promise<void> {
   const { step: { request }, endsAt, row } = pickup;
-  let answer: IngestAnswer<WebAnimationRenderJobReport> = await readRenderJob(request.jobId, endsAt);
+  let answer: IngestAnswer<WebAnimationRenderJobReport> = await renderJobs.read(request.jobId, endsAt);
   if (answer.kind === "missing") {
     if (Date.now() >= request.deadlineAt) {
       if (await owns(pickup)) await move(row, { type: "deadline" });
       return;
     }
-    answer = await submitRenderJob(request, endsAt);
+    answer = await renderJobs.submit(request, endsAt);
     if (answer.kind === "unavailable") logger.warn({ executionId: row.id, jobId: request.jobId }, "web_animation_render_container_start_refused");
   }
   if (answer.kind === "disabled" || answer.kind === "unconfigured") return settle(pickup, DISABLED, { type: "failure", fence: row.fence, reason: "feature_disabled" });
   const report = answer.kind === "report" ? answer.report : null;
   if (report !== null && ended(report)) return finish(pickup, report);
   if (Date.now() >= endsAt) {
-    const stopped = await cancelRenderJob(request.jobId, { deadlineAt: request.deadlineAt }, endsAt);
+    const stopped = await renderJobs.cancel(request.jobId, { deadlineAt: request.deadlineAt }, endsAt);
     if (stopped.kind === "report" && ended(stopped.report)) return finish(pickup, stopped.report);
   } else if (report !== null && report.phase !== null && report.phase !== row.phase) {
     await move(row, { type: "progress", fence: row.fence, phase: report.phase });

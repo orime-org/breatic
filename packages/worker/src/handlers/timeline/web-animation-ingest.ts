@@ -93,95 +93,57 @@ async function ask<R>(route: string, url: string, init: RequestInit, endsAt: num
   return { kind: "report", report: report.data };
 }
 
+/** Submit, read and cancel one job class's jobs. */
+interface JobCalls<Q, R> {
+  /** Submit a job; submitting the same id again answers the job that holds it. */
+  submit(request: Q, endsAt: number): Promise<IngestAnswer<R>>;
+  /** Read a job's report. */
+  read(jobId: string, endsAt: number): Promise<IngestAnswer<R>>;
+  /** Ask a job to stop; with no job yet, the Worker keeps a pre-submit cancel marker until `deadlineAt`. */
+  cancel(jobId: string, body: WebAnimationJobCancel, endsAt: number): Promise<IngestAnswer<R>>;
+}
+
 /**
- * The address of one job.
- * @param containerClass - The container class it runs on.
- * @param jobId - The job.
- * @returns Its route.
+ * The calls of one container class. A job cancelled before any submit answers its submit with 410, read here as that
+ * cancel's report.
+ * @param containerClass - The container class the jobs run on.
+ * @param reportSchema - The report schema of the class's jobs.
+ * @param cancelledBeforeSubmit - The report a 410 on submit stands for.
+ * @returns The calls; each throws {@link IngestJobError} on any refusal other than those {@link IngestAnswer} names.
  * @throws {never} Never.
  */
-function jobUrl(containerClass: string, jobId: string): string {
-  return `${env.INGEST_BASE_URL}/jobs/${containerClass}/${encodeURIComponent(jobId)}`;
+function jobCalls<Q, R>(containerClass: string, reportSchema: ReportReader<R>, cancelledBeforeSubmit: R): JobCalls<Q, R> {
+  /**
+   * The address of one job.
+   * @param jobId - The job.
+   * @returns Its route.
+   * @throws {never} Never.
+   */
+  const jobUrl = (jobId: string): string => `${env.INGEST_BASE_URL}/jobs/${containerClass}/${encodeURIComponent(jobId)}`;
+  return {
+    submit: async (request, endsAt) => {
+      try {
+        return await ask(`submit ${containerClass}`, `${env.INGEST_BASE_URL}/jobs`, { method: "POST", body: JSON.stringify(request) }, endsAt, reportSchema);
+      } catch (err) {
+        if (!(err instanceof IngestJobError && err.status === 410)) throw err;
+        return { kind: "report", report: cancelledBeforeSubmit };
+      }
+    },
+    read: (jobId, endsAt) => ask(`read ${containerClass}`, jobUrl(jobId), { method: "GET" }, endsAt, reportSchema),
+    cancel: (jobId, body, endsAt) => ask(`cancel ${containerClass}`, `${jobUrl(jobId)}/cancel`, { method: "POST", body: JSON.stringify(body) }, endsAt, reportSchema),
+  };
 }
 
-/**
- * Submit a job; submitting the same id again answers the job that holds it. A job cancelled before any submit
- * answers 410, read here as that cancel's report.
- * @param request - The job.
- * @param endsAt - When its last report is due.
- * @returns The answer.
- * @throws {IngestJobError} On any other refusal.
- */
-export async function submitWebAnimationJob(request: WebAnimationJobRequest, endsAt: number): Promise<IngestAnswer> {
-  try {
-    return await ask("submit", `${env.INGEST_BASE_URL}/jobs`, { method: "POST", body: JSON.stringify(request) }, endsAt, webAnimationJobReportSchema);
-  } catch (err) {
-    if (!(err instanceof IngestJobError && err.status === 410)) throw err;
-    return {
-      kind: "report",
-      report: { state: "cancelled_before_submit", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: null },
-    };
-  }
-}
+/** The creation container's jobs. */
+export const creationJobs = jobCalls<WebAnimationJobRequest, WebAnimationJobReport>(
+  WEB_ANIMATION_CONTAINER_CLASS,
+  webAnimationJobReportSchema,
+  { state: "cancelled_before_submit", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: null },
+);
 
-/**
- * Read a job's report.
- * @param jobId - The job.
- * @param endsAt - When its last report is due.
- * @returns The answer.
- * @throws {IngestJobError} On any other refusal.
- */
-export async function readWebAnimationJob(jobId: string, endsAt: number): Promise<IngestAnswer> {
-  return ask("read", jobUrl(WEB_ANIMATION_CONTAINER_CLASS, jobId), { method: "GET" }, endsAt, webAnimationJobReportSchema);
-}
-
-/**
- * Ask a job to stop; with no job yet, the Worker keeps a pre-submit cancel marker until `deadlineAt`.
- * @param jobId - The job.
- * @param body - The cancel body.
- * @param endsAt - When its last report is due.
- * @returns The answer.
- * @throws {IngestJobError} On any other refusal.
- */
-export async function cancelWebAnimationJob(jobId: string, body: WebAnimationJobCancel, endsAt: number): Promise<IngestAnswer> {
-  return ask("cancel", `${jobUrl(WEB_ANIMATION_CONTAINER_CLASS, jobId)}/cancel`, { method: "POST", body: JSON.stringify(body) }, endsAt, webAnimationJobReportSchema);
-}
-
-/**
- * Submit an export's render job; as with a creation job, a job cancelled before any submit answers 410.
- * @param request - The job.
- * @param endsAt - When its last report is due.
- * @returns The answer.
- * @throws {IngestJobError} On any other refusal.
- */
-export async function submitRenderJob(request: WebAnimationRenderJobRequest, endsAt: number): Promise<IngestAnswer<WebAnimationRenderJobReport>> {
-  try {
-    return await ask("submit render", `${env.INGEST_BASE_URL}/jobs`, { method: "POST", body: JSON.stringify(request) }, endsAt, webAnimationRenderJobReportSchema);
-  } catch (err) {
-    if (!(err instanceof IngestJobError && err.status === 410)) throw err;
-    return { kind: "report", report: { state: "cancelled_before_submit", phase: null, container: null, video: null, failureReason: null } };
-  }
-}
-
-/**
- * Read a render job's report.
- * @param jobId - The job.
- * @param endsAt - When its last report is due.
- * @returns The answer.
- * @throws {IngestJobError} On any other refusal.
- */
-export async function readRenderJob(jobId: string, endsAt: number): Promise<IngestAnswer<WebAnimationRenderJobReport>> {
-  return ask("read render", jobUrl(WEB_ANIMATION_RENDER_CONTAINER_CLASS, jobId), { method: "GET" }, endsAt, webAnimationRenderJobReportSchema);
-}
-
-/**
- * Ask a render job to stop.
- * @param jobId - The job.
- * @param body - The cancel body.
- * @param endsAt - When its last report is due.
- * @returns The answer.
- * @throws {IngestJobError} On any other refusal.
- */
-export async function cancelRenderJob(jobId: string, body: WebAnimationJobCancel, endsAt: number): Promise<IngestAnswer<WebAnimationRenderJobReport>> {
-  return ask("cancel render", `${jobUrl(WEB_ANIMATION_RENDER_CONTAINER_CLASS, jobId)}/cancel`, { method: "POST", body: JSON.stringify(body) }, endsAt, webAnimationRenderJobReportSchema);
-}
+/** An export's render jobs. */
+export const renderJobs = jobCalls<WebAnimationRenderJobRequest, WebAnimationRenderJobReport>(
+  WEB_ANIMATION_RENDER_CONTAINER_CLASS,
+  webAnimationRenderJobReportSchema,
+  { state: "cancelled_before_submit", phase: null, container: null, video: null, failureReason: null },
+);
