@@ -812,7 +812,7 @@ const RUNS: Record<string, Run> = {
   'talking-presenter': {
     type: 'video',
     photo: false,
-    inputs: { person: 'portrait.png' },
+    inputs: { person: 'mini-tools/portrait.jpg' },
     first: ['portrait', 'voice'],
     fills: {
       portrait: ['a bright home office with a bookshelf'],
@@ -824,14 +824,14 @@ const RUNS: Record<string, Run> = {
   'talking-head-pitch': {
     type: 'video',
     photo: false,
-    inputs: { person: 'portrait.png' },
+    inputs: { person: 'mini-tools/portrait.jpg' },
     first: [],
     fills: { anchor: ['English', 'a sunlit café', 'This one changed my mornings', 'Try it for a week and see'] },
   },
   'two-speaker-talk': {
     type: 'video',
     photo: false,
-    inputs: { 'left-person': 'character.jpg', 'right-person': 'portrait.png' },
+    inputs: { 'left-person': 'character.jpg', 'right-person': 'mini-tools/portrait.jpg' },
     first: ['scene', 'left-voice', 'right-voice'],
     fills: {
       scene: ['a podcast desk with two microphones'],
@@ -844,14 +844,14 @@ const RUNS: Record<string, Run> = {
   'talking-own-voice': {
     type: 'video',
     photo: false,
-    inputs: { portrait: 'portrait.png', recording: 'voice.mp3' },
+    inputs: { portrait: 'mini-tools/portrait.jpg', recording: 'voice.mp3' },
     first: [],
     fills: { anchor: ['relaxed, with small natural nods'] },
   },
   'livestream-pitch': {
     type: 'video',
     photo: false,
-    inputs: { host: 'portrait.png', product: 'product.jpg' },
+    inputs: { host: 'mini-tools/portrait.jpg', product: 'product.jpg' },
     first: [],
     fills: { anchor: ['excited and fast', 'it keeps drinks cold for 24 hours and the bamboo cap never leaks'] },
     localeFills: { 'zh-CN': { anchor: ['兴奋、语速快', '24 小时保冷，竹盖拧紧一滴不漏'] } },

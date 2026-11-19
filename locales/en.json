@@ -2056,7 +2056,7 @@
       "talking-head-pitch": {
         "name": "One-line talking clip",
         "description": "A few short lines said straight to camera",
-        "prompt": "A 10-second vertical video with sound, spoken in {✏️ the language, e.g. English}. The person is [📎 Person]: face, hair, skin tone and clothes as in the picture, nothing else taken from it. A medium close-up, the camera locked; they look into the lens in {✏️ the setting, e.g. a sunlit café} and say \"{✏️ the first line, at most 10 words}\", then \"{✏️ the second line, at most 10 words}\". Lips match every word. Sound: only their voice and the quiet room around them, no music. The bottom fifth of the frame stays clear for subtitles. No text on screen.",
+        "prompt": "A 10-second vertical video with sound, spoken in {✏️ the language, e.g. English}. The person is [📎 Person]: face, hair, skin tone and clothes as in the picture, nothing else taken from it. A medium close-up, the camera locked; they look into the lens in {✏️ the setting, e.g. a sunlit café} and say \"{✏️ the first line, at most 10 words}\", then \"{✏️ the second line, at most 10 words}\". Lips match every word. Sound: only their voice and the quiet room around them, no music. No text, captions or subtitles on screen.",
         "input": {
           "person": {
             "name": "Person",
