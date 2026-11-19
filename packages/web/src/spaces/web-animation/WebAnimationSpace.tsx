@@ -12,6 +12,7 @@ import { anchorTimeWithin, type WebAnimationRowView } from '@breatic/shared/spac
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@web/components/ui/alert-dialog';
 import { Button } from '@web/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@web/components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
 import { Separator } from '@web/components/ui/separator';
 import { Slider } from '@web/components/ui/slider';
@@ -62,6 +63,11 @@ import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-fli
 /** How close to the playhead an annotation's point shows on the frame, in seconds. */
 const PIN_WINDOW_SECONDS = 0.15;
 /** An annotation's pin on the frame, saved or being written: a 20px drop whose tip, its bottom-left corner, is the point. */
+/**
+ * How far a menu opened from a bar button stands off it: the 4px visible gap from the bar's edge, plus the 7px between
+ * the 32px button and the 48px bar's 1px border, and that border.
+ */
+const BAR_MENU_OFFSET = 4 + 7 + 1;
 const PIN_CLASS = 'absolute size-5 -translate-y-full rounded-full rounded-bl-none border border-background';
 
 /**
@@ -105,13 +111,11 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
     placingRef.current = value;
     setPlacing(value);
   }, []);
-  const [open, setOpen] = React.useState(false);
   React.useEffect(() => () => {
     if (placingRef.current) toast.warning(t('spaces.webAnimation.placing'));
   }, [t]);
   const { refetch: refetchControls } = controls;
   const choose = React.useCallback((canvas: ProjectSpace): void => {
-    setOpen(false);
     const config = controls.data?.capture;
     if (config === undefined) {
       // The button waits while the settings are read, so only a failed read gets here.
@@ -145,20 +149,25 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
       }
     }, unreachable);
   }, [asset, controls.data, refetchControls, settle, projectId, row, userId, t]);
+  const waiting = placing || controls.isPending;
+  const [open, setOpen] = React.useState(false);
+  // A press while the button waits opens nothing: the menu opens on pointer down, which the waiting button does not swallow.
+  const openMenu = React.useCallback((next: boolean): void => setOpen(next && !waiting), [waiting]);
   if (canvases.length === 0) {
     return <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.noCanvas')} icon={<LayoutGrid className='size-4' />} disabled />;
   }
-  return <Popover open={open} onOpenChange={setOpen}>
-    <PopoverTrigger asChild>
+  return <DropdownMenu open={open && !waiting} onOpenChange={openMenu}>
+    <DropdownMenuTrigger asChild>
       <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.placeOnCanvas')} icon={<LayoutGrid className='size-4' />}
-        loading={placing || controls.isPending} disabled={asset === undefined} />
-    </PopoverTrigger>
-    <PopoverContent side='top' align='start' sideOffset={8} className='flex w-52 flex-col p-1'>
-      <span className='px-2 py-1 text-xs text-muted-foreground'>{t('spaces.webAnimation.chooseCanvas')}</span>
-      {canvases.map((canvas) => <Button key={canvas.id} type='button' variant={null} size={null} data-testid={`motion-canvas-${canvas.id}`} onClick={() => choose(canvas)}
-        className='rounded-chrome-sm px-2 py-1.5 text-left text-sm hover-enabled:bg-accent'>{canvas.name}</Button>)}
-    </PopoverContent>
-  </Popover>;
+        loading={waiting} disabled={asset === undefined} />
+    </DropdownMenuTrigger>
+    <DropdownMenuContent side='top' align='start' sideOffset={BAR_MENU_OFFSET} className='w-52'>
+      <DropdownMenuLabel>{t('spaces.webAnimation.chooseCanvas')}</DropdownMenuLabel>
+      {canvases.map((canvas) => <DropdownMenuItem key={canvas.id} data-testid={`motion-canvas-${canvas.id}`} onSelect={() => choose(canvas)}>
+        <span className='truncate'>{canvas.name}</span>
+      </DropdownMenuItem>)}
+    </DropdownMenuContent>
+  </DropdownMenu>;
 }
 
 /** The details popover's props. */

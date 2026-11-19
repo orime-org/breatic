@@ -1588,10 +1588,23 @@ describe('putting an export on a Canvas', () => {
     vi.mocked(placeVideoOnCanvas).mockReset().mockResolvedValue({ status: 'placed', nodeId: 'node-1' });
   });
 
+  it('lists the canvases as menu items under its label, in a menu capped at the room above the bar', async () => {
+    vi.mocked(getSceneControls).mockReset().mockResolvedValue(CONTROLS as never);
+    const user = await onExportWithCanvas();
+    await waitFor(() => expect(screen.getByTestId('motion-action-place-on-canvas')).not.toHaveAttribute('aria-busy'));
+    await user.click(screen.getByTestId('motion-action-place-on-canvas'));
+    const menu = await screen.findByRole('menu');
+    expect(menu).toHaveTextContent(t('spaces.webAnimation.chooseCanvas'));
+    expect(within(menu).getByRole('menuitem', { name: 'Board' })).toHaveAttribute('data-testid', `motion-canvas-${CANVAS}`);
+    expect(menu.className).toContain('max-h-[var(--radix-dropdown-menu-content-available-height)]');
+  });
+
   it('shows the button waiting while the placement settings are read', async () => {
     vi.mocked(getSceneControls).mockReset().mockReturnValue(new Promise(() => {}));
     await onExportWithCanvas();
     await waitFor(() => expect(screen.getByTestId('motion-action-place-on-canvas')).toHaveAttribute('aria-busy', 'true'));
+    await userEvent.setup().click(screen.getByTestId('motion-action-place-on-canvas'));
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 
   it('says it failed and reads the settings again when they could not be read', async () => {
