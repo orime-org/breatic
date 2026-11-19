@@ -108,7 +108,6 @@ export async function seedExecution(
     input: options.input ?? { prompt: "A red square slides in", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } },
     inputHash: `sha256:${randomUUID()}`,
     deadlineAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
-    status: "queued",
     origin: "web_animation_space",
   });
   if (inserted === null) throw new Error("Fixture execution conflicted");

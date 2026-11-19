@@ -30,8 +30,9 @@ export type TimelineExecutionEvent =
   | { type: "progress"; fence: string | null; phase: NonNullable<TimelineExecution["phase"]> };
 
 /**
- * The fields an accepted execution is inserted with. `status` and `origin` are required: the columns keep defaults
- * only for the previous server's inserts during the deploy window (0128), so every new insert path states both.
+ * The fields an accepted execution is inserted with. `origin` is required and {@link insert} writes `status` itself:
+ * the columns keep defaults only for the previous server's inserts during the deploy window (0128), so every new
+ * insert states both.
  */
 export interface NewTimelineExecution {
   projectId: string;
@@ -43,7 +44,6 @@ export interface NewTimelineExecution {
   input: Record<string, unknown>;
   inputHash: string;
   deadlineAt: Date;
-  status: "queued";
   origin: TimelineExecution["origin"];
 }
 
@@ -127,7 +127,7 @@ export function toEntity(row: Row): TimelineExecution {
  * @throws {Error} When the write fails.
  */
 export async function insert(input: NewTimelineExecution, tx?: DbTx): Promise<TimelineExecution | null> {
-  const [row] = await (tx ?? db).insert(t).values(input).onConflictDoNothing().returning(columns);
+  const [row] = await (tx ?? db).insert(t).values({ ...input, status: "queued" }).onConflictDoNothing().returning(columns);
   return row === undefined ? null : toEntity(row);
 }
 

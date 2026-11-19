@@ -189,7 +189,6 @@ export function useWebAnimationHarness(appName: string): WebAnimationHarness {
         input: fixture.input ?? CREATE_INPUT,
         inputHash: `sha256:${crypto.randomUUID()}`,
         deadlineAt: new Date(Date.now() + getNodeTaskConfig().default_budget_ms),
-        status: "queued",
         origin: fixture.origin ?? "web_animation_space",
       });
       if (row === null) throw new Error("Fixture execution conflicted");

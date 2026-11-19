@@ -263,7 +263,7 @@ export async function accept(userId: string, body: WebAnimationExecutionRequest 
     const row = await db.transaction(async (tx) => {
       const input = sourceVersionId === null ? frozen.input : { ...frozen.input, videoKey: await openVideoUpload(projectId, userId, deadlineAt) };
       const inserted = await timelineExecutionRepo.insert(
-        { projectId, spaceId, actorUserId: userId, kind, engine: frozen.engine, actionId, input, inputHash, deadlineAt, status: "queued", origin },
+        { projectId, spaceId, actorUserId: userId, kind, engine: frozen.engine, actionId, input, inputHash, deadlineAt, origin },
         tx,
       );
       if (inserted === null) throw new InsertLost();

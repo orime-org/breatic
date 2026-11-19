@@ -85,7 +85,7 @@ async function baseResult(fx: ExecutionFixture, size = { width: 1920, height: 10
   const created = await timelineExecutionRepo.insert({
     projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.userId, kind: "web_animation_create", engine: "deepseek",
     actionId: randomUUID(), input: { prompt: "A logo", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: FPS },
-    inputHash: `sha256:${randomUUID()}`, deadlineAt: new Date(Date.now() + 7_200_000), status: "queued", origin: "web_animation_space",
+    inputHash: `sha256:${randomUUID()}`, deadlineAt: new Date(Date.now() + 7_200_000), origin: "web_animation_space",
   });
   if (created === null) throw new Error("Fixture execution conflicted");
   owned.push(created.id);

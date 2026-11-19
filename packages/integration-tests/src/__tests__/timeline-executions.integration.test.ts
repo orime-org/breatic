@@ -81,7 +81,6 @@ async function accept(overrides: Partial<{ projectId: string; ownerId: string; s
     input: { prompt: "A red square", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } },
     inputHash: "sha256:input",
     deadlineAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
-    status: "queued",
     origin: "web_animation_space",
   });
   if (row === null) throw new Error("Fixture execution conflicted");
@@ -218,12 +217,12 @@ describe("timelineExecutionRepo.insert", () => {
     });
   });
 
-  it("stores the origin and status the caller gives", async () => {
+  it("stores the origin the caller gives, queued", async () => {
     const { projectId, ownerId } = await seedProject();
     const row = await timelineExecutionRepo.insert({
       projectId, spaceId: randomUUID(), actorUserId: ownerId, kind: "web_animation_create", engine: "deepseek",
       actionId: randomUUID(), input: {}, inputHash: "sha256:legacy", deadlineAt: new Date(Date.now() + 60_000),
-      status: "queued", origin: "timeline",
+      origin: "timeline",
     });
     if (row === null) throw new Error("Fixture execution conflicted");
     owned.executions.push(row.id);
@@ -240,7 +239,7 @@ describe("timelineExecutionRepo.insert", () => {
     const again = await timelineExecutionRepo.insert({
       projectId: first.projectId, spaceId: first.spaceId, actorUserId: first.actorUserId, kind: "web_animation_create",
       engine: "deepseek", actionId: first.actionId, input: {}, inputHash: "sha256:other", deadlineAt: new Date(Date.now() + 60_000),
-      status: "queued", origin: "web_animation_space",
+      origin: "web_animation_space",
     });
     expect(again).toBeNull();
     expect(await timelineExecutionRepo.findByAction({ projectId: first.projectId, spaceId: first.spaceId, actionId: first.actionId }))
