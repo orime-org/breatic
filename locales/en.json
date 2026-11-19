@@ -1551,6 +1551,87 @@
           }
         }
       },
+      "storyboard-sheet-9": {
+        "name": "9-panel storyboard",
+        "description": "Nine numbered panels ready to drive one video",
+        "prompt": "One widescreen storyboard sheet of nine numbered panels in a 3x3 grid, read left to right, top to bottom. The character in every panel is [📎 Character]: face, hair and clothes as in the picture, the same in all nine panels, nothing else taken from it.\nThe place looks like [📎 Setting]; take nothing else from it.\nThe story, one beat per panel: {✏️ the nine beats, e.g. 1 she wakes late, 2 grabs her bag, 3 runs down the stairs, 4 misses the bus, 5 borrows a bike, 6 races through the market, 7 skids round a corner, 8 arrives at the gate, 9 the gate opens just in time}. In each panel the action is already under way; vary the shot sizes (wide, medium, close-up) as the story needs; a small panel number in each corner. Clean illustrated storyboard style, the same palette and light across panels. No timecodes, no captions, no extra characters, no watermark.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of your character first, then generate."
+          },
+          "setting": {
+            "name": "Setting",
+            "note": "Optional: add a picture of the place; leave it empty and the panels invent a place that fits the story."
+          }
+        }
+      },
+      "storyboard-to-video": {
+        "name": "Storyboard to video",
+        "description": "A six-panel storyboard, then a video that plays it",
+        "prompt": "(💡 Generate Storyboard sheet first)A 15-second widescreen video with sound that plays the storyboard [📎 Storyboard sheet] panel by panel, in order, each panel one shot of about 2.5 seconds; every panel is a complete shot, none skipped and none added. The sheet decides the place, the action, the framing and the order; take no numbers or panel borders from it. The character looks like [📎 Character]: face, hair and clothes as in the picture. Sound: {✏️ the sound, e.g. upbeat music and the sounds of each action}. No text on screen.",
+        "node": {
+          "sheet": {
+            "name": "Storyboard sheet",
+            "prompt": "One widescreen storyboard sheet of six numbered panels in a 3x2 grid, read left to right, top to bottom. The character in every panel is [📎 Character]: face, hair and clothes as in the picture, the same in all six panels, nothing else taken from it. The story, one beat per panel: {✏️ the six beats, e.g. 1 she spots a kite in a tree, 2 climbs the trunk, 3 the branch bends, 4 she grabs the kite, 5 slides down, 6 runs off with it}. In each panel the action is already under way, the shot sizes varied. Clean illustrated style. No timecodes, no captions, no extra characters, no watermark."
+          }
+        },
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of your character first, then generate Storyboard sheet."
+          }
+        }
+      },
+      "comic-page": {
+        "name": "Comic page",
+        "description": "A comic page with your character, balloons left empty",
+        "prompt": "One portrait comic page of five or six panels. The main character is [📎 Character]: face, hair and clothes as in the picture, drawn in the page's style, the same in every panel. Reading order: {✏️ the reading order, e.g. left to right, top to bottom}. Style: {✏️ the style, e.g. black-and-white manga with screentone}. What happens, panel by panel: {✏️ the panels, e.g. 1 a wide shot of a rainy street, 2 she finds a soaked kitten, 3 close-up of the kitten's eyes, 4 she hides it in her coat, 5 she smiles at home with it}. Panel sizes follow the pace: a big panel for the key moment, small ones for quick beats. One line weight and one screentone throughout. Speech balloons where people talk, left empty with their tails pointing at the speaker. No letters or words anywhere on the page.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "comic-4koma": {
+        "name": "Four-panel comic",
+        "description": "A vertical four-panel strip: setup, build-up, twist, punchline",
+        "prompt": "One vertical four-panel comic strip, the panels stacked top to bottom with equal height. The character is [📎 Character]: face, hair and clothes as in the picture, the same in every panel. 1 setup: {✏️ the setup, e.g. she proudly bakes her first cake}. 2 build-up: {✏️ the build-up, e.g. she carries it carefully to the table}. 3 twist: {✏️ the twist, e.g. the cat leaps onto the table}. 4 punchline: {✏️ the punchline, e.g. the cat sits in the cake looking pleased}, the panel holding on the reaction. Clean cartoon style with simple backgrounds. Speech balloons left empty with their tails pointing at the speaker. No letters or words anywhere in the strip.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "comic-page-to-motion": {
+        "name": "Motion comic",
+        "description": "Your comic page set moving in its own drawn style",
+        "prompt": "A 10-second widescreen motion comic with sound made from [📎 Comic page], in its own style: its line work, colouring and screentone exactly as drawn, never turning 3D or photographic. The camera moves across the panels in reading order, {✏️ the reading order, e.g. left to right, top to bottom}, settling on each panel in turn. In each panel only what it shows moves: {✏️ what moves, e.g. rain falls, her hair lifts in the wind, the cat blinks}. Speech balloons stay as drawn; their shapes set how the lines sound and their tails who speaks. Move from panel to panel on the paper itself, with a page turn or an ink bleed. Sound: soft ambience and music that follow the mood of each panel. No new text on screen.",
+        "input": {
+          "page": {
+            "name": "Comic page",
+            "note": "Add your comic page, strip or storyboard picture first, then generate."
+          }
+        }
+      },
+      "comic-panels-to-shots": {
+        "name": "One shot per panel",
+        "description": "Each panel of your comic page as its own timed shot",
+        "shot": {
+          "1": "Panel 1 of [📎 Comic page], in its own drawn style and framing, the line work and colouring as drawn: {✏️ what moves in panel 1, e.g. rain starts to fall on the street}. No new text on screen.",
+          "2": "Panel 2 of [📎 Comic page], in its own drawn style and framing: {✏️ what moves in panel 2}. No new text on screen.",
+          "3": "Panel 3 of [📎 Comic page], in its own drawn style and framing: {✏️ what moves in panel 3}. No new text on screen.",
+          "4": "Panel 4 of [📎 Comic page], in its own drawn style and framing, holding on the final moment: {✏️ what moves in panel 4}. No new text on screen."
+        },
+        "input": {
+          "page": {
+            "name": "Comic page",
+            "note": "Add your comic page first, then generate."
+          }
+        }
+      },
       "cartoon-gag": {
         "name": "Cartoon gag",
         "description": "A five-second gag starring your character",

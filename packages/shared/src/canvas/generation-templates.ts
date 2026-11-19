@@ -40,6 +40,10 @@ import { CHARACTER_BIBLE } from "@shared/canvas/templates/character-bible.js";
 import { CHARACTER_DESIGN_FROM_TEXT } from "@shared/canvas/templates/character-design-from-text.js";
 import { CHARACTER_SHOWCASE_ORBIT } from "@shared/canvas/templates/character-showcase-orbit.js";
 import { CLIP_AMBIENCE_FOLEY } from "@shared/canvas/templates/clip-ambience-foley.js";
+import { COMIC_4KOMA } from "@shared/canvas/templates/comic-4koma.js";
+import { COMIC_PAGE_TO_MOTION } from "@shared/canvas/templates/comic-page-to-motion.js";
+import { COMIC_PAGE } from "@shared/canvas/templates/comic-page.js";
+import { COMIC_PANELS_TO_SHOTS } from "@shared/canvas/templates/comic-panels-to-shots.js";
 import { COSTUME_SHEET } from "@shared/canvas/templates/costume-sheet.js";
 import { DESTINATION_FESTIVAL_POSTER } from "@shared/canvas/templates/destination-festival-poster.js";
 import { DISH_HERO_STILL } from "@shared/canvas/templates/dish-hero-still.js";
@@ -75,6 +79,8 @@ import { SONG_COVER } from "@shared/canvas/templates/song-cover.js";
 import { SPORTS_LIVE_COVERAGE } from "@shared/canvas/templates/sports-live-coverage.js";
 import { STOP_MOTION_SHORT } from "@shared/canvas/templates/stop-motion-short.js";
 import { STORYBOARD_GRID_25 } from "@shared/canvas/templates/storyboard-grid-25.js";
+import { STORYBOARD_SHEET_9 } from "@shared/canvas/templates/storyboard-sheet-9.js";
+import { STORYBOARD_TO_VIDEO } from "@shared/canvas/templates/storyboard-to-video.js";
 import { TALKING_HEAD_PITCH } from "@shared/canvas/templates/talking-head-pitch.js";
 import { TALKING_OWN_VOICE } from "@shared/canvas/templates/talking-own-voice.js";
 import { TALKING_PRESENTER } from "@shared/canvas/templates/talking-presenter.js";
@@ -216,6 +222,12 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   IDENTITY_LOCKED_SEQUENCE,
   CHARACTER_SHOWCASE_ORBIT,
   STORYBOARD_GRID_25,
+  STORYBOARD_SHEET_9,
+  COMIC_PAGE,
+  COMIC_4KOMA,
+  STORYBOARD_TO_VIDEO,
+  COMIC_PAGE_TO_MOTION,
+  COMIC_PANELS_TO_SHOTS,
   CARTOON_GAG,
   THREE_D_CARTOON_SHORT,
   STOP_MOTION_SHORT,

@@ -139,9 +139,15 @@ describe('TemplateMenu', () => {
   it('lists the video templates under their goal in a video panel', () => {
     open('video');
     expect(screen.getByTestId('generate-template-goal-character')).toBeInTheDocument();
-    expect(screen.queryByTestId('generate-template-goal-comics-storyboards')).toBeNull();
     openGoal('character');
     expect(screen.getByTestId('generate-template-single-view-refs-scene')).toBeInTheDocument();
+  });
+
+  it('lists the storyboard-to-video template under comics and storyboards in a video panel (inner#1815)', () => {
+    open('video');
+    openGoal('comics-storyboards');
+    expect(screen.getByTestId('generate-template-storyboard-to-video')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-template-storyboard-grid-25')).toBeNull();
   });
 
   it('lists the sound templates under their goal in an audio panel (inner#1825)', () => {
