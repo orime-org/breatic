@@ -2690,9 +2690,9 @@
         "pickSpaceClosed": "Space が閉じられたため、画像は適用されませんでした",
         "pickObjectGone": "オブジェクトが削除されたため、画像は適用されませんでした",
         "checking": "確認中",
-        "partLimit": "このオブジェクトで見た目を変更できるのは最大 {max} パーツまでです。",
+        "partLimit": "このオブジェクトで外観を変更できるのは最大 {max} パーツまでです。",
         "partNotEditable": "このパーツは変更できません。",
-        "uploadedPartLimit": "画像はアップロードされましたが、このオブジェクトはすでに {max} パーツの見た目を変更しています。画像は Project の画像にあります"
+        "uploadedPartLimit": "画像はアップロードされましたが、このオブジェクトはすでに {max} パーツの外観を変更しています。画像は Project の画像にあります"
       },
       "pose": {
         "title": "ポーズ",
