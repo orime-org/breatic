@@ -221,7 +221,16 @@ describe('StudioAccountMenu', () => {
     expect(name.className).toContain('text-foreground');
   });
 
-  it('lists the account entries settings first, then membership, then credits', async () => {
+  it('opens the Agent tokens dialog from its entry', async () => {
+    const user = userEvent.setup();
+    useCurrentUserStore.getState().setUser(ALEX);
+    setup();
+    await openMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Agent tokens' }));
+    expect(await screen.findByTestId('agent-tokens-dialog')).toBeInTheDocument();
+  });
+
+  it('lists the account entries settings first, then Agent tokens, membership and credits', async () => {
     // The order reads from the account outwards: who you are, what you are on,
     // what you have. Nothing enforced it before, so the entries had drifted
     // into the reverse of it and only a person looking at the menu could tell.
@@ -236,13 +245,14 @@ describe('StudioAccountMenu', () => {
     const labels = screen
       .getAllByRole('menuitem')
       .map((entry) => entry.textContent ?? '');
-    expect(labels).toHaveLength(6);
+    expect(labels).toHaveLength(7);
     expect(labels[0]).toContain('Account settings');
-    expect(labels[1]).toBe('Promoter program');
-    expect(labels[2]).toContain('Membership');
-    expect(labels[3]).toContain('Credits');
-    expect(labels[4]).toBe('Sign out of other devices');
-    expect(labels[5]).toBe('Sign out');
+    expect(labels[1]).toBe('Agent tokens');
+    expect(labels[2]).toBe('Promoter program');
+    expect(labels[3]).toContain('Membership');
+    expect(labels[4]).toContain('Credits');
+    expect(labels[5]).toBe('Sign out of other devices');
+    expect(labels[6]).toBe('Sign out');
   });
 
   describe('promoter program entry (inner#1868)', () => {

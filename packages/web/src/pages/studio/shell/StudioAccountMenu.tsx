@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Cookie, LogOut, Megaphone, MonitorSmartphone, Settings, Sparkles, Star } from 'lucide-react';
+import { Cookie, KeyRound, LogOut, Megaphone, MonitorSmartphone, Settings, Sparkles, Star } from 'lucide-react';
 import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/data/analytics';
 
 import { Button } from '@web/components/ui/button';
@@ -27,6 +27,7 @@ import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
 import { useCreditOverview } from '@web/features/credits/use-credit-overview';
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
+import { AgentTokensDialog } from '@web/features/agent-access/AgentTokensDialog';
 import { PromoterDialog } from '@web/features/referral/PromoterDialog';
 import { usePromoterEntry } from '@web/features/referral/use-promoter-entry';
 import { LogoutOthersDialog } from '@web/pages/studio/shell/LogoutOthersDialog';
@@ -108,6 +109,8 @@ export function StudioAccountMenu(): React.JSX.Element {
   const openLogoutOthers = React.useCallback((): void => setLogoutOthersOpen(true), []);
   const accountButtonRef = React.useRef<HTMLButtonElement>(null);
   const [creditsOpen, setCreditsOpen] = React.useState(false);
+  const [agentTokensOpen, setAgentTokensOpen] = React.useState(false);
+  const openAgentTokens = React.useCallback((): void => setAgentTokensOpen(true), []);
 
   // The balance beside the Credits entry, read from the overlay's own query:
   // designating a pack or asking for a refund invalidates it, so the next
@@ -289,6 +292,10 @@ export function StudioAccountMenu(): React.JSX.Element {
             <Settings className='h-4 w-4' />
             {t('studio.topBar.accountSettings')}
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={openAgentTokens} data-testid='account-menu-agent-tokens'>
+            <KeyRound className='h-4 w-4' />
+            {t('studio.topBar.agentTokens')}
+          </DropdownMenuItem>
           {promoter.shown ? (
             <DropdownMenuItem onSelect={promoter.select} data-testid='account-menu-promoter'>
               <Megaphone className='h-4 w-4' />
@@ -356,6 +363,7 @@ export function StudioAccountMenu(): React.JSX.Element {
       />
       <MembershipPanel open={membershipOpen} onOpenChange={setMembershipOpen} />
       <PromoterDialog open={promoter.dialogOpen} onOpenChange={promoter.setDialogOpen} />
+      <AgentTokensDialog open={agentTokensOpen} onOpenChange={setAgentTokensOpen} />
       <CheckoutWaitOverlay open={back.waiting} onSkip={back.land} />
       <CreditsOverlay
         open={creditsOpen || back.overlayOpen}

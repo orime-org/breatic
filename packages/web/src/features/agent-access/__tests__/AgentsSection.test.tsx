@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AgentConnectionItem } from '@breatic/shared';
 
-import { AgentsSection } from '@web/pages/studio/container/tabs/settings/AgentsSection';
+import { AgentsSection } from '@web/features/agent-access/AgentsSection';
 import { ApiException } from '@web/data/api/types';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 

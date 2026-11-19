@@ -266,7 +266,7 @@ export default function StudioContainerPage(): React.JSX.Element {
                   <CreditsTab slug={slug} />
                 ) : null}
                 {tab === 'settings' ? (
-                  <SettingsTab studio={view.studio} members={members} scroller={viewportRef} />
+                  <SettingsTab studio={view.studio} members={members} />
                 ) : null}
               </div>
             </ScrollArea>

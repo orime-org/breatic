@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The account settings' External Agents section (#1488 §5): the OAuth
- * clients and the personal access tokens connected to the user's account,
- * each renamed, disconnected or revoked here, and new tokens created here
- * with their plaintext shown once. A comment's hand-over label opens the page
- * with `?connection=` to point at one row.
+ * The Agent tokens dialog's body (#1488 §5): the OAuth clients and the
+ * personal access tokens connected to the user's account, each renamed,
+ * disconnected or revoked here, and new tokens created here with their
+ * plaintext shown once. A comment's hand-over label opens it pointing at one row.
  */
 
 import * as React from 'react';
@@ -122,8 +121,8 @@ export function AgentsSection({ focusId, scroller }: AgentsSectionProps): React.
     if (query.isError) {
       return (
         <div className='flex items-center justify-between rounded-chrome border border-border px-3 py-2 text-xs text-muted-foreground'>
-          <span>{t('studio.container.settings.agents.loadFailed')}</span>
-          <Button variant='outline' size='sm' onClick={onRetry}>{t('studio.container.settings.agents.retry')}</Button>
+          <span>{t('agentTokens.loadFailed')}</span>
+          <Button variant='outline' size='sm' onClick={onRetry}>{t('agentTokens.retry')}</Button>
         </div>
       );
     }
@@ -141,18 +140,17 @@ export function AgentsSection({ focusId, scroller }: AgentsSectionProps): React.
 
   return (
     <section className='flex flex-col gap-4'>
-      <h3 className='text-xs font-bold uppercase tracking-[0.04em] text-muted-foreground'>{t('studio.container.settings.agents.title')}</h3>
-      <p className='text-xs text-muted-foreground'>{t('studio.container.settings.agents.intro')}</p>
+      <p className='text-xs text-muted-foreground'>{t('agentTokens.intro')}</p>
       <div className='flex flex-col gap-2'>
-        <h4 className='text-sm font-semibold'>{t('studio.container.settings.agents.clientsTitle')}</h4>
-        {body(clients, t('studio.container.settings.agents.clientsEmpty'), 'agents-clients')}
+        <h4 className='text-sm font-semibold'>{t('agentTokens.clientsTitle')}</h4>
+        {body(clients, t('agentTokens.clientsEmpty'), 'agents-clients')}
       </div>
       <div className='flex flex-col gap-2'>
         <div className='flex items-center justify-between gap-2'>
-          <h4 className='text-sm font-semibold'>{t('studio.container.settings.agents.tokensTitle')}</h4>
+          <h4 className='text-sm font-semibold'>{t('agentTokens.tokensTitle')}</h4>
           <CreateTokenDialog t={t} />
         </div>
-        {body(tokens, t('studio.container.settings.agents.tokensEmpty'), 'agents-tokens')}
+        {body(tokens, t('agentTokens.tokensEmpty'), 'agents-tokens')}
       </div>
     </section>
   );
@@ -188,7 +186,7 @@ const AgentRow = React.memo(function AgentRow({ row, focused, rowRef, t }: Agent
       await queryClient.invalidateQueries({ queryKey: AGENT_CONNECTIONS_KEY });
       setEditing(false);
     },
-    onError: (err) => toast.error(failureMessage(err, t('studio.container.settings.agents.renameFailed'))),
+    onError: (err) => toast.error(failureMessage(err, t('agentTokens.renameFailed'))),
   });
   const blank = draft.trim() === '';
   const onStartEdit = React.useCallback((): void => {
@@ -209,7 +207,7 @@ const AgentRow = React.memo(function AgentRow({ row, focused, rowRef, t }: Agent
           <Icon className='size-4 shrink-0 text-muted-foreground' aria-hidden='true' />
           <Input
             ref={input}
-            aria-label={t('studio.container.settings.agents.rename')}
+            aria-label={t('agentTokens.rename')}
             className='h-8 min-w-0 flex-1'
             value={draft}
             maxLength={AGENT_CONNECTION_NAME_MAX_LENGTH}
@@ -222,28 +220,28 @@ const AgentRow = React.memo(function AgentRow({ row, focused, rowRef, t }: Agent
               if (event.key === 'Escape' && !saving) onCancel();
             }}
           />
-          <Button variant='outline' disabled={saving} onClick={onCancel}>{t('studio.container.settings.agents.cancel')}</Button>
-          <Button disabled={blank} loading={saving} onClick={onSave}>{t('studio.container.settings.agents.save')}</Button>
+          <Button variant='outline' disabled={saving} onClick={onCancel}>{t('agentTokens.cancel')}</Button>
+          <Button disabled={blank} loading={saving} onClick={onSave}>{t('agentTokens.save')}</Button>
         </div>
         <span className={cn('pl-6 text-xs', blank ? 'text-status-error-foreground' : 'text-muted-foreground')}>
-          {blank ? t('studio.container.settings.agents.nameRequired') : t('studio.container.settings.agents.renameHint')}
+          {blank ? t('agentTokens.nameRequired') : t('agentTokens.renameHint')}
         </span>
       </div>
     );
   }
 
   const expired = row.status === 'expired';
-  const used = row.lastUsedAt === null ? t('studio.container.settings.agents.neverUsed') : formatLocalDay(row.lastUsedAt);
+  const used = row.lastUsedAt === null ? t('agentTokens.neverUsed') : formatLocalDay(row.lastUsedAt);
   const since = formatLocalDay(row.createdAt);
   const meta =
     row.kind === 'pat'
-      ? t('studio.container.settings.agents.tokenMeta', {
+      ? t('agentTokens.tokenMeta', {
         prefix: row.tokenPrefix ?? '',
         since,
-        expires: row.expiresAt == null ? t('studio.container.settings.agents.neverExpires') : formatLocalDay(row.expiresAt),
+        expires: row.expiresAt == null ? t('agentTokens.neverExpires') : formatLocalDay(row.expiresAt),
         used,
       })
-      : t(expired && row.kind === 'cimd' ? 'studio.container.settings.agents.clientMetaExpiredCimd' : 'studio.container.settings.agents.clientMeta', {
+      : t(expired && row.kind === 'cimd' ? 'agentTokens.clientMetaExpiredCimd' : 'agentTokens.clientMeta', {
         since,
         used,
         name: row.displayName,
@@ -259,20 +257,20 @@ const AgentRow = React.memo(function AgentRow({ row, focused, rowRef, t }: Agent
       <div className='flex min-w-0 flex-1 flex-col'>
         <span className='flex min-w-0 items-center gap-1'>
           <span className='truncate font-medium'>{row.displayName}</span>
-          {expired ? <Badge variant='secondary'>{t('studio.container.settings.agents.expired')}</Badge> : null}
+          {expired ? <Badge variant='secondary'>{t('agentTokens.expired')}</Badge> : null}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant='ghost'
                 size='icon'
                 className='size-6'
-                aria-label={`${t('studio.container.settings.agents.rename')} ${row.displayName}`}
+                aria-label={`${t('agentTokens.rename')} ${row.displayName}`}
                 onClick={onStartEdit}
               >
                 <Pencil className='size-3.5' aria-hidden='true' />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{t('studio.container.settings.agents.rename')}</TooltipContent>
+            <TooltipContent>{t('agentTokens.rename')}</TooltipContent>
           </Tooltip>
         </span>
         <span className='truncate text-xs text-muted-foreground'>{meta}</span>
@@ -300,29 +298,29 @@ function EndConnection({ row, t }: EndConnectionProps): React.JSX.Element {
   const queryClient = useQueryClient();
   const [open, setOpen] = React.useState(false);
   const kind = row.kind === 'pat' ? 'revoke' : row.status === 'expired' ? 'remove' : 'disconnect';
-  const action = t(`studio.container.settings.agents.${kind}`);
+  const action = t(`agentTokens.${kind}`);
   const end = useMutation({
     mutationFn: () => agentAccessApi.disconnect(row.id),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: AGENT_CONNECTIONS_KEY });
       setOpen(false);
     },
-    onError: (err) => toast.error(failureMessage(err, t('studio.container.settings.agents.actionFailed', { action }))),
+    onError: (err) => toast.error(failureMessage(err, t('agentTokens.actionFailed', { action }))),
   });
   const body =
     kind === 'revoke' && row.status === 'expired'
-      ? t('studio.container.settings.agents.revokeExpiredBody')
-      : t(`studio.container.settings.agents.${kind}Body`);
+      ? t('agentTokens.revokeExpiredBody')
+      : t(`agentTokens.${kind}Body`);
   return (
     <AlertDialog open={open} onOpenChange={(next) => !end.isPending && setOpen(next)}>
       <Button variant='outline' onClick={() => setOpen(true)}>{action}</Button>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{t(`studio.container.settings.agents.${kind}Title`, { name: row.displayName })}</AlertDialogTitle>
+          <AlertDialogTitle>{t(`agentTokens.${kind}Title`, { name: row.displayName })}</AlertDialogTitle>
           <AlertDialogDescription>{body}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={end.isPending}>{t('studio.container.settings.agents.cancel')}</AlertDialogCancel>
+          <AlertDialogCancel disabled={end.isPending}>{t('agentTokens.cancel')}</AlertDialogCancel>
           <AlertDialogAction
             loading={end.isPending}
             onClick={(event) => {
@@ -358,7 +356,7 @@ function CreateTokenDialog({ t }: { t: Translate }): React.JSX.Element {
       setShown(token);
       await queryClient.invalidateQueries({ queryKey: AGENT_CONNECTIONS_KEY });
     },
-    onError: (err) => toast.error(failureMessage(err, t('studio.container.settings.agents.createFailed'))),
+    onError: (err) => toast.error(failureMessage(err, t('agentTokens.createFailed'))),
   });
   /**
    * Open the dialog on a blank form, or close it, unless a token is being made.
@@ -385,39 +383,39 @@ function CreateTokenDialog({ t }: { t: Translate }): React.JSX.Element {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <Button variant='outline' icon={<Plus className='size-4' />} onClick={() => onOpenChange(true)}>
-        {t('studio.container.settings.agents.newToken')}
+        {t('agentTokens.newToken')}
       </Button>
       <DialogContent>
         {shown === null ? (
           <>
             <DialogHeader>
-              <DialogTitle>{t('studio.container.settings.agents.newTokenTitle')}</DialogTitle>
-              <DialogDescription>{t('studio.container.settings.agents.newTokenBody')}</DialogDescription>
+              <DialogTitle>{t('agentTokens.newTokenTitle')}</DialogTitle>
+              <DialogDescription>{t('agentTokens.newTokenBody')}</DialogDescription>
             </DialogHeader>
             <div className='flex flex-col gap-1.5'>
-              <Label htmlFor='agent-token-name'>{t('studio.container.settings.agents.tokenName')}</Label>
+              <Label htmlFor='agent-token-name'>{t('agentTokens.tokenName')}</Label>
               <Input
                 id='agent-token-name'
                 value={name}
                 maxLength={AGENT_CONNECTION_NAME_MAX_LENGTH}
                 autoComplete='off'
-                placeholder={t('studio.container.settings.agents.tokenNamePlaceholder')}
+                placeholder={t('agentTokens.tokenNamePlaceholder')}
                 disabled={create.isPending}
                 onChange={(event) => setName(event.target.value)}
               />
             </div>
             <div className='flex flex-col gap-1.5'>
-              <Label>{t('studio.container.settings.agents.tokenExpiry')}</Label>
+              <Label>{t('agentTokens.tokenExpiry')}</Label>
               <Select value={expiry} onValueChange={setExpiry} disabled={create.isPending}>
-                <SelectTrigger aria-label={t('studio.container.settings.agents.tokenExpiry')}>
+                <SelectTrigger aria-label={t('agentTokens.tokenExpiry')}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {EXPIRY_OPTIONS.map((value) => (
                     <SelectItem key={value} value={value}>
                       {value === 'never'
-                        ? t('studio.container.settings.agents.expiryNever')
-                        : t('studio.container.settings.agents.expiryDays', { days: Number(value) })}
+                        ? t('agentTokens.expiryNever')
+                        : t('agentTokens.expiryDays', { days: Number(value) })}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -425,27 +423,27 @@ function CreateTokenDialog({ t }: { t: Translate }): React.JSX.Element {
             </div>
             <DialogFooter>
               <Button variant='outline' disabled={create.isPending} onClick={() => onOpenChange(false)}>
-                {t('studio.container.settings.agents.cancel')}
+                {t('agentTokens.cancel')}
               </Button>
               <Button disabled={name.trim() === ''} loading={create.isPending} onClick={() => create.mutate()}>
-                {t('studio.container.settings.agents.generate')}
+                {t('agentTokens.generate')}
               </Button>
             </DialogFooter>
           </>
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>{t('studio.container.settings.agents.tokenShownTitle')}</DialogTitle>
-              <DialogDescription>{t('studio.container.settings.agents.tokenShownBody')}</DialogDescription>
+              <DialogTitle>{t('agentTokens.tokenShownTitle')}</DialogTitle>
+              <DialogDescription>{t('agentTokens.tokenShownBody')}</DialogDescription>
             </DialogHeader>
             <div className='flex items-center gap-2 rounded-chrome border border-border bg-card p-2 font-mono text-xs'>
               <span className='min-w-0 flex-1 break-all'>{shown}</span>
               <Button variant='ghost' size='sm' icon={copied ? <Check className='size-4' /> : <Copy className='size-4' />} onClick={() => void onCopy()}>
-                {copied ? t('studio.container.settings.agents.copied') : t('studio.container.settings.agents.copy')}
+                {copied ? t('agentTokens.copied') : t('agentTokens.copy')}
               </Button>
             </div>
             <DialogFooter>
-              <Button onClick={() => onOpenChange(false)}>{t('studio.container.settings.agents.done')}</Button>
+              <Button onClick={() => onOpenChange(false)}>{t('agentTokens.done')}</Button>
             </DialogFooter>
           </>
         )}
