@@ -30,6 +30,7 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+import { TransactionRollbackError } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import {
@@ -579,7 +580,7 @@ describe("the connection a caller hands in (inner#1993)", () => {
         expect(await listSubscriptions(tx, userId)).toHaveLength(1);
         tx.rollback();
       });
-      await expect(rolledBack).rejects.toThrow();
+      await expect(rolledBack).rejects.toBeInstanceOf(TransactionRollbackError);
       expect(await listSubscriptions(db, userId)).toHaveLength(0);
     } finally {
       await dropUser(userId);

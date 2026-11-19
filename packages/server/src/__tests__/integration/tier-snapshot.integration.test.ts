@@ -8,6 +8,7 @@
  * moment rather than the clock, and paging must return each account once.
  */
 
+import { TransactionRollbackError, sql as drizzleSql } from "drizzle-orm";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import {
@@ -92,33 +93,42 @@ describe("listMembershipReadingsAt", () => {
       observedAt: new Date("2026-08-18T00:00:00.000Z"),
     });
 
-    const during = await readAll(new Date("2026-08-01T00:00:00Z"), 1);
-    const ids = during.map((r) => r.userId);
-    expect(ids).toEqual([...ids].sort());
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).not.toContain(gone);
-    const at = (rows: MembershipSnapshotRow[], id: string): MembershipSnapshotRow | undefined => rows.find((r) => r.userId === id);
-    expect(at(during, base)).toMatchObject({ effectiveTier: "base", settlementProtected: false });
-    expect(at(during, pro)).toMatchObject({ effectiveTier: "pro", settlementProtected: false });
-    expect(Object.keys(at(during, pro)!.limits ?? {}).sort()).toEqual(
-      ["concurrent_editors", "project_members", "projects_per_studio", "storage_bytes", "studio_members", "team_studios"],
-    );
+    // Other suites leave live accounts behind, some deliberately invalid to
+    // test that readings refuse them. Read inside one transaction that first
+    // hides every other live account, then roll it back: core's `db` runs
+    // on the open transaction in this async flow.
+    const rolledBack = db.transaction(async (tx) => {
+      await tx.execute(drizzleSql`UPDATE users SET deleted_at = now() WHERE deleted_at IS NULL AND id NOT IN (${base}, ${pro})`);
+      const during = await readAll(new Date("2026-08-01T00:00:00Z"), 1);
+      const ids = during.map((r) => r.userId);
+      expect(ids).toEqual([...ids].sort());
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(ids).not.toContain(gone);
+      const at = (rows: MembershipSnapshotRow[], id: string): MembershipSnapshotRow | undefined => rows.find((r) => r.userId === id);
+      expect(at(during, base)).toMatchObject({ effectiveTier: "base", settlementProtected: false });
+      expect(at(during, pro)).toMatchObject({ effectiveTier: "pro", settlementProtected: false });
+      expect(Object.keys(at(during, pro)!.limits ?? {}).sort()).toEqual(
+        ["concurrent_editors", "project_members", "projects_per_studio", "storage_bytes", "studio_members", "team_studios"],
+      );
 
-    // The snapshot reads what every reading reads: the same row the
-    // single-account reader gives at that moment.
-    const now = await readAll(new Date(), 1000);
-    for (const id of [base, pro]) {
-      const single = await getMembershipReadingForUser(id);
-      expect(at(now, id)).toEqual({
-        userId: id,
-        effectiveTier: single.effectiveTier,
-        limits: single.limits,
-        settlementProtected: single.settlementProtected,
-      });
-    }
+      // The snapshot reads what every reading reads: the same row the
+      // single-account reader gives at that moment.
+      const now = await readAll(new Date(), 1000);
+      for (const id of [base, pro]) {
+        const single = await getMembershipReadingForUser(id);
+        expect(at(now, id)).toEqual({
+          userId: id,
+          effectiveTier: single.effectiveTier,
+          limits: single.limits,
+          settlementProtected: single.settlementProtected,
+        });
+      }
 
-    // Long after the paid period ended, the same rows read as lapsed.
-    const later = await readAll(new Date("2027-06-01T00:00:00Z"), 1000);
-    expect(at(later, pro)).toMatchObject({ effectiveTier: "base" });
+      // Long after the paid period ended, the same rows read as lapsed.
+      const later = await readAll(new Date("2027-06-01T00:00:00Z"), 1000);
+      expect(at(later, pro)).toMatchObject({ effectiveTier: "base" });
+      tx.rollback();
+    });
+    await expect(rolledBack).rejects.toBeInstanceOf(TransactionRollbackError);
   });
 });
