@@ -13,6 +13,7 @@ import { McpServer, type CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { ServerApiError } from "@mcp/server-api.js";
 import { ToolRefusal, type ToolDef, type ToolDeps } from "@mcp/tools/kit.js";
+import { taskNodeOutcome } from "@mcp/tools/task-tracker.js";
 
 /** What the server is built with besides its tools. */
 export interface ToolServerOptions {
@@ -70,7 +71,7 @@ async function reminders(deps: ToolDeps, onError: (err: Error) => void): Promise
   if (assignments.status === "fulfilled") out.pendingAssignments = assignments.value.length;
   else onError(assignments.reason as Error);
   if (finished.status === "fulfilled") {
-    if (finished.value.length > 0) out.finishedTasks = finished.value;
+    if (finished.value.length > 0) out.finishedTasks = finished.value.map((row) => ({ taskId: row.taskId, tool: row.tool, ...taskNodeOutcome(row) }));
   } else onError(finished.reason as Error);
   return out;
 }

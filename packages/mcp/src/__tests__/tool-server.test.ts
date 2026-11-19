@@ -130,7 +130,11 @@ describe("buildToolServer", () => {
     await client.initialize();
     expect(await client.callJson("echo", { word: "hi" })).toEqual({
       isError: false,
-      body: { result: { word: "hi" }, pendingAssignments: 2, finishedTasks: [FINISHED] },
+      body: {
+        result: { word: "hi" },
+        pendingAssignments: 2,
+        finishedTasks: [{ taskId: FINISHED.taskId, tool: "run_generation", projectId: FINISHED.projectId, spaceId: FINISHED.spaceId, nodeId: FINISHED.nodeId, status: "succeeded", result: "https://cdn/x.png" }],
+      },
     });
   });
 

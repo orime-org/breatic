@@ -45,11 +45,17 @@ const operationRecordSchema = z.object({
 /** How one submit ended. */
 export type SubmitOutcome = { kind: "reply"; reply: AgentReply } | { kind: "submitted"; callId: string };
 
+/** Where an earlier command ran: its Project and Space. */
+export interface OperationPlace {
+  projectId: string;
+  spaceId: string | null;
+}
+
 /** Where an earlier call stands. `type` lets the caller word an unfinished capture. */
 export type OperationOutcome =
-  | { kind: "reply"; reply: AgentReply }
-  | { kind: "running" }
-  | { kind: "unfinished"; type: string }
+  | { kind: "reply"; reply: AgentReply; type: string; place: OperationPlace }
+  | { kind: "running"; type: string; place: OperationPlace }
+  | { kind: "unfinished"; type: string; place: OperationPlace }
   | { kind: "expired" };
 
 /** The command channel one process holds. */
@@ -173,9 +179,10 @@ export async function createCommandChannel(deps: CommandChannelDeps): Promise<Co
       // The submission record outlives the reply, so a call without one is
       // past both, or was never this connection's.
       if (record === null || record.connectionId !== connectionId) return { kind: "expired" };
+      const place = { projectId: record.projectId, spaceId: record.spaceId };
       const reply = await readReply(callId);
-      if (reply !== null) return { kind: "reply", reply };
-      return Date.now() < record.deadlineAt ? { kind: "running" } : { kind: "unfinished", type: record.type };
+      if (reply !== null) return { kind: "reply", reply, type: record.type, place };
+      return { kind: Date.now() < record.deadlineAt ? "running" : "unfinished", type: record.type, place };
     },
 
     async close() {

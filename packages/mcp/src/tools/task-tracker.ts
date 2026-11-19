@@ -25,6 +25,44 @@ export interface TaskRow {
   errorMessage: string | null;
 }
 
+/** One node of a task, as an agent reads it. */
+export interface TaskNodeOutcome {
+  projectId: string;
+  spaceId: string;
+  nodeId: string;
+  status: "running" | "succeeded" | "failed" | "timed_out";
+  /** The result's address, when it succeeded. */
+  result?: string;
+  /** Why it failed; "timed out" past its two-hour budget. */
+  error?: string;
+}
+
+/** The server's task statuses, as an agent reads them. */
+const TASK_STATUS: Readonly<Record<TaskRow["status"], TaskNodeOutcome["status"]>> = {
+  running: "running",
+  done: "succeeded",
+  failed: "failed",
+  expired: "timed_out",
+};
+
+/**
+ * One node of a task as an agent reads it, as the node shows it in the browser.
+ * @param row - The node's task row.
+ * @returns Its outcome.
+ */
+export function taskNodeOutcome(row: TaskRow): TaskNodeOutcome {
+  const status = TASK_STATUS[row.status];
+  return {
+    projectId: row.projectId,
+    spaceId: row.spaceId,
+    nodeId: row.nodeId,
+    status,
+    ...(status === "succeeded" && row.content !== null ? { result: row.content } : {}),
+    ...(status === "failed" ? { error: row.errorMessage ?? "failed" } : {}),
+    ...(status === "timed_out" ? { error: "timed out" } : {}),
+  };
+}
+
 /** A finished task's row, with the tool that started it. */
 export type FinishedTask = TaskRow & { tool: string };
 

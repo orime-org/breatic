@@ -190,9 +190,10 @@ describe("operationResult", () => {
     const reply: AgentReply = { callId: done.callId, status: "done", result: 7 };
     await answer(reply);
 
-    expect(await channel.operationResult(done.callId, done.connectionId)).toEqual({ kind: "reply", reply });
-    expect(await channel.operationResult(running.callId, running.connectionId)).toEqual({ kind: "running" });
-    expect(await channel.operationResult(late.callId, late.connectionId)).toEqual({ kind: "unfinished", type: "read_canvas" });
+    const placeOf = (c: AgentCommand): { projectId: string; spaceId: string | null } => ({ projectId: c.projectId, spaceId: c.spaceId });
+    expect(await channel.operationResult(done.callId, done.connectionId)).toEqual({ kind: "reply", reply, type: "read_canvas", place: placeOf(done) });
+    expect(await channel.operationResult(running.callId, running.connectionId)).toEqual({ kind: "running", type: "read_canvas", place: placeOf(running) });
+    expect(await channel.operationResult(late.callId, late.connectionId)).toEqual({ kind: "unfinished", type: "read_canvas", place: placeOf(late) });
     expect(await channel.operationResult(randomUUID(), done.connectionId)).toEqual({ kind: "expired" });
   });
 
