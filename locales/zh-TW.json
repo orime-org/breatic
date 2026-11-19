@@ -4018,7 +4018,7 @@
   },
   "agentTokens": {
     "title": "Agent 權杖",
-    "intro": "連接到你帳號的外部 Agent 以你的身分工作。斷開或撤銷後，它立刻無法再存取。",
+    "intro": "連接到你帳號的外部 Agent 以你的身分工作，能進入你所在的全部 Studio（包括團隊 Studio）裡你能開啟的 Project。斷開或撤銷後，它立刻無法再存取。",
     "clientsTitle": "已連接的用戶端",
     "tokensTitle": "個人存取權杖",
     "clientsEmpty": "還沒有外部 Agent 連接過。在 Claude Code、Codex 等用戶端裡加入 breatic 的 MCP 位址並授權後會出現在這裡。",

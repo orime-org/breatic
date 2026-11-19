@@ -4018,7 +4018,7 @@
   },
   "agentTokens": {
     "title": "Agent トークン",
-    "intro": "アカウントに接続した外部 Agent はあなたとして動作します。切断または取り消すと、すぐにアクセスできなくなります。",
+    "intro": "アカウントに接続した外部 Agent はあなたとして動作し、参加しているすべての Studio（チームの Studio を含む）で、あなたが開ける Project に入れます。切断または取り消すと、すぐにアクセスできなくなります。",
     "clientsTitle": "接続済みのクライアント",
     "tokensTitle": "個人アクセストークン",
     "clientsEmpty": "まだ外部 Agent は接続していません。Claude Code や Codex などのクライアントに breatic の MCP アドレスを追加して認可すると、ここに表示されます。",

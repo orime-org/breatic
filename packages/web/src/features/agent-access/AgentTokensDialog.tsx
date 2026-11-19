@@ -33,7 +33,7 @@ export function AgentTokensDialog({ open, onOpenChange, focusId }: AgentTokensDi
         <DialogHeader>
           <DialogTitle>{t('agentTokens.title')}</DialogTitle>
         </DialogHeader>
-        <ScrollArea className='max-h-[min(640px,70vh)]' viewportRef={viewportRef}>
+        <ScrollArea className='max-h-[min(640px,70vh)]' viewportClassName='px-4 pb-4' viewportRef={viewportRef}>
           <AgentsSection {...(focusId === undefined ? {} : { focusId })} scroller={viewportRef} />
         </ScrollArea>
       </DialogContent>

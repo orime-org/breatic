@@ -4018,7 +4018,7 @@
   },
   "agentTokens": {
     "title": "Agent tokens",
-    "intro": "External Agents connected to your account work as you. Once disconnected or revoked, they lose access at once.",
+    "intro": "External Agents connected to your account work as you, in every Project you can open across all your Studios, team Studios included. Once disconnected or revoked, they lose access at once.",
     "clientsTitle": "Connected clients",
     "tokensTitle": "Personal access tokens",
     "clientsEmpty": "No external Agent has connected yet. Add breatic's MCP address in a client such as Claude Code or Codex and authorize it, and it appears here.",

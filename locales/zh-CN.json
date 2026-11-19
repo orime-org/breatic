@@ -4018,7 +4018,7 @@
   },
   "agentTokens": {
     "title": "Agent 令牌",
-    "intro": "连接到你账号的外部 Agent 以你的身份工作。断开或吊销后，它立刻无法再访问。",
+    "intro": "连接到你账号的外部 Agent 以你的身份工作，能进入你所在的全部 Studio（包括团队 Studio）里你能打开的 Project。断开或吊销后，它立刻无法再访问。",
     "clientsTitle": "已连接的客户端",
     "tokensTitle": "个人访问令牌",
     "clientsEmpty": "还没有外部 Agent 连接过。在 Claude Code、Codex 等客户端里添加 breatic 的 MCP 地址并授权后会出现在这里。",
