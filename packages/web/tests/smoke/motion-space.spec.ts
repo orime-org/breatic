@@ -9,7 +9,7 @@
 import { expect, type Locator, type Page } from 'playwright/test';
 
 import { dataOf } from '../helpers/api';
-import { executeInMotion, motionDetails, openSpaceById, shownSpaceId, waitMotionFinished } from '../helpers/motion';
+import { acceptedRowId, executeInMotion, motionDetails, motionListTab, openSpaceById, shownSpaceId, waitMotionFinished } from '../helpers/motion';
 import { archiveProjects, openSmokeProject, smokeProjectId } from '../helpers/project';
 import { test } from '../helpers/slot';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
@@ -257,8 +257,8 @@ test('one web animation is made, modified, exported, put on a Canvas that View o
       await dialog.getByTestId('web-animation-prompt').fill('Make the circle blue.');
       await dialog.getByTestId('web-animation-execute').click();
       await expect(dialog).toHaveCount(0);
-      await expect.poll(() => motion.getByTestId('motion-preview').getAttribute('data-execution-id')).not.toBe(created);
-      modified = (await motion.getByTestId('motion-preview').getAttribute('data-execution-id')) ?? '';
+      modified = await acceptedRowId(page);
+      await expect(motion.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', created);
       await expect(motion.getByTestId(`motion-row-${modified}`)).toContainText(`Modified from “${PROMPT}”: Make the circle blue.`);
       await waitMotionFinished(page, modified);
     });
@@ -266,8 +266,8 @@ test('one web animation is made, modified, exported, put on a Canvas that View o
     let exported = '';
     await test.step('export: the result renders to a video, and the source then offers View video', async () => {
       await motion.getByTestId('motion-action-export').click();
-      await expect.poll(() => motion.getByTestId('motion-preview').getAttribute('data-execution-id')).not.toBe(modified);
-      exported = (await motion.getByTestId('motion-preview').getAttribute('data-execution-id')) ?? '';
+      exported = await acceptedRowId(page);
+      await expect(motion.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', modified);
       await expect(motion.getByTestId(`motion-row-${exported}`)).toContainText('Video · ');
       await waitMotionFinished(page, exported, 'video');
       await expect(motion.getByTestId('motion-action-download')).toBeEnabled();
@@ -285,9 +285,7 @@ test('one web animation is made, modified, exported, put on a Canvas that View o
       await expect(visibleSpace(page).locator('.react-flow__node.selected')).toHaveCount(1, { timeout: 30_000 });
       // Another result is in front before the Canvas asks for this one. Accepting the export opened the list.
       await openSpaceById(page, motionId);
-      const list = motion.getByTestId('motion-panel-executions');
-      if (await list.count() === 0) await motion.getByTestId('motion-open-executions').click();
-      await list.getByRole('tab', { name: /^Completed/ }).click();
+      const list = await motionListTab(page, 'Completed');
       await list.getByTestId(`motion-row-${created}`).click();
       await expect(motion.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', created);
       await page.keyboard.press('Escape');
@@ -412,7 +410,6 @@ test('an annotation with a point is seen, answered and resolved by another Edito
         }
         await view.getByTestId('motion-details').click();
         await expect(motionDetails(peer)).toContainText('Succeeded');
-        await expect(motionDetails(peer).getByTestId('motion-cancel')).toHaveCount(0);
       });
     });
   } finally {
