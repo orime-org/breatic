@@ -31,4 +31,11 @@ describe("backendConfig", () => {
       expect(rules).toHaveProperty([id]);
     }
   });
+
+  it("holds only each package's entry file to the service wiring rule", () => {
+    const block = backendConfig({ packages: ["packages/a", "packages/b"], rootDir: ROOT }).find(
+      (b) => b.rules?.["breatic/service-observability"] !== undefined,
+    );
+    expect(block?.files).toEqual(["packages/a/src/index.ts", "packages/b/src/index.ts"]);
+  });
 });

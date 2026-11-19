@@ -23,6 +23,90 @@ export interface BackendConfigOptions {
   rootDir: string;
 }
 
+// eslint-plugin-jsdoc TypeScript preset (error level): enforces TSDoc-style
+// doc comments. no-types stays on (TS already provides param/return/yield
+// types — the codebase has 0 inline-type comments). The ONE exception is
+// require-throws-type, kept ON in FUNCTION_FORMAT_RULES: exception types are the single piece of
+// type info a TS signature CANNOT carry (no checked exceptions), so they live
+// in the comment as `@throws {ErrorType}`. yields/next-type stay off (the
+// Generator<Y,R,N> signature carries them, same as returns). Together with
+// explicit-function-return-type, this realizes the function-definition format
+// spec (docs/ARCHITECTURE.md → Coding standards): type info → signature; exception type →
+// comment. Replaces eslint-plugin-tsdoc's all-or-nothing tsdoc/syntax warn (#850).
+const jsdocTs = jsdoc.configs["flat/recommended-typescript-error"];
+
+/** The function-definition format: every named function unit has a doc block and a return type. */
+export const FUNCTION_FORMAT_PLUGINS = jsdocTs.plugins;
+
+/** The rules of the function-definition format (docs/ARCHITECTURE.md, coding standards). */
+export const FUNCTION_FORMAT_RULES: TSESLint.FlatConfig.Rules = {
+  ...jsdocTs.rules,
+  "jsdoc/require-jsdoc": [
+    "error",
+    {
+      publicOnly: false,
+      require: {
+        ArrowFunctionExpression: false,
+        ClassDeclaration: true,
+        ClassExpression: true,
+        FunctionDeclaration: true,
+        FunctionExpression: false,
+        MethodDefinition: true,
+      },
+      contexts: [
+        "VariableDeclarator > ArrowFunctionExpression",
+        "VariableDeclarator > FunctionExpression",
+        "PropertyDefinition > ArrowFunctionExpression",
+        "PropertyDefinition > FunctionExpression",
+      ],
+    },
+  ],
+  // Every doc block must carry a one-line summary description, not just
+  // tags — a bare @param/@returns block is incomplete (a rule is either
+  // 0 or 1; the summary is not an optional carve-out). The #850 cleanup added
+  // summaries everywhere, so this holds at zero violations.
+  "jsdoc/require-description": "error",
+  // Exception type → comment (signature can't carry it). The braces in
+  // `@throws {AppError}` are the one place a type belongs in a doc tag.
+  "jsdoc/require-throws-type": "error",
+  // Generator yield/next types are carried by the Generator<Y,R,N>
+  // signature, same as a return type — not duplicated in the comment.
+  "jsdoc/require-yields-type": "off",
+  "jsdoc/require-next-type": "off",
+  // Every named function unit declares its return type in the signature;
+  // generators write Generator<Y,R,N>. allowExpressions exempts inline
+  // anonymous callbacks (arr.map(x => x*2), event handlers), mirroring the
+  // require-jsdoc carve-out for non-named-unit functions.
+  "@typescript-eslint/explicit-function-return-type": [
+    "error",
+    { allowExpressions: true },
+  ],
+};
+
+/** A delete or update with no where clause rewrites the whole table; db and tx are the handles we use. */
+export const DRIZZLE_WHERE_RULES: TSESLint.FlatConfig.Rules = {
+  "drizzle/enforce-delete-with-where": [
+    "error",
+    { drizzleObjectName: ["db", "tx"] },
+  ],
+  "drizzle/enforce-update-with-where": [
+    "error",
+    { drizzleObjectName: ["db", "tx"] },
+  ],
+};
+
+/** Paths that run before traffic arrives, where synchronous reads are allowed. */
+export const SYNC_IN_REQUEST_PATH_IGNORES = [
+  "**/__tests__/**",
+  "**/*.test.ts",
+  "**/*.spec.ts",
+  "**/config/**",
+  "**/config.ts",
+  "**/infra/**",
+  "**/*-loader.ts",
+  "**/model-catalog/**",
+];
+
 const TEST_IGNORES = ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"];
 const TEST_IGNORES_TSX = ["**/__tests__/**", "**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"];
 
@@ -39,7 +123,6 @@ export function backendConfig(options: BackendConfigOptions): TSESLint.FlatConfi
    * @returns The globs.
    */
   const each = (suffix: string): string[] => dirs.map((dir) => `${dir}/${suffix}`);
-  const jsdocTs = jsdoc.configs["flat/recommended-typescript-error"];
   const src = each("src/**/*.ts");
   const srcTsx = each("src/**/*.{ts,tsx}");
   const anyTsx = each("**/*.{ts,tsx}");
@@ -49,43 +132,13 @@ export function backendConfig(options: BackendConfigOptions): TSESLint.FlatConfi
     {
       files: srcTsx,
       ignores: ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}", "**/__tests__/**"],
-      plugins: jsdocTs.plugins,
-      rules: {
-        ...jsdocTs.rules,
-        "jsdoc/require-jsdoc": [
-          "error",
-          {
-            publicOnly: false,
-            require: {
-              ArrowFunctionExpression: false,
-              ClassDeclaration: true,
-              ClassExpression: true,
-              FunctionDeclaration: true,
-              FunctionExpression: false,
-              MethodDefinition: true,
-            },
-            contexts: [
-              "VariableDeclarator > ArrowFunctionExpression",
-              "VariableDeclarator > FunctionExpression",
-              "PropertyDefinition > ArrowFunctionExpression",
-              "PropertyDefinition > FunctionExpression",
-            ],
-          },
-        ],
-        "jsdoc/require-description": "error",
-        "jsdoc/require-throws-type": "error",
-        "jsdoc/require-yields-type": "off",
-        "jsdoc/require-next-type": "off",
-        "@typescript-eslint/explicit-function-return-type": ["error", { allowExpressions: true }],
-      },
+      plugins: FUNCTION_FORMAT_PLUGINS,
+      rules: FUNCTION_FORMAT_RULES,
     },
     {
       files: src,
       plugins: { drizzle: drizzlePlugin },
-      rules: {
-        "drizzle/enforce-delete-with-where": ["error", { drizzleObjectName: ["db", "tx"] }],
-        "drizzle/enforce-update-with-where": ["error", { drizzleObjectName: ["db", "tx"] }],
-      },
+      rules: DRIZZLE_WHERE_RULES,
     },
     {
       files: srcTsx,
@@ -111,7 +164,7 @@ export function backendConfig(options: BackendConfigOptions): TSESLint.FlatConfi
     },
     {
       files: src,
-      ignores: [...TEST_IGNORES, "**/config/**", "**/config.ts", "**/infra/**", "**/*-loader.ts", "**/model-catalog/**"],
+      ignores: SYNC_IN_REQUEST_PATH_IGNORES,
       rules: { "breatic/no-sync-in-request-path": "error" },
     },
     { files: srcTsx, ignores: TEST_IGNORES_TSX, rules: { "breatic/no-yjs-documents-outside-repo": "error" } },

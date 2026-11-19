@@ -1,25 +1,20 @@
 import eslint from "@eslint/js";
 import globals from "globals";
 import tseslint from "typescript-eslint";
-import jsdoc from "eslint-plugin-jsdoc";
 import importPlugin from "eslint-plugin-import";
-import drizzle from "eslint-plugin-drizzle";
-import { backendConfig, breaticPlugin, upstreamLiteralOptions } from "@breatic/eslint-rules";
+import {
+  DRIZZLE_WHERE_RULES,
+  FUNCTION_FORMAT_PLUGINS,
+  FUNCTION_FORMAT_RULES,
+  SYNC_IN_REQUEST_PATH_IGNORES,
+  backendConfig,
+  breaticPlugin,
+  drizzlePlugin,
+  upstreamLiteralOptions,
+} from "@breatic/eslint-rules";
 import ts from "typescript";
 import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
-
-// eslint-plugin-jsdoc TypeScript preset (error level): enforces TSDoc-style
-// doc comments. no-types stays on (TS already provides param/return/yield
-// types — the codebase has 0 inline-type comments). The ONE exception is
-// require-throws-type, kept ON below: exception types are the single piece of
-// type info a TS signature CANNOT carry (no checked exceptions), so they live
-// in the comment as `@throws {ErrorType}`. yields/next-type stay off (the
-// Generator<Y,R,N> signature carries them, same as returns). Together with
-// explicit-function-return-type, this realizes the function-definition format
-// spec (docs/ARCHITECTURE.md → Coding standards): type info → signature; exception type →
-// comment. Replaces eslint-plugin-tsdoc's all-or-nothing tsdoc/syntax warn (#850).
-const jsdocTs = jsdoc.configs["flat/recommended-typescript-error"];
 
 /** Where the media container's tsconfig sits, from the repository root. */
 const MEDIA_CONTAINER_DIR = "packages/ingest/container";
@@ -158,50 +153,8 @@ export default tseslint.config(
       "repo-lint/src/**/*.ts",
     ],
     ignores: ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}", "**/__tests__/**"],
-    plugins: jsdocTs.plugins,
-    rules: {
-      ...jsdocTs.rules,
-      "jsdoc/require-jsdoc": [
-        "error",
-        {
-          publicOnly: false,
-          require: {
-            ArrowFunctionExpression: false,
-            ClassDeclaration: true,
-            ClassExpression: true,
-            FunctionDeclaration: true,
-            FunctionExpression: false,
-            MethodDefinition: true,
-          },
-          contexts: [
-            "VariableDeclarator > ArrowFunctionExpression",
-            "VariableDeclarator > FunctionExpression",
-            "PropertyDefinition > ArrowFunctionExpression",
-            "PropertyDefinition > FunctionExpression",
-          ],
-        },
-      ],
-      // Every doc block must carry a one-line summary description, not just
-      // tags — a bare @param/@returns block is incomplete (a rule is either
-      // 0 or 1; the summary is not an optional carve-out). The #850 cleanup added
-      // summaries everywhere, so this holds at zero violations.
-      "jsdoc/require-description": "error",
-      // Exception type → comment (signature can't carry it). The braces in
-      // `@throws {AppError}` are the one place a type belongs in a doc tag.
-      "jsdoc/require-throws-type": "error",
-      // Generator yield/next types are carried by the Generator<Y,R,N>
-      // signature, same as a return type — not duplicated in the comment.
-      "jsdoc/require-yields-type": "off",
-      "jsdoc/require-next-type": "off",
-      // Every named function unit declares its return type in the signature;
-      // generators write Generator<Y,R,N>. allowExpressions exempts inline
-      // anonymous callbacks (arr.map(x => x*2), event handlers), mirroring the
-      // require-jsdoc carve-out for non-named-unit functions.
-      "@typescript-eslint/explicit-function-return-type": [
-        "error",
-        { allowExpressions: true },
-      ],
-    },
+    plugins: FUNCTION_FORMAT_PLUGINS,
+    rules: FUNCTION_FORMAT_RULES,
   },
   {
     // Drizzle financial-safety guardrail (CI maximal-strictness guard
@@ -214,17 +167,8 @@ export default tseslint.config(
     // tx.delete()/tx.update() inside a db.transaction are covered too).
     // Backend packages only — web has no DB access.
     files: ["packages/{core,domain,worker,collab,provider}/src/**/*.ts"],
-    plugins: { drizzle },
-    rules: {
-      "drizzle/enforce-delete-with-where": [
-        "error",
-        { drizzleObjectName: ["db", "tx"] },
-      ],
-      "drizzle/enforce-update-with-where": [
-        "error",
-        { drizzleObjectName: ["db", "tx"] },
-      ],
-    },
+    plugins: { drizzle: drizzlePlugin },
+    rules: DRIZZLE_WHERE_RULES,
   },
   {
     // Naming guardrail for the shared cross-end contract types (2026-06-15).
@@ -405,16 +349,7 @@ export default tseslint.config(
     files: [
       "packages/{core,domain,worker,collab,provider}/src/**/*.ts",
     ],
-    ignores: [
-      "**/__tests__/**",
-      "**/*.test.ts",
-      "**/*.spec.ts",
-      "**/config/**",
-      "**/config.ts",
-      "**/infra/**",
-      "**/*-loader.ts",
-      "**/model-catalog/**",
-    ],
+    ignores: SYNC_IN_REQUEST_PATH_IGNORES,
     rules: {
       "breatic/no-sync-in-request-path": "error",
     },
