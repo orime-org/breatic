@@ -43,6 +43,8 @@ describe("isScannableText", () => {
       "docs/diagram.pdf",
       "packages/web/src/assets/font.woff2",
       "fixtures/clip.mp4",
+      "fixtures/frame-grid/legacy.avi",
+      "fixtures/frame-grid/broadcast.m2t",
     ]) {
       expect(isScannableText(path), path).toBe(false);
     }
