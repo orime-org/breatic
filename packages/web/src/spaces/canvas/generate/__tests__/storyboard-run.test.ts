@@ -10,7 +10,16 @@ import { describe, it, expect } from 'vitest';
 import * as Y from 'yjs';
 import { storyboardSpec, type ParamDescriptor } from '@breatic/shared';
 
-import { storyboardRun } from '@web/spaces/canvas/generate/storyboard-run';
+import { serializePromptFragment, storyboardRun } from '@breatic/shared/canvas-model';
+
+/**
+ * The shots written out as the panel writes them, with no references.
+ * @param shots - The shots.
+ * @returns Each shot's words and seconds.
+ */
+function written(shots: ReadonlyArray<{ prompt: Y.XmlFragment; duration: number }>): Array<{ prompt: string; duration: number }> {
+  return shots.map((shot) => ({ prompt: serializePromptFragment(shot.prompt, [], {}), duration: shot.duration }));
+}
 
 const KLING: Record<string, ParamDescriptor> = {
   duration: { description: '', default: 5, values: [3, 5, 10], fill: 'panel' },
@@ -63,7 +72,7 @@ const GATE = {
 
 describe('the shots part of a run', () => {
   it('adds nothing and keeps the main prompt outside the multi-shot mode', () => {
-    expect(storyboardRun(storyboardSpec(KLING, 't2v'), SHOTS, 5, [], {})).toEqual({
+    expect(storyboardRun(storyboardSpec(KLING, 't2v'), written(SHOTS), 5)).toEqual({
       sendsPrompt: true,
       writtenPrompt: undefined,
       params: {},
@@ -72,7 +81,7 @@ describe('the shots part of a run', () => {
   });
 
   it('sends Kling every shot in its own field in place of the prompt, and hands the gate the same shots', () => {
-    expect(storyboardRun(storyboardSpec(KLING, 'multi_shot'), SHOTS, 5, [], {})).toEqual({
+    expect(storyboardRun(storyboardSpec(KLING, 'multi_shot'), written(SHOTS), 5)).toEqual({
       sendsPrompt: false,
       writtenPrompt: undefined,
       params: {
@@ -84,7 +93,7 @@ describe('the shots part of a run', () => {
   });
 
   it('writes the shots into the prompt for a model with no field for them', () => {
-    expect(storyboardRun(storyboardSpec(WAN, 'multi_shot'), SHOTS, 5, [], {})).toEqual({
+    expect(storyboardRun(storyboardSpec(WAN, 'multi_shot'), written(SHOTS), 5)).toEqual({
       sendsPrompt: false,
       writtenPrompt: 'Shot 1 [0-2s]: a paper boat\nShot 2 [2-5s]: the pond',
       params: {},

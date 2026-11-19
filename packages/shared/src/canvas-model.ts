@@ -40,6 +40,8 @@ export * from "@shared/canvas/model/generation/image-mode-selection.js";
 export * from "@shared/canvas/model/generation/modality-buckets.js";
 export * from "@shared/canvas/model/generation/mode-selection.js";
 export * from "@shared/canvas/model/generation/panel-view-model.js";
+export * from "@shared/canvas/model/generation/run-plan.js";
+export * from "@shared/canvas/model/generation/storyboard-run.js";
 export * from "@shared/canvas/model/generation/style-picks.js";
 export * from "@shared/canvas/model/generation/video-panel-view-model.js";
 export * from "@shared/canvas/model/generation/voice-param.js";

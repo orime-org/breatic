@@ -35,11 +35,6 @@ import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canv
 import {
   evaluateExecute,
   extractPromptText,
-  storyboardSpec,
-  type ExecuteVerdict,
-  type ModelEntry,
-  type ReferencePool,
-  type StoryboardSpec,
 } from '@breatic/shared';
 import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
 import {
@@ -71,17 +66,18 @@ import {
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { AddShotRow, ShotList, addBlockedKey, nextOpenShot } from '@web/spaces/canvas/generate/storyboard-controls';
 import { mentionedSourceIds } from '@breatic/shared/canvas-model';
-import { storyboardRun } from '@web/spaces/canvas/generate/storyboard-run';
+import { planVideoRun, serializePromptFragment, storyboardRun, storyboardSpecOf, storyboardTotal } from '@breatic/shared/canvas-model';
+import { showRunRefusal } from '@web/spaces/canvas/generate/run-refusal';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
 import {
   VIDEO_MODE_OPTIONS,
 } from '@breatic/shared/canvas-model';
 import { allGenerationModels, modelsForModality } from '@breatic/shared/canvas-model';
-import { slotForPurpose, slotRefusalKey } from '@breatic/shared/canvas-model';
+import { slotForPurpose } from '@breatic/shared/canvas-model';
 import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
 import { useStyleSlot } from '@web/spaces/canvas/generate/use-style-slot';
 import { styleSlotsFor } from '@breatic/shared/canvas-model';
-import { poolCounts, poolKindOf, poolParams } from '@breatic/shared/canvas-model';
+import { poolCounts } from '@breatic/shared/canvas-model';
 import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import {
   videoMissing,
@@ -89,7 +85,7 @@ import {
 } from '@breatic/shared/canvas-model';
 import type { VideoSlot } from '@breatic/shared/canvas-model';
 import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
-import { buildVideoTaskPayload, videoEstimateInput } from '@breatic/shared/canvas-model';
+import { videoEstimateInput } from '@breatic/shared/canvas-model';
 import {
   buildVideoPanelViewModel,
   nodeVideoMode,
@@ -123,28 +119,6 @@ const EMPTY_TEXT: ReadonlyMap<string, string> = new Map();
  */
 function IGNORE(): void {
   // Nothing to do.
-}
-
-/**
- * A model's storyboard in a mode: defined only in the multi-shot mode, for a
- * model that takes shots there.
- * @param entry - The current model.
- * @param mode - The mode the panel is in.
- * @returns Its storyboard spec.
- */
-function specOf(entry: ModelEntry | undefined, mode: string): StoryboardSpec | undefined {
-  return entry ? storyboardSpec(entry.params, mode) : undefined;
-}
-
-/**
- * The total seconds a run's shots have to add up to.
- * @param spec - The model's storyboard.
- * @param params - The run's params.
- * @returns The total, 0 when the model names none.
- */
-function totalOf(spec: StoryboardSpec | undefined, params: Readonly<Record<string, unknown>>): number {
-  const raw = spec?.totalParam === undefined ? undefined : params[spec.totalParam];
-  return typeof raw === 'number' ? raw : 0;
 }
 
 interface VideoGeneratePanelContainerProps {
@@ -285,8 +259,8 @@ function VideoGeneratePanelBody({
   );
   // The node's shots, which only the multi-shot mode shows and sends: `spec`
   // is defined there alone, for a model that takes shots.
-  const spec = React.useMemo(() => specOf(vm.modelEntry, mode), [vm.modelEntry, mode]);
-  const total = totalOf(spec, vm.params);
+  const spec = React.useMemo(() => storyboardSpecOf(vm.modelEntry, mode), [vm.modelEntry, mode]);
+  const total = storyboardTotal(spec, vm.params);
   // A fresh list only when a shot is added, removed, brought back or given
   // other seconds; words typed in a shot leave it as it is (`useShots`).
   const shots = useShots(projectId, spaceId, nodeId);
@@ -424,7 +398,14 @@ function VideoGeneratePanelBody({
   // for a model with no field for them. Words typed in a shot change it (`useShotWords`).
   const shotWords = useShotWords(projectId, spaceId, nodeId);
   const shotRun = React.useMemo(
-    () => (spec && shots ? storyboardRun(spec, shots, total, stableReferences, stableMentionTokens) : undefined),
+    () =>
+      spec && shots
+        ? storyboardRun(
+          spec,
+          shots.map((shot) => ({ prompt: serializePromptFragment(shot.prompt, stableReferences, stableMentionTokens), duration: shot.duration })),
+          total,
+        )
+        : undefined,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `shotWords` is the signal that the shots' words changed.
     [spec, shots, total, stableReferences, stableMentionTokens, shotWords],
   );
@@ -463,12 +444,12 @@ function VideoGeneratePanelBody({
       const liveMode = nodeVideoMode(graph.nodes, nodeId, availableModes);
       // In the multi-shot mode the shots follow the new model's total, in the
       // same undo step as the switch.
-      const pickedSpec = specOf(picked, liveMode);
+      const pickedSpec = storyboardSpecOf(picked, liveMode);
       // One write for the size cap: the switch and the re-split shots both
       // edit fields of the node.
       runCanvasUndoBatch(projectId, spaceId, { kind: 'edit' }, () => {
         setNodeModel(projectId, spaceId, nodeId, liveMode, modelId, paramsByModel);
-        if (pickedSpec) retotalStoryboard(projectId, spaceId, nodeId, totalOf(pickedSpec, params));
+        if (pickedSpec) retotalStoryboard(projectId, spaceId, nodeId, storyboardTotal(pickedSpec, params));
       });
     },
     [models, availableModes, projectId, spaceId, nodeId, freshContent, t],
@@ -499,12 +480,12 @@ function VideoGeneratePanelBody({
       if (!model) return;
       // Entering the multi-shot mode with no shots lays out two, splitting
       // the model's total, in the same step as the switch.
-      const targetSpec = specOf(models.find((m) => m.name === model), target);
+      const targetSpec = storyboardSpecOf(models.find((m) => m.name === model), target);
       const kind = targetSpec ? strongestKind('edit', storyboardEntryKind(projectId, spaceId, nodeId)) : 'edit';
       runCanvasUndoBatch(projectId, spaceId, { kind }, () => {
         setNodeMode(projectId, spaceId, nodeId, target, model, paramsByModel);
         if (targetSpec) {
-          enterStoryboardShots(projectId, spaceId, nodeId, totalOf(targetSpec, paramsByModel[model] ?? {}));
+          enterStoryboardShots(projectId, spaceId, nodeId, storyboardTotal(targetSpec, paramsByModel[model] ?? {}));
         }
       });
     },
@@ -528,7 +509,7 @@ function VideoGeneratePanelBody({
       // A new total re-splits the shots in the multi-shot mode; outside it
       // they are not showing and stay as they are. One gesture, so one undo
       // takes back both.
-      const liveSpec = specOf(live.modelEntry, live.mode);
+      const liveSpec = storyboardSpecOf(live.modelEntry, live.mode);
       const next = liveSpec?.totalParam === undefined
         ? undefined
         : (partial as Record<string, unknown>)[liveSpec.totalParam];
@@ -546,8 +527,8 @@ function VideoGeneratePanelBody({
   // switched either since this render.
   const liveShots = React.useCallback(() => {
     const live = freshVm();
-    const liveSpec = specOf(live.modelEntry, live.mode);
-    return { spec: liveSpec, total: totalOf(liveSpec, live.params) };
+    const liveSpec = storyboardSpecOf(live.modelEntry, live.mode);
+    return { spec: liveSpec, total: storyboardTotal(liveSpec, live.params) };
   }, [freshVm]);
   const onAddShot = React.useCallback(() => {
     const { spec: liveSpec, total: liveTotal } = liveShots();
@@ -723,7 +704,7 @@ function VideoGeneratePanelBody({
     // the shots the node holds right now. Whether the run is multi-shot needs
     // the mode and the model, so they are read first.
     const probe = freshVm();
-    const liveSpec = specOf(probe.modelEntry, probe.mode);
+    const liveSpec = storyboardSpecOf(probe.modelEntry, probe.mode);
     const shotsNow = liveSpec ? (readShots(projectId, spaceId, nodeId) ?? []) : [];
     const mentioned = liveSpec
       ? shotsNow.flatMap((shot) => mentionedSourceIds(shot.prompt))
@@ -731,91 +712,31 @@ function VideoGeneratePanelBody({
     const fresh = freshVm(new Set(mentioned));
     const run = storyboardRun(
       liveSpec,
-      shotsNow,
-      totalOf(liveSpec, fresh.params),
-      referencesRef.current,
-      fresh.mentionTokens,
+      shotsNow.map((shot) => ({
+        prompt: serializePromptFragment(shot.prompt, referencesRef.current, fresh.mentionTokens),
+        duration: shot.duration,
+      })),
+      storyboardTotal(liveSpec, fresh.params),
     );
-    // Serialize the backend prompt AT CLICK TIME: a text chip substitutes its
-    // source node's CURRENT words, and that node may have been edited since
-    // the last prompt keystroke — the ref would carry the stale substitution.
-    // Falls back to the ref when the editor is gone (unmounting).
-    //
-    // A model that declares no `prompt` sends none, and that takes this
-    // explicit branch (#1950): not mounting the editor only stops someone
-    // typing HERE. The mirror still holds whatever was typed under the
-    // previous mode — `onPromptChange` is the only writer and nothing
-    // clears it, and the editor does not call back on unmount — so without
-    // this line a talking-head task would carry the last mode's words.
-    //
-    // In the multi-shot mode the prompt is the shots written out, for a model
-    // with no field for them, and nothing for Kling.
-    const freshPrompt = !fresh.promptRequired
-      ? ''
-      : run.sendsPrompt
-        ? (promptEditorRef.current?.serializePrompt(fresh.mentionTokens) ?? promptTextRef.current)
-        : (run.writtenPrompt ?? '');
-    // One evaluation, its own inputs: the button asked the same question of
-    // the RENDER-time view model, this asks it of live Yjs. Never reuse the
-    // button's answer — React batching and live collaboration make a render
-    // closure stale, and `prompt-missing` in particular is judged against a
-    // different value here (the editor re-serializes so a text chip carries
-    // its source node's CURRENT words).
-    //
-    // `isSubmitting: false` because the synchronous registry read above already
-    // answered that question, and it answers it earlier than a state flag can
-    // (a rapid second click would slip past a re-render). So `'submitting'`
-    // never reaches the check below — it exists for the button.
-    // Reject BEFORE the submitting latch — the button stays clickable (not
-    // disabled), so every one of these is an actionable message rather than a
-    // dead control. The server re-checks before billing (defence in depth).
-    // What the model says it takes in one request, so the panel refuses the
-    // same text the proposal tool already refuses (#1960).
-    const maxInputChars = fresh.modelEntry?.max_input_chars;
-    const verdict = evaluateExecute({
-      promptText: freshPrompt,
-      model: fresh.model,
-      nodeExists: fresh.nodeExists,
-      isSubmitting: false,
-      promptRequired: fresh.promptRequired,
-      maxInputChars,
-      missing: videoMissing(
-        fresh.modelEntry,
-        fresh.mode,
-        fresh.slots,
-        fresh.slotUrls,
-        fresh.referenceUrls,
-      ),
-      pools: poolCounts(fresh.pool, fresh.referenceUrls),
-      storyboard: run.gate,
+    // One plan from live Yjs, never the render closure. The prompt is
+    // serialized AT CLICK TIME: a text chip substitutes its source node's
+    // CURRENT words. It falls back to the ref when the editor is gone; a model
+    // that declares no prompt sends none (#1950), and in the multi-shot mode
+    // the shots go out in its place, which the plan decides.
+    const plan = planVideoRun({
+      nodeId,
+      projectId,
+      spaceId,
+      vm: fresh,
+      run,
+      promptOf: () => promptEditorRef.current?.serializePrompt(fresh.mentionTokens) ?? promptTextRef.current,
       inputRefusal: latestRefusal.current,
     });
-    if (verdict?.message !== undefined) {
-      toast.warning(verdict.message);
-      return;
-    }
-    if (verdict != null) {
-      // The limit is written out here so the check that every id reaches a
-      // real message in all five catalogs can see it.
-      if (verdict.refusal === 'too-many-references') {
-        toast.warning(t('canvas.generatePanel.errorTooManyReferences', verdict.over));
-        return;
-      }
-      const key = videoRefusalKey(verdict, fresh.slots, fresh.pool);
-      // `max` comes from the same value the gate judged by, so the sentence
-      // can never name a limit other than the one that refused; `kind` names
-      // the reference that is missing.
-      if (key) {
-        toast.warning(t(key, {
-          max: maxInputChars ?? 0,
-          kind: poolKindOf(fresh.pool, verdict.slot) ?? 'other',
-          // The storyboard refusals name the shot, the cap or the seconds.
-          shot: verdict.shot ?? 0,
-          limit: verdict.limit ?? 0,
-          shots: verdict.seconds?.shots ?? 0,
-          total: verdict.seconds?.total ?? 0,
-        }));
-      }
+    // Refused BEFORE the submitting latch: the button stays clickable, so each
+    // refusal is an actionable message rather than a dead control. The server
+    // re-checks before billing.
+    if (plan.kind === 'refused') {
+      showRunRefusal(plan.text, t);
       return;
     }
     // The result is written into this node by the server, past the size
@@ -825,22 +746,7 @@ function VideoGeneratePanelBody({
       spaceId,
       nodeId,
       panelKind: 'generateVideo',
-      buildPayload: () =>
-        buildVideoTaskPayload({
-          nodeId,
-          projectId,
-          spaceId,
-          model: fresh.model,
-          params: fresh.params,
-          generation: { mode: fresh.mode, declared: fresh.modelEntry?.params ?? {} },
-          promptText: run.sendsPrompt || run.writtenPrompt !== undefined ? freshPrompt : undefined,
-          storyboardParams: run.params,
-          // The payload's source fields are built FROM the drawn slots, so a
-          // pick left behind by a mode or model switch has no way in.
-          slots: fresh.slots,
-          slotUrls: fresh.slotUrls,
-          poolParams: poolParams(fresh.pool, fresh.referenceUrls),
-        }),
+      buildPayload: () => plan.payload,
     });
   }, [
     nodeId,
@@ -1061,30 +967,6 @@ function VideoGeneratePanelBody({
       onExecute={onExecute}
     />
   );
-}
-
-/**
- * The i18n key a refusal speaks with, in this panel's words.
- *
- * A refusal naming one of the toolbar's own places is worded by that place --
- * the panel calls it a first frame or a driving video, where the gate knows
- * only that it is empty.
- * @param verdict - What the gate answered.
- * @param slots - The slots the toolbar draws for this mode.
- * @param pool - The model's reference pool in this mode.
- * @returns The key, or null when the refusal says nothing.
- */
-function videoRefusalKey(
-  verdict: ExecuteVerdict,
-  slots: readonly VideoSlot[],
-  pool: ReferencePool,
-): string | null {
-  // An empty pool param, or a group any member of which would do — every video
-  // model's group is the kinds its pool takes (the Reference to Video ones).
-  if (poolKindOf(pool, verdict.slot) !== undefined || verdict.refusal === 'sources-missing') {
-    return 'canvas.generatePanel.errorNoReferenceMention';
-  }
-  return slotRefusalKey(VIDEO_SLOTS, slots, verdict);
 }
 
 /**

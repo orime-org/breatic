@@ -17,8 +17,6 @@ import {
 import { docName } from '@web/data/yjs/manager';
 import { checkAdd } from '@web/data/yjs/space-write';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
-import { IMAGE_SLOTS } from '@breatic/shared/canvas-model';
-import { slotRefusalKey } from '@breatic/shared/canvas-model';
 import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
 import { useStyleSlot } from '@web/spaces/canvas/generate/use-style-slot';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
@@ -29,7 +27,6 @@ import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference
 import {
   evaluateExecute,
   extractPromptText,
-  refusalToastKey,
 } from '@breatic/shared';
 import {
   CatalogGatedFrame,
@@ -71,8 +68,8 @@ import {
 import {
   PromptEditor,
 } from '@web/spaces/canvas/generate/PromptEditor';
-import { buildGenerateTaskPayload, imageEstimateInput } from '@breatic/shared/canvas-model';
-import { mentionedReferenceUrls, poolCounts, poolKindOf, poolParams } from '@breatic/shared/canvas-model';
+import { imageEstimateInput } from '@breatic/shared/canvas-model';
+import { mentionedReferenceUrls, poolCounts } from '@breatic/shared/canvas-model';
 import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
@@ -86,6 +83,8 @@ import {
 import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
+import { planImageRun } from '@breatic/shared/canvas-model';
+import { showRunRefusal } from '@web/spaces/canvas/generate/run-refusal';
 
 /**
  * For the two derivations below that deliberately want no body text. Shared so
@@ -576,70 +575,25 @@ function GeneratePanelBody({
     // synchronously from the ref (the prompt's state at click time) so i2i sends
     // exactly the images the prompt @-mentions right now (design B).
     const fresh = freshVm(new Set(atMentionedRef.current));
-    // Serialize the backend prompt AT CLICK TIME (spec §9.1): a text chip
-    // substitutes its source node's CURRENT words, and that node may have been
-    // edited since the last prompt keystroke — the ref would carry the stale
-    // substitution. Falls back to the ref when the editor is gone (unmounting).
-    //
-    // A model that declares no `prompt` sends none, and that takes this
-    // explicit branch (#1950, #1966): not mounting the editor only stops
-    // someone typing HERE. The mirror still holds whatever was typed under the
-    // previous model — `onPromptChange` is the only writer and nothing
-    // clears it, and the editor does not call back on unmount — so without this
-    // line a task for a model that wants no prompt would carry the last one's
-    // words. Same line, same reason, as `VideoGeneratePanelContainer.tsx`.
-    const freshPrompt = fresh.promptRequired
-      ? (promptEditorRef.current?.serializePrompt(fresh.mentionTokens) ?? promptTextRef.current)
-      : '';
-    // One evaluation, its own inputs: the button asked the same question of
-    // the RENDER-time view model, this asks it of live Yjs. Never reuse the
-    // button's answer — React batching and live collaboration make a render
-    // closure stale, and `prompt-missing` in particular is judged against a
-    // different value here (the editor re-serializes so a text chip carries
-    // its source node's CURRENT words).
-    //
-    // `isSubmitting: false` because the synchronous registry read above already
-    // answered that question, and it answers it earlier than a state flag can
-    // (a rapid second click would slip past a re-render). So `'submitting'`
-    // never reaches the check below — it exists for the button.
-    // Reject BEFORE the submitting latch — the button stays clickable (not
-    // disabled), so every one of these is an actionable message rather than a
-    // dead control. The server re-checks before billing (defence in depth).
-    // What the model says it takes in one request, so the panel refuses the
-    // same text the proposal tool already refuses (#1960).
-    const maxInputChars = fresh.maxInputChars;
-    const verdict = evaluateExecute({
-      promptText: freshPrompt,
-      model: fresh.model,
-      nodeExists: fresh.nodeExists,
-      isSubmitting: false,
-      promptRequired: fresh.promptRequired,
-      maxInputChars,
-      missing: fresh.missing,
-      pools: poolCounts(fresh.pool, fresh.referenceUrls),
+    // One plan from live Yjs, never the render closure, so a collaborator's
+    // just-deleted reference or changed model cannot ride into the payload.
+    // The prompt is serialized AT CLICK TIME (spec §9.1): a text chip
+    // substitutes its source node's CURRENT words. It falls back to the ref
+    // when the editor is gone (unmounting); a model that declares no prompt
+    // sends none (#1950, #1966), which the plan decides.
+    const plan = planImageRun({
+      nodeId,
+      projectId,
+      spaceId,
+      vm: fresh,
+      promptOf: () => promptEditorRef.current?.serializePrompt(fresh.mentionTokens) ?? promptTextRef.current,
       inputRefusal: latestRefusal.current,
     });
-    if (verdict?.message !== undefined) {
-      toast.warning(verdict.message);
-      return;
-    }
-    if (verdict != null) {
-      // Both keys are written out here so the check that every id reaches a
-      // real message in all five catalogs can see them.
-      if (verdict.refusal === 'too-many-references') {
-        toast.warning(t('canvas.generatePanel.errorTooManyReferences', verdict.over));
-        return;
-      }
-      // A refusal the style slot answers for speaks in its words (inner#826).
-      const key =
-        verdict.slot === IMAGE_SLOTS.style.param
-          ? slotRefusalKey(IMAGE_SLOTS, fresh.slots, verdict)
-          : poolKindOf(fresh.pool, verdict.slot) !== undefined
-            ? 'canvas.generatePanel.errorNoSourceImage'
-            : refusalToastKey(verdict.refusal);
-      // `max` comes from the same value the gate judged by, so the sentence
-      // can never name a limit other than the one that refused.
-      if (key) toast.warning(t(key, { max: maxInputChars ?? 0 }));
+    // Refused BEFORE the submitting latch: the button stays clickable, so each
+    // refusal is an actionable message rather than a dead control. The server
+    // re-checks before billing.
+    if (plan.kind === 'refused') {
+      showRunRefusal(plan.text, t);
       return;
     }
     // The result is written into this node by the server, past the size
@@ -649,17 +603,7 @@ function GeneratePanelBody({
       spaceId,
       nodeId,
       panelKind: 'generate',
-      buildPayload: () =>
-        buildGenerateTaskPayload({
-          nodeId,
-          projectId,
-          spaceId,
-          model: fresh.model,
-          params: fresh.params,
-          generation: { mode: fresh.mode, declared: fresh.modelEntry?.params ?? {} },
-          promptText: freshPrompt,
-          poolParams: poolParams(fresh.pool, fresh.referenceUrls),
-        }),
+      buildPayload: () => plan.payload,
     });
   }, [
     nodeId,

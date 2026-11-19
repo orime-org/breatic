@@ -13,7 +13,7 @@ import * as Y from 'yjs';
 import type { StoryboardSpec } from '@breatic/shared';
 
 import { serializePromptFragment } from '@breatic/shared/canvas-model';
-import { storyboardRun } from '@web/spaces/canvas/generate/storyboard-run';
+import { storyboardRun } from '@breatic/shared/canvas-model';
 
 /**
  * A prompt fragment holding a note above some words, or the words alone.
@@ -54,7 +54,7 @@ describe('a prompt with a note at the top, read without an editor', () => {
       maxChars: undefined,
       intoPrompt: 'Shot {n} [{start}-{end}s]: {prompt}',
     };
-    const run = storyboardRun(spec, [{ prompt: shotPrompt('She walks in.', true), duration: 3 }], 3, [], {});
+    const run = storyboardRun(spec, [{ prompt: serializePromptFragment(shotPrompt('She walks in.', true), [], {}), duration: 3 }], 3);
     expect(run.writtenPrompt).toBeDefined();
     expect(run.writtenPrompt).not.toMatch(/:\s*\n/);
   });

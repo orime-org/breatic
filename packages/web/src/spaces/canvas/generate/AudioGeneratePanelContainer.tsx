@@ -20,6 +20,8 @@ import type { Voice } from '@breatic/shared';
 
 import { voicesApi } from '@web/data/api/voices';
 import { firstVoiceKey, firstVoiceQuery } from '@web/spaces/canvas/generate/first-voice-query';
+import { paramTooShort, planAudioRun } from '@breatic/shared/canvas-model';
+import { showRunRefusal } from '@web/spaces/canvas/generate/run-refusal';
 import {
   getLyricsFragment,
   getPromptFragment,
@@ -41,7 +43,7 @@ import {
   modelTakesLyrics,
   AUDIO_SLOTS,
 } from '@breatic/shared/canvas-model';
-import { slotForPurpose, slotRefusalKey } from '@breatic/shared/canvas-model';
+import { slotForPurpose } from '@breatic/shared/canvas-model';
 import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
 import { NO_REFERENCE_KINDS } from '@breatic/shared/canvas-model';
 import type { AudioSlot } from '@breatic/shared/canvas-model';
@@ -54,18 +56,15 @@ import {
   withListDefaultVoice,
 } from '@breatic/shared/canvas-model';
 import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
-import { audioEstimateInput, buildAudioTaskPayload } from '@breatic/shared/canvas-model';
+import { audioEstimateInput } from '@breatic/shared/canvas-model';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { deriveReferences } from '@breatic/shared/canvas-model';
 import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import {
-  checkParamCombination,
   evaluateExecute,
   extractPromptText,
-  type ModelEntry,
 } from '@breatic/shared';
-import { wireParams } from '@breatic/shared/canvas-model';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
@@ -501,56 +500,25 @@ function AudioGeneratePanelBody({
       return;
     }
     const fresh = freshVm();
-    // Serialize at click time: a text chip substitutes its source node's
-    // CURRENT words, and that node may have been edited since the last
-    // keystroke here.
-    const freshPrompt = fresh.promptRequired
-      ? (promptEditorRef.current?.serializePrompt() ?? promptTextRef.current)
-      : '';
-    const freshLyrics = lyrics
-      ? (lyricsEditorRef.current?.serializePrompt() ?? lyricsTextRef.current)
-      : undefined;
-    const maxInputChars = fresh.modelEntry?.max_input_chars;
-    const verdict = evaluateExecute({
-      promptText: freshPrompt,
-      model: fresh.model,
-      nodeExists: fresh.nodeExists,
-      // The synchronous registry read above already answered this, and earlier
-      // than a state flag can.
-      isSubmitting: false,
-      promptRequired: fresh.promptRequired,
-      maxInputChars,
-      voiceRequired: fresh.voiceRequired,
-      voiceChosen: fresh.voiceChosen,
-      speakersShort: fresh.speakersShort,
-      linesEmpty: fresh.dialogueNames !== null && extractPromptText(freshPrompt).length === 0,
-      ...tooShort(fresh.modelEntry, fresh.params),
-      missing: audioMissing(fresh.modelEntry, mode, fresh.slotUrls, fresh.params),
-      lyricsRequired: lyrics,
-      lyricsText: freshLyrics,
+    // One plan from live Yjs at click time: a text chip substitutes its source
+    // node's CURRENT words, and that node may have been edited since the last
+    // keystroke here. Each editor falls back to its ref when it is gone.
+    const plan = planAudioRun({
+      nodeId,
+      projectId,
+      spaceId,
+      vm: fresh,
+      mode,
+      slots,
+      lyrics,
+      promptOf: () => promptEditorRef.current?.serializePrompt() ?? promptTextRef.current,
+      lyricsOf: () => lyricsEditorRef.current?.serializePrompt() ?? lyricsTextRef.current,
       inputRefusal: latestRefusal.current,
     });
-    if (verdict?.message !== undefined) {
-      toast.warning(verdict.message);
+    if (plan.kind === 'refused') {
+      showRunRefusal(plan.text, t);
       return;
     }
-    if (verdict != null) {
-      const key = slotRefusalKey(
-        AUDIO_SLOTS,
-        audioSlotsForModel(fresh.modelEntry, mode, fresh.params),
-        verdict,
-      );
-      // `max` comes from the same value the gate judged by, so the sentence
-      // can never name a limit other than the one that refused.
-      const name = verdict.param === undefined ? '' : t(`canvas.generatePanel.param.${verdict.param}`);
-      if (key) toast.warning(t(key, { max: maxInputChars ?? 0, name }));
-      return;
-    }
-    // Unreachable past the gate above — `no-model` covers it — and stated so
-    // the payload builder gets an entry rather than undefined.
-    const modelEntry = fresh.modelEntry;
-    if (!modelEntry) return;
-
     // The result is written into this node by the server, past the size
     // gate, so a Space that cannot take an add sends nothing (design 5.2).
     if (!checkAdd(docName.canvasSpace(projectId, spaceId)).ok) return;
@@ -558,26 +526,7 @@ function AudioGeneratePanelBody({
       spaceId,
       nodeId,
       panelKind: 'generateAudio',
-      buildPayload: () =>
-        buildAudioTaskPayload({
-          nodeId,
-          projectId,
-          spaceId,
-          model: modelEntry,
-          params: fresh.params,
-          // The same mode the view model above was built for.
-          generation: { mode, declared: modelEntry.params },
-          promptText: freshPrompt,
-          // Read off the same fresh view model the gate judged, so the payload
-          // can only ever carry the pick that passed it.
-          slotUrls: fresh.slotUrls,
-          // The mode's own slots, so a pick made for the other mode cannot ride
-          // this submit: a pick survives a mode switch by design.
-          slots,
-          // Only on a mode that collects them; absent leaves the field out of
-          // the request rather than sending it empty.
-          ...(freshLyrics !== undefined ? { lyricsText: freshLyrics } : {}),
-        }),
+      buildPayload: () => plan.payload,
     });
   }, [
     nodeId,
@@ -731,7 +680,7 @@ function AudioGeneratePanelBody({
         voiceChosen: vm.voiceChosen,
         speakersShort: vm.speakersShort,
         linesEmpty: vm.dialogueNames !== null && extractPromptText(promptText).length === 0,
-        ...tooShort(vm.modelEntry, vm.params),
+        ...paramTooShort(vm.modelEntry, vm.params),
         missing: audioMissing(vm.modelEntry, mode, vm.slotUrls, vm.params),
         lyricsRequired: lyrics,
         lyricsText,
@@ -766,19 +715,6 @@ function AudioGeneratePanelBody({
  */
 function noop(): void {
   // Intentionally empty.
-}
-
-/**
- * The text setting a run would send shorter than its model takes (inner#1825),
- * for the gate to name.
- * @param model - The active model.
- * @param params - Its params as the run sends them.
- * @returns The gate's input: the setting, or nothing when every one is long enough.
- */
-function tooShort(model: ModelEntry | undefined, params: Readonly<Record<string, unknown>>): { paramTooShort?: string } {
-  if (model === undefined) return {};
-  const short = checkParamCombination(model, wireParams(model, params)).find((violation) => violation.rule === 'min_length');
-  return short === undefined ? {} : { paramTooShort: short.param };
 }
 
 /**
