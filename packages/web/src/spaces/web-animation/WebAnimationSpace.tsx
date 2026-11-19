@@ -286,12 +286,12 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     if (newest !== undefined) pick(newest);
   }, [selection.status, lists.succeeded.own, lists.succeeded.legacy, pick]);
   // With nothing to show, the preview tells the Completed list's state (design §7.3).
-  const doneShows = listShows(lists.succeeded.own, lists.succeeded.legacy);
-  const { refetch: refetchDoneOwn } = lists.succeeded.own;
-  const { refetch: refetchDoneLegacy } = lists.succeeded.legacy;
-  const retryDone = React.useCallback((): void => { void refetchDoneOwn(); void refetchDoneLegacy(); }, [refetchDoneOwn, refetchDoneLegacy]);
-  // The selection keeps the freshest copy of its row, and moves the tab only when that row crosses into the other one;
-  // running this again with the copy it holds (the Space shown again, a new `select`) asks for nothing.
+  const succeededShows = listShows(lists.succeeded.own, lists.succeeded.legacy);
+  const { refetch: refetchSucceededOwn } = lists.succeeded.own;
+  const { refetch: refetchSucceededLegacy } = lists.succeeded.legacy;
+  const retrySucceeded = React.useCallback((): void => { void refetchSucceededOwn(); void refetchSucceededLegacy(); }, [refetchSucceededOwn, refetchSucceededLegacy]);
+  // The selection keeps the freshest copy of its row; running this again with the copy it holds (the Space shown again, a
+  // new `select`) asks for nothing.
   React.useEffect(() => {
     if (row !== undefined) select({ type: 'row_changed', row });
   }, [row, select]);
@@ -434,23 +434,26 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     if (!playable(row)) return;
     openDialog({ base: { executionId: row.id, sourceVersionId: row.resultSourceVersionId, request: row.request }, aspect: row.input.aspect, durationSeconds: row.input.durationSeconds });
   }, [row, openDialog]);
-  // The source version Export (a finished result) and Re-export (an export) render; both wait on its one intent.
-  const exportSource = playable(row) ? row.resultSourceVersionId : row?.kind === 'web_animation_export' ? row.input.sourceVersionId : null;
+  // Every export of a source version, from Export here or Export again on a failed export, waits on that version's one
+  // intent.
+  const sendExport = React.useCallback((source: string): void => {
+    accept({ kind: 'web_animation_export', sourceVersionId: source }, exportIntent(spaceId, source), newId());
+  }, [accept, spaceId]);
+  const exportSource = playable(row) ? row.resultSourceVersionId : null;
   const exporting = useRunning(exportSource === null ? '' : exportIntent(spaceId, exportSource)) !== undefined;
   const exportVideo = React.useCallback((): void => {
-    if (exportSource !== null) accept({ kind: 'web_animation_export', sourceVersionId: exportSource }, exportIntent(spaceId, exportSource), newId());
-  }, [exportSource, spaceId, accept]);
+    if (exportSource !== null) sendExport(exportSource);
+  }, [exportSource, sendExport]);
   // Run again a row of the Failed tab: an export is sent again, a create or modification opens the dialog it was made
   // from (design §7.2).
   const retryRow = React.useCallback((target: WebAnimationRowView): void => {
     if (target.kind === 'web_animation_export') {
-      const source = target.input.sourceVersionId;
-      accept({ kind: 'web_animation_export', sourceVersionId: source }, exportIntent(spaceId, source), newId());
+      sendExport(target.input.sourceVersionId);
       return;
     }
     const base = target.kind === 'web_animation_modify' ? { executionId: target.base.executionId, sourceVersionId: target.input.baseSourceVersionId, request: target.base.request } : null;
     openDialog({ base, prompt: target.request, aspect: target.input.aspect, durationSeconds: target.input.durationSeconds }, true);
-  }, [accept, spaceId, openDialog]);
+  }, [sendExport, openDialog]);
   // The result a modification starts from: listed here, or read once when it is not.
   const baseId = draft.status !== 'closed' ? draft.input.base?.executionId ?? null : null;
   const listedBase = baseId === null ? undefined : rowById(baseId);
@@ -534,7 +537,6 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const pickTab = React.useCallback((tab: MotionTab): void => panelsEvent({ type: 'pick_tab', tab }), [panelsEvent]);
   const seekTo = React.useCallback((value: number[]): void => seekClock(value[0] ?? 0), [seekClock]);
   const seekValue = React.useMemo(() => [clock.time], [clock.time]);
-  const finished = row?.status === 'succeeded';
   const panelOpen = panels.panel !== 'none';
   const frameStyle = React.useMemo(() => {
     const ratio = row === undefined ? 16 / 9 : ratioOf(row);
@@ -553,20 +555,20 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     <div ref={setPreviewArea} data-testid='motion-preview-area' className={cn('absolute bottom-[4.5rem] left-6 top-6 flex items-center justify-center', panelOpen ? 'right-[22rem]' : 'right-6')}
       style={{ containerType: 'size' }}>
       {row === undefined
-        ? selection.status === 'fetching' || doneShows === 'pending'
+        ? selection.status === 'fetching' || succeededShows === 'pending'
           ? <LoaderCircle data-testid='motion-loading' className='size-5 animate-spin text-muted-foreground' />
-          : doneShows === 'failed'
-            ? <ListLoadError message={t('spaces.webAnimation.listError')} onRetry={retryDone} />
+          : succeededShows === 'failed'
+            ? <ListLoadError message={t('spaces.webAnimation.listError')} onRetry={retrySucceeded} />
             : <div data-testid='motion-empty' className='flex flex-col items-center gap-3 text-sm text-muted-foreground'>
               <span>{t('spaces.webAnimation.empty')}</span>
               {!readOnly && <Button data-testid='motion-empty-new' size='sm' className='gap-1.5' onClick={openNew} icon={<Plus className='size-4' />}>{t('spaces.webAnimation.new')}</Button>}
             </div>
         // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a point on the frame is marked with the mouse only
         : <div data-testid='motion-preview' data-execution-id={row.id} className={cn('relative', annotation.status === 'picking' && 'cursor-crosshair')} style={frameStyle} onClick={clickFrame}>
-          {finished && playable(row) && <MotionResultPlayer projectId={projectId} executionId={row.id} sourceVersionId={row.resultSourceVersionId} input={row.input} frame={frame} />}
-          {finished && row.kind === 'web_animation_export' && <ExportVideo key={row.id} url={exportAsset?.fileUrl ?? null} assetFailed={exportAssetRead.isError}
+          {playable(row) && <MotionResultPlayer projectId={projectId} executionId={row.id} sourceVersionId={row.resultSourceVersionId} input={row.input} frame={frame} />}
+          {row?.kind === 'web_animation_export' && <ExportVideo key={row.id} url={exportAsset?.fileUrl ?? null} assetFailed={exportAssetRead.isError}
             assetRetrying={exportAssetRead.isFetching} onAssetRetry={retryExportAsset} time={clock.time} playing={clock.playing} />}
-          {finished && playable(row) && resultThreads.filter(({ anchor }) => anchor.point !== null && Math.abs(anchor.timeSeconds - clock.time) < PIN_WINDOW_SECONDS).map(({ thread, anchor }) =>
+          {playable(row) && resultThreads.filter(({ anchor }) => anchor.point !== null && Math.abs(anchor.timeSeconds - clock.time) < PIN_WINDOW_SECONDS).map(({ thread, anchor }) =>
             <Button key={thread.id} type='button' variant={null} size={null} data-testid={`motion-pin-${thread.id}`} aria-label={t('spaces.webAnimation.annotations')}
               onClick={(event) => { event.stopPropagation(); openThread(thread.id); }}
               className={cn(PIN_CLASS, thread.resolved ? 'bg-muted-foreground' : 'bg-comment-outline')}
@@ -593,15 +595,15 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     </div>
     <div data-testid='motion-bottom-bar' className='absolute inset-x-3 bottom-3 z-10 flex h-12 items-center gap-1 rounded-chrome border border-border bg-popover px-2 shadow'>
       <BarButton testId='motion-play' filled label={t(clock.playing ? 'timeline.pause' : 'timeline.play')} icon={clock.playing ? <Pause className='size-4' /> : <Play className='size-4' />}
-        onClick={clock.toggle} disabled={!finished} />
+        onClick={clock.toggle} disabled={row === undefined} />
       <span className='mx-2 shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground'>
         {row === undefined ? '—' : `${formatAnnotationTime(clock.time)} / ${formatAnnotationTime(durationSeconds)}`}
       </span>
       <div className='relative mr-2 flex h-8 min-w-24 flex-1 items-center'>
-        <Slider aria-label={t('timeline.seek')} value={seekValue} onValueChange={seekTo} min={0} max={Math.max(0.01, durationSeconds)} step={0.01} disabled={!finished} className='w-full' />
+        <Slider aria-label={t('timeline.seek')} value={seekValue} onValueChange={seekTo} min={0} max={Math.max(0.01, durationSeconds)} step={0.01} disabled={row === undefined} className='w-full' />
         {/* A 24px-wide transparent hit area above the track around the 6x10 mark, placed where the Slider puts its thumb
             for that time: Radix keeps the 12px thumb inside the track, so its centre runs from 6px to the width less 6px. */}
-        {finished && playable(row) && docReady && resultThreads.map(({ thread, anchor }) => <Button key={thread.id} type='button' variant={null} size={null} data-testid={`motion-marker-${thread.id}`}
+        {playable(row) && docReady && resultThreads.map(({ thread, anchor }) => <Button key={thread.id} type='button' variant={null} size={null} data-testid={`motion-marker-${thread.id}`}
           aria-label={bodyPreview(thread)} onClick={() => openThread(thread.id)} className='absolute top-0 flex h-3 w-6 -translate-x-1/2 justify-center'
           style={{ left: `calc(6px + (100% - 12px) * ${anchor.timeSeconds / Math.max(0.01, durationSeconds)})` }}>
           <span className={cn('h-2.5 w-1.5 rounded-sm', thread.resolved ? 'bg-muted-foreground' : 'bg-comment-outline')} />
@@ -609,7 +611,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
       </div>
       {row !== undefined && <>
         <Separator orientation='vertical' className='mx-1 h-5' />
-        {finished && row.kind !== 'web_animation_export' && <>
+        {playable(row) && <>
           {!readOnly && <BarButton testId='motion-action-add-annotation' label={t('spaces.webAnimation.addAnnotation')} icon={<MessageSquarePlus className='size-4' />}
             pressed={annotation.status !== 'idle'} onClick={addAnnotation} disabled={!annotationsWritable} loading={!docReady} />}
           {!readOnly && <BarButton testId='motion-action-modify' label={t('spaces.webAnimation.modify')} icon={<Pencil className='size-4' />} onClick={modify} />}
@@ -617,7 +619,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
             ? <BarButton testId='motion-action-view-video' label={t('spaces.webAnimation.viewVideo')} icon={<Video className='size-4' />} onClick={viewVideo} />
             : !readOnly && <BarButton testId='motion-action-export' label={t('spaces.webAnimation.export')} icon={<Upload className='size-4' />} onClick={exportVideo} loading={exporting} />}
         </>}
-        {finished && row.kind === 'web_animation_export' && <>
+        {row?.kind === 'web_animation_export' && <>
           <BarButton testId='motion-action-download' label={t('spaces.webAnimation.download')} icon={<Download className='size-4' />} onClick={download} disabled={exportAsset === undefined} />
           {!readOnly && <PlaceOnCanvas projectId={projectId} row={row} canvases={canvases} />}
           <BarButton testId='motion-action-view-source' label={t('spaces.webAnimation.viewSource')} icon={<Undo2 className='size-4' />} onClick={viewSource} />

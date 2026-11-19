@@ -3,7 +3,7 @@
 
 /**
  * How a web-animation execution is told, shared by the Motion Space's list and details and the Timeline's copies: the
- * sentence a failure reason reads as, the steps a run goes through, and where a run stands on each.
+ * sentence a failure reason reads as and the steps a run goes through.
  */
 
 import type { TimelineExecutionStatus } from '@breatic/shared';

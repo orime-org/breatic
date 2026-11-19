@@ -27,10 +27,12 @@ export const WebAnimationExecutionStatusSchema = z.enum(["awaiting_landing", "qu
 /** A web-animation execution's status. */
 export type WebAnimationExecutionStatus = z.infer<typeof WebAnimationExecutionStatusSchema>;
 
-/** The statuses an execution can no longer leave. */
-export const WEB_ANIMATION_ENDED_STATUSES = ["succeeded", "failed", "cancelled", "expired"] as const satisfies readonly WebAnimationExecutionStatus[];
+/** The statuses of an execution that ended without a result: it failed, was cancelled or expired. */
+export const WEB_ANIMATION_FAILED_STATUSES = ["failed", "cancelled", "expired"] as const satisfies readonly WebAnimationExecutionStatus[];
 
-const ENDED: ReadonlySet<WebAnimationExecutionStatus> = new Set(WEB_ANIMATION_ENDED_STATUSES);
+const FAILED: ReadonlySet<WebAnimationExecutionStatus> = new Set(WEB_ANIMATION_FAILED_STATUSES);
+/** The statuses an execution can no longer leave. */
+const ENDED: ReadonlySet<WebAnimationExecutionStatus> = new Set(["succeeded", ...WEB_ANIMATION_FAILED_STATUSES]);
 
 /** The statuses of an execution still in progress: every other one. */
 export const WEB_ANIMATION_OPEN_STATUSES: readonly WebAnimationExecutionStatus[] = WebAnimationExecutionStatusSchema.options.filter((status) => !ENDED.has(status));
@@ -52,7 +54,7 @@ export function webAnimationExecutionEnded(status: WebAnimationExecutionStatus):
  * @throws {never} Never.
  */
 export function webAnimationExecutionFailed(status: WebAnimationExecutionStatus): boolean {
-  return status !== "succeeded" && ENDED.has(status);
+  return FAILED.has(status);
 }
 const viewport = z.object({ width: positiveInteger, height: positiveInteger }).strict();
 

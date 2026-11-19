@@ -12,7 +12,7 @@
  * move that asked for it.
  */
 
-import { webAnimationExecutionEnded, type WebAnimationExecutionStatus } from '@breatic/shared/space-content';
+import { webAnimationExecutionFailed, type WebAnimationExecutionStatus } from '@breatic/shared/space-content';
 
 import type { MotionTab } from '@web/spaces/web-animation/motion-panels';
 
@@ -64,7 +64,7 @@ export const SELECTION_NONE: SelectionState<never> = { status: 'none' };
  */
 export function tabOf(status: WebAnimationExecutionStatus): MotionTab {
   if (status === 'succeeded') return 'succeeded';
-  return webAnimationExecutionEnded(status) ? 'failed' : 'running';
+  return webAnimationExecutionFailed(status) ? 'failed' : 'running';
 }
 
 /**

@@ -10,10 +10,10 @@
  * full precision, so a late page reads as many rows as the first.
  */
 
-import { and, desc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, notInArray, sql, type SQL } from "drizzle-orm";
 import { db, timelineExecutionGrants as g, timelineExecutions as t, timelineExecutionRepo } from "@breatic/core";
 import type { TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
-import { WEB_ANIMATION_OPEN_STATUSES } from "@breatic/shared/space-content";
+import { WEB_ANIMATION_FAILED_STATUSES, WEB_ANIMATION_OPEN_STATUSES } from "@breatic/shared/space-content";
 
 /** Which list: a Motion Space's own, the Timeline-made group, or the Project's results for the Timeline picker. */
 export type ListScope = "space" | "timeline" | "results";
@@ -25,7 +25,7 @@ export type ListGroup = "running" | "succeeded" | "failed";
 const GROUP_STATUSES: Record<ListGroup, readonly TimelineExecutionStatus[]> = {
   running: WEB_ANIMATION_OPEN_STATUSES,
   succeeded: ["succeeded"],
-  failed: ["failed", "cancelled", "expired"],
+  failed: WEB_ANIMATION_FAILED_STATUSES,
 };
 
 /** One page's request. */
@@ -227,7 +227,7 @@ export async function findLiveExports(key: { projectId: string; spaceId: string;
     .where(and(
       eq(t.spaceId, key.spaceId),
       eq(t.kind, "web_animation_export"),
-      sql`${t.status} NOT IN ('failed', 'cancelled', 'expired')`,
+      notInArray(t.status, [...WEB_ANIMATION_FAILED_STATUSES]),
       isNull(t.deletedAt),
       inArray(sql`${t.input}->>'sourceVersionId'`, [...key.sourceVersionIds]),
       grantedTo(key.projectId),

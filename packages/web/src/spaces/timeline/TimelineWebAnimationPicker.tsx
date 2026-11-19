@@ -4,7 +4,6 @@
 import * as React from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Clapperboard, Code } from 'lucide-react';
-import type { WebAnimationRowView } from '@breatic/shared/space-content';
 
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
@@ -15,27 +14,15 @@ import { useProjectSpaceList, type ProjectSpace } from '@web/data/yjs/project-me
 import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
 import { ListLoadError, LoadMoreButton, listShows } from '@web/spaces/web-animation/list-states';
+import { playable, type PlayableRow } from '@web/spaces/web-animation/motion-parts';
 import { webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
-
-/** A result the picker offers: a create or a modification that succeeded, with the source a copy binds to. */
-export type PickableResult = Extract<WebAnimationRowView, { kind: 'web_animation_create' | 'web_animation_modify' }> & { resultSourceVersionId: string };
-
-/**
- * Whether a row of the results list is a result the picker offers.
- * @param row - The row.
- * @returns True for a succeeded create or modification.
- * @throws {never} Never.
- */
-function isPickable(row: WebAnimationRowView): row is PickableResult {
-  return row.kind !== 'web_animation_export' && row.status === 'succeeded' && row.resultSourceVersionId !== null;
-}
 
 /** One group of the picker: the Space that made its results. */
 interface ResultGroup {
   /** The Space's id, or `deleted` for Spaces the Project no longer lists. */
   key: string;
   name: string;
-  rows: PickableResult[];
+  rows: PlayableRow[];
 }
 
 /**
@@ -47,7 +34,7 @@ interface ResultGroup {
  * @returns The groups.
  * @throws {never} Never.
  */
-function groupResults(rows: readonly PickableResult[], spaces: ReadonlyArray<ProjectSpace>, deletedName: string): ResultGroup[] {
+function groupResults(rows: readonly PlayableRow[], spaces: ReadonlyArray<ProjectSpace>, deletedName: string): ResultGroup[] {
   const byId = new Map(spaces.map((space) => [space.id, space]));
   const groups = new Map<string, ResultGroup & { rank: number }>();
   for (const row of rows) {
@@ -62,7 +49,7 @@ function groupResults(rows: readonly PickableResult[], spaces: ReadonlyArray<Pro
 }
 
 /** One result row. */
-interface PickerRowProps { row: PickableResult; onPick: (row: PickableResult) => void }
+interface PickerRowProps { row: PlayableRow; onPick: (row: PlayableRow) => void }
 
 /**
  * One result: its title, aspect and length.
@@ -92,7 +79,7 @@ interface TimelineWebAnimationPickerProps {
   projectId: string;
   /** Whether a Motion Space is being made for "Make in Motion". */
   making: boolean;
-  onPick: (row: PickableResult) => void;
+  onPick: (row: PlayableRow) => void;
   onGoMake: () => void;
   onClose: () => void;
 }
@@ -121,7 +108,7 @@ export function TimelineWebAnimationPicker({ projectId, making, onPick, onGoMake
   const { refetch } = list;
   const shows = listShows(list);
   const rows = React.useMemo(() => (list.data?.pages.flatMap((page) => page.rows) ?? [])
-    .filter(isPickable), [list.data]);
+    .filter(playable), [list.data]);
   const groups = React.useMemo(() => groupResults(rows, spaces, t('timeline.webAnimation.picker.deletedSpace')), [rows, spaces, t]);
   const changeOpen = React.useCallback((open: boolean): void => { if (!open) onClose(); }, [onClose]);
   const retry = React.useCallback((): void => { void refetch(); }, [refetch]);

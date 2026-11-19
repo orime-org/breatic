@@ -46,7 +46,7 @@ interface WebAnimationDialogProps {
  * @param props.projectId - The Project, through which the preview is read.
  * @param props.spaceId - The Space, for field ids.
  * @param props.draft - The open draft.
- * @param props.retry - Whether it runs a finished execution again.
+ * @param props.retry - Whether it runs a failed, cancelled or expired execution again.
  * @param props.limits - The configured bounds.
  * @param props.baseRow - The result a modification starts from, once read.
  * @param props.baseRead - Whether reading it failed, and its retry.

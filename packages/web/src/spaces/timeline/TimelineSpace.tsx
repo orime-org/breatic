@@ -54,7 +54,8 @@ import { usePublishTimelineView } from '@web/spaces/timeline/use-publish-timelin
 import { userMovedScroll, type TrackScroll } from '@web/spaces/timeline/timeline-follow-scroll';
 import { useTimelineAsset, useTimelineAssets } from '@web/spaces/timeline/use-timeline-asset';
 import type { TimelineWebClipView } from '@web/spaces/timeline/TimelineTrackArea';
-import { TimelineWebAnimationPicker, type PickableResult } from '@web/spaces/timeline/TimelineWebAnimationPicker';
+import { TimelineWebAnimationPicker } from '@web/spaces/timeline/TimelineWebAnimationPicker';
+import type { PlayableRow } from '@web/spaces/web-animation/motion-parts';
 import { TimelineWebPreview, PreviewNote, type TimelineUploadNote, type TimelineWebEntry } from '@web/spaces/timeline/TimelineWebPreview';
 import { useTimelineLimits, useTimelinePreviewLimits } from '@web/spaces/timeline/use-timeline-limits';
 import { useTimelineWebResolution } from '@web/spaces/timeline/use-timeline-web-resolution';
@@ -515,7 +516,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const openPicker = React.useCallback((): void => setPickerOpen(true), []);
   const closePicker = React.useCallback((): void => setPickerOpen(false), []);
   // Each pick places a copy of its own, bound to the result's source.
-  const placeResult = React.useCallback((row: PickableResult): void => {
+  const placeResult = React.useCallback((row: PlayableRow): void => {
     const { input } = row;
     const parameters = { from: { sourceVersionId: row.resultSourceVersionId }, extent: { durationFrames: webAnimationDurationFrames(input), fps: input.fps } };
     if (commit({ operation: 'add_web_animation', parameters: { clipId: newId(), startFrame: frame, newTrackId: newId(), ...parameters }, placement })?.ok === true) setPickerOpen(false);
