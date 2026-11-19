@@ -159,7 +159,7 @@ export async function submitRenderJob(request: WebAnimationRenderJobRequest, end
     return await ask("submit render", `${env.INGEST_BASE_URL}/jobs`, { method: "POST", body: JSON.stringify(request) }, endsAt, webAnimationRenderJobReportSchema);
   } catch (err) {
     if (!(err instanceof IngestJobError && err.status === 410)) throw err;
-    return { kind: "report", report: { state: "cancelled_before_submit", phase: null, progress: null, container: null, video: null, failureReason: null } };
+    return { kind: "report", report: { state: "cancelled_before_submit", phase: null, container: null, video: null, failureReason: null } };
   }
 }
 

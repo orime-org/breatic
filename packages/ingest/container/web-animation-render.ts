@@ -50,7 +50,7 @@ class RenderStopped extends Error {
 /** The producer as this runner calls it; it is installed in the image, beside the bundle. */
 interface Producer {
   createRenderJob(options: { width: number; height: number; fps: number; quality: string; format: "mp4" }): unknown;
-  executeRenderJob(job: unknown, projectDir: string, outputPath: string, onProgress?: (...args: unknown[]) => void): Promise<unknown>;
+  executeRenderJob(job: unknown, projectDir: string, outputPath: string): Promise<unknown>;
 }
 
 const PRODUCER_MODULE = "@hyperframes/producer";
@@ -172,18 +172,12 @@ export async function runWebAnimationRender(job: WebAnimationRenderRunBody, sett
     // The package's stylesheet names `../fonts/v<n>/`, which the producer's server serves from the project's root.
     await cp(join(settings.fontsDir, `v${job.fontSetVersion}`), join(project, "fonts", `v${job.fontSetVersion}`), { recursive: true });
 
-    await post(job.progressUrl, { phase: "rendering", progress: 0 });
+    await post(job.progressUrl, { phase: "rendering" });
     const producer = (await import(PRODUCER_MODULE)) as Producer;
     const videoPath = join(work, "out.mp4");
-    let reported = 0;
     try {
       const render = producer.createRenderJob({ width: job.width, height: job.height, fps: job.fps.num / job.fps.den, quality: job.quality, format: "mp4" });
-      await producer.executeRenderJob(render, project, videoPath, (...args: unknown[]) => {
-        const fraction = args.find((arg): arg is number => typeof arg === "number" && arg >= 0 && arg <= 1);
-        if (fraction === undefined || fraction - reported < 0.05) return;
-        reported = fraction;
-        void post(job.progressUrl, { phase: "rendering", progress: fraction });
-      });
+      await producer.executeRenderJob(render, project, videoPath);
     } catch (err) {
       throw new RenderStopped("render_failed", String(err));
     }
@@ -195,7 +189,7 @@ export async function runWebAnimationRender(job: WebAnimationRenderRunBody, sett
     await runCommand(settings.ffmpegBin, ["-v", "error", "-i", videoPath, "-frames:v", "1", coverPath]);
     const cover = await probeImage(settings.ffprobeBin, coverPath);
 
-    await post(job.progressUrl, { phase: "saving", progress: 1 });
+    await post(job.progressUrl, { phase: "saving" });
     await put(job.videoUrl, await readFile(videoPath), "video/mp4");
     await put(job.coverUrl, await readFile(coverPath), "image/png");
     report = { ok: true, failureReason: null, cpuUsec: null, video: { width: video.width, height: video.height, durationSeconds: video.durationSeconds }, cover };

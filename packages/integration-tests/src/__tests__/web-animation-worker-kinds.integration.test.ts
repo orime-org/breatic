@@ -138,7 +138,7 @@ async function seedExport(state: "queued" | "running"): Promise<{ fx: ExecutionF
  * @returns It.
  */
 function renderReport(state: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return { state, phase: state === "running" ? "rendering" : null, progress: state === "done" ? 1 : 0.4, container: { wallMs: 90_000, cpuUsec: 300_000_000 }, video: null, failureReason: null, ...overrides };
+  return { state, phase: state === "running" ? "rendering" : null, container: { wallMs: 90_000, cpuUsec: 300_000_000 }, video: null, failureReason: null, ...overrides };
 }
 
 describe("a modification", () => {

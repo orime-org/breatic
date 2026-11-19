@@ -34,7 +34,7 @@ const JOB: WebAnimationRenderJobRequest = {
 
 const JOB_PATH = `/jobs/WebAnimationRenderContainer/${encodeURIComponent(JOB.jobId)}`;
 
-const RUNNING: WebAnimationRenderJobReport = { state: "running", phase: "rendering", progress: 0.2, container: null, video: null, failureReason: null };
+const RUNNING: WebAnimationRenderJobReport = { state: "running", phase: "rendering", container: null, video: null, failureReason: null };
 
 /**
  * A namespace whose one object records its calls.

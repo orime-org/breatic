@@ -46,7 +46,7 @@ interface RenderPickup extends Held {
 type EndedRender = Ended<WebAnimationRenderJobReport>;
 
 /** An ended report that carries nothing, for a job the Worker cannot run. */
-const DISABLED: EndedRender = { state: "failed", phase: null, progress: null, container: null, video: null, failureReason: "feature_disabled" };
+const DISABLED: EndedRender = { state: "failed", phase: null, container: null, video: null, failureReason: "feature_disabled" };
 
 /**
  * The render job an export runs, fixed from its frozen input and its source version.
