@@ -227,12 +227,12 @@ export function DocumentSlashMenu({ editor }: DocumentSlashMenuProps): React.JSX
   }, [editor, menu]);
 
   React.useEffect(() => {
-    // On the document, since the body may not be mounted yet: the capture
-    // phase runs before ProseMirror's own `compositionend`, which writes the
-    // committed text in a microtask; two hops land after that write. The
-    // capture phase also reads the selection at the composition's start,
-    // before the body's span selections take it away: a composition over a
-    // selection replaces it, and its trigger opens nothing.
+    // On the document, since the body may not be mounted yet. The trigger is
+    // read two microtask hops after the composition ends, when the committed
+    // text is in the document (the composed-trigger cases of the slash smoke
+    // show it in Chrome). The capture phase also reads the selection at the
+    // composition's start, before the body's span selections take it away: a
+    // composition over a selection replaces it, and its trigger opens nothing.
     let overSelection = false;
     /**
      * Whether an event comes from inside the body.
