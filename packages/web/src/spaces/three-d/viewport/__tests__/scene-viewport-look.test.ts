@@ -10,6 +10,7 @@ import { Texture, type Object3D, type Scene, type WebGLRenderer, type WebGLRende
 import type { SceneObject } from '@breatic/shared';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { createSceneEnvironment } from '@web/spaces/three-d/viewport/scene-environment';
+import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { SceneViewportRuntime } from '@web/spaces/three-d/viewport/scene-viewport-runtime';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
@@ -208,5 +209,28 @@ describe('the parts the page exposes for inspection (inner#1693)', () => {
     expect(drawn()).toBe('MeshStandardMaterial');
     runtime.update(props({ objects: [{ ...BOX, look: { 0: { transmission: 1 } } }], onLookReport: initial.onLookReport, onModelStateChange: initial.onModelStateChange }));
     expect(drawn()).toBe('MeshPhysicalMaterial');
+  });
+});
+
+describe('Retry (inner#1693 design 6.2)', () => {
+  it('loads again a model that failed to arrive, never one whose content was refused', async () => {
+    const REFUSED = '22222222-2222-4222-8222-22222222222a';
+    const LOST = '22222222-2222-4222-8222-22222222222b';
+    const resolveAsset = vi.fn(async (assetId: string) => {
+      if (assetId === REFUSED) throw new ModelImportError('invalid', 'refused content', { detail: 'model.glb' });
+      throw new Error('network');
+    });
+    const objects = [REFUSED, LOST].map((assetId) => ({ ...BOX, id: assetId, model: { kind: 'asset', assetId } }) as SceneObject);
+    const initial = props({ objects, resolveAsset } as Partial<SceneViewportProps>);
+    const host = document.createElement('div'); document.body.append(host);
+    Object.defineProperties(host, { clientWidth: { value: 800 }, clientHeight: { value: 600 } });
+    const runtime = new SceneViewportRuntime(host, initial); owners.push(() => runtime.dispose());
+    await vi.waitFor(() => expect(vi.mocked(initial.onModelStateChange!).mock.calls.filter(([, state]) => state === 'failed')).toHaveLength(2));
+    const calls = (assetId: string): number => resolveAsset.mock.calls.filter(([id]) => id === assetId).length;
+    const refused = calls(REFUSED);
+    const lost = calls(LOST);
+    runtime.update({ ...initial, modelRetryRevision: 1 });
+    await vi.waitFor(() => expect(calls(LOST)).toBeGreaterThan(lost));
+    expect(calls(REFUSED)).toBe(refused);
   });
 });

@@ -9,6 +9,7 @@ import {
   SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, isSceneCamera, isSceneLight, isSceneModelFile,
   type SceneCameraObject, type SceneModelFile, type SceneObject, type ScenePose,
 } from '@breatic/shared';
+import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { DirectorFigure, applyCameraRecord } from '@web/spaces/three-d/viewport/director-objects';
 import { DISPLAY_LINE_LAYER, DISPLAY_PICK_LAYER } from '@web/spaces/three-d/viewport/scene-layers';
 import { cameraFrameRatio } from '@web/spaces/three-d/viewfinder/viewfinder-ratio';
@@ -78,6 +79,8 @@ interface RenderedObject {
   lease: SceneModelLease;
   root: Group | null;
   state: 'loading' | 'ready' | 'failed';
+  /** Whether a failed load can succeed when tried again: a model whose content was refused fails the same way. */
+  retryable?: boolean;
   /** Its parts as last drawn, read again only when a look applies. */
   parts?: Record<string, { type: string; color: string | null; map: boolean }>;
 }
@@ -586,7 +589,7 @@ export class SceneViewportRuntime {
       }
       const source = JSON.stringify(object.model);
       let item = this.items.get(object.id);
-      if (item && (item.source !== source || (item.state === 'failed' && props.modelRetryRevision !== previous.modelRetryRevision))) {
+      if (item && (item.source !== source || (item.state === 'failed' && item.retryable === true && props.modelRetryRevision !== previous.modelRetryRevision))) {
         if (this.gesture?.matrices.has(object.id) || this.joint?.id === object.id) this.endGesture(false);
         this.overview?.remove(object.id);
         this.looks.remove(object.id);
@@ -990,6 +993,7 @@ export class SceneViewportRuntime {
       if (this.disposed || this.items.get(object.id) !== item) return;
       item.lease.release();
       item.state = 'failed';
+      item.retryable = !(error instanceof ModelImportError);
       this.props.onModelStateChange?.(object.id, 'failed', sceneError(error));
       this.props.onLookReport?.(object.id, 'failed');
       this.inspect();
