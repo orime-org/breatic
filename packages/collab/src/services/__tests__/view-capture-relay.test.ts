@@ -7,6 +7,11 @@ import { VIEW_CAPTURE_REQUEST_SIGNAL, projectMetaDocName } from "@breatic/shared
 
 import { relayViewCaptureRequest } from "@collab/services/project-control-sync.js";
 
+vi.mock("@breatic/core", async (real) => ({
+  ...(await real<typeof import("@breatic/core")>()),
+  getMcpConfig: () => ({ view_capture: { max_edge_px: 1568, max_bytes: 917504, timeout_ms: 8000 } }),
+}));
+
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 
 /**
@@ -31,7 +36,8 @@ describe("relayViewCaptureRequest (breatic#1488 §19.1)", () => {
       ]),
     } as unknown as Hocuspocus;
     relayViewCaptureRequest(hocuspocus, { type: "project-view-capture:requested", projectId: PROJECT, userId: "owner", requestId: "r1", ts: 1 });
-    const signal = JSON.stringify({ t: VIEW_CAPTURE_REQUEST_SIGNAL, requestId: "r1", userId: "owner" });
+    // The request carries the limits the browser captures within.
+    const signal = JSON.stringify({ t: VIEW_CAPTURE_REQUEST_SIGNAL, requestId: "r1", userId: "owner", maxEdgePx: 1568, maxBytes: 917504 });
     expect(ownerTab.sendStateless).toHaveBeenCalledWith(signal);
     expect(ownerOtherTab.sendStateless).toHaveBeenCalledWith(signal);
     expect(colleague.sendStateless).not.toHaveBeenCalled();

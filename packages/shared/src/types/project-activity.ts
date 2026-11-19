@@ -225,6 +225,10 @@ export interface ViewCaptureRequestSignal {
   t: typeof VIEW_CAPTURE_REQUEST_SIGNAL;
   requestId: string;
   userId: string;
+  /** The longest edge the capture may have, in pixels (`view_capture.max_edge_px`). */
+  maxEdgePx: number;
+  /** The largest the encoded image may be, in bytes (`view_capture.max_bytes`). */
+  maxBytes: number;
 }
 
 export interface AssignmentsChangedSignal {

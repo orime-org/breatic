@@ -46,7 +46,7 @@
 
 import type { Hocuspocus } from "@hocuspocus/server";
 import type { Redis } from "@breatic/core";
-import { createLogger, projectControlChannelPattern } from "@breatic/core";
+import { createLogger, getMcpConfig, projectControlChannelPattern } from "@breatic/core";
 import {
   projectMetaDocName,
   type ActivityNewControlEvent,
@@ -111,7 +111,14 @@ function relayOnMetaDoc(
 export function relayViewCaptureRequest(hocuspocus: Hocuspocus, event: ViewCaptureRequestedControlEvent): void {
   const doc = hocuspocus.documents?.get(projectMetaDocName(event.projectId));
   if (!doc) return;
-  const signal: ViewCaptureRequestSignal = { t: VIEW_CAPTURE_REQUEST_SIGNAL, requestId: event.requestId, userId: event.userId };
+  const { max_edge_px: maxEdgePx, max_bytes: maxBytes } = getMcpConfig().view_capture;
+  const signal: ViewCaptureRequestSignal = {
+    t: VIEW_CAPTURE_REQUEST_SIGNAL,
+    requestId: event.requestId,
+    userId: event.userId,
+    maxEdgePx,
+    maxBytes,
+  };
   for (const [connection] of doc.connections) {
     if ((connection.context as { user?: { id?: string } } | undefined)?.user?.id !== event.userId) continue;
     try {
