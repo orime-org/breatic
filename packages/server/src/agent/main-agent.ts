@@ -141,7 +141,8 @@ export class MainAgent {
     try {
       const resolved = await resolveKeys({ projectId: this.ctx.projectId }, { kind: "llm" });
       // Our keys are provider's own default, so a turn on them hands provider none.
-      return resolved.payerUserId === null ? ON_OUR_KEYS : { keys: resolved.keys, keyId: resolved.keyId, keyOwner: resolved.payerUserId };
+      if (resolved.keyId === null) return ON_OUR_KEYS;
+      return { keys: resolved.keys, keyId: resolved.keyId, ...(resolved.payerUserId === null ? {} : { keyOwner: resolved.payerUserId }) };
     } catch (err) {
       return { failed: err };
     }
