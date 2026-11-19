@@ -379,6 +379,49 @@ describe('the current result\'s actions', () => {
 });
 
 
+describe('while a result is read by id', () => {
+  beforeEach(() => {
+    vi.mocked(timelineApi.getExecution).mockReset().mockReturnValue(new Promise(() => {}));
+  });
+
+  it('keeps View video waiting, and starts no annotation, until the video\'s row lands', async () => {
+    listing([{ ...done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z'), export: { executionId: EXPORT, status: 'succeeded' } }]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('motion-action-view-video'));
+    await waitFor(() => expect(timelineApi.getExecution).toHaveBeenCalledWith(PROJECT, SPACE, EXPORT));
+    expect(screen.getByTestId('motion-action-view-video')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByTestId('motion-action-add-annotation')).toHaveAttribute('aria-busy', 'true');
+    await user.click(screen.getByTestId('motion-action-add-annotation'));
+    expect(screen.queryByTestId('motion-annotation-draft')).toBeNull();
+  });
+
+  it('keeps View source waiting until the source\'s row lands', async () => {
+    listing([exported(done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z'))]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
+    await userEvent.setup().click(screen.getByTestId('motion-action-view-source'));
+    await waitFor(() => expect(timelineApi.getExecution).toHaveBeenCalledWith(PROJECT, SPACE, NEWER));
+    expect(screen.getByTestId('motion-action-view-source')).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('shows the Modified from result waiting, on opening the details again, until its row lands', async () => {
+    listing([{
+      ...done(NEWER, 'Make the logo bigger', '2026-11-15T09:30:00.000000Z'), kind: 'web_animation_modify', base: { executionId: OLDER, request: 'Older logo' },
+      input: { baseSourceVersionId: `80000000-0000-4000-8000-${OLDER.slice(-12)}`, instruction: 'Make the logo bigger', engine: 'deepseek', aspect: '16:9', durationSeconds: 4, fps: { num: 24, den: 1 } },
+    }]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('motion-details'));
+    await user.click(await screen.findByRole('button', { name: 'Older logo' }));
+    await waitFor(() => expect(timelineApi.getExecution).toHaveBeenCalledWith(PROJECT, SPACE, OLDER));
+    await user.click(screen.getByTestId('motion-details'));
+    expect(await screen.findByRole('button', { name: 'Older logo' })).toHaveAttribute('aria-busy', 'true');
+  });
+});
+
 describe('switching result while an annotation is being added', () => {
   /**
    * List a finished result that already has its export, and open it.

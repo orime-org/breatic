@@ -170,6 +170,8 @@ interface DetailsProps {
   unresolvedOnBase: number;
   /** Opens the result a modification started from, at its earliest open annotation. */
   onOpenBase: () => void;
+  /** Whether that result is being read by id, which the button waits for. */
+  baseReading: boolean;
 }
 
 /**
@@ -181,10 +183,11 @@ interface DetailsProps {
  * @param props.onOpenChange - Opens or closes it.
  * @param props.unresolvedOnBase - Open annotations on the result a modification started from.
  * @param props.onOpenBase - Opens the result a modification started from.
+ * @param props.baseReading - Whether that result is being read by id.
  * @returns The popover.
  * @throws {never} Never.
  */
-function Details({ row, open, onOpenChange, unresolvedOnBase, onOpenBase }: DetailsProps): React.JSX.Element {
+function Details({ row, open, onOpenChange, unresolvedOnBase, onOpenBase, baseReading }: DetailsProps): React.JSX.Element {
   const t = useTranslation();
   const base = row.kind === 'web_animation_modify' ? row.base : null;
   return <Popover open={open} onOpenChange={onOpenChange}>
@@ -203,7 +206,7 @@ function Details({ row, open, onOpenChange, unresolvedOnBase, onOpenBase }: Deta
         <dd>{t('timeline.webAnimation.usage', { credits: formatCredits(row.usageCredits, getLocale()) })}</dd>
         {base !== null && <>
           <dt className='text-muted-foreground'>{t('spaces.webAnimation.modifiedFromLabel')}</dt>
-          <dd><Button type='button' variant={null} size={null} className='text-left underline' onClick={onOpenBase}>
+          <dd><Button type='button' variant={null} size={null} className='text-left underline' loading={baseReading} onClick={onOpenBase}>
             {unresolvedOnBase > 0 ? t('spaces.webAnimation.baseWithAnnotations', { base: base.request, count: unresolvedOnBase }) : base.request}
           </Button></dd>
         </>}
@@ -267,6 +270,8 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   // While another row is read by id, the preview keeps the one it showed (design §13.2).
   const selected = shown(selection) ?? undefined;
   const selectedId = selected?.id ?? null;
+  // The result being read by id: the button that asked for it waits until it lands, and no annotation starts meanwhile.
+  const readingId = selection.status === 'fetching' ? selection.executionId : null;
   // A shown row on no loaded page is read under the Space-task key, so a change in the Space's document reads it again
   // as it reads the lists; it starts from the copy the selection holds.
   const heldId = selectedId !== null && !lists.byId.has(selectedId) ? selectedId : null;
@@ -625,19 +630,21 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         <Separator orientation='vertical' className='mx-1 h-5' />
         {playable(row) && <>
           {!readOnly && <BarButton testId='motion-action-add-annotation' label={t('spaces.webAnimation.addAnnotation')} icon={<MessageSquarePlus className='size-4' />}
-            pressed={annotation.status !== 'idle'} onClick={addAnnotation} disabled={!annotationsWritable} loading={!docReady} />}
+            pressed={annotation.status !== 'idle'} onClick={addAnnotation} disabled={!annotationsWritable} loading={!docReady || readingId !== null} />}
           {!readOnly && <BarButton testId='motion-action-modify' label={t('spaces.webAnimation.modify')} icon={<Pencil className='size-4' />} onClick={modify} />}
           {exportRow !== null
-            ? <BarButton testId='motion-action-view-video' label={t('spaces.webAnimation.viewVideo')} icon={<Video className='size-4' />} onClick={viewVideo} />
+            ? <BarButton testId='motion-action-view-video' label={t('spaces.webAnimation.viewVideo')} icon={<Video className='size-4' />} onClick={viewVideo}
+              loading={readingId !== null && readingId === exportRow.executionId} />
             : !readOnly && <BarButton testId='motion-action-export' label={t('spaces.webAnimation.export')} icon={<Upload className='size-4' />} onClick={exportVideo} loading={exporting} />}
         </>}
         {row?.kind === 'web_animation_export' && <>
           <BarButton testId='motion-action-download' label={t('spaces.webAnimation.download')} icon={<Download className='size-4' />} onClick={download} disabled={exportAsset === undefined} />
           {!readOnly && <PlaceOnCanvas projectId={projectId} row={row} canvases={canvases} />}
-          <BarButton testId='motion-action-view-source' label={t('spaces.webAnimation.viewSource')} icon={<Undo2 className='size-4' />} onClick={viewSource} />
+          <BarButton testId='motion-action-view-source' label={t('spaces.webAnimation.viewSource')} icon={<Undo2 className='size-4' />} onClick={viewSource}
+            loading={readingId !== null && readingId === row.source.executionId} />
         </>}
         <Details row={row} open={annotations.detailsOpen} onOpenChange={annotations.setDetailsOpen} unresolvedOnBase={annotations.openOnBaseCount}
-          onOpenBase={annotations.openBase} />
+          onOpenBase={annotations.openBase} baseReading={readingId !== null && row.kind === 'web_animation_modify' && readingId === row.base.executionId} />
       </>}
       <Separator orientation='vertical' className='mx-1 h-5' />
       <BarButton testId='motion-open-executions' label={t('spaces.webAnimation.executions')} icon={<List className='size-4' />} pressed={panels.panel === 'executions'}
