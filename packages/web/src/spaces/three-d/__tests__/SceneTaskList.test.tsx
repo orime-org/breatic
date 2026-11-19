@@ -292,6 +292,18 @@ describe('the 3D Space task list (inner#1690)', () => {
     expect(found.querySelector('.bg-status-info')).toBeNull();
   });
 
+  // inner#1968 visual round 2: hourglass and dot share one 12px box, so every title starts on one line.
+  it('draws every row\'s state mark in the same box', async () => {
+    const waiting = row({ id: 'waiting', startedAt: new Date(NOW - 60_000).toISOString(), deadlineAt: null, waitingSince: new Date(NOW - 60_000).toISOString(), slotWaitLimit: 2 });
+    const running = row({ id: 'running' });
+    api.listSpaceTasks.mockResolvedValue(listed(waiting, running));
+    renderList();
+    for (const id of ['waiting', 'running']) {
+      const mark = within(await rowOf(id)).getByTestId('task-state-mark');
+      expect(mark, id).toHaveClass('size-3', 'shrink-0');
+    }
+  });
+
   it('sets no re-read for a row that waits for a slot, whose budget has not started', async () => {
     const waiting = row({ id: 'waiting', startedAt: new Date(NOW - 3 * 3_600_000).toISOString(), deadlineAt: null, waitingSince: new Date(NOW - 3 * 3_600_000).toISOString(), slotWaitLimit: 2 });
     api.listSpaceTasks.mockResolvedValue(listed(waiting));

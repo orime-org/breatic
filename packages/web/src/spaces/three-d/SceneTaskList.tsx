@@ -345,9 +345,12 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
           : canEdit && task.status === 'failed' && (own?.phase === 'retained' || own?.phase === 'retrying');
         return <div key={task.id} tabIndex={-1} className='rounded-chrome border border-border p-2.5 text-sm outline-none focus-visible:border-active-border' data-testid={`scene-task-${task.id}`}>
           <div className='flex items-center gap-2'>
-            {/* A wait for a running slot wears the canvas's hourglass: it is neither running nor ended. */}
-            {waiting ? <Hourglass data-testid='task-waiting-mark' aria-hidden className='size-3 shrink-0 text-muted-foreground' />
-              : <span className={cn('size-2 shrink-0 rounded-full', DOT_CLASS[hasResult ? 'done' : task.status])} />}
+            {/* A wait for a running slot wears the canvas's hourglass: it is neither running nor ended.
+                Every mark sits in one 12px box, so titles start on one line whatever the state. */}
+            <span data-testid='task-state-mark' className='flex size-3 shrink-0 items-center justify-center'>
+              {waiting ? <Hourglass data-testid='task-waiting-mark' aria-hidden className='size-3 text-muted-foreground' />
+                : <span className={cn('size-2 rounded-full', DOT_CLASS[hasResult ? 'done' : task.status])} />}
+            </span>
             <Tooltip><TooltipTrigger asChild><span className='min-w-0 flex-1 truncate font-medium'>{task.label}</span></TooltipTrigger>
               <TooltipContent portal side='top' className='max-w-sm break-words'>{generation && task.prompt ? task.prompt : task.label}</TooltipContent></Tooltip>
             {generation ? <KindBadge icon={Sparkles} label={t('spaces.threeD.taskList.kindGeneration')} colorClassName='text-muted-foreground' />
