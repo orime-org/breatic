@@ -1599,7 +1599,7 @@ export function renderProductGuide(): string {
       "The selected web animation fills the Space. Every control is on one floating bar at the bottom, as icon buttons named on hover: play and the time first, then a " +
       "slider with a small mark for each annotation, then what the shown result offers, then a details button (three dots), and at the right end " +
       `${quoted(t("spaces.webAnimation.executions"))}, ${quoted(t("spaces.webAnimation.annotations"))} and ${quoted(t("spaces.webAnimation.new"))}. ` +
-      `With nothing made yet the middle says ${quoted(t("spaces.webAnimation.empty"))} with ${quoted(t("spaces.webAnimation.new"))}; otherwise the newest finished one is shown. ` +
+      `With no finished web animation yet the middle says ${quoted(t("spaces.webAnimation.empty"))} with ${quoted(t("spaces.webAnimation.new"))}; otherwise the newest finished one is shown. ` +
       `A result whose page cannot be loaded shows ${quoted(t("timeline.webAnimation.unavailable"))} with ${quoted(t("timeline.retry"))}.`,
     `${quoted(t("spaces.webAnimation.new"))} opens a dialog: ${quoted(t("timeline.webAnimation.dialog.prompt"))}, ${quoted(t("timeline.webAnimation.dialog.engine"))} (DeepSeek), ` +
       `${quoted(t("timeline.webAnimation.dialog.aspect"))} (16:9, 9:16 or 1:1) and ${quoted(t("timeline.webAnimation.dialog.duration"))}. ${quoted(t("timeline.webAnimation.dialog.execute"))} starts it; ` +
@@ -1618,7 +1618,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.webAnimation.modify"))} opens the dialog titled ${quoted(t("spaces.webAnimation.dialog.modifyTitle"))}, with a small preview of the shown web animation at the top, ` +
       `to describe the change under ${quoted(t("spaces.webAnimation.dialog.instruction"))}; the aspect ratio and length start as the shown one's, and once either differs the dialog says ` +
       `${quoted(t("spaces.webAnimation.dialog.relayout"))} It makes a new web animation from the shown one, which stays as it was with its annotations. ` +
-      `${quoted(t("spaces.webAnimation.export"))} renders it to a video in this Space; once the Space has one, the button reads ${quoted(t("spaces.webAnimation.viewVideo"))} and shows that video. ` +
+      `${quoted(t("spaces.webAnimation.export"))} renders it to a video in this Space: the middle keeps what it showed and the list opens on ${quoted(t("spaces.webAnimation.inProgress"))} with the export highlighted. ` +
+      `While its export is being made or finished, the button reads ${quoted(t("spaces.webAnimation.viewVideo"))}: it shows the video once it is finished, and before that opens ${quoted(t("spaces.webAnimation.inProgress"))} with the export highlighted. ` +
       `On a finished video the bar offers ${quoted(t("spaces.webAnimation.download"))}, ${quoted(t("spaces.webAnimation.placeOnCanvas"))} and ${quoted(t("spaces.webAnimation.viewSource"))}. ` +
       `${quoted(t("spaces.webAnimation.placeOnCanvas"))} lists the Project's canvases (it is unavailable with ${quoted(t("spaces.webAnimation.noCanvas"))} when there are none) and puts the video on the chosen one ` +
       `near the middle of its last view, then says it was put there with a button to view it, ${quoted(t("spaces.webAnimation.viewPlaced"))}, which opens that Canvas with the video selected. ` +
