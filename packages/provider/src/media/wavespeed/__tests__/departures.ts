@@ -53,6 +53,11 @@ export const ADDED_AFTER_FREEZE: Readonly<Record<string, readonly string[]>> = {
   // Models added after the freeze (inner#1809); the transparency toggle's body is checked in `seedream-v5.5.test.ts`.
   "seedream-v5.5-text-to-image": ["aspect_ratio", "resolution", "transparency"],
   "seedream-v5.5-edit": ["aspect_ratio", "images", "resolution", "transparency"],
+  // The batch 6 video tools' models (inner#1306); their bodies are checked in `batch6-video-tools.test.ts`.
+  "sam3-video-rle": ["video", "apply_mask", "box_prompts", "point_prompts"],
+  "bria-fibo-video-background-remover": ["video", "background_color", "output_container_and_codec", "preserve_audio"],
+  "bria-video-eraser-mask": ["video", "mask_video", "copy_audio"],
+  "wan-2.1-14b-vace": ["video", "mask_video", "image", "task", "duration", "size", "num_inference_steps", "guidance_scale", "flow_shift", "context_scale", "seed"],
 };
 
 /**

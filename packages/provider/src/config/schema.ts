@@ -457,7 +457,7 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
         }
       }
       if (kind === "fal" && binding.output_field === undefined) problems.push(`${model}: the binding to "${upstream}" has no output_field, which a fal binding needs`);
-      if (kind !== undefined && kind !== "fal" && binding.output_field !== undefined) problems.push(`${model}: the binding to "${upstream}" has an output_field, which only a fal binding reads`);
+      if (kind !== undefined && kind !== "fal" && kind !== "wavespeed" && binding.output_field !== undefined) problems.push(`${model}: the binding to "${upstream}" has an output_field, which only a fal or WaveSpeed binding reads`);
       problems.push(...bindingFieldProblems(model, binding));
       if (kind !== "wavespeed") {
         for (const [param, drop] of Object.entries(binding.drops ?? {})) {

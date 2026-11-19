@@ -14,6 +14,15 @@ import { createProvider } from "@provider/provider.js";
 import { ROOT, catalog, disjuncts, rangeEnds, resolvedParams, shipped, type CatalogBound } from "./shipped.js";
 import { RESELLER_LACKS, WAVESPEED_LACKS } from "./wavespeed-lacks.js";
 
+
+/**
+ * The output fields of answers measured on an upstream whose schema listing states no outputs (WaveSpeed lists only
+ * the request schema): SAM3's answer is one object with `rle_url` and `video_url` (inner#1306 §10.3).
+ */
+const MEASURED_OUTPUTS: Readonly<Record<string, readonly string[]>> = {
+  "wavespeed wavespeed-ai/sam3-video-rle": ["rle_url", "video_url"],
+};
+
 /** One param of our catalog as its yaml writes it. */
 interface CatalogParam {
   values?: (string | number | boolean)[];
@@ -690,7 +699,8 @@ describe.each(cases)("$model on $binding.upstream", ({ model, binding }) => {
 
   it("reads its outputs from a field the upstream answers", () => {
     if (binding.output_field === undefined) return;
-    expect(Object.keys(snapshot.outputs ?? {}), binding.output_field).toContain(binding.output_field);
+    const outputs = snapshot.outputs === undefined ? MEASURED_OUTPUTS[`${binding.upstream} ${binding.model_id}`] : Object.keys(snapshot.outputs);
+    expect(outputs ?? [], binding.output_field).toContain(binding.output_field);
   });
 
   it("takes a run as the application sends one, so every class check below has a run to check", async () => {

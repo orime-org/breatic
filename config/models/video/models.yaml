@@ -229,6 +229,8 @@ models:
       seed:
         description: "Seed frozen at admission"
         default: null
+        min: 0
+        max: 2147483646
         fill: "tool"
     providers:
       - name: "wavespeed"

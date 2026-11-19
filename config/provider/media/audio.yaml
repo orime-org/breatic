@@ -225,6 +225,7 @@ models:
         reason: "MiniMax music-cover audio_url: Duration 6 seconds to 6 minutes"
         source: https://platform.minimax.io/docs/api-reference/music-generation
       - when: get_duration(audio) > 360
+        limit: { field: audio, measure: seconds, max: 360 }
         reason: "MiniMax music-cover audio_url: Duration 6 seconds to 6 minutes"
         source: https://platform.minimax.io/docs/api-reference/music-generation
     upstreams:
@@ -243,6 +244,7 @@ models:
   sonilo-video-to-music:
     rejects:
       - when: get_duration(video) > 360
+        limit: { field: video, measure: seconds, max: 360 }
         reason: "Sonilo video-to-music video: Max duration: 6 minutes"
         source: https://platform.sonilo.com/docs/api/video-to-music
       - when: $length(prompt) > 2000
@@ -394,6 +396,7 @@ models:
   veed-clean-audio:
     rejects:
       - when: get_duration(audio) > 1800
+        limit: { field: audio, measure: seconds, max: 1800 }
         reason: "VEED Clean Audio audio_url: up to 30 minutes and 512 MB"
         source: https://api.veed.io/openapi.yaml
       - when: strength < 0 or strength > 1

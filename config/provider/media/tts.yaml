@@ -1387,6 +1387,7 @@ models:
         reason: "MiniMax voice clone file: Audio duration at least 10 seconds, no longer than 5 minutes"
         source: https://platform.minimax.io/docs/api-reference/voice-cloning-clone
       - when: get_duration(audio) > 300
+        limit: { field: audio, measure: seconds, max: 300 }
         reason: "MiniMax voice clone file: Audio duration at least 10 seconds, no longer than 5 minutes"
         source: https://platform.minimax.io/docs/api-reference/voice-cloning-clone
     upstreams:
@@ -1501,6 +1502,7 @@ models:
   elevenlabs-voice-changer:
     rejects:
       - when: get_duration(audio) > 300
+        limit: { field: audio, measure: seconds, max: 300 }
         reason: "ElevenLabs Voice Changer: maximum input length is 300 seconds or 5 minutes of audio, the same across all subscriptions"
         source: https://elevenlabs.io/docs/help-center/product/core-capabilities/voice-changer/what-is-the-max-input-length-when-using-voice-changer.md
     upstreams:

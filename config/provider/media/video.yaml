@@ -28,11 +28,17 @@
 
 models:
   sam3-video-rle:
+    rejects:
+      - when: get_duration(video) > 600
+        limit: { field: video, measure: seconds, max: 600 }
+        reason: "WaveSpeed SAM 3 Video RLE: maximum video length of 10 minutes per job"
+        source: https://wavespeed.ai/models/wavespeed-ai/sam3-video-rle
     upstreams:
       - upstream: wavespeed
         weight: 1
         model_id: wavespeed-ai/sam3-video-rle
         prompt_field: prompt
+        output_field: rle_url
         params:
           video:
             field: video
@@ -48,6 +54,11 @@ models:
           formula: '{"total_price": $max([3, $min([$ceil(get_duration(video)), 600])]) * base_price}'
           discount_rate: 100
   bria-fibo-video-background-remover:
+    rejects:
+      - when: get_duration(video) > 60
+        limit: { field: video, measure: seconds, max: 60 }
+        reason: "Bria FIBO video background remover: maximum input duration of 60 seconds"
+        source: https://wavespeed.ai/docs/docs-api/bria/bria-fibo-video-background-remover
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -67,6 +78,15 @@ models:
           formula: '{"total_price": $min([$ceil(get_duration(video)), 60]) * base_price}'
           discount_rate: 100
   bria-video-eraser-mask:
+    rejects:
+      - when: get_duration(video, min=1, max=1000000, total=1000000) > get_duration(video)
+        limit: { field: video, measure: seconds, min: 1 }
+        reason: "Bria video eraser: inputs shorter than 1 second were not accepted in our measurements"
+        source: https://wavespeed.ai/docs/docs-api/bria/bria-video-eraser-mask
+      - when: get_duration(video) > 5
+        limit: { field: video, measure: seconds, max: 5 }
+        reason: "Bria erase object: maximum duration of 5 seconds"
+        source: https://docs.bria.ai/video-editing/editing-endpoints/erase-object
     upstreams:
       - upstream: wavespeed
         weight: 1
@@ -240,12 +260,14 @@ models:
   seedance-2.5-text-to-video:
     rejects:
       - when: get_duration(videos) > 30
+        limit: { field: videos, measure: seconds, max: 30 }
         reason: "Seedance 2.5 reference videos: up to 10 reference videos with a total duration of no more than 30 seconds"
         source: https://docs.byteplus.com/en/docs/ModelArk/1520757
       - when: get_duration(videos, min=2, max=1000000, total=1000000) > get_duration(videos)
         reason: "Seedance 2.5 reference videos: Non-video-editing tasks: each video must be 2-30 seconds long"
         source: https://docs.byteplus.com/en/docs/ModelArk/1520757
       - when: get_duration(audios) > 30
+        limit: { field: audios, measure: seconds, max: 30 }
         reason: "Seedance 2.5 reference audio: up to 10 clips, total duration no more than 30 seconds"
         source: https://docs.byteplus.com/en/docs/ModelArk/1520757
       - when: get_duration(audios, min=2, max=1000000, total=1000000) > get_duration(audios)
@@ -930,6 +952,7 @@ models:
   dreamactor-v2:
     rejects:
       - when: get_duration(video) > 30
+        limit: { field: video, measure: seconds, max: 30 }
         reason: "DreamActor M2.0 video: Duration: maximum 30 seconds"
         source: https://docs.byteplus.com/en/docs/byteplus-vision/dreamactor-m2-0-api-document
     upstreams:
@@ -982,12 +1005,14 @@ models:
         reason: "MiniMax H3 content text: maximum of 7000 characters per text"
         source: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
       - when: get_duration(videos) > 15
+        limit: { field: videos, measure: seconds, max: 15 }
         reason: "MiniMax H3 video_url (reference): per-clip duration [2, 15] s; total <= 15 s"
         source: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
       - when: get_duration(videos, min=2, max=1000000, total=1000000) > get_duration(videos)
         reason: "MiniMax H3 video_url (reference): per-clip duration [2, 15] s"
         source: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
       - when: get_duration(audios) > 15
+        limit: { field: audios, measure: seconds, max: 15 }
         reason: "MiniMax H3 audio_url (reference): per-clip duration [2, 15] s; total <= 15 s"
         source: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
       - when: get_duration(audios, min=2, max=1000000, total=1000000) > get_duration(audios)
@@ -1175,12 +1200,14 @@ models:
         reason: "Alibaba Wan3.0 duration: with video input, the total input video duration + output video duration must not exceed 30 seconds"
         source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
       - when: get_duration(videos) > 15
+        limit: { field: videos, measure: seconds, max: 15 }
         reason: "Alibaba Wan3.0 reference_video: total duration of no more than 15 seconds"
         source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
       - when: get_duration(videos, min=1, max=1000000, total=1000000) > get_duration(videos)
         reason: "Alibaba Wan3.0 reference_video: duration [1, 15] seconds per clip"
         source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
       - when: get_duration(audios) > 15
+        limit: { field: audios, measure: seconds, max: 15 }
         reason: "Alibaba Wan3.0 reference_audio: total duration of no more than 15 seconds"
         source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
       - when: get_duration(audios, min=1, max=1000000, total=1000000) > get_duration(audios)
@@ -1431,6 +1458,7 @@ models:
   wan-3.0-video-edit:
     rejects:
       - when: get_duration(video) > 15
+        limit: { field: video, measure: seconds, max: 15 }
         reason: "Alibaba Wan3.0 reference_video: duration [1, 15] seconds per clip, total no more than 15 seconds"
         source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
       - when: get_duration(video, min=1, max=1000000, total=1000000) > get_duration(video)
@@ -1443,6 +1471,7 @@ models:
         reason: "Alibaba Wan3.0 duration: with video input, the total input video duration + output video duration must not exceed 30 seconds"
         source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
       - when: get_duration(reference_audios) > 15
+        limit: { field: reference_audios, measure: seconds, max: 15 }
         reason: "Alibaba Wan3.0 reference_audio: total duration of no more than 15 seconds"
         source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
       - when: get_duration(reference_audios, min=1, max=1000000, total=1000000) > get_duration(reference_audios)
@@ -1634,6 +1663,8 @@ models:
             field: audio
           video:
             field: video
+        drops:
+          sync_mode: [""]
         pricing:
           kind: formula
           base_price: 135000
@@ -1648,6 +1679,8 @@ models:
             field: audio_url
           video:
             field: video_url
+        drops:
+          sync_mode: [""]
         pricing:
           kind: formula
           base_price: 8000000
@@ -1661,6 +1694,8 @@ models:
             field: audio
           video:
             field: video
+        drops:
+          sync_mode: [""]
         fixed:
           mode: async
         pricing:
@@ -1714,9 +1749,11 @@ models:
   sync-react-1:
     rejects:
       - when: get_duration(audio) > 15
+        limit: { field: audio, measure: seconds, max: 15 }
         reason: "Sync react-1: supports inputs up to 15 seconds in duration"
         source: https://sync.so/docs/models/react.md
       - when: get_duration(video) > 15
+        limit: { field: video, measure: seconds, max: 15 }
         reason: "Sync react-1: supports inputs up to 15 seconds in duration"
         source: https://sync.so/docs/models/react.md
     upstreams:

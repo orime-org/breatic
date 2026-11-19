@@ -91,6 +91,11 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "omnihuman-1.5": { fal: "fal-ai/bytedance/omnihuman/v1.5", sandbase: "bytedance/omnihuman/1.5" },
   "seedance-2.5-talking-avatar": {},
   "sync-lipsync-3": { fal: "fal-ai/sync-lipsync/v3", sandbase: "sync/lipsync/3.0/video-to-video" },
+  // inner#1306 batch 6 video tools: WaveSpeed only.
+  "sam3-video-rle": {},
+  "bria-fibo-video-background-remover": {},
+  "bria-video-eraser-mask": {},
+  "wan-2.1-14b-vace": {},
   // fal draws its seed from a fixed 42, so the same inputs always give the same video, which WaveSpeed does not.
   "infinitetalk-video-to-video": {},
   "infinitetalk-multi": {},
@@ -528,6 +533,10 @@ describe("the limits a reseller states beyond its schema", () => {
     ["sync-react-1", { params: { audio: URL_A, video: URL_A }, durations: { audio: [16], video: [5] } }, { params: { audio: URL_A, video: URL_A }, durations: { audio: [15], video: [5] } }, "15 seconds"],
     ["sync-react-1", { params: { audio: URL_A, video: URL_A }, durations: { audio: [5], video: [16] } }, { params: { audio: URL_A, video: URL_A }, durations: { audio: [5], video: [15] } }, "15 seconds"],
     ["gpt-image-2.5-sunburst-text-to-image", { prompt: "x".repeat(32001) }, { prompt: "x".repeat(32000) }, "32000"],
+    ["sam3-video-rle", { params: { video: URL_A }, durations: { video: [601] } }, { params: { video: URL_A }, durations: { video: [600] } }, "10 minutes"],
+    ["bria-fibo-video-background-remover", { params: { video: URL_A }, durations: { video: [61] } }, { params: { video: URL_A }, durations: { video: [60] } }, "60 seconds"],
+    ["bria-video-eraser-mask", { params: { video: URL_A, mask_video: URL_A }, durations: { video: [5.5] } }, { params: { video: URL_A, mask_video: URL_A }, durations: { video: [5] } }, "5 seconds"],
+    ["bria-video-eraser-mask", { params: { video: URL_A, mask_video: URL_A }, durations: { video: [0.5] } }, { params: { video: URL_A, mask_video: URL_A }, durations: { video: [1] } }, "1 second"],
     ["gpt-image-2.5-sunburst-edit", { prompt: "x".repeat(32001), params: { images: [URL_A], aspect_ratio: "1:1" } }, { prompt: "x".repeat(32000), params: { images: [URL_A], aspect_ratio: "1:1" } }, "32000"],
     ["minimax-h3-reference-to-video", { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A] }, durations: { audios: [1.5] } }, { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A] }, durations: { audios: [2] } }, "[2, 15]"],
     ["minimax-h3-reference-to-video", { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A, URL_A] }, durations: { audios: [8, 8] } }, { prompt: "a fox", params: { duration: 5, images: [URL_A], audios: [URL_A, URL_A] }, durations: { audios: [8, 7] } }, "15 s"],

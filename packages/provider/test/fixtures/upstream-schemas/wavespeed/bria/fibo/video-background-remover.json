@@ -1,0 +1,55 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "background_color": [
+      {
+        "type": "string",
+        "enum": [
+          "Transparent",
+          "Black",
+          "White",
+          "Gray",
+          "Red",
+          "Green",
+          "Blue",
+          "Yellow",
+          "Cyan",
+          "Magenta",
+          "Orange"
+        ],
+        "default": "Transparent"
+      }
+    ],
+    "output_container_and_codec": [
+      {
+        "type": "string",
+        "enum": [
+          "webm_vp9",
+          "mp4_h264",
+          "mp4_h265",
+          "mov_h265",
+          "mov_proresks",
+          "mkv_h264",
+          "mkv_h265",
+          "mkv_vp9",
+          "gif"
+        ],
+        "default": "webm_vp9"
+      }
+    ],
+    "preserve_audio": [
+      {
+        "type": "boolean",
+        "default": true
+      }
+    ],
+    "video": [
+      {
+        "type": "string"
+      }
+    ]
+  },
+  "required": [
+    "video"
+  ]
+}
