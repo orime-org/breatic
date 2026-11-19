@@ -1154,6 +1154,17 @@ describe('the execution list\'s three tabs', () => {
     expect(await screen.findByDisplayValue('A box')).toBeInTheDocument();
   });
 
+  it('sums an export up by its aspect ratio, as every row is', async () => {
+    const wide = exported(done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z'));
+    const tall = { ...wide, id: OLDER, actionId: OLDER, input: { ...(wide.input as Record<string, unknown>), width: 1080, height: 1920 } };
+    listing([wide, tall]);
+    show();
+    await userEvent.setup().click(await screen.findByTestId('motion-open-executions'));
+    const panel = await screen.findByTestId('motion-panel-executions');
+    expect(await within(panel).findByTestId(`motion-row-${EXPORT}`)).toHaveTextContent(/Newer logo16:9 · /);
+    expect(within(panel).getByTestId(`motion-row-${OLDER}`)).toHaveTextContent(/Newer logo9:16 · /);
+  });
+
   it('says nothing failed on an empty Failed tab', async () => {
     listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
     show();

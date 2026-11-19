@@ -37,13 +37,25 @@ function isTab(value: string): value is MotionTab {
 }
 
 /**
- * The aspect of a row's frame, as the creation dialog names it, or its pixel size for an export.
+ * The aspect ratio of a row's frame, as the creation dialog names it; an export's pixel size is reduced to one
+ * (1920 by 1080 reads 16:9).
  * @param row - The row.
  * @returns The text.
  * @throws {never} Never.
  */
 function rowFrame(row: WebAnimationRowView): string {
-  return row.kind === 'web_animation_export' ? `${row.input.width}×${row.input.height}` : row.input.aspect;
+  if (row.kind !== 'web_animation_export') return row.input.aspect;
+  const { width, height } = row.input;
+  /**
+   * The greatest common divisor.
+   * @param a - One number.
+   * @param b - The other.
+   * @returns Their divisor.
+   * @throws {never} Never.
+   */
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+  const divisor = gcd(width, height) || 1;
+  return `${width / divisor}:${height / divisor}`;
 }
 
 /**
