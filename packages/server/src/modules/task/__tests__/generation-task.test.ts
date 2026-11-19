@@ -48,7 +48,7 @@ vi.mock("@breatic/domain", () => ({
   emitNodeTaskCounts: emit,
 }));
 
-vi.mock("@server/modules/payment/credit-precheck.service.js", () => ({ reserveForRun }));
+vi.mock("@server/modules/credit/credit-precheck.service.js", () => ({ reserveForRun }));
 
 vi.mock("@server/modules/project/project.service.js", () => ({ assertAccess: vi.fn() }));
 

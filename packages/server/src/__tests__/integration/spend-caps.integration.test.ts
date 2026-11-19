@@ -54,7 +54,7 @@ import postgres from "postgres";
 import type { Hono } from "hono";
 import { db, getRedis, initCore, loadLocales } from "@breatic/core";
 import { creditHoldService, creditLotService, SMALLEST_CREDIT } from "@breatic/domain";
-import { precheckCredits, reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
+import { precheckCredits, reserveForRun } from "@server/modules/credit/credit-precheck.service.js";
 import { keysOf } from "./chat-run-harness.js";
 import { chargeNow } from "./studio-credit-fixtures.js";
 import { startRun } from "@server/agent/chat-run.js";

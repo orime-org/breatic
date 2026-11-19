@@ -17,8 +17,7 @@
 
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { runningTaskLimitForStudio } from "@breatic/core";
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
+import { fingerprint, runningTaskLimitForStudio } from "@breatic/core";
 import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 import { readAccountMembership } from "@server/modules/account/membership.service.js";
 import { call, useInternalApp } from "./internal-api-harness.js";
