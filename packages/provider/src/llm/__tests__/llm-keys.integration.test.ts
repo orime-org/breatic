@@ -113,6 +113,7 @@ describe("an account's key set on LLM calls", () => {
   it.each([
     ["invalid", 401, { error: { message: "No auth credentials found" } }],
     ["no_balance", 402, { error: { message: "Insufficient credits" } }],
+    ["no_balance", 403, { error: { message: "Budget limit exceeded", metadata: { limit_source: "openrouter_workspace_budget" } } }],
     ["rate_limited", 429, { error: { message: "slow down" } }],
   ] as const)("judge: a refusal of the account's key as %s is the account's key failure, naming the upstream", async (reason, status, body) => {
     const { provider } = started();
@@ -152,6 +153,12 @@ describe("an account's key set on LLM calls", () => {
 describe("a failure of an account's OpenRouter key (critical path)", () => {
   const lasting = [
     { name: "402", status: 402, body: { error: { message: "Insufficient credits", code: 402 } }, reason: "no_balance" },
+    {
+      name: "spent key limit",
+      status: 403,
+      body: { error: { message: "Key limit exceeded", code: 403, metadata: { limit_source: "openrouter_key_limit", scope: "key_limit" } } },
+      reason: "no_balance",
+    },
     { name: "401", status: 401, body: { error: { message: "No auth credentials found", code: 401 } }, reason: "invalid" },
     { name: "missing model", status: 400, body: { error: { message: "deepseek/deepseek-v4-pro is not a valid model ID", code: 400 } }, reason: "model_not_found" },
   ];
