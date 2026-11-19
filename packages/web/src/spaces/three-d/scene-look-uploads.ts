@@ -248,10 +248,9 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       const beforeLook = before ? lookOf(before, input.objectId) : undefined;
       const overTotal = beforeLook === undefined ? null : await overLimit(input, beforeLook, stored.assetId, local);
       const session = deps.session(input.name);
-      const look = session ? lookOf(session, input.objectId) : undefined;
       const object = session?.getSnapshot().objects.find((item) => item.id === input.objectId);
       if (!session) deps.notify({ key: 'spaces.threeD.look.spaceClosed', severity: 'warning' });
-      else if (!object || object.locked || look === undefined) deps.notify({ key: 'spaces.threeD.look.objectGone', severity: 'warning' });
+      else if (!object || object.locked) deps.notify({ key: 'spaces.threeD.look.objectGone', severity: 'warning' });
       else if (!session.getSnapshot().canEdit) deps.notify({ key: 'spaces.threeD.look.noLongerEditable', severity: 'warning' });
       else if (partChanged) deps.notify({ key: 'spaces.threeD.look.partChanged', severity: 'warning' });
       else if (pastPartLimit(session, input, stored.assetId)) {
