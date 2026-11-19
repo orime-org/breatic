@@ -72,7 +72,8 @@ function stepMark(row: TimelineExecutionRow, index: number): 'done' | 'current' 
   if (row.status === 'succeeded') return 'done';
   if (index === 0) return row.status === 'awaiting_landing' ? 'current' : 'done';
   const stopped = row.status === 'failed' || row.status === 'cancelled' || row.status === 'expired';
-  const reached = row.phase === null ? (row.status === 'running' || stopped ? 0 : -1) : PHASES.indexOf(row.phase);
+  // A row no pickup ever claimed (one cancelled while it queued) reached no step.
+  const reached = row.phase === null ? (row.status === 'running' || (stopped && row.attempt > 0) ? 0 : -1) : PHASES.indexOf(row.phase);
   if (index - 1 < reached) return 'done';
   if (index - 1 > reached) return 'pending';
   return row.status === 'running' ? 'current' : stopped ? 'stopped' : 'pending';

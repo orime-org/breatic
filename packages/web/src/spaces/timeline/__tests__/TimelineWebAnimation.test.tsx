@@ -745,6 +745,14 @@ describe('execution row header, steps, usage and actions', () => {
     expect(steps[1]).not.toHaveClass('text-status-error-foreground');
   });
 
+  // inner#1968: one cancelled while it waited for a running slot was never claimed, so it reached no step.
+  it.each(['cancelled', 'expired'] as const)('reaches no step past the request for a run %s before any pickup claimed it', async (status) => {
+    const id = '90000000-0000-4000-8000-0000000000c4';
+    await showRow(row(id, status, { phase: null, attempt: 0 }));
+    const steps = stepItems(await expand(id));
+    expect(steps.map((item) => item.getAttribute('data-mark'))).toEqual(['done', 'pending', 'pending', 'pending']);
+  });
+
   it('lists the usage of a finished row as a labelled term beside the prompt', async () => {
     await showRow(DONE_ROW);
     const detail = await expand(EXEC_DONE);
