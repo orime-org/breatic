@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
 
 import { serializePromptFragment } from "@shared/canvas/model/fragment-prompt.js";
-import { promptMarkup, promptPieces, serializePromptPieces } from "@shared/canvas/model/prompt-pieces.js";
+import { agentPromptSegments, promptMarkup, promptPieces, serializePromptPieces } from "@shared/canvas/model/prompt-pieces.js";
 import { writeDialogueLines, writeProposalPrompt, type ProposalMention } from "@shared/canvas/model/proposal-prompt.js";
 import type { ReferenceRailItem } from "@shared/canvas/model/derive-references.js";
 
@@ -90,5 +90,34 @@ describe("promptMarkup", () => {
     expect(promptMarkup(FIXTURES[1]![1])).toBe("Make @[Hero](img-1) brighter\n\nin @[Script](txt-1) ");
     expect(promptMarkup(FIXTURES[2]![1])).toContain("Portrait of @[Hero](img-1)");
     expect(promptMarkup(FIXTURES[2]![1])).toContain("Pick a style first");
+  });
+});
+
+describe("agentPromptSegments", () => {
+  it("turns each @[label](node id) into a ref into one shared list of mentions, each node once", () => {
+    expect(agentPromptSegments("Make @[Hero](n1) wave at @[Dog](n2) and @[Hero again](n1)!", [])).toEqual({
+      segments: [{ text: "Make " }, { ref: 0 }, { text: " wave at " }, { ref: 1 }, { text: " and " }, { ref: 0 }, { text: "!" }],
+      mentions: ["n1", "n2"],
+    });
+  });
+
+  it("continues a mention list another prompt of the same change began", () => {
+    expect(agentPromptSegments("@[Dog](n2) then @[Cat](n3)", ["n1", "n2"])).toEqual({
+      segments: [{ ref: 1 }, { text: " then " }, { ref: 2 }],
+      mentions: ["n1", "n2", "n3"],
+    });
+  });
+
+  it("keeps a marked note and words to fill as the marks they are", () => {
+    const { segments } = agentPromptSegments("A shot of {✏️ subject} (💡 keep it short)", []);
+    expect(segments.filter((s) => "slot" in s && s.slot !== undefined).map((s) => (s as { slot: { kind: string } }).slot.kind)).toEqual(["tweak", "note"]);
+  });
+
+  it("reads back what promptMarkup writes", () => {
+    const doc = new Y.Doc();
+    const fragment = doc.getXmlFragment("p");
+    const mentions: ProposalMention[] = [{ sourceNodeId: "n1", label: "Hero", kind: "image" }];
+    writeProposalPrompt(fragment, [{ text: "Paint " }, { ref: 0 }, { text: " at dusk" }], (i) => mentions[i]);
+    expect(agentPromptSegments(promptMarkup(fragment), [])).toEqual({ segments: [{ text: "Paint " }, { ref: 0 }, { text: " at dusk" }], mentions: ["n1"] });
   });
 });

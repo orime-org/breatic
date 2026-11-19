@@ -18,7 +18,7 @@
 
 import * as Y from 'yjs';
 
-import { writtenMark } from '@shared/types/canvas-proposal.js';
+import { markedSegments, writtenMark, type PromptSegment } from '@shared/types/canvas-proposal.js';
 import {
   MENTION_KIND_ATTR,
   MENTION_LABEL_ATTR,
@@ -171,4 +171,31 @@ export function promptMarkup(fragment: Y.XmlFragment): string {
       return parts.map((part) => (typeof part === 'string' ? part : `@[${part.label}](${part.sourceNodeId})`)).join('');
     })
     .join(BLOCK_SEPARATOR);
+}
+
+/** A mention as an external agent writes it: `@[label](node id)`. */
+const AGENT_MENTION = /@\[[^\]]*\]\(([^()\s]+)\)/g;
+
+/**
+ * A prompt an external agent wrote, in the form {@link promptMarkup} reads
+ * one out: each `@[label](node id)` becomes a ref into a mention list shared
+ * by every prompt of one change (prompt, lyrics, shots), each node once, and
+ * the words between keep their marks.
+ * @param text - The prompt as the agent wrote it.
+ * @param mentions - The mention list so far; it is not changed.
+ * @returns The segments, and the mention list with this prompt's nodes added.
+ */
+export function agentPromptSegments(text: string, mentions: readonly string[]): { segments: PromptSegment[]; mentions: string[] } {
+  const listed = [...mentions];
+  const segments: PromptSegment[] = [];
+  let at = 0;
+  for (const match of text.matchAll(AGENT_MENTION)) {
+    if (match.index > at) segments.push(...markedSegments(text.slice(at, match.index)));
+    const nodeId = match[1]!;
+    if (!listed.includes(nodeId)) listed.push(nodeId);
+    segments.push({ ref: listed.indexOf(nodeId) });
+    at = match.index + match[0].length;
+  }
+  if (at < text.length) segments.push(...markedSegments(text.slice(at)));
+  return { segments, mentions: listed };
 }
