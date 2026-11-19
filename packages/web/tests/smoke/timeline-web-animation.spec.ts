@@ -315,7 +315,8 @@ test('one real web animation made in Motion is reused as three copies over a vid
       await waitMotionFinished(page, executionId);
       await visibleSpace(page).getByTestId('motion-details').click();
       const details = motionDetails(page);
-      await expect(details).toContainText('Succeeded');
+      // It describes only the shown result, which has always succeeded, so it carries no status.
+      await expect(details).not.toContainText('Status');
       await expect(details.locator('ol > li')).toHaveCount(4);
       await expect(details.locator('ol > li svg.lucide-check')).toHaveCount(4);
       await expect(details).toContainText(/Usage\s*[\d.,]+ credits/);
@@ -1038,6 +1039,18 @@ async function writeLegacyCopies(page: Page, timelineId: string, placed: string,
   }, [smokeProjectId(), timelineId, managerAt, placed, executionIds] as [string, string, string, string, string[]]);
 }
 
+/**
+ * Wait until an execution has ended in the given state, read from the server. A run made in a Timeline reports its
+ * changes to that Timeline's document only, so an open Motion Space reads it when it next loads its lists.
+ * @throws {Error} When it does not end so within one run.
+ */
+async function waitExecutionEnded(page: Page, projectId: string, spaceId: string, executionId: string, status: 'succeeded' | 'cancelled'): Promise<void> {
+  await expect.poll(async () => {
+    const res = await page.request.get(`/api/v1/timeline/executions/${executionId}`, { params: { projectId, spaceId } });
+    return res.ok() ? ((await res.json()) as { data: { status: string } }).data.status : `http ${res.status()}`;
+  }, { timeout: RUN_MS, intervals: [2_000] }).toBe(status);
+}
+
 test('a web animation made in a Timeline before Motion keeps its copy and name, is modified from that group in Motion, and a cancelled one opens in Motion under Failed @needs-model @needs-ingest', async ({ page }) => {
   // Two real model runs (the old create and its modification) and one drained cancelled run.
   test.setTimeout(3 * RUN_MS + 120_000);
@@ -1055,6 +1068,10 @@ test('a web animation made in a Timeline before Motion keeps its copy and name, 
     }), 'cancel the second old run');
 
     await test.step('Motion lists the old run under Made in a Timeline before', async () => {
+      await waitExecutionEnded(page, projectId, motionId, done, 'succeeded');
+      await waitExecutionEnded(page, projectId, motionId, cancelled, 'cancelled');
+      await page.reload();
+      await openSpaceById(page, motionId);
       await waitMotionFinished(page, done);
       const list = await motionListTab(page, 'Completed');
       await expect(list.getByTestId('motion-legacy-group').getByTestId(`motion-row-${done}`)).toContainText(PROMPT);

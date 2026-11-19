@@ -412,7 +412,7 @@ test('an annotation with a point is seen, answered and resolved by another Edito
           await expect(card.getByTestId(control)).toHaveCount(0);
         }
         await view.getByTestId('motion-details').click();
-        await expect(motionDetails(peer)).toContainText('Succeeded');
+        await expect(motionDetails(peer)).toContainText(/Usage\s*[\d.,]+ credits/);
       });
     });
   } finally {
