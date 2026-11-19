@@ -10,11 +10,10 @@
 import { z } from "zod";
 import { modelRunRetryable } from "@shared/mini-tools/model-run-retryable.js";
 import { planVideoDialogues, type VideoDialoguePlanInput } from "@shared/mini-tools/video-plan.js";
-import { lipsyncSourceFrameAt, lipsyncSourceTickAt, type LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
-import { presentationFrameCount } from "@shared/mini-tools/video-presentation-table.js";
-import type { VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
+import { lipsyncResultFrameCount, lipsyncSourceFrameAt, lipsyncSourceTickAt, type LipsyncGrid, type LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
 export {
-  lipsyncChunkSourceWindow, lipsyncClipCropFrames, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceSpan, lipsyncSourceTickAt, lipsyncSourceFrameAt, type LipsyncTimeline,
+  lipsyncChunkSourceWindow, lipsyncClipCropFrames, lipsyncPictureBytes, lipsyncResultFrameCount, lipsyncResultSourceFrames, lipsyncSourceSpan, lipsyncSourceTickAt,
+  lipsyncSourceFrameAt, type LipsyncGrid, type LipsyncTimeline,
 } from "@shared/mini-tools/lipsync-timeline.js";
 
 /**
@@ -74,25 +73,24 @@ export interface LipsyncMonotonicSegment {
   sourceStart: number;
   sourceEnd: number;
   direction: "forward" | "reverse";
-  /** Frames decoded before `sourceStart` from the keyframe at or before it; a reverse segment's later GOPs start on their own keyframe. */
+  /** Frames decoded before `sourceStart`: the job's pre-roll (§5.4), never more than the frames before it. */
   prerollFrames: number;
 }
 
 /**
- * Split the result grid the container writes (frame k at k · step / timescale of the table's first run) into forward and
- * reverse segments of the source mapping: loop starts a forward segment at each wrap, bounce is forward while
- * u = t mod 2V lies in [0, V] and reverse after, every other mode is one forward segment. A reverse segment is decoded GOP by
- * GOP forward once and emitted reversed, so its decode work is the same as a forward pass over its interval.
+ * Split the result grid the container writes (frame k at k / fps of the source grid) into forward and reverse segments of
+ * the source mapping: loop starts a forward segment at each wrap, bounce is forward while u = t mod 2V lies in [0, V] and
+ * reverse after, every other mode is one forward segment. A reverse segment is decoded GOP by GOP forward once and
+ * emitted reversed, so its decode work is the same as a forward pass over its interval.
  * @param timeline - The frozen timeline.
- * @param table - The source's presentation table.
- * @param keyframes - The per-presentation-frame keyframe flags.
+ * @param grid - The source's frame grid.
+ * @param prerollFrames - The tool source's decode pre-roll (`decodePrerollFrames`, §5.4).
  * @returns The segments in result order.
- * @throws {RangeError} When the table has no frame or the result has none.
+ * @throws {RangeError} When the grid has no frame or the result has none.
  */
-export function lipsyncMonotonicSegments(timeline: LipsyncTimeline, table: VideoPresentationTable, keyframes: readonly boolean[]): LipsyncMonotonicSegment[] {
-  const run = table.runs[0];
-  if (run === undefined) throw new RangeError("Expected a presented frame");
-  const count = Math.ceil(Math.round(timeline.duration * table.timescale) / run.step);
+export function lipsyncMonotonicSegments(timeline: LipsyncTimeline, grid: LipsyncGrid, prerollFrames: number): LipsyncMonotonicSegment[] {
+  if (grid.frameCount <= 0) throw new RangeError("Expected a presented frame");
+  const count = lipsyncResultFrameCount(timeline, grid);
   if (count <= 0) throw new RangeError("Expected a result frame");
   const segments: LipsyncMonotonicSegment[] = [];
   let open: { start: number; reverse: boolean; low: number; high: number } | null = null;
@@ -104,14 +102,12 @@ export function lipsyncMonotonicSegments(timeline: LipsyncTimeline, table: Video
    */
   const close = (end: number): void => {
     if (open === null) return;
-    const [sourceStart, sourceEnd] = timeline.syncMode === "remap" ? [0, presentationFrameCount(table)] : [open.low, open.high + 1];
-    let key = sourceStart;
-    while (key > 0 && keyframes[key] !== true) key -= 1;
-    segments.push({ resultStart: open.start, resultEnd: end, sourceStart, sourceEnd, direction: open.reverse ? "reverse" : "forward", prerollFrames: sourceStart - key });
+    const [sourceStart, sourceEnd] = timeline.syncMode === "remap" ? [0, grid.frameCount] : [open.low, open.high + 1];
+    segments.push({ resultStart: open.start, resultEnd: end, sourceStart, sourceEnd, direction: open.reverse ? "reverse" : "forward", prerollFrames: Math.min(prerollFrames, sourceStart) });
   };
   for (let k = 0; k < count; k += 1) {
-    const { tick, reverse } = lipsyncSourceTickAt(timeline, table.timescale, k * run.step);
-    const frame = lipsyncSourceFrameAt(timeline, table, k);
+    const { tick, reverse } = lipsyncSourceTickAt(timeline, grid.fps.numerator, k * grid.fps.denominator);
+    const frame = lipsyncSourceFrameAt(timeline, grid, k);
     // A forward source tick falls back only where a loop wraps; a reverse one falls throughout.
     if (open === null || open.reverse !== reverse || (!reverse && tick < previous)) {
       close(k);

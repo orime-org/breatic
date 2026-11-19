@@ -827,7 +827,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
 
 /**
  * The task type a planned tool's task row is opened with: the two frame tools produce a picture, every other planned
- * tool a video (frames-split design §5.5 "计划形状").
+ * tool a video (frames-split design §5.5 "plan shape" row).
  * @param tool - The planned tool id.
  * @returns The task type.
  */

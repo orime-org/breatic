@@ -5,8 +5,14 @@ import { z } from "zod";
 import { VIDEO_TOOL_SYNC_MODES } from "@shared/mini-tools/lipsync-timeline.js";
 import { miniToolAnalysisInputSchema, miniToolAnchorSchema } from "@shared/mini-tools/analysis-input.js";
 
+/** The seven panel tools: each has a collaborative `miniToolDraft:<id>` field (frames-split §5.5 plan shape row). */
 export const VIDEO_TOOL_IDS = ["video.expand", "video.erase", "video.lip-sync", "video.remove-bg", "video.extract-frames", "video.transitions", "video.split"] as const;
 export type VideoToolId = typeof VIDEO_TOOL_IDS[number];
+/** Every tool a planned request may name: the seven panel tools and the video focus crop, which has no draft field. */
+export const PLANNED_VIDEO_TOOL_IDS = [...VIDEO_TOOL_IDS, "video.focus-crop"] as const;
+export type PlannedVideoToolId = typeof PLANNED_VIDEO_TOOL_IDS[number];
+/** The longest frozen source node name a focus crop keeps (frames-split §5.5 admission row). */
+export const MAX_FOCUS_NAME = 300;
 
 const mediaInfoShape = {
   width: z.number().int().positive(),
@@ -57,6 +63,12 @@ export const videoToolTimelineClipSchema = z.strictObject({
   }),
 }).refine((clip) => clip.out > clip.in);
 
+const gridFrame = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+/** A video focus crop's rectangle in P.display pixels (frames-split §5.5 admission row). */
+export const focusCropRectSchema = z.strictObject({
+  x: z.number().int().nonnegative(), y: z.number().int().nonnegative(), width: z.number().int().positive(), height: z.number().int().positive(),
+});
+
 const commonDraftShape = {
   version: z.literal(1),
   draftId: z.string().uuid(),
@@ -94,11 +106,12 @@ const draftSchemas = {
     }),
   }),
   "video.remove-bg": z.strictObject({ ...commonDraftShape, params: z.strictObject({}) }),
+  // The current frame is the player's grid frame number (frames-split §4.3, §10.7).
   "video.extract-frames": z.strictObject({
     ...commonDraftShape,
     params: z.strictObject({
       mode: z.enum(["first", "last", "current"]),
-      currentTime: z.number().nonnegative(),
+      frameIndex: gridFrame,
     }),
   }),
   "video.transitions": z.strictObject({
@@ -109,9 +122,21 @@ const draftSchemas = {
   }),
   "video.split": z.strictObject({
     ...commonDraftShape,
-    params: z.strictObject({ cuts: z.array(z.number().nonnegative()), sensitivity: z.number().optional() }),
+    // Cuts are grid frame numbers (frames-split §10.7 split row).
+    params: z.strictObject({ cuts: z.array(gridFrame), sensitivity: z.number().optional() }),
   }),
 } satisfies Record<VideoToolId, z.ZodType>;
+
+/**
+ * The video focus crop's request draft (frames-split §5.5 admission row): the boxed video node as `source`, no inputs, the grid
+ * frame, the crop in P.display and the source node's name cut to `MAX_FOCUS_NAME`. It is never stored on a node.
+ */
+export const videoFocusCropDraftSchema = z.strictObject({
+  ...commonDraftShape,
+  inputs: z.array(videoToolInputSchema).max(0),
+  params: z.strictObject({ frameIndex: gridFrame, crop: focusCropRectSchema, sourceName: z.string().max(MAX_FOCUS_NAME) }),
+});
+export type VideoFocusCropDraft = z.infer<typeof videoFocusCropDraftSchema>;
 
 export type VideoToolDraftById = { [K in VideoToolId]: z.infer<typeof draftSchemas[K]> };
 const typedDraftSchemas: { [K in VideoToolId]: z.ZodType<VideoToolDraftById[K]> } = draftSchemas;

@@ -10,6 +10,12 @@ import type { FrameRate } from '@shared/upload/frame-grid-rate.js';
  * ({@link FrameRate} shape) unless a field is a float in seconds measured by the probe.
  */
 
+/**
+ * The frame-number mapping rule's version (§3.2 item 2): part of every plan; raised only when re-checking the samples
+ * after an FFmpeg upgrade finds a source frame in another slot.
+ */
+export const GRID_RULES_VERSION = 1;
+
 /** FFmpeg CLI moves a seek target back by 3/23 s before seeking a stream with B-frames (§7.16). */
 const CLI_SEEK_BACKOFF = { numerator: 3, denominator: 23 } as const;
 

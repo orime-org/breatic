@@ -3,11 +3,9 @@
 
 import { z } from 'zod';
 import { videoDurationsMatch } from '@shared/upload/video-duration.js';
-import { videoPresentationTableReadLimitsSchema, type VideoPresentationTableReadLimits } from '@shared/upload/read-video-presentation-table.js';
 import { videoPresentationVersionSchema, type VideoPresentationVersion } from '@shared/upload/video-presentation-version.js';
 import {
-  checkSelectedVideoPresentation, videoPresentationIngestLedgerSchema, videoPresentationIngestPreparationSchema,
-  type VideoPresentationIngestLedger, type VideoPresentationIngestPreparation,
+  checkSelectedVideoPresentation, videoPresentationIngestPreparationSchema, type VideoPresentationIngestPreparation,
 } from '@shared/upload/video-presentation-ingest.js';
 
 /** Registry identity remains available before trusted media measurement. */
@@ -21,33 +19,26 @@ export interface VideoPresentationSourceBinding {
 
 /**
  * Authorized source lookup and its presentation (design §3.5 web→server row): the selected bundle, the target policy's
- * preparation and the selected version's ledger; a repair answers the same response.
+ * preparation; a repair answers the same response.
  */
 export interface VideoPresentationResponse {
   sourceBinding: VideoPresentationSourceBinding;
   presentation: VideoPresentationVersion | null;
   preparation: VideoPresentationIngestPreparation | null;
-  ledger: VideoPresentationIngestLedger | null;
   pollAfterMs: number | null;
-  /** The current policy a reader holds the stored table to; absent means the table is not read. */
-  sourceLedgerReadLimits?: VideoPresentationTableReadLimits;
 }
 
 /**
- * Whether the reader waits on server work (§7.12 steps 1–5): nothing selected while the target work has not failed, or
- * a selected version whose ledger is absent or pending. The one rule behind `pollAfterMs` on both sides.
- * @param value - The selected bundle, the preparation and the ledger.
+ * Whether the user's view waits on server work (§7.12): nothing selected while the target work has not failed. A
+ * selected version is complete, its grid inside it. The one rule behind `pollAfterMs` on both sides.
+ * @param value - The selected bundle and the preparation.
  * @param value.presentation - The selected bundle, or null.
  * @param value.preparation - The target policy's preparation, or null.
- * @param value.ledger - The selected version's ledger, or null.
- * @returns True while a later read can change what the reader sees.
+ * @returns True while a later read can change what the user sees.
  * @throws {never} Never.
  */
-export function videoPresentationAwaitsServer(value: {
-  presentation: VideoPresentationVersion | null; preparation: VideoPresentationIngestPreparation | null; ledger: VideoPresentationIngestLedger | null;
-}): boolean {
-  if (value.presentation !== null) return value.ledger === null || value.ledger.state === 'pending';
-  return value.preparation !== null && value.preparation.failure === null;
+export function videoPresentationAwaitsServer(value: { presentation: VideoPresentationVersion | null; preparation: VideoPresentationIngestPreparation | null }): boolean {
+  return value.presentation === null && value.preparation !== null && value.preparation.failure === null;
 }
 
 /** Registry-backed nullable metadata wire contract. */
@@ -62,9 +53,8 @@ export const videoPresentationSourceBindingSchema: z.ZodType<VideoPresentationSo
 /** Authorized presentation query and repair wire contract. */
 export const videoPresentationResponseSchema: z.ZodType<VideoPresentationResponse> = z.strictObject({
   sourceBinding: videoPresentationSourceBindingSchema, presentation: videoPresentationVersionSchema.nullable(),
-  preparation: videoPresentationIngestPreparationSchema.nullable(), ledger: videoPresentationIngestLedgerSchema.nullable(),
+  preparation: videoPresentationIngestPreparationSchema.nullable(),
   pollAfterMs: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable(),
-  sourceLedgerReadLimits: videoPresentationTableReadLimitsSchema.optional(),
 }).superRefine((value, ctx) => {
   checkSelectedVideoPresentation(value, value.sourceBinding.contentHash, ctx);
   const descriptor = value.presentation;

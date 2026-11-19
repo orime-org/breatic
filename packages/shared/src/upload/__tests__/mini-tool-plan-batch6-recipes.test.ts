@@ -4,31 +4,29 @@
 /**
  * inner#1306 test plan §97 D15-5 to D15-8 (frames-split §7.17 recipe table and 转场输出档 row, §5.4; execution design §8.1):
  * the recipe shapes of the transition export and the erase/expand composite, built from the existing recipe parts in
- * `mini-tool-plan-job.ts` (source/empty entries, `windowRecipe`, the audio entry, `{ start, end }` ordinal windows, exact
- * times); recipes name bound job inputs by `inputId`, never storage keys. The shapes chosen here are recorded in §97.
+ * `mini-tool-plan-job.ts` on the frame grid (frames-split §7.17: the grid, the tool source and grid frame numbers instead
+ * of frame-table entries; `{ start, end }` grid frame windows; exact times as number rationals); recipes name bound job
+ * inputs by `inputId`, never storage keys. The shapes chosen here are recorded in §97.
  *
  * - The transition output profile: `{ width, height, fps, timeBase, pixFmt, color, codec, encode: { crf, preset }, alpha }`;
  *   timeBase is 1/fps, alpha goes with vp9 and yuva420p, no alpha with h264 and yuv420p, and h264 has even sides.
- * - `transition_window`: `{ kind, clips: [two { inputId, entries, colorMatrix, toneMap, fit }], frames, window: { startFrame,
+ * - `transition_window`: `{ kind, clips: [two { inputId, grid, source, placement, colorMatrix, toneMap, fit }], frames, window: { startFrame,
  *   frameCount }, transition, profile }`; `frames` is the chunk's [k0, k1) on the output grid and lies inside the window.
  *   Each clip carries its own source conversion (frames-split §4.3 colour/HDR row): the decode matrix its plan resolved and
  *   `toneMap: "sdr-bt709"` for an HDR source, the same two fields and values the `segment`/`chunk_encode` target and the
  *   `scene_cuts` analysis target carry, because the profile is the output's and both clips decode into it.
- * - `chunk_encode` gains an optional `profile`.
- * - The transition `stitch`: `{ kind, chunks, clips: [two { inputId, audio }], crossfade: { startFrame, frameCount } | null,
- *   profile }`; `audio` is the existing audio entry, null for a clip without audio (silence over its span); `crossfade` is
- *   null for a Cut.
- * - `model_composite`, by `mode`: erase `{ ...windowRecipe, result, rle, table, range, grid, matte }` (execution design §10.4); expand `{ ...windowRecipe, backgrounds:
+ * - `chunk_encode` gains an optional `profile` with the clip's `placement` on the output grid.
+ * - The transition `stitch`: `{ kind, chunks, clips: [two { inputId, grid, placement, frameCount, audio }], crossfade:
+ *   { startFrame, frameCount } | null, profile }`; `audio` is false for a clip without audio (silence over its span);
+ *   `crossfade` is null for a Cut.
+ * - `model_composite`, by `mode`: erase `{ ...windowRecipe, result, rle, range, model, matte }` (execution design §10.4); expand `{ ...windowRecipe, backgrounds:
  *   [{ inputId, window }] }`, whose own `window` is that window's presentation interval, in order.
  */
 import { describe, expect, it } from "vitest";
 import { miniToolPlanJobReportSchema, miniToolPlanJobRequestSchema, miniToolPlanRecipeSchema } from "@shared/upload/mini-tool-plan-job.js";
 
 type Recipe = Record<string, unknown>;
-const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => {
-  let [a, b] = [numerator, denominator]; while (b !== 0) [a, b] = [b, a % b];
-  return { numerator: String(numerator / a), denominator: String(denominator / a) };
-};
+const r = (numerator: number, denominator = 1): { numerator: number; denominator: number } => ({ numerator, denominator });
 const SOURCE_A = "20000000-0000-4000-8000-000000000001";
 const SOURCE_B = "20000000-0000-4000-8000-000000000002";
 const CHUNK = "20000000-0000-4000-8000-0000000000c0";
@@ -37,32 +35,37 @@ const BACKGROUNDS = ["20000000-0000-4000-8000-0000000000b0", "20000000-0000-4000
 const UNBOUND = "20000000-0000-4000-8000-0000000000ff";
 const RLE = "20000000-0000-4000-8000-0000000000d0";
 const LIMITS = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
-/** The source entry of presented frame `n` of a 25 fps clip. @returns It. */
-const entryAt = (n: number, count = 1): Recipe => ({ kind: "source", decodeStart: r(n, 25), clipStart: r(n, 25), displayStart: r(n, 25), displayEnd: r(n + count, 25), rate: r(1) });
+// A 25 fps grid of 100 frames, read from the original.
+const GRID = { fps: r(25), gridStart: r(0), frameCount: 100, realFrameCount: 100 };
+const ORIGINAL = { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 2, allKeyframes: false } };
 const OPAQUE = { width: 320, height: 180, fps: r(25), timeBase: r(1, 25), pixFmt: "yuv420p", color: { matrix: "bt709", range: "tv", primaries: "bt709", transfer: "bt709" }, codec: "h264", encode: { crf: 18, preset: "medium" }, alpha: false };
 const TRANSPARENT = { ...OPAQUE, width: 97, pixFmt: "yuva420p", codec: "vp9", alpha: true };
 const TARGET = { width: 320, height: 180, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", crf: 18, preset: "medium", format: "mp4-h264" };
-const AUDIO = { start: r(0), end: r(3), origin: r(0), spans: null };
 
 const SDR = { colorMatrix: "bt709", toneMap: "none" };
 const HDR = { colorMatrix: "bt2020nc", toneMap: "sdr-bt709" };
 // Each clip sits in its fitted rectangle on the 320x180 output (`transitionFitRect`).
 const FIT = { x: 0, y: 0, width: 320, height: 180 };
-const windowClips = (): Recipe[] => [{ inputId: SOURCE_A, entries: [entryAt(75, 15)], ...HDR, fit: FIT }, { inputId: SOURCE_B, entries: [entryAt(0, 15)], ...SDR, fit: FIT }];
+const windowClips = (): Recipe[] => [
+  { inputId: SOURCE_A, grid: GRID, source: { kind: "edit" }, placement: { startFrame: 0, inFrame: 0 }, ...HDR, fit: FIT },
+  { inputId: SOURCE_B, grid: GRID, source: ORIGINAL, placement: { startFrame: 75, inFrame: 0 }, ...SDR, fit: FIT },
+];
 const windowChunk = (): Recipe => ({
   kind: "transition_window", clips: windowClips(),
   frames: { start: 75, end: 90 }, window: { startFrame: 75, frameCount: 15 }, transition: "fade", profile: OPAQUE,
 });
-const encodeChunk = (): Recipe => ({ kind: "chunk_encode", inputId: SOURCE_A, window: { start: 0, end: 25 }, timescale: 25, entries: [entryAt(0, 25)], target: TARGET });
-const stitchClips = (): Recipe[] => [{ inputId: SOURCE_A, audio: AUDIO }, { inputId: SOURCE_B, audio: null }];
+const encodeChunk = (): Recipe => ({ kind: "chunk_encode", inputId: SOURCE_A, grid: GRID, source: ORIGINAL, frames: { start: 0, end: 25 }, target: TARGET });
+const stitchClips = (): Recipe[] => [
+  { inputId: SOURCE_A, grid: GRID, placement: { startFrame: 0, inFrame: 0 }, frameCount: 90, audio: true },
+  { inputId: SOURCE_B, grid: GRID, placement: { startFrame: 75, inFrame: 0 }, frameCount: 120, audio: false },
+];
 const transitionStitch = (): Recipe => ({
-  kind: "stitch", chunks: [{ inputId: CHUNK, duration: r(39, 5) }],
+  kind: "stitch", chunks: [{ inputId: CHUNK, frames: { start: 0, end: 195 } }],
   clips: stitchClips(), crossfade: { startFrame: 75, frameCount: 15 }, profile: OPAQUE,
 });
-const windowShape = { inputId: SOURCE_A, window: { start: 0, end: 50 }, timescale: 25, entries: [entryAt(0, 50)], target: TARGET };
+const windowShape = { inputId: SOURCE_A, grid: GRID, source: ORIGINAL, frames: { start: 0, end: 50 }, target: TARGET };
 const erase = (): Recipe => ({ kind: "model_composite", mode: "erase", ...windowShape, result: RESULT, rle: RLE,
-  table: { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 50, step: 1, duration: 1 }] }, range: { startFrame: 13, frameCount: 25 },
-  grid: { mode: "frames", rate: 25, frameCount: 25 }, matte: { dilate: 4, feather: 4 }, rleSize: { width: 320, height: 180 } });
+  range: { startFrame: 13, frameCount: 25 }, model: { mode: "frames", rate: 25, frameCount: 25 }, matte: { dilate: 4, feather: 4 }, rleSize: { width: 320, height: 180 } });
 const expand = (): Recipe => ({
   kind: "model_composite", mode: "expand", ...windowShape,
   backgrounds: [{ inputId: BACKGROUNDS[0], window: { start: r(0), end: r(5, 4) } }, { inputId: BACKGROUNDS[1], window: { start: r(1), end: r(2) } }],
@@ -147,7 +150,8 @@ describe("transition_window (§97 D15-6; frames-split §7.17)", () => {
   it.each([
     ["one clip", { clips: [windowClips()[0]] }],
     ["three clips", { clips: [...windowClips(), windowClips()[0]] }],
-    ["a clip without entries", { "clips.1.entries": [] }],
+    ["a clip without its grid", { "clips.1.grid": undefined }],
+    ["a clip without its placement", { "clips.1.placement": undefined }],
     ["frames before the window", { frames: { start: 74, end: 90 } }],
     ["frames past the window", { frames: { start: 75, end: 91 } }],
     ["empty frames", { frames: { start: 80, end: 80 } }],
@@ -160,7 +164,7 @@ describe("transition_window (§97 D15-6; frames-split §7.17)", () => {
   });
 
   it("BW04 each clip carries its own conversion: an HDR clip tone mapped with its plan matrix beside an SDR clip (§4.3)", () => {
-    const parsed = miniToolPlanRecipeSchema.parse(windowChunk()) as { clips: Recipe[] };
+    const parsed = miniToolPlanRecipeSchema.parse(windowChunk()) as unknown as { clips: Recipe[] };
     expect(parsed.clips.map(({ colorMatrix, toneMap }) => ({ colorMatrix, toneMap }))).toEqual([HDR, SDR]);
   });
 
@@ -182,22 +186,23 @@ describe("transition_window (§97 D15-6; frames-split §7.17)", () => {
 });
 
 describe("chunk_encode with the transition profile (§97 D15-7)", () => {
-  it("BC01 accepts an encode chunk with the profile and its output frames and keeps one without either", () => {
-    const withProfile = { ...encodeChunk(), profile: OPAQUE, frames: { start: 0, end: 30 } };
+  it("BC01 accepts an encode chunk with the profile and its placement and keeps one without either", () => {
+    const withProfile = { ...encodeChunk(), profile: OPAQUE, placement: { startFrame: 0, inFrame: 0 }, frames: { start: 0, end: 30 } };
     expect(miniToolPlanRecipeSchema.parse(withProfile)).toEqual(withProfile);
     expect(miniToolPlanRecipeSchema.parse(encodeChunk())).toEqual(encodeChunk());
   });
 
   it("BC02 refuses an encode chunk with an invalid profile", () => {
-    const control = { ...encodeChunk(), profile: OPAQUE, frames: { start: 0, end: 30 } };
+    const control = { ...encodeChunk(), profile: OPAQUE, placement: { startFrame: 0, inFrame: 0 }, frames: { start: 0, end: 30 } };
     refuses(control, { ...control, profile: { ...OPAQUE, alpha: true } });
   });
 
   // The output grid is the profile's, so a clip at another rate covers a different number of output frames than source frames.
   it.each([
-    ["the profile without its output frames", { ...encodeChunk(), profile: OPAQUE }],
-    ["output frames without the profile", { ...encodeChunk(), frames: { start: 0, end: 30 } }],
-    ["empty output frames", { ...encodeChunk(), profile: OPAQUE, frames: { start: 30, end: 30 } }],
+    ["the profile without its placement", { ...encodeChunk(), profile: OPAQUE }],
+    ["a placement without the profile", { ...encodeChunk(), placement: { startFrame: 0, inFrame: 0 } }],
+    ["empty output frames", { ...encodeChunk(), profile: OPAQUE, placement: { startFrame: 0, inFrame: 0 }, frames: { start: 30, end: 30 } }],
+    ["frames past a chunk's grid", { ...encodeChunk(), frames: { start: 90, end: 101 } }],
   ])("BC03 refuses %s", (_name, bad) => {
     expect(miniToolPlanRecipeSchema.safeParse(bad).success).toBe(false);
   });
@@ -206,7 +211,7 @@ describe("chunk_encode with the transition profile (§97 D15-7)", () => {
 describe("the transition stitch (§97 D15-7; frames-split §7.17 stitch row)", () => {
   it("BS01 accepts the two clips' audio entries with a crossfade, a silent clip and a Cut", () => {
     expect(miniToolPlanRecipeSchema.parse(transitionStitch())).toEqual(transitionStitch());
-    const cut = changed(transitionStitch(), { crossfade: null, "clips.1.audio": AUDIO });
+    const cut = changed(transitionStitch(), { crossfade: null, "clips.1.audio": true });
     expect(miniToolPlanRecipeSchema.parse(cut)).toEqual(cut);
   });
 
@@ -214,8 +219,8 @@ describe("the transition stitch (§97 D15-7; frames-split §7.17 stitch row)", (
     ["one clip", { clips: [stitchClips()[0]] }],
     ["a zero-frame crossfade", { crossfade: { startFrame: 75, frameCount: 0 } }],
     ["no profile", { profile: undefined }],
-    ["the single-source audio beside the clips", { audio: AUDIO }],
-    ["a chunk on a clip input", { chunks: [{ inputId: SOURCE_A, duration: r(39, 5) }] }],
+    ["the single-source audio beside the clips", { audio: true }],
+    ["a chunk on a clip input", { chunks: [{ inputId: SOURCE_A, frames: { start: 0, end: 195 } }] }],
   ])("BS02 refuses %s", (_name, edits) => {
     refuses(transitionStitch(), changed(transitionStitch(), edits));
   });
@@ -236,7 +241,7 @@ describe("model_composite (§97 D15-8; frames-split §7.17, execution design §8
     ["erase without its result", erase, { result: undefined }],
     ["erase with an empty range", erase, { range: { startFrame: 13, frameCount: 0 } }],
     ["erase without its mask", erase, { rle: undefined }],
-    ["erase without its grid", erase, { grid: undefined }],
+    ["erase without its model grid", erase, { model: undefined }],
     ["erase with expand's backgrounds", erase, { backgrounds: expand().backgrounds }],
     ["expand with erase's result", expand, { result: RESULT }],
     ["expand without backgrounds", expand, { backgrounds: [] }],
@@ -271,10 +276,9 @@ describe("the lip-sync faces container failures (§97 D17-7, D18-3)", () => {
 // is encoded at the plan's container encode, as the composite's target is, and the composite feathers each face's edge by
 // the fraction admission froze from config/mini-tools.yaml.
 describe("the lip-sync clip encode and composite feather", () => {
-  const TABLE = { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 50, step: 1, duration: 1 }] };
   const TIMELINE = { duration: 2, videoDuration: 2, syncMode: "cut_off" };
-  const clip = (): Recipe => ({ kind: "lipsync_clip", inputId: SOURCE_A, faces: SOURCE_B, track: RLE, cropSize: 512, timeline: TIMELINE, table: TABLE, encode: { crf: 18, preset: "medium" } });
-  const composite = (): Recipe => ({ kind: "lipsync_composite", ...windowShape, timeline: TIMELINE, table: TABLE,
+  const clip = (): Recipe => ({ kind: "lipsync_clip", inputId: SOURCE_A, faces: SOURCE_B, track: RLE, cropSize: 512, timeline: TIMELINE, grid: GRID, encode: { crf: 18, preset: "medium" } });
+  const composite = (): Recipe => ({ kind: "lipsync_composite", ...windowShape, timeline: TIMELINE,
     persons: [{ result: RESULT, faces: SOURCE_B, track: RLE, cropSize: 512 }], rawDiskBytes: 1_000_000, feather: 0.1,
     prepared: { width: 854, height: 480, displayRect: { x: 0, y: 0, width: 853, height: 480 } } });
 

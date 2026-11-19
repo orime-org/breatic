@@ -12,17 +12,17 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
-  lipsyncClipCropFrames, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceFrameAt, lipsyncSourceSpan, VIDEO_TOOL_SYNC_MODES, type LipsyncTimeline,
+  lipsyncClipCropFrames, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceFrameAt, lipsyncSourceSpan, VIDEO_TOOL_SYNC_MODES, type LipsyncGrid, type LipsyncTimeline,
 } from "@shared/mini-tools/lipsync-timeline.js";
-import type { VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
 
 /**
- * A constant-rate table.
- * @param fps - Its frame rate.
+ * A frame grid (frames-split §4.1): every video is one, so the mapping runs on fps and frame count alone.
+ * @param numerator - Its fps numerator (the clock: ticks a second).
  * @param count - Its frame count.
- * @returns The table.
+ * @param denominator - Its fps denominator (ticks a frame).
+ * @returns The grid.
  */
-const cfr = (fps: number, count: number): VideoPresentationTable => ({ schemaVersion: 1, timescale: fps, runs: [{ start: 0, count, step: 1, duration: 1 }] });
+const cfr = (numerator: number, count: number, denominator = 1): LipsyncGrid => ({ fps: { numerator, denominator }, frameCount: count });
 
 describe("lip-sync raw pictures and the result grid (execution design paragraph before §9.4)", () => {
   it("LT01 a raw 8-bit 4:2:0 picture is its luma, two quarter chroma planes rounded up, and a luma-sized alpha plane when transparent", () => {
@@ -31,7 +31,7 @@ describe("lip-sync raw pictures and the result grid (execution design paragraph 
     expect(lipsyncPictureBytes(5, 3, false)).toBe(15 + 2 * 3 * 2);
   });
 
-  it("LT02 the result grid is frame k at k · step / timescale over ceil(round(duration · timescale) / step) frames", () => {
+  it("LT02 the result grid is frame k at k / fps over ceil(round(duration · fps.numerator) / fps.denominator) frames", () => {
     const table = cfr(25, 10);
     const timeline: LipsyncTimeline = { duration: 0.72, videoDuration: 0.4, syncMode: "loop" };
     const sources = lipsyncResultSourceFrames(timeline, table);
@@ -54,7 +54,7 @@ describe("lip-sync raw pictures and the result grid (execution design paragraph 
     fc.assert(fc.property(
       fc.constantFrom(...CLOCKS), fc.integer({ min: 1, max: 300 }), fc.integer({ min: 1, max: 1500 }),
       ([timescale, step], frames, resultFrames) => {
-        const table: VideoPresentationTable = { schemaVersion: 1, timescale, runs: [{ start: 0, count: frames, step, duration: step }] };
+        const table = cfr(timescale, frames, step);
         const [v, d] = [frames * step, resultFrames * step];
         const sources = lipsyncResultSourceFrames({ duration: d / timescale, videoDuration: v / timescale, syncMode }, table);
         const expected = Array.from({ length: resultFrames }, (_unused, k) => {
@@ -75,23 +75,20 @@ describe("lip-sync raw pictures and the result grid (execution design paragraph 
   });
 
   /**
-   * A table of contiguous runs on one clock, the steps varying between runs as a variable-frame-rate source's do.
-   * @returns The table arbitrary.
+   * A frame grid on a 600 clock at one of several rates.
+   * @returns The grid arbitrary.
    */
-  const tables = (): fc.Arbitrary<VideoPresentationTable> => fc.array(fc.record({ count: fc.integer({ min: 1, max: 40 }), step: fc.constantFrom(10, 12, 20, 24, 25) }), { minLength: 1, maxLength: 3 })
-    .map((runs) => {
-      let start = 0;
-      return { schemaVersion: 1, timescale: 600, runs: runs.map(({ count, step }) => { const run = { start, count, step, duration: step }; start += count * step; return run; }) };
-    });
+  const grids = (): fc.Arbitrary<LipsyncGrid> => fc.record({ count: fc.integer({ min: 1, max: 120 }), step: fc.constantFrom(10, 12, 20, 24, 25) })
+    .map(({ count, step }) => cfr(600, count, step));
 
   // The clip's single forward decode: walking the result in order, a source frame not in the crop file is always ahead of the
   // decode, and every crop the file holds is read back at least once.
-  it.each(VIDEO_TOOL_SYNC_MODES)("LT06 %s: one forward decode with the crop file serves every result frame, constant or variable frame rate", (syncMode) => {
-    fc.assert(fc.property(tables(), fc.integer({ min: 1, max: 600 }), (table, resultFrames) => {
-      const end = table.runs.at(-1)!.start + table.runs.at(-1)!.count * table.runs.at(-1)!.step;
-      const step = table.runs[0]!.step;
-      const duration = syncMode === "cut_off" ? Math.min(end, resultFrames * step) / table.timescale : (resultFrames * step) / table.timescale;
-      const sources = lipsyncResultSourceFrames({ duration, videoDuration: end / table.timescale, syncMode }, table);
+  it.each(VIDEO_TOOL_SYNC_MODES)("LT06 %s: one forward decode with the crop file serves every result frame", (syncMode) => {
+    fc.assert(fc.property(grids(), fc.integer({ min: 1, max: 600 }), (grid, resultFrames) => {
+      const step = grid.fps.denominator;
+      const end = grid.frameCount * step;
+      const duration = syncMode === "cut_off" ? Math.min(end, resultFrames * step) / grid.fps.numerator : (resultFrames * step) / grid.fps.numerator;
+      const sources = lipsyncResultSourceFrames({ duration, videoDuration: end / grid.fps.numerator, syncMode }, grid);
       const kept = new Set(lipsyncClipCropFrames(sources));
       const stored = new Set<number>();
       const reads = new Map<number, number>();

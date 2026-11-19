@@ -42,13 +42,13 @@ const runId = "50000000-0000-4000-8000-000000000001";
 const otherRunId = "50000000-0000-4000-8000-000000000002";
 const dialogueId = "60000000-0000-4000-8000-000000000001";
 const source = { nodeId: hostId, canonicalURL: "https://media.example.test/source.mp4", mediaInfo: { width: 960, height: 540, duration: 5, mimeType: "video/mp4" } };
-const anchor = { frameIndex: 3, pts: 0.12 };
+const anchor = { frameIndex: 3 };
 const params: Record<VideoToolId, ObjectValue> = {
   "video.expand": { frame: { x: 0, y: 0, width: 1, height: 1 }, ratio: "free", prompt: "" },
   "video.erase": { range: { start: 0, end: 5 }, anchor, region: { box: null, points: [] }, trackingPrompt: "" },
   "video.lip-sync": { anchor, dialogues: [{ dialogueId, personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }], syncMode: "cut_off" },
   "video.remove-bg": {},
-  "video.extract-frames": { mode: "current", currentTime: 0.12 },
+  "video.extract-frames": { mode: "current", frameIndex: 3 },
   "video.transitions": { clips: [] },
   "video.split": { cuts: [1], sensitivity: 0.4 },
 };
@@ -140,8 +140,10 @@ describe("persistent video tool draft contract", () => {
 
   // §97 (frames-split §10.6 删除行; tools design acceptance item 5): the frame draft keeps first, last and current only.
   it.each([
-    ["the interval mode", { mode: "interval", currentTime: 0.12, interval: 1 }],
-    ["an interval period beside a kept mode", { mode: "current", currentTime: 0.12, interval: 1 }],
+    ["the interval mode", { mode: "interval", frameIndex: 3, interval: 1 }],
+    ["an interval period beside a kept mode", { mode: "current", frameIndex: 3, interval: 1 }],
+    // frames-split §4.3, §10.7: the current frame is a grid frame, never seconds.
+    ["a current time in seconds", { mode: "current", currentTime: 0.12 }],
   ])("the frame draft refuses %s", (_name, frameParams) => {
     const value = draftFor("video.extract-frames");
     expect(api.videoToolDraftSchema("video.extract-frames").safeParse(value).success).toBe(true);
@@ -178,10 +180,12 @@ describe("persistent video tool draft contract", () => {
     expect(api.videoToolDraftSchema("video.lip-sync").safeParse(value).success).toBe(false);
   });
 
+  // frames-split §10.7 分割 row: cuts are grid frame numbers, kept as edited (planVideoSplit drops the edges and duplicates).
   it("preserves manually editable split cuts with an explicit sensitivity", () => {
     const value = draftFor("video.split");
-    value.params = { cuts: [0, 0.04, 0.12, 0.12, 5], sensitivity: 0.4 };
+    value.params = { cuts: [0, 1, 3, 3, 125], sensitivity: 0.4 };
     expect(api.videoToolDraftSchema("video.split").parse(value)).toEqual(value);
+    expect(api.videoToolDraftSchema("video.split").safeParse({ ...value, params: { cuts: [0.04], sensitivity: 0.4 } }).success).toBe(false);
   });
 
   it("enumerates source and copied input URLs for every supported draft", () => {

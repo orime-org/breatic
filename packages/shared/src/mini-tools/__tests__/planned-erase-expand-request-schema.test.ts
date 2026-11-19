@@ -26,7 +26,7 @@ const trackedMask = { version: 1, draftId: ids.draft, toolId: "video.erase", kin
 
 const ERASE = {
   ...common, tool: "video.erase",
-  draft: draft({ range: { start: 0, end: 3 }, anchor: { frameIndex: 0, pts: 0 }, region: { box: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, points: [] }, trackingPrompt: "" }),
+  draft: draft({ range: { start: 0, end: 3 }, anchor: { frameIndex: 0 }, region: { box: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, points: [] }, trackingPrompt: "" }),
   analysis_refs: [trackedMask],
   outputs: [{ outputIndex: 0, nodeId: ids.output, recipe: { kind: "erase" } }],
 };

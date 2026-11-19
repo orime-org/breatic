@@ -24,11 +24,11 @@ function request(tool: "video.extract-frames" | "video.split" = "video.extract-f
     tool, project_id: "10000000-0000-4000-8000-000000000001", space_id: "20000000-0000-4000-8000-000000000001", run_id: RUN,
     draft: { version: 1, draftId: "60000000-0000-4000-8000-000000000001", revision: "70000000-0000-4000-8000-000000000001",
       source: { nodeId: SOURCE, canonicalURL: "https://assets.example.test/source.mp4", mediaInfo: { width: 960, height: 540, duration: 5, mimeType: "video/mp4" } },
-      inputs: [], params: tool === "video.split" ? { cuts: [3], sensitivity: 27 } : { mode: "first", currentTime: 2 } },
+      inputs: [], params: tool === "video.split" ? { cuts: [3], sensitivity: 27 } : { mode: "first", frameIndex: 0 } },
     analysis_refs: [], presentation_ref: structuredClone(presentationRef),
     outputs: tool === "video.split"
       ? [{ outputIndex: 0, nodeId: NODES[0], recipe: { kind: "segment", range: { start: 2, end: 3 } } }, { outputIndex: 1, nodeId: NODES[1], recipe: { kind: "segment", range: { start: 3, end: 5 } } }]
-      : [{ outputIndex: 0, nodeId: NODES[0], recipe: { kind: "frame", frameIndex: 0, pts: 2 } }],
+      : [{ outputIndex: 0, nodeId: NODES[0], recipe: { kind: "frame", frameIndex: 0 } }],
   };
 }
 
@@ -75,8 +75,9 @@ describe("S5 planned frame and segment request contracts", () => {
   });
   it.each([
     ["outputs.0.recipe.frameIndex", -1], ["outputs.0.recipe.frameIndex", 0.5], ["outputs.0.recipe.frameIndex", Number.MAX_SAFE_INTEGER + 1],
-    ["outputs.0.recipe.pts", -1], ["outputs.0.recipe.pts", Number.NaN], ["outputs.0.recipe.pts", Number.POSITIVE_INFINITY],
-    ["outputs.0.recipe.frameIndex", undefined], ["outputs.0.recipe.pts", undefined], ["outputs.0.recipe.kind", "remove-bg"],
+    // frames-split §10.8 请求 row: a frame recipe is its grid frame only; seconds beside it are refused.
+    ["outputs.0.recipe.pts", 2],
+    ["outputs.0.recipe.frameIndex", undefined], ["outputs.0.recipe.kind", "remove-bg"],
     ["outputs.0.recipe.argv", ["-i", "untrusted"]], ["outputs.0.nodeId", SOURCE], ["outputs.0.outputIndex", -1],
     ["outputs.0.outputIndex", 0.5], ["outputs", []], ["presentation_ref", undefined], ["presentation_ref", {}],
     ["presentation_ref.source.toolInputId", "wrong"], ["presentation_ref.source.planSha256", "D".repeat(64)], ["presentation_ref.source.versionId", "e".repeat(64)],

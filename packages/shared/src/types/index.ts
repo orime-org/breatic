@@ -72,6 +72,7 @@ export type {
   NodeType,
   AttachRef,
   FocusImage,
+  FocusCropOutcome,
   AnnotationReply,
   CanvasNodeFields,
   NodeTaskCounts,

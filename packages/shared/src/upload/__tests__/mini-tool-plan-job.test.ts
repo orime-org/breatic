@@ -12,17 +12,13 @@ const INPUT_B = "20000000-0000-4000-8000-000000000002";
 const DEADLINE = Date.parse("2026-10-25T11:03:03.100Z");
 const inputs = [{ inputId: INPUT_A, storageKey: "fixtures/source-a.mp4" }, { inputId: INPUT_B, storageKey: "fixtures/source-b.mp4" }];
 const limits = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
-// §93 D5 (frames-split design §7.17 「唯一写点：worker的配方构造」, frame/segment/people/scene_cuts rows, 「去掉inspect_video步骤」):
-// every job recipe names full-ledger entries and a target the worker wrote; no frameIndex, orientation, range or inspect step.
-const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => {
-  let [a, b] = [numerator, denominator]; while (b !== 0) [a, b] = [b, a % b];
-  return { numerator: String(numerator / a), denominator: String(denominator / a) };
-};
-/** The source entry of presented frame `n` of a 25 fps clip from its own source time. @returns It. */
-const entryAt = (n: number): Record<string, unknown> => ({ kind: "source", decodeStart: r(n, 25), clipStart: r(n, 25), displayStart: r(n, 25), displayEnd: r(n + 1, 25), rate: r(1) });
+// frames-split design §7.17 (「唯一写点：worker的配方构造」, frame/segment/people/scene_cuts rows, 「去掉inspect_video步骤」):
+// every job recipe names the grid, the tool source and grid frame numbers the worker wrote from the frozen plan.
+const GRID = { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 125, realFrameCount: 125 };
+const SOURCE_REF = { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 2, allKeyframes: false } };
 const FRAME_TARGET = { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" };
-/** A frame recipe of presented frame `n`. @returns It. */
-const frameAt = (inputId: string, n: number): Record<string, unknown> => ({ kind: "frame", inputId, entry: entryAt(n), target: FRAME_TARGET });
+/** A frame recipe of grid frame `n`. @returns It. */
+const frameAt = (inputId: string, n: number): Record<string, unknown> => ({ kind: "frame", inputId, grid: GRID, source: SOURCE_REF, frameIndex: n, target: FRAME_TARGET });
 const outputs = Array.from({ length: 17 }, (_, outputIndex) => ({
   outputIndex, storageKey: `results/T/o${String(outputIndex).padStart(2, "0")}.png`, contentType: "image/png",
   ...(outputIndex % 8 === 0 ? { coverKey: `results/T/o${String(outputIndex).padStart(2, "0")}.cover.webp` } : {}),
@@ -78,14 +74,13 @@ describe("planned media job requests", () => {
     expect(miniToolPlanJobRequestSchema.safeParse(body).success).toBe(false);
   });
 
-  // §93 D5: the inspect_video recipe is gone (its own pin is staged-wire DP07); the four tool recipes carry entries.
+  // The inspect_video recipe is gone (its own pin is staged-wire DP07); the four tool recipes read the grid by frame number.
   it.each([
     frameAt(INPUT_A, 0),
-    { kind: "segment", inputId: INPUT_A, window: { start: 25, end: 53 }, timescale: 25, entries: [{ ...entryAt(25), displayEnd: r(53, 25) }],
-      target: { width: 32, height: 18, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", crf: 18, preset: "medium", format: "mp4-h264" },
-      audio: { start: r(1), end: r(53, 25), origin: r(0), spans: null } },
-    { kind: "people", inputId: INPUT_A, entry: entryAt(1), target: FRAME_TARGET, profile: { id: "opencv-yunet-2023mar", version: "2023mar", weightsHash: "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4", params: { scoreThreshold: 0.6, nmsThreshold: 0.3, topK: 5000 } } },
-    { kind: "scene_cuts", inputId: INPUT_A, window: { start: 0, end: 125 }, timescale: 25, profile, entries: [{ ...entryAt(0), displayEnd: r(5), ordinalOffset: 0 }],
+    { kind: "segment", inputId: INPUT_A, grid: GRID, source: SOURCE_REF, frames: { start: 25, end: 53 },
+      target: { width: 32, height: 18, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", crf: 18, preset: "medium", format: "mp4-h264" }, audio: true },
+    { kind: "people", inputId: INPUT_A, grid: GRID, source: SOURCE_REF, frameIndex: 1, target: FRAME_TARGET, profile: { id: "opencv-yunet-2023mar", version: "2023mar", weightsHash: "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4", params: { scoreThreshold: 0.6, nmsThreshold: 0.3, topK: 5000 } } },
+    { kind: "scene_cuts", inputId: INPUT_A, grid: GRID, source: { kind: "edit" }, frames: { start: 0, end: 125 }, profile,
       target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none" } },
   ])("accepts the complete owned $kind recipe", (recipe) => {
     expect(miniToolPlanRecipeSchema.parse(recipe)).toEqual(recipe);
@@ -93,7 +88,7 @@ describe("planned media job requests", () => {
 
 
 
-  // §93 D5: the entry recipe has no orientation (it is always upright); its PNG target is what a caller can change.
+  // The frame recipe has no orientation (it is always upright); its PNG target is what a caller can change.
   it("freezes the PNG target as part of the original job recipe", () => {
     const deeper = { ...base, outputs: base.outputs.map((output) => ({ ...output, recipe: { ...output.recipe, target: { ...FRAME_TARGET, pngBitDepth: 16 } } })) };
     expect(sameMiniToolPlanJob(deeper, structuredClone(deeper))).toBe(true);
@@ -147,7 +142,7 @@ describe("planned media job requests", () => {
   });
 
   it("recognizes semantically identical object fields without changing array order", () => {
-    const reordered = { limits: { stderrTailBytes: limits.stderrTailBytes, analysisStdoutBytes: limits.analysisStdoutBytes, probeStdoutBytes: limits.probeStdoutBytes }, outputs: base.outputs.map(({ recipe, ...output }) => ({ recipe: { target: recipe.target, entry: recipe.entry, inputId: recipe.inputId, kind: recipe.kind }, ...output })), inputs: base.inputs, deadlineAt: base.deadlineAt, containerClass: base.containerClass, jobId: base.jobId, schemaVersion: 2 };
+    const reordered = { limits: { stderrTailBytes: limits.stderrTailBytes, analysisStdoutBytes: limits.analysisStdoutBytes, probeStdoutBytes: limits.probeStdoutBytes }, outputs: base.outputs.map(({ recipe, ...output }) => ({ recipe: { target: recipe.target, frameIndex: recipe.frameIndex, source: recipe.source, grid: recipe.grid, inputId: recipe.inputId, kind: recipe.kind }, ...output })), inputs: base.inputs, deadlineAt: base.deadlineAt, containerClass: base.containerClass, jobId: base.jobId, schemaVersion: 2 };
     expect(sameMiniToolPlanJob(base, reordered)).toBe(true);
     expect(sameMiniToolPlanJob(base, { ...base, outputs: [...base.outputs].reverse() })).toBe(false);
   });
@@ -157,7 +152,7 @@ describe("planned media job requests", () => {
     { ...base, limits: { ...limits, analysisStdoutBytes: limits.analysisStdoutBytes + 1 } },
     { ...base, containerClass: "MiniToolContainerStd4" },
     { ...base, inputs: [{ ...inputs[0], storageKey: "fixtures/other.mp4" }, inputs[1]] },
-    { ...base, outputs: [{ ...outputs[0], recipe: { ...outputs[0]!.recipe, entry: entryAt(1) } }, ...base.outputs.slice(1)] },
+    { ...base, outputs: [{ ...outputs[0], recipe: { ...outputs[0]!.recipe, frameIndex: 1 } }, ...base.outputs.slice(1)] },
   ])("rejects a changed frozen request while preserving the accepted identity", (changed) => {
     const before = structuredClone(base);
     expect(sameMiniToolPlanJob(base, changed)).toBe(false);

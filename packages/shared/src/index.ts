@@ -61,6 +61,7 @@ export type {
   NodeType,
   AttachRef,
   FocusImage,
+  FocusCropOutcome,
   AnnotationReply,
   CanvasNodeFields,
   NodeTaskCounts,
@@ -752,7 +753,7 @@ export {
   type FrameGridScanReason, type FrameRate, type SourceDecodeKey, type VariableFrameRateFacts,
 } from "@shared/upload/frame-grid-rate.js";
 export {
-  audioGridEnd, decodePrerollFrames, gridFilterChain, gridFrameTime, gridLandingLate, gridRangeFrames, gridRangeTimes,
+  GRID_RULES_VERSION, audioGridEnd, decodePrerollFrames, gridFilterChain, gridFrameTime, gridLandingLate, gridRangeFrames, gridRangeTimes,
   gridSeekPosition, planFrameGrid, sourceKeyframeStats,
   type AudioLastPacket, type DecodePrerollInput, type FrameGrid, type FrameGridInput, type GridFrameRange, type GridLanding,
   type GridSeekInput, type GridTimeRange, type SeekGrid, type SourceKeyframeStats, type SourcePacket,
@@ -863,6 +864,8 @@ export {
   type TemplateSkeleton,
 } from "@shared/canvas/template-expansion.js";
 // Plain text in and out of a text node's body ships at
+// The one focus-image sanitizer, web and collab alike (frames-split §5.5).
+export { MAX_FOCUS_ENTRIES, MAX_FOCUS_NAME, validFocusImages } from "@shared/canvas/focus-images.js";
 // `@breatic/shared/canvas/text-body` — that file says why it is not here.
 
 export {
@@ -920,11 +923,17 @@ export {
   type MiniToolPlanRecipe,
   type MiniToolPlanPixelRect,
   type MiniToolPlanFrameCrop,
-  type MiniToolPlanEntry,
   type MiniToolPlanExact,
   type MiniToolPlanInterval,
-  type MiniToolPlanAudio,
-  type MiniToolPlanPlacedEntry,
+  type MiniToolPlanGrid,
+  type MiniToolPlanToolSource,
+  type MiniToolPlanFrames,
+  type MiniToolPlanChunkRef,
+  type MiniToolPlanClipPlacement,
+  type MiniToolPlanColorInputs,
+  type MiniToolPlanEditEncode,
+  type MiniToolPlanEditStitch,
+  type MiniToolPlanStitchClip,
   type MiniToolPlanDetectorProfile,
   type MiniToolPlanAnalysisTarget,
   type MiniToolPlanTarget,
@@ -1092,49 +1101,34 @@ export {
   type VideoPresentationRect,
 } from "@shared/upload/video-presentation.js";
 export {
-  videoSourceLedgerKeyFor,
-  videoSourceLedgerTableKeyFor,
   classifyVideoSourceLedgerFailure,
+  type VideoSourceLedgerFailureClass,
 } from "@shared/upload/video-source-ledger.js";
 export {
-  readVideoPresentationTable,
-  readVideoPresentationCompact,
-  readVideoPresentationLedger,
   readAlphaPackedManifest,
-  videoPresentationTableReadLimitsSchema,
-  type VideoPresentationTableReadLimits,
-} from "@shared/upload/read-video-presentation-table.js";
+  VideoPresentationReadRefused,
+} from "@shared/upload/read-alpha-packed-manifest.js";
 export {
   videoPresentationVersionSchema,
+  videoPresentationDisplaySchema,
+  videoPresentationEditReceiptSchema,
+  videoPresentationToolSourceSchema,
+  sourceKeyframeStatsSchema,
   alphaPackedManifestSchema,
   alphaPackedManifestMatchesVersion,
-  videoPresentationLedgerSchema,
   videoPresentationPlanSchema,
-  videoPresentationLedgerEncodingSchema,
-  videoPresentationLedgerReceiptSchema,
-  videoPresentationCompactSchema,
-  projectVideoPresentationCompact,
-  videoPresentationKeyframeFlags,
   videoPresentationRefSchema,
   videoPresentationPlanSha256,
   videoPresentationToolInputId,
   videoPresentationVersionId,
   type VideoPresentationVersion,
+  type VideoPresentationDisplay,
+  type VideoPresentationEditReceipt,
+  type VideoPresentationToolSource,
   type AlphaPackedManifest,
   type VideoPresentationPlan,
-  type VideoPresentationLedger,
-  type VideoPresentationLedgerReceipt,
-  type VideoPresentationCompact,
   type VideoPresentationRef,
 } from "@shared/upload/video-presentation-version.js";
-export {
-  VideoSourceLedgerReadRefused,
-} from "@shared/upload/read-video-source-ledger.js";
-export type {
-  VideoSourceLedgerReceiptV2,
-  VideoSourceLedgerFailureClass,
-  VideoSourceLedgerProcessLimits,
-} from "@shared/upload/video-source-ledger-types.js";
 export {
   videoPresentationSourceBindingSchema,
   videoPresentationResponseSchema,
@@ -1150,9 +1144,7 @@ export {
   videoPresentationObjectURL,
   videoPresentationPrepareAnswerSchema,
   videoPresentationEncodingSchema,
-  videoPresentationIdentityFormatSchema,
   videoPresentationProbeSchema,
-  type VideoPresentationIdentityFormat,
   type VideoPresentationProbeFacts,
   videoPresentationChunkUnitSchema,
   videoPresentationChunkReportSchema,
@@ -1167,7 +1159,6 @@ export {
   type VideoPresentationOutputReceipt,
   videoPresentationIngestSnapshotSchema,
   videoPresentationIngestRequestSchema,
-  videoPresentationIngestLedgerSchema,
   videoPresentationIngestPreparationSchema,
   videoPresentationPricingSchema,
   videoPresentationProcessLimitsSchema,
@@ -1177,7 +1168,6 @@ export {
   type VideoPresentationAdmissionPolicy,
   type VideoPresentationIngestSourceBinding,
   type VideoPresentationIngestPreparation,
-  type VideoPresentationIngestLedger,
   type VideoPresentationProcessLimits,
   type VideoPresentationPricing,
   type VideoPresentationUsageFact,

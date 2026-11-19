@@ -4,9 +4,7 @@
 import type { ContainerUsage } from '@shared/upload/mini-tool-job.js';
 import { z } from 'zod';
 import { videoPresentationOriginalSchema } from '@shared/upload/video-presentation.js';
-import {
-  videoPresentationLedgerReceiptSchema, videoPresentationVersionSchema, type VideoPresentationLedgerReceipt, type VideoPresentationVersion,
-} from '@shared/upload/video-presentation-version.js';
+import { rationalTimeSchema, videoPresentationVersionSchema, type VideoPresentationVersion } from '@shared/upload/video-presentation-version.js';
 import { videoCarrierRouteStages, type VideoCarrierStage } from '@shared/mini-tools/video-encode-plan.js';
 import { askWorker } from '@shared/upload/ingest-client.js';
 export { videoPresentationWorkKeyFor } from '@shared/upload/video-presentation-keys.js';
@@ -14,9 +12,9 @@ import {
   videoPresentationDoneReceiptsSchema, videoPresentationEncodingSchema, videoPresentationOutputReceiptsSchema, videoPresentationProbeSchema, videoPresentationProcessLimitsSchema, x264PresetSchema,
 } from '@shared/upload/video-presentation-policy.js';
 export {
-  videoPresentationEncodingSchema, videoPresentationIdentityFormatSchema, videoPresentationProbeSchema, videoPresentationProcessLimitsSchema,
+  videoPresentationEncodingSchema, videoPresentationProbeSchema, videoPresentationProcessLimitsSchema,
   videoPresentationOutputReceiptSchema, videoPresentationOutputReceiptsSchema, videoPresentationDoneReceiptsSchema, x264PresetSchema,
-  type VideoPresentationEncoding, type VideoPresentationIdentityFormat, type VideoPresentationProbeFacts, type VideoPresentationOutputReceipt,
+  type VideoPresentationEncoding, type VideoPresentationProbeFacts, type VideoPresentationOutputReceipt,
 } from '@shared/upload/video-presentation-policy.js';
 export type { VideoPresentationProcessLimits } from '@shared/upload/video-presentation-types.js';
 export type { VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
@@ -35,7 +33,7 @@ export interface VideoPresentationUsageFact {
   pricing: VideoPresentationPricing;
 }
 
-/** Both container prices, frozen together at admission (design §3.5): basic probes and copies, standard-4 encodes. */
+/** Both container prices, frozen together at admission (design §3.5): basic probes, standard-4 counts and encodes. */
 export interface VideoPresentationIngestPricing { basic: VideoPresentationPricing; standard4: VideoPresentationPricing }
 /** The retry caps frozen at admission. */
 export interface VideoPresentationAdmissionPolicy { chunkRetries: number; maxAutoRepairs: number }
@@ -48,17 +46,11 @@ export interface VideoPresentationIngestPreparation {
   stage: VideoCarrierStage | null;
   failure: string | null;
 }
-/** The selected version's companion state; absent is null, a failure carries its code. */
-export type VideoPresentationIngestLedger =
-  | { state: 'pending'; receipt: null; failure: null }
-  | { state: 'ready'; receipt: VideoPresentationLedgerReceipt; failure: null }
-  | { state: 'failed'; receipt: null; failure: string };
-/** A read: the selected bundle, the target policy's preparation and the selected version's ledger, never a full array (§3.5, §5.1 step 6). */
+/** A read: the selected bundle and the target policy's preparation, never a full array (§3.5, §5.1 step 6). */
 export interface VideoPresentationIngestSnapshot {
   sourceBinding: VideoPresentationIngestSourceBinding;
   presentation: VideoPresentationVersion | null;
   preparation: VideoPresentationIngestPreparation | null;
-  ledger: VideoPresentationIngestLedger | null;
   /** The DO's fact that a discovery read may readmit once: P is invalid(V) and V's publisher, admitted without readmitOf, is current. */
   readmit: boolean;
   usageFact?: VideoPresentationUsageFact;
@@ -72,38 +64,25 @@ export const videoPresentationPricingSchema: z.ZodType<VideoPresentationPricing>
 const retryCap = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const errorCode = z.string().regex(/^[a-z][a-z0-9_]*$/);
-/** The selected version's ledger in the §10.1 wire states, shared by the ingest snapshot and the web response. */
-export const videoPresentationIngestLedgerSchema: z.ZodType<VideoPresentationIngestLedger> = z.discriminatedUnion('state', [
-  z.strictObject({ state: z.literal('pending'), receipt: z.null(), failure: z.null() }),
-  z.strictObject({ state: z.literal('ready'), receipt: videoPresentationLedgerReceiptSchema, failure: z.null() }),
-  z.strictObject({ state: z.literal('failed'), receipt: z.null(), failure: errorCode }),
-]);
+const STAGES = ['plan', 'count', 'edit', 'edit_stitch', 'encode', 'stitch', 'publish'] as const satisfies readonly VideoCarrierStage[];
+const stage = z.enum(STAGES);
 /** The target policy's preparation, shared by the ingest snapshot and the web response. */
 export const videoPresentationIngestPreparationSchema: z.ZodType<VideoPresentationIngestPreparation> = z.strictObject({
   targetPolicyVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), jobId: z.string().min(1),
-  stage: z.enum(['plan', 'copy', 'dispatch_copy', 'encode', 'stitch', 'publish']).nullable(), failure: errorCode.nullable(),
+  stage: stage.nullable(), failure: errorCode.nullable(),
 });
 
 /**
- * Check that the selected bundle belongs to the source and that a reported ledger is the selected version's own.
- * @param value - The selected bundle and its ledger.
+ * Check that the selected bundle belongs to the source.
+ * @param value - The selected bundle.
  * @param value.presentation - The selected bundle, or null.
- * @param value.ledger - The ledger, or null.
  * @param sourceFingerprint - The source's fingerprint.
  * @param ctx - Where issues go.
  * @throws {never} Never.
  */
-export function checkSelectedVideoPresentation(
-  value: { presentation: VideoPresentationVersion | null; ledger: VideoPresentationIngestLedger | null }, sourceFingerprint: string, ctx: z.RefinementCtx,
-): void {
-  const { presentation, ledger } = value;
-  if (presentation !== null && presentation.sourceFingerprint !== sourceFingerprint) {
+export function checkSelectedVideoPresentation(value: { presentation: VideoPresentationVersion | null }, sourceFingerprint: string, ctx: z.RefinementCtx): void {
+  if (value.presentation !== null && value.presentation.sourceFingerprint !== sourceFingerprint) {
     ctx.addIssue({ code: 'custom', path: ['presentation'], message: 'The selected bundle belongs to another source' });
-  }
-  if (ledger === null) return;
-  if (presentation === null) ctx.addIssue({ code: 'custom', path: ['ledger'], message: 'Only a selected version reports its ledger' });
-  else if (ledger.receipt !== null && (ledger.receipt.toolInputId !== presentation.toolInputId || ledger.receipt.sourceFingerprint !== presentation.sourceFingerprint)) {
-    ctx.addIssue({ code: 'custom', path: ['ledger'], message: 'The ledger receipt belongs to another tool input' });
   }
 }
 
@@ -112,7 +91,6 @@ export const videoPresentationIngestSnapshotSchema: z.ZodType<VideoPresentationI
   sourceBinding: z.strictObject({ storageKey: z.string().min(1).max(500), sourceFingerprint: hash }),
   presentation: videoPresentationVersionSchema.nullable(),
   preparation: videoPresentationIngestPreparationSchema.nullable(),
-  ledger: videoPresentationIngestLedgerSchema.nullable(),
   readmit: z.boolean(),
   usageFact: z.strictObject({ jobId: z.string().min(1), actorUserId: z.uuid(), projectId: z.uuid().nullable(), usage, pricing: videoPresentationPricingSchema }).optional(),
 }).superRefine((value, ctx) => checkSelectedVideoPresentation(value, value.sourceBinding.sourceFingerprint, ctx));
@@ -122,23 +100,31 @@ const jobId = z.string().min(1).max(200);
 const deadlineAt = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const index = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const attemptNumber = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+// Grid frame windows that tile [0, n) without gaps.
+const frameChunks = z.array(z.strictObject({ start: index, end: index })).min(1).refine(
+  chunks => chunks.every((chunk, at) => chunk.end > chunk.start && chunk.start === (at === 0 ? 0 : chunks[at - 1]!.end)), 'Chunks tile the frames from 0 without gaps');
 const identity = { storageKey, sourceFingerprint: hash, jobId };
 const capability = { ...identity, deadlineAt, token: z.string().min(1) };
-const stage = z.enum(['plan', 'copy', 'dispatch_copy', 'encode', 'stitch', 'publish']);
 
-
-/** One presentation container unit, without its job id (§5.4). */
+/** One presentation container unit, without its job id (§5.4 job identity): the count, playback and edit chunks and their stitches. */
 export const videoPresentationChunkUnitSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('presentation-count') }),
   z.strictObject({ kind: z.literal('presentation-chunk'), chunk: index }),
   z.strictObject({ kind: z.literal('presentation-stitch') }),
-  z.strictObject({ kind: z.literal('presentation-copy') }),
+  z.strictObject({ kind: z.literal('presentation-edit'), chunk: index }),
+  z.strictObject({ kind: z.literal('presentation-edit-stitch') }),
 ]);
 /** A parsed unit. */
 export type VideoPresentationChunkUnit = z.infer<typeof videoPresentationChunkUnitSchema>;
 /** One attempt report of a unit (§7.1.1). */
 export const videoPresentationChunkReportSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('Sub') }),
-  z.strictObject({ kind: z.literal('Done'), attempt: attemptNumber, usage: z.number().nonnegative().finite(), receipts: videoPresentationDoneReceiptsSchema.optional() }),
+  // A stitch names the carrier it wrote and an edit stitch the edit file; the count reports the last real frame's display
+  // time and the decoded frames (§4.1 frame count row, §7.17 grid_count) and writes no object.
+  z.strictObject({
+    kind: z.literal('Done'), attempt: attemptNumber, usage: z.number().nonnegative().finite(), receipts: videoPresentationDoneReceiptsSchema.optional(),
+    count: z.strictObject({ lastVideoTime: rationalTimeSchema, sourceFrames: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).optional(),
+  }),
   z.strictObject({ kind: z.literal('Fail'), attempt: attemptNumber, code: errorCode, usage: z.number().nonnegative().finite().nullable() }),
   z.strictObject({ kind: z.literal('Exp') }),
   z.strictObject({ kind: z.literal('Rec'), attempt: attemptNumber }),
@@ -169,9 +155,14 @@ export const videoPresentationIngestRequestSchema = z.discriminatedUnion('action
   z.strictObject({ action: z.literal('prepare'), ...identity }),
   z.strictObject({ action: z.literal('advance_stage'), ...capability, stage }),
   z.strictObject({ action: z.literal('report_chunk'), ...capability, unit: videoPresentationChunkUnitSchema, report: videoPresentationChunkReportSchema }).superRefine((value, ctx) => {
-    // A stitch or copy Done names what its job wrote; a chunk's outputs are named by their job id alone.
-    if (value.report.kind === 'Done' && (value.report.receipts === undefined) !== (value.unit.kind === 'presentation-chunk')) {
-      ctx.addIssue({ code: 'custom', path: ['report', 'receipts'], message: 'A stitch or copy Done carries its output receipts and a chunk Done none' });
+    // A stitch names its carrier and an edit stitch its edit file; a chunk's outputs are named by their job id alone.
+    if (value.report.kind !== 'Done') return;
+    const role = value.unit.kind === 'presentation-stitch' ? 'carrier' : value.unit.kind === 'presentation-edit-stitch' ? 'edit' : undefined;
+    if ((value.report.receipts?.[0]?.role) !== role) {
+      ctx.addIssue({ code: 'custom', path: ['report', 'receipts'], message: 'A stitch Done carries its carrier, an edit stitch Done its edit file and a chunk or count Done none' });
+    }
+    if ((value.report.count !== undefined) !== (value.unit.kind === 'presentation-count')) {
+      ctx.addIssue({ code: 'custom', path: ['report', 'count'], message: 'Exactly a count Done carries the count' });
     }
   }),
   // Only the job's measured usage travels; a bundle is assembled by the DO itself (§5.1 step 4).
@@ -182,27 +173,25 @@ export const videoPresentationIngestRequestSchema = z.discriminatedUnion('action
 /** A parsed internal request. */
 export type VideoPresentationIngestRequest = z.infer<typeof videoPresentationIngestRequestSchema>;
 
-/** The worker-only answer to `prepare` (E2-3): the snapshot plus the capability, plan, work, candidate ledger, units and frozen facts. */
+/** The worker-only answer to `prepare` (E2-3): the snapshot plus the capability, plan, work, units and frozen facts. */
 export const videoPresentationPrepareAnswerSchema = z.strictObject({
   sourceBinding: z.strictObject({ storageKey, sourceFingerprint: hash }),
   presentation: videoPresentationVersionSchema.nullable(),
   preparation: videoPresentationIngestPreparationSchema.nullable(),
-  ledger: videoPresentationIngestLedgerSchema.nullable(),
   usageFact: z.strictObject({ jobId: z.string().min(1), actorUserId: z.uuid(), projectId: z.uuid().nullable(), usage, pricing: videoPresentationPricingSchema }).optional(),
   capability: z.strictObject({ token: z.string().min(1), deadlineAt }).nullable(),
-  plan: z.strictObject({ route: z.enum(['reuse', 'identity', 'copy', 'dispatch_copy', 'encode']), stages: z.array(stage), toolInputId: hash, planSha256: hash }).nullable(),
+  // toolInputId is null until an edit file is written and measured (§3.2 item 3).
+  plan: z.strictObject({ route: z.enum(['encode', 'edit', 'reuse_edit', 'reuse']), stages: z.array(stage), toolInputId: hash.nullable(), planSha256: hash }).nullable(),
+  // The grid frame windows of the playback chunks, and of the edit file's chunks on the edit route (§5.4 chunking row).
   work: z.discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal('none') }),
-    z.strictObject({ kind: z.literal('dispatch_copy') }),
-    z.strictObject({ kind: z.literal('encode'), chunks: z.array(z.strictObject({ start: index, end: index })).min(1) }),
+    z.strictObject({ kind: z.literal('encode'), chunks: frameChunks }),
+    z.strictObject({ kind: z.literal('edit'), editChunks: frameChunks, chunks: frameChunks }),
   ]),
-  candidateLedger: videoPresentationIngestLedgerSchema.nullable(),
-  // A dispatched copy's audio, from the probe's audioCopyable (§7.17 copy_carrier row): copied, encoded to AAC, or none.
-  copyAudio: z.enum(['copy', 'encode']).nullable().optional(),
   units: z.record(z.string().min(1), z.strictObject({
     state: z.enum(['none', 'open', 'done', 'failed']), attempt: index,
     attempts: z.array(z.strictObject({ attempt: attemptNumber, jobId: z.string().min(1), state: z.enum(['pending', 'done', 'failed']), usageRecorded: z.boolean() })),
-    // The receipts of the attempt that completed a stitch or copy unit, as the DO stored them.
+    // The receipts of the attempt that completed a stitch unit, as the DO stored them.
     receipts: videoPresentationOutputReceiptsSchema.optional(),
   })),
   // Null only for a job this DO never admitted.
@@ -214,19 +203,9 @@ export const videoPresentationPrepareAnswerSchema = z.strictObject({
   const { plan, work } = value;
   if (value.capability === null && plan !== null) ctx.addIssue({ code: 'custom', path: ['plan'], message: 'Only a granted job has a plan' });
   if (plan !== null && plan.stages.join() !== videoCarrierRouteStages(plan.route).join()) ctx.addIssue({ code: 'custom', path: ['plan', 'stages'], message: 'The stages are not the route\'s' });
-  if (work.kind !== 'none' && plan?.route !== work.kind) ctx.addIssue({ code: 'custom', path: ['work'], message: 'The work does not belong to the route' });
-  if ((value.copyAudio !== undefined) !== (plan?.route === 'dispatch_copy')) ctx.addIssue({ code: 'custom', path: ['copyAudio'], message: 'Exactly a dispatched copy names its audio' });
-  if (work.kind === 'encode') {
-    let cursor = 0;
-    for (const chunk of work.chunks) {
-      if (chunk.start !== cursor || chunk.end <= chunk.start) ctx.addIssue({ code: 'custom', path: ['work', 'chunks'], message: 'Chunks tile the frames from 0 without gaps' });
-      cursor = chunk.end;
-    }
-  }
-  const receipt = value.candidateLedger?.receipt ?? null;
-  if (value.candidateLedger !== null && (plan === null || (receipt !== null && (receipt.toolInputId !== plan.toolInputId || receipt.sourceFingerprint !== value.sourceBinding.sourceFingerprint)))) {
-    ctx.addIssue({ code: 'custom', path: ['candidateLedger'], message: 'The candidate ledger belongs to another tool input' });
-  }
+  const kind = plan === null || plan.route === 'reuse' ? 'none' : plan.route === 'edit' ? 'edit' : 'encode';
+  if (plan !== null && work.kind !== kind) ctx.addIssue({ code: 'custom', path: ['work'], message: 'The work does not belong to the route' });
+  if (plan !== null && plan.route !== 'edit' && plan.toolInputId === null) ctx.addIssue({ code: 'custom', path: ['plan', 'toolInputId'], message: 'Only the edit route plans before its toolInputId is known' });
 });
 /** A parsed prepare answer. */
 export type VideoPresentationPrepareAnswer = z.infer<typeof videoPresentationPrepareAnswerSchema>;

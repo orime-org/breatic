@@ -42,6 +42,8 @@ export interface NodeTaskEntry {
   budgetMs: number;
   /** The file name or address for an upload, the model id for a run, the tool id for a mini-tool. */
   label: string;
+  /** A video focus crop's frozen source node name (frames-split §5.5 UI state row); null on every other row. */
+  sourceName?: string | null;
   errorMessage: string | null;
   nodeHistoryId: string | null;
   content: string | null;

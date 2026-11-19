@@ -10,8 +10,8 @@ import { describe, expect, it } from "vitest";
 import * as miniTools from "@shared/mini-tools/index.js";
 
 interface Clip { clipId: string; inputId: string; in: number; out: number; transition: { kind: "cut" | "fade" | "wipeLeft" | "wipeRight"; duration: number } }
-type Rational = { numerator: string; denominator: string };
-const fps = (numerator: number, denominator = 1): Rational => ({ numerator: String(numerator), denominator: String(denominator) });
+type Rational = { numerator: number; denominator: number };
+const fps = (numerator: number, denominator = 1): Rational => ({ numerator, denominator });
 // D13-2: fps is the plan's exact rational; the bounds are plain seconds, as the draft's transition duration is.
 type Bounds = (clips: readonly Clip[], fps: Rational) => { min: number; max: number } | null;
 const api = miniTools as unknown as { transitionDurationBounds: Bounds; fitTransitions: (clips: readonly Clip[], fps: Rational | null) => Clip[] };

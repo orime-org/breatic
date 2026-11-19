@@ -68,10 +68,9 @@
     "../../shared/src/media/long-media-job-types.ts",
     "../../shared/src/mini-tools/types.ts",
     "../../shared/src/upload/video-presentation-types.ts",
-    "../../shared/src/upload/video-source-ledger-types.ts",
-    "../../shared/src/mini-tools/video-presentation-projection.ts",
-    "../../shared/src/mini-tools/video-presentation-timeline.ts",
     "../../shared/src/mini-tools/video-encode-plan.ts",
+    "../../shared/src/upload/frame-grid-rate.ts",
+    "../../shared/src/upload/frame-grid.ts",
     "../../shared/src/mini-tools/canonical-json.ts",
     "../../shared/src/upload/video-presentation-keys.ts",
     "__tests__/*.ts"

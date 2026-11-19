@@ -2,14 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { z } from "zod";
-import {
-  presentationCoveringFrame,
-  presentationFrameAt,
-  presentationFrameCount,
-  presentationTableSchema,
-  presentationVideoEnd,
-  type VideoPresentationTable,
-} from "@shared/mini-tools/video-presentation-table.js";
+import type { FrameRate } from "@shared/upload/frame-grid-rate.js";
 import {
   videoToolDialogueRowSchema,
   videoToolSyncModeSchema,
@@ -18,56 +11,60 @@ import {
   type VideoToolTimelineClip,
 } from "@shared/mini-tools/video-draft.js";
 
-export interface VideoFrameRequest { mode: "first" | "last" | "current"; currentTime?: number }
-export interface VideoFrameOutput { outputIndex: number; frameIndex: number; pts: number }
+/** The frame grid a plan is made on (frames-split §4.1): its fps and frame count. */
+export interface VideoPlanGrid { fps: FrameRate; frameCount: number }
+/** The first, last or current frame; the current one is the player's grid frame number (§4.3). */
+export interface VideoFrameRequest { mode: "first" | "last" | "current"; frameIndex?: number }
+/** One frame output: a grid frame number, no seconds (§10.8). */
+export interface VideoFrameOutput { outputIndex: number; frameIndex: number }
+/** One split output: a grid frame range [start, end). */
 export interface VideoSplitOutput { outputIndex: number; start: number; end: number }
 
+const frameCount = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+const gridSchema = z.object({ fps: z.object({ numerator: z.number().int().positive(), denominator: z.number().int().positive() }), frameCount });
+const frameNumber = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 // The first, last or current frame (frames-split §10.6: the interval mode is removed).
 const frameRequestSchema = z.strictObject({
   mode: z.enum(["first", "last", "current"]),
-  currentTime: z.number().nonnegative().optional(),
+  frameIndex: frameNumber.optional(),
 }).superRefine((request, ctx) => {
-  if (request.mode === "current" && request.currentTime === undefined) ctx.addIssue({ code: "custom", path: ["currentTime"], message: "Current frame selection requires its displayed time" });
+  if (request.mode === "current" && request.frameIndex === undefined) ctx.addIssue({ code: "custom", path: ["frameIndex"], message: "Current frame selection requires its grid frame" });
 });
 
 /**
- * Builds the selected displayed-frame output: the first, last or current frame, one output.
- * @param source - The compact presentation table.
- * @param request - The selected frame mode and source-clock parameters.
+ * Plans the frame output on the grid (§10.7 frame extraction row): first is frame 0, last is frameCount − 1, current is the player's
+ * grid frame; one output each.
+ * @param source - The selected P's grid.
+ * @param request - The selected frame mode and, for the current frame, its grid frame number.
  * @param maxOutputs - Optional caller-configured admission ceiling, validated; one output always fits it.
  * @returns The frame output with its stable index.
- * @throws {z.ZodError} When the table, selection parameters or ceiling are invalid.
+ * @throws {z.ZodError} When the grid, selection or ceiling is invalid.
+ * @throws {RangeError} When the current frame lies outside the grid.
  */
-export function planVideoFrames(source: VideoPresentationTable, request: VideoFrameRequest, maxOutputs?: number): VideoFrameOutput[] {
+export function planVideoFrames(source: VideoPlanGrid, request: VideoFrameRequest, maxOutputs?: number): VideoFrameOutput[] {
   if (maxOutputs !== undefined) z.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(maxOutputs);
-  const table = presentationTableSchema.parse(source);
+  const grid = gridSchema.parse(source);
   const selection = frameRequestSchema.parse(request);
-  let picked: number[];
-  switch (selection.mode) {
-    case "first": picked = [0]; break;
-    case "last": picked = [presentationFrameCount(table) - 1]; break;
-    case "current": picked = [presentationCoveringFrame(table, selection.currentTime!)]; break;
-  }
-  return picked.map((frameIndex, outputIndex) => ({ outputIndex, frameIndex, pts: presentationFrameAt(table, frameIndex).pts }));
+  const frameIndex = selection.mode === "first" ? 0 : selection.mode === "last" ? grid.frameCount - 1 : selection.frameIndex!;
+  if (frameIndex >= grid.frameCount) throw new RangeError("The current frame lies outside the grid");
+  return [{ outputIndex: 0, frameIndex }];
 }
 
 /**
- * Snaps cuts to covering frame starts and returns all segments from the first frame to the video end.
- * @param source - The compact presentation table.
- * @param cuts - Editable source-clock cut positions.
- * @returns N plus one ranges for N distinct internal frame boundaries.
- * @throws {z.ZodError} When the table or a cut is invalid.
- * @throws {RangeError} When a cut lies beyond the source video.
+ * Plans the split on the grid (§10.7 split row): cuts are grid frames; 0 and frameCount are dropped, duplicates removed and
+ * the rest sorted, giving N + 1 ranges [k0, k1) with the last ending at frameCount.
+ * @param source - The selected P's grid.
+ * @param cuts - The cut frames, manual or scene-detected, already snapped to grid frames.
+ * @returns N plus one ranges for N distinct inner cuts.
+ * @throws {z.ZodError} When the grid or a cut is not a non-negative integer.
+ * @throws {RangeError} When a cut lies beyond frameCount.
  */
-export function planVideoSplit(source: VideoPresentationTable, cuts: readonly number[]): VideoSplitOutput[] {
-  const table = presentationTableSchema.parse(source);
-  const requested = z.array(z.number().nonnegative()).parse(cuts);
-  const first = presentationFrameAt(table, 0).pts;
-  const videoEnd = presentationVideoEnd(table);
-  if (requested.some((cut) => cut > videoEnd)) throw new RangeError("Split cut lies beyond videoEnd");
-  const inner = [...new Set(requested.filter((cut) => cut > first && cut < videoEnd).map((cut) => presentationFrameAt(table, presentationCoveringFrame(table, cut)).pts))]
-    .filter((start) => start > first).sort((a, b) => a - b);
-  const boundaries = [first, ...inner, videoEnd];
+export function planVideoSplit(source: VideoPlanGrid, cuts: readonly number[]): VideoSplitOutput[] {
+  const grid = gridSchema.parse(source);
+  const requested = z.array(frameNumber).parse(cuts);
+  if (requested.some((cut) => cut > grid.frameCount)) throw new RangeError("Split cut lies beyond the grid");
+  const inner = [...new Set(requested.filter((cut) => cut > 0 && cut < grid.frameCount))].sort((a, b) => a - b);
+  const boundaries = [0, ...inner, grid.frameCount];
   return boundaries.slice(0, -1).map((start, outputIndex) => ({ outputIndex, start, end: boundaries[outputIndex + 1]! }));
 }
 
@@ -135,8 +132,8 @@ export function planVideoTimelineSeconds(clips: readonly VideoToolTimelineClip[]
   return { duration: planned.at(-1)?.end ?? 0, clips: planned };
 }
 
-/** An exact rational frame rate, as the presentation plan writes it. */
-export interface VideoFrameRate { numerator: string; denominator: string }
+/** An exact rational frame rate, the grid's (§4.1). */
+export type VideoFrameRate = FrameRate;
 /** One clip of the frame-grid timeline: where it starts and how many output frames it lasts, and its trimmed source frames. */
 export interface VideoFramePlannedClip { clipId: string; inputId: string; startFrame: number; frameCount: number; inFrame: number; outFrame: number }
 /** The overlap window of a non-Cut transition, in output frames. */
@@ -151,7 +148,7 @@ export interface VideoFrameTimeline { fps: VideoFrameRate; frameCount: number; c
  * @throws {RangeError} When it is not a positive rational.
  */
 function framesPerSecond(fps: VideoFrameRate): number {
-  const value = Number(fps.numerator) / Number(fps.denominator);
+  const value = fps.numerator / fps.denominator;
   if (!Number.isFinite(value) || value <= 0) throw new RangeError("A frame rate is a positive rational");
   return value;
 }
@@ -231,8 +228,8 @@ export function transitionDurationBounds(clips: readonly VideoToolTimelineClip[]
   const perSecond = framesPerSecond(fps);
   // Half the shorter clip, counted on the output grid the timeline snaps to.
   const frames = Math.min(...sequence.map((clip) => nearestFrame(clip.out, perSecond) - nearestFrame(clip.in, perSecond)));
-  const min = Number(fps.denominator) / Number(fps.numerator);
-  const max = (frames / 2) * Number(fps.denominator) / Number(fps.numerator);
+  const min = fps.denominator / fps.numerator;
+  const max = (frames / 2) * fps.denominator / fps.numerator;
   return max < min ? null : { min, max };
 }
 

@@ -14,7 +14,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import * as miniTools from "@shared/mini-tools/index.js";
 
-type Rational = { numerator: string; denominator: string };
+type Rational = { numerator: number; denominator: number };
 type FrameWindow = { start: number; end: number };
 interface PlannedClip { clipId: string; inputId: string; startFrame: number; frameCount: number; inFrame: number; outFrame: number }
 interface FrameTimeline { fps: Rational; frameCount: number; clips: PlannedClip[]; window: { startFrame: number; frameCount: number; kind: "fade" | "wipeLeft" | "wipeRight" } | null }
@@ -36,7 +36,7 @@ const frames = (count: number): { targetSeconds: number; frameSeconds: () => num
 function timeline(first: number, second: number, overlap: number): FrameTimeline {
   const start = first - overlap;
   return {
-    fps: { numerator: "30", denominator: "1" }, frameCount: start + second,
+    fps: { numerator: 30, denominator: 1 }, frameCount: start + second,
     window: overlap === 0 ? null : { startFrame: start, frameCount: overlap, kind: "fade" },
     clips: [
       { clipId: "30000000-0000-4000-8000-000000000001", inputId: "40000000-0000-4000-8000-000000000001", startFrame: 0, frameCount: first, inFrame: 30, outFrame: 30 + first },

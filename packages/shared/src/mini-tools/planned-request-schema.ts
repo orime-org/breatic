@@ -3,15 +3,18 @@
 
 import { z } from "zod";
 import { miniToolRequestSchema, type MiniToolRequest } from "@shared/mini-tools/request-schema.js";
-import { videoToolAnalysisRefSchema, videoToolDraftSchema } from "@shared/mini-tools/video-draft.js";
+import { focusCropRectSchema, videoFocusCropDraftSchema, videoToolAnalysisRefSchema, videoToolDraftSchema } from "@shared/mini-tools/video-draft.js";
 
 const index = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-const seconds = z.number().nonnegative();
-const range = z.strictObject({ start: seconds, end: seconds }).refine((value) => value.end > value.start);
-/** Public recipes contain selection facts, never container capabilities. */
+const range = z.strictObject({ start: index, end: index }).refine((value) => value.end > value.start);
+/**
+ * Public recipes contain selection facts on grid frame numbers, never container capabilities or seconds (frames-split
+ * §10.8 request row): a frame is its grid frame, a video focus crop adds its rectangle in P.display (§5.5 recipe row), a segment
+ * is a grid frame range [start, end).
+ */
 export const miniToolExecutionRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("remove-bg") }),
-  z.strictObject({ kind: z.literal("frame"), frameIndex: index, pts: seconds }),
+  z.strictObject({ kind: z.literal("frame"), frameIndex: index, crop: focusCropRectSchema.optional() }),
   z.strictObject({ kind: z.literal("segment"), range }),
   z.strictObject({ kind: z.literal("transitions") }),
   z.strictObject({ kind: z.literal("lip-sync") }),
@@ -36,6 +39,12 @@ const frames = z.strictObject({
   ...common, tool: z.literal("video.extract-frames"), draft: videoToolDraftSchema("video.extract-frames"),
   outputs: z.array(z.strictObject({ ...destination, recipe: miniToolExecutionRecipeSchema.options[1] })),
 });
+// A video focus crop (§5.5 plan shape row): one output on the panel node, a frame recipe with its crop equal to the draft's.
+const focusCrop = z.strictObject({
+  ...common, tool: z.literal("video.focus-crop"), draft: videoFocusCropDraftSchema,
+  outputs: z.array(z.strictObject({ ...destination, recipe: miniToolExecutionRecipeSchema.options[1] })),
+}).refine((request) => request.outputs.every((output) => output.recipe.frameIndex === request.draft.params.frameIndex && output.recipe.crop !== undefined
+  && (["x", "y", "width", "height"] as const).every((key) => output.recipe.crop![key] === request.draft.params.crop[key])), { path: ["outputs"], message: "A focus crop's recipe is its draft's frame and crop" });
 const split = z.strictObject({
   ...common, tool: z.literal("video.split"), draft: videoToolDraftSchema("video.split"),
   outputs: z.array(z.strictObject({ ...destination, recipe: miniToolExecutionRecipeSchema.options[2] })),
@@ -74,9 +83,9 @@ const expand = z.strictObject({
   outputs: z.array(z.strictObject({ ...destination, recipe: miniToolExecutionRecipeSchema.options[6] })),
 }).refine((request) => request.analysis_refs.length === 0, { path: ["analysis_refs"], message: "An expand names no analysis" });
 /** The tools a planned run has exactly one output for. */
-const SINGLE_OUTPUT = new Set(["video.remove-bg", "video.transitions", "video.lip-sync", "video.erase", "video.expand"]);
+const SINGLE_OUTPUT = new Set(["video.remove-bg", "video.transitions", "video.lip-sync", "video.erase", "video.expand", "video.focus-crop"]);
 /** Complete press-frozen drafts and ordered output mappings for planned execution. */
-export const miniToolPlannedRequestSchema = z.discriminatedUnion("tool", [removal, frames, split, transitions, lipSync, erase, expand]).superRefine((request, ctx) => {
+export const miniToolPlannedRequestSchema = z.discriminatedUnion("tool", [removal, frames, focusCrop, split, transitions, lipSync, erase, expand]).superRefine((request, ctx) => {
   if (request.outputs.length === 0 || request.outputs.some((output, position) => output.outputIndex !== position)
     || (SINGLE_OUTPUT.has(request.tool) && request.outputs.length !== 1)) {
     ctx.addIssue({ code: "custom", path: ["outputs"], message: "A fresh execution requires its complete ordered output indices" });

@@ -76,14 +76,14 @@ describe("the used source range (§97 D12-4)", () => {
 // back over [0, V), remap scaled from [0, A) onto [0, V). §97 D14-1 fixes the boundaries: the source tick s lies in [0, V],
 // s = V meaning the last presentation frame; silence holds s = min(t, V); loop is half-open, s = t mod V (t = V gives 0);
 // bounce has period 2V, u = t mod 2V and s = u when u <= V, else 2V - u (u = V gives V); remap is s = floor(t * V / duration)
-// (t = duration gives V). `lipsyncSourceFrameAt(timeline, table, k)` is the presentation frame covering result frame k's s.
+// (t = duration gives V). `lipsyncSourceFrameAt(timeline, grid, k)` is the grid frame covering result frame k's s.
 const lip = miniTools as unknown as {
   lipsyncTimeline: (input: { videoDuration: number; dialogues: readonly Record<string, unknown>[]; syncMode: Timeline["syncMode"] }) => Timeline;
   lipsyncSourceTickAt: (timeline: Timeline, timescale: number, tick: number) => { tick: number; reverse: boolean };
-  lipsyncSourceFrameAt: (timeline: Timeline, table: { schemaVersion: 1; timescale: number; runs: { start: number; count: number; step: number; duration: number }[] }, k: number) => number;
+  lipsyncSourceFrameAt: (timeline: Timeline, grid: { fps: { numerator: number; denominator: number }; frameCount: number }, k: number) => number;
 };
 // 50 frames of 1/10 s: V = 50 ticks, last frame 49; result frame k is tick k.
-const TABLE = { schemaVersion: 1 as const, timescale: 10, runs: [{ start: 0, count: 50, step: 1, duration: 1 }] };
+const TABLE = { fps: { numerator: 10, denominator: 1 }, frameCount: 50 };
 const rows = [
   { dialogueId: "60000000-0000-4000-8000-000000000001", personId: "person-1", audioInputId: "40000000-0000-4000-8000-000000000001", startTime: 0, duration: 3 },
   { dialogueId: "60000000-0000-4000-8000-000000000002", personId: "person-2", audioInputId: "40000000-0000-4000-8000-000000000002", startTime: 2, duration: 5 },

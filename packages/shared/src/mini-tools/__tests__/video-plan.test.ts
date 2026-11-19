@@ -18,8 +18,8 @@ interface PlanApi {
   planVideoTimeline: (clips: readonly Clip[], fps: Rational) => FrameTimeline;
   timelineClipLacksOutputFrame: (clip: Pick<Clip, "in" | "out">, fps: Rational) => boolean;
 }
-type Rational = { numerator: string; denominator: string };
-const fps = (numerator: number, denominator = 1): Rational => ({ numerator: String(numerator), denominator: String(denominator) });
+type Rational = { numerator: number; denominator: number };
+const fps = (numerator: number, denominator = 1): Rational => ({ numerator, denominator });
 // The earlier seconds all lie on the 30 fps grid; the four migrated cases assert the same placement in frames (4.4.5).
 const FPS30 = fps(30);
 /**

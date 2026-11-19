@@ -14,13 +14,18 @@ vi.mock("@shared/http/request.js", async (importOriginal) => ({
 
 const baseUrl = "https://ingest.test.invalid";
 const inputId = "20000000-0000-4000-8000-000000000001";
-// §93 D5 (frames-split design §7.17 frame row 「不得把presentation ordinal当原解码n」, 「唯一写点：worker的配方构造」): a job frame recipe names a full-ledger entry and its PNG target, not a frameIndex.
+// frames-split design §7.17 frame row (「唯一写点：worker的配方构造」): a job frame recipe names the grid, the tool source, the grid
+// frame number and its PNG target.
 const request = {
   schemaVersion: 2, jobId: "task:T/chunk:1", containerClass: "MediaContainer",
   deadlineAt: 1792920000000,
   limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 },
   inputs: [{ inputId, storageKey: "source/video.mp4" }],
-  outputs: [{ outputIndex: 8, storageKey: "result/frame-8.png", contentType: "image/png", recipe: { kind: "frame", inputId, entry: { kind: "source", decodeStart: { numerator: "42", denominator: "25" }, clipStart: { numerator: "42", denominator: "25" }, displayStart: { numerator: "42", denominator: "25" }, displayEnd: { numerator: "43", denominator: "25" }, rate: { numerator: "1", denominator: "1" } }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }],
+  outputs: [{ outputIndex: 8, storageKey: "result/frame-8.png", contentType: "image/png", recipe: {
+    kind: "frame", inputId, grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 125, realFrameCount: 125 },
+    source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 2, allKeyframes: false } }, frameIndex: 42,
+    target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" },
+  } }],
 };
 const output = {
   outputIndex: 8, storageKey: "result/frame-8.png", sha256: "c".repeat(64), sizeBytes: 123,

@@ -42,29 +42,30 @@ describe("trackingClips (execution design §10.2)", () => {
   });
 });
 
-// Execution design §10.2: the erase anchor must lie in the tracking range, checked by the panel and analysis admission alike.
+// Execution design §10.2 on the frame grid (frames-split §7.16 区间 row): the erase anchor's grid frame must lie in the
+// tracking range of grid frames, checked by the panel and analysis admission alike.
 describe("anchorInTrackingRange (execution design §10.2)", () => {
-  it("TC08 holds for start ≤ anchor.pts < end only", async () => {
+  it("TC08 holds for start ≤ anchor.frameIndex < end only", async () => {
     const { anchorInTrackingRange } = await import("../tracking-clips.js");
-    const range = { start: 1, end: 3 };
-    expect(anchorInTrackingRange(range, { frameIndex: 25, pts: 1 })).toBe(true);
-    expect(anchorInTrackingRange(range, { frameIndex: 74, pts: 2.96 })).toBe(true);
-    expect(anchorInTrackingRange(range, { frameIndex: 75, pts: 3 })).toBe(false);
-    expect(anchorInTrackingRange(range, { frameIndex: 24, pts: 0.96 })).toBe(false);
+    const range = { start: 25, end: 75 };
+    expect(anchorInTrackingRange(range, { frameIndex: 25 })).toBe(true);
+    expect(anchorInTrackingRange(range, { frameIndex: 74 })).toBe(true);
+    expect(anchorInTrackingRange(range, { frameIndex: 75 })).toBe(false);
+    expect(anchorInTrackingRange(range, { frameIndex: 24 })).toBe(false);
   });
 });
 
 // Execution design §10.2, §10.4: the panel and admission refuse an erase selection by one check, so they cannot disagree.
 describe("eraseRangeCheck (execution design §10.2, §10.4)", () => {
   // 25 fps for 10 s.
-  const TABLE = { schemaVersion: 1 as const, timescale: 25, runs: [{ start: 0, count: 250, step: 1, duration: 1 }] };
+  const GRID = { fps: { numerator: 25, denominator: 1 }, frameCount: 250 };
   const LIMITS = { minSeconds: 1, maxSeconds: 5, maxGridFps: 25 };
 
   it("TC09 names the anchor first, then the range, and returns the grid of an allowed selection", async () => {
     const { eraseRangeCheck } = await import("../tracking-clips.js");
-    expect(eraseRangeCheck(TABLE, { start: 2, end: 4 }, { frameIndex: 125, pts: 5 }, { minSeconds: 1, maxSeconds: 1.5, maxGridFps: 25 })).toEqual({ refusal: "anchor" });
-    expect(eraseRangeCheck(TABLE, { start: 2, end: 9 }, { frameIndex: 75, pts: 3 }, LIMITS)).toEqual({ refusal: "range" });
-    expect(eraseRangeCheck(TABLE, { start: 2, end: 2.01 }, { frameIndex: 50, pts: 2 }, LIMITS)).toEqual({ refusal: "range" });
-    expect(eraseRangeCheck(TABLE, { start: 2, end: 4 }, { frameIndex: 75, pts: 3 }, LIMITS)).toEqual({ refusal: null, first: 50, count: 50, grid: { mode: "frames", rate: 25, frameCount: 50 } });
+    expect(eraseRangeCheck(GRID, { start: 50, end: 100 }, { frameIndex: 125 }, { minSeconds: 1, maxSeconds: 1.5, maxGridFps: 25 })).toEqual({ refusal: "anchor" });
+    expect(eraseRangeCheck(GRID, { start: 50, end: 225 }, { frameIndex: 75 }, LIMITS)).toEqual({ refusal: "range" });
+    expect(eraseRangeCheck(GRID, { start: 50, end: 51 }, { frameIndex: 50 }, LIMITS)).toEqual({ refusal: "range" });
+    expect(eraseRangeCheck(GRID, { start: 50, end: 100 }, { frameIndex: 75 }, LIMITS)).toEqual({ refusal: null, first: 50, count: 50, grid: { mode: "frames", rate: 25, frameCount: 50 } });
   });
 });

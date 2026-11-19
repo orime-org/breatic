@@ -3,7 +3,10 @@
 
 // Kept free of zod: the media container maps result frames to source frames with these, and its process loads only our own code.
 
-import { presentationCoveringFrame, type VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
+import type { FrameRate } from "@shared/upload/frame-grid-rate.js";
+
+/** The frame grid a lip-sync step maps through (frames-split §4.1): its fps and frame count. */
+export interface LipsyncGrid { fps: FrameRate; frameCount: number }
 
 /** The lip-sync duration modes (execution design §9.2). */
 export const VIDEO_TOOL_SYNC_MODES = ["cut_off", "silence", "loop", "bounce", "remap"] as const;
@@ -37,19 +40,20 @@ export function lipsyncSourceTickAt(timeline: LipsyncTimeline, timescale: number
 }
 
 /**
- * The presentation frame result frame k shows: the frame covering the source tick of k · step, step being the table's
- * first run's, s = V giving the last frame.
+ * The grid frame result frame k shows: the source grid frame covering the source tick of k · step on the grid's clock
+ * (fps.numerator ticks a second, fps.denominator ticks a frame), s = V giving the last frame.
  * @param timeline - The frozen timeline.
- * @param table - The source's compact presentation table.
+ * @param grid - The source's frame grid.
  * @param k - The result frame.
- * @returns The presentation frame index.
- * @throws {RangeError} When the table has no frame.
+ * @returns The grid frame index.
+ * @throws {RangeError} When the grid has no frame.
  */
-export function lipsyncSourceFrameAt(timeline: LipsyncTimeline, table: VideoPresentationTable, k: number): number {
-  const step = table.runs[0]?.step;
-  if (step === undefined) throw new RangeError("Expected a presented frame");
-  // Whole ticks over one clock divide monotonically, so the covering frame compares them exactly.
-  return presentationCoveringFrame(table, lipsyncSourceTickAt(timeline, table.timescale, k * step).tick / table.timescale);
+export function lipsyncSourceFrameAt(timeline: LipsyncTimeline, grid: LipsyncGrid, k: number): number {
+  if (grid.frameCount <= 0) throw new RangeError("Expected a presented frame");
+  const step = grid.fps.denominator;
+  // Whole ticks over one clock divide exactly, so the covering frame is their quotient.
+  const tick = lipsyncSourceTickAt(timeline, grid.fps.numerator, k * step).tick;
+  return Math.min(grid.frameCount - 1, Math.max(0, Math.floor(tick / step)));
 }
 
 /**
@@ -66,18 +70,26 @@ export function lipsyncPictureBytes(width: number, height: number, alpha: boolea
 }
 
 /**
- * The source presentation frame each result frame shows, on the grid the container writes: frame k at k · step / timescale
- * of the table's first run, `ceil(round(duration · timescale) / step)` frames, the last ending at the result duration.
+ * The source grid frame each result frame shows, on the grid the container writes: frame k at k / fps,
+ * `lipsyncResultFrameCount` frames, the last ending at the result duration.
  * @param timeline - The frozen timeline.
- * @param table - The source's presentation table.
+ * @param grid - The source's frame grid.
  * @returns One source frame per result frame.
- * @throws {RangeError} When the table has no frame.
+ * @throws {RangeError} When the grid has no frame.
  */
-export function lipsyncResultSourceFrames(timeline: LipsyncTimeline, table: VideoPresentationTable): number[] {
-  const step = table.runs[0]?.step;
-  if (step === undefined) throw new RangeError("Expected a presented frame");
-  const count = Math.ceil(Math.round(timeline.duration * table.timescale) / step);
-  return Array.from({ length: count }, (_unused, k) => lipsyncSourceFrameAt(timeline, table, k));
+export function lipsyncResultSourceFrames(timeline: LipsyncTimeline, grid: LipsyncGrid): number[] {
+  return Array.from({ length: lipsyncResultFrameCount(timeline, grid) }, (_unused, k) => lipsyncSourceFrameAt(timeline, grid, k));
+}
+
+/**
+ * The result's frames on the source grid: ceil(round(duration · fps.numerator) / fps.denominator).
+ * @param timeline - The frozen timeline.
+ * @param grid - The source's frame grid.
+ * @returns The frame count.
+ * @throws {never} Never.
+ */
+export function lipsyncResultFrameCount(timeline: LipsyncTimeline, grid: LipsyncGrid): number {
+  return Math.ceil(Math.round(timeline.duration * grid.fps.numerator) / grid.fps.denominator);
 }
 
 /**
@@ -122,21 +134,21 @@ export function lipsyncSourceSpan(sources: readonly number[], window: { start: n
 }
 
 /**
- * The presentation frames a composite chunk shows (execution design paragraph before §9.4): result frames
- * [window.start, window.end) at k · step / timescale of the table's first run map to source frames, and the chunk decodes
+ * The grid frames a composite chunk shows (execution design paragraph before §9.4): result frames
+ * [window.start, window.end) at k / fps map to source grid frames, and the chunk decodes
  * only [lowest, highest + 1) of them. The worker writes the chunk's entries over it and the container indexes its decoded
  * frames from its start, so both read this one function.
  * @param timeline - The frozen timeline.
- * @param table - The source's presentation table.
+ * @param grid - The source's frame grid.
  * @param window - The chunk's half-open result frames.
  * @param window.start - The first.
  * @param window.end - The end.
- * @returns The half-open source presentation frames.
- * @throws {RangeError} When the table has no frame or the window is empty.
+ * @returns The half-open source grid frames.
+ * @throws {RangeError} When the grid has no frame or the window is empty.
  */
-export function lipsyncChunkSourceWindow(timeline: LipsyncTimeline, table: VideoPresentationTable, window: { start: number; end: number }): { start: number; end: number } {
+export function lipsyncChunkSourceWindow(timeline: LipsyncTimeline, grid: LipsyncGrid, window: { start: number; end: number }): { start: number; end: number } {
   if (window.end <= window.start) throw new RangeError("Expected a result frame");
-  const sources = Array.from({ length: window.end - window.start }, (_unused, at) => lipsyncSourceFrameAt(timeline, table, window.start + at));
+  const sources = Array.from({ length: window.end - window.start }, (_unused, at) => lipsyncSourceFrameAt(timeline, grid, window.start + at));
   const { start, end } = lipsyncSourceSpan(sources, { start: 0, end: sources.length });
   return { start, end };
 }

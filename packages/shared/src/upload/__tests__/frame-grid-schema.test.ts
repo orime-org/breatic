@@ -152,9 +152,9 @@ describe('SC01: the P descriptor, tool source and source keyframe statistics hav
   });
 
   it('SC01: toolInputId binds the edit file bytes: null without one, and a different edit file gives a different id', async () => {
-    const without = await videoPresentationToolInputId({ sourceFingerprint: SOURCE, planSha256: PLAN, editFileSha256: null } as never);
-    const withEdit = await videoPresentationToolInputId({ sourceFingerprint: SOURCE, planSha256: PLAN, editFileSha256: EDIT_BYTES } as never);
-    const otherEdit = await videoPresentationToolInputId({ sourceFingerprint: SOURCE, planSha256: PLAN, editFileSha256: BYTES } as never);
+    const without = await videoPresentationToolInputId({ sourceFingerprint: SOURCE, planSha256: PLAN, editFileSha256: null });
+    const withEdit = await videoPresentationToolInputId({ sourceFingerprint: SOURCE, planSha256: PLAN, editFileSha256: EDIT_BYTES });
+    const otherEdit = await videoPresentationToolInputId({ sourceFingerprint: SOURCE, planSha256: PLAN, editFileSha256: BYTES });
     expect(new Set([without, withEdit, otherEdit]).size).toBe(3);
   });
 

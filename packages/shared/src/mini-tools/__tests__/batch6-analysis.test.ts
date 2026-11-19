@@ -81,7 +81,7 @@ function inputFor(kind: AnalysisKind): AnalysisInputSource {
     source: { nodeId: "50000000-0000-4000-8000-000000000001", canonicalURL: binding.canonicalURL },
     profile: structuredClone(profile),
     params: {
-      anchor: { frameIndex: 3, pts: 0.12 },
+      anchor: { frameIndex: 3 },
       range: { start: 0, end: 5 },
       region: { box: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 }, points: [{ x: 0.2, y: 0.3, label: "positive" }] },
       trackingPrompt: "the person on the left",
@@ -99,12 +99,12 @@ function inputFor(kind: AnalysisKind): AnalysisInputSource {
 /** States the complete dependency projection, independently of its implementation. @throws {Error} Never. */
 function expectedInput(kind: AnalysisKind): ObjectValue {
   const common = { schemaVersion: 1, kind, sourceURL: binding.canonicalURL, profile: structuredClone(profile) };
-  if (kind === "people") return { ...common, anchor: { frameIndex: 3, pts: 0.12 } };
+  if (kind === "people") return { ...common, anchor: { frameIndex: 3 } };
   if (kind === "scene_cuts") return { ...common, range: { start: 0, end: 5 } };
   return {
     ...common,
     range: { start: 0, end: 5 },
-    anchor: { frameIndex: 3, pts: 0.12 },
+    anchor: { frameIndex: 3 },
     region: { box: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 }, points: [{ x: 0.2, y: 0.3, label: "positive" }] },
     trackingPrompt: "the person on the left",
   };
@@ -124,14 +124,13 @@ function recordFor(kind: AnalysisKind, analysisRunId = earlyId, acceptedAt = ear
     inputFingerprint: "b".repeat(64),
   };
   const data: ObjectValue = kind === "people"
-    ? { anchor: { frameIndex: 3, pts: 0.12 }, people: [] }
+    ? { anchor: { frameIndex: 3 }, people: [] }
     : kind === "scene_cuts"
-      ? { timeBase: { numerator: 1, denominator: 1000 }, frameCount: 125, cuts: [] }
+      ? { fps: { numerator: 25, denominator: 1 }, frameCount: 125, cuts: [] }
       : {
-          timeBase: { numerator: 1, denominator: 1000 }, frameCount: 125,
+          fps: { numerator: 25, denominator: 1 }, frameCount: 125,
           width: 960, height: 540,
-          anchor: { frameIndex: 3, pts: 0.12 }, regionFingerprint: "c".repeat(64),
-          sourceFrameMapping: Array.from({ length: 125 }, (_, frameIndex) => ({ frameIndex, sourcePts: frameIndex / 25 })),
+          anchor: { frameIndex: 3 }, regionFingerprint: "c".repeat(64),
           artifactRefs: [
             { role: "rle", assetId: "30000000-0000-4000-8000-000000000001", canonicalURL: "https://media.example.test/mask.json", contentHash: "d".repeat(64), kind: "document", mimeType: "text/plain", size: 2048, frameMetadata: null },
           ],
@@ -323,53 +322,22 @@ describe("batch six analysis public contract", () => {
 
     it("preserves the independently specified nonempty scene cuts", () => {
       const record = recordFor("scene_cuts");
-      const nonempty = { ...record, result: { ...record.result, cuts: [{ frameIndex: 25, pts: 1, detectionScore: 0.7 }, { frameIndex: 75, pts: 3, detectionScore: 0.8 }] } };
+      const nonempty = { ...record, result: { ...record.result, cuts: [{ frameIndex: 25, detectionScore: 0.7 }, { frameIndex: 75, detectionScore: 0.8 }] } };
       expect(api.miniToolAnalysisRecordSchema.parse(nonempty)).toEqual(nonempty);
     });
 
     it("rejects a cut whose index equals the total frame count", () => {
       const record = recordFor("scene_cuts");
-      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, cuts: [{ frameIndex: 125, pts: 5, detectionScore: 0.7 }] } }).success).toBe(false);
+      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, cuts: [{ frameIndex: 125, detectionScore: 0.7 }] } }).success).toBe(false);
     });
 
     it.each<AnalysisKind>(["people", "tracked_mask"])("%s result anchor index matches the frozen input", (kind) => {
       const record = recordFor(kind);
-      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, anchor: { frameIndex: 4, pts: 0.12 } } }).success).toBe(false);
-    });
-
-    it.each<AnalysisKind>(["people", "tracked_mask"])("%s result anchor PTS matches the frozen input", (kind) => {
-      const record = recordFor(kind);
-      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, anchor: { frameIndex: 3, pts: 0.13 } } }).success).toBe(false);
+      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, anchor: { frameIndex: 4 } } }).success).toBe(false);
     });
   });
 
-  describe("normalized tracking frame and artifact contract", () => {
-    it("preserves a negative first source PTS", () => {
-      const record = recordFor("tracked_mask");
-      const sourceFrameMapping = Array.from({ length: 125 }, (_, frameIndex) => ({ frameIndex, sourcePts: frameIndex / 25 - 0.04 }));
-      const negativeFirstPts = { ...record, result: { ...record.result, sourceFrameMapping } };
-      expect(api.miniToolAnalysisRecordSchema.parse(negativeFirstPts)).toEqual(negativeFirstPts);
-    });
-
-    it("allows normalized frames to map to the same source PTS", () => {
-      const record = recordFor("tracked_mask");
-      const sourceFrameMapping = Array.from({ length: 125 }, (_, frameIndex) => ({ frameIndex, sourcePts: frameIndex <= 1 ? 0 : (frameIndex - 1) / 25 }));
-      const repeatedSourcePts = { ...record, result: { ...record.result, sourceFrameMapping } };
-      expect(api.miniToolAnalysisRecordSchema.parse(repeatedSourcePts)).toEqual(repeatedSourcePts);
-    });
-
-    it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])("rejects non-finite source PTS %s", (sourcePts) => {
-      const record = recordFor("tracked_mask");
-      const sourceFrameMapping = Array.from({ length: 125 }, (_, frameIndex) => ({ frameIndex, sourcePts: frameIndex === 0 ? sourcePts : frameIndex / 25 }));
-      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, sourceFrameMapping } }).success).toBe(false);
-    });
-
-    it.each(["missing", "duplicate", "out_of_range"])("rejects an incomplete normalized index set: %s", (fault) => {
-      const record = recordFor("tracked_mask");
-      const sourceFrameMapping = Array.from({ length: fault === "missing" ? 124 : 125 }, (_, frameIndex) => ({ frameIndex: frameIndex === 124 ? fault === "duplicate" ? 0 : 125 : frameIndex, sourcePts: frameIndex / 25 }));
-      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, sourceFrameMapping } }).success).toBe(false);
-    });
-
+  describe("tracking artifact contract", () => {
     it.each(["rle"])("requires the registered %s artifact", (role) => {
       const record = recordFor("tracked_mask");
       const artifactRefs = fixtureArtifacts(record).filter((artifact) => artifact.role !== role);
@@ -398,9 +366,9 @@ describe("batch six analysis public contract", () => {
   });
 
   it.each([
-    ["people", "3af48d5c2fdc87e704f2e59f79c98c1f777bd9b08b46bf0e96df3586ea0b069a"],
+    ["people", "468a01a4f422d72908214d61573b4d13720cf5d0c32d093bf34a5bcaec07c737"],
     ["scene_cuts", "2d9dfe5d020cba42028e4112bb584093bcf0032361a29ae6533ded981fffdbb8"],
-    ["tracked_mask", "751042612477d249548e5ca61763cb7417c387977d44028c482becb41462d580"],
+    ["tracked_mask", "23ad477494dc3c30f6c14585f56b2351ffebc13ffaca1867c0b68376a9b90e3e"],
   ] as const)("matches the independent version-one %s fingerprint golden value", async (kind, expected) => {
     expect(await api.fingerprintMiniToolAnalysisInput(expectedInput(kind))).toBe(expected);
   });
@@ -456,7 +424,7 @@ describe("batch six analysis public contract", () => {
   it.each<AnalysisKind>(["people", "tracked_mask"])("%s anchor changes invalidate reuse", async (kind) => {
     const source = inputFor(kind);
     const original = await api.fingerprintMiniToolAnalysisInput(api.projectMiniToolAnalysisInput(source));
-    for (const anchor of [{ frameIndex: 4, pts: 0.12 }, { frameIndex: 3, pts: 0.13 }]) {
+    for (const anchor of [{ frameIndex: 4 }, { frameIndex: 2 }]) {
       expect(await api.fingerprintMiniToolAnalysisInput(api.projectMiniToolAnalysisInput({ ...source, params: { ...source.params, anchor } }))).not.toBe(original);
     }
   });

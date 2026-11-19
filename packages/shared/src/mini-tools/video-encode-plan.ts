@@ -3,41 +3,38 @@
 
 /**
  * Presentation carrier routes, carrier geometry, encode estimates, chunk boundaries, container job ids and user-run
- * batching (inner#1306; frames-split design §4.1, §4.3, §5.1 step 2, §5.3, §5.4, §7.1, §8.2).
+ * batching on the frame grid (inner#1306; frames-split design §4.1–§4.3, §5.4, §7.1, §7.1.1, §7.17, §8.2).
  *
  * Kept free of zod: the media container and the backend both compute these, and the container bundles this module.
  */
 
 import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/mini-tools/types.js";
-import type { VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
+import type { FrameRate, SourceDecodeKey } from "@shared/upload/frame-grid-rate.js";
 
-/** How a presentation candidate gets its carrier (§7.1). */
-export type VideoCarrierRoute = "reuse" | "identity" | "copy" | "dispatch_copy" | "encode";
+/** How a presentation candidate gets its carrier (§7.1 route table). */
+export type VideoCarrierRoute = "encode" | "edit" | "reuse_edit" | "reuse";
 /** One stage of a carrier route. */
-export type VideoCarrierStage = "plan" | "copy" | "dispatch_copy" | "encode" | "stitch" | "publish";
-/** The identity a carrier is reused by. */
-export interface VideoCarrierIdentity { planSha256: string; producerVersion: number; profileVersion: number }
-/** Everything the route is chosen from. */
+export type VideoCarrierStage = "plan" | "count" | "edit" | "edit_stitch" | "encode" | "stitch" | "publish";
+/**
+ * The identity a carrier or an edit file is reused by (§7.1): the plan digest, the producer and playback profile versions
+ * (sha256 hex digests), and the edit profile version, null without an edit file.
+ */
+export interface VideoCarrierIdentity { planSha256: string; producerVersion: string; profileVersion: string; editProfileVersion: string | null }
+/** What the route is chosen from: the new job's identity and the latest published version V, ready or invalid(V). */
 export interface VideoCarrierRouteInput {
   plan: VideoCarrierIdentity;
-  /** The selected presentation version, or null when none is selected. */
-  selected: VideoCarrierIdentity | null;
-  hdr: boolean;
-  alpha: "confirmed_alpha" | "confirmed_opaque";
-  /** Every other identity condition of §4.1 holds. */
-  identityQualified: boolean;
-  /** The bitstream carries an explicit colour matrix tag. */
-  colorMatrixTagged: boolean;
-  /** The ffprobe codec name. */
-  codec: string;
-  /** A stream copy keeps the plan's timeline. */
-  copyPreservesTimeline: boolean;
-  /** The selected audio (or its absence) is in the MP4 audio codecs of the frozen identity table. */
-  audioCopyable: boolean;
-  sourceBytes: number;
-  copyDiskMarginBytes: number;
-  basicDiskBytes: number;
+  reuseFrom: { identity: VideoCarrierIdentity; ready: boolean } | null;
 }
+/** The five edit-file tiers (§4.2): each has its own decode and encode rate (§5.4 estimate row). */
+export const EDIT_FILE_TIERS = [
+  "edit_h264_intra_8bit_420", "edit_h264_intra_10bit_420", "edit_h264_intra_8bit_444", "edit_h264_intra_10bit_444", "edit_prores",
+] as const;
+/** One edit-file tier. */
+export type EditFileTier = (typeof EDIT_FILE_TIERS)[number];
+/** A decode-rate key: the original's source key, or the edit file's tier. */
+export type VideoDecodeKey = SourceDecodeKey | EditFileTier;
+/** What a job encodes to: the playback carrier, an edit-file tier, or nothing (the decode-only count). */
+export type VideoEncodeKey = "playback" | EditFileTier | null;
 /** A picture rectangle inside a padded carrier. */
 export interface VideoCarrierRect { x: number; y: number; width: number; height: number }
 /** The encoded carrier's size and, when padded, where the picture lies. */
@@ -46,16 +43,7 @@ export interface VideoCarrierGeometry { width: number; height: number; displayRe
 export interface VideoPlanSource { transfer: string | null; bitDepth: number }
 /** The conversion the plan's source decides for every output. */
 export interface VideoPlanOutput { toneMap: "none" | "sdr-bt709"; framePngBitDepth: 8 | 16 }
-/** The plan fields that decide whether the origin mapping is unaltered. */
-export interface VideoPlanAlterations {
-  originMapping: {
-    entries: readonly { kind: "source" | "derived-empty" }[];
-    firstSource: { lead: unknown };
-    lastSource: { support: "declared" | "previous-max" | "audio-end" | "single-frame"; hold: unknown };
-  };
-  videoSpans: readonly unknown[] | null;
-}
-/** The work of one encode job. */
+/** The work of one container job (§5.4 estimate row). */
 export interface VideoJobWork {
   encodedFrames: number;
   prerollFrames: number;
@@ -63,23 +51,36 @@ export interface VideoJobWork {
   sourceHeight: number;
   outputWidth: number;
   outputHeight: number;
-  bitDepth: 8 | 10 | 12 | 16;
-  hdr: boolean;
+  /** The tool source's decode key: `sourceDecodeKey` for the original, the tier for the edit file. */
+  decodeKey: VideoDecodeKey;
+  encodeKey: VideoEncodeKey;
+  /** Whether the job tone maps: only an HDR original's `edit_encode`. */
+  toneMap: boolean;
 }
-/** The encoder's configured rates. */
+/** The encoder's configured rates, frozen at admission. */
 export interface VideoEncoderRates {
   startSeconds: number;
   encodePixelsPerSecond: number;
-  decodeConvertPixelsPerSecond: { sdr_8bit: number; sdr_10bit: number; sdr_12bit: number; hdr_8bit: number; hdr_10bit: number; hdr_12bit: number; sdr_16bit: number; hdr_16bit: number };
+  tonemapPixelsPerSecond: number;
+  decodeConvertPixelsPerSecond: Readonly<Record<VideoDecodeKey, number>>;
+  editEncodePixelsPerSecond: Readonly<Record<EditFileTier, number>>;
 }
-/** A half-open range of presentation frame indices. */
+/** The keys a presentation stage reads (§5.4 estimate row). */
+export interface VideoStageKeys { decodeKey: VideoDecodeKey; encodeKey: VideoEncodeKey; toneMap: boolean }
+/** The source facts the stage keys depend on. */
+export interface VideoStageSource { sourceDecodeKey: SourceDecodeKey; hdr: boolean; editTier: EditFileTier | null }
+/** One stage of a presentation route with each job's estimated seconds (§5.4 limit row). */
+export interface PresentationRouteStage { stage: string; chunked: boolean; jobSeconds: readonly number[] }
+/** A half-open range of grid frames. */
 export interface VideoEncodeChunk { start: number; end: number }
-/** One container job's identity (§5.4). */
+/** One container job's identity (§5.4 job identity). */
 export type VideoContainerJobSpec =
   | { kind: "presentation-probe"; jobId: string }
+  | { kind: "presentation-count"; jobId: string; attempt: number }
   | { kind: "presentation-chunk"; jobId: string; chunk: number; attempt: number }
   | { kind: "presentation-stitch"; jobId: string; attempt: number }
-  | { kind: "presentation-copy"; jobId: string; attempt: number }
+  | { kind: "presentation-edit"; jobId: string; chunk: number; attempt: number }
+  | { kind: "presentation-edit-stitch"; jobId: string; attempt: number }
   | { kind: "run-batch"; taskId: string; batch: number; attempt: number }
   | { kind: "run-chunk"; taskId: string; output: number; chunk: number; attempt: number }
   | { kind: "run-stitch"; taskId: string; output: number; attempt: number }
@@ -89,13 +90,11 @@ export type VideoContainerJobSpec =
   | { kind: "prep-stitch"; taskId: string; input: number; attempt: number };
 
 const HDR_TRANSFERS = new Set(["smpte2084", "arib-std-b67"]);
-const TAG_FILTERS: Readonly<Record<string, string>> = { h264: "h264_metadata", hevc: "hevc_metadata", vp9: "vp9_metadata", av1: "av1_metadata" };
 const ROUTE_STAGES: Readonly<Record<VideoCarrierRoute, readonly VideoCarrierStage[]>> = {
+  encode: ["plan", "count", "encode", "stitch", "publish"],
+  edit: ["plan", "count", "edit", "edit_stitch", "encode", "stitch", "publish"],
+  reuse_edit: ["plan", "encode", "stitch", "publish"],
   reuse: ["plan", "publish"],
-  identity: ["plan", "publish"],
-  copy: ["plan", "copy", "publish"],
-  dispatch_copy: ["plan", "dispatch_copy", "publish"],
-  encode: ["plan", "encode", "stitch", "publish"],
 };
 
 /**
@@ -109,7 +108,8 @@ export function isHdrTransfer(transfer: string | null | undefined): boolean {
 }
 
 /**
- * The output conversion a plan's source decides (§3.2): HDR is tone mapped to 8-bit SDR, deeper SDR keeps 16-bit frame PNGs.
+ * The output conversion a plan's source decides (§3.2, §4.3): HDR is tone mapped to 8-bit SDR in the edit file, deeper SDR
+ * keeps 16-bit frame PNGs.
  * @param source - The source transfer and bit depth.
  * @returns The tone map and frame PNG bit depth.
  * @throws {never} Never.
@@ -120,34 +120,31 @@ export function videoPlanOutput(source: VideoPlanSource): VideoPlanOutput {
 }
 
 /**
- * The bitstream filter a stream copy writes the colour matrix tag with.
- * @param codec - The ffprobe codec name.
- * @returns The `*_metadata` filter, or null when the codec has none.
+ * Whether two identities agree on every version.
+ * @param a - One identity.
+ * @param b - The other.
+ * @returns True when plan, producer, playback profile and edit profile all match.
  * @throws {never} Never.
  */
-export function videoCarrierTagFilter(codec: string): string | null {
-  return Object.hasOwn(TAG_FILTERS, codec) ? TAG_FILTERS[codec]! : null;
+function sameIdentity(a: VideoCarrierIdentity, b: VideoCarrierIdentity): boolean {
+  return a.planSha256 === b.planSha256 && a.producerVersion === b.producerVersion && a.profileVersion === b.profileVersion &&
+    a.editProfileVersion === b.editProfileVersion;
 }
 
 /**
- * Choose the carrier route (§7.1, §5.1 step 2): reuse an identical selected version; HDR and confirmed alpha encode;
- * a qualified, matrix-tagged source plays as identity; a timeline-preserving copy that can carry the matrix tag runs
- * in basic when twice the source plus the margin fits its disk and its audio may be packet-copied, and is dispatched
- * otherwise (the dispatched copy encodes audio outside the table to AAC); everything else encodes.
- * @param input - The plan, the selected version and the source facts.
+ * Choose the carrier route (§7.1 route table): reuse the carrier only from a ready selected P with every version equal;
+ * when the job needs an edit file, reuse V's when the plan and the edit profile are equal (also from an invalid V during the
+ * automatic readmit), else encode a new edit file; without an edit file, encode the playback file.
+ * @param input - The new job's identity and the latest published version.
  * @returns The route.
  * @throws {never} Never.
  */
 export function chooseVideoCarrierRoute(input: VideoCarrierRouteInput): VideoCarrierRoute {
-  const { plan, selected } = input;
-  if (selected !== null && selected.planSha256 === plan.planSha256 && selected.producerVersion === plan.producerVersion && selected.profileVersion === plan.profileVersion) return "reuse";
-  if (input.hdr || input.alpha === "confirmed_alpha") return "encode";
-  if (input.identityQualified && input.colorMatrixTagged) return "identity";
-  if (input.copyPreservesTimeline && (input.colorMatrixTagged || videoCarrierTagFilter(input.codec) !== null)) {
-    const fits = 2 * input.sourceBytes + input.copyDiskMarginBytes <= input.basicDiskBytes;
-    return fits && input.audioCopyable ? "copy" : "dispatch_copy";
-  }
-  return "encode";
+  const { plan, reuseFrom } = input;
+  if (reuseFrom !== null && reuseFrom.ready && sameIdentity(plan, reuseFrom.identity)) return "reuse";
+  if (plan.editProfileVersion === null) return "encode";
+  const from = reuseFrom?.identity;
+  return from !== undefined && from.planSha256 === plan.planSha256 && from.editProfileVersion === plan.editProfileVersion ? "reuse_edit" : "edit";
 }
 
 /**
@@ -158,6 +155,45 @@ export function chooseVideoCarrierRoute(input: VideoCarrierRouteInput): VideoCar
  */
 export function videoCarrierRouteStages(route: VideoCarrierRoute): VideoCarrierStage[] {
   return [...ROUTE_STAGES[route]];
+}
+
+/**
+ * The edit-file tier of a source (§4.2 edit file): transparent sources are ProRes 4444; opaque ones all-intra H.264, 10-bit
+ * for an SDR source above 8 bits (HDR is tone mapped to 8-bit), High 4:4:4 Intra when a side is odd.
+ * @param source - The source facts.
+ * @param source.alpha - Whether the source is confirmed transparent.
+ * @param source.bitDepth - Its bit depth.
+ * @param source.hdr - Whether its transfer is PQ or HLG.
+ * @param source.width - The display width.
+ * @param source.height - The display height.
+ * @returns The tier.
+ * @throws {never} Never.
+ */
+export function editFileTier(source: { alpha: boolean; bitDepth: number; hdr: boolean; width: number; height: number }): EditFileTier {
+  if (source.alpha) return "edit_prores";
+  const deep = !source.hdr && source.bitDepth > 8;
+  const odd = source.width % 2 === 1 || source.height % 2 === 1;
+  if (odd) return deep ? "edit_h264_intra_10bit_444" : "edit_h264_intra_8bit_444";
+  return deep ? "edit_h264_intra_10bit_420" : "edit_h264_intra_8bit_420";
+}
+
+/**
+ * The rate keys a presentation stage reads (§5.4 estimate row): the count decodes the original only; `edit_encode` decodes the
+ * original, encodes the tier and tone maps an HDR source; a playback encode decodes the edit file when there is one,
+ * else the original, and never tone maps.
+ * @param stage - The stage.
+ * @param source - The source decode key, HDR and the edit tier (null without an edit file).
+ * @returns The keys.
+ * @throws {RangeError} When the edit stage is asked for a source without an edit tier.
+ */
+export function presentationStageKeys(stage: "count" | "edit" | "encode", source: VideoStageSource): VideoStageKeys {
+  switch (stage) {
+    case "count": return { decodeKey: source.sourceDecodeKey, encodeKey: null, toneMap: false };
+    case "edit":
+      if (source.editTier === null) throw new RangeError("Only a source with an edit file has an edit stage");
+      return { decodeKey: source.sourceDecodeKey, encodeKey: source.editTier, toneMap: source.hdr };
+    case "encode": return { decodeKey: source.editTier ?? source.sourceDecodeKey, encodeKey: "playback", toneMap: false };
+  }
 }
 
 /**
@@ -227,19 +263,6 @@ export function videoCarrierGeometry(display: { width: number; height: number },
 }
 
 /**
- * Whether a plan presents the original unaltered (§5.3): no derived frame, lead or hold, declared last support and no edit
- * (the assembler already records a whole-media rate-1 edit as none).
- * @param plan - The plan.
- * @returns Whether the origin mapping is unaltered.
- * @throws {never} Never.
- */
-export function videoPlanIsUnaltered(plan: VideoPlanAlterations): boolean {
-  const { entries, firstSource, lastSource } = plan.originMapping;
-  return plan.videoSpans === null && firstSource.lead === null && lastSource.hold === null && lastSource.support === "declared" &&
-    entries.every((entry) => entry.kind === "source");
-}
-
-/**
  * Columns between the colour and alpha planes of a packed carrier (§3.5 alpha-packed): two repeat the colour plane's edge and
  * two are neutral black, so a browser upsampling 4:2:0 chroma from neighbouring samples reads each plane's own chroma at the
  * seam. Measured in Chrome 157 with the planes touching: up to 20% wrong alpha in the alpha plane's first column.
@@ -267,8 +290,8 @@ export function packedPlaneWidth(packedWidth: number): number {
 }
 
 /**
- * Estimate a job whose only encoding is one AAC track (§5.4; §97 D7-1, D24-3): its start plus the audio seconds over the
- * AAC rate. The dispatched copy, a lip-sync stem and the lip-sync stitch (its video chunks joined by packet copy) are such jobs.
+ * Estimate a job whose only encoding is one AAC track (§5.4): its start plus the audio seconds over the AAC rate. A lip-sync
+ * stem and the lip-sync stitch (its video chunks joined by packet copy) are such jobs.
  * @param audioSeconds - The audio seconds encoded.
  * @param rates - The encoder's start seconds and AAC rate.
  * @param rates.startSeconds - A job's start seconds.
@@ -281,75 +304,109 @@ export function estimateAudioEncodeSeconds(audioSeconds: number, rates: { startS
 }
 
 /**
- * Estimate a job's seconds (§5.4): start seconds + (encoded + pre-roll frames) × (source pixels ÷ the decode-convert rate
- * for the source's bit depth and range + output pixels ÷ the encode rate); downloads are not estimated.
- * @param work - The job's frames and geometry.
+ * Estimate a job's seconds (§5.4 estimate row): start seconds + (encoded + pre-roll frames) × (source pixels ÷ the tool
+ * source's decode rate + source pixels ÷ the tone-map rate when the job tone maps + output pixels ÷ the encode rate of its
+ * encode key, none for the decode-only count); downloads are not estimated.
+ * @param work - The job's frames, geometry and keys.
  * @param rates - The encoder's configured rates.
  * @returns The estimated seconds.
- * @throws {RangeError} When a count, size or rate is out of range or the bit depth is not 8, 10, 12 or 16.
+ * @throws {RangeError} When a count, size or rate is out of range.
  */
 export function estimateVideoJobSeconds(work: VideoJobWork, rates: VideoEncoderRates): number {
   positiveInteger(work.encodedFrames, "Encoded frames");
   indexInteger(work.prerollFrames, "Pre-roll frames");
   for (const [name, value] of [["Source width", work.sourceWidth], ["Source height", work.sourceHeight], ["Output width", work.outputWidth], ["Output height", work.outputHeight]] as const) positiveInteger(value, name);
-  if (work.bitDepth !== 8 && work.bitDepth !== 10 && work.bitDepth !== 12 && work.bitDepth !== 16) throw new RangeError("The source bit depth must be 8, 10, 12 or 16");
   if (!Number.isFinite(rates.startSeconds) || rates.startSeconds < 0) throw new RangeError("Start seconds must be non-negative");
-  positiveFinite(rates.encodePixelsPerSecond, "The encode rate");
-  const decodeRate = rates.decodeConvertPixelsPerSecond[`${work.hdr ? "hdr" : "sdr"}_${work.bitDepth}bit`];
+  const source = work.sourceWidth * work.sourceHeight;
+  const decodeRate = rates.decodeConvertPixelsPerSecond[work.decodeKey];
   positiveFinite(decodeRate, "The decode-convert rate");
-  const perFrame = (work.sourceWidth * work.sourceHeight) / decodeRate + (work.outputWidth * work.outputHeight) / rates.encodePixelsPerSecond;
+  let perFrame = source / decodeRate;
+  if (work.toneMap) {
+    positiveFinite(rates.tonemapPixelsPerSecond, "The tone-map rate");
+    perFrame += source / rates.tonemapPixelsPerSecond;
+  }
+  if (work.encodeKey !== null) {
+    const encodeRate = work.encodeKey === "playback" ? rates.encodePixelsPerSecond : rates.editEncodePixelsPerSecond[work.encodeKey];
+    positiveFinite(encodeRate, "The encode rate");
+    perFrame += (work.outputWidth * work.outputHeight) / encodeRate;
+  }
   return rates.startSeconds + (work.encodedFrames + work.prerollFrames) * perFrame;
 }
 
 /**
- * Split presentation frames into encode chunks (§5.4): from each chunk start, the boundary is the later keyframe or the
- * end nearest to start + target work, the earlier of two equally near; the first chunk starts at 0.
- * @param input - Keyframe flag per presentation frame, the work per frame and the target work per chunk, in seconds.
- * @param input.keyframes - Whether each presentation frame is a source keyframe.
+ * Split the grid's frames into encode chunks (§5.4 chunking row): boundaries divide the frame count evenly into the fewest
+ * chunks whose frames plus pre-roll stay within the target; a pre-roll that alone fills the target gives one frame a chunk.
+ * @param input - The frame count, the work per frame, each chunk's pre-roll frames and the target per chunk, in seconds.
+ * @param input.frameCount - The grid's frame count (§4.1 frame count row).
  * @param input.frameSeconds - Estimated seconds per frame.
+ * @param input.prerollFrames - Frames each chunk decodes before its first frame.
  * @param input.targetSeconds - Target seconds per chunk.
- * @returns Half-open chunks that tile every frame.
- * @throws {RangeError} When there are no frames or the work or target is not positive.
+ * @returns Half-open chunks that tile [0, frameCount).
+ * @throws {RangeError} When the count is not positive or the work or target is not positive.
  */
-export function planVideoEncodeChunks(input: { keyframes: readonly boolean[]; frameSeconds: number; targetSeconds: number }): VideoEncodeChunk[] {
-  const { keyframes, frameSeconds, targetSeconds } = input;
-  if (keyframes.length === 0) throw new RangeError("Expected at least one frame");
+export function planVideoEncodeChunks(input: { frameCount: number; frameSeconds: number; prerollFrames: number; targetSeconds: number }): VideoEncodeChunk[] {
+  const { frameCount, frameSeconds, prerollFrames, targetSeconds } = input;
+  positiveInteger(frameCount, "The frame count");
   positiveFinite(frameSeconds, "Per-frame work");
+  indexInteger(prerollFrames, "Pre-roll frames");
   positiveFinite(targetSeconds, "The chunk target");
-  const end = keyframes.length;
-  const candidates: number[] = [];
-  keyframes.forEach((keyframe, index) => { if (keyframe && index > 0) candidates.push(index); });
-  candidates.push(end);
-  const chunks: VideoEncodeChunk[] = [];
-  let start = 0;
-  let next = 0;
-  while (start < end) {
-    while (candidates[next]! <= start) next += 1;
-    /**
-     * How far a boundary's chunk work is from the target.
-     * @param boundary - A candidate end frame.
-     * @returns The absolute difference in seconds.
-     * @throws {never} Never.
-     */
-    const distance = (boundary: number): number => Math.abs((boundary - start) * frameSeconds - targetSeconds);
-    let pick = next;
-    // Distances fall until the target and rise after it, so stop at the first candidate no nearer than the one before.
-    while (pick + 1 < candidates.length && distance(candidates[pick + 1]!) < distance(candidates[pick]!)) pick += 1;
-    chunks.push({ start, end: candidates[pick]! });
-    start = candidates[pick]!;
-  }
-  return chunks;
+  const room = targetSeconds / frameSeconds - prerollFrames;
+  const count = room >= 1 ? Math.min(frameCount, Math.max(1, Math.ceil(frameCount / Math.floor(room)))) : frameCount;
+  return Array.from({ length: count }, (_unused, at) => ({ start: Math.floor((at * frameCount) / count), end: Math.floor(((at + 1) * frameCount) / count) }));
 }
 
 /**
- * The presentation failure for a chunk count (§5.4): more chunks than the parallel cap is `too_long`.
- * @param chunkCount - The planned chunks.
- * @param maxParallelChunks - The configured cap.
- * @returns `too_long` over the cap, otherwise null.
+ * The presentation failure of a whole route (§5.4 limit row): `too_long` when a job that cannot be chunked exceeds one
+ * share, a stage sends more jobs than the parallel cap, or the stages in sequence (each stage taking its slowest job) pass
+ * the remaining budget.
+ * @param input - The remaining seconds, the share, the cap and each stage's job estimates.
+ * @param input.remainingSeconds - Seconds left before the deadline.
+ * @param input.chunkShare - The share of the remaining seconds one job may take.
+ * @param input.maxParallelChunks - The most jobs one stage sends at once.
+ * @param input.stages - The route's stages in order.
+ * @returns `too_long`, or null when the route fits.
  * @throws {never} Never.
  */
-export function presentationEncodeFailure(chunkCount: number, maxParallelChunks: number): "too_long" | null {
-  return chunkCount > maxParallelChunks ? "too_long" : null;
+export function presentationRouteFailure(input: { remainingSeconds: number; chunkShare: number; maxParallelChunks: number; stages: readonly PresentationRouteStage[] }): "too_long" | null {
+  const share = input.remainingSeconds * input.chunkShare;
+  let total = 0;
+  for (const stage of input.stages) {
+    if (stage.jobSeconds.length > input.maxParallelChunks) return "too_long";
+    if (!stage.chunked && stage.jobSeconds.some((seconds) => seconds > share)) return "too_long";
+    total += Math.max(0, ...stage.jobSeconds);
+  }
+  return total > input.remainingSeconds ? "too_long" : null;
+}
+
+/**
+ * The frame check of a chunk or stitch (§4.1 frame count row): its measured frames must equal its grid window's k1 − k0.
+ * @param window - The grid frame window [start, end).
+ * @param window.start - k0.
+ * @param window.end - k1.
+ * @param measuredFrames - The frames the written object holds.
+ * @returns `grid_mismatch` when they differ, else null.
+ * @throws {never} Never.
+ */
+export function checkGridFrames(window: { start: number; end: number }, measuredFrames: number): "grid_mismatch" | null {
+  return measuredFrames === window.end - window.start ? null : "grid_mismatch";
+}
+
+/**
+ * The edit file's size check (§4.2 size cap row): at plan time the estimate frames × output pixels × bytes per pixel, after
+ * the write the measured size, against `presentation.max_edit_bytes`.
+ * @param input - The grid frames, output size, the configured bytes per pixel, the cap and the measured size (null before the write).
+ * @param input.frameCount - Grid frames.
+ * @param input.width - Output width.
+ * @param input.height - Output height.
+ * @param input.bytesPerPixel - `presentation.edit.bytes_per_pixel`.
+ * @param input.maxEditBytes - `presentation.max_edit_bytes`.
+ * @param input.measuredBytes - The written file's size, or null at plan time.
+ * @returns `edit_over_cap` over the cap, else null.
+ * @throws {never} Never.
+ */
+export function editFileSizeFailure(input: { frameCount: number; width: number; height: number; bytesPerPixel: number; maxEditBytes: number; measuredBytes: number | null }): "edit_over_cap" | null {
+  const bytes = input.measuredBytes ?? input.frameCount * input.width * input.height * input.bytesPerPixel;
+  return bytes > input.maxEditBytes ? "edit_over_cap" : null;
 }
 
 /**
@@ -368,7 +425,9 @@ export function videoContainerJobId(spec: VideoContainerJobSpec): string {
     case "presentation-probe": return `video-presentation:${owner}`;
     case "presentation-chunk": return `video-presentation:${owner}:chunk:${spec.chunk}:${a}`;
     case "presentation-stitch": return `video-presentation:${owner}:stitch:${a}`;
-    case "presentation-copy": return `video-presentation:${owner}:copy:${a}`;
+    case "presentation-count": return `video-presentation:${owner}:count:${a}`;
+    case "presentation-edit": return `video-presentation:${owner}:edit:${spec.chunk}:${a}`;
+    case "presentation-edit-stitch": return `video-presentation:${owner}:edit-stitch:${a}`;
     case "run-batch": return `${owner}:batch:${spec.batch}:${a}`;
     case "run-chunk": return `${owner}:out:${spec.output}:enc:${spec.chunk}:${a}`;
     case "run-stitch": return `${owner}:out:${spec.output}:stitch:${a}`;
@@ -417,14 +476,16 @@ export function batchVideoRunOutputs(
   return { batches, oversized };
 }
 
-/** A presentation-frame window `[start, end)`. */
+/** A grid-frame window `[start, end)`. */
 export type FrameWindow = { start: number; end: number };
 /** The §5.4 job layout of frames and split, frozen at admission: batches of output indices, and the outputs encoded in chunks. */
 export type FramesExecutionLayout = { batches: number[][]; encodes: { outputIndex: number; chunks: FrameWindow[] }[] };
 /** Remove-background: the model input's preparation chunks. */
 export type RemovalExecutionLayout = { preparation: FrameWindow[] };
-/** Erase and expand: the preparation chunks and the model composite chunks. */
+/** Erase: the preparation chunks, the mask (`bria_mask`) and the model composite chunks. */
 export type CompositeExecutionLayout = { preparation: FrameWindow[]; composite: FrameWindow[] };
+/** Expand: the preparation chunks, the windows (each its own stage) and the model composite chunks (execution design §10.5). */
+export type ExpandExecutionLayout = { preparation: FrameWindow[]; composite: FrameWindow[]; windows: number };
 /**
  * Lip-sync: the preparation chunks, the people it generates for, the composite chunks and the jobs preparing the tracking
  * clips (execution design §10.2): `forward` the one prepare:fwd job, none when the clip is the preparation itself or
@@ -433,20 +494,23 @@ export type CompositeExecutionLayout = { preparation: FrameWindow[]; composite: 
 export type LipsyncExecutionLayout = { preparation: FrameWindow[]; persons: number; composite: FrameWindow[]; tracking: { forward: FrameWindow[]; reverse: FrameWindow[] } };
 /** Transitions: the encode chunks and the overlap window chunks on the output grid. */
 export type TransitionExecutionLayout = { encode: FrameWindow[]; window: FrameWindow[] };
-/** The job layout an execution freezes at admission, by tool (§97 D12-1). */
-export type MiniToolExecutionLayout = FramesExecutionLayout | RemovalExecutionLayout | CompositeExecutionLayout | LipsyncExecutionLayout | TransitionExecutionLayout;
+/** The job layout an execution freezes at admission, by tool. */
+export type MiniToolExecutionLayout =
+  | FramesExecutionLayout | RemovalExecutionLayout | CompositeExecutionLayout | ExpandExecutionLayout | LipsyncExecutionLayout | TransitionExecutionLayout;
 /** A stage of a planned execution and the container jobs it sends at once. */
 export type MiniToolStageJobs = {
-  stage: "prepare" | "prepare_stitch" | "track_prepare" | "track_prepare_stitch" | "encode" | "stitch" | "faces" | "clip_stem" | "model_composite" | "composite"; jobs: number;
+  stage: "prepare" | "prepare_stitch" | "track_prepare" | "track_prepare_stitch" | "track_join" | "encode" | "stitch" | "faces" | "clip_stem" |
+    "mask" | "window" | "model_composite" | "composite";
+  jobs: number;
 };
 
 /**
- * The container jobs each stage of a frozen layout sends, in execution order, stages with no job left out (§97 D12-1;
- * frames-split §5.4): frames and split encode every batch and chunk, then stitch each chunked output; a prepared model
- * input stitches its chunks only when there are several; erase and expand composite each chunk, lip-sync prepares its
- * tracking clips side by side and stitches a chunked reversed one, runs each person's faces and its clip and stem, then the
- * composite; transitions encode the encode and window chunks; every
- * composited or transitioned result is stitched once.
+ * The container jobs each stage of a frozen layout sends, in execution order, stages with no job left out (§5.4 limit row):
+ * frames and split encode every batch and chunk, then stitch each chunked output; a prepared model input stitches its
+ * chunks only when there are several; lip-sync prepares its tracking clips side by side and stitches a chunked reversed
+ * one, joins each person's track (`track_join`), runs each person's faces and its clip and stem, then the composite; erase
+ * makes its mask; expand runs its windows one after another (window and window_mask, and frame_at from the second
+ * window); transitions encode the encode and window chunks; every composited or transitioned result is stitched once.
  * @param layout - The frozen layout.
  * @returns Each stage and its job count.
  * @throws {never} Never.
@@ -463,23 +527,31 @@ export function plannedStageJobs(layout: MiniToolExecutionLayout): MiniToolStage
   if ("batches" in layout) {
     add("encode", layout.batches.length + layout.encodes.reduce((total, encode) => total + encode.chunks.length, 0));
     add("stitch", layout.encodes.length);
-  } else if ("encode" in layout) {
+    return stages;
+  }
+  if ("encode" in layout) {
     add("encode", layout.encode.length + layout.window.length);
     add("stitch", 1);
-  } else {
-    add("prepare", layout.preparation.length);
-    add("prepare_stitch", layout.preparation.length > 1 ? 1 : 0);
-    if ("persons" in layout) {
-      add("track_prepare", layout.tracking.forward.length + layout.tracking.reverse.length);
-      add("track_prepare_stitch", layout.tracking.reverse.length > 1 ? 1 : 0);
-      add("faces", layout.persons);
-      add("clip_stem", layout.persons * 2);
-      add("composite", layout.composite.length);
-      add("stitch", 1);
-    } else if ("composite" in layout) {
-      add("model_composite", layout.composite.length);
-      add("stitch", 1);
-    }
+    return stages;
+  }
+  add("prepare", layout.preparation.length);
+  add("prepare_stitch", layout.preparation.length > 1 ? 1 : 0);
+  if ("persons" in layout) {
+    add("track_prepare", layout.tracking.forward.length + layout.tracking.reverse.length);
+    add("track_prepare_stitch", layout.tracking.reverse.length > 1 ? 1 : 0);
+    add("track_join", layout.persons);
+    add("faces", layout.persons);
+    add("clip_stem", layout.persons * 2);
+    add("composite", layout.composite.length);
+    add("stitch", 1);
+  } else if ("windows" in layout) {
+    for (let window = 0; window < layout.windows; window += 1) add("window", window === 0 ? 2 : 3);
+    add("model_composite", layout.composite.length);
+    add("stitch", 1);
+  } else if ("composite" in layout) {
+    add("mask", 1);
+    add("model_composite", layout.composite.length);
+    add("stitch", 1);
   }
   return stages;
 }
@@ -547,254 +619,6 @@ export function planTransitionChunks(timeline: TransitionChunkTimeline, budget: 
   };
 }
 
-/** An exact reduced rational. */
-interface ExactRational { numerator: string; denominator: string }
-/** The SDR BT.709 colour every transition output is written in (§97 D15-5). */
-export interface TransitionOutputColor { matrix: "bt709"; range: "tv"; primaries: "bt709"; transfer: "bt709" }
-/** The one output profile both clips of a transition are encoded to (frames-split §7.17). */
-export interface TransitionOutputProfile {
-  width: number; height: number; fps: ExactRational; timeBase: ExactRational; pixFmt: "yuv420p" | "yuva420p";
-  color: TransitionOutputColor; codec: "h264" | "vp9"; encode: { crf: number; preset: string }; alpha: boolean;
-}
-/** What a clip's selected plan gives the profile: its display, its presentation table and its empty fill. */
-export interface TransitionClipPlan {
-  display: { width: number; height: number };
-  presentation: VideoPresentationTable;
-  policy: { emptyFill: "black" | "transparent" };
-}
-
-/**
- * A positive rational in lowest terms.
- * @param numerator - Its numerator.
- * @param denominator - Its denominator.
- * @returns The reduced rational.
- * @throws {never} Never.
- */
-function reduced(numerator: bigint, denominator: bigint): ExactRational {
-  let [a, b] = [numerator < 0n ? -numerator : numerator, denominator];
-  while (b !== 0n) [a, b] = [b, a % b];
-  return { numerator: String(numerator / a), denominator: String(denominator / a) };
-}
-
-// The standard frame rates a VFR clip is conformed to, as editors conform one to the project's constant rate; each is a
-// frame rate FFmpeg's int rationals carry with room for any clip's time base.
-const STANDARD_FRAME_RATES: readonly (readonly [bigint, bigint])[] = [
-  [12n, 1n], [15n, 1n], [24000n, 1001n], [24n, 1n], [25n, 1n], [30000n, 1001n], [30n, 1n], [48n, 1n], [50n, 1n], [60000n, 1001n], [60n, 1n], [120n, 1n],
-];
-
-/**
- * The standard frame rate nearest a rate, the lower one on a tie.
- * @param numerator - The rate's numerator.
- * @param denominator - The rate's positive denominator.
- * @returns The standard rate.
- * @throws {never} Never.
- */
-function nearestStandardRate(numerator: bigint, denominator: bigint): ExactRational {
-  // |n/d − a/b| = |n·b − a·d| / (d·b); d is shared, so candidates compare by |n·b − a·d| / b.
-  /**
-   * The distance to a candidate, times the shared denominator and the candidate's.
-   * @param rate - The candidate as a numerator and denominator.
-   * @returns |n·b − a·d|.
-   * @throws {never} Never.
-   */
-  const gap = (rate: readonly [bigint, bigint]): bigint => {
-    const [a, b] = rate;
-    return numerator * b > a * denominator ? numerator * b - a * denominator : a * denominator - numerator * b;
-  };
-  let best = STANDARD_FRAME_RATES[0]!;
-  for (const rate of STANDARD_FRAME_RATES) if (gap(rate) * best[1] < gap(best) * rate[1]) best = rate;
-  return { numerator: String(best[0]), denominator: String(best[1]) };
-}
-
-/**
- * Each frame spacing of a table with how many frame pairs it separates, the first pair (frame 0 to frame 1) left out: the
- * first frame is held from 0 when the picture starts after the audio (§7.17 timeline row).
- * @param runs - The table's runs.
- * @returns The spacings.
- * @throws {never} Never.
- */
-function frameSpacings(runs: VideoPresentationTable["runs"]): Map<number, number> {
-  const spacings = new Map<number, number>();
-  /**
-   * Count a spacing for some frame pairs.
-   * @param spacing - The ticks between two frame starts.
-   * @param pairs - How many consecutive pairs it separates.
-   * @throws {never} Never.
-   */
-  const add = (spacing: number, pairs: number): void => { if (pairs > 0) spacings.set(spacing, (spacings.get(spacing) ?? 0) + pairs); };
-  runs.forEach((run, index) => {
-    add(run.step, index === 0 ? run.count - 2 : run.count - 1);
-    const next = runs[index + 1];
-    if (next !== undefined) add(next.start - (run.start + (run.count - 1) * run.step), index === 0 && run.count === 1 ? 0 : 1);
-  });
-  return spacings;
-}
-
-/**
- * The exact frame grid of a constant-rate source whose clock rounded its frame times (§7.17 rounding clock row): a 30 fps
- * WebM on its 1 ms clock, a 29.97 fps iPhone clip on 1/600 s (or that clock times 32 after a remux). Every frame from the
- * second on truly starts on `origin + j · period`, the grid point its stored start rounds to; the first frame keeps the
- * presentation's start and the last frame its end.
- */
-export interface PresentationConform { origin: ExactRational; period: ExactRational }
-
-const conforms = new WeakMap<VideoPresentationTable, { conform: PresentationConform | null; rate: ExactRational | null }>();
-
-/**
- * The greatest common divisor of two non-negative integers.
- * @param left - One.
- * @param right - The other.
- * @returns The divisor.
- * @throws {never} Never.
- */
-function divisor(left: bigint, right: bigint): bigint {
-  let [a, b] = [left, right];
-  while (b !== 0n) [a, b] = [b, a % b];
-  return a;
-}
-
-/**
- * The integer nearest a quotient, halves up.
- * @param numerator - The dividend.
- * @param denominator - The positive divisor.
- * @returns The integer.
- * @throws {never} Never.
- */
-function nearestInteger(numerator: bigint, denominator: bigint): bigint {
-  const twice = 2n * numerator + denominator;
-  const bottom = 2n * denominator;
-  return twice >= 0n ? twice / bottom : -((-twice + bottom - 1n) / bottom);
-}
-
-/**
- * The rounded constant rate of a table and its grid, computed once per table: the standard rate whose exact grid every
- * frame start from the second on matches within the clock's rounding (g, the greatest common divisor of those starts'
- * distances from the second start, is the stored clock's granularity). A file copied from a coarser rounding clock (a 1/600
- * clip copied onto 1 ms) carries both roundings, so the offsets from the grid may spread over up to 3g, with 3g under half a
- * frame so each start rounds to one grid point; the rate with the least spread wins. The grid passes through the first
- * frame's start when that start fits it too (a start of 0 is stored exactly), else through the middle of the offsets, on a
- * half-tick of the table clock. Null for a table with fewer than three frames or one frame spacing (exact already) and for
- * one no standard grid fits (VFR).
- * @param table - The presentation table.
- * @returns The grid and its rate, or nulls.
- * @throws {never} Never.
- */
-function roundedConstant(table: VideoPresentationTable): { conform: PresentationConform | null; rate: ExactRational | null } {
-  const cached = conforms.get(table);
-  if (cached !== undefined) return cached;
-  let found: { conform: PresentationConform | null; rate: ExactRational | null } = { conform: null, rate: null };
-  const frames = table.runs.reduce((total, run) => total + run.count, 0);
-  if (frames >= 3 && frameSpacings(table.runs).size > 1) {
-    const timescale = BigInt(table.timescale);
-    const later: bigint[] = [];
-    table.runs.forEach((run, index) => { for (let k = index === 0 ? 1 : 0; k < run.count; k += 1) later.push(BigInt(run.start + k * run.step)); });
-    const granularity = later.reduce((g, start) => divisor(g, start - later[0]!), 0n);
-    const first = BigInt(table.runs[0]!.start);
-    let best: { rate: readonly [bigint, bigint]; spread: bigint; low: bigint; high: bigint } | null = null;
-    for (const rate of STANDARD_FRAME_RATES) {
-      const [numerator, denominator] = rate;
-      // Offsets from the grid in ticks times n: s_k · n − k · timescale · d.
-      let [low, high] = [0n, 0n];
-      later.forEach((start, k) => {
-        const offset = (start - later[0]!) * numerator - BigInt(k) * timescale * denominator;
-        if (offset < low) low = offset;
-        if (offset > high) high = offset;
-      });
-      const spread = high - low;
-      // Within 3g, which is under half a frame (6 · g · n < timescale · d); spreads compare per tick: spread / n.
-      if (spread <= 3n * granularity * numerator && 6n * granularity * numerator < timescale * denominator
-        && (best === null || spread * best.rate[0] < best.spread * numerator)) best = { rate, spread, low, high };
-    }
-    if (best !== null) {
-      const [numerator, denominator] = best.rate;
-      const limit = 3n * granularity * numerator;
-      // The first frame's offset, one frame before the second: (s_0 − s_1) · n + timescale · d.
-      const lead = (first - later[0]!) * numerator + timescale * denominator;
-      // The grid point of the second frame in table ticks: through the first frame, or the offsets' middle on a half tick.
-      const origin = lead >= best.high - limit && lead <= best.low + limit
-        ? reduced((first * numerator + timescale * denominator), timescale * numerator)
-        : reduced(2n * later[0]! + nearestInteger(best.low + best.high, numerator), 2n * timescale);
-      found = { rate: reduced(numerator, denominator), conform: { origin, period: reduced(denominator, numerator) } };
-    }
-  }
-  conforms.set(table, found);
-  return found;
-}
-
-/**
- * The exact frame grid of a table whose clock rounded a constant rate's frame times (`roundedConstant`), or null.
- * @param table - The presentation table.
- * @returns The grid.
- * @throws {never} Never.
- */
-export function presentationConform(table: VideoPresentationTable): PresentationConform | null {
-  return roundedConstant(table).conform;
-}
-
-/**
- * A stored time on a conform grid: the grid point it rounds to, origin + round((t − origin) / period) · period, exact.
- * @param conform - The grid.
- * @param at - The time in seconds as a numerator and a positive denominator.
- * @returns The grid time as a numerator and denominator.
- * @throws {never} Never.
- */
-export function conformedTime(conform: PresentationConform, at: readonly [bigint, bigint]): [bigint, bigint] {
-  const [an, ad] = [BigInt(conform.origin.numerator), BigInt(conform.origin.denominator)];
-  const [pn, pd] = [BigInt(conform.period.numerator), BigInt(conform.period.denominator)];
-  // j = floor((t − a) / p + 1/2) = floor((2 · (t − a) + p) / (2p)), with t − a = (tn · ad − an · td) / (td · ad).
-  const [tn, td] = at;
-  const top = 2n * (tn * ad - an * td) * pd + pn * td * ad;
-  const bottom = 2n * pn * td * ad;
-  const j = top >= 0n ? top / bottom : -((-top + bottom - 1n) / bottom);
-  return [an * pd + j * pn * ad, ad * pd];
-}
-
-/**
- * A presentation table's output frame rate (frames-split §7.17 transition output profile row), the one rule the profile,
- * the panel and the timeline Dialog read: timescale over the frame spacing when consecutive frames start the same number of
- * ticks apart, or the standard rate whose grid every start matches within the clock's rounding, otherwise the standard rate
- * nearest the average spacing. Neither the first frame's nor the last frame's own
- * length counts: the average runs from the second frame's start to the last frame's start, since the first frame is held
- * from 0 when the picture starts after the audio (§7.17 timeline row) and the last is held to the end when the audio runs
- * longer, or is cut short at the end of its stream. Two frames take their one spacing; one frame its duration.
- * @param table - The compact presentation table.
- * @returns The rate, exact and reduced.
- * @throws {RangeError} When the table presents no frame.
- */
-export function presentationOutputFps(table: VideoPresentationTable): ExactRational {
-  // The timeline Dialog and the panel read it on every render, so each table is measured once.
-  const cached = outputRates.get(table);
-  if (cached !== undefined) return cached;
-  const rate = measuredOutputFps(table);
-  outputRates.set(table, rate);
-  return rate;
-}
-
-const outputRates = new WeakMap<VideoPresentationTable, ExactRational>();
-
-/**
- * A presentation table's output frame rate, measured (`presentationOutputFps`).
- * @param table - The compact presentation table.
- * @returns The rate, exact and reduced.
- * @throws {RangeError} When the table presents no frame.
- */
-function measuredOutputFps(table: VideoPresentationTable): ExactRational {
-  const { runs, timescale } = table;
-  const frames = runs.reduce((total, run) => total + run.count, 0);
-  if (frames === 0) throw new RangeError("A presentation table presents at least one frame");
-  const first = runs[0]!;
-  const second = first.count > 1 ? first.start + first.step : runs[1]?.start;
-  if (second === undefined) return nearestStandardRate(BigInt(timescale), BigInt(first.duration));
-  // Two frames have only the one spacing between them.
-  if (frames === 2) return reduced(BigInt(timescale), BigInt(second - first.start));
-  const spacings = frameSpacings(runs);
-  if (spacings.size === 1) return reduced(BigInt(timescale), BigInt([...spacings.keys()][0]!));
-  const rounded = roundedConstant(table).rate;
-  if (rounded !== null) return rounded;
-  const last = runs.at(-1)!;
-  return nearestStandardRate(BigInt(frames - 2) * BigInt(timescale), BigInt(last.start + (last.count - 1) * last.step - second));
-}
-
 /**
  * Where a clip's picture sits on a transition's output frame (§7.17 transition output profile row; the preview's `contain`):
  * scaled by the smaller of the two side ratios, rounded to whole pixels, and centred. Every encode chunk and every window
@@ -815,23 +639,36 @@ export function transitionFitRect(display: { width: number; height: number }, ou
   return { x: Math.floor((output.width - width) / 2), y: Math.floor((output.height - height) / 2), width, height };
 }
 
+/** The SDR BT.709 colour every transition output is written in. */
+export interface TransitionOutputColor { matrix: "bt709"; range: "tv"; primaries: "bt709"; transfer: "bt709" }
+/** The one output profile both clips of a transition are encoded to (frames-split §7.17 transition output profile row). */
+export interface TransitionOutputProfile {
+  width: number; height: number; fps: FrameRate; timeBase: FrameRate; pixFmt: "yuv420p" | "yuva420p";
+  color: TransitionOutputColor; codec: "h264" | "vp9"; encode: { crf: number; preset: string }; alpha: boolean;
+}
+/** What a clip's selected P gives the profile: its display size, its grid fps and whether it is transparent. */
+export interface TransitionClipPlan {
+  display: { width: number; height: number; fps: FrameRate };
+  alpha: boolean;
+}
+
 /**
- * The transition output profile from the two clips' selected plans, in timeline order (§97 D13-1, D15-5): the first
+ * The transition output profile from the two clips' selected P, in timeline order (§7.17 transition output profile row): the first
  * clip's display size, odd sides of an opaque output taken down to even (one up to two) and a transparent one kept; the
- * first clip's frame rate, `presentationOutputFps` of its table; alpha when
- * either clip is transparent, then VP9 and yuva420p, else H.264 and yuv420p; time base 1/fps; SDR BT.709 colour.
- * @param first - The first clip's plan.
- * @param second - The second clip's plan.
+ * first clip's grid fps; alpha when either clip is transparent, then VP9 and yuva420p, else H.264 and yuv420p; time base
+ * 1/fps; SDR BT.709 colour.
+ * @param first - The first clip.
+ * @param second - The second clip.
  * @param config - The presentation encode settings.
  * @param config.encode - Its crf and preset.
  * @param config.encode.crf - The crf.
  * @param config.encode.preset - The x264 preset.
  * @returns The profile.
- * @throws {RangeError} When the first plan has no frame.
+ * @throws {never} Never.
  */
 export function transitionOutputProfile(first: TransitionClipPlan, second: TransitionClipPlan, config: { encode: { crf: number; preset: string } }): TransitionOutputProfile {
-  const alpha = first.policy.emptyFill === "transparent" || second.policy.emptyFill === "transparent";
-  const fps = presentationOutputFps(first.presentation);
+  const alpha = first.alpha || second.alpha;
+  const { fps } = first.display;
   /**
    * An opaque side taken down to even, one up to two; a transparent side kept.
    * @param side - The display side.
@@ -840,7 +677,7 @@ export function transitionOutputProfile(first: TransitionClipPlan, second: Trans
    */
   const even = (side: number): number => (alpha ? side : Math.max(2, side - (side % 2)));
   return {
-    width: even(first.display.width), height: even(first.display.height), fps, timeBase: { numerator: fps.denominator, denominator: fps.numerator },
+    width: even(first.display.width), height: even(first.display.height), fps: { ...fps }, timeBase: { numerator: fps.denominator, denominator: fps.numerator },
     pixFmt: alpha ? "yuva420p" : "yuv420p", color: { matrix: "bt709", range: "tv", primaries: "bt709", transfer: "bt709" },
     codec: alpha ? "vp9" : "h264", encode: { crf: config.encode.crf, preset: config.encode.preset }, alpha,
   };

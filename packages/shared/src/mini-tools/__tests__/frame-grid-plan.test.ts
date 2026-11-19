@@ -43,7 +43,7 @@ const route = chooseVideoCarrierRoute as unknown as (input: { plan: Identity; re
 const stagesOf = plannedStageJobs as unknown as (layout: unknown) => Stage[];
 const frames = planVideoFrames as unknown as (grid: Grid, request: { mode: "first" | "last" | "current"; frameIndex?: number }) => unknown[];
 const split = planVideoSplit as unknown as (grid: Grid, cuts: readonly number[]) => unknown[];
-const inRange = anchorInTrackingRange as unknown as (range: Window, anchor: { frameIndex: number }) => boolean;
+const inRange = anchorInTrackingRange;
 const eraseCheck = eraseRangeCheck as unknown as (grid: Grid, range: Window, anchor: { frameIndex: number }, limits: { minSeconds: number; maxSeconds: number; maxGridFps: number }) => unknown;
 
 const job = (overrides: Partial<Identity> = {}): Identity => ({ planSha256: PLAN, producerVersion: PRODUCER, profileVersion: PROFILE, editProfileVersion: null, ...overrides });

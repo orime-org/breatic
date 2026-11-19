@@ -9,13 +9,14 @@
  * chunks may span segments (lipsync-disk-budget in domain covers their cutting).
  *
  * Shapes chosen here (the design names no function):
- * - `lipsyncMonotonicSegments(timeline, table, keyframes)` returns
+ * - `lipsyncMonotonicSegments(timeline, grid, prerollFrames)` returns
  *   `{ resultStart, resultEnd, sourceStart, sourceEnd, direction, prerollFrames }[]`, all in frames, ranges half-open.
- *   The result grid is the one the container writes (`resultGrid` in lipsync-recipes): frame k at k · step / timescale of
- *   the table's first run, `ceil(round(duration · timescale) / step)` frames. The direction is the branch of
+ *   The result grid is the one the container writes: frame k at k / fps of the source grid,
+ *   `ceil(round(duration · fps.numerator) / fps.denominator)` frames. The direction is the branch of
  *   `lipsyncSourceTickAt`: bounce is forward while u = t mod 2V is in [0, V] and reverse while u is in (V, 2V); loop starts
- *   a new forward segment where t mod V wraps to 0. `keyframes` is the per-presentation-frame keyframe flag list
- *   (`videoPresentationKeyframeFlags`), as `planVideoEncodeChunks` takes it.
+ *   a new forward segment where t mod V wraps to 0. `prerollFrames` is the tool source's decode pre-roll
+ *   (`decodePrerollFrames`, frames-split §5.4 估算 row): there is no per-frame keyframe list on the grid, so each segment
+ *   counts that pre-roll, never more than the frames before its first source frame.
  * Read from the mini-tools entry by name so this compiles before either exists.
  */
 import fc from "fast-check";
@@ -24,31 +25,24 @@ import * as miniTools from "@shared/mini-tools/index.js";
 
 type Mode = "cut_off" | "silence" | "loop" | "bounce" | "remap";
 type Timeline = { duration: number; videoDuration: number; syncMode: Mode };
-type Table = { schemaVersion: 1; timescale: number; runs: { start: number; count: number; step: number; duration: number }[] };
+type Table = { fps: { numerator: number; denominator: number }; frameCount: number };
 type Segment = { resultStart: number; resultEnd: number; sourceStart: number; sourceEnd: number; direction: "forward" | "reverse"; prerollFrames: number };
 const api = miniTools as unknown as {
-  lipsyncMonotonicSegments: (timeline: Timeline, table: Table, keyframes: readonly boolean[]) => Segment[];
+  lipsyncMonotonicSegments: (timeline: Timeline, table: Table, prerollFrames: number) => Segment[];
   lipsyncSourceFrameAt: (timeline: Timeline, table: Table, k: number) => number;
 };
 
 // Eighths of a second keep every result and source time exact in binary, so the frame mapping has no rounding to argue about.
 const SCALE = 8;
 /**
- * A uniform table of `count` frames of 1/8 s.
+ * A grid of `count` frames of 1/8 s.
  * @param count - The frame count.
- * @returns The table.
+ * @returns The grid.
  */
-const table = (count: number): Table => ({ schemaVersion: 1, timescale: SCALE, runs: [{ start: 0, count, step: 1, duration: 1 }] });
-/**
- * Keyframe flags with keyframes at the given frames.
- * @param count - The frame count.
- * @param at - The keyframe indices.
- * @returns The flags.
- */
-const keyframesAt = (count: number, at: readonly number[]): boolean[] => Array.from({ length: count }, (_, index) => at.includes(index));
-// 48 frames of 1/8 s: V = 6, last frame 47; keyframes every 12 frames.
+const table = (count: number): Table => ({ fps: { numerator: SCALE, denominator: 1 }, frameCount: count });
+// 48 frames of 1/8 s: V = 6, last frame 47; a 1.5 s keyframe interval gives 1.5 × 8 + 1 = 13 frames of pre-roll.
 const TABLE = table(48);
-const KEYS = keyframesAt(48, [0, 12, 24, 36]);
+const KEYS = 13;
 /**
  * The source frame result frame k shows.
  * @param timeline - The timeline.
@@ -66,13 +60,6 @@ const sourceAt = (timeline: Timeline, tab: Table, k: number): number => api.lips
  * @returns The source frames.
  */
 const shown = (timeline: Timeline, tab: Table, start: number, end: number): number[] => Array.from({ length: end - start }, (_, at) => sourceAt(timeline, tab, start + at));
-/**
- * The latest keyframe at or before a frame.
- * @param keys - The flags.
- * @param frame - The frame.
- * @returns The keyframe index.
- */
-const keyframeBefore = (keys: readonly boolean[], frame: number): number => { let k = frame; while (k > 0 && !keys[k]) k -= 1; return k; };
 const seg = (resultStart: number, resultEnd: number, sourceStart: number, sourceEnd: number, direction: Segment["direction"], prerollFrames = 0): Segment =>
   ({ resultStart, resultEnd, sourceStart, sourceEnd, direction, prerollFrames });
 
@@ -106,16 +93,17 @@ describe("lip-sync monotonic segments per mode (frames-split §5.4 待实测 row
     expect(api.lipsyncMonotonicSegments({ duration, videoDuration: 6, syncMode: "remap" }, TABLE, KEYS)).toEqual([seg(0, frames, 0, 48, "forward")]);
   });
 
-  it("MS06 a reverse segment's pre-roll is counted per GOP it decodes: only the GOP holding its first source frame starts early", () => {
-    // bounce over 10 s: the reverse segment k ∈ [49, 80) ends at 12 − 9.875 = 2.125 → frame 17. Decoded GOP by GOP:
-    // [12, 24) from keyframe 12 (5 frames of pre-roll before 17), [24, 36) and [36, 48) from their own keyframes (none).
+  it("MS06 a segment counts the source's pre-roll once, never more than the frames before its first source frame", () => {
+    // bounce over 10 s: the reverse segment k ∈ [49, 80) ends at 12 − 9.875 = 2.125 → frame 17; 13 frames of pre-roll fit.
     const segments = api.lipsyncMonotonicSegments({ duration: 10, videoDuration: 6, syncMode: "bounce" }, TABLE, KEYS);
-    expect(segments).toEqual([seg(0, 49, 0, 48, "forward"), seg(49, 80, 17, 48, "reverse", 5)]);
+    expect(segments).toEqual([seg(0, 49, 0, 48, "forward"), seg(49, 80, 17, 48, "reverse", 13)]);
     const reverse = segments[1]!;
-    // Decode work: 31 passed source frames plus 5 of pre-roll.
-    expect(reverse.sourceEnd - reverse.sourceStart + reverse.prerollFrames).toBe(36);
-    // Same frames with GOPs of 16: keyframe 16 is one frame before 17.
-    expect(api.lipsyncMonotonicSegments({ duration: 10, videoDuration: 6, syncMode: "bounce" }, TABLE, keyframesAt(48, [0, 16, 32]))[1]).toEqual(seg(49, 80, 17, 48, "reverse", 1));
+    // Decode work: 31 passed source frames plus 13 of pre-roll.
+    expect(reverse.sourceEnd - reverse.sourceStart + reverse.prerollFrames).toBe(44);
+    // A longer keyframe interval than the frames before 17 decodes from the start: 17 frames.
+    expect(api.lipsyncMonotonicSegments({ duration: 10, videoDuration: 6, syncMode: "bounce" }, TABLE, 25)[1]).toEqual(seg(49, 80, 17, 48, "reverse", 17));
+    // An edit file has no pre-roll.
+    expect(api.lipsyncMonotonicSegments({ duration: 10, videoDuration: 6, syncMode: "bounce" }, TABLE, 0)[1]).toEqual(seg(49, 80, 17, 48, "reverse", 0));
   });
 });
 
@@ -128,7 +116,7 @@ describe("lip-sync monotonic segments for any timeline (property)", () => {
     gop: fc.integer({ min: 1, max: 20 }),
   }).map(({ frames, resultFrames, syncMode, gop }) => ({
     tab: table(frames),
-    keys: Array.from({ length: frames }, (_, index) => index % gop === 0),
+    keys: gop,
     // cut_off is min(V, A), so its result never outlasts the video.
     timeline: { duration: (syncMode === "cut_off" ? Math.min(frames, resultFrames) : resultFrames) / SCALE, videoDuration: frames / SCALE, syncMode },
   }));
@@ -140,7 +128,7 @@ describe("lip-sync monotonic segments for any timeline (property)", () => {
       expect(segments.length).toBeGreaterThan(0);
       expect(segments[0]!.resultStart).toBe(0);
       expect(segments.at(-1)!.resultEnd).toBe(count);
-      const frames = tab.runs[0]!.count;
+      const frames = tab.frameCount;
       segments.forEach((segment, index) => {
         expect(segment.resultEnd).toBeGreaterThan(segment.resultStart);
         if (index > 0) expect(segment.resultStart).toBe(segments[index - 1]!.resultEnd);
@@ -151,8 +139,8 @@ describe("lip-sync monotonic segments for any timeline (property)", () => {
         }
         const range = timeline.syncMode === "remap" ? [0, frames] : [Math.min(...sources), Math.max(...sources) + 1];
         expect([segment.sourceStart, segment.sourceEnd]).toEqual(range);
-        // Pre-roll: from the keyframe at or before the first passed frame; later GOPs start at their own keyframe.
-        expect(segment.prerollFrames).toBe(segment.sourceStart - keyframeBefore(keys, segment.sourceStart));
+        // Pre-roll: the source's, never more than the frames before the first passed frame.
+        expect(segment.prerollFrames).toBe(Math.min(keys, segment.sourceStart));
       });
     }), { numRuns: 300 });
   });
@@ -160,7 +148,7 @@ describe("lip-sync monotonic segments for any timeline (property)", () => {
   it("MS08 only bounce reverses, and its directions alternate; every other mode is forward only", () => {
     fc.assert(fc.property(timelines, ({ tab, keys, timeline }) => {
       const segments = api.lipsyncMonotonicSegments(timeline, tab, keys);
-      const frames = tab.runs[0]!.count;
+      const frames = tab.frameCount;
       const count = Math.round(timeline.duration * SCALE);
       if (timeline.syncMode === "bounce") {
         segments.forEach((segment, index) => expect(segment.direction).toBe(index % 2 === 0 ? "forward" : "reverse"));
@@ -179,8 +167,8 @@ describe("lip-sync monotonic segments for any timeline (property)", () => {
   // result grid, as on the 1/8 s clock above.
   it.each([[12800, 512], [30000, 1001], [90000, 3600]] as const)("MS09 on a %s clock with a step of %s, loop periods and bounce turns fall on whole frames", (timescale, step) => {
     fc.assert(fc.property(fc.integer({ min: 2, max: 60 }), fc.integer({ min: 1, max: 400 }), fc.constantFrom<Mode>("loop", "bounce"), (frames, count, syncMode) => {
-      const tab: Table = { schemaVersion: 1, timescale, runs: [{ start: 0, count: frames, step, duration: step }] };
-      const segments = api.lipsyncMonotonicSegments({ duration: (count * step) / timescale, videoDuration: (frames * step) / timescale, syncMode }, tab, Array.from({ length: frames }, (_, index) => index === 0));
+      const tab: Table = { fps: { numerator: timescale, denominator: step }, frameCount: frames };
+      const segments = api.lipsyncMonotonicSegments({ duration: (count * step) / timescale, videoDuration: (frames * step) / timescale, syncMode }, tab, 0);
       const ends: number[] = [];
       if (syncMode === "loop") for (let at = frames; ; at += frames) { ends.push(Math.min(at, count)); if (at >= count) break; }
       else for (let turn = 0, at = 0; at < count; turn += 1) { at = Math.min(count, turn % 2 === 0 ? (turn / 2) * 2 * frames + frames + 1 : ((turn + 1) / 2) * 2 * frames); ends.push(at); }

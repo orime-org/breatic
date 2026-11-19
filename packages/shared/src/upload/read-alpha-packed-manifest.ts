@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Read stored ledger JSON and hand it back only when every byte is the one
- * its receipt measured (inner#1306). Which receipt belongs to which source,
- * and who may read it, is the caller's to have settled first.
+ * Read an alpha-packed version's manifest and hand it back only when every byte is the one its receipt measured
+ * (inner#1306; frames-split design §3.5 alpha manifest row). Which version belongs to which source, and who may read it,
+ * is the caller's to have settled first.
  */
 
 import { MAX_TIMER_MS } from '@shared/http/constants.js';
@@ -12,9 +12,12 @@ import { assertBeforeDeadline, untilDeadline } from '@shared/http/deadline.js';
 import { readBytesWithin } from '@shared/http/read-within.js';
 import { httpRequest } from '@shared/http/request.js';
 import { reduceMediaType } from '@shared/upload/media-type.js';
+import {
+  alphaPackedManifestMatchesVersion, alphaPackedManifestSchema, type AlphaPackedManifest, type VideoPresentationVersion,
+} from '@shared/upload/video-presentation-version.js';
 
-/** Why a stored companion was not handed back. */
-export class VideoSourceLedgerReadRefused extends Error {
+/** Why a stored presentation object was not handed back. */
+export class VideoPresentationReadRefused extends Error {
   /** Which check refused it. */
   readonly reason: 'receipt' | 'limits' | 'over_limit' | 'status' | 'content_type' | 'size' | 'digest' | 'content';
 
@@ -22,9 +25,9 @@ export class VideoSourceLedgerReadRefused extends Error {
    * Build one.
    * @param reason - Which check refused it.
    */
-  constructor(reason: VideoSourceLedgerReadRefused['reason']) {
-    super(`source ledger read refused: ${reason}`);
-    this.name = 'VideoSourceLedgerReadRefused';
+  constructor(reason: VideoPresentationReadRefused['reason']) {
+    super(`presentation read refused: ${reason}`);
+    this.name = 'VideoPresentationReadRefused';
     this.reason = reason;
   }
 }
@@ -60,13 +63,13 @@ async function drop(res: Response): Promise<void> {
  * @param options.deadlineAt - The absolute read deadline in epoch milliseconds.
  * @param options.signal - The caller's cancellation lifetime.
  * @returns Complete decoded JSON, never a partial body.
- * @throws {VideoSourceLedgerReadRefused} When response measurements or JSON differ.
+ * @throws {VideoPresentationReadRefused} When response measurements or JSON differ.
  * @throws {DeadlinePassed} When the absolute deadline expires.
  * @throws {BodyTooLarge} When the body exceeds the measured size.
  * @throws {EmptyBody} When no body exists.
  * @throws {Error} When transport fails or the caller cancels.
  */
-export async function readMeasuredVideoJson(
+async function readMeasuredVideoJson(
   measured: { url: string; size: number; sha256: string; contentType: string },
   options: { deadlineAt: number; signal?: AbortSignal },
 ): Promise<unknown> {
@@ -77,7 +80,7 @@ export async function readMeasuredVideoJson(
   const res = await httpRequest(measured.url, { method: 'GET' }, { replaySafe: true, timeoutMs: until.timeoutMs, signal: bound });
   if (!res.ok) {
     await drop(res);
-    throw new VideoSourceLedgerReadRefused('status');
+    throw new VideoPresentationReadRefused('status');
   }
   // The headers spent part of the one deadline; the body gets what is left,
   // never a fresh budget.
@@ -90,25 +93,49 @@ export async function readMeasuredVideoJson(
   }
   if (reduceMediaType(res.headers.get('content-type')) !== measured.contentType) {
     await drop(res);
-    throw new VideoSourceLedgerReadRefused('content_type');
+    throw new VideoPresentationReadRefused('content_type');
   }
 
   // The receipt's size already passed the policy, so it is the tighter cap.
   // Content-Length is not consulted: only the bytes that arrive count.
   const bytes = await readBytesWithin(res, Math.min(deadlineAt - Date.now(), MAX_TIMER_MS), measured.size, bound);
-  if (bytes.byteLength !== measured.size) throw new VideoSourceLedgerReadRefused('size');
+  if (bytes.byteLength !== measured.size) throw new VideoPresentationReadRefused('size');
   const digest = await digestOf(bytes);
   signal?.throwIfAborted();
   assertBeforeDeadline(deadlineAt);
-  if (digest !== measured.sha256) throw new VideoSourceLedgerReadRefused('digest');
+  if (digest !== measured.sha256) throw new VideoPresentationReadRefused('digest');
 
   let value: unknown;
   try {
     value = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes));
   } catch {
-    throw new VideoSourceLedgerReadRefused('content');
+    throw new VideoPresentationReadRefused('content');
   }
   signal?.throwIfAborted();
   assertBeforeDeadline(deadlineAt);
   return value;
+}
+
+/**
+ * Read the manifest an alpha-packed version's receipt measures (design §3.5 alpha manifest row, §7.8): the bytes must
+ * match the receipt's size and SHA-256, parse as the strict manifest and belong to this version.
+ * @param version - The selected alpha-packed version.
+ * @param options - One absolute deadline and optional caller cancellation.
+ * @param options.deadlineAt - The absolute read deadline in epoch milliseconds.
+ * @param options.signal - The caller's cancellation lifetime.
+ * @returns The validated manifest.
+ * @throws {VideoPresentationReadRefused} When the version is not alpha-packed or the manifest differs from it.
+ * @throws {DeadlinePassed} When the absolute deadline expires.
+ * @throws {BodyTooLarge} When more bytes arrive than the receipt measured.
+ * @throws {EmptyBody} When the response has no body.
+ * @throws {Error} When transport fails or the caller cancels.
+ */
+export async function readAlphaPackedManifest(version: VideoPresentationVersion, options: { deadlineAt: number; signal?: AbortSignal }): Promise<AlphaPackedManifest> {
+  if (version.playback.kind !== 'alpha-packed') throw new VideoPresentationReadRefused('receipt');
+  const value = await readMeasuredVideoJson(version.playback.manifest, options);
+  const parsed = alphaPackedManifestSchema.safeParse(value);
+  options.signal?.throwIfAborted();
+  assertBeforeDeadline(options.deadlineAt);
+  if (!parsed.success || !alphaPackedManifestMatchesVersion(parsed.data, version)) throw new VideoPresentationReadRefused('content');
+  return parsed.data;
 }

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The frame-grid rate rule and the probe facts read beside it (inner#1306 frames-split design §4.1 帧率 row, §4.2,
- * §5.4 估算 row, §3.2 item 7). Pure functions over ffprobe output, written from the behaviour the design describes.
+ * The frame-grid rate rule and the probe facts read beside it (inner#1306 frames-split design §4.1 frame rate row, §4.2,
+ * §5.4 estimate row, §3.2 item 7). Pure functions over ffprobe output, written from the behaviour the design describes.
  */
 
 /** A frame rate (or any positive rational, such as ticks per second) in lowest terms. */
@@ -40,7 +40,7 @@ export interface FrameGridRate {
   scanReason: FrameGridScanReason | null;
 }
 
-/** The closed source decode-rate keys (§5.4 估算 row). */
+/** The closed source decode-rate keys (§5.4 estimate row). */
 export const SOURCE_DECODE_KEYS = [
   "sdr_8bit", "sdr_10bit", "sdr_12bit", "sdr_alpha_layer", "sdr_prores", "sdr_dnx", "sdr_av1_8bit", "sdr_av1_10bit",
   "sdr_av1_12bit", "sdr_jpeg2000", "sdr_ffv1", "sdr_png", "sdr_other",
@@ -396,7 +396,7 @@ function scanEstimate(
 }
 
 /**
- * Chooses the frame grid's rate (§4.1 帧率 row): the normalised `r_frame_rate` unless a scan condition holds, else the
+ * Chooses the frame grid's rate (§4.1 frame rate row): the normalised `r_frame_rate` unless a scan condition holds, else the
  * packet-scan estimate; fewer than two distinct packet times give 25.
  * @param input - The probe facts.
  * @returns The rate, the deciding step and the scan condition.
@@ -474,7 +474,7 @@ const OWN_KEY_CODECS: ReadonlyMap<string, SourceDecodeKey> = new Map([
 ]);
 
 /**
- * The source decode-rate key (§5.4 估算 row): codec first, then bit depth; an unlisted codec, or a depth-keyed codec
+ * The source decode-rate key (§5.4 estimate row): codec first, then bit depth; an unlisted codec, or a depth-keyed codec
  * over 12 bits, takes the key of smallest value.
  * @param source - Codec, bit depth and transparency classification of the original.
  * @param rates - The decode rates per key, to find the slowest.

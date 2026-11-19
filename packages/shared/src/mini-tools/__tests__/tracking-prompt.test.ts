@@ -13,7 +13,7 @@ const PROFILE = { id: "sam3-video-rle", version: "wavespeed-ai/sam3-video-rle", 
  */
 function frozen(trackingPrompt: string): unknown {
   const input = projectMiniToolAnalysisInput({ kind: "tracked_mask", source: { canonicalURL: "https://media.example.test/source.mp4" }, profile: PROFILE,
-    params: { range: { start: 0, end: 3 }, anchor: { frameIndex: 0, pts: 0 }, region: { box: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, points: [] }, trackingPrompt } });
+    params: { range: { start: 0, end: 3 }, anchor: { frameIndex: 0 }, region: { box: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, points: [] }, trackingPrompt } });
   return input.kind === "tracked_mask" ? input.trackingPrompt : null;
 }
 

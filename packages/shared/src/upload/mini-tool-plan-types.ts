@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import type { LipsyncTimeline } from "@shared/mini-tools/lipsync-timeline.js";
-import type { VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
+import type { EditFileTier } from "@shared/mini-tools/video-encode-plan.js";
+import type { FrameRate } from "@shared/upload/frame-grid-rate.js";
+import type { SourceKeyframeStats } from "@shared/upload/frame-grid.js";
 
 /** Finite JSON is validated at admission; the container consumes only owned data types. */
 type PlanJsonValue = string | number | boolean | null | PlanJsonValue[] | { [key: string]: PlanJsonValue };
@@ -20,25 +22,16 @@ export interface MiniToolPlanPixelRect { x: number; y: number; width: number; he
 /** The original display geometry that owns a detector's saved pixel rectangle. */
 export interface MiniToolPlanFrameCrop { sourceWidth: number; sourceHeight: number; rect: MiniToolPlanPixelRect }
 
-/** An exact reduced rational time or rate. */
-export interface MiniToolPlanExact { numerator: string; denominator: string }
-/** An interval of exact times. */
+/** An exact rational time in seconds or a rate, of safe integers (the frame-rate shape, frames-split §4.1). */
+export type MiniToolPlanExact = FrameRate;
+/** An interval of exact times in grid seconds. */
 export interface MiniToolPlanInterval { start: MiniToolPlanExact; end: MiniToolPlanExact }
-/** One edit of the audio track: media [sourceStart, sourceEnd) shown from presentationStart at rate. */
-export interface MiniToolPlanEditSpan { sourceStart: MiniToolPlanExact; sourceEnd: MiniToolPlanExact; presentationStart: MiniToolPlanExact; rate: MiniToolPlanExact }
-/**
- * The audio a recipe carries (§91 D3b-11): its presentation interval, the plan's origin and audio spans; with spans the
- * media samples are placed by them, without (no audio edit) presentation time is movie time less the origin.
- */
-export interface MiniToolPlanAudio extends MiniToolPlanInterval { origin: MiniToolPlanExact; spans: MiniToolPlanEditSpan[] | null }
-/**
- * One presentation entry of a window (§7.17): a source clip span, decoded from its keyframe at `decodeStart` and shown from
- * `clipStart` over its presentation interval at `rate`, the last frame held to `displayEnd`; or a derived-empty frame. On an
- * output grid, `conform` is the exact frame grid in source time the stored frame times of a rounding clock snap to.
- */
-export type MiniToolPlanEntry =
-  | { kind: "source"; decodeStart: MiniToolPlanExact; clipStart: MiniToolPlanExact; displayStart: MiniToolPlanExact; displayEnd: MiniToolPlanExact; rate: MiniToolPlanExact; conform?: { origin: MiniToolPlanExact; period: MiniToolPlanExact } }
-  | { kind: "empty"; fill: "black" | "transparent"; window: MiniToolPlanInterval };
+/** A recipe's frame grid (§4.1, §7.17): the rate, the grid start in source seconds, the slots and the real video slots V. */
+export interface MiniToolPlanGrid { fps: FrameRate; gridStart: MiniToolPlanExact; frameCount: number; realFrameCount: number }
+/** A recipe's tool source (§7.16): the original with its keyframe statistics, or the edit-friendly file. */
+export type MiniToolPlanToolSource = { kind: "original"; keyframes: SourceKeyframeStats } | { kind: "edit" };
+/** A half-open range of grid frames [start, end). */
+export interface MiniToolPlanFrames { start: number; end: number }
 /** The carrier an encode writes (§91 D-2): even coded size, where the picture sits, the plan matrix and conversion. */
 export interface MiniToolPlanTarget {
   width: number;
@@ -53,12 +46,12 @@ export interface MiniToolPlanTarget {
   /** A split output's container and codec (§91 D4-4); a carrier and a model input have none. */
   format?: "mp4-h264" | "webm-vp9";
 }
-/** A presentation window's frames, on its own clock of `1/timescale` from 0. */
+/** A window of grid frames read from a tool source by §7.16, written to `target`. */
 interface MiniToolPlanWindowRecipe {
   inputId: string;
-  window: { start: number; end: number };
-  timescale: number;
-  entries: MiniToolPlanEntry[];
+  grid: MiniToolPlanGrid;
+  source: MiniToolPlanToolSource;
+  frames: MiniToolPlanFrames;
   target: MiniToolPlanTarget;
 }
 
@@ -72,28 +65,38 @@ export interface MiniToolPlanFrameTarget {
   alpha: "none" | "straight";
 }
 
-/** A scene-cut entry with the presentation ordinal of its first frame (§91 D4-5). */
-export type MiniToolPlanPlacedEntry = MiniToolPlanEntry & { ordinalOffset: number };
 /** An analysis picture's target: display geometry and the plan's colour conversion. */
 export interface MiniToolPlanAnalysisTarget { width: number; height: number; colorMatrix: string; toneMap: "none" | "sdr-bt709" }
 
-/** Media recipes shared with a container that loads no validation libraries. */
+/** The explicit colour inputs of an edit encode (§4.3 colour/HDR/bit depth row): the plan matrix and the probed facts. */
+export interface MiniToolPlanColorInputs { matrix: string; transfer: string | null; primaries: string | null; range: "tv" | "pc"; chromaLocation: string }
+/** The grid one recipe reads a still from: a grid frame of the tool source. */
+interface MiniToolPlanStillRecipe { inputId: string; grid: MiniToolPlanGrid; source: MiniToolPlanToolSource; frameIndex: number }
+/**
+ * Audio of a single-source output (§4.4): true reads the original's audio aligned to the grid start over the frames;
+ * `audioInputId` names the original when the video comes from the edit file.
+ */
+interface MiniToolPlanAudioRef { audio: boolean; audioInputId?: string }
+
+/** Media recipes shared with a container that loads no validation libraries; every time is grid time (§7.17). */
 export type MiniToolPlanRecipe =
-  // The frame one full-ledger entry presents (§7.17 frame row), optionally cropped in its display geometry.
-  | { kind: "frame"; inputId: string; entry: MiniToolPlanEntry; target: MiniToolPlanFrameTarget; crop?: MiniToolPlanFrameCrop }
-  // The split segment, the people anchor and the scanned scene window on full-ledger entries (§91 D4-4, D4-5).
-  | ({ kind: "segment"; audio: MiniToolPlanAudio | null } & MiniToolPlanWindowRecipe)
-  | { kind: "people"; inputId: string; entry: MiniToolPlanEntry; target: MiniToolPlanFrameTarget; profile: MiniToolPlanDetectorProfile }
-  | { kind: "scene_cuts"; inputId: string; window: { start: number; end: number }; timescale: number; profile: MiniToolPlanDetectorProfile;
-    entries: MiniToolPlanPlacedEntry[]; target: MiniToolPlanAnalysisTarget }
-  /** The video is packet-copied; the audio is copied, encoded to AAC over the stitch's audio entries, or absent (§7.17). */
-  | { kind: "copy_carrier"; inputId: string; colorMatrix: string; origin: MiniToolPlanExact; audio: { kind: "copy" } | ({ kind: "encode" } & MiniToolPlanAudio) | null }
-  // A transition chunk carries the profile and the output frames it covers on the profile's grid, both or neither.
-  | ({ kind: "chunk_encode"; profile?: MiniToolPlanTransitionProfile; frames?: { start: number; end: number } } & MiniToolPlanWindowRecipe)
+  // One grid frame (§7.17 frame row), optionally cropped in its display geometry (the video focus crop, §5.5).
+  | ({ kind: "frame"; target: MiniToolPlanFrameTarget; crop?: MiniToolPlanFrameCrop } & MiniToolPlanStillRecipe)
+  // The split segment over grid frames (§7.17 segment row).
+  | ({ kind: "segment" } & MiniToolPlanWindowRecipe & MiniToolPlanAudioRef)
+  | ({ kind: "people"; target: MiniToolPlanFrameTarget; profile: MiniToolPlanDetectorProfile } & MiniToolPlanStillRecipe)
+  | { kind: "scene_cuts"; inputId: string; grid: MiniToolPlanGrid; source: MiniToolPlanToolSource; frames: MiniToolPlanFrames; profile: MiniToolPlanDetectorProfile; target: MiniToolPlanAnalysisTarget }
+  // The decode-only count (§4.1 frame count row, §7.17 grid_count): no object is written.
+  | { kind: "grid_count"; inputId: string; gridStart: MiniToolPlanExact; fps: FrameRate; gridEnd: MiniToolPlanExact | null }
+  // One chunk of the edit-friendly file (§4.2), tone mapped once for an HDR source.
+  | MiniToolPlanEditEncode
+  // A transition chunk carries the profile and where the clip sits on the output grid, both or neither.
+  | ({ kind: "chunk_encode"; profile?: MiniToolPlanTransitionProfile; placement?: MiniToolPlanClipPlacement } & MiniToolPlanWindowRecipe)
   | MiniToolPlanStitch
+  | MiniToolPlanEditStitch
   | MiniToolPlanTransitionStitch
-  // `order` plays the window backwards for a reversed tracking clip; `grid` times the frames for the erase model (§10.2, §10.4).
-  | ({ kind: "prepare_model_input"; audio: MiniToolPlanAudio | null; order?: "forward" | "reverse"; grid?: MiniToolPlanModelGrid } & MiniToolPlanWindowRecipe)
+  // `order` plays the window backwards for a reversed tracking clip; `model` times the frames for the erase model (§10.2, §10.4).
+  | ({ kind: "prepare_model_input"; order?: "forward" | "reverse"; model?: MiniToolPlanModelGrid } & MiniToolPlanWindowRecipe & MiniToolPlanAudioRef)
   | MiniToolPlanTransitionWindow
   | MiniToolPlanEraseComposite
   | MiniToolPlanExpandComposite
@@ -107,11 +110,23 @@ export type MiniToolPlanRecipe =
   | MiniToolPlanLipsyncStem
   | MiniToolPlanLipsyncComposite;
 
+/** One edit-file chunk (§4.2, §7.17 edit_encode row): its tier and encode settings, the explicit colour inputs and the tone map. */
+export interface MiniToolPlanEditEncode {
+  kind: "edit_encode"; inputId: string; grid: MiniToolPlanGrid; source: MiniToolPlanToolSource; frames: MiniToolPlanFrames;
+  edit: { profile: EditFileTier; crf: number; preset: MiniToolPlanTarget["preset"] }; color: MiniToolPlanColorInputs; toneMap: "none" | "sdr-bt709";
+}
+/** A chunk joined by stream copy: its object and the grid frames it holds, checked against them (§5.4 chunk timing row). */
+export interface MiniToolPlanChunkRef { inputId: string; frames: MiniToolPlanFrames }
+/** The edit file's chunks joined, no audio (§7.17 stitch row, edit_stitch stage). */
+export interface MiniToolPlanEditStitch { kind: "stitch"; chunks: MiniToolPlanChunkRef[]; grid: MiniToolPlanGrid; edit: { profile: EditFileTier } }
+/** Where a transition clip sits on the output grid: its first output frame and its trimmed in-frame there (§97 D15-3). */
+export interface MiniToolPlanClipPlacement { startFrame: number; inFrame: number }
+
 /** Every person's stem summed sample by sample over the result, from its start (§7.17 stitch row for lip-sync, §97 D22-3). */
 export interface MiniToolPlanStemMix { kind: "mix"; inputs: string[] }
-/** Chunks joined by stream copy, the source's interval audio or the lip-sync stems' sum encoded once (§5.4). */
+/** Chunks joined by stream copy with the original's audio over the grid or the lip-sync stems' sum encoded once (§5.4). */
 export interface MiniToolPlanStitch {
-  kind: "stitch"; inputId: string; chunks: { inputId: string; duration: MiniToolPlanExact }[]; audio: MiniToolPlanAudio | MiniToolPlanStemMix | null; target: MiniToolPlanTarget;
+  kind: "stitch"; inputId: string; grid: MiniToolPlanGrid; chunks: MiniToolPlanChunkRef[]; audio: boolean | MiniToolPlanStemMix; target: MiniToolPlanTarget;
 }
 /** The one output profile both clips of a transition are encoded to (frames-split §7.17, §97 D15-5). */
 export interface MiniToolPlanTransitionProfile {
@@ -119,24 +134,29 @@ export interface MiniToolPlanTransitionProfile {
   color: { matrix: "bt709"; range: "tv"; primaries: "bt709"; transfer: "bt709" }; codec: "h264" | "vp9";
   encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; alpha: boolean;
 }
+/** One clip of a transition stitch: its original, grid, placement and trimmed output frames, and whether it has audio. */
+export interface MiniToolPlanStitchClip { inputId: string; grid: MiniToolPlanGrid; placement: MiniToolPlanClipPlacement; frameCount: number; audio: boolean }
 /** A transition's chunks joined in timeline order, each clip's audio placed over its span and crossfaded over the window (§97 D15-7). */
 export interface MiniToolPlanTransitionStitch {
-  kind: "stitch"; chunks: { inputId: string; duration: MiniToolPlanExact }[];
-  /** Each clip's audio over its span, null for a clip without audio (silence over its span). */
-  clips: [{ inputId: string; audio: MiniToolPlanAudio | null }, { inputId: string; audio: MiniToolPlanAudio | null }];
+  kind: "stitch"; chunks: MiniToolPlanChunkRef[];
+  /** Each clip's original, grid and placement; `audio` false for a clip without audio (silence over its span). */
+  clips: [MiniToolPlanStitchClip, MiniToolPlanStitchClip];
   /** The overlap window the two audio tracks cross over, null for a Cut. */
   crossfade: { startFrame: number; frameCount: number } | null;
   profile: MiniToolPlanTransitionProfile;
 }
 /**
- * One clip of a transition window: its entries, the matrix and tone mapping of its own plan (§97 D23-4), and where it sits on
- * the output frame (`transitionFitRect`).
+ * One clip of a transition window: its tool source and grid, where it sits on the output grid, the matrix and tone mapping
+ * of its own plan (§97 D23-4), and where it sits on the output frame (`transitionFitRect`).
  */
-export interface MiniToolPlanWindowClip { inputId: string; entries: MiniToolPlanEntry[]; colorMatrix: string; toneMap: "none" | "sdr-bt709"; fit: MiniToolPlanPixelRect }
-/** One chunk `frames` of a transition's overlap window, composed from both clips' entries (§97 D15-6). */
+export interface MiniToolPlanWindowClip {
+  inputId: string; grid: MiniToolPlanGrid; source: MiniToolPlanToolSource; placement: MiniToolPlanClipPlacement;
+  colorMatrix: string; toneMap: "none" | "sdr-bt709"; fit: MiniToolPlanPixelRect;
+}
+/** One chunk `frames` of a transition's overlap window, composed from both clips' grid frames (§97 D15-6). */
 export interface MiniToolPlanTransitionWindow {
   kind: "transition_window";
-  /** Each clip's entries and its own plan's conversion, applied before the blend. */
+  /** Each clip's grid frames and its own plan's conversion, applied before the blend. */
   clips: [MiniToolPlanWindowClip, MiniToolPlanWindowClip];
   frames: { start: number; end: number };
   window: { startFrame: number; frameCount: number };
@@ -145,15 +165,15 @@ export interface MiniToolPlanTransitionWindow {
 }
 /** The erase model's frame grid (execution design §10.4): frame for frame at `rate`, or resampled on a `rate` grid. */
 export interface MiniToolPlanModelGrid { mode: "frames" | "resample"; rate: number; frameCount: number }
-/** A range of presentation frame ordinals by its first frame and count. */
+/** A range of grid frames by its first frame and count. */
 export interface MiniToolPlanFrameRange { startFrame: number; frameCount: number }
 /**
  * An erase composite chunk (execution design §10.4 composite row): each range frame shows its grid slot's result frame through
- * the RLE mask, dilated and feathered in source pixels; `table` places the chunk's first frame in the range.
+ * the RLE mask, dilated and feathered in source pixels; the chunk's frames lie in the range on the grid.
  */
 export type MiniToolPlanEraseComposite = {
-  kind: "model_composite"; mode: "erase"; result: string; rle: string; table: VideoPresentationTable; range: MiniToolPlanFrameRange;
-  grid: MiniToolPlanModelGrid; matte: { dilate: number; feather: number };
+  kind: "model_composite"; mode: "erase"; result: string; rle: string; range: MiniToolPlanFrameRange;
+  model: MiniToolPlanModelGrid; matte: { dilate: number; feather: number };
   /** The RLE's frame size: the tracking clips' coded size, which can differ from this chunk's target by the even rounding. */
   rleSize: { width: number; height: number };
 } & MiniToolPlanWindowRecipe;
@@ -161,19 +181,19 @@ export type MiniToolPlanEraseComposite = {
 export interface MiniToolPlanRleJoin { kind: "rle_join"; inputs: { inputId: string; order: "forward" | "reverse"; frameCount: number }[]; width: number; height: number }
 /** The erase model's mask video: one lossless full-range frame per grid slot, white where its RLE frame has foreground (§10.4). */
 export interface MiniToolPlanBriaMask {
-  kind: "bria_mask"; inputId: string; table: VideoPresentationTable; range: MiniToolPlanFrameRange; grid: MiniToolPlanModelGrid; target: { width: number; height: number };
+  kind: "bria_mask"; inputId: string; fps: FrameRate; range: MiniToolPlanFrameRange; model: MiniToolPlanModelGrid; target: { width: number; height: number };
 }
 /** The expand model's frame grid for one window: `frameCount` frames at `fps` from the span's start (§10.5). */
 export interface MiniToolPlanWindowGrid { fps: number; frameCount: number }
-/** One expand window's model input (§10.5): each grid slot's covering frame scaled into `sourceRoi` over `fill`, lossless. */
+/** One expand window's model input (§10.5): each model slot's covering grid frame scaled into `sourceRoi` over `fill`, lossless. */
 export type MiniToolPlanModelWindow = {
-  kind: "model_window"; grid: MiniToolPlanWindowGrid; frame: { width: number; height: number }; sourceRoi: MiniToolPlanPixelRect;
+  kind: "model_window"; model: MiniToolPlanWindowGrid; frame: { width: number; height: number }; sourceRoi: MiniToolPlanPixelRect;
   fill: [number, number, number]; span: MiniToolPlanInterval;
 } & MiniToolPlanWindowRecipe;
 /** One expand window's mask: black inside `sourceRoi`, white elsewhere, lossless full range (§10.5). */
-export interface MiniToolPlanModelWindowMask { kind: "model_window_mask"; grid: MiniToolPlanWindowGrid; frame: { width: number; height: number }; sourceRoi: MiniToolPlanPixelRect; span: MiniToolPlanInterval }
-/** The PNG of a video's frame closest to `time`, the earlier on a tie (§10.5 condition step). */
-export interface MiniToolPlanFrameAt { kind: "frame_at"; inputId: string; time: MiniToolPlanExact; target: { width: number; height: number } }
+export interface MiniToolPlanModelWindowMask { kind: "model_window_mask"; model: MiniToolPlanWindowGrid; frame: { width: number; height: number }; sourceRoi: MiniToolPlanPixelRect; span: MiniToolPlanInterval }
+/** The PNG of one grid frame of a video (§10.5 condition step). */
+export type MiniToolPlanFrameAt = { kind: "frame_at"; target: { width: number; height: number } } & MiniToolPlanStillRecipe;
 /** An expand composite chunk: the background windows, in order, that cover it (§97 D15-8, execution design §8.1). */
 export type MiniToolPlanExpandComposite = {
   kind: "model_composite"; mode: "expand";
@@ -185,15 +205,15 @@ export type MiniToolPlanExpandComposite = {
 export interface MiniToolPlanLipsyncFaces { kind: "lipsync_faces"; inputId: string; track: string; profile: MiniToolPlanDetectorProfile }
 /** One person's face clip on the result timeline (§7.17 lipsync_clip row): each result frame's source face, cropped and fitted. */
 export interface MiniToolPlanLipsyncClip {
-  kind: "lipsync_clip"; inputId: string; faces: string; track: string; cropSize: number; timeline: LipsyncTimeline; table: VideoPresentationTable;
+  kind: "lipsync_clip"; inputId: string; faces: string; track: string; cropSize: number; timeline: LipsyncTimeline; grid: MiniToolPlanGrid;
   /** The plan's frozen container encode. */
   encode: { crf: number; preset: MiniToolPlanTarget["preset"] };
 }
 /** One person's dialogue stem (§7.17 lipsync_stem row): each row placed at its start and summed, `duration` long. */
 export interface MiniToolPlanLipsyncStem { kind: "lipsync_stem"; rows: { inputId: string; startTime: MiniToolPlanExact }[]; duration: MiniToolPlanExact }
-/** One chunk of the lip-sync composite on the result clock (§7.17 lipsync_composite row); `window` holds result-frame ordinals. */
+/** One chunk of the lip-sync composite on the result clock (§7.17 lipsync_composite row); `frames` holds result frames. */
 export type MiniToolPlanLipsyncComposite = {
-  kind: "lipsync_composite"; timeline: LipsyncTimeline; table: VideoPresentationTable;
+  kind: "lipsync_composite"; timeline: LipsyncTimeline;
   persons: { result: string; faces: string; track: string; cropSize: number }[];
   /** The prepared video's coded size and picture rectangle: every track and face table is in its pixels. */
   prepared: { width: number; height: number; displayRect: MiniToolPlanPixelRect | null };
@@ -212,8 +232,9 @@ export type MiniToolPlanLipsyncComposite = {
  */
 export function miniToolPlanRecipeInputs(recipe: MiniToolPlanRecipe): string[] {
   switch (recipe.kind) {
-    case "stitch": return [...("clips" in recipe ? recipe.clips.map((clip) => clip.inputId) : [recipe.inputId, ...(recipe.audio !== null && "kind" in recipe.audio ? recipe.audio.inputs : [])]),
-      ...recipe.chunks.map((chunk) => chunk.inputId)];
+    case "stitch": return [...("clips" in recipe ? recipe.clips.map((clip) => clip.inputId)
+      : "edit" in recipe ? [] : [recipe.inputId, ...(typeof recipe.audio === "object" ? recipe.audio.inputs : [])]), ...recipe.chunks.map((chunk) => chunk.inputId)];
+    case "segment": case "prepare_model_input": return [recipe.inputId, ...(recipe.audioInputId === undefined ? [] : [recipe.audioInputId])];
     case "transition_window": return recipe.clips.map((clip) => clip.inputId);
     case "model_composite": return [recipe.inputId, ...(recipe.mode === "erase" ? [recipe.result, recipe.rle] : recipe.backgrounds.map((background) => background.inputId))];
     case "rle_join": return recipe.inputs.map((input) => input.inputId);

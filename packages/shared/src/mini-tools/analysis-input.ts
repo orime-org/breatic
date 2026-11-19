@@ -12,13 +12,12 @@ const profileSchema = z.strictObject({
   params: z.record(z.string(), z.json()),
 });
 
-export const miniToolAnchorSchema = z.strictObject({
-  frameIndex: z.number().int().nonnegative(),
-  pts: z.number().nonnegative(),
-});
+const gridFrame = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+/** An anchor is its grid frame number (frames-split §10.12 analysis-input.ts row). */
+export const miniToolAnchorSchema = z.strictObject({ frameIndex: gridFrame });
 
-const rangeSchema = z.strictObject({ start: z.number().nonnegative(), end: z.number().positive() })
-  .refine((range) => range.end > range.start);
+/** A range of grid frames [start, end). */
+const rangeSchema = z.strictObject({ start: gridFrame, end: gridFrame }).refine((range) => range.end > range.start);
 const coordinateSchema = z.number().min(0).max(1);
 const boxSchema = z.strictObject({
   x: coordinateSchema, y: coordinateSchema,

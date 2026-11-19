@@ -159,6 +159,9 @@ export interface AttachRef {
   uploadedAt: string;
 }
 
+/** What collab did with one video focus crop's result (frames-split §5.5). */
+export type FocusCropOutcome = 'added' | 'refused';
+
 /**
  * One focus crop stored in a node's `focusImages` Y.Array (#1782 focus
  * slice) — a standalone image cropped out of a source node's content at
@@ -169,9 +172,10 @@ export interface AttachRef {
  * the node it was cropped from — deleting, renaming, or regenerating the
  * source never changes an existing focus image. `name` is a snapshot of
  * the source node's display name at crop time and never follows renames.
- * Frontend-owned; the backend never reads or writes this field — focus
- * images only reach a generate request when the user `@`-mentions them
- * (same explicit-selection rule as node references).
+ * The front end writes image crops; a video focus crop is appended by
+ * collab from `focusImageAppend` (frames-split §5.5 delivery row). Focus images
+ * only reach a generate request when the user `@`-mentions them (same
+ * explicit-selection rule as node references).
  */
 export interface FocusImage {
   /** Stable id (frontend-generated UUID v4); `@` mentions reference it. */
@@ -583,6 +587,11 @@ export interface CanvasNodeFields {
      * the copy semantics. Empty / absent = none created.
      */
     focusImages?: FocusImage[];
+    /**
+     * The video focus crops collab already handled, by taskId (frames-split §5.5 delivery row): `added` or `refused` when the
+     * images were full; at most `MAX_FOCUS_ENTRIES`, the oldest dropped. Task state, not content: never copied.
+     */
+    focusCropOutcomes?: Record<string, FocusCropOutcome>;
 
     // ─── Annotation (sticky) fields ─────────────────────────
     /**
@@ -690,6 +699,11 @@ export interface NodeTaskCountsEvent {
   result?: NodeTaskResult;
   /** Stable business identity of a planned media result; never a Redis stream id. */
   resultOrigin?: MiniToolResultOrigin;
+  /**
+   * A video focus crop's image to append to the panel node's `focusImages` (frames-split §5.5 delivery row): present only when
+   * the settlement landed; `id` is the taskId, and collab skips a taskId `focusCropOutcomes` already records.
+   */
+  focusImageAppend?: FocusImage;
 }
 
 /** Single union for forward-compat. */

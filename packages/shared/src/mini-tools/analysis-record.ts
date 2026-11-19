@@ -7,10 +7,11 @@ import { canonicalMiniToolValue } from "@shared/mini-tools/canonical-value.js";
 import { videoToolAnalysisRefSchema } from "@shared/mini-tools/video-draft.js";
 
 const hashSchema = z.string().regex(/^[a-f0-9]{64}$/);
-const timeBaseSchema = z.strictObject({ numerator: z.number().int().positive(), denominator: z.number().int().positive() });
+// Results are on the grid (frames-split §10.12 analysis-record.ts row): grid frame numbers at the grid fps.
+const fpsSchema = z.strictObject({ numerator: z.number().int().positive(), denominator: z.number().int().positive() });
 const frameMetadataSchema = z.strictObject({
   width: z.number().int().positive(), height: z.number().int().positive(),
-  frameCount: z.number().int().positive(), timeBase: timeBaseSchema,
+  frameCount: z.number().int().positive(), fps: fpsSchema,
 });
 
 /** References to registered bytes; their MIME and media kind retain ingest truth. */
@@ -45,11 +46,10 @@ const personSchema = z.strictObject({
 /** The owned result format of each analysis; no provider result shape is stored. */
 export const miniToolAnalysisResultSchema = z.discriminatedUnion("kind", [
   z.strictObject({ ...identityShape, kind: z.literal("people"), anchor: miniToolAnchorSchema, people: z.array(personSchema) }),
-  z.strictObject({ ...identityShape, kind: z.literal("scene_cuts"), timeBase: timeBaseSchema, frameCount: z.number().int().positive(), cuts: z.array(z.strictObject({ frameIndex: z.number().int().nonnegative(), pts: z.number().nonnegative(), detectionScore: z.number() })) }),
+  z.strictObject({ ...identityShape, kind: z.literal("scene_cuts"), fps: fpsSchema, frameCount: z.number().int().positive(), cuts: z.array(z.strictObject({ frameIndex: z.number().int().nonnegative(), detectionScore: z.number() })) }),
   z.strictObject({
     ...identityShape, kind: z.literal("tracked_mask"), ...frameMetadataSchema.shape,
     anchor: miniToolAnchorSchema, regionFingerprint: hashSchema,
-    sourceFrameMapping: z.array(z.strictObject({ frameIndex: z.number().int().nonnegative(), sourcePts: z.number() })),
     artifactRefs: z.array(miniToolAnalysisArtifactSchema),
   }),
 ]).superRefine((result, ctx) => {
@@ -59,8 +59,6 @@ export const miniToolAnalysisResultSchema = z.discriminatedUnion("kind", [
   if (result.kind === "people" && new Set(result.people.map((person) => person.personId)).size !== result.people.length) ctx.addIssue({ code: "custom", path: ["people"], message: "Candidate person identities must be unique" });
   if (result.kind === "scene_cuts" && result.cuts.some((cut) => cut.frameIndex >= result.frameCount)) ctx.addIssue({ code: "custom", path: ["cuts"], message: "Cut index lies outside the source frame set" });
   if (result.kind === "tracked_mask") {
-    if (result.sourceFrameMapping.length !== result.frameCount) ctx.addIssue({ code: "custom", path: ["sourceFrameMapping"], message: "Every normalized frame requires a source mapping" });
-    if (new Set(result.sourceFrameMapping.map((frame) => frame.frameIndex)).size !== result.frameCount || result.sourceFrameMapping.some((frame) => frame.frameIndex >= result.frameCount)) ctx.addIssue({ code: "custom", path: ["sourceFrameMapping"], message: "Normalized frame indices must form the complete unique frame set" });
     // Execution design §10.3: the joined RLE is the one artifact.
     if (result.artifactRefs.length !== 1 || result.artifactRefs[0]!.role !== "rle") ctx.addIssue({ code: "custom", path: ["artifactRefs"], message: "Expected exactly one rle artifact" });
   }

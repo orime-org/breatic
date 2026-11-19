@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { VideoSourceLedgerProcessLimits } from '@shared/upload/video-source-ledger-types.js';
 import type { MiniToolPlanTarget } from '@shared/upload/mini-tool-plan-types.js';
 
 /** Known registered constraints remain present while other source facts are unknown. */
@@ -21,7 +20,6 @@ export interface VideoPresentation {
 }
 /** Frozen operational and subprocess ceilings for one auxiliary attempt. */
 export interface VideoPresentationProcessLimits {
-  sourceLedger?: VideoSourceLedgerProcessLimits;
   maxSourceBytes: number;
   maxPackedBytes: number;
   crf: number;
