@@ -194,8 +194,6 @@ function Details({ row, open, onOpenChange, unresolvedOnBase, onOpenBase }: Deta
     <PopoverContent side='top' align='end' sideOffset={8} className='flex w-80 flex-col gap-2 p-3 text-xs'>
       <span className='break-words font-medium'>{webAnimationTitle(row, t)}</span>
       <dl className='grid grid-cols-[auto_1fr] gap-x-3 gap-y-1'>
-        <dt className='text-muted-foreground'>{t('spaces.webAnimation.statusLabel')}</dt>
-        <dd>{t(`timeline.webAnimation.status.${row.status}`)}</dd>
         {/* A create or modification is headed by its prompt or instruction already; an export's heading is not its source. */}
         {row.kind === 'web_animation_export' && <>
           <dt className='text-muted-foreground'>{t('spaces.webAnimation.sourceLabel')}</dt>

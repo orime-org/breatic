@@ -3214,7 +3214,6 @@
       "reexport": "Export again",
       "replies": "{count, plural, one {# reply} other {# replies}}",
       "sourceLabel": "Source animation",
-      "statusLabel": "Status",
       "titleModifiedFrom": "Modified from “{base}”: {request}",
       "titleVideo": "Video · {source}",
       "unlistedResult": "Other result",

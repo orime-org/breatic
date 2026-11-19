@@ -1623,7 +1623,7 @@ export function renderProductGuide(): string {
       `On a finished video the bar offers ${quoted(t("spaces.webAnimation.download"))}, ${quoted(t("spaces.webAnimation.placeOnCanvas"))} and ${quoted(t("spaces.webAnimation.viewSource"))}. ` +
       `${quoted(t("spaces.webAnimation.placeOnCanvas"))} lists the Project's canvases (it is unavailable with ${quoted(t("spaces.webAnimation.noCanvas"))} when there are none) and puts the video on the chosen one ` +
       `near the middle of its last view, then says it was put there with a button to view it, ${quoted(t("spaces.webAnimation.viewPlaced"))}, which opens that Canvas with the video selected. ` +
-      `The details button shows the name, ${quoted(t("spaces.webAnimation.statusLabel"))}, the request, the steps, the usage and ${quoted(t("spaces.webAnimation.modifiedFromLabel"))} for a modification ` +
+      `The details button shows the name, the request, the steps, the usage and ${quoted(t("spaces.webAnimation.modifiedFromLabel"))} for a modification ` +
       "(pressing the web animation it names shows that one, at its earliest open annotation when it has any).",
     `${quoted(t("spaces.webAnimation.addAnnotation"))} pauses playback at the current time; click the picture to mark a spot, or just write, then send. ` +
       `The ${quoted(t("spaces.webAnimation.annotations"))} button shows how many are open; its panel lists this Space's annotations grouped by web animation and ordered by time, ` +

@@ -3214,7 +3214,6 @@
       "reexport": "重新匯出",
       "replies": "{count} 則回覆",
       "sourceLabel": "來源動畫",
-      "statusLabel": "狀態",
       "titleModifiedFrom": "修改自「{base}」：{request}",
       "titleVideo": "影片 · {source}",
       "unlistedResult": "其他結果",

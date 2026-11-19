@@ -868,7 +868,7 @@ describe('the result a modification started from', () => {
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', MODIFIED));
     const user = userEvent.setup();
     await user.click(screen.getByTestId('motion-details'));
-    expect(await screen.findByText(t('spaces.webAnimation.statusLabel'))).toBeInTheDocument();
+    expect(await screen.findByText(t('timeline.webAnimation.usageLabel'))).toBeInTheDocument();
     return user;
   }
 
@@ -887,7 +887,7 @@ describe('the result a modification started from', () => {
     expect(await screen.findByTestId('motion-panel-annotations')).toBeInTheDocument();
     expect(screen.getByTestId('motion-bottom-bar')).toHaveTextContent('0:02.0 / 0:04.0');
     expect(within(screen.getByTestId('motion-thread-card')).getByText('Earliest open note')).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText(t('spaces.webAnimation.statusLabel'))).toBeNull());
+    await waitFor(() => expect(screen.queryByText(t('timeline.webAnimation.usageLabel'))).toBeNull());
   });
 
   it('scrolls the panel to the original result\'s earliest open annotation below the fold', async () => {
@@ -904,7 +904,7 @@ describe('the result a modification started from', () => {
     await user.click(await screen.findByRole('button', { name: 'Older logo' }));
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', OLDER));
     expect(screen.queryByTestId('motion-panel-annotations')).toBeNull();
-    await waitFor(() => expect(screen.queryByText(t('spaces.webAnimation.statusLabel'))).toBeNull());
+    await waitFor(() => expect(screen.queryByText(t('timeline.webAnimation.usageLabel'))).toBeNull());
   });
 });
 
@@ -1590,9 +1590,18 @@ describe('the details popover', () => {
     show();
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
     await userEvent.setup().click(screen.getByTestId('motion-details'));
-    await screen.findByText(t('spaces.webAnimation.statusLabel'));
+    await screen.findByText(t('timeline.webAnimation.usageLabel'));
     expect(screen.getAllByText('Newer logo')).toHaveLength(1);
     expect(screen.queryByText(t('timeline.webAnimation.dialog.prompt'))).toBeNull();
+  });
+
+  it('has no Status row, as the preview only holds finished results', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    await userEvent.setup().click(screen.getByTestId('motion-details'));
+    await screen.findByText(t('timeline.webAnimation.usageLabel'));
+    expect(screen.queryByText(t('timeline.webAnimation.status.succeeded'))).toBeNull();
   });
 
   it('keeps an export\'s Source row', async () => {
