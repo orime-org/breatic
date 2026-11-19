@@ -63,6 +63,8 @@ import { DocumentVersionAreaUnavailable } from '@web/spaces/document/DocumentVer
 import { useDocumentFollow } from '@web/spaces/document/use-document-follow';
 import { usePublishTopBlock } from '@web/spaces/document/use-publish-top-block';
 import { captureElement } from '@web/features/view-capture/capture-element';
+import { AgentPresenceContext, agentFocusIn } from '@web/features/agent-presence/agent-focus';
+import { showAgentFocus } from '@web/spaces/document/document-agent-focus';
 import { registerViewCapture } from '@web/features/view-capture/registry';
 import { visibleBlockIds } from '@web/spaces/document/block-scroll';
 import { useFollowStore } from '@web/stores/follow';
@@ -310,6 +312,21 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // What an external agent sees when it asks for the user's screen (#1488
   // §19.1): the body as it stands in its scroller, and the blocks on screen.
   const captureSpaceId = scope?.spaceId ?? null;
+  // The blocks external agents work on here, framed and named (#1488 §19.2).
+  const { agents: projectAgents, labels: agentLabels } = React.useContext(AgentPresenceContext);
+  const agentBlocks = React.useMemo(() => {
+    if (captureSpaceId === null) return [];
+    return [...agentFocusIn(projectAgents, captureSpaceId)].flatMap(([blockId, connections]) =>
+      connections.map((connectionId) => ({ blockId, connectionId, label: agentLabels.get(connectionId) ?? '' })),
+    ).filter((e) => e.label !== '');
+  }, [projectAgents, agentLabels, captureSpaceId]);
+  React.useEffect(() => {
+    const view = handle.editor.prosemirrorView;
+    // `bodyRoot` arrives once the body is mounted, and with it the view.
+    if (view === null || bodyRoot === null) return;
+    showAgentFocus(view, agentBlocks);
+  }, [handle.editor, agentBlocks, bodyRoot]);
+
   React.useEffect(() => {
     if (captureSpaceId === null || viewport === null || bodyRoot === null) return undefined;
     return registerViewCapture(captureSpaceId, async () => {

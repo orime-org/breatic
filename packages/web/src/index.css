@@ -2582,6 +2582,37 @@ body {
     cursor: pointer;
   }
 
+  /* A block an external agent works on (#1488 design 19.2), painted by
+     `document-agent-focus.ts`: a 1px frame in the agent's identity hue and
+     its "connection · owner" name above, shaped like a collaborator's caret
+     label. */
+  .doc-body .doc-agent-focus {
+    position: relative;
+    outline: 1px solid var(--agent-color);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  .doc-body .doc-agent-focus::after {
+    content: attr(data-agent-label);
+    position: absolute;
+    bottom: calc(100% + 2px);
+    left: -3px;
+    z-index: 1;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-radius: 3px 3px 3px 0;
+    padding: 0.1rem 0.3rem;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: normal;
+    white-space: nowrap;
+    color: var(--color-on-palette);
+    background-color: var(--agent-color);
+    pointer-events: none;
+  }
+
   /* A resolved or deleted thread keeps its mark and loses its paint (§9.2, S2).
      The mark is where the highlight comes back from when somebody reopens the
      thread, so it must not be removed; the library paints it itself while its

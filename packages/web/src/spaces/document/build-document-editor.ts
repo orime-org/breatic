@@ -81,6 +81,7 @@ import { documentTrailingPressExtension } from '@web/spaces/document/document-tr
 import { documentLinkEditMarkExtension } from '@web/spaces/document/document-link-edit-mark';
 import { documentDragDropExtension, flyingRowId } from '@web/spaces/document/document-drag-drop';
 import { documentCommentLiveMarkExtension } from '@web/spaces/document/document-comment-mark';
+import { documentAgentFocusExtension } from '@web/spaces/document/document-agent-focus';
 import { withMediaView } from '@web/spaces/document/document-media-blocknote';
 import { documentTableView } from '@web/spaces/document/document-table-nodes';
 import { documentColumnView } from '@web/spaces/document/document-column-view';
@@ -241,6 +242,7 @@ export function buildDocumentEditor(
       documentCommentSelection(),
       commentWiring(options.comments),
       ...(options.comments === undefined ? [] : [documentCommentLiveMarkExtension(options.comments.doc)]),
+      documentAgentFocusExtension(),
       documentCommentPasteExtension(),
       documentCommentDraftRange(),
       documentAiRange(),
