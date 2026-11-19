@@ -105,7 +105,12 @@ export const agentAccessApi = {
     if (upload.image !== undefined) form.append('image', upload.image, 'view');
     if (upload.note !== undefined) form.append('note', upload.note);
     form.append('view', JSON.stringify(upload.view));
-    await apiPost(`/agent/view-captures/${encodeURIComponent(requestId)}`, form);
+    // The instance defaults to JSON, under which axios turns a FormData body
+    // into JSON; declared multipart, it sends the form and lets the browser
+    // write the boundary.
+    await apiPost(`/agent/view-captures/${encodeURIComponent(requestId)}`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
   },
 
   /**
