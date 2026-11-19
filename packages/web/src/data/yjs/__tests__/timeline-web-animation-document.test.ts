@@ -2,12 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Writing web-animation copies and landing receipts into the shared Timeline (inner#1711 design §3.3, §9).
- *
- * `applyTimelineEdit` writes `operationReceipts[actionId]` in the same transaction as the copy, so collab accepts one
- * stored state that holds both; it compares receipts as well as tracks and clips before deciding an edit changes
- * nothing. The receipts root is outside the personal UndoManager: undoing `land_execution` removes only the copy this
- * user wrote, because collab has already admitted the execution on the receipt.
+ * Writing web-animation copies into the shared Timeline (inner#1711 design §3.3, §9; #1490 design §8.2). A copy binds
+ * to a succeeded result's source version; the receipts an older Timeline left in `operationReceipts` stay as they are.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -15,14 +11,11 @@ import * as Y from 'yjs';
 
 import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-document';
 import { evictTimelineEditSession, getTimelineEditSession } from '@web/data/yjs/timeline-edit-session';
-import { FPS, MAIN, OFF, cid, clip, seededDoc, timeline } from '@web/data/yjs/__tests__/timeline-document-fixtures';
-import {
-  EXEC_RUNNING, RESOLUTION, SRC_A, addResult, boundTo, land, waitingFor, webClip,
-} from '@web/data/yjs/__tests__/timeline-web-fixtures';
+import { MAIN, OFF, cid, clip, seededDoc, timeline } from '@web/data/yjs/__tests__/timeline-document-fixtures';
+import { EXEC_RUNNING, RESOLUTION, SRC_A, addResult, boundTo, webClip } from '@web/data/yjs/__tests__/timeline-web-fixtures';
 
 const ACTION = 'a0000000-0000-4000-8000-000000000001';
 const RECEIPT = { executionId: EXEC_RUNNING, inputHash: 'sha256:abc', landedAt: '2026-11-07T08:00:00.000Z' };
-const PLACEHOLDER = { clipId: cid(1), startFrame: 24, newTrackId: 'track-new', extent: { acceptedDurationFrames: 72, fps: FPS } };
 const NAME = 'project-p/timeline-web';
 const docs: Y.Doc[] = [];
 
@@ -62,33 +55,17 @@ afterEach(() => {
   for (const doc of docs.splice(0)) doc.destroy();
 });
 
-describe('applyTimelineEdit with receipts', () => {
-  it('writes a receipt alone, which an edit comparing only tracks and clips would drop as a no-op', () => {
-    const doc = seeded([clip(cid(9), MAIN, 0, 10)]);
-    const result = applyTimelineEdit(doc, land(ACTION, RECEIPT, OFF), 'test', undefined, RESOLUTION);
-    expect(result.ok).toBe(true);
-    expect(readTimelineDocument(doc).operationReceipts).toEqual({ [ACTION]: RECEIPT });
-    expect(doc.share.has('operationReceipts')).toBe(true);
-  });
-
-  it('writes the receipt and its placeholder copy in one update, so one stored state holds both', () => {
+describe('applyTimelineEdit with web-animation copies', () => {
+  it('adds a copy in one update and leaves the receipts an older Timeline wrote', () => {
     const doc = seeded();
+    doc.getMap<unknown>('operationReceipts').set(ACTION, RECEIPT);
     const updates = updatesOf(doc, () => {
-      expect(applyTimelineEdit(doc, land(ACTION, RECEIPT, OFF, PLACEHOLDER), 'test', undefined, RESOLUTION).ok).toBe(true);
+      expect(applyTimelineEdit(doc, addResult(cid(1), SRC_A, 24, 'track-new', OFF), 'test', undefined, RESOLUTION).ok).toBe(true);
     });
     expect(updates).toHaveLength(1);
     const read = readTimelineDocument(doc);
     expect(read.operationReceipts).toEqual({ [ACTION]: RECEIPT });
-    expect(read.clips[cid(1)]).toMatchObject({ kind: 'web-animation', contentBinding: waitingFor(EXEC_RUNNING), startFrame: 24, durationFrames: 72 });
-  });
-
-  it('writes nothing when the same receipt has already landed', () => {
-    const doc = seeded();
-    applyTimelineEdit(doc, land(ACTION, RECEIPT, OFF), 'test', undefined, RESOLUTION);
-    const updates = updatesOf(doc, () => {
-      expect(applyTimelineEdit(doc, land(ACTION, RECEIPT, OFF), 'test', undefined, RESOLUTION).ok).toBe(true);
-    });
-    expect(updates).toEqual([]);
+    expect(read.clips[cid(1)]).toMatchObject({ kind: 'web-animation', contentBinding: boundTo(SRC_A), startFrame: 24 });
   });
 
   it('adds a result as a copy whose content stays out of the document sources', () => {
@@ -106,28 +83,7 @@ describe('applyTimelineEdit with receipts', () => {
   });
 });
 
-describe('personal undo of land_execution', () => {
-  it('removes the copy it added and keeps the receipt', () => {
-    const doc = seeded();
-    const session = getTimelineEditSession(doc, NAME);
-    session.setCanWrite(true);
-    expect(session.edit(land(ACTION, RECEIPT, OFF, PLACEHOLDER)).ok).toBe(true);
-    expect(session.getSnapshot().canUndo).toBe(true);
-    session.undo();
-    const read = readTimelineDocument(doc);
-    expect(read.clips[cid(1)]).toBeUndefined();
-    expect(read.operationReceipts).toEqual({ [ACTION]: RECEIPT });
-  });
-
-  it('makes no undo step for a receipt landed without a copy', () => {
-    const doc = seeded();
-    const session = getTimelineEditSession(doc, NAME);
-    session.setCanWrite(true);
-    expect(session.edit(land(ACTION, RECEIPT, OFF)).ok).toBe(true);
-    expect(session.getSnapshot().canUndo).toBe(false);
-    expect(readTimelineDocument(doc).operationReceipts).toEqual({ [ACTION]: RECEIPT });
-  });
-
+describe('personal undo of web-animation copies', () => {
   it('undoes each addition of the same result on its own, leaving the other copies', () => {
     const doc = seeded();
     const session = getTimelineEditSession(doc, NAME);

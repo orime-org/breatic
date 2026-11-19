@@ -130,11 +130,6 @@ export function webClip(
   };
 }
 
-/** The extent an `add_web_animation` or `land_execution` command carries (design §3.3). */
-export type WebExtent =
-  | { durationFrames: number; fps: { num: number; den: number } }
-  | { acceptedDurationFrames: number; fps: { num: number; den: number } };
-
 /**
  * Add a succeeded result as a new copy.
  * @param clipId - The new copy's id.
@@ -152,50 +147,6 @@ export function addResult(
   return {
     operation: 'add_web_animation',
     parameters: { clipId, from: { sourceVersionId }, startFrame, newTrackId, extent: { durationFrames, fps: FPS } },
-    placement,
-  } as TimelineEditCommand;
-}
-
-/**
- * Add an in-progress execution as a placeholder copy.
- * @param clipId - The new copy's id.
- * @param executionId - The execution.
- * @param startFrame - Where it starts.
- * @param newTrackId - The id a new top track would take.
- * @param placement - The editing user's switches.
- * @param acceptedDurationFrames - The accepted length.
- * @returns The command.
- * @throws {never} Never.
- */
-export function addPlaceholder(
-  clipId: string, executionId: string, startFrame: number, newTrackId: string, placement: TimelineEditPlacement, acceptedDurationFrames = 72,
-): TimelineEditCommand {
-  return {
-    operation: 'add_web_animation',
-    parameters: { clipId, from: { executionId }, startFrame, newTrackId, extent: { acceptedDurationFrames, fps: FPS } },
-    placement,
-  } as TimelineEditCommand;
-}
-
-/** A receipt as `land_execution` writes it. */
-export interface ReceiptFixture { executionId: string; inputHash: string; landedAt: string }
-
-/**
- * Land an accepted action, optionally with its placeholder copy.
- * @param actionId - The dialog's action id.
- * @param receipt - The receipt.
- * @param placement - The editing user's switches.
- * @param addClip - The placeholder to add with it.
- * @returns The command.
- * @throws {never} Never.
- */
-export function land(
-  actionId: string, receipt: ReceiptFixture, placement: TimelineEditPlacement,
-  addClip?: { clipId: string; startFrame: number; newTrackId: string; extent: WebExtent },
-): TimelineEditCommand {
-  return {
-    operation: 'land_execution',
-    parameters: addClip === undefined ? { actionId, receipt } : { actionId, receipt, addClip },
     placement,
   } as TimelineEditCommand;
 }

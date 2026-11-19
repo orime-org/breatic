@@ -637,9 +637,9 @@ describe('Add web animation', () => {
     const GONE = 'a0000000-0000-4000-8000-0000000000ee';
     listSpaces([[MOTION_SPACE, 'web_animation', 'Launch motion'], [TIMELINE_SPACE, 'timeline', 'Cut']]);
     vi.mocked(timelineApi.listResults).mockResolvedValue({
-      rows: [result(EXEC_A, MOTION_SPACE, 'Gold dot along an arc', 'succeeded', SRC_A), result(EXEC_RUNNING, MOTION_SPACE, 'Brand name fades in', 'running', null),
+      rows: [result(EXEC_A, MOTION_SPACE, 'Gold dot along an arc', 'succeeded', SRC_A),
         result('90000000-0000-4000-8000-0000000000c1', TIMELINE_SPACE, 'Old title card', 'succeeded', SRC_B), result('90000000-0000-4000-8000-0000000000c2', GONE, 'Lost one', 'succeeded', SRC_B)],
-      nextCursor: null, totals: { running: 1, succeeded: 3, failed: 0 },
+      nextCursor: null, totals: { running: 0, succeeded: 3, failed: 0 },
     } as never);
     seed();
     showTimeline();
@@ -650,23 +650,34 @@ describe('Add web animation', () => {
     ]);
     expect(within(picker).getByTestId(`timeline-picker-group-${MOTION_SPACE}`)).toHaveTextContent('Launch motion');
     expect(within(picker).getByTestId('timeline-picker-group-deleted')).toHaveTextContent(t('timeline.webAnimation.picker.deletedSpace'));
-    expect(within(picker).getByTestId(`timeline-picker-row-${EXEC_RUNNING}`)).toHaveTextContent(t('timeline.webAnimation.picker.making'));
-    expect(within(picker).getByTestId(`timeline-picker-making-${EXEC_RUNNING}`)).toHaveTextContent(t('timeline.webAnimation.picker.making'));
-    expect(within(picker).queryByTestId(`timeline-picker-making-${EXEC_A}`)).toBeNull();
   });
 
-  it('places a finished result as a copy bound to its source, and a running one as a placeholder', async () => {
+  it('places each pick as a new copy bound to the result\'s source', async () => {
     listSpaces([[MOTION_SPACE, 'web_animation', 'Launch motion']]);
     vi.mocked(timelineApi.listResults).mockResolvedValue({
-      rows: [result(EXEC_A, MOTION_SPACE, 'Gold dot along an arc', 'succeeded', SRC_A), result(EXEC_RUNNING, MOTION_SPACE, 'Brand name fades in', 'running', null)],
-      nextCursor: null, totals: { running: 1, succeeded: 1, failed: 0 },
+      rows: [result(EXEC_A, MOTION_SPACE, 'Gold dot along an arc', 'succeeded', SRC_A)], nextCursor: null, totals: { running: 0, succeeded: 1, failed: 0 },
     } as never);
     seed();
     showTimeline();
     await userEvent.click(within(await openPicker()).getByTestId(`timeline-picker-row-${EXEC_A}`));
     await waitFor(() => expect(webCopies().map((copy) => copy.contentBinding)).toEqual([boundTo(SRC_A)]));
-    await userEvent.click(within(await openPicker()).getByTestId(`timeline-picker-row-${EXEC_RUNNING}`));
-    await waitFor(() => expect(webCopies().map((copy) => copy.contentBinding)).toEqual(expect.arrayContaining([boundTo(SRC_A), waitingFor(EXEC_RUNNING)])));
+    await userEvent.click(within(await openPicker()).getByTestId(`timeline-picker-row-${EXEC_A}`));
+    await waitFor(() => expect(webCopies().map((copy) => copy.contentBinding)).toEqual([boundTo(SRC_A), boundTo(SRC_A)]));
+    expect(new Set(webCopies().map((copy) => copy.id)).size).toBe(2);
+  });
+
+  it('reads the results again each time the picker opens, so a result finished since shows up', async () => {
+    listSpaces([[MOTION_SPACE, 'web_animation', 'Launch motion']]);
+    vi.mocked(timelineApi.listResults).mockResolvedValue({ rows: [], nextCursor: null, totals: { running: 0, succeeded: 0, failed: 0 } } as never);
+    seed();
+    showTimeline();
+    const first = await openPicker();
+    expect(await within(first).findByText(t('timeline.webAnimation.picker.empty'))).toBeInTheDocument();
+    await userEvent.click(within(first).getByRole('button', { name: t('timeline.cancel') }));
+    vi.mocked(timelineApi.listResults).mockResolvedValue({
+      rows: [result(EXEC_A, MOTION_SPACE, 'Gold dot along an arc', 'succeeded', SRC_A)], nextCursor: null, totals: { running: 0, succeeded: 1, failed: 0 },
+    } as never);
+    expect(await within(await openPicker()).findByTestId(`timeline-picker-row-${EXEC_A}`)).toBeInTheDocument();
   });
 
   it('shows the empty state with Make in Motion, which asks for the newest Motion Space', async () => {
@@ -756,7 +767,7 @@ describe('Add web animation', () => {
 describe('web animation copy in every locale', () => {
   const KEYS = [
     'timeline.webAnimation.add', 'timeline.webAnimation.goMake', 'timeline.webAnimation.openInMotion', 'timeline.webAnimation.copy',
-    'timeline.webAnimation.picker.title', 'timeline.webAnimation.picker.empty', 'timeline.webAnimation.picker.making',
+    'timeline.webAnimation.picker.title', 'timeline.webAnimation.picker.empty',
     'timeline.webAnimation.picker.deletedSpace', 'timeline.webAnimation.picker.loadMore',
     'timeline.webAnimation.durationShort',
     'timeline.webAnimation.failure.feature_disabled', 'timeline.webAnimation.failure.unknown',

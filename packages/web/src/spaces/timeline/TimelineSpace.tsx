@@ -514,13 +514,10 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const motionSpaces = React.useMemo(() => spaces.filter((space) => space.type === 'web_animation'), [spaces]);
   const openPicker = React.useCallback((): void => setPickerOpen(true), []);
   const closePicker = React.useCallback((): void => setPickerOpen(false), []);
-  // A finished result is placed as a copy bound to its source; one still running as a placeholder that turns into it.
+  // Each pick places a copy of its own, bound to the result's source.
   const placeResult = React.useCallback((row: PickableResult): void => {
     const { input } = row;
-    const accepted = webAnimationDurationFrames(input);
-    const parameters = row.status === 'succeeded' && row.resultSourceVersionId !== null
-      ? { from: { sourceVersionId: row.resultSourceVersionId }, extent: { durationFrames: accepted, fps: input.fps } }
-      : { from: { executionId: row.id }, extent: { acceptedDurationFrames: accepted, fps: input.fps } };
+    const parameters = { from: { sourceVersionId: row.resultSourceVersionId }, extent: { durationFrames: webAnimationDurationFrames(input), fps: input.fps } };
     if (commit({ operation: 'add_web_animation', parameters: { clipId: newId(), startFrame: frame, newTrackId: newId(), ...parameters }, placement })?.ok === true) setPickerOpen(false);
   }, [commit, frame, placement]);
   // The picker stays open, its button waiting, while a Motion Space is being made for it.

@@ -3,8 +3,8 @@
 
 import { z } from 'zod';
 import {
-  TIMELINE_FRAME_PRESETS, TIMELINE_FRAME_PRESET_KEYS, TIMELINE_LAYER_TRANSFORM_LIMITS, TIMELINE_MAIN_TRACK_ID, TimelineOperationReceiptSchema, TimelineRateSchema, TimelineUploadClipSchema, TimelineVideoClipSchema, TimelineVideoSourceSchema,
-  type TimelineClip, type TimelineDocumentV1, type TimelineOperationReceipt, type TimelineTrack, type TimelineVideoSource,
+  TIMELINE_FRAME_PRESETS, TIMELINE_FRAME_PRESET_KEYS, TIMELINE_LAYER_TRANSFORM_LIMITS, TIMELINE_MAIN_TRACK_ID, TimelineRateSchema, TimelineUploadClipSchema, TimelineVideoClipSchema, TimelineVideoSourceSchema,
+  type TimelineClip, type TimelineDocumentV1, type TimelineTrack, type TimelineVideoSource,
   type TimelineWebAnimationClip, type TimelineWebAnimationContentBinding, type TimelineWebResolution,
 } from '@breatic/shared';
 
@@ -18,14 +18,8 @@ import {
 // The command bounds are the persisted clip format's own field schemas.
 const { startFrame: safeFrame, durationFrames: positiveInteger, id: identity, trackId: trackIdentity } = TimelineVideoClipSchema.shape;
 const placement = z.object({ magnet: z.boolean(), linkage: z.boolean() }).strict();
-// The new reference's own extent, carried like add_video carries its source (inner#1711 design §3.3): a succeeded
-// result's length, or the length an execution accepted.
-const webExtent = z.union([
-  z.object({ durationFrames: positiveInteger, fps: TimelineRateSchema }).strict(),
-  z.object({ acceptedDurationFrames: positiveInteger, fps: TimelineRateSchema }).strict(),
-]);
-const webCopy = { clipId: identity, startFrame: safeFrame, newTrackId: trackIdentity, extent: webExtent };
-const webCopySchema = z.object(webCopy).strict();
+// The new copy's own extent, carried like add_video carries its source (inner#1711 design §3.3): the result's length.
+const webExtent = z.object({ durationFrames: positiveInteger, fps: TimelineRateSchema }).strict();
 
 const { scale, rotation } = TIMELINE_LAYER_TRANSFORM_LIMITS;
 // Scale and rotation bounds are the command's data boundary; frame offsets are bounded in planning.
@@ -77,14 +71,8 @@ export const TimelineEditCommandSchema = z.discriminatedUnion('operation', [
   z.object({
     operation: z.literal('add_web_animation'),
     parameters: z.object({
-      ...webCopy,
-      from: z.union([z.object({ sourceVersionId: z.uuid() }).strict(), z.object({ executionId: z.uuid() }).strict()]),
+      clipId: identity, startFrame: safeFrame, newTrackId: trackIdentity, extent: webExtent, from: z.object({ sourceVersionId: z.uuid() }).strict(),
     }).strict(),
-    placement,
-  }).strict(),
-  z.object({
-    operation: z.literal('land_execution'),
-    parameters: z.object({ actionId: z.uuid(), receipt: TimelineOperationReceiptSchema, addClip: webCopySchema.optional() }).strict(),
     placement,
   }).strict(),
 ]);
@@ -264,7 +252,6 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
   const tracks: Record<string, TimelineTrack> = { ...current.tracks };
   const clips: Record<string, TimelineClip> = { ...current.clips };
   const sources: Record<string, TimelineVideoSource> = { ...current.sources };
-  let operationReceipts: Record<string, TimelineOperationReceipt> = current.operationReceipts;
   const created: string[] = [];
   /**
    * The accepted plan for the records built so far.
@@ -273,7 +260,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
    * @throws {never} Never.
    */
   function done(bumped: string[] = []): Extract<TimelineEditPlan, { ok: true }> {
-    return { ok: true, next: { ...current, tracks, clips, sources, operationReceipts }, created, bumped };
+    return { ok: true, next: { ...current, tracks, clips, sources }, created, bumped };
   }
   /**
    * The order for a new top track.
@@ -294,28 +281,11 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
   const extentIn = (from: Record<string, TimelineVideoSource>, clip: TimelineClip): TimelineSourceExtent | undefined =>
     clip.kind === 'video' ? from[clip.sourceId] : resolveTimelineClipExtent(current, web, clip);
 
-  if (command.operation === 'add_web_animation' || command.operation === 'land_execution') {
-    let copy: z.infer<typeof webCopySchema> | null = null;
-    let binding: TimelineWebAnimationContentBinding | null = null;
-    if (command.operation === 'land_execution') {
-      const { actionId, receipt, addClip } = command.parameters;
-      operationReceipts = { ...operationReceipts, [actionId]: receipt };
-      if (addClip !== undefined) binding = { baseSourceResultId: null, operationId: receipt.executionId };
-      copy = addClip ?? null;
-    } else {
-      const { from } = command.parameters;
-      binding = 'sourceVersionId' in from ? { baseSourceResultId: from.sourceVersionId, operationId: null } : { baseSourceResultId: null, operationId: from.executionId };
-      copy = command.parameters;
-    }
-    if (copy === null || binding === null) return done();
-    const { clipId, startFrame, newTrackId, extent } = copy;
-    const taken = current.clips[clipId] !== undefined || current.tracks[clipId] !== undefined;
-    // Landing never loses its receipt: a copy that cannot be added leaves the receipt alone.
-    if (taken) {
-      if (command.operation === 'add_web_animation') throw new Refused('id_taken');
-      return done();
-    }
-    const source = { timebase: extent.fps, extentFrames: 'durationFrames' in extent ? extent.durationFrames : extent.acceptedDurationFrames };
+  if (command.operation === 'add_web_animation') {
+    const { clipId, startFrame, newTrackId, extent, from } = command.parameters;
+    const binding: TimelineWebAnimationContentBinding = { baseSourceResultId: from.sourceVersionId, operationId: null };
+    if (current.clips[clipId] !== undefined || current.tracks[clipId] !== undefined) throw new Refused('id_taken');
+    const source = { timebase: extent.fps, extentFrames: extent.durationFrames };
     const draft: TimelineWebAnimationClip = {
       id: clipId, trackId: '', kind: 'web-animation', contentBinding: binding, startFrame, sourceInFrame: 0, durationFrames: 1,
       ...TIMELINE_DEFAULT_PLACEMENT,
@@ -323,10 +293,7 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
     const durationFrames = timelineSourceRoom(draft, source, current.settings.fps);
     let trackId = placeWebAnimationClip(tracks, clips, { start: startFrame, end: startFrame + durationFrames });
     if (trackId === null) {
-      if (current.tracks[newTrackId] !== undefined || current.clips[newTrackId] !== undefined) {
-        if (command.operation === 'add_web_animation') throw new Refused('id_taken');
-        return done();
-      }
+      if (current.tracks[newTrackId] !== undefined || current.clips[newTrackId] !== undefined) throw new Refused('id_taken');
       tracks[newTrackId] = { id: newTrackId, kind: 'visual', order: nextOrder() };
       trackId = newTrackId;
     }

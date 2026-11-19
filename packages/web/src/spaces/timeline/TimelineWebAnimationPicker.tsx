@@ -17,8 +17,18 @@ import { useReturnFocus } from '@web/lib/overlay-focus';
 import { ListLoadError, LoadMoreButton, listShows } from '@web/spaces/web-animation/list-states';
 import { webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
 
-/** A result the picker offers: a create or a modification. */
-export type PickableResult = Extract<WebAnimationRowView, { kind: 'web_animation_create' | 'web_animation_modify' }>;
+/** A result the picker offers: a create or a modification that succeeded, with the source a copy binds to. */
+export type PickableResult = Extract<WebAnimationRowView, { kind: 'web_animation_create' | 'web_animation_modify' }> & { resultSourceVersionId: string };
+
+/**
+ * Whether a row of the results list is a result the picker offers.
+ * @param row - The row.
+ * @returns True for a succeeded create or modification.
+ * @throws {never} Never.
+ */
+function isPickable(row: WebAnimationRowView): row is PickableResult {
+  return row.kind !== 'web_animation_export' && row.status === 'succeeded' && row.resultSourceVersionId !== null;
+}
 
 /** One group of the picker: the Space that made its results. */
 interface ResultGroup {
@@ -55,7 +65,7 @@ function groupResults(rows: readonly PickableResult[], spaces: ReadonlyArray<Pro
 interface PickerRowProps { row: PickableResult; onPick: (row: PickableResult) => void }
 
 /**
- * One result: its title, aspect and length, and "Making" while it runs.
+ * One result: its title, aspect and length.
  * @param props - The row.
  * @param props.row - The result.
  * @param props.onPick - Places a copy of it.
@@ -74,8 +84,6 @@ const PickerRow = React.memo(function PickerRow({ row, onPick }: PickerRowProps)
         {`${row.input.aspect} · ${t('timeline.webAnimation.durationShort', { seconds: row.input.durationSeconds })}`}
       </span>
     </span>
-    {row.status !== 'succeeded' && <span data-testid={`timeline-picker-making-${row.id}`}
-      className='shrink-0 whitespace-nowrap rounded-chrome border border-border px-1.5 py-0.5 text-2xs text-muted-foreground'>{t('timeline.webAnimation.picker.making')}</span>}
   </Button>;
 });
 
@@ -90,8 +98,9 @@ interface TimelineWebAnimationPickerProps {
 }
 
 /**
- * "Add web animation" (#1490 design §8.2): the Project's web-animation results, grouped by the Space that made them; a
- * pick places a copy at the playhead, and "Make in Motion" opens the newest Motion Space.
+ * "Add web animation" (#1490 design §8.2): the Project's succeeded web-animation results, read again on every open and
+ * grouped by the Space that made them; a pick places a copy at the playhead, and "Make in Motion" opens the newest
+ * Motion Space.
  * @param props - The Project and what a pick does.
  * @param props.projectId - The Project.
  * @param props.making - Whether a Motion Space is being made.
@@ -111,7 +120,7 @@ export function TimelineWebAnimationPicker({ projectId, making, onPick, onGoMake
   const { refetch } = list;
   const shows = listShows(list);
   const rows = React.useMemo(() => (list.data?.pages.flatMap((page) => page.rows) ?? [])
-    .filter((row): row is PickableResult => row.kind !== 'web_animation_export'), [list.data]);
+    .filter(isPickable), [list.data]);
   const groups = React.useMemo(() => groupResults(rows, spaces, t('timeline.webAnimation.picker.deletedSpace')), [rows, spaces, t]);
   const changeOpen = React.useCallback((open: boolean): void => { if (!open) onClose(); }, [onClose]);
   const retry = React.useCallback((): void => { void refetch(); }, [refetch]);
