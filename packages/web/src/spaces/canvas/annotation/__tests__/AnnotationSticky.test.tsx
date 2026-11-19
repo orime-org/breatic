@@ -483,6 +483,7 @@ describe('a sticky on the canvas', () => {
       'n1',
       'a cooler, slower shot',
       expect.any(Number),
+      [],
     );
   });
 
@@ -1353,6 +1354,7 @@ describe('the replies scroller', () => {
       'r1',
       'one, reworded',
       expect.any(Number),
+      [],
     );
     expect(editAnnotationBody).not.toHaveBeenCalled();
     // E-08: a reply rewrite is an add, with no estimate.

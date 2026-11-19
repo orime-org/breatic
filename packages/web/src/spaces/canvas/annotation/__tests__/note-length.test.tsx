@@ -25,6 +25,12 @@ import { AnnotationComposer } from '@web/spaces/canvas/annotation/AnnotationComp
 import { AnnotationEntry } from '@web/spaces/canvas/annotation/AnnotationEntry';
 import { NOTE_MAX_CHARS } from '@web/spaces/canvas/annotation/caps';
 
+// The boxes read the roster for the `@` list; these tests are about the box itself.
+vi.mock('@web/data/use-project-members', () => ({
+  useProjectMembers: () => ({ members: [], isLoading: false, isError: false, retry: () => undefined }),
+}));
+
+
 describe('what a note will hold', () => {
   it('is 300 characters, the number that was chosen', () => {
     expect(NOTE_MAX_CHARS).toBe(300);

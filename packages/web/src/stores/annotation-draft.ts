@@ -10,6 +10,8 @@
  * closed draft and the caller writes them.
  */
 
+import type { CommentMention } from '@breatic/shared';
+
 /** Which of the three things the open box is for. */
 export type DraftUse = 'annotation' | 'reply' | 'edit';
 
@@ -70,6 +72,12 @@ export interface DraftState {
    */
   commit?: string;
   /**
+   * The members this box mentions: the entry's own when an edit opens, then
+   * each one picked from the `@` list (#1488 §11.6). Handed over with
+   * `commit`; the writer keeps those whose words are still in the text.
+   */
+  mentions?: CommentMention[];
+  /**
    * Set when the close was not the writer's doing, naming why. The sticky
    * draws a line saying so, and it stands until the user dismisses it or
    * opens another box.
@@ -78,8 +86,9 @@ export interface DraftState {
 }
 
 export type DraftAction =
-  | { type: 'open'; use: DraftUse; text: string }
+  | { type: 'open'; use: DraftUse; text: string; mentions?: CommentMention[] }
   | { type: 'type'; text: string }
+  | { type: 'mention'; text: string; mention: CommentMention }
   | { type: 'escape' }
   | { type: 'blur' }
   | { type: 'save' }
@@ -126,7 +135,7 @@ const discardDraft = (state: DraftState): DraftState => ({
 const commitDraft = (state: DraftState): DraftState => {
   if (!worthWriting(state.text)) return state;
   if (state.text === state.opened) return discardDraft(state);
-  return { mode: 'closed', use: state.use, text: '', opened: '', commit: state.text };
+  return { mode: 'closed', use: state.use, text: '', opened: '', commit: state.text, mentions: state.mentions };
 };
 
 /**
@@ -149,11 +158,21 @@ export function reduceDraft(
         use: action.use,
         text: action.text,
         opened: action.text,
+        mentions: action.mentions ?? [],
       };
 
     case 'type':
       if (state.mode === 'closed') return state;
       return { ...state, text: action.text, commit: undefined };
+
+    case 'mention':
+      if (state.mode === 'closed') return state;
+      return {
+        ...state,
+        text: action.text,
+        mentions: [...(state.mentions ?? []), action.mention],
+        commit: undefined,
+      };
 
     case 'save':
       // Every way of keeping the words — the Enter key, the Save button, the

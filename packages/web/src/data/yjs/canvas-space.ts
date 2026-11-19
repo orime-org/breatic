@@ -14,7 +14,7 @@ import { CANVAS_NODES_KEY } from '@breatic/shared';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import { runHistoryStep } from '@web/data/yjs/history-step';
-import type { NodeMediaFields } from '@breatic/shared';
+import type { CommentMention, NodeMediaFields } from '@breatic/shared';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import type { CanvasEdge, CanvasNodeView, NodePlacement, SnapshotNode } from '@breatic/shared/canvas-model';
 import {
@@ -784,6 +784,7 @@ export function addReply(
  * @param nodeId - Id of the annotation to rewrite.
  * @param content - The new body, as markdown source.
  * @param editedAt - When this edit happened, epoch milliseconds.
+ * @param mentions - The members the new body mentions (#1488 §11.6).
  * @returns Whether it was rewritten; false when the annotation is already gone
  *   or the size cap refused it.
  */
@@ -793,13 +794,14 @@ export function editAnnotationBody(
   nodeId: string,
   content: string,
   editedAt: number,
+  mentions?: readonly CommentMention[],
 ): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   if (!annotationEditTarget(doc, nodeId, null)) return false;
   // The body is words the user wrote, of any length: an add (design 5.2).
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
   return writeSpaceDoc(name, options, () => {
-    doc.transact(() => editAnnotationBodyInDoc(doc, nodeId, content, editedAt), CANVAS_UNDO);
+    doc.transact(() => editAnnotationBodyInDoc(doc, nodeId, content, editedAt, mentions), CANVAS_UNDO);
   }).ok;
 }
 
@@ -811,6 +813,7 @@ export function editAnnotationBody(
  * @param replyId - Id of the reply to rewrite.
  * @param content - The new body, as markdown source.
  * @param editedAt - When this edit happened, epoch milliseconds.
+ * @param mentions - The members the new reply mentions (#1488 §11.6).
  * @returns Whether it was rewritten; false when the reply is already gone or
  *   the size cap refused it.
  */
@@ -821,12 +824,13 @@ export function editReply(
   replyId: string,
   content: string,
   editedAt: number,
+  mentions?: readonly CommentMention[],
 ): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   if (!annotationEditTarget(doc, nodeId, replyId)) return false;
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
   return writeSpaceDoc(name, options, () => {
-    doc.transact(() => editReplyInDoc(doc, nodeId, replyId, content, editedAt), CANVAS_UNDO);
+    doc.transact(() => editReplyInDoc(doc, nodeId, replyId, content, editedAt, mentions), CANVAS_UNDO);
   }).ok;
 }
 

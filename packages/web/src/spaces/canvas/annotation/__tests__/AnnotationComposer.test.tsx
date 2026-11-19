@@ -9,6 +9,12 @@ import { CanvasContext, type CanvasContextValue } from '@web/spaces/canvas/canva
 
 import { NOTE_BOX_MAX_HEIGHT } from '@web/spaces/canvas/annotation/caps';
 
+// The boxes read the roster for the `@` list; these tests are about the box itself.
+vi.mock('@web/data/use-project-members', () => ({
+  useProjectMembers: () => ({ members: [], isLoading: false, isError: false, retry: () => undefined }),
+}));
+
+
 /** A canvas on Space `s1`, the outlet these cases put on the page. */
 const CANVAS: CanvasContextValue = {
   projectId: 'p',
@@ -39,7 +45,7 @@ describe('the box that opens at the drop point', () => {
     const box = open();
     fireEvent.change(box, { target: { value: 'a cooler shot here' } });
     fireEvent.keyDown(box, { key: 'Enter' });
-    expect(onCommit).toHaveBeenCalledWith('a cooler shot here');
+    expect(onCommit).toHaveBeenCalledWith('a cooler shot here', []);
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -48,7 +54,7 @@ describe('the box that opens at the drop point', () => {
     const box = open();
     fireEvent.change(box, { target: { value: 'a cooler shot here' } });
     fireEvent.keyDown(box, { key: 'Enter' });
-    expect(onCommit).toHaveBeenCalledWith('a cooler shot here');
+    expect(onCommit).toHaveBeenCalledWith('a cooler shot here', []);
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByTestId('annotation-composer-input')).toHaveValue('a cooler shot here');
   });

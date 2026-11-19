@@ -6,6 +6,12 @@ import { render, screen, fireEvent } from '@testing-library/react';
 
 import { AnnotationEntry } from '@web/spaces/canvas/annotation/AnnotationEntry';
 
+// The boxes read the roster for the `@` list; these tests are about the box itself.
+vi.mock('@web/data/use-project-members', () => ({
+  useProjectMembers: () => ({ members: [], isLoading: false, isError: false, retry: () => undefined }),
+}));
+
+
 const onDraft = vi.fn();
 const onEdit = vi.fn();
 const onDelete = vi.fn();

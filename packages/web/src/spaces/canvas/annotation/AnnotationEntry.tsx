@@ -38,6 +38,7 @@ import {
 } from '@web/spaces/canvas/annotation/caps';
 import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
 import { NoteScroller } from '@web/spaces/canvas/annotation/NoteScroller';
+import { CanvasMentionPicker } from '@web/spaces/canvas/annotation/CanvasMentionPicker';
 import type { AnnotationRights } from '@breatic/shared/canvas-model';
 
 export interface AnnotationEntryProps {
@@ -178,6 +179,10 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
         {...rewriteBoxKeys.box}
       />
     );
+  const picker =
+    editing === undefined ? null : (
+      <CanvasMentionPicker boxRef={boxRef} text={editing} onDraft={props.onDraft} />
+    );
 
   const buttons =
     editing === undefined ? null : (
@@ -298,6 +303,7 @@ export function AnnotationEntry(props: AnnotationEntryProps): React.JSX.Element 
             {words}
           </NoteScroller>
         )}
+        {picker}
         {buttons}
       </div>
     </div>

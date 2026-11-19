@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { CanvasNodeFields } from '@shared/types/canvas-node.js';
+import type { CanvasNodeFields, CommentMention } from '@shared/types/canvas-node.js';
 import { newId } from '@shared/ids.js';
 
 import { MODALITY_LABEL } from '@shared/canvas/model/modality-label.js';
@@ -114,12 +114,14 @@ const ANNOTATION_DEFAULT_NAME = 'Note';
  * @param position.y - Y coordinate.
  * @param createdBy - User id of the author (caller injects from the store).
  * @param content - The body, as the author typed it.
+ * @param mentions - The members the body mentions (#1488 §11.6).
  * @returns A complete `CanvasNodeFields` for the sticky.
  */
 export function createAnnotationNode(
   position: { x: number; y: number },
   createdBy: string,
   content: string,
+  mentions?: readonly CommentMention[],
 ): CanvasNodeFields {
   return {
     id: newId(),
@@ -132,6 +134,7 @@ export function createAnnotationNode(
       locked: false,
       attachments: [],
       content,
+      ...(mentions !== undefined && mentions.length > 0 ? { mentions: mentions.map((m) => ({ ...m })) } : {}),
     },
   };
 }

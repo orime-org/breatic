@@ -43,6 +43,7 @@ import {
   canGenerate,
   newId,
   type CanvasProposal,
+  type CommentMention,
 } from '@breatic/shared';
 import {
   defaultParamsOf,
@@ -2117,11 +2118,11 @@ function CanvasSpaceInner({
   // Enter on the new-note box: this is the moment the node exists. Everything
   // before it lived in one browser.
   const createAnnotationAt = React.useCallback(
-    (at: { x: number; y: number }, content: string): boolean =>
+    (at: { x: number; y: number }, content: string, mentions: CommentMention[]): boolean =>
       addNode(
         projectId,
         spaceId,
-        createAnnotationNode(at, viewerId ?? '', content),
+        createAnnotationNode(at, viewerId ?? '', content, mentions),
       ).ok,
     [projectId, spaceId, viewerId],
   );
@@ -4875,7 +4876,7 @@ function CanvasSpaceInner({
                   }}
                 >
                   <AnnotationComposer
-                    onCommit={(content) => createAnnotationAt(composerAt, content)}
+                    onCommit={(content, mentions) => createAnnotationAt(composerAt, content, mentions)}
                     onClose={() => setComposerAt(null)}
                   />
                 </div>

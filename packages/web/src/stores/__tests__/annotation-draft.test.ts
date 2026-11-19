@@ -179,3 +179,33 @@ describe('the annotation draft, before anything reaches Yjs', () => {
     expect(reduceDraft(emptied, { type: 'save' })).toBe(emptied);
   });
 });
+
+describe('mentions picked in the box (#1488 §11.6)', () => {
+  const alice = { userId: 'u1', projectId: 'p1', mentionedAt: 1, label: '@Alice' };
+  const bob = { userId: 'u2', projectId: 'p1', mentionedAt: 2, label: '@Bob' };
+
+  it('opens an edit with the mentions the entry already has', () => {
+    const open = reduceDraft(CLOSED_DRAFT, { type: 'open', use: 'edit', text: '@Alice', mentions: [alice] });
+    expect(open.mentions).toEqual([alice]);
+  });
+
+  it('adds a picked member and takes the words with the mention in', () => {
+    const open = reduceDraft(CLOSED_DRAFT, { type: 'open', use: 'reply', text: '' });
+    const next = reduceDraft(open, { type: 'mention', text: '@Bob ', mention: bob });
+    expect(next.text).toBe('@Bob ');
+    expect(next.mentions).toEqual([bob]);
+  });
+
+  it('keeps the mentions through typing and hands them over with the commit', () => {
+    let draft = reduceDraft(CLOSED_DRAFT, { type: 'open', use: 'reply', text: '' });
+    draft = reduceDraft(draft, { type: 'mention', text: '@Bob ', mention: bob });
+    draft = reduceDraft(draft, { type: 'type', text: '@Bob look' });
+    const saved = reduceDraft(draft, { type: 'save' });
+    expect(saved.commit).toBe('@Bob look');
+    expect(saved.mentions).toEqual([bob]);
+  });
+
+  it('ignores a pick while no box is open', () => {
+    expect(reduceDraft(CLOSED_DRAFT, { type: 'mention', text: '@Bob ', mention: bob })).toBe(CLOSED_DRAFT);
+  });
+});

@@ -29,8 +29,10 @@ import { writeNodeMedia, type NodeMediaFields } from '@shared/canvas/node-media.
 import { AUDIO_GENERATION_MODES, GENERATION_NODE_MODES } from '@shared/types/model-catalog.js';
 import {
   canGenerate,
+  type AnnotationAssignment,
   type AnnotationReply,
   type CanvasNodeFields,
+  type CommentMention,
   type FocusImage,
   type NodeType,
 } from '@shared/types/canvas-node.js';
@@ -396,6 +398,7 @@ export function addReplyInDoc(doc: Y.Doc, nodeId: string, reply: AnnotationReply
   map.set('createdAt', reply.createdAt);
   if (reply.via !== undefined) map.set('via', reply.via);
   if (reply.answers !== undefined) map.set('answers', reply.answers);
+  writeMentions(map, reply.mentions);
   replies.push([map]);
   return true;
 }
@@ -407,13 +410,21 @@ export function addReplyInDoc(doc: Y.Doc, nodeId: string, reply: AnnotationReply
  * @param nodeId - Id of the annotation to rewrite.
  * @param content - The new body, as markdown source.
  * @param editedAt - When this edit happened, epoch milliseconds.
+ * @param mentions - The members the new body mentions; left as they were when absent.
  * @returns Whether it was rewritten; false when the annotation is gone.
  */
-export function editAnnotationBodyInDoc(doc: Y.Doc, nodeId: string, content: string, editedAt: number): boolean {
+export function editAnnotationBodyInDoc(
+  doc: Y.Doc,
+  nodeId: string,
+  content: string,
+  editedAt: number,
+  mentions?: readonly CommentMention[],
+): boolean {
   const data = annotationEditTarget(doc, nodeId, null);
   if (!data) return false;
   data.set('content', content);
   data.set('editedAt', editedAt);
+  writeMentions(data, mentions);
   return true;
 }
 
@@ -424,6 +435,7 @@ export function editAnnotationBodyInDoc(doc: Y.Doc, nodeId: string, content: str
  * @param replyId - Id of the reply to rewrite.
  * @param content - The new body, as markdown source.
  * @param editedAt - When this edit happened, epoch milliseconds.
+ * @param mentions - The members the new reply mentions; left as they were when absent.
  * @returns Whether it was rewritten; false when the reply is gone.
  */
 export function editReplyInDoc(
@@ -432,12 +444,41 @@ export function editReplyInDoc(
   replyId: string,
   content: string,
   editedAt: number,
+  mentions?: readonly CommentMention[],
 ): boolean {
   const reply = annotationEditTarget(doc, nodeId, replyId);
   if (!reply) return false;
   reply.set('content', content);
   reply.set('editedAt', editedAt);
+  writeMentions(reply, mentions);
   return true;
+}
+
+/**
+ * Hand a thread to an external agent, or take it back (#1488 §11.7).
+ * @param doc - The canvas document.
+ * @param nodeId - Id of the annotation.
+ * @param assignment - Who it is handed to; null removes the hand-over.
+ * @returns Whether it was written; false when the annotation is gone.
+ */
+export function setAnnotationAssignmentInDoc(doc: Y.Doc, nodeId: string, assignment: AnnotationAssignment | null): boolean {
+  const data = annotationEditTarget(doc, nodeId, null);
+  if (!data) return false;
+  if (assignment === null) data.delete('assignment');
+  else data.set('assignment', { ...assignment });
+  return true;
+}
+
+/**
+ * Store an entry's mentions beside its words (#1488 §11.6): replaced when
+ * given, the key dropped when none are left, untouched when absent.
+ * @param entry - The annotation's data or one reply.
+ * @param mentions - The members it mentions.
+ */
+function writeMentions(entry: Y.Map<unknown>, mentions: readonly CommentMention[] | undefined): void {
+  if (mentions === undefined) return;
+  if (mentions.length > 0) entry.set('mentions', mentions.map((m) => ({ ...m })));
+  else if (entry.has('mentions')) entry.delete('mentions');
 }
 
 /**

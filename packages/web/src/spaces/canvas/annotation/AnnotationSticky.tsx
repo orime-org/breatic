@@ -23,7 +23,7 @@
 import * as React from 'react';
 import { X } from 'lucide-react';
 
-import { newId, type ProjectRole } from '@breatic/shared';
+import { newId, type CommentMention, type ProjectRole } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { Textarea } from '@web/components/ui/textarea';
@@ -38,7 +38,9 @@ import type { AnnotationNodeView } from '@breatic/shared/canvas-model';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
 import { cn } from '@web/lib/utils';
+import { useSettleMentions } from '@web/features/comment-mention/use-settle-mentions';
 import { AnnotationEntry } from '@web/spaces/canvas/annotation/AnnotationEntry';
+import { CanvasMentionPicker } from '@web/spaces/canvas/annotation/CanvasMentionPicker';
 import { useAnnotationNames } from '@web/spaces/canvas/annotation/names';
 import {
   NOTE_BOX_CLASS,
@@ -167,9 +169,18 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
   // Judged here as one batch so a Space without room keeps the box and its
   // words open (the size cap says why) rather than reading as a note gone.
   // A reply and a rewrite are both words the user wrote: an add.
+  // Who the words mention goes in with them, in the same batch, so an undo
+  // takes both back together (#1488 §11.6).
+  const settle = useSettleMentions(projectId);
   const write = React.useCallback(
-    (at: DraftTarget, use: DraftState['use'], text: string): boolean | 'refused' => {
+    (
+      at: DraftTarget,
+      use: DraftState['use'],
+      text: string,
+      picked: CommentMention[] | undefined,
+    ): boolean | 'refused' => {
       const now = Date.now();
+      const mentions = settle(text, picked);
       let wrote = false;
       const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
         if (use === 'reply') {
@@ -178,16 +189,17 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
             content: text,
             createdBy: viewerId ?? '',
             createdAt: now,
+            ...(mentions.length > 0 ? { mentions } : {}),
           });
         } else if (at?.kind === 'reply') {
-          wrote = editReply(projectId, spaceId, nodeId, at.id, text, now);
+          wrote = editReply(projectId, spaceId, nodeId, at.id, text, now, mentions);
         } else {
-          wrote = editAnnotationBody(projectId, spaceId, nodeId, text, now);
+          wrote = editAnnotationBody(projectId, spaceId, nodeId, text, now, mentions);
         }
       });
       return written.ok ? wrote : 'refused';
     },
-    [nodeId, projectId, spaceId, viewerId],
+    [nodeId, projectId, spaceId, viewerId, settle],
   );
 
   /**
@@ -215,7 +227,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
       // and by the time the effect below sees that the box is already closed —
       // the writer's answer is the only account of where the words went.
       const result =
-        next.commit !== undefined && write(held.target, next.use, next.commit);
+        next.commit !== undefined && write(held.target, next.use, next.commit, next.mentions);
       // Refused by the size cap: the box stays as it was, words and all.
       if (result === 'refused') return;
       const wrote = result;
@@ -248,8 +260,8 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
   );
 
   const openDraft = React.useCallback(
-    (at: DraftTarget, use: DraftState['use'], text: string): void => {
-      const next = reduceDraft(readDraft().draft, { type: 'open', use, text });
+    (at: DraftTarget, use: DraftState['use'], text: string, mentions?: CommentMention[]): void => {
+      const next = reduceDraft(readDraft().draft, { type: 'open', use, text, mentions });
       setAnnotationDraft(nodeId, { draft: next, target: at });
     },
     [nodeId, readDraft, setAnnotationDraft],
@@ -344,7 +356,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
         editing={editingBody}
         ownScroller
         testId='annotation-sticky-body'
-        onEdit={() => openDraft({ kind: 'body' }, 'edit', data.content)}
+        onEdit={() => openDraft({ kind: 'body' }, 'edit', data.content, data.mentions)}
         // Through the canvas, which owns the guard: a lock on the GROUP this
         // sticky belongs to freezes its members, and a member is handed only
         // its own `data.locked`. Writing straight to the document from here
@@ -389,6 +401,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
                     { kind: 'reply', id: reply.id },
                     'edit',
                     reply.content,
+                    reply.mentions,
                   )
                 }
                 onDelete={() =>
@@ -470,6 +483,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
               {...replyBoxKeys.box}
             />
           </NoteScroller>
+          <CanvasMentionPicker boxRef={replyBox} text={composing} onDraft={apply} />
           {composing.length === 0 ? null : (
             // Drawn for exactly as long as the box holds a draft — the same
             // emptiness the `onChange` above opens and closes on. Asked here
