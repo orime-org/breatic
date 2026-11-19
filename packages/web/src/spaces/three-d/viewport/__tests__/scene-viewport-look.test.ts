@@ -119,6 +119,7 @@ describe('releasing part pictures (inner#1693 design 5.3)', () => {
     const initial = props({ objects: [{ ...BOX, look: { 0: { map: picture } } }], lookTextures: cache as never });
     const { runtime } = await open(initial, '#969696');
     await vi.waitFor(() => expect(cache.acquire).toHaveBeenCalledWith(picture, 4096));
+    expect(cache.size).toHaveBeenCalledWith(picture, IMPORT_LIMITS.maxPictureHeaderBytes);
     // The decoded picture is held once its acquire settles.
     await new Promise((resolve) => setTimeout(resolve, 0));
     runtime.update(props({ objects: [], lookTextures: cache as never, onLookReport: initial.onLookReport, onModelStateChange: initial.onModelStateChange }));

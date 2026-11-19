@@ -140,4 +140,25 @@ describe('the tint on a double-sided part', () => {
     expect(overlay.material.side).toBe(three.DoubleSide);
     highlight.remove();
   });
+
+  it('gives each slot of a material array the side its own material draws and frees every tint once', async () => {
+    const three = await import('three');
+    const { addPartHighlight } = await import('@web/spaces/three-d/viewport/look-highlight');
+    const slots = ([[three.DoubleSide, '0'], [three.BackSide, '0'], [three.FrontSide, '1']] as const).map(([side, part]) => {
+      const material = new three.MeshStandardMaterial({ side });
+      material.userData.lookPart = part;
+      return material;
+    });
+    const geometry = new three.BoxGeometry();
+    geometry.clearGroups();
+    for (let slot = 0; slot < 3; slot++) geometry.addGroup(slot * 12, 12, slot);
+    const root = new three.Group();
+    root.add(new three.Mesh(geometry, slots));
+    const highlight = addPartHighlight(root, '0', '#3b6fd8');
+    const tints = (highlight.overlays[0] as unknown as { material: Array<{ side: number; visible: boolean; dispose: () => void }> }).material;
+    expect(tints.map((tint) => [tint.side, tint.visible])).toEqual([[three.DoubleSide, true], [three.BackSide, true], [tints[2]!.side, false]]);
+    const spies = [...new Set(tints)].map((tint) => vi.spyOn(tint, 'dispose'));
+    highlight.remove();
+    for (const spy of spies) expect(spy).toHaveBeenCalledTimes(1);
+  });
 });

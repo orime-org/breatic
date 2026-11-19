@@ -71,6 +71,29 @@ async function settle(): Promise<void> {
 const withLook = (look: SceneObject['look']): SceneObject => ({ ...BOX, look } as SceneObject);
 
 describe('SceneLookRuntime', () => {
+  it('recolours every visible tint of the highlight after a theme change', async () => {
+    const three = await import('three');
+    let colour = '#3b6fd8';
+    const runtime = new SceneLookRuntime({
+      textures: () => fakeCache(async () => SMALL).cache, limits: () => ({ maxTextureEdge: 8192, maxTextureBytes: 268_435_456, maxPictureHeaderBytes: 12_345_678 }),
+      themeColor: () => '#969696', highlightColor: () => colour, onProgramChanged: vi.fn(), onChanged: vi.fn(), onPictures: vi.fn(),
+    });
+    runtimes.push(runtime);
+    const slots = [three.DoubleSide, three.FrontSide].map((side) => {
+      const material = new three.MeshStandardMaterial({ side });
+      material.userData.lookPart = '0';
+      return material;
+    });
+    const root = new three.Group();
+    root.add(new three.Mesh(new three.BoxGeometry(), slots[0]), new three.Mesh(new three.BoxGeometry(), slots[1]));
+    runtime.setHighlight('box', root, '0');
+    colour = '#d83b6f';
+    runtime.restyleHighlight();
+    const tints = runtime.overlays().flatMap((overlay) => [(overlay as unknown as { material: unknown }).material].flat() as Array<{ visible: boolean; color: { getHexString: () => string } }>);
+    expect(tints.length).toBeGreaterThanOrEqual(2);
+    for (const tint of tints.filter((item) => item.visible)) expect(`#${tint.color.getHexString()}`).toBe(colour);
+  });
+
   it('keeps a failed picture failed through look changes and loads it again only on retry', async () => {
     const fake = fakeCache(async () => null);
     const { runtime, root, failures } = await open(fake);
