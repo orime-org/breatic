@@ -10,6 +10,7 @@
 
 import { getConfig, openProviderKey, projectsRepo, providerKeyRingOf, type ProviderKeyRing } from "@breatic/core";
 import { AccountKeyFailure, type KeySet, type Route } from "@breatic/provider";
+import { describesInput } from "@breatic/provider/pricing";
 import { provider } from "@domain/provider/instance.js";
 import { providerKeyById, studioProviderKey, type KeyPurpose } from "@domain/provider/account-keys.service.js";
 import { PROMPT_REWRITTEN_MODELS } from "@domain/provider/prompt-rewritten-models.js";
@@ -91,17 +92,6 @@ export async function keysById(keyId: string | null): Promise<{ keys: KeySet } |
   return { keys: accountKeySet(found.upstream, openProviderKey(found.ciphertext, masterKeys)) };
 }
 
-
-/**
- * Whether a param asks for the step that serves it: something given, and not a switch turned off.
- * @param value - The param's value.
- * @returns True when the step runs.
- */
-function asksForStep(value: unknown): boolean {
-  if (value === undefined || value === null || value === false) return false;
-  return typeof value === "string" || Array.isArray(value) ? value.length > 0 : true;
-}
-
 /**
  * Whether a step on one of a media run's bindings describes an input first (Kling O3's elements): a language-model call
  * the run is charged for when it runs on our keys.
@@ -110,9 +100,7 @@ function asksForStep(value: unknown): boolean {
  * @returns True when the run has a description step.
  */
 export function runDescribesInput(model: string, params: Readonly<Record<string, unknown>>): boolean {
-  return (provider().config.models[model] ?? []).some((binding) =>
-    (binding.extra_steps ?? []).some((step) => step.describe !== undefined && (step.for_param === undefined || asksForStep(params[step.for_param]))),
-  );
+  return describesInput(provider().pricingRules(model), params);
 }
 
 /**

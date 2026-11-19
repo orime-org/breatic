@@ -1037,7 +1037,9 @@
       "notePrefix": "注意事項：",
       "integerBlank": "空欄で自動",
       "usesOwnKey": "あなたのキーを使用、クレジット消費なし",
-      "usesStudioKey": "Studio のキーを使用、クレジット消費なし"
+      "usesStudioKey": "Studio のキーを使用、クレジット消費なし",
+      "usesOwnKeyDescribing": "あなたのキーを使用、要素の説明はクレジットを消費",
+      "usesStudioKeyDescribing": "Studio のキーを使用、要素の説明はクレジットを消費"
     },
     "nodeMenu": {
       "generate": "生成",

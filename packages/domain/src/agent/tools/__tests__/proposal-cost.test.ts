@@ -10,7 +10,14 @@
  * check price a run: through `estimateModelCredits`.
  */
 
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Whether a run describes an input first is provider's answer from the catalog; these tests pick it per model.
+const { describes } = vi.hoisted(() => ({ describes: vi.fn<(model: string) => boolean>() }));
+vi.mock("../../../provider/provider-keys.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  runDescribesInput: (model: string) => describes(model),
+}));
 
 import { loadLocales } from "@breatic/core";
 import { formatCredits, setLocale, type ProposalAnswer, type ProposalNode } from "@breatic/shared";
@@ -20,6 +27,7 @@ import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 
 import { answerFor, checkedAnswerFor, makeProposeCanvasAction, renderProposalForModel, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
+import type { KeyPurpose } from "../../../provider/account-keys.service.js";
 
 beforeEach(() => {
   loadLocales();
@@ -117,18 +125,44 @@ describe("the cost of a placed proposal, read back to the model", () => {
 });
 
 describe("a generation the Studio's payer runs on their own key (inner#1953)", () => {
+  beforeEach(() => {
+    describes.mockReset();
+    describes.mockReturnValue(false);
+  });
+
   /**
    * The keys of each model as the payer's key plan gives them: nano-banana-2 on the payer's WaveSpeed key, the rest
    * on ours.
    * @param model - The model.
    * @returns Its keys.
    */
-  const keysFor = async (model: string): Promise<{ keyId: string | null; route: { mode: "default" } | { mode: "upstream"; upstream: string }; keys?: undefined }> =>
-    model === "nano-banana-2" ? { keyId: "key-row-1", route: { mode: "upstream", upstream: "wavespeed" } } : { keyId: null, route: { mode: "default" } };
+  const keysFor = async (purpose: KeyPurpose): Promise<{ keyId: string | null; route: { mode: "default" } | { mode: "upstream"; upstream: string }; keys?: undefined }> =>
+    purpose.kind === "media" && purpose.model === "nano-banana-2"
+      ? { keyId: "key-row-1", route: { mode: "upstream", upstream: "wavespeed" } }
+      : { keyId: null, route: { mode: "default" } };
 
   it("marks the models the payer runs on their own key in the placed answer", async () => {
     const answer = await checkedAnswerFor(inputSchema.parse(TAKES), undefined, undefined, keysFor);
     expect(answer.placed && answer.onPayerKey).toEqual(["nano-banana-2"]);
+    expect(answer.placed && answer.describedOnCredits).toBeUndefined();
+  });
+
+  it("marks a run on the payer's key whose description step runs on our keys, and only while it does", async () => {
+    describes.mockImplementation((model) => model === "nano-banana-2");
+    const onOurLlm = await checkedAnswerFor(inputSchema.parse(TAKES), undefined, undefined, keysFor);
+    expect(onOurLlm.placed && onOurLlm.describedOnCredits).toEqual(["nano-banana-2"]);
+
+    const onPayerLlm = await checkedAnswerFor(inputSchema.parse(TAKES), undefined, undefined, async (purpose) =>
+      purpose.kind === "llm" ? { keyId: "or-row", route: { mode: "default" } } : keysFor(purpose));
+    expect(onPayerLlm.placed && onPayerLlm.describedOnCredits).toBeUndefined();
+  });
+
+  it("says such a run takes credits for its description, and still leaves it out of the total", async () => {
+    const said = await renderProposalForModel({ ...placed(), onPayerKey: ["nano-banana-2"], describedOnCredits: ["nano-banana-2"] } as ProposalAnswer);
+    const ink = said.split("\n").find((line) => line.includes('"Ink wash"')) ?? "";
+    expect(ink).toContain("payer's own key");
+    expect(ink).toContain("describing its inputs takes credits");
+    expect(ink).not.toContain("no credits");
   });
 
   it("says such a generation costs no credits and leaves it out of the total", async () => {

@@ -1037,7 +1037,9 @@
       "notePrefix": "안내: ",
       "integerBlank": "비우면 자동",
       "usesOwnKey": "내 키 사용, 크레딧 차감 없음",
-      "usesStudioKey": "Studio 키 사용, 크레딧 차감 없음"
+      "usesStudioKey": "Studio 키 사용, 크레딧 차감 없음",
+      "usesOwnKeyDescribing": "내 키 사용, 요소 설명은 크레딧 차감",
+      "usesStudioKeyDescribing": "Studio 키 사용, 요소 설명은 크레딧 차감"
     },
     "nodeMenu": {
       "generate": "생성",

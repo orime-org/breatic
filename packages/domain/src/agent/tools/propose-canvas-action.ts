@@ -68,7 +68,8 @@ import { expandAt, templatePlace, type TemplatePlace } from "@domain/agent/tools
 import { GET_GENERATION_TEMPLATE, GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
 import { estimateModelCredits, inputRefusalFor } from "@domain/model-catalog/model-catalog.js";
-import { resolveKeys, type ResolvedKeys } from "@domain/provider/provider-keys.js";
+import type { KeyPurpose } from "@domain/provider/account-keys.service.js";
+import { resolveKeys, runDescribesInput, type ResolvedKeys } from "@domain/provider/provider-keys.js";
 import type { KeySet } from "@breatic/provider";
 import type { CreditEstimate } from "@breatic/shared/pricing";
 
@@ -337,7 +338,8 @@ function judgeSent(sent: z.infer<typeof inputSchema>, materials: MaterialTable, 
  * @param sent - What the model sent.
  * @param materials - The registration behind each material address it names.
  * @param templates - The template registry the tags are read against.
- * @param keysFor - The keys and route each model runs on for the Studio's payer (inner#1953); ours when not given.
+ * @param keysFor - The keys and route the Studio's payer runs a model or the language model on (inner#1953); ours when
+ *   not given.
  * @returns The answer the card and the canvas read.
  * @throws {Error} When a limit cannot be evaluated in a way provider does not catch.
  */
@@ -345,23 +347,29 @@ export async function checkedAnswerFor(
   sent: z.infer<typeof inputSchema>,
   materials: MaterialTable = NO_MATERIAL,
   templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
-  keysFor: (model: string) => Promise<ProposalKeys> = onOurKeys,
+  keysFor: (purpose: KeyPurpose) => Promise<ProposalKeys> = onOurKeys,
 ): Promise<ProposalAnswer> {
   const judged = judgeSent(sent, materials, templates);
   const onPayerKey = new Set<string>();
+  // A run on the payer's key still pays credits for describing its inputs while the language model runs on ours.
+  const describedOnCredits = new Set<string>();
   if ("proposal" in judged) {
     for (const [index, node] of judged.proposal.nodes.entries()) {
       if (node.role !== "generate") continue;
       const run = generateRunOf(judged.proposal, node, index);
       if (run === undefined) continue;
-      const resolved = await keysFor(run.model);
-      if (resolved.keyId !== null) onPayerKey.add(run.model);
+      const resolved = await keysFor({ kind: "media", model: run.model });
+      if (resolved.keyId !== null) {
+        onPayerKey.add(run.model);
+        if (runDescribesInput(run.model, run.params) && (await keysFor({ kind: "llm" })).keyId === null) describedOnCredits.add(run.model);
+      }
       const refusal = await inputRefusalFor(run.model, { params: run.params, prompt: run.prompt }, resolved.route, resolved.keyId === null ? undefined : resolved.keys);
       if (refusal !== null) return { placed: false, reason: upstreamRefusal(node.name, run.model, refusal) };
     }
   }
   const answer = answerFor(sent, materials, templates);
-  return answer.placed && onPayerKey.size > 0 ? { ...answer, onPayerKey: [...onPayerKey] } : answer;
+  if (!answer.placed || onPayerKey.size === 0) return answer;
+  return { ...answer, onPayerKey: [...onPayerKey], ...(describedOnCredits.size === 0 ? {} : { describedOnCredits: [...describedOnCredits] }) };
 }
 
 /** The keys and route one model of a proposal runs on; a null key row is ours. */
@@ -512,6 +520,7 @@ export function answerFor(
 export async function renderProposalForModel(answer: ProposalAnswer): Promise<string> {
   if (!answer.placed) return `That proposal was refused, so nothing is on screen. ${answer.reason}`;
   const onPayerKey = new Set(answer.onPayerKey ?? []);
+  const describedOnCredits = new Set(answer.describedOnCredits ?? []);
   const generations = answer.nodes.flatMap((node, index) => (node.role === "generate" && node.model !== undefined ? [{ node, index, model: node.model }] : []));
   const priced = await Promise.all(
     generations.filter(({ model }) => !onPayerKey.has(model)).map(async ({ node, index, model }) => ({
@@ -520,6 +529,7 @@ export async function renderProposalForModel(answer: ProposalAnswer): Promise<st
     })),
   );
   const lines = generations.map(({ node, index, model }) => {
+    if (describedOnCredits.has(model)) return `- "${node.name}": it runs on the Studio payer's own key, but describing its inputs takes credits`;
     if (onPayerKey.has(model)) return `- "${node.name}": no credits; it runs on the Studio payer's own key`;
     const price = priced.find((one) => one.index === index)?.price;
     return `- "${node.name}": ${price === undefined ? "no price on this deployment" : renderPrice(price, "at its params")}`;
@@ -689,7 +699,7 @@ export function makeProposeCanvasAction(
     const urls = proposal.nodes.flatMap((node) => (node.material === undefined ? [] : [node.material]));
     // A proposal with no material asks the ledger nothing.
     const materials = urls.length === 0 ? NO_MATERIAL : await materialFacts(context.studioId, urls);
-    return checkedAnswerFor(proposal, materials, templates, (model) => resolveKeys({ studioId: context.studioId }, { kind: "media", model }));
+    return checkedAnswerFor(proposal, materials, templates, (purpose) => resolveKeys({ studioId: context.studioId }, purpose));
   },
 });
 }

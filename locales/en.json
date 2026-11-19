@@ -1050,7 +1050,9 @@
       "notePrefix": "Note: ",
       "integerBlank": "Blank for auto",
       "usesOwnKey": "Uses your key, no credits",
-      "usesStudioKey": "Uses the Studio's key, no credits"
+      "usesStudioKey": "Uses the Studio's key, no credits",
+      "usesOwnKeyDescribing": "Uses your key; describing elements takes credits",
+      "usesStudioKeyDescribing": "Uses the Studio's key; describing elements takes credits"
     },
     "edge": {
       "delete": "Delete connection"

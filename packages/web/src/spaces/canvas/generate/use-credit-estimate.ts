@@ -22,9 +22,11 @@ export interface RunAnswer {
    * (servability answers that), and until it resolves.
    */
   refusal: InputRefusalShape | undefined;
+  /** Whether the run describes an input on a language model first (Kling O3's elements), a call charged on our keys. */
+  describes: boolean;
 }
 
-const NO_ANSWER: RunAnswer = { estimate: undefined, refusal: undefined };
+const NO_ANSWER: RunAnswer = { estimate: undefined, refusal: undefined, describes: false };
 
 /**
  * What one run as set up would cost on the upstream its route would choose, and why no upstream here takes it when
@@ -59,14 +61,14 @@ export function useRunAnswer(
     let current = true;
     const asked = JSON.parse(key) as { input: EstimateInput; route: RunRoute };
     void Promise.all([import('@breatic/provider/pricing'), import('@breatic/shared/pricing')])
-      .then(async ([{ estimateCost, inputRefusal, parsePricingRules }, { creditEstimateOf, prepareRunParams }]) => {
+      .then(async ([{ describesInput, estimateCost, inputRefusal, parsePricingRules }, { creditEstimateOf, prepareRunParams }]) => {
         const rules = parsePricingRules(model.pricing_rules);
         const prepared = prepareRunParams(model, asked.input);
         const [cost, refusal] = await Promise.all([
           estimateCost(rules, model.availability, prepared, asked.route),
           inputRefusal(rules, model.availability, prepared, asked.route),
         ]);
-        return { estimate: creditEstimateOf(cost, creditMultiplier), refusal: refusal ?? undefined };
+        return { estimate: creditEstimateOf(cost, creditMultiplier), refusal: refusal ?? undefined, describes: describesInput(rules, prepared.params) };
       })
       .then(
         (next) => {
@@ -131,7 +133,7 @@ export function useRunCheck(
     () => (upstream === undefined ? DEFAULT_ROUTE : { mode: 'upstream', upstream }),
     [upstream],
   );
-  const { estimate, refusal } = useRunAnswer(asked, input, creditMultiplier, route);
+  const { estimate, refusal, describes } = useRunAnswer(asked, input, creditMultiplier, route);
   const refusalText = refusal === undefined || model === undefined ? undefined : inputRefusalText(refusal, model.display_name);
   const latestRefusal = React.useRef<string | undefined>(undefined);
   React.useEffect(() => {
@@ -139,7 +141,10 @@ export function useRunCheck(
   }, [refusalText]);
   let creditText: string | undefined;
   if (onKey !== undefined) {
-    creditText = t(plan.data?.payer === 'admin' ? 'canvas.generatePanel.usesStudioKey' : 'canvas.generatePanel.usesOwnKey');
+    // The media is on the payer's key; describing its inputs is charged while the language model runs on ours.
+    const describedOnCredits = describes && plan.data?.llm.usesAccountKey !== true;
+    const whose = plan.data?.payer === 'admin' ? 'usesStudioKey' : 'usesOwnKey';
+    creditText = t(`canvas.generatePanel.${whose}${describedOnCredits ? 'Describing' : ''}`);
   } else if (project === undefined || !plan.isPending) {
     // Nothing prints until the plan says whose key runs it, so a figure never flashes before "no credits". A plan
     // that failed to load prices on the platform key, which the server charges by when it cannot read one either.

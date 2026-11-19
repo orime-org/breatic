@@ -3,6 +3,7 @@
 
 export { priceUsd, type PriceContract } from "@provider/pricing/evaluate.js";
 export {
+  describesInput,
   estimateCost,
   inputRefusal,
   orderByPrice,

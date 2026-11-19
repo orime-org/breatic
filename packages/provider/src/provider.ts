@@ -151,6 +151,7 @@ function pricingOf(binding: MediaBinding): UpstreamPricing {
       kind: step.kind,
       ...(step.for_param === undefined ? {} : { for_param: step.for_param }),
       ...(step.per_item === undefined ? {} : { per_item: step.per_item }),
+      ...(step.describe === undefined ? {} : { describes: true }),
       ...(step.pricing === undefined ? {} : { pricing: step.pricing as PricingRule }),
     })),
     ...(binding.reused_by === undefined ? {} : { reused_by: binding.reused_by }),

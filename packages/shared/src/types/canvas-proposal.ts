@@ -490,4 +490,12 @@ export interface ProposalRefused {
  * What the tool answers with: the proposal itself, or why it was refused. A placed one names the models the Studio's
  * payer ran on their own key when it was proposed (inner#1953), which cost no credits.
  */
-export type ProposalAnswer = (CanvasProposal & { placed: true; onPayerKey?: string[] }) | ProposalRefused;
+export type ProposalAnswer =
+  | (CanvasProposal & {
+      placed: true;
+      /** Models the Studio's payer runs on their own key (inner#1953). */
+      onPayerKey?: string[];
+      /** Of those, the ones whose run describes its inputs on a language model that runs on our keys, in credits. */
+      describedOnCredits?: string[];
+    })
+  | ProposalRefused;

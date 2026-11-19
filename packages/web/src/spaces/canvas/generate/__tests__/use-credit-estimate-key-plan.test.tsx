@@ -81,6 +81,29 @@ const MIDJOURNEY = {
   },
 } as unknown as ModelEntry;
 
+/** A model whose WaveSpeed run describes each element on a language model first, a call charged on our keys. */
+const DESCRIBING = {
+  ...MIDJOURNEY,
+  name: 'describing',
+  params: { elements: { type: 'list', default: null, accepts: 'image', optional: true } },
+  pricing_rules: {
+    model: 'describing',
+    upstreams: [
+      rule('wavespeed', '{"total_price": base_price}', {
+        steps: [{ kind: 'element', for_param: 'elements', per_item: true, describes: true }],
+      }),
+    ],
+  },
+} as unknown as ModelEntry;
+
+/** On the payer's WaveSpeed key. */
+const ON_WAVESPEED: KeyPlan['models'][string] = {
+  upstream: 'wavespeed',
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: true, envVar: 'WAVESPEED_API_KEY' }] },
+};
+
+const WITH_ELEMENT = { params: { elements: ['https://a.example/e.png'] } };
+
 /** On the payer's fal key: fal is the one configured upstream. */
 const ON_FAL: KeyPlan['models'][string] = {
   upstream: 'fal',
@@ -139,6 +162,30 @@ describe('useRunCheck — the key plan (inner#1953)', () => {
     const { result } = renderHook(() => useRunCheck(MIDJOURNEY, { params: {} }, 1, PROJECT), { wrapper: wrapper() });
 
     await waitFor(() => expect(result.current.creditText).toBe('Uses the Studio\'s key, no credits'));
+  });
+
+  it('says the description of an element takes credits when the language model runs on our keys', async () => {
+    serve({ payer: 'self', llm: { usesAccountKey: false }, models: { describing: ON_WAVESPEED } });
+    const { result } = renderHook(() => useRunCheck(DESCRIBING, WITH_ELEMENT, 1, PROJECT), { wrapper: wrapper() });
+
+    await waitFor(() => expect(result.current.creditText).toBe('Uses your key; describing elements takes credits'));
+  });
+
+  it('says the same of the Studio’s key when the key is the admin’s', async () => {
+    serve({ payer: 'admin', llm: { usesAccountKey: false }, models: { describing: ON_WAVESPEED } });
+    const { result } = renderHook(() => useRunCheck(DESCRIBING, WITH_ELEMENT, 1, PROJECT), { wrapper: wrapper() });
+
+    await waitFor(() => expect(result.current.creditText).toBe('Uses the Studio\'s key; describing elements takes credits'));
+  });
+
+  it('takes no credits when the payer’s OpenRouter key runs the description, or the run has no element', async () => {
+    serve({ payer: 'self', llm: { usesAccountKey: true }, models: { describing: ON_WAVESPEED } });
+    const onPayerLlm = renderHook(() => useRunCheck(DESCRIBING, WITH_ELEMENT, 1, PROJECT), { wrapper: wrapper() });
+    await waitFor(() => expect(onPayerLlm.result.current.creditText).toBe('Uses your key, no credits'));
+
+    serve({ payer: 'self', llm: { usesAccountKey: false }, models: { describing: ON_WAVESPEED } });
+    const noElement = renderHook(() => useRunCheck(DESCRIBING, { params: {} }, 1, PROJECT), { wrapper: wrapper() });
+    await waitFor(() => expect(noElement.result.current.creditText).toBe('Uses your key, no credits'));
   });
 
   it('judges refusals on the payer’s upstream with the plan’s availability, even where the deployment has no key for it', async () => {
