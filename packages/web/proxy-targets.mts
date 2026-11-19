@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Dev-proxy targets for vite: where `/api` and `/ws` go.
+ * Dev-proxy targets for vite: where `/api`, `/ws` and the MCP routes go.
  *
  * Separate from `dev-ports.mts` because of who imports what. The default ports
  * come from `@breatic/shared`, so the core env schema and this config read ONE
@@ -10,26 +10,27 @@
  * backend targets, so only vite imports this file; playwright, which needs
  * only the dev-server port, loads `dev-ports.mts` without touching shared.
  */
-import { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT } from '@breatic/shared';
+import { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT, DEFAULT_MCP_PORT } from '@breatic/shared';
 import { loadRootEnv, parsePort } from './dev-ports.mjs';
 
 /**
  * Resolve the backend targets the dev server proxies to.
  *
- * Derived from the backend's own `PORT` / `COLLAB_PORT` rather than separate
+ * Derived from the backend's own `PORT` / `COLLAB_PORT` / `MCP_PORT` rather than separate
  * `VITE_*_TARGET` settings: one value per service means the frontend cannot
  * drift out of sync with the backend it is supposed to reach.
  * @param mode - Vite mode passed through to `loadEnv`.
  * @param dirname - Directory of the calling config file.
- * @returns Absolute API and collab WebSocket targets.
+ * @returns Absolute API, collab WebSocket and MCP service targets.
  */
 export function resolveProxyTargets(
   mode: string,
   dirname: string,
-): { apiTarget: string; wsTarget: string } {
+): { apiTarget: string; wsTarget: string; mcpTarget: string } {
   const env = loadRootEnv(mode, dirname);
   return {
     apiTarget: `http://localhost:${parsePort(env.PORT, DEFAULT_API_PORT)}`,
     wsTarget: `ws://localhost:${parsePort(env.COLLAB_PORT, DEFAULT_COLLAB_PORT)}`,
+    mcpTarget: `http://localhost:${parsePort(env.MCP_PORT, DEFAULT_MCP_PORT)}`,
   };
 }

@@ -30,7 +30,7 @@ export default defineConfig(({ command, mode }) => {
   // these vars behaves as before. Shared with playwright.config.ts so the smoke
   // target can never aim at a port the dev server did not bind.
   const devPort = resolveDevPort(mode, __dirname);
-  const { apiTarget: devApiTarget, wsTarget: devWsTarget } =
+  const { apiTarget: devApiTarget, wsTarget: devWsTarget, mcpTarget: devMcpTarget } =
     resolveProxyTargets(mode, __dirname);
   // Sentry plugin only with a token AND on `build`: dev must never cut a
   // release or upload source maps.
@@ -297,6 +297,14 @@ export default defineConfig(({ command, mode }) => {
           target: devApiTarget,
           changeOrigin: true,
         },
+        // External agents (#1488): the OAuth routes and the authorization
+        // server metadata live on the API server; the MCP address and its
+        // protected-resource metadata (root and path-inserted forms) on the
+        // MCP service, the split nginx makes in production.
+        '/oauth/': { target: devApiTarget, changeOrigin: true },
+        '/.well-known/oauth-authorization-server': { target: devApiTarget, changeOrigin: true },
+        '/.well-known/oauth-protected-resource': { target: devMcpTarget, changeOrigin: true },
+        '/mcp': { target: devMcpTarget, changeOrigin: true },
         // Yjs client connects to `/ws` (without trailing slash), so proxy key
         // must also match `/ws` to avoid bypassing Vite proxy in dev.
         '/ws': {

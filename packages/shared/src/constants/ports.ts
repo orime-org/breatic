@@ -14,7 +14,7 @@
  *
  * ADMISSION RULE — read before adding anything here:
  * a port belongs in this file ONLY if the frontend build config also needs it.
- * That is two ports, not six. The three healthz ports (3001 / 9101 / 1235) have
+ * That is three ports. The three healthz ports (3001 / 9101 / 1235) have
  * exactly one consumer each — the service itself and its docker healthcheck —
  * and `VITE_DEV_PORT` has exactly one consumer too (web). Those stay where
  * their single consumer lives. Moving them here to make the set look tidy would
@@ -27,3 +27,6 @@ export const DEFAULT_API_PORT = 3000;
 
 /** Collab WebSocket default listen port (`COLLAB_PORT`). Vite proxies `/ws` here. */
 export const DEFAULT_COLLAB_PORT = 1234;
+
+/** MCP service default listen port (`MCP_PORT`). Vite proxies the MCP address and its resource metadata here. */
+export const DEFAULT_MCP_PORT = 3003;

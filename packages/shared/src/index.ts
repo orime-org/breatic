@@ -9,6 +9,7 @@ export {
   TaskStatus,
   DEFAULT_API_PORT,
   DEFAULT_COLLAB_PORT,
+  DEFAULT_MCP_PORT,
   USER_LOOKUP_MAX_IDS,
 } from "@shared/constants/index.js";
 

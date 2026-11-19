@@ -23,7 +23,7 @@
  */
 
 import { z } from "zod";
-import { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT, REDIS_KEY_PREFIX_PATTERN, resolveRedisKeyPrefix } from "@breatic/shared";
+import { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT, DEFAULT_MCP_PORT, REDIS_KEY_PREFIX_PATTERN, resolveRedisKeyPrefix } from "@breatic/shared";
 
 /**
  * Normalise a blank env value to undefined so `.default()` / `.optional()` fire.
@@ -289,7 +289,7 @@ export const coreEnvSchema = z.object({
   // connect to, the OAuth issuer that address names, the API the service calls,
   // and the secret it authenticates with to the server. An empty secret turns
   // external-agent token exchange off; the rest of the product runs.
-  MCP_PORT: numeric(z.coerce.number().int().positive().default(3003)),
+  MCP_PORT: numeric(z.coerce.number().int().positive().default(DEFAULT_MCP_PORT)),
   MCP_HEALTH_PORT: numeric(z.coerce.number().int().positive().default(3004)),
   MCP_PUBLIC_URL: z.string().url().default("http://localhost:3003/mcp"),
   OAUTH_ISSUER: z.string().url().default("http://localhost:3000"),
