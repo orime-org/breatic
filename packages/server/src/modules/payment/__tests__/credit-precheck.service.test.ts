@@ -30,11 +30,9 @@ vi.mock("@breatic/shared", async (importOriginal) => ({
 }));
 
 const reserveCredits = vi.fn();
-const getSpendableCredits = vi.fn();
 const getStudioDebt = vi.fn();
 const getUnassignedCredits = vi.fn();
 const getGrantedCredits = vi.fn();
-const resolveOwnerStudioId = vi.fn();
 const judgeBalanceAdmission = vi.fn();
 vi.mock("@breatic/domain", () => ({
   creditHoldService: {
@@ -46,9 +44,7 @@ vi.mock("@breatic/domain", () => ({
     getStudioDebt: (...a: unknown[]) => getStudioDebt(...a),
     getUnassignedCredits: (...a: unknown[]) => getUnassignedCredits(...a),
     getGrantedCredits: (...a: unknown[]) => getGrantedCredits(...a),
-    getSpendableCredits: (...a: unknown[]) => getSpendableCredits(...a),
   },
-  assetService: { resolveOwnerStudioId: (...a: unknown[]) => resolveOwnerStudioId(...a) },
 }));
 
 const { precheckCredits, reserveForRun } = await import("@server/modules/payment/credit-precheck.service.js");
@@ -85,9 +81,7 @@ function refuseWith(spendable: number, held: number): void {
 beforeEach(() => {
   vi.clearAllMocks();
   env.PAYMENT_ENABLED = true;
-  resolveOwnerStudioId.mockResolvedValue(STUDIO);
   reserveCredits.mockResolvedValue({ ok: true });
-  getSpendableCredits.mockResolvedValue("100.000000");
   getStudioDebt.mockResolvedValue("0.000000");
   getUnassignedCredits.mockResolvedValue("0.000000");
   getGrantedCredits.mockResolvedValue("0.000000");
@@ -191,13 +185,12 @@ describe("reserveForRun", () => {
 describe("precheckCredits", () => {
   // A chat turn cannot know up front what it will cost, so it holds nothing
   // and is admitted on the balance alone, holds or not (user 2026-10-18).
-  it("lets a chat turn through when the balance admission lets it, without reading holds", async () => {
+  it("lets a chat turn through when the balance admission lets it", async () => {
     judgeBalanceAdmission.mockResolvedValue(null);
     await expect(precheckCredits(PROJECT, USER, 0.000001)).resolves.toBeUndefined();
   });
 
   it("refuses on the balance with the sentence that names the cause, never the held one", async () => {
-    getSpendableCredits.mockResolvedValue("0.000000");
     judgeBalanceAdmission.mockResolvedValue({ reason: "no_credits", studioId: "s", spendable: "0.000000" });
     expect(await refusal(() => precheckCredits(PROJECT, USER, 0.000001))).toEqual({
       status: 402,
@@ -215,7 +208,6 @@ describe("precheckCredits", () => {
   it("holds nothing while payments are off", async () => {
     env.PAYMENT_ENABLED = false;
     await reserveForRun(PROJECT, USER, "t", 1);
-    expect(getSpendableCredits).not.toHaveBeenCalled();
     expect(reserveCredits).not.toHaveBeenCalled();
   });
 });
