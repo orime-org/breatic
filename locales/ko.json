@@ -4063,5 +4063,11 @@
     "copied": "복사됨",
     "done": "완료",
     "createFailed": "토큰을 만들지 못했습니다. 잠시 후 다시 시도하세요."
+  },
+  "commentMention": {
+    "members": "Project 멤버",
+    "noMatch": "일치하는 멤버가 없습니다",
+    "loadFailed": "불러오지 못했습니다",
+    "retry": "다시 시도"
   }
 }

@@ -4063,5 +4063,11 @@
     "copied": "コピーしました",
     "done": "完了",
     "createFailed": "トークンを作成できませんでした。しばらくしてからお試しください。"
+  },
+  "commentMention": {
+    "members": "Project のメンバー",
+    "noMatch": "一致するメンバーがいません",
+    "loadFailed": "読み込めませんでした",
+    "retry": "再試行"
   }
 }

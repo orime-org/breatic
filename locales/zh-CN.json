@@ -4063,5 +4063,11 @@
     "copied": "已复制",
     "done": "完成",
     "createFailed": "新建令牌失败，请稍后再试"
+  },
+  "commentMention": {
+    "members": "Project 成员",
+    "noMatch": "没有匹配的成员",
+    "loadFailed": "读取失败",
+    "retry": "重试"
   }
 }

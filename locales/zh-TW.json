@@ -4063,5 +4063,11 @@
     "copied": "已複製",
     "done": "完成",
     "createFailed": "新建權杖失敗，請稍後再試"
+  },
+  "commentMention": {
+    "members": "Project 成員",
+    "noMatch": "沒有符合的成員",
+    "loadFailed": "讀取失敗",
+    "retry": "重試"
   }
 }

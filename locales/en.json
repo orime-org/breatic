@@ -4063,5 +4063,11 @@
     "copied": "Copied",
     "done": "Done",
     "createFailed": "Could not create the token. Try again later."
+  },
+  "commentMention": {
+    "members": "Project members",
+    "noMatch": "No matching members",
+    "loadFailed": "Couldn't load",
+    "retry": "Retry"
   }
 }

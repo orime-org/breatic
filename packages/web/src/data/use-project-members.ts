@@ -21,6 +21,10 @@ const PROFILES_KEY = 'user-profiles';
 interface ProjectMembersResult {
   members: Member[];
   isLoading: boolean;
+  /** Either half failed to load. */
+  isError: boolean;
+  /** Ask both halves again. */
+  retry: () => void;
 }
 
 /**
@@ -104,7 +108,15 @@ export function useProjectMembers(projectId: string): ProjectMembersResult {
   const isLoading =
     rolesQuery.isLoading || (userIds.length > 0 && profilesQuery.isLoading);
 
-  return { members, isLoading };
+  const isError = rolesQuery.isError || profilesQuery.isError;
+  const refetchRoles = rolesQuery.refetch;
+  const refetchProfiles = profilesQuery.refetch;
+  const retry = React.useCallback((): void => {
+    void refetchRoles();
+    if (userIds.length > 0) void refetchProfiles();
+  }, [refetchRoles, refetchProfiles, userIds.length]);
+
+  return { members, isLoading, isError, retry };
 }
 
 /**
