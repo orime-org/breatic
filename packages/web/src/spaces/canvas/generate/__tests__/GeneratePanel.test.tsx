@@ -16,7 +16,7 @@ vi.mock('@web/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: { children?: React.ReactNode }) => children,
 }));
 
-import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
+import { IMAGE_MODE_OPTIONS } from '@breatic/shared/canvas-model';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { GeneratePanel } from '@web/spaces/canvas/generate/GeneratePanel';
 

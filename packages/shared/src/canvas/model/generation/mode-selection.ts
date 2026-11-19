@@ -13,10 +13,8 @@
  * until #1948.
  */
 
-import type { ModelEntry } from '@breatic/shared';
-
-import type { ParamsStoreSource } from '@breatic/shared/canvas-model';
-import { resolveModelSwitch } from '@breatic/shared/canvas-model';
+import { type ParamsStoreSource, resolveModelSwitch } from '@shared/canvas/model/model-params.js';
+import { type ModelEntry } from '@shared/types/model-catalog.js';
 
 /**
  * Keeps only the models offerable under a generation mode — those whose `mode`

@@ -3,16 +3,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import type { ModelEntry } from '@breatic/shared';
-
-import {
-  filterAvailableModes,
-  resolveAvailableMode,
-  filterModelsByMode,
-  pickModelForMode,
-  resolveModeSwitch,
-  resolveModelForMode,
-} from '@web/spaces/canvas/generate/mode-selection';
+import { filterAvailableModes, filterModelsByMode, pickModelForMode, resolveAvailableMode, resolveModeSwitch, resolveModelForMode } from '@shared/canvas/model/generation/mode-selection.js';
+import { type ModelEntry } from '@shared/types/model-catalog.js';
 
 /**
  * Minimal ModelEntry fixture — only the fields the mode filter reads.

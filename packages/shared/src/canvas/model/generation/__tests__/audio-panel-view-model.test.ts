@@ -2,14 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
-import type { ModelEntry } from '@breatic/shared';
-
-import {
-  buildAudioPanelViewModel,
-  withListDefaultVoice,
-} from '@web/spaces/canvas/generate/audio-panel-view-model';
-import { resolveModelSwitch } from '@breatic/shared/canvas-model';
-import type { AudioNodeView, NodeRef } from '@breatic/shared/canvas-model';
+import { buildAudioPanelViewModel, withListDefaultVoice } from '@shared/canvas/model/generation/audio-panel-view-model.js';
+import { resolveModelSwitch } from '@shared/canvas/model/model-params.js';
+import { type NodeRef } from '@shared/canvas/model/node-view.js';
+import { type ModelEntry } from '@shared/types/model-catalog.js';
 
 /**
  * A tts model.
@@ -64,7 +60,7 @@ function nodes(
       type: 'audio',
       // `handling` is what marks a node view as a CONTENT one; a fixture without
       // it reads as a node that carries no model, no params and no voice.
-      data: { handling: false, ...data } as AudioNodeView,
+      data: { handling: false, ...data },
     },
   ];
 }

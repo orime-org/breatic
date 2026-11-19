@@ -14,10 +14,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { GENERATION_NODE_BUCKETS } from '@breatic/shared';
-import type { ModelCatalog, ModelEntry } from '@breatic/shared';
-
-import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
+import { modelsForModality } from '@shared/canvas/model/generation/modality-buckets.js';
+import { GENERATION_NODE_BUCKETS, type ModelCatalog, type ModelEntry } from '@shared/types/model-catalog.js';
 
 /**
  * Builds a minimal catalog entry.

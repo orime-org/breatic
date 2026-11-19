@@ -59,7 +59,7 @@ import {
 import {
   filterAvailableModes,
   resolveModeSwitch,
-} from '@web/spaces/canvas/generate/mode-selection';
+} from '@breatic/shared/canvas-model';
 import {
   asContentView,
   type ContentNodeView,
@@ -76,7 +76,7 @@ import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePan
 import {
   VIDEO_MODE_OPTIONS,
 } from '@breatic/shared/canvas-model';
-import { allGenerationModels, modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
+import { allGenerationModels, modelsForModality } from '@breatic/shared/canvas-model';
 import { slotForPurpose, slotRefusalKey } from '@breatic/shared/canvas-model';
 import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
 import { useStyleSlot } from '@web/spaces/canvas/generate/use-style-slot';
@@ -95,7 +95,7 @@ import {
   nodeVideoMode,
   selectVideoModeModels,
   type VideoGenMode,
-} from '@web/spaces/canvas/generate/video-panel-view-model';
+} from '@breatic/shared/canvas-model';
 import { evaluateNodeGate } from '@breatic/shared/canvas-model';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';

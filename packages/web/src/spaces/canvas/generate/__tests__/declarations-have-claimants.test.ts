@@ -56,7 +56,7 @@ import { AUDIO_SLOTS } from '@breatic/shared/canvas-model';
 import { IMAGE_SLOTS } from '@breatic/shared/canvas-model';
 import { STYLE_SLOT } from '@breatic/shared/canvas-model';
 import { CAMERA_PARAMS } from '@web/spaces/canvas/generate/CameraPicker';
-import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
+import { IMAGE_MODE_OPTIONS } from '@breatic/shared/canvas-model';
 import { modelControls } from '@web/spaces/canvas/generate/model-controls';
 import { RATIO_RESOLUTION_PARAMS } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import {

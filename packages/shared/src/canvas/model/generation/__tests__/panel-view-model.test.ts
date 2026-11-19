@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
-import type { FocusImage, ModelEntry, NodeType } from '@breatic/shared';
-
-import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
-import {
-  buildGeneratePanelViewModel,
-} from '@web/spaces/canvas/generate/panel-view-model';
-import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
-import type { ImageNodeView, NodeViewOf } from '@breatic/shared/canvas-model';
+import { type CanvasNodeView } from '@shared/canvas/model/canvas-read.js';
+import { resolveModeSwitch } from '@shared/canvas/model/generation/mode-selection.js';
+import { buildGeneratePanelViewModel } from '@shared/canvas/model/generation/panel-view-model.js';
+import { type CanvasEdge, type ImageNodeView, type NodeViewOf } from '@shared/canvas/model/node-view.js';
+import { type FocusImage, type NodeType } from '@shared/types/canvas-node.js';
+import { type ModelEntry } from '@shared/types/model-catalog.js';
 
 /**
  * Builds a view model with no body text, which is what every case here wants:

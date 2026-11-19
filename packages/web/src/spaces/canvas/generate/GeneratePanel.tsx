@@ -20,7 +20,7 @@ import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { RatioResolutionPicker } from '@web/spaces/canvas/generate/RatioResolutionPicker';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
-import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
+import type { ImageGenMode } from '@breatic/shared/canvas-model';
 import { TemplateMenu } from '@web/spaces/canvas/generate/TemplateMenu';
 import { GENERATE_PANEL_WIDTH_STYLE } from '@web/spaces/canvas/generate/panel-width';
 

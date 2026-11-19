@@ -8,7 +8,7 @@ import { ImageModeToggle } from '@web/spaces/canvas/generate/ImageModeToggle';
 import {
   IMAGE_MODE_OPTIONS,
   type ImageGenMode,
-} from '@web/spaces/canvas/generate/image-mode-selection';
+} from '@breatic/shared/canvas-model';
 import { panCanvasViewport } from '@web/spaces/canvas/generate/__tests__/canvas-viewport-test-utils';
 import {
   expectChosenFill,

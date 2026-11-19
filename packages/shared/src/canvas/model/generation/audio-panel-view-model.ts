@@ -18,30 +18,15 @@
  * first of the model's own list instead, applied by {@link withListDefaultVoice}.
  */
 
-import { dialogueSideOf, dialogueSpeakers, promptTaken, type ModelEntry } from '@breatic/shared';
-
-import { AUDIO_SLOTS } from '@breatic/shared/canvas-model';
-import type { AudioSlot, AudioSlotUrls } from '@breatic/shared/canvas-model';
-import {
-  filterModelsByMode,
-  pickModelForMode,
-} from '@web/spaces/canvas/generate/mode-selection';
-import {
-  readSlotThumbnails,
-  readSlotDurations,
-  readSlotUrls,
-} from '@breatic/shared/canvas-model';
-import { resolveModelSwitch } from '@breatic/shared/canvas-model';
-import {
-  isVoiceChosen,
-  voiceParamName,
-} from '@web/spaces/canvas/generate/voice-param';
-import { asContentView, type NodeRef } from '@breatic/shared/canvas-model';
-import {
-  isStandInOn,
-  speakersShort,
-  standInOf,
-} from '@breatic/shared/canvas-model';
+import { dialogueSideOf, dialogueSpeakers, isStandInOn, speakersShort, standInOf } from '@shared/canvas/dialogue.js';
+import { AUDIO_SLOTS, type AudioSlot, type AudioSlotUrls } from '@shared/canvas/model/audio-slots.js';
+import { filterModelsByMode, pickModelForMode } from '@shared/canvas/model/generation/mode-selection.js';
+import { isVoiceChosen, voiceParamName } from '@shared/canvas/model/generation/voice-param.js';
+import { resolveModelSwitch } from '@shared/canvas/model/model-params.js';
+import { type NodeRef, asContentView } from '@shared/canvas/model/node-view.js';
+import { readSlotDurations, readSlotThumbnails, readSlotUrls } from '@shared/canvas/model/slots.js';
+import { promptTaken } from '@shared/param-resolution.js';
+import { type ModelEntry } from '@shared/types/model-catalog.js';
 
 /** Everything the audio panel and its submit read off the node. */
 export interface AudioPanelViewModel {
@@ -178,7 +163,7 @@ export function buildAudioPanelViewModel(input: {
     dialogueVoices: dialogueSideOf(current, params) ? speakerVoices(current, params) : null,
     voiceChosen,
     voiceSelectedId: voiceChosen
-      ? (storedRecord?.[voiceParam as string] as string)
+      ? (storedRecord?.[voiceParam] as string)
       : null,
     slotUrls: readSlotUrls(AUDIO_SLOTS, content),
     slotThumbnails: readSlotThumbnails(AUDIO_SLOTS, content),

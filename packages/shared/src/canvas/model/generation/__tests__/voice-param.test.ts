@@ -19,13 +19,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import {
-  sampleLanguageFor,
-  sampleUrlFor,
-  voiceParamName,
-  isVoiceChosen,
-} from '@web/spaces/canvas/generate/voice-param';
-import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
+import { isVoiceChosen, sampleLanguageFor, sampleUrlFor, voiceParamName } from '@shared/canvas/model/generation/voice-param.js';
+import { type ModelEntry, type ParamDescriptor } from '@shared/types/model-catalog.js';
 
 /**
  * Builds a model entry carrying the given params.

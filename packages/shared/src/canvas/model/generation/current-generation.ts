@@ -11,28 +11,18 @@
  * answer, so it can tell what is written from what would actually run.
  */
 
-import {
-  paramsForMode,
-  type GenerationNodeType,
-  type ModelCatalog,
-  type ModelEntry,
-} from '@breatic/shared';
-
-import type { ContentNodeView } from '@breatic/shared/canvas-model';
-import { AUDIO_MODE_OPTIONS } from '@breatic/shared/canvas-model';
-import { buildAudioPanelViewModel, withListDefaultVoice } from '@web/spaces/canvas/generate/audio-panel-view-model';
-import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
-import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
-import { resolveModelSwitch } from '@breatic/shared/canvas-model';
-import { withStyleImages } from '@web/spaces/canvas/generate/style-picks';
-import { wireParams } from '@breatic/shared/canvas-model';
-import {
-  filterAvailableModes,
-  filterModelsByMode,
-  pickModelForMode,
-  resolveAvailableMode,
-} from '@web/spaces/canvas/generate/mode-selection';
-import { VIDEO_MODE_OPTIONS } from '@breatic/shared/canvas-model';
+import { wireParams } from '@shared/canvas/dialogue.js';
+import { AUDIO_MODE_OPTIONS } from '@shared/canvas/model/audio-mode-options.js';
+import { buildAudioPanelViewModel, withListDefaultVoice } from '@shared/canvas/model/generation/audio-panel-view-model.js';
+import { IMAGE_MODE_OPTIONS } from '@shared/canvas/model/generation/image-mode-selection.js';
+import { modelsForModality } from '@shared/canvas/model/generation/modality-buckets.js';
+import { filterAvailableModes, filterModelsByMode, pickModelForMode, resolveAvailableMode } from '@shared/canvas/model/generation/mode-selection.js';
+import { withStyleImages } from '@shared/canvas/model/generation/style-picks.js';
+import { resolveModelSwitch } from '@shared/canvas/model/model-params.js';
+import { type ContentNodeView } from '@shared/canvas/model/node-view.js';
+import { VIDEO_MODE_OPTIONS } from '@shared/canvas/model/video-mode-options.js';
+import { paramsForMode } from '@shared/param-modes.js';
+import { type GenerationNodeType, type ModelCatalog, type ModelEntry } from '@shared/types/model-catalog.js';
 
 /** The generation a node would run if its panel's Generate were pressed now. */
 export interface CurrentGeneration {

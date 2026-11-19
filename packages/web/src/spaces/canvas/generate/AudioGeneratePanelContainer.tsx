@@ -52,7 +52,7 @@ import {
 import {
   buildAudioPanelViewModel,
   withListDefaultVoice,
-} from '@web/spaces/canvas/generate/audio-panel-view-model';
+} from '@breatic/shared/canvas-model';
 import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { audioEstimateInput, buildAudioTaskPayload } from '@breatic/shared/canvas-model';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
@@ -77,8 +77,8 @@ import {
   filterModelsByMode,
   resolveAvailableMode,
   resolveModeSwitch,
-} from '@web/spaces/canvas/generate/mode-selection';
-import { allGenerationModels, modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
+} from '@breatic/shared/canvas-model';
+import { allGenerationModels, modelsForModality } from '@breatic/shared/canvas-model';
 import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
@@ -91,7 +91,7 @@ import {
 } from '@web/spaces/canvas/generate/submit-generation';
 import { useVoiceList } from '@web/spaces/canvas/generate/use-voice-list';
 import { voiceDisplayName } from '@web/spaces/canvas/generate/voice-list-state';
-import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
+import { voiceParamName } from '@breatic/shared/canvas-model';
 import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 import { evaluateNodeGate } from '@breatic/shared/canvas-model';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';

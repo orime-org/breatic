@@ -18,7 +18,7 @@ import { SampleLanguagePicker } from '@web/spaces/canvas/generate/SampleLanguage
 import type { SamplePlayer } from '@web/spaces/canvas/generate/use-sample-player';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 import { useCurrentUserStore } from '@web/stores/current-user';
-import { sampleLanguageFor, sampleUrlFor } from '@web/spaces/canvas/generate/voice-param';
+import { sampleLanguageFor, sampleUrlFor } from '@breatic/shared/canvas-model';
 
 /** How close to the bottom asking for the next page starts, in pixels. */
 const PAGE_TRIGGER_DISTANCE = 24;

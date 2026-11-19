@@ -6,10 +6,9 @@
  * (inner#826, inner#828).
  */
 
-import type { ModelEntry } from '@breatic/shared';
-
-import { readSlotPicks } from '@breatic/shared/canvas-model';
-import { STYLE_SLOT, styleCapFor } from '@breatic/shared/canvas-model';
+import { readSlotPicks } from '@shared/canvas/model/slots.js';
+import { STYLE_SLOT, styleCapFor } from '@shared/canvas/model/style-slot.js';
+import { type ModelEntry } from '@shared/types/model-catalog.js';
 
 /** The style slot's part of a view model. */
 export interface StyleRun {

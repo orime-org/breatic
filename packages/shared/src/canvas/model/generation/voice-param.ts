@@ -14,7 +14,8 @@
  * the request through the path the other params already take.
  */
 
-import type { ModelEntry, Voice } from '@breatic/shared';
+import { type ModelEntry } from '@shared/types/model-catalog.js';
+import { type Voice } from '@shared/types/voice.js';
 
 /**
  * The name of this model's voice param, if it has one.

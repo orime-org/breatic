@@ -11,12 +11,7 @@
  * model list — so the mapping lives here rather than in both.
  */
 
-import {
-  GENERATION_NODE_BUCKETS,
-  type GenerationNodeType,
-  type ModelCatalog,
-  type ModelEntry,
-} from '@breatic/shared';
+import { GENERATION_NODE_BUCKETS, type GenerationNodeType, type ModelCatalog, type ModelEntry } from '@shared/types/model-catalog.js';
 
 /**
  * Every model a panel of this modality can offer.

@@ -39,7 +39,7 @@ import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-
 import { useSamplePlayer } from '@web/spaces/canvas/generate/use-sample-player';
 import { VoiceList } from '@web/spaces/canvas/generate/VoiceList';
 import { SecondPanelFrame, SecondPanelRow, useSecondPanelSide } from '@web/spaces/canvas/generate/second-panel';
-import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
+import { voiceParamName } from '@breatic/shared/canvas-model';
 import { voiceDisplayName, type VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 import { useDraftBox } from '@web/spaces/canvas/generate/use-draft-box';
 

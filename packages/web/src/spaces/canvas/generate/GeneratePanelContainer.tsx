@@ -37,13 +37,13 @@ import {
 } from '@web/spaces/canvas/generate/generate-panel-frame';
 import { evaluateNodeGate } from '@breatic/shared/canvas-model';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
-import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
-import { allGenerationModels, modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
+import type { ImageGenMode } from '@breatic/shared/canvas-model';
+import { allGenerationModels, modelsForModality } from '@breatic/shared/canvas-model';
 import {
   imageModeTakesReferences,
   IMAGE_MODE_OPTIONS,
   resolveMode,
-} from '@web/spaces/canvas/generate/image-mode-selection';
+} from '@breatic/shared/canvas-model';
 import {
   asContentView,
   type ContentNodeView,
@@ -56,12 +56,12 @@ import {
 import {
   filterAvailableModes,
   resolveModeSwitch,
-} from '@web/spaces/canvas/generate/mode-selection';
+} from '@breatic/shared/canvas-model';
 import {
   buildGeneratePanelViewModel,
   selectModeModels,
   type GeneratePanelViewModel,
-} from '@web/spaces/canvas/generate/panel-view-model';
+} from '@breatic/shared/canvas-model';
 import { ownControlValues } from '@web/spaces/canvas/generate/model-controls';
 import {
   deriveReferences,

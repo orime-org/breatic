@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
+import type { ImageGenMode } from '@breatic/shared/canvas-model';
 import { ModeToggle, type ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
 
 interface ImageModeToggleProps {

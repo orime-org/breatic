@@ -13,43 +13,18 @@
  * param value reader all serve both.
  */
 
-import { referenceKinds, referencePool, VIDEO_GENERATION_MODES, type ReferencePool } from '@breatic/shared';
-import type { FocusImage, ModelEntry } from '@breatic/shared';
-
-import { validFocusImages } from '@breatic/shared/canvas-model';
-import type { CanvasEdge } from '@web/data/yjs/canvas-space';
-import {
-  deriveReferences,
-  type ReferenceRailItem,
-} from '@breatic/shared/canvas-model';
-import {
-  resolveAvailableMode,
-  filterModelsByMode,
-  pickModelForMode,
-} from '@web/spaces/canvas/generate/mode-selection';
-import { resolveModelSwitch } from '@breatic/shared/canvas-model';
-import { withStyleImages } from '@web/spaces/canvas/generate/style-picks';
-import {
-  mentionDurations,
-  mentionTokens,
-  mentionedReferenceUrls,
-  NO_MENTION_TOKENS,
-  NO_REFERENCE_URLS,
-  type MentionTokens,
-  type ReferenceUrls,
-} from '@breatic/shared/canvas-model';
-import {
-  readSlotDurations,
-  readSlotThumbnails,
-  readSlotUrls,
-  slotSourceDurations,
-} from '@breatic/shared/canvas-model';
-import { VIDEO_SLOTS, videoSlotsForModel } from '@breatic/shared/canvas-model';
-import type {
-  VideoSlot,
-  VideoSlotUrls,
-} from '@breatic/shared/canvas-model';
-import { asContentView, type NodeRef } from '@breatic/shared/canvas-model';
+import { type ReferenceRailItem, deriveReferences } from '@shared/canvas/model/derive-references.js';
+import { validFocusImages } from '@shared/canvas/model/focus-images.js';
+import { filterModelsByMode, pickModelForMode, resolveAvailableMode } from '@shared/canvas/model/generation/mode-selection.js';
+import { withStyleImages } from '@shared/canvas/model/generation/style-picks.js';
+import { resolveModelSwitch } from '@shared/canvas/model/model-params.js';
+import { type CanvasEdge, type NodeRef, asContentView } from '@shared/canvas/model/node-view.js';
+import { type MentionTokens, NO_MENTION_TOKENS, NO_REFERENCE_URLS, type ReferenceUrls, mentionDurations, mentionTokens, mentionedReferenceUrls } from '@shared/canvas/model/reference-urls.js';
+import { readSlotDurations, readSlotThumbnails, readSlotUrls, slotSourceDurations } from '@shared/canvas/model/slots.js';
+import { VIDEO_SLOTS, type VideoSlot, type VideoSlotUrls, videoSlotsForModel } from '@shared/canvas/model/video-slots.js';
+import { type ReferencePool, referenceKinds, referencePool } from '@shared/reference-pool.js';
+import { type FocusImage } from '@shared/types/canvas-node.js';
+import { type ModelEntry, VIDEO_GENERATION_MODES } from '@shared/types/model-catalog.js';
 
 /**
  * The generation modes the video panel offers — the six the user decided

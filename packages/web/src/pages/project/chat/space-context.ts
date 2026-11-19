@@ -24,7 +24,7 @@ import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { snapshotOfPick } from '@web/spaces/canvas/attach-nodes';
-import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
+import { modelsForModality } from '@breatic/shared/canvas-model';
 import { pickReaders } from '@web/spaces/canvas/pick-for-agent';
 import { cutEnd, fitCanvas, fitNodeOf } from '@web/pages/project/chat/canvas-fit';
 import type { FitInput, FitNode } from '@web/pages/project/chat/canvas-fit';

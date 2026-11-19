@@ -7,8 +7,8 @@
  * that value (a multi-mode `["i2i", "edit"]` model belongs to `i2i`).
  */
 
-import type { ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
-import { resolveAvailableMode } from '@web/spaces/canvas/generate/mode-selection';
+import { resolveAvailableMode } from '@shared/canvas/model/generation/mode-selection.js';
+import { type ModeOption } from '@shared/canvas/model/mode-option.js';
 
 export type ImageGenMode = 't2i' | 'i2i';
 

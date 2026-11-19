@@ -8,9 +8,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { ModelCatalog, ModelEntry, ParamDescriptor } from '@breatic/shared';
-
-import { currentGeneration } from '@web/spaces/canvas/generate/current-generation';
+import { currentGeneration } from '@shared/canvas/model/generation/current-generation.js';
+import { type ModelCatalog, type ModelEntry, type ParamDescriptor } from '@shared/types/model-catalog.js';
 
 /**
  * A video model serving the given modes.

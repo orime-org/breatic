@@ -2,12 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
-import { IMAGE_GENERATION_MODES } from '@breatic/shared';
-
-import {
-  IMAGE_MODE_OPTIONS,
-  resolveMode,
-} from '@web/spaces/canvas/generate/image-mode-selection';
+import { IMAGE_MODE_OPTIONS, resolveMode } from '@shared/canvas/model/generation/image-mode-selection.js';
+import { IMAGE_GENERATION_MODES } from '@shared/types/model-catalog.js';
 
 /** 两档都可用的部署 —— 除非某条用例专门要收窄它。 */
 const BOTH = IMAGE_MODE_OPTIONS;

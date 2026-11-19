@@ -2,19 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
-import type { ModelEntry, NodeType } from '@breatic/shared';
-
-import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
-import type { NodeRef, NodeViewOf, VideoNodeView } from '@breatic/shared/canvas-model';
-import type { VideoGenMode } from '@web/spaces/canvas/generate/video-panel-view-model';
-import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
-import { VIDEO_MODE_OPTIONS } from '@breatic/shared/canvas-model';
-import { focusRefId } from '@breatic/shared/canvas-model';
-import {
-  buildVideoPanelViewModel,
-  nodeVideoMode,
-  selectVideoModeModels,
-} from '@web/spaces/canvas/generate/video-panel-view-model';
+import { type CanvasNodeView } from '@shared/canvas/model/canvas-read.js';
+import { focusRefId } from '@shared/canvas/model/derive-references.js';
+import { resolveModeSwitch } from '@shared/canvas/model/generation/mode-selection.js';
+import { type VideoGenMode, buildVideoPanelViewModel, nodeVideoMode, selectVideoModeModels } from '@shared/canvas/model/generation/video-panel-view-model.js';
+import { type CanvasEdge, type NodeRef, type NodeViewOf, type VideoNodeView } from '@shared/canvas/model/node-view.js';
+import { VIDEO_MODE_OPTIONS } from '@shared/canvas/model/video-mode-options.js';
+import { type NodeType } from '@shared/types/canvas-node.js';
+import { type ModelEntry } from '@shared/types/model-catalog.js';
 
 /**
  * Builds a video ModelEntry fixture carrying only the fields the view model

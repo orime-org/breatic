@@ -16,7 +16,7 @@ import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 import { audioParamControls } from '@web/spaces/canvas/generate/audio-params';
 import { modelControls, optionLabel, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { isStandInOn, standInOf, type StandIn } from '@breatic/shared/canvas-model';
-import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
+import { voiceParamName } from '@breatic/shared/canvas-model';
 
 /**
  * The most options a choice lays out in place. Past this a row of buttons
