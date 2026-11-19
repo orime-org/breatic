@@ -11,8 +11,7 @@
  *   - `{prefix}:project:{pid}:credits:changed` (server, worker) — relay the
  *     credits signal on the `meta` doc.
  *   - `{prefix}:project:{pid}:space-tasks:changed` (server, worker) — relay
- *     a Space's tasks signal (3D tasks, Timeline and Motion executions) on the
- *     `meta` doc.
+ *     a 3D Space's task list signal on the `meta` doc.
  *   - `{prefix}:project:{pid}:connections:close` (collab's lifecycle
  *     consumer) — close every connection to the project.
  *
@@ -133,8 +132,8 @@ async function handleEvent(
   }
 
   if (event.type === "project-space-tasks:changed") {
-    // A Space's tasks changed (3D tasks, Timeline and Motion executions);
-    // members with that Space open read them again.
+    // A 3D Space's task list changed; members with that Space open read it
+    // again.
     relayOnMetaDoc(hocuspocus, event.projectId, {
       t: SPACE_TASKS_CHANGED_SIGNAL,
       projectId: event.projectId,

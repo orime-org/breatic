@@ -211,14 +211,14 @@ export async function readJob(request: Request, env: JobsEnv, containerClass: st
  */
 export async function cancelWebAnimationJob(request: Request, env: JobsEnv, containerClass: string, jobId: string): Promise<Response> {
   if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
-  const render = containerClass === WEB_ANIMATION_RENDER_CONTAINER_CLASS;
-  const namespace = render ? (env.WEB_ANIMATION_RENDER ?? null) : webAnimationNamespace(env);
-  if (namespace === null) return featureDisabled();
+  const id = decodeURIComponent(jobId);
+  const render = env.WEB_ANIMATION_RENDER;
+  const create = webAnimationNamespace(env);
+  const stub = containerClass === WEB_ANIMATION_RENDER_CONTAINER_CLASS
+    ? render?.get(render.idFromName(id))
+    : create?.get(create.idFromName(id));
+  if (stub === undefined) return featureDisabled();
   const parsed = webAnimationJobCancelSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return new Response("Not a cancel", { status: 400 });
-  const id = decodeURIComponent(jobId);
-  const report = render
-    ? await (namespace as NonNullable<JobsEnv["WEB_ANIMATION_RENDER"]>).get(namespace.idFromName(id)).cancel(parsed.data.deadlineAt)
-    : await (namespace as NonNullable<JobsEnv["WEB_ANIMATION"]>).get(namespace.idFromName(id)).cancel(parsed.data.deadlineAt);
-  return Response.json(report);
+  return Response.json(await stub.cancel(parsed.data.deadlineAt));
 }

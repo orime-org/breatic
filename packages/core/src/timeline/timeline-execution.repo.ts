@@ -304,13 +304,12 @@ export async function markBilled(id: string, credits: string, tx?: DbTx): Promis
  * @param key - The Space.
  * @param key.projectId - Its Project.
  * @param key.spaceId - The Space.
- * @param key.status - Only rows in this status; every status when omitted.
  * @param tx - The transaction to read in.
  * @returns The rows.
  * @throws {Error} When the read fails.
  */
 export async function listForSpace(
-  key: { projectId: string; spaceId: string; status?: TimelineExecutionStatus },
+  key: { projectId: string; spaceId: string },
   tx?: DbTx,
 ): Promise<TimelineExecution[]> {
   const rows = await (tx ?? db)
@@ -319,7 +318,6 @@ export async function listForSpace(
     .where(and(
       eq(t.projectId, key.projectId),
       eq(t.spaceId, key.spaceId),
-      key.status === undefined ? undefined : eq(t.status, key.status),
       isNull(t.deletedAt),
     ))
     .orderBy(desc(t.createdAt), desc(t.id));
