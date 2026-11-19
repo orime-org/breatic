@@ -914,6 +914,29 @@ describe('a preview that cannot load', () => {
     await waitFor(() => expect(vi.mocked(timelineApi.resolveAsset).mock.calls.length).toBeGreaterThan(reads));
   });
 
+  it('plays the export once its video arrives when Play was pressed while its address was read', async () => {
+    let answer: (asset: unknown) => void = () => undefined;
+    vi.mocked(timelineApi.resolveAsset).mockReset().mockReturnValue(new Promise((resolve) => { answer = resolve; }) as never);
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+    const user = await onExport();
+    await user.click(screen.getByTestId('motion-play'));
+    act(() => answer({ fileUrl: 'https://cdn.example/v.mp4', coverUrl: null, mimeType: 'video/mp4', sizeBytes: 1, width: 1920, height: 1080, durationSeconds: 4 }));
+    await waitFor(() => expect(screen.getByTestId('motion-preview').querySelector('video')).not.toBeNull());
+    await waitFor(() => expect(play).toHaveBeenCalled());
+  });
+
+  it('shows the export at the time sought while its address was read', async () => {
+    let answer: (asset: unknown) => void = () => undefined;
+    vi.mocked(timelineApi.resolveAsset).mockReset().mockReturnValue(new Promise((resolve) => { answer = resolve; }) as never);
+    const user = await onExport();
+    act(() => screen.getByRole('slider').focus());
+    await user.keyboard('{End}');
+    act(() => answer({ fileUrl: 'https://cdn.example/v.mp4', coverUrl: null, mimeType: 'video/mp4', sizeBytes: 1, width: 1920, height: 1080, durationSeconds: 4 }));
+    const video = await waitFor(() => { const found = screen.getByTestId('motion-preview').querySelector('video'); expect(found).not.toBeNull(); return found as HTMLVideoElement; });
+    await waitFor(() => expect(video.currentTime).toBe(4));
+  });
+
   it('says an export whose video fails to play is unavailable, and loads it again on Retry', async () => {
     vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue({ fileUrl: 'https://cdn.example/v.mp4', coverUrl: null, mimeType: 'video/mp4', sizeBytes: 1, width: 1920, height: 1080, durationSeconds: 4 } as never);
     const user = await onExport();

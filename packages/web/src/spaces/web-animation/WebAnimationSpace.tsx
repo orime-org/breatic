@@ -711,16 +711,17 @@ function ExportVideo({ url, assetFailed, assetRetrying, onAssetRetry, time, play
     setBroken(false);
     setAttempt((current) => current + 1);
   }, [assetFailed, onAssetRetry]);
+  // Both run again when the element mounts: a press or a seek made while the address was read reaches it then.
   React.useEffect(() => {
     const element = video.current;
     if (element === null) return;
     if (playing) void element.play().catch(() => {});
     else element.pause();
-  }, [playing, attempt]);
+  }, [playing, attempt, url]);
   React.useEffect(() => {
     const element = video.current;
     if (element !== null && !playing && Math.abs(element.currentTime - time) > 0.05) element.currentTime = time;
-  }, [time, playing, attempt]);
+  }, [time, playing, attempt, url]);
   if (assetFailed || broken) return <div className='relative size-full overflow-hidden rounded-chrome'><PreviewUnavailable onRetry={retry} retrying={assetRetrying} /></div>;
   return url === null ? <div className='size-full rounded-chrome bg-card' />
     : <video key={attempt} ref={video} src={url} muted playsInline preload='auto' onError={markBroken} className='size-full rounded-chrome bg-black object-contain' />;
