@@ -1531,6 +1531,7 @@
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
         "ecommerce": "E-commerce ads",
+        "product-showcase": "Product showcase",
         "food": "Food",
         "social-hooks": "Social hooks",
         "posters": "Posters & graphics",
@@ -1648,6 +1649,102 @@
           "variant-3": {
             "name": "Variant 3",
             "note": "Add a clear photo of the product in its third colour or style first, then generate."
+          }
+        }
+      },
+      "product-hero-still": {
+        "name": "Product hero shot",
+        "description": "Your product photo made into a studio main image",
+        "prompt": "A square studio product photo made from [📎 Product]: its shape, proportions, colours, materials, label and logo exactly as in the picture, no words on it changed, redrawn or added, nothing else taken from the picture. The product stands on {✏️ the surface, e.g. a slab of pale travertine}. A soft key light from one side and a thin rim light that separates it from the background; a few out-of-focus props in the foreground, the product sharp in the middle, a clean softly lit background behind. The product fills about half of the frame, the top quarter left empty for copy added later. Photorealistic commercial photo. No text in the picture.",
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, its label and logo in view, then generate."
+          }
+        }
+      },
+      "product-hero-motion": {
+        "name": "Product in motion",
+        "description": "A hero shot of your product, then one thing moves",
+        "prompt": "(💡 Generate Hero shot first, then set it as the First frame)The video starts on the first frame. Only one thing changes: {✏️ the one thing that moves, e.g. a band of light slides slowly across the product}. The camera stays locked, or pushes in very slowly. The product's shape, label and logo stay exactly as in the first frame and sharp to the last frame; no new text, no new objects.",
+        "node": {
+          "still": {
+            "name": "Hero shot",
+            "prompt": "A square studio product photo made from [📎 Product]: its shape, proportions, colours, materials, label and logo exactly as in the picture, no words on it changed, redrawn or added, nothing else taken from the picture. The product stands on {✏️ the surface, e.g. dark wet stone}. A soft key light from one side and a thin rim light, a clean softly lit background. The product in the centre, filling about half of the frame. Photorealistic commercial photo. No text in the picture."
+          }
+        },
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, then generate Hero shot."
+          }
+        }
+      },
+      "product-turntable-360": {
+        "name": "360° turntable",
+        "description": "Three angles of your product as a turntable showcase",
+        "prompt": "A 10-second square product showcase with sound. The product is shown in three pictures: [📎 Front] from the front, [📎 Side] from the side, [📎 Back] from the back; its shape, colours, materials, label and logo exactly as in them from every angle, no words on it changed or added, nothing else taken from the pictures. 0–2 s: black, then a spotlight comes up on the product's front. 2–7 s: it turns on a turntable through its side and back, {✏️ the pace, e.g. slow and weighty, for a luxury watch}. 7–8 s: the camera pushes in to {✏️ the detail to show close up, e.g. the engraved clasp}. 8–10 s: back on its front, the turntable stops and the product rests in the light. A seamless black background, one key light and a rim light, a soft reflection under it. Sound: a low hum, and a soft click as it stops. No text on screen.",
+        "input": {
+          "front": {
+            "name": "Front",
+            "note": "Add a photo of the front of your product first, then generate."
+          },
+          "side": {
+            "name": "Side",
+            "note": "Add a photo of the side of your product first, then generate."
+          },
+          "back": {
+            "name": "Back",
+            "note": "Add a photo of the back of your product first, then generate."
+          }
+        }
+      },
+      "product-particle-reveal": {
+        "name": "Particle reveal",
+        "description": "Your product breaks into particles and reforms",
+        "prompt": "(💡 Generate 3D render first, then set it as the First frame)A 6-second widescreen tech reveal with sound. The video starts on the first frame. 0–1 s: the product holds in the dark, a thin line of light along its edge. 1–3 s: its surface breaks into fine glowing {✏️ the particle colour, e.g. cyan} particles that swirl once around it and stream back, reforming it exactly as it was, the same shape, label and logo. 3–6 s: the camera circles a quarter turn around it while {✏️ one small action, e.g. its lid slides open}. Sound: a rising shimmer as the particles swirl, a deep hit as it reforms. No text on screen.",
+        "node": {
+          "render": {
+            "name": "3D render",
+            "prompt": "A widescreen photorealistic 3D product render of [📎 Product]: its shape, proportions, colours, materials, label and logo exactly as in the picture, no words on it changed or added, nothing else taken from the picture. The product floats in the centre of a pure black space, lit by a cool rim light and a soft light from above, its surfaces glossy and precise, a faint reflection below. No text in the picture."
+          }
+        },
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, then generate 3D render."
+          }
+        }
+      },
+      "product-hero-direct-i2v": {
+        "name": "Animate my product picture",
+        "description": "Your finished product picture, set moving",
+        "prompt": "The video starts on the first frame, the product picture. Only one thing that is not in the picture happens: {✏️ the one thing that moves, e.g. steam rises from the cup}. The camera stays locked, or pushes in very slowly. The product's shape, label and logo stay exactly as in the first frame and sharp to the last frame; no new text, no new objects.",
+        "input": {
+          "picture": {
+            "name": "Product picture",
+            "note": "Add your finished product picture first, then pick it into the First frame."
+          }
+        }
+      },
+      "product-state-change": {
+        "name": "Product before and after",
+        "description": "Your product changes from one state to another",
+        "prompt": "(💡 Generate Before first, then set it as the First frame)(💡 Generate After first, then set it as the End frame)A 5-second square video with sound. It starts on the first frame and ends on the end frame: the same product on the same surface from the same camera, only its state changes. One continuous action from start to end: {✏️ how it changes, e.g. a hand lifts the lid and folds it back}. {✏️ the one thing that carries the change, e.g. the same hand} stays in view the whole time. The camera does not move. The label and logo stay readable and unchanged. Sound: the product's own sounds as it changes. No text on screen.",
+        "node": {
+          "before": {
+            "name": "Before",
+            "prompt": "A square studio photo of [📎 Product] on {✏️ the surface, e.g. a white oak table}: its shape, colours, materials, label and logo exactly as in the picture, no words on it changed or added, nothing else taken from the picture. It is in its starting state, as in the picture. A front three-quarter view at table height, the product in the centre filling about half of the frame, soft daylight from the left. No text in the picture."
+          },
+          "after": {
+            "name": "After",
+            "prompt": "(💡 Generate Before first)Edit [📎 Before]: keep the camera, framing, surface, light and background exactly as they are, and keep the product's shape, colours, materials, label and logo, no words on it changed or added. Change only its state: it is now {✏️ its other state, e.g. with the lid open and folded back}. No text in the picture."
+          }
+        },
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, then generate Before, then After."
           }
         }
       },

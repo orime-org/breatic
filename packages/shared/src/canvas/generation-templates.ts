@@ -55,6 +55,12 @@ import { PHOTO_PAPER_DIORAMA } from "@shared/canvas/templates/photo-paper-dioram
 import { POV_CONTINUOUS_SHOT } from "@shared/canvas/templates/pov-continuous-shot.js";
 import { PRODUCT_AD_15S } from "@shared/canvas/templates/product-ad-15s.js";
 import { PRODUCT_COMMERCIAL_SHOTLIST } from "@shared/canvas/templates/product-commercial-shotlist.js";
+import { PRODUCT_HERO_DIRECT_I2V } from "@shared/canvas/templates/product-hero-direct-i2v.js";
+import { PRODUCT_HERO_MOTION } from "@shared/canvas/templates/product-hero-motion.js";
+import { PRODUCT_HERO_STILL } from "@shared/canvas/templates/product-hero-still.js";
+import { PRODUCT_PARTICLE_REVEAL } from "@shared/canvas/templates/product-particle-reveal.js";
+import { PRODUCT_STATE_CHANGE } from "@shared/canvas/templates/product-state-change.js";
+import { PRODUCT_TURNTABLE_360 } from "@shared/canvas/templates/product-turntable-360.js";
 import { RECIPE_PROCESS_MONTAGE } from "@shared/canvas/templates/recipe-process-montage.js";
 import { RETRO_FOUND_FOOTAGE } from "@shared/canvas/templates/retro-found-footage.js";
 import { SCORE_FOR_MY_VIDEO } from "@shared/canvas/templates/score-for-my-video.js";
@@ -79,7 +85,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "ecommerce", "food", "social-hooks", "posters", "speed", "sound"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "ecommerce", "product-showcase", "food", "social-hooks", "posters", "speed", "sound"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -207,6 +213,12 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   PRODUCT_COMMERCIAL_SHOTLIST,
   UNBOXING_AD,
   VARIANT_CAROUSEL_AD,
+  PRODUCT_HERO_STILL,
+  PRODUCT_HERO_MOTION,
+  PRODUCT_TURNTABLE_360,
+  PRODUCT_PARTICLE_REVEAL,
+  PRODUCT_HERO_DIRECT_I2V,
+  PRODUCT_STATE_CHANGE,
   FOOD_MONEY_SHOT,
   RECIPE_PROCESS_MONTAGE,
   DISH_HERO_STILL,
