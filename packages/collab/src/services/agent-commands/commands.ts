@@ -33,6 +33,7 @@ import {
   deletionKind,
   disconnectNodes,
   readCanvas,
+  readCanvasAssignments,
   restore,
   setLocked,
   updateNode,
@@ -52,6 +53,7 @@ import {
   insertBlocks,
   insertLate,
   readDocument,
+  readDocumentAssignments,
 } from "@collab/services/agent-commands/document-commands.js";
 
 /** A reply without its call id. */
@@ -357,6 +359,26 @@ const COMMANDS: CommandTable = {
     focus: keepFocus,
     counted: true,
     views: true,
+  },
+  read_canvas_assignments: {
+    params: agentCommandParamsSchemas.read_canvas_assignments,
+    write: false,
+    size: null,
+    space: "canvas",
+    run: (doc, _params, command) => readCanvasAssignments(doc, command),
+    late: unfinished,
+    focus: keepFocus,
+    counted: true,
+  },
+  read_document_assignments: {
+    params: agentCommandParamsSchemas.read_document_assignments,
+    write: false,
+    size: null,
+    space: "document",
+    run: (doc, _params, command) => readDocumentAssignments(doc, command),
+    late: unfinished,
+    focus: keepFocus,
+    counted: true,
   },
   // The document kinds are those collab's size gate gives the editor's own
   // updates: new blocks and comments add, a text change edits, and removing

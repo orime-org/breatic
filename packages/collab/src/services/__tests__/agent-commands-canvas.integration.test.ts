@@ -609,3 +609,44 @@ describe("what the members have on screen (#1488 §6, §8.2)", () => {
     expect(x).toBeLessThan(2000);
   });
 });
+
+describe("where notes are pinned and what is handed over (#1488 §11.7, §11.8)", () => {
+  it("says what each note is pinned on when the canvas is read", async () => {
+    let noteId = "";
+    const world = await seedWorld("owner", (canvas, uid) => {
+      const note = createAnnotationNode({ x: 10, y: 10 }, uid, "Brighter?");
+      noteId = note.id;
+      addNodeInDoc(canvas, note);
+    });
+    consumeOn(world, harness.instanceA);
+    const { nodes } = resultOf<{ nodes: Array<{ id: string; anchor?: unknown }> }>(await call(world, "read_canvas", {}));
+    expect(nodes.find((n) => n.id === noteId)?.anchor).toEqual({ nodeIds: [world.nodeId], groupId: null });
+    expect(nodes.find((n) => n.id === world.nodeId)).not.toHaveProperty("anchor");
+  });
+
+  it("lists the threads handed to this connection that wait for it, with where each is pinned", async () => {
+    const ids: Record<string, string> = {};
+    const world = await seedWorld("owner", (canvas, uid) => {
+      for (const [key, y] of [["pending", 10], ["answered", 2000], ["other", 3000], ["copied", 4000]] as const) {
+        const note = createAnnotationNode({ x: 10, y }, uid, key);
+        ids[key] = note.id;
+        addNodeInDoc(canvas, note);
+      }
+    });
+    const assignedAt = 1_700_000_000_000;
+    await readCanvas(harness.instanceA, world, (doc) => {
+      const hand = (key: string, over: Record<string, unknown> = {}): void => {
+        nodeDataMap(doc, ids[key]!)!.set("assignment", { connectionId: world.connectionId, assignedBy: world.userId, assignedAt, projectId: world.projectId, ...over });
+      };
+      hand("pending");
+      hand("answered");
+      nodeDataMap(doc, ids.answered!)!.set("replies", [{ id: "r1", content: "Done", createdBy: world.userId, createdAt: 1, via: world.connectionId, answers: assignedAt }]);
+      hand("other", { connectionId: randomUUID() });
+      hand("copied", { projectId: randomUUID() });
+    });
+    consumeOn(world, harness.instanceA);
+    expect(resultOf(await call(world, "read_canvas_assignments", {}))).toEqual({
+      assignments: [{ threadId: ids.pending, assignedBy: world.userId, assignedAt, pin: { x: 10, y: 10, nodeIds: [world.nodeId], groupId: null } }],
+    });
+  });
+});

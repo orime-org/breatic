@@ -449,3 +449,29 @@ describe("who is in the document and what they selected (#1488 §11.4)", () => {
     expect(people).toEqual([{ userId: world.userId, you: true, blockId: null, selectedText: null }]);
   });
 });
+
+describe("what is handed over in a document (#1488 §11.7)", () => {
+  it("lists the threads handed to this connection that wait for it, with the words they are on", async () => {
+    const world = await seedDocumentWorld([paragraph("b0", "Hello world."), paragraph("b1", "Second.")]);
+    consumeOn(world, harness.instanceA);
+    const { threadId: waiting } = resultOf<{ threadId: string }>(await call(world, "comment_on_document", { blockId: "b0", find: "world", text: "Bigger?" }));
+    const { threadId: answered } = resultOf<{ threadId: string }>(await call(world, "comment_on_document", { blockId: "b1", text: "Cut?" }));
+    const assignedAt = 1_700_000_000_000;
+    const conn = await harness.instanceA.openDirectConnection(documentSpaceDocName(world.projectId, world.spaceId), {});
+    try {
+      await conn.transact((doc) => {
+        for (const id of [waiting, answered]) {
+          (documentCommentThreads(doc).get(id) as Y.Map<unknown>).set("metadata", {
+            assignment: { connectionId: world.connectionId, assignedBy: world.userId, assignedAt, projectId: world.projectId },
+          });
+        }
+      });
+    } finally {
+      await conn.disconnect();
+    }
+    await call(world, "comment_on_document", { threadId: answered, text: "Cut." });
+    expect(resultOf(await call(world, "read_document_assignments", {}))).toEqual({
+      assignments: [{ threadId: waiting, assignedBy: world.userId, assignedAt, blockId: "b0", quotedText: "world" }],
+    });
+  });
+});

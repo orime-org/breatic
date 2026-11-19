@@ -325,6 +325,10 @@ export const agentCommandParamsSchemas = {
   // Whether a file may go into a node already on the canvas: read only.
   check_upload_target: z.object({ nodeId: nodeIdSchema, type: creatableNodeTypeSchema }),
   read_document: z.object({}),
+  // The threads handed to this connection that still wait for it, with where
+  // each is (§11.7); one per Space kind, as a command names its document by kind.
+  read_canvas_assignments: z.object({}),
+  read_document_assignments: z.object({}),
   // Blocks as BlockNote block JSON (the MCP service converts Markdown);
   // whether the document schema can build one is collab's to judge.
   insert_document_blocks: z.object({

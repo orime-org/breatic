@@ -13,6 +13,7 @@
 import type * as Y from "yjs";
 import type { LastView } from "@collab/services/last-view-cache.js";
 import type { CanvasPerson } from "@collab/services/agent-commands/people.js";
+import { readCommentAssignments } from "@breatic/shared/space-content";
 import {
   callScopedId,
   canConnect,
@@ -75,6 +76,7 @@ import {
   type NodePlacement,
   type Rect,
   type SpaceWriteKind,
+  annotationAnchor,
 } from "@breatic/shared/canvas-model";
 import { writePlainTextIntoBody } from "@breatic/shared/canvas/text-body";
 import { getCanvasReferencePoolCap, getMcpConfig } from "@breatic/core";
@@ -612,9 +614,11 @@ export function disconnectNodes(doc: Y.Doc, ids: string[]): Answer {
 export function readCanvas(doc: Y.Doc, nodeIds: string[] | undefined, people: CanvasPerson[]): Answer {
   const wanted = nodeIds ? new Set(nodeIds) : null;
   const all = readNodes(doc).filter((node) => !wanted || wanted.has(node.id));
+  const placements = drawnPlacements(doc);
   const nodes = (wanted ? all : all.slice(0, getMcpConfig().read_canvas_max_nodes)).map((node) => ({
     ...node,
     ...generationWordsOf(doc, node.id),
+    ...(node.type === "annotation" ? { anchor: annotationAnchor(placements, node.id) } : {}),
   }));
   const kept = new Set(nodes.map((node) => node.id));
   const edges = readEdges(doc).filter((edge) => kept.has(edge.source) || kept.has(edge.target));
@@ -622,6 +626,35 @@ export function readCanvas(doc: Y.Doc, nodeIds: string[] | undefined, people: Ca
   // The views hold no value JSON cannot carry except `undefined`, which
   // the round trip drops.
   return done(JSON.parse(JSON.stringify({ nodes, edges, ...cut, people })) as Json);
+}
+
+/**
+ * Every node's placement, in the order the canvas draws them.
+ * @param doc - The canvas document.
+ * @returns The placements.
+ */
+function drawnPlacements(doc: Y.Doc): NodePlacement[] {
+  const byId = new Map(readNodePlacementsInDoc(doc).map((p) => [p.id, p]));
+  return readNodes(doc).flatMap((node) => byId.get(node.id) ?? []);
+}
+
+/**
+ * The canvas threads handed to this connection that still wait for it, each
+ * with where its pin is and what the pin is on (§11.7, §11.8).
+ * @param doc - The canvas document.
+ * @param command - The command.
+ * @returns The answer.
+ */
+export function readCanvasAssignments(doc: Y.Doc, command: AgentCommand): Answer {
+  const placements = drawnPlacements(doc);
+  const assignments = readCommentAssignments("canvas", doc, command.projectId)
+    .filter((a) => a.connectionId === command.connectionId && a.status === "pending")
+    .flatMap(({ threadId, assignedBy, assignedAt }) => {
+      const pin = placements.find((p) => p.id === threadId);
+      const anchor = annotationAnchor(placements, threadId);
+      return pin && anchor ? [{ threadId, assignedBy, assignedAt, pin: { x: pin.x, y: pin.y, ...anchor } }] : [];
+    });
+  return done({ assignments });
 }
 
 /**

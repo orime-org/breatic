@@ -21,6 +21,7 @@
 import * as Y from "yjs";
 import type { LastView } from "@collab/services/last-view-cache.js";
 import { documentPeople } from "@collab/services/agent-commands/people.js";
+import { readCommentAssignments } from "@breatic/shared/space-content";
 import { initProseMirrorDoc, updateYFragment } from "y-prosemirror";
 import { blockToNode, nodeToBlock, type PartialBlock } from "@blocknote/core";
 import { CommentMark, DefaultThreadStoreAuth } from "@blocknote/core/comments";
@@ -218,34 +219,12 @@ function commentText(body: unknown): string {
 }
 
 /**
- * Read the document: each top-level block with its id, type, plain text and
- * block JSON, each comment thread with the words it is on, and who is in
- * the document with the words they select.
- * @param ydoc - The document Space's document.
- * @param command - The command.
- * @param views - Every live member view in the Project.
- * @returns The answer.
+ * The words each thread's mark is on, in body order, with the block they are in.
+ * @param doc - The document body.
+ * @returns By thread id.
  */
-export function readDocument(ydoc: Y.Doc, command: AgentCommand, views: readonly LastView[]): Answer {
-  const { doc } = readBody(ydoc);
-  const blocks: Array<Record<string, unknown>> = [];
+function quotedWords(doc: Node): Map<string, { blockId: string; text: string }> {
   const quoted = new Map<string, { blockId: string; text: string }>();
-  const group = doc.firstChild;
-  group?.forEach((node, offset) => {
-    if (node.type.name !== BLOCK_CONTAINER) return;
-    const found = { node, pos: 1 + offset };
-    const id = String(node.attrs.id);
-    const text = blockText(found);
-    const type = node.firstChild?.type.name;
-    blocks.push({
-      id,
-      type: type ?? "",
-      text: text.text,
-      block: nodeToBlock(node, doc),
-      ...(type === UNSUPPORTED_BLOCK ? { unsupported: true } : {}),
-    });
-  });
-  // The words each thread's mark is on, in body order.
   doc.descendants((node, pos) => {
     if (!node.isText) return true;
     for (const mark of node.marks) {
@@ -264,6 +243,58 @@ export function readDocument(ydoc: Y.Doc, command: AgentCommand, views: readonly
     }
     return false;
   });
+  return quoted;
+}
+
+/**
+ * The document threads handed to this connection that still wait for it,
+ * each with the block and words it is on (§11.7).
+ * @param ydoc - The document Space's document.
+ * @param command - The command.
+ * @returns The answer.
+ */
+export function readDocumentAssignments(ydoc: Y.Doc, command: AgentCommand): Answer {
+  const quoted = quotedWords(readBody(ydoc).doc);
+  const assignments = readCommentAssignments("document", ydoc, command.projectId)
+    .filter((a) => a.connectionId === command.connectionId && a.status === "pending")
+    .map(({ threadId, assignedBy, assignedAt }) => ({
+      threadId,
+      assignedBy,
+      assignedAt,
+      blockId: quoted.get(threadId)?.blockId ?? null,
+      quotedText: quoted.get(threadId)?.text ?? null,
+    }));
+  return done({ assignments });
+}
+
+/**
+ * Read the document: each top-level block with its id, type, plain text and
+ * block JSON, each comment thread with the words it is on, and who is in
+ * the document with the words they select.
+ * @param ydoc - The document Space's document.
+ * @param command - The command.
+ * @param views - Every live member view in the Project.
+ * @returns The answer.
+ */
+export function readDocument(ydoc: Y.Doc, command: AgentCommand, views: readonly LastView[]): Answer {
+  const { doc } = readBody(ydoc);
+  const blocks: Array<Record<string, unknown>> = [];
+  const group = doc.firstChild;
+  group?.forEach((node, offset) => {
+    if (node.type.name !== BLOCK_CONTAINER) return;
+    const found = { node, pos: 1 + offset };
+    const id = String(node.attrs.id);
+    const text = blockText(found);
+    const type = node.firstChild?.type.name;
+    blocks.push({
+      id,
+      type: type ?? "",
+      text: text.text,
+      block: nodeToBlock(node, doc),
+      ...(type === UNSUPPORTED_BLOCK ? { unsupported: true } : {}),
+    });
+  });
+  const quoted = quotedWords(doc);
   const store = new YjsThreadStore(command.userId, documentCommentThreads(ydoc), new DefaultThreadStoreAuth(command.userId, "comment"));
   const threads = [...store.getThreads().values()].map((thread) => ({
     threadId: thread.id,
