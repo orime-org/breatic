@@ -328,6 +328,12 @@ importers:
 
   eslint-rules:
     dependencies:
+      eslint-plugin-drizzle:
+        specifier: ^0.2.3
+        version: 0.2.3(eslint@9.39.5(jiti@2.7.0))
+      eslint-plugin-jsdoc:
+        specifier: 'catalog:'
+        version: 63.3.3(eslint@9.39.5(jiti@2.7.0))
       yaml:
         specifier: 'catalog:'
         version: 2.9.0

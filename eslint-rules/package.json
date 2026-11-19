@@ -23,6 +23,8 @@
     "#rules/*": "./src/*.ts"
   },
   "dependencies": {
+    "eslint-plugin-drizzle": "^0.2.3",
+    "eslint-plugin-jsdoc": "catalog:",
     "yaml": "catalog:"
   }
 }

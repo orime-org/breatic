@@ -57,6 +57,7 @@ import { spaceDocWriteGateway } from "#rules/rules/space-doc-write-gateway";
  */
 export { FFMPEG_BINDING_WORDS } from "#rules/rules/no-ffmpeg-bindings";
 export { upstreamLiteralOptions } from "#rules/upstream-literal-options";
+export { backendConfig, type BackendConfigOptions } from "#rules/backend-config";
 
 export const breaticPlugin = {
   meta: { name: "@breatic/eslint-rules", version: "0.1.0" },
