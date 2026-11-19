@@ -2162,7 +2162,7 @@ export function renderProductGuide(): string {
       "into another studio, or " +
       `${quoted(t("canvas.generatePanel.errorStorageFull"))} when generating: the storage of the studio's admin ` +
       "is full, counted across every studio they administer. What is already there keeps working, but nothing " +
-      "new can be uploaded or generated until they upgrade. The bell's " +
+      "new can be uploaded or generated until they upgrade; an admin on an enterprise agreement contacts us to change the agreement. The bell's " +
       `${quoted(t("notifications.headline.storageQuotaExceeded"))} is the same thing.`,
     "- Each space has a size limit. As a space nears it, a notice at the top of the space says how much it is " +
       "using and that past the limit no more content can be added. Once it is full the notice says so, and only " +
