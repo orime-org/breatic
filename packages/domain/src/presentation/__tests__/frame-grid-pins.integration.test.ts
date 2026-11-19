@@ -12,7 +12,8 @@
  *   - `Add` appends one object key to the holder's existing row (the same row, no soft-deleted copy);
  *   - `Mv` of the `selected` row replaces its object set as a whole, in place: a canonical key has exactly one selected row,
  *     its toolInputId and versionId updated on it; an object both bundles share is never registered;
- *   - a `derived` reclaim row carries its canonical key in `kept_storage_key` (required for `derived` rows).
+ *   - a presentation-derived object (key `<canonical key>.<suffix>`) is registered with its canonical key in
+ *     `kept_storage_key`; an execution or analysis intermediate is registered with `kept_storage_key` null.
  *
  * Names the design leaves open and this file proposes: `presentationPinService.add(holder, keys, tx?)` for `Add`, and
  * `acquire` taking `toolInputId: null` for a candidate.
@@ -156,9 +157,12 @@ describe("pin table structure after 0115 is changed in place (ยง66 P04; design ย
     await expect(pg`INSERT INTO presentation_pins (holder_kind,holder_id,tool_input_id) VALUES ('candidate',${job},${T2})`).rejects.toMatchObject({ code: "23505" });
   });
 
-  it("P04: a derived reclaim row requires its canonical key in kept_storage_key", async () => {
-    const key = `video/grid-pins/${randomUUID()}.mp4.orphan`;
-    await expect(pg`INSERT INTO storage_reclaim_queue (storage_key,kind) VALUES (${key},'derived')`).rejects.toMatchObject({ code: "23514" });
+  it("P04: an execution intermediate released from its pin is registered with no canonical key", async () => {
+    const task = randomUUID();
+    const key = `derived/grid-pins/${task}/track_join.json`;
+    await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [key] });
+    await pins().release({ holderKind: "execution", holderId: task });
+    expect(await queued(`derived/grid-pins/${task}/`)).toEqual([{ storage_key: key, kept_storage_key: null }]);
   });
 });
 
