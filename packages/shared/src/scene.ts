@@ -163,6 +163,15 @@ export const SCENE_LOOK_DEFAULT_PART = 'd';
 /** A part is a glTF material index from 0 to 9999 without leading zeros, or the default part. */
 const LOOK_PART_KEY = /^(?:0|[1-9]\d{0,3}|d)$/u;
 
+/**
+ * Whether a part can carry a look: a material index past the stored key format cannot.
+ * @param part - The part key.
+ * @returns True for a material index from 0 to 9999 or the default part.
+ */
+export function isSceneLookPartKey(part: string): boolean {
+  return LOOK_PART_KEY.test(part);
+}
+
 const unit = z.number().finite().min(0).max(1);
 
 /** The smallest tiling count a part takes either way; Blender, Unity, Godot and Babylon set no bound, this one only keeps the value finite. */

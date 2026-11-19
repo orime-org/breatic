@@ -261,7 +261,7 @@ describe('look command (inner#1693 design 4.2)', () => {
     const doc = sceneDoc();
     const full = { ...BASE, look: Object.fromEntries(Array.from({ length: 256 }, (_, index) => [String(index), { opacity: 0.5 }])) };
     applySceneCommand(doc, { type: 'create', objects: [full] }, Symbol(), true, NAME);
-    expect(applySceneCommand(doc, look('300', { opacity: 0.5 }), Symbol(), true, NAME)).toEqual({ ok: false, reason: 'invalid' });
+    expect(applySceneCommand(doc, look('300', { opacity: 0.5 }), Symbol(), true, NAME)).toEqual({ ok: false, reason: 'lookPartLimit' });
     expect(applySceneCommand(doc, look('3', { opacity: 0.2 }), Symbol(), true, NAME)).toEqual({ ok: true, ids: [ID] });
   });
 
@@ -286,7 +286,7 @@ describe('look command (inner#1693 design 4.2)', () => {
     }
     // Parts it has can still change; a further part cannot be added.
     expect(applySceneCommand(left, look('400', { opacity: 0.3 }), Symbol(), true, NAME)).toEqual({ ok: true, ids: [ID] });
-    expect(applySceneCommand(left, look('402', { opacity: 0.3 }), Symbol(), true, NAME)).toEqual({ ok: false, reason: 'invalid' });
+    expect(applySceneCommand(left, look('402', { opacity: 0.3 }), Symbol(), true, NAME)).toEqual({ ok: false, reason: 'lookPartLimit' });
   });
 });
 

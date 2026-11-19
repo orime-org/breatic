@@ -2689,7 +2689,9 @@
         "spaceClosed": "이미지는 업로드되었지만 이 Space가 닫혔습니다. 이미지는 Project 이미지에 있습니다",
         "pickSpaceClosed": "Space가 닫혀 이미지가 적용되지 않았습니다",
         "pickObjectGone": "오브젝트가 삭제되어 이미지가 적용되지 않았습니다",
-        "checking": "확인 중"
+        "checking": "확인 중",
+        "partLimit": "이 오브젝트는 최대 {max}개 부위까지 외형을 바꿀 수 있습니다.",
+        "partNotEditable": "이 부위의 재질 번호가 외형을 저장할 수 있는 범위를 넘어 바꿀 수 없습니다."
       },
       "pose": {
         "title": "포즈",
@@ -2701,7 +2703,8 @@
         "jointMode": "관절 조정",
         "reset": "포즈 초기화",
         "noSkeleton": "이 모델에는 스켈레톤이 없어 포즈를 지정할 수 없습니다.",
-        "humanoidOnly": "프리셋은 인간형 캐릭터에만 적용됩니다."
+        "humanoidOnly": "프리셋은 인간형 캐릭터에만 적용됩니다.",
+        "boneLimit": "이 오브젝트는 최대 {max}개 본까지 포즈를 줄 수 있습니다."
       },
       "selectObject": "속성을 편집할 오브젝트를 선택하세요.",
       "refused": "이 장면에 대한 연결이 거부되었습니다. 변경 사항은 저장되지 않습니다.",

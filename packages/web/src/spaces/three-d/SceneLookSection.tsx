@@ -5,7 +5,7 @@ import * as React from 'react';
 
 import {
   SCENE_LOOK_DEFAULT_PART, SCENE_LOOK_EMISSIVE_DEFAULT, SCENE_LOOK_OFFSET_MAX, SCENE_LOOK_PICTURE_COLOR, SCENE_LOOK_REPEAT_MAX, SCENE_LOOK_REPEAT_MIN,
-  SCENE_LOOK_ROTATION_MAX, type SceneLook,
+  SCENE_LOOK_ROTATION_MAX, isSceneLookPartKey, type SceneLook,
   type SceneLookPart,
 } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
@@ -256,7 +256,9 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
   // Tiling is stored per part, so its drafts are kept per part, as the position boxes keep theirs per field.
   const draftPrefix = `${objectId}:look:${row?.key ?? ''}`;
   const fieldPicture = shownUserPicture ? pictureUrl?.(stored.map!) : stored.map === undefined ? row?.thumbnail : undefined;
-  const disabled = !mutable;
+  // A material number past the stored key format cannot carry a look.
+  const storable = !row || isSceneLookPartKey(row.key);
+  const disabled = !mutable || !storable;
   /**
    * Preview a dragged field of the selected part.
    * @param fields - The dragged values.
@@ -290,6 +292,7 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
       })}
     </ul>
     {row ? <div className='space-y-2 rounded-content-sm border border-border p-3' data-testid='scene-look-part-fields'>
+      {storable ? null : <p className='text-xs text-muted-foreground'>{t('spaces.threeD.look.partNotEditable')}</p>}
       <div className='grid grid-cols-3 gap-1'>{PRESET_NAMES.map((name) => <Button key={name} variant='outline' size='compact' disabled={disabled || restricted}
         data-testid={`scene-look-preset-${name}`} onClick={() => write(row.key, PRESETS[name])}>{t(`spaces.threeD.look.presets.${name}`)}</Button>)}</div>
       <Row label={t('spaces.threeD.look.color')} labelId={`${ids}-color`}>

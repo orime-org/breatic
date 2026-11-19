@@ -5,7 +5,10 @@ import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Lock } from 'lucide-react';
 
-import { getLocale, isSceneCamera, isSceneLight, isSceneModelFile, nextDirectorNumber, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY, type SceneLightType, type SceneObject, type ViewfinderRatio } from '@breatic/shared';
+import {
+  getLocale, isSceneCamera, isSceneLight, isSceneModelFile, nextDirectorNumber, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY, SCENE_LOOK_MAX_PARTS,
+  SCENE_POSE_MAX_KEYS, type SceneLightType, type SceneObject, type ViewfinderRatio,
+} from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { getSceneControls, resolveSceneAsset, type SpaceTask } from '@web/data/api/scene';
 import { docName } from '@web/data/yjs/manager';
@@ -313,6 +316,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     // A size refusal is reported by its own warning.
     if (error && !isSceneSizeRefusal(error.reason) && error !== reportedCommandError.current) {
       if (error.reason === 'lightLimit') toast.warning(t('spaces.threeD.director.lightLimit', { max: director?.maxLights ?? 0 }));
+      else if (error.reason === 'lookPartLimit') toast.warning(t('spaces.threeD.look.partLimit', { max: SCENE_LOOK_MAX_PARTS }));
+      else if (error.reason === 'poseBoneLimit') toast.warning(t('spaces.threeD.pose.boneLimit', { max: SCENE_POSE_MAX_KEYS }));
       else toast.error(t('spaces.threeD.commandFailed'));
     }
     reportedCommandError.current = error;

@@ -54,7 +54,8 @@ export type SceneCommand =
  * and have already been told: `full` and `over_ceiling` by `writeSpaceDoc`'s toast, `resyncing` by the rebuild's
  * own toast.
  */
-export type SceneCommandFailure = 'readOnly' | 'unsupported' | 'invalid' | 'locked' | 'missing' | 'duplicate' | 'lightLimit' | SpaceRefusalReason;
+export type SceneCommandFailure = 'readOnly' | 'unsupported' | 'invalid' | 'locked' | 'missing' | 'duplicate' | 'lightLimit' | 'lookPartLimit'
+  | 'poseBoneLimit' | SpaceRefusalReason;
 export type SceneCommandResult = { ok: true; ids: readonly string[] } | { ok: false; reason: SceneCommandFailure };
 
 export interface SceneDocumentSnapshot {
@@ -292,7 +293,8 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
     const current: ScenePose = object.pose ?? {};
     const cleared = command.replace ? Object.keys(current).filter((key) => !(key in set.data)) : [];
     const next = command.replace ? set.data : { ...current, ...set.data };
-    if (!ScenePoseSchema.safeParse(next).success || grows(current, next, SCENE_POSE_MAX_KEYS)) return { ok: false, reason: 'invalid' };
+    if (!ScenePoseSchema.safeParse(next).success) return { ok: false, reason: 'invalid' };
+    if (grows(current, next, SCENE_POSE_MAX_KEYS)) return { ok: false, reason: 'poseBoneLimit' };
     for (const [key, value] of Object.entries(set.data)) {
       if (JSON.stringify(current[key]) !== JSON.stringify(value)) plan.keyWrites.push({ id: command.id, key: `${SCENE_POSE_KEY_PREFIX}${key}`, value });
     }
@@ -307,6 +309,7 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
     if (object.locked) return { ok: false, reason: 'locked' };
     if (!isSceneModelFile(object.model)) return { ok: false, reason: 'invalid' };
     const writes = lookWrites(object.look ?? {}, command.part, command.set);
+    if (writes === 'partLimit') return { ok: false, reason: 'lookPartLimit' };
     if (writes === null) return { ok: false, reason: 'invalid' };
     plan.keyWrites.push(...writes.map((write) => ({ ...write, id: command.id })));
     plan.ids = [command.id];
@@ -372,9 +375,10 @@ function grows(current: object, next: object, cap: number): boolean {
  * @param current - The object's current look.
  * @param part - The part to write, or null to reset every part.
  * @param set - Fields to write; a null field is deleted.
- * @returns The key writes without an id, or null when the command or the resulting look is invalid.
+ * @returns The key writes without an id, 'partLimit' when the look would gain a part past the cap, or null when the
+ * command or the resulting look is invalid.
  */
-function lookWrites(current: SceneLook, part: string | null, set: SceneLookSet): Omit<SceneKeyWrite, 'id'>[] | null {
+function lookWrites(current: SceneLook, part: string | null, set: SceneLookSet): Omit<SceneKeyWrite, 'id'>[] | 'partLimit' | null {
   if (part === null) {
     if (typeof set !== 'object' || set === null || Object.keys(set).length > 0) return null;
     return Object.entries(current).flatMap(([at, fields]) => Object.keys(fields).map((field) => ({ key: lookKey(at, field) })));
@@ -389,7 +393,8 @@ function lookWrites(current: SceneLook, part: string | null, set: SceneLookSet):
   const after = Object.fromEntries(Object.entries({ ...before, ...values }).filter(([field]) => set[field as SceneLookField] !== null));
   const others = Object.entries(current).filter(([at]) => at !== part);
   const next = Object.fromEntries(Object.keys(after).length > 0 ? [...others, [part, after]] : others);
-  if (!SceneLookSchema.safeParse(next).success || grows(current, next, SCENE_LOOK_MAX_PARTS)) return null;
+  if (!SceneLookSchema.safeParse(next).success) return null;
+  if (grows(current, next, SCENE_LOOK_MAX_PARTS)) return 'partLimit';
   const record = before as Record<string, unknown>;
   return entries.flatMap(([field, value]) => {
     if (value === null) return field in record ? [{ key: lookKey(part, field) }] : [];

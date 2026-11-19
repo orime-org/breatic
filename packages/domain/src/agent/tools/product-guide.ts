@@ -24,6 +24,8 @@ import {
   AGENT_INSTRUCTIONS_MAX_CHARS,
   CHAT_MESSAGE_MAX_CHARS,
   MAX_SPACES_PER_PROJECT,
+  SCENE_LOOK_MAX_PARTS,
+  SCENE_POSE_MAX_KEYS,
   canConnect,
   canGenerate,
   t,
@@ -1756,6 +1758,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.threeD.pose.walk"))} and ${quoted(t("spaces.threeD.pose.wave"))}; each replaces the whole pose and keeps the object where it is. ` +
       `Another skeleton says ${quoted(t("spaces.threeD.pose.humanoidOnly"))} Both offer the ${quoted(t("spaces.threeD.pose.jointMode"))} switch and ` +
       `${quoted(t("spaces.threeD.pose.reset"))}, which returns the model to its own resting pose. ` +
+      `A pose can set up to ${String(SCENE_POSE_MAX_KEYS)} bones of one object; posing one more bone is refused with a notice naming that limit. ` +
       `With ${quoted(t("spaces.threeD.pose.jointMode"))} on, dots mark the character's joints, drawn over the model, and the move, rotate and scale handles are hidden; ` +
       "click a dot, or a part of the body, to pick its joint, then drag the rotation rings that appear on it. Releasing saves only that joint; " +
       `each preset, reset or joint drag is one undo step. Choosing ${quoted(t("spaces.threeD.move"))}, ${quoted(t("spaces.threeD.rotate"))} or ${quoted(t("spaces.threeD.scale"))}, ` +
@@ -1794,6 +1797,8 @@ export function renderProductGuide(): string {
       `the part's name from the model (a part without a name, or with the name of an earlier part, is called Part followed by its place in the list), and a dot on parts that were changed. ` +
       `Parts are listed in the model's order; ${quoted(t("spaces.threeD.look.defaultPart"))} holds whatever has no material of its own and comes last. Built-in models name every part by number. ` +
       `While the model loads the section says it is reading the parts; when the model did not load it says ${quoted(t("spaces.threeD.look.partsUnavailable"))}. ` +
+      `Changes can sit on up to ${String(SCENE_LOOK_MAX_PARTS)} parts of one object; changing one more part is refused with a notice naming that limit. ` +
+      `A part whose material number is above 9999 cannot be changed: its settings are unavailable and a line above them says why. ` +
       `Clicking a row selects that part and opens its settings below the list; clicking it again closes them. ` +
       `When only one object is selected, clicking it again in the scene, without Shift, selects the part under the pointer the same way and opens the properties panel unless the viewfinder or the director console is open. ` +
       `The selected part is tinted in the scene for you alone; Shift-click, a click on another object or on empty space, joint adjustment and the viewfinder's still keep working as before, and the tint never shows in a still or a camera's picture.`,

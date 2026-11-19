@@ -240,6 +240,15 @@ describe('SceneLookSection', () => {
     expect(screen.getByText(t('spaces.threeD.valueFailed'))).toBeTruthy();
   });
 
+  it('shows a part whose material number is past the look format as one that cannot be changed', () => {
+    const far = [...PARTS, { key: '12000', name: 'Far', color: '#808080', hasMap: false, unlit: false, line: false }] as unknown as typeof PARTS;
+    const { onCommand } = renderSection({ parts: far, selectedPart: '12000' });
+    expect(screen.getByText(t('spaces.threeD.look.partNotEditable'))).toBeTruthy();
+    expect((screen.getByTestId('scene-look-preset-metal') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('scene-look-choose-image') as HTMLButtonElement).disabled).toBe(true);
+    expect(onCommand).not.toHaveBeenCalled();
+  });
+
   it('keeps a tiling value being typed when the picture of the part changes under it', () => {
     const Section = sectionModule.SceneLookSection as unknown as React.ComponentType<Props>;
     let showLook: (look: Props['look']) => void = () => undefined;

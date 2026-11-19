@@ -21,7 +21,7 @@ import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 
 const NAME = 'project-p1/3d-s1';
 
-const { reportError, viewportInputs, lookPanelInputs } = vi.hoisted(() => ({ reportError: vi.fn(), viewportInputs: vi.fn(), lookPanelInputs: vi.fn() }));
+const { reportError, reportWarning, viewportInputs, lookPanelInputs } = vi.hoisted(() => ({ reportError: vi.fn(), reportWarning: vi.fn(), viewportInputs: vi.fn(), lookPanelInputs: vi.fn() }));
 
 vi.mock('@web/data/api/scene', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/scene')>()),
@@ -41,7 +41,7 @@ vi.mock('@web/lib/scene-view-storage', () => ({
 }));
 vi.mock('@web/lib/toast', async (importOriginal) => {
   const actual = await importOriginal<typeof ToastModule>();
-  return { ...actual, toast: { ...actual.toast, error: reportError } };
+  return { ...actual, toast: { ...actual.toast, error: reportError, warning: reportWarning } };
 });
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -100,7 +100,7 @@ async function pressDelete(): Promise<void> {
   });
 }
 
-beforeEach(() => { reportError.mockClear(); viewportInputs.mockClear(); });
+beforeEach(() => { reportError.mockClear(); reportWarning.mockClear(); viewportInputs.mockClear(); });
 afterEach(() => {
   cleanup();
   for (const { session, doc, client } of owners.splice(0)) {
@@ -142,6 +142,29 @@ describe('scene command failure feedback (inner#1724)', () => {
     expect(reportError).toHaveBeenCalledTimes(2);
     expect(reportError).toHaveBeenNthCalledWith(2, t('spaces.threeD.commandFailed'));
     expect(readSceneDocument(doc).objects).toEqual([{ ...OBJECT, locked: true }]);
+  });
+
+  it.each([
+    ['a look on more parts than an object holds', 'look', 'spaces.threeD.look.partLimit'],
+    ['a pose on more bones than an object holds', 'pose', 'spaces.threeD.pose.boneLimit'],
+  ] as const)('names the limit when %s is refused', async (_name, kind, key) => {
+    const { doc, session, client } = fixture();
+    applySceneCommand(doc, { type: 'lock', ids: [ID], locked: false }, Symbol('shared-unlock'), true, NAME);
+    if (kind === 'look') {
+      const look = Object.fromEntries(Array.from({ length: 256 }, (_, index) => [String(index), { opacity: 0.5 }]));
+      for (const [part, set] of Object.entries(look)) applySceneCommand(doc, { type: 'look', id: ID, part, set } as never, Symbol('shared-look'), true, NAME);
+    } else {
+      const pose = Object.fromEntries(Array.from({ length: 256 }, (_, index) => [`n:Bone_${index}`, [0, 0, 0, 1]]));
+      applySceneCommand(doc, { type: 'pose', id: ID, set: pose, replace: true } as never, Symbol('shared-pose'), true, NAME);
+    }
+    render(editorTree(session, client, 'visible'));
+    await screen.findByTestId('scene-viewport-boundary');
+    act(() => {
+      if (kind === 'look') session.execute({ type: 'look', id: ID, part: '300', set: { opacity: 0.2 } });
+      else session.execute({ type: 'pose', id: ID, set: { 'n:Extra': [0, 0, 0, 1] }, replace: false });
+    });
+    await waitFor(() => expect(reportWarning).toHaveBeenCalledWith(t(key, { max: 256 })));
+    expect(reportError).not.toHaveBeenCalled();
   });
 
   it('does not report an old command failure again when Activity shows the Space', async () => {

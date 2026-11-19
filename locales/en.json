@@ -2689,7 +2689,9 @@
         "spaceClosed": "The image was uploaded, but this Space is closed; it is in the Project images",
         "pickSpaceClosed": "This Space was closed before the image was put on",
         "pickObjectGone": "The object was deleted before the image was put on",
-        "checking": "Checking"
+        "checking": "Checking",
+        "partLimit": "This object can hold appearance changes on at most {max} parts.",
+        "partNotEditable": "This part's material number is past the range a look can be stored for, so it cannot be changed."
       },
       "pose": {
         "title": "Pose",
@@ -2701,7 +2703,8 @@
         "jointMode": "Adjust joints",
         "reset": "Reset pose",
         "noSkeleton": "This model has no skeleton and cannot be posed.",
-        "humanoidOnly": "Presets work on humanoid characters only."
+        "humanoidOnly": "Presets work on humanoid characters only.",
+        "boneLimit": "This object can hold a pose on at most {max} bones."
       },
       "selectObject": "Select an object to edit its properties.",
       "refused": "The connection to this scene was refused. Changes will not be saved.",

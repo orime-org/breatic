@@ -2689,7 +2689,9 @@
         "spaceClosed": "图片已上传，但这个 Space 已关闭；图片在 Project 图片里",
         "pickSpaceClosed": "Space 已关闭，图片没有放上去",
         "pickObjectGone": "对象已被删除，图片没有放上去",
-        "checking": "正在检查"
+        "checking": "正在检查",
+        "partLimit": "这个对象最多给 {max} 个部位改外观。",
+        "partNotEditable": "这个部位的材质序号超出了能保存外观的范围，不能修改。"
       },
       "pose": {
         "title": "姿势",
@@ -2701,7 +2703,8 @@
         "jointMode": "调整关节",
         "reset": "恢复默认姿势",
         "noSkeleton": "这个模型没有骨骼，不能摆姿势。",
-        "humanoidOnly": "预设只适用于人形角色。"
+        "humanoidOnly": "预设只适用于人形角色。",
+        "boneLimit": "这个对象最多给 {max} 根骨骼摆姿势。"
       },
       "selectObject": "选择对象以编辑属性。",
       "refused": "与此场景的连接被拒绝了，改动不会被保存。",
