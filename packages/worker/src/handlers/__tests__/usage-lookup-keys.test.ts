@@ -76,7 +76,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   rows = [];
   opened = [];
-  h.keysById.mockResolvedValue({ keys: KEYS, accountId: "admin-1" });
+  h.keysById.mockResolvedValue({ keys: KEYS });
   h.costLookup.mockResolvedValue({ state: "known", usd: 0.02, source: "billing", payer: "account" });
 });
 

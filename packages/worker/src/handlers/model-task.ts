@@ -157,7 +157,8 @@ export async function runModelTask(task: ModelTask): Promise<MediaRunDone> {
     lastAttempt: task.lastAttempt,
     ...(media !== null && { keys: media.keys }),
     ...(llm !== null && { llmKeys: llm.keys }),
-    cloneOwner: media?.accountId ?? "deployment",
+    // A clone lives on the upstream account the key belongs to, so the key row names it: a replaced key starts afresh.
+    cloneOwner: task.keyId ?? "deployment",
   }, deps);
 }
 

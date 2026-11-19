@@ -110,7 +110,7 @@ beforeEach(() => {
   h.resolveKeys.mockReset();
   h.keysById.mockReset();
   h.resolveKeys.mockResolvedValue({ keys: ACCOUNT, keyId: KEY_ROW, route: { mode: "default" } });
-  h.keysById.mockResolvedValue({ keys: ACCOUNT, accountId: "the-payer" });
+  h.keysById.mockResolvedValue({ keys: ACCOUNT });
 });
 
 /**

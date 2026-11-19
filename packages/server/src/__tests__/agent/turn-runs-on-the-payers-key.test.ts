@@ -149,7 +149,7 @@ beforeEach(() => {
   // A model left by an earlier case would answer for a turn that prepared none.
   h.model = undefined;
   h.resolveKeys.mockResolvedValue({ keys: ACCOUNT, keyId: "key-1", route: { mode: "default" } });
-  h.keysById.mockResolvedValue({ keys: ACCOUNT, accountId: "u-admin" });
+  h.keysById.mockResolvedValue({ keys: ACCOUNT });
 });
 
 describe("a chat turn on the payer's OpenRouter key", () => {

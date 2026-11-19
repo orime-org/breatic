@@ -202,7 +202,7 @@ beforeEach(() => {
     assetId: "asset-image", fileUrl, kind: "image", coverUrl: null, width: null, height: null, durationSeconds: null, mimeType: "image/png", sizeBytes: 10,
   }));
   h.settleCharge.mockResolvedValue({ billed: true, charged: "0", shortfall: "0.000000", studioId: "studio-1", lotIds: [] });
-  h.keysById.mockImplementation(async (id: string | null) => (id === LLM_KEY_ID ? { keys: LLM_KEYS, accountId: "admin-1" } : id === null ? null : { keys: { owner: "account", keyOf: () => "acct-fal" }, accountId: "admin-1" }));
+  h.keysById.mockImplementation(async (id: string | null) => (id === LLM_KEY_ID ? { keys: LLM_KEYS } : id === null ? null : { keys: { owner: "account", keyOf: () => "acct-fal" } }));
   h.createUsageRecorder.mockImplementation((options: Record<string, unknown>) => ({
     operation: { operationKey: options.operationKey, feature: options.feature, actorUserId: options.actorUserId, projectId: options.projectId },
     recordServiceCall: vi.fn(),

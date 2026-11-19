@@ -103,13 +103,12 @@ describe("keysById", () => {
     expect(await keysById(null)).toBeNull();
   });
 
-  it("answers a live row as its account's key for that row's upstream alone, with the account", async () => {
+  it("answers a live row as its account's key for that row's upstream alone", async () => {
     const userId = await seedUser();
     const keyId = await saveKey(userId, "fal", "fal-live-key");
     await saveKey(userId, "openrouter", "sk-or-v1-other");
 
     const read = await keysById(keyId);
-    expect(read?.accountId).toBe(userId);
     expect(read?.keys.owner).toBe("account");
     expect(read?.keys.keyOf("fal")).toBe("fal-live-key");
     expect(read?.keys.keyOf("openrouter")).toBeUndefined();

@@ -8,13 +8,14 @@
  * worker, which hands them to provider and writes back what each answer made
  * or retired (inner#1743). A clone lives on the upstream account whose key
  * made it, so each is kept per key owner (inner#1953): `deployment` for our
- * keys, the account's id for an account's key, and neither reuses the other's.
+ * keys, the account key row for an account's key (a replaced key may be another upstream account's, so it starts
+ * afresh), and neither reuses the other's.
  */
 
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db, studioUpstreamClones } from "@breatic/core";
 
-/** Whose upstream account holds a clone: `deployment` for our keys, else the account's id. */
+/** Whose upstream account holds a clone: `deployment` for our keys, else the account key row it was made with. */
 export type CloneKeyOwner = "deployment" | (string & {});
 
 /** What was cloned. */

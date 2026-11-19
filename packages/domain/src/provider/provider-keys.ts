@@ -74,13 +74,13 @@ export async function resolveKeys(payer: KeyPayer, purpose: KeyPurpose): Promise
 /**
  * The key a task, turn or lookup recorded by its row id.
  * @param keyId - The row, or null for the deployment's keys.
- * @returns The account's key for that row's upstream alone and the account that owns it, or null for no row.
+ * @returns The account's key for that row's upstream alone, or null for no row.
  * @throws {AccountKeyFailure} `account_key_missing` when the row was replaced, deleted or erased, its account is gone,
  *   or this deployment no longer opens account keys, naming the row's upstream while the row exists; no other key is
  *   used instead.
  * @throws {ProviderKeySealBroken} When the sealed key cannot be opened with this deployment's ring.
  */
-export async function keysById(keyId: string | null): Promise<{ keys: KeySet; accountId: string } | null> {
+export async function keysById(keyId: string | null): Promise<{ keys: KeySet } | null> {
   if (keyId === null) return null;
   const masterKeys = ring();
   const found = masterKeys === null ? null : await providerKeyById(keyId);
@@ -88,7 +88,7 @@ export async function keysById(keyId: string | null): Promise<{ keys: KeySet; ac
   if (masterKeys === null || found === null || found.ciphertext === null) {
     throw new AccountKeyFailure("", "account_key_missing", found === null ? {} : { upstream: found.upstream });
   }
-  return { keys: accountKeySet(found.upstream, openProviderKey(found.ciphertext, masterKeys)), accountId: found.userId };
+  return { keys: accountKeySet(found.upstream, openProviderKey(found.ciphertext, masterKeys)) };
 }
 
 

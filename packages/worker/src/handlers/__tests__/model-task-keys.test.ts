@@ -74,8 +74,8 @@ beforeEach(() => {
   h.rewrittenPrompt.mockResolvedValue("rewritten");
   h.listSteps.mockResolvedValue([]);
   h.keysById.mockImplementation(async (id: string | null) => {
-    if (id === MEDIA_KEY_ID) return { keys: MEDIA_KEYS, accountId: "admin-1" };
-    if (id === LLM_KEY_ID) return { keys: LLM_KEYS, accountId: "admin-1" };
+    if (id === MEDIA_KEY_ID) return { keys: MEDIA_KEYS };
+    if (id === LLM_KEY_ID) return { keys: LLM_KEYS };
     return null;
   });
 });
@@ -87,7 +87,7 @@ describe("the keys a model run uses", () => {
     expect(h.keysById).toHaveBeenCalledWith(MEDIA_KEY_ID);
     expect(h.keysById).toHaveBeenCalledWith(LLM_KEY_ID);
     const [run] = h.runMedia.mock.calls[0] as [Record<string, unknown>];
-    expect(run).toMatchObject({ keys: MEDIA_KEYS, llmKeys: LLM_KEYS, cloneOwner: "admin-1", route: { mode: "upstream", upstream: "fal" } });
+    expect(run).toMatchObject({ keys: MEDIA_KEYS, llmKeys: LLM_KEYS, cloneOwner: MEDIA_KEY_ID, route: { mode: "upstream", upstream: "fal" } });
   });
 
   it("runs on our keys, owning its clones as the deployment, when the task holds no key row", async () => {
@@ -117,7 +117,7 @@ describe("the keys a model run uses", () => {
 
   it("still runs when only the LLM key row is gone, and fails only when a step asks for that key", async () => {
     h.keysById.mockImplementation(async (id: string | null) => {
-      if (id === MEDIA_KEY_ID) return { keys: MEDIA_KEYS, accountId: "admin-1" };
+      if (id === MEDIA_KEY_ID) return { keys: MEDIA_KEYS };
       throw Object.assign(new Error("account key gone"), { kind: "account_key_missing", upstream: "openrouter" });
     });
 
