@@ -7,7 +7,6 @@
  * as the cover, write both back through `r2.local` and report through `jobs.local`.
  */
 
-import { spawn } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,7 +17,7 @@ import type {
   WebAnimationRenderRunBody,
 } from "@ingest/jobs/web-animation-run-body.js";
 
-import { cpuUsec } from "./run-steps.js";
+import { cpuUsec, runCommand } from "./run-steps.js";
 
 /** Where the image keeps what a render needs. */
 export interface WebAnimationRenderSettings {
@@ -93,25 +92,6 @@ export function markCompositionsWithoutTimeline(html: string): string {
 }
 
 /**
- * Run a program and collect what it printed.
- * @param bin - The program.
- * @param args - Its arguments.
- * @returns Its stdout.
- * @throws {Error} When it exits other than 0.
- */
-function exec(bin: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
-    let out = "";
-    let err = "";
-    child.stdout.on("data", (chunk: Buffer) => { out += chunk.toString("utf8"); });
-    child.stderr.on("data", (chunk: Buffer) => { err += chunk.toString("utf8"); });
-    child.on("error", reject);
-    child.on("close", (code) => (code === 0 ? resolve(out) : reject(new Error(`${bin} exited ${String(code)}: ${err.slice(-500)}`))));
-  });
-}
-
-/**
  * Measure a video's frame count, size and length.
  * @param ffprobe - The ffprobe binary.
  * @param path - The video.
@@ -119,10 +99,10 @@ function exec(bin: string, args: string[]): Promise<string> {
  * @throws {Error} When ffprobe fails.
  */
 async function probeVideo(ffprobe: string, path: string): Promise<RenderedVideo & { durationSeconds: number }> {
-  const out = JSON.parse(await exec(ffprobe, [
+  const out = JSON.parse((await runCommand(ffprobe, [
     "-v", "error", "-select_streams", "v:0", "-count_frames",
     "-show_entries", "stream=nb_read_frames,width,height", "-show_entries", "format=duration", "-of", "json", path,
-  ])) as { streams?: Array<{ nb_read_frames?: string; width?: number; height?: number }>; format?: { duration?: string } };
+  ])).stdout.toString("utf8")) as { streams?: Array<{ nb_read_frames?: string; width?: number; height?: number }>; format?: { duration?: string } };
   const stream = out.streams?.[0];
   const frames = Number(stream?.nb_read_frames);
   return {
@@ -141,7 +121,7 @@ async function probeVideo(ffprobe: string, path: string): Promise<RenderedVideo 
  * @throws {Error} When ffprobe fails.
  */
 async function probeImage(ffprobe: string, path: string): Promise<{ width: number; height: number }> {
-  const out = JSON.parse(await exec(ffprobe, ["-v", "error", "-show_entries", "stream=width,height", "-of", "json", path])) as {
+  const out = JSON.parse((await runCommand(ffprobe, ["-v", "error", "-show_entries", "stream=width,height", "-of", "json", path])).stdout.toString("utf8")) as {
     streams?: Array<{ width?: number; height?: number }>;
   };
   return { width: out.streams?.[0]?.width ?? 0, height: out.streams?.[0]?.height ?? 0 };
@@ -212,7 +192,7 @@ export async function runWebAnimationRender(job: WebAnimationRenderRunBody, sett
     const mismatch = judgeWebAnimationRender(video, job);
     if (mismatch !== null) throw new RenderStopped(mismatch, `rendered ${String(video.frames)} frames at ${video.width}x${video.height}`);
     const coverPath = join(work, "cover.png");
-    await exec(settings.ffmpegBin, ["-v", "error", "-i", videoPath, "-frames:v", "1", coverPath]);
+    await runCommand(settings.ffmpegBin, ["-v", "error", "-i", videoPath, "-frames:v", "1", coverPath]);
     const cover = await probeImage(settings.ffprobeBin, coverPath);
 
     await post(job.progressUrl, { phase: "saving", progress: 1 });
