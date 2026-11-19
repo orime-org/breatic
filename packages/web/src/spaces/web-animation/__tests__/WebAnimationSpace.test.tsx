@@ -303,14 +303,26 @@ describe('the two panels', () => {
     const user = userEvent.setup();
     await user.click(screen.getByTestId(button));
     await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    // The test hands out the play clock's frames itself, so how busy the machine is cannot decide whether it ticks.
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { nextFrame += 1; frames.set(nextFrame, callback); return nextFrame; });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => { frames.delete(id); });
+    let frameTime = performance.now();
+    const tick = (): void => act(() => {
+      frameTime = Math.max(frameTime, performance.now()) + 200;
+      const due = [...frames.values()];
+      frames.clear();
+      for (const callback of due) callback(frameTime);
+    });
     const before = panelRenders[part];
     const clockText = (): string => screen.getByTestId('motion-bottom-bar').textContent ?? '';
-    const start = clockText();
     await user.click(screen.getByTestId('motion-play'));
-    await waitFor(() => expect(clockText()).not.toBe(start));
-    await waitFor(() => expect(clockText()).not.toBe(start));
-    const after = clockText();
-    await waitFor(() => expect(clockText()).not.toBe(after));
+    for (let step = 0; step < 3; step += 1) {
+      const shown = clockText();
+      tick();
+      expect(clockText()).not.toBe(shown);
+    }
     expect(panelRenders[part]).toBe(before);
   });
 
