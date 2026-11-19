@@ -1282,6 +1282,49 @@ describe('exporting a result', () => {
   });
 });
 
+describe('creating a web animation', () => {
+  /**
+   * Open New, type a prompt and press Execute.
+   * @param user - The user.
+   * @param prompt - The prompt.
+   */
+  async function executeNew(user: ReturnType<typeof userEvent.setup>, prompt: string): Promise<void> {
+    await user.click(await screen.findByTestId('motion-new'));
+    await user.type(await screen.findByTestId('web-animation-prompt'), prompt);
+    await user.click(screen.getByTestId('web-animation-execute'));
+  }
+
+  it('closes the dialog when the answer replays the press\'s own execution', async () => {
+    vi.mocked(timelineApi.acceptExecution).mockReset().mockResolvedValue({ row: inProgressRow(RUNNING, 'A dot'), created: false } as never);
+    show();
+    const user = userEvent.setup();
+    await executeNew(user, 'A dot');
+    await waitFor(() => expect(timelineApi.acceptExecution).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.queryByTestId('web-animation-prompt')).toBeNull());
+  });
+
+  it('brings a hidden submission back with its refusal after an export was accepted meanwhile', async () => {
+    const shown = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');
+    listing([shown]);
+    let refuse: (err: Error) => void = () => undefined;
+    vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async (body: { kind: string }) => {
+      if (body.kind === 'web_animation_export') return { row: { ...exported(shown), status: 'queued' }, created: true } as never;
+      return new Promise((_resolve, reject) => { refuse = reject; }) as never;
+    });
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await executeNew(user, 'A red dot');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByTestId('web-animation-prompt')).toBeNull());
+    await user.click(screen.getByTestId('motion-action-export'));
+    await waitFor(() => expect(timelineApi.acceptExecution).toHaveBeenCalledTimes(2));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    act(() => refuse(new Error('refused')));
+    expect(await screen.findByTestId('web-animation-prompt')).toHaveValue('A red dot');
+  });
+});
+
 describe('putting an export on a Canvas', () => {
   const CANVAS = '70000000-0000-4000-8000-0000000000c1';
   const CONTROLS = { capture: { canvasSyncTimeoutMs: 10_000 } };

@@ -44,7 +44,7 @@ describe('transitionCreationDraft', () => {
   it.each<CreationDraftEvent>([
     { type: 'edit', patch: { prompt: 'x' } },
     { type: 'execute', actionId: ACTION },
-    { type: 'accepted', executionId: 'e' },
+    { type: 'accepted', actionId: ACTION },
     { type: 'refused', error: 'no' },
     { type: 'close' },
   ])('ignores $type while closed', (event) => {
@@ -59,7 +59,7 @@ describe('transitionCreationDraft', () => {
   });
 
   it('ignores an answer while drafting', () => {
-    expect(run(drafting, { type: 'accepted', executionId: 'e' })).toEqual(drafting);
+    expect(run(drafting, { type: 'accepted', actionId: ACTION })).toEqual(drafting);
     expect(run(drafting, { type: 'refused', error: 'no' })).toEqual(drafting);
   });
 
@@ -77,8 +77,15 @@ describe('transitionCreationDraft', () => {
     const hidden = run(submitting, { type: 'close' });
     expect(hidden).toEqual({ status: 'submitting', open: false, input: INPUT, actionId: ACTION });
     expect(run(hidden, { type: 'open', input: { ...INPUT, prompt: 'other' } })).toEqual(submitting);
-    expect(run(hidden, { type: 'accepted', executionId: 'e' })).toEqual(CLOSED);
-    expect(run(submitting, { type: 'accepted', executionId: 'e' })).toEqual(CLOSED);
+    expect(run(hidden, { type: 'accepted', actionId: ACTION })).toEqual(CLOSED);
+    expect(run(submitting, { type: 'accepted', actionId: ACTION })).toEqual(CLOSED);
+  });
+
+  it('keeps a submission waiting through the acceptance of another action, and still takes its own refusal', () => {
+    const hidden = run(submitting, { type: 'close' });
+    expect(run(hidden, { type: 'accepted', actionId: OTHER_ACTION })).toEqual(hidden);
+    expect(run(submitting, { type: 'accepted', actionId: OTHER_ACTION })).toEqual(submitting);
+    expect(run(hidden, { type: 'accepted', actionId: OTHER_ACTION }, { type: 'refused', error: 'no' })).toEqual({ status: 'drafting', open: true, input: INPUT, error: 'no' });
   });
 
   it('brings a refused submission back as a draft with the input and the reason', () => {

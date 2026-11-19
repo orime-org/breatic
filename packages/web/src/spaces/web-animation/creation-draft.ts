@@ -7,7 +7,8 @@
  *
  * Execute fixes the input and the action id; until the accept answers, edits are ignored, a second Execute joins the
  * same action and opening shows that submission. Closing while submitting hides the dialog and lets the submission go
- * on; acceptance closes the draft, a refusal brings it back with the user's input and the reason.
+ * on; the acceptance of its own action closes the draft (another action's never does), a refusal brings it back with
+ * the user's input and the reason.
  */
 
 import type { WebAnimationEngine } from '@web/spaces/web-animation/execution-text';
@@ -35,7 +36,8 @@ export type CreationDraftEvent =
   | { type: 'edit'; patch: Partial<CreationDraftInput> }
   | { type: 'execute'; actionId: string }
   | { type: 'close' }
-  | { type: 'accepted'; executionId: string }
+  /** An accept answered; only the submission's own action closes the draft. */
+  | { type: 'accepted'; actionId: string }
   | { type: 'refused'; error: string };
 
 const CLOSED: CreationDraftState = { status: 'closed' };
@@ -59,7 +61,7 @@ export function transitionCreationDraft(state: CreationDraftState, event: Creati
     case 'submitting':
       if (event.type === 'open') return state.open ? state : { ...state, open: true };
       if (event.type === 'close') return state.open ? { ...state, open: false } : state;
-      if (event.type === 'accepted') return CLOSED;
+      if (event.type === 'accepted') return event.actionId === state.actionId ? CLOSED : state;
       if (event.type === 'refused') return { status: 'drafting', open: true, input: state.input, error: event.error };
       return state;
   }

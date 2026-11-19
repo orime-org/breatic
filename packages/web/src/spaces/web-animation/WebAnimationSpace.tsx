@@ -394,11 +394,12 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         if (onRefused === undefined) toast.error(message); else onRefused(message);
         return;
       }
-      const { row: accepted, created } = outcome.result;
+      const { row: accepted } = outcome.result;
       // The preview keeps its result unless the answer is a succeeded row; the list opens on the row (design §7.3).
       if (accepted.status === 'succeeded') showResult(() => select({ type: 'accepted', row: accepted }));
       else select({ type: 'accepted', row: accepted });
-      if (created) dispatchDraft({ type: 'accepted', executionId: accepted.id });
+      // Only the draft's own action closes it, a replay of that action included; an export's answer never does.
+      dispatchDraft({ type: 'accepted', actionId });
     });
   }, [projectId, spaceId, select, showResult, refresh, t]);
   const cancel = React.useCallback((target: WebAnimationRowView): void => {
