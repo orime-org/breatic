@@ -106,16 +106,6 @@ export function hasKey(keys: KeySet, upstream: string): boolean {
 }
 
 /**
- * The set a call runs on: the one it was handed, or the deployment's.
- * @param given - The set the caller handed, if any.
- * @param deployment - The deployment's set.
- * @returns The set.
- */
-export function keysOr(given: KeySet | undefined, deployment: KeySet): KeySet {
-  return given ?? deployment;
-}
-
-/**
  * The set a later step of a ticket runs on, checked against the owner the ticket recorded for it.
  * @param recorded - The owner the ticket recorded (`account`), or undefined for the deployment's.
  * @param given - The set the caller handed, if any.
@@ -125,7 +115,7 @@ export function keysOr(given: KeySet | undefined, deployment: KeySet): KeySet {
  * @throws {Error} When the caller handed another owner's keys than the step ran on.
  */
 export function recordedKeys(recorded: Payer | undefined, given: KeySet | undefined, deployment: KeySet, what: string): KeySet {
-  const keys = keysOr(given, deployment);
+  const keys = given ?? deployment;
   const owner = recorded ?? "deployment";
   if (keys.owner !== owner) throw new Error(`The ${what} ran on the ${owner}'s keys and was handed the ${keys.owner}'s`);
   return keys;

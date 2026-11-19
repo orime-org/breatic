@@ -16,11 +16,11 @@ import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
 import { answerText, boundSignal, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
 import { priceAt, tokenUsd } from "@provider/llm/prices.js";
-import { classifyLlm, costRefOf, InBandError, pauseBeforeRetry, SwitchingModel } from "@provider/llm/switching.js";
+import { classifyLlm, costRefOf, InBandError, pauseBeforeRetry, statusFailure, SwitchingModel } from "@provider/llm/switching.js";
 import { AnswerUnread, assertSucceeded, MediaReadFailed, StepRefused, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
 import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
 import { messagesSpeakerOf } from "@provider/llm/upstreams/messages.js";
-import { assertAccountReaches, hasKey, keyFailureOf, keyFor, keysOr, llmFailureOn, paidAsMarked, paidOn, payerMark, triedOn, type KeySet } from "@provider/keys.js";
+import { assertAccountReaches, hasKey, keyFailureOf, keyFor, llmFailureOn, paidAsMarked, paidOn, payerMark, triedOn, type KeySet } from "@provider/keys.js";
 import { cacheMark, hasLlmAdapter, isClaude, messageOf, optionsFor, vendorOf, type ModelV4, type Vendor, type VendorOptions } from "@provider/llm/vendors.js";
 import type { MessagesPlan } from "@provider/messages/relay.js";
 import type { ProviderOptions } from "@provider/provider.js";
@@ -478,7 +478,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions, depl
 
   return {
     prepare(modelId, wants, chosen = DEFAULT_ROUTE, given): PreparedCall {
-      const keys = keysOr(given, deploymentKeys);
+      const keys = given ?? deploymentKeys;
       const route = routeOf(config.llm.routes, modelId);
       const plan = planFor(route, modelId, chosen, keys);
       const pending = new Map<string, PendingCost>();
@@ -531,7 +531,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions, depl
     servedBy,
 
     async understand(request, chosen = DEFAULT_ROUTE, given) {
-      const keys = keysOr(given, deploymentKeys);
+      const keys = given ?? deploymentKeys;
       const route = routeOf(config.llm.understand_routes, request.model);
       const plan = planFor(route, request.model, chosen, keys);
       const first = plan.order[0]!.upstream;
@@ -650,7 +650,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions, depl
     },
 
     async judge(request, chosen = DEFAULT_ROUTE, keys) {
-      const used = keysOr(keys, deploymentKeys);
+      const used = keys ?? deploymentKeys;
       const { upstream, key, decisions } = decisionsUpstream(chosen, used);
       const served = { upstream, model: decisions.model };
       const url = decisions.url(config.upstreams[upstream]!);
@@ -673,8 +673,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions, depl
       }
       if (!isSuccess(response.status)) {
         // On the payer's own key a refusal of that key is the payer's to act on, never a refusal of the question.
-        const refusal = used.owner === "account" ? vendorOf(kindOf(upstream)).refusal(response.status, parsed(text)) : undefined;
-        const turned = used.owner === "account" ? accountFailureOf(refusal === undefined ? { kind: "http_status", status: response.status } : { kind: refusal }, "llm_before_content") : undefined;
+        const turned = used.owner === "account" ? accountFailureOf(statusFailure(response.status, parsed(text), vendorOf(kindOf(upstream))), "llm_before_content") : undefined;
         if (turned?.kind === "account_key_failed") throw keyFailureOf(decisions.model, upstream, turned);
         return { status: response.status, body: text, ...served };
       }
@@ -684,12 +683,12 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions, depl
     },
 
     availability(modelId, use, keys) {
-      const candidates = candidatesOn(routeOf(use === "call" ? config.llm.routes : config.llm.understand_routes, modelId), keysOr(keys, deploymentKeys));
+      const candidates = candidatesOn(routeOf(use === "call" ? config.llm.routes : config.llm.understand_routes, modelId), keys ?? deploymentKeys);
       return { upstreams: candidates.map(({ upstream, weight, configured, envVar }) => ({ upstream, weight, configured, envVar })) };
     },
 
     judgeAvailability(given) {
-      const keys = keysOr(given, deploymentKeys);
+      const keys = given ?? deploymentKeys;
       const candidates = judgeUpstreams(keys).map((upstream, weight) => candidateOf(config, upstream, weight, keys));
       return { upstreams: candidates.map(({ upstream, weight, configured, envVar }) => ({ upstream, weight, configured, envVar })) };
     },

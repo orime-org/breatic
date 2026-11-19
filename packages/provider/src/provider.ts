@@ -17,7 +17,7 @@ import { sideBounds } from "@provider/http/request.js";
 import type { LlmApi } from "@provider/llm/api.js";
 import { createLlm } from "@provider/llm/llm.js";
 import { hasLlmAdapter, vendorOf } from "@provider/llm/vendors.js";
-import { deploymentKeySet, keyFor, keysOr, lookupOwner, paidOn, recordedKeys, type KeySet } from "@provider/keys.js";
+import { deploymentKeySet, keyFor, lookupOwner, paidOn, recordedKeys, type KeySet } from "@provider/keys.js";
 import { mediaAdapter } from "@provider/media/adapters.js";
 import {
   estimateCost,
@@ -101,7 +101,7 @@ export function createProvider(options: ProviderOptions): Provider {
    * @returns The availability.
    */
   const availability = (model: string, keys?: KeySet): Availability => ({
-    upstreams: candidatesOf(config, model, keysOr(keys, deploymentKeys)).map(({ upstream, weight, configured, envVar }) => ({ upstream, weight, configured, envVar })),
+    upstreams: candidatesOf(config, model, keys ?? deploymentKeys).map(({ upstream, weight, configured, envVar }) => ({ upstream, weight, configured, envVar })),
   });
   /**
    * A model's pricing on each upstream.

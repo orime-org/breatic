@@ -89,7 +89,7 @@ export class InBandError extends Error {
  * @param vendor - The vendor that answered.
  * @returns The failure.
  */
-function statusFailure(status: number, body: unknown, vendor: Vendor | undefined): Failure {
+export function statusFailure(status: number, body: unknown, vendor: Vendor | undefined): Failure {
   const refusal = vendor?.refusal(status, body);
   return refusal === undefined ? { kind: "http_status", status } : { kind: refusal };
 }
