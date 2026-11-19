@@ -53,9 +53,18 @@ interface Plan extends Record<string, unknown> {
 }
 interface Parent { id: string; user_id: string; status: string; params: { miniToolExecution: Plan }; result: Record<string, unknown>; billed_at: string | null; created_at: string; updated_at: string }
 
-const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), reads: [] as string[], ingest: vi.fn(), config: vi.fn() }));
+const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), reads: [] as string[], ingest: vi.fn(), config: vi.fn(),
+  funded: null as ReadonlySet<string> | null }));
 vi.mock("@breatic/core", async (original) => ({ ...await original<typeof core>(), getMiniToolsConfig: outside.config }));
 vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof shared>(), videoPresentationAtIngest: outside.ingest }));
+// A02 swaps the platform-funded set in the entry admission imports; every other case reads the real set.
+vi.mock("@breatic/shared/mini-tools", async (original) => {
+  const actual = await original<typeof miniTools>();
+  const real = actual as unknown as { PLATFORM_FUNDED: ReadonlySet<string>; miniToolChargeTo: (subject: string) => "platform" | "user" };
+  return { ...actual,
+    get PLATFORM_FUNDED(): ReadonlySet<string> { return outside.funded ?? real.PLATFORM_FUNDED; },
+    miniToolChargeTo: (subject: string): "platform" | "user" => (outside.funded === null ? real.miniToolChargeTo(subject) : outside.funded.has(subject) ? "platform" : "user") };
+});
 // 44 frames of 1/10 s over 4.4 s; the selected version's compact presentation and its full plan (S6a).
 const TABLE: VideoPresentationTable = { schemaVersion: 1, timescale: 10, runs: [{ start: 0, count: 44, step: 1, duration: 1 }] };
 const rational = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
@@ -340,7 +349,10 @@ describe("S5 fresh frame and split execution admission", () => {
     expect(plan).toMatchObject({ tool, taskId: f.body.run_id, sourceKey: f.sourceKey,
       presentationRef: original.presentation_ref, ledgerReceipts: { source: f.receipt }, versionIds: { source: f.versionId },
       binding: { assetId: f.sourceId, contentHash: f.hash, mediaInfo: { width: 960, height: 540, duration: 4.4 } },
-      outputs: original.outputs, targetNodeIds: original.outputs.map((o) => o.nodeId), credits: estimate(tool),
+      // §67.1 S5-A01/A05 (frames-split §5.5 「配置」行, §10.8 「计费」行): extract-frames is platform-funded, quoted 0 with no hold;
+      // the payer is frozen in the plan for the worker and every retry.
+      outputs: original.outputs, targetNodeIds: original.outputs.map((o) => o.nodeId), credits: tool === "video.split" ? estimate(tool) : 0,
+      chargeTo: tool === "video.split" ? "user" : "platform",
       container: { containerClass: "MiniToolContainerStd4", precheckSeconds: tool === "video.split" ? 23 : 17,
         size: settings.classes.MiniToolContainerStd4, prices: settings.prices, limits: settings.plan_limits } });
     // §93 D5-2 (design D-2 「crf/preset 取冻结的受理 limits」, §5.4 「编码参数完全一致」): the run's encode parameters and retry cap are
@@ -350,9 +362,9 @@ describe("S5 fresh frame and split execution admission", () => {
     expect(requestFingerprint).toBe(await hashMiniToolValue(original)); expect(planFingerprint).toBe(await hashMiniToolValue(projection));
     const rows = await pg`SELECT node_id,budget_ms,action FROM node_tasks WHERE task_id=${f.body.run_id} ORDER BY node_id`;
     expect([...rows]).toEqual(original.outputs.map((o) => ({ node_id: o.nodeId, budget_ms: 7200000, action: "mini_tool" })).sort((a, b) => a.node_id.localeCompare(b.node_id)));
-    const [hold] = await pg`SELECT studio_id,amount::float8,status FROM credit_holds WHERE reference_id=${f.body.run_id}`;
-    expect(hold).toEqual({ studio_id: f.studioId, amount: estimate(tool), status: "held" });
-    expect(await effects(f.body.run_id)).toEqual({ tasks: 1, rows: original.outputs.length, holds: 1, jobs: 1 });
+    const holds = await pg`SELECT studio_id,amount::float8,status FROM credit_holds WHERE reference_id=${f.body.run_id}`;
+    expect([...holds]).toEqual(tool === "video.split" ? [{ studio_id: f.studioId, amount: estimate(tool), status: "held" }] : []);
+    expect(await effects(f.body.run_id)).toEqual({ tasks: 1, rows: original.outputs.length, holds: tool === "video.split" ? 1 : 0, jobs: 1 });
     expect(await queue.getJob(f.body.run_id)).toMatchObject({ id: f.body.run_id, name: "execute-mini-tool", data: { taskId: f.body.run_id, executionKind: "planned" } });
     // The full ledger is read once for the layout's encode facts (E3-3), the compact once for the recipes.
     expect([...outside.reads].sort()).toEqual([f.receipt.url, f.receipt.table.url].sort());
@@ -987,5 +999,106 @@ describe("E4 execution pins at admission (inner#1306 §90 E4-4, E4-5; design §7
     expect((await post(f, body)).ok).toBe(false);
     expect(await livePins(f.body.run_id)).toHaveLength(1);
     expect(await livePins(body.run_id)).toEqual([]);
+  });
+});
+
+/**
+ * An accepted extract-frames run whose one output failed, ended as SQL records it.
+ * @param f - The fixture of an extract-frames request.
+ * @returns The original parent.
+ * @throws {Error} On invalid record or fixture SQL.
+ */
+async function failedFrames(f: Fixture): Promise<Parent> {
+  await accept(f);
+  const original = await parent(f.body.run_id); const plan = original.params.miniToolExecution;
+  const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: plan.planFingerprint,
+    resultVersion: 1, sourceBindings: [plan.binding], outputs: plan.outputs.map((output) => ({ ...output, late: false, result: { status: "failed", error: { code: "output_failed" } } })),
+    usage: [], billingState: "idle", error: { code: "output_failed" } });
+  await pg`UPDATE tasks SET status='failed',result=${pg.json(z.json().parse({ ...original.result, miniToolExecution: record }))},completed_at=clock_timestamp() WHERE id=${f.body.run_id}`;
+  await pg`UPDATE node_tasks SET status='failed',settled_at=clock_timestamp() WHERE task_id=${f.body.run_id}`;
+  return parent(f.body.run_id);
+}
+
+/**
+ * Ask the quote endpoint for a fresh request.
+ * @param f - The fixture.
+ * @param body - The request.
+ * @returns The answer.
+ * @throws {Error} On session storage or client failure.
+ */
+async function quote(f: Fixture, body: unknown = f.body): Promise<{ status: number; body: unknown }> {
+  const token = randomBytes(24).toString("hex"); tokens.push(token); await core.setSession(core.getRedis(), token, f.userId);
+  const response = await app.request("/api/v1/mini-tools/quote", { method: "POST", headers: { "Content-Type": "application/json", Cookie: `${core.sessionCookieName()}=${token}` }, body: JSON.stringify(body) });
+  return { status: response.status, body: await response.json() };
+}
+
+// inner#1306 test plan §67.1 (S5-A01, S5-A05, S5-R05 rewritten) and §67.2 (A01, A02); frames-split design §5.5 「配置」行,
+// §10.7, §10.8 「请求」「受理」「计费」「重试」行. The shared platform-funded set (`packages/shared/src/mini-tools/platform-funded.ts`)
+// names `video.extract-frames`, `video.focus-crop` and the analysis kind `people` (`PLATFORM_FUNDED`, `miniToolChargeTo`);
+// A02 replaces both in the `@breatic/shared/mini-tools` entry admission imports.
+describe("frame-grid requests and the platform-funded set at admission (§67.1, §67.2)", () => {
+  it.each([
+    ["first", 0], ["last", 43], ["current", 30],
+  ] as const)("S5-A01 a %s frame is planned on the selected grid by frame number alone; the measured grid beats the client's media info", async (mode, frameIndex) => {
+    const f = await seed("video.extract-frames");
+    // The request names grid frame numbers only (§10.8 请求行: `{ kind: 'frame', frameIndex }`, no seconds).
+    f.body.draft.params = mode === "current" ? { mode, frameIndex: 30 } : { mode };
+    f.body.outputs = [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "frame", frameIndex } as unknown as Recipe }];
+    await accept(f);
+    expect((await parent(f.body.run_id)).params.miniToolExecution.outputs).toEqual(f.body.outputs);
+  });
+
+  it("S5-A01 split cuts in grid frame numbers, out of order, repeated and on both ends, plan N+1 segments [k0,k1) to frameCount, each kept with its node", async () => {
+    const f = await seed("video.split");
+    f.body.draft.params = { cuts: [40, 20, 44, 0, 20] };
+    f.body.outputs = [{ start: 0, end: 20 }, { start: 20, end: 40 }, { start: 40, end: 44 }]
+      .map((range, outputIndex) => ({ outputIndex, nodeId: randomUUID(), recipe: { kind: "segment", range } }));
+    await accept(f);
+    const plan = (await parent(f.body.run_id)).params.miniToolExecution;
+    expect(plan.outputs).toEqual(f.body.outputs);
+    expect(plan.targetNodeIds).toEqual(f.body.outputs.map((output) => output.nodeId));
+  });
+
+  it("S5-A05 / A01 extract-frames is quoted 0, holds nothing and freezes chargeTo platform; its node rows keep the two-hour budget", async () => {
+    const f = await seed("video.extract-frames");
+    expect(await quote(f)).toEqual({ status: 200, body: { data: { credits: 0 } } });
+    await accept(f);
+    const plan = (await parent(f.body.run_id)).params.miniToolExecution;
+    expect({ credits: plan.credits, chargeTo: plan.chargeTo }).toEqual({ credits: 0, chargeTo: "platform" });
+    expect(await effects(f.body.run_id)).toEqual({ tasks: 1, rows: 1, holds: 0, jobs: 1 });
+    expect([...(await pg`SELECT DISTINCT budget_ms FROM node_tasks WHERE task_id=${f.body.run_id}`)]).toEqual([{ budget_ms: 7200000 }]);
+  });
+
+  it("A01 split stays user-paid: chargeTo user is frozen and the real hold equals the container quote", async () => {
+    const f = await seed("video.split");
+    await accept(f);
+    const plan = (await parent(f.body.run_id)).params.miniToolExecution;
+    expect({ credits: plan.credits, chargeTo: plan.chargeTo, containerClass: plan.container.containerClass }).toEqual({ credits: estimate("video.split"), chargeTo: "user", containerClass: "MiniToolContainerStd4" });
+    expect([...(await pg`SELECT amount::float8,status FROM credit_holds WHERE reference_id=${f.body.run_id}`)]).toEqual([{ amount: estimate("video.split"), status: "held" }]);
+  });
+
+  it("S5-R05 an extract-frames retry is quoted 0, holds nothing and takes chargeTo from the original's frozen plan", async () => {
+    const f = await seed("video.extract-frames"); await failedFrames(f);
+    const body = retry(f, [0]); await accept(f, body);
+    const plan = (await parent(body.run_id)).params.miniToolExecution;
+    expect({ credits: plan.credits, chargeTo: plan.chargeTo }).toEqual({ credits: 0, chargeTo: "platform" });
+    expect(await effects(body.run_id)).toEqual({ tasks: 1, rows: 1, holds: 0, jobs: 1 });
+  });
+
+  it("A02 changing the platform-funded set after admission changes neither the admitted run's plan nor its retry's payer or quote", async () => {
+    const f = await seed("video.extract-frames"); await failedFrames(f);
+    const before = await parent(f.body.run_id);
+    outside.funded = new Set(["video.focus-crop", "people"]);
+    try {
+      const body = retry(f, [0]); await accept(f, body);
+      const plan = (await parent(body.run_id)).params.miniToolExecution;
+      expect({ credits: plan.credits, chargeTo: plan.chargeTo }).toEqual({ credits: 0, chargeTo: "platform" });
+      expect(await effects(body.run_id)).toEqual({ tasks: 1, rows: 1, holds: 0, jobs: 1 });
+      expect((await parent(f.body.run_id)).params).toEqual(before.params);
+      // A fresh run after the change is user-paid: the set decides admission, the frozen value decides everything after it.
+      // This also proves the replaced set reached admission, so the frozen retry above is not passing because it missed.
+      const fresh = await seed("video.extract-frames"); await accept(fresh);
+      expect((await parent(fresh.body.run_id)).params.miniToolExecution.chargeTo).toBe("user");
+    } finally { outside.funded = null; }
   });
 });

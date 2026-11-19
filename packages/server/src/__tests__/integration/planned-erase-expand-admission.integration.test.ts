@@ -292,6 +292,21 @@ describe("erase fresh admission (execution design §10.4)", () => {
   it("EA06 refuses a transparent source", async () => {
     await refused(await seedErase({ start: 1, end: 3 }, { transparent: true }), "server.mini_tool.transparentSource");
   });
+
+  // inner#1306 test plan §67.2 A04 (frames-split §5.4 派发行: the erase preparation is one job, never chunked, and is in the
+  // 「任一作业超过一个块份额时受理拒绝」 check; §10.12 execution-admission.service.ts row 「擦除准备（:633）加进……检查」). The
+  // share holds a few composite frames per chunk (so the composite stage fits the raised cap) but not the 3 s preparation.
+  it("A04 refuses an erase whose single preparation job exceeds one chunk share, telling the user, with no durable effect", async () => {
+    const f = await seedErase({ start: 1, end: 4 });
+    settings.encoding.encoder.encode_pixels_per_second = 960 * 540;
+    settings.encoding.max_parallel_chunks = 100_000;
+    settings.encoding.chunk_share = (settings.encoding.encoder.start_seconds + 4) / (core.getNodeTaskConfig().default_budget_ms / 1000);
+    const response = await post(f);
+    const json = await response.json() as { error?: { message?: string } };
+    expect(response.status).toBe(400);
+    expect(json.error?.message).toEqual(expect.any(String));
+    expect(await effects(f.body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
+  });
 });
 
 describe("expand fresh admission (execution design §10.5)", () => {
