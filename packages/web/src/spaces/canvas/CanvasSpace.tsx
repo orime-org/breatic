@@ -278,7 +278,8 @@ import {
 import { CanvasCursorLayer } from '@web/spaces/canvas/CanvasCursors';
 import { AnnotationComposer } from '@web/spaces/canvas/annotation/AnnotationComposer';
 import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
-import { AgentPresenceContext, agentFocusIn, withAgentOccupants } from '@web/features/agent-presence/agent-focus';
+import { AgentPresenceContext, agentFocusIn, followedAgent, withAgentOccupants } from '@web/features/agent-presence/agent-focus';
+import { agentFollowRect } from '@web/spaces/canvas/canvas-agent-follow';
 import { usePeerActivity } from '@web/spaces/canvas/use-peer-activity';
 import { fillActionOf } from '@web/spaces/canvas/node-activity';
 import { PeerActivityContext } from '@web/spaces/canvas/nodes/_shared/node-peer-activity-context';
@@ -730,6 +731,7 @@ function CanvasSpaceInner({
     setCenter,
     setViewport,
     getInternalNode,
+    getNodesBounds,
     deleteElements,
   } = useReactFlow();
 
@@ -3262,6 +3264,21 @@ function CanvasSpaceInner({
     void fitView(FIT_VIEW_OPTIONS);
   }, [fitView]);
   const isCameraPlaced = React.useCallback((): boolean => storedViewport !== null || cameraPlaced.current, [storedViewport]);
+  // Following an external agent (#1488 design 19.3): the area around the
+  // nodes it last named here, in place of a member's published camera.
+  const leaderAgent = followedAgent(projectAgents, leaderUserId);
+  const agentFocusIds = leaderAgent !== null && leaderAgent.spaceId === spaceId ? leaderAgent.focus : null;
+  const agentFocusAt = leaderAgent?.focusAt ?? null;
+  const agentFocus = React.useMemo(() => {
+    if (agentFocusIds === null || agentFocusAt === null) return null;
+    return {
+      at: agentFocusAt,
+      rect: (): FlowRect | null => {
+        const present = agentFocusIds.filter((id) => getInternalNode(id) !== undefined);
+        return present.length === 0 ? null : agentFollowRect(getNodesBounds(present), pane);
+      },
+    };
+  }, [agentFocusIds, agentFocusAt, getInternalNode, getNodesBounds, pane]);
   const onFollowMoveStart = useCanvasFollow({
     awareness,
     leaderUserId,
@@ -3271,6 +3288,7 @@ function CanvasSpaceInner({
     clearOpeningFit,
     isCameraPlaced,
     frameCanvas,
+    agentFocus,
   });
   const readCamera = React.useCallback((): FlowRect | null => {
     const { transform, width, height } = rfStoreApi.getState();

@@ -27,7 +27,7 @@ vi.mock('@web/data/api/agent-access', async (real) => ({
  * @returns It.
  */
 const agent = (connectionId: string): ProjectAgent => ({
-  ownerId: 'u1', connectionId, online: true, idle: false, lastSeenAt: 1, spaceId: null, focus: [],
+  ownerId: 'u1', connectionId, online: true, idle: false, lastSeenAt: 1, spaceId: null, focus: [], focusAt: null,
 });
 
 /**

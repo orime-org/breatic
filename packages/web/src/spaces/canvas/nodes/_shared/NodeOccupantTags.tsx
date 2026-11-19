@@ -4,7 +4,7 @@
 import { Bot } from 'lucide-react';
 import * as React from 'react';
 
-import { AgentPresenceContext, connectionOfOccupant } from '@web/features/agent-presence/agent-focus';
+import { AgentPresenceContext, agentColor, connectionOfOccupant } from '@web/features/agent-presence/agent-focus';
 import { useNamed } from '@web/features/collab-editor/collaborator-names-context';
 import { userPaletteColor } from '@web/lib/user-color';
 import { cn } from '@web/lib/utils';
@@ -73,8 +73,8 @@ export function NodeOccupantTags({
     [userIds, labels],
   );
   const tags = [
-    ...people.map((p) => ({ key: p.userId, agent: false, colorId: p.userId, text: p.name })),
-    ...agents.map((a) => ({ key: a.connectionId, agent: true, colorId: a.connectionId, text: a.label })),
+    ...people.map((p) => ({ key: p.userId, agent: false, color: userPaletteColor(p.userId), text: p.name })),
+    ...agents.map((a) => ({ key: a.connectionId, agent: true, color: agentColor(a.connectionId), text: a.label })),
   ];
 
   if (tags.length === 0) return null;
@@ -96,7 +96,7 @@ export function NodeOccupantTags({
             'shrink-0 overflow-hidden rounded-content-xs px-[0.3rem] py-[0.1rem] text-2xs font-semibold text-ellipsis whitespace-nowrap text-[color:var(--color-on-palette)]',
             tag.agent ? 'inline-flex max-w-[160px] items-center gap-0.5' : 'max-w-[112px]',
           )}
-          style={{ backgroundColor: userPaletteColor(tag.colorId) }}
+          style={{ backgroundColor: tag.color }}
         >
           {tag.agent ? <Bot aria-hidden='true' className='size-3 shrink-0' /> : null}
           {tag.agent ? <span className='min-w-0 truncate'>{tag.text}</span> : tag.text}

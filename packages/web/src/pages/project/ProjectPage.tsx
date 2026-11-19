@@ -68,7 +68,7 @@ import { useCommentLinkRouting } from '@web/features/comment-reveal/use-comment-
 import { useViewCaptureResponder } from '@web/features/view-capture/use-view-capture-responder';
 import { useAgentLabels } from '@web/features/agent-presence/use-agent-labels';
 import { agentRows } from '@web/features/agent-presence/agent-status';
-import { AgentPresenceContext, type AgentPresenceValue } from '@web/features/agent-presence/agent-focus';
+import { AgentPresenceContext, followedAgent, withFollowableAgents, type AgentPresenceValue } from '@web/features/agent-presence/agent-focus';
 import { useFollowRouting } from '@web/pages/project/use-follow-routing';
 import { usePublishView } from '@web/pages/project/use-publish-view';
 import { FollowBar } from '@web/features/follow/FollowBar';
@@ -438,7 +438,9 @@ function ProjectWorkspace({
   );
   const memberViews = useMemberViews(metaAwareness, following);
   const leaderView = followedUserId === null ? undefined : memberViews.get(followedUserId);
-  const leaderSpaceId = leaderView?.spaceId ?? null;
+  // An external agent has no view of its own: its Space is the one it last named (#1488 design 19.3).
+  const leaderAgent = followedAgent(agents, followedUserId);
+  const leaderSpaceId = leaderAgent !== null ? leaderAgent.spaceId : leaderView?.spaceId ?? null;
   const openFollowedSpace = React.useCallback((spaceId: string) => {
     dispatchTabs({ type: 'open', spaceId, byFollow: true });
   }, []);
@@ -468,9 +470,13 @@ function ProjectWorkspace({
     return out;
   }, [memberViews, userId, memberNames]);
   // The roster is empty until it loads, and a loaded one always lists at least this user.
+  const followable = React.useMemo(
+    () => withFollowableAgents(onlineUserIds, memberNames, agents, agentLabels),
+    [onlineUserIds, memberNames, agents, agentLabels],
+  );
   useFollowLeaderPresence({
-    onlineUserIds,
-    memberNames,
+    onlineUserIds: followable.online,
+    memberNames: followable.names,
     synced: metaSynced && memberNames.size > 0,
     leaderFollows: followedUserId === null ? null : followTargets.get(followedUserId) ?? null,
   });

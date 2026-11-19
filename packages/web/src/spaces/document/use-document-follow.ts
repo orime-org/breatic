@@ -27,6 +27,12 @@ export interface DocumentFollowInput {
   root: HTMLElement | null;
   /** True while the snapshot panel shows in the same viewport: no aligning and no exit check. */
   paused: boolean;
+  /**
+   * While the leader is an external agent (#1488 design 19.3): the block it
+   * last named here and when, null while it has named none here. It takes the
+   * place of a member's published top block.
+   */
+  agentBlock?: { id: string; at: number } | null;
 }
 
 /**
@@ -49,6 +55,9 @@ export interface DocumentFollowInput {
  */
 export function useDocumentFollow(input: DocumentFollowInput): void {
   const { awareness, leaderUserId, viewport, root, paused } = input;
+  const agentBlock = React.useRef(input.agentBlock);
+  agentBlock.current = input.agentBlock;
+  const agentAt = input.agentBlock?.at ?? null;
 
   React.useEffect(() => {
     if (!awareness || leaderUserId === null || !viewport || !root || paused) return undefined;
@@ -71,7 +80,7 @@ export function useDocumentFollow(input: DocumentFollowInput): void {
      * @returns The block id and its stamp, or null.
      */
     const leaderBlock = (): { id: string; at: number } | null =>
-      pickLeaderField(awareness, leaderUserId, 'topBlockId');
+      agentBlock.current !== undefined ? agentBlock.current : pickLeaderField(awareness, leaderUserId, 'topBlockId');
 
     /**
      * Scroll a block to the landing and record the result.
@@ -133,5 +142,5 @@ export function useDocumentFollow(input: DocumentFollowInput): void {
       arrivals.disconnect();
       resize.disconnect();
     };
-  }, [awareness, leaderUserId, viewport, root, paused]);
+  }, [awareness, leaderUserId, viewport, root, paused, agentAt]);
 }

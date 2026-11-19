@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import type { ProjectAgent } from '@web/data/yjs/project-meta';
 import { agentRows, agentStatus } from '@web/features/agent-presence/agent-status';
 
-const base: ProjectAgent = { ownerId: 'u1', connectionId: 'c1', online: true, idle: false, lastSeenAt: 1, spaceId: 's1', focus: [] };
+const base: ProjectAgent = { ownerId: 'u1', connectionId: 'c1', online: true, idle: false, lastSeenAt: 1, spaceId: 's1', focus: [], focusAt: null };
 
 describe('agentStatus (#1488 design 19.2)', () => {
   it('says working while online, not idle and naming something', () => {

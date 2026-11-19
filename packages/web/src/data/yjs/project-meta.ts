@@ -107,6 +107,8 @@ export interface ProjectAgent {
   spaceId: string | null;
   /** The nodes or blocks it last named; empty before any. */
   focus: readonly string[];
+  /** When it last named them, in ms; null before any. */
+  focusAt: number | null;
 }
 
 export interface ProjectMetaState {
@@ -258,7 +260,7 @@ function readAgents(doc: Y.Doc): ReadonlyArray<ProjectAgent> {
     const parsed = agentPresenceRecordSchema.safeParse(value.toJSON());
     if (!parsed.success) return;
     const { online, idle, lastSeenAt, agent } = parsed.data;
-    out.push({ ownerId: ids.userId, connectionId: ids.connectionId, online, idle: idle === true, lastSeenAt, spaceId: agent.spaceId, focus: agent.focus });
+    out.push({ ownerId: ids.userId, connectionId: ids.connectionId, online, idle: idle === true, lastSeenAt, spaceId: agent.spaceId, focus: agent.focus, focusAt: agent.focusAt });
   });
   return out;
 }

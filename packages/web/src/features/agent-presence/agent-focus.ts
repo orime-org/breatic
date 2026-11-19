@@ -4,6 +4,7 @@
 import * as React from 'react';
 
 import type { ProjectAgent } from '@web/data/yjs/project-meta';
+import { userPaletteColor } from '@web/lib/user-color';
 
 /** What a Space reads to draw where external agents work. */
 export interface AgentPresenceValue {
@@ -73,4 +74,51 @@ export function withAgentOccupants(
     merged.set(item, [...(members.get(item) ?? []), ...connections.map(agentOccupantId)]);
   }
   return merged;
+}
+
+/**
+ * An agent's identity colour: the colour of the id it is followed by, so the
+ * follow bar, its tags and its frames agree.
+ * @param connectionId - The agent's connection.
+ * @returns A CSS colour.
+ */
+export function agentColor(connectionId: string): string {
+  return userPaletteColor(agentOccupantId(connectionId));
+}
+
+/**
+ * The agent a follow target names (#1488 design 19.3).
+ * @param agents - The project's agents.
+ * @param followId - Whom this user follows: a member's id, an agent's occupant id, or null.
+ * @returns The agent, or null for a member or nobody.
+ */
+export function followedAgent(agents: ReadonlyArray<ProjectAgent>, followId: string | null): ProjectAgent | null {
+  const connectionId = followId === null ? null : connectionOfOccupant(followId);
+  return connectionId === null ? null : agents.find((a) => a.connectionId === connectionId) ?? null;
+}
+
+/**
+ * Who can be followed and by what name, members and agents together (#1488
+ * design 19.3): an agent counts as online while online or idle, under its
+ * occupant id and its "connection · owner" label.
+ * @param online - The members online now.
+ * @param names - Member names by user id.
+ * @param agents - The project's agents.
+ * @param labels - Agent labels by connection id.
+ * @returns The online ids and the names, agents included.
+ */
+export function withFollowableAgents(
+  online: ReadonlySet<string>,
+  names: ReadonlyMap<string, string>,
+  agents: ReadonlyArray<ProjectAgent>,
+  labels: ReadonlyMap<string, string>,
+): { online: ReadonlySet<string>; names: ReadonlyMap<string, string> } {
+  const allOnline = new Set(online);
+  const allNames = new Map(names);
+  for (const agent of agents) {
+    const id = agentOccupantId(agent.connectionId);
+    if (agent.online) allOnline.add(id);
+    allNames.set(id, labels.get(agent.connectionId) ?? '');
+  }
+  return { online: allOnline, names: allNames };
 }

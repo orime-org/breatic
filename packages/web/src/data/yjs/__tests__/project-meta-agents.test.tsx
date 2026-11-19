@@ -62,7 +62,7 @@ describe('agents in the meta document', () => {
     expect([...result.current.users.keys()]).toEqual(['u1']);
     expect(result.current.users.get('u1')?.online).toBe(false);
     expect(result.current.agents).toEqual([
-      { ownerId: 'u1', connectionId: 'c1', online: true, idle: false, lastSeenAt: 9, spaceId: 's1', focus: ['n1', 'n2'] },
+      { ownerId: 'u1', connectionId: 'c1', online: true, idle: false, lastSeenAt: 9, spaceId: 's1', focus: ['n1', 'n2'], focusAt: 5 },
     ]);
   });
 

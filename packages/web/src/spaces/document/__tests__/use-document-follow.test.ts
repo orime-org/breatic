@@ -349,3 +349,28 @@ describe('usePublishTopBlock', () => {
     expect(awareness.getLocalState()).not.toBeNull();
   });
 });
+
+describe('following an external agent (#1488 design 19.3)', () => {
+  beforeEach(() => {
+    useFollowStore.getState().start('agent:c1', 'Claude Code · Mika');
+  });
+
+  it('scrolls the block it works on to the landing line, and the next one it names', () => {
+    const b = body([['a', 0], ['b', 1000], ['c', 1800]]);
+    const local = makeAwareness();
+    const base = { awareness: local, leaderUserId: 'agent:c1', viewport: b.viewport, root: b.root, paused: false };
+    const { rerender } = renderHook((p: DocumentFollowInput) => useDocumentFollow(p), {
+      initialProps: { ...base, agentBlock: { id: 'b', at: 1 } },
+    });
+    expect(b.viewport.scrollTop).toBe(1000 - FOLLOWED_LANDING);
+    rerender({ ...base, agentBlock: { id: 'c', at: 2 } });
+    expect(b.viewport.scrollTop).toBe(1800 - FOLLOWED_LANDING);
+    expect(useFollowStore.getState().targetUserId).toBe('agent:c1');
+  });
+
+  it('leaves the body where it is while the agent has named nothing here', () => {
+    const b = body([['a', 0], ['b', 1000]]);
+    renderHook(() => useDocumentFollow({ awareness: makeAwareness(), leaderUserId: 'agent:c1', viewport: b.viewport, root: b.root, paused: false, agentBlock: null }));
+    expect(b.viewport.scrollTop).toBe(0);
+  });
+});

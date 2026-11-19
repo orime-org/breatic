@@ -14,7 +14,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
-import { userPaletteColor } from '@web/lib/user-color';
+import { agentColor } from '@web/features/agent-presence/agent-focus';
 
 /** The class on a block an agent works on. */
 export const AGENT_FOCUS_CLASS = 'doc-agent-focus';
@@ -51,7 +51,7 @@ export function agentFocusDecorations(doc: PMNode, entries: readonly AgentFocusE
       found.push(Decoration.node(pos, pos + node.nodeSize, {
         class: AGENT_FOCUS_CLASS,
         'data-agent-label': on.map((e) => e.label).join(', '),
-        style: `--agent-color: ${userPaletteColor(on[0]!.connectionId)}`,
+        style: `--agent-color: ${agentColor(on[0]!.connectionId)}`,
       }));
     }
     return true;

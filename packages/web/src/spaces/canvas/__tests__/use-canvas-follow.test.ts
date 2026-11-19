@@ -305,3 +305,31 @@ describe('useCanvasFollow', () => {
   });
 
 });
+
+describe('following an external agent (#1488 design 19.3)', () => {
+  beforeEach(() => {
+    useFollowStore.getState().start('agent:c1', 'Claude Code · Mika');
+  });
+
+  it('shows the area around the nodes it works on, again only when it names others', () => {
+    const awareness = makeAwareness();
+    const applyViewport = vi.fn();
+    const other = { x: 900, y: 900, width: 1000, height: 500 };
+    const { rerender } = renderHook((p: CanvasFollowInput) => useCanvasFollow(p), {
+      initialProps: input({ awareness, leaderUserId: 'agent:c1', applyViewport, agentFocus: { at: 1, rect: () => RECT } }),
+    });
+    expect(applyViewport).toHaveBeenLastCalledWith(followFit(RECT, PANE));
+    const mounted = applyViewport.mock.calls.length;
+    rerender(input({ awareness, leaderUserId: 'agent:c1', applyViewport, agentFocus: { at: 1, rect: () => other } }));
+    expect(applyViewport).toHaveBeenCalledTimes(mounted);
+    rerender(input({ awareness, leaderUserId: 'agent:c1', applyViewport, agentFocus: { at: 2, rect: () => other } }));
+    expect(applyViewport).toHaveBeenLastCalledWith(followFit(other, PANE));
+  });
+
+  it('leaves the view where it is while the agent has named nothing here', () => {
+    const awareness = makeAwareness();
+    const applyViewport = vi.fn();
+    renderHook(() => useCanvasFollow(input({ awareness, leaderUserId: 'agent:c1', applyViewport, agentFocus: { at: 1, rect: () => null } })));
+    expect(applyViewport).not.toHaveBeenCalled();
+  });
+});

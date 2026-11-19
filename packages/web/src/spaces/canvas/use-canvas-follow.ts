@@ -28,6 +28,12 @@ export interface CanvasFollowInput {
   isCameraPlaced: () => boolean;
   /** Fit the whole canvas into the pane, as its opening fit would have. */
   frameCanvas: () => void;
+  /**
+   * While the leader is an external agent (#1488 design 19.3): when it last
+   * named nodes, and the area around them now, null while none of them is
+   * on this canvas. It takes the place of a member's published camera.
+   */
+  agentFocus?: { at: number; rect: () => FlowRect | null } | null;
 }
 
 /**
@@ -104,18 +110,32 @@ export function useCanvasFollow(input: CanvasFollowInput): (event: unknown) => v
     latest.current.frameCanvas();
   }, [leaderUserId]);
 
+  const agentAt = input.agentFocus?.at ?? null;
   React.useEffect(() => {
     if (!awareness || leaderUserId === null || !ready) return undefined;
+    /**
+     * The leader's latest rectangle: a member's published camera, or the area
+     * around the nodes an agent works on.
+     * @returns The rectangle and when it was set, or null when there is none.
+     */
+    const leaderRect = (): { rect: FlowRect; at: number } | null => {
+      const agent = latest.current.agentFocus;
+      if (agent !== undefined && agent !== null) {
+        const rect = agent.rect();
+        return rect === null ? null : { rect, at: agent.at };
+      }
+      const camera = pickLeaderField(awareness, leaderUserId, 'camera');
+      return camera === null ? null : { rect: { x: camera.x, y: camera.y, width: camera.width, height: camera.height }, at: camera.at };
+    };
     /** Fit the leader's latest rectangle into this pane, when it is newer than the last. */
     const align = (): void => {
       // Stopped from inside (a move start) before the store's value re-rendered us.
       if (useFollowStore.getState().targetUserId !== leaderUserId) return;
-      const camera = pickLeaderField(awareness, leaderUserId, 'camera');
-      if (camera === null) return;
-      if (last.current !== null && camera.at <= last.current.at) return;
-      const rect: FlowRect = { x: camera.x, y: camera.y, width: camera.width, height: camera.height };
-      last.current = { rect, at: camera.at };
-      fitLeader(rect);
+      const next = leaderRect();
+      if (next === null) return;
+      if (last.current !== null && next.at <= last.current.at) return;
+      last.current = next;
+      fitLeader(next.rect);
     };
     align();
     awareness.on('change', align);
@@ -123,7 +143,7 @@ export function useCanvasFollow(input: CanvasFollowInput): (event: unknown) => v
       awareness.off('change', align);
       last.current = null;
     };
-  }, [awareness, leaderUserId, ready, fitLeader]);
+  }, [awareness, leaderUserId, ready, fitLeader, agentAt]);
 
   const { width, height } = input.pane;
   React.useEffect(() => {

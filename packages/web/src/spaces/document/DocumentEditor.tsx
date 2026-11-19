@@ -63,7 +63,7 @@ import { DocumentVersionAreaUnavailable } from '@web/spaces/document/DocumentVer
 import { useDocumentFollow } from '@web/spaces/document/use-document-follow';
 import { usePublishTopBlock } from '@web/spaces/document/use-publish-top-block';
 import { captureElement } from '@web/features/view-capture/capture-element';
-import { AgentPresenceContext, agentFocusIn } from '@web/features/agent-presence/agent-focus';
+import { AgentPresenceContext, agentFocusIn, followedAgent } from '@web/features/agent-presence/agent-focus';
 import { showAgentFocus } from '@web/spaces/document/document-agent-focus';
 import { registerViewCapture } from '@web/features/view-capture/registry';
 import { visibleBlockIds } from '@web/spaces/document/block-scroll';
@@ -306,14 +306,23 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // Both rest while the snapshot panel shows in the same viewport; the
   // follower aligns after the layout effect above gave the body its place back.
   const leaderUserId = useFollowStore((s) => s.targetUserId);
-  useDocumentFollow({ awareness, leaderUserId, viewport, root: bodyRoot, paused: panelOpen });
+  const { agents: projectAgents, labels: agentLabels } = React.useContext(AgentPresenceContext);
+  // Following an external agent (#1488 design 19.3): the block it last named here.
+  const leaderAgent = followedAgent(projectAgents, leaderUserId);
+  const agentBlockId = leaderAgent !== null && leaderAgent.spaceId === (scope?.spaceId ?? null) ? leaderAgent.focus[0] ?? null : null;
+  const agentBlockAt = leaderAgent?.focusAt ?? null;
+  const followsAgent = leaderAgent !== null;
+  const agentBlock = React.useMemo(
+    () => (!followsAgent ? undefined : agentBlockId === null || agentBlockAt === null ? null : { id: agentBlockId, at: agentBlockAt }),
+    [followsAgent, agentBlockId, agentBlockAt],
+  );
+  useDocumentFollow({ awareness, leaderUserId, viewport, root: bodyRoot, paused: panelOpen, agentBlock });
   usePublishTopBlock({ awareness, viewport, root: bodyRoot, paused: panelOpen });
 
   // What an external agent sees when it asks for the user's screen (#1488
   // §19.1): the body as it stands in its scroller, and the blocks on screen.
   const captureSpaceId = scope?.spaceId ?? null;
   // The blocks external agents work on here, framed and named (#1488 §19.2).
-  const { agents: projectAgents, labels: agentLabels } = React.useContext(AgentPresenceContext);
   const agentBlocks = React.useMemo(() => {
     if (captureSpaceId === null) return [];
     return [...agentFocusIn(projectAgents, captureSpaceId)].flatMap(([blockId, connections]) =>

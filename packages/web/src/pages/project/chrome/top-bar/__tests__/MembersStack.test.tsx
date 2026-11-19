@@ -326,4 +326,27 @@ describe('MembersStack, following', () => {
     expect(screen.getByText(t('members.popover.agents'))).toBeInTheDocument();
     expect(screen.getByText(t('members.popover.noAgents'))).toBeInTheDocument();
   });
+
+  it('follows an online or idle external agent from its row, and stops from it (#1488 design 19.3)', async () => {
+    const user = userEvent.setup();
+    useFollowStore.getState().reset();
+    render(
+      <MembersStack
+        members={MEMBERS}
+        currentUserId='u-own'
+        agents={[
+          { connectionId: 'c-idle', label: 'Codex · Owner Person', status: 'idle' },
+          { connectionId: 'c-off', label: 'Zed · Viewer Person', status: 'offline' },
+        ]}
+      />,
+    );
+    await user.click(screen.getByTestId('members-trigger'));
+    expect(screen.queryByTestId('members-agent-follow-c-off')).toBeNull();
+    await user.click(screen.getByTestId('members-agent-follow-c-idle'));
+    expect(useFollowStore.getState().targetUserId).toBe('agent:c-idle');
+    expect(useFollowStore.getState().targetName).toBe('Codex · Owner Person');
+    await user.click(screen.getByTestId('members-trigger'));
+    await user.click(screen.getByTestId('members-agent-unfollow-c-idle'));
+    expect(useFollowStore.getState().targetUserId).toBeNull();
+  });
 });

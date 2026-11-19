@@ -19,6 +19,7 @@ import { stopFollowing, useFollowStore, type FollowOther } from '@web/stores/fol
 import { useTranslation } from '@web/i18n/use-translation';
 import type { Member, MemberRole } from '@web/data/api/members';
 import type { AgentRow, AgentStatus } from '@web/features/agent-presence/agent-status';
+import { agentOccupantId } from '@web/features/agent-presence/agent-focus';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
 
 export type { Member, MemberRole };
@@ -262,7 +263,7 @@ export const MembersStack = React.forwardRef<
           <ul className='flex flex-col gap-0.5'>
             {agents.map((a) => (
               <li key={a.connectionId} data-testid={`members-agent-${a.connectionId}`}>
-                <AgentRowView row={a} />
+                <AgentRowView row={a} followed={followedUserId === agentOccupantId(a.connectionId)} onFollowChanged={close} />
               </li>
             ))}
           </ul>
@@ -409,14 +410,25 @@ function MemberRow({ member, isMe, online, followed, busyNotice, onFollowChanged
 }
 
 /**
- * One external agent in the member list: a robot mark, "connection · owner"
- * and how it stands (#1488 design 19.2).
+ * One external agent in the member list: a robot mark, "connection · owner",
+ * how it stands (#1488 design 19.2), and while it is online or idle View to
+ * follow it or, while following it, Stop (design 19.3).
  * @param root0 - Props.
  * @param root0.row - The agent.
+ * @param root0.followed - Whether this user is following it.
+ * @param root0.onFollowChanged - Called once View started following it or Stop ended it.
  * @returns The row.
  */
-function AgentRowView({ row }: { row: AgentRow }): React.JSX.Element {
+function AgentRowView({ row, followed, onFollowChanged }: { row: AgentRow; followed: boolean; onFollowChanged: () => void }): React.JSX.Element {
   const t = useTranslation();
+  const follow = React.useCallback((): void => {
+    useFollowStore.getState().start(agentOccupantId(row.connectionId), row.label);
+    onFollowChanged();
+  }, [row.connectionId, row.label, onFollowChanged]);
+  const unfollow = React.useCallback((): void => {
+    stopFollowing('button');
+    onFollowChanged();
+  }, [onFollowChanged]);
   return (
     <div className='flex items-center gap-2 rounded-chrome px-2 py-1.5 hover:bg-accent'>
       <span
@@ -433,6 +445,29 @@ function AgentRowView({ row }: { row: AgentRow }): React.JSX.Element {
           <span data-testid={`members-agent-status-${row.connectionId}`}>{t(AGENT_STATUS_KEY[row.status])}</span>
         </span>
       </div>
+      {row.status === 'offline' ? null : followed ? (
+        <Button
+          variant='outline'
+          size='compact'
+          className='shrink-0 gap-1 text-xs'
+          icon={<X className='size-3.5' />}
+          onClick={unfollow}
+          data-testid={`members-agent-unfollow-${row.connectionId}`}
+        >
+          {t('members.popover.unfollow')}
+        </Button>
+      ) : (
+        <Button
+          variant='outline'
+          size='compact'
+          className='shrink-0 gap-1 text-xs'
+          icon={<Eye className='size-3.5' />}
+          onClick={follow}
+          data-testid={`members-agent-follow-${row.connectionId}`}
+        >
+          {t('members.popover.follow')}
+        </Button>
+      )}
     </div>
   );
 }
