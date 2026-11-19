@@ -54,13 +54,35 @@ function namespaceOf(env: JobsEnv, containerClass: string): MiniToolEnv["MINI_TO
   return env[CLASS_BINDINGS[containerClass as MiniToolClass]];
 }
 
+/** The binding each web-animation class runs under. */
+const WEB_ANIMATION_BINDINGS = {
+  [WEB_ANIMATION_CONTAINER_CLASS]: "WEB_ANIMATION",
+  [WEB_ANIMATION_RENDER_CONTAINER_CLASS]: "WEB_ANIMATION_RENDER",
+} as const;
+
+/** A web-animation container class. */
+type WebAnimationClass = keyof typeof WEB_ANIMATION_BINDINGS;
+
+/** The namespace a web-animation class runs under. */
+type WebAnimationNamespace<C extends WebAnimationClass> = NonNullable<JobsEnv[(typeof WEB_ANIMATION_BINDINGS)[C]]>;
+
 /**
- * The web-animation namespace, when the feature is configured.
+ * Whether a class a job names is one of the web-animation classes.
+ * @param containerClass - The class.
+ * @returns True for the creation and the render class.
+ */
+function isWebAnimationClass(containerClass: string): containerClass is WebAnimationClass {
+  return Object.hasOwn(WEB_ANIMATION_BINDINGS, containerClass);
+}
+
+/**
+ * The namespace a web-animation class runs under, when the deployment binds it.
  * @param env - The bindings.
+ * @param containerClass - The class.
  * @returns The namespace, or null when the binding is missing.
  */
-function webAnimationNamespace(env: JobsEnv): NonNullable<WebAnimationEnv["WEB_ANIMATION"]> | null {
-  return env.WEB_ANIMATION ?? null;
+function webAnimationNamespace<C extends WebAnimationClass>(env: JobsEnv, containerClass: C): WebAnimationNamespace<C> | null {
+  return env[WEB_ANIMATION_BINDINGS[containerClass]] ?? null;
 }
 
 /**
@@ -81,6 +103,26 @@ function isStartFailure(err: unknown): boolean {
 }
 
 /**
+ * Answer a web-animation submit: the job's report, or why it has none.
+ * @param start - Submit the job to its object.
+ * @param failure - The event a container that could not start is noted under.
+ * @param jobId - The job.
+ * @returns 200 with its report; 410 after a cancel that came before any submit; 503 when the container could not start.
+ * @throws {unknown} What the object throws other than a start failure.
+ */
+async function submittedAnswer(start: () => Promise<object>, failure: string, jobId: string): Promise<Response> {
+  try {
+    const answer = await start();
+    if (!("report" in answer)) return new Response("Cancelled before it was submitted", { status: 410 });
+    return Response.json(answer.report);
+  } catch (err) {
+    if (!isStartFailure(err)) throw err;
+    noteFailure(failure, { jobId }, err);
+    return new Response("The container could not start", { status: 503 });
+  }
+}
+
+/**
  * Start a web-animation job, or answer the one already holding its id.
  * @param body - The parsed request body.
  * @param env - The bindings.
@@ -90,7 +132,7 @@ function isStartFailure(err: unknown): boolean {
  * @throws {unknown} What the object throws other than a start failure.
  */
 async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Response> {
-  const namespace = webAnimationNamespace(env);
+  const namespace = webAnimationNamespace(env, WEB_ANIMATION_CONTAINER_CLASS);
   if (namespace === null) return featureDisabled();
   const parsed = webAnimationJobRequestSchema.safeParse(body);
   if (!parsed.success) return new Response("Not a job", { status: 400 });
@@ -104,15 +146,7 @@ async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Respo
       { status: 501 },
     );
   }
-  try {
-    const answer = await namespace.get(namespace.idFromName(job.jobId)).submit(job);
-    if (!("report" in answer)) return new Response("Cancelled before it was submitted", { status: 410 });
-    return Response.json(answer.report);
-  } catch (err) {
-    if (!isStartFailure(err)) throw err;
-    noteFailure("ingest_web_animation_start_failed", { jobId: job.jobId }, err);
-    return new Response("The container could not start", { status: 503 });
-  }
+  return submittedAnswer(() => namespace.get(namespace.idFromName(job.jobId)).submit(job), "ingest_web_animation_start_failed", job.jobId);
 }
 
 /**
@@ -124,20 +158,12 @@ async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Respo
  * @throws {unknown} What the object throws other than a start failure.
  */
 async function submitRenderJob(body: unknown, env: JobsEnv): Promise<Response> {
-  const namespace = env.WEB_ANIMATION_RENDER ?? null;
+  const namespace = webAnimationNamespace(env, WEB_ANIMATION_RENDER_CONTAINER_CLASS);
   if (namespace === null) return featureDisabled();
   const parsed = webAnimationRenderJobRequestSchema.safeParse(body);
   if (!parsed.success) return new Response("Not a render job", { status: 400 });
   const job = parsed.data;
-  try {
-    const answer = await namespace.get(namespace.idFromName(job.jobId)).submit(job);
-    if (!("report" in answer)) return new Response("Cancelled before it was submitted", { status: 410 });
-    return Response.json(answer.report);
-  } catch (err) {
-    if (!isStartFailure(err)) throw err;
-    noteFailure("ingest_web_animation_render_start_failed", { jobId: job.jobId }, err);
-    return new Response("The container could not start", { status: 503 });
-  }
+  return submittedAnswer(() => namespace.get(namespace.idFromName(job.jobId)).submit(job), "ingest_web_animation_render_start_failed", job.jobId);
 }
 
 /**
@@ -181,16 +207,10 @@ export async function submitJob(request: Request, env: JobsEnv): Promise<Respons
 export async function readJob(request: Request, env: JobsEnv, containerClass: string, jobId: string): Promise<Response> {
   if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
   const className = decodeURIComponent(containerClass);
-  if (className === WEB_ANIMATION_CONTAINER_CLASS) {
-    const namespace = webAnimationNamespace(env);
+  if (isWebAnimationClass(className)) {
+    const namespace = webAnimationNamespace(env, className);
     if (namespace === null) return featureDisabled();
     const report = await namespace.get(namespace.idFromName(decodeURIComponent(jobId))).report();
-    return report === null ? new Response("No such job", { status: 404 }) : Response.json(report);
-  }
-  if (className === WEB_ANIMATION_RENDER_CONTAINER_CLASS) {
-    const render = env.WEB_ANIMATION_RENDER ?? null;
-    if (render === null) return featureDisabled();
-    const report = await render.get(render.idFromName(decodeURIComponent(jobId))).report();
     return report === null ? new Response("No such job", { status: 404 }) : Response.json(report);
   }
   const namespace = namespaceOf(env, className);
@@ -211,14 +231,10 @@ export async function readJob(request: Request, env: JobsEnv, containerClass: st
  */
 export async function cancelWebAnimationJob(request: Request, env: JobsEnv, containerClass: string, jobId: string): Promise<Response> {
   if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
-  const id = decodeURIComponent(jobId);
-  const render = env.WEB_ANIMATION_RENDER;
-  const create = webAnimationNamespace(env);
-  const stub = containerClass === WEB_ANIMATION_RENDER_CONTAINER_CLASS
-    ? render?.get(render.idFromName(id))
-    : create?.get(create.idFromName(id));
-  if (stub === undefined) return featureDisabled();
+  // The route's path admits only the two web-animation classes.
+  const namespace = isWebAnimationClass(containerClass) ? webAnimationNamespace(env, containerClass) : null;
+  if (namespace === null) return featureDisabled();
   const parsed = webAnimationJobCancelSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return new Response("Not a cancel", { status: 400 });
-  return Response.json(await stub.cancel(parsed.data.deadlineAt));
+  return Response.json(await namespace.get(namespace.idFromName(decodeURIComponent(jobId))).cancel(parsed.data.deadlineAt));
 }
