@@ -141,12 +141,12 @@ async function hold(a: Account, userId: string, amount: number, opts: { status?:
 }
 
 /** What an admission came to. */
-type Admitted = "ok" | { scope: unknown; limit: number; resetsAt: string };
+type Admitted = "ok" | "no_credits" | { scope: unknown; limit: number; resetsAt: string };
 
 /**
  * Run an admission and read what it came to.
  * @param admission - The admission.
- * @returns `ok`, or the cap that refused it.
+ * @returns `ok`, `no_credits` for the balance refusal, or the cap that refused it.
  */
 async function outcome(admission: Promise<unknown>): Promise<Admitted> {
   try {
@@ -155,7 +155,7 @@ async function outcome(admission: Promise<unknown>): Promise<Admitted> {
   } catch (err) {
     const e = err as { statusCode?: number; name?: string; scope?: unknown; limit?: unknown; resetsAt?: unknown };
     expect(e.statusCode).toBe(402);
-    expect(e.name).toBe("SpendCapReachedError");
+    if (e.name !== "SpendCapReachedError") return "no_credits";
     return { scope: e.scope, limit: Number(e.limit), resetsAt: new Date(String(e.resetsAt)).toISOString() };
   }
 }
@@ -304,6 +304,17 @@ describe("H judging the caps at admission", () => {
     await spend(a, y.userId, 9.99);
     expect(await outcome(precheckCredits(a.projectId, y.userId, SMALLEST_CREDIT))).toBe("ok");
     await spend(a, y.userId, 0.01);
+    expect(await outcome(precheckCredits(a.projectId, y.userId, SMALLEST_CREDIT))).toMatchObject({ scope: "member", limit: 10 });
+  });
+
+  // Design 3.10: the limits are judged before the balance, so a person at their
+  // limit hears about the limit, which credits added would not lift.
+  it("H-10 judges the limit before the balance: a person at their limit with no balance left is refused at the limit", async () => {
+    const a = await seedAccount(sql, { credits: 0 });
+    const y = await seedMember(sql, a);
+    await caps(a, 10);
+    expect(await outcome(precheckCredits(a.projectId, y.userId, SMALLEST_CREDIT))).toBe("no_credits");
+    await spend(a, y.userId, 10);
     expect(await outcome(precheckCredits(a.projectId, y.userId, SMALLEST_CREDIT))).toMatchObject({ scope: "member", limit: 10 });
   });
 
@@ -766,8 +777,9 @@ describe("PT-5 caps judged against a model of spent (L1, L2, L4, scope)", () => 
           actualShare: fc.constantFrom(0.5, 1, 2),
           memberDefault: fc.option(fc.constantFrom(0, 1, 5, 10), { nil: null }),
         }), { minLength: 1, maxLength: 10 }),
-        async (memberDefault, studioMonthly, people, steps: Pt5Step[]) => {
-          const a = await seedAccount(sql, { credits: 1000 });
+        fc.constantFrom(0, 1000),
+        async (memberDefault, studioMonthly, people, steps: Pt5Step[], credits) => {
+          const a = await seedAccount(sql, { credits });
           const { start } = await month();
           const lastMonth = new Date(start.getTime() - 24 * 3_600_000);
           const ids: string[] = [];
@@ -802,7 +814,10 @@ describe("PT-5 caps judged against a model of spent (L1, L2, L4, scope)", () => 
               const got = step.kind === "reserve"
                 ? await outcome(reserveForRun(a.projectId, userId, reference, step.estimate))
                 : await outcome(precheckCredits(a.projectId, userId, SMALLEST_CREDIT));
-              if (!studioFails && !memberFails) {
+              if (!studioFails && !memberFails && credits === 0) {
+                // The limits pass; the balance does not.
+                expect(got).toBe("no_credits");
+              } else if (!studioFails && !memberFails) {
                 // L1: what fits is admitted.
                 expect(got).toBe("ok");
                 if (e !== null) {
@@ -810,7 +825,7 @@ describe("PT-5 caps judged against a model of spent (L1, L2, L4, scope)", () => 
                   spentBy.set(userId, mine + e);
                 }
               } else {
-                // The scope names the limit passed, the studio's when both are.
+                // The scope names the limit passed, the studio's when both are, whatever the balance (design 3.10).
                 expect(got).toMatchObject({ scope: studioFails ? "studio" : "member" });
               }
             } else if (step.kind === "takeover" && open.length > 0) {
