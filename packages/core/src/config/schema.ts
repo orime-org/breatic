@@ -255,10 +255,27 @@ export const coreConfigSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().default(""),
 
   // ── Payment ──────────────────────────────────────
+  // The old name of CHARGING_ENABLED, still read when CHARGING_ENABLED is unset
+  // (self-hosted .env files and the self-host documents use it).
   PAYMENT_ENABLED: z
     .string()
     .default("false")
     .transform((v) => v === "true"),
+  // Whether credits are recorded and deducted (inner#1993 §6.1). Unset or blank
+  // falls back to PAYMENT_ENABLED in the object transform below.
+  CHARGING_ENABLED: z.preprocess(blankToUndefined, z.string().optional()),
+  // The billing service's internal listener. Set means this deployment sells
+  // credits and memberships through it (SELLING, derived below); unset means
+  // nothing is sold here. Trailing slashes are dropped because paths are
+  // appended to it.
+  COMMERCE_API_URL: z
+    .string()
+    .default("")
+    .transform((value) => value.trim().replace(/\/+$/, "")),
+  // Signs calls both ways between this server and the billing service; the
+  // previous key is still accepted until it is blanked.
+  COMMERCE_API_SECRET: z.string().default(""),
+  COMMERCE_API_SECRET_PREVIOUS: z.string().default(""),
   STRIPE_SECRET_KEY: z.string().default(""),
   STRIPE_WEBHOOK_SECRET: z.string().default(""),
   STRIPE_WEBHOOK_ACCOUNT_ID: z.preprocess(blankToUndefined, z.string().max(255).regex(/^acct_[A-Za-z0-9]+$/).optional()),
@@ -370,6 +387,8 @@ export const coreConfigSchema = z.object({
   .transform((c) => ({
     ...c,
     REDIS_KEY_PREFIX: c.REDIS_KEY_PREFIX ?? c.ENV,
+    CHARGING_ENABLED: c.CHARGING_ENABLED === undefined ? c.PAYMENT_ENABLED : c.CHARGING_ENABLED === "true",
+    SELLING: c.COMMERCE_API_URL !== "",
   }));
 
 /** Validated, typed core configuration. */
@@ -382,8 +401,9 @@ export type CoreConfig = z.infer<typeof coreConfigSchema>;
  *   function only processes the map it is handed).
  * @returns The validated, typed, default-applied configuration.
  * @throws {z.ZodError} if a required variable is missing / malformed.
- * @throws {Error} if payments are enabled without Stripe secrets, or the
- *   internal API is enabled without its secret.
+ * @throws {Error} if payments are enabled without Stripe secrets, the
+ *   internal API is enabled without its secret, or the billing service is
+ *   configured without charging, its secret or the internal listener.
  */
 export function parseConfig(rawEnv: Record<string, string | undefined>): CoreConfig {
   const config = coreConfigSchema.parse(rawEnv);
@@ -404,6 +424,36 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
       throw new Error(
         "FATAL: PAYMENT_ENABLED=true requires STRIPE_WEBHOOK_SECRET to be set " +
         "(non-empty, non-whitespace). Refusing to start.",
+      );
+    }
+  }
+
+  // Selling without charging would take money for credits nothing deducts; a
+  // billing service with no key or no listener to call back cannot deliver
+  // what it sold (inner#1993 §6.4).
+  if (config.SELLING) {
+    if (!config.CHARGING_ENABLED) {
+      throw new Error(
+        "FATAL: COMMERCE_API_URL is set but CHARGING_ENABLED is off; a deployment " +
+        "that sells credits must charge them. Refusing to start.",
+      );
+    }
+    if (!config.COMMERCE_API_SECRET.trim()) {
+      throw new Error(
+        "FATAL: COMMERCE_API_URL is set and requires COMMERCE_API_SECRET to be set " +
+        "(non-empty, non-whitespace). Refusing to start.",
+      );
+    }
+    if (!config.INTERNAL_API_ENABLED) {
+      throw new Error(
+        "FATAL: COMMERCE_API_URL is set but INTERNAL_API_ENABLED is off; the billing " +
+        "service calls back on the internal listener. Refusing to start.",
+      );
+    }
+    if (config.COMMERCE_API_SECRET_PREVIOUS !== "" && !config.COMMERCE_API_SECRET_PREVIOUS.trim()) {
+      throw new Error(
+        "FATAL: COMMERCE_API_SECRET_PREVIOUS is only whitespace; leave it empty " +
+        "when there is no previous key. Refusing to start.",
       );
     }
   }
