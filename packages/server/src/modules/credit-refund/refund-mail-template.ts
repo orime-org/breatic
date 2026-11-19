@@ -11,7 +11,7 @@
 import { formatCredits, getAvailableLocales, t, type CreditDecimal } from "@breatic/shared";
 import { getMailLayout, runWithLocale } from "@breatic/core";
 import { bothZones, formatMoney } from "@server/modules/payment/purchase-mail-template.js";
-import { renderMail, type RenderedMail } from "@server/utils/mail-shell.js";
+import { renderMail, type RenderedMail } from "@breatic/domain";
 
 /** What every refund email names. */
 interface RefundMailViewBase {

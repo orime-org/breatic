@@ -11,8 +11,7 @@
 
 import { assetService, creditHoldService, creditSourceRepo, creditLotRepo, creditLotService } from "@breatic/domain";
 import type { LotContext, PayerLedgerRow } from "@breatic/domain";
-import { decodeActivityCursor, NotFoundError } from "@breatic/core";
-import { toPage } from "@server/utils/keyset-page.js";
+import { decodeActivityCursor, NotFoundError, toPage } from "@breatic/core";
 import type { ActivityCursor } from "@breatic/core";
 import type {
   CreditLotEntity,

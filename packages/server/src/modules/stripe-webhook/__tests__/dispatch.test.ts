@@ -10,7 +10,7 @@ vi.mock("@server/modules/subscription/subscription-events.js", () => ({ handleSu
 vi.mock("@server/modules/payment/payment.service.js", () => ({ fulfillPayment: mocked.fulfill, handlePaymentFailed: mocked.failed }));
 vi.mock("@server/modules/credit-refund/refund-webhook.js", () => ({ REFUND_EVENT_TYPES: new Set(["refund.created", "refund.updated", "refund.failed"]), handleRefundEvent: mocked.refund }));
 
-import { dispatchStripeWebhook } from "@server/modules/stripe-webhook/dispatch.service.js";
+import { HANDLED_EVENT_TYPES, dispatchStripeWebhook } from "@server/modules/stripe-webhook/dispatch.service.js";
 
 /** Constructs the signed event shape the dispatcher receives. */
 function event(type: string): Stripe.Event {
@@ -65,6 +65,42 @@ describe("Stripe processing result classification", () => {
     const input = event("refund.failed");
     expect(await dispatchStripeWebhook(input)).toEqual({ result, responseStatus, received: responseStatus === 200 });
     expect(mocked.refund).toHaveBeenCalledWith(input);
+  });
+
+  it("answers a type outside the handled set as ignored without asking any handler", async () => {
+    expect(HANDLED_EVENT_TYPES.has("charge.updated")).toBe(false);
+    expect(await dispatchStripeWebhook(event("charge.updated"))).toEqual({ result: "ignored", responseStatus: 200, received: true });
+    expect(mocked.membership).toHaveBeenCalledTimes(0);
+    expect(mocked.refund).toHaveBeenCalledTimes(0);
+  });
+
+  it("handles exactly the types the membership, credit and refund legs act on", () => {
+    expect([...HANDLED_EVENT_TYPES].sort()).toEqual([
+      "checkout.session.async_payment_failed",
+      "checkout.session.async_payment_succeeded",
+      "checkout.session.completed",
+      "checkout.session.expired",
+      "customer.subscription.created",
+      "customer.subscription.deleted",
+      "customer.subscription.pending_update_applied",
+      "customer.subscription.pending_update_expired",
+      "customer.subscription.updated",
+      "invoice.paid",
+      "refund.created",
+      "refund.failed",
+      "refund.updated",
+    ]);
+  });
+
+  it("hands every type in the handled set to the handlers", async () => {
+    mocked.fulfill.mockResolvedValue({ status: "noop" });
+    mocked.failed.mockResolvedValue({ status: "noop" });
+    mocked.refund.mockResolvedValue("synced");
+    for (const type of HANDLED_EVENT_TYPES) {
+      mocked.membership.mockClear();
+      await dispatchStripeWebhook(event(type));
+      expect(mocked.membership, type).toHaveBeenCalledTimes(1);
+    }
   });
 
   it("confirms an ignored event without calling any credit handler", async () => {

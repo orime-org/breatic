@@ -11,7 +11,7 @@
 import { Node as PMNode, type Fragment, type ResolvedPos } from '@tiptap/pm/model';
 
 import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
-import { rowById } from '@web/spaces/document/document-row-by-id';
+import { holdsNestedBlocks, rowById } from '@web/spaces/document/document-row-by-id';
 import { isTableCell } from '@web/spaces/document/document-table-nodes';
 
 /** The column group's type, as a set to search for. */
@@ -69,6 +69,6 @@ export function columnsBarredAt($pos: ResolvedPos): boolean {
 export function columnsOutOfReach(doc: PMNode, blockId: string): boolean {
   const row = rowById(doc, blockId);
   if (row === undefined) return true;
-  if (row.node.type.name === 'blockContainer' && row.node.childCount > 1) return true;
+  if (holdsNestedBlocks(row)) return true;
   return columnsBarredAt(doc.resolve(row.from));
 }

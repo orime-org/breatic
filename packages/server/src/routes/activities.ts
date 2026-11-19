@@ -13,7 +13,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";

@@ -20,7 +20,7 @@ import {
 import { projectMetaDocName, type MembershipTier } from "@breatic/shared";
 import { createSession, logout } from "@server/modules/auth/auth.service.js";
 import { save } from "@server/modules/enterprise-membership/enterprise-membership.service.js";
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
+import { fingerprint } from "@breatic/core";
 import { createAuthHook, type AuthContext } from "@collab/hooks/auth.js";
 import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
 import { createConnectionRegistry, type ConnectionRegistry } from "@collab/services/connection-registry.js";

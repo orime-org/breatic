@@ -4,11 +4,10 @@
 import { randomUUID } from "node:crypto";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { db, getMembershipConfig, getMembershipReadingForUser } from "@breatic/core";
+import { db, getMembershipConfig, getMembershipReadingForUser, fingerprint } from "@breatic/core";
 import { tierLimitsSchema } from "@breatic/shared";
 import type { SubscriptionWrite } from "@breatic/core";
 import { applySubscriptionWrite } from "@server/modules/subscription/apply-subscription.js";
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
 import { call, useInternalApp } from "./internal-api-harness.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 

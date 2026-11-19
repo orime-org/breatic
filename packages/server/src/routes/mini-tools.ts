@@ -11,15 +11,13 @@
 
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
-import { currentConsent } from "@breatic/core";
+import { currentConsent, defaultJobOpts, validate } from "@breatic/core";
 import { Hono } from "hono";
-import { defaultJobOpts } from "@breatic/core";
 import { miniToolById, miniToolRequestSchema, outputTemplateOf } from "@breatic/shared/mini-tools";
 
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { projectService } from "@server/modules";

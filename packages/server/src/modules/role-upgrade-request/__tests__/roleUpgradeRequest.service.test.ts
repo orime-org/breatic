@@ -74,7 +74,10 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 // The email is queued for the worker; the job carries the built mail.
-vi.mock("@breatic/domain", () => ({ enqueueMail: vi.fn(async () => {}) }));
+vi.mock("@breatic/domain", async () => ({
+  ...(await import("../../../../../domain/src/mail/mail-shell.js")),
+  enqueueMail: vi.fn(async () => {}),
+}));
 vi.mock("../roleUpgradeRequests.repo.js", () => ({
   createPending: vi.fn(),
   attachNotification: vi.fn(),
@@ -134,10 +137,9 @@ import * as studioService from "../../studio/studio.service.js";
 import * as projectRepo from "../../project/project.repo.js";
 import * as requestsRepo from "../roleUpgradeRequests.repo.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
-import { projectMembersRepo } from "@breatic/core";
+import { projectMembersRepo, NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 import { enqueueMail } from "@breatic/domain";
 import * as roleUpgradeRequestService from "../roleUpgradeRequest.service.js";
-import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 
 // The mocked core above keeps only what this file uses, so the catalogs the
 // email templates read are loaded from the real one.

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, between, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, getStripeWebhookRecordingWriteTimeoutMs, stripeWebhookAttempts } from "@breatic/core";
 import type { AttemptCompletion, AttemptStart, CompletionState } from "@server/modules/stripe-webhook/types.js";
 
@@ -34,4 +34,23 @@ export async function finishAttempt(input: AttemptCompletion): Promise<Completio
     }).where(and(eq(stripeWebhookAttempts.id, input.id), isNull(stripeWebhookAttempts.finishedAt), isNull(stripeWebhookAttempts.deletedAt))).returning({ id: stripeWebhookAttempts.id });
     return rows.length === 0 ? "already_finished" : "recorded";
   });
+}
+
+/**
+ * Which of these event ids some attempt answered with a 2xx.
+ * @param eventIds - The ids to look up.
+ * @returns The answered ones, each once.
+ */
+export async function listAnsweredEventIds(eventIds: readonly string[]): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ eventId: stripeWebhookAttempts.eventId })
+    .from(stripeWebhookAttempts)
+    .where(
+      and(
+        inArray(stripeWebhookAttempts.eventId, [...eventIds]),
+        between(stripeWebhookAttempts.responseStatus, 200, 299),
+        isNull(stripeWebhookAttempts.deletedAt),
+      ),
+    );
+  return rows.map((row) => row.eventId);
 }

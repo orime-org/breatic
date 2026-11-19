@@ -57,6 +57,16 @@ import { spaceDocWriteGateway } from "#rules/rules/space-doc-write-gateway";
  */
 export { FFMPEG_BINDING_WORDS } from "#rules/rules/no-ffmpeg-bindings";
 export { upstreamLiteralOptions } from "#rules/upstream-literal-options";
+export {
+  DRIZZLE_WHERE_RULES,
+  FUNCTION_FORMAT_PLUGINS,
+  FUNCTION_FORMAT_RULES,
+  RAW_SQL_OUTSIDE_REPO_IGNORES,
+  SYNC_IN_REQUEST_PATH_IGNORES,
+  backendConfig,
+  type BackendConfigOptions,
+} from "#rules/backend-config";
+export { drizzlePlugin } from "#rules/drizzle-plugin";
 
 export const breaticPlugin = {
   meta: { name: "@breatic/eslint-rules", version: "0.1.0" },

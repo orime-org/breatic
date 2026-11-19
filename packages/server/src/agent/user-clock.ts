@@ -12,7 +12,7 @@
  * it was sent. It stays out of the system prompt; see `MainAgent.runTurn`.
  */
 
-import { isKnownTimeZone } from "@server/utils/time-zone.js";
+import { isKnownTimeZone } from "@breatic/core";
 
 /** The parts of a moment the note is built from, as `Intl` names them. */
 type ClockPart = "weekday" | "year" | "month" | "day" | "hour" | "minute";

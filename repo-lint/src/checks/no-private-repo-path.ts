@@ -12,6 +12,9 @@ import type { Check, CheckContext, Finding } from "#repo-lint/check";
  */
 const PRIVATE_REPO = ["breatic", "inner"].join("-");
 
+/** The private commerce service's repository, assembled for the same reason. */
+const COMMERCE_REPO = ["breatic", "commerce"].join("-");
+
 /**
  * Where the private repo keeps material that must not be cited publicly.
  *
@@ -95,7 +98,7 @@ const REPO_POINTERS = [
  * paragraph failed the check.
  */
 const PRIVATE_REFERENCE = new RegExp(
-  [PRIVATE_REPO, ...PRIVATE_DIRECTORIES, ...REPO_POINTERS].join("|"),
+  [PRIVATE_REPO, COMMERCE_REPO, ...PRIVATE_DIRECTORIES, ...REPO_POINTERS].join("|"),
   "i",
 );
 

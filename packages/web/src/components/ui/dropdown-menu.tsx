@@ -13,6 +13,15 @@ export const DropdownMenuPortal = DropdownMenuPrimitive.Portal;
 export const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
 
+/**
+ * The look of a menu surface: layer, frame, colours and the grid that lets its
+ * rows scroll. Exported so a menu drawn outside Radix (the document body's
+ * slash menu) is the same surface; each caller adds its own height cap and
+ * minimum width.
+ */
+export const menuSurface =
+  'z-[var(--z-popover)] grid grid-rows-[minmax(0,1fr)] overflow-hidden rounded-overlay border border-border bg-popover text-popover-foreground shadow-md';
+
 /** What every menu surface in this file and in `context-menu.tsx` shares. */
 export interface MenuSurfaceProps {
   /** Classes for the element that holds the rows (how they stack and the gap between them). */
@@ -64,7 +73,8 @@ export function DropdownMenuContent({
         sideOffset={sideOffset}
         collisionPadding={collisionPadding}
         className={cn(
-          'z-[var(--z-popover)] grid max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[10rem] grid-rows-[minmax(0,1fr)] overflow-hidden rounded-overlay border border-border bg-popover text-popover-foreground shadow-md',
+          menuSurface,
+          'max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[10rem]',
           'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
           'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
           className,
@@ -78,7 +88,11 @@ export function DropdownMenuContent({
   );
 }
 
-const itemBase =
+/**
+ * The look of a menu row. Exported so a menu drawn outside Radix (the
+ * document body's slash menu) draws the same rows.
+ */
+export const menuItemBase =
   'relative flex cursor-default select-none items-center gap-2 rounded-chrome px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0';
 
 /**
@@ -91,7 +105,7 @@ export function DropdownMenuItem({
   ...props
 }: ComponentProps<typeof DropdownMenuPrimitive.Item>): ReactNode {
   return (
-    <DropdownMenuPrimitive.Item className={cn(itemBase, className)} {...props} />
+    <DropdownMenuPrimitive.Item className={cn(menuItemBase, className)} {...props} />
   );
 }
 
@@ -108,7 +122,7 @@ export function DropdownMenuCheckboxItem({
 }: ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem>): ReactNode {
   return (
     <DropdownMenuPrimitive.CheckboxItem
-      className={cn(itemBase, 'pl-8', className)}
+      className={cn(menuItemBase, 'pl-8', className)}
       checked={checked}
       {...props}
     >
@@ -134,7 +148,7 @@ export function DropdownMenuRadioItem({
 }: ComponentProps<typeof DropdownMenuPrimitive.RadioItem>): ReactNode {
   return (
     <DropdownMenuPrimitive.RadioItem
-      className={cn(itemBase, 'pl-8', className)}
+      className={cn(menuItemBase, 'pl-8', className)}
       {...props}
     >
       <span className='absolute left-2 flex size-4 items-center justify-center'>
@@ -230,7 +244,7 @@ export function DropdownMenuSubTrigger({
 }: ComponentProps<typeof DropdownMenuPrimitive.SubTrigger>): ReactNode {
   return (
     <DropdownMenuPrimitive.SubTrigger
-      className={cn(itemBase, 'data-[state=open]:bg-accent', className)}
+      className={cn(menuItemBase, 'data-[state=open]:bg-accent', className)}
       {...props}
     >
       {children}
@@ -269,7 +283,8 @@ export function DropdownMenuSubContent({
       alignOffset={alignOffset}
       collisionPadding={collisionPadding}
       className={cn(
-        'z-[var(--z-popover)] grid max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[8rem] grid-rows-[minmax(0,1fr)] overflow-hidden rounded-overlay border border-border bg-popover text-popover-foreground shadow-md',
+        menuSurface,
+        'max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[8rem]',
         'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
         'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
         className,

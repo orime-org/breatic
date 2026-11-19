@@ -78,8 +78,19 @@ beforeAll(() => {
   });
 });
 
+/** Accounts written with a tier the constraint refuses; later suites read every live account. */
+const badTierIds: string[] = [];
+
 afterAll(async () => {
-  await sql?.end({ timeout: 1 });
+  try {
+    if (badTierIds.length > 0) {
+      await withTierCheckLifted(async () => {
+        await sql`UPDATE users SET deleted_at = now() WHERE id = ANY(${badTierIds}::uuid[])`;
+      });
+    }
+  } finally {
+    await sql?.end({ timeout: 1 });
+  }
 });
 
 /**
@@ -195,6 +206,7 @@ async function insertUserWithBadTier(tier: string): Promise<string> {
       VALUES (${`tier-bad-${seq++}@example.test`}, true, ${tier})
       RETURNING id
     `;
+    badTierIds.push(u!.id);
     return u!.id;
   });
 }

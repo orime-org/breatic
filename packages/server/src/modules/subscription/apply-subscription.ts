@@ -59,11 +59,11 @@ export async function applySubscriptionWrite(input: {
 }): Promise<AppliedSubscription> {
   const { userId, write, referenceId, tx } = input;
   await lockAccountRow(userId, tx);
-  await upsertSubscription(write, tx);
+  await upsertSubscription(tx, write);
   const started = await markFirstActive(write.stripeSubscriptionId, tx);
 
   const reading = subscriptionSituation(
-    await listSubscriptions(userId, tx),
+    await listSubscriptions(tx, userId),
     subscriptionClock(),
   );
   const tier = tierForSituation(reading.situation, reading.record);
