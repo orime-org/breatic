@@ -2298,7 +2298,7 @@
       "film-style-still": {
         "name": "Film style still",
         "description": "Your subject redrawn as one scene in a classic style",
-        "prompt": "Redraw [📎 Subject] as one widescreen scene in the style below. Its face, shape and clothes stay recognisable at a glance; the place around it may change to suit the style: {✏️ the scene, e.g. standing on a windy harbour at dusk}. No text, no watermark.",
+        "prompt": "Redraw [📎 Subject] as one widescreen scene in the style below. Its face, shape and clothes stay recognisable at a glance; the place around it may change to suit the style: {✏️ the scene, e.g. standing on a windy harbour at dusk}. No watermark; lettering only where the style below calls for it.",
         "input": {
           "subject": {
             "name": "Subject",
@@ -2313,7 +2313,7 @@
         "node": {
           "still": {
             "name": "Styled still",
-            "prompt": "Redraw [📎 Subject] as one widescreen scene in the style below. Its face, shape and clothes stay recognisable at a glance; the place around it may change to suit the style: {✏️ the scene, e.g. standing on a windy harbour at dusk}. No text, no watermark."
+            "prompt": "Redraw [📎 Subject] as one widescreen scene in the style below. Its face, shape and clothes stay recognisable at a glance; the place around it may change to suit the style: {✏️ the scene, e.g. standing on a windy harbour at dusk}. No watermark; lettering only where the style below calls for it."
           }
         },
         "input": {
