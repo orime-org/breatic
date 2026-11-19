@@ -42,6 +42,12 @@ catalogs:
     '@hocuspocus/server':
       specifier: ^4.6.0
       version: 4.6.0
+    '@hono/node-server':
+      specifier: ^2.1.0
+      version: 2.1.0
+    '@hono/zod-validator':
+      specifier: ^0.7.6
+      version: 0.7.6
     '@openrouter/ai-sdk-provider':
       specifier: ^3.0.0
       version: 3.0.0
@@ -138,6 +144,9 @@ catalogs:
     eslint:
       specifier: ^9.39.5
       version: 9.39.5
+    eslint-plugin-drizzle:
+      specifier: ^0.2.3
+      version: 0.2.3
     eslint-plugin-jsdoc:
       specifier: ^63.3.3
       version: 63.3.3
@@ -153,6 +162,9 @@ catalogs:
     google-auth-library:
       specifier: ^10.9.1
       version: 10.9.1
+    hono:
+      specifier: ^4.13.1
+      version: 4.13.1
     ipaddr.js:
       specifier: ^2.5.0
       version: 2.5.0
@@ -290,7 +302,7 @@ importers:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)
       eslint-plugin-drizzle:
-        specifier: ^0.2.3
+        specifier: 'catalog:'
         version: 0.2.3(eslint@9.39.5(jiti@2.7.0))
       eslint-plugin-import:
         specifier: ^2.32.0
@@ -328,12 +340,6 @@ importers:
 
   eslint-rules:
     dependencies:
-      eslint-plugin-drizzle:
-        specifier: ^0.2.3
-        version: 0.2.3(eslint@9.39.5(jiti@2.7.0))
-      eslint-plugin-jsdoc:
-        specifier: 'catalog:'
-        version: 63.3.3(eslint@9.39.5(jiti@2.7.0))
       yaml:
         specifier: 'catalog:'
         version: 2.9.0
@@ -350,6 +356,12 @@ importers:
       eslint:
         specifier: 'catalog:'
         version: 9.39.5(jiti@2.7.0)
+      eslint-plugin-drizzle:
+        specifier: 'catalog:'
+        version: 0.2.3(eslint@9.39.5(jiti@2.7.0))
+      eslint-plugin-jsdoc:
+        specifier: 'catalog:'
+        version: 63.3.3(eslint@9.39.5(jiti@2.7.0))
       globals:
         specifier: 'catalog:'
         version: 16.5.0
@@ -442,10 +454,10 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@hono/node-server':
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0(hono@4.13.1)
       '@hono/zod-validator':
-        specifier: ^0.7.6
+        specifier: 'catalog:'
         version: 0.7.6(hono@4.13.1)(zod@4.4.3)
       bcryptjs:
         specifier: 'catalog:'
@@ -460,7 +472,7 @@ importers:
         specifier: 'catalog:'
         version: 10.9.1
       hono:
-        specifier: ^4.13.1
+        specifier: 'catalog:'
         version: 4.13.1
       ioredis:
         specifier: 5.11.1
@@ -767,11 +779,8 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@hono/node-server':
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0(hono@4.13.1)
-      '@hono/zod-validator':
-        specifier: ^0.7.6
-        version: 0.7.6(hono@4.13.1)(zod@4.4.3)
       '@sentry/node':
         specifier: 'catalog:'
         version: 11.4.0(@babel/core@7.29.7)(rollup@4.62.4)
@@ -791,7 +800,7 @@ importers:
         specifier: 'catalog:'
         version: 10.9.1
       hono:
-        specifier: ^4.13.1
+        specifier: 'catalog:'
         version: 4.13.1
       mdast-util-gfm:
         specifier: ^3.1.0

@@ -12,7 +12,7 @@
  * Recognising a rejected request by the TYPE of exception does not work, and
  * a first version of this handler tried it. `ZodError` and `SyntaxError` say
  * that a parse failed, not whose input failed — our own config loaders parse
- * operator-written yaml inside a request (`config/rate-limits.ts` and three
+ * operator-written yaml inside a request (the rate-limit loader and three
  * siblings, lazily, on first use), and any `await response.json()` on an
  * upstream that answered with an HTML error page raises the same type. Both
  * were being answered "your input is invalid", to a user who had typed

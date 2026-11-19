@@ -11,8 +11,8 @@
  */
 
 import type { TSESLint } from "@typescript-eslint/utils";
-import drizzle from "eslint-plugin-drizzle";
 import jsdoc from "eslint-plugin-jsdoc";
+import { drizzlePlugin } from "#rules/drizzle-plugin";
 import { breaticPlugin, upstreamLiteralOptions } from "#rules/index";
 
 /** What {@link backendConfig} needs from its caller. */
@@ -81,7 +81,7 @@ export function backendConfig(options: BackendConfigOptions): TSESLint.FlatConfi
     },
     {
       files: src,
-      plugins: { drizzle },
+      plugins: { drizzle: drizzlePlugin },
       rules: {
         "drizzle/enforce-delete-with-where": ["error", { drizzleObjectName: ["db", "tx"] }],
         "drizzle/enforce-update-with-where": ["error", { drizzleObjectName: ["db", "tx"] }],

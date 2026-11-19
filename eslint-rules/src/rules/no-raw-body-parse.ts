@@ -54,7 +54,7 @@ export const noRawBodyParse = createRule<[], "rawBodyParse">({
     schema: [],
     messages: {
       rawBodyParse:
-        "Do not read the request body with `req.{{method}}()` — mount `validate(target, schema)` from @server/middleware/validate and read `c.req.valid(target)`. Parsing here means a rejection escapes as a bare ZodError (500 + `Unhandled error`) instead of our localised envelope. Raw bytes for a signature check are a different need: `req.text()` is allowed.",
+        "Do not read the request body with `req.{{method}}()` — mount `validate(target, schema)` from @breatic/core and read `c.req.valid(target)`. Parsing here means a rejection escapes as a bare ZodError (500 + `Unhandled error`) instead of our localised envelope. Raw bytes for a signature check are a different need: `req.text()` is allowed.",
     },
   },
   defaultOptions: [],
