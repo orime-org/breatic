@@ -454,6 +454,21 @@ describe('ByokDialog', () => {
       expect(within(dialog).getByTestId('byok-detail-fal')).toHaveTextContent('This key cannot read actual costs.');
     });
 
+    it('says nothing failed when the key checked was already deleted in another tab, and the key leaves the list', async () => {
+      const user = userEvent.setup();
+      api.post.mockImplementation(() => {
+        serve(view({ keys: [FAL_KEY], models: [], choices: {} }));
+        return Promise.reject(new ApiException({ status: 404, message: 'Not found', fromServer: true }));
+      });
+      const dialog = await mount();
+      const detail = await within(dialog).findByTestId('byok-detail-wavespeed');
+
+      await user.click(within(detail).getByRole('button', { name: 'Refresh' }));
+
+      await waitFor(() => expect(rowOrder(dialog).indexOf('wavespeed')).toBeGreaterThan(rowOrder(dialog).indexOf('fal')));
+      expect(toasts.error).not.toHaveBeenCalled();
+    });
+
     it('checks the saved key again on refresh, with the button waiting on the request', async () => {
       let answer: (next: SavedKey) => void = () => undefined;
       api.post.mockReturnValue(new Promise<SavedKey>((resolve) => { answer = resolve; }));
@@ -835,6 +850,19 @@ describe('ByokDialog', () => {
       await waitFor(() =>
         expect(leading(api.put, 2)).toEqual([['/account/byok/models/nano-banana-pro', { upstream: 'wavespeed' }]]),
       );
+    });
+
+    it('says why the server refused a choice, in its own words', async () => {
+      const user = userEvent.setup();
+      api.put.mockRejectedValue(new ApiException({ status: 422, message: 'This provider cannot run this model with your saved keys.', fromServer: true, reason: 'model_choice_refused' }));
+      const dialog = await mount();
+      await openModels(user, dialog);
+      await within(dialog).findByTestId('byok-model-seedream-5');
+
+      await optionsOf(user, 'seedream-5');
+      await user.click(screen.getByRole('option', { name: 'Platform key (uses credits)' }));
+
+      await waitFor(() => expect(toasts.error).toHaveBeenCalledWith('This provider cannot run this model with your saved keys.'));
     });
 
     it('clears the choice when the user picks the platform key back', async () => {

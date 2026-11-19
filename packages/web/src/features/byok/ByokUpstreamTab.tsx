@@ -571,7 +571,10 @@ function SavedKeyActions({
     mutationKey: checkKey,
     // Read again either way, and before the result shows: a key deleted in another tab fails the check and leaves the list.
     mutationFn: () => byokApi.checkKey(id).finally(() => rereadByok(client)),
-    onError: () => toast.error(t('byok.checkFailed')),
+    // A key deleted meanwhile (404) is gone from the list once read again, which is all there is to say.
+    onError: (err) => {
+      if (!(err instanceof ApiException && err.status === 404)) toast.error(t('byok.checkFailed'));
+    },
   });
   const refreshing = useIsMutating({ mutationKey: checkKey }) > 0;
 
