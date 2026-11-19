@@ -1,0 +1,128 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+/**
+ * Global error handler middleware.
+ *
+ * The single place that decides what a client is told. It answers on its own
+ * terms for the two things it can recognise as the caller's doing, and
+ * everything else is ours: a 500 plus `Unhandled error`, which is what makes
+ * a fault reconstructable afterwards.
+ *
+ * Recognising a rejected request by the TYPE of exception does not work, and
+ * a first version of this handler tried it. `ZodError` and `SyntaxError` say
+ * that a parse failed, not whose input failed — our own config loaders parse
+ * operator-written yaml inside a request (`config/rate-limits.ts` and three
+ * siblings, lazily, on first use), and any `await response.json()` on an
+ * upstream that answered with an HTML error page raises the same type. Both
+ * were being answered "your input is invalid", to a user who had typed
+ * nothing wrong, with the log line dropped.
+ *
+ * So the rule is provenance, not type. Two exceptions reach here already
+ * carrying the fact that a client caused them:
+ *
+ *   AppError        thrown by our own service and route layer, including the
+ *                   ValidationError that `validate` raises for a bad field
+ *   HTTPException   thrown by hono when it cannot read the request body
+ *
+ * A library's own wording never reaches the wire — it is hardcoded English
+ * and names our internals — so what a client reads for those two is built
+ * here, in the caller's language. An `AppError` carries whatever message its
+ * thrower built, which is that thrower's business, not this file's.
+ */
+
+import type { ErrorHandler } from "hono";
+import { HTTPException } from "hono/http-exception";
+import { REQUEST_SHAPE_REASON, t } from "@breatic/shared";
+import { AppError, TooManyRequestsError } from "@core/app-errors.js";
+import { RequestShapeError } from "@core/http/validate.js";
+
+/** What the error handler tells its service to log; core itself never logs. */
+export type ErrorHandlerEvent =
+  | { kind: "auth_rejected"; status: number; name: string; path: string }
+  | { kind: "unhandled"; err: unknown; status?: number };
+
+/**
+ * Build a public listener's error handler.
+ * @param deps - The log sink.
+ * @param deps.report - Log one event.
+ * @returns The handler for `app.onError`.
+ */
+export function createErrorHandler(deps: { report: (event: ErrorHandlerEvent) => void }): ErrorHandler {
+  /**
+   * Global error handler for the Hono app.
+   * @param err - The thrown error to map to an HTTP response.
+   * @param c - The Hono request context used to build the JSON response.
+   * @returns A structured JSON response: the status + message for {@link AppError}, or a 500 for unknown errors.
+   */
+  const errorHandler: ErrorHandler = (err, c) => {
+    if (err instanceof AppError) {
+      // Auth-class client errors (401 Unauthorized / 403 Forbidden) are
+      // security-relevant rejections — surface them as structured warns
+      // per the "security monitoring" mandate. Other AppErrors (404 /
+      // 409 / validation) are normal business outcomes, not logged here.
+      if (err.statusCode === 401 || err.statusCode === 403) {
+        deps.report({ kind: "auth_rejected", status: err.statusCode, name: err.name, path: c.req.path });
+      }
+      if (err instanceof TooManyRequestsError) {
+        return c.json(
+          {
+            error: {
+              code: err.statusCode,
+              message: err.message,
+              retryAfterSeconds: err.retryAfterSeconds,
+            },
+          },
+          429,
+          { "Retry-After": String(err.retryAfterSeconds) },
+        );
+      }
+      return c.json(
+        {
+          error: {
+            code: err.statusCode,
+            message: err.message,
+            ...(err instanceof RequestShapeError ? { reason: REQUEST_SHAPE_REASON } : {}),
+          },
+        },
+        err.statusCode as 400,
+      );
+    }
+
+    // hono throws this from inside the validator when the body cannot be read,
+    // and from its own middleware. It already carries the status it wants, so
+    // take that rather than deciding again — but never its message, which is
+    // hardcoded English naming our internals ("Malformed JSON in request body").
+    if (err instanceof HTTPException) {
+      if (err.status >= 500) {
+        deps.report({ kind: "unhandled", err, status: err.status });
+      }
+      return c.json(
+        {
+          error: {
+            code: err.status,
+            message:
+              err.status >= 500
+                ? t("server.error.internal")
+                : t("server.error.validation"),
+            // hono could not read the body at all: the request's own shape.
+            ...(err.status === 400 ? { reason: REQUEST_SHAPE_REASON } : {}),
+          },
+        },
+        err.status,
+      );
+    }
+
+    // Everything else is ours until proven otherwise, including a bare
+    // `ZodError` or `SyntaxError` — those name a failed parse without naming
+    // whose input failed, and the ones that actually occur here come from our
+    // own config loaders and upstream calls. They belong in the log.
+    deps.report({ kind: "unhandled", err });
+    return c.json(
+      { error: { code: 500, message: t("server.error.internal") } },
+      500,
+    );
+  };
+
+  return errorHandler;
+}

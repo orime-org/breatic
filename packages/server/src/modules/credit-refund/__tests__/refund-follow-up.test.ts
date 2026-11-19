@@ -15,7 +15,11 @@ const core = vi.hoisted(() => ({
   accountOnlyConsent: vi.fn(),
   trackServerEvent: vi.fn(),
 }));
-vi.mock("@breatic/core", () => ({ ...core, logger }));
+vi.mock("@breatic/core", async () => ({
+  ...core,
+  logger,
+  createAfterReply: (await import("../../../../../core/src/http/after-reply.js")).createAfterReply,
+}));
 
 const findById = vi.fn();
 vi.mock("@server/modules/credit-refund/operation.repo.js", () => ({ findById: (...a: unknown[]) => findById(...a) }));

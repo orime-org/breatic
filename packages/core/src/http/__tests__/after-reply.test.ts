@@ -3,14 +3,10 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const logger = vi.hoisted(() => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }));
-vi.mock("@breatic/core", () => ({ logger }));
+import { createAfterReply } from "@core/http/after-reply.js";
 
-import {
-  runAfterReply,
-  settleAfterReply,
-  pendingAfterReply,
-} from "@server/utils/after-reply.js";
+const onFailed = vi.fn();
+const { runAfterReply, settleAfterReply, pendingAfterReply } = createAfterReply({ onFailed });
 
 /**
  * A promise with its resolve and reject exposed.
@@ -59,7 +55,7 @@ describe("after-reply work", () => {
     expect(await settled).toBe(true);
   });
 
-  it("logs a failure with its context and drops it from the pending list", async () => {
+  it("reports a failure with its context and drops it from the pending list", async () => {
     const gate = deferred();
     const err = new Error("smtp refused");
     runAfterReply({ task: "password_reset", email: "a@example.test" }, () => gate.promise);
@@ -67,10 +63,7 @@ describe("after-reply work", () => {
     gate.reject(err);
     await settleAfterReply();
 
-    expect(logger.error).toHaveBeenCalledWith(
-      { err, task: "password_reset", email: "a@example.test" },
-      "after_reply_failed",
-    );
+    expect(onFailed).toHaveBeenCalledWith(err, { task: "password_reset", email: "a@example.test" });
     expect(pendingAfterReply()).toEqual([]);
   });
 
@@ -80,6 +73,6 @@ describe("after-reply work", () => {
       throw err;
     });
     await settleAfterReply();
-    expect(logger.error).toHaveBeenCalledWith({ err, task: "sync" }, "after_reply_failed");
+    expect(onFailed).toHaveBeenCalledWith(err, { task: "sync" });
   });
 });
