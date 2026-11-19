@@ -1527,6 +1527,7 @@
       "title": "模板",
       "empty": "暂无模板",
       "unavailable": "当前不可用",
+      "styleLoadFailed": "风格没有加载出来，请刷新页面后再试。",
       "goal": {
         "character": "角色设定与一致性",
         "comics-storyboards": "漫画与分镜",

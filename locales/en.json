@@ -1527,6 +1527,7 @@
       "title": "Templates",
       "empty": "No templates",
       "unavailable": "Unavailable",
+      "styleLoadFailed": "Styles didn't load. Refresh the page and try again.",
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",

@@ -1527,6 +1527,7 @@
       "title": "範本",
       "empty": "暫無範本",
       "unavailable": "目前無法使用",
+      "styleLoadFailed": "風格沒有載入，請重新整理頁面後再試。",
       "goal": {
         "character": "角色設定與一致性",
         "comics-storyboards": "漫畫與分鏡",

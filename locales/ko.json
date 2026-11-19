@@ -1527,6 +1527,7 @@
       "title": "템플릿",
       "empty": "템플릿 없음",
       "unavailable": "사용할 수 없음",
+      "styleLoadFailed": "스타일을 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도하세요.",
       "goal": {
         "character": "캐릭터 설정과 일관성",
         "comics-storyboards": "만화와 스토리보드",

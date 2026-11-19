@@ -1527,6 +1527,7 @@
       "title": "テンプレート",
       "empty": "テンプレートはありません",
       "unavailable": "利用できません",
+      "styleLoadFailed": "スタイルを読み込めませんでした。ページを再読み込みしてからもう一度お試しください。",
       "goal": {
         "character": "キャラクター設定と一貫性",
         "comics-storyboards": "漫画と絵コンテ",
