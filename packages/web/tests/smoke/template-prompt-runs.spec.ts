@@ -316,14 +316,17 @@ async function dialogueLines(): Promise<{ speaker: string; text: string }[]> {
   return shown;
 }
 
+/** A slot of the video panel a template node is picked into, by its test-id stem. */
+type VideoSlotId = 'first-frame' | 'end-frame' | 'character-image' | 'driving-audio' | 'left-audio' | 'right-audio';
+
 /**
- * Pick a node into one frame of the open video panel, the way a user does: the frame, then the
+ * Pick a node into one slot of the open video panel, the way a user does: the slot, then the
  * part of the node still showing, since a tall result next to it can cover its centre.
- * @param slot - The frame.
+ * @param slot - The slot.
  * @param nodeId - The node.
  * @throws {Error} When no part of the node is showing.
  */
-async function pickIntoFrame(slot: 'first-frame' | 'end-frame', nodeId: string): Promise<void> {
+async function pickIntoFrame(slot: VideoSlotId, nodeId: string): Promise<void> {
   await page.getByTestId(`generate-video-tool-${slot}`).click();
   const point = await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).evaluate((node) => {
     const box = node.getBoundingClientRect();
@@ -337,7 +340,9 @@ async function pickIntoFrame(slot: 'first-frame' | 'end-frame', nodeId: string):
   });
   if (point === null) throw new Error(`no part of node ${nodeId} is showing`);
   await page.mouse.click(point.x, point.y);
-  await expect(page.getByTestId(`generate-video-${slot}-thumbnail`)).toBeVisible({ timeout: 30_000 });
+  // An audio slot paints no thumbnail; its clear button shows once it holds the pick.
+  const filled = slot.endsWith('-audio') ? `generate-video-${slot}-clear` : `generate-video-${slot}-thumbnail`;
+  await expect(page.getByTestId(filled)).toBeVisible({ timeout: 30_000 });
 }
 
 /**
@@ -376,9 +381,11 @@ function optionalLeads(id: string, key: string): Map<string, string> {
   const template = GENERATION_TEMPLATES.find((one) => one.id === id);
   const leads = new Map<string, string>();
   if (template === undefined) return leads;
+  const optional = template.inputs.filter((input) => input.optional === true && (input.feeds ?? [template.anchor]).includes(key));
+  // A node no optional input feeds is not read: a shot-list node has no prompt string.
+  if (optional.length === 0) return leads;
   const words = fromLocale(`canvas.template.${id}.${key === template.anchor ? '' : `node.${key}.`}prompt`).split('\n');
-  for (const input of template.inputs) {
-    if (input.optional !== true || !(input.feeds ?? [template.anchor]).includes(key)) continue;
+  for (const input of optional) {
     const name = fromLocale(`canvas.template.${id}.input.${input.key}.name`);
     const paragraph = words.find((line) => markedSegments(line).some((s) => s.slot?.kind === 'asset' && s.slot.label === name));
     const lead = paragraph === undefined ? undefined : markedSegments(paragraph).find((s) => s.text?.trim())?.text?.trim();
@@ -621,8 +628,8 @@ interface Run {
   localeFills?: Record<string, Record<string, string[]>>;
   /** What each of the anchor's shots' braces are filled with, in order. */
   shots?: string[][];
-  /** The template nodes picked into the anchor's frames once generated. */
-  frames?: Partial<Record<'first-frame' | 'end-frame', string>>;
+  /** The template nodes picked into the anchor's slots once generated. */
+  frames?: Partial<Record<VideoSlotId, string>>;
 }
 
 /** How each template is run. */
@@ -804,10 +811,94 @@ const RUNS: Record<string, Run> = {
     fills: { before: ['a white oak table'], after: ['with its bamboo cap off, lying beside it'], anchor: ['a hand unscrews the cap and sets it down beside the bottle', 'the same hand'] },
     frames: { 'first-frame': 'before', 'end-frame': 'after' },
   },
+  'cartoon-gag': {
+    type: 'video',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: [],
+    fills: { anchor: ['flat 2D cartoon with thick outlines', 'a tiny kitchen at breakfast', 'she tiptoes toward the last cookie', 'the jar snaps shut on her nose and her eyes pop out'] },
+  },
+  '3d-cartoon-short': {
+    type: 'video',
+    photo: false,
+    first: ['design'],
+    fills: {
+      design: ['a small round hedgehog', 'a red knitted scarf'],
+      anchor: ['an autumn orchard', 'the last apple on a high branch', 'the branch springs back and flings it into the leaves'],
+    },
+  },
+  'stop-motion-short': {
+    type: 'video',
+    photo: false,
+    inputs: { subject: 'object.jpg' },
+    first: [],
+    fills: { anchor: ['plasticine clay', 'it hops across a tabletop and climbs onto a teacup'] },
+  },
+  'anime-scene': {
+    type: 'video',
+    photo: false,
+    first: ['scene'],
+    fills: { scene: ['a hillside town at dusk after rain'], anchor: ['a slow push toward the town', 'clouds drifting, leaves stirring, a train passing far away'] },
+    frames: { 'first-frame': 'scene' },
+  },
+  'anime-action-climax': {
+    type: 'video',
+    photo: false,
+    inputs: { hero: 'character.jpg' },
+    first: [],
+    fills: { anchor: ['a ruined rooftop at night', 'a flaming sword slash'] },
+  },
+  'anime-opening-15s': {
+    type: 'video',
+    photo: false,
+    inputs: { lead: 'character.jpg', second: 'mini-tools/portrait.jpg', third: 'pet.jpg' },
+    first: [],
+    fills: {},
+    shots: [['a bright summer sky over a seaside town'], ['on a school rooftop'], ['runs and leaps across the rooftops'], [], ['the sunset sky']],
+  },
+  'talking-presenter': {
+    type: 'video',
+    photo: false,
+    inputs: { person: 'mini-tools/portrait.jpg' },
+    first: ['portrait', 'voice'],
+    fills: {
+      portrait: ['a bright home office with a bookshelf'],
+      voice: ['Hi, I am Mika. Here are three quick ways to keep your desk tidy, and the first one takes ten seconds.'],
+      anchor: ['warm and confident, a slight smile at the end'],
+    },
+    frames: { 'character-image': 'portrait', 'driving-audio': 'voice' },
+  },
+  'talking-head-pitch': {
+    type: 'video',
+    photo: false,
+    inputs: { person: 'mini-tools/portrait.jpg' },
+    first: [],
+    fills: { anchor: ['English', 'a sunlit café', 'This one changed my mornings', 'Try it for a week and see'] },
+  },
+  'two-speaker-talk': {
+    type: 'video',
+    photo: false,
+    inputs: { 'left-person': 'character.jpg', 'right-person': 'mini-tools/portrait.jpg' },
+    first: ['scene', 'left-voice', 'right-voice'],
+    fills: {
+      scene: ['a podcast desk with two microphones'],
+      'left-voice': ['So, what got you into making videos?'],
+      'right-voice': ['Honestly, I just wanted to show my friends what I cook.'],
+      anchor: [],
+    },
+    frames: { 'character-image': 'scene', 'left-audio': 'left-voice', 'right-audio': 'right-voice' },
+  },
+  'talking-own-voice': {
+    type: 'video',
+    photo: false,
+    inputs: { portrait: 'mini-tools/portrait.jpg', recording: 'voice.mp3' },
+    first: [],
+    fills: { anchor: ['relaxed, with small natural nods'] },
+  },
   'livestream-pitch': {
     type: 'video',
     photo: false,
-    inputs: { host: 'portrait.png', product: 'product.jpg' },
+    inputs: { host: 'mini-tools/portrait.jpg', product: 'product.jpg' },
     first: [],
     fills: { anchor: ['excited and fast', 'it keeps drinks cold for 24 hours and the bamboo cap never leaks'] },
     localeFills: { 'zh-CN': { anchor: ['兴奋、语速快', '24 小时保冷，竹盖拧紧一滴不漏'] } },
@@ -994,7 +1085,7 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
       await save(url, `${id}-${key}-${LABEL}-${n}.${EXTENSION[kind]}`);
     }
     await openPanel(anchor);
-    for (const [slot, key] of Object.entries(run.frames ?? {})) await pickIntoFrame(slot as 'first-frame' | 'end-frame', await keyed(key));
+    for (const [slot, key] of Object.entries(run.frames ?? {})) await pickIntoFrame(slot as VideoSlotId, await keyed(key));
     let prompt = '';
     const registered = GENERATION_TEMPLATES.find((template) => template.id === id);
     if (registered === undefined) throw new Error(`no template "${id}" in the registry`);

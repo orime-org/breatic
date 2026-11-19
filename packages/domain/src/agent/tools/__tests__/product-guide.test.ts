@@ -661,7 +661,8 @@ describe("what the guide says", () => {
 
   it("says a template may place generations upstream to run first, wired and @'d, and nodes it places to take what it needs reuse a picture already connected, even one the node itself does not use", () => {
     const generating = section("Generating");
-    expect(generating).toMatch(/A template may also place picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt says to generate them first\./);
+    expect(generating).toMatch(/A template may also place picture, video or sound nodes to the left that generate first, connected and @'d; a note at the top of the prompt says to generate them first\./);
+    expect(generating).toMatch(/A picture or sound such a template generates for one of the model's slots, such as the first or end frame, the character or the audio the face speaks, is connected but not @'d, and its note says to pick it into that slot once it has generated\./);
     expect(generating).toMatch(/When a template places nodes that take what it needs, a picture already connected to the node is connected to them as well, also when the node itself does not use it\./);
     expect(generating).not.toMatch(/the two listed here do neither/);
   });
