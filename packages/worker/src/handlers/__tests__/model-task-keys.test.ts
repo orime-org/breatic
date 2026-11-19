@@ -19,6 +19,9 @@ const h = vi.hoisted(() => ({
   getByIdInternal: vi.fn(),
   listSteps: vi.fn(),
   resolveOwnerStudioId: vi.fn(),
+  recordModelCall: vi.fn(),
+  createUsageRecorder: vi.fn(),
+  handOffLookups: vi.fn(async () => undefined),
 }));
 
 vi.mock("@breatic/core", () => ({
@@ -36,11 +39,17 @@ vi.mock("@breatic/domain", () => ({
   upstreamCloneRepo: { name: "upstreamCloneRepo" },
   assetService: { resolveOwnerStudioId: h.resolveOwnerStudioId },
   assetRepo: { findLiveByStorageKey: vi.fn() },
+  createUsageRecorder: h.createUsageRecorder,
+  handOffLookups: h.handOffLookups,
 }));
 vi.mock("@breatic/shared", async (importOriginal) => ({ ...(await importOriginal<typeof sharedModule>()) }));
 vi.mock("@breatic/provider/media", () => ({ createMediaRunner: () => ({ name: "runner" }) }));
 vi.mock("@worker/handlers/media-run.js", () => ({ runMedia: h.runMedia }));
-vi.mock("@worker/handlers/prompt-rewrite.js", () => ({ rewrittenPrompt: h.rewrittenPrompt, REWRITTEN_MODELS: new Set(["nano-banana-2"]) }));
+vi.mock("@worker/handlers/prompt-rewrite.js", () => ({
+  rewrittenPrompt: h.rewrittenPrompt,
+  REWRITTEN_MODELS: new Set(["nano-banana-2"]),
+  REWRITE_MODEL: "deepseek/deepseek-chat",
+}));
 vi.mock("@worker/handlers/understand-slots.js", () => ({ withUnderstandSlot: vi.fn() }));
 vi.mock("@worker/handlers/model-params.js", () => ({
   validateModelParams: (_m: string, model: string, params: Record<string, unknown>): [string, Record<string, unknown>] => [model, params],
@@ -63,6 +72,7 @@ const TASK = {
   outputCount: 1,
   deadlineAt: Date.now() + 60_000,
   lastAttempt: false,
+  actorUserId: "user-1",
   keyId: MEDIA_KEY_ID,
   llmKeyId: LLM_KEY_ID,
 } as unknown as ModelTask;
@@ -71,7 +81,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.runMedia.mockResolvedValue({ outputs: [], costs: [], servedBy: "fal", passedOverCosts: [] });
   h.resolveOwnerStudioId.mockResolvedValue("studio-1");
-  h.rewrittenPrompt.mockResolvedValue("rewritten");
+  h.rewrittenPrompt.mockResolvedValue({ prompt: "rewritten" });
   h.listSteps.mockResolvedValue([]);
   h.keysById.mockImplementation(async (id: string | null) => {
     if (id === MEDIA_KEY_ID) return { keys: MEDIA_KEYS };
@@ -113,6 +123,23 @@ describe("the keys a model run uses", () => {
     await run.input({});
 
     expect(h.rewrittenPrompt.mock.calls[0]).toContain(LLM_KEYS);
+  });
+
+  it("records the rewrite on the payer's OpenRouter key as usage under the LLM key row, at once", async () => {
+    const cost = { state: "known", usd: 0.0002, payer: "account" };
+    h.rewrittenPrompt.mockResolvedValueOnce({ prompt: "{}", cost });
+    h.createUsageRecorder.mockReturnValue({
+      operation: { operationKey: "task:task-1" },
+      recordModelCall: h.recordModelCall,
+      awaitingLookup: () => [],
+      settle: async () => 0,
+    });
+    await runModelTask({ ...TASK, model: "nano-banana-2", params: { prompt: "a cat", resolution: "1k" } });
+    const [run] = h.runMedia.mock.calls[0] as [{ input: (rows: object) => Promise<{ prompt: string }> }];
+
+    expect((await run.input({})).prompt).toBe("{}");
+    expect(h.createUsageRecorder).toHaveBeenCalledWith(expect.objectContaining({ operationKey: "task:task-1", actorUserId: "user-1", keyId: LLM_KEY_ID }));
+    expect(h.recordModelCall).toHaveBeenCalledWith({ source: "model", model: "deepseek/deepseek-chat", upstream: "openrouter", cost });
   });
 
   it("still runs when only the LLM key row is gone, and fails only when a step asks for that key", async () => {

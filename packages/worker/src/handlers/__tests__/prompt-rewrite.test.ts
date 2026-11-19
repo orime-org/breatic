@@ -44,7 +44,7 @@ describe("rewrittenPrompt", () => {
   it("uses the model's rewrite when it answers JSON", async () => {
     mockLlm.mockResolvedValue({ text: 'Here: {"subject":"a cat","lighting":"dusk"}' } as never);
 
-    expect(JSON.parse(await rewrittenPrompt("a cat", {}, FALLBACK, LATER))).toEqual({ subject: "a cat", lighting: "dusk" });
+    expect(JSON.parse((await rewrittenPrompt("a cat", {}, FALLBACK, LATER)).prompt)).toEqual({ subject: "a cat", lighting: "dusk" });
   });
 
   it("tells the model the camera the user turned on", async () => {
@@ -68,15 +68,15 @@ describe("rewrittenPrompt", () => {
   it("sends the catalog's shape when the rewrite fails, and says so", async () => {
     mockLlm.mockRejectedValue(new Error("llm down"));
 
-    expect(await rewrittenPrompt("a cat", CAMERA, FALLBACK, LATER)).toBe(FALLBACK);
+    expect((await rewrittenPrompt("a cat", CAMERA, FALLBACK, LATER)).prompt).toBe(FALLBACK);
     expect(h.warn).toHaveBeenCalledWith(expect.objectContaining({ err: expect.any(Error) }), "nano_banana_prompt_rewrite_failed");
   });
 
   it("sends the catalog's shape when the model answers no JSON, or broken JSON", async () => {
     mockLlm.mockResolvedValue({ text: "no braces here" } as never);
-    expect(await rewrittenPrompt("a cat", {}, FALLBACK, LATER)).toBe(FALLBACK);
+    expect((await rewrittenPrompt("a cat", {}, FALLBACK, LATER)).prompt).toBe(FALLBACK);
 
     mockLlm.mockResolvedValue({ text: "{not json}" } as never);
-    expect(await rewrittenPrompt("a cat", {}, FALLBACK, LATER)).toBe(FALLBACK);
+    expect((await rewrittenPrompt("a cat", {}, FALLBACK, LATER)).prompt).toBe(FALLBACK);
   });
 });

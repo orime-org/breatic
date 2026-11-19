@@ -10,12 +10,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { KeySet } from "@breatic/provider";
 
-const h = vi.hoisted(() => ({ warn: vi.fn(), prepare: vi.fn(), generate: vi.fn() }));
+const h = vi.hoisted(() => ({ warn: vi.fn(), prepare: vi.fn(), generate: vi.fn(), costOf: vi.fn() }));
 
 vi.mock("@breatic/core", () => ({ logger: { warn: h.warn } }));
 vi.mock("@breatic/domain", () => ({
   generateTextRetry: h.generate,
-  provider: () => ({ llm: { prepare: h.prepare } }),
+  provider: () => ({ llm: { prepare: h.prepare, costOf: h.costOf } }),
 }));
 
 import { rewrittenPrompt } from "@worker/handlers/prompt-rewrite.js";
@@ -24,11 +24,13 @@ const FALLBACK = JSON.stringify({ subject: "a cat" });
 const LATER = Date.now() + 60_000;
 const LLM_KEYS: KeySet = { owner: "account", keyOf: (u: string) => (u === "openrouter" ? "acct-or" : undefined) };
 const rewrite = rewrittenPrompt;
+const BILLED = { state: "known", usd: 0.0001, payer: "account" } as const;
 
 beforeEach(() => {
   vi.clearAllMocks();
   h.prepare.mockReturnValue({ model: "mock-model", options: {} });
-  h.generate.mockResolvedValue({ text: '{"subject":"a cat"}' });
+  h.generate.mockResolvedValue({ text: '{"subject":"a cat"}', usage: { totalTokens: 9 }, providerMetadata: {} });
+  h.costOf.mockReturnValue(BILLED);
 });
 
 describe("rewrittenPrompt on a key set", () => {
@@ -52,6 +54,22 @@ describe("rewrittenPrompt on a key set", () => {
 
   it("still sends the catalog's shape when the rewrite fails for any other reason", async () => {
     h.generate.mockRejectedValue(new Error("socket hang up"));
-    expect(await rewrite("a cat", {}, FALLBACK, LATER, LLM_KEYS)).toBe(FALLBACK);
+    expect((await rewrite("a cat", {}, FALLBACK, LATER, LLM_KEYS)).prompt).toBe(FALLBACK);
+  });
+});
+
+describe("what a rewrite on the payer's key cost (inner#1953)", () => {
+  it("answers the call's cost beside the prompt, so its usage is recorded", async () => {
+    expect(await rewrite("a cat", {}, FALLBACK, LATER, LLM_KEYS)).toEqual({ prompt: '{"subject":"a cat"}', cost: BILLED });
+    expect(h.costOf).toHaveBeenCalledWith(expect.objectContaining({ model: "deepseek/deepseek-chat", usage: { totalTokens: 9 } }));
+  });
+
+  it("answers the cost of a billed answer that held no prompt too", async () => {
+    h.generate.mockResolvedValue({ text: "no json here", usage: { totalTokens: 3 }, providerMetadata: {} });
+    expect(await rewrite("a cat", {}, FALLBACK, LATER, LLM_KEYS)).toEqual({ prompt: FALLBACK, cost: BILLED });
+  });
+
+  it("answers no cost on our keys, where a rewrite is never recorded", async () => {
+    expect(await rewrite("a cat", {}, FALLBACK, LATER)).toEqual({ prompt: '{"subject":"a cat"}' });
   });
 });

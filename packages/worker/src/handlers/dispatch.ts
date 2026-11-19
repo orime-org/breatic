@@ -660,6 +660,7 @@ async function runTaskBody(
         outputCount: 1,
         deadlineAt,
         lastAttempt: isTerminalAttempt(job),
+        actorUserId: userId,
         ...(keyId !== null && { keyId }),
         ...(llmKeyId !== null && { llmKeyId }),
       }), { keyId, llmKeyId });
@@ -2030,6 +2031,7 @@ export async function runMiniTool(opts: RunMiniToolOpts): Promise<RunProduce> {
       outputCount: spec.outputs.length,
       deadlineAt,
       lastAttempt,
+      actorUserId: userId,
       ...(opts.keyId != null && { keyId: opts.keyId }),
       ...(opts.llmKeyId != null && { llmKeyId: opts.llmKeyId }),
     });

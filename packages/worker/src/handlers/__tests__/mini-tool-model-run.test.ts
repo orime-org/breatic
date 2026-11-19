@@ -54,6 +54,7 @@ describe("a model mini-tool", () => {
       outputCount: 1,
       deadlineAt: RUN.deadlineAt,
       lastAttempt: true,
+      actorUserId: RUN.userId,
     });
   });
 

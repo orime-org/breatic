@@ -67,6 +67,7 @@ import { runModelTask, type ModelTask } from "@worker/handlers/model-task.js";
 
 const TASK: ModelTask = {
   taskId: "task-1",
+  actorUserId: "user-1",
   modality: "video",
   model: "kling-o3-pro",
   params: { prompt: "a <b>drone</b> shot", image: "https://cdn/x.png", duration: 5, node_ids: ["n1"], project_id: "p1", model: "x", stray: 1 },
@@ -92,7 +93,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.runMedia.mockResolvedValue({ outputs: [], costs: [], servedBy: "wavespeed" });
   h.resolveOwnerStudioId.mockResolvedValue("studio-1");
-  h.rewrittenPrompt.mockResolvedValue('{"subject":"rewritten"}');
+  h.rewrittenPrompt.mockResolvedValue({ prompt: '{"subject":"rewritten"}' });
 });
 
 describe("runModelTask", () => {
