@@ -282,6 +282,16 @@ describe('the 3D Space task list (inner#1690)', () => {
     expect(api.listSpaceTasks).toHaveBeenCalledTimes(2);
   });
 
+  // inner#1968 visual round 1: a waiting row wears the canvas's hourglass, not the running blue dot.
+  it('marks a row that waits for a slot with the hourglass', async () => {
+    const waiting = row({ id: 'waiting', startedAt: new Date(NOW - 60_000).toISOString(), deadlineAt: null, waitingSince: new Date(NOW - 60_000).toISOString(), slotWaitLimit: 2 });
+    api.listSpaceTasks.mockResolvedValue(listed(waiting));
+    renderList();
+    const found = await rowOf('waiting');
+    expect(within(found).getByTestId('task-waiting-mark')).toBeInTheDocument();
+    expect(found.querySelector('.bg-status-info')).toBeNull();
+  });
+
   it('sets no re-read for a row that waits for a slot, whose budget has not started', async () => {
     const waiting = row({ id: 'waiting', startedAt: new Date(NOW - 3 * 3_600_000).toISOString(), deadlineAt: null, waitingSince: new Date(NOW - 3 * 3_600_000).toISOString(), slotWaitLimit: 2 });
     api.listSpaceTasks.mockResolvedValue(listed(waiting));

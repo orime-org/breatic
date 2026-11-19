@@ -57,6 +57,8 @@ describe('G-39 a Timeline execution waiting for a slot', () => {
     const status = screen.getByTestId(`timeline-execution-status-${ID}`);
     expect(status).toHaveTextContent('排队中');
     expect(status.querySelector('.animate-spin')).toBeNull();
+    // inner#1968 visual round 1: the canvas's hourglass, so a wait does not read as stuck.
+    expect(within(status).getByTestId('task-waiting-mark')).toBeInTheDocument();
     const detail = screen.getByTestId(`timeline-execution-detail-${ID}`);
     expect(detail.textContent).toContain('你同时运行的任务已达上限（2 个），前面的任务结束后自动开始');
     expect(within(detail).getByRole('button', { name: '取消' })).toBeInTheDocument();
