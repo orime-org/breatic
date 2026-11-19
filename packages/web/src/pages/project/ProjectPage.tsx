@@ -66,6 +66,9 @@ import { useDocumentProposalRouting } from '@web/pages/project/use-document-prop
 import { useCanvasRevealRouting } from '@web/pages/project/use-canvas-reveal-routing';
 import { useCommentLinkRouting } from '@web/features/comment-reveal/use-comment-link-routing';
 import { useViewCaptureResponder } from '@web/features/view-capture/use-view-capture-responder';
+import { useAgentLabels } from '@web/features/agent-presence/use-agent-labels';
+import { agentRows } from '@web/features/agent-presence/agent-status';
+import { AgentPresenceContext, type AgentPresenceValue } from '@web/features/agent-presence/agent-focus';
 import { useFollowRouting } from '@web/pages/project/use-follow-routing';
 import { usePublishView } from '@web/pages/project/use-publish-view';
 import { FollowBar } from '@web/features/follow/FollowBar';
@@ -246,6 +249,23 @@ function useRestoredPreferences(userId: string | undefined, projectId: string): 
 }
 
 /**
+ * What every Space on the project page reads from above: collaborators'
+ * names, and the external agents with theirs (#1488 design 19.2).
+ * @param root0 - Props.
+ * @param root0.names - Collaborator names.
+ * @param root0.agents - The project's external agents and their labels.
+ * @param root0.children - The page.
+ * @returns The page inside both providers.
+ */
+function PageProviders({ names, agents, children }: { names: React.ComponentProps<typeof CollaboratorNamesProvider>['value']; agents: AgentPresenceValue; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <CollaboratorNamesProvider value={names}>
+      <AgentPresenceContext.Provider value={agents}>{children}</AgentPresenceContext.Provider>
+    </CollaboratorNamesProvider>
+  );
+}
+
+/**
  * Project workspace rendering the TopBar, the per-user Agent chat column, and
  * the Space tab bar with the active Space body. Every Yjs document hook here
  * attaches onto the shared collab socket from the parent
@@ -348,6 +368,7 @@ function ProjectWorkspace({
     spaces,
     provider,
     users,
+    agents,
     following,
     synced: metaSynced,
     status: connectionStatus,
@@ -432,6 +453,10 @@ function ProjectWorkspace({
     open: openFollowedSpace,
   });
   const memberNames = React.useMemo(() => new Map(members.map((m) => [m.userId, m.name])), [members]);
+  // External agents for the member list and the highlights (#1488 design 19.2).
+  const agentLabels = useAgentLabels(agents, memberNames);
+  const agentList = React.useMemo(() => agentRows(agents, agentLabels), [agents, agentLabels]);
+  const agentPresence = React.useMemo(() => ({ agents, labels: agentLabels }), [agents, agentLabels]);
   // Whom each member follows here: it dims View in the member list and stops
   // following a leader who follows someone.
   const followTargets = React.useMemo(() => {
@@ -905,7 +930,7 @@ function ProjectWorkspace({
     // the whole page rather than the space body is deliberate: any editor added
     // anywhere below gets it without a single layer in between having to know
     // it exists, which is the property the prop chain could not give us.
-    <CollaboratorNamesProvider value={collaboratorNames}>
+    <PageProviders names={collaboratorNames} agents={agentPresence}>
       {/*
         The floor is what keeps both regions usable: below it neither side may
         be squeezed further, so the page scrolls sideways and the top bar goes
@@ -999,6 +1024,7 @@ function ProjectWorkspace({
               currentUserId={userId}
               onlineUserIds={onlineUserIds}
               followTargets={followTargets}
+              agents={agentList}
             />
             {/* Both panels are given `display: flex` and `overflow: visible`
             because the library's inner wrapper is a block box that hard-codes
@@ -1209,6 +1235,6 @@ function ProjectWorkspace({
           ) : null}
         </div>
       </ScrollArea>
-    </CollaboratorNamesProvider>
+    </PageProviders>
   );
 }

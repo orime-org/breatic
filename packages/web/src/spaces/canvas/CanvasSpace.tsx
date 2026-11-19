@@ -278,6 +278,7 @@ import {
 import { CanvasCursorLayer } from '@web/spaces/canvas/CanvasCursors';
 import { AnnotationComposer } from '@web/spaces/canvas/annotation/AnnotationComposer';
 import { useCanvasOccupants } from '@web/spaces/canvas/use-canvas-occupants';
+import { AgentPresenceContext, agentFocusIn, withAgentOccupants } from '@web/features/agent-presence/agent-focus';
 import { usePeerActivity } from '@web/spaces/canvas/use-peer-activity';
 import { fillActionOf } from '@web/spaces/canvas/node-activity';
 import { PeerActivityContext } from '@web/spaces/canvas/nodes/_shared/node-peer-activity-context';
@@ -693,7 +694,13 @@ function CanvasSpaceInner({
   // Presence: one awareness for the space, shared with the carets.
   const { caretProvider } = useCanvasContext();
   const awareness = caretProvider?.awareness ?? null;
-  const occupants = useCanvasOccupants(awareness);
+  const memberOccupants = useCanvasOccupants(awareness);
+  // External agents working on nodes here sit beside the members holding them (#1488 design 19.2).
+  const { agents: projectAgents } = React.useContext(AgentPresenceContext);
+  const occupants = React.useMemo(
+    () => withAgentOccupants(memberOccupants, agentFocusIn(projectAgents, spaceId)),
+    [memberOccupants, projectAgents, spaceId],
+  );
   const peerActivity = usePeerActivity(awareness);
   const remoteGesture = useRemoteGesture(awareness);
 

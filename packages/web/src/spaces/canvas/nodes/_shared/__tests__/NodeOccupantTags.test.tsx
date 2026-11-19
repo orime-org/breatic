@@ -6,6 +6,7 @@ import { render, screen } from '@testing-library/react';
 
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
+import { AgentPresenceContext, agentOccupantId } from '@web/features/agent-presence/agent-focus';
 import { NodeOccupantTags } from '@web/spaces/canvas/nodes/_shared/NodeOccupantTags';
 
 /**
@@ -175,5 +176,23 @@ describe('NodeOccupantTags', () => {
     expect(screen.getByTestId('node-occupant-tags').className).toContain(
       'pointer-events-none',
     );
+  });
+
+  it('names an external agent on the node it works on, after the members (#1488 design 19.2)', () => {
+    render(
+      <AgentPresenceContext.Provider value={{ agents: [], labels: new Map([['c1', 'Claude Code · Alice']]) }}>
+        <CollaboratorNamesProvider value={roster({ u1: 'Alice' })}>
+          <NodeOccupantTags userIds={['u1', agentOccupantId('c1')]} indentPx={4} />
+        </CollaboratorNamesProvider>
+      </AgentPresenceContext.Provider>,
+    );
+    const tags = screen.getByTestId('node-occupant-tags');
+    expect(tags.textContent).toBe('AliceClaude Code · Alice');
+    expect(screen.getByTestId('node-occupant-agent-c1')).toHaveTextContent('Claude Code · Alice');
+  });
+
+  it('leaves out an agent it has no name for', () => {
+    renderTags([agentOccupantId('c1')], {});
+    expect(screen.queryByTestId('node-occupant-tags')).toBeNull();
   });
 });
