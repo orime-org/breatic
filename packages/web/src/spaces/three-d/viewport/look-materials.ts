@@ -5,7 +5,7 @@ import {
   Color, MathUtils, MeshPhysicalMaterial, MeshStandardMaterial, RepeatWrapping, type Material, type Mesh, type Object3D, type Texture,
 } from 'three';
 
-import { SCENE_LOOK_PICTURE_COLOR, SCENE_LOOK_REPEAT_MAX, SCENE_LOOK_REPEAT_MIN, type SceneLook, type SceneLookPart } from '@breatic/shared';
+import { SCENE_LOOK_OFFSET_MAX, SCENE_LOOK_PICTURE_COLOR, SCENE_LOOK_REPEAT_MAX, SCENE_LOOK_REPEAT_MIN, SCENE_LOOK_ROTATION_MAX, type SceneLook, type SceneLookPart } from '@breatic/shared';
 
 import { uploadBytes } from '@web/spaces/three-d/model-texture-metadata';
 
@@ -120,10 +120,10 @@ function thumbnailOf(image: unknown): string | undefined {
 /**
  * An offset brought into the range a part takes by whole picture widths, which a repeating picture draws the same.
  * @param offset - The model's own offset.
- * @returns It, or its fraction when it is past 100 either way.
+ * @returns It, or its fraction when it is past the largest offset either way.
  */
 function inOffsetRange(offset: number): number {
-  return Math.abs(offset) <= 100 ? offset : offset - Math.trunc(offset);
+  return Math.abs(offset) <= SCENE_LOOK_OFFSET_MAX ? offset : offset - Math.trunc(offset);
 }
 
 /**
@@ -160,7 +160,7 @@ function describePart(material: Material, options: { builtin: boolean }): Omit<L
     alphaTest: material.alphaTest,
     hasMap: map !== null,
     ...(map ? { mapRepeat: [inRepeatRange(map.repeat.x), inRepeatRange(map.repeat.y)] as [number, number], mapOffset: [inOffsetRange(map.offset.x), inOffsetRange(map.offset.y)] as [number, number],
-      mapRotation: MathUtils.euclideanModulo(MathUtils.radToDeg(map.rotation) + 180, 360) - 180, thumbnail: thumbnailOf(map.image) } : {}),
+      mapRotation: MathUtils.euclideanModulo(MathUtils.radToDeg(map.rotation) + SCENE_LOOK_ROTATION_MAX, 2 * SCENE_LOOK_ROTATION_MAX) - SCENE_LOOK_ROTATION_MAX, thumbnail: thumbnailOf(map.image) } : {}),
     unlit: material.type === 'MeshBasicMaterial',
     line: isLineMaterial(material),
     builtin: options.builtin,

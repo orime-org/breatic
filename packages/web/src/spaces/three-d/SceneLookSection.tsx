@@ -4,7 +4,8 @@
 import * as React from 'react';
 
 import {
-  SCENE_LOOK_DEFAULT_PART, SCENE_LOOK_EMISSIVE_DEFAULT, SCENE_LOOK_PICTURE_COLOR, SCENE_LOOK_REPEAT_MAX, SCENE_LOOK_REPEAT_MIN, type SceneLook,
+  SCENE_LOOK_DEFAULT_PART, SCENE_LOOK_EMISSIVE_DEFAULT, SCENE_LOOK_OFFSET_MAX, SCENE_LOOK_PICTURE_COLOR, SCENE_LOOK_REPEAT_MAX, SCENE_LOOK_REPEAT_MIN,
+  SCENE_LOOK_ROTATION_MAX, type SceneLook,
   type SceneLookPart,
 } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
@@ -157,9 +158,9 @@ const acceptsRepeat = (value: number): boolean => Math.abs(value) >= SCENE_LOOK_
 /**
  * Whether an offset is one a part takes.
  * @param value - The typed offset.
- * @returns True from -100 to 100.
+ * @returns True within the largest offset either way.
  */
-const acceptsOffset = (value: number): boolean => value >= -100 && value <= 100;
+const acceptsOffset = (value: number): boolean => Math.abs(value) <= SCENE_LOOK_OFFSET_MAX;
 
 /**
  * Two numbers, each in the properties panel's own number field: written on Enter or on leaving the box, and a value the
@@ -313,7 +314,7 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
         <LookPair label={t('spaces.threeD.look.offset')} labelId={`${ids}-offset`} value={stored.mapOffset ?? ownTransform?.mapOffset ?? [0, 0]} accepts={acceptsOffset} disabled={disabled}
           testId='scene-look-offset' draftKey={`${objectId}:look:${row.key}:offset`} spaceId={spaceId} drafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
           onCommit={writeOffset} />
-        <LookSlider label={t('spaces.threeD.look.rotation')} labelId={`${ids}-rotation`} value={stored.mapRotation ?? ownTransform?.mapRotation ?? 0} min={-180} max={180} step={1} suffix='°'
+        <LookSlider label={t('spaces.threeD.look.rotation')} labelId={`${ids}-rotation`} value={stored.mapRotation ?? ownTransform?.mapRotation ?? 0} min={-SCENE_LOOK_ROTATION_MAX} max={SCENE_LOOK_ROTATION_MAX} step={1} suffix='°'
           disabled={disabled} testId='scene-look-rotation' gesture={gesture} onPreview={(mapRotation) => preview({ mapRotation })} />
       </> : null}
       <LookSlider label={t('spaces.threeD.look.gloss')} labelId={`${ids}-gloss`} value={1 - (stored.roughness ?? row.roughness ?? 1)} disabled={disabled || restricted}

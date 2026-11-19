@@ -174,8 +174,14 @@ export const SCENE_LOOK_REPEAT_MAX = 10000;
 /** One tiling count: a negative count mirrors the picture, as glTF's KHR_texture_transform allows. */
 const LOOK_REPEAT = z.number().finite().refine((value) => Math.abs(value) >= SCENE_LOOK_REPEAT_MIN && Math.abs(value) <= SCENE_LOOK_REPEAT_MAX);
 
+/** The largest offset a part takes either way, in picture widths. */
+export const SCENE_LOOK_OFFSET_MAX = 100;
+
+/** The largest rotation a part takes either way, in degrees. */
+export const SCENE_LOOK_ROTATION_MAX = 180;
+
 /** One offset, in picture widths. */
-const LOOK_OFFSET = z.number().finite().min(-100).max(100);
+const LOOK_OFFSET = z.number().finite().min(-SCENE_LOOK_OFFSET_MAX).max(SCENE_LOOK_OFFSET_MAX);
 
 /** The fields one part may change; each is optional and absent means the model's own value. */
 const SceneLookPartSchema = z.object({
@@ -189,7 +195,7 @@ const SceneLookPartSchema = z.object({
   map: z.union([z.string().uuid(), z.literal('none')]),
   mapRepeat: z.tuple([LOOK_REPEAT, LOOK_REPEAT]),
   mapOffset: z.tuple([LOOK_OFFSET, LOOK_OFFSET]),
-  mapRotation: z.number().finite().min(-180).max(180),
+  mapRotation: z.number().finite().min(-SCENE_LOOK_ROTATION_MAX).max(SCENE_LOOK_ROTATION_MAX),
 }).partial().strict();
 
 export type SceneLookPart = z.infer<typeof SceneLookPartSchema>;
