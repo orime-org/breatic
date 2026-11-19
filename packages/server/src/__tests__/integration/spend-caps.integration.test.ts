@@ -724,7 +724,7 @@ describe("PT-5 caps under concurrent admissions (L1, L3)", () => {
           const admitted = new Map<string, number>();
           for (const g of got) {
             if (g.o === "ok") admitted.set(members[g.who % members.length]!, (admitted.get(members[g.who % members.length]!) ?? 0) + g.estimate);
-            else expect(["member", "studio"]).toContain(g.o.scope);
+            else expect(g.o).toMatchObject({ scope: expect.stringMatching(/^(member|studio)$/) });
           }
           const studioBefore = people.reduce((sum, p) => sum + p.spent, 0);
           const studioAdmitted = [...admitted.values()].reduce((sum, v) => sum + v, 0);
