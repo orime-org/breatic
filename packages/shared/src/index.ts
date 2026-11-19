@@ -428,6 +428,7 @@ export {
   getLocale,
   getActiveLocale,
   getAvailableLocales,
+  mergeLocaleMessages,
   setLocaleMessages,
   setEveryLocaleMessages,
   EVERY_LOCALE_KEYS,
