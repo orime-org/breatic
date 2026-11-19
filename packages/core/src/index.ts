@@ -389,6 +389,13 @@ export {
   type SignedCallResult,
   type SignedCallTarget,
 } from "@core/http/signed-call.js";
+export {
+  startRelayLoop,
+  type RelayForward,
+  type RelayLoop,
+  type RelayLoopDeps,
+  type RelayLoopEvent,
+} from "@core/outbox/relay-loop.js";
 export { createErrorHandler, type ErrorHandlerEvent } from "@core/http/error-handler.js";
 export { createInternalErrorHandler, type InternalErrorHandlerDeps } from "@core/http/internal-errors.js";
 export { createLogRequest, type InternalRequestLine } from "@core/http/log-request.js";
