@@ -9,12 +9,11 @@
  * so the real module is taken with `importActual` to read the real file.
  */
 
-import { describe, it, expect, vi } from "vitest";
-import type * as RateLimitsModule from "@server/config/rate-limits.js";
-
-const { getRateLimit } = await vi.importActual<typeof RateLimitsModule>(
-  "@server/config/rate-limits.js",
-);
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, it, expect } from "vitest";
+import { getRateLimit } from "@core/config/rate-limits.js";
 
 describe("rate limits — config/rate-limits.yaml", () => {
   it("allows fifty invitation attempts per user per day", () => {
@@ -38,5 +37,12 @@ describe("rate limits — config/rate-limits.yaml", () => {
     const { max, windowSeconds } = getRateLimit("text-tool");
     expect(Number.isInteger(max) && max > 0).toBe(true);
     expect(Number.isInteger(windowSeconds) && windowSeconds > 0).toBe(true);
+  });
+
+  it("reads the file in the configuration directory the caller names", () => {
+    const dir = mkdtempSync(join(tmpdir(), "rate-limits-"));
+    writeFileSync(join(dir, "rate-limits.yaml"), "own-action:\n  max: 2\n  window_seconds: 5\n");
+    expect(getRateLimit("own-action", dir)).toEqual({ max: 2, windowSeconds: 5 });
+    expect(() => getRateLimit("invite", dir)).toThrow(/"invite" is not configured/);
   });
 });

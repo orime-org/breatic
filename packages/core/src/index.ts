@@ -360,3 +360,13 @@ export { frontendOrigin } from "@core/http/frontend-origin.js";
 export { fingerprint } from "@core/http/request-fingerprint.js";
 export { isKnownTimeZone } from "@core/util/time-zone.js";
 export { asStorable, holdsOnlyStorableText, isStorableText, storableText } from "@core/util/storable-text.js";
+export {
+  createRateLimiting,
+  type KeyBy,
+  type Quota,
+  type RateLimitAnswers,
+  type RateLimitEvent,
+  type RateLimiting,
+  type RateLimitingDeps,
+} from "@core/http/rate-limit.js";
+export { getRateLimit, rateLimitsConfigSchema } from "@core/config/rate-limits.js";
