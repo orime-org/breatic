@@ -170,14 +170,14 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
   if (canvases.length === 0) {
     return <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.noCanvas')} icon={PLACE_ICON} disabled />;
   }
-  return <DropdownMenu open={open && !waiting} onOpenChange={openMenu}>
+  return <DropdownMenu open={open} onOpenChange={openMenu}>
     <DropdownMenuTrigger asChild>
       <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.placeOnCanvas')} icon={PLACE_ICON}
         loading={waiting} disabled={asset === undefined} />
     </DropdownMenuTrigger>
     <DropdownMenuContent side='top' align='start' sideOffset={BAR_MENU_OFFSET} className='w-52'>
       <DropdownMenuLabel>{t('spaces.webAnimation.chooseCanvas')}</DropdownMenuLabel>
-      {canvases.map((canvas) => <DropdownMenuItem key={canvas.id} data-testid={`motion-canvas-${canvas.id}`} onSelect={() => choose(canvas)}>
+      {canvases.map((canvas) => <DropdownMenuItem key={canvas.id} data-testid={`motion-canvas-${canvas.id}`} onSelect={() => { setOpen(false); choose(canvas); }}>
         <span className='truncate'>{canvas.name}</span>
       </DropdownMenuItem>)}
     </DropdownMenuContent>

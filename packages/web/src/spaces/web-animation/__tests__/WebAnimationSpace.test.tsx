@@ -1641,7 +1641,7 @@ describe('putting an export on a Canvas', () => {
     await user.click(await screen.findByTestId(`motion-canvas-${CANVAS}`));
   }
 
-  it('waits from the choice until collab confirms the node', async () => {
+  it('waits from the choice until collab confirms the node, and the menu stays closed after', async () => {
     vi.mocked(getSceneControls).mockReset().mockResolvedValue(CONTROLS as never);
     let receipt: () => void = () => undefined;
     vi.mocked(placeVideoOnCanvas).mockReset().mockImplementation(async (input) => {
@@ -1652,8 +1652,10 @@ describe('putting an export on a Canvas', () => {
     await chooseCanvas(user);
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     expect(screen.getByTestId('motion-action-place-on-canvas')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.queryByRole('menu')).toBeNull();
     act(() => receipt());
     await waitFor(() => expect(screen.getByTestId('motion-action-place-on-canvas')).not.toHaveAttribute('aria-busy'));
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 
   it('says the Canvas could not be reached, and stops waiting', async () => {
