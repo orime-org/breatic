@@ -1370,6 +1370,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.threeD.look.objectGone": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.threeD.look.noLongerEditable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.threeD.look.uploadedOverLimit": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "spaces.threeD.look.uploadedPartLimit": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.threeD.look.partChanged": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.threeD.look.spaceClosed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.threeD.look.pickSpaceClosed": { excluded: REASONS.SAYS_WHAT_HAPPENED },

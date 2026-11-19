@@ -219,6 +219,30 @@ describe('SceneLookUploads', () => {
     expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.uploadedOverLimit' }));
   });
 
+  it('names the part limit and sends nothing when the object already has a look on every part it can hold', async () => {
+    const { doc, session } = editor();
+    for (let part = 1; part <= 256; part += 1) applySceneCommand(doc, { type: 'look', id: ID, part: String(part), set: { opacity: 0.5 } } as never, Symbol(), true, NAME);
+    const h = harness(() => session);
+    await h.uploads.start(startFor());
+    expect(h.upload).not.toHaveBeenCalled();
+    expect(h.notify).toHaveBeenCalledWith({ key: 'spaces.threeD.look.partLimit', params: { max: '256' }, severity: 'warning' });
+  });
+
+  it('says the picture is in the Project images when the object reached its part limit during the upload', async () => {
+    const { doc, session } = editor();
+    for (let part = 1; part <= 255; part += 1) applySceneCommand(doc, { type: 'look', id: ID, part: String(part), set: { opacity: 0.5 } } as never, Symbol(), true, NAME);
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    // A collaborator changes one more part while the bytes are sent.
+    applySceneCommand(doc, { type: 'look', id: ID, part: '256', set: { opacity: 0.5 } } as never, Symbol(), true, NAME);
+    h.finish();
+    await done;
+    expect(lookOf(doc)).not.toHaveProperty('0');
+    expect(h.notify).toHaveBeenCalledWith({ key: 'spaces.threeD.look.uploadedPartLimit', params: { max: '256' }, severity: 'warning' });
+    expect(session.getSnapshot().commandError).toBeNull();
+  });
+
   it('tells the reason when the upload fails and leaves the part alone', async () => {
     const { doc, session } = editor();
     const h = harness(() => session);

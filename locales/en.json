@@ -2691,7 +2691,8 @@
         "pickObjectGone": "The object was deleted before the image was put on",
         "checking": "Checking",
         "partLimit": "This object can hold appearance changes on at most {max} parts.",
-        "partNotEditable": "This part's material number is past the range a look can be stored for, so it cannot be changed."
+        "partNotEditable": "This part's material number is past the range a look can be stored for, so it cannot be changed.",
+        "uploadedPartLimit": "The image was uploaded, but this object already has appearance changes on its {max} parts; the image is in the Project images"
       },
       "pose": {
         "title": "Pose",

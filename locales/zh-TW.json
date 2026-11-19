@@ -2691,7 +2691,8 @@
         "pickObjectGone": "物件已被刪除，圖片沒有放上去",
         "checking": "正在檢查",
         "partLimit": "這個物件最多給 {max} 個部位改外觀。",
-        "partNotEditable": "這個部位的材質序號超出了能儲存外觀的範圍，不能修改。"
+        "partNotEditable": "這個部位的材質序號超出了能儲存外觀的範圍，不能修改。",
+        "uploadedPartLimit": "圖片已上傳，但這個物件已有 {max} 個部位改過外觀；圖片在 Project 圖片裡"
       },
       "pose": {
         "title": "姿勢",

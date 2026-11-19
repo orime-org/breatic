@@ -3,11 +3,12 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 
-import { getLocale, isSceneLookImageMediaType, t, uploadableFormatList, type SceneLook } from '@breatic/shared';
+import { getLocale, isSceneLookImageMediaType, SCENE_LOOK_MAX_PARTS, t, uploadableFormatList, type SceneLook } from '@breatic/shared';
 
 import { projectImagesQueryKey } from '@web/data/api/scene';
 import { UploadFailedError, uploadMedia } from '@web/data/upload/media-upload';
 import type { UploadContext } from '@web/data/upload/ingest-upload';
+import { planSceneCommand } from '@web/data/yjs/scene-document';
 import { peekSceneSession, type SceneSession } from '@web/data/yjs/scene-session';
 import { toast } from '@web/lib/toast';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
@@ -116,7 +117,7 @@ export function pictureReadFailedNotice(filename: string): LookUploadNotice {
 
 /**
  * Whether a header's type is a picture a part may use.
- * @param type - The type `image-dimensions` read.
+ * @param type - The type readPictureSize read (jpeg, png or webp).
  * @returns True for a type the server lets a part use (PNG, JPEG, WebP).
  */
 export function isLookImageType(type: string): boolean {
@@ -192,6 +193,20 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       size: (assetId) => deps.size(input.projectId, assetId, input.limits.maxPictureHeaderBytes) });
 
   /**
+   * Whether putting a picture on the part would give the object one part more than it can hold, judged by the same plan
+   * the write runs.
+   * @param session - The Space's open session.
+   * @param input - The upload's start record.
+   * @param map - The picture's id; before it is stored any id plans the same.
+   * @returns True when the write would be refused for the part limit.
+   */
+  const pastPartLimit = (session: SceneSession, input: SceneLookUploadStart, map: string): boolean => {
+    const plan = planSceneCommand(session.doc, session.name, { type: 'look', id: input.objectId, part: input.part, set: { map } },
+      session.getSnapshot().canEdit);
+    return !plan.ok && plan.reason === 'lookPartLimit';
+  };
+
+  /**
    * Upload the file and write it on completion when everything still allows (design 6.3).
    * @param input - The upload's start record.
    * @param local - The local file's header size.
@@ -234,7 +249,9 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       else if (!object || object.locked || look === undefined) deps.notify({ key: 'spaces.threeD.look.objectGone', severity: 'warning' });
       else if (!session.getSnapshot().canEdit) deps.notify({ key: 'spaces.threeD.look.noLongerEditable', severity: 'warning' });
       else if (partChanged) deps.notify({ key: 'spaces.threeD.look.partChanged', severity: 'warning' });
-      else if (await overLimit(input, look, stored.assetId, local)) deps.notify({ key: 'spaces.threeD.look.uploadedOverLimit', severity: 'warning' });
+      else if (pastPartLimit(session, input, stored.assetId)) {
+        deps.notify({ key: 'spaces.threeD.look.uploadedPartLimit', params: { max: String(SCENE_LOOK_MAX_PARTS) }, severity: 'warning' });
+      } else if (await overLimit(input, look, stored.assetId, local)) deps.notify({ key: 'spaces.threeD.look.uploadedOverLimit', severity: 'warning' });
       else session.execute({ type: 'look', id: input.objectId, part: input.part, set: { map: stored.assetId } });
     } catch (error) {
       if (refused) return;
@@ -267,6 +284,10 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
           return;
         }
         const opened = deps.session(input.name);
+        if (opened && pastPartLimit(opened, input, crypto.randomUUID())) {
+          deps.notify({ key: 'spaces.threeD.look.partLimit', params: { max: String(SCENE_LOOK_MAX_PARTS) }, severity: 'warning' });
+          return;
+        }
         // The object total is judged once the server says whether it already holds this picture.
         await upload(input, local, opened, opened ? lookOf(opened, input.objectId) : undefined, key);
       } finally {
