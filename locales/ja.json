@@ -3073,7 +3073,7 @@
           "sourceDefault": "既定",
           "atCap": "上限到達",
           "override": "個別に設定…",
-          "restoreDefault": "既定に戻す",
+          "useDefault": "既定を使う（{fallback}）",
           "overrideTitle": "個別の上限 · {name}",
           "overrideHint": "この人にだけ適用され、既定値より優先されます（現在の既定値：{fallback}）。"
         }

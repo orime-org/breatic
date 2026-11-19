@@ -3073,7 +3073,7 @@
           "sourceDefault": "預設",
           "atCap": "已達上限",
           "override": "單獨設定…",
-          "restoreDefault": "恢復預設",
+          "useDefault": "使用預設（{fallback}）",
           "overrideTitle": "單獨設定 · {name}",
           "overrideHint": "只對這個人生效，覆蓋預設值（目前預設 {fallback}）。"
         }

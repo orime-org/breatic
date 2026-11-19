@@ -3073,7 +3073,7 @@
           "sourceDefault": "默认",
           "atCap": "已到上限",
           "override": "单独设置…",
-          "restoreDefault": "恢复默认",
+          "useDefault": "使用默认（{fallback}）",
           "overrideTitle": "单独设置 · {name}",
           "overrideHint": "只对这个人生效，覆盖默认值（现在默认 {fallback}）。"
         }

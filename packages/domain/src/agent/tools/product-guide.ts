@@ -2117,9 +2117,9 @@ export function renderProductGuide(): string {
       `${quoted(t("studio.container.credits.spendCap.notSet"))} or an amount per month, with what the Studio spent this month and ` +
       "when it resets; below, everyone who can spend there, Studio members and " +
       `${quoted(t("studio.container.credits.spendCap.relationProjectCollaborator"))} alike, with what they spent and the limit that ` +
-      `applies, where ${quoted(t("studio.container.credits.spendCap.override"))} gives one person a limit of their own (an amount, ` +
-      `${quoted(t("studio.container.credits.spendCap.unlimited"))} or ${quoted(t("studio.container.credits.spendCap.zero"))}) and ` +
-      `${quoted(t("studio.container.credits.spendCap.restoreDefault"))} puts them back on the default. A personal Studio has no limits, and neither does a deployment that charges no credits: there the section is not shown.`,
+      `applies, where ${quoted(t("studio.container.credits.spendCap.override"))} opens a dialog that gives one person a limit of their own (an amount, ` +
+      `${quoted(t("studio.container.credits.spendCap.unlimited"))} or ${quoted(t("studio.container.credits.spendCap.zero"))}) or puts them back on the default ` +
+      "with its first choice, which names the default. A personal Studio has no limits, and neither does a deployment that charges no credits: there the section is not shown.",
     `- ${quoted(t("connection.banner.disconnected.text"))} across the top, with ` +
       `${quoted(t("connection.banner.reload"))}: the connection dropped, and the work area is covered until it ` +
       `comes back. ${quoted(t("connection.banner.authFailed.text"))} offers ` +

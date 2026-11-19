@@ -8,8 +8,8 @@
  * A team studio's admin sees "花费上限": the studio's monthly total, the
  * per-person default, what the studio spent this month, when it resets, and a
  * row per member with their relation, what they spent and the cap in force,
- * with "单独设置…" and, on an override, "恢复默认"; a former member's row is
- * read-only. A personal studio has no such section; a member who is not admin
+ * with "单独设置…", whose dialog also puts the person back on the default; a
+ * former member's row is read-only. A personal studio has no such section; a member who is not admin
  * sees neither the section nor a way to edit.
  *
  * Shape this suite chose where the design names none: the tab reads
@@ -31,6 +31,7 @@ import { setLocale } from '@breatic/shared';
 import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
 import { CreditsTab } from '@web/pages/studio/container/tabs/CreditsTab';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import type * as CreditsApi from '@web/data/api/credits';
 import type * as RequestApi from '@web/data/api/request';
 
@@ -40,13 +41,14 @@ vi.mock('@web/data/api/credits', async (importOriginal) => ({
   fetchStudioCredits: (...args: unknown[]) => fetchStudioCredits(...args),
 }));
 const spendLimits = vi.fn();
+const users = vi.fn((): Promise<unknown[]> => Promise.resolve([]));
 const put = vi.fn();
 const remove = vi.fn();
 vi.mock('@web/data/api/request', async (importOriginal) => {
   const actual = await importOriginal<typeof RequestApi>();
   return {
     ...actual,
-    apiGet: (url: string, ...rest: unknown[]) => (/\/spend-limits$/.test(url) ? spendLimits(url) : (actual.apiGet as (...a: unknown[]) => unknown)(url, ...rest)),
+    apiGet: (url: string, ...rest: unknown[]) => (/\/spend-limits$/.test(url) ? spendLimits(url) : url === '/users' ? users() : (actual.apiGet as (...a: unknown[]) => unknown)(url, ...rest)),
     apiPut: (...args: unknown[]) => put(...args),
     apiDelete: (...args: unknown[]) => remove(...args),
   };
@@ -87,7 +89,7 @@ const LIMITS = {
  */
 function renderTab(ui: ReactElement): ReturnType<typeof render> {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}><MemoryRouter>{ui}</MemoryRouter></QueryClientProvider>);
+  return render(<QueryClientProvider client={client}><TooltipProvider><MemoryRouter>{ui}</MemoryRouter></TooltipProvider></QueryClientProvider>);
 }
 
 beforeEach(() => {
@@ -116,7 +118,6 @@ describe('H-34 the spend caps section', () => {
     expect(screen.getByText('不限')).toBeInTheDocument();
     expect(screen.getByText('0（禁止花积分）')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: '单独设置…' })).toHaveLength(4);
-    expect(screen.getAllByRole('button', { name: '恢复默认' })).toHaveLength(3);
     const former = screen.getByText('已离开（只读）').closest('tr')!;
     expect(within(former).queryAllByRole('button')).toHaveLength(0);
   });
@@ -130,6 +131,33 @@ describe('H-34 the spend caps section', () => {
     expect(screen.getByText('312.00')).toBeInTheDocument();
     expect(own).toHaveTextContent('(你)');
     expect(screen.getAllByText('(你)')).toHaveLength(1);
+  });
+
+  // inner#1968 visual round 2: one action per row keeps every row one line high in every language.
+  it('gives each current member one action, the own-limit dialog', async () => {
+    spendLimits.mockResolvedValue(LIMITS);
+    renderTab(<CreditsTab slug='acme' />);
+    await screen.findByText('花费上限');
+    for (const name of ['Studio 成员', 'Project 协作者']) {
+      for (const cell of screen.getAllByText(name)) expect(within(cell.closest('tr')!).getAllByRole('button')).toHaveLength(1);
+    }
+  });
+
+  // inner#1968 visual round 2: Japanese breaks "メンバー" only between words.
+  it('breaks a relation only between words', async () => {
+    spendLimits.mockResolvedValue(LIMITS);
+    renderTab(<CreditsTab slug='acme' />);
+    expect(await screen.findByText('Project 协作者')).toHaveClass('break-keep');
+  });
+
+  // inner#1968 visual round 2: a name cut short shows in full under the pointer.
+  it('shows a member\'s whole name when the pointer rests on it', async () => {
+    const long = 'alexandria-montgomery-fitzwilliam-the-third';
+    users.mockResolvedValueOnce([{ id: 'u3', email: 'a@x.test', username: long, avatar_url: null }]);
+    spendLimits.mockResolvedValue(LIMITS);
+    renderTab(<CreditsTab slug='acme' />);
+    await userEvent.hover(await screen.findByText(long));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(long);
   });
 
   it('shows nothing of it in a personal studio', async () => {
@@ -174,6 +202,47 @@ describe('the own-limit dialog', () => {
     await userEvent.click(first!);
     return screen.findByRole('dialog');
   }
+
+  // inner#1968 visual round 2: the default is one of the dialog's choices.
+  it('opens on the default for a person without a limit of their own, on their own limit otherwise', async () => {
+    spendLimits.mockResolvedValue(LIMITS);
+    renderTab(<CreditsTab slug='acme' />);
+    const [own, onDefault] = await screen.findAllByRole('button', { name: '单独设置…' });
+    await userEvent.click(onDefault!);
+    let dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('radio', { name: '使用默认（300 积分）' })).toBeChecked();
+    await userEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await userEvent.click(own!);
+    dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('radio', { name: '不限' })).toBeChecked();
+  });
+
+  it('puts a person back on the default from the dialog, waiting on Save until the answer is in', async () => {
+    let answer: () => void = () => {};
+    remove.mockImplementation(() => new Promise<void>((resolve) => { answer = resolve; }));
+    const dialog = await openDialog('300.000000');
+    await userEvent.click(within(dialog).getByRole('radio', { name: '使用默认（300 积分）' }));
+    const save = within(dialog).getByRole('button', { name: '保存' });
+    await userEvent.click(save);
+    await waitFor(() => expect(remove).toHaveBeenCalledWith('/studio/acme/members/u1/spend-limit'));
+    expect(put).not.toHaveBeenCalled();
+    expect(save).toHaveAttribute('aria-busy', 'true');
+    await act(async () => { answer(); await Promise.resolve(); });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('sends nothing for a person already on the default', async () => {
+    spendLimits.mockResolvedValue(LIMITS);
+    renderTab(<CreditsTab slug='acme' />);
+    const [, onDefault] = await screen.findAllByRole('button', { name: '单独设置…' });
+    await userEvent.click(onDefault!);
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(remove).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
+  });
 
   it('sets its options inside the padded body, not against the border', async () => {
     const dialog = await openDialog('300.000000');
@@ -245,31 +314,17 @@ describe('editing the two limits', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('The server says no.'));
   });
 
-  it('keeps each row\'s Restore default waiting until that row\'s own answer is in', async () => {
-    spendLimits.mockResolvedValue(LIMITS);
-    renderTab(<CreditsTab slug='acme' />);
-    await screen.findByText('花费上限');
-    const answers: Array<() => void> = [];
-    remove.mockImplementation(() => new Promise<void>((resolve) => { answers.push(resolve); }));
-    const [first, second] = screen.getAllByRole('button', { name: '恢复默认' });
-    await userEvent.click(first!);
-    await userEvent.click(second!);
-    await waitFor(() => expect(remove).toHaveBeenCalledTimes(2));
-    expect(first).toHaveAttribute('aria-busy', 'true');
-    expect(second).toHaveAttribute('aria-busy', 'true');
-    await act(async () => { answers[0]!(); await Promise.resolve(); });
-    await waitFor(() => expect(first).not.toHaveAttribute('aria-busy'));
-    expect(second).toHaveAttribute('aria-busy', 'true');
-  });
-
   it('keeps an unsaved Studio total when a person\'s own limit is restored meanwhile', async () => {
     const total = await typeStudioTotal('500');
     remove.mockResolvedValue({});
     spendLimits.mockResolvedValue({ ...LIMITS, members: LIMITS.members.map((m) => (m.userId === 'u3' ? { ...m, override: null, effective: '300.000000' } : m)) });
-    const [restore] = screen.getAllByRole('button', { name: '恢复默认' });
-    await userEvent.click(restore!);
+    const [, , u3] = screen.getAllByRole('button', { name: '单独设置…' });
+    await userEvent.click(u3!);
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('radio', { name: '使用默认（300 积分）' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: '保存' }));
     await waitFor(() => expect(spendLimits).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.getAllByRole('button', { name: '恢复默认' })).toHaveLength(2));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(total).toHaveValue('500');
   });
 });

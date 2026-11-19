@@ -3073,7 +3073,7 @@
           "sourceDefault": "Default",
           "atCap": "At limit",
           "override": "Set own limit…",
-          "restoreDefault": "Restore default",
+          "useDefault": "Use the default ({fallback})",
           "overrideTitle": "Own limit · {name}",
           "overrideHint": "Applies to this person only, over the default (now {fallback})."
         }

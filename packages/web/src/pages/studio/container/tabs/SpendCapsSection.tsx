@@ -10,6 +10,7 @@ import { Button } from '@web/components/ui/button';
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
 import { Input } from '@web/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@web/components/ui/radio-group';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import {
   fetchSpendLimits,
   removeMemberSpendLimit,
@@ -23,7 +24,6 @@ import { ApiException } from '@web/data/api/types';
 import { usersApi } from '@web/data/api/users';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount, formatCreditColumnAmount } from '@web/lib/format-credit-amount';
-import { usePendingKeys } from '@web/lib/use-pending-keys';
 import { toast } from '@web/lib/toast';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
@@ -148,9 +148,8 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
   const [memberDraft, setMemberDraft] = React.useState<Draft>({ kind: 'none' });
   const [saving, setSaving] = React.useState(false);
   const [editing, setEditing] = React.useState<SpendLimitMember | null>(null);
-  const restoring = usePendingKeys();
   // The drafts follow the two stored limits only: a person's own limit saved
-  // or restored reads the view again and leaves unsaved drafts as they are.
+  // or removed reads the view again and leaves unsaved drafts as they are.
   const storedStudio = view?.studioMonthly;
   const storedMember = view?.memberDefault;
   const reset = React.useCallback((): void => {
@@ -191,13 +190,6 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
     }
   }, [slug, studioValue, memberValue, queryClient, queryKey, savedLine, saveFailed, invalidLine]);
 
-  const restore = React.useCallback(async (userId: string): Promise<void> => {
-    try {
-      await restoring.track(userId, removeMemberSpendLimit(slug, userId).then(() => queryClient.invalidateQueries({ queryKey })));
-    } catch (err) {
-      toast.error(serverMessage(err, saveFailed));
-    }
-  }, [restoring, slug, queryClient, queryKey, saveFailed]);
 
   if (view === undefined) {
     // A personal Studio or a deployment that charges no credits (404), or a user who is not its admin (403), has no such section; any other failure says so.
@@ -261,11 +253,14 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
                 <td className='max-w-40 py-2.5 pr-3'>
                   <span className='flex min-w-0 items-center gap-2'>
                     <StudioAvatar name={nameOf.get(member.userId) ?? '—'} type='personal' avatarUrl={avatarOf.get(member.userId) ?? null} size='xs' />
-                    <span className='truncate'>{nameOf.get(member.userId) ?? '—'}</span>
+                    <Tooltip>
+                      <TooltipTrigger asChild><span className='truncate'>{nameOf.get(member.userId) ?? '—'}</span></TooltipTrigger>
+                      <TooltipContent className='max-w-sm break-words'>{nameOf.get(member.userId) ?? '—'}</TooltipContent>
+                    </Tooltip>
                     {member.userId === selfId ? <span className='shrink-0 text-xs text-muted-foreground'>{t('members.modal.isMe')}</span> : null}
                   </span>
                 </td>
-                <td>{t(`${KEY}.${member.relation === 'studio_member' ? 'relationStudioMember' : member.relation === 'project_collaborator' ? 'relationProjectCollaborator' : 'relationFormer'}`)}</td>
+                <td className='break-keep'>{t(`${KEY}.${member.relation === 'studio_member' ? 'relationStudioMember' : member.relation === 'project_collaborator' ? 'relationProjectCollaborator' : 'relationFormer'}`)}</td>
                 <td className='text-right tabular-nums'>{formatCreditColumnAmount(member.spent)}</td>
                 <td className='pl-6'>
                   {former ? '—' : (
@@ -277,17 +272,7 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
                   )}
                 </td>
                 <td className='text-right'>
-                  {former ? null : (
-                    // Set own limit stays at the row's right edge, so it lines up down the table.
-                    <span className='flex flex-wrap justify-end gap-1'>
-                      {member.override === null ? null : (
-                        <Button size='compact' variant='ghost' loading={restoring.isPending(member.userId)} onClick={() => void restore(member.userId)}>
-                          {t(`${KEY}.restoreDefault`)}
-                        </Button>
-                      )}
-                      <Button size='compact' variant='outline' onClick={() => setEditing(member)}>{t(`${KEY}.override`)}</Button>
-                    </span>
-                  )}
+                  {former ? null : <Button size='compact' variant='outline' onClick={() => setEditing(member)}>{t(`${KEY}.override`)}</Button>}
                 </td>
               </tr>
             );
@@ -308,7 +293,7 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
 }
 
 /** What one person's own limit is set to in the dialog. */
-type OverrideMode = 'amount' | 'none' | 'zero';
+type OverrideMode = 'default' | 'amount' | 'none' | 'zero';
 
 /**
  * Set one person's own monthly limit: an amount, none, or zero.
@@ -325,11 +310,12 @@ function OverrideDialog({ slug, member, name, fallback, onClose }: { slug: strin
   const queryClient = useQueryClient();
   const id = React.useId();
   const start = member.effective;
-  const [mode, setMode] = React.useState<OverrideMode>(start === null ? 'none' : Number(start) === 0 ? 'zero' : 'amount');
+  const own = member.override === null ? null : member.override.monthlyCredits;
+  const [mode, setMode] = React.useState<OverrideMode>(member.override === null ? 'default' : own === null ? 'none' : Number(own) === 0 ? 'zero' : 'amount');
   const [text, setText] = React.useState(start !== null && Number(start) > 0 ? formatCreditAmount(start).replace(/,/g, '') : '');
   const [saving, setSaving] = React.useState(false);
   const amount = valueOf({ kind: 'amount', text });
-  const credits = mode === 'none' ? null : mode === 'zero' ? 0 : amount;
+  const credits = mode === 'default' ? null : mode === 'none' ? null : mode === 'zero' ? 0 : amount;
   const saveFailed = t(`${KEY}.saveFailed`);
   const invalidLine = t(`${KEY}.invalidAmount`, { max: formatCreditAmount(SPEND_LIMIT_MAX_CREDITS) });
   const save = React.useCallback(async (): Promise<void> => {
@@ -337,9 +323,14 @@ function OverrideDialog({ slug, member, name, fallback, onClose }: { slug: strin
       toast.warning(invalidLine);
       return;
     }
+    // A person already on the default has nothing to remove.
+    if (mode === 'default' && member.override === null) {
+      onClose();
+      return;
+    }
     setSaving(true);
     try {
-      await saveMemberSpendLimit(slug, member.userId, credits);
+      await (mode === 'default' ? removeMemberSpendLimit(slug, member.userId) : saveMemberSpendLimit(slug, member.userId, credits));
       await queryClient.invalidateQueries({ queryKey: spendLimitsQueryKey(slug) });
       onClose();
     } catch (err) {
@@ -347,7 +338,7 @@ function OverrideDialog({ slug, member, name, fallback, onClose }: { slug: strin
     } finally {
       setSaving(false);
     }
-  }, [credits, slug, member.userId, queryClient, onClose, saveFailed, invalidLine]);
+  }, [credits, mode, slug, member.userId, member.override, queryClient, onClose, saveFailed, invalidLine]);
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -358,6 +349,10 @@ function OverrideDialog({ slug, member, name, fallback, onClose }: { slug: strin
         </DialogHeader>
         <DialogBody>
           <RadioGroup value={mode} onValueChange={(next) => setMode(next as OverrideMode)} className='gap-2'>
+            <label htmlFor={`${id}-default`} className='flex items-center gap-1.5 text-sm'>
+              <RadioGroupItem id={`${id}-default`} value='default' />
+              {t(`${KEY}.useDefault`, { fallback })}
+            </label>
             <label htmlFor={`${id}-amount`} className='flex items-center gap-1.5 text-sm'>
               <RadioGroupItem id={`${id}-amount`} value='amount' />
               {t(`${KEY}.perMonth`)}
