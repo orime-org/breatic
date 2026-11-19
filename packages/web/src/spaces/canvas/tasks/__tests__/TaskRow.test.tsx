@@ -25,6 +25,7 @@ import { getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 afterEach(cleanup);
 
@@ -130,6 +131,36 @@ describe('TaskRow', () => {
     const starter = screen.getByText(long);
     expect(starter).toHaveClass('truncate', 'max-w-28');
     await userEvent.hover(starter);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(long);
+  });
+
+  // inner#1968 visual round 3: what the task acted on takes its width before the starter.
+  it('lets the starter give way before what the task acted on', () => {
+    renderRow({}, {}, { 'u-1': 'alexandria-montgomery-fitzwilliam-the-third' });
+    const detail = screen.getByTestId('task-detail').parentElement!;
+    expect(detail).toHaveClass('flex-auto');
+    expect(detail).not.toHaveClass('flex-1');
+    expect(screen.getByText('alexandria-montgomery-fitzwilliam-the-third')).toHaveClass('shrink-[999]', 'min-w-10');
+  });
+
+  // inner#1968 visual round 3: the user's own task says "You", as the 3D task list does.
+  it('says You for a task the user started', () => {
+    useCurrentUserStore.getState().setUser({ id: 'u-1', name: 'Ada', email: 'ada@x.test', personalStudio: null, membershipTier: 'team' });
+    try {
+      renderRow();
+      const row = screen.getByTestId('node-task-row');
+      expect(row).toHaveTextContent('You');
+      expect(row).not.toHaveTextContent('Ada');
+    } finally {
+      useCurrentUserStore.getState().clear();
+    }
+  });
+
+  // inner#1968 visual round 3: a cut-short file or model name shows whole under the pointer.
+  it('shows what the task acted on whole under the pointer', async () => {
+    const long = 'brand-hero-final-v3-approved-by-client-2026.mp4';
+    renderRow({ label: long });
+    await userEvent.hover(screen.getByTestId('task-detail'));
     expect(await screen.findByRole('tooltip')).toHaveTextContent(long);
   });
 

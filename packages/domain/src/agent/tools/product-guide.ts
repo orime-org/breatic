@@ -933,7 +933,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.task.kind.upload"))} with an up arrow, followed by the file's name; ` +
       `${quoted(t("canvas.task.kind.generate"))} with a sparkle, ${quoted(t("canvas.task.kind.understand"))}, ` +
       `or ${quoted(t("canvas.task.kind.transcribe"))} with a caption icon, each ` +
-      "followed by the model's name; or a tool's own icon and name, with nothing after it. A done row offers " +
+      "followed by the model's name; or a tool's own icon and name, with nothing after it. At the line's right end is who started it, " +
+      `${quoted(t("canvas.task.you"))} for your own. A done row offers ` +
       `${quoted(t("canvas.task.action.finish"))}, which takes the row away (its result is already on the ` +
       `node); a failed one says why and offers ${quoted(t("canvas.task.action.retry"))} for an upload still at ` +
       `hand, and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +

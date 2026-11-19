@@ -144,10 +144,10 @@ export const TaskRow = React.memo(function TaskRow({
 }: TaskRowProps): JSX.Element {
   const t = useTranslation();
   const names = useCollaboratorNames();
+  const selfId = useCurrentUserStore((s) => s.user?.id);
   // A person who left the project is gone from the roster while their tasks
   // remain, so an unresolved id drops the name and keeps the row.
-  const starter = names?.resolve(entry.startedByUserId) ?? null;
-  const selfId = useCurrentUserStore((s) => s.user?.id);
+  const starter = entry.startedByUserId === selfId ? t('canvas.task.you') : names?.resolve(entry.startedByUserId) ?? null;
   const status = entry.status;
   // Waiting for a free running slot (inner#1968): queued, not yet timed.
   const waiting = status === 'running' && entry.waitingSince != null;
@@ -202,16 +202,23 @@ export const TaskRow = React.memo(function TaskRow({
         />
         {/* What the task acted on, at the weight of context. What the user
             came for is the sentence below. */}
-        <span className='min-w-0 flex-1 truncate text-2xs text-foreground-secondary'>
-          {kind.detail !== null ? (
-            <span data-testid='task-detail'>{kind.detail}</span>
-          ) : null}
-        </span>
-        {/* What the task acted on keeps its width; a long starter name is cut first. */}
+        {kind.detail !== null ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className='min-w-0 flex-auto truncate text-2xs text-foreground-secondary'>
+                <span data-testid='task-detail'>{kind.detail}</span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent portal className='max-w-xs break-words'>{kind.detail}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className='flex-auto' />
+        )}
+        {/* What the task acted on keeps its width; a long starter name gives way first. */}
         {starter !== null ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className='min-w-0 max-w-28 truncate text-2xs text-muted-foreground'>{starter}</span>
+              <span className='min-w-10 max-w-28 shrink-[999] truncate text-2xs text-muted-foreground'>{starter}</span>
             </TooltipTrigger>
             <TooltipContent portal className='max-w-xs break-words'>{starter}</TooltipContent>
           </Tooltip>
