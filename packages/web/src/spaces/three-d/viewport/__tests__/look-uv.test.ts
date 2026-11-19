@@ -328,4 +328,25 @@ describe('generated UVs on a mirrored node (inner#1693 design 5.1)', () => {
     };
     expect(plainUvs(true)).toEqual(plainUvs(false));
   });
+
+  it('projects a geometry shared with a zero-scale node from a node that draws it, even a mirrored one', async () => {
+    const three = await import('three');
+    const { generateLookUvs } = await import('@web/spaces/three-d/viewport/look-uv');
+    /** How many different UVs the visible node gets when a zero-scale node is listed first. */
+    const distinctUvs = (visibleScaleX: number): number => {
+      const geometry = new three.BoxGeometry();
+      geometry.deleteAttribute('uv');
+      const hidden = new three.Mesh(geometry, new three.MeshStandardMaterial());
+      hidden.scale.set(0, 0, 0);
+      const visible = new three.Mesh(geometry, new three.MeshStandardMaterial());
+      visible.scale.set(visibleScaleX, 1, 1);
+      const root = new three.Group();
+      root.add(hidden, visible);
+      generateLookUvs(root);
+      const uv = visible.geometry.getAttribute('uv').array as Float32Array;
+      return new Set(Array.from({ length: uv.length / 2 }, (_, i) => `${uv[i * 2]! + 0},${uv[i * 2 + 1]! + 0}`)).size;
+    };
+    expect(distinctUvs(1)).toBeGreaterThan(1);
+    expect(distinctUvs(-1)).toBeGreaterThan(1);
+  });
 });

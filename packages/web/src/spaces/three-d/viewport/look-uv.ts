@@ -150,8 +150,8 @@ function generateMeshUvs(mesh: Mesh, toRoot: Matrix4): BufferGeometry {
  * Give every triangle mesh without UVs under a template root UVs a look picture can tile on (inner#1693 design 5.1):
  * rest positions in root metres, one projection per triangle, a hard seam where the projection changes. Meshes drawing
  * one geometry are instances of it and share one generated geometry, projected where the first unmirrored one stands
- * (the first one when all are mirrored), as Blender, Maya, 3ds Max and Unity share an instance's mesh and UVs; a mirrored
- * instance then shows the picture mirrored. Lines, points and meshes with UVs are left alone.
+ * (else the first mirrored one, else the first), as Blender, Maya, 3ds Max and Unity share an instance's mesh and UVs; a
+ * mirrored instance then shows the picture mirrored. Lines, points and meshes with UVs are left alone.
  * @param root - The template root, before any instance clones it.
  */
 export function generateLookUvs(root: Object3D): void {
@@ -162,14 +162,24 @@ export function generateLookUvs(root: Object3D): void {
     const mesh = object as Mesh;
     if (mesh.isMesh && !mesh.geometry.attributes.uv && mesh.geometry.attributes.position) meshes.push(mesh);
   });
-  // Stable: unmirrored meshes first, each group in traversal order.
-  meshes.sort((a, b) => Number(a.matrixWorld.determinant() < 0) - Number(b.matrixWorld.determinant() < 0));
+  const toRoot = new Map(meshes.map((mesh) => [mesh, new Matrix4().multiplyMatrices(fromRoot, mesh.matrixWorld)]));
+  /**
+   * Which instance a shared geometry is projected from first: unmirrored, then mirrored, then one flattened to nothing.
+   * @param mesh - A mesh.
+   * @returns Its rank.
+   */
+  const rank = (mesh: Mesh): number => {
+    const determinant = toRoot.get(mesh)!.determinant();
+    return determinant > 0 ? 0 : determinant < 0 ? 1 : 2;
+  };
+  // Stable: each rank keeps traversal order.
+  meshes.sort((a, b) => rank(a) - rank(b));
   const generated = new Map<BufferGeometry, BufferGeometry>();
   for (const mesh of meshes) {
     const source = mesh.geometry;
     let made = generated.get(source);
     if (!made) {
-      made = generateMeshUvs(mesh, new Matrix4().multiplyMatrices(fromRoot, mesh.matrixWorld));
+      made = generateMeshUvs(mesh, toRoot.get(mesh)!);
       generated.set(source, made);
     }
     mesh.geometry = made;
