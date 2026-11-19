@@ -88,6 +88,27 @@ export const agentAccessApi = {
   },
 
   /**
+   * Hand back the capture an external agent asked for (#1488 §19.1).
+   * @param requestId - The request.
+   * @param upload - The picture or note, and the on-screen data.
+   * @param upload.image - The picture, when a Space was captured.
+   * @param upload.note - What was said instead, when none was.
+   * @param upload.view - The on-screen data.
+   * @returns Nothing.
+   * @throws {import('@web/data/api/types').ApiException} 409 when another tab answered first, 410 once expired.
+   */
+  async uploadViewCapture(
+    requestId: string,
+    upload: { image?: Blob; note?: string; view: Record<string, unknown> },
+  ): Promise<void> {
+    const form = new FormData();
+    if (upload.image !== undefined) form.append('image', upload.image, 'view');
+    if (upload.note !== undefined) form.append('note', upload.note);
+    form.append('view', JSON.stringify(upload.view));
+    await apiPost(`/agent/view-captures/${encodeURIComponent(requestId)}`, form);
+  },
+
+  /**
    * What the user handed over in one Space.
    * @param projectId - The project.
    * @param spaceId - The Space.
