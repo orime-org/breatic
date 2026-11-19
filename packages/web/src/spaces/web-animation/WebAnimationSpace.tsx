@@ -78,7 +78,7 @@ const PAUSE_ICON = <Pause className='size-4' />;
 const PIN_WINDOW_SECONDS = 0.15;
 /** An annotation's pin on the frame, saved or being written: a 20px drop whose tip, its bottom-left corner, is the point. */
 /**
- * How far a menu opened from a bar button stands off it: the 4px visible gap from the bar's edge, plus the 7px between
+ * How far a menu or popover opened from a bar button stands off it: the 4px visible gap from the bar's edge, plus the 7px between
  * the 32px button and the 48px bar's 1px border, and that border.
  */
 const BAR_MENU_OFFSET = 4 + 7 + 1;
@@ -217,7 +217,7 @@ function Details({ row, open, onOpenChange, unresolvedOnBase, onOpenBase, baseRe
     <PopoverTrigger asChild>
       <BarButton testId='motion-details' label={t('spaces.webAnimation.details')} icon={DETAILS_ICON} />
     </PopoverTrigger>
-    <PopoverContent side='top' align='end' sideOffset={8} className='flex w-80 flex-col gap-2 p-3 text-xs'>
+    <PopoverContent side='top' align='end' sideOffset={BAR_MENU_OFFSET} className='flex w-80 flex-col gap-2 p-3 text-xs'>
       <span className='break-words font-medium'>{webAnimationTitle(row, t)}</span>
       <dl className='grid grid-cols-[auto_1fr] gap-x-3 gap-y-1'>
         {/* A create or modification is headed by its prompt or instruction already; an export's heading is not its source. */}
