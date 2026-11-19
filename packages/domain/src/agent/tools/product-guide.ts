@@ -2214,7 +2214,10 @@ export function renderProductGuide(): string {
       `${quoted(t("members.popover.idle"))} after five minutes without a call, or ${quoted(t("members.popover.offline"))}; ` +
       `with none it says ${quoted(t("members.popover.noAgents"))}. While an agent works on canvas nodes, its name ` +
       "tag, with a robot icon, sits above those nodes beside the members holding them; in a document the block it " +
-      "works on is outlined in its colour with its name above. Both go away once it is idle.",
+      "works on is outlined in its colour with its name above. Both go away once it is idle. " +
+      `An agent that is online or idle has ${quoted(t("members.popover.follow"))} on its row: following it takes the ` +
+      "user to the Space it last worked in, moves a canvas to show the nodes it works on and scrolls a document to " +
+      "the block it works on, each time it names others; it ends as following a member does, and when the agent goes offline.",
     "## When something is wrong",
     `- ${quoted(t("connection.banner.disconnected.text"))} across the top, with ` +
       `${quoted(t("connection.banner.reload"))}: the connection dropped, and the work area is covered until it ` +
