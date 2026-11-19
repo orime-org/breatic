@@ -44,8 +44,8 @@ export type CreditSourceKind = (typeof CREDIT_SOURCE_KINDS)[number];
 /**
  * Whether a lot's credits were bought, which is what decides where they may go.
  *
- * Purchased credits may be designated by their holder. Financial refund
- * eligibility is resolved separately from the original payment channel.
+ * Purchased credits may be designated by their holder. Refund eligibility
+ * is evaluated separately, using the original funding channel.
  * @param kind - What the lot's receipt says it is.
  * @returns True when someone paid for these credits.
  */
@@ -100,7 +100,7 @@ export interface PurchaseRow {
   contractNumber?: string | null;
   /** The online payment behind this row, when one exists. */
   paymentId: string | null;
-  /** The listed price, before tax. Null on a row nobody paid for. */
+  /** The online listed price before tax; null without an online payment. */
   amountCents: number | null;
   /**
    * What Stripe worked out this purchase comes to, tax included.
@@ -132,7 +132,7 @@ export interface PurchaseRow {
    */
   designatedStudioId: string | null;
   designatedStudioName: string | null;
-  /** Where the payment stands. Null on a row nobody paid for. */
+  /** The online payment status; null without an online payment. */
   status: string | null;
   createdAt: string;
   /**

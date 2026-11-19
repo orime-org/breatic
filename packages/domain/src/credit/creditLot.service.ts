@@ -700,8 +700,9 @@ export async function designateLot(input: {
  * (`markRefunding`, `settleRefund`, `sendBackRefund`, `rejectRefund`,
  * `restoreRefundedCredits`) are below.
  *
- * Six conditions gate it. The first asks whether anybody paid: a refund
- * returns money, and credits that were granted had none. Two come from the
+ * Six conditions gate it. The first checks the original funding channel:
+ * online payment lots use this flow; enterprise purchases follow their
+ * offline contract, and grants are ineligible. Two conditions come from the
  * published promise: a purchase is refundable in full within thirty days if
  * no credit was ever drawn from it. The fourth is that the lot carries no
  * designation, because a refund is asked for on a lot the buyer has already
@@ -727,8 +728,8 @@ export async function designateLot(input: {
  * @returns The lot as it now stands.
  * @throws {NotFoundError} If the lot does not exist or belongs to someone else.
  * @throws {AppError} 409 if it still carries a designation, is already in
- * the refund flow, or had its credits restored; 422 if nobody paid for it, it has been spent from, or its
- * window has closed.
+ * the refund flow, or had its credits restored; 422 for an offline contract,
+ * a grant, previously spent credits or a closed window.
  */
 export async function requestRefund(input: {
   lotId: string;

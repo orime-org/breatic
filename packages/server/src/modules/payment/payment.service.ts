@@ -1047,7 +1047,7 @@ export async function getPurchaseHistory(
       designatedStudioName: row.designatedStudioName,
       status: row.status,
       createdAt: row.createdAt.toISOString(),
-      // A row nobody paid for has no confirmation letter to send again.
+      // An online payment record supplies the confirmation email to resend.
       canResend:
         row.paymentId !== null && canResend(row.mailStatus, row.mailUpdatedAt),
     }),
