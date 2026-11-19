@@ -17,12 +17,12 @@
     "@blocknote/core": "catalog:",
     "@breatic/core": "workspace:*",
     "@breatic/shared": "workspace:*",
-    "@hono/node-server": "^2.1.0",
+    "@hono/node-server": "catalog:",
     "@modelcontextprotocol/hono": "2.0.2",
     "@modelcontextprotocol/server": "2.4.0",
     "dotenv": "catalog:",
-    "hono": "^4.13.1",
-    "jsdom": "^29.1.1",
+    "hono": "catalog:",
+    "jsdom": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

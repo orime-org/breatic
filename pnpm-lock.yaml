@@ -42,6 +42,9 @@ catalogs:
     '@hocuspocus/server':
       specifier: ^4.6.0
       version: 4.6.0
+    '@hono/node-server':
+      specifier: ^2.1.0
+      version: 2.1.0
     '@openrouter/ai-sdk-provider':
       specifier: ^3.0.0
       version: 3.0.0
@@ -153,9 +156,15 @@ catalogs:
     google-auth-library:
       specifier: ^10.9.1
       version: 10.9.1
+    hono:
+      specifier: ^4.13.1
+      version: 4.13.1
     ipaddr.js:
       specifier: ^2.5.0
       version: 2.5.0
+    jsdom:
+      specifier: ^29.1.1
+      version: 29.1.1
     jsonata:
       specifier: 2.2.2
       version: 2.2.2
@@ -703,7 +712,7 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@hono/node-server':
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0(hono@4.13.1)
       '@modelcontextprotocol/hono':
         specifier: 2.0.2
@@ -715,10 +724,10 @@ importers:
         specifier: 'catalog:'
         version: 16.6.1
       hono:
-        specifier: ^4.13.1
+        specifier: 'catalog:'
         version: 4.13.1
       jsdom:
-        specifier: ^29.1.1
+        specifier: 'catalog:'
         version: 29.1.1(canvas@3.2.3)
       zod:
         specifier: 'catalog:'
@@ -816,7 +825,7 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@hono/node-server':
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0(hono@4.13.1)
       '@hono/zod-validator':
         specifier: ^0.7.6
@@ -840,7 +849,7 @@ importers:
         specifier: 'catalog:'
         version: 10.9.1
       hono:
-        specifier: ^4.13.1
+        specifier: 'catalog:'
         version: 4.13.1
       mdast-util-gfm:
         specifier: ^3.1.0
@@ -1434,7 +1443,7 @@ importers:
         specifier: ^2.7.0
         version: 2.7.0
       jsdom:
-        specifier: ^29.1.1
+        specifier: 'catalog:'
         version: 29.1.1(canvas@3.2.3)
       less:
         specifier: ^4.8.1
