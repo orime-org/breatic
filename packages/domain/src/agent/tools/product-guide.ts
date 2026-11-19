@@ -1576,20 +1576,21 @@ export function renderProductGuide(): string {
       "the other layers keep playing, and a retry reloads only that video, with the preview waiting for it before going on together. " +
       `While a video it needs is getting ready, small text above the position beside the play button reads ${quoted(t("timeline.transport.waiting"))}, and the slider, the menu and the buttons stay where they are. ` +
       `When the browser blocks playback with sound, playback pauses and says ${quoted(t("timeline.preview.playBlocked"))}`,
-    `Web animations are made in Motion Spaces. ${quoted(t("timeline.webAnimation.add"))}, beside ${quoted(t("timeline.addMedia"))}, opens a list of the Project's web animations ` +
-      "grouped by the Space that made them (Motion Spaces first, then ones made in a Timeline before Motion existed, then " +
-      `${quoted(t("timeline.webAnimation.picker.deletedSpace"))}); each row shows its name, aspect ratio and length, and ${quoted(t("timeline.webAnimation.picker.making"))} while it is still being made. ` +
-      "Pressing a row places a separate copy at the playhead, above the highest video there or on a new top track; a web animation still being made goes in as a dashed placeholder " +
-      `that shows the result once it is ready. ${quoted(t("timeline.webAnimation.picker.loadMore"))} reads more, and with none it says ${quoted(t("timeline.webAnimation.picker.empty"))}. ` +
+    `Web animations are made in Motion Spaces. ${quoted(t("timeline.webAnimation.add"))}, beside ${quoted(t("timeline.addMedia"))}, opens a list of the Project's finished web animations, ` +
+      "read again each time it opens and grouped by the Space that made them (Motion Spaces first, then ones made in a Timeline before Motion existed, then " +
+      `${quoted(t("timeline.webAnimation.picker.deletedSpace"))}); each row shows its name, aspect ratio and length. A web animation still being made is not listed until it finishes. ` +
+      "Pressing a row places a separate copy at the playhead, above the highest video there or on a new top track; pressing it again places another copy. " +
+      `${quoted(t("timeline.webAnimation.picker.loadMore"))} reads more, and with none it says ${quoted(t("timeline.webAnimation.picker.empty"))}. ` +
       `${quoted(t("timeline.webAnimation.goMake"))} at its bottom opens the newest Motion Space, or makes one named Motion when the Project has none. ` +
       "Web animation copies are violet with a code icon and are edited like video clips (move, trim, split, duplicate, delete); changing or removing one copy leaves the " +
       "other copies and the web animation itself as they are. A copy is named by its request; a modification's copy is named after the request it was modified from " +
       "followed by its own change. The selected copy's panel shows the whole request and, for a modification, a line naming the request it was modified from. " +
-      "A copy whose web animation failed, was cancelled or expired is red; its panel says why and offers " +
+      "A copy placed in a Timeline before Motion existed can be bound to a web animation that never finished; while it runs the copy is dashed, " +
+      "and once it failed, was cancelled or expired the copy is red, and its panel says why and offers " +
       `${quoted(t("timeline.webAnimation.openInMotion"))}, which opens the Motion Space that made it with it selected, to retry or modify it there; ` +
       "a copy made in a Timeline before Motion existed opens in the newest Motion Space (one named Motion is made when the Project has none), " +
       `selected under ${quoted(t("spaces.webAnimation.madeInTimeline"))}. ` +
-      "In the preview copies and videos stack by track, so a copy wholly covered by a higher layer is not seen. A copy whose web animation has not finished, or ended without a result, is noted at the top right of the " +
+      "In the preview copies and videos stack by track, so a copy wholly covered by a higher layer is not seen. Such a copy whose web animation has not finished, or ended without a result, is noted at the top right of the " +
       "preview with its track and its status, a copy whose page is still loading shows nothing and is noted there as loading, " +
       "and a copy whose page cannot be loaded is noted there as unavailable with " +
       `${quoted(t("timeline.retry"))}. Viewers see the copies and their panels, without ${quoted(t("timeline.webAnimation.add"))}.`,
@@ -1603,10 +1604,14 @@ export function renderProductGuide(): string {
     `${quoted(t("spaces.webAnimation.new"))} opens a dialog: ${quoted(t("timeline.webAnimation.dialog.prompt"))}, ${quoted(t("timeline.webAnimation.dialog.engine"))} (DeepSeek), ` +
       `${quoted(t("timeline.webAnimation.dialog.aspect"))} (16:9, 9:16 or 1:1) and ${quoted(t("timeline.webAnimation.dialog.duration"))}. ${quoted(t("timeline.webAnimation.dialog.execute"))} starts it; ` +
       "if it is refused, for example because the Studio has no credits left, the dialog keeps what you typed and shows why. Usage is charged when the run ends. " +
-      `The new run opens in the ${quoted(t("spaces.webAnimation.inProgress"))} tab of the list and in the middle, which shows its stage while it runs.`,
+      `The middle keeps showing what it showed; the list opens on the ${quoted(t("spaces.webAnimation.inProgress"))} tab with the new run highlighted.`,
     `${quoted(t("spaces.webAnimation.executions"))} and ${quoted(t("spaces.webAnimation.annotations"))} each open a panel on the right of the Space, one at a time; pressing the button again, ` +
-      `the panel's X or Esc closes it. The ${quoted(t("spaces.webAnimation.executions"))} button shows how many are in progress. Its panel has ${quoted(t("spaces.webAnimation.completed"))} and ` +
-      `${quoted(t("spaces.webAnimation.inProgress"))} with their counts; each row shows the name, frame, length, status and time, and pressing a row shows it in the middle. ` +
+      `the panel's X or Esc closes it. The ${quoted(t("spaces.webAnimation.executions"))} button shows how many are in progress. Its panel has ${quoted(t("spaces.webAnimation.completed"))}, ` +
+      `${quoted(t("spaces.webAnimation.inProgress"))} and ${quoted(t("spaces.webAnimation.failed"))} with their counts; each row shows the name, frame, length and time. ` +
+      "Only a finished web animation or video shows in the middle: pressing a row in the first tab shows it. " +
+      `A row in progress also shows its stage, with ${quoted(t("timeline.webAnimation.cancel"))} for runs of this Project; a row under ${quoted(t("spaces.webAnimation.failed"))} ` +
+      `(failed, cancelled or expired) shows why, with ${quoted(t("timeline.webAnimation.retry"))}, which opens the dialog filled in as before, or ${quoted(t("spaces.webAnimation.reexport"))} for a video. ` +
+      `An empty tab says ${quoted(t("spaces.webAnimation.emptyInProgress"))} or ${quoted(t("spaces.webAnimation.emptyFailed"))}. ` +
       `Ones made in a Timeline before Motion existed are listed at the end under ${quoted(t("spaces.webAnimation.madeInTimeline"))}, and can be modified and exported like the others. ` +
       "A modification is named after the request it was modified from followed by its own change, and an exported video after the web animation it renders.",
     `On a finished web animation the bar offers ${quoted(t("spaces.webAnimation.addAnnotation"))}, ${quoted(t("spaces.webAnimation.modify"))} and ${quoted(t("spaces.webAnimation.export"))}. ` +
@@ -1617,11 +1622,8 @@ export function renderProductGuide(): string {
       `On a finished video the bar offers ${quoted(t("spaces.webAnimation.download"))}, ${quoted(t("spaces.webAnimation.placeOnCanvas"))} and ${quoted(t("spaces.webAnimation.viewSource"))}. ` +
       `${quoted(t("spaces.webAnimation.placeOnCanvas"))} lists the Project's canvases (it is unavailable with ${quoted(t("spaces.webAnimation.noCanvas"))} when there are none) and puts the video on the chosen one ` +
       `near the middle of its last view, then says it was put there with a button to view it, ${quoted(t("spaces.webAnimation.viewPlaced"))}, which opens that Canvas with the video selected. ` +
-      "A run that failed, was cancelled or expired shows why in the middle with " +
-      `${quoted(t("timeline.webAnimation.retry"))}, which opens the dialog filled in as before, or ${quoted(t("spaces.webAnimation.reexport"))} for a video. ` +
-      `The details button shows the name, ${quoted(t("spaces.webAnimation.statusLabel"))}, the request, the steps, the usage, ${quoted(t("spaces.webAnimation.modifiedFromLabel"))} for a modification ` +
-      "(pressing the web animation it names shows that one, at its earliest open annotation when it has any) " +
-      `and ${quoted(t("timeline.webAnimation.cancel"))} while it runs.`,
+      `The details button shows the name, ${quoted(t("spaces.webAnimation.statusLabel"))}, the request, the steps, the usage and ${quoted(t("spaces.webAnimation.modifiedFromLabel"))} for a modification ` +
+      "(pressing the web animation it names shows that one, at its earliest open annotation when it has any).",
     `${quoted(t("spaces.webAnimation.addAnnotation"))} pauses playback at the current time; click the picture to mark a spot, or just write, then send. ` +
       `The ${quoted(t("spaces.webAnimation.annotations"))} button shows how many are open; its panel lists this Space's annotations grouped by web animation and ordered by time, ` +
       "with a switch between open and all. Pressing one, its mark on the slider or its pin on the picture shows that web animation at that time with the annotation's card " +

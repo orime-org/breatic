@@ -3193,7 +3193,6 @@
       "emptyFailed": "Nothing failed",
       "executions": "Executions",
       "export": "Export video",
-      "foreignCancel": "This execution belongs to the source Project and can't be cancelled here.",
       "hasPoint": "Marked on frame",
       "inProgress": "In progress",
       "failed": "Failed",
@@ -4293,7 +4292,6 @@
       },
       "usageLabel": "Usage",
       "usage": "{credits} credits",
-      "usagePending": "Settled when it ends",
       "unavailable": "Web animation unavailable",
       "cancel": "Cancel",
       "retry": "Run again",
@@ -4320,7 +4318,6 @@
         "title": "Add web animation",
         "description": "Pick a result to place a copy at the playhead.",
         "empty": "This Project has no web animations yet",
-        "making": "Making",
         "deletedSpace": "Deleted Spaces",
         "loadMore": "Load more",
         "error": "Web animations could not be loaded."

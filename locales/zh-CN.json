@@ -3193,7 +3193,6 @@
       "emptyFailed": "没有失败的",
       "executions": "执行列表",
       "export": "导出视频",
-      "foreignCancel": "这条执行属于源 Project，在这里不能取消。",
       "hasPoint": "有位置",
       "inProgress": "进行中",
       "failed": "失败",
@@ -4293,7 +4292,6 @@
       },
       "usageLabel": "用量",
       "usage": "{credits} 积分",
-      "usagePending": "结束后结算",
       "unavailable": "网页动画不可用",
       "cancel": "取消",
       "retry": "重新执行",
@@ -4320,7 +4318,6 @@
         "title": "添加网页动画",
         "description": "选一个结果，在播放头处放一份副本。",
         "empty": "本 Project 还没有网页动画",
-        "making": "制作中",
         "deletedSpace": "已删除的 Space",
         "loadMore": "加载更多",
         "error": "网页动画加载失败。"

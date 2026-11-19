@@ -3193,7 +3193,6 @@
       "emptyFailed": "실패한 항목이 없습니다",
       "executions": "실행 목록",
       "export": "동영상 내보내기",
-      "foreignCancel": "이 실행은 원본 Project에 속해 여기서는 취소할 수 없습니다.",
       "hasPoint": "위치 표시",
       "inProgress": "진행 중",
       "failed": "실패",
@@ -4293,7 +4292,6 @@
       },
       "usageLabel": "사용량",
       "usage": "{credits} 크레딧",
-      "usagePending": "종료 후 정산",
       "unavailable": "웹 애니메이션을 사용할 수 없음",
       "cancel": "취소",
       "retry": "다시 실행",
@@ -4320,7 +4318,6 @@
         "title": "웹 애니메이션 추가",
         "description": "결과를 고르면 재생 헤드 위치에 사본을 놓습니다.",
         "empty": "이 Project에는 아직 웹 애니메이션이 없습니다",
-        "making": "만드는 중",
         "deletedSpace": "삭제된 Space",
         "loadMore": "더 불러오기",
         "error": "웹 애니메이션을 불러오지 못했습니다."

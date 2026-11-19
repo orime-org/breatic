@@ -3193,7 +3193,6 @@
       "emptyFailed": "沒有失敗的",
       "executions": "執行列表",
       "export": "匯出影片",
-      "foreignCancel": "這筆執行屬於來源 Project，無法在這裡取消。",
       "hasPoint": "有位置",
       "inProgress": "進行中",
       "failed": "失敗",
@@ -4293,7 +4292,6 @@
       },
       "usageLabel": "用量",
       "usage": "{credits} 點",
-      "usagePending": "結束後結算",
       "unavailable": "網頁動畫不可用",
       "cancel": "取消",
       "retry": "重新執行",
@@ -4320,7 +4318,6 @@
         "title": "新增網頁動畫",
         "description": "選一個結果，在播放頭處放一份副本。",
         "empty": "本 Project 還沒有網頁動畫",
-        "making": "製作中",
         "deletedSpace": "已刪除的 Space",
         "loadMore": "載入更多",
         "error": "網頁動畫載入失敗。"

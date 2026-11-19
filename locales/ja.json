@@ -3193,7 +3193,6 @@
       "emptyFailed": "失敗したものはありません",
       "executions": "実行一覧",
       "export": "動画を書き出す",
-      "foreignCancel": "この実行は元の Project のもので、ここでは取り消せません。",
       "hasPoint": "位置あり",
       "inProgress": "進行中",
       "failed": "失敗",
@@ -4293,7 +4292,6 @@
       },
       "usageLabel": "使用量",
       "usage": "{credits} クレジット",
-      "usagePending": "終了後に精算",
       "unavailable": "ウェブアニメーションを利用できません",
       "cancel": "キャンセル",
       "retry": "再実行",
@@ -4320,7 +4318,6 @@
         "title": "Web アニメーションを追加",
         "description": "結果を選ぶと、再生ヘッドの位置にコピーを置きます。",
         "empty": "この Project にはまだ Web アニメーションがありません",
-        "making": "作成中",
         "deletedSpace": "削除された Space",
         "loadMore": "さらに読み込む",
         "error": "Web アニメーションを読み込めませんでした。"
