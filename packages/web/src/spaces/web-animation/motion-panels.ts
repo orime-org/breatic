@@ -22,7 +22,6 @@ export interface MotionPanelsState {
 export type MotionPanelsEvent =
   | { type: 'toggle_executions' }
   | { type: 'toggle_annotations' }
-  | { type: 'new' }
   /** An accepted execution, or a located one that has not succeeded: the list opens on its tab and marks it. */
   | { type: 'reveal'; tab: MotionTab; executionId: string }
   /** A thread opened: from its marker, its pin, the panel, "Modified from" or a notification. */
@@ -54,7 +53,5 @@ export function transitionMotionPanels(state: MotionPanelsState, event: MotionPa
       return { ...state, panel: 'none' };
     case 'pick_tab':
       return { ...state, tab: event.tab };
-    case 'new':
-      return state;
   }
 }

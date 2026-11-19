@@ -423,7 +423,6 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     if (readOnly || limits === undefined) return;
     const aspect = limits.aspects.find(isWebAnimationAspect) ?? '16:9';
     setRetryDialog(retry);
-    dispatchPanels({ type: 'new' });
     dispatchDraft({ type: 'open', input: { base: null, prompt: '', engine: DEFAULT_WEB_ANIMATION_ENGINE, aspect, durationSeconds: limits.durationSeconds.default, ...input } });
   }, [readOnly, limits]);
   const openNew = React.useCallback((): void => openDialog({}), [openDialog]);

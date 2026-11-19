@@ -24,7 +24,6 @@ const reveal = (tab: MotionTab): MotionPanelsEvent => ({ type: 'reveal', tab, ex
 const FROM_CLOSED: Row[] = [
   ['Executions', { type: 'toggle_executions' }, executions()],
   ['Annotations', { type: 'toggle_annotations' }, annotations()],
-  ['New', { type: 'new' }, closed()],
   ['a new row revealed', reveal('running'), executions('running', ROW)],
   ['a failed row revealed', reveal('failed'), executions('failed', ROW)],
   ['a thread opened (marker, pin, panel, Modified from)', { type: 'open_thread' }, annotations()],
@@ -34,7 +33,6 @@ const FROM_CLOSED: Row[] = [
 const FROM_EXECUTIONS: Row[] = [
   ['Executions', { type: 'toggle_executions' }, closed()],
   ['Annotations', { type: 'toggle_annotations' }, annotations()],
-  ['New', { type: 'new' }, executions()],
   ['a new row revealed', reveal('running'), executions('running', ROW)],
   ['a succeeded row revealed', reveal('succeeded'), executions('succeeded', ROW)],
   ['a thread opened (marker, pin, panel, Modified from)', { type: 'open_thread' }, annotations()],
@@ -44,7 +42,6 @@ const FROM_EXECUTIONS: Row[] = [
 const FROM_ANNOTATIONS: Row[] = [
   ['Executions', { type: 'toggle_executions' }, executions()],
   ['Annotations', { type: 'toggle_annotations' }, closed()],
-  ['New', { type: 'new' }, annotations()],
   ['a new row revealed', reveal('running'), executions('running', ROW)],
   ['a thread opened (marker, pin, panel, Modified from)', { type: 'open_thread' }, annotations()],
   ['Esc', { type: 'escape' }, closed()],
