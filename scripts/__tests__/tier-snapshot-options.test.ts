@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { formatSnapshotLine, parseTierSnapshotOptions, writeSnapshotFile } from "../tier-snapshot-options.ts";
@@ -90,4 +91,22 @@ test("never overwrites or removes a snapshot already there", async () => {
   writeFileSync(path, "finished\n");
   await assert.rejects(writeSnapshotFile(rows(1), path), /EEXIST/);
   assert.equal(readFileSync(path, "utf-8"), "finished\n");
+});
+
+test("still removes the file when closing it fails after a failed read", async () => {
+  const path = join(mkdtempSync(join(tmpdir(), "snap-")), "out.jsonl");
+  let closes = 0;
+  const openFailingClose: typeof open = async (...args) => {
+    const handle = await open(...args);
+    const realClose = handle.close.bind(handle);
+    handle.close = async (): Promise<void> => {
+      closes += 1;
+      await realClose();
+      throw new Error("close failed");
+    };
+    return handle;
+  };
+  await assert.rejects(writeSnapshotFile(rows(5, 2), path, openFailingClose), /close failed|connection lost/);
+  assert.equal(closes, 1);
+  assert.equal(existsSync(path), false);
 });

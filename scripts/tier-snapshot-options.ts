@@ -7,7 +7,7 @@ import { parseInstant } from "./instant-option.js";
 /** What `pnpm db:tier-snapshot` was asked to do. */
 export type TierSnapshotOptions = { help: true } | { help: false; at: Date; outputPath: string };
 
-/** One account's line, the shape `listMembershipReadingsAt` returns. */
+/** One account's line, the shape `membershipReadingsAt` yields. */
 export interface SnapshotLineInput {
   userId: string;
   effectiveTier: string;
@@ -60,11 +60,16 @@ export function formatSnapshotLine(row: SnapshotLineInput): string {
  * use the same name.
  * @param rows - The readings, in account order.
  * @param outputPath - The file to create.
+ * @param openFile - How the file is opened; tests hand one whose close fails.
  * @returns How many rows were written.
  * @throws {Error} When the file already exists (`EEXIST`), or reading or writing fails.
  */
-export async function writeSnapshotFile(rows: AsyncIterable<SnapshotLineInput>, outputPath: string): Promise<number> {
-  const output = await open(outputPath, "wx", 0o600);
+export async function writeSnapshotFile(
+  rows: AsyncIterable<SnapshotLineInput>,
+  outputPath: string,
+  openFile: typeof open = open,
+): Promise<number> {
+  const output = await openFile(outputPath, "wx", 0o600);
   let written = 0;
   try {
     for await (const row of rows) {
@@ -73,8 +78,11 @@ export async function writeSnapshotFile(rows: AsyncIterable<SnapshotLineInput>, 
     }
     await output.sync();
   } catch (err) {
-    await output.close();
-    await rm(outputPath, { force: true });
+    try {
+      await output.close();
+    } finally {
+      await rm(outputPath, { force: true });
+    }
     throw err;
   }
   await output.close();
