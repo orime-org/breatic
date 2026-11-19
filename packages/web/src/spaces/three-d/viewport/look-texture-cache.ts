@@ -65,21 +65,38 @@ const PICTURE_HEADER_BYTES = 4 * 1024 * 1024;
 const endsJpegHeader = (marker: number): boolean => marker === 0xda || (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc);
 
 /**
- * Drop the JPEG segments read in full before its frame header, keeping its start marker and the rest in place. Each
- * segment states its own length (ITU T.81 B.1.1.4), so the bytes after them read as the same JPEG.
+ * Drop the segments a JPEG holds before its frame header once they are read in full, keeping its start marker and the
+ * rest in place. The walk is image-dimensions' own (`types/jpeg.js`): bytes before a marker and 0xFF fill bytes are
+ * skipped (ITU T.81 B.1.1.2), TEM stands alone, and every other marker is followed by its segment's length. The bytes
+ * kept start at the next marker after the last whole segment, so they read as the same JPEG; with no whole segment
+ * held, nothing is dropped.
  * @param buffer - The bytes held, starting with the JPEG's start marker.
  * @param length - How many are held.
  * @returns How many are held after.
  */
 function dropReadJpegSegments(buffer: Uint8Array, length: number): number {
   let offset = 2;
-  while (offset + 4 <= length && buffer[offset] === 0xff && !endsJpegHeader(buffer[offset + 1]!) && buffer[offset + 1] !== 0xff) {
+  let read = 2;
+  while (offset + 2 <= length) {
+    if (buffer[offset] !== 0xff || buffer[offset + 1] === 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = buffer[offset + 1]!;
+    if (marker === 0x01) {
+      offset += 2;
+      continue;
+    }
+    if (endsJpegHeader(marker) || offset + 4 > length) break;
     const end = offset + 2 + ((buffer[offset + 2]! << 8) | buffer[offset + 3]!);
     if (end > length) break;
     offset = end;
+    read = end;
   }
-  buffer.copyWithin(2, offset, length);
-  return length - (offset - 2);
+  const next = buffer.indexOf(0xff, read);
+  const from = next === -1 || next >= length ? read : next;
+  buffer.copyWithin(2, from, length);
+  return length - (from - 2);
 }
 
 /**

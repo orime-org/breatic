@@ -205,6 +205,34 @@ describe('readPictureSize', () => {
     expect(await read()(streamOf(chunks).stream)).toMatchObject({ width: 800, height: 600, type: 'jpeg' });
   });
 
+  it.each([
+    ['fill bytes', [0xff]],
+    ['a stray byte', [0x00]],
+    ['a TEM marker', [0xff, 0x01]],
+  ])('reads a JPEG past the header budget with %s between its metadata segments', async (_name, between) => {
+    const segment = (length: number): number[] => [0xff, 0xe1, (length + 2) >> 8, (length + 2) & 0xff, ...new Array<number>(length).fill(0)];
+    const bytes = [0xff, 0xd8];
+    for (let i = 0; i < 105; i++) bytes.push(...segment(60_000), ...(i % 10 === 9 ? between : []));
+    bytes.push(0xff, 0xc0, 0x00, 0x11, 0x08, 0x01, 0x00, 0x02, 0x00, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01);
+    const all = new Uint8Array(bytes);
+    const chunks = Array.from({ length: Math.ceil(all.length / 65_536) }, (_, i) => all.subarray(i * 65_536, (i + 1) * 65_536));
+    expect(await read()(streamOf(chunks).stream)).toMatchObject({ width: 512, height: 256, type: 'jpeg' });
+  });
+
+  it.each([
+    ['metadata that never reaches a frame header', [0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10, ...new Array<number>(14).fill(0)]],
+    ['a scan before any frame header', [0xff, 0xd8, 0xff, 0xda, 0x00, 0x02]],
+  ])('stops reading a JPEG start with %s after a bounded amount', async (_name, start) => {
+    let first = true;
+    const stream = streamOf(() => {
+      if (!first) return new Uint8Array(65_536).fill(7);
+      first = false;
+      return new Uint8Array(start);
+    });
+    expect(await read()(stream.stream)).toBeNull();
+    expect(stream.pulled()).toBeLessThanOrEqual(8 * 1024 * 1024);
+  });
+
   it('stops reading a stream that is not a picture after a bounded amount', async () => {
     const endless = streamOf(() => new Uint8Array(65_536).fill(7));
     expect(await read()(endless.stream)).toBeNull();
