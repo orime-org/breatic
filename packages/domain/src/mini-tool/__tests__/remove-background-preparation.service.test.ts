@@ -3,7 +3,7 @@
 
 import fc from "fast-check";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AppError, ValidationError } from "@breatic/core";
+import { ValidationError } from "@breatic/core";
 import type * as coreModule from "@breatic/core";
 import type * as assetRepoModule from "@domain/asset/asset.repo.js";
 import type * as modelCatalogModule from "@domain/model-catalog/model-catalog.js";
@@ -23,7 +23,6 @@ const KEY = "video/source.mp4";
 const MODEL = "M";
 const ENDPOINT = "bria/fibo/video-background-remover";
 const BODY = { video: URL, background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true };
-const ESTIMATE = { params: BODY, durations: { video: [5.055] }, sources: ["video"] };
 
 /** Return a fresh caller-owned source with no authority over registered measurements.
  * @throws {never} Never.
@@ -86,38 +85,38 @@ beforeEach(() => {
 describe("registered video removal preparation", () => {
   it("P1 prepares the complete original B/I, binding, key, selected model and quote without analysis input", async () => {
     const input = source(); const before = structuredClone(input);
-    expect(await prepareVideoRemoveBackground(input, MODEL)).toEqual({ binding: binding(), sourceKey: KEY, model: MODEL, provider: { provider: "wavespeed", model_id: ENDPOINT }, params: BODY, credits: 30 });
-    expect(estimateModelCredits).toHaveBeenCalledExactlyOnceWith(MODEL, ESTIMATE);
+    expect(await prepareVideoRemoveBackground(input, MODEL)).toEqual({ binding: binding(), sourceKey: KEY, model: MODEL, params: BODY });
+    expect(estimateModelCredits).not.toHaveBeenCalled();
     expect(keyFromUrl).toHaveBeenCalledWith(URL);
     expect(findLiveByStorageKey).toHaveBeenCalledExactlyOnceWith(KEY);
     expect(input).toEqual(before);
   });
   it("P2 ignores client width, height and duration claims while preserving registered truth", async () => {
     const input = source(); input.mediaInfo = { ...input.mediaInfo, width: 16, height: 16, duration: 0.1 };
-    expect(await prepareVideoRemoveBackground(input, MODEL)).toEqual({ binding: binding(), sourceKey: KEY, model: MODEL, provider: { provider: "wavespeed", model_id: ENDPOINT }, params: BODY, credits: 30 });
-    expect(estimateModelCredits).toHaveBeenCalledExactlyOnceWith(MODEL, ESTIMATE);
+    expect(await prepareVideoRemoveBackground(input, MODEL)).toEqual({ binding: binding(), sourceKey: KEY, model: MODEL, params: BODY });
+    expect(estimateModelCredits).not.toHaveBeenCalled();
   });
   it("P2 is invariant under arbitrary positive caller measurement claims", async () => {
     await fc.assert(fc.asyncProperty(fc.integer({ min: 1, max: 8192 }), fc.integer({ min: 1, max: 8192 }), fc.double({ min: 0.001, max: 60, noNaN: true }), async (width, height, duration) => {
       const input = source(); input.mediaInfo = { ...input.mediaInfo, width, height, duration };
-      expect(await prepareVideoRemoveBackground(input, MODEL)).toEqual({ binding: binding(), sourceKey: KEY, model: MODEL, provider: { provider: "wavespeed", model_id: ENDPOINT }, params: BODY, credits: 30 });
-      expect(estimateModelCredits).toHaveBeenLastCalledWith(MODEL, ESTIMATE);
+      expect(await prepareVideoRemoveBackground(input, MODEL)).toEqual({ binding: binding(), sourceKey: KEY, model: MODEL, params: BODY });
+      expect(estimateModelCredits).not.toHaveBeenCalled();
     }));
   });
   it("P3 uses replacement registered geometry, hash and duration and the new explicit quote", async () => {
     findLiveByStorageKey.mockResolvedValue({ ...asset(), width: 1920, height: 1080, durationSeconds: 12.125, contentHash: "b".repeat(64) });
     estimateModelCredits.mockResolvedValue({ credits: 71.23, bound: "exact" });
-    expect(await prepareVideoRemoveBackground(source(), MODEL)).toEqual({ binding: { ...binding(), contentHash: "b".repeat(64), mediaInfo: { width: 1920, height: 1080, duration: 12.125, mimeType: "video/mp4" } }, sourceKey: KEY, model: MODEL, provider: { provider: "wavespeed", model_id: ENDPOINT }, params: BODY, credits: 71.23 });
-    expect(estimateModelCredits).toHaveBeenCalledExactlyOnceWith(MODEL, { params: BODY, durations: { video: [12.125] }, sources: ["video"] });
+    expect(await prepareVideoRemoveBackground(source(), MODEL)).toEqual({ binding: { ...binding(), contentHash: "b".repeat(64), mediaInfo: { width: 1920, height: 1080, duration: 12.125, mimeType: "video/mp4" } }, sourceKey: KEY, model: MODEL, params: BODY });
+    expect(estimateModelCredits).not.toHaveBeenCalled();
   });
   it("P4 freezes the returned model, provider body, binding and quote against subsequent configuration changes", async () => {
     const configured = entry(); getModelCatalog.mockReturnValue(catalog(configured)); const row = asset(); findLiveByStorageKey.mockResolvedValue(row);
     const quote = { credits: 30, bound: "exact" }; estimateModelCredits.mockResolvedValue(quote);
     const prepared = await prepareVideoRemoveBackground(source(), MODEL);
-    expect(prepared).toEqual({ binding: binding(), sourceKey: KEY, model: MODEL, provider: { provider: "wavespeed", model_id: ENDPOINT }, params: BODY, credits: 30 });
-    configured.name = "changed"; configured.providers[0]!.model_id = "changed/endpoint"; configured.params.video!.max_total_duration = 1;
+    expect(prepared).toEqual({ binding: binding(), sourceKey: KEY, model: MODEL, params: BODY });
+    configured.name = "changed"; configured.params.video!.max_total_duration = 1;
     row.width = 16; row.contentHash = "b".repeat(64); quote.credits = 900;
-    expect(prepared).toEqual({ binding: binding(), sourceKey: KEY, model: MODEL, provider: { provider: "wavespeed", model_id: ENDPOINT }, params: BODY, credits: 30 });
+    expect(prepared).toEqual({ binding: binding(), sourceKey: KEY, model: MODEL, params: BODY });
   });
 });
 
@@ -153,80 +152,26 @@ describe("existing source resolver failures before pricing", () => {
   });
 });
 
-describe("served pinned model and complete quote", () => {
+// inner#1306 §11.5: whether the model is served here, its vendor limit and its quote are decided where the plan's call is
+// admitted (model-call-admission.ts); preparation only needs the catalog to carry the model.
+describe("the pinned catalog model", () => {
   it("P9 rejects an absent served catalog entry instead of accepting the minimum task fallback", async () => {
     getModelCatalog.mockReturnValue({ ...catalog(), video: [], total: 0 });
     await expect(prepareVideoRemoveBackground(source(), MODEL)).rejects.toMatchObject({ statusCode: 503 });
     expect(estimateModelCredits).not.toHaveBeenCalled();
-  });
-  it("P9 rejects a served entry without pricing before calling the estimator", async () => {
-    const configured = entry(); delete configured.pricing; getModelCatalog.mockReturnValue(catalog(configured));
-    await expect(prepareVideoRemoveBackground(source(), MODEL)).rejects.toMatchObject({ statusCode: 503 });
-    expect(estimateModelCredits).not.toHaveBeenCalled();
-  });
-  it.each([
-    { label: "no endpoint", providers: [] },
-    { label: "unavailable endpoint", providers: [{ name: "wavespeed", model_id: ENDPOINT, priority: 0, available: false }] },
-    { label: "wrong provider", providers: [{ name: "fal", model_id: ENDPOINT, priority: 0, available: true }] },
-    { label: "wrong model id", providers: [{ name: "wavespeed", model_id: "bria/remove-background", priority: 0, available: true }] },
-    { label: "multiple providers", providers: [{ name: "wavespeed", model_id: ENDPOINT, priority: 0, available: true }, { name: "fal", model_id: ENDPOINT, priority: 1, available: true }] },
-  ])("P9 requires the one available pinned WaveSpeed endpoint: $label", async ({ providers }) => {
-    getModelCatalog.mockReturnValue(catalog({ ...entry(), providers }));
-    await expect(prepareVideoRemoveBackground(source(), MODEL)).rejects.toMatchObject({ statusCode: 503 });
-    expect(estimateModelCredits).not.toHaveBeenCalled();
-  });
-  it("P9 rejects an undefined complete estimate as unavailable", async () => {
-    estimateModelCredits.mockResolvedValue(undefined);
-    await expect(prepareVideoRemoveBackground(source(), MODEL)).rejects.toMatchObject({ statusCode: 503 });
-    expect(estimateModelCredits).toHaveBeenCalledExactlyOnceWith(MODEL, ESTIMATE);
-  });
-  it("P10 propagates an original estimator exception without inventing a quote", async () => {
-    const failure = new Error("fixture catalog pricing failure"); estimateModelCredits.mockRejectedValue(failure);
-    await expect(prepareVideoRemoveBackground(source(), MODEL)).rejects.toBe(failure);
-  });
-  it.each([30, 60])("P11 preserves the estimator's already multiplied %s credits with deployment multiplier two", async (credits) => {
-    estimateModelCredits.mockResolvedValue({ credits, bound: "exact" });
-    expect(await prepareVideoRemoveBackground(source(), MODEL)).toEqual({ binding: binding(), sourceKey: KEY, model: MODEL, provider: { provider: "wavespeed", model_id: ENDPOINT }, params: BODY, credits });
-    expect(estimateModelCredits).toHaveBeenCalledExactlyOnceWith(MODEL, ESTIMATE);
-  });
-  it("P11 never recomputes or rounds the catalog's arbitrary cent quote", async () => {
-    await fc.assert(fc.asyncProperty(fc.integer({ min: 1, max: 1000000 }), async (cents) => {
-      const credits = cents / 100; estimateModelCredits.mockResolvedValue({ credits, bound: "exact" });
-      expect((await prepareVideoRemoveBackground(source(), MODEL)).credits).toBe(credits);
-      expect(estimateModelCredits).toHaveBeenLastCalledWith(MODEL, ESTIMATE);
-    }));
-  });
-  it.each([60, 60.001])("P14 applies the catalog's declared duration ceiling to measured duration %s", async (duration) => {
-    findLiveByStorageKey.mockResolvedValue({ ...asset(), durationSeconds: duration });
-    if (duration > 60) {
-      await expect(prepareVideoRemoveBackground(source(), MODEL)).rejects.toBeInstanceOf(AppError);
-      expect(estimateModelCredits).not.toHaveBeenCalled();
-    } else {
-      expect((await prepareVideoRemoveBackground(source(), MODEL)).binding.mediaInfo.duration).toBe(60);
-      expect(estimateModelCredits).toHaveBeenCalledExactlyOnceWith(MODEL, { params: BODY, durations: { video: [60] }, sources: ["video"] });
-    }
   });
 });
 
 describe("immutable source and configuration references without an ISO admission gate", () => {
   it.each(["video/webm", "video/quicktime"])("P14 accepts a valid live %s binding without physical track or edit metadata", async (mimeType) => {
     findLiveByStorageKey.mockResolvedValue({ ...asset(), mimeType });
-    expect(await prepareVideoRemoveBackground(source(), MODEL)).toEqual({ binding: { ...binding(), mediaInfo: { ...binding().mediaInfo, mimeType } }, sourceKey: KEY, model: MODEL, provider: { provider: "wavespeed", model_id: ENDPOINT }, params: BODY, credits: 30 });
+    expect(await prepareVideoRemoveBackground(source(), MODEL)).toEqual({ binding: { ...binding(), mediaInfo: { ...binding().mediaInfo, mimeType } }, sourceKey: KEY, model: MODEL, params: BODY });
   });
   it("P15 freezes the original source reference before an asynchronous resolver resumes", async () => {
     const gate = deferred<{ keyFromUrl: typeof keyFromUrl; publicUrl: typeof publicUrl }>(); getStorageAdapter.mockReturnValueOnce(gate.promise);
     const input = source(); const outcome = prepareVideoRemoveBackground(input, MODEL).then(value => ({ value }), error => ({ error }));
     input.canonicalURL = "https://foreign.example.test/changed.mp4"; input.mediaInfo.duration = 0.1;
     gate.resolve({ keyFromUrl, publicUrl });
-    expect(await outcome).toEqual({ value: { binding: binding(), sourceKey: KEY, model: MODEL, provider: { provider: "wavespeed", model_id: ENDPOINT }, params: BODY, credits: 30 } });
-  });
-  it("P15 freezes selected catalog values before an asynchronous quote observes global configuration changes", async () => {
-    const configured = entry(); getModelCatalog.mockReturnValue(catalog(configured));
-    estimateModelCredits.mockImplementationOnce(async () => {
-      await Promise.resolve(); configured.providers[0]!.model_id = "changed/endpoint"; configured.name = "changed"; configured.params.video!.max_total_duration = 1;
-      return { credits: 30, bound: "exact" };
-    });
-    expect(await prepareVideoRemoveBackground(source(), MODEL)).toEqual({ binding: binding(), sourceKey: KEY, model: MODEL, provider: { provider: "wavespeed", model_id: ENDPOINT }, params: BODY, credits: 30 });
-    expect(estimateModelCredits).toHaveBeenCalledExactlyOnceWith(MODEL, ESTIMATE);
+    expect(await outcome).toEqual({ value: { binding: binding(), sourceKey: KEY, model: MODEL, params: BODY } });
   });
 });

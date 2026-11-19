@@ -81,15 +81,6 @@ models:
         default: []
         fill: "none"
         note: "Mapped from the frozen analysis selection."
-    providers:
-      - name: "wavespeed"
-        model_id: "wavespeed-ai/sam3-video-rle"
-        priority: 1
-        pricing:
-          base_price: 10000
-          formula: "{\"total_price\": $max([3, $min([$ceil(get_duration(video)), 600])]) * base_price}"
-          discount_rate: 100
-
   - name: "bria-fibo-video-background-remover"
     display_name: "Bria FIBO Video Background Remover"
     mode: "edit"
@@ -122,14 +113,6 @@ models:
         default: true
         values: [true]
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "bria/fibo/video-background-remover"
-        priority: 1
-        pricing:
-          base_price: 50000
-          formula: '{"total_price": $min([$ceil(get_duration(video)), 60]) * base_price}'
-          discount_rate: 100
   # Video erase (inner#1306): the masked eraser, 0.05 USD a second rounded up and capped at its 5 s input.
   - name: "bria-video-eraser-mask"
     display_name: "Bria Video Eraser"
@@ -157,14 +140,6 @@ models:
         default: false
         values: [false]
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "bria/video-eraser/mask"
-        priority: 1
-        pricing:
-          base_price: 50000
-          formula: '{"total_price": $min([$ceil(get_duration(video)), 5]) * base_price}'
-          discount_rate: 100
   # Video expand (inner#1306): VACE inpainting on 832x480 windows, 0.30 USD for 5 s and 0.45 USD for 6-10 s.
   - name: "wan-2.1-14b-vace"
     display_name: "Wan 2.1 14B VACE"
@@ -232,15 +207,6 @@ models:
         min: 0
         max: 2147483646
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "wavespeed-ai/wan-2.1-14b-vace"
-        priority: 1
-        pricing:
-          base_price: 300000
-          formula: '{"total_price": base_price * (duration > 5 ? 1.5 : 1)}'
-          discount_rate: 100
-
   - name: "gemini-omni-1.1-flash-text-to-video"
     display_name: "Gemini Omni 1.1 Flash"
     variant: "Text-to-Video"

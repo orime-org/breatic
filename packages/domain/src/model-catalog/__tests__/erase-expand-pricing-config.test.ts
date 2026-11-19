@@ -9,18 +9,15 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { initCore } from "@breatic/core";
-import { estimateModelCredits, getFullModelConfig, resetModelCatalog } from "@domain/model-catalog/model-catalog.js";
-import { allProviderKeyNames, restoreProcessEnv } from "./catalog-env.js";
+import { estimateModelCredits, getFullModelConfig, inputRefusalFor } from "@domain/model-catalog/model-catalog.js";
+import { provider } from "@domain/provider/instance.js";
+import { allProviderKeyNames, restoreProcessEnv, useEnvWithKeys } from "./catalog-env.js";
 
 const URL = "https://assets.example.test/video/source.mp4";
 
 /** Inject dummy provider keys and multiplier 1, then clear the catalog cache. @throws {Error} On invalid real declarations. */
 function configure(): void {
-  const injected: Record<string, string | undefined> = { ...process.env, CREDIT_MULTIPLIER: "1" };
-  for (const name of allProviderKeyNames()) injected[name] = "test-key";
-  initCore(injected);
-  resetModelCatalog();
+  useEnvWithKeys(allProviderKeyNames(), { CREDIT_MULTIPLIER: "1" });
 }
 
 beforeEach(() => { configure(); });
@@ -33,14 +30,22 @@ describe("erase and expand model declarations (execution design §10.4, §10.5)"
   ])("declares %s as one internal tool-only video entry on %s", (name, endpoint) => {
     const found = getFullModelConfig("video").models.filter((model) => model.name === name);
     expect(found).toHaveLength(1);
-    expect(found[0]).toMatchObject({ name, tier: "internal", providers: [expect.objectContaining({ name: "wavespeed", model_id: endpoint })] });
+    expect(found[0]).toMatchObject({ name, tier: "internal" });
+    // inner#1306 §11.5: the upstream is provider's binding, not the catalog's.
+    expect(provider().config.models[name]).toEqual([expect.objectContaining({ upstream: "wavespeed", model_id: endpoint })]);
   });
 
   it.each([
-    [0.5, 5], [1, 5], [1.000001, 10], [3, 15], [4.999999, 25], [5, 25], [5.1, 25],
+    [1, 5], [1.000001, 10], [3, 15], [4.999999, 25], [5, 25],
   ])("prices a Bria erase of %s s at %s credits", async (seconds, credits) => {
     expect(await estimateModelCredits("bria-video-eraser-mask", { params: { video: URL, mask_video: URL, copy_audio: false }, durations: { video: [seconds] }, sources: ["video"] }))
       .toEqual({ credits, bound: "exact" });
+  });
+
+  // inner#1306 §11.5: the eraser's one to five seconds per call is the vendor's limit, a provider reject.
+  it.each([[0.5, { min: 1 }], [5.1, { max: 5 }]])("refuses a Bria erase of %s s at its seconds limit", async (seconds, bound) => {
+    expect(await inputRefusalFor("bria-video-eraser-mask", { params: { video: URL, mask_video: URL, copy_audio: false }, durations: { video: [seconds] }, sources: ["video"] }))
+      .toMatchObject({ limit: { field: "video", measure: "seconds", ...bound } });
   });
 
   it.each([[5, 30], [10, 45]])("prices a VACE window requesting %s s at %s credits", async (duration, credits) => {
