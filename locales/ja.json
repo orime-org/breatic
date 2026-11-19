@@ -3053,6 +3053,9 @@
       },
       "columns": {
         "unavailable": "ここには列を追加できません"
+      },
+      "slashMenu": {
+        "empty": "一致する項目がありません"
       }
     },
     "readOnlyReconnect": "再接続",

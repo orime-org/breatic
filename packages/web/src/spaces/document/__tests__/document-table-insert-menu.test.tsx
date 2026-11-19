@@ -129,6 +129,20 @@ describe('the insert menu in a cell', () => {
   });
 });
 
+describe('the insert menu on a line with blocks under it', () => {
+  it('greys the table entry on the plus, since the table would take their place', () => {
+    openInBody([
+      { type: 'paragraph', children: [{ type: 'paragraph', content: 'child' }] },
+      { type: 'paragraph', content: 'after' },
+    ]);
+    render(<DocumentBlockHandle />);
+
+    fireEvent.click(screen.getByTestId('doc-block-plus'));
+
+    expect(tableGreyed()).toBe(true);
+  });
+});
+
 describe('a formula picked from the menu (inner#1423 A5)', () => {
   it.each([
     ['the plus of an empty line in a cell', () => openInCell([{ type: 'paragraph' }]), ['doc-block-plus']],
