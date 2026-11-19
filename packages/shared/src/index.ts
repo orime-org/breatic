@@ -28,6 +28,13 @@ export type {
   RequestFailedReason,
 } from "@shared/types/decision.js";
 
+export {
+  OAUTH_CONSENT_ERROR_REASONS,
+  type OAuthConsentErrorReason,
+  type OAuthInteractionResult,
+  type OAuthInteractionView,
+} from "@shared/types/agent-access.js";
+
 export type {
   UserEntity,
   ConversationEntity,

@@ -22,7 +22,7 @@ import Provider, {
 } from "oidc-provider";
 import { agentAccessService, env, getMcpConfig, isLoopbackIp, logger, type AgentCredential } from "@breatic/core";
 import { reachable } from "@breatic/domain";
-import { httpRequest, type AgentTokenExchangeResponse } from "@breatic/shared";
+import { httpRequest, type AgentTokenExchangeResponse, type OAuthConsentErrorReason, type OAuthInteractionView } from "@breatic/shared";
 import { authService } from "@server/modules";
 import { OAuthRecordsAdapter } from "@server/modules/agent-access/oauth-adapter.js";
 import { frontendOrigin } from "@server/utils/frontend-origin.js";
@@ -46,15 +46,12 @@ const MCP_SCOPE = "mcp";
 /** RFC 8693 token type of both the subject token and the token issued. */
 const ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 
-/** The states our consent page shows for an authorization request it cannot serve. */
-type ConsentErrorReason = "client_invalid" | "redirect_mismatch" | "request_expired";
-
 /**
  * Which error state of the consent page an oidc-provider error is.
  * @param error - The OAuth error code.
  * @returns The page's `reason`.
  */
-function consentErrorReason(error: string): ConsentErrorReason {
+function consentErrorReason(error: string): OAuthConsentErrorReason {
   if (error === "invalid_client") return "client_invalid";
   if (error === "invalid_redirect_uri") return "redirect_mismatch";
   return "request_expired";
@@ -371,15 +368,6 @@ async function heldInteraction(req: IncomingMessage, res: ServerResponse, uid: s
   }
 }
 
-/** What the consent page shows about the agent asking. */
-export interface InteractionView {
-  clientName: string;
-  /** Host of the callback the authorization would be sent to. */
-  redirectHosts: string[];
-  /** Whether that callback is on this machine only. */
-  localhostOnly: boolean;
-}
-
 /**
  * The host of a callback address, without IPv6 brackets.
  * @param uri - The callback.
@@ -397,7 +385,7 @@ function hostOf(uri: string): string {
  * @returns The view, or null when the interaction is not this browser's or expired.
  * @throws {Error} When the database cannot be read.
  */
-export async function interactionView(req: IncomingMessage, res: ServerResponse, uid: string): Promise<InteractionView | null> {
+export async function interactionView(req: IncomingMessage, res: ServerResponse, uid: string): Promise<OAuthInteractionView | null> {
   const interaction = await heldInteraction(req, res, uid);
   if (!interaction) return null;
   const client = await server().provider.Client.find(String(interaction.params.client_id));
