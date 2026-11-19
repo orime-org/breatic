@@ -15,5 +15,5 @@ import { useMotionList } from '@web/spaces/web-animation/use-motion-lists';
  */
 export function useMotionRunning(projectId: string, spaceId: string, enabled: boolean): boolean {
   const list = useMotionList(projectId, spaceId, 'space', 'running', enabled);
-  return enabled && (list.data?.pages[0]?.totals.inProgress ?? 0) > 0;
+  return enabled && (list.data?.pages[0]?.totals.running ?? 0) > 0;
 }

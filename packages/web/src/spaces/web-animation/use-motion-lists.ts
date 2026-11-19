@@ -18,14 +18,15 @@ export interface MotionTabList {
   legacy: ListQuery;
 }
 
-/** The Motion Space's lists (#1490 design §4.4, §7.1). */
+/** The Motion Space's lists (#1490 design §4.4, §7.1), one per execution-list tab. */
 export interface MotionLists {
-  done: MotionTabList;
+  succeeded: MotionTabList;
   running: MotionTabList;
+  failed: MotionTabList;
   /** Every row loaded in any list, by id. */
   byId: ReadonlyMap<string, WebAnimationRowView>;
-  /** How many rows each tab holds, across both groups. */
-  totals: { done: number; inProgress: number };
+  /** How many rows each tab holds, across this Space's own rows and the Timeline-made group. */
+  totals: SpaceExecutionPage['totals'];
 }
 
 /**
@@ -75,30 +76,34 @@ export function rowsOf(query: ListQuery): WebAnimationRowView[] {
 }
 
 /**
- * A Motion Space's four lists: its own and the Timeline-made group, each in Completed and In Progress. All four are
- * keyed under the Space, so one change in its document reads them all again.
+ * A Motion Space's six lists: its own and the Timeline-made group, each in Completed, In progress and Failed. All six
+ * are keyed under the Space, so one change in its document reads them all again.
  * @param projectId - The Project.
  * @param spaceId - The Motion Space.
  * @returns The lists.
  * @throws {never} Never.
  */
 export function useMotionLists(projectId: string, spaceId: string): MotionLists {
-  const ownDone = useMotionList(projectId, spaceId, 'space', 'done');
+  const ownSucceeded = useMotionList(projectId, spaceId, 'space', 'succeeded');
   const ownRunning = useMotionList(projectId, spaceId, 'space', 'running');
-  const legacyDone = useMotionList(projectId, spaceId, 'timeline', 'done');
+  const ownFailed = useMotionList(projectId, spaceId, 'space', 'failed');
+  const legacySucceeded = useMotionList(projectId, spaceId, 'timeline', 'succeeded');
   const legacyRunning = useMotionList(projectId, spaceId, 'timeline', 'running');
+  const legacyFailed = useMotionList(projectId, spaceId, 'timeline', 'failed');
   const byId = React.useMemo(() => {
     const map = new Map<string, WebAnimationRowView>();
-    for (const query of [ownDone, legacyDone, ownRunning, legacyRunning]) for (const row of rowsOf(query)) map.set(row.id, row);
+    for (const query of [ownSucceeded, legacySucceeded, ownRunning, legacyRunning, ownFailed, legacyFailed]) for (const row of rowsOf(query)) map.set(row.id, row);
     return map;
-  }, [ownDone, legacyDone, ownRunning, legacyRunning]);
-  const own = ownDone.data?.pages[0]?.totals;
-  const legacy = legacyDone.data?.pages[0]?.totals;
+  }, [ownSucceeded, legacySucceeded, ownRunning, legacyRunning, ownFailed, legacyFailed]);
+  const own = ownSucceeded.data?.pages[0]?.totals;
+  const legacy = legacySucceeded.data?.pages[0]?.totals;
   const totals = React.useMemo(() => ({
-    done: (own?.done ?? 0) + (legacy?.done ?? 0),
-    inProgress: (own?.inProgress ?? 0) + (legacy?.inProgress ?? 0),
+    running: (own?.running ?? 0) + (legacy?.running ?? 0),
+    succeeded: (own?.succeeded ?? 0) + (legacy?.succeeded ?? 0),
+    failed: (own?.failed ?? 0) + (legacy?.failed ?? 0),
   }), [own, legacy]);
-  const done = React.useMemo(() => ({ own: ownDone, legacy: legacyDone }), [ownDone, legacyDone]);
+  const succeeded = React.useMemo(() => ({ own: ownSucceeded, legacy: legacySucceeded }), [ownSucceeded, legacySucceeded]);
   const running = React.useMemo(() => ({ own: ownRunning, legacy: legacyRunning }), [ownRunning, legacyRunning]);
-  return { done, running, byId, totals };
+  const failed = React.useMemo(() => ({ own: ownFailed, legacy: legacyFailed }), [ownFailed, legacyFailed]);
+  return { succeeded, running, failed, byId, totals };
 }

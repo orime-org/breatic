@@ -104,14 +104,20 @@ function exported(source: Record<string, unknown>): Record<string, unknown> {
 }
 
 /**
- * Answer this Space's list with these rows in the done group, nothing in progress and no Timeline-made group.
- * @param rows - The finished rows, newest first.
+ * Answer the Space's own lists with these rows: succeeded rows under Completed, the rest under their own tab; the
+ * Timeline-made group stays empty.
+ * @param succeeded - The succeeded rows, newest first.
+ * @param others - The rows in progress and the failed ones.
+ * @param others.running - Rows in progress.
+ * @param others.failed - Rows that failed, were cancelled or expired.
+ * @throws {never} Never.
  */
-function listing(rows: Array<Record<string, unknown>>): void {
+function listing(succeeded: Array<Record<string, unknown>>, { running = [], failed = [] }: { running?: Array<Record<string, unknown>>; failed?: Array<Record<string, unknown>> } = {}): void {
+  const groups: Record<string, Array<Record<string, unknown>>> = { succeeded, running, failed };
   vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string }) => (
-    params.group === 'running' || params.scope === 'timeline'
-      ? { rows: [], nextCursor: null, totals: params.scope === 'timeline' ? { done: 0, inProgress: 0 } : { done: rows.length, inProgress: 0 } }
-      : { rows, nextCursor: null, totals: { done: rows.length, inProgress: 0 } }
+    params.scope === 'timeline'
+      ? { rows: [], nextCursor: null, totals: { running: 0, succeeded: 0, failed: 0 } }
+      : { rows: groups[params.group ?? 'succeeded'] ?? [], nextCursor: null, totals: { running: running.length, succeeded: succeeded.length, failed: failed.length } }
   ) as never);
 }
 
@@ -853,13 +859,15 @@ describe('a preview that cannot load', () => {
   it('says the result a modification starts from is unavailable, and reads it again on Retry', async () => {
     const base = '90000000-0000-4000-8000-0000000000b1';
     const created = done(NEWER, 'Make the dot red', '2026-11-15T09:00:00.000000Z');
-    listing([{
+    listing([], { failed: [{
       ...created, kind: 'web_animation_modify', status: 'failed', failureReason: 'check', resultSourceVersionId: null, base: { executionId: base, request: 'Gold dot' },
       input: { baseSourceVersionId: '80000000-0000-4000-8000-0000000000b1', instruction: 'Make the dot red', engine: 'deepseek', aspect: '16:9', durationSeconds: 4, fps: { num: 24, den: 1 } },
-    }]);
+    }] });
     vi.mocked(timelineApi.getExecution).mockReset().mockRejectedValue(new Error('network'));
     show();
     const user = userEvent.setup();
+    await user.click(await screen.findByTestId('motion-open-executions'));
+    await user.click(within(await screen.findByTestId('motion-panel-executions')).getByRole('tab', { name: new RegExp(t('spaces.webAnimation.failed')) }));
     await user.click(await screen.findByTestId('motion-retry'));
     const card = await screen.findByTestId('web-animation-base');
     expect(await within(card).findByText(t('timeline.webAnimation.unavailable'))).toBeInTheDocument();
@@ -908,37 +916,15 @@ async function refetchFailing(): Promise<void> {
 }
 
 describe('the selected result', () => {
-  /**
-   * A row still running, as the In Progress list answers it.
-   * @param id - The execution.
-   * @returns The row.
-   */
-  function running(id: string): Record<string, unknown> {
-    return { ...done(id, 'Running logo', '2026-11-15T10:00:00.000000Z'), status: 'running', phase: 'generating', resultSourceVersionId: null, usageCredits: 0, billedCredits: null, billedAt: null };
-  }
-
-  /**
-   * Answer the lists with these rows in Completed and In Progress.
-   * @param doneRows - The finished rows, newest first.
-   * @param runningRows - The rows still running.
-   */
-  function lists(doneRows: Array<Record<string, unknown>>, runningRows: Array<Record<string, unknown>>): void {
-    vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string }) => {
-      if (params.scope === 'timeline') return { rows: [], nextCursor: null, totals: { done: 0, inProgress: 0 } } as never;
-      const rows = params.group === 'running' ? runningRows : doneRows;
-      return { rows, nextCursor: null, totals: { done: doneRows.length, inProgress: runningRows.length } } as never;
-    });
-  }
-
   it('stays in the preview after a read of the list no longer holds it', async () => {
     listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z'), done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')]);
     show();
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
     // A newer result pushes NEWER off the first page.
     vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string }) => (
-      params.group === 'running' || params.scope === 'timeline'
-        ? { rows: [], nextCursor: null, totals: { done: 0, inProgress: 0 } }
-        : { rows: [done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')], nextCursor: 'next', totals: { done: 3, inProgress: 0 } }
+      params.group !== 'succeeded' || params.scope === 'timeline'
+        ? { rows: [], nextCursor: null, totals: { running: 0, succeeded: 0, failed: 0 } }
+        : { rows: [done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')], nextCursor: 'next', totals: { running: 0, succeeded: 3, failed: 0 } }
     ) as never);
     await refetchFailing();
     expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER);
@@ -959,17 +945,115 @@ describe('the selected result', () => {
     expect(within(screen.getByTestId('motion-panel-executions')).getByRole('tab', { name: new RegExp(t('spaces.webAnimation.inProgress')) })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('moves the tab with the selected row when it ends', async () => {
-    lists([], [running(NEWER)]);
-    show();
+});
+
+/**
+ * A row of this Space still in progress.
+ * @param id - Its id.
+ * @param request - Its prompt.
+ * @param phase - The step it is on; null while it waits in the queue.
+ * @returns The row.
+ */
+function inProgressRow(id: string, request: string, phase: string | null = 'writing'): Record<string, unknown> {
+  return {
+    ...done(id, request, '2026-11-15T10:00:00.000000Z'), status: phase === null ? 'queued' : 'running', phase,
+    resultSourceVersionId: null, usageCredits: 0, billedCredits: null, billedAt: null,
+  };
+}
+
+/**
+ * A row of this Space that failed, was cancelled or expired.
+ * @param row - The row as it was made.
+ * @param status - How it ended.
+ * @param reason - Why it failed, for a failure.
+ * @returns The row.
+ */
+function endedRow(row: Record<string, unknown>, status: 'failed' | 'cancelled' | 'expired' = 'failed', reason: string | null = 'validation_failed'): Record<string, unknown> {
+  return { ...row, status, failureReason: status === 'failed' ? reason : null, resultSourceVersionId: null, resultAssetId: null };
+}
+
+const RUNNING = '90000000-0000-4000-8000-0000000000a1';
+const FAILED = '90000000-0000-4000-8000-0000000000f1';
+
+describe('the execution list\'s three tabs', () => {
+  /**
+   * Open the execution list on one of its tabs.
+   * @param tab - The tab's catalog key.
+   * @returns The panel.
+   */
+  async function openTab(tab: 'completed' | 'inProgress' | 'failed'): Promise<HTMLElement> {
     const user = userEvent.setup();
     await user.click(await screen.findByTestId('motion-open-executions'));
     const panel = await screen.findByTestId('motion-panel-executions');
-    await user.click(within(panel).getByRole('tab', { name: new RegExp(t('spaces.webAnimation.inProgress')) }));
-    await user.click(await within(panel).findByTestId(`motion-row-${NEWER}`));
-    lists([done(NEWER, 'Running logo', '2026-11-15T10:00:00.000000Z')], []);
-    await refetchFailing();
-    await waitFor(() => expect(within(panel).getByRole('tab', { name: new RegExp(t('spaces.webAnimation.completed')) })).toHaveAttribute('aria-selected', 'true'));
+    await user.click(within(panel).getByRole('tab', { name: new RegExp(t(`spaces.webAnimation.${tab}`)) }));
+    return panel;
+  }
+
+  it('shows Completed, In progress and Failed in that order, each with its total', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')], { running: [inProgressRow(RUNNING, 'A dot')], failed: [endedRow(done(FAILED, 'A box', '2026-11-15T07:00:00.000000Z'))] });
+    show();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('motion-open-executions'));
+    const tabs = within(await screen.findByTestId('motion-panel-executions')).getAllByRole('tab');
+    await waitFor(() => expect(tabs.map((tab) => tab.textContent)).toEqual([
+      `${t('spaces.webAnimation.completed')}1`, `${t('spaces.webAnimation.inProgress')}1`, `${t('spaces.webAnimation.failed')}1`,
+    ]));
+  });
+
+  it('shows a row in progress with its step and Cancel, and leaves the preview on a press of the row', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')], { running: [inProgressRow(RUNNING, 'A dot')] });
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const panel = await openTab('inProgress');
+    const row = await within(panel).findByTestId(`motion-row-${RUNNING}`);
+    expect(row).toHaveTextContent(t('timeline.webAnimation.phase.writing'));
+    expect(within(row).getByTestId('motion-cancel')).toHaveTextContent(t('timeline.webAnimation.cancel'));
+    await userEvent.setup().click(within(row).getByText('A dot'));
+    expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER);
+  });
+
+  it('shows a failed row with its reason and Run again, and a cancelled one with its status', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')], {
+      failed: [endedRow(done(FAILED, 'A box', '2026-11-15T07:00:00.000000Z')), endedRow(done(RUNNING, 'A dot', '2026-11-15T06:00:00.000000Z'), 'cancelled')],
+    });
+    show();
+    const panel = await openTab('failed');
+    const failed = await within(panel).findByTestId(`motion-row-${FAILED}`);
+    expect(failed).toHaveTextContent(t('timeline.webAnimation.failure.check'));
+    expect(within(failed).getByTestId('motion-retry')).toHaveTextContent(t('timeline.webAnimation.retry'));
+    expect(within(panel).getByTestId(`motion-row-${RUNNING}`)).toHaveTextContent(t('timeline.webAnimation.status.cancelled'));
+    await userEvent.setup().click(within(failed).getByText('A box'));
+    expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER);
+  });
+
+  it('opens the creation dialog filled with a failed row\'s request on Run again', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')], { failed: [endedRow(done(FAILED, 'A box', '2026-11-15T07:00:00.000000Z'))] });
+    show();
+    const panel = await openTab('failed');
+    await userEvent.setup().click(within(await within(panel).findByTestId(`motion-row-${FAILED}`)).getByTestId('motion-retry'));
+    expect(await screen.findByDisplayValue('A box')).toBeInTheDocument();
+  });
+
+  it('says nothing failed on an empty Failed tab', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    show();
+    const panel = await openTab('failed');
+    expect(await within(panel).findByText(t('spaces.webAnimation.emptyFailed'))).toBeInTheDocument();
+  });
+
+  it('keeps the preview on the shown result after an accept, opening In progress with the new row marked', async () => {
+    const shown = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');
+    const made = { ...exported(shown), status: 'queued', resultAssetId: null };
+    listing([shown]);
+    vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async () => {
+      listing([shown], { running: [made] });
+      return { row: made, created: true } as never;
+    });
+    show();
+    await userEvent.setup().click(await screen.findByTestId('motion-action-export'));
+    const panel = await screen.findByTestId('motion-panel-executions');
+    await waitFor(() => expect(within(panel).getByRole('tab', { name: new RegExp(t('spaces.webAnimation.inProgress')) })).toHaveAttribute('aria-selected', 'true'));
+    expect(await within(panel).findByTestId(`motion-row-${EXPORT}`)).toHaveAttribute('data-marked', 'true');
     expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER);
   });
 });
@@ -978,9 +1062,9 @@ describe('the execution list when a read fails', () => {
   it('keeps the rows when Load more fails, and turns Load more into Retry', async () => {
     const first = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');
     vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string; cursor?: string }) => {
-      if (params.group === 'running' || params.scope === 'timeline') return { rows: [], nextCursor: null, totals: { done: 0, inProgress: 0 } } as never;
+      if (params.group !== 'succeeded' || params.scope === 'timeline') return { rows: [], nextCursor: null, totals: { running: 0, succeeded: 0, failed: 0 } } as never;
       if (params.cursor !== undefined) throw new Error('network');
-      return { rows: [first], nextCursor: 'next', totals: { done: 2, inProgress: 0 } } as never;
+      return { rows: [first], nextCursor: 'next', totals: { running: 0, succeeded: 2, failed: 0 } } as never;
     });
     show();
     const user = userEvent.setup();
@@ -994,7 +1078,7 @@ describe('the execution list when a read fails', () => {
 
   it('says the list failed on a first read, and shows the list loading while Retry reads it again', async () => {
     vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string }) => {
-      if (params.group === 'running' || params.scope === 'timeline') return { rows: [], nextCursor: null, totals: { done: 0, inProgress: 0 } } as never;
+      if (params.group !== 'succeeded' || params.scope === 'timeline') return { rows: [], nextCursor: null, totals: { running: 0, succeeded: 0, failed: 0 } } as never;
       throw new Error('network');
     });
     show();
@@ -1010,7 +1094,7 @@ describe('the execution list when a read fails', () => {
 
   it('keeps Retry still while only the other list of the tab reads in the background', async () => {
     vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string }) => {
-      if (params.group === 'running' || params.scope === 'timeline') return { rows: [], nextCursor: null, totals: { done: 0, inProgress: 0 } } as never;
+      if (params.group !== 'succeeded' || params.scope === 'timeline') return { rows: [], nextCursor: null, totals: { running: 0, succeeded: 0, failed: 0 } } as never;
       throw new Error('network');
     });
     show();
@@ -1019,7 +1103,7 @@ describe('the execution list when a read fails', () => {
     const panel = await screen.findByTestId('motion-panel-executions');
     await within(panel).findByText(t('spaces.webAnimation.listError'));
     vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(() => new Promise(() => {}));
-    void clients.at(-1)!.refetchQueries({ queryKey: motionListQueryKey(PROJECT, SPACE, 'timeline', 'done') });
+    void clients.at(-1)!.refetchQueries({ queryKey: motionListQueryKey(PROJECT, SPACE, 'timeline', 'succeeded') });
     await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
     // The panel's and the preview's Retry.
     const retries = screen.getAllByRole('button', { name: t('timeline.retry') });
@@ -1044,7 +1128,7 @@ describe('the preview when the list read fails', () => {
   /** Fail every read of this Space's Completed list; the other lists answer empty. */
   function failDone(): void {
     vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string }) => {
-      if (params.group === 'running' || params.scope === 'timeline') return { rows: [], nextCursor: null, totals: { done: 0, inProgress: 0 } } as never;
+      if (params.group !== 'succeeded' || params.scope === 'timeline') return { rows: [], nextCursor: null, totals: { running: 0, succeeded: 0, failed: 0 } } as never;
       throw new Error('network');
     });
   }
@@ -1107,9 +1191,14 @@ describe('exporting a result', () => {
     await pressTwice('motion-action-export');
   });
 
-  it('sends one export for two quick presses of Re-export, which waits for the answer', async () => {
-    listing([{ ...exported(done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')), status: 'failed', failureReason: 'render' }]);
+  it('sends one export for two quick presses of Export again on a failed export, which waits for the answer', async () => {
+    const source = done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z');
+    listing([source], { failed: [{ ...exported(source), status: 'failed', failureReason: 'render_failed' }] });
     show();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('motion-open-executions'));
+    await user.click(within(await screen.findByTestId('motion-panel-executions')).getByRole('tab', { name: new RegExp(t('spaces.webAnimation.failed')) }));
+    expect(await screen.findByTestId('motion-retry')).toHaveTextContent(t('spaces.webAnimation.reexport'));
     await pressTwice('motion-retry');
   });
 });

@@ -30,7 +30,7 @@ describe('useMotionRunning', () => {
   it('shares one in-progress request with the open Space\'s list, and says a run is in progress', async () => {
     vi.mocked(timelineApi.limits).mockReturnValue(new Promise(() => {}));
     vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string }) => (
-      { rows: [], nextCursor: null, totals: { done: 0, inProgress: params.scope === 'space' && params.group === 'running' ? 1 : 0 } }
+      { rows: [], nextCursor: null, totals: { running: params.scope === 'space' && params.group === 'running' ? 1 : 0, succeeded: 0, failed: 0 } }
     ) as never);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const wrapper = ({ children }: { children: React.ReactNode }): React.JSX.Element => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
@@ -44,7 +44,7 @@ describe('useMotionRunning', () => {
   it('reads the in-progress list once while a run is in progress, however short a refresh interval the server sends', async () => {
     vi.mocked(timelineApi.limits).mockResolvedValue({ webAnimation: { sourceRefreshIntervalMs: 20 } } as never);
     vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async () => (
-      { rows: [{ id: 'r1' }], nextCursor: null, totals: { done: 0, inProgress: 1 } }
+      { rows: [{ id: 'r1' }], nextCursor: null, totals: { running: 1, succeeded: 0, failed: 0 } }
     ) as never);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const wrapper = ({ children }: { children: React.ReactNode }): React.JSX.Element => <QueryClientProvider client={client}>{children}</QueryClientProvider>;

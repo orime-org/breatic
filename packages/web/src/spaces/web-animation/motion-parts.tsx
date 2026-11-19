@@ -155,17 +155,27 @@ export function rowSeconds(row: WebAnimationRowView): number {
 }
 
 /**
- * A row's summary line: frame, length, status and phase, and when it was made.
+ * A row's summary line: frame, length and when it was made. The tab says how it stands; a row in progress or one that
+ * failed tells its step or reason on a line of its own.
  * @param row - The row.
  * @param t - The translator.
  * @returns The line.
  * @throws {never} Never.
  */
 export function rowSummary(row: WebAnimationRowView, t: (key: string, params?: Record<string, string | number>) => string): string {
-  const status = t(`timeline.webAnimation.status.${row.status}`);
-  const phase = row.status === 'running' && row.phase !== null ? ` · ${t(phaseKey(row.kind, row.phase))}` : '';
   const made = new Date(row.createdAt).toLocaleString(getLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  return `${rowFrame(row)} · ${t('timeline.webAnimation.durationShort', { seconds: rowSeconds(row) })} · ${status}${phase} · ${made}`;
+  return `${rowFrame(row)} · ${t('timeline.webAnimation.durationShort', { seconds: rowSeconds(row) })} · ${made}`;
+}
+
+/**
+ * Where a row in progress stands: the step it is on while it runs, otherwise its status word (Queued, Cancelling).
+ * @param row - The row.
+ * @param t - The translator.
+ * @returns The words.
+ * @throws {never} Never.
+ */
+export function rowStep(row: WebAnimationRowView, t: (key: string) => string): string {
+  return row.status === 'running' && row.phase !== null ? t(phaseKey(row.kind, row.phase)) : t(`timeline.webAnimation.status.${row.status}`);
 }
 
 /** One list row. */

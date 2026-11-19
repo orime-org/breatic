@@ -25,7 +25,7 @@ export interface AcceptedWebAnimation {
 export interface SpaceExecutionPage {
   rows: WebAnimationRowView[];
   nextCursor: string | null;
-  totals: { done: number; inProgress: number };
+  totals: { running: number; succeeded: number; failed: number };
 }
 
 /** Which Motion list to read: this Space's own, or the group made in a Timeline before Motion existed. */
@@ -33,7 +33,8 @@ export interface SpaceExecutionQuery {
   projectId: string;
   spaceId: string;
   scope: 'space' | 'timeline';
-  group: 'done' | 'running';
+  /** Rows in progress, rows that succeeded, or rows that failed, were cancelled or expired. */
+  group: 'running' | 'succeeded' | 'failed';
   cursor?: string;
 }
 

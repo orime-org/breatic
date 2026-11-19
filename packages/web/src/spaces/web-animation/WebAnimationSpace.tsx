@@ -6,10 +6,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ThreadData } from '@blocknote/core/comments';
 import {
   Check, CircleSlash, Dot, Download, Ellipsis, LayoutGrid, List, LoaderCircle, MessageSquare,
-  MessageSquarePlus, Pause, Pencil, Play, Plus, RotateCcw, Undo2, Upload, Video, X,
+  MessageSquarePlus, Pause, Pencil, Play, Plus, Undo2, Upload, Video, X,
 } from 'lucide-react';
 import { formatCredits, getLocale, newId } from '@breatic/shared';
-import { anchorTimeWithin, webAnimationExecutionEnded, webAnimationExecutionFailed, type WebAnimationRowView } from '@breatic/shared/space-content';
+import { anchorTimeWithin, type WebAnimationRowView } from '@breatic/shared/space-content';
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@web/components/ui/alert-dialog';
 import { Button } from '@web/components/ui/button';
@@ -40,7 +40,7 @@ import { ANNOTATION_DRAFT_IDLE, transitionAnnotationDraft, type AnnotationDraftE
 import { webAnimationAnnotationStore } from '@web/spaces/web-animation/annotation-thread-store';
 import { CANVAS_PLACEMENT_IDLE, transitionCanvasPlacement, type CanvasPlacementEvent } from '@web/spaces/web-animation/canvas-placement';
 import { transitionCreationDraft, type CreationDraftInput, type CreationDraftState } from '@web/spaces/web-animation/creation-draft';
-import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, endedSentenceKey, exportIntent, executionStepKeys, failureSentenceKey, phaseKey, stepMark } from '@web/spaces/web-animation/execution-text';
+import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, exportIntent, executionStepKeys, stepMark } from '@web/spaces/web-animation/execution-text';
 import { MOTION_PANELS_CLOSED, transitionMotionPanels, type MotionPanelsEvent, type MotionTab } from '@web/spaces/web-animation/motion-panels';
 import { ListLoadError, listShows } from '@web/spaces/web-animation/list-states';
 import { BarButton, PreviewUnavailable, playable, rowSeconds } from '@web/spaces/web-animation/motion-parts';
@@ -168,31 +168,24 @@ interface DetailsProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   unresolvedOnBase: number;
-  readOnly: boolean;
-  onCancel: (row: WebAnimationRowView) => void;
   /** Opens the result a modification started from, at its earliest open annotation. */
   onOpenBase: () => void;
 }
 
 /**
- * The current result's details (#1490 design §7.1): its title, request or source, steps, usage, the result it was
- * modified from with that result's open annotations, why it failed, and Cancel while it runs.
+ * The details of the result in the preview (#1490 design §7.2): its title, request or source, steps, usage, and the
+ * result it was modified from with that result's open annotations. The preview only holds succeeded results.
  * @param props - The row and what the details offer.
  * @param props.row - The row.
  * @param props.open - Whether the popover is open.
  * @param props.onOpenChange - Opens or closes it.
  * @param props.unresolvedOnBase - Open annotations on the result a modification started from.
- * @param props.readOnly - Whether the user may act.
- * @param props.onCancel - Cancels it.
  * @param props.onOpenBase - Opens the result a modification started from.
  * @returns The popover.
  * @throws {never} Never.
  */
-function Details({ row, open, onOpenChange, unresolvedOnBase, readOnly, onCancel, onOpenBase }: DetailsProps): React.JSX.Element {
+function Details({ row, open, onOpenChange, unresolvedOnBase, onOpenBase }: DetailsProps): React.JSX.Element {
   const t = useTranslation();
-  const cancelling = useRunning(cancelIntent(row.id)) !== undefined;
-  const unfinished = !webAnimationExecutionEnded(row.status);
-  const cancel = React.useCallback((): void => onCancel(row), [onCancel, row]);
   const base = row.kind === 'web_animation_modify' ? row.base : null;
   return <Popover open={open} onOpenChange={onOpenChange}>
     <PopoverTrigger asChild>
@@ -209,9 +202,7 @@ function Details({ row, open, onOpenChange, unresolvedOnBase, readOnly, onCancel
           <dd className='min-w-0 break-words'>{requestTitle(row.source, t)}</dd>
         </>}
         <dt className='text-muted-foreground'>{t('timeline.webAnimation.usageLabel')}</dt>
-        <dd className={cn(unfinished && 'text-muted-foreground')}>
-          {unfinished ? t('timeline.webAnimation.usagePending') : t('timeline.webAnimation.usage', { credits: formatCredits(row.usageCredits, getLocale()) })}
-        </dd>
+        <dd>{t('timeline.webAnimation.usage', { credits: formatCredits(row.usageCredits, getLocale()) })}</dd>
         {base !== null && <>
           <dt className='text-muted-foreground'>{t('spaces.webAnimation.modifiedFromLabel')}</dt>
           <dd><Button type='button' variant={null} size={null} className='text-left underline' onClick={onOpenBase}>
@@ -230,10 +221,6 @@ function Details({ row, open, onOpenChange, unresolvedOnBase, readOnly, onCancel
           </li>;
         })}
       </ol>
-      {row.status === 'failed' && <p className='text-status-error-foreground'>{t(failureSentenceKey(row.failureReason))}</p>}
-      {unfinished && !readOnly && row.ownProject && row.status !== 'cancelling' && <Button type='button' data-testid='motion-cancel' variant='outline' size='sm' className='gap-1.5 self-start'
-        loading={cancelling} onClick={cancel} icon={<X className='size-4' />}>{t('timeline.webAnimation.cancel')}</Button>}
-      {unfinished && !row.ownProject && <span className='text-muted-foreground'>{t('spaces.webAnimation.foreignCancel')}</span>}
     </PopoverContent>
   </Popover>;
 }
@@ -276,7 +263,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     selectionRef.current = state;
     setSelection(state);
     for (const effect of effects) {
-      if (effect.type === 'show_tab') dispatchPanels({ type: 'show_tab', tab: effect.tab });
+      if (effect.type === 'reveal') dispatchPanels({ type: 'reveal', tab: effect.tab, executionId: effect.executionId });
       if (effect.type === 'toast_not_found') toast.warning(t('spaces.webAnimation.notFound'));
       if (effect.type === 'fetch') {
         timelineApi.getExecution(projectId, spaceId, effect.executionId).then((row) => select({ type: 'fetched', requestId: effect.requestId, row }), () => select({ type: 'fetch_failed', requestId: effect.requestId }));
@@ -301,14 +288,14 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   // With nothing selected, the newest finished result opens once the list is there (design §7.1): on entering, after
   // an open request that names no result, and after a named result could not be read.
   React.useEffect(() => {
-    if (lists.done.own.data === undefined || selection.status !== 'none') return;
-    const newest = rowsOf(lists.done.own)[0] ?? rowsOf(lists.done.legacy)[0];
+    if (lists.succeeded.own.data === undefined || selection.status !== 'none') return;
+    const newest = rowsOf(lists.succeeded.own)[0] ?? rowsOf(lists.succeeded.legacy)[0];
     if (newest !== undefined) pick(newest);
-  }, [selection.status, lists.done.own, lists.done.legacy, pick]);
+  }, [selection.status, lists.succeeded.own, lists.succeeded.legacy, pick]);
   // With nothing to show, the preview tells the Completed list's state (design §7.3).
-  const doneShows = listShows(lists.done.own, lists.done.legacy);
-  const { refetch: refetchDoneOwn } = lists.done.own;
-  const { refetch: refetchDoneLegacy } = lists.done.legacy;
+  const doneShows = listShows(lists.succeeded.own, lists.succeeded.legacy);
+  const { refetch: refetchDoneOwn } = lists.succeeded.own;
+  const { refetch: refetchDoneLegacy } = lists.succeeded.legacy;
   const retryDone = React.useCallback((): void => { void refetchDoneOwn(); void refetchDoneLegacy(); }, [refetchDoneOwn, refetchDoneLegacy]);
   // The selection keeps the freshest copy of its row, and moves the tab only when that row crosses into the other one;
   // running this again with the copy it holds (the Space shown again, a new `select`) asks for nothing.
@@ -376,10 +363,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   React.useEffect(() => {
     if (openRequest.status !== 'opened' || openRequest.spaceId !== spaceId) return;
     const target = openRequest.request.select;
-    if (target !== undefined) {
-      locateShown(target);
-      dispatchPanels({ type: 'locate' });
-    }
+    if (target !== undefined) locateShown(target);
     useSpaceOpenRequestStore.getState().dispatch({ type: 'handled' });
   }, [openRequest, spaceId, locateShown]);
 
@@ -401,8 +385,9 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         return;
       }
       const { row: accepted, created } = outcome.result;
-      showResult(() => select({ type: 'accepted', created, row: accepted }));
-      dispatchPanels({ type: 'accepted', created, tab: created || !webAnimationExecutionEnded(accepted.status) ? 'running' : 'done' });
+      // The preview keeps its result unless the answer is a succeeded row; the list opens on the row (design §7.3).
+      if (accepted.status === 'succeeded') showResult(() => select({ type: 'accepted', row: accepted }));
+      else select({ type: 'accepted', row: accepted });
       refresh();
       if (created) dispatchDraft({ type: 'accepted', executionId: accepted.id });
     });
@@ -454,15 +439,17 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const exportVideo = React.useCallback((): void => {
     if (exportSource !== null) accept({ kind: 'web_animation_export', sourceVersionId: exportSource }, exportIntent(spaceId, exportSource), newId());
   }, [exportSource, spaceId, accept]);
-  const retry = React.useCallback((): void => {
-    if (row === undefined) return;
-    if (row.kind === 'web_animation_export') {
-      exportVideo();
+  // Run again a row of the Failed tab: an export is sent again, a create or modification opens the dialog it was made
+  // from (design §7.2).
+  const retryRow = React.useCallback((target: WebAnimationRowView): void => {
+    if (target.kind === 'web_animation_export') {
+      const source = target.input.sourceVersionId;
+      accept({ kind: 'web_animation_export', sourceVersionId: source }, exportIntent(spaceId, source), newId());
       return;
     }
-    const base = row.kind === 'web_animation_modify' ? { executionId: row.base.executionId, sourceVersionId: row.input.baseSourceVersionId, request: row.base.request } : null;
-    openDialog({ base, prompt: row.request, aspect: row.input.aspect, durationSeconds: row.input.durationSeconds }, true);
-  }, [row, exportVideo, openDialog]);
+    const base = target.kind === 'web_animation_modify' ? { executionId: target.base.executionId, sourceVersionId: target.input.baseSourceVersionId, request: target.base.request } : null;
+    openDialog({ base, prompt: target.request, aspect: target.input.aspect, durationSeconds: target.input.durationSeconds }, true);
+  }, [accept, spaceId, openDialog]);
   // The result a modification starts from: listed here, or read once when it is not.
   const baseId = draft.status !== 'closed' ? draft.input.base?.executionId ?? null : null;
   const listedBase = baseId === null ? undefined : rowById(baseId);
@@ -537,7 +524,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const sendAnnotation = React.useCallback((): void => annotate({ type: 'send' }), [annotate]);
   const cancelAnnotation = React.useCallback((): void => annotate({ type: 'cancel', confirmed: false }), [annotate]);
   const pickRow = React.useCallback((picked: WebAnimationRowView): void => showResult(() => pick(picked)), [showResult, pick]);
-  const order = React.useMemo(() => [...rowsOf(lists.done.own), ...rowsOf(lists.done.legacy)].map((item) => item.id), [lists.done.own, lists.done.legacy]);
+  const order = React.useMemo(() => [...rowsOf(lists.succeeded.own), ...rowsOf(lists.succeeded.legacy)].map((item) => item.id), [lists.succeeded.own, lists.succeeded.legacy]);
   const activeDraft = activeThread === null ? '' : annotations.drafts.get(activeThread.thread.id) ?? '';
 
   const toggleExecutions = React.useCallback((): void => panelsEvent({ type: 'toggle_executions' }), [panelsEvent]);
@@ -547,7 +534,6 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const seekTo = React.useCallback((value: number[]): void => seekClock(value[0] ?? 0), [seekClock]);
   const seekValue = React.useMemo(() => [clock.time], [clock.time]);
   const finished = row?.status === 'succeeded';
-  const failed = row !== undefined && webAnimationExecutionFailed(row.status);
   const panelOpen = panels.panel !== 'none';
   const frameStyle = React.useMemo(() => {
     const ratio = row === undefined ? 16 / 9 : ratioOf(row);
@@ -559,7 +545,8 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const [previewArea, setPreviewArea] = React.useState<HTMLDivElement | null>(null);
 
   return <div ref={setSpaceElement} data-testid='motion-space' className='relative isolate h-full overflow-hidden bg-muted'>
-    {panels.panel === 'executions' && <MotionExecutionsPanel lists={lists} tab={panels.tab} selectedId={selectedId} onTab={pickTab} onPick={pickRow} onClose={closePanel} />}
+    {panels.panel === 'executions' && <MotionExecutionsPanel lists={lists} tab={panels.tab} selectedId={selectedId} markedId={panels.marked} spaceId={spaceId} readOnly={readOnly}
+      onTab={pickTab} onPick={pickRow} onCancel={cancel} onRetry={retryRow} onClose={closePanel} />}
     {panels.panel === 'annotations' && <MotionAnnotationsPanel threads={threads} order={order} rowOf={rowById} activeThreadId={activeThread?.thread.id ?? null}
       filter={annotations.filter} onFilter={annotations.setFilter} viewportRef={annotations.viewportRef} onOpen={openThread} onClose={closePanel} />}
     <div ref={setPreviewArea} data-testid='motion-preview-area' className={cn('absolute bottom-[4.5rem] left-6 top-6 flex items-center justify-center', panelOpen ? 'right-[22rem]' : 'right-6')}
@@ -578,14 +565,6 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
           {finished && playable(row) && <MotionResultPlayer projectId={projectId} executionId={row.id} sourceVersionId={row.resultSourceVersionId} input={row.input} frame={frame} />}
           {finished && row.kind === 'web_animation_export' && <ExportVideo key={row.id} url={exportAsset?.fileUrl ?? null} assetFailed={exportAssetRead.isError}
             assetRetrying={exportAssetRead.isFetching} onAssetRetry={retryExportAsset} time={clock.time} playing={clock.playing} />}
-          {!finished && <div className='flex size-full flex-col items-center justify-center gap-2 rounded-chrome border border-dashed border-border bg-card text-xs text-muted-foreground'>
-            {failed
-              ? <span className='text-status-error-foreground'>{t(endedSentenceKey(row.status, row.failureReason))}</span>
-              : <span className='flex items-center gap-1.5'><LoaderCircle className='size-3.5 animate-spin' />
-                {`${t(`timeline.webAnimation.status.${row.status}`)}${row.phase !== null ? ` · ${t(phaseKey(row.kind, row.phase))}` : ''}`}</span>}
-            {failed && !readOnly && <Button data-testid='motion-retry' variant='outline' size='sm' className='gap-1.5' loading={exporting} onClick={retry} icon={<RotateCcw className='size-4' />}>
-              {t(row.kind === 'web_animation_export' ? 'spaces.webAnimation.reexport' : 'timeline.webAnimation.retry')}</Button>}
-          </div>}
           {finished && playable(row) && resultThreads.filter(({ anchor }) => anchor.point !== null && Math.abs(anchor.timeSeconds - clock.time) < PIN_WINDOW_SECONDS).map(({ thread, anchor }) =>
             <Button key={thread.id} type='button' variant={null} size={null} data-testid={`motion-pin-${thread.id}`} aria-label={t('spaces.webAnimation.annotations')}
               onClick={(event) => { event.stopPropagation(); openThread(thread.id); }}
@@ -642,12 +621,12 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
           {!readOnly && <PlaceOnCanvas projectId={projectId} row={row} canvases={canvases} />}
           <BarButton testId='motion-action-view-source' label={t('spaces.webAnimation.viewSource')} icon={<Undo2 className='size-4' />} onClick={viewSource} />
         </>}
-        <Details row={row} open={annotations.detailsOpen} onOpenChange={annotations.setDetailsOpen} unresolvedOnBase={annotations.openOnBaseCount} readOnly={readOnly}
-          onCancel={cancel} onOpenBase={annotations.openBase} />
+        <Details row={row} open={annotations.detailsOpen} onOpenChange={annotations.setDetailsOpen} unresolvedOnBase={annotations.openOnBaseCount}
+          onOpenBase={annotations.openBase} />
       </>}
       <Separator orientation='vertical' className='mx-1 h-5' />
       <BarButton testId='motion-open-executions' label={t('spaces.webAnimation.executions')} icon={<List className='size-4' />} pressed={panels.panel === 'executions'}
-        count={lists.totals.inProgress} onClick={toggleExecutions} />
+        count={lists.totals.running} onClick={toggleExecutions} />
       <BarButton testId='motion-open-annotations' label={t('spaces.webAnimation.annotations')} icon={<MessageSquare className='size-4' />} pressed={panels.panel === 'annotations'}
         count={docReady ? annotations.unresolvedCount : 0} onClick={toggleAnnotations} loading={!docReady} />
       {!readOnly && <BarButton testId='motion-new' label={t('spaces.webAnimation.new')} icon={<Plus className='size-4' />} onClick={openNew} />}

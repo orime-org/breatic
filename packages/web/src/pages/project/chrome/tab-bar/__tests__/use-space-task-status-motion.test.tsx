@@ -40,7 +40,7 @@ const clients: QueryClient[] = [];
  */
 function page(inProgress: number): SpaceExecutionPage {
   const rows = Array.from({ length: inProgress }, (_, index) => ({ id: `90000000-0000-4000-8000-00000000000${index}`, status: 'running' }));
-  return { rows: rows as unknown as SpaceExecutionPage['rows'], nextCursor: null, totals: { done: 3, inProgress } };
+  return { rows: rows as unknown as SpaceExecutionPage['rows'], nextCursor: null, totals: { running: inProgress, succeeded: 3, failed: 0 } };
 }
 
 /**
