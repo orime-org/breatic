@@ -60,6 +60,20 @@ import { useCanvasRevealStore } from '@web/stores/canvas-reveal';
 import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
 import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 
+/** The bar's icons, made once so a memoized bar button skips the renders the play clock causes. */
+const PLACE_ICON = <LayoutGrid className='size-4' />;
+const DETAILS_ICON = <Ellipsis className='size-4' />;
+const NEW_ICON = <Plus className='size-4' />;
+const ADD_ANNOTATION_ICON = <MessageSquarePlus className='size-4' />;
+const MODIFY_ICON = <Pencil className='size-4' />;
+const VIDEO_ICON = <Video className='size-4' />;
+const EXPORT_ICON = <Upload className='size-4' />;
+const DOWNLOAD_ICON = <Download className='size-4' />;
+const SOURCE_ICON = <Undo2 className='size-4' />;
+const EXECUTIONS_ICON = <List className='size-4' />;
+const ANNOTATIONS_ICON = <MessageSquare className='size-4' />;
+const PLAY_ICON = <Play className='size-4' />;
+const PAUSE_ICON = <Pause className='size-4' />;
 /** How close to the playhead an annotation's point shows on the frame, in seconds. */
 const PIN_WINDOW_SECONDS = 0.15;
 /** An annotation's pin on the frame, saved or being written: a 20px drop whose tip, its bottom-left corner, is the point. */
@@ -154,11 +168,11 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
   // A press while the button waits opens nothing: the menu opens on pointer down, which the waiting button does not swallow.
   const openMenu = React.useCallback((next: boolean): void => setOpen(next && !waiting), [waiting]);
   if (canvases.length === 0) {
-    return <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.noCanvas')} icon={<LayoutGrid className='size-4' />} disabled />;
+    return <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.noCanvas')} icon={PLACE_ICON} disabled />;
   }
   return <DropdownMenu open={open && !waiting} onOpenChange={openMenu}>
     <DropdownMenuTrigger asChild>
-      <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.placeOnCanvas')} icon={<LayoutGrid className='size-4' />}
+      <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.placeOnCanvas')} icon={PLACE_ICON}
         loading={waiting} disabled={asset === undefined} />
     </DropdownMenuTrigger>
     <DropdownMenuContent side='top' align='start' sideOffset={BAR_MENU_OFFSET} className='w-52'>
@@ -201,7 +215,7 @@ function Details({ row, open, onOpenChange, unresolvedOnBase, onOpenBase, baseRe
   const base = row.kind === 'web_animation_modify' ? row.base : null;
   return <Popover open={open} onOpenChange={onOpenChange}>
     <PopoverTrigger asChild>
-      <BarButton testId='motion-details' label={t('spaces.webAnimation.details')} icon={<Ellipsis className='size-4' />} />
+      <BarButton testId='motion-details' label={t('spaces.webAnimation.details')} icon={DETAILS_ICON} />
     </PopoverTrigger>
     <PopoverContent side='top' align='end' sideOffset={8} className='flex w-80 flex-col gap-2 p-3 text-xs'>
       <span className='break-words font-medium'>{webAnimationTitle(row, t)}</span>
@@ -595,7 +609,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
             ? <ListLoadError message={t('spaces.webAnimation.listError')} onRetry={retrySucceeded} />
             : <div data-testid='motion-empty' className='flex flex-col items-center gap-3 text-sm text-muted-foreground'>
               <span>{t('spaces.webAnimation.empty')}</span>
-              {!readOnly && <Button data-testid='motion-empty-new' size='sm' className='gap-1.5' onClick={openNew} loading={limitsWaiting} icon={<Plus className='size-4' />}>{t('spaces.webAnimation.new')}</Button>}
+              {!readOnly && <Button data-testid='motion-empty-new' size='sm' className='gap-1.5' onClick={openNew} loading={limitsWaiting} icon={NEW_ICON}>{t('spaces.webAnimation.new')}</Button>}
             </div>
         // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a point on the frame is marked with the mouse only
         : <div data-testid='motion-preview' data-execution-id={row.id} className={cn('relative', annotation.status === 'picking' && 'cursor-crosshair')} style={frameStyle} onClick={clickFrame}>
@@ -628,7 +642,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         </div>}
     </div>
     <div data-testid='motion-bottom-bar' className='absolute inset-x-3 bottom-3 z-10 flex h-12 items-center gap-1 rounded-chrome border border-border bg-popover px-2 shadow'>
-      <BarButton testId='motion-play' filled label={t(clock.playing ? 'timeline.pause' : 'timeline.play')} icon={clock.playing ? <Pause className='size-4' /> : <Play className='size-4' />}
+      <BarButton testId='motion-play' filled label={t(clock.playing ? 'timeline.pause' : 'timeline.play')} icon={clock.playing ? PAUSE_ICON : PLAY_ICON}
         onClick={clock.toggle} disabled={row === undefined} />
       <span className='mx-2 shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground'>
         {row === undefined ? '—' : `${formatMotionTime(clock.time)} / ${formatMotionTime(durationSeconds)}`}
@@ -651,29 +665,29 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
       {row !== undefined && <>
         <Separator orientation='vertical' className='mx-1 h-5' />
         {playable(row) && <>
-          {!readOnly && <BarButton testId='motion-action-add-annotation' label={t('spaces.webAnimation.addAnnotation')} icon={<MessageSquarePlus className='size-4' />}
+          {!readOnly && <BarButton testId='motion-action-add-annotation' label={t('spaces.webAnimation.addAnnotation')} icon={ADD_ANNOTATION_ICON}
             pressed={annotation.status !== 'idle'} onClick={addAnnotation} disabled={!annotationsWritable} loading={!docReady || readingId !== null} />}
-          {!readOnly && <BarButton testId='motion-action-modify' label={t('spaces.webAnimation.modify')} icon={<Pencil className='size-4' />} onClick={modify} loading={limitsWaiting} />}
+          {!readOnly && <BarButton testId='motion-action-modify' label={t('spaces.webAnimation.modify')} icon={MODIFY_ICON} onClick={modify} loading={limitsWaiting} />}
           {exportRow !== null
-            ? <BarButton testId='motion-action-view-video' label={t('spaces.webAnimation.viewVideo')} icon={<Video className='size-4' />} onClick={viewVideo}
+            ? <BarButton testId='motion-action-view-video' label={t('spaces.webAnimation.viewVideo')} icon={VIDEO_ICON} onClick={viewVideo}
               loading={readingId !== null && readingId === exportRow.executionId} />
-            : !readOnly && <BarButton testId='motion-action-export' label={t('spaces.webAnimation.export')} icon={<Upload className='size-4' />} onClick={exportVideo} loading={exporting} />}
+            : !readOnly && <BarButton testId='motion-action-export' label={t('spaces.webAnimation.export')} icon={EXPORT_ICON} onClick={exportVideo} loading={exporting} />}
         </>}
         {row?.kind === 'web_animation_export' && <>
-          <BarButton testId='motion-action-download' label={t('spaces.webAnimation.download')} icon={<Download className='size-4' />} onClick={download} disabled={exportAsset === undefined} />
+          <BarButton testId='motion-action-download' label={t('spaces.webAnimation.download')} icon={DOWNLOAD_ICON} onClick={download} disabled={exportAsset === undefined} />
           {!readOnly && <PlaceOnCanvas projectId={projectId} row={row} canvases={canvases} />}
-          <BarButton testId='motion-action-view-source' label={t('spaces.webAnimation.viewSource')} icon={<Undo2 className='size-4' />} onClick={viewSource}
+          <BarButton testId='motion-action-view-source' label={t('spaces.webAnimation.viewSource')} icon={SOURCE_ICON} onClick={viewSource}
             loading={readingId !== null && readingId === row.source.executionId} />
         </>}
         <Details row={row} open={annotations.detailsOpen} onOpenChange={annotations.setDetailsOpen} unresolvedOnBase={annotations.openOnBaseCount}
           onOpenBase={annotations.openBase} baseReading={readingId !== null && row.kind === 'web_animation_modify' && readingId === row.base.executionId} />
       </>}
       <Separator orientation='vertical' className='mx-1 h-5' />
-      <BarButton testId='motion-open-executions' label={t('spaces.webAnimation.executions')} icon={<List className='size-4' />} pressed={panels.panel === 'executions'}
+      <BarButton testId='motion-open-executions' label={t('spaces.webAnimation.executions')} icon={EXECUTIONS_ICON} pressed={panels.panel === 'executions'}
         count={lists.totals.running} onClick={toggleExecutions} />
-      <BarButton testId='motion-open-annotations' label={t('spaces.webAnimation.annotations')} icon={<MessageSquare className='size-4' />} pressed={panels.panel === 'annotations'}
+      <BarButton testId='motion-open-annotations' label={t('spaces.webAnimation.annotations')} icon={ANNOTATIONS_ICON} pressed={panels.panel === 'annotations'}
         count={docReady ? annotations.unresolvedCount : 0} onClick={toggleAnnotations} loading={!docReady} />
-      {!readOnly && <BarButton testId='motion-new' label={t('spaces.webAnimation.new')} icon={<Plus className='size-4' />} onClick={openNew} loading={limitsWaiting} />}
+      {!readOnly && <BarButton testId='motion-new' label={t('spaces.webAnimation.new')} icon={NEW_ICON} onClick={openNew} loading={limitsWaiting} />}
     </div>
     <AlertDialog open={discardAsked !== null} onOpenChange={keepWriting}>
       <AlertDialogContent onCloseAutoFocus={backToWriting}>
