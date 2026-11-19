@@ -2965,7 +2965,9 @@
       "storageQuotaExceeded": "Your storage is full",
       "creditRefundCompleted": "Your refund for {credits} credits is complete",
       "creditRefundRejected": "Your refund request for {credits} credits was not approved",
-      "creditRefundRestored": "{credits} credits have been restored to your account"
+      "creditRefundRestored": "{credits} credits have been restored to your account",
+      "commentMentioned": "{actor} mentioned you in a comment in {project}",
+      "commentAssignmentAnswered": "{agent} finished the comment you handed it"
     },
     "actorFallback": "Someone",
     "subtitle": {
@@ -2982,7 +2984,9 @@
       "hours": "expires in {count}h",
       "days": "expires in {count}d"
     },
-    "openDecision": "Answer"
+    "openDecision": "Answer",
+    "openComment": "Open",
+    "agentFallback": "An external Agent"
   },
   "connection": {
     "banner": {

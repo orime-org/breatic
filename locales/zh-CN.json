@@ -2965,7 +2965,9 @@
       "storageQuotaExceeded": "存储已满",
       "creditRefundCompleted": "{credits} 积分的退款已完成",
       "creditRefundRejected": "{credits} 积分的退款申请未通过",
-      "creditRefundRestored": "{credits} 积分已恢复到你的账号"
+      "creditRefundRestored": "{credits} 积分已恢复到你的账号",
+      "commentMentioned": "{actor} 在 {project} 的批注里提到了你",
+      "commentAssignmentAnswered": "{agent} 处理完了你交给它的批注"
     },
     "actorFallback": "某人",
     "subtitle": {
@@ -2982,7 +2984,9 @@
       "hours": "{count} 小时后过期",
       "days": "{count} 天后过期"
     },
-    "openDecision": "去答复"
+    "openDecision": "去答复",
+    "openComment": "打开",
+    "agentFallback": "外部 Agent"
   },
   "connection": {
     "banner": {

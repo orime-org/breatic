@@ -44,6 +44,12 @@ vi.mock('@web/data/api/notifications', () => ({
 // Assert on the app's toast wrapper (the public API), not sonner directly:
 // the wrapper adds the de-dup id INSIDE, so its public methods still take just
 // the message (spying sonner would see the extra id arg).
+const agentApi = vi.hoisted(() => ({ connectionNames: vi.fn() }));
+vi.mock('@web/data/api/agent-access', async (real) => ({
+  ...(await real<typeof import('@web/data/api/agent-access')>()),
+  agentAccessApi: agentApi,
+}));
+
 vi.mock('@web/lib/toast', () => ({
   toast: {
     error: vi.fn(),
@@ -269,6 +275,8 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
       'credit.refund_completed',
       'credit.refund_rejected',
       'credit.refund_restored',
+      'comment.mentioned',
+      'comment.assignment_answered',
     ] as const satisfies readonly NotifType[];
     // A list written by hand can fall behind the union it claims to cover, so
     // the gap is a type error rather than a quieter run of this test: leaving a
@@ -599,5 +607,63 @@ describe('BellMenu — the mark-read buttons spin while the server answers', () 
 
     replyB.resolve({ ok: true });
     await waitFor(() => expect(rowB).not.toHaveAttribute('aria-busy'));
+  });
+});
+
+describe('BellMenu — a comment that mentions you or an agent that answered (#1488 §11.6, §11.7)', () => {
+  const AUTHOR = '33333333-3333-4333-8333-333333333333';
+  const SPACE = '44444444-4444-4444-8444-444444444444';
+  const RESOLVED = {
+    users: { [AUTHOR]: { name: 'Rafa', slug: 'rafa', deleted: false } },
+    studios: {},
+    projects: { [PID]: { name: 'Launch', slug: 'launch', deleted: false } },
+  };
+
+  it('says who mentioned you in which project, and opens the comment', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification('n-m', 'comment.mentioned', { projectId: PID, spaceId: SPACE, entryId: 'e1', threadId: 't1', authorId: AUTHOR })],
+      resolved: RESOLVED,
+    });
+    vi.mocked(notificationsApi.markRead).mockResolvedValue(undefined as never);
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    const headline = await screen.findByTestId('bell-notification-headline-n-m');
+    expect(headline.textContent).toContain('Rafa');
+    expect(headline.textContent).toContain('Launch');
+    await user.click(screen.getByTestId('bell-open-comment-n-m'));
+    expect(navigateMock).toHaveBeenCalledWith(`/project/launch-${PID}?space=${SPACE}&comment=t1`);
+    expect(notificationsApi.markRead).toHaveBeenCalledWith('n-m');
+  });
+
+  it('names the external agent that answered, with the project beneath', async () => {
+    agentApi.connectionNames.mockResolvedValue([{ id: 'c1', name: 'Claude Code' }]);
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification('n-a', 'comment.assignment_answered', { projectId: PID, spaceId: SPACE, threadId: 't1', connectionId: 'c1' })],
+      resolved: RESOLVED,
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('bell-notification-headline-n-a').textContent).toContain('Claude Code');
+    });
+    expect(screen.getByText('Launch')).toBeInTheDocument();
+    expect(screen.getByTestId('bell-open-comment-n-a')).toBeInTheDocument();
+  });
+
+  it('offers nothing to open once the project is gone', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [fakeNotification('n-g', 'comment.mentioned', { projectId: PID, spaceId: SPACE, threadId: 't1', authorId: AUTHOR })],
+      resolved: { ...RESOLVED, projects: { [PID]: { name: 'Launch', slug: 'launch', deleted: true } } },
+    });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await screen.findByTestId('bell-notification-headline-n-g');
+    expect(screen.queryByTestId('bell-open-comment-n-g')).toBeNull();
+    expect(screen.getByTestId('bell-mark-read-n-g')).toBeInTheDocument();
   });
 });

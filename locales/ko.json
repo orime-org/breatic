@@ -2965,7 +2965,9 @@
       "storageQuotaExceeded": "저장 공간이 가득 찼습니다",
       "creditRefundCompleted": "{credits} 크레딧 환불이 완료되었습니다",
       "creditRefundRejected": "{credits} 크레딧 환불 요청이 승인되지 않았습니다",
-      "creditRefundRestored": "{credits} 크레딧이 계정으로 복원되었습니다"
+      "creditRefundRestored": "{credits} 크레딧이 계정으로 복원되었습니다",
+      "commentMentioned": "{actor}님이 {project}의 댓글에서 회원님을 언급했습니다",
+      "commentAssignmentAnswered": "{agent}이(가) 맡긴 댓글을 처리했습니다"
     },
     "actorFallback": "누군가",
     "subtitle": {
@@ -2982,7 +2984,9 @@
       "hours": "{count}시간 후 만료",
       "days": "{count}일 후 만료"
     },
-    "openDecision": "답변하기"
+    "openDecision": "답변하기",
+    "openComment": "열기",
+    "agentFallback": "외부 Agent"
   },
   "connection": {
     "banner": {

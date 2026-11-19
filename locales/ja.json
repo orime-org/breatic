@@ -2965,7 +2965,9 @@
       "storageQuotaExceeded": "ストレージがいっぱいです",
       "creditRefundCompleted": "{credits} クレジットの返金が完了しました",
       "creditRefundRejected": "{credits} クレジットの返金リクエストは承認されませんでした",
-      "creditRefundRestored": "{credits} クレジットがアカウントに戻りました"
+      "creditRefundRestored": "{credits} クレジットがアカウントに戻りました",
+      "commentMentioned": "{actor} が {project} のコメントであなたをメンションしました",
+      "commentAssignmentAnswered": "{agent} が任せたコメントに対応しました"
     },
     "actorFallback": "誰か",
     "subtitle": {
@@ -2982,7 +2984,9 @@
       "hours": "あと{count}時間で期限切れ",
       "days": "あと{count}日で期限切れ"
     },
-    "openDecision": "回答する"
+    "openDecision": "回答する",
+    "openComment": "開く",
+    "agentFallback": "外部 Agent"
   },
   "connection": {
     "banner": {

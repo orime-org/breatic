@@ -88,6 +88,24 @@ function projectPath(slug: string, projectId: string): string {
   return slug ? `/project/${slug}-${projectId}` : `/project/${projectId}`;
 }
 
+/**
+ * Where a comment notification opens: the project page told which Space and
+ * which thread to show (#1488 §11.6, §11.7).
+ * @param n - The notification.
+ * @param resolved - Current identities for the ids it carries.
+ * @returns The link, or null when it is not about a comment or its project is gone.
+ */
+export function commentLinkOf(n: Notification, resolved: NotificationResolved): string | null {
+  if (n.type !== 'comment.mentioned' && n.type !== 'comment.assignment_answered') return null;
+  const projectId = str(n.payload, 'projectId') || n.projectId || '';
+  const project = projectId ? resolved.projects[projectId] : undefined;
+  const spaceId = str(n.payload, 'spaceId');
+  const threadId = str(n.payload, 'threadId');
+  if (project === undefined || project.deleted || spaceId === '' || threadId === '') return null;
+  const query = new URLSearchParams({ space: spaceId, comment: threadId });
+  return `${projectPath(project.slug, projectId)}?${query.toString()}`;
+}
+
 /** Per-type config for a notification whose entity is a project. */
 const PROJECT_ROWS: Partial<
   Record<NotificationType, { key: string; nameField: string; actorIdField: string }>
@@ -106,6 +124,12 @@ const PROJECT_ROWS: Partial<
     key: 'roleUpgradeRejected',
     nameField: 'deciderName',
     actorIdField: 'deciderUserId',
+  },
+  // A member mentioned the user in a comment (#1488 §11.6).
+  'comment.mentioned': {
+    key: 'commentMentioned',
+    nameField: 'authorName',
+    actorIdField: 'authorId',
   },
   'project.invite_request': {
     key: 'projectInviteRequest',
@@ -281,13 +305,22 @@ const TIER_LABEL: Record<string, string> = {
  * @param n - The notification to render a headline for.
  * @param resolved - Current identities for the ids the notification carries.
  * @param t - The translation function.
+ * @param agentNames - External-agent connection names by id, for a row an agent's work raised.
  * @returns The headline as a React node, or the raw type for an unknown notification.
  */
 export function notificationHeadline(
   n: Notification,
   resolved: NotificationResolved,
   t: ReturnType<typeof useTranslation>,
+  agentNames: ReadonlyMap<string, string> = new Map(),
 ): React.ReactNode {
+  // An external agent answered a thread the user handed it (#1488 §11.7); the
+  // project goes on the second line.
+  if (n.type === 'comment.assignment_answered') {
+    return t('notifications.headline.commentAssignmentAnswered', {
+      agent: agentNames.get(str(n.payload, 'connectionId')) ?? t('notifications.agentFallback'),
+    });
+  }
   // A refund outcome (inner#1410 §8): nobody to name, nothing to open; the
   // credits tell one refunded purchase from another.
   if (n.type === 'credit.refund_completed') {

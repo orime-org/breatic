@@ -27,7 +27,8 @@ import {
   type Notification,
   type NotificationType,
 } from '@web/data/api/notifications';
-import { notificationHeadline } from '@web/features/notifications/notification-headline';
+import { commentLinkOf, notificationHeadline } from '@web/features/notifications/notification-headline';
+import { useConnectionNames } from '@web/features/comment-handover/use-connection-names';
 import { EMPTY_RESOLVED } from '@web/data/api/notifications';
 import type { NotificationResolved } from '@web/data/api/notifications';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -99,11 +100,22 @@ export function BellMenu(): React.JSX.Element {
     refetchOnWindowFocus: false,
     retry: false,
   });
-  const notifications = inboxQuery.data?.items ?? [];
+  const notifications = React.useMemo(() => inboxQuery.data?.items ?? [], [inboxQuery.data]);
   // Display names and links come from here, not from the notification payloads
   // — the payloads hold ids so a rename can never strand an old entry.
   const resolved = inboxQuery.data?.resolved ?? EMPTY_RESOLVED;
   const count = notifications.length;
+  // The external agents named by rows their work raised (#1488 §11.7).
+  const agentIds = React.useMemo(
+    () =>
+      notifications.flatMap((n) =>
+        n.type === 'comment.assignment_answered' && typeof n.payload.connectionId === 'string'
+          ? [n.payload.connectionId]
+          : [],
+      ),
+    [notifications],
+  );
+  const agentNames = useConnectionNames(agentIds);
 
   const markReadMutation = useMutation({
     mutationKey: MARK_READ_KEY,
@@ -203,9 +215,15 @@ export function BellMenu(): React.JSX.Element {
                   <NotificationItem
                     notification={n}
                     resolved={resolved}
+                    agentNames={agentNames}
                     onOpenDecision={(token) => {
                       setOpen(false);
                       navigate(`/decision?token=${token}`);
+                    }}
+                    onOpenComment={(link) => {
+                      setOpen(false);
+                      markReadMutation.mutate(n.id);
+                      navigate(link);
                     }}
                     onMarkRead={() => markReadMutation.mutate(n.id)}
                     pending={markingIds.includes(n.id)}
@@ -224,7 +242,11 @@ interface NotificationItemProps {
   notification: Notification;
   /** Current identities for the ids this notification carries. */
   resolved: NotificationResolved;
+  /** External-agent connection names by id. */
+  agentNames: ReadonlyMap<string, string>;
   onOpenDecision: (token: string) => void;
+  /** Opens the comment a comment notification is about. */
+  onOpenComment: (link: string) => void;
   onMarkRead: () => void;
   /** Whether this row's mark-read is waiting on the server. */
   pending: boolean;
@@ -237,7 +259,9 @@ interface NotificationItemProps {
  * @param root0 - Notification item props.
  * @param root0.notification - Notification rendered by this row.
  * @param root0.resolved - Current identities for the ids it carries.
+ * @param root0.agentNames - External-agent connection names by id.
  * @param root0.onOpenDecision - Opens the shared landing page for this request.
+ * @param root0.onOpenComment - Opens the comment a comment notification is about.
  * @param root0.onMarkRead - Called when an informational notification is marked read.
  * @param root0.pending - Whether this row's mark-read is waiting on the server.
  * @returns the notification row with its type-specific actions.
@@ -245,13 +269,16 @@ interface NotificationItemProps {
 function NotificationItem({
   notification,
   resolved,
+  agentNames,
   onOpenDecision,
+  onOpenComment,
   onMarkRead,
   pending,
 }: NotificationItemProps): React.JSX.Element {
   const t = useTranslation();
-  const headline = notificationHeadline(notification, resolved, t);
-  const subtitle = subtitleFor(notification, t);
+  const headline = notificationHeadline(notification, resolved, t, agentNames);
+  const subtitle = subtitleFor(notification, t, resolved);
+  const commentLink = commentLinkOf(notification, resolved);
   // Everything with a deadline shows its countdown. The role upgrade was left
   // out while it had no deadline to show; it has one now, and it was the only
   // time-boxed row in the list hiding that fact from the person deciding it.
@@ -302,16 +329,28 @@ function NotificationItem({
             {t('notifications.openDecision')}
           </Button>
         ) : (
-          <Button
-            variant='outline'
-            size='sm'
-            className='h-7 px-2 text-xs'
-            onClick={onMarkRead}
-            loading={pending}
-            data-testid={`bell-mark-read-${notification.id}`}
-          >
-            {t('notifications.markRead')}
-          </Button>
+          <div className='flex items-center gap-1.5'>
+            {commentLink === null ? null : (
+              <Button
+                size='sm'
+                className='h-7 px-3 text-xs'
+                onClick={() => onOpenComment(commentLink)}
+                data-testid={`bell-open-comment-${notification.id}`}
+              >
+                {t('notifications.openComment')}
+              </Button>
+            )}
+            <Button
+              variant='outline'
+              size='sm'
+              className='h-7 px-2 text-xs'
+              onClick={onMarkRead}
+              loading={pending}
+              data-testid={`bell-mark-read-${notification.id}`}
+            >
+              {t('notifications.markRead')}
+            </Button>
+          </div>
         )}
       </div>
     </div>
@@ -374,6 +413,10 @@ function iconForType(type: NotificationType): string {
       return '✕';
     case 'credit.refund_restored':
       return '↺';
+    case 'comment.mentioned':
+      return '@';
+    case 'comment.assignment_answered':
+      return '✓';
     default:
       return '?';
   }
@@ -417,13 +460,19 @@ const PROJECT_ROLE_KEY: Record<string, string> = {
  * either, because there is nothing to accept.
  * @param n - Notification whose payload is inspected for subtitle text.
  * @param t - Translation function for the localized subtitle.
+ * @param resolved - Current identities, for the project an agent's answer was in.
  * @returns the subtitle text, or `null` when none applies.
  */
 function subtitleFor(
   n: Notification,
   t: ReturnType<typeof useTranslation>,
+  resolved: NotificationResolved,
 ): string | null {
   const p = n.payload as Record<string, unknown>;
+  if (n.type === 'comment.assignment_answered') {
+    const projectId = typeof p.projectId === 'string' ? p.projectId : n.projectId;
+    return projectId === null ? null : (resolved.projects[projectId]?.name ?? null);
+  }
   if (n.type === 'access.role_upgrade_request' || n.type === 'project.join_request') {
     const msg = typeof p.message === 'string' ? p.message : null;
     return msg && msg.length > 0 ? msg : null;

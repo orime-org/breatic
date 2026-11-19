@@ -2965,7 +2965,9 @@
       "storageQuotaExceeded": "儲存空間已滿",
       "creditRefundCompleted": "{credits} 點的退款已完成",
       "creditRefundRejected": "{credits} 點的退款申請未通過",
-      "creditRefundRestored": "{credits} 點已恢復到你的帳號"
+      "creditRefundRestored": "{credits} 點已恢復到你的帳號",
+      "commentMentioned": "{actor} 在 {project} 的批註裡提到了你",
+      "commentAssignmentAnswered": "{agent} 處理完了你交給它的批註"
     },
     "actorFallback": "某人",
     "subtitle": {
@@ -2982,7 +2984,9 @@
       "hours": "{count} 小時後過期",
       "days": "{count} 天後過期"
     },
-    "openDecision": "去答覆"
+    "openDecision": "去答覆",
+    "openComment": "打開",
+    "agentFallback": "外部 Agent"
   },
   "connection": {
     "banner": {
