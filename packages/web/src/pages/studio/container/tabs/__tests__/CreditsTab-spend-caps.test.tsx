@@ -23,6 +23,7 @@ import type { ReactElement } from 'react';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useCurrentUserStore } from '@web/stores/current-user';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -118,6 +119,17 @@ describe('H-34 the spend caps section', () => {
     expect(screen.getAllByRole('button', { name: '恢复默认' })).toHaveLength(3);
     const former = screen.getByText('已离开（只读）').closest('tr')!;
     expect(within(former).queryAllByRole('button')).toHaveLength(0);
+  });
+
+  // inner#1968 visual round 1: the spent column lines its decimal points up, and the admin finds their own row.
+  it('writes each member\'s spend to two decimals and marks the viewer\'s own row', async () => {
+    useCurrentUserStore.getState().setUser({ id: 'u2', name: 'u2', email: 'u2@x.test', personalStudio: null, membershipTier: 'team' });
+    spendLimits.mockResolvedValue(LIMITS);
+    renderTab(<CreditsTab slug='acme' />);
+    const own = (await screen.findByText('186.50')).closest('tr')!;
+    expect(screen.getByText('312.00')).toBeInTheDocument();
+    expect(own).toHaveTextContent('(你)');
+    expect(screen.getAllByText('(你)')).toHaveLength(1);
   });
 
   it('shows nothing of it in a personal studio', async () => {

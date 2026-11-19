@@ -22,9 +22,11 @@ import { serverMessage } from '@web/data/api/server-message';
 import { ApiException } from '@web/data/api/types';
 import { usersApi } from '@web/data/api/users';
 import { useTranslation } from '@web/i18n/use-translation';
-import { formatCreditAmount } from '@web/lib/format-credit-amount';
+import { formatCreditAmount, formatCreditColumnAmount } from '@web/lib/format-credit-amount';
 import { usePendingKeys } from '@web/lib/use-pending-keys';
 import { toast } from '@web/lib/toast';
+import { useCurrentUserStore } from '@web/stores/current-user';
+import { StudioAvatar } from '@web/ui/StudioAvatar';
 
 const KEY = 'studio.container.credits.spendCap';
 
@@ -76,7 +78,7 @@ function CapInput({ label, hint, draft, onChange }: { label: string; hint: strin
       <RadioGroup
         value={draft.kind}
         onValueChange={(kind) => onChange(kind === 'none' ? { kind: 'none' } : { kind: 'amount', text: amount === '' ? '0' : amount })}
-        className='flex items-center gap-4'
+        className='gap-2'
         aria-label={label}
       >
         <label htmlFor={`${id}-none`} className='flex items-center gap-1.5 text-sm'>
@@ -139,6 +141,8 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
     retry: false,
   }).data;
   const nameOf = React.useMemo(() => new Map((people ?? []).map((person) => [person.id, person.name])), [people]);
+  const avatarOf = React.useMemo(() => new Map((people ?? []).map((person) => [person.id, person.avatarUrl ?? null])), [people]);
+  const selfId = useCurrentUserStore((state) => state.user?.id);
 
   const [studioDraft, setStudioDraft] = React.useState<Draft>({ kind: 'none' });
   const [memberDraft, setMemberDraft] = React.useState<Draft>({ kind: 'none' });
@@ -239,7 +243,7 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
         </div>
       </div>
       <table className='w-full text-left text-sm'>
-        <thead className='text-xs text-muted-foreground'>
+        <thead className='whitespace-nowrap text-xs text-muted-foreground'>
           <tr>
             <th className='py-1 font-medium'>{t(`${KEY}.colMember`)}</th>
             <th className='py-1 font-medium'>{t(`${KEY}.colRelation`)}</th>
@@ -254,27 +258,34 @@ export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element 
             const atCap = !former && member.effective !== null && Number(member.spent) >= Number(member.effective);
             return (
               <tr key={member.userId} className={former ? 'border-t border-border text-muted-foreground' : 'border-t border-border'}>
-                <td className='py-2.5'>{nameOf.get(member.userId) ?? '—'}</td>
+                <td className='max-w-48 py-2.5'>
+                  <span className='flex min-w-0 items-center gap-2'>
+                    <StudioAvatar name={nameOf.get(member.userId) ?? '—'} type='personal' avatarUrl={avatarOf.get(member.userId) ?? null} size='sm' />
+                    <span className='truncate'>{nameOf.get(member.userId) ?? '—'}</span>
+                    {member.userId === selfId ? <span className='shrink-0 text-xs text-muted-foreground'>{t('members.modal.isMe')}</span> : null}
+                  </span>
+                </td>
                 <td>{t(`${KEY}.${member.relation === 'studio_member' ? 'relationStudioMember' : member.relation === 'project_collaborator' ? 'relationProjectCollaborator' : 'relationFormer'}`)}</td>
-                <td className='text-right tabular-nums'>{formatCreditAmount(member.spent)}</td>
+                <td className='text-right tabular-nums'>{formatCreditColumnAmount(member.spent)}</td>
                 <td className='pl-6'>
                   {former ? '—' : (
-                    <span className='flex items-center gap-1.5'>
+                    <span className='flex items-center gap-1.5 whitespace-nowrap'>
                       <span className='text-xs text-muted-foreground'>{t(`${KEY}.${member.override === null ? 'sourceDefault' : 'sourceOverride'}`)}</span>
                       <span>{limitText(member.effective, t)}</span>
-                      {atCap ? <Badge variant='destructive'>{t(`${KEY}.atCap`)}</Badge> : null}
+                      {atCap ? <Badge variant='destructive' className='shrink-0 whitespace-nowrap'>{t(`${KEY}.atCap`)}</Badge> : null}
                     </span>
                   )}
                 </td>
                 <td className='text-right'>
                   {former ? null : (
-                    <span className='inline-flex gap-1'>
-                      <Button size='compact' variant='outline' onClick={() => setEditing(member)}>{t(`${KEY}.override`)}</Button>
+                    // Set own limit stays at the row's right edge, so it lines up down the table.
+                    <span className='inline-flex gap-1 whitespace-nowrap'>
                       {member.override === null ? null : (
                         <Button size='compact' variant='ghost' loading={restoring.isPending(member.userId)} onClick={() => void restore(member.userId)}>
                           {t(`${KEY}.restoreDefault`)}
                         </Button>
                       )}
+                      <Button size='compact' variant='outline' onClick={() => setEditing(member)}>{t(`${KEY}.override`)}</Button>
                     </span>
                   )}
                 </td>
