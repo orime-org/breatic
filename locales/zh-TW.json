@@ -4066,6 +4066,7 @@
     "refundsEmpty": "還沒有買過點數包",
     "askRefund": "申請退款",
     "refundTitle": "退款規則",
+    "onlinePurchaseRefundTitle": "線上購買點數退款規則",
     "buy": {
       "taxNotice": "標價不含稅，實付金額為標價加上當地稅額，結帳頁會顯示最終金額。",
       "assignNotice": "點數需要指定給某個 Studio 才能使用。",

@@ -166,7 +166,7 @@ export function RefundsSection({
       footer={
         !billing ? undefined : (
           <div className='mt-3 flex flex-col gap-2'>
-            <h3 className='text-sm font-semibold'>{t('credits.refundTitle')}</h3>
+            <h3 className='text-sm font-semibold'>{t('credits.onlinePurchaseRefundTitle')}</h3>
             {terms.isSuccess ? (
               <RuleLines
                 data-testid='refunds-terms'

@@ -4066,6 +4066,7 @@
     "refundsEmpty": "まだクレジットパックを購入していません",
     "askRefund": "返金を申請",
     "refundTitle": "返金ルール",
+    "onlinePurchaseRefundTitle": "オンライン購入クレジットの返金ルール",
     "buy": {
       "taxNotice": "表示価格は税抜きです。お支払い額は表示価格にお住まいの地域の税額を加えたもので、決済ページに最終金額が表示されます。",
       "assignNotice": "クレジットは Studio に割り当てると使えるようになります。",

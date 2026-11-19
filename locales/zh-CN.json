@@ -4066,6 +4066,7 @@
     "refundsEmpty": "还没有买过积分包",
     "askRefund": "申请退款",
     "refundTitle": "退款规则",
+    "onlinePurchaseRefundTitle": "线上购买积分退款规则",
     "buy": {
       "taxNotice": "标价不含税，实付金额为标价加上当地税额，结账页会显示最终金额。",
       "assignNotice": "积分需要指定给某个 Studio 才能使用。",

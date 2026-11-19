@@ -4066,6 +4066,7 @@
     "refundsEmpty": "No credit packs bought yet.",
     "askRefund": "Ask for a refund",
     "refundTitle": "Refund rule",
+    "onlinePurchaseRefundTitle": "Online credit purchase refund rules",
     "buy": {
       "taxNotice": "Prices exclude tax. What you pay is the price plus the tax where you are, and the checkout page shows the final amount.",
       "assignNotice": "Credits have to be assigned to a Studio before they can be spent.",
