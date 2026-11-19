@@ -16,8 +16,8 @@
 import { randomUUID } from "node:crypto";
 import * as Y from "yjs";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
-import { createPgClient, createQueue, env, getStreamRedis, initCore, timelineExecutionRepo, type Redis } from "@breatic/core";
-import { projectMetaDocName, spaceContentDocName, type TimelineExecution } from "@breatic/shared";
+import { createPgClient, createQueue, env, getStreamRedis, initCore, taskEventsStreamKey, timelineExecutionRepo, type Redis } from "@breatic/core";
+import { projectMetaDocName, spaceContentDocName, timelineSpaceDocName, type TimelineExecution } from "@breatic/shared";
 import { attachTimelineRecord, initializeTimelineDocument } from "@breatic/shared/space-content";
 import { acceptTimelineReceipts } from "@collab/services/timeline-receipt-acceptance.js";
 import { storeDoc } from "@collab/services/persistence.js";
@@ -186,14 +186,20 @@ async function storeAndAccept(documentName: string, state: Uint8Array): Promise<
 }
 
 /**
- * The space-tasks signals one Space received, after giving late ones time to arrive.
+ * What one Timeline Space was told, after giving late messages time to arrive: the changes on the task-events stream
+ * for its document, and the space-tasks signals on its Project's channel.
  * @param projectId - The Project.
  * @param spaceId - The Space.
- * @returns Them.
+ * @returns Both.
  */
-async function signalsFor(projectId: string, spaceId: string): Promise<Record<string, unknown>[]> {
+async function signalsFor(projectId: string, spaceId: string): Promise<{ doc: Record<string, unknown>[]; meta: Record<string, unknown>[] }> {
   await new Promise((resolve) => setTimeout(resolve, 300));
-  return signals.filter((s) => s.channel.includes(projectId) && s.message.spaceId === spaceId).map((s) => s.message);
+  const docName = timelineSpaceDocName(projectId, spaceId);
+  const doc = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+"))
+    .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
+    .filter((event) => event.docName === docName);
+  const meta = signals.filter((s) => s.channel.includes(projectId) && s.message.spaceId === spaceId).map((s) => s.message);
+  return { doc, meta };
 }
 
 /**
@@ -216,9 +222,7 @@ describe("acceptTimelineReceipts", () => {
     const job = await queue.getJob(fx.execution.id);
     expect(job?.id).toBe(fx.execution.id);
     expect(job?.data).toMatchObject({ executionId: fx.execution.id });
-    expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([
-      { type: "project-space-tasks:changed", projectId: fx.projectId, spaceId: fx.spaceId, ts: expect.any(Number) },
-    ]);
+    expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual({ doc: [{ type: "space-tasks-version", docName: fx.documentName }], meta: [] });
   });
 
   it("does nothing more when the same receipts are stored again", async () => {
@@ -230,7 +234,7 @@ describe("acceptTimelineReceipts", () => {
     await storeAndAccept(fx.documentName, state);
     expect(await read(fx.execution.id)).toEqual(queued);
     expect((await queue.getJob(fx.execution.id))?.timestamp).toBe(job?.timestamp);
-    expect(await signalsFor(fx.projectId, fx.spaceId)).toHaveLength(1);
+    expect((await signalsFor(fx.projectId, fx.spaceId)).doc).toHaveLength(1);
   });
 
   it("leaves the row awaiting landing when the document's frame rate differs from the accepted one", async () => {
@@ -240,7 +244,7 @@ describe("acceptTimelineReceipts", () => {
     expect((await read(landed.id)).status).toBe("queued");
     expect(await read(fx.execution.id)).toEqual(fx.execution);
     expect(await queue.getJob(fx.execution.id)).toBeUndefined();
-    expect(await signalsFor(fx.projectId, fx.spaceId)).toHaveLength(1);
+    expect((await signalsFor(fx.projectId, fx.spaceId)).doc).toHaveLength(1);
   });
 
   it("leaves the row awaiting landing when the receipt's input hash differs", async () => {
@@ -295,8 +299,8 @@ describe("acceptTimelineReceipts", () => {
     expect((await read(copy.execution.id)).status).toBe("queued");
     expect(await read(source.execution.id)).toEqual(source.execution);
     expect(await queue.getJob(source.execution.id)).toBeUndefined();
-    expect(await signalsFor(source.projectId, source.spaceId)).toEqual([]);
-    expect(await signalsFor(copy.projectId, copy.spaceId)).toHaveLength(1);
+    expect(await signalsFor(source.projectId, source.spaceId)).toEqual({ doc: [], meta: [] });
+    expect((await signalsFor(copy.projectId, copy.spaceId)).doc).toHaveLength(1);
   });
 
   it("reads the receipts from the bytes it is handed, not from what is stored", async () => {
