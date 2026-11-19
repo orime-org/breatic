@@ -7,7 +7,7 @@
  * running tasks, someone else's note, which nodes may connect, a full Space).
  */
 
-import { GENERATION_NODE_BUCKETS, isGenerationNodeType, type AgentCommandParams, type ModelCatalog, type ModelEntry } from "@breatic/shared";
+import { GENERATION_NODE_BUCKETS, GENERATION_TEMPLATES, isGenerationNodeType, type AgentCommandParams, type ModelCatalog, type ModelEntry } from "@breatic/shared";
 import {
   agentPromptSegments,
   asContentView,
@@ -37,35 +37,85 @@ export const createCanvasNodes = defineTool({
   description:
     "Create nodes (text, image, audio, video) on a canvas, as dragging them from the node library does, with edges between them or to nodes already there, and optionally a new group around them and named existing nodes. " +
     "A node with no position is placed where the user is looking on this canvas (their view or pointer), else beside what the canvas holds, moved right until it covers nothing. " +
-    "Returns the new node ids (and edge and group ids). Fill a node with a file through begin_upload, set its prompt and model with update_canvas_node.",
-  input: z.object({
+    "Returns the new node ids (and edge and group ids). Fill a node with a file through begin_upload, set its prompt and model with update_canvas_node. " +
+    "Or give template instead of nodes: a generation template (list_generation_templates) is applied as picking it in the generate panel does, on nodeId (a node of the template's anchor type) or on a new node placed where new nodes go; " +
+    "its nodes, edges, models, settings and prompts are written and its resource files fetched in. Returns every node of the flow, the anchor first; toFill says the user is left an empty node to fill or words in {✏️ ...} to write.",
+  input: z
+    .object({
+      projectId,
+      spaceId,
+      nodes: z
+        .array(z.object({ type: nodeType.describe("The node type."), name: nodeName.optional(), position: point.optional() }))
+        .min(1)
+        .optional()
+        .describe("The nodes, in order; edges name them by index."),
+      edges: z
+        .array(
+          z.object({
+            source: z.union([z.object({ new: z.number().int().min(0) }).strict(), z.object({ id: nodeId }).strict()]).describe("{ new: index } for a node of this call, { id } for one on the canvas."),
+            target: z.union([z.object({ new: z.number().int().min(0) }).strict(), z.object({ id: nodeId }).strict()]),
+          }),
+        )
+        .optional()
+        .describe("Connections; a connection into a generate node makes the source one of its references."),
+      group: z
+        .object({ name: nodeName.optional(), include: z.array(nodeId).optional().describe("Existing nodes to put in the group too.") })
+        .optional()
+        .describe("Frame the new nodes in a new group."),
+      template: z
+        .object({ id: z.string().min(1).describe("The template's id."), nodeId: nodeId.optional().describe("Apply it to this node; a new one when left out.") })
+        .optional(),
+    })
+    .refine((args) => (args.template === undefined) !== (args.nodes === undefined), { message: "give either nodes or template" })
+    .refine((args) => args.template === undefined || (args.edges === undefined && args.group === undefined), { message: "a template brings its own edges and group" }),
+  readOnly: false,
+  run: async (deps, { projectId: project, spaceId: space, template, ...params }) => {
+    if (template !== undefined) return { value: await applyTemplate(deps, project, space, template) };
+    return {
+      value: outcomeValue(
+        await runCommand(deps, { type: "create_canvas_nodes", projectId: project, spaceId: space, params: params as AgentCommandParams<"create_canvas_nodes"> }),
+      ),
+    };
+  },
+});
+
+/**
+ * Apply a generation template through collab, then hand its resource nodes
+ * to the ingest Worker, as the browser's apply does after the batch.
+ * @param deps - The call.
+ * @param projectId - The Project.
+ * @param spaceId - The canvas Space.
+ * @param template - Which template, and the node it applies to.
+ * @param template.id - The template's id.
+ * @param template.nodeId - The node, or undefined for a new one.
+ * @returns The flow's nodes, the group made for them and what is left to the user.
+ * @throws {ToolRefusal} When the template is unknown, a model it uses is not served, or collab refuses.
+ */
+async function applyTemplate(deps: ToolDeps, projectId: string, spaceId: string, template: { id: string; nodeId?: string | undefined }): Promise<Record<string, unknown>> {
+  const found = GENERATION_TEMPLATES.find((one) => one.id === template.id);
+  if (!found) throw new ToolRefusal("not_found", `No template "${template.id}"; list_generation_templates names them.`);
+  const catalog = await deps.api.get<ModelCatalog>("/models");
+  const served = new Map(Object.values(catalog).flatMap((bucket) => (Array.isArray(bucket) ? (bucket as ModelEntry[]) : [])).map((entry) => [entry.name, entry]));
+  const names = [...new Set(found.nodes.flatMap((node) => (node.role === "generate" ? [node.model] : [])))];
+  if (names.some((name) => !served.has(name))) throw new ToolRefusal("model_unavailable", "A model this template uses is not available now.");
+  const result = (await runCommandNow(deps, {
+    type: "apply_generation_template",
     projectId,
     spaceId,
-    nodes: z
-      .array(z.object({ type: nodeType.describe("The node type."), name: nodeName.optional(), position: point.optional() }))
-      .min(1)
-      .describe("The nodes, in order; edges name them by index."),
-    edges: z
-      .array(
-        z.object({
-          source: z.union([z.object({ new: z.number().int().min(0) }).strict(), z.object({ id: nodeId }).strict()]).describe("{ new: index } for a node of this call, { id } for one on the canvas."),
-          target: z.union([z.object({ new: z.number().int().min(0) }).strict(), z.object({ id: nodeId }).strict()]),
-        }),
-      )
-      .optional()
-      .describe("Connections; a connection into a generate node makes the source one of its references."),
-    group: z
-      .object({ name: nodeName.optional(), include: z.array(nodeId).optional().describe("Existing nodes to put in the group too.") })
-      .optional()
-      .describe("Frame the new nodes in a new group."),
-  }),
-  readOnly: false,
-  run: async (deps, { projectId: project, spaceId: space, ...params }) => ({
-    value: outcomeValue(
-      await runCommand(deps, { type: "create_canvas_nodes", projectId: project, spaceId: space, params: params as AgentCommandParams<"create_canvas_nodes"> }),
-    ),
-  }),
-});
+    params: { templateId: found.id, ...(template.nodeId === undefined ? {} : { nodeId: template.nodeId }), models: names.map((name) => served.get(name)!) as never },
+  })) as { nodeIds: string[]; groupId?: string; resources: Array<{ nodeId: string; resource: string }>; toFill: boolean };
+  const notFetched: string[] = [];
+  for (const { nodeId: node, resource } of result.resources) {
+    try {
+      await deps.api.post("/canvas/ingest-url", { template_resource: resource, project_id: projectId, space_id: spaceId, node_id: node });
+    } catch (err) {
+      deps.report(err instanceof Error ? err : new Error(String(err)), { operation: "template_resource_ingest", projectId, nodeId: node });
+      notFetched.push(node);
+    }
+  }
+  const { resources: _resources, ...placed } = result;
+  return { ...placed, ...(notFetched.length > 0 ? { resourcesNotFetched: notFetched } : {}) };
+}
 
 /** What an agent sends to change a node's generation settings. */
 const generationInput = z

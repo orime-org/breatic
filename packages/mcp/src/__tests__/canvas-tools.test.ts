@@ -43,6 +43,77 @@ describe("create_canvas_nodes", () => {
   });
 });
 
+describe("create_canvas_nodes from a template", () => {
+  const TEMPLATE = "character-design-from-text";
+  /**
+   * A catalog entry by name.
+   * @param name - The model.
+   * @param mode - Its modes.
+   * @returns The entry.
+   */
+  const entry = (name: string, mode: string[]): Record<string, unknown> => ({ name, modality: "image", mode, params: {}, display_name: name });
+  const TEMPLATE_CATALOG = {
+    image: [entry("nano-banana-pro-edit-ultra", ["i2i"]), entry("gpt-image-2.5-sunburst-text-to-image", ["t2i"]), entry("unrelated", ["t2i"])],
+    video: [],
+    audio: [],
+    tts: [],
+    three_d: [],
+    total: 3,
+    credit_multiplier: 1,
+  };
+
+  it("has collab apply it with the template's models, then fetches its resource nodes", async () => {
+    const { deps, submitted, calls } = stubDeps({
+      reply: () => ({ status: "done", result: { nodeIds: ["anchor", "design"], resources: [{ nodeId: "design", resource: "templates/a.png" }], toFill: true } }),
+      api: (call) => (call.path === "/models" ? TEMPLATE_CATALOG : { storage_key: "k" }),
+    });
+    const { value } = await createCanvasNodes.run(deps, { ...WHERE, template: { id: TEMPLATE } });
+    expect(submitted.map((c) => [c.type, c.params])).toEqual([
+      ["apply_generation_template", { templateId: TEMPLATE, models: [TEMPLATE_CATALOG.image[0], TEMPLATE_CATALOG.image[1]] }],
+    ]);
+    expect(calls.filter((c) => c.method === "POST").map((c) => [c.path, c.body])).toEqual([
+      ["/canvas/ingest-url", { template_resource: "templates/a.png", project_id: PROJECT, space_id: SPACE, node_id: "design" }],
+    ]);
+    expect(value).toMatchObject({ nodeIds: ["anchor", "design"], toFill: true });
+  });
+
+  it("applies it to a node already there", async () => {
+    const { deps, submitted } = stubDeps({
+      reply: () => ({ status: "done", result: { nodeIds: ["n1", "design"], resources: [], toFill: false } }),
+      api: () => TEMPLATE_CATALOG,
+    });
+    await createCanvasNodes.run(deps, { ...WHERE, template: { id: TEMPLATE, nodeId: "n1" } });
+    expect(submitted[0]!.params).toMatchObject({ templateId: TEMPLATE, nodeId: "n1" });
+  });
+
+  it("refuses a template whose model this deployment does not serve, before writing anything", async () => {
+    const { deps, submitted } = stubDeps({ api: () => ({ ...TEMPLATE_CATALOG, image: [TEMPLATE_CATALOG.image[0]] }) });
+    await expect(createCanvasNodes.run(deps, { ...WHERE, template: { id: TEMPLATE } })).rejects.toMatchObject({ reason: "model_unavailable" });
+    expect(submitted).toEqual([]);
+  });
+
+  it("refuses a template it does not know, and nodes given beside a template", async () => {
+    const { deps, submitted } = stubDeps({ api: () => TEMPLATE_CATALOG });
+    await expect(createCanvasNodes.run(deps, { ...WHERE, template: { id: "nope" } })).rejects.toMatchObject({ reason: "not_found" });
+    expect(() => createCanvasNodes.input.parse({ ...WHERE, template: { id: TEMPLATE }, nodes: [{ type: "image" }] })).toThrow();
+    expect(() => createCanvasNodes.input.parse({ ...WHERE })).toThrow();
+    expect(submitted).toEqual([]);
+  });
+
+  it("says a resource it could not fetch, and keeps the nodes placed", async () => {
+    const { deps, reported } = stubDeps({
+      reply: () => ({ status: "done", result: { nodeIds: ["a", "d"], resources: [{ nodeId: "d", resource: "templates/a.png" }], toFill: false } }),
+      api: (call) => {
+        if (call.path === "/models") return TEMPLATE_CATALOG;
+        throw new Error("ingest down");
+      },
+    });
+    const { value } = await createCanvasNodes.run(deps, { ...WHERE, template: { id: TEMPLATE } });
+    expect(value).toMatchObject({ nodeIds: ["a", "d"], resourcesNotFetched: ["d"] });
+    expect(reported).toHaveLength(1);
+  });
+});
+
 describe("update_canvas_node", () => {
   it("sends name, position, group and text as they are", async () => {
     const { deps, submitted } = stubDeps();
