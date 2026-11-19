@@ -221,6 +221,9 @@ const PRODUCT_SHOWCASE = [
 /** The product showcase video templates, in registry order. */
 const PRODUCT_SHOWCASE_VIDEOS = PRODUCT_SHOWCASE.filter((id) => id !== 'product-hero-still');
 
+/** The talking and dialogue templates (inner#1813), in registry order. */
+const TALKING = ['talking-presenter', 'talking-head-pitch', 'two-speaker-talk', 'talking-own-voice'];
+
 /** The motion and speed templates (inner#1810), in registry order. */
 const SPEED = ['vehicle-speed-cutlist', 'sports-live-coverage', 'extreme-sports-run'];
 
@@ -341,6 +344,7 @@ describe('generation templates', () => {
       ...PRODUCT_SHOWCASE_VIDEOS,
       ...FOOD_VIDEOS,
       ...SOCIAL_HOOK_VIDEOS,
+      ...TALKING,
       ...SPEED,
       'clip-ambience-foley',
     ]);
@@ -418,6 +422,19 @@ describe('generation templates', () => {
       'product-commercial-shotlist': t2v(12, '16:9'),
       'unboxing-ad': t2v(25),
       'variant-carousel-ad': t2v(20),
+      'talking-presenter': {
+        result: { type: 'video', mode: 'talking_head', model: 'seedance-2.5-talking-avatar', params: {} },
+        portrait: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
+        voice: { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: { emotion: 'neutral' } },
+      },
+      'talking-head-pitch': t2v(10),
+      'two-speaker-talk': {
+        result: { type: 'video', mode: 'talking_head', model: 'infinitetalk-multi', params: { order: 'left_right' } },
+        scene: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+        'left-voice': { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: { emotion: 'neutral' } },
+        'right-voice': { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: { emotion: 'neutral' } },
+      },
+      'talking-own-voice': { result: { type: 'video', mode: 'talking_head', model: 'seedance-2.5-talking-avatar', params: {} } },
       'product-hero-still': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '1:1', resolution: '4k' } } },
       'product-hero-motion': {
         result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 5, generate_audio: false } },
@@ -539,13 +556,14 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'posters', 'speed', 'sound']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'talking', 'posters', 'speed', 'sound']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
     const goals: Record<string, string> = {
       ...Object.fromEntries(ECOMMERCE.map((id) => [id, 'ecommerce'])),
       ...Object.fromEntries(PRODUCT_SHOWCASE.map((id) => [id, 'product-showcase'])),
+      ...Object.fromEntries(TALKING.map((id) => [id, 'talking'])),
       ...Object.fromEntries(FOOD.map((id) => [id, 'food'])),
       ...Object.fromEntries(SOCIAL_HOOKS.map((id) => [id, 'social-hooks'])),
       ...Object.fromEntries(POSTERS.map((id) => [id, 'posters'])),
@@ -607,6 +625,7 @@ describe('creative goals and triggers', () => {
       ['product-showcase', PRODUCT_SHOWCASE_VIDEOS],
       ['food', FOOD_VIDEOS],
       ['social-hooks', SOCIAL_HOOK_VIDEOS],
+      ['talking', TALKING],
       ['speed', SPEED],
       ['sound', ['clip-ambience-foley']],
     ]);

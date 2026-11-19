@@ -69,9 +69,13 @@ import { SINGLE_VIEW_REFS_SCENE } from "@shared/canvas/templates/single-view-ref
 import { SONG_COVER } from "@shared/canvas/templates/song-cover.js";
 import { SPORTS_LIVE_COVERAGE } from "@shared/canvas/templates/sports-live-coverage.js";
 import { STORYBOARD_GRID_25 } from "@shared/canvas/templates/storyboard-grid-25.js";
+import { TALKING_HEAD_PITCH } from "@shared/canvas/templates/talking-head-pitch.js";
+import { TALKING_OWN_VOICE } from "@shared/canvas/templates/talking-own-voice.js";
+import { TALKING_PRESENTER } from "@shared/canvas/templates/talking-presenter.js";
 import { TIME_FREEZE_REWIND } from "@shared/canvas/templates/time-freeze-rewind.js";
 import { TRAVEL_CITY_WALK } from "@shared/canvas/templates/travel-city-walk.js";
 import { TWIST_COMEDY_SKIT } from "@shared/canvas/templates/twist-comedy-skit.js";
+import { TWO_SPEAKER_TALK } from "@shared/canvas/templates/two-speaker-talk.js";
 import { TWO_VOICE_DIALOGUE } from "@shared/canvas/templates/two-voice-dialogue.js";
 import { UGC_CREATOR_REVIEW } from "@shared/canvas/templates/ugc-creator-review.js";
 import { UNBOXING_AD } from "@shared/canvas/templates/unboxing-ad.js";
@@ -85,7 +89,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "ecommerce", "product-showcase", "food", "social-hooks", "posters", "speed", "sound"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "ecommerce", "product-showcase", "food", "social-hooks", "talking", "posters", "speed", "sound"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -236,6 +240,10 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   TRAVEL_CITY_WALK,
   TWIST_COMEDY_SKIT,
   VERTICAL_15S_QUICK_TIP,
+  TALKING_PRESENTER,
+  TALKING_HEAD_PITCH,
+  TWO_SPEAKER_TALK,
+  TALKING_OWN_VOICE,
   NAME_AS_WORLD_TYPOGRAPHY,
   DESTINATION_FESTIVAL_POSTER,
   PHOTO_PAPER_DIORAMA,
