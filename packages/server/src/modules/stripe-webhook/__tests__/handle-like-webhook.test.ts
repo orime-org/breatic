@@ -32,6 +32,7 @@ vi.mock("@server/modules/stripe-webhook/recording.service.js", async (importOrig
   },
 }));
 vi.mock("@server/modules/stripe-webhook/dispatch.service.js", () => ({
+  HANDLED_EVENT_TYPES: new Set<string>(),
   dispatchStripeWebhook: (...args: unknown[]) => {
     mocked.order.push("dispatch");
     return mocked.dispatch(...args);

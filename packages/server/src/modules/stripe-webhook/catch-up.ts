@@ -13,20 +13,13 @@
 import { randomUUID } from "node:crypto";
 import type Stripe from "stripe";
 import type { StripeWebhookResult } from "@breatic/shared";
-import { REFUND_EVENT_TYPES } from "@server/modules/credit-refund/refund-webhook.js";
-import { SHARED_SESSION_EVENT_TYPES, SUBSCRIPTION_EVENT_TYPES } from "@server/modules/subscription/subscription-events.js";
 import { listClaimedEventIds } from "@server/modules/subscription/webhook-events.repo.js";
 import { listAnsweredEventIds } from "@server/modules/stripe-webhook/attempts.repo.js";
-import { dispatchStripeWebhook } from "@server/modules/stripe-webhook/dispatch.service.js";
+import { HANDLED_EVENT_TYPES, dispatchStripeWebhook } from "@server/modules/stripe-webhook/dispatch.service.js";
 import { finishWebhookAttempt, parseWebhookIdentity, startWebhookAttempt } from "@server/modules/stripe-webhook/recording.service.js";
 
 /** Every event type the webhook handles; Stripe's list takes at most 20. */
-export const CATCH_UP_EVENT_TYPES: readonly string[] = [
-  ...SHARED_SESSION_EVENT_TYPES,
-  ...SUBSCRIPTION_EVENT_TYPES,
-  "invoice.paid",
-  ...REFUND_EVENT_TYPES,
-];
+export const CATCH_UP_EVENT_TYPES: readonly string[] = [...HANDLED_EVENT_TYPES];
 
 /** What {@link catchUpStripeEvents} works through. */
 export interface CatchUpDeps {

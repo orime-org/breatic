@@ -11,6 +11,7 @@
 import type Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 import { CATCH_UP_EVENT_TYPES, catchUpStripeEvents } from "@server/modules/stripe-webhook/catch-up.js";
+import { HANDLED_EVENT_TYPES } from "@server/modules/stripe-webhook/dispatch.service.js";
 
 /**
  * A minimal event.
@@ -42,24 +43,9 @@ describe("catchUpStripeEvents", () => {
     });
   });
 
-  it("names every event type the webhook handles", () => {
-    expect([...CATCH_UP_EVENT_TYPES].sort()).toEqual(
-      [
-        "checkout.session.async_payment_failed",
-        "checkout.session.async_payment_succeeded",
-        "checkout.session.completed",
-        "checkout.session.expired",
-        "customer.subscription.created",
-        "customer.subscription.deleted",
-        "customer.subscription.pending_update_applied",
-        "customer.subscription.pending_update_expired",
-        "customer.subscription.updated",
-        "invoice.paid",
-        "refund.created",
-        "refund.failed",
-        "refund.updated",
-      ],
-    );
+  it("lists exactly the types the webhook handles, within Stripe's limit of 20 per list call", () => {
+    expect(new Set(CATCH_UP_EVENT_TYPES)).toEqual(HANDLED_EVENT_TYPES);
+    expect(CATCH_UP_EVENT_TYPES.length).toBeLessThanOrEqual(20);
   });
 
   it("skips processed events and handles the rest oldest first", async () => {
