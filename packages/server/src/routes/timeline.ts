@@ -38,7 +38,7 @@ const idParam = z.object({ id: z.uuid() });
 const projectQuery = z.object({ projectId: z.uuid() });
 const page = { cursor: z.string().min(1).max(500).optional(), limit: z.coerce.number().int().positive().optional() };
 const spaceExecutionsQuery = z.object({
-  projectId: z.uuid(), spaceId: z.uuid(), scope: z.enum(["space", "timeline"]), group: z.enum(["done", "running"]), ...page,
+  projectId: z.uuid(), spaceId: z.uuid(), scope: z.enum(["space", "timeline"]), group: z.enum(["running", "succeeded", "failed"]), ...page,
 });
 const resultsQuery = z.object({ projectId: z.uuid(), ...page });
 const cancelBody = z.object({ projectId: z.uuid().optional() });

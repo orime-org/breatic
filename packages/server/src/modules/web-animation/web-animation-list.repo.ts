@@ -13,13 +13,20 @@
 import { and, desc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { db, timelineExecutionGrants as g, timelineExecutions as t, timelineExecutionRepo } from "@breatic/core";
 import type { TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
-import { WEB_ANIMATION_ENDED_STATUSES, WEB_ANIMATION_OPEN_STATUSES } from "@breatic/shared/space-content";
+import { WEB_ANIMATION_OPEN_STATUSES } from "@breatic/shared/space-content";
 
 /** Which list: a Motion Space's own, the Timeline-made group, or the Project's results for the Timeline picker. */
 export type ListScope = "space" | "timeline" | "results";
 
-/** Ended rows, or rows still in progress. */
-export type ListGroup = "done" | "running";
+/** Rows still in progress, rows that succeeded, or rows that failed, were cancelled or expired. */
+export type ListGroup = "running" | "succeeded" | "failed";
+
+/** The statuses each group holds. */
+const GROUP_STATUSES: Record<ListGroup, readonly TimelineExecutionStatus[]> = {
+  running: WEB_ANIMATION_OPEN_STATUSES,
+  succeeded: ["succeeded"],
+  failed: ["failed", "cancelled", "expired"],
+};
 
 /** One page's request. */
 export interface ListParams {
@@ -33,14 +40,16 @@ export interface ListParams {
   limit: number;
 }
 
+/** How many rows each group of a list holds. */
+export type GroupTotals = Record<ListGroup, number>;
+
 /** One page. */
 export interface ListPage {
   rows: TimelineExecution[];
   nextCursor: string | null;
 }
 
-/** What the Timeline picker offers: a create or a modification that finished or may still finish. */
-const RESULT_STATUSES: readonly TimelineExecutionStatus[] = ["queued", "running", "cancelling", "succeeded"];
+/** What the Timeline picker offers: a create or a modification that succeeded. */
 const RESULT_KINDS: readonly TimelineExecution["kind"][] = ["web_animation_create", "web_animation_modify"];
 
 /** The cursor could not be read. */
@@ -110,16 +119,6 @@ function grantedTo(projectId: string): SQL {
 }
 
 /**
- * The statuses one group holds.
- * @param group - The group.
- * @returns Its statuses.
- * @throws {never} Never.
- */
-function statusesOf(group: ListGroup): readonly TimelineExecutionStatus[] {
-  return group === "done" ? WEB_ANIMATION_ENDED_STATUSES : WEB_ANIMATION_OPEN_STATUSES;
-}
-
-/**
  * Which rows a list holds in every group, shared by its pages and its totals so the two always agree. The `space`
  * scope reads the executions table; the other two read the grant table joined to it. The Timeline-made group is read
  * by origin alone: the old Timeline only ever made creates.
@@ -134,7 +133,7 @@ function scopeWhere(params: Pick<ListParams, "projectId" | "spaceId" | "scope">)
   if (params.scope === "space") return and(eq(t.spaceId, params.spaceId ?? ""), isNull(t.deletedAt), grantedTo(params.projectId));
   return and(
     eq(g.projectId, params.projectId), isNull(g.deletedAt), isNull(t.deletedAt),
-    params.scope === "timeline" ? eq(g.executionOrigin, "timeline") : and(inArray(t.kind, RESULT_KINDS), inArray(t.status, RESULT_STATUSES)),
+    params.scope === "timeline" ? eq(g.executionOrigin, "timeline") : and(inArray(t.kind, RESULT_KINDS), eq(t.status, "succeeded")),
   );
 }
 
@@ -148,7 +147,7 @@ function pageQuery(params: ListParams): PromiseLike<timelineExecutionRepo.Row[]>
   const after = params.cursor === null ? null : readCursor(params.cursor);
   const take = params.limit + 1;
   // The results list is its own fixed set; the other two read one group.
-  const group = params.scope === "results" ? undefined : inArray(t.status, statusesOf(params.group));
+  const group = params.scope === "results" ? undefined : inArray(t.status, GROUP_STATUSES[params.group]);
   if (params.scope === "space") {
     // A row comparison, so the index range starts at the cursor instead of filtering from the newest row.
     const cursorCondition = after === null ? undefined : sql`(${t.createdAt}, ${t.id}) < (${after.createdAt}::timestamptz, ${after.id}::uuid)`;
@@ -195,15 +194,21 @@ export async function listPage(params: ListParams): Promise<ListPage> {
  * @param params.projectId - The Project.
  * @param params.spaceId - The Motion Space, for the `space` scope.
  * @param params.scope - Which list.
- * @returns The ended and the in-progress counts.
+ * @returns The count of each group.
  * @throws {Error} When the read fails.
  */
-export async function countGroups(params: Pick<ListParams, "projectId" | "spaceId" | "scope">): Promise<{ done: number; inProgress: number }> {
-  const counts = { done: sql<number>`count(*) FILTER (WHERE ${inArray(t.status, statusesOf("done"))})::int`, inProgress: sql<number>`count(*) FILTER (WHERE ${inArray(t.status, statusesOf("running"))})::int` };
+export async function countGroups(params: Pick<ListParams, "projectId" | "spaceId" | "scope">): Promise<GroupTotals> {
+  /**
+   * One group's count.
+   * @param group - The group.
+   * @returns The count expression.
+   */
+  const countOf = (group: ListGroup): SQL<number> => sql<number>`count(*) FILTER (WHERE ${inArray(t.status, GROUP_STATUSES[group])})::int`;
+  const counts = { running: countOf("running"), succeeded: countOf("succeeded"), failed: countOf("failed") };
   const [row] = params.scope === "space"
     ? await db.select(counts).from(t).where(scopeWhere(params))
     : await db.select(counts).from(g).innerJoin(t, eq(t.id, g.executionId)).where(scopeWhere(params));
-  return { done: row?.done ?? 0, inProgress: row?.inProgress ?? 0 };
+  return { running: row?.running ?? 0, succeeded: row?.succeeded ?? 0, failed: row?.failed ?? 0 };
 }
 
 /**

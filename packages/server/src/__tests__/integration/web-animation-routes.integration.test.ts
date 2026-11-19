@@ -81,7 +81,7 @@ type RowView = TimelineExecution & {
 };
 
 /** A list page. */
-interface Page { rows: RowView[]; nextCursor: string | null; totals: { done: number; inProgress: number } }
+interface Page { rows: RowView[]; nextCursor: string | null; totals: { running: number; succeeded: number; failed: number } }
 
 /**
  * Ask to accept an execution.
@@ -456,7 +456,7 @@ describe("POST /timeline/executions — export", () => {
 });
 
 describe("GET /timeline/space-executions", () => {
-  it("lists a Space's granted rows of every kind in a group, newest first, each with the export it already has", async () => {
+  it("lists a Space's granted rows of every kind in one of three groups, newest first, each with the export it already has", async () => {
     const fx = await seedProject();
     const { execution: created, versionId } = await finishedCreate(fx);
     const exported = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId, kind: "web_animation_export", input: { sourceVersionId: versionId, width: 1920, height: 1080, fps: { num: 24, den: 1 }, durationFrames: 96, videoKey: "generated/x.mp4" } });
@@ -466,6 +466,14 @@ describe("GET /timeline/space-executions", () => {
     const elsewhere = await insertExecution({ projectId: fx.projectId, spaceId: crypto.randomUUID(), actorUserId: fx.editor.userId });
     await grant(elsewhere.id, fx.projectId);
     const ungranted = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId });
+    const failed = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId });
+    await grant(failed.id, fx.projectId);
+    await step(failed.id, { type: "failure", fence: null, reason: "enqueue_failed" });
+    const cancelled = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId });
+    await grant(cancelled.id, fx.projectId);
+    await step(cancelled.id, { type: "cancel" });
+    await createdAgo(failed.id, 5);
+    await createdAgo(cancelled.id, 4);
     await createdAgo(created.id, 3);
     await createdAgo(exported.id, 2);
     await createdAgo(running.id, 1);
@@ -473,8 +481,10 @@ describe("GET /timeline/space-executions", () => {
 
     const inProgress = await page(fx.viewer.cookie, `/timeline/space-executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}&scope=space&group=running`);
     expect(inProgress.rows.map((row) => row.id)).toEqual([running.id, exported.id]);
-    expect(inProgress.totals).toEqual({ done: 1, inProgress: 2 });
-    const done = await page(fx.viewer.cookie, `/timeline/space-executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}&scope=space&group=done`);
+    expect(inProgress.totals).toEqual({ running: 2, succeeded: 1, failed: 2 });
+    const failures = await page(fx.viewer.cookie, `/timeline/space-executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}&scope=space&group=failed`);
+    expect(failures.rows.map((row) => row.id)).toEqual([cancelled.id, failed.id]);
+    const done = await page(fx.viewer.cookie, `/timeline/space-executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}&scope=space&group=succeeded`);
     expect(done.rows.map((row) => row.id)).toEqual([created.id]);
     expect(done.rows[0]).toMatchObject({ request: "A red square", export: { executionId: exported.id, status: "queued" }, ownProject: true });
     expect(done.nextCursor).toBeNull();
@@ -489,7 +499,7 @@ describe("GET /timeline/space-executions", () => {
   ])("refuses a cursor with %s as a validation error, not a server error", async (_name, carried) => {
     const fx = await seedProject();
     const cursor = Buffer.from(JSON.stringify(carried), "utf8").toString("base64url");
-    const res = await get(fx.viewer.cookie, `/timeline/space-executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}&scope=space&group=done&cursor=${cursor}`);
+    const res = await get(fx.viewer.cookie, `/timeline/space-executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}&scope=space&group=succeeded&cursor=${cursor}`);
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual({ error: { code: 422, message: t("server.error.validation") } });
   });
@@ -505,7 +515,9 @@ describe("GET /timeline/space-executions", () => {
       await grant(queued.id, fx.projectId);
       await grant(failed.id, fx.projectId);
       await step(failed.id, { type: "failure", fence: null, reason: "enqueue_failed" });
-      await finishedCreate(fx, spaceId);
+      const done = await insertExecution({ projectId: fx.projectId, spaceId, actorUserId: fx.editor.userId, origin });
+      await grant(done.id, fx.projectId);
+      await succeed(done);
     }
     await acceptRow(fx.editor.cookie, exportBody(fx, versionId), 201);
     /**
@@ -525,13 +537,14 @@ describe("GET /timeline/space-executions", () => {
     };
     for (const scope of ["space", "timeline"]) {
       const path = `/timeline/space-executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}&scope=${scope}`;
-      const done = await readAll(`${path}&group=done`);
+      const succeeded = await readAll(`${path}&group=succeeded`);
       const running = await readAll(`${path}&group=running`);
-      expect(done.totals, scope).toEqual({ done: done.ids.length, inProgress: running.ids.length });
-      expect(done.ids.length * running.ids.length, scope).toBeGreaterThan(0);
+      const failed = await readAll(`${path}&group=failed`);
+      expect(succeeded.totals, scope).toEqual({ running: running.ids.length, succeeded: succeeded.ids.length, failed: failed.ids.length });
+      expect(succeeded.ids.length * running.ids.length * failed.ids.length, scope).toBeGreaterThan(0);
     }
     const results = await readAll(`/timeline/results?projectId=${fx.projectId}`);
-    expect(results.totals.done + results.totals.inProgress).toBe(results.ids.length);
+    expect(results.totals).toEqual({ running: 0, succeeded: results.ids.length, failed: 0 });
   });
 
   it("pages by creation time and id without skipping rows that share a microsecond", async () => {
@@ -562,10 +575,10 @@ describe("GET /timeline/space-executions", () => {
     const motion = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId });
     await grant(motion.id, fx.projectId);
     await succeed(motion);
-    const listed = await page(fx.viewer.cookie, `/timeline/space-executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}&scope=timeline&group=done`);
+    const listed = await page(fx.viewer.cookie, `/timeline/space-executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}&scope=timeline&group=succeeded`);
     expect(listed.rows.map((row) => row.id)).toEqual([old.id]);
     expect(listed.rows[0]).toMatchObject({ origin: "timeline", spaceId: timelineSpace, export: null });
-    expect(listed.totals).toEqual({ done: 1, inProgress: 0 });
+    expect(listed.totals).toEqual({ running: 0, succeeded: 1, failed: 0 });
   });
 
   it("shows a duplicated Project the rows its source made in the Space, not as its own", async () => {
@@ -573,23 +586,26 @@ describe("GET /timeline/space-executions", () => {
     const copy = await seedProject();
     const { execution } = await finishedCreate(fx);
     await grant(execution.id, copy.projectId);
-    const listed = await page(copy.viewer.cookie, `/timeline/space-executions?projectId=${copy.projectId}&spaceId=${fx.spaceId}&scope=space&group=done`);
+    const listed = await page(copy.viewer.cookie, `/timeline/space-executions?projectId=${copy.projectId}&spaceId=${fx.spaceId}&scope=space&group=succeeded`);
     expect(listed.rows).toEqual([expect.objectContaining({ id: execution.id, ownProject: false })]);
   });
 
   it("answers an outsider with 404", async () => {
     const fx = await seedProject();
     const outsider = await seedUser();
-    await expectNotFound(await get(outsider.cookie, `/timeline/space-executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}&scope=space&group=done`));
+    await expectNotFound(await get(outsider.cookie, `/timeline/space-executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}&scope=space&group=succeeded`));
   });
 });
 
 describe("GET /timeline/results", () => {
-  it("lists the creates and modifications that are finished or still running, newest first, without exports or failures", async () => {
+  it("lists only the creates and modifications that succeeded, newest first, without exports, runs or failures", async () => {
     const fx = await seedProject();
     const { execution: created, versionId } = await finishedCreate(fx);
     const modified = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId, kind: "web_animation_modify", input: { baseSourceVersionId: versionId, instruction: "Slower", engine: "deepseek", aspect: "9:16", durationSeconds: 6, fps: { num: 24, den: 1 } } });
     await grant(modified.id, fx.projectId);
+    await succeed(modified);
+    const running = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId });
+    await grant(running.id, fx.projectId);
     const failed = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId });
     await grant(failed.id, fx.projectId);
     await step(failed.id, { type: "failure", fence: null, reason: "enqueue_failed" });

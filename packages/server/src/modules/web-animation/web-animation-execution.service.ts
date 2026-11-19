@@ -72,7 +72,7 @@ export interface AcceptedExecution {
 export interface ExecutionPage {
   rows: WebAnimationRowView[];
   nextCursor: string | null;
-  totals: { done: number; inProgress: number };
+  totals: listRepo.GroupTotals;
 }
 
 /** The insert lost to a concurrent accept; the transaction is rolled back and the winner read. */
@@ -453,7 +453,7 @@ async function readPage(params: listRepo.ListParams): Promise<ExecutionPage> {
  * @param query.projectId - The Project.
  * @param query.spaceId - The Motion Space.
  * @param query.scope - The Space's own rows, or the Timeline-made group.
- * @param query.group - Ended rows, or rows in progress.
+ * @param query.group - Rows in progress, rows that succeeded, or rows that failed.
  * @param query.cursor - Where the page starts.
  * @param query.limit - The page size asked for.
  * @returns The page.
@@ -481,7 +481,7 @@ export async function listSpace(
  */
 export async function listResults(userId: string, query: { projectId: string; cursor?: string; limit?: number }): Promise<ExecutionPage> {
   await projectService.assertAccess(query.projectId, userId, "viewer");
-  return readPage({ projectId: query.projectId, spaceId: null, scope: "results", group: "done", cursor: query.cursor ?? null, limit: pageSize(query.limit) });
+  return readPage({ projectId: query.projectId, spaceId: null, scope: "results", group: "succeeded", cursor: query.cursor ?? null, limit: pageSize(query.limit) });
 }
 
 /**

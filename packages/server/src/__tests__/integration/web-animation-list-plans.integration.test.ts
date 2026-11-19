@@ -5,7 +5,7 @@
  * The three list reads keep the same cost on a late page as on the first (#1490 design §4.4): a Motion Space's own
  * executions through `timeline_executions_space_order_idx` and a grant check, the Timeline-made group and the Project's
  * results from the grant table through its two ordered indexes. Each read is run under `EXPLAIN (ANALYZE)` on page 1
- * and on page 10 of a Project with 400 rows, and the rows the scans read are compared. Another Project holds 20,000
+ * and on page 10 of a Project with 600 rows, and the rows the scans read are compared. Another Project holds 20,000
  * rows, as every other Project's rows sit beside a Project's own in production; without them the planner reads the
  * two small tables whole, which says nothing about how the reads scale.
  */
@@ -19,7 +19,7 @@ import * as webAnimationListRepo from "@server/modules/web-animation/web-animati
 import type { ListScope } from "@server/modules/web-animation/web-animation-list.repo.js";
 
 let pg: ReturnType<typeof postgres>;
-const ROWS = 400;
+const ROWS = 600;
 const LIMIT = 20;
 let projectId: string;
 const motionSpace = randomUUID();
@@ -77,7 +77,7 @@ function scanned(node: PlanNode): number {
  * @returns The count.
  */
 async function rowsRead(scope: ListScope, cursor: string | null): Promise<number> {
-  const query = webAnimationListRepo.listQuery({ projectId, spaceId: motionSpace, scope, group: "done", cursor, limit: LIMIT });
+  const query = webAnimationListRepo.listQuery({ projectId, spaceId: motionSpace, scope, group: "succeeded", cursor, limit: LIMIT });
   const result = await db.execute(drizzleSql`EXPLAIN (ANALYZE, FORMAT JSON) ${query}`);
   const plan = (result as unknown as Array<{ "QUERY PLAN": Array<{ Plan: PlanNode }> }>)[0]!["QUERY PLAN"][0]!.Plan;
   return scanned(plan);
@@ -91,7 +91,7 @@ async function rowsRead(scope: ListScope, cursor: string | null): Promise<number
 async function tenthPageCursor(scope: ListScope): Promise<string> {
   let cursor: string | null = null;
   for (let page = 1; page < 10; page += 1) {
-    const result: webAnimationListRepo.ListPage = await webAnimationListRepo.listPage({ projectId, spaceId: motionSpace, scope, group: "done", cursor, limit: LIMIT });
+    const result: webAnimationListRepo.ListPage = await webAnimationListRepo.listPage({ projectId, spaceId: motionSpace, scope, group: "succeeded", cursor, limit: LIMIT });
     expect(result.rows).toHaveLength(LIMIT);
     cursor = result.nextCursor;
     if (cursor === null) throw new Error(`${scope} ran out before page 10`);
