@@ -17,8 +17,8 @@
  */
 
 import * as Y from "yjs";
-import type { NodeTaskCounts, NodeTaskCountsEvent } from "@breatic/shared";
-import { CANVAS_NODES_KEY } from "@breatic/shared";
+import type { FocusCropOutcome, FocusImage, NodeTaskCounts, NodeTaskCountsEvent } from "@breatic/shared";
+import { CANVAS_NODES_KEY, MAX_FOCUS_ENTRIES, validFocusImages } from "@breatic/shared";
 import { writeNodeMedia } from "@breatic/shared";
 import { writePlainTextIntoBody } from "@breatic/shared/canvas/text-body";
 import { isNewerStreamId } from "@collab/services/stream-id.js";
@@ -27,6 +27,9 @@ import { isNewerStreamId } from "@collab/services/stream-id.js";
 export const TASK_RESULT_EVENT_ID_KEY = "taskResultEventId";
 /** The first handled planned output, including a result rejected by original stream ordering. */
 const MINI_TOOL_RESULT_ORIGIN_KEY = "miniToolResultOrigin";
+/** The node's focus crops and the video focus crops collab already handled, by taskId (frames-split §5.5 delivery row). */
+const FOCUS_IMAGES_KEY = "focusImages";
+const FOCUS_CROP_OUTCOMES_KEY = "focusCropOutcomes";
 
 /**
  * Write the counts, and the content fields when the event carries them, each
@@ -57,6 +60,7 @@ const MINI_TOOL_RESULT_ORIGIN_KEY = "miniToolResultOrigin";
  * @param event.result - The content fields, present only on the transition
  *   that reached `done`.
  * @param event.resultOrigin - The immutable planned media identity, when present.
+ * @param event.focusImageAppend - A landed video focus crop's image, applied whatever the counts version (frames-split §5.5).
  * @param at - Versions.
  * @param at.version - This event's version: its origin id, else its stream id.
  * @param at.countsVersion - The counts version the caller holds for this node.
@@ -65,7 +69,7 @@ const MINI_TOOL_RESULT_ORIGIN_KEY = "miniToolResultOrigin";
  */
 export function applyNodeTaskCounts(
   doc: Y.Doc,
-  event: Pick<NodeTaskCountsEvent, "nodeId" | "counts" | "result" | "resultOrigin">,
+  event: Pick<NodeTaskCountsEvent, "nodeId" | "counts" | "result" | "resultOrigin" | "focusImageAppend">,
   at: { version: string; countsVersion: string | undefined },
 ): string | undefined {
   const nodes = doc.getMap(CANVAS_NODES_KEY);
@@ -83,10 +87,12 @@ export function applyNodeTaskCounts(
   const writeResult =
     result !== undefined && (origin === undefined || rememberOrigin) && isNewerStreamId(at.version, data.get(TASK_RESULT_EVENT_ID_KEY));
   const heldAfter = countsNewer ? at.version : at.countsVersion;
-  if (!writeCounts && !writeResult && !rememberOrigin) return heldAfter;
+  const append = focusCropAppend(data, event);
+  if (!writeCounts && !writeResult && !rememberOrigin && append === null) return heldAfter;
 
   doc.transact(() => {
     if (writeCounts) data.set("taskCounts", { ...event.counts });
+    if (append !== null) applyFocusCrop(data, append);
     if (writeResult && result !== undefined) {
       if (isText) {
         // A text node holds its words in the `Y.XmlFragment` the editor binds
@@ -110,6 +116,73 @@ export function applyNodeTaskCounts(
     if (rememberOrigin) data.set(MINI_TOOL_RESULT_ORIGIN_KEY, { ...origin });
   });
   return heldAfter;
+}
+
+/** A video focus crop's append, decided before the transaction: the image and whether it fits. */
+interface FocusCropAppend { taskId: string; image: FocusImage | null; outcome: FocusCropOutcome }
+
+/**
+ * Decide a video focus crop's append (frames-split §5.5 delivery row): none for an event without one, for another node or
+ * for a taskId the node already marked, so a deferred delivery's second settle and a stream redelivery add nothing; else
+ * `added` by the focus image rules (`appendFocusImageCore`), or `refused` when `MAX_FOCUS_ENTRIES` images are held.
+ * @param data - The node's data map.
+ * @param event - The event.
+ * @param event.nodeId - The node the event names.
+ * @param event.focusImageAppend - The image to append, when the settle landed.
+ * @returns The decision, or null when there is nothing to do.
+ * @throws {never} Never.
+ */
+function focusCropAppend(data: Y.Map<unknown>, event: Pick<NodeTaskCountsEvent, "nodeId" | "focusImageAppend">): FocusCropAppend | null {
+  const raw = event.focusImageAppend;
+  if (raw === undefined || (raw.nodeId !== undefined && raw.nodeId !== event.nodeId)) return null;
+  const [image] = validFocusImages([raw]);
+  const taskId = typeof raw.id === "string" ? raw.id : "";
+  if (taskId.length === 0 || taskId in outcomesOf(data)) return null;
+  if (image === undefined) return { taskId, image: null, outcome: "refused" };
+  const held = validFocusImages(snapshot(data.get(FOCUS_IMAGES_KEY)));
+  return held.length >= MAX_FOCUS_ENTRIES ? { taskId, image: null, outcome: "refused" } : { taskId, image, outcome: "added" };
+}
+
+/**
+ * Append a decided focus crop and record its taskId, inside the caller's transaction; the marker keeps the latest
+ * `MAX_FOCUS_ENTRIES` taskIds, the oldest dropped.
+ * @param data - The node's data map.
+ * @param append - The decision.
+ * @throws {never} Never.
+ */
+function applyFocusCrop(data: Y.Map<unknown>, append: FocusCropAppend): void {
+  if (append.image !== null) {
+    const raw = data.get(FOCUS_IMAGES_KEY);
+    // A Y.Array (what the front end seeds on every node) takes a concurrent-safe push; a plain value keeps its encoding,
+    // healed of malformed entries in the same write.
+    if (raw instanceof Y.Array) (raw as Y.Array<FocusImage>).push([append.image]);
+    else data.set(FOCUS_IMAGES_KEY, [...validFocusImages(raw), append.image]);
+  }
+  const entries = Object.entries(outcomesOf(data));
+  entries.push([append.taskId, append.outcome]);
+  data.set(FOCUS_CROP_OUTCOMES_KEY, Object.fromEntries(entries.slice(-MAX_FOCUS_ENTRIES)));
+}
+
+/**
+ * The node's handled focus crops, ignoring anything malformed.
+ * @param data - The node's data map.
+ * @returns The outcomes by taskId, in the order they were recorded.
+ * @throws {never} Never.
+ */
+function outcomesOf(data: Y.Map<unknown>): Record<string, FocusCropOutcome> {
+  const raw = data.get(FOCUS_CROP_OUTCOMES_KEY);
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
+  return Object.fromEntries(Object.entries(raw).filter((entry): entry is [string, FocusCropOutcome] => entry[1] === "added" || entry[1] === "refused"));
+}
+
+/**
+ * A focus images value in either encoding as a plain snapshot for the shared sanitizer.
+ * @param raw - The raw value.
+ * @returns The snapshot.
+ * @throws {never} Never.
+ */
+function snapshot(raw: unknown): unknown {
+  return raw instanceof Y.Array ? raw.toArray() : raw;
 }
 
 /**
