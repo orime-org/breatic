@@ -201,19 +201,21 @@ function drawColumns(colgroup: HTMLElement, table: HTMLElement, block: TableBloc
 }
 
 /**
- * Moves an element into another, and puts back a page selection that lay in
- * it. Removing a node collapses a range inside it onto its old parent, and
- * ProseMirror reads the page selection back on the DOM change, so a caret
- * just put in a new table would land on the text before the table.
+ * Moves an element into another, and puts back a page selection with an end
+ * in it. Removing a node collapses every end of a range inside it onto its
+ * old parent, and ProseMirror reads the page selection back on the DOM
+ * change, so a caret just put in a new table, or a selection an undo runs
+ * into it, would end on the text before the table. The nodes the ends stand
+ * in move with the element, so the same ends are still valid after it.
  * @param element - The element to move.
  * @param into - Where it goes.
  */
 function moveKeepingSelection(element: HTMLElement, into: HTMLElement): void {
   const page = element.ownerDocument.getSelection();
   const { anchorNode, anchorOffset, focusNode, focusOffset } = page ?? {};
-  const inside = anchorNode && focusNode && element.contains(anchorNode) && element.contains(focusNode);
+  const touched = [anchorNode, focusNode].some((node) => node != null && element.contains(node));
   into.appendChild(element);
-  if (inside) page?.setBaseAndExtent(anchorNode, anchorOffset ?? 0, focusNode, focusOffset ?? 0);
+  if (touched && anchorNode && focusNode) page?.setBaseAndExtent(anchorNode, anchorOffset ?? 0, focusNode, focusOffset ?? 0);
 }
 
 /**
