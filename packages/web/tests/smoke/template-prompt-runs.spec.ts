@@ -856,6 +856,64 @@ const RUNS: Record<string, Run> = {
     fills: {},
     shots: [['a bright summer sky over a seaside town'], ['on a school rooftop'], ['runs and leaps across the rooftops'], [], ['the sunset sky']],
   },
+  'storyboard-sheet-9': {
+    type: 'image',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: [],
+    fills: {
+      anchor: [
+        '1 she wakes late, 2 grabs her bag, 3 runs down the stairs, 4 misses the bus, 5 borrows a bike, 6 races through the market, 7 skids round a corner, 8 arrives at the school gate, 9 the gate opens just in time',
+      ],
+    },
+  },
+  'comic-page': {
+    type: 'image',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: [],
+    fills: {
+      anchor: [
+        'left to right, top to bottom',
+        'black-and-white manga with screentone',
+        '1 a wide shot of a rainy street, 2 she finds a soaked kitten, 3 close-up of the kitten\'s eyes, 4 she hides it in her coat, 5 she smiles at home with it',
+      ],
+    },
+  },
+  'comic-4koma': {
+    type: 'image',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: [],
+    fills: {
+      anchor: ['she proudly bakes her first cake', 'she carries it carefully to the table', 'the cat leaps onto the table', 'the cat sits in the cake looking pleased'],
+    },
+  },
+  'storyboard-to-video': {
+    type: 'video',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: ['sheet'],
+    fills: {
+      sheet: ['1 she spots a kite in a tree, 2 climbs the trunk, 3 the branch bends, 4 she grabs the kite, 5 slides down, 6 runs off with it'],
+      anchor: ['upbeat music and the sounds of each action'],
+    },
+  },
+  // TEMPLATE_RUN_IMAGE names the comic page the run wires in.
+  'comic-page-to-motion': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: { anchor: ['left to right, top to bottom', 'rain falls, her hair lifts in the wind, the kitten blinks'] },
+  },
+  // TEMPLATE_RUN_IMAGE names the comic page the run wires in.
+  'comic-panels-to-shots': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: {},
+    shots: [['rain starts to fall on the street'], ['she kneels and reaches for the kitten'], ['the kitten blinks slowly'], ['she smiles and hugs the kitten']],
+  },
   'talking-presenter': {
     type: 'video',
     photo: false,
