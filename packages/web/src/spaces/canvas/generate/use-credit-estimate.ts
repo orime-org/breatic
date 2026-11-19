@@ -6,7 +6,7 @@ import * as React from 'react';
 import { inputRefusalText, type InputRefusalShape, type ModelEntry, type RunRoute } from '@breatic/shared';
 import type { CreditEstimate, EstimateInput } from '@breatic/shared/pricing';
 
-import { useKeyPlan } from '@web/features/byok/byok-query';
+import { ownKeyText, useKeyPlan } from '@web/features/byok/byok-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { creditEstimateText } from '@web/spaces/canvas/generate/credit-estimate-text';
 
@@ -143,8 +143,7 @@ export function useRunCheck(
   if (onKey !== undefined) {
     // The media is on the payer's key; describing its inputs is charged while the language model runs on ours.
     const describedOnCredits = describes && plan.data?.llm.usesAccountKey !== true;
-    const whose = plan.data?.payer === 'admin' ? 'usesStudioKey' : 'usesOwnKey';
-    creditText = t(`canvas.generatePanel.${whose}${describedOnCredits ? 'Describing' : ''}`);
+    creditText = ownKeyText(plan.data?.payer ?? 'self', t, describedOnCredits);
   } else if (project === undefined || !plan.isPending) {
     // Nothing prints until the plan says whose key runs it, so a figure never flashes before "no credits". A plan
     // that failed to load prices on the platform key, which the server charges by when it cannot read one either.

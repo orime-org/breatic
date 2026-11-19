@@ -4,6 +4,7 @@
 import { useQuery, type QueryClient, type UseQueryResult } from '@tanstack/react-query';
 
 import { byokApi, type ByokView, type KeyPlan } from '@web/data/api/byok';
+import type { useTranslation } from '@web/i18n/use-translation';
 
 /**
  * The cache key of the account's BYOK view. Not keyed on the user: the whole cache is dropped when the signed-in
@@ -31,6 +32,18 @@ export function useByokView(enabled: boolean): UseQueryResult<ByokView> {
 export async function rereadByok(client: QueryClient): Promise<void> {
   void client.invalidateQueries({ queryKey: KEY_PLAN_ROOT });
   await client.invalidateQueries({ queryKey: BYOK_VIEW_KEY });
+}
+
+/**
+ * What a run on the payer's own key says in place of a credit figure (inner#1953): whose key it is to the viewer, and
+ * that describing its elements still takes credits when the language model runs on ours.
+ * @param payer - Whose keys pay: the viewer's own, or the Studio Admin's.
+ * @param t - The translator.
+ * @param describing - Whether the run's description step is charged in credits.
+ * @returns The sentence.
+ */
+export function ownKeyText(payer: KeyPlan['payer'], t: ReturnType<typeof useTranslation>, describing = false): string {
+  return t(`canvas.generatePanel.${payer === 'admin' ? 'usesStudioKey' : 'usesOwnKey'}${describing ? 'Describing' : ''}`);
 }
 
 /**

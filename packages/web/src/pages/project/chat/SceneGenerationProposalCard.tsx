@@ -7,7 +7,7 @@ import { useParams } from 'react-router-dom';
 import { Box } from 'lucide-react';
 import type { SceneGenerationProposal } from '@breatic/shared';
 
-import { useKeyPlan } from '@web/features/byok/byok-query';
+import { ownKeyText, useKeyPlan } from '@web/features/byok/byok-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
@@ -51,7 +51,7 @@ export const SceneGenerationProposalCard = React.memo(function SceneGenerationPr
   const plan = useKeyPlan(projectId);
   let costText: string | undefined;
   if (plan.data?.models[proposal.model] !== undefined) {
-    costText = t(plan.data.payer === 'admin' ? 'canvas.generatePanel.usesStudioKey' : 'canvas.generatePanel.usesOwnKey');
+    costText = ownKeyText(plan.data.payer, t);
   } else if (projectId === undefined || !plan.isPending) {
     costText = t('chat.sceneProposal.credits', { credits: formatCreditAmount(proposal.credits) });
   }

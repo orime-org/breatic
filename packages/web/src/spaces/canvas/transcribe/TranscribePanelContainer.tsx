@@ -16,7 +16,7 @@ import * as React from 'react';
 import { getLocale } from '@breatic/shared';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { useKeyPlan } from '@web/features/byok/byok-query';
+import { ownKeyText, useKeyPlan } from '@web/features/byok/byok-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
 import { NodePanelMount } from '@web/spaces/canvas/_shared/NodePanelMount';
@@ -68,7 +68,7 @@ function OpenTranscribePanel({ nodeId, onRun }: OpenTranscribePanelProps): React
   // A transcription runs on the payer's OpenRouter key when they saved one, and then takes no credits (inner#1953).
   const plan = useKeyPlan(projectId === '' ? undefined : projectId).data;
   const creditText = plan?.llm.usesAccountKey === true
-    ? t(plan.payer === 'admin' ? 'canvas.generatePanel.usesStudioKey' : 'canvas.generatePanel.usesOwnKey')
+    ? ownKeyText(plan.payer, t)
     : t('canvas.miniTool.panel.usage');
   const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
   const keepFillers = useTranscribePreference((s) => s.keepFillers);
