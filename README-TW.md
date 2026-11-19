@@ -60,7 +60,7 @@
 | **Timeline（DEV）** | 將 Project 影片或本機上傳影片編排在共享軌道上：移動、修剪、分割、複製和刪除片段，復原自己的編輯並預覽編排。把 Motion Space 中已完成的網頁動畫作為片段加入軌道，按 Timeline 時鐘播放；每次新增都是一份獨立副本。各軌的影片和網頁動畫依圖層疊放、一起播放；在預覽中選取圖層即可移動、縮放、拉伸或旋轉，也可以輸入位置和大小。在播放列右端從 16:9、9:16、1:1、4:3、4:5、2:3、21:9 七種比例中選擇畫面比例，圖層在畫面中的相對位置保持不變。 |
 | **Motion（DEV）** | 描述一段網頁動畫，交給 DeepSeek 製作；在已完成、進行中和失敗三欄查看執行，播放並拖曳定位已完成的結果，把一個結果修改成新結果，與協作者在時間點上加註解，把結果匯出為影片並放到 Canvas 上。 |
 | **專案中的 AI Agent** | 討論想法、提供文件或畫布脈絡，結合現有素材檢視提案。 |
-| **即時協作** | 邀請協作者、設定存取權限，共同編輯同步的畫布、文件、3D 場景與 Timeline。 |
+| **即時協作** | 邀請協作者、設定存取權限，共同編輯同步的畫布、文件、3D 場景、Timeline 與 Motion。 |
 
 支援圖片、影片、音訊及 3D 素材；生成能力取決於已設定的供應商及模型存取權限。Canvas 與 Document 已可使用；3D、Timeline 與 Motion 標示為 **DEV**。Timeline 目前支援多條視訊軌上的影片和網頁動畫編輯與預覽；Motion 負責製作、修改和匯出網頁動畫，網頁動畫只在開啟該功能的部署中可用；Timeline 的更多媒體類型與 Timeline 影片匯出列為後續計畫。3D 場景中的模型生成與註解仍在開發中。
 
@@ -93,7 +93,7 @@
 - **自行架設：** 依照[個人與區域網路部署指南（英文）](self-host/LOCAL.md)操作。
 - **開發與貢獻：** 參閱[開發環境設定（英文）](self-host/DEVELOPMENT.md)。
 
-完成個人 Studio 設定，建立 Project，再用 **+** 新增 Document、Canvas、3D 或 Timeline Spaces。可先寫簡報、上傳參考資料或配置內建 3D 物件。[使用指南（英文）](docs/USAGE.md)包含[鍵盤快捷鍵](docs/USAGE.md#keyboard-shortcuts)。
+完成個人 Studio 設定，建立 Project，再用 **+** 新增 Document、Canvas、3D、Timeline 或 Motion Spaces。可先寫簡報、上傳參考資料或配置內建 3D 物件。[使用指南（英文）](docs/USAGE.md)包含[鍵盤快捷鍵](docs/USAGE.md#keyboard-shortcuts)。
 
 ### 自行架設之前
 

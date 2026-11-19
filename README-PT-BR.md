@@ -60,7 +60,7 @@ Colaboração significa que várias pessoas podem editar o mesmo espaço de trab
 | **Timeline (DEV)** | Organize vídeos do Project ou vídeos locais enviados em faixas compartilhadas: mova, recorte, divida, duplique e exclua clipes, desfaça suas próprias edições e visualize a sequência. Adicione Web Animations concluídas dos Motion Spaces como clipes que tocam no relógio da Timeline; cada adição é uma cópia independente. Vídeos e Web Animations de todas as faixas tocam juntos como camadas sobrepostas; selecione uma camada na prévia para movê-la, redimensioná-la, esticá-la ou girá-la, ou digite sua posição e tamanho. Escolha a proporção do quadro entre sete opções (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) no fim da barra de reprodução; as camadas mantêm seu lugar no quadro. |
 | **Motion (DEV)** | Descreva uma Web Animation e peça ao DeepSeek para criá-la, acompanhe as execuções concluídas, em andamento e com falha, reproduza e navegue pelos resultados concluídos, modifique um resultado para gerar um novo, anote momentos com colaboradores, exporte um resultado como vídeo e coloque o vídeo em um Canvas. |
 | **Agente de IA no projeto** | Discuta ideias, forneça contexto de documentos ou do canvas e avalie propostas junto aos seus materiais. |
-| **Colaboração em tempo real** | Convide colaboradores, defina permissões e trabalhe em canvases, documentos, cenas 3D e Timelines sincronizados. |
+| **Colaboração em tempo real** | Convide colaboradores, defina permissões e trabalhe em canvases, documentos, cenas 3D, Timelines e Motion Spaces sincronizados. |
 
 Os recursos podem ser imagens, vídeos, áudio e arquivos 3D. A geração depende dos provedores configurados e do acesso aos modelos. Canvas e Document estão disponíveis; 3D, Timeline e Motion têm a indicação **DEV**. A Timeline atual permite editar e visualizar vídeos e Web Animations em várias faixas visuais; o Motion cria, modifica e exporta Web Animations, que só estão disponíveis nas implantações que as ativam. Outros tipos de mídia na Timeline e a exportação de vídeo da Timeline estão planejados. A geração por modelos e as anotações dentro da cena 3D estão em desenvolvimento.
 
@@ -93,7 +93,7 @@ Você pode nomear Spaces como “Abertura · 0–10 s”, “Cena principal · 1
 - **Instalação própria:** siga o [guia de instalação pessoal e em rede local (inglês)](self-host/LOCAL.md).
 - **Desenvolvimento:** veja a [configuração do ambiente (inglês)](self-host/DEVELOPMENT.md).
 
-Configure seu Studio pessoal, crie um Project e use **+** para adicionar Document, Canvas, 3D ou Timeline Spaces. Comece com um briefing, envie referências ou posicione objetos 3D integrados. O [guia de uso (inglês)](docs/USAGE.md) inclui os [atalhos de teclado](docs/USAGE.md#keyboard-shortcuts).
+Configure seu Studio pessoal, crie um Project e use **+** para adicionar Document, Canvas, 3D, Timeline ou Motion Spaces. Comece com um briefing, envie referências ou posicione objetos 3D integrados. O [guia de uso (inglês)](docs/USAGE.md) inclui os [atalhos de teclado](docs/USAGE.md#keyboard-shortcuts).
 
 ### Antes de hospedar por conta própria
 

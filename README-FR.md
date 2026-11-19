@@ -60,7 +60,7 @@ La collaboration permet à plusieurs personnes de modifier le même espace en te
 | **Timeline (DEV)** | Agencer des vidéos du Project ou des vidéos locales importées sur des pistes partagées : déplacer, rogner, scinder, dupliquer et supprimer des clips, annuler ses propres modifications et prévisualiser la séquence. Ajouter des Web Animations terminées depuis les Motion Spaces sous forme de clips qui suivent l’horloge de la Timeline ; chaque ajout est une copie indépendante. Les vidéos et Web Animations de toutes les pistes sont lues ensemble comme des calques superposés ; sélectionner un calque dans l’aperçu pour le déplacer, le mettre à l’échelle, l’étirer ou le faire pivoter, ou saisir sa position et sa taille. Choisir le format de l’image parmi sept préréglages (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) au bout de la barre de lecture ; les calques gardent leur place dans l’image. |
 | **Motion (DEV)** | Décrire une Web Animation et la faire créer par DeepSeek, suivre les exécutions terminées, en cours et en échec, lire et parcourir les résultats terminés, modifier un résultat pour en obtenir un nouveau, annoter des moments avec ses collaborateurs, exporter un résultat en vidéo et placer la vidéo sur un Canvas. |
 | **Agent IA dans le projet** | Échanger des idées, fournir le contexte du document ou du canevas et examiner les propositions avec vos ressources. |
-| **Collaboration en temps réel** | Inviter des collaborateurs, définir les droits d’accès et travailler sur des canevas, documents, scènes 3D et Timelines synchronisés. |
+| **Collaboration en temps réel** | Inviter des collaborateurs, définir les droits d’accès et travailler sur des canevas, documents, scènes 3D, Timelines et Motion Spaces synchronisés. |
 
 Les médias pris en charge comprennent les images, la vidéo, l’audio et les ressources 3D. La génération dépend des fournisseurs configurés et de l’accès aux modèles. Canvas et Document sont disponibles ; 3D, Timeline et Motion portent la mention **DEV**. La Timeline actuelle permet l’édition et la prévisualisation de vidéos et de Web Animations sur plusieurs pistes visuelles ; Motion crée, modifie et exporte des Web Animations, disponibles uniquement dans les déploiements qui les activent. D’autres types de médias pour la Timeline et l’export vidéo de la Timeline sont prévus. La génération par modèles et les annotations au sein de la scène 3D sont en développement.
 
@@ -93,7 +93,7 @@ Vous pouvez nommer les Spaces « Ouverture · 0–10 s », « Scène principale 
 - **Installation autonome :** suivez le [guide personnel et réseau local (anglais)](self-host/LOCAL.md).
 - **Développement :** consultez la [mise en place de l’environnement (anglais)](self-host/DEVELOPMENT.md).
 
-Configurez votre Studio personnel, créez un Project et utilisez **+** pour ajouter des Document, Canvas, 3D ou Timeline Spaces. Commencez par un brief, importez des références ou placez des objets 3D intégrés. Le [guide d’utilisation (anglais)](docs/USAGE.md) présente les [raccourcis clavier](docs/USAGE.md#keyboard-shortcuts).
+Configurez votre Studio personnel, créez un Project et utilisez **+** pour ajouter des Document, Canvas, 3D, Timeline ou Motion Spaces. Commencez par un brief, importez des références ou placez des objets 3D intégrés. Le [guide d’utilisation (anglais)](docs/USAGE.md) présente les [raccourcis clavier](docs/USAGE.md#keyboard-shortcuts).
 
 ### Avant d’auto-héberger
 

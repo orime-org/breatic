@@ -76,7 +76,7 @@ Viewer 可以打开两个面板、播放、阅读批注和下载视频。
 
 ## 布置 3D 场景
 
-创建项目或添加 Space 时选择 **3D**。类型依次为 Canvas、Document、3D、Timeline，默认选中 Canvas。3D 和 Timeline 卡片带有 **DEV** 标记；以此类型创建项目时，初始 Space 名称为 **3D**。
+创建项目或添加 Space 时选择 **3D**。类型依次为 Canvas、Document、3D、Timeline、Motion，默认选中 Canvas。3D、Timeline 和 Motion 卡片带有 **DEV** 标记；以此类型创建项目时，初始 Space 名称为 **3D**。
 
 | 控件或操作 | 结果 |
 | --- | --- |

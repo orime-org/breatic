@@ -60,7 +60,7 @@ Ortak çalışma, birden fazla kişinin aynı çalışma alanını gerçek zaman
 | **Timeline (DEV)** | Project videolarını veya yüklenen yerel videoları ortak izlerde düzenleyin: klipleri taşıyın, kırpın, bölün, çoğaltın ve silin, kendi düzenlemelerinizi geri alın ve diziyi önizleyin. Motion Spaces’teki tamamlanmış Web Animation’ları Timeline saatine göre oynayan klipler olarak ekleyin; her ekleme bağımsız bir kopyadır. Tüm izlerdeki videolar ve Web Animation’lar üst üste katmanlar olarak birlikte oynar; önizlemede bir katman seçip taşıyın, ölçekleyin, gerin veya döndürün ya da konumunu ve boyutunu yazın. Oynatma çubuğunun sonunda kare en-boy oranını yedi seçenekten (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) seçin; katmanlar karedeki yerlerini korur. |
 | **Motion (DEV)** | Bir Web Animation tarif edip DeepSeek’e oluşturtun, yürütmeleri tamamlanan, süren ve başarısız olarak izleyin, tamamlanan sonuçları oynatıp içinde gezinin, bir sonucu değiştirerek yenisini oluşturun, ekip arkadaşlarınızla anlara açıklama ekleyin, bir sonucu video olarak dışa aktarın ve videoyu bir Canvas’a yerleştirin. |
 | **Projede yapay zekâ temsilcisi** | Fikirleri tartışın, belge veya tuval bağlamını sağlayın ve önerileri malzemelerinizle birlikte değerlendirin. |
-| **Gerçek zamanlı iş birliği** | Ekip arkadaşlarınızı davet edin, erişim izinlerini belirleyin ve eşzamanlanan tuval, belge, 3D sahne ve Timeline’larda çalışın. |
+| **Gerçek zamanlı iş birliği** | Ekip arkadaşlarınızı davet edin, erişim izinlerini belirleyin ve eşzamanlanan tuval, belge, 3D sahne, Timeline ve Motion Space’lerinde çalışın. |
 
 Görseller, video, ses ve 3D varlıklar desteklenir. Üretim olanakları yapılandırılan sağlayıcılara ve model erişimine bağlıdır. Canvas ve Document kullanılabilir; 3D, Timeline ve Motion **DEV** olarak işaretlidir. Timeline şu anda birden çok görüntü izinde video ve Web Animation düzenleme ve önizleme sunar; Motion, Web Animation’ları oluşturur, değiştirir ve dışa aktarır; Web Animation yalnızca onu etkinleştiren kurulumlarda kullanılabilir. Timeline için ek medya türleri ve Timeline video dışa aktarma planlanmaktadır. 3D sahnenin içinde modelle üretim ve açıklama ekleme geliştirilmektedir.
 
@@ -93,7 +93,7 @@ Spaces’e “Açılış · 0–10 sn”, “Ana sahne · 10–20 sn” ve “Bi
 - **Kendi kurulumunuz:** [kişisel ve LAN kurulum kılavuzunu (İngilizce)](self-host/LOCAL.md) izleyin.
 - **Geliştirme:** [geliştirme ortamı kurulumuna (İngilizce)](self-host/DEVELOPMENT.md) bakın.
 
-Kişisel Studio’nuzu ayarlayın, bir Project oluşturun ve **+** ile Document, Canvas, 3D veya Timeline Spaces ekleyin. Brief yazarak, referans yükleyerek ya da yerleşik 3D nesneleri düzenleyerek başlayın. [Kullanım kılavuzu (İngilizce)](docs/USAGE.md), [klavye kısayollarını](docs/USAGE.md#keyboard-shortcuts) da içerir.
+Kişisel Studio’nuzu ayarlayın, bir Project oluşturun ve **+** ile Document, Canvas, 3D, Timeline veya Motion Spaces ekleyin. Brief yazarak, referans yükleyerek ya da yerleşik 3D nesneleri düzenleyerek başlayın. [Kullanım kılavuzu (İngilizce)](docs/USAGE.md), [klavye kısayollarını](docs/USAGE.md#keyboard-shortcuts) da içerir.
 
 ### Kendi sunucunuzda çalıştırmadan önce
 

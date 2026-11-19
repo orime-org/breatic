@@ -74,7 +74,7 @@ Viewers can open both panels, play, read annotations and download videos.
 
 ## Arrange a 3D scene
 
-Choose **3D** when creating a project or adding a Space. The type picker orders Canvas, Document, 3D and Timeline; Canvas is selected by default. The 3D and Timeline cards carry **DEV**, and a project created with this type starts with a Space named **3D**.
+Choose **3D** when creating a project or adding a Space. The type picker orders Canvas, Document, 3D, Timeline and Motion; Canvas is selected by default. The 3D, Timeline and Motion cards carry **DEV**, and a project created with this type starts with a Space named **3D**.
 
 | Control or action | Result |
 | --- | --- |

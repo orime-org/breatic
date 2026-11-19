@@ -62,7 +62,7 @@ Collaboration means multiple people can edit the same workspace in real time. Re
 | **Timeline (DEV)** | Arrange Project videos or uploaded local videos on shared tracks: move, trim, split, duplicate and delete clips, undo your own edits and preview the sequence. Add finished web animations from Motion Spaces as clips that play on the Timeline clock; each addition is an independent copy. Videos and web animations on every track play together as stacked layers; select a layer in the preview to move, scale, stretch or rotate it, or type its position and size. Pick the frame's aspect ratio from seven presets (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) at the end of the play bar; layers keep their place in the frame. |
 | **Motion (DEV)** | Describe a web animation and run it with DeepSeek, follow runs under Completed, In progress and Failed, play and seek finished results, modify a result into a new one, annotate moments with collaborators, export a result as a video and put the video on a Canvas. |
 | **An AI agent in your project** | Discuss ideas, provide document or canvas context, and review proposed work alongside your materials. |
-| **Real-time collaboration** | Invite collaborators, set project access permissions and work on synchronized canvases, documents, 3D scenes and Timelines. |
+| **Real-time collaboration** | Invite collaborators, set project access permissions and work on synchronized canvases, documents, 3D scenes, Timelines and Motion Spaces. |
 
 Supported media includes images, video, audio and 3D assets. Generation capabilities depend on configured providers and model access. Canvas and Document Spaces are available; the 3D, Timeline and Motion editors carry **DEV** badges in both creation entries. The current Timeline edits and previews video and web animations on multiple visual tracks; Motion makes, modifies and exports web animations, which run only on deployments that enable them. Additional Timeline media types and Timeline video export are planned. Annotations within the 3D scene are under development.
 
@@ -106,7 +106,7 @@ The time ranges are a planning convention: Space names do not set clip duration 
 | Install for personal, private-group or internal organizational use | [Personal and LAN deployment](self-host/LOCAL.md) |
 | Modify the source or contribute | [Development setup](self-host/DEVELOPMENT.md) |
 
-After signing in, finish your personal Studio setup, create a project and add Document, Canvas, 3D or Timeline Spaces with the **+** button. Start with a brief, upload references or arrange built-in 3D objects. The [user guide](docs/USAGE.md) covers registration, your first project, Space operations and [keyboard shortcuts](docs/USAGE.md#keyboard-shortcuts).
+After signing in, finish your personal Studio setup, create a project and add Document, Canvas, 3D, Timeline or Motion Spaces with the **+** button. Start with a brief, upload references or arrange built-in 3D objects. The [user guide](docs/USAGE.md) covers registration, your first project, Space operations and [keyboard shortcuts](docs/USAGE.md#keyboard-shortcuts).
 
 ### Before self-hosting
 

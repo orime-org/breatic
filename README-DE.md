@@ -60,7 +60,7 @@ Zusammenarbeit bedeutet, dass mehrere Personen denselben Arbeitsbereich in Echtz
 | **Timeline (DEV)** | Videos aus dem Project oder lokal hochgeladene Videos auf gemeinsamen Spuren anordnen: Clips verschieben, trimmen, teilen, duplizieren und löschen, eigene Änderungen rückgängig machen und die Sequenz abspielen. Fertige Web Animations aus Motion Spaces als Clips einfügen, die im Takt der Timeline laufen; jedes Einfügen ist eine unabhängige Kopie. Videos und Web Animations aller Spuren laufen als übereinanderliegende Ebenen gemeinsam; eine Ebene in der Vorschau auswählen, um sie zu verschieben, zu skalieren, zu strecken oder zu drehen, oder Position und Größe eingeben. Am Ende der Wiedergabeleiste das Seitenverhältnis aus sieben Vorgaben wählen (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9); die Ebenen behalten ihren Platz im Bild. |
 | **Motion (DEV)** | Eine Web Animation beschreiben und von DeepSeek erstellen lassen, Ausführungen nach abgeschlossen, laufend und fehlgeschlagen verfolgen, fertige Ergebnisse abspielen und darin springen, ein Ergebnis zu einem neuen abändern, Zeitpunkte gemeinsam mit anderen annotieren, ein Ergebnis als Video exportieren und das Video auf einen Canvas legen. |
 | **KI-Agent im Projekt** | Ideen besprechen, Dokument- und Canvas-Kontext bereitstellen und Vorschläge zusammen mit deinen Materialien prüfen. |
-| **Zusammenarbeit in Echtzeit** | Teammitglieder einladen, Berechtigungen festlegen und synchronisierte Canvases, Dokumente, 3D-Szenen und Timelines bearbeiten. |
+| **Zusammenarbeit in Echtzeit** | Teammitglieder einladen, Berechtigungen festlegen und synchronisierte Canvases, Dokumente, 3D-Szenen, Timelines und Motion Spaces bearbeiten. |
 
 Unterstützte Medien sind Bilder, Videos, Audio und 3D-Dateien. Die Generierung hängt von den eingerichteten Anbietern und dem Modellzugang ab. Canvas und Document sind verfügbar; 3D, Timeline und Motion tragen die Kennzeichnung **DEV**. Die Timeline unterstützt derzeit Bearbeitung und Vorschau von Videos und Web Animations auf mehreren Bildspuren; Motion erstellt, ändert und exportiert Web Animations, die nur in Installationen zur Verfügung stehen, die sie aktivieren. Weitere Medientypen für die Timeline und der Videoexport der Timeline sind geplant. Modellgenerierung und Anmerkungen innerhalb der 3D-Szene sind in Entwicklung.
 
@@ -93,7 +93,7 @@ Spaces können etwa „Auftakt · 0–10 s“, „Hauptszene · 10–20 s“ und
 - **Eigene Installation:** [Anleitung für persönliche Nutzung und LAN (Englisch)](self-host/LOCAL.md).
 - **Entwicklung:** [Entwicklungsumgebung einrichten (Englisch)](self-host/DEVELOPMENT.md).
 
-Richte dein persönliches Studio ein, erstelle ein Project und füge über **+** Document, Canvas, 3D oder Timeline Spaces hinzu. Beginne mit einem Briefing, lade Referenzen hoch oder platziere integrierte 3D-Objekte. Die [Anleitung (Englisch)](docs/USAGE.md) enthält auch [Tastenkürzel](docs/USAGE.md#keyboard-shortcuts).
+Richte dein persönliches Studio ein, erstelle ein Project und füge über **+** Document, Canvas, 3D, Timeline oder Motion Spaces hinzu. Beginne mit einem Briefing, lade Referenzen hoch oder platziere integrierte 3D-Objekte. Die [Anleitung (Englisch)](docs/USAGE.md) enthält auch [Tastenkürzel](docs/USAGE.md#keyboard-shortcuts).
 
 ### Vor dem Selbsthosting
 
