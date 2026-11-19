@@ -8,12 +8,24 @@
  */
 
 import { mcpEnv } from "@mcp/bootstrap-config.js";
-import { createLogger, createRedisClient, getMcpConfig, runGracefulShutdown, startHealthServer, type HealthCheck } from "@breatic/core";
+import {
+  createLogger,
+  createRedisClient,
+  getMcpConfig,
+  getNodeTaskConfig,
+  loadLocales,
+  runGracefulShutdown,
+  startHealthServer,
+  type HealthCheck,
+} from "@breatic/core";
 import { serve } from "@hono/node-server";
-import { McpServer } from "@modelcontextprotocol/server";
-import { createMcpApp } from "@mcp/app.js";
+import { createMcpApp, type AgentCall } from "@mcp/app.js";
 import { createCommandChannel } from "@mcp/command-channel.js";
 import { redisAnswers, serverAnswers } from "@mcp/probes.js";
+import { createServerApi } from "@mcp/server-api.js";
+import { ALL_TOOLS, INSTRUCTIONS } from "@mcp/tools/index.js";
+import { createTaskTracker } from "@mcp/tools/task-tracker.js";
+import { buildToolServer } from "@mcp/tools/tool-server.js";
 import { createTokenExchanger, discoverTokenEndpoint } from "@mcp/token-exchange.js";
 
 const logger = createLogger("main");
@@ -72,6 +84,8 @@ async function main(): Promise<void> {
   }
 
   const mcpConfig = getMcpConfig();
+  // Template names and words are read from the locale catalogs.
+  loadLocales();
   const doneSubscriber = createRedisClient(mcpEnv.REDIS_MCP_URL, { name: "mcp-done" });
   doneSubscriber.on("error", (err) => logger.error({ err }, "mcp_done_subscriber_error"));
   const commands = await createCommandChannel({
@@ -81,12 +95,34 @@ async function main(): Promise<void> {
     operationTtlSeconds: Math.ceil(mcpConfig.call_timeout_ms / 1000) + mcpConfig.reply_ttl_seconds,
   });
 
+  // A task can run for its whole budget, and its outcome stays readable a while after.
+  const taskListTtlSeconds = Math.ceil(getNodeTaskConfig().default_budget_ms / 1000) + mcpConfig.reply_ttl_seconds;
   const tokenEndpoint = await discoverTokenEndpoint(mcpEnv.OAUTH_ISSUER, mcpConfig.call_timeout_ms);
   const app = createMcpApp({
     resourceUrl: new URL(mcpEnv.MCP_PUBLIC_URL),
     issuer: mcpEnv.OAUTH_ISSUER,
     exchange: createTokenExchanger({ tokenEndpoint, clientSecret: mcpEnv.MCP_CLIENT_SECRET, timeoutMs: mcpConfig.call_timeout_ms }),
-    buildServer: () => new McpServer({ name: "breatic", version: "1.0.0" }),
+    buildServer: (call: AgentCall) => {
+      const who = { userId: call.userId, connectionId: call.connectionId };
+      return buildToolServer(
+        {
+          call,
+          api: createServerApi({ baseUrl: mcpEnv.MCP_API_BASE_URL, token: call.downstreamToken, deadlineAt: call.startedAt + mcpConfig.call_timeout_ms }),
+          commands,
+          tasks: createTaskTracker({
+            redis: commandRedis,
+            prefix: mcpEnv.REDIS_KEY_PREFIX,
+            connectionId: call.connectionId,
+            ttlSeconds: taskListTtlSeconds,
+            maxIdsPerQuery: mcpConfig.task_query_max_ids,
+          }),
+          config: mcpConfig,
+          report: (err, context) => logger.error({ err, ctx: { ...context, ...who } }, "mcp_tool_background_failed"),
+        },
+        ALL_TOOLS,
+        { instructions: INSTRUCTIONS, onError: (err, tool) => logger.error({ err, ctx: { tool, ...who } }, "mcp_tool_failed") },
+      );
+    },
     onError: (err) => logger.error({ err }, "mcp_handler_error"),
   });
   const httpServer = serve({ fetch: app.fetch, port: mcpEnv.MCP_PORT }, (info) => logger.info({ port: info.port }, "mcp_listening"));
