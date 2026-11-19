@@ -3912,8 +3912,6 @@
         "feature_disabled": "Web animation is unavailable right now.",
         "check": "The page did not pass the check.",
         "stopped": "Creation stopped unexpectedly.",
-        "spendCap": "Not started: the monthly spend limit is reached.",
-        "noCredits": "Not started: not enough credits.",
         "unknown": "This execution failed."
       },
       "preview": {

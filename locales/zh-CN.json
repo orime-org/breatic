@@ -3912,8 +3912,6 @@
         "feature_disabled": "网页动画暂不可用。",
         "check": "页面没有通过检查。",
         "stopped": "制作意外中断。",
-        "spendCap": "未开始：本月花费已到上限。",
-        "noCredits": "未开始：积分不足。",
         "unknown": "执行失败。"
       },
       "preview": {

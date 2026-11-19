@@ -22,10 +22,8 @@ export type TimelineExecutionView = 'completed' | 'inProgress';
 
 const PHASES = ['writing', 'validating', 'saving'] as const;
 // The sentence each failure reason is told with; a reason not listed reads as a general failure.
-const FAILURE_SENTENCE: Readonly<Record<string, 'feature_disabled' | 'check' | 'stopped' | 'spendCap' | 'noCredits'>> = {
+const FAILURE_SENTENCE: Readonly<Record<string, 'feature_disabled' | 'check' | 'stopped'>> = {
   feature_disabled: 'feature_disabled',
-  // inner#1968: an execution that waited for a running slot is judged again before it starts.
-  spend_cap: 'spendCap', no_credits: 'noCredits',
   validation_failed: 'check', font_not_in_set: 'check', manifest_invalid: 'check', package_too_large: 'check', output_missing: 'check',
   viewport_mismatch: 'check', fps_mismatch: 'check', duration_mismatch: 'check', font_set_mismatch: 'check',
   harness_failed: 'stopped', container_failed: 'stopped', internal: 'stopped',

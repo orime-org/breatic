@@ -1567,8 +1567,7 @@ export function renderProductGuide(): string {
       `${quoted(t("timeline.webAnimation.cancel"))} while it runs, ${quoted(t("timeline.webAnimation.addPlaceholder"))} to place its placeholder at the playhead, ` +
       `${quoted(t("timeline.webAnimation.addToTimeline"))} for a finished result, which adds a separate copy at the playhead each time it is pressed, and ` +
       `${quoted(t("timeline.webAnimation.retry"))} after a failure, a cancel or an expiry, which opens the dialog filled in as before (${quoted(t("timeline.webAnimation.dialog.retryTitle"))}). ` +
-      `A run past the number of tasks one person runs at once waits its turn, says ${quoted(t("canvas.task.status.waiting"))} on its row and why, and can be cancelled; ` +
-      "one that waited is checked again before it starts, and if the monthly spend limit was reached or the credits ran out meanwhile it ends without running and its row says which. " +
+      `A run past the number of tasks one person runs at once waits its turn, says ${quoted(t("canvas.task.status.waiting"))} on its row and why, and can be cancelled. ` +
       "Web animation copies are violet with a code icon and are edited like video clips (move, trim, split, duplicate, delete); changing or removing one copy leaves the " +
       "other copies and the execution in the list as they are. The selected copy's panel names the request it came from. " +
       "In the preview copies and videos stack by track, so a copy wholly covered by a higher layer is not seen. A copy whose run has not finished, or ended without a result, is noted at the top right of the " +
