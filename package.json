@@ -32,6 +32,7 @@
     "db:backfill-peaks": "tsx scripts/backfill-peaks.ts",
     "db:backfill-project-media": "turbo run build --filter=@breatic/domain... && tsx --tsconfig packages/collab/tsconfig.json scripts/backfill-project-media.ts",
     "db:repair-space-rows": "tsx scripts/repair-space-rows.ts",
+    "stripe:catchup": "turbo run build --filter=@breatic/domain... && tsx --tsconfig packages/server/tsconfig.json scripts/stripe-catchup.ts",
     "analytics:delete-users": "tsx scripts/analytics-delete-users.mjs",
     "provider:prices": "tsx --tsconfig packages/provider/tsconfig.json scripts/provider-prices.ts",
     "provider:reseller-bodies": "tsx --tsconfig packages/provider/tsconfig.json scripts/provider-reseller-bodies.ts",

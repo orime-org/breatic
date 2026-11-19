@@ -87,7 +87,7 @@ export type SubscriptionEventOutcome =
  * still be `incomplete` — so there is nothing to do with it, and the state
  * arrives through `customer.subscription.*` instead.
  */
-const SUBSCRIPTION_EVENT_TYPES: ReadonlySet<string> = new Set([
+export const SUBSCRIPTION_EVENT_TYPES: ReadonlySet<string> = new Set([
   "customer.subscription.created",
   "customer.subscription.updated",
   "customer.subscription.deleted",
@@ -104,7 +104,7 @@ const SUBSCRIPTION_EVENT_TYPES: ReadonlySet<string> = new Set([
  * row that was never written: the failure branch answers the webhook 404, and
  * Stripe redelivers a 404 for three days.
  */
-const SHARED_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
+export const SHARED_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
   "checkout.session.completed",
   "checkout.session.async_payment_succeeded",
   "checkout.session.async_payment_failed",
