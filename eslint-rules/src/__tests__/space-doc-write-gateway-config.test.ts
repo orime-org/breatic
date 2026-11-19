@@ -39,9 +39,10 @@ const TEMPORARY: ReadonlyArray<readonly [string, string]> = [
 
 /**
  * The five exceptions the table had before the merge, plus the undo/redo copy
- * trial v2 adds (design section 5.2), and the dialogue lines writer that sits
- * beside `writeProposalPrompt` in the same placeProposalAt batch (inner#1825);
- * the final table is a subset.
+ * trial v2 adds (design section 5.2), the dialogue lines writer that sits
+ * beside `writeProposalPrompt` in the same placeProposalAt batch (inner#1825),
+ * and the document body manager's own undo and redo, reached through its
+ * gated history command (inner#1314); the final table is a subset.
  */
 const LONG_TERM: ReadonlyArray<readonly [string, string]> = [
   ["src/data/yjs/canvas-space.ts", "writeSnapshotNodes"],
@@ -52,6 +53,8 @@ const LONG_TERM: ReadonlyArray<readonly [string, string]> = [
   ["src/data/yjs/scene-session.ts", "historyStep"],
   ["src/data/yjs/history-step.ts", "copyRedone"],
   ["src/data/yjs/history-step.ts", "trial"],
+  ["src/spaces/document/document-undo-blocknote.ts", "undo"],
+  ["src/spaces/document/document-undo-blocknote.ts", "redo"],
 ];
 
 /**

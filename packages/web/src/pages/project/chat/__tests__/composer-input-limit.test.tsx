@@ -77,6 +77,23 @@ describe('输入框的上限', () => {
     expect(toastSpy.warning).toHaveBeenCalledWith(translate('chat.composer.atLimit', { limit: CHAT_MESSAGE_MAX_CHARS }));
   });
 
+  it('cuts a drop from a page past the limit down to it, the caret after it, and says so', () => {
+    setup('y'.repeat(CHAT_MESSAGE_MAX_CHARS - 3));
+    act(() => box().commands.focus('end'));
+
+    fireEvent.drop(box().view.dom, {
+      dataTransfer: {
+        files: [],
+        types: ['text/html', 'text/plain'],
+        getData: (type: string) => (type === 'text/plain' ? 'abcdef' : type === 'text/html' ? '<p>abcdef</p>' : ''),
+      },
+    });
+
+    expect(box().state.doc.textContent).toBe(`${'y'.repeat(CHAT_MESSAGE_MAX_CHARS - 3)}abc`);
+    expect(box().state.selection.from).toBe(box().state.doc.content.size - 1);
+    expect(toastSpy.warning).toHaveBeenCalledWith(translate('chat.composer.atLimit', { limit: CHAT_MESSAGE_MAX_CHARS }));
+  });
+
   it('到了上限才说，说的是已经到了', () => {
     fillToLimit();
 

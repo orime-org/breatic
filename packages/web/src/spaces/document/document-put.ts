@@ -24,6 +24,8 @@ import { newId, t } from '@breatic/shared';
 
 import { toast } from '@web/lib/toast';
 
+import { columnsBarredAt, holds, holdsColumns } from '@web/spaces/document/document-column-entry';
+import { DOC_COLUMN } from '@web/spaces/document/document-column-geometry';
 import { landingSlice, withoutRowIds } from '@web/spaces/document/document-comment-paste';
 import { gapAtDrop, insertAtGapTr, quotedBeside } from '@web/spaces/document/document-file-input';
 import { QUOTED } from '@web/spaces/document/document-list-block';
@@ -32,6 +34,7 @@ import type { Read, ReadBlock } from '@web/spaces/document/document-paste-read';
 import { isWordsLine, rowsOf, WORDS, type Rows } from '@web/spaces/document/document-paste-slice';
 import { DOC_TABLE, isTableCell, keepTablesWhole, squareSelectedTable } from '@web/spaces/document/document-table-nodes';
 import { heldTables, swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
+import { leafWords } from '@web/spaces/document/document-math';
 import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-selection';
 
 /** How a medium lands: its props as they go in, or null when it is left out. */
@@ -122,6 +125,9 @@ function judged(nodes: readonly PMNode[], judge: JudgeMedium, schema: Schema): P
     // A nested group left with nothing goes with what it held.
     if (node.type.name === 'blockGroup' && children.length === 0) return [];
     if (isTableCell(node) && children.length === 0) children.push(schema.nodes['blockContainer'].create(null, schema.nodes['paragraph'].create()));
+    // A column left with nothing goes; the repair rule then dissolves a group
+    // left with one column (inner#1314 design 5.2).
+    if (node.type.name === DOC_COLUMN && children.length === 0) return [];
     return [node.copy(Fragment.from(children))];
   });
 }
@@ -163,7 +169,7 @@ function carriedId(node: PMNode): string | null {
  * @returns The words.
  */
 function wordsIn(textblock: PMNode): string {
-  return textblock.textBetween(0, textblock.content.size, '', (leaf) => (leaf.type.name === 'hardBreak' ? '\n' : ''));
+  return textblock.textBetween(0, textblock.content.size, '', leafWords((leaf) => (leaf.type.name === 'hardBreak' ? '\n' : '')));
 }
 
 /**
@@ -200,20 +206,8 @@ export function holdsContent(rows: readonly PMNode[], parsed: boolean): boolean 
   });
 }
 
-/**
- * Whether content holds a node of a type, at any depth.
- * @param content - The content.
- * @param name - The type's name.
- * @returns True when it does.
- */
-export function holdsNode(content: Fragment, name: string): boolean {
-  let found = false;
-  content.descendants((node) => {
-    if (node.type.name === name) found = true;
-    return !found;
-  });
-  return found;
-}
+/** Our table's type, the one a stored table is read as, as a set to search for. */
+const DOC_TABLES: ReadonlySet<string> = new Set([DOC_TABLE]);
 
 /**
  * The one table alone, ignoring lines around it that show no words: a line
@@ -249,7 +243,7 @@ export function judgedTable(content: Read, judge: JudgeMedium, schema: Schema): 
  * @returns True when it is refused there.
  */
 export function refusedInCell(inCell: boolean, rows: readonly PMNode[]): boolean {
-  return inCell && holdsNode(Fragment.from(rows), DOC_TABLE) && onlyTable(rows) === null;
+  return inCell && holds(Fragment.from(rows), DOC_TABLES) && onlyTable(rows) === null;
 }
 
 /**
@@ -388,7 +382,8 @@ function wordsOf(rows: readonly PMNode[]): string {
       return node.children.map((row) => row.children.map((cell) => wordsOf(cell.children)).join('\t')).join('\n');
     }
     const nested = node.lastChild?.type.name === 'blockGroup' ? node.lastChild.children : [];
-    return [node.firstChild!.isTextblock ? wordsIn(node.firstChild!) : '', ...nested.map((child) => wordsOf([child]))].join('\n');
+    // A leaf reads as its `leafText`: a formula block as its `$$` lines.
+    return [node.firstChild!.isTextblock ? wordsIn(node.firstChild!) : node.firstChild!.textContent, ...nested.map((child) => wordsOf([child]))].join('\n');
   }).join('\n');
 }
 
@@ -640,7 +635,7 @@ export function putContent(editor: Editor, content: Read, options: PutOptions): 
   const startsInCode = $drop !== null ? $drop.parent.type.spec.code === true : selection.$from.parent.type.spec.code === true && selection.$from.sameParent(selection.$to);
   const source = content.source.kind === 'slice' ? content.source.slice : blocksSlice(content.source.blocks, schema);
   // A table in a cell goes by the cell's table rules (A12–A14) even from a code block.
-  const plain = content.plain ?? (startsInCode && !(inCell && holdsNode(source.content, DOC_TABLE)) ? content.codeText ?? null : null);
+  const plain = content.plain ?? (startsInCode && !(inCell && holds(source.content, DOC_TABLES)) ? content.codeText ?? null : null);
   /**
    * Places content at its target, all of it or none: a placement that fails
    * part way leaves the body and the selection as they were. A drop's point is aimed first and its
@@ -679,6 +674,10 @@ export function putContent(editor: Editor, content: Read, options: PutOptions): 
   }
   if (refusedInCell(inCell, rowsOf(source).rows)) {
     toast.warning(t('spaces.document.paste.unsupportedInCell'));
+    return null;
+  }
+  if (columnsBarredAt($at) && holdsColumns(rowsOf(source).rows)) {
+    toast.warning(t('spaces.document.columns.unavailable'));
     return null;
   }
   options.leaveOut?.(content.lost);
@@ -922,7 +921,8 @@ export function selectPlaced(view: EditorView, placed: Placed): void {
     if (node.isBlock && node.isAtom && pos >= from && pos + node.nodeSize <= to) atoms.push(pos);
     return true;
   });
-  if (atoms.length === 1 && doc.textBetween(from, to) === '') {
+  // Leaves read as nothing: a formula's `leafText` would count as words here.
+  if (atoms.length === 1 && doc.textBetween(from, to, undefined, () => '') === '') {
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(doc, atoms[0])));
     return;
   }

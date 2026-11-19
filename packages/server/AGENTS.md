@@ -86,7 +86,7 @@ Check: am I writing to a conversation id the client gave me? Were all three chec
 
 ### Prompt changes run the co-create suite
 
-**A change to the system prompt, a tool's description or a template's words to the model runs `packages/web/tests/smoke/agent-cocreation.spec.ts` (`@needs-model @needs-internet`) on the dev stack before the PR, and the PR carries its per-row pass counts and overall rates.** Unit tests pin the words; only real turns show what a model does with them, and a wording that fixes one row often moves another. A behaviour newly expected of the agent gets a row in `agent-cocreation.scenarios.json`, and the judge is checked against hand labels (the suite's last case) whenever the criteria change.
+**A change to the system prompt, a tool's description or a template's words to the model runs `packages/web/tests/smoke/agent-cocreation.spec.ts` (`@needs-model @needs-internet`) on the dev stack before the PR, and the PR carries its per-row pass counts and overall rates.** Unit tests pin the words; only real turns show what a model does with them, and a wording that fixes one row often moves another. A behaviour newly expected of the agent gets a row in `agent-cocreation.scenarios.json`, and the judge is checked against hand labels (the suite's last case) whenever the criteria change. A series of PRs that each add generation templates and change no other words to the model runs the suite once, before the series' last PR, which carries the counts for the whole series; each earlier PR names the series it belongs to.
 
 ## Payments
 

@@ -19,11 +19,13 @@ import { hasLlmAdapter, vendorOf } from "@provider/llm/vendors.js";
 import { mediaAdapter } from "@provider/media/adapters.js";
 import {
   estimateCost,
+  inputRefusal,
   type Availability,
   type Estimate,
   type EstimateInput,
   type PricingRule,
   type PricingRules,
+  type RejectedInput,
   type Route,
   type UpstreamPricing,
 } from "@provider/pricing/estimate.js";
@@ -56,6 +58,8 @@ export interface Provider {
   pricingRules(model: string): PricingRules;
   /** The estimate of the upstream the route would choose; null when it reaches none. */
   estimate(model: string, input: EstimateInput, route: Route): Promise<Estimate | null>;
+  /** Why no configured upstream the route may use takes the run; null when one does, none is configured or none configured is priced. */
+  refusal(model: string, input: EstimateInput, route: Route): Promise<RejectedInput | null>;
   readonly llm: LlmApi;
   readonly cost: {
     /** Ask the upstream again for a cost that was pending; the last attempt answers known or missing. */
@@ -101,6 +105,7 @@ export function createProvider(options: ProviderOptions): Provider {
     assertBindsCatalog: (catalog) => assertBindsCatalog(config, catalog),
     pricingRules,
     estimate: (model, input, route) => estimateCost(pricingRules(model), availability(model), input, route),
+    refusal: (model, input, route) => inputRefusal(pricingRules(model), availability(model), input, route),
     llm: createLlm(config, options),
     cost: {
       lookup: (lookup, { lastAttempt }) => lookupCost(config, options, lookup, lastAttempt),
@@ -132,6 +137,7 @@ function pricingOf(binding: MediaBinding): UpstreamPricing {
     ...(binding.reused_by === undefined ? {} : { reused_by: binding.reused_by }),
     ...limitsOf(binding),
     ...(binding.rejects === undefined ? {} : { rejects: binding.rejects }),
+    ...(binding.dialogue === undefined ? {} : { dialogue: binding.dialogue }),
     ...(binding.mentions === undefined ? {} : { mentions: binding.mentions }),
   };
 }

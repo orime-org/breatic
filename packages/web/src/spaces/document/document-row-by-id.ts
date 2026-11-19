@@ -49,6 +49,21 @@ export function rowById(
 }
 
 /**
+ * Where a node stands in a document, by identity.
+ * @param doc - The document.
+ * @param node - The node.
+ * @returns The position before it, or -1 when the document holds it nowhere.
+ */
+export function positionOf(doc: PMNode, node: PMNode): number {
+  let at = -1;
+  doc.descendants((child, pos) => {
+    if (child === node) at = pos;
+    return at < 0;
+  });
+  return at;
+}
+
+/**
  * Where that row's own words start and end, leaving nested blocks out.
  *
  * INSIDE the content node, which is where a caret or a selection goes: the

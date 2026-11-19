@@ -37,30 +37,12 @@ import { t } from '@breatic/shared';
 
 import { toast } from '@web/lib/toast';
 
+import { columnsBarredAt, holds, holdsColumns } from '@web/spaces/document/document-column-entry';
 import {
   rowById,
   type RowInDocument,
 } from '@web/spaces/document/document-row-by-id';
-import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
-
-/** Table nodes: ours, and the stored (legacy) one documents from before hold. */
-const TABLES = new Set([DOC_TABLE, 'table']);
-
-/**
- * Whether a row, or a block nested under it, is a table of either kind: a row
- * holding one is refused in a cell (inner#1312 A14).
- * @param row - The row: a block container, or a table, which holds its own id.
- * @returns True when it does.
- */
-function carriesTable(row: PMNode): boolean {
-  if (TABLES.has(row.type.name)) return true;
-  let found = false;
-  row.descendants((child) => {
-    if (TABLES.has(child.type.name)) found = true;
-    return !found;
-  });
-  return found;
-}
+import { cellDepthOf, isTableCell, TABLES } from '@web/spaces/document/document-table-nodes';
 
 /**
  * Where a row would land for a drop at the given document position.
@@ -93,7 +75,9 @@ export function landingFor(doc: PMNode, at: number, node: PMNode): number {
  * group is exempt — `BlockContainer.ts` puts it at depth 1 and the document
  * requires it, so it stays and the insert below is what keeps it occupied. A
  * table cell is exempt too: it is a place in its table, and the refill is
- * the empty paragraph a cell a block left holds.
+ * the empty paragraph a cell a block left holds. A column (inner#1314) goes
+ * the same way as a nested group: a row alone in it takes the column along,
+ * and its group is left one column narrower.
  * @param doc - The document the row sits in.
  * @param row - The row about to leave.
  * @returns The range to remove.
@@ -135,8 +119,12 @@ export function moveRowTo(view: EditorView, blockId: string, at: number): void {
 
   const landing = landingFor(view.state.doc, at, row.node);
   if (landing >= row.from && landing <= row.to) return;
-  if (cellDepthOf(view.state.doc.resolve(landing)) > 0 && carriesTable(row.node)) {
+  if (cellDepthOf(view.state.doc.resolve(landing)) > 0 && holds(row.node, TABLES)) {
     toast.warning(t('spaces.document.paste.unsupportedInCell'));
+    return;
+  }
+  if (columnsBarredAt(view.state.doc.resolve(landing)) && holdsColumns([row.node])) {
+    toast.warning(t('spaces.document.columns.unavailable'));
     return;
   }
 

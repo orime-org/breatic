@@ -212,20 +212,6 @@ export async function isLiveDoc(name: string): Promise<boolean> {
 }
 
 /**
- * The live documents whose names start with a prefix, such as every Timeline of one Project.
- * @param prefix - The name prefix, built by a doc-name helper with an empty id (`project-{id}/timeline-`).
- * @returns Their names.
- * @throws {Error} When the Yjs database read fails.
- */
-export async function liveDocNamesStartingWith(prefix: string): Promise<string[]> {
-  const rows = await yjsDb
-    .select({ name: yjsDocuments.name })
-    .from(yjsDocuments)
-    .where(and(sql`starts_with(${yjsDocuments.name}, ${prefix})`, isNull(yjsDocuments.deletedAt)));
-  return rows.map((row) => row.name);
-}
-
-/**
  * Restore (clear `deleted_at` on) the row backing a named Yjs doc, and mark it
  * touched now.
  *

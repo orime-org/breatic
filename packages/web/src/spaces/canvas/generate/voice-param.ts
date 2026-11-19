@@ -48,10 +48,11 @@ export function isVoiceChosen(
 }
 
 /**
- * The sample to play for a voice: the one in the language the user picked,
- * where the voice has one per language (Gemini's), else its plain sample.
+ * The sample to play for a voice: the one in the sample language in force
+ * (see `sampleLanguageFor`), where the voice has one per language (Gemini's),
+ * else its plain sample.
  * @param voice - The voice.
- * @param language - The value of the model's language param, if it has one.
+ * @param language - The sample language's tag, if the model offers them.
  * @returns The sample's url, or undefined when the voice has none.
  */
 export function sampleUrlFor(
@@ -60,4 +61,20 @@ export function sampleUrlFor(
 ): string | undefined {
   const byLanguage = typeof language === 'string' ? voice.previewUrls?.[language] : undefined;
   return byLanguage ?? voice.previewUrl;
+}
+
+/**
+ * The language a voice's sample plays in, for a model whose voices have one per language (#1521): the one the user
+ * picked while the model offers it, else the interface language, else English, else the first offered.
+ * @param offered - The model's sample languages.
+ * @param locale - The interface language.
+ * @param picked - The language the user picked last, if any.
+ * @returns The language tag.
+ */
+export function sampleLanguageFor(offered: readonly string[], locale: string, picked: string | null): string | undefined {
+  if (picked !== null && offered.includes(picked)) return picked;
+  // The interface language's language alone, as the sample tags are written; both Chinese interfaces read Chinese.
+  const own = locale.split('-')[0] ?? locale;
+  if (offered.includes(own)) return own;
+  return offered.includes('en') ? 'en' : offered[0];
 }

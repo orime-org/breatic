@@ -196,7 +196,7 @@ async function dropFiles(
   }, files);
 }
 
-test('the plus menu offers image, audio and video after the table, and a picked image lands (A1, A4, A7, A15)', async () => {
+test('the plus menu offers image, audio and video after the table, columns and the formula, and a picked image lands (A1, A4, A7, A15)', async () => {
   await openFreshDocument(page);
   const firstRow = page.locator(`${EDITOR} .bn-block-content`).first();
   await firstRow.hover();
@@ -204,8 +204,12 @@ test('the plus menu offers image, audio and video after the table, and a picked 
   const order = await page
     .locator('[role="menuitem"][data-testid^="doc-block-insert-"]')
     .evaluateAll((items) => items.map((item) => item.getAttribute('data-testid')));
-  expect(order.slice(-4)).toEqual([
+  // Columns sit right under the table (inner#1314), then the formula
+  // (inner#1423).
+  expect(order.slice(-6)).toEqual([
     'doc-block-insert-table',
+    'doc-block-insert-columns',
+    'doc-block-insert-formula',
     'doc-block-insert-image',
     'doc-block-insert-audio',
     'doc-block-insert-video',

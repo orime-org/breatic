@@ -3,17 +3,16 @@
 
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
+import { DEFAULT_VIEWFINDER_RATIO, VIEWFINDER_RATIOS } from '@breatic/shared';
 import {
-  DEFAULT_VIEWFINDER_RATIO,
-  VIEWFINDER_RATIOS,
   captureSize,
   largestFrame,
   menuCentre,
   refitFrame,
   resizeFrame,
-  viewfinderRatioValue,
   viewfinderSafeArea,
 } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
+import { viewfinderRatioValue } from '@web/spaces/three-d/viewfinder/viewfinder-ratio';
 
 const SAFE = { x: 40, y: 60, width: 800, height: 400 };
 const MIN = 120;

@@ -23,9 +23,4 @@ export interface SpaceTasksVersionEvent {
   type: "space-tasks-version";
   /** The Yjs document of the Space the work belongs to. */
   docName: string;
-  /**
-   * The Projects whose Timelines also take the change: every Project holding a grant to the execution, whose
-   * Timelines can hold a placeholder waiting for its result. Absent on the copies collab publishes for those Timelines.
-   */
-  projects?: string[];
 }

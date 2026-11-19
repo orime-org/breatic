@@ -11,9 +11,11 @@
  * noise in every modality — and so do runs of blank lines beyond one.
  */
 
+import fc from "fast-check";
 import { describe, it, expect } from "vitest";
 
-import { extractPromptText } from "@shared/agent/extract-prompt.js";
+import { completeEntries } from "@shared/item-cap.js";
+import { extractPromptText, cleanTextParams } from "@shared/agent/extract-prompt.js";
 import { hiddenInTags } from "./helpers/tag-characters.js";
 
 describe("extractPromptText — what it strips", () => {
@@ -46,8 +48,13 @@ describe("extractPromptText — what it strips", () => {
     expect(extractPromptText("5 < 6\n\n然后 7 > 3")).toBe("5 < 6\n\n然后 7 > 3");
   });
 
-  it("removes a tag whose attributes run onto the next line", () => {
-    expect(extractPromptText('<div\nclass="x">y</div>')).toBe("y");
+  it("keeps what sits between brackets on two lines: a line break is the user's own (#1521)", () => {
+    // A dialogue sends one turn per line, and a script is read out line by line, so no bracket pair
+    // reaching across a line may take a line's words with it.
+    expect(extractPromptText("Ava: Is x <y?\nBen: No, y> x")).toBe("Ava: Is x <y?\nBen: No, y> x");
+    expect(extractPromptText("a <!-- one\ntwo --> b")).toBe("a <!-- one\ntwo --> b");
+    expect(extractPromptText('<div\nclass="x">y</div>')).toBe('<div\nclass="x">y');
+    expect(extractPromptText("<b>bold</b> and <!-- note --> kept")).toBe("bold and kept");
   });
 
   it("removes zero-width and invisible characters", () => {
@@ -101,3 +108,70 @@ describe("extractPromptText — what it does to whitespace", () => {
     expect(extractPromptText("<p>a</p><p>b</p>")).toBe("a b");
   });
 });
+
+/**
+ * The panel, the Agent and the server clean a value once; the worker can clean the same value twice on its
+ * way out. Cleaning is therefore a fixed point, or the two sides judge and send different words (#1521).
+ */
+describe("extractPromptText — cleaning twice is cleaning once", () => {
+  it("leaves its own output as it is, for any text", () => {
+    const pieces = fc.constantFrom("<", ">", "b", "x", "&lt;", "&gt;", "&amp;", "&nbsp;", "\u200B", "<!--", "-->", " ", "\n", "a", "/");
+    fc.assert(fc.property(fc.array(pieces, { maxLength: 24 }).map((parts) => parts.join("")), (text) => {
+      const once = extractPromptText(text);
+      expect(extractPromptText(once)).toBe(once);
+    }), { numRuns: 2000 });
+  });
+
+  it("strips what a first pass leaves looking like a tag", () => {
+    expect(extractPromptText("<\u200BHost>")).toBe("");
+    expect(extractPromptText("&lt;x&gt;")).toBe("");
+  });
+
+  it("counts a speaker the same on the panel, which cleans once, and in the worker, which cleans twice", () => {
+    const fields = { speaker: {}, voice: { values: ["Kore", "Puck"] } };
+    const model = { params: { speakers: { type: "items", fields: { speaker: { type: "text" }, voice: {} } } } };
+    const speakers = [{ speaker: "Ann", voice: "Kore" }, { speaker: "Ben <\u200Bb>", voice: "Puck" }];
+    const panel = completeEntries(speakers, fields);
+    const worker = completeEntries(cleanTextParams(model, { speakers }).speakers, fields);
+    expect(worker).toEqual(panel);
+  });
+});
+
+/**
+ * Every prompt a request carries is cleaned before anything else refuses it, so the cleaning must take time in
+ * proportion to the text: a body near the request cap must not hold the server's thread (#1521).
+ */
+describe("extractPromptText — time in proportion to the text", () => {
+  /**
+   * How long one cleaning takes.
+   * @param text - The text.
+   * @returns Milliseconds.
+   */
+  const timed = (text: string): number => {
+    const start = performance.now();
+    extractPromptText(text);
+    return performance.now() - start;
+  };
+
+  it("unwinds a deeply nested entity in one go", () => {
+    const nested = `&${"amp;".repeat(64_000)}lt;b&gt;x`;
+    expect(extractPromptText(nested)).toBe("x");
+    expect(timed(nested)).toBeLessThan(500);
+  });
+
+  it("removes nested tags from the inside out in one go", () => {
+    const nested = `${"<a".repeat(64_000)}<i>${">".repeat(64_000)} words`;
+    expect(extractPromptText(nested)).toBe("words");
+    expect(timed(nested)).toBeLessThan(500);
+    expect(extractPromptText("<<b>a> and </<b>x>")).toBe("< a> and </ x>");
+    // A bare carriage return breaks the line as a newline does.
+    expect(extractPromptText("<a\r<b>-->")).toBe("<a\n-->");
+  });
+
+  it("passes over many comments that never close", () => {
+    const open = `${"<!--".repeat(64_000)} words`;
+    expect(timed(open)).toBeLessThan(500);
+    expect(extractPromptText("a <!-- one --> b <!-- two")).toBe("a b <!-- two");
+  });
+});
+

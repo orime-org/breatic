@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>為創意團隊打造的即時協作 AI 創作空間。</strong></p>
-<p align="center">線上服務已開放 · 原始碼公開 · 桌面瀏覽器</p>
+<p align="center">線上服務已開放 · 開源 · 桌面瀏覽器</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_zh_tw">官網</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -28,6 +28,24 @@
 將創作簡報、場景與媒體整理在同一個 Project。在 Document Spaces 中寫作，在 Canvas Spaces 中生成、調整素材，讓 AI Agent 與協作者在作品的脈絡中共同推進製作。
 
 官方線上服務提供免費的 Starter 方案。AI 生成點數需另外購買，不包含在會員方案中。詳見[方案與點數定價][hosted-pricing]。
+
+## 一個專案，四種協作創作空間
+
+在 Breatic，你可以一邊修改腳本，一邊試畫面、布置場景、編排鏡頭。團隊一起做時，每個人都可以在同一個專案裡同時動手。
+
+| 功能 | **Breatic** | Higgsfield | TapNow | LibTV | Luma | LTX Studio |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **協作文件** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **協作畫布** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **協作 3D** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **協作時間軸** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 3D 預演 | ✅ | ✅ | ✅ | ✅ | ✗ | ✗ |
+| 時間軸剪輯 | ✅ | ✗ | ✅ | ✅ | ✗ | ✅ |
+| 專案 Agent | ✅ | ✅ | ✅ | ✅ | ✅ | ✗ |
+| 審閱改稿建議 | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 團隊共享 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+協作指多人即時編輯同一個工作空間。審閱改稿建議指先查看 Agent 提議的修改，再決定是否套用到原文。比較依據為截至 2026 年 11 月 18 日的公開產品資訊。✅ 表示已確認支援，✗ 表示公開資訊未能確認支援。
 
 ![Breatic 畫布上的咖啡店候選圖片與專案聊天；英文介面示例](docs/images/readme/workspace-en.png)
 
@@ -96,7 +114,7 @@ Web、API、背景工作及協作服務使用已發布的 Docker 映像，搭配
 
 ## 授權條款與允許用途
 
-Breatic 原始碼公開，採用 [Elastic License 2.0](LICENSE)（Elastic-2.0）。你可以閱讀、修改、再散布，並自行使用或在所屬組織內部署，包括商業工作；不得將 Breatic 作為託管或代管服務提供給第三方。完整條件以授權條款為準。
+Breatic 是開源專案，採用 [GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0-only）。你可以出於任何目的使用、研究、修改並自行部署 Breatic，包括商業用途；如果你修改了 Breatic，並讓其他人透過網路使用修改後的版本，就必須依同一授權條款向他們提供完整原始碼。完整條件以授權條款為準。
 
 Breatic 名稱與標誌是 Orime, Inc. 的商標，不包含在軟體授權中；使用規則見 [TRADEMARKS.md](TRADEMARKS.md)。授權條款不限制你使用 Breatic 創作的內容。
 

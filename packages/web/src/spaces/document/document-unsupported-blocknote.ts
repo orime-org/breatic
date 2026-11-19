@@ -79,14 +79,18 @@ export const UnsupportedBlock = Node.create({
     return { [ORIGINAL_NAME]: { default: null } };
   },
 
+  // An element, not an array spec: BlockNote renders and exports a block
+  // made from a bare node through `renderHTML`, reading `{ dom }` off it, and
+  // a copy or a drag of a selection holding the block goes through that
+  // export. BlockNote also finds the block under the pointer by its
+  // `data-content-type`, which the side menu needs to reach this row.
   renderHTML({ HTMLAttributes }) {
-    return [
-      'div',
-      {
-        'data-unsupported-block': '',
-        'data-original-name': HTMLAttributes[ORIGINAL_NAME],
-      },
-    ];
+    const dom = document.createElement('div');
+    dom.setAttribute('data-unsupported-block', '');
+    dom.setAttribute('data-content-type', UNSUPPORTED_BLOCK);
+    const name = HTMLAttributes[ORIGINAL_NAME] as unknown;
+    if (typeof name === 'string') dom.setAttribute('data-original-name', name);
+    return { dom };
   },
 });
 

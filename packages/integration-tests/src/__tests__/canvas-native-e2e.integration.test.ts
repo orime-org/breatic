@@ -596,7 +596,6 @@ beforeAll(async () => {
     hocuspocus,
     streamUrl: REDIS_STREAM_URL,
     streamKey: taskEventsStreamKey(),
-    stream: getStreamRedis(),
     legacyCursorKey: "dev:collab:task-events:last-id",
     keyPrefix: "dev",
     instanceId: "itest-e2e",

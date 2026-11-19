@@ -29,7 +29,7 @@ import type * as ConfigModuleShape from "@collab/config.js";
 import type * as SizeModuleShape from "@collab/services/document-size.js";
 import type * as FilterModuleShape from "@collab/infra/inbound-filter.js";
 import type * as YjsModuleShape from "yjs";
-import { COLLAB_DOCUMENT_TOO_LARGE_REASON, DocSizeStatusSchema, documentBodyFragment } from "@breatic/shared";
+import { CANVAS_NODES_KEY, COLLAB_DOCUMENT_TOO_LARGE_REASON, DocSizeStatusSchema, documentBodyFragment } from "@breatic/shared";
 import { initializeTimelineDocument } from "@breatic/shared/space-content";
 
 import {
@@ -889,6 +889,31 @@ describe("section 7: lifecycle hooks (design 4.3)", () => {
     expect(rec(TL)).toMatchObject({ exact: enc(doc), current: enc(doc), heldSum: 0 });
   });
 
+  it("L-01c afterLoadDocument stores a canvas node saved on a retired model under its replacement before recording the exact size (#1521)", async () => {
+    await boot();
+    collabRedis.set.mockImplementation(async () => "OK");
+    const doc = stored(CV, retiredModelCanvasDoc());
+    await runLoadHook(doc);
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ reason: "retired_model_migrated", converted: 1 }), "retired_model_migrated");
+    expect(retiredModelNodeData(doc)).toMatchObject({
+      model: "gemini-3.8-flash-text-to-speech",
+      modelByMode: { tts: "gemini-3.8-flash-text-to-speech" },
+      paramsByModel: { "gemini-3.8-flash-text-to-speech": { voice_id: "Kore" } },
+    });
+    expect(rec(CV)).toMatchObject({ exact: enc(doc), current: enc(doc), heldSum: 0 });
+  });
+
+  it("L-01d a failed retired-model upgrade is logged and the canvas still loads with its size recorded (#1521)", async () => {
+    await boot();
+    collabRedis.set.mockImplementation(async () => { throw new Error("redis down"); });
+    const doc = stored(CV, retiredModelCanvasDoc());
+    await expect(runLoadHook(doc)).resolves.toBe(doc);
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ reason: "retired_model_migrate_failed" }), "retired_model_migrate_failed");
+    expect(retiredModelNodeData(doc).model).toBe("gemini-3.1-flash-text-to-speech");
+    expect(rec(CV)).toMatchObject({ exact: enc(doc), current: enc(doc), heldSum: 0 });
+  });
+
   it("L-02 afterLoadDocument installs both transaction listeners; after afterUnloadDocument a transaction measures nothing and does not throw", async () => {
     await boot();
     const doc = stored(CV);
@@ -1478,6 +1503,35 @@ function pixelTimelineDoc(): Y.Doc {
     durationFrames: 48, rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { x: 192, y: -108, scaleX: 1, scaleY: 1, rotation: 0 },
   })) record.set(key, value);
   return doc;
+}
+
+/** The node `retiredModelCanvasDoc` stores. */
+const RETIRED_MODEL_NODE = "40000000-0000-4000-8000-000000000001";
+
+/**
+ * A canvas holding one audio node saved on Gemini 3.1 Flash TTS, retired by #1521, which the load hook converts.
+ * @returns The document.
+ */
+function retiredModelCanvasDoc(): Y.Doc {
+  const doc = new Y.Doc();
+  const node = new Y.Map<unknown>();
+  doc.getMap(CANVAS_NODES_KEY).set(RETIRED_MODEL_NODE, node);
+  const data = new Y.Map<unknown>();
+  node.set("type", "audio");
+  node.set("data", data);
+  data.set("model", "gemini-3.1-flash-text-to-speech");
+  data.set("modelByMode", { tts: "gemini-3.1-flash-text-to-speech" });
+  data.set("paramsByModel", { "gemini-3.1-flash-text-to-speech": { voice_id: "Kore" } });
+  return doc;
+}
+
+/**
+ * The data of the node `retiredModelCanvasDoc` stores, read back.
+ * @param doc - The loaded document.
+ * @returns Its data as plain values.
+ */
+function retiredModelNodeData(doc: Y.Doc): Record<string, unknown> {
+  return ((doc.getMap(CANVAS_NODES_KEY).get(RETIRED_MODEL_NODE) as Y.Map<unknown>).get("data") as Y.Map<unknown>).toJSON();
 }
 
 /**

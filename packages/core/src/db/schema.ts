@@ -2314,10 +2314,10 @@ export const timelineExecutions = pgTable(
     actionId: text("action_id").notNull(),
     input: jsonb("input").$type<Record<string, unknown>>().notNull(),
     inputHash: text("input_hash").notNull(),
-    /** Empty for an export, which calls no model (0126, #1490). */
+    /** Empty for an export, which calls no model (0128, #1490). */
     engine: text("engine"),
     /**
-     * `awaiting_landing` only so the previous server's inserts during the deploy window keep working (0126, #1490);
+     * `awaiting_landing` only so the previous server's inserts during the deploy window keep working (0128, #1490);
      * new code always writes `queued`. The next release makes `queued` the default.
      */
     status: text("status").notNull().default("awaiting_landing"),
@@ -2332,7 +2332,7 @@ export const timelineExecutions = pgTable(
     fence: uuid("fence"),
     deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
     resultSourceVersionId: uuid("result_source_version_id"),
-    /** An export's registered video (0126, #1490). */
+    /** An export's registered video (0128, #1490). */
     resultAssetId: uuid("result_asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
     failureReason: text("failure_reason"),
     billedCredits: numeric("billed_credits"),
@@ -2440,7 +2440,7 @@ export const timelineExecutionGrants = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
     // The two execution fields are written only by the BEFORE INSERT trigger fill_timeline_grant_execution_fields
-    // (0126, #1490); the database has no default for them. Declaring one here keeps them out of what an insert must
+    // (0128, #1490); the database has no default for them. Declaring one here keeps them out of what an insert must
     // pass, so Drizzle sends DEFAULT and the trigger fills them before NOT NULL is checked.
     executionCreatedAt: timestamp("execution_created_at", { withTimezone: true }).notNull().default(sql`null`),
     executionOrigin: text("execution_origin").notNull().default(sql`null`),

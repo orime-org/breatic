@@ -2,19 +2,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
-import { Layers, MoreHorizontal, PictureInPicture2, Redo2, SlidersHorizontal, Undo2 } from 'lucide-react';
+import { Clapperboard, Layers, MoreHorizontal, PictureInPicture2, Redo2, SlidersHorizontal, Undo2 } from 'lucide-react';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { useTranslation } from '@web/i18n/use-translation';
-export type ScenePanel = 'properties' | 'objects' | 'tasks';
+export type ScenePanel = 'properties' | 'objects' | 'tasks' | 'director';
 
 const icons = {
   undo: <Undo2 className='size-3.5' />, redo: <Redo2 className='size-3.5' />,
   properties: <SlidersHorizontal className='size-4' />, objects: <Layers className='size-4' />,
-  tasks: <MoreHorizontal className='size-4' />, minimap: <PictureInPicture2 className='size-3.5' />,
+  tasks: <MoreHorizontal className='size-4' />, director: <Clapperboard className='size-4' />, minimap: <PictureInPicture2 className='size-3.5' />,
 };
 
 /**
- * Keep personal history, scene panels and the overview switch in the approved order.
+ * Keep personal history, scene panels, the viewfinder and the overview switch in the approved order.
  * @param root0 - Scene controls and their current owner bindings.
  * @param root0.undo - Whether personal history can undo a shared edit.
  * @param root0.redo - Whether personal history can redo a shared edit.
@@ -24,12 +24,14 @@ const icons = {
  * @param root0.minimap - Whether the native overview is visible.
  * @param root0.minimapDisabled - Whether the minimap cannot be toggled now, as while the viewfinder is open.
  * @param root0.onMinimap - Toggles the native overview allocation.
+ * @param root0.viewfinderHost - Receives the place the viewfinder renders its button into.
  * @returns The floating action controls.
  * @throws {never} Actions delegate to the existing scene owner.
  */
-export const SceneViewportToolbar = React.memo(function SceneViewportToolbar({ undo, redo, onHistory, hasSelection, onPanel, minimap, minimapDisabled = false, onMinimap }: {
+export const SceneViewportToolbar = React.memo(function SceneViewportToolbar({ undo, redo, onHistory, hasSelection, onPanel, minimap, minimapDisabled = false, onMinimap, viewfinderHost }: {
   undo: boolean; redo: boolean; onHistory: (step: 'undo' | 'redo') => void; hasSelection: boolean;
   onPanel: (panel: ScenePanel) => void; minimap: boolean; minimapDisabled?: boolean; onMinimap: () => void;
+  viewfinderHost: (host: HTMLDivElement | null) => void;
 }): React.JSX.Element {
   const t = useTranslation();
   /**
@@ -57,12 +59,18 @@ export const SceneViewportToolbar = React.memo(function SceneViewportToolbar({ u
    * @throws {never} Delegates to the host.
    */
   const showTasks = React.useCallback((): void => onPanel('tasks'), [onPanel]);
-  return <div className='absolute bottom-[var(--space-5)] right-[var(--space-5)] z-10 flex rounded-md border border-border bg-popover py-1 shadow' data-testid='scene-viewport-toolbar'>
+  /**
+   * Toggle the director console.
+   * @throws {never} Delegates to the host.
+   */
+  const showDirector = React.useCallback((): void => onPanel('director'), [onPanel]);
+  return <div className='flex rounded-md border border-border bg-popover py-1 shadow' data-testid='scene-viewport-toolbar'>
     <div className='flex items-center gap-0.5 border-r border-border px-1'><SceneIconButton label={t('spaces.threeD.undo')} disabled={!undo} onClick={undoStep}>{icons.undo}</SceneIconButton><SceneIconButton label={t('spaces.threeD.redo')} disabled={!redo} onClick={redoStep}>{icons.redo}</SceneIconButton></div>
     <div className='flex items-center gap-0.5 border-r border-border px-1'>
       <SceneIconButton data-testid='scene-properties-trigger' label={t('spaces.threeD.properties')} disabled={!hasSelection} onClick={showProperties}>{icons.properties}</SceneIconButton>
       <SceneIconButton data-testid='scene-objects-trigger' label={t('spaces.threeD.objects')} onClick={showObjects}>{icons.objects}</SceneIconButton>
       <SceneIconButton data-testid='scene-tasks-trigger' label={t('spaces.threeD.tasks')} onClick={showTasks}>{icons.tasks}</SceneIconButton>
-    </div><div className='flex px-1'><SceneIconButton label={t('spaces.threeD.minimap')} active={minimap && !minimapDisabled} disabled={minimapDisabled} onClick={onMinimap}>{icons.minimap}</SceneIconButton></div>
+      <SceneIconButton data-testid='scene-director-trigger' label={t('spaces.threeD.director.open')} onClick={showDirector}>{icons.director}</SceneIconButton>
+    </div><div className='flex items-center gap-0.5 px-1'><div ref={viewfinderHost} className='contents' /><SceneIconButton label={t('spaces.threeD.minimap')} active={minimap && !minimapDisabled} disabled={minimapDisabled} onClick={onMinimap}>{icons.minimap}</SceneIconButton></div>
   </div>;
 });

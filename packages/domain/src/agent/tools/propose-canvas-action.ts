@@ -55,18 +55,25 @@ import {
 } from "@breatic/shared";
 
 import { renderPrice } from "@domain/agent/tools/generation-models.js";
+import { upstreamRefusal } from "@domain/agent/tools/upstream-refusal.js";
 import { onDialogueSide, proposalDialogueText } from "@domain/agent/tools/proposal-dialogue.js";
-import { checkBlanks, checkGenerateNode, takesPromptHere } from "@domain/agent/tools/proposal-generate-check.js";
+import { checkBlanks, checkGenerateNode, generateRunOf, takesPromptHere } from "@domain/agent/tools/proposal-generate-check.js";
 import { checkSourceNodesFit, checkUnsentNotes, hasRing } from "@domain/agent/tools/proposal-group-checks.js";
 import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/tools/proposal-node-checks.js";
 import { fixEdges, fixGroup, nodeLabel, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { aNode, chosenModelOf, routeEdges, spaced, waysOrNone } from "@domain/agent/tools/proposal-routing.js";
-import { anchoredInstances, checkTemplateInstances, type AnchoredInstance } from "@domain/agent/tools/template-consistency.js";
+import {
+  anchoredInstances,
+  checkOptionalInputs,
+  checkTemplateInstances,
+  optionalInputRefs,
+  type AnchoredInstance,
+} from "@domain/agent/tools/template-consistency.js";
 import { expandAt, templatePlace, type TemplatePlace } from "@domain/agent/tools/template-expansion.js";
 import { GET_GENERATION_TEMPLATE, GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
-import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+import { estimateModelCredits, inputRefusalFor } from "@domain/model-catalog/model-catalog.js";
 import type { CreditEstimate } from "@breatic/shared/pricing";
 
 export type { MaterialFacts, MaterialTable } from "@domain/asset/material-facts.js";
@@ -242,10 +249,14 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable, insta
   // still short of that edge.
   const whole = checkTemplateInstances(proposal, instances);
   if (!whole.ok) return whole;
+  const optional = checkOptionalInputs(proposal, instances);
+  if (!optional.ok) return optional;
 
+  // An input is optional only in the template's own generations, where its refs are marked.
+  const optionalIn = optionalInputRefs(instances);
   for (const [index, node] of proposal.nodes.entries()) {
     if (node.role !== "generate") continue;
-    const verdict = checkGenerateNode(proposal, node, index);
+    const verdict = checkGenerateNode(proposal, node, index, new Set(optionalIn.get(index)?.keys()));
     if (!verdict.ok) return verdict;
   }
 
@@ -329,6 +340,33 @@ function judgeSent(sent: z.infer<typeof inputSchema>, materials: MaterialTable, 
 }
 
 /**
+ * {@link answerFor}, after asking provider whether an upstream here takes each generation as it would be sent (#1521):
+ * a run none takes is refused before it is placed, naming the limit, as Generate would refuse it.
+ * @param sent - What the model sent.
+ * @param materials - The registration behind each material address it names.
+ * @param templates - The template registry the tags are read against.
+ * @returns The answer the card and the canvas read.
+ * @throws {Error} When a limit cannot be evaluated in a way provider does not catch.
+ */
+export async function checkedAnswerFor(
+  sent: z.infer<typeof inputSchema>,
+  materials: MaterialTable = NO_MATERIAL,
+  templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
+): Promise<ProposalAnswer> {
+  const judged = judgeSent(sent, materials, templates);
+  if ("proposal" in judged) {
+    for (const [index, node] of judged.proposal.nodes.entries()) {
+      if (node.role !== "generate") continue;
+      const run = generateRunOf(judged.proposal, node, index);
+      if (run === undefined) continue;
+      const refusal = await inputRefusalFor(run.model, { params: run.params, prompt: run.prompt });
+      if (refusal !== null) return { placed: false, reason: upstreamRefusal(node.name, run.model, refusal) };
+    }
+  }
+  return answerFor(sent, materials, templates);
+}
+
+/**
  * Each anchored template's own nodes marked with the key they stand for (one
  * no template edge touches also with its instance's anchor), and
  * each input's node with its input key and its instance's anchor unless
@@ -362,6 +400,36 @@ function markTemplateNodes(nodes: readonly ProposalNode[], instances: readonly A
   return nodes.map((node, index) => {
     const mark = marks.get(index);
     return mark === undefined ? node : { ...node, templateNode: mark };
+  });
+}
+
+/**
+ * Each ref an instance's own generation makes to an optional input's node
+ * marked optional (inner#1811, CAP-9), as the panel's expansion marks it: the
+ * mention lands marked, and the panel leaves its paragraph out while the node
+ * is empty.
+ * @param nodes - The proposal's nodes.
+ * @param instances - Each anchor and its match.
+ * @returns The nodes, those refs marked.
+ * @throws {never} Never.
+ */
+function markOptionalRefs(nodes: readonly ProposalNode[], instances: readonly AnchoredInstance[]): ProposalNode[] {
+  const refs = optionalInputRefs(instances);
+  return nodes.map((node, index) => {
+    const optional = refs.get(index);
+    if (optional === undefined) return node;
+    /**
+     * One run of words, its refs to an optional input marked.
+     * @param words - The words.
+     * @returns The words, marked.
+     */
+    const marked = (words: readonly PromptSegment[]): PromptSegment[] =>
+      words.map((segment) => (segment.ref !== undefined && optional.has(segment.ref) ? { ref: segment.ref, optional: true } : segment));
+    return {
+      ...node,
+      ...(node.prompt === undefined ? {} : { prompt: marked(node.prompt) }),
+      ...(node.shots === undefined ? {} : { shots: node.shots.map((shot) => ({ ...shot, prompt: marked(shot.prompt) })) }),
+    };
   });
 }
 
@@ -425,7 +493,7 @@ export function answerFor(
     const guide = templateGuideNode(place.template, anchor);
     return guide === undefined ? [] : [guide];
   });
-  const nodes = [...markTemplateNodes(resolved.nodes, instances), ...guides];
+  const nodes = [...markOptionalRefs(markTemplateNodes(resolved.nodes, instances), instances), ...guides];
   const first = instances[0];
   const groupName =
     resolved.groupName ?? (nodes.length > 1 && first !== undefined ? t(`canvas.template.${first.place.template.id}.name`) : undefined);
@@ -639,7 +707,7 @@ export function makeProposeCanvasAction(
     const urls = proposal.nodes.flatMap((node) => (node.material === undefined ? [] : [node.material]));
     // A proposal with no material asks the ledger nothing.
     const materials = urls.length === 0 ? NO_MATERIAL : await materialFacts(context.studioId, urls);
-    return answerFor(proposal, materials, templates);
+    return checkedAnswerFor(proposal, materials, templates);
   },
 });
 }

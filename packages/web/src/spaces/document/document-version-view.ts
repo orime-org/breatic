@@ -11,7 +11,7 @@
  * (`document-version-restore.ts`). Loaded only with the panel's chunk.
  */
 
-import { docToBlocks, type BlockNoteEditor } from '@blocknote/core';
+import { blockToNode, docToBlocks, type BlockNoteEditor } from '@blocknote/core';
 import { createVersioningExtension, type createVersioning, type VersionStorage, type VersionViewAdapter } from '@blocknote/core/extensions';
 import { DiffVersioningExtension } from '@blocknote/core/y';
 import type { Node as PMNode } from '@tiptap/pm/model';
@@ -19,6 +19,8 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
+import { documentLocaleRedrawExtension } from '@web/spaces/document/document-locale-redraw';
 import { documentVersionFoldExtension } from '@web/spaces/document/document-version-fold';
 import type { ShownRef } from '@web/spaces/document/document-version-storage';
 
@@ -34,6 +36,21 @@ type Editor = BlockNoteEditor<never, never, never>;
  */
 function blocksOf(editor: Editor, content: Json): never[] {
   return docToBlocks(editor.pmSchema.nodeFromJSON(content)) as never[];
+}
+
+/**
+ * Shows a snapshot's JSON on the preview editor as its blocks, which leave
+ * comment highlights out, replacing the whole body by position: after a
+ * comparison the diff's block ids are not ones `replaceBlocks` can find, so a
+ * row whose type changed under its own id would make the next display throw.
+ * @param editor - The preview editor.
+ * @param content - The JSON.
+ * @throws {RangeError} When the schema cannot hold the JSON.
+ */
+function display(editor: Editor, content: Json): void {
+  const { pmSchema } = editor;
+  const body = pmSchema.nodes['blockGroup']!.create(null, blocksOf(editor, content).map((block) => blockToNode(block, pmSchema)));
+  editor.transact((tr) => tr.replaceWith(0, tr.doc.content.size, body));
 }
 
 /**
@@ -54,7 +71,7 @@ function previewAdapter(
     open() {
       const current = { content: options.live().toJSON() as Json, capturedAt: Date.now() };
       // The controller shows nothing until a selection; the preview opens on the current content.
-      editor.replaceBlocks(editor.document, blocksOf(editor, current.content));
+      display(editor, current.content);
       options.shown.current = { id: null, content: current.content };
       return {
         current,
@@ -62,7 +79,7 @@ function previewAdapter(
           if (comparison) {
             editor.getExtension(DiffVersioningExtension)!.renderDiff(blocksOf(editor, content), blocksOf(editor, comparison.content));
           } else {
-            editor.replaceBlocks(editor.document, blocksOf(editor, content));
+            display(editor, content);
           }
           options.shown.current = { id: target.type === 'snapshot' ? target.id : null, content };
           options.onShow(comparison !== undefined);
@@ -92,6 +109,7 @@ export function buildVersionPreview(options: {
 }): Editor {
   return buildDocumentEditor({
     fragment: documentBodyFragment(new Y.Doc()),
+    showsSavedBodies: true,
     extensions: [
       // Colours follow the kind of change, not an author (index.css, `.doc-body`).
       DiffVersioningExtension({
@@ -99,6 +117,10 @@ export function buildVersionPreview(options: {
           `doc-version-${modificationType === 'attrs' ? 'format' : modificationType}${contentType === 'block' ? '-block' : ''}`,
       }),
       documentVersionFoldExtension(),
+      // The live body registers both, so its content can carry the mark the
+      // first registers and the stand-ins' labels follow the user's language.
+      documentFallbackExtension(),
+      documentLocaleRedrawExtension(),
       createVersioningExtension<Json>((editor) => ({
         adapter: previewAdapter(editor as unknown as Editor, options),
         storage: options.storage,

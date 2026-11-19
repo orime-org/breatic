@@ -132,3 +132,18 @@ describe('a turn whose proposal was stored in a shape this build no longer place
     expect(toChatMessage(turnWith({ placed: false, reason: 'no' })).hasExpiredProposal).toBeUndefined();
   });
 });
+
+describe('a proposal with a ref to an optional input (inner#1811, CAP-9)', () => {
+  it('keeps the ref marked optional, which tells the canvas to leave its paragraph out while the node is empty', () => {
+    const message = toChatMessage(
+      turnWith({
+        ...ACCEPTED,
+        nodes: [
+          ACCEPTED.nodes[0]!,
+          { ...ACCEPTED.nodes[1]!, prompt: [{ text: 'Looks like ' }, { ref: 0, optional: true }, { text: '.' }] },
+        ],
+      }),
+    );
+    expect(message.proposals?.[0]?.nodes[1]?.prompt?.[1]).toEqual({ ref: 0, optional: true });
+  });
+});

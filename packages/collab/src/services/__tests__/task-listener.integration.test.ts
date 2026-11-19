@@ -19,7 +19,7 @@ import * as encoding from "lib0/encoding";
 import { ExecutionError, Redlock, type ExecutionStats } from "@sesamecare-oss/redlock";
 
 import { createRedisClient, db, initCore, schema, type Redis } from "@breatic/core";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { CANVAS_NODES_KEY, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, timelineSpaceDocName, webAnimationSpaceDocName, type NodeTaskCountsEvent } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
@@ -35,10 +35,6 @@ import { startTaskListener, type TaskListenerSettings } from "@collab/services/t
 import { isNewerStreamId } from "@collab/services/stream-id.js";
 
 const PID = "77777777-7777-4777-8777-777777777777";
-/** A Project of its own for the cases that write into every Timeline of a Project. */
-const PID2 = randomUUID();
-/** A copy of another Project, holding a grant to an execution made there. */
-const PID3 = randomUUID();
 const OWNER_ID = randomUUID();
 const STUDIO_ID = randomUUID();
 
@@ -127,11 +123,10 @@ beforeAll(async () => {
     id: STUDIO_ID, createdByUserId: OWNER_ID, slug: `tl-${STUDIO_ID}`,
     type: "personal", name: "Task listener Studio",
   });
-  await db.insert(schema.projects).values([
-    { id: PID, studioId: STUDIO_ID, createdByUserId: OWNER_ID, name: "Task listener Project", slug: `tl-${PID}` },
-    { id: PID2, studioId: STUDIO_ID, createdByUserId: OWNER_ID, name: "Task listener fan-out Project", slug: `tl-${PID2}` },
-    { id: PID3, studioId: STUDIO_ID, createdByUserId: OWNER_ID, name: "Task listener copied Project", slug: `tl-${PID3}` },
-  ]);
+  await db.insert(schema.projects).values({
+    id: PID, studioId: STUDIO_ID, createdByUserId: OWNER_ID,
+    name: "Task listener Project", slug: `tl-${PID}`,
+  });
   stream = createRedisClient(process.env.REDIS_STREAM_URL!, { name: "itest-task-stream" });
   coordination = createRedisClient(process.env.REDIS_COLLAB_URL!, { name: "itest-task-coord" });
   instanceA = await startInstance("itest-task-a");
@@ -147,7 +142,7 @@ afterAll(async () => {
   await Promise.all(servers.map((s) => s.destroy()));
   await stream.quit();
   await coordination.quit();
-  await db.update(schema.projects).set({ deletedAt: new Date() }).where(inArray(schema.projects.id, [PID, PID2, PID3]));
+  await db.update(schema.projects).set({ deletedAt: new Date() }).where(eq(schema.projects.id, PID));
   await db.update(schema.studios).set({ deletedAt: new Date() }).where(eq(schema.studios.id, STUDIO_ID));
   await db.update(schema.users).set({ deletedAt: new Date() }).where(eq(schema.users.id, OWNER_ID));
 });
@@ -181,12 +176,11 @@ async function newCase(nodes: Record<string, string>): Promise<Case> {
 
 /**
  * A fresh stream, key prefix and empty Space document of a type that takes a change version.
- * @param docNameOf - Builds the Space's document name; a Motion Space by default.
- * @param projectId - The Project the Space belongs to.
+ * @param docNameOf - Builds the Space's document name; a Timeline by default.
  * @returns The case's names.
  */
-async function newSpaceTasksCase(docNameOf: (projectId: string, spaceId: string) => string = webAnimationSpaceDocName, projectId = PID): Promise<Case> {
-  const c = bareCase(docNameOf(projectId, randomUUID()));
+async function newSpaceTasksCase(docNameOf: (projectId: string, spaceId: string) => string = timelineSpaceDocName): Promise<Case> {
+  const c = bareCase(docNameOf(PID, randomUUID()));
   await yjsRepo.seedInitialState(c.docName, Y.encodeStateAsUpdate(new Y.Doc()));
   return c;
 }
@@ -227,12 +221,11 @@ async function untilUnloaded(docName: string): Promise<void> {
  * @param c - The case.
  * @param count - How many changes, in order.
  * @param extra - Extra stream fields on every entry.
- * @param projects - The Projects whose Timelines the change also reaches, when the event names them.
  * @returns Their stream ids.
  */
-async function publishSpaceTasksVersion(c: Case, count = 1, extra: string[] = [], projects?: string[]): Promise<string[]> {
+async function publishSpaceTasksVersion(c: Case, count = 1, extra: string[] = []): Promise<string[]> {
   const ids: string[] = [];
-  const payload = JSON.stringify({ type: "space-tasks-version", docName: c.docName, ...(projects === undefined ? {} : { projects }) });
+  const payload = JSON.stringify({ type: "space-tasks-version", docName: c.docName });
   for (let i = 0; i < count; i++) {
     ids.push((await stream.xadd(c.streamKey, "*", "payload", payload, ...extra))!);
   }
@@ -286,7 +279,6 @@ function listen(
     hocuspocus,
     streamUrl: process.env.REDIS_STREAM_URL!,
     streamKey: c.streamKey,
-    stream,
     legacyCursorKey: `${c.keyPrefix}:cursor`,
     keyPrefix: c.keyPrefix,
     instanceId,
@@ -811,7 +803,7 @@ describe("task events across two collab instances", () => {
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 
-  it("writes the stream id of a Motion Space's latest execution change into its document", async () => {
+  it("writes the stream id of a Timeline Space's latest change into its document", async () => {
     const c = await newSpaceTasksCase();
     const ids = await publishSpaceTasksVersion(c, 3);
     listen(c, instanceA, "a");
@@ -820,7 +812,7 @@ describe("task events across two collab instances", () => {
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 
-  it("keeps a Motion Space's newer executions version when an older change is replayed from the dead-letter stream", async () => {
+  it("keeps a Timeline Space's newer version when an older change is replayed from the dead-letter stream", async () => {
     const c = await newSpaceTasksCase();
     const [olderId, newerId] = await publishSpaceTasksVersion(c, 2);
     listen(c, instanceA, "a");
@@ -830,12 +822,13 @@ describe("task events across two collab instances", () => {
     expect(await readSpaceTasksVersion(c.docName)).toBe(newerId);
   });
 
-  it("writes the stream id of a Timeline Space's latest change into its document", async () => {
-    const c = await newSpaceTasksCase(timelineSpaceDocName);
+  it("writes the stream id of a Motion Space's latest execution change into its document", async () => {
+    const c = await newSpaceTasksCase(webAnimationSpaceDocName);
     const ids = await publishSpaceTasksVersion(c, 2);
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, ids));
     expect(await readSpaceTasksVersion(c.docName)).toBe(ids[1]);
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 
   it("acknowledges and skips a space-tasks version for a document whose type takes none (a canvas)", async () => {
@@ -847,53 +840,20 @@ describe("task events across two collab instances", () => {
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 
-  it("writes a Motion Space's change into every live Timeline of its Project, where a placeholder may wait for the run", async () => {
-    const c = await newSpaceTasksCase(webAnimationSpaceDocName, PID2);
-    const timelines = [timelineSpaceDocName(PID2, randomUUID()), timelineSpaceDocName(PID2, randomUUID())];
-    for (const name of timelines) await yjsRepo.seedInitialState(name, Y.encodeStateAsUpdate(new Y.Doc()));
-    const deletedTimeline = timelineSpaceDocName(PID2, randomUUID());
-    await seedNote(deletedTimeline, "kept");
-    expect(await yjsRepo.softDeleteByName(deletedTimeline)).toBe(true);
-    const otherProject = timelineSpaceDocName(PID, randomUUID());
-    await yjsRepo.seedInitialState(otherProject, Y.encodeStateAsUpdate(new Y.Doc()));
-
-    const ids = await publishSpaceTasksVersion(c);
-    listen(c, instanceA, "a");
-    await until(() => handled(c.streamKey, ids));
-    for (const name of timelines) await until(async () => (await readSpaceTasksVersion(name)) !== undefined);
-    expect(await readSpaceTasksVersion(c.docName)).toBe(ids[0]);
-    expect(await readSpaceTasksVersion(otherProject)).toBeUndefined();
-    await untilUnloaded(deletedTimeline);
-    expect(await readRestored(deletedTimeline)).toEqual({ note: "kept", version: undefined });
-    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
-  });
-
-  it("writes a Motion Space's change into the Timelines of every Project the event names, such as a copy holding its grant", async () => {
-    const c = await newSpaceTasksCase(webAnimationSpaceDocName, PID2);
-    const own = timelineSpaceDocName(PID2, randomUUID());
-    const copied = timelineSpaceDocName(PID3, randomUUID());
-    for (const name of [own, copied]) await yjsRepo.seedInitialState(name, Y.encodeStateAsUpdate(new Y.Doc()));
-    const ids = await publishSpaceTasksVersion(c, 1, [], [PID2, PID3]);
-    listen(c, instanceA, "a");
-    await until(() => handled(c.streamKey, ids));
-    for (const name of [own, copied]) await until(async () => (await readSpaceTasksVersion(name)) !== undefined);
-    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
-  });
-
-  it("leaves a deleted Motion Space's stored content as it was, so restoring it brings the content back", async () => {
-    const c = bareCase(webAnimationSpaceDocName(PID, randomUUID()));
-    await seedNote(c.docName, "annotations");
+  it("leaves a deleted Timeline Space's stored content as it was, so restoring it brings the content back", async () => {
+    const c = bareCase(timelineSpaceDocName(PID, randomUUID()));
+    await seedNote(c.docName, "clips");
     expect(await yjsRepo.softDeleteByName(c.docName)).toBe(true);
     const ids = await publishSpaceTasksVersion(c);
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, ids));
     await untilUnloaded(c.docName);
-    expect(await readRestored(c.docName)).toEqual({ note: "annotations", version: undefined });
+    expect(await readRestored(c.docName)).toEqual({ note: "clips", version: undefined });
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 
   it("creates no document for a Space that has none", async () => {
-    const c = bareCase(webAnimationSpaceDocName(PID, randomUUID()));
+    const c = bareCase(timelineSpaceDocName(PID, randomUUID()));
     const ids = await publishSpaceTasksVersion(c);
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, ids));

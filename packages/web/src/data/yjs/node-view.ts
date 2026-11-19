@@ -39,6 +39,7 @@ import type {
   NodeTaskCounts,
   NodeType,
 } from '@breatic/shared';
+import { withCurrentModelNames } from '@breatic/shared';
 
 /** The 6 content modalities that own a renderable payload. */
 export type Modality = 'text' | 'image' | 'audio' | 'video' | '3d' | 'web';
@@ -349,7 +350,10 @@ export function deriveHandling(
  * @returns The type paired with its view, or `null` when the type is unknown.
  */
 export function toNodeView(fields: CanvasNodeFields): TypedNodeView | null {
-  const { type, data } = fields;
+  const { type } = fields;
+  // A node saved on a retired model reads as its replacement until collab
+  // stores it so (#1521); every panel read and write goes through this view.
+  const data = withCurrentModelNames(fields.data);
   const locked = data.locked;
   // Common content-view fields: the editable name (node name header), the
   // derived handling flag, and the Generate panel inputs (model / mode /

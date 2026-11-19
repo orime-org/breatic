@@ -13,7 +13,7 @@
  */
 
 import { logger } from "@breatic/core";
-import { assertBeforeDeadline, DeadlinePassed, t } from "@breatic/shared";
+import { assertBeforeDeadline, DeadlinePassed, encodeTaskFailure } from "@breatic/shared";
 import {
   DeadlinePassed as ProviderDeadlinePassed,
   NoUpstreamAvailable,
@@ -90,18 +90,26 @@ export interface MediaRunDone {
 }
 
 /**
- * What the task row and the node say about a failed run: an upstream's failure as it read before provider, its own
- * words after the upstream's name; a model none of whose upstreams has its key in the sentence the server refuses
- * such a run with, naming the variables; anything else in provider's words.
+ * What the task row and the node hold about a failed run: an upstream's failure as it read before provider, its own
+ * words after the upstream's name; a model none of whose upstreams has its key, or a run every upstream here with its
+ * key refused for its input (#1521), as a code each viewer reads in their own language, naming the model and the
+ * variables or the limit; anything else in provider's words.
  * @param reason - provider's reason.
  * @param displayName - What the user knows the model as.
- * @returns The sentence.
+ * @returns What the row stores.
  */
 function failureMessage(reason: Error, displayName: string): string {
   if (reason instanceof UpstreamTaskFailed) return `${reason.upstream} task failed: ${reason.upstreamError}`;
   if (reason instanceof NoUpstreamAvailable && reason.reasons.length > 0 && reason.reasons.every((r) => r.kind === "missing_key")) {
     const envVars = reason.reasons.map((r) => (r.kind === "missing_key" ? r.envVar : ""));
-    return t("server.model.not_configured", { model: displayName, envVars: envVars.join(", ") });
+    return encodeTaskFailure("model_not_configured", { model: displayName, envVars });
+  }
+  if (reason instanceof NoUpstreamAvailable && reason.reasons.every((r) => r.kind !== "failed")) {
+    const refused = reason.reasons.find((r) => r.kind === "unsupported_input");
+    if (refused !== undefined) {
+      const limit = "limit" in refused ? refused.limit : undefined;
+      return encodeTaskFailure("input_refused", { model: displayName, ...(limit === undefined ? {} : { limit }) });
+    }
   }
   return reason.message;
 }

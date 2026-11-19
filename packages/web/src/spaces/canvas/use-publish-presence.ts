@@ -10,7 +10,8 @@ import { sameGeometry } from '@web/spaces/canvas/gesture-table';
 import { deriveActiveNodeIds, sameIdList } from '@web/spaces/canvas/active-node-ids';
 import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle } from '@web/lib/publish-throttle';
 import { observeViewportTransform } from '@web/spaces/canvas/viewport-observer';
-
+import { sameRect, type FlowRect } from '@web/features/follow/follow-geometry';
+import { useFollowStore } from '@web/stores/follow';
 
 /** A point, in either screen or canvas coordinates. */
 interface Point {
@@ -38,6 +39,18 @@ export interface PublishPresenceInput {
   containerRef: React.RefObject<HTMLElement | null>;
   /** Turn a screen point into a canvas point. */
   toFlowPosition: (screen: Point) => Point;
+  /**
+   * The canvas rectangle this client's viewport shows, or null while it has
+   * no size; left out, no `camera` is published (#920). Not read while this
+   * tab follows a member, when the camera published is null.
+   */
+  readCamera?: () => FlowRect | null;
+}
+
+/** The visible rectangle on the wire, stamped with when it was written. */
+interface Camera extends FlowRect {
+  /** Wall-clock milliseconds, the only clock two browsers share. */
+  at: number;
 }
 
 /** The shape this client writes into awareness. */
@@ -48,6 +61,8 @@ interface Presence {
   pointer: Point | null;
   /** The geometry this client's gesture is showing, or null while it has none. */
   gesture: GestureBatch | null;
+  /** The canvas rectangle this client's viewport shows, or null; absent when the canvas reads none. */
+  camera?: Camera | null;
 }
 
 /** The commands a gesture drives the publisher with. */
@@ -84,6 +99,7 @@ function readPublished(awareness: Awareness): Presence {
     activeNodeIds: Array.isArray(ids) ? (ids as string[]) : null,
     pointer: (pointer as Point | undefined) ?? null,
     gesture: (gesture as GestureBatch | undefined) ?? null,
+    camera: (state?.camera as Camera | undefined) ?? null,
   };
 }
 
@@ -118,7 +134,9 @@ function samePoint(a: Point | null, b: Point | null): boolean {
 
 /**
  * Publish where this client is on the canvas into awareness — the single
- * writer of `activeNodeIds`, `pointer` and `gesture`. They describe the Space
+ * writer of `activeNodeIds`, `pointer`, `gesture` and `camera` (the visible
+ * rectangle a follower aligns to, #920; the transform and container watchers
+ * below are its triggers as well, and it stays through a window blur). They describe the Space
  * on screen and go with it; `activity` is the tab's and has its own writer
  * (`use-publish-activity.ts`).
  *
@@ -160,6 +178,13 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
   latestSources.current = sources;
   const latestConvert = React.useRef(toFlowPosition);
   latestConvert.current = toFlowPosition;
+  const latestReadCamera = React.useRef(input.readCamera);
+  latestReadCamera.current = input.readCamera;
+  // A tab following a member shows the leader's view, not one of its own, so
+  // it publishes no camera for anyone to follow (#920).
+  const following = useFollowStore((s) => s.targetUserId !== null);
+  const latestFollowing = React.useRef(following);
+  latestFollowing.current = following;
 
   // The pointer's last screen position, or null once it left the canvas. It is
   // a ref rather than state: it changes at pointer rates and no render reads
@@ -184,7 +209,19 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
       gesture: gesture.current,
     };
     const prev = readPublished(awareness);
+    const readCamera = latestReadCamera.current;
+    let sameCamera = true;
+    if (readCamera) {
+      const rect = latestFollowing.current ? null : readCamera();
+      sameCamera = sameRect(prev.camera ?? null, rect);
+      // An unchanged rectangle keeps its stamp, so it does not count as news;
+      // a new one never goes back in time from the last stamp published.
+      if (sameCamera) next.camera = prev.camera;
+      else if (rect === null) next.camera = null;
+      else next.camera = { ...rect, at: Math.max(Date.now(), (prev.camera?.at ?? 0) + 1) };
+    }
     const unchanged =
+      sameCamera &&
       sameIdList(prev.activeNodeIds, next.activeNodeIds) &&
       samePoint(prev.pointer, next.pointer) &&
       sameBatch(prev.gesture, next.gesture);
@@ -206,6 +243,15 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
     throttle.schedule();
     return (): void => throttle.cancel();
   }, [awareness, throttle, selectedIds, pickSession, focusTargetId]);
+
+  // Following starting or stopping withdraws or restores the camera on the spot.
+  const followingSeen = React.useRef(following);
+  React.useEffect(() => {
+    if (followingSeen.current === following) return;
+    followingSeen.current = following;
+    throttle.cancel();
+    publish();
+  }, [following, throttle, publish]);
 
   // Reconnect. This also covers the first publish being scheduled before the
   // document finished syncing, since a fresh mount starts out unsynced.
@@ -301,6 +347,7 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
         activeNodeIds: null,
         pointer: null,
         gesture: null,
+        camera: null,
       });
     };
   }, [awareness]);

@@ -8,6 +8,7 @@ import {
   OVERLAY_CLASS,
   OVERLAY_CONTENT_CLASS,
 } from '@web/components/ui/dialog';
+import { useKeepMovedFocus } from '@web/lib/overlay-focus';
 import { cn } from '@web/lib/utils';
 
 /**
@@ -41,7 +42,7 @@ AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName;
 const AlertDialogContent = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
->(({ className, ...props }, ref) => (
+>(({ className, onCloseAutoFocus, ...props }, ref) => (
   <AlertDialogPortal>
     <AlertDialogOverlay>
       <DialogOverlayScroller>
@@ -60,6 +61,7 @@ const AlertDialogContent = React.forwardRef<
             className,
           )}
           {...props}
+          onCloseAutoFocus={useKeepMovedFocus(onCloseAutoFocus)}
         />
       </DialogOverlayScroller>
     </AlertDialogOverlay>

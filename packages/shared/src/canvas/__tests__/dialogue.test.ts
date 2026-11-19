@@ -80,6 +80,10 @@ describe('speakersShort', () => {
     expect(speakersShort(GEMINI, { speakers: HALF })).toBe(false);
     expect(speakersShort(PLAIN, { [STAND_IN_ON]: true })).toBe(false);
   });
+
+  it('counts a speaker whose name the prompt cleaning empties as not named (#1521)', () => {
+    expect(speakersShort(GEMINI, { speakers: [PAIR[0], { speaker: '<Host>', voice: 'Puck' }], [STAND_IN_ON]: true })).toBe(true);
+  });
 });
 
 describe('withStandInOn', () => {
@@ -142,12 +146,18 @@ describe('dialogueText', () => {
     expect(dialogueText([{ speaker: 2, text: 'x' }], [{ speaker: ' Ava ' }, { speaker: '  Leo' }])).toBe('Leo: x');
   });
 
+  it('names a speaker in the script as the speakers list sends the name, cleaned (#1521)', () => {
+    expect(dialogueText([{ speaker: 2, text: 'hi' }], [{ speaker: 'Ava' }, { speaker: 'Dr <b>Who</b>' }])).toBe('Dr Who: hi');
+  });
+
   it('skips a line that is empty or only spaces', () => {
     expect(dialogueText([{ speaker: 1, text: 'a' }, { speaker: 2, text: '   ' }, { speaker: 2, text: '' }, { speaker: 2, text: 'b' }], SPEAKERS)).toBe(
       'Ava: a\nLeo: b',
     );
     expect(dialogueText([{ speaker: 1, text: ' ' }], SPEAKERS)).toBe('');
     expect(dialogueText([], SPEAKERS)).toBe('');
+    // A line whose words the cleaning drops (a tag, a comment, invisible characters) says nothing either (#1521).
+    expect(dialogueText([{ speaker: 1, text: 'Hi.' }, { speaker: 2, text: '<break time="1s"/>' }, { speaker: 2, text: '\u200B' }, { speaker: 2, text: '<!-- x -->' }], SPEAKERS)).toBe('Ava: Hi.');
   });
 
   it('takes a line\'s speaker from a typed name and colon in front, and takes the name off, as the editor does (design 8.5)', () => {

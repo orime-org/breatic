@@ -55,10 +55,15 @@ export interface TimelinePlayback {
   webStates: ReadonlyMap<string, WebInstanceState>;
   /** Load a failed web-animation instance again. */
   retryWeb: (key: string) => void;
+  /** While playing, the frame and wall-clock time this run started from; null otherwise. */
+  anchor: TimelinePlaybackAnchor | null;
 }
 
+/** Where playback started, for a follower to play on from (#920): the frame and the wall-clock `Date.now()` then. */
+export interface TimelinePlaybackAnchor { frame: number; at: number }
+
 /** A single observation of the user's intent and the preview transport. */
-interface PlaybackState { intent: 'play' | 'pause'; state: TimelineMediaTransport }
+interface PlaybackState { intent: 'play' | 'pause'; state: TimelineMediaTransport; anchor: TimelinePlaybackAnchor | null }
 
 /** User controls bound to the current effect. */
 type PlaybackActions = Pick<TimelinePlayback, 'toggle' | 'seek' | 'retryVideo' | 'retryWeb'> & { placementChanged: () => void };
@@ -124,7 +129,7 @@ function sameStates(a: ReadonlyMap<string, string>, b: ReadonlyMap<string, strin
 export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayback {
   const latest = React.useRef(input);
   latest.current = input;
-  const state = React.useRef<PlaybackState>({ intent: 'pause', state: 'paused' });
+  const state = React.useRef<PlaybackState>({ intent: 'pause', state: 'paused', anchor: null });
   const [snapshot, setSnapshot] = React.useState(state.current);
   const actions = React.useRef<PlaybackActions | null>(null);
   const { enabled } = input;
@@ -174,11 +179,12 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * Publish a changed transport observation.
      * @param intent - The user intent.
      * @param next - The transport state.
+     * @param started - Where a run that starts playing now starts from; only a `playing` state carries one.
      * @throws {never} Never.
      */
-    function publish(intent: PlaybackState['intent'], next: TimelineMediaTransport): void {
-      if (state.current.intent === intent && state.current.state === next) return;
-      state.current = { intent, state: next };
+    function publish(intent: PlaybackState['intent'], next: TimelineMediaTransport, started: TimelinePlaybackAnchor | null = null): void {
+      if (state.current.intent === intent && state.current.state === next && state.current.anchor === started) return;
+      state.current = { intent, state: next, anchor: started };
       setSnapshot(state.current);
     }
 
@@ -617,7 +623,8 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
         anchor = { frame: position.current, at: performance.now() };
         boundaryAnchor = null;
         for (const lane of lanes) lane.lastDrift = null;
-        publish('play', 'playing');
+        // The clock runs on performance.now(); a follower's browser shares only the wall clock.
+        publish('play', 'playing', { frame: position.current, at: Date.now() });
         schedule();
       }
     }
@@ -761,7 +768,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
   }, [enabled, host, controller]);
 
   React.useEffect(() => () => {
-    state.current = { intent: 'pause', state: 'paused' };
+    state.current = { intent: 'pause', state: 'paused', anchor: null };
   }, []);
 
   // The bridge's replies arrive on the window; only the iframe of an attached instance is listened to. A hidden Space

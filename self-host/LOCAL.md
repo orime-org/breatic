@@ -4,7 +4,7 @@
 
 Use this guide to run Breatic for yourself or share it with your household, private group or colleagues within one organization. Install the application on one computer; other users connect through a browser. **Use published images, not development servers.** For source changes, see [Development setup](DEVELOPMENT.md).
 
-The [LICENSE](../LICENSE) permits individual use, private groups that are not publicly advertised or open to general sign-up, and internal organizational use. Without separate authorization, offering Breatic to the public is prohibited, whether paid or free. Limit LAN access to your permitted group as well.
+Breatic is licensed under the [GNU Affero General Public License v3.0](../LICENSE). If you modify it and let other people use your modified version over a network, you must offer them its complete source code under the same license. The Breatic name and logo are covered by [TRADEMARKS.md](../TRADEMARKS.md).
 
 ## 1. What you will run
 
@@ -382,6 +382,8 @@ Repeat section 6. If rollback requires database recovery, stop the application a
 | Image missing or no matching platform | Confirm both tags exist and support the host CPU; do not mix releases or assume an unpublished architecture is supported |
 | Web fails or returns 502 | Read `docker compose logs --tail=100 web server collab`; check that the API service is `server` and the image matches the checked-out source version |
 | Migration exits nonzero | Read migration logs; check both databases, credentials, versions and migration files; do not bypass it |
+| Migration stops with `Studio transfers still accepting` | Start the previous release's `server` until it finishes those transfers (it checks every minute), stop it again and rerun the upgrade |
+| `0127_remove_regions` fails adding a foreign key | The database once ran as one of several regions. A global region's database: delete the rows that name Studios or Projects other regions held, then rerun the upgrade. Another region's database holds no accounts and cannot be upgraded on its own |
 | Works locally but not from another device | Check the host IP, `WEB_BIND_ADDRESS`, firewall, host sleep and client certificate trust |
 | HTTPS login loops | Use a trusted certificate, `ENV=prod`, an empty `COOKIE_DOMAIN` and one consistent address |
 | Upload returns 401 | Match the application and Cloudflare shared secrets, then recreate application containers |

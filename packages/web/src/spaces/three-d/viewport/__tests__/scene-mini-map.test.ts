@@ -16,7 +16,7 @@ vi.mock('three', async (importOriginal) => {
     render(...args: unknown[]): void { renders.push(args); }
   } };
 });
-const OBJECT: SceneObject = { id: 'one', model: { kind: 'builtin', id: 'box' }, name: 'Box', position: [40, 8, -30], rotation: [0, Math.SQRT1_2, 0, Math.SQRT1_2], scale: [2, 3, 4], locked: false };
+const OBJECT = { id: 'one', model: { kind: 'builtin', id: 'box' }, name: 'Box', position: [40, 8, -30], rotation: [0, Math.SQRT1_2, 0, Math.SQRT1_2], scale: [2, 3, 4], locked: false } satisfies SceneObject;
 const owners: Array<() => void> = [];
 afterEach(() => { owners.splice(0).forEach((dispose) => dispose()); renders.length = 0; document.body.replaceChildren(); });
 function model(): Group { const root = new Group(); root.add(new Mesh(new BoxGeometry(2, 4, 8), new MeshStandardMaterial())); return root; }
@@ -78,4 +78,28 @@ describe('native scene overview (inner#1724)', () => {
     expect(renders).toHaveLength(count + 1);
   });
 
+});
+
+describe('cameras and lights in the overview (inner#1694 design 3.3)', () => {
+  it('draws a small icon for each camera and light at its place, and removes it with the record', () => {
+    const cache = new ModelResourceCache(async () => model()); owners.push(() => cache.dispose());
+    const host = document.createElement('div'); document.body.append(host);
+    Object.defineProperties(host, { clientWidth: { value: 200 }, clientHeight: { value: 140 } });
+    const map = new SceneMiniMapRuntime(host, cache, vi.fn()); owners.push(() => map.dispose());
+    const camera = { id: 'cam', model: { kind: 'camera' }, name: 'Camera 1', position: [3, 1, 4], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false,
+      number: 1, focalLength: 35, frame: '16:9', freeRatio: 16 / 9 } as unknown as SceneObject;
+    const light = { id: 'lamp', model: { kind: 'light', type: 'point' }, name: 'Point light 1', position: [-2, 3, 1], rotation: [0, 0, 0, 1], scale: [1, 1, 1],
+      locked: false, number: 1, color: '#ff8800', intensity: 40, castShadow: true } as unknown as SceneObject;
+    /** The overview objects carrying a record id in the last render. */
+    const drawn = (): Map<string, Vector3> => {
+      const found = new Map<string, Vector3>();
+      (renders.at(-1)?.[0] as Group).traverse((child) => { if (typeof child.userData.sceneObjectId === 'string') found.set(child.userData.sceneObjectId as string, child.position.clone()); });
+      return found;
+    };
+    map.update([camera, light], new Set(['cam', 'lamp']), new Vector3(), new Set());
+    expect(drawn().get('cam')?.toArray().filter((_, index) => index !== 1)).toEqual([3, 4]);
+    expect(drawn().get('lamp')?.toArray().filter((_, index) => index !== 1)).toEqual([-2, 1]);
+    map.update([camera], new Set(['cam']), new Vector3(), new Set());
+    expect(drawn().has('lamp')).toBe(false);
+  });
 });

@@ -81,6 +81,7 @@ import {
 } from '@web/spaces/document/use-comment-cards';
 import { useCommentWrite } from '@web/spaces/document/use-comment-write';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { useFollowStore } from '@web/stores/follow';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
 import { COMMENT_PANEL_WIDTH } from '@web/spaces/document/document-columns';
 
@@ -511,7 +512,12 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       scroller === null ||
       top === null ||
       bar === null ||
-      (last?.key === reveal && (last.height === readHeight || scroller.scrollTop !== last.top))
+      // A grown card is not chased once the user scrolled, nor while
+      // following: the leader decides where this body is.
+      (last?.key === reveal &&
+        (last.height === readHeight ||
+          scroller.scrollTop !== last.top ||
+          useFollowStore.getState().targetUserId !== null))
     ) {
       return;
     }

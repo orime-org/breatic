@@ -240,6 +240,7 @@ export function DocumentSpace({
             pending={shown.pending}
             landed={landed}
             scope={uploadTarget}
+            awareness={provider?.awareness ?? null}
           />
         </DocumentProjectProvider>
       ) : (

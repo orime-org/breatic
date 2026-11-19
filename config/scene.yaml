@@ -31,3 +31,25 @@ capture:
   min_frame_px: 120
   # How long to wait for a closed canvas to sync before giving up without writing anything.
   canvas_sync_timeout_ms: 10000
+
+# Director console in the 3D Space, served with the capture parameters by GET /projects/:id/three-d/config.
+director:
+  # Shortest gap between two redraws of a director monitor, in milliseconds.
+  monitor_refresh_ms: 200
+  # Most lights a scene renders and accepts; how many cast shadows is worked out from the GPU at runtime.
+  max_lights: 16
+  # Pause after the last wheel step before a camera dolly is written, in milliseconds.
+  wheel_commit_ms: 400
+  # Shadow map edge for directional lights and spotlights, in pixels.
+  shadow_map_px: 2048
+  # Shadow map edge for point lights; three lays a point light shadow out 4 by 2, so 512 gives 2048 x 1024.
+  point_shadow_map_px: 512
+  # How far a directional shadow may reach along the ground, in multiples of the casters' bounding-box diagonal.
+  shadow_ground_reach: 3
+  # Depth offset of directional and spotlight shadows; more negative pushes shadow acne away but detaches shadows from contact points.
+  shadow_bias: -0.0005
+  # Offset along the surface normal for those shadows, in scene units.
+  shadow_normal_bias: 0.02
+  # The same two offsets for point light shadows, which are drawn at a lower resolution.
+  point_shadow_bias: -0.002
+  point_shadow_normal_bias: 0.02

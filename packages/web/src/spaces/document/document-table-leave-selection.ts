@@ -219,7 +219,7 @@ export function swapHeldTables(view: EditorView): void {
 const textBetween: Rebuild = (doc, anchor, head) => TextSelection.between(doc.resolve(anchor), doc.resolve(head));
 
 /** A selection leaving a table, its ends on the table's first or last words. */
-class TableSpanSelection extends TextSelection {
+export class TableSpanSelection extends TextSelection {
   /**
    * Replaces the selection, the tables at its ends whole.
    * @param tr - The transaction.

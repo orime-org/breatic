@@ -434,7 +434,7 @@ describe("POST /timeline/executions/:id/cancel", () => {
       expect((await timelineExecutionRepo.findById(row.id))?.status).toBe("cancelled");
       expect(await holdsOf(fx.studioId)).toEqual([]);
       expect(await executionChangesFor(fx.projectId, fx.spaceId, timelineSpaceDocName)).toEqual([
-        ...before, { type: "space-tasks-version", docName: timelineSpaceDocName(fx.projectId, fx.spaceId), projects: [fx.projectId] },
+        ...before, { type: "space-tasks-version", docName: timelineSpaceDocName(fx.projectId, fx.spaceId) },
       ]);
       expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
     },

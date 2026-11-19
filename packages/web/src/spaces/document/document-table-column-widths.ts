@@ -60,7 +60,7 @@ export function holdColumnWidths(
  * @param start - Where the table's content starts.
  * @returns The widths, left to right; null where no such cell is drawn.
  */
-function drawnColumns(view: EditorView, table: PMNode, start: number): (number | null)[] {
+export function drawnColumns(view: EditorView, table: PMNode, start: number): (number | null)[] {
   const map = TableMap.get(table);
   return Array.from({ length: map.width }, (_, col) => {
     const rel = columnCellOf(map, table, col);

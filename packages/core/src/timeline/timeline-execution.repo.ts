@@ -31,7 +31,7 @@ export type TimelineExecutionEvent =
 
 /**
  * The fields an accepted execution is inserted with. `status` and `origin` are required: the columns keep defaults
- * only for the previous server's inserts during the deploy window (0126), so every new insert path states both.
+ * only for the previous server's inserts during the deploy window (0128), so every new insert path states both.
  */
 export interface NewTimelineExecution {
   projectId: string;

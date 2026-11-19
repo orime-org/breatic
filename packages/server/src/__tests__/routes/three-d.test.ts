@@ -45,11 +45,13 @@ const IMPORT_CONFIG = {
   max_texture_bytes: 268435456,
 };
 const CAPTURE_CONFIG = { long_edge_px: 2048, min_frame_px: 120, canvas_sync_timeout_ms: 10000 };
+const DIRECTOR_CONFIG = { monitor_refresh_ms: 200, max_lights: 16, wheel_commit_ms: 400, shadow_map_px: 2048, point_shadow_map_px: 512, shadow_ground_reach: 3, shadow_bias: -0.0005, shadow_normal_bias: 0.02, point_shadow_bias: -0.002, point_shadow_normal_bias: 0.02 };
+const DIRECTOR_WIRE = { monitorRefreshMs: 200, maxLights: 16, wheelCommitMs: 400, shadowMapPx: 2048, pointShadowMapPx: 512, shadowGroundReach: 3, shadowBias: -0.0005, shadowNormalBias: 0.02, pointShadowBias: -0.002, pointShadowNormalBias: 0.02 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.projectAuthService.loadProjectRole.mockResolvedValue("viewer");
-  getSceneConfig.mockReturnValue({ scale_sensitivity: 0.025, import: IMPORT_CONFIG, capture: CAPTURE_CONFIG });
+  getSceneConfig.mockReturnValue({ scale_sensitivity: 0.025, import: IMPORT_CONFIG, capture: CAPTURE_CONFIG, director: DIRECTOR_CONFIG });
   resolveSceneAsset.mockResolvedValue({
     url: "https://assets.example.test/registered-model.glb",
     mimeType: "model/gltf-binary",
@@ -75,6 +77,7 @@ describe("3D Space project read routes", () => {
         maxTextureBytes: 268435456,
       },
       capture: { longEdgePx: 2048, minFramePx: 120, canvasSyncTimeoutMs: 10000 },
+      director: DIRECTOR_WIRE,
     } });
     expect(mocks.projectAuthService.loadProjectRole).toHaveBeenCalledWith("user-1", PROJECT);
     expect(getSceneConfig).toHaveBeenCalledTimes(1);
@@ -91,7 +94,7 @@ describe("3D Space project read routes", () => {
       decoder_worker_limit: 2,
       max_texture_edge: 4096,
       max_texture_bytes: 100663296,
-    }, capture: { long_edge_px: 1024, min_frame_px: 80, canvas_sync_timeout_ms: 5000 } });
+    }, capture: { long_edge_px: 1024, min_frame_px: 80, canvas_sync_timeout_ms: 5000 }, director: DIRECTOR_CONFIG });
 
     const response = await createApp().request(`/api/v1/projects/${PROJECT}/three-d/config`, { headers: AUTH });
 
@@ -109,6 +112,7 @@ describe("3D Space project read routes", () => {
         maxTextureBytes: 100663296,
       },
       capture: { longEdgePx: 1024, minFramePx: 80, canvasSyncTimeoutMs: 5000 },
+      director: DIRECTOR_WIRE,
     } });
     expect(getSceneConfig).toHaveBeenCalledTimes(1);
   });

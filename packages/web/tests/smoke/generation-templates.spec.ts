@@ -30,7 +30,7 @@ import { openSmokeProject } from '../helpers/project';
 import { expectNodesInView, expectPanelInView } from '../helpers/canvas-chrome';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
-import { wire } from '../helpers/mini-tool';
+import { setNodeContent, wire } from '../helpers/mini-tool';
 
 test.use({ viewport: { width: 1440, height: 1080 } });
 
@@ -571,6 +571,76 @@ test('picking the vehicle speed cut list places the vehicle it asks for, wired, 
   await expect(prompt.locator('[data-reference-mention]').filter({ hasText: 'Vehicle' })).toHaveCount(1);
   await expect(prompt.locator('[data-prompt-note]')).toHaveCount(1);
   await expect(prompt).toContainText('exactly 12 cuts, one cut per second');
+});
+
+test('a video panel lists the seven e-commerce ad templates under the e-commerce goal', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('ecommerce');
+  await expect(page.getByTestId('generate-template-goal-ecommerce')).toHaveText(/^E-commerce ads\s*7$/);
+  expect(await listedTemplates()).toEqual([
+    'product-ad-15s',
+    'ugc-creator-review',
+    'livestream-pitch',
+    'hype-then-twist-ad',
+    'product-commercial-shotlist',
+    'unboxing-ad',
+    'variant-carousel-ad',
+  ]);
+  await closeTemplateMenu();
+});
+
+test('picking the product ad places the product, an optional person and the still; the person\'s paragraph is greyed and left out until it holds a picture', async () => {
+  const anchorId = await openPanelOnNewNode('video');
+  await openGoal('ecommerce');
+  await page.getByTestId('generate-template-product-ad-15s').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
+  expect(await graph()).toEqual({
+    names: ['15-second product ad', 'Lifestyle still', 'Person', 'Product', 'video-template'],
+    edges: [
+      'Lifestyle still -> video-template',
+      'Person -> Lifestyle still',
+      'Person -> video-template',
+      'Product -> Lifestyle still',
+      'Product -> video-template',
+    ],
+  });
+  const prompt = page.getByTestId('generate-prompt-editor');
+  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(3);
+  // What to put in the product, that the person is optional, and to generate the still first.
+  await expect(prompt.locator('[data-prompt-note]')).toHaveCount(3);
+  await expect(prompt.locator('[data-prompt-note]').filter({ hasText: 'Optional:' })).toHaveCount(1);
+  const held = prompt.locator('[data-prompt-held-back]');
+  await expect(held).toHaveCount(1);
+  await expect(held).toContainText('The person in the ad looks like');
+  await held.hover({ position: { x: 4, y: 4 } });
+  await expect(page.getByRole('tooltip').filter({ hasText: 'Sent once Person holds a picture' })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('product-ad-person-empty.png') });
+
+  const where = { projectId, spaceId };
+  await setNodeContent(page, where, await nodeIdNamed('Product'), 'https://smoke-media.test/product.jpg');
+  const bodies: string[] = [];
+  await page.route('**/canvas/tasks', async (route) => {
+    bodies.push(route.request().postData() ?? '');
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { id: crypto.randomUUID(), status: 'queued' } }) });
+  });
+  await page.getByTestId('generate-video-execute').click();
+  await expect.poll(() => bodies.length, { timeout: 15_000 }).toBe(1);
+  expect(bodies[0]).toContain('The place, light and colours follow');
+  expect(bodies[0]).not.toContain('The person in the ad looks like');
+
+  const personPicture = 'https://smoke-media.test/person.jpg';
+  await setNodeContent(page, where, await nodeIdNamed('Person'), personPicture);
+  // A run closes the panel; open it again on the video.
+  await visibleSpace(page).locator(`.react-flow__node[data-id="${anchorId}"]`).click({ button: 'right' });
+  await page.getByTestId('node-menu-generate').click();
+  await expect(prompt).toContainText('The person in the ad looks like', { timeout: 15_000 });
+  await expect(held).toHaveCount(0);
+  await page.getByTestId('generate-video-execute').click();
+  await expect.poll(() => bodies.length, { timeout: 15_000 }).toBe(2);
+  expect(bodies[1]).toContain('The person in the ad looks like');
+  expect(bodies[1]).toContain(personPicture);
+  await page.screenshot({ path: test.info().outputPath('product-ad-person-filled.png') });
 });
 
 test('an audio panel lists the ten sound templates under one goal', async () => {

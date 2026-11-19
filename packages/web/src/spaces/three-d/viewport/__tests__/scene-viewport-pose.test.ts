@@ -21,6 +21,9 @@ vi.mock('three', async (importOriginal) => {
   return { ...actual, WebGLRenderer: class {
     domElement = document.createElement('canvas');
     setPixelRatio(): void {} setSize(): void {} render(): void {} dispose(): void {}
+    shadowMap = { enabled: false, type: 0, autoUpdate: true, needsUpdate: false };
+    capabilities = { maxTextures: 16 };
+    compile(): void {} getPixelRatio(): number { return 1; } setViewport(): void {} setScissor(): void {} setScissorTest(): void {}
     info = { render: { calls: 0, triangles: 0 }, memory: { geometries: 0, textures: 0 }, programs: [] };
     getContext(): unknown { return { isContextLost: () => false, getParameter: () => 'test', RENDERER: 0, VERSION: 0 }; }
   } };

@@ -3,6 +3,7 @@
 
 import type { MediaBinding, ParamBinding } from "@provider/config/schema.js";
 import type { MediaInput } from "@provider/media/runner.js";
+import { dialogueTurns } from "@provider/pricing/dialogue.js";
 import { isPresent, mentionsWritten } from "@provider/pricing/estimate.js";
 
 /**
@@ -85,14 +86,16 @@ function written(bound: ParamBinding, value: unknown, sendEmpty: boolean): unkno
   return bound.item_key !== undefined && Array.isArray(spelled) ? spelled.map((item: unknown) => ({ [bound.item_key!]: item })) : spelled;
 }
 
+
 /**
  * The body of a model's own call: each of our params under the binding's field
  * (dots writing nested objects), its value spelled and converted the upstream's
  * way, an absent value and an unbound param left out (a null, absent, "" or [] one written as its
  * `unset` when the binding names one), the prompt under
  * `prompt_field` when there is one (empty values and an empty prompt only when
- * the binding sets `send_empty`), and the binding's fixed fields, written at their
- * dotted paths as params are.
+ * the binding sets `send_empty`), or, when the binding has a dialogue rule and the run
+ * names its speakers, the prompt as that rule's turns instead; and the binding's fixed
+ * fields, written at their dotted paths as params are.
  * @param binding - The model's binding.
  * @param input - Our prepared params and prompt.
  * @returns The body.
@@ -109,7 +112,12 @@ export function buildBody(binding: MediaBinding, input: MediaInput): Record<stri
     const out = written(bound, voices !== undefined && typeof value === "string" ? (voices[value] ?? value) : value, binding.send_empty === true);
     if (out !== undefined) writeAt(body, bound.field, out);
   }
-  if (binding.prompt_field !== undefined && (input.prompt !== "" || binding.send_empty === true)) body[binding.prompt_field] = mentionsWritten(binding.mentions, input.prompt);
+  const turns = binding.dialogue === undefined ? undefined : dialogueTurns(binding.dialogue, input.params, mentionsWritten(binding.mentions, input.prompt));
+  if (binding.dialogue !== undefined && turns !== undefined) {
+    if (turns.length > 0) writeAt(body, binding.dialogue.field, turns);
+  } else if (binding.prompt_field !== undefined && (input.prompt !== "" || binding.send_empty === true)) {
+    body[binding.prompt_field] = mentionsWritten(binding.mentions, input.prompt);
+  }
   for (const [path, value] of Object.entries(binding.fixed ?? {})) writeAt(body, path, value);
   return body;
 }

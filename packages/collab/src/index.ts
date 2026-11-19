@@ -338,7 +338,6 @@ async function main(): Promise<void> {
     hocuspocus,
     streamUrl: REDIS_STREAM_URL,
     streamKey: taskEventsStreamKey(),
-    stream: getStreamRedis(),
     legacyCursorKey: `${STREAM_CURSOR_PREFIX}:collab:task-events:last-id`,
     keyPrefix: REDIS_KEY_PREFIX,
     instanceId,

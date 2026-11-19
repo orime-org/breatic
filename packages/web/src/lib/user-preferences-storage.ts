@@ -10,7 +10,7 @@ import { STORAGE_KEYS } from '@web/lib/storage-keys';
  * Interface preferences that belong to an account rather than to a project:
  * the Agent column width, the Studio rail sections, the canvas minimap and
  * snap, the Timeline magnet, snap and linkage switches, and whether the
- * document heading outline is shown. Two people share a browser often enough to matter, so the record is
+ * document heading outline is shown, and the language voice samples play in. Two people share a browser often enough to matter, so the record is
  * keyed by account id and each account reads only its own entry.
  *
  * This module is the only place the key is read or written, through
@@ -43,6 +43,8 @@ export interface UserPreferences {
   timelineLinkage: boolean;
   /** Whether the heading outline beside a document body is shown. */
   documentOutlineVisible: boolean;
+  /** The language the voice list plays samples in, or null when never picked (#1521). */
+  voiceSampleLanguage: string | null;
 }
 
 /** What an account that has stored nothing sees. */
@@ -55,6 +57,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   timelineSnap: true,
   timelineLinkage: true,
   documentOutlineVisible: true,
+  voiceSampleLanguage: null,
 };
 
 // `.catch` also answers for a missing field, since `undefined` fails each
@@ -74,6 +77,7 @@ const preferencesSchema = z.object({
   timelineSnap: z.boolean().catch(true),
   timelineLinkage: z.boolean().catch(true),
   documentOutlineVisible: z.boolean().catch(true),
+  voiceSampleLanguage: z.string().nullable().catch(null),
 });
 
 /**

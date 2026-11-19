@@ -38,6 +38,7 @@ export interface TimelineClientLimits {
     /** The aspects the creation dialog offers, in the configured order. */
     aspects: string[];
     playerLoadTimeoutMs: number;
+    /** Read only by web builds from before #1568; remove in the release after it ships. */
     sourceRefreshIntervalMs: number;
     /**
      * How long a signed preview address stays readable; the preview shares one address within it. The server always

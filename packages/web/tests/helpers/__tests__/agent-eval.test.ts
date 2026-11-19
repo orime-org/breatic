@@ -411,6 +411,33 @@ describe('forJudge', () => {
     });
   }
 
+  describe('get_generation_template', () => {
+    const cost = 'At its settings this template costs 100 credits. A take of it is made this way, and comes before its final: TAKE-WORDS. A take costs 40 credits; FINAL-WORDS.';
+    const output = ['DESCRIBE-DROPPED', cost, 'HOW-TO-SEND-DROPPED', 'CRAFT-DROPPED'].join('\n\n');
+
+    it('keeps each generate node\'s key, mode, model and params as the template sets them, and the cost paragraph whole', () => {
+      expect(forJudge('get_generation_template', { id: 'product-ad-15s' }, output)).toEqual({
+        nodes: [
+          { key: 'result', mode: 't2v', model: 'seedance-2.5-text-to-video', params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+          { key: 'still', mode: 'i2i', model: 'nano-banana-pro-edit-ultra', params: { aspect_ratio: '9:16' } },
+        ],
+        cost,
+      });
+    });
+
+    it('leaves the cost out when the answer has no cost paragraph', () => {
+      const slim = forJudge('get_generation_template', { id: 'product-ad-15s' }, 'DESCRIBE\n\nHOW-TO-SEND') as Record<string, unknown>;
+      expect(slim).not.toHaveProperty('cost');
+      expect(slim.nodes).toHaveLength(2);
+    });
+
+    it('records nothing for an id that is no template or an answer that is not text', () => {
+      expect(forJudge('get_generation_template', { id: 'NO-SUCH-TEMPLATE' }, output)).toBeUndefined();
+      expect(forJudge('get_generation_template', null, output)).toBeUndefined();
+      expect(forJudge('get_generation_template', { id: 'product-ad-15s' }, { text: output })).toBeUndefined();
+    });
+  });
+
   it('records nothing for any other tool', () => {
     for (const tool of ['ask_user', 'list_models', 'read_document']) {
       expect(forJudge(tool, sent, { placed: true })).toBeUndefined();
@@ -420,6 +447,10 @@ describe('forJudge', () => {
 });
 
 describe('judgePrompt', () => {
+  it('says a template node that names no mode or model keeps the template\'s mode, model and every setting it does not write', () => {
+    expect(judgePrompt(scenario, runOf({ kind: 'text', text: 'REPLY-TEXT' }))).toContain('A template node that names no mode or model keeps the template\'s mode, model and every setting it does not write.');
+  });
+
   const run = runOf(
     { kind: 'call', tool: 'ask_user', state: 'output-available', input: { q: 1 } },
     { kind: 'answer', text: 'ANSWER' },

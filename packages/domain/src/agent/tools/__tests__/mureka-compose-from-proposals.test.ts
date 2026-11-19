@@ -15,7 +15,7 @@ import type { MaterialTable } from "../propose-canvas-action.js";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-const { answerFor, checkProposal } = await import("../propose-canvas-action.js");
+const { answerFor, checkProposal, checkedAnswerFor } = await import("../propose-canvas-action.js");
 const { inputSchema } = await import("../proposal-input.js");
 const { renderGenerationModelsForModel } = await import("../generation-models.js");
 const { modelsForMode } = await import("@domain/model-catalog/mode-catalog.js");
@@ -178,5 +178,31 @@ describe("the listing of Mureka V9.5 Song in Reference to Music", () => {
     const line = text.split("\n").find((l) => l.includes(`(${MUREKA})`)) ?? "";
     expect(line).not.toBe("");
     expect(line).not.toContain("Takes a prompt only while");
+  });
+});
+
+// #1521: the Agent asks provider about the run the panel sends: its style cleaned the way the
+// worker cleans it, and the words wired into the lyrics box.
+describe("a Mureka V9.5 Song proposal its vendor holds to a limit", () => {
+  /**
+   * A text-to-song proposal with these style words and the lyrics node wired into the lyrics box.
+   * @param style - The style prompt.
+   * @returns What the model sends.
+   */
+  const styled = (style: string): ReturnType<typeof inputSchema.parse> => inputSchema.parse({
+    nodes: [LYRICS, { role: "generate", type: "audio", name: "Song", mode: "t2m", model: MUREKA, prompt: [{ text: style }] }],
+    edges: [{ fromIndex: 0, toIndex: 1, into: "lyrics" }],
+    rationale: "r",
+    groupName: "Group",
+  });
+
+  it("is refused a style past 1024 characters while lyrics are wired in, naming the limit", async () => {
+    const answer = await checkedAnswerFor(styled("x".repeat(1500)));
+    expect(answer.placed).toBe(false);
+    expect(answer.placed === false ? answer.reason : "").toContain(`"${MUREKA}" takes at most 1024 characters in the prompt here.`);
+  });
+
+  it("counts the style as the worker sends it, without the markup it strips", async () => {
+    expect((await checkedAnswerFor(styled(`${"x".repeat(1020)}<!-- a note to self -->`))).placed).toBe(true);
   });
 });

@@ -122,9 +122,7 @@ describe('useTimelineWebResolution', () => {
 
   it('waits for the document, not a timer, while a resolved execution is unfinished', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    vi.mocked(timelineApi.resolveWebSources)
-      .mockResolvedValueOnce({ sources: {}, executions: { [EXEC_RUNNING]: RESOLUTION.executions[EXEC_RUNNING]! } })
-      .mockResolvedValue({ sources: {}, executions: { [EXEC_RUNNING]: { ...RESOLUTION.executions[EXEC_RUNNING]!, status: 'failed' } } });
+    vi.mocked(timelineApi.resolveWebSources).mockResolvedValue({ sources: {}, executions: { [EXEC_RUNNING]: RESOLUTION.executions[EXEC_RUNNING]! } });
     const { wrapper } = provider();
     renderHook(() => useTimelineWebResolution(PROJECT, SPACE, docWith([webClip(cid(1), V2, 0, 10, waitingFor(EXEC_RUNNING))])), { wrapper });
     await waitFor(() => expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(1));
@@ -136,7 +134,7 @@ describe('useTimelineWebResolution', () => {
 });
 
 describe('useWebAnimationPreviewUrl', () => {
-  it('fetches one address per mount and not again on focus or on the Space-task signal', async () => {
+  it('fetches one address per mount and not again on focus or on a change version', async () => {
     const { client, wrapper } = provider();
     const hook = renderHook(() => useWebAnimationPreviewUrl(PROJECT, SRC_A), { wrapper });
     await waitFor(() => expect(hook.result.current.url).toBe('https://preview.example/a/index.html'));

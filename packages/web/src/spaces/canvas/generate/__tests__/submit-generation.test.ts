@@ -19,6 +19,7 @@ vi.mock('@web/lib/toast', () => ({
 }));
 
 import { canvasApi } from '@web/data/api/canvas';
+import { toast } from '@web/lib/toast';
 import { ApiException } from '@web/data/api/types';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
@@ -138,5 +139,24 @@ describe('submitGeneration', () => {
     await flush();
 
     expect(useUploadMarksStore.getState().markOf('s', 'n')).toMatchObject({ state: 'failed', action: 'upload' });
+  });
+
+  it('shows the sentence the server refused the run with, in the user\'s language (#1521)', async () => {
+    const sentence = 'Gemini 3.8 Flash TTS takes at most 8,000 characters in the text.';
+    vi.mocked(canvasApi.createTask).mockRejectedValueOnce(new ApiException({ status: 422, message: sentence, fromServer: true }));
+    press();
+    await flush();
+
+    expect(toast.error).toHaveBeenCalledWith(sentence);
+  });
+
+  it('keeps the general sentence for a 422 our server did not word', async () => {
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(canvasApi.createTask).mockRejectedValueOnce(new ApiException({ status: 422, message: 'Unprocessable Entity', fromServer: false }));
+    press();
+    await flush();
+
+    expect(toast.error).not.toHaveBeenCalledWith('Unprocessable Entity');
+    expect(toast.error).toHaveBeenCalledTimes(1);
   });
 });
