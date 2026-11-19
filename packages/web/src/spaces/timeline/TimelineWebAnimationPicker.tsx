@@ -8,12 +8,11 @@ import { Clapperboard, Code } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { Skeleton } from '@web/components/ui/skeleton';
 import { timelineApi } from '@web/data/api/timeline';
 import { useProjectSpaceList, type ProjectSpace } from '@web/data/yjs/project-meta';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
-import { ListLoadError, LoadMoreButton, listShows } from '@web/spaces/web-animation/list-states';
+import { ListLoadError, ListPending, LoadMoreButton, listShows } from '@web/spaces/web-animation/list-states';
 import { playable, type PlayableRow } from '@web/spaces/web-animation/motion-parts';
 import { webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
 
@@ -120,7 +119,7 @@ export function TimelineWebAnimationPicker({ projectId, making, onPick, onGoMake
       </DialogHeader>
       {/* The body grows with the rows and scrolls at the cap; grid tracks keep the cap definite for the scroller. */}
       <ScrollArea className='min-h-0' viewportClassName='p-4'>
-        {shows === 'pending' && <div className='flex flex-col gap-2'>{[0, 1, 2].map((index) => <Skeleton key={index} className='h-12 w-full' />)}</div>}
+        {shows === 'pending' && <ListPending />}
         {shows === 'failed' && <ListLoadError message={t('timeline.webAnimation.picker.error')} onRetry={retry} testId='timeline-web-animation-picker-retry' />}
         {shows === 'ready' && rows.length === 0 && <p className='py-6 text-sm text-muted-foreground'>{t('timeline.webAnimation.picker.empty')}</p>}
         <div className='flex flex-col gap-4'>

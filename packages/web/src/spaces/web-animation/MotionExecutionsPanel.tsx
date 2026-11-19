@@ -7,13 +7,12 @@ import type { WebAnimationRowView } from '@breatic/shared/space-content';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { Skeleton } from '@web/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@web/components/ui/tabs';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { useRunning } from '@web/stores/task-actions-in-flight';
 import { cancelIntent, endedSentenceKey, exportIntent } from '@web/spaces/web-animation/execution-text';
-import { ListLoadError, LoadMoreButton, listShows } from '@web/spaces/web-animation/list-states';
+import { ListLoadError, ListPending, LoadMoreButton, listShows } from '@web/spaces/web-animation/list-states';
 import type { MotionTab } from '@web/spaces/web-animation/motion-panels';
 import { MotionPanel, MotionRow, rowStep, rowSummary } from '@web/spaces/web-animation/motion-parts';
 import { rowsOf, type MotionLists } from '@web/spaces/web-animation/use-motion-lists';
@@ -186,7 +185,7 @@ interface MotionExecutionsPanelProps extends RowActions {
  * @returns The panel.
  * @throws {never} Never.
  */
-export function MotionExecutionsPanel({ lists, tab, selectedId, markedId, onTab, onPick, onClose, ...actions }: MotionExecutionsPanelProps): React.JSX.Element {
+export const MotionExecutionsPanel = React.memo(function MotionExecutionsPanel({ lists, tab, selectedId, markedId, onTab, onPick, onClose, ...actions }: MotionExecutionsPanelProps): React.JSX.Element {
   const t = useTranslation();
   const changeTab = React.useCallback((value: string): void => { if (isTab(value)) onTab(value); }, [onTab]);
   const current = lists[tab];
@@ -203,7 +202,7 @@ export function MotionExecutionsPanel({ lists, tab, selectedId, markedId, onTab,
       </TabsList>
     </Tabs>
     <ScrollArea className='min-h-0 flex-1'>
-      {shows === 'pending' ? <div className='flex flex-col gap-2 p-2'>{[0, 1, 2].map((index) => <Skeleton key={index} className='h-12 w-full' />)}</div>
+      {shows === 'pending' ? <ListPending className='p-2' />
         : shows === 'failed' ? <ListLoadError message={t('spaces.webAnimation.listError')} onRetry={retry} />
           : empty ? <p className='p-6 text-center text-xs text-muted-foreground'>{t(emptyKey)}</p>
             : <>
@@ -215,4 +214,4 @@ export function MotionExecutionsPanel({ lists, tab, selectedId, markedId, onTab,
             </>}
     </ScrollArea>
   </MotionPanel>;
-}
+});

@@ -14,21 +14,8 @@ import { cn } from '@web/lib/utils';
 import { bodyText } from '@web/spaces/document/use-comment-cards';
 import { annotationGroups, type ListedAnnotation } from '@web/spaces/web-animation/annotation-groups';
 import type { AnnotationFilter } from '@web/spaces/web-animation/use-motion-annotations';
-import { MotionPanel } from '@web/spaces/web-animation/motion-parts';
+import { MotionPanel, formatMotionTime } from '@web/spaces/web-animation/motion-parts';
 import { webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
-
-/**
- * A time in a result as the panel and the cards show it: minutes, seconds and tenths.
- * @param seconds - The time.
- * @returns The text.
- * @throws {never} Never.
- */
-export function formatAnnotationTime(seconds: number): string {
-  const tenths = Math.max(0, Math.round(seconds * 10));
-  const minutes = Math.floor(tenths / 600);
-  const rest = (tenths % 600) / 10;
-  return `${minutes}:${rest.toFixed(1).padStart(4, '0')}`;
-}
 
 /** One listed thread. */
 interface AnnotationItemProps {
@@ -62,7 +49,7 @@ const AnnotationItem = React.memo(function AnnotationItem({ item, author, active
   const secondary = active ? 'text-row-foreground-muted' : 'text-muted-foreground group-hover/row:text-row-foreground-muted';
   return <Button type='button' variant={null} size={null} data-testid={`motion-annotation-${item.id}`} data-thread-id={item.id} aria-current={active ? 'true' : undefined} onClick={open}
     className={cn('group/row flex w-full gap-2 px-3 py-2 text-left hover-enabled:bg-accent', active && 'bg-accent-strong hover-enabled:bg-accent-strong')}>
-    <span className={cn('mt-0.5 w-10 shrink-0 text-2xs tabular-nums', secondary)}>{formatAnnotationTime(item.anchor.timeSeconds)}</span>
+    <span className={cn('mt-0.5 w-10 shrink-0 text-2xs tabular-nums', secondary)}>{formatMotionTime(item.anchor.timeSeconds)}</span>
     <span className='flex min-w-0 flex-1 flex-col gap-0.5'>
       <span className={cn('line-clamp-2 text-xs', item.thread.resolved && cn('line-through', secondary))}>{first === undefined ? '' : bodyText(first.body)}</span>
       {details !== '' && <span className={cn('truncate text-2xs', secondary)}>{details}</span>}
@@ -103,7 +90,7 @@ interface MotionAnnotationsPanelProps {
  * @returns The panel.
  * @throws {never} Never.
  */
-export function MotionAnnotationsPanel({ threads, order, rowOf, activeThreadId, filter, onFilter, viewportRef, onOpen, onClose }: MotionAnnotationsPanelProps): React.JSX.Element {
+export const MotionAnnotationsPanel = React.memo(function MotionAnnotationsPanel({ threads, order, rowOf, activeThreadId, filter, onFilter, viewportRef, onOpen, onClose }: MotionAnnotationsPanelProps): React.JSX.Element {
   const t = useTranslation();
   const showOpen = React.useCallback((): void => onFilter('open'), [onFilter]);
   const showAll = React.useCallback((): void => onFilter('all'), [onFilter]);
@@ -130,4 +117,4 @@ export function MotionAnnotationsPanel({ threads, order, rowOf, activeThreadId, 
         })}
     </ScrollArea>
   </MotionPanel>;
-}
+});

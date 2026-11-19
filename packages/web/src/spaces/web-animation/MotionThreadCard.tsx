@@ -13,7 +13,7 @@ import { DocumentCommentCard } from '@web/spaces/document/DocumentCommentCard';
 import { asCommentBody } from '@web/spaces/document/document-comment-extension';
 import { SpaceFullError } from '@web/spaces/document/document-comment-thread-store';
 import { bodyText, type CommentCardView } from '@web/spaces/document/use-comment-cards';
-import { formatAnnotationTime } from '@web/spaces/web-animation/MotionAnnotationsPanel';
+import { formatMotionTime } from '@web/spaces/web-animation/motion-parts';
 
 /** The open thread's card. */
 interface MotionThreadCardProps {
@@ -52,7 +52,7 @@ export function MotionThreadCard({ thread, timeSeconds, store, myRole, viewerId,
   const card = React.useMemo((): CommentCardView => ({
     id: thread.id,
     settled: thread.resolved,
-    quote: formatAnnotationTime(timeSeconds),
+    quote: formatMotionTime(timeSeconds),
     media: null,
     entries: thread.comments.filter((comment) => comment.deletedAt === undefined).map((comment) => ({
       id: comment.id,

@@ -58,11 +58,16 @@ export function useMotionList(projectId: string, spaceId: string, scope: SpaceEx
   const queryKey = React.useMemo(() => motionListQueryKey(projectId, spaceId, scope, group), [projectId, spaceId, scope, group]);
   const queryFn = React.useCallback(({ pageParam, signal }: { pageParam: string | undefined; signal: AbortSignal }) =>
     timelineApi.listSpaceExecutions({ projectId, spaceId, scope, group, cursor: pageParam }, signal), [projectId, spaceId, scope, group]);
-  return useInfiniteQuery({
+  const query: ListQuery = useInfiniteQuery({
     queryKey, queryFn, enabled,
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
+  // React Query answers a new result object on every render; the same one is kept while nothing a list reads changed,
+  // so the panels the lists reach skip the renders the play clock causes.
+  const { data, status, fetchStatus, error, hasNextPage, isFetchingNextPage, isFetchNextPageError } = query;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the keys are every field the lists read; the methods are stable
+  return React.useMemo(() => query, [data, status, fetchStatus, error, hasNextPage, isFetchingNextPage, isFetchNextPageError]);
 }
 
 /**
@@ -107,5 +112,5 @@ export function useMotionLists(projectId: string, spaceId: string): MotionLists 
   const succeeded = React.useMemo(() => ({ own: ownSucceeded, legacy: legacySucceeded }), [ownSucceeded, legacySucceeded]);
   const running = React.useMemo(() => ({ own: ownRunning, legacy: legacyRunning }), [ownRunning, legacyRunning]);
   const failed = React.useMemo(() => ({ own: ownFailed, legacy: legacyFailed }), [ownFailed, legacyFailed]);
-  return { succeeded, running, failed, byId, totals };
+  return React.useMemo(() => ({ succeeded, running, failed, byId, totals }), [succeeded, running, failed, byId, totals]);
 }

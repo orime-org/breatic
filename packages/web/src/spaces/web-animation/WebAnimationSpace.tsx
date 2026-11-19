@@ -39,14 +39,13 @@ import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 import { useTimelineLimits } from '@web/spaces/timeline/use-timeline-limits';
 import { ANNOTATION_DRAFT_IDLE, transitionAnnotationDraft, type AnnotationDraftEvent, type FramePoint } from '@web/spaces/web-animation/annotation-draft';
 import { webAnimationAnnotationStore } from '@web/spaces/web-animation/annotation-thread-store';
-import { CANVAS_PLACEMENT_IDLE, transitionCanvasPlacement, type CanvasPlacementEvent } from '@web/spaces/web-animation/canvas-placement';
 import { transitionCreationDraft, type CreationDraftInput, type CreationDraftState } from '@web/spaces/web-animation/creation-draft';
 import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, exportIntent, executionStepKeys } from '@web/spaces/web-animation/execution-text';
-import { MOTION_PANELS_CLOSED, transitionMotionPanels, type MotionPanelsEvent, type MotionTab } from '@web/spaces/web-animation/motion-panels';
+import { MOTION_PANELS_CLOSED, transitionMotionPanels, type MotionTab } from '@web/spaces/web-animation/motion-panels';
 import { ListLoadError, listShows } from '@web/spaces/web-animation/list-states';
-import { BarButton, PreviewUnavailable, playable, rowSeconds } from '@web/spaces/web-animation/motion-parts';
+import { BarButton, PreviewUnavailable, formatMotionTime, playable, rowSeconds } from '@web/spaces/web-animation/motion-parts';
 import { requestTitle, webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
-import { MotionAnnotationsPanel, formatAnnotationTime } from '@web/spaces/web-animation/MotionAnnotationsPanel';
+import { MotionAnnotationsPanel } from '@web/spaces/web-animation/MotionAnnotationsPanel';
 import { MotionExecutionsPanel } from '@web/spaces/web-animation/MotionExecutionsPanel';
 import { MotionResultPlayer } from '@web/spaces/web-animation/MotionResultPlayer';
 import { MotionFrameCard } from '@web/spaces/web-animation/MotionFrameCard';
@@ -101,24 +100,16 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
   const userId = useCurrentUserStore((state) => state.user?.id ?? '');
   const asset = useTimelineAsset(projectId, row.resultAssetId ?? '').data;
   const controls = useSceneControls(projectId, userId);
-  const [placement, setPlacement] = React.useState(CANVAS_PLACEMENT_IDLE);
+  const [placing, setPlacing] = React.useState(false);
+  // Read by a second choice while one placement waits and by the warning on leaving.
+  const placingRef = React.useRef(false);
+  const settle = React.useCallback((value: boolean): void => {
+    placingRef.current = value;
+    setPlacing(value);
+  }, []);
   const [open, setOpen] = React.useState(false);
-  const latest = React.useRef(placement);
-  latest.current = placement;
-  const fire = React.useCallback((event: CanvasPlacementEvent): void => {
-    const { state, effects } = transitionCanvasPlacement(latest.current, event);
-    latest.current = state;
-    setPlacement(state);
-    for (const effect of effects) {
-      if (effect.type === 'toast_unreachable') toast.error(t('spaces.webAnimation.canvasUnreachable'));
-      if (effect.type === 'toast_placed') {
-        const name = canvases.find((canvas) => canvas.id === effect.canvasId)?.name ?? '';
-        toast.success(t('spaces.webAnimation.placed', { name }), { action: { label: t('spaces.webAnimation.viewPlaced'), onClick: () => useCanvasRevealStore.getState().reveal(effect.canvasId, effect.nodeId) } });
-      }
-    }
-  }, [canvases, t]);
   React.useEffect(() => () => {
-    if (latest.current.status !== 'idle') toast.warning(t('spaces.webAnimation.placing'));
+    if (placingRef.current) toast.warning(t('spaces.webAnimation.placing'));
   }, [t]);
   const { refetch: refetchControls } = controls;
   const choose = React.useCallback((canvas: ProjectSpace): void => {
@@ -130,8 +121,13 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
       void refetchControls();
       return;
     }
-    if (asset === undefined || latest.current.status !== 'idle') return;
-    fire({ type: 'choose', canvasId: canvas.id });
+    if (asset === undefined || placingRef.current) return;
+    settle(true);
+    /** The canvas could not be reached: the button stops waiting and says so. */
+    const unreachable = (): void => {
+      settle(false);
+      toast.error(t('spaces.webAnimation.canvasUnreachable'));
+    };
     void placeVideoOnCanvas({
       projectId, spaceId: canvas.id, userId, origin: canvasOrigin(userId, projectId, canvas.id), syncTimeoutMs: config.canvasSyncTimeoutMs,
       video: {
@@ -139,20 +135,25 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
         mediaWidth: asset.width ?? row.input.width, mediaHeight: asset.height ?? row.input.height, mimeType: asset.mimeType, size: asset.sizeBytes,
         sourceAnimation: { spaceId: row.spaceId, executionId: row.source.executionId, videoUrl: asset.fileUrl },
       },
-      onReceipt: () => fire({ type: 'receipt' }),
+      // The button waits from the choice until collab confirms the node.
+      onReceipt: () => settle(false),
     }).then((outcome) => {
-      if (outcome.status === 'unreachable') fire({ type: 'sync_timeout' });
-      else if (outcome.status === 'refused') { fire({ type: 'synced' }); fire({ type: 'size_refused' }); }
-      else { fire({ type: 'synced' }); fire({ type: 'written', nodeId: outcome.nodeId }); }
-    }, () => fire({ type: 'sync_timeout' }));
-  }, [asset, controls.data, refetchControls, fire, projectId, row, userId, t]);
+      if (outcome.status === 'unreachable') unreachable();
+      // The canvas's size gate has already said it is full.
+      else if (outcome.status === 'refused') settle(false);
+      else {
+        const { nodeId } = outcome;
+        toast.success(t('spaces.webAnimation.placed', { name: canvas.name }), { action: { label: t('spaces.webAnimation.viewPlaced'), onClick: () => useCanvasRevealStore.getState().reveal(canvas.id, nodeId) } });
+      }
+    }, unreachable);
+  }, [asset, controls.data, refetchControls, settle, projectId, row, userId, t]);
   if (canvases.length === 0) {
     return <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.noCanvas')} icon={<LayoutGrid className='size-4' />} disabled />;
   }
   return <Popover open={open} onOpenChange={setOpen}>
     <PopoverTrigger asChild>
       <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.placeOnCanvas')} icon={<LayoutGrid className='size-4' />}
-        loading={placement.status !== 'idle' || controls.isPending} disabled={asset === undefined} />
+        loading={placing || controls.isPending} disabled={asset === undefined} />
     </PopoverTrigger>
     <PopoverContent side='top' align='start' sideOffset={8} className='flex w-52 flex-col p-1'>
       <span className='px-2 py-1 text-xs text-muted-foreground'>{t('spaces.webAnimation.chooseCanvas')}</span>
@@ -247,7 +248,6 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
 
   // Panels and selection (design §13.2, §13.8).
   const [panels, dispatchPanels] = React.useReducer(transitionMotionPanels, MOTION_PANELS_CLOSED);
-  const panelsEvent = React.useCallback((event: MotionPanelsEvent): void => dispatchPanels(event), []);
   const [selection, setSelection] = React.useState<SelectionState<WebAnimationRowView>>(SELECTION_NONE);
   const selectionRef = React.useRef(selection);
   const requestSeq = React.useRef(0);
@@ -543,10 +543,10 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const order = React.useMemo(() => [...rowsOf(lists.succeeded.own), ...rowsOf(lists.succeeded.legacy)].map((item) => item.id), [lists.succeeded.own, lists.succeeded.legacy]);
   const activeDraft = activeThread === null ? '' : annotations.drafts.get(activeThread.thread.id) ?? '';
 
-  const toggleExecutions = React.useCallback((): void => panelsEvent({ type: 'toggle_executions' }), [panelsEvent]);
-  const toggleAnnotations = React.useCallback((): void => panelsEvent({ type: 'toggle_annotations' }), [panelsEvent]);
-  const closePanel = React.useCallback((): void => panelsEvent({ type: 'escape' }), [panelsEvent]);
-  const pickTab = React.useCallback((tab: MotionTab): void => panelsEvent({ type: 'pick_tab', tab }), [panelsEvent]);
+  const toggleExecutions = React.useCallback((): void => dispatchPanels({ type: 'toggle_executions' }), []);
+  const toggleAnnotations = React.useCallback((): void => dispatchPanels({ type: 'toggle_annotations' }), []);
+  const closePanel = React.useCallback((): void => dispatchPanels({ type: 'escape' }), []);
+  const pickTab = React.useCallback((tab: MotionTab): void => dispatchPanels({ type: 'pick_tab', tab }), []);
   const seekTo = React.useCallback((value: number[]): void => seekClock(value[0] ?? 0), [seekClock]);
   const seekValue = React.useMemo(() => [clock.time], [clock.time]);
   const panelOpen = panels.panel !== 'none';
@@ -591,7 +591,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
             style={{ left: `${draftPoint.x * 100}%`, top: `${draftPoint.y * 100}%` }} />}
           {annotation.status !== 'idle' && <MotionFrameCard testId='motion-annotation-draft' point={draftPoint} boundary={previewArea} container={spaceElement} onClose={cancelAnnotation}>
             <div ref={writeBox} className='p-3'>
-              <span className='mb-2 block text-2xs text-muted-foreground'>{t('spaces.webAnimation.annotateAt', { time: formatAnnotationTime(annotation.timeSeconds) })}</span>
+              <span className='mb-2 block text-2xs text-muted-foreground'>{t('spaces.webAnimation.annotateAt', { time: formatMotionTime(annotation.timeSeconds) })}</span>
               {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the box the user just asked for by pressing Add annotation; they expect to type immediately */}
               <DocumentCommentWriteBox name='motion-annotation' autoFocus value={annotation.status === 'picking' ? '' : annotation.text} placeholder={t('spaces.webAnimation.annotationPlaceholder')}
                 onChange={typeAnnotation} onSave={sendAnnotation} onCancel={cancelAnnotation} />
@@ -609,7 +609,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
       <BarButton testId='motion-play' filled label={t(clock.playing ? 'timeline.pause' : 'timeline.play')} icon={clock.playing ? <Pause className='size-4' /> : <Play className='size-4' />}
         onClick={clock.toggle} disabled={row === undefined} />
       <span className='mx-2 shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground'>
-        {row === undefined ? '—' : `${formatAnnotationTime(clock.time)} / ${formatAnnotationTime(durationSeconds)}`}
+        {row === undefined ? '—' : `${formatMotionTime(clock.time)} / ${formatMotionTime(durationSeconds)}`}
       </span>
       <div className='relative mr-2 flex h-8 min-w-24 flex-1 items-center'>
         <Slider aria-label={t('timeline.seek')} value={seekValue} onValueChange={seekTo} min={0} max={Math.max(0.01, durationSeconds)} step={0.01} disabled={row === undefined} className='w-full' />

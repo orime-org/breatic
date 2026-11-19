@@ -17,7 +17,6 @@ import { cn } from '@web/lib/utils';
 import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
 import { TimelineTransformFields } from '@web/spaces/timeline/TimelineTransformFields';
 
-/** The selected clip's editable properties. */
 /** A web-animation copy's origin as its properties show it (#1490 design §8.1). */
 export interface TimelineWebCopyDetails {
   /** The whole prompt or modification instruction, once resolved. */
@@ -32,6 +31,7 @@ export interface TimelineWebCopyDetails {
   opening: boolean;
 }
 
+/** The selected clip's editable properties. */
 interface TimelineClipPropertiesProps {
   spaceId: string;
   document: TimelineDocumentV1;

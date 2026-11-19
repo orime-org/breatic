@@ -20,6 +20,8 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
 import type * as PopoverModule from '@web/components/ui/popover';
+import type * as TabsModule from '@web/components/ui/tabs';
+import type * as FilterButtonModule from '@web/components/FilterButton';
 import { getSceneControls } from '@web/data/api/scene';
 import type * as SceneApiModule from '@web/data/api/scene';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
@@ -57,6 +59,20 @@ vi.mock('@web/components/ui/popover', async (importOriginal) => {
   return { ...actual, PopoverContent: Recorded };
 });
 vi.mock('@web/lib/toast', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() } }));
+/** How often each panel's own parts rendered: the execution list's tab strip and the annotation panel's filters. */
+const panelRenders = { tabsList: 0, filterButton: 0 };
+vi.mock('@web/components/ui/tabs', async (importOriginal) => {
+  const actual = await importOriginal<typeof TabsModule>();
+  const Counted = React.forwardRef<HTMLDivElement, React.ComponentProps<typeof actual.TabsList>>(function Counted(props, ref) {
+    panelRenders.tabsList += 1;
+    return <actual.TabsList ref={ref} {...props} />;
+  });
+  return { ...actual, TabsList: Counted };
+});
+vi.mock('@web/components/FilterButton', async (importOriginal) => {
+  const actual = await importOriginal<typeof FilterButtonModule>();
+  return { ...actual, FilterButton: (props: React.ComponentProps<typeof actual.FilterButton>) => { panelRenders.filterButton += 1; return <actual.FilterButton {...props} />; } };
+});
 
 const PROJECT = '60000000-0000-4000-8000-000000000001';
 const SPACE = '70000000-0000-4000-8000-000000000001';
@@ -276,6 +292,27 @@ describe('the preview', () => {
 });
 
 describe('the two panels', () => {
+  it.each([
+    ['motion-open-executions', 'tabsList'],
+    ['motion-open-annotations', 'filterButton'],
+  ] as const)('keeps the panel %s opens still while the result plays', async (button, part) => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId(button));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    const before = panelRenders[part];
+    const clockText = (): string => screen.getByTestId('motion-bottom-bar').textContent ?? '';
+    const start = clockText();
+    await user.click(screen.getByTestId('motion-play'));
+    await waitFor(() => expect(clockText()).not.toBe(start));
+    await waitFor(() => expect(clockText()).not.toBe(start));
+    const after = clockText();
+    await waitFor(() => expect(clockText()).not.toBe(after));
+    expect(panelRenders[part]).toBe(before);
+  });
+
   it('opens the execution list docked inside the Space, and closes it on a second press', async () => {
     const region = show();
     const user = userEvent.setup();
@@ -1391,6 +1428,51 @@ describe('putting an export on a Canvas', () => {
     expect(toast.error).toHaveBeenCalled();
     await waitFor(() => expect(vi.mocked(getSceneControls).mock.calls.length).toBeGreaterThan(reads));
     expect(placeVideoOnCanvas).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Choose the Canvas once the placement settings are read.
+   * @param user - The user.
+   */
+  async function chooseCanvas(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await waitFor(() => expect(screen.getByTestId('motion-action-place-on-canvas')).not.toHaveAttribute('aria-busy'));
+    await user.click(screen.getByTestId('motion-action-place-on-canvas'));
+    await user.click(await screen.findByTestId(`motion-canvas-${CANVAS}`));
+  }
+
+  it('waits from the choice until collab confirms the node', async () => {
+    vi.mocked(getSceneControls).mockReset().mockResolvedValue(CONTROLS as never);
+    let receipt: () => void = () => undefined;
+    vi.mocked(placeVideoOnCanvas).mockReset().mockImplementation(async (input) => {
+      receipt = input.onReceipt as () => void;
+      return { status: 'placed', nodeId: 'node-1' };
+    });
+    const user = await onExportWithCanvas();
+    await chooseCanvas(user);
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(screen.getByTestId('motion-action-place-on-canvas')).toHaveAttribute('aria-busy', 'true');
+    act(() => receipt());
+    await waitFor(() => expect(screen.getByTestId('motion-action-place-on-canvas')).not.toHaveAttribute('aria-busy'));
+  });
+
+  it('says the Canvas could not be reached, and stops waiting', async () => {
+    vi.mocked(getSceneControls).mockReset().mockResolvedValue(CONTROLS as never);
+    vi.mocked(placeVideoOnCanvas).mockReset().mockResolvedValue({ status: 'unreachable' });
+    const user = await onExportWithCanvas();
+    await chooseCanvas(user);
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(t('spaces.webAnimation.canvasUnreachable')));
+    await waitFor(() => expect(screen.getByTestId('motion-action-place-on-canvas')).not.toHaveAttribute('aria-busy'));
+  });
+
+  it('leaves a full Canvas to the size gate\'s own warning, and stops waiting', async () => {
+    vi.mocked(getSceneControls).mockReset().mockResolvedValue(CONTROLS as never);
+    vi.mocked(placeVideoOnCanvas).mockReset().mockResolvedValue({ status: 'refused' });
+    const user = await onExportWithCanvas();
+    await chooseCanvas(user);
+    await waitFor(() => expect(placeVideoOnCanvas).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getByTestId('motion-action-place-on-canvas')).not.toHaveAttribute('aria-busy'));
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('offers View on the placed toast in Motion\'s own words', async () => {

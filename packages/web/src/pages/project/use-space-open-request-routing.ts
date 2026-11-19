@@ -6,7 +6,7 @@ import * as React from 'react';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { useSpaceOpenRequestStore, type SpaceOpenRequestEffect, type SpaceOpenRequestEvent } from '@web/stores/space-open-request';
+import { useSpaceOpenRequestStore, type SpaceOpenRequestEvent } from '@web/stores/space-open-request';
 
 /**
  * The newest Space of a type, by when it was made.
@@ -42,7 +42,7 @@ export function useSpaceOpenRequestRouting(
   const t = useTranslation();
   const state = useSpaceOpenRequestStore((store) => store.state);
   const run = React.useCallback(function run(event: SpaceOpenRequestEvent): void {
-    for (const effect of useSpaceOpenRequestStore.getState().dispatch(event) as SpaceOpenRequestEffect[]) {
+    for (const effect of useSpaceOpenRequestStore.getState().dispatch(event)) {
       if (effect.type === 'open_tab') open(effect.spaceId);
       if (effect.type === 'toast_source_space_gone') toast.warning(t('spaces.webAnimation.sourceSpaceGone'));
       // A refused create has said why through the page's own create failure.

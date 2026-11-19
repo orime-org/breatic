@@ -3,7 +3,7 @@
 
 /**
  * The pieces the Motion Space's bar and panels are built from: an icon button named by its tooltip, the panel that
- * docks inside the Space on the right, and how one row is titled and summed up.
+ * docks inside the Space on the right, how a time in a result reads, and how one row is titled and summed up.
  */
 
 import * as React from 'react';
@@ -18,6 +18,19 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { phaseKey } from '@web/spaces/web-animation/execution-text';
 import { webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
+
+/**
+ * A time in a result as the play bar, the annotation panel and the cards show it: minutes, seconds and tenths.
+ * @param seconds - The time.
+ * @returns The text.
+ * @throws {never} Never.
+ */
+export function formatMotionTime(seconds: number): string {
+  const tenths = Math.max(0, Math.round(seconds * 10));
+  const minutes = Math.floor(tenths / 600);
+  const rest = (tenths % 600) / 10;
+  return `${minutes}:${rest.toFixed(1).padStart(4, '0')}`;
+}
 
 /** One icon button of the bar. */
 interface BarButtonProps {

@@ -3,12 +3,13 @@
 
 /**
  * The states every web-animation list shares (#1490 design §7.3, §8.2): the Motion preview, its execution list and
- * the Timeline's "Add web animation" picker read one rule and draw one failure and one Load more.
+ * the Timeline's "Add web animation" picker read one rule and draw one wait, one failure and one Load more.
  */
 
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
+import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 
@@ -32,6 +33,17 @@ export type ListShows = 'pending' | 'failed' | 'ready';
 export function listShows(...queries: readonly ListStateQuery[]): ListShows {
   if (queries.some((query) => query.isPending)) return 'pending';
   return queries.some((query) => query.isLoadingError) ? 'failed' : 'ready';
+}
+
+/**
+ * A list's wait before its first answer: three row-sized skeletons.
+ * @param props - Where it sits.
+ * @param props.className - Its padding in the list.
+ * @returns The wait.
+ * @throws {never} Never.
+ */
+export function ListPending({ className }: { className?: string }): React.JSX.Element {
+  return <div className={cn('flex flex-col gap-2', className)}>{[0, 1, 2].map((index) => <Skeleton key={index} className='h-12 w-full' />)}</div>;
 }
 
 /** A list's whole-list failure. */
