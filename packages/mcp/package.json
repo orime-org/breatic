@@ -33,6 +33,7 @@
     "testcontainers": "catalog:",
     "tsup": "catalog:",
     "tsx": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "yjs": "catalog:"
   }
 }

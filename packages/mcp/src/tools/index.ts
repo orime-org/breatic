@@ -10,12 +10,13 @@
 
 import { CANVAS_TOOLS } from "@mcp/tools/canvas-tools.js";
 import { DOCUMENT_TOOLS } from "@mcp/tools/document-tools.js";
+import { GENERATION_TOOLS } from "@mcp/tools/generation-tools.js";
 import type { ToolDef } from "@mcp/tools/kit.js";
 import { READ_TOOLS } from "@mcp/tools/read-tools.js";
 import { RESULT_TOOLS } from "@mcp/tools/result-tools.js";
 
 /** Every tool, in the order a client lists them. */
-export const ALL_TOOLS: readonly ToolDef[] = [...READ_TOOLS, ...CANVAS_TOOLS, ...DOCUMENT_TOOLS, ...RESULT_TOOLS];
+export const ALL_TOOLS: readonly ToolDef[] = [...READ_TOOLS, ...CANVAS_TOOLS, ...GENERATION_TOOLS, ...DOCUMENT_TOOLS, ...RESULT_TOOLS];
 
 /** The rules that span tools. */
 export const INSTRUCTIONS = [
