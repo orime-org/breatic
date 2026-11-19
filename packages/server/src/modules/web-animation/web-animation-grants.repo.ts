@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The reads that list web-animation executions through a Project's grants (#1490 design §4.4).
+ * Data access for `timeline_execution_grants` (inner#1711 design §3.4, #1490 design §4.4): which Projects may see,
+ * resolve, preview, modify and export what an execution made. Only the server reads and writes it: acceptance grants
+ * the accepting Project, duplicating a Project copies its source's grants, and every read answers through
+ * {@link liveGrantOf}, so the lists and the single-row, web-source and preview reads agree on what is granted.
  *
  * A Motion Space's own list walks `timeline_executions_space_order_idx` and checks each row against the grant; the
  * Timeline-made group and the Project's results walk the grant table through its two ordered indexes, which carry each
@@ -11,7 +14,7 @@
  */
 
 import { and, desc, eq, inArray, isNull, notInArray, sql, type SQL } from "drizzle-orm";
-import { db, timelineExecutionGrants as g, timelineExecutions as t, timelineExecutionRepo } from "@breatic/core";
+import { db, timelineExecutionGrants as g, timelineExecutions as t, timelineExecutionRepo, type DbTx } from "@breatic/core";
 import type { TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
 import { WEB_ANIMATION_FAILED_STATUSES, WEB_ANIMATION_OPEN_STATUSES } from "@breatic/shared/space-content";
 
@@ -109,13 +112,69 @@ function readCursor(cursor: string): { createdAt: string; id: string } {
 }
 
 /**
+ * A grant row that is a Project's live grant: the one condition every read of the table uses.
+ * @param projectId - The Project.
+ * @returns The condition on the grant table.
+ * @throws {never} Never.
+ */
+function liveGrantOf(projectId: string): SQL {
+  return sql`(${g.projectId} = ${projectId} AND ${g.deletedAt} IS NULL)`;
+}
+
+/**
  * The live grant of an execution to a Project, as an `EXISTS` condition on the executions table.
  * @param projectId - The Project.
  * @returns The condition.
  * @throws {never} Never.
  */
 function grantedTo(projectId: string): SQL {
-  return sql`EXISTS (SELECT 1 FROM ${g} WHERE ${g.executionId} = ${t.id} AND ${g.projectId} = ${projectId} AND ${g.deletedAt} IS NULL)`;
+  return sql`EXISTS (SELECT 1 FROM ${g} WHERE ${g.executionId} = ${t.id} AND ${liveGrantOf(projectId)})`;
+}
+
+/**
+ * Grant an execution to a Project.
+ * @param input - The grant.
+ * @param input.executionId - The execution.
+ * @param input.projectId - The Project.
+ * @param tx - The transaction to write in.
+ * @returns Nothing once the row is written.
+ * @throws {Error} When the write fails, including a live grant for the pair already existing.
+ */
+export async function insertGrant(input: { executionId: string; projectId: string }, tx?: DbTx): Promise<void> {
+  await (tx ?? db).insert(g).values(input);
+}
+
+/**
+ * Give a copy every live grant its source Project holds.
+ * @param sourceProjectId - The Project copied from.
+ * @param copyProjectId - The new copy.
+ * @param tx - The copy's own transaction: a grant that fails leaves no copy behind.
+ * @returns Nothing once the rows are written.
+ * @throws {Error} When the write fails.
+ */
+export async function copyGrants(sourceProjectId: string, copyProjectId: string, tx: DbTx): Promise<void> {
+  await tx.execute(sql`
+    INSERT INTO ${g} (${sql.identifier(g.executionId.name)}, ${sql.identifier(g.projectId.name)})
+    SELECT ${g.executionId}, ${copyProjectId}::uuid FROM ${g}
+    WHERE ${liveGrantOf(sourceProjectId)}
+    ON CONFLICT DO NOTHING
+  `);
+}
+
+/**
+ * Which of these executions a Project holds a live grant for.
+ * @param projectId - The Project.
+ * @param executionIds - The executions asked about.
+ * @returns The granted ones.
+ * @throws {Error} When the read fails.
+ */
+export async function grantedExecutionIds(projectId: string, executionIds: readonly string[]): Promise<Set<string>> {
+  if (executionIds.length === 0) return new Set();
+  const rows = await db
+    .select({ executionId: g.executionId })
+    .from(g)
+    .where(and(liveGrantOf(projectId), inArray(g.executionId, [...executionIds])));
+  return new Set(rows.map((row) => row.executionId));
 }
 
 /**
@@ -132,7 +191,7 @@ function grantedTo(projectId: string): SQL {
 function scopeWhere(params: Pick<ListParams, "projectId" | "spaceId" | "scope">): SQL | undefined {
   if (params.scope === "space") return and(eq(t.spaceId, params.spaceId ?? ""), isNull(t.deletedAt), grantedTo(params.projectId));
   return and(
-    eq(g.projectId, params.projectId), isNull(g.deletedAt), isNull(t.deletedAt),
+    liveGrantOf(params.projectId), isNull(t.deletedAt),
     params.scope === "timeline" ? eq(g.executionOrigin, "timeline") : and(inArray(t.kind, RESULT_KINDS), eq(t.status, "succeeded")),
   );
 }

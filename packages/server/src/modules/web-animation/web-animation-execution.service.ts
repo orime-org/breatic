@@ -59,9 +59,8 @@ import {
 import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
 import * as projectService from "@server/modules/project/project.service.js";
-import * as grantRepo from "@server/modules/web-animation/execution-grant.repo.js";
+import * as grantRepo from "@server/modules/web-animation/web-animation-grants.repo.js";
 import { timelineQueue } from "@server/modules/web-animation/timeline-queue.js";
-import * as listRepo from "@server/modules/web-animation/web-animation-list.repo.js";
 
 /** What accepting answered: the row, and whether this request created it. */
 export interface AcceptedExecution {
@@ -73,7 +72,7 @@ export interface AcceptedExecution {
 export interface ExecutionPage {
   rows: WebAnimationRowView[];
   nextCursor: string | null;
-  totals: listRepo.GroupTotals;
+  totals: grantRepo.GroupTotals;
 }
 
 /** The insert lost to a concurrent accept; the transaction is rolled back and the winner read. */
@@ -249,7 +248,7 @@ export async function accept(userId: string, body: WebAnimationExecutionRequest 
       return answer(replayed, false);
     }
     if (sourceVersionId === null) return undefined;
-    const [live] = await listRepo.findLiveExports({ projectId, spaceId, sourceVersionIds: [sourceVersionId] });
+    const [live] = await grantRepo.findLiveExports({ projectId, spaceId, sourceVersionIds: [sourceVersionId] });
     return live === undefined ? undefined : answer(live, false);
   };
   const found = await existing();
@@ -376,7 +375,7 @@ async function toRowViews(rows: readonly TimelineExecution[], scope: { projectId
   const exports = new Map<string, { executionId: string; status: TimelineExecution["status"] }>();
   if (scope.spaceId !== null) {
     const results = rows.filter((row) => row.kind !== "web_animation_export" && row.resultSourceVersionId !== null).map((row) => row.resultSourceVersionId!);
-    for (const live of await listRepo.findLiveExports({ projectId: scope.projectId, spaceId: scope.spaceId, sourceVersionIds: results })) {
+    for (const live of await grantRepo.findLiveExports({ projectId: scope.projectId, spaceId: scope.spaceId, sourceVersionIds: results })) {
       const source = String((live.input as { sourceVersionId?: unknown }).sourceVersionId);
       if (!exports.has(source)) exports.set(source, { executionId: live.id, status: live.status });
     }
@@ -439,17 +438,17 @@ function pageSize(limit: number | undefined): number {
  * @returns The page.
  * @throws {ValidationError} When the cursor is not one the list wrote.
  */
-async function readPage(params: listRepo.ListParams): Promise<ExecutionPage> {
-  let page: listRepo.ListPage;
+async function readPage(params: grantRepo.ListParams): Promise<ExecutionPage> {
+  let page: grantRepo.ListPage;
   try {
-    page = await listRepo.listPage(params);
+    page = await grantRepo.listPage(params);
   } catch (err) {
-    if (err instanceof listRepo.BadCursorError) throw new ValidationError(t("server.error.validation"));
+    if (err instanceof grantRepo.BadCursorError) throw new ValidationError(t("server.error.validation"));
     throw err;
   }
   const [rows, totals] = await Promise.all([
     toRowViews(page.rows, { projectId: params.projectId, spaceId: params.scope === "results" ? null : params.spaceId }),
-    listRepo.countGroups(params),
+    grantRepo.countGroups(params),
   ]);
   return { rows, nextCursor: page.nextCursor, totals };
 }
@@ -470,7 +469,7 @@ async function readPage(params: listRepo.ListParams): Promise<ExecutionPage> {
  */
 export async function listSpace(
   userId: string,
-  query: { projectId: string; spaceId: string; scope: "space" | "timeline"; group: listRepo.ListGroup; cursor?: string; limit?: number },
+  query: { projectId: string; spaceId: string; scope: "space" | "timeline"; group: grantRepo.ListGroup; cursor?: string; limit?: number },
 ): Promise<ExecutionPage> {
   await projectService.assertAccess(query.projectId, userId, "viewer");
   return readPage({ ...query, cursor: query.cursor ?? null, limit: pageSize(query.limit) });
