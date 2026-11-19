@@ -33,6 +33,7 @@ export * from "@shared/canvas/model/modality-label.js";
 export * from "@shared/canvas/model/mode-option.js";
 export * from "@shared/canvas/model/model-params.js";
 export * from "@shared/canvas/model/node-data-snapshot.js";
+export * from "@shared/canvas/model/annotation-anchor.js";
 export * from "@shared/canvas/model/node-factory.js";
 export * from "@shared/canvas/model/node-gate.js";
 export * from "@shared/canvas/model/node-history.js";
