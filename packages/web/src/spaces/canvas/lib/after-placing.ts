@@ -11,7 +11,7 @@
 
 import type { CanvasProposal, GenerationNodeType } from '@breatic/shared';
 
-import type { PlacedProposal } from '@web/spaces/canvas/use-node-creation';
+import type { PlacedProposal } from '@breatic/shared/canvas-model';
 
 /** What the canvas should put the user's attention on. */
 export interface Focus {

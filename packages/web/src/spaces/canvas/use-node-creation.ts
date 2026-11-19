@@ -6,38 +6,19 @@ import * as Y from 'yjs';
 
 import {
   CANVAS_NODES_KEY,
-  currentModelName,
-  newId,
-  PANEL_EDITOR_PARAM,
-  promptPlainText,
   proposalMarkSegments,
   type CanvasProposal,
   type ModelCatalog,
 } from '@breatic/shared';
 
-
 import {
-  addEdge,
   addNode,
   createCanvasRollback,
-  createGroup,
-  expandGroup,
-  getLyricsFragment,
-  getPromptFragment,
-  getTextBody,
   CANVAS_ROLLED_BACK,
   readCanvasGraph,
   readNodePlacements,
-  restoreNodeMedia,
   runCanvasUndoBatch,
-  setGroupBackground,
-  setNodeMode,
-  setNodeModel,
-  setNodeName,
-  setNodeParent,
-  setNodeTemplateNode,
   writeSnapshotNodes,
-  type CanvasNodeView,
   type SnapshotNode,
 } from '@web/data/yjs/canvas-space';
 import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
@@ -46,23 +27,17 @@ import {
   writeSpaceDoc,
   type SpaceRefusal,
 } from '@web/data/yjs/space-write';
-import { setStoryboardShots } from '@web/data/yjs/node-storyboard';
-import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
+
 import { catalogEntryOf } from '@breatic/shared/mini-tools';
-import { writeProposalFills } from '@web/spaces/canvas/generate/proposal-fills';
-import { withStandInOn } from '@breatic/shared/canvas-model';
+
 import {
-  proposalMentionOf,
-  writeDialogueLines,
-  writeProposalPrompt,
-  type MentionOf,
-  type ProposalMention,
+  placeProposalInDoc,
+  standsEmpty,
+  withCurrentProposalModels,
+  type ExistingNode,
+  type PlacedProposal,
 } from '@breatic/shared/canvas-model';
 import {
-  ROW_GAP_PX,
-  planFlowLayout,
-  shiftRightPastOccupied,
-  withTaskCounts,
   type Spot,
 } from '@breatic/shared/canvas-model';
 import {
@@ -76,15 +51,11 @@ import { collectAddresses, fillMissingMedia, historyItems, replaceAddresses } fr
 import {
   centerToTopLeft,
   createEmptyNode,
-  createGroupNode,
   type CreatableNodeType,
 } from '@breatic/shared/canvas-model';
-import { groupBackgroundFor } from '@breatic/shared/canvas-model';
+
 import {
   EMPTY_NODE_SIZE,
-  groupRectForMembers,
-  planGroupGrowth,
-  toRelativePosition,
   type Rect,
 } from '@breatic/shared/canvas-model';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -191,132 +162,6 @@ export interface NodeCreation {
   ) => PlacedProposal | SpaceRefusal;
 }
 
-/** A proposal index that stands for a node already on the canvas. */
-export interface ExistingNode {
-  nodeId: string;
-  /** How a ref to it is written: as its reference row names it. */
-  mention: ProposalMention;
-  /** Its params by model, written whole when the proposal sets its mode and model. */
-  paramsByModel?: Record<string, Record<string, unknown>>;
-  /** True for a node of the template instance being applied, reused from an earlier apply. */
-  instance?: boolean;
-}
-
-/** Where a proposal's new nodes go, and the group they join or make. */
-interface Arrangement {
-  /** Each index's top-left and size; meaningful for new nodes only. */
-  spots: Rect[];
-  /** Where a proposal placed on its own landed: its group's rect, or the one node's. */
-  bounds?: Rect;
-  /** Where a new group goes, for two or more new nodes that join no group already there. */
-  aimedGroup: Rect | null;
-  /** The unlocked group already on the canvas the new nodes join. */
-  joinGroup?: { id: string; rect: Rect };
-}
-
-/**
- * Where a proposal's new nodes go. On its own, the flow is aimed at `start`
- * and moved right past `occupied`. Around nodes already there, it is lined up
- * on the anchor's real position, or on a reused instance node's when the new
- * nodes join that node's group, even where that covers other nodes: they work
- * on the same thing.
- * @param projectId - Owning project id.
- * @param spaceId - Canvas space id.
- * @param proposal - The proposal.
- * @param start - Where a proposal placed on its own is aimed.
- * @param occupied - What a proposal placed on its own must not cover.
- * @param existing - The indices already on the canvas.
- * @param order - Each index's rank within its column, as {@link planFlowLayout} takes it.
- * @returns The arrangement.
- * @throws {never} Never.
- */
-function arrangeProposal(
-  projectId: string,
-  spaceId: string,
-  proposal: CanvasProposal,
-  start: Spot,
-  occupied: readonly Rect[],
-  existing: ReadonlyMap<number, ExistingNode>,
-  order?: readonly number[],
-): Arrangement {
-  if (existing.size === 0) {
-    const aimed = planFlowLayout(proposal, start, order);
-    // Two or more nodes land as one group, so the group's rect is what has
-    // to be clear; a single node needs only its own.
-    const aimedGroup = aimed.length > 1 ? groupRectForMembers(aimed) : null;
-    const footprint = aimedGroup ?? aimed[0];
-    // The new nodes will hang their own task counts off their corners, so
-    // the spot keeps that much clear too: the group's frame, and each node
-    // with its counts, as nodes already there are counted.
-    const searched = groupRectForMembers([...(aimedGroup ? [aimedGroup] : []), ...aimed.map(withTaskCounts)], 0);
-    const dx = searched ? shiftRightPastOccupied(searched, occupied, ROW_GAP_PX) : 0;
-    return {
-      spots: aimed.map((spot) => ({ ...spot, x: spot.x + dx })),
-      ...(footprint ? { bounds: { ...footprint, x: footprint.x + dx } } : {}),
-      aimedGroup: aimedGroup && { ...aimedGroup, x: aimedGroup.x + dx },
-    };
-  }
-  const graph = readCanvasGraph(projectId, spaceId);
-  const views = new Map(graph.nodes.map((node) => [node.id, node]));
-  // The edges already on the canvas between the nodes the proposal reuses
-  // decide their columns too, so a new node feeding a reused one lands left
-  // of it. Laid out only: the canvas has them already.
-  const indexOf = new Map([...existing].map(([index, node]) => [node.nodeId, index]));
-  const wired = graph.edges.flatMap((edge) => {
-    const fromIndex = indexOf.get(edge.source);
-    const toIndex = indexOf.get(edge.target);
-    return fromIndex === undefined || toIndex === undefined ? [] : [{ fromIndex, toIndex }];
-  });
-  const aimed = planFlowLayout({ ...proposal, edges: [...proposal.edges, ...wired] }, { x: 0, y: 0 }, order);
-  const anchorIndex = Math.min(...existing.keys());
-  const anchorId = existing.get(anchorIndex)?.nodeId;
-  const placements = readNodePlacements(projectId, spaceId);
-  /**
-   * The unlocked group a node sits in.
-   * @param nodeId - The node.
-   * @returns The group's id and rect, or undefined when it sits in none or in a locked one.
-   */
-  const unlockedGroupOf = (nodeId: string | undefined): { id: string; rect: Rect } | undefined => {
-    const parentId = nodeId === undefined ? undefined : views.get(nodeId)?.parentId;
-    const group = parentId === undefined ? undefined : placements.find((p) => p.id === parentId);
-    const groupView = group === undefined ? undefined : views.get(group.id);
-    if (!group || groupView?.type !== 'group' || groupView.data.locked === true) return undefined;
-    return { id: group.id, rect: { x: group.x, y: group.y, width: group.width ?? 0, height: group.height ?? 0 } };
-  };
-  // The anchor's own group first. An anchor in no unlocked group lends the new
-  // nodes the group this template's reused nodes sit in, which a first apply
-  // made, so the instance stays one piece the user drags as one. A
-  // reference the user wired in keeps its own group to itself.
-  const joinGroup = unlockedGroupOf(anchorId)
-    ?? [...existing.values()].filter((node) => node.instance === true).map((node) => unlockedGroupOf(node.nodeId)).find((group) => group !== undefined);
-  // When a reused node of this instance sits in the group the new nodes join,
-  // the flow lines up on it, so a node put back lands in its place in the
-  // instance wherever the user has since moved the anchor.
-  const alignIndex = (joinGroup
-    && [...existing].find(([index, node]) => index !== anchorIndex && node.instance === true && unlockedGroupOf(node.nodeId)?.id === joinGroup.id)?.[0])
-    ?? anchorIndex;
-  const alignAt = placements.find((p) => p.id === existing.get(alignIndex)?.nodeId) ?? start;
-  const cell = aimed[alignIndex] ?? { x: 0, y: 0 };
-  const lined = aimed.map((spot) => ({ ...spot, x: spot.x + alignAt.x - cell.x, y: spot.y + alignAt.y - cell.y }));
-  const added = lined.filter((_, i) => !existing.has(i));
-  const aimedGroup = joinGroup === undefined && added.length > 1 ? groupRectForMembers(added) : null;
-  return {
-    spots: lined,
-    aimedGroup,
-    ...(joinGroup ? { joinGroup } : {}),
-  };
-}
-
-/**
- * Whether a node holds nothing yet and nothing is fetching or generating into it.
- * @param view - The node.
- * @returns Whether it stands empty.
- */
-export function standsEmpty(view: CanvasNodeView | undefined): boolean {
-  if (!view || view.type === 'group' || view.type === 'annotation') return false;
-  return (view.data as { content?: unknown }).content === undefined && (view.data.taskCounts?.running ?? 0) === 0;
-}
-
 /**
  * Hands every template resource node this press placed, or found still empty
  * with nothing fetching into it, to the ingest Worker -- after the batch,
@@ -348,28 +193,6 @@ function fetchTemplateResources(
         refused(ingestRefusalToastKey(err instanceof ApiException ? err.status : undefined));
       });
   });
-}
-
-/** What a placed proposal left on the canvas. */
-export interface PlacedProposal {
-  /** The new node ids, in the proposal's own order. */
-  nodeIds: string[];
-  /** The group this press made for the new nodes, when it made one; unset when they joined a group already there. */
-  groupId?: string;
-  /** Where a proposal placed on its own landed: its group's rect, or the one node's; unset for a template built on nodes already there. */
-  bounds?: Rect;
-  /** Each node's rect as laid out, in the proposal's own order; a node already on the canvas is not moved, and its entry is where the layout would put it. */
-  rects: Rect[];
-}
-
-/**
- * A proposal with every node's model under its current name.
- * @param proposal - The proposal as the Agent sent it.
- * @returns The proposal, the same object when no node names a retired model.
- */
-function withCurrentProposalModels(proposal: CanvasProposal): CanvasProposal {
-  if (!proposal.nodes.some((node) => node.model !== undefined && currentModelName(node.model) !== node.model)) return proposal;
-  return { ...proposal, nodes: proposal.nodes.map((node) => (node.model === undefined ? node : { ...node, model: currentModelName(node.model) })) };
 }
 
 /**
@@ -510,14 +333,9 @@ export function useNodeCreation(
       order?: readonly number[],
       notify = true,
     ): PlacedProposal | SpaceRefusal => {
-      // A proposal kept in the chat history may name a model since retired; it
-      // lands on the replacement, whose entry decides the dialogue side (#1521).
       const proposal = withCurrentProposalModels(asked);
-      const fresh = proposal.nodes.map((_, i) => !existing.has(i));
-      const arrangement = arrangeProposal(projectId, spaceId, proposal, start, occupied, existing, order);
-      const { spots, bounds, aimedGroup, joinGroup } = arrangement;
-      const nodeIds: string[] = proposal.nodes.map((_, i) => existing.get(i)?.nodeId ?? '');
-      let groupId: string | undefined;
+      const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+      let placed: ReturnType<typeof placeProposalInDoc> | undefined;
       // Takes back everything this press writes when a write fails part way.
       // The failed transaction is marked so the canvas undo manager skips it,
       // and the rollback's own undo is an origin that manager does not track,
@@ -529,151 +347,15 @@ export function useNodeCreation(
       try {
         written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add', notify }, (tr) => {
           try {
-            proposal.nodes.forEach((node, i) => {
-              const settled = existing.get(i);
-              if (settled === undefined) {
-                const at = spots[i] ?? { x: start.x, y: start.y };
-                // `createNodeAt` centres what it is given on the standard
-                // footprint, so the arrangement's top-left is handed over as
-                // that centre -- otherwise every node lands half a footprint up
-                // and to the left of where the group was measured around it.
-                const id = createNodeAt(node.type, {
-                  x: at.x + EMPTY_NODE_SIZE.width / 2,
-                  y: at.y + EMPTY_NODE_SIZE.height / 2,
-                });
-                nodeIds[i] = id;
-                setNodeName(projectId, spaceId, id, node.name);
-                // The user's material, with the numbers its registration
-                // holds, the same write a restored result goes through
-                // (inner#1315). The tool answers with both or neither.
-                if (node.material !== undefined && node.materialMedia !== undefined) {
-                  restoreNodeMedia(projectId, spaceId, id, { content: node.material, media: node.materialMedia });
-                }
-              }
-              const id = nodeIds[i];
-              // Mode and model go together in one write, so a collaborator never
-              // sees the proposed mode paired with whatever model the node
-              // defaulted to. A source node carries neither. A node already on
-              // the canvas keeps its records for other models.
-              if (node.mode && node.model && (settled === undefined || node.role === 'generate')) {
-                const params = settled?.paramsByModel ?? {
-                  [node.model]: withStandInOn(catalog && catalogEntryOf(catalog, node.model), node.params ?? {}),
-                };
-                setNodeMode(projectId, spaceId, id, node.mode, node.model, params);
-                // And record it as a choice: written only as a mode switch it
-                // is forgotten the moment they look at another mode and come back.
-                setNodeModel(projectId, spaceId, id, node.mode, node.model, params);
-              }
+            placed = placeProposalInDoc(doc, {
+              proposal,
+              start,
+              occupied,
+              existing,
+              ...(order === undefined ? {} : { order }),
+              userId,
+              entryOf: (model) => (catalog ? catalogEntryOf(catalog, model) : undefined),
             });
-            // Two or more new nodes are one piece of work, and a group is how
-            // the canvas says so. Built from the arrangement's own rects: the
-            // nodes were written a moment ago and the render buffer has not
-            // seen them yet. Only the new nodes become members: an anchor or
-            // a reused node already on the canvas stays where it is.
-            if (aimedGroup) {
-              const id = newId();
-              groupId = id;
-              createGroup(
-                projectId,
-                spaceId,
-                createGroupNode(id, { x: aimedGroup.x, y: aimedGroup.y }, aimedGroup.width, aimedGroup.height, userId),
-                nodeIds.flatMap((member, i) =>
-                  fresh[i] ? [{ id: member, position: toRelativePosition(spots[i] ?? aimedGroup, aimedGroup) }] : [],
-                ),
-              );
-              if (proposal.groupName) setNodeName(projectId, spaceId, id, proposal.groupName);
-              setGroupBackground(projectId, spaceId, id, groupBackgroundFor(Math.random()));
-            }
-            // Stamped in the proposal's order, strictly increasing, so the
-            // reference rail -- which lists a node's edges by when they were
-            // drawn -- reads them as the proposal lists them.
-            let stamp = Date.now() - 1;
-            proposal.edges.forEach((edge) => {
-              const source = nodeIds[edge.fromIndex];
-              const target = nodeIds[edge.toIndex];
-              // Indices that point nowhere are refused before a card is ever
-              // drawn (`checkProposal`); skipping rather than throwing keeps the
-              // rest of the flow from being rolled back by one bad wire.
-              if (source && target) {
-                stamp += 1;
-                addEdge(projectId, spaceId, { id: `${source}->${target}`, source, target, createdAt: stamp });
-              }
-            });
-            proposal.nodes.forEach((node, i) => {
-              const tag = node.templateNode;
-              const id = nodeIds[i];
-              if (tag === undefined || !fresh[i] || !id) return;
-              const anchor = tag.anchor === undefined ? undefined : nodeIds[tag.anchor];
-              setNodeTemplateNode(projectId, spaceId, id, {
-                template: tag.template,
-                key: tag.key,
-                ...(anchor === undefined || anchor === '' ? {} : { anchor }),
-                ...(tag.input ? { input: true as const } : {}),
-              });
-            });
-            // Words last, once every node and edge is in place: a ref lands as
-            // a mention of the node placed for it (inner#1315), and of a node
-            // already there as its reference row names it.
-            const placedMention = proposalMentionOf(proposal, nodeIds);
-            /**
-             * What a ref at an index mentions.
-             * @param index - The proposal index.
-             * @returns The mention, or undefined when nothing is there.
-             */
-            const mentionOf: MentionOf = (index) => existing.get(index)?.mention ?? placedMention(index);
-            proposal.nodes.forEach((node, i) => {
-              const id = nodeIds[i];
-              if (!id) return;
-              // A node already there that does not generate keeps what it holds.
-              if (!fresh[i] && node.role !== 'generate') return;
-              // A reused generation takes its fills too: a template input already
-              // holding material lands in its slot this way (inner#1825 §4.1).
-              writeProposalFills(projectId, spaceId, id, node, proposal.nodes);
-              if (node.role === 'written') {
-                // A written node's words are its body, not a prompt: nothing
-                // generates there, and the body is what the user reads and edits.
-                const body = getTextBody(projectId, spaceId, id);
-                if (body && node.prompt) writePlainTextIntoBody(body, promptPlainText(node.prompt));
-                return;
-              }
-              if (!node.mode) return;
-              // Words sent into a song model's lyrics box are @'d there, the way
-              // the user would @ them, and nowhere else.
-              const lyrics = proposal.edges.filter((edge) => edge.toIndex === i && edge.into === PANEL_EDITOR_PARAM);
-              const lyricsBox = lyrics.length > 0 ? getLyricsFragment(projectId, spaceId, id, node.mode) : null;
-              // One line each, the way a user @'ing them by hand would: two
-              // mentions on one line send their words run together.
-              const lyricsLines = lyrics.flatMap((edge, k) =>
-                k === 0 ? [{ ref: edge.fromIndex }] : [{ text: '\n' }, { ref: edge.fromIndex }],
-              );
-              if (lyricsBox) writeProposalPrompt(lyricsBox, lyricsLines, mentionOf);
-              // A model drawing no prompt box shows nothing written there; the
-              // card lists its marks instead.
-              if (node.takesPrompt === false) return;
-              // The main prompt goes into the proposal's own mode (#2218), then
-              // each shot.
-              const fragment = getPromptFragment(projectId, spaceId, id, node.mode);
-              if (fragment && node.prompt) writeProposalPrompt(fragment, node.prompt, mentionOf);
-              if (fragment && node.lines) writeDialogueLines(fragment, node.lines, mentionOf);
-              if (node.shots) {
-                const shotFragments = setStoryboardShots(projectId, spaceId, id, node.shots.map((shot) => shot.duration));
-                node.shots.forEach((shot, k) => {
-                  const target = shotFragments[k];
-                  if (target) writeProposalPrompt(target, shot.prompt, mentionOf);
-                });
-              }
-            });
-            // The new nodes join that group last, and its frame grows
-            // to keep its padding around them.
-            if (joinGroup) {
-              const added = proposal.nodes.flatMap((_, i) => (fresh[i] && spots[i] ? [{ id: nodeIds[i], rect: spots[i] }] : []));
-              for (const { id, rect } of added) {
-                setNodeParent(projectId, spaceId, id, joinGroup.id, { x: rect.x - joinGroup.rect.x, y: rect.y - joinGroup.rect.y });
-              }
-              for (const growth of planGroupGrowth([{ groupId: joinGroup.id, rect: joinGroup.rect, memberRects: added.map((one) => one.rect) }])) {
-                expandGroup(projectId, spaceId, growth.groupId, growth.position, growth.width, growth.height);
-              }
-            }
           } catch (error) {
             tr.meta.set(CANVAS_ROLLED_BACK, true);
             throw error;
@@ -691,6 +373,9 @@ export function useNodeCreation(
         rollback.destroy();
       }
       if (!written.ok) return written;
+      // Set inside the batch, which ran: an add refused for room returned above.
+      if (placed === undefined) throw new Error('the proposal batch wrote nothing');
+      const { nodeIds, fresh } = placed;
       fetchTemplateResources(projectId, spaceId, proposal, nodeIds, fresh, (key) => toast.error(t(key)));
       // Words in braces are the user's to write. Saying so is all: what
       // they leave as it is goes out as it is (inner#977). A proposal's
@@ -701,14 +386,10 @@ export function useNodeCreation(
         (node) => node.takesPrompt !== false && proposalMarkSegments(node).some((segment) => segment.slot?.kind === 'tweak'),
       );
       if (toFill) toast.info(t('canvas.generatePanel.editProposalMarks'));
-      return {
-        nodeIds,
-        ...(groupId === undefined ? {} : { groupId }),
-        ...(bounds === undefined ? {} : { bounds }),
-        rects: proposal.nodes.map((_, i) => spots[i] ?? { x: start.x, y: start.y, ...EMPTY_NODE_SIZE }),
-      };
+      const { fresh: _fresh, ...left } = placed;
+      return left;
     },
-    [projectId, spaceId, createNodeAt, userId, t, catalog],
+    [projectId, spaceId, userId, t, catalog],
   );
   return {
     createNodeAt,

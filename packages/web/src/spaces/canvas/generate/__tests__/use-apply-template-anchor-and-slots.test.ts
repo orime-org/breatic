@@ -36,7 +36,8 @@ vi.mock('@web/lib/toast', () => ({
 import { addEdge, addNode, readCanvasGraph } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
-import { useNodeCreation, type ExistingNode, type PlacedProposal } from '@web/spaces/canvas/use-node-creation';
+import type { ExistingNode, PlacedProposal } from '@breatic/shared/canvas-model';
+import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 /** A sound-effects model that reads a clip from the canvas. */

@@ -74,3 +74,5 @@ export * from "@shared/canvas/model/template-writes.js";
 export * from "@shared/canvas/model/video-mode-options.js";
 export * from "@shared/canvas/model/video-slots.js";
 export * from "@shared/canvas/model/video-task-payload.js";
+export * from '@shared/canvas/model/proposal-place.js';
+export * from '@shared/canvas/model/template-apply.js';

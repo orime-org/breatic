@@ -3,71 +3,16 @@
 
 import * as React from 'react';
 
-import {
-  TEMPLATE_GUIDE_KEY,
-  expandTemplate,
-  matchTemplateInstance,
-  proposalMarkSegments,
-  t,
-  templateSkeleton,
-  type CanvasNodeFields,
-  type CanvasProposal,
-  type GenerationTemplate,
-  type ModelEntry,
-  type ProposalNode,
-  type TemplateGraphNode,
-  type TemplateNodeKey,
-} from '@breatic/shared';
+import { t, type CanvasProposal, type GenerationTemplate, type ModelEntry } from '@breatic/shared';
 
-import { readCanvasGraph, type CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { asContentView } from '@breatic/shared/canvas-model';
+import { readCanvasGraph } from '@web/data/yjs/canvas-space';
 import { toast } from '@web/lib/toast';
-import { evaluateNodeGate } from '@breatic/shared/canvas-model';
+import { NODE_GATE_TOAST_KEY, planTemplateApply, type ExistingNode, type PlacedProposal } from '@breatic/shared/canvas-model';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
-import { deriveReferences } from '@breatic/shared/canvas-model';
-import type { ProposalMention } from '@breatic/shared/canvas-model';
-import { slotForParam } from '@breatic/shared/canvas-model';
-import { readSlotPick } from '@breatic/shared/canvas-model';
-import { templateParams, templateServed } from '@breatic/shared/canvas-model';
 import type { SpaceRefusal } from '@web/data/yjs/space-write';
-import { standsEmpty, type ExistingNode, type PlacedProposal } from '@web/spaces/canvas/use-node-creation';
 
 /** Places a template's proposal around nodes already on the canvas: `CanvasSpace`'s callback. */
 export type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]) => PlacedProposal | SpaceRefusal;
-
-/**
- * Which canvas node each generate node holds in a template input's slot, the
- * slot read under the mode of the template node the input feeds: the node
- * whose content is the slot's file, one tagged for that input of this
- * template first (design 8.6), so a take filled with a clip another take was
- * placed with finds that clip on a re-apply.
- * @param template - The template applied.
- * @param nodes - Every node on the canvas.
- * @returns Per generate node, slot param to the node holding its file.
- */
-function slotFills(template: GenerationTemplate, nodes: readonly CanvasNodeView[]): Map<string, Map<string, string>> {
-  const fills = new Map<string, Map<string, string>>();
-  for (const node of nodes) {
-    const data = node.data as unknown as Record<string, unknown>;
-    for (const input of template.inputs) {
-      // The slot as the template node it feeds names it, under that node's
-      // mode: a param name means another slot in another mode.
-      const fed = template.nodes.find((one) => one.key === (input.feeds?.[0] ?? template.anchor));
-      if (fed?.role !== 'generate' || fed.type !== node.type) continue;
-      const spec = input.into === undefined ? undefined : slotForParam(node.type, fed.mode, input.into);
-      const url = spec === undefined || spec.multiple ? undefined : readSlotPick(spec, data[spec.field])?.url;
-      if (url === undefined || input.into === undefined) continue;
-      const holders = nodes.filter((other) => other.id !== node.id && other.type === input.type && (other.data as { content?: unknown }).content === url);
-      const tagged = holders.find((other) => {
-        const tag = templateTagOf(other);
-        return tag?.input === true && tag.template === template.id && tag.key === input.key;
-      });
-      const holder = tagged ?? holders[0];
-      if (holder !== undefined) fills.set(node.id, (fills.get(node.id) ?? new Map<string, string>()).set(input.into, holder.id));
-    }
-  }
-  return fills;
-}
 
 /**
  * Applies a picked template to a generate panel's node (inner#977,
@@ -97,133 +42,15 @@ export function useApplyTemplate(
 ): (template: GenerationTemplate) => void {
   return React.useCallback(
     (template: GenerationTemplate) => {
-      const byName = new Map(models.map((m) => [m.name, m]));
-      if (!templateServed(template, new Set(byName.keys()))) {
+      const plan = planTemplateApply(template, readCanvasGraph(projectId, spaceId), nodeId, models);
+      if ('reason' in plan) {
         // The catalog refetched and dropped a model since the menu drew it.
-        toast.error(t('canvas.generatePanel.modelUnavailable'));
+        if (plan.reason === 'model_unavailable') toast.error(t('canvas.generatePanel.modelUnavailable'));
+        else if (plan.reason === 'group_locked') toast.warning(t('canvas.template.groupLocked'));
+        else if (plan.reason === 'locked') warnNodeGate(t(NODE_GATE_TOAST_KEY.locked));
         return;
       }
-      const graph = readCanvasGraph(projectId, spaceId);
-      const views = new Map(graph.nodes.map((n) => [n.id, n]));
-      const own = views.get(nodeId);
-      if (!own || !writable(own)) return;
-
-      const rails = new Map(graph.nodes.map((n) => [n.id, deriveReferences(n.id, graph.nodes, graph.edges, new Map())]));
-      const nodes = new Map<string, TemplateGraphNode>(
-        graph.nodes.map((n): [string, TemplateGraphNode] => {
-          const tag = templateTagOf(n);
-          // The anchor id a tag records finds a standalone node or an input
-          // the agent placed with fills again (inner#1825 §4.1, §4.2).
-          const anchor = tag?.anchor === undefined ? {} : { anchor: tag.anchor };
-          const marks = tag === undefined || tag.key === TEMPLATE_GUIDE_KEY
-            ? {}
-            : tag.input
-              ? { inputTag: { template: tag.template, input: tag.key, ...anchor } }
-              : { tag: { template: tag.template, key: tag.key, ...anchor } };
-          // Every node keeps the template's settings here: applying writes
-          // each one it reuses back to them (inner#1345 6.5 step 3).
-          return [n.id, { id: n.id, type: n.type as TemplateGraphNode['type'], ...marks, keeps: true }];
-        }),
-      );
-      const incoming = new Map([...rails].map(([id, rows]) => [id, rows.map((row) => ({ from: row.sourceNodeId }))]));
-      const skeleton = templateSkeleton(template);
-      const fills = slotFills(template, graph.nodes);
-      const match = matchTemplateInstance(skeleton, { nodes, incoming, fills }, nodeId);
-
-      // The nodes the proposal starts from, at indices from 0: the panel's
-      // node, then each template node the board already has, then each node
-      // already given for an input.
-      const held: string[] = [nodeId];
-      /**
-       * The index a node already on the canvas takes, given it the first time it is asked for.
-       * @param id - The node.
-       * @returns Its index.
-       */
-      const indexOf = (id: string): number => {
-        const at = held.indexOf(id);
-        if (at >= 0) return at;
-        held.push(id);
-        return held.length - 1;
-      };
-      const reuse = new Map<TemplateNodeKey, number>();
-      for (const [key, found] of match.keys) {
-        const id = found.kind === 'one' ? found.node : found.kind === 'many' ? found.nodes[0] : undefined;
-        if (id === undefined) continue;
-        const view = views.get(id);
-        if (view && !writable(view)) return;
-        reuse.set(key, indexOf(id));
-      }
-      const inputs = new Map(
-        [...match.inputs].map(([key, fed]) => [key, new Map([...fed].map(([at, id]) => [at, indexOf(id)]))]),
-      );
-      const wired = graph.edges.flatMap((edge) => {
-        const fromIndex = held.indexOf(edge.source);
-        const toIndex = held.indexOf(edge.target);
-        return fromIndex >= 0 && toIndex >= 0 ? [{ fromIndex, toIndex }] : [];
-      });
-      const guided = graph.nodes.some((n) => {
-        const tag = n.type === 'text' ? n.data.templateNode : undefined;
-        return tag?.template === template.id && tag.key === TEMPLATE_GUIDE_KEY && tag.anchor === nodeId;
-      });
-      // A node given for an input that holds nothing yet still gets the note
-      // saying what to put there, as a node placed new does.
-      const emptyNodes = new Set(held.flatMap((id, index) => (index > 0 && standsEmpty(views.get(id)) ? [index] : [])));
-      const expansion = expandTemplate(template, { anchorAt: 0, base: held.length, inputs, wired, reuse, guide: !guided, emptyNodes });
-
-      if (expansion.appended.length > 0 && inLockedGroup(own, views)) {
-        toast.warning(t('canvas.template.groupLocked'));
-        return;
-      }
-
-      // The template's own nodes found on the canvas, and the input nodes this
-      // instance placed, so the new ones can join their group.
-      const ownInputs = [...match.inputs.values()].flatMap((fed) => [...fed.values()]).filter((id) => {
-        const tag = templateTagOf(views.get(id));
-        return tag?.input === true && tag.template === template.id && tag.anchor === nodeId;
-      });
-      const instance = new Set([...reuse.values(), ...ownInputs.map((id) => held.indexOf(id))]);
-      const existing = new Map<number, ExistingNode>();
-      const proposalNodes: ProposalNode[] = held.map((id, index) => {
-        const view = views.get(id) as CanvasNodeView;
-        const rewritten = expansion.rewritten.get(index);
-        const fromTemplate = template.nodes.find((node) => node.role === 'generate' && reuse.get(node.key) === index)
-          ?? (index === 0 ? template.nodes.find((node) => node.key === template.anchor) : undefined);
-        const picked = fromTemplate?.role === 'generate' ? byName.get(fromTemplate.model) : undefined;
-        const paramsByModel =
-          fromTemplate?.role === 'generate' && picked ? templateParams(fromTemplate, asContentView(view.data), picked) : undefined;
-        existing.set(index, {
-          nodeId: id,
-          mention: mentionOf(id, view, rails),
-          ...(paramsByModel === undefined ? {} : { paramsByModel }),
-          ...(instance.has(index) ? { instance: true } : {}),
-        });
-        // A node holding material carries it, so a fill naming it writes it
-        // into its slot as a placed proposal's material does (inner#1825 §4.1).
-        return rewritten ?? { role: 'source', type: view.type as ProposalNode['type'], name: nameOf(view), ...materialOf(view) };
-      });
-      const proposal: CanvasProposal = {
-        nodes: [...proposalNodes, ...expansion.appended],
-        edges: expansion.edges,
-        rationale: '',
-        // The group two or more new nodes may form is named after the template.
-        groupName: t(`canvas.template.${template.id}.name`),
-      };
-      // Each column stacks in the template's own order, the anchor and its
-      // nodes first, then its inputs, the guide last, so a node put back takes
-      // the cell the first apply gave it.
-      const nodeRank = new Map([template.anchor, ...template.nodes.map((node) => node.key).filter((key) => key !== template.anchor)].map((key, rank) => [key, rank]));
-      const inputRank = new Map(template.inputs.map((input, rank) => [input.key, nodeRank.size + rank]));
-      const last = nodeRank.size + inputRank.size;
-      const heldRank = new Map<number, number>([[0, 0]]);
-      for (const [key, index] of reuse) heldRank.set(index, nodeRank.get(key) ?? last);
-      for (const [key, fed] of inputs) for (const index of fed.values()) heldRank.set(index, inputRank.get(key) ?? last);
-      const order = proposal.nodes.map((node, index) => {
-        const held = heldRank.get(index);
-        if (held !== undefined) return held;
-        const tag = node.templateNode;
-        if (tag === undefined || tag.key === TEMPLATE_GUIDE_KEY) return last + index;
-        return (tag.input ? inputRank.get(tag.key) : nodeRank.get(tag.key)) ?? last + index;
-      });
+      const { proposal, existing, order } = plan;
       let placed: PlacedProposal | SpaceRefusal;
       try {
         placed = placeTemplate(proposal, existing, order);
@@ -235,104 +62,8 @@ export function useApplyTemplate(
       if ('ok' in placed) return;
       // An empty node to fill or words in braces to write are left for the
       // user; nothing stops them generating as it is.
-      const toFill =
-        expansion.appended.some((node) => node.role === 'source' && node.resource === undefined) ||
-        proposal.nodes.some((node) => proposalMarkSegments(node).some((segment) => segment.slot?.kind === 'tweak'));
-      if (toFill) toast.info(t('canvas.generatePanel.editProposalMarks'));
+      if (plan.toFill) toast.info(t('canvas.generatePanel.editProposalMarks'));
     },
     [projectId, spaceId, nodeId, models, placeTemplate],
   );
-}
-
-/**
- * Whether a node may be written: a locked one shows the lock's warning.
- * @param view - The node.
- * @returns True when it may be written.
- */
-function writable(view: CanvasNodeView): boolean {
-  const block = evaluateNodeGate({ locked: view.data.locked === true });
-  if (block === null) return true;
-  warnNodeGate(t(block.toastKey));
-  return false;
-}
-
-/**
- * The generation template tag a node carries.
- * @param view - The node.
- * @returns Its tag, or undefined for a group, an annotation or an untagged node.
- */
-function templateTagOf(view: CanvasNodeView | undefined): NonNullable<CanvasNodeFields['data']['templateNode']> | undefined {
-  return view === undefined || view.type === 'group' || view.type === 'annotation' ? undefined : view.data.templateNode;
-}
-
-/**
- * The material a node already on the canvas holds, as a proposal carries it.
- * @param view - The node.
- * @returns Its address and media numbers, or nothing when it holds none.
- */
-function materialOf(view: CanvasNodeView): Pick<ProposalNode, 'material' | 'materialMedia'> {
-  const data = view.data as {
-    content?: unknown;
-    coverUrl?: string;
-    mediaWidth?: number;
-    mediaHeight?: number;
-    duration?: number;
-    mimeType?: string;
-    size?: number;
-  };
-  if (typeof data.content !== 'string' || data.content.length === 0) return {};
-  return {
-    material: data.content,
-    materialMedia: {
-      coverUrl: data.coverUrl ?? null,
-      width: data.mediaWidth ?? null,
-      height: data.mediaHeight ?? null,
-      duration: data.duration ?? null,
-      mimeType: data.mimeType ?? null,
-      size: data.size ?? null,
-    },
-  };
-}
-
-/**
- * Whether a node sits in a locked group, which takes no new members.
- * @param view - The node.
- * @param views - Every node by id.
- * @returns Whether it does.
- */
-function inLockedGroup(view: CanvasNodeView, views: ReadonlyMap<string, CanvasNodeView>): boolean {
-  const group = view.parentId === undefined ? undefined : views.get(view.parentId);
-  return group?.type === 'group' && group.data.locked === true;
-}
-
-/**
- * A node's name as the canvas shows it.
- * @param view - The node.
- * @returns Its name.
- */
-function nameOf(view: CanvasNodeView): string {
-  return (view.data as { name?: string }).name ?? '';
-}
-
-/**
- * How a ref to a node already on the canvas is written: as the reference row
- * that shows it names and pictures it.
- * @param id - The node.
- * @param view - Its view.
- * @param rails - Every node's reference rows.
- * @returns The mention.
- */
-function mentionOf(id: string, view: CanvasNodeView, rails: ReadonlyMap<string, ReturnType<typeof deriveReferences>>): ProposalMention {
-  for (const rows of rails.values()) {
-    const row = rows.find((one) => one.sourceNodeId === id);
-    if (row) {
-      return {
-        sourceNodeId: id,
-        label: row.sourceNodeName,
-        kind: row.sourceNodeType,
-        ...(row.thumbnail === undefined ? {} : { thumbnail: row.thumbnail }),
-      };
-    }
-  }
-  return { sourceNodeId: id, label: nameOf(view), kind: view.type };
 }

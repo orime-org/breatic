@@ -21,7 +21,8 @@ import { writeProposalPrompt, type ProposalMention } from '@breatic/shared/canva
 import { wireParams } from '@breatic/shared/canvas-model';
 import { ApiException } from '@web/data/api/types';
 import { COUNTS_COLUMN_FLOW_DEPTH, COUNTS_COLUMN_FLOW_REACH } from '@breatic/shared/canvas-model';
-import { useNodeCreation, type ExistingNode, type NodeCreation, type PlacedProposal } from '@web/spaces/canvas/use-node-creation';
+import type { ExistingNode, PlacedProposal } from '@breatic/shared/canvas-model';
+import { useNodeCreation, type NodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { CLIPBOARD_VERSION, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 import { toast } from '@web/lib/toast';
 import { canvasApi } from '@web/data/api/canvas';
@@ -53,6 +54,25 @@ vi.mock('@web/lib/toast', () => ({
  */
 function payloadOf(nodes: ClipboardNode[]): ClipboardPayload {
   return { version: CLIPBOARD_VERSION, picked: nodes.map((n) => n.id), nodes, edges: [] };
+}
+
+
+/**
+ * Make one Yjs map write throw, the first one `when` picks, so a placement
+ * fails part way at that write.
+ * @param when - Picks the write by its key and the map it goes into.
+ * @returns The spy, to restore.
+ */
+function failingSet(when: (key: string, map: Y.Map<unknown>) => boolean): { mockRestore: () => void } {
+  const realSet = Y.Map.prototype.set;
+  let thrown = false;
+  return vi.spyOn(Y.Map.prototype, 'set').mockImplementation(function (this: Y.Map<unknown>, key: string, value: unknown) {
+    if (!thrown && when(key, this)) {
+      thrown = true;
+      throw new Error('write failed');
+    }
+    return realSet.call(this, key, value);
+  });
 }
 
 describe('useNodeCreation', () => {
@@ -1319,12 +1339,12 @@ describe('useNodeCreation', () => {
     });
 
     it('takes back a group written before the failure, too', () => {
-      vi.spyOn(canvasSpace, 'setGroupBackground').mockImplementationOnce(() => {
-        throw new Error('no background');
-      });
+      // The group's background is written after the group itself.
+      const set = failingSet((key) => key === 'backgroundColor');
       const { result } = renderHook(() => useNodeCreation('p-grp', 's-grp'));
 
       expect(() => placeOk(result.current, PAIR, { x: 0, y: 0 }, [])).toThrow();
+      set.mockRestore();
 
       expect(canvasSpace.readNodePlacements('p-grp', 's-grp')).toHaveLength(0);
     });
@@ -2656,9 +2676,8 @@ describe('useNodeCreation', () => {
         ]);
         // Growing the group is the last write of the batch, after the prompt
         // and the lyrics of the anchor have been rewritten.
-        const grow = vi.spyOn(canvasSpace, 'expandGroup').mockImplementationOnce(() => {
-          throw new Error('no room');
-        });
+        // The joined group grows last, after every other write.
+        const grow = failingSet((key, map) => key === 'position' && map.get('type') === 'group');
         const { result } = renderHook(() => useNodeCreation('p-rb', 's-rb'));
 
         expect(() =>
@@ -2674,7 +2693,7 @@ describe('useNodeCreation', () => {
             [],
             existing,
           ),
-        ).toThrow('no room');
+        ).toThrow('write failed');
         grow.mockRestore();
 
         const graphAfter = canvasSpace.readCanvasGraph('p-rb', 's-rb');

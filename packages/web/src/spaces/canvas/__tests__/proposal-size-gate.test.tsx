@@ -16,7 +16,7 @@ import * as Y from 'yjs';
 import type * as React from 'react';
 import { CANVAS_NODES_KEY, type CanvasProposal } from '@breatic/shared';
 
-import type { ExistingNode } from '@web/spaces/canvas/use-node-creation';
+import type { ExistingNode } from '@breatic/shared/canvas-model';
 
 vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({
@@ -274,15 +274,19 @@ describe('a write that throws part way still rolls back', () => {
     vi.mocked(toast.warning).mockClear();
     const undo = canvasSpace.getCanvasUndoManager(doc, NAME);
     const stack = undo.undoStack.length;
-    const original = canvasSpace.setNodeMode;
+    // The second node's mode write fails, after the first node is written.
+    const realSet = Y.Map.prototype.set;
     let calls = 0;
-    vi.spyOn(canvasSpace, 'setNodeMode').mockImplementation((...args: Parameters<typeof original>) => {
-      calls += 1;
-      if (calls === 2) throw new Error('write failed');
-      original(...args);
+    const set = vi.spyOn(Y.Map.prototype, 'set').mockImplementation(function (this: Y.Map<unknown>, key: string, value: unknown) {
+      if (key === 'mode') {
+        calls += 1;
+        if (calls === 2) throw new Error('write failed');
+      }
+      return realSet.call(this, key, value);
     });
     act(() => useCanvasStore.getState().requestNodeCreate({ proposal: proposalOf() }));
     await waitFor(() => expect(useCanvasStore.getState().pendingNodeCreate).toBeNull());
+    set.mockRestore();
     expect(calls).toBe(2);
     expect(useCanvasStore.getState().proposalOutcome).toBe('failed');
     // A rollback is an undo, which leaves tombstones, so the encoded state

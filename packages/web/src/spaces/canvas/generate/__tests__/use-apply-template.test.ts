@@ -36,7 +36,7 @@ import { _resetForTests } from '@web/data/yjs/manager';
 import { toast } from '@web/lib/toast';
 import { createGroupNode } from '@breatic/shared/canvas-model';
 import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
-import type { ExistingNode, PlacedProposal } from '@web/spaces/canvas/use-node-creation';
+import type { ExistingNode, PlacedProposal } from '@breatic/shared/canvas-model';
 
 const ULTRA = {
   name: 'nano-banana-pro-edit-ultra',

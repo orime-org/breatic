@@ -341,7 +341,8 @@ import {
   type CreatableNodeType,
 } from '@breatic/shared/canvas-model';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
-import { useNodeCreation, type ExistingNode, type PlacedProposal } from '@web/spaces/canvas/use-node-creation';
+import type { ExistingNode, PlacedProposal } from '@breatic/shared/canvas-model';
+import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
 import { isProposalIntent, useCanvasStore } from '@web/stores';
 import { canvasGraphs } from '@web/stores/canvas-graph';
