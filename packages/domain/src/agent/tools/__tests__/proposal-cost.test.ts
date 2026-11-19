@@ -25,7 +25,7 @@ import { formatCredits, setLocale, type ProposalAnswer, type ProposalNode } from
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 
-import { answerFor, checkedAnswerFor, makeProposeCanvasAction, renderProposalForModel, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
+import { answerFor, checkedAnswerFor, makeProposeCanvasAction, renderProposalForModel, sentParams, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
 import type { KeyPurpose } from "../../../provider/account-keys.service.js";
 
@@ -152,7 +152,7 @@ describe("a generation the Studio's payer runs on their own key (inner#1953)", (
     describes.mockImplementation((model, params) => model === "nano-banana-2" && params.resolution === "0.5k");
     const twoRuns = { ...TAKES, nodes: [...TAKES.nodes, { ...TAKES.nodes[0]!, name: "Ink wash, larger", params: { resolution: "1k" } }] };
     const onOurLlm = await checkedAnswerFor(inputSchema.parse(twoRuns), undefined, undefined, keysFor);
-    expect(onOurLlm.placed && onOurLlm.describedOnCredits).toEqual(["Ink wash"]);
+    expect(onOurLlm.placed && onOurLlm.describedOnCredits).toEqual([0]);
 
     const onPayerLlm = await checkedAnswerFor(inputSchema.parse(TAKES), undefined, undefined, async (purpose) =>
       purpose.kind === "llm" ? { keyId: "or-row", route: { mode: "default" } } : keysFor(purpose));
@@ -160,7 +160,7 @@ describe("a generation the Studio's payer runs on their own key (inner#1953)", (
   });
 
   it("says such a run takes credits for its description, and still leaves it out of the total", async () => {
-    const said = await renderProposalForModel({ ...placed(), onPayerKey: ["nano-banana-2"], describedOnCredits: ["Ink wash"] } as ProposalAnswer);
+    const said = await renderProposalForModel({ ...placed(), onPayerKey: ["nano-banana-2"], describedOnCredits: [0] } as ProposalAnswer);
     const ink = said.split("\n").find((line) => line.includes('"Ink wash"')) ?? "";
     expect(ink).toContain("payer's own key");
     expect(ink).toContain("describing its inputs takes credits");
@@ -398,3 +398,14 @@ describe("the cost read back when sources are wired into a slot the price reads 
     expect(line).toContain(expected);
   });
 });
+
+describe("the params a proposed run is judged on (inner#1953)", () => {
+  it("carries what an edge wires into the reference pool, as the run will send it", () => {
+    const clip = { role: "generate", type: "video", name: "Clip", mode: "i2v", model: "kling-video-o3-4k-image-to-video", params: { duration: 5 } } as unknown as ProposalNode;
+    const photo = { role: "reference", type: "image", name: "Photo" } as unknown as ProposalNode;
+    const proposal = { nodes: [photo, clip], edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }], rationale: "" } as never;
+
+    expect(sentParams(proposal, clip, 1, { duration: 5 })).toMatchObject({ duration: 5, elements: ["wired 1"] });
+  });
+});
+

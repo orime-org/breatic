@@ -352,18 +352,18 @@ export async function checkedAnswerFor(
   const judged = judgeSent(sent, materials, templates);
   const onPayerKey = new Set<string>();
   // A run on the payer's key still pays credits for describing its inputs while the language model runs on ours.
-  const describedOnCredits = new Set<string>();
+  const describedOnCredits = new Set<number>();
   if ("proposal" in judged) {
     for (const [index, node] of judged.proposal.nodes.entries()) {
       if (node.role !== "generate") continue;
       const run = generateRunOf(judged.proposal, node, index);
       if (run === undefined) continue;
       const resolved = await keysFor({ kind: "media", model: run.model });
-      if (resolved.keyId !== null) {
-        onPayerKey.add(run.model);
-        if (runDescribesInput(run.model, run.params) && (await keysFor({ kind: "llm" })).keyId === null) describedOnCredits.add(node.name);
-      }
-      const refusal = await inputRefusalFor(run.model, { params: run.params, prompt: run.prompt }, resolved.route, resolved.keyId === null ? undefined : resolved.keys);
+      if (resolved.keyId !== null) onPayerKey.add(run.model);
+      // What reaches the pool through an edge is sent as a param too (Kling O3's elements), so both checks read it.
+      const sent = sentParams(judged.proposal, node, index, run.params);
+      if (resolved.keyId !== null && runDescribesInput(run.model, sent) && (await keysFor({ kind: "llm" })).keyId === null) describedOnCredits.add(index);
+      const refusal = await inputRefusalFor(run.model, { params: sent, prompt: run.prompt }, resolved.route, resolved.keyId === null ? undefined : resolved.keys);
       if (refusal !== null) return { placed: false, reason: upstreamRefusal(node.name, run.model, refusal) };
     }
   }
@@ -529,7 +529,7 @@ export async function renderProposalForModel(answer: ProposalAnswer): Promise<st
     })),
   );
   const lines = generations.map(({ node, index, model }) => {
-    if (describedOnCredits.has(node.name)) return `- "${node.name}": it runs on the Studio payer's own key, but describing its inputs takes credits`;
+    if (describedOnCredits.has(index)) return `- "${node.name}": it runs on the Studio payer's own key, but describing its inputs takes credits`;
     if (onPayerKey.has(model)) return `- "${node.name}": no credits; it runs on the Studio payer's own key`;
     const price = priced.find((one) => one.index === index)?.price;
     return `- "${node.name}": ${price === undefined ? "no price on this deployment" : renderPrice(price, "at its params")}`;
@@ -564,6 +564,21 @@ function wiredParams(proposal: CanvasProposal, node: ProposalNode, index: number
     params[name] = spec.type === "list" ? Array.from({ length: count }, (_, i) => `wired ${String(i + 1)}`) : "wired";
   }
   return params;
+}
+
+/**
+ * The params a proposed run sends, its wired sources included, as the checks before it is placed read them.
+ * @param proposal - The proposal.
+ * @param node - The generate node.
+ * @param index - Where it sits in the proposal.
+ * @param runParams - The run's own params.
+ * @returns The params.
+ */
+export function sentParams(proposal: CanvasProposal, node: ProposalNode, index: number, runParams: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  // Only what the wiring adds: the run already shaped the node's own params (a single voice drops its speakers).
+  const own = node.params ?? {};
+  const wired = Object.entries(wiredParams(proposal, node, index)).filter(([name]) => !(name in own));
+  return { ...runParams, ...Object.fromEntries(wired) };
 }
 
 /**
