@@ -11,9 +11,9 @@
 import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import type { TransactionSql } from "postgres";
 import type { AccountProviderKey, ProviderKeyBalanceState } from "@breatic/shared";
-import { db, type DbTx } from "@core/db/client.js";
+import { db } from "@core/db/client.js";
 import { accountProviderKeys, users } from "@core/db/schema.js";
-import { dropChoicesForUpstream } from "@core/byok/account-model-upstreams.repo.js";
+import { dropChoicesForUpstream, lockAccount } from "@core/byok/account-model-upstreams.repo.js";
 import { redactSessionError } from "@core/infra/session-error.js";
 
 /** What a check of the key found, stored beside it. */
@@ -87,17 +87,6 @@ function checkColumns(check: ProviderKeyCheckRecord): Partial<typeof accountProv
     lastFailure: check.failure,
     lastCostsReadable: check.costsReadable ?? null,
   };
-}
-
-/**
- * Serialise every key write of one account: two replacements of the same key would otherwise both retire the old
- * row and the second insert would hit the live-uniqueness index.
- * @param tx - The open transaction.
- * @param userId - The account.
- * @returns Nothing.
- */
-async function lockAccount(tx: DbTx, userId: string): Promise<void> {
-  await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("no key update");
 }
 
 /**

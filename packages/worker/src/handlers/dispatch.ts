@@ -22,7 +22,7 @@ import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, publishSpaceTasksChanged } from "@breatic/core";
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getUnderstandConfig, getAgentConfig } from "@breatic/core";
-import { accountKeyFailureIn, costsOf, type Cost, type KeySet } from "@breatic/provider";
+import { costsOf, type Cost, type KeySet } from "@breatic/provider";
 import { failureOutcome, taskRepo, taskService, upstreamStepRepo } from "@breatic/domain";
 import { creditHoldService, creditLotService, toChargeCredits } from "@breatic/domain";
 import { modelCatalog, nodeHistoryService, sceneTaskService } from "@breatic/domain";
@@ -82,6 +82,7 @@ import {
   type LookupKeys,
   type RecordAs,
   type WaitingCost,
+  liveKeys,
 } from "@worker/handlers/cost-wait.js";
 import { understandQuestion } from "@worker/handlers/understand-question.js";
 import {
@@ -538,7 +539,7 @@ async function runTaskBody(
   // Completed and delivered, waiting on its upstream's bill (inner#1743).
   const waiting = existing === null ? null : costWaitOf(existing.result);
   if (existing !== null && waiting !== null) {
-    const keys = { media: await lookupKeys(keyId), llm: await lookupKeys(llmKeyId) };
+    const keys = { media: keyId === null ? undefined : await liveKeys(keyId), llm: llmKeyId === null ? undefined : await liveKeys(llmKeyId) };
     return await settleCostWait({ job, token, runEnd, taskType, result: existing.result ?? {}, durationMs: existing.durationMs ?? undefined, keys, ...waiting });
   }
   if (existing?.providerResultUrl) {
@@ -1044,23 +1045,6 @@ async function recordGenerationUsage(end: RunContext, run: RunProduce, model: st
     for (const recorder of recorders.all()) await recorder.settle();
   } catch (err) {
     logger.error({ err, taskId: end.taskId }, "agent_usage_record_failed");
-  }
-}
-
-/**
- * The account keys a waiting task's lookups are asked with, read by the key row's id; a row replaced or deleted since
- * gives none, so the costs it paid are recorded as missing instead of asked with ours.
- * @param keyId - The row, or null on our keys.
- * @returns The keys, or undefined.
- * @throws {ProviderKeySealBroken} When the sealed key cannot be opened; the pickup is delivered again.
- */
-async function lookupKeys(keyId: string | null): Promise<KeySet | undefined> {
-  if (keyId === null) return undefined;
-  try {
-    return (await keysById(keyId))?.keys;
-  } catch (err) {
-    if (accountKeyFailureIn(err)?.kind === "account_key_missing") return undefined;
-    throw err;
   }
 }
 

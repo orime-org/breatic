@@ -14,7 +14,7 @@
  */
 
 import { env, getNodeTaskConfig, logger } from "@breatic/core";
-import { creditsForUsd, provider } from "@breatic/domain";
+import { creditsForUsd, keysById, provider } from "@breatic/domain";
 import { accountKeyFailureIn, ACCOUNT_LLM_UPSTREAM, costSchema, type Cost, type CostLookup, type KeySet, type Payer } from "@breatic/provider";
 
 /** A cost not known when the run finished. */
@@ -59,7 +59,23 @@ export interface LookupKeys {
 }
 
 /** What a lookup records once the account key row that paid the call is gone. */
-const KEY_GONE: Cost = { state: "missing", reason: "the account key that paid it was replaced or deleted", payer: "account" };
+export const KEY_GONE: Cost = { state: "missing", reason: "the account key that paid it was replaced or deleted", payer: "account" };
+
+/**
+ * The account keys a lookup of a call they paid is asked with, read by the key row's id; a row replaced or deleted
+ * since gives none, so the cost is recorded as missing instead of asked with ours.
+ * @param keyId - The row.
+ * @returns The keys, or undefined once the row is gone.
+ * @throws {ProviderKeySealBroken} When the sealed key cannot be opened; the job is delivered again.
+ */
+export async function liveKeys(keyId: string): Promise<KeySet | undefined> {
+  try {
+    return (await keysById(keyId))?.keys;
+  } catch (err) {
+    if (accountKeyFailureIn(err)?.kind === "account_key_missing") return undefined;
+    throw err;
+  }
+}
 
 /**
  * The account key row a call is recorded under: an account-paid call on `ACCOUNT_LLM_UPSTREAM` under the task's LLM

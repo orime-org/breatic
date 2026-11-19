@@ -23,6 +23,17 @@ const entityColumns = {
 };
 
 /**
+ * Serialise an account's key and model-choice writes: two replacements of one key cannot both retire the old row, and
+ * a choice's check for a live key and a delete of that key cannot interleave.
+ * @param tx - The open transaction.
+ * @param userId - The account.
+ * @returns Nothing once the lock is held.
+ */
+export async function lockAccount(tx: DbTx, userId: string): Promise<void> {
+  await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("no key update");
+}
+
+/**
  * Set or clear the upstream an account chose for a model: the live choice is soft-deleted and, unless clearing, a
  * new one inserted, in one transaction. A choice naming an upstream the account holds no live key for is refused
  * under the account's lock, which a key's delete takes too, so a delete cannot slip between the check and the insert
@@ -35,8 +46,7 @@ const entityColumns = {
  */
 export async function setModelUpstream(userId: string, model: string, upstream: string | null): Promise<boolean> {
   return db.transaction(async (tx) => {
-    // Serialises the account's choice writes and key deletes, so two at once cannot both insert a live row.
-    await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("no key update");
+    await lockAccount(tx, userId);
     if (upstream !== null) {
       const [held] = await tx
         .select({ id: accountProviderKeys.id })
