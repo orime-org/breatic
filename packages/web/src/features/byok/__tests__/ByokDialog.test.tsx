@@ -575,6 +575,31 @@ describe('ByokDialog', () => {
         expect(screen.getByTestId('byok-detail-wavespeed')).toHaveTextContent('wsk_3f…9d0e');
       });
 
+      it('keeps the replace dialog open, waiting, until the settings are read again after a save', async () => {
+        const user = userEvent.setup();
+        const replaced: SavedKey = { ...WAVESPEED_KEY, displayHint: 'wsk_new…beef' };
+        let release: () => void = () => undefined;
+        api.put.mockImplementation(() => {
+          api.get.mockImplementation((url: string) => {
+            if (url === '/models') return Promise.resolve(CATALOG);
+            return new Promise((done) => {
+              release = () => done(view({ keys: [replaced, FAL_KEY] }));
+            });
+          });
+          return Promise.resolve(replaced);
+        });
+        const replace = await openReplace(user);
+        await user.type(within(replace).getByLabelText('API key'), 'wsk_new_key_beef');
+        await user.click(within(replace).getByRole('button', { name: 'Save' }));
+
+        await waitFor(() => expect(api.put).toHaveBeenCalled());
+        expect(screen.getByRole('dialog', { name: 'Replace the WaveSpeed key' })).toBeInTheDocument();
+        expect(toasts.success).not.toHaveBeenCalled();
+        release();
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Replace the WaveSpeed key' })).toBeNull());
+        expect(screen.getByTestId('byok-detail-wavespeed')).toHaveTextContent('wsk_new…beef');
+      });
+
       it('opens again with an empty field and no refusal under it', async () => {
         const user = userEvent.setup();
         api.put.mockRejectedValue(refused('Could not connect: the key is invalid.'));
@@ -590,6 +615,31 @@ describe('ByokDialog', () => {
 
         expect(within(again).queryByText('Could not connect: the key is invalid.')).toBeNull();
       });
+    });
+
+    it('opens the settings again with no refusal left from before they were closed', async () => {
+      const user = userEvent.setup();
+      api.put.mockRejectedValue(refused('Could not connect: the key is invalid.'));
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const shown = (open: boolean): React.JSX.Element => (
+        <QueryClientProvider client={client}>
+          <ByokDialog open={open} onOpenChange={() => undefined} />
+        </QueryClientProvider>
+      );
+      const { rerender } = render(shown(true));
+      const dialog = await screen.findByRole('dialog', { name: 'BYOK settings' });
+      await user.click(await within(dialog).findByTestId('byok-upstream-sandbase'));
+      const detail = within(dialog).getByTestId('byok-detail-sandbase');
+      await user.type(within(detail).getByPlaceholderText('Paste a key'), 'sb_bad');
+      await user.click(within(detail).getByRole('button', { name: 'Save' }));
+      await within(detail).findByText('Could not connect: the key is invalid.');
+
+      rerender(shown(false));
+      rerender(shown(true));
+      const again = await screen.findByRole('dialog', { name: 'BYOK settings' });
+      await user.click(await within(again).findByTestId('byok-upstream-sandbase'));
+
+      expect(within(within(again).getByTestId('byok-detail-sandbase')).queryByText('Could not connect: the key is invalid.')).toBeNull();
     });
 
     describe('deleting a key', () => {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ModelCatalog, ModelEntry } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@web/components/ui/tab
 import type { ByokView } from '@web/data/api/byok';
 import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { ByokModelsTab } from '@web/features/byok/ByokModelsTab';
-import { ByokUpstreamTab } from '@web/features/byok/ByokUpstreamTab';
+import { ByokUpstreamTab, forgetFinishedSaves } from '@web/features/byok/ByokUpstreamTab';
 import { useByokView } from '@web/features/byok/byok-query';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -66,6 +66,9 @@ export function ByokDialog({ open, onOpenChange }: { open: boolean; onOpenChange
 function ByokBody(): React.JSX.Element {
   const t = useTranslation();
   const view = useByokView(true);
+  const client = useQueryClient();
+  // Closing the settings ends every form in them, so an opening afterwards shows no earlier refusal.
+  React.useEffect(() => () => forgetFinishedSaves(client), [client]);
   const { refetch } = view;
   const retry = React.useCallback((): void => {
     void refetch();

@@ -257,24 +257,27 @@ function failureText(failure: string | null, t: Translate): string {
   return t(`byok.failure.${failure !== null && KNOWN_FAILURES.has(failure) ? failure : 'other'}`);
 }
 
+/** The mutation key every upstream's save sits under. */
+const SAVE_ROOT = ['byok', 'save'] as const;
+
 /**
  * The mutation key of saving one upstream's key, so its dialog can tell a save is out.
  * @param upstream - The upstream id.
  * @returns The key.
  */
 function saveKeyOf(upstream: string): readonly ['byok', 'save', string] {
-  return ['byok', 'save', upstream];
+  return [...SAVE_ROOT, upstream];
 }
 
 /**
- * Forget an upstream's finished saves, so a form started afresh (the replace dialog opened, the add form after a
- * delete) shows no earlier refusal; a save still waiting stays. Switching to another upstream and back keeps them.
+ * Forget finished saves, so a form started afresh (the settings opened again, the replace dialog opened, the add form
+ * after a delete) shows no earlier refusal; a save still waiting stays. Switching to another upstream and back keeps them.
  * @param client - The query client.
- * @param upstream - The upstream.
+ * @param upstream - The upstream whose saves to forget; every upstream's when left out.
  */
-function forgetFinishedSaves(client: QueryClient, upstream: string): void {
+export function forgetFinishedSaves(client: QueryClient, upstream?: string): void {
   const cache = client.getMutationCache();
-  for (const save of cache.findAll({ mutationKey: saveKeyOf(upstream) })) {
+  for (const save of cache.findAll({ mutationKey: upstream === undefined ? SAVE_ROOT : saveKeyOf(upstream) })) {
     if (save.state.status !== 'pending') cache.remove(save);
   }
 }
@@ -311,9 +314,8 @@ function useSaveKey(upstream: ByokUpstream, onSaved?: () => void): {
   const [clearedAt, setClearedAt] = React.useState(0);
   const { mutate } = useMutation({
     mutationKey,
-    mutationFn: (key: string): Promise<ByokSavedKey> => byokApi.saveKey(upstream.upstream, key),
-    // Read again either way: a refusal can follow a change made in another tab.
-    onSettled: () => rereadByok(client),
+    // Read again either way, and before the result shows: a refusal can follow a change made in another tab.
+    mutationFn: (key: string): Promise<ByokSavedKey> => byokApi.saveKey(upstream.upstream, key).finally(() => rereadByok(client)),
     onSuccess: () => {
       toast.success(t('byok.saved', { upstream: upstream.name }));
       onSaved?.();
@@ -564,16 +566,14 @@ function SavedKeyActions({
   const checkKey = ['byok', 'check', id] as const;
   const check = useMutation({
     mutationKey: checkKey,
-    mutationFn: () => byokApi.checkKey(id),
-    // Read again either way: a key deleted in another tab fails the check and leaves the list.
-    onSettled: () => rereadByok(client),
+    // Read again either way, and before the result shows: a key deleted in another tab fails the check and leaves the list.
+    mutationFn: () => byokApi.checkKey(id).finally(() => rereadByok(client)),
     onError: () => toast.error(t('byok.checkFailed')),
   });
   const refreshing = useIsMutating({ mutationKey: checkKey }) > 0;
 
   const remove = useMutation({
-    mutationFn: () => byokApi.deleteKey(id),
-    onSettled: () => rereadByok(client),
+    mutationFn: () => byokApi.deleteKey(id).finally(() => rereadByok(client)),
     onSuccess: () => {
       forgetFinishedSaves(client, id);
       setDeleting(false);

@@ -145,9 +145,8 @@ const ModelRow = React.memo(function ModelRow({
   const client = useQueryClient();
   const { entry, label, options } = choice;
   const set = useMutation({
-    mutationFn: (next: string | null) => byokApi.setModel(entry.name, next),
-    // Read again either way: a refused choice can follow a key deleted in another tab.
-    onSettled: () => rereadByok(client),
+    // Read again either way, and before the result shows: a refused choice can follow a key deleted in another tab.
+    mutationFn: (next: string | null) => byokApi.setModel(entry.name, next).finally(() => rereadByok(client)),
     onSuccess: (_, next) => {
       const name = next === null ? t('byok.platformKey') : names.get(next) ?? next;
       toast.success(t('byok.modelSaved', { model: label, upstream: name }));
