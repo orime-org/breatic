@@ -65,6 +65,7 @@ projects.get(
         decoderWorkerLimit: limits.decoder_worker_limit,
         maxTextureEdge: limits.max_texture_edge,
         maxTextureBytes: limits.max_texture_bytes,
+        maxPictureHeaderBytes: limits.max_picture_header_bytes,
       },
       progressPublishMs: limits.progress_publish_ms,
       capture: {

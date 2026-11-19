@@ -5,7 +5,7 @@ import type { Group, Object3D, Texture } from 'three';
 
 import type { SceneLook, SceneObject } from '@breatic/shared';
 
-import { checkLookTextures, lookPartRank, type LookTextureInput, type LookTextureVerdict } from '@web/spaces/three-d/look-texture-budget';
+import { checkLookTextures, lookPartRank, type LookTextureInput, type LookTextureLimits, type LookTextureVerdict } from '@web/spaces/three-d/look-texture-budget';
 import { addPartHighlight, type PartHighlight } from '@web/spaces/three-d/viewport/look-highlight';
 import { applyLook, releaseLook, type LookPartTable } from '@web/spaces/three-d/viewport/look-materials';
 import type { LookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
@@ -55,7 +55,7 @@ export interface SceneLookPictures {
 export interface SceneLookRuntimeDeps {
   textures: () => LookTextureCache | null;
   /** The scene's texture limits, the edge capped by this device. */
-  limits: () => { maxTextureEdge: number; maxTextureBytes: number };
+  limits: () => LookTextureLimits;
   /** The built-in models' colour in the current theme. */
   themeColor: () => string;
   /** The tint of a highlighted part. */
@@ -288,7 +288,7 @@ export class SceneLookRuntime {
     const stillFailed = (assetId: string): boolean => !retrying && state.states.get(assetId) === 'failed';
     for (const assetId of wanted) if (!state.held.has(assetId) && !stillFailed(assetId)) state.states.set(assetId, 'loading');
     this.apply(id, state);
-    const sizes = new Map(await Promise.all(wanted.map(async (assetId) => [assetId, stillFailed(assetId) ? null : await textures.size(assetId)] as const)));
+    const sizes = new Map(await Promise.all(wanted.map(async (assetId) => [assetId, stillFailed(assetId) ? null : await textures.size(assetId, this.deps.limits().maxPictureHeaderBytes)] as const)));
     if (run !== state.run || this.objects.get(id) !== state) return;
     const limits = this.deps.limits();
     const input: LookTextureInput = { ownBytes: model.ownBytes, look: state.look, sizes, limits,

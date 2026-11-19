@@ -35,10 +35,10 @@ export interface SceneLookUploadDeps {
   unregister: (spaceId: string, operationId: string) => void;
   /** Refresh the Project's picture list, which now holds the upload. */
   invalidateImages: (projectId: string) => void;
-  /** The local file's header size and type, or null when it cannot be read. */
-  readLocalSize: (file: File) => Promise<LookPictureSize | null>;
-  /** A used picture's header size in a Project, or null when it cannot be read. */
-  size: (projectId: string, assetId: string) => Promise<LookPictureSize | null>;
+  /** The local file's header size and type within `maxBytes`, or null when it cannot be read. */
+  readLocalSize: (file: File, maxBytes: number) => Promise<LookPictureSize | null>;
+  /** A used picture's header size in a Project within `maxBytes`, or null when it cannot be read. */
+  size: (projectId: string, assetId: string, maxBytes: number) => Promise<LookPictureSize | null>;
   /** The open editing session of a Space document, if any; never creates one. */
   session: (name: string) => SceneSession | undefined;
 }
@@ -189,7 +189,7 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
    */
   const overLimit = (input: SceneLookUploadStart, look: SceneLook, map: string, mapSize: LookPictureSize): ReturnType<typeof checkLookWrite> =>
     checkLookWrite({ ownBytes: input.ownBytes, clampBytes: input.clampBytes, limits: input.limits, look, part: input.part, map, mapSize,
-      size: (assetId) => deps.size(input.projectId, assetId) });
+      size: (assetId) => deps.size(input.projectId, assetId, input.limits.maxPictureHeaderBytes) });
 
   /**
    * Upload the file and write it on completion when everything still allows (design 6.3).
@@ -257,7 +257,7 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       try {
         let local: LookPictureSize | null;
         try {
-          local = await deps.readLocalSize(input.file);
+          local = await deps.readLocalSize(input.file, input.limits.maxPictureHeaderBytes);
         } catch {
           deps.notify(pictureReadFailedNotice(input.file.name));
           return;
@@ -298,8 +298,8 @@ export function pageSceneLookUploads(queryClient: QueryClient): SceneLookUploads
     register: (spaceId, operationId) => useSpaceOperationsStore.getState().register(spaceId, operationId),
     unregister: (spaceId, operationId) => useSpaceOperationsStore.getState().unregister(spaceId, operationId),
     invalidateImages: (projectId) => { void queryClient.invalidateQueries({ queryKey: projectImagesQueryKey(projectId) }); },
-    readLocalSize: (file) => readPictureSize(file.stream()),
-    size: (projectId, assetId) => pageLookTextureCache(projectId).size(assetId),
+    readLocalSize: (file, maxBytes) => readPictureSize(file.stream(), maxBytes),
+    size: (projectId, assetId, maxBytes) => pageLookTextureCache(projectId).size(assetId, maxBytes),
     session: peekSceneSession,
   });
   return pageUploads;

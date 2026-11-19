@@ -221,7 +221,8 @@ export class SceneViewportRuntime {
   private readonly looks = new SceneLookRuntime({
     textures: () => this.props.lookTextures ?? null,
     limits: () => ({ maxTextureEdge: Math.min(this.props.importLimits.maxTextureEdge, this.renderer.capabilities.maxTextureSize),
-      maxTextureBytes: this.props.importLimits.maxTextureBytes }),
+      maxTextureBytes: this.props.importLimits.maxTextureBytes,
+      maxPictureHeaderBytes: this.props.importLimits.maxPictureHeaderBytes }),
     themeColor: () => this.token('--color-muted-foreground'),
     highlightColor: () => this.token('--color-status-selected'),
     onProgramChanged: (root) => {

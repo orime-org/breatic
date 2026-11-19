@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import * as cacheModule from '@web/spaces/three-d/viewport/look-texture-cache';
 
+const CAP = 8 * 1024 * 1024;
 const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 /** A PNG header for a picture of this size: signature, IHDR length, type, width, height. */
@@ -46,8 +47,8 @@ function deps(width = 512, height = 256): Deps & { cancelled: () => boolean } {
 }
 
 type Cache = {
-  size: (assetId: string) => Promise<{ width: number; height: number; type: string } | null>;
-  read: (assetId: string) => Promise<{ width: number; height: number; type: string } | null>;
+  size: (assetId: string, maxBytes: number) => Promise<{ width: number; height: number; type: string } | null>;
+  read: (assetId: string, maxBytes: number) => Promise<{ width: number; height: number; type: string } | null>;
   acquire: (assetId: string, maxEdge?: number) => Promise<Texture>;
   release: (assetId: string, clone: Texture) => void;
 };
@@ -68,9 +69,9 @@ describe('LookTextureCache', () => {
   it('reads a size from the file header, stops the download there and caches it per asset', async () => {
     const d = deps(512, 256);
     const cache = create(d);
-    expect(await cache.size(A)).toEqual({ width: 512, height: 256, type: 'png' });
+    expect(await cache.size(A, CAP)).toEqual({ width: 512, height: 256, type: 'png' });
     expect(d.cancelled()).toBe(true);
-    expect(await cache.size(A)).toEqual({ width: 512, height: 256, type: 'png' });
+    expect(await cache.size(A, CAP)).toEqual({ width: 512, height: 256, type: 'png' });
     expect(d.open).toHaveBeenCalledTimes(1);
     expect(d.download).not.toHaveBeenCalled();
     expect(d.decode).not.toHaveBeenCalled();
@@ -79,15 +80,15 @@ describe('LookTextureCache', () => {
   it('answers null for a header it cannot read', async () => {
     const d = deps();
     d.open.mockResolvedValue(new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array([1, 2, 3])); controller.close(); } }));
-    expect(await create(d).size(A)).toBeNull();
+    expect(await create(d).size(A, CAP)).toBeNull();
   });
 
   it('rejects a read that failed and reads again next time', async () => {
     const d = deps(512, 256);
     d.open.mockRejectedValueOnce(new Error('network'));
     const cache = create(d);
-    await expect(cache.read(A)).rejects.toThrow('network');
-    expect(await cache.read(A)).toEqual({ width: 512, height: 256, type: 'png' });
+    await expect(cache.read(A, CAP)).rejects.toThrow('network');
+    expect(await cache.read(A, CAP)).toEqual({ width: 512, height: 256, type: 'png' });
     expect(d.open).toHaveBeenCalledTimes(2);
   });
 
@@ -178,7 +179,7 @@ describe('readPictureSize', () => {
     });
     return { stream, pulled: () => pulled };
   }
-  const read = (): ((stream: ReadableStream<Uint8Array>) => Promise<{ width: number; height: number; type: string } | null>) => {
+  const read = (): ((stream: ReadableStream<Uint8Array>, maxBytes: number) => Promise<{ width: number; height: number; type: string } | null>) => {
     const candidate = (cacheModule as Record<string, unknown>).readPictureSize;
     expect(candidate, 'readPictureSize must be exported').toBeTypeOf('function');
     return candidate as never;
@@ -191,7 +192,7 @@ describe('readPictureSize', () => {
     bytes.push(0xff, 0xc0, 0x00, 0x11, 0x08, 0x02, 0x58, 0x03, 0x20, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01);
     const all = new Uint8Array(bytes);
     const chunks = Array.from({ length: Math.ceil(all.length / 65_536) }, (_, i) => all.subarray(i * 65_536, (i + 1) * 65_536));
-    expect(await read()(streamOf(chunks).stream)).toMatchObject({ width: 800, height: 600, type: 'jpeg' });
+    expect(await read()(streamOf(chunks).stream, CAP)).toMatchObject({ width: 800, height: 600, type: 'jpeg' });
   });
 
   it('reads a JPEG whose metadata before its size runs past the header budget', async () => {
@@ -202,7 +203,7 @@ describe('readPictureSize', () => {
     bytes.push(0xff, 0xc0, 0x00, 0x11, 0x08, 0x02, 0x58, 0x03, 0x20, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01);
     const all = new Uint8Array(bytes);
     const chunks = Array.from({ length: Math.ceil(all.length / 100_000) }, (_, i) => all.subarray(i * 100_000, (i + 1) * 100_000));
-    expect(await read()(streamOf(chunks).stream)).toMatchObject({ width: 800, height: 600, type: 'jpeg' });
+    expect(await read()(streamOf(chunks).stream, CAP)).toMatchObject({ width: 800, height: 600, type: 'jpeg' });
   });
 
   it.each([
@@ -216,7 +217,21 @@ describe('readPictureSize', () => {
     bytes.push(0xff, 0xc0, 0x00, 0x11, 0x08, 0x01, 0x00, 0x02, 0x00, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01);
     const all = new Uint8Array(bytes);
     const chunks = Array.from({ length: Math.ceil(all.length / 65_536) }, (_, i) => all.subarray(i * 65_536, (i + 1) * 65_536));
-    expect(await read()(streamOf(chunks).stream)).toMatchObject({ width: 512, height: 256, type: 'jpeg' });
+    expect(await read()(streamOf(chunks).stream, CAP)).toMatchObject({ width: 512, height: 256, type: 'jpeg' });
+  });
+
+  it.each([1, 3])('reads a JPEG whose metadata ends exactly at 4 MiB and is followed by %i stray bytes', async (strays) => {
+    const segment = (length: number): number[] => [0xff, 0xe1, (length + 2) >> 8, (length + 2) & 0xff, ...new Array<number>(length).fill(0)];
+    const bytes = [0xff, 0xd8];
+    while (bytes.length + 60_004 <= 4 * 1024 * 1024) bytes.push(...segment(60_000));
+    const rest = 4 * 1024 * 1024 - bytes.length - 4;
+    bytes.push(...segment(rest));
+    expect(bytes.length).toBe(4 * 1024 * 1024);
+    bytes.push(...new Array<number>(strays).fill(0));
+    bytes.push(0xff, 0xc0, 0x00, 0x11, 0x08, 0x01, 0x00, 0x02, 0x00, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01);
+    const all = new Uint8Array(bytes);
+    const chunks = Array.from({ length: Math.ceil(all.length / 65_536) }, (_, i) => all.subarray(i * 65_536, (i + 1) * 65_536));
+    expect(await read()(streamOf(chunks).stream, CAP)).toMatchObject({ width: 512, height: 256, type: 'jpeg' });
   });
 
   it.each([
@@ -229,13 +244,34 @@ describe('readPictureSize', () => {
       first = false;
       return new Uint8Array(start);
     });
-    expect(await read()(stream.stream)).toBeNull();
-    expect(stream.pulled()).toBeLessThanOrEqual(8 * 1024 * 1024);
+    expect(await read()(stream.stream, CAP)).toBeNull();
+    expect(stream.pulled()).toBeLessThanOrEqual(CAP + 65_536);
+  });
+
+  it('reads a WebP size once its image chunk header arrives, without reading on to the end', async () => {
+    const header = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0xff, 0xff, 0xff, 0x0f, 0x57, 0x45, 0x42, 0x50,
+      0x56, 0x50, 0x38, 0x4c, 0x05, 0x00, 0x00, 0x00, 0x2f, 0x3f, 0xc0, 0x07, 0x00]);
+    let first = true;
+    const stream = streamOf(() => {
+      if (!first) return new Uint8Array(65_536);
+      first = false;
+      return header;
+    });
+    expect(await read()(stream.stream, CAP)).toEqual({ width: 64, height: 32, type: 'webp' });
+    expect(stream.pulled()).toBeLessThanOrEqual(header.length + 65_536);
+  });
+
+  it('takes a header that declares no pixels as no picture', async () => {
+    const header = new Uint8Array(24);
+    header.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+    new DataView(header.buffer).setUint32(16, 0);
+    new DataView(header.buffer).setUint32(20, 64);
+    expect(await read()(streamOf([header]).stream, CAP)).toBeNull();
   });
 
   it('stops reading a stream that is not a picture after a bounded amount', async () => {
     const endless = streamOf(() => new Uint8Array(65_536).fill(7));
-    expect(await read()(endless.stream)).toBeNull();
-    expect(endless.pulled()).toBeLessThanOrEqual(8 * 1024 * 1024);
+    expect(await read()(endless.stream, CAP)).toBeNull();
+    expect(endless.pulled()).toBeLessThanOrEqual(CAP + 65_536);
   });
 });

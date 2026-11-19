@@ -13,6 +13,8 @@ export type LookTextureVerdict = { usable: true } | { usable: false; reason: Loo
 export interface LookTextureLimits {
   maxTextureEdge: number;
   maxTextureBytes: number;
+  /** Most bytes read to learn a picture's size from its header. */
+  maxPictureHeaderBytes: number;
 }
 
 /** Everything one budget check reads. */

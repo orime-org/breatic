@@ -55,7 +55,7 @@ async function open(fake: FakeCache): Promise<{ runtime: SceneLookRuntime; root:
   const programs = vi.fn();
   const changed = vi.fn();
   const runtime = new SceneLookRuntime({
-    textures: () => fake.cache, limits: () => ({ maxTextureEdge: 8192, maxTextureBytes: 268_435_456 }), themeColor: () => '#969696',
+    textures: () => fake.cache, limits: () => ({ maxTextureEdge: 8192, maxTextureBytes: 268_435_456, maxPictureHeaderBytes: 67108864 }), themeColor: () => '#969696',
     highlightColor: () => '#3b6fd8', onProgramChanged: programs, onChanged: changed, onPictures: (_id, pictures) => failures.push(pictures),
   });
   runtimes.push(runtime);
@@ -193,7 +193,7 @@ describe('SceneLookRuntime', () => {
     });
     fake.release.mockImplementation((assetId: string) => { if (assetId === A) shownAtRelease.push(partMaterial('1').map?.source === held.get(A)!.source); });
     const runtime = new SceneLookRuntime({
-      textures: () => fake.cache, limits: () => ({ maxTextureEdge: 8192, maxTextureBytes: 30 * 1024 * 1024 }), themeColor: () => '#969696',
+      textures: () => fake.cache, limits: () => ({ maxTextureEdge: 8192, maxTextureBytes: 30 * 1024 * 1024, maxPictureHeaderBytes: 67108864 }), themeColor: () => '#969696',
       highlightColor: () => '#3b6fd8', onProgramChanged: vi.fn(), onChanged: vi.fn(), onPictures: vi.fn(),
     });
     runtimes.push(runtime);
@@ -216,7 +216,7 @@ describe('SceneLookRuntime', () => {
     });
     const pictures: Array<SceneLookPictures | null> = [];
     const runtime = new SceneLookRuntime({
-      textures: () => fake.cache, limits: () => ({ maxTextureEdge: 8192, maxTextureBytes: 30 * 1024 * 1024 }), themeColor: () => '#969696',
+      textures: () => fake.cache, limits: () => ({ maxTextureEdge: 8192, maxTextureBytes: 30 * 1024 * 1024, maxPictureHeaderBytes: 67108864 }), themeColor: () => '#969696',
       highlightColor: () => '#3b6fd8', onProgramChanged: vi.fn(), onChanged: vi.fn(), onPictures: (_id, value) => pictures.push(value),
     });
     runtimes.push(runtime);

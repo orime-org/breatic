@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { imageDimensionsFromData } from 'image-dimensions';
+import jpegFormat from 'probe-image-size/lib/formats/jpeg.js';
+import pngFormat from 'probe-image-size/lib/formats/png.js';
+import webpFormat from 'probe-image-size/lib/formats/webp.js';
 import { RepeatWrapping, SRGBColorSpace, Texture } from 'three';
 
 import { httpRequest, isSceneLookImageMediaType } from '@breatic/shared';
@@ -54,82 +56,40 @@ function close(base: Texture): void {
 /** The decode options three's ImageBitmapLoader uses for glTF textures. */
 const DECODE: ImageBitmapOptions = { premultiplyAlpha: 'none', imageOrientation: 'from-image' };
 
-/** The bytes held while a picture's size is read; a JPEG's metadata before its frame header is dropped as it passes. */
-const PICTURE_HEADER_BYTES = 4 * 1024 * 1024;
-
-/**
- * Whether a JPEG marker opens its frame header or its scan, where the size is or can no longer be reached.
- * @param marker - The byte after 0xFF.
- * @returns True for SOF0-SOF15 (not DHT, JPG or DAC) and SOS.
- */
-const endsJpegHeader = (marker: number): boolean => marker === 0xda || (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc);
-
-/**
- * Drop the segments a JPEG holds before its frame header once they are read in full, keeping its start marker and the
- * rest in place. The walk is image-dimensions' own (`types/jpeg.js`): bytes before a marker and 0xFF fill bytes are
- * skipped (ITU T.81 B.1.1.2), TEM stands alone, and every other marker is followed by its segment's length. The bytes
- * kept start at the next marker after the last whole segment, so they read as the same JPEG; with no whole segment
- * held, nothing is dropped.
- * @param buffer - The bytes held, starting with the JPEG's start marker.
- * @param length - How many are held.
- * @returns How many are held after.
- */
-function dropReadJpegSegments(buffer: Uint8Array, length: number): number {
-  let offset = 2;
-  let read = 2;
-  while (offset + 2 <= length) {
-    if (buffer[offset] !== 0xff || buffer[offset + 1] === 0xff) {
-      offset += 1;
-      continue;
-    }
-    const marker = buffer[offset + 1]!;
-    if (marker === 0x01) {
-      offset += 2;
-      continue;
-    }
-    if (endsJpegHeader(marker) || offset + 4 > length) break;
-    const end = offset + 2 + ((buffer[offset + 2]! << 8) | buffer[offset + 3]!);
-    if (end > length) break;
-    offset = end;
-    read = end;
-  }
-  const next = buffer.indexOf(0xff, read);
-  const from = next === -1 || next >= length ? read : next;
-  buffer.copyWithin(2, from, length);
-  return length - (from - 2);
-}
+/** The picture formats a part takes, each read by probe-image-size's push parser (inner#1693 design 3.5). */
+const PICTURE_PARSERS = [['jpeg', jpegFormat.Parser], ['png', pngFormat.Parser], ['webp', webpFormat.Parser]] as const;
 
 /**
  * A picture's size and type read from the start of its bytes, stopping as soon as they are known; the rest of the
- * stream is cancelled. At most the header budget is held: a JPEG's segments before its frame header are dropped once
- * read, and any other stream still without a size when the budget is full is not a picture.
+ * stream is cancelled. Each format's parser walks its header the way libjpeg, Go and Blink do: a JPEG's segments
+ * before its frame header are skipped by length, never held, so the parsers hold a few bytes whatever the header's
+ * size. Bytes that are no picture's start fail every parser at once; reading also ends after `maxBytes`.
  * @param stream - The file's or the response's bytes.
- * @returns The size and type, or null when the bytes are not a picture header.
+ * @param maxBytes - The most bytes read for one size (config/scene.yaml `import.max_picture_header_bytes`).
+ * @returns The size and type, or null when the bytes are not a PNG, JPEG or WebP header within `maxBytes`.
  */
-export async function readPictureSize(stream: ReadableStream<Uint8Array>): Promise<LookPictureSize | null> {
-  const buffer = new Uint8Array(PICTURE_HEADER_BYTES);
-  let length = 0;
+export async function readPictureSize(stream: ReadableStream<Uint8Array>, maxBytes: number): Promise<LookPictureSize | null> {
+  const parsers = PICTURE_PARSERS.map(([type, Parser]) => ({ type, parser: new Parser() }));
   const reader = stream.getReader();
+  let read = 0;
   try {
-    for (;;) {
+    while (read < maxBytes) {
       const { done, value } = await reader.read();
       if (done) return null;
-      let chunk = value;
-      while (chunk.length > 0) {
-        if (length === buffer.length) {
-          const jpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
-          const kept = jpeg ? dropReadJpegSegments(buffer, length) : length;
-          if (kept === length) return null;
-          length = kept;
-        }
-        const taken = chunk.subarray(0, buffer.length - length);
-        buffer.set(taken, length);
-        length += taken.length;
-        chunk = chunk.subarray(taken.length);
-        const size = imageDimensionsFromData(buffer.subarray(0, length));
-        if (size) return size;
+      const chunk = value.subarray(0, maxBytes - read);
+      read += chunk.length;
+      let open = false;
+      for (const { type, parser } of parsers) {
+        if (parser.getStatus() !== 0) continue;
+        parser.push(chunk);
+        // A WebP parser keeps reading after the size for EXIF; the size is final once set.
+        const size = parser.result;
+        if (size) return size.width > 0 && size.height > 0 ? { width: size.width, height: size.height, type } : null;
+        if (parser.getStatus() === 0) open = true;
       }
+      if (!open) return null;
     }
+    return null;
   } finally {
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();
@@ -156,25 +116,27 @@ export class LookTextureCache {
   /**
    * A picture's size from its file header, stopping the download there.
    * @param assetId - The picture asset.
+   * @param maxBytes - The most bytes read for the size.
    * @returns The size and type, or null when the bytes are not a picture header or the read failed.
    */
-  size(assetId: string): Promise<LookPictureSize | null> {
-    return this.read(assetId).catch(() => null);
+  size(assetId: string, maxBytes: number): Promise<LookPictureSize | null> {
+    return this.read(assetId, maxBytes).catch(() => null);
   }
 
   /**
    * A picture's size from its file header, telling a read that failed apart from bytes that are not a picture.
    * @param assetId - The picture asset.
+   * @param maxBytes - The most bytes read for the size.
    * @returns The size and type, or null when the bytes are not a picture header; an asset's content never changes, so
    * the answer is kept.
    * @throws {Error} When the picture could not be reached or read; the failure is not kept, so a later read tries again.
    */
-  read(assetId: string): Promise<LookPictureSize | null> {
+  read(assetId: string, maxBytes: number): Promise<LookPictureSize | null> {
     let pending = this.sizes.get(assetId);
     if (!pending) {
       const started = this.deps.resolve(assetId)
         .then((url) => this.deps.open(url))
-        .then((stream) => readPictureSize(stream));
+        .then((stream) => readPictureSize(stream, maxBytes));
       pending = started;
       started.catch(() => { if (this.sizes.get(assetId) === started) this.sizes.delete(assetId); });
       this.sizes.set(assetId, pending);

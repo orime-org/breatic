@@ -387,6 +387,8 @@ export interface SceneImportLimits {
   decoderWorkerLimit: number;
   maxTextureEdge: number;
   maxTextureBytes: number;
+  /** Most bytes read to learn a part picture's size from its header. */
+  maxPictureHeaderBytes: number;
 }
 
 /** Configured scene controls and import budgets, served through the readable Project API. */

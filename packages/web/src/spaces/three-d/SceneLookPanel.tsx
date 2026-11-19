@@ -129,6 +129,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   const ready = typeof report === 'object' ? report : null;
   const textureLimits = React.useMemo(() => ({
     maxTextureEdge: Math.min(limits.maxTextureEdge, ready?.deviceMaxEdge ?? limits.maxTextureEdge), maxTextureBytes: limits.maxTextureBytes,
+    maxPictureHeaderBytes: limits.maxPictureHeaderBytes,
   }), [limits, ready?.deviceMaxEdge]);
 
   const gesture = React.useMemo<SceneLookGesture>(() => {
@@ -182,7 +183,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
       try {
         let size: Awaited<ReturnType<typeof textures.read>>;
         try {
-          size = await textures.read(image.assetId);
+          size = await textures.read(image.assetId, textureLimits.maxPictureHeaderBytes);
         } catch {
           if (isLatest()) notify(pictureReadFailedNotice(name));
           return;
@@ -196,7 +197,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
         const current = openObject(session.name, objectId);
         if (!current) return;
         const issue = await checkLookWrite({ ownBytes: ready.ownBytes, clampBytes: ready.clampBytes, limits: textureLimits,
-          look: current.look ?? {}, part, map: image.assetId, mapSize: size, size: (assetId) => textures.size(assetId) });
+          look: current.look ?? {}, part, map: image.assetId, mapSize: size, size: (assetId) => textures.size(assetId, textureLimits.maxPictureHeaderBytes) });
         if (!isLatest()) return;
         if (issue) {
           notify(lookLimitNotice(issue, textureLimits));

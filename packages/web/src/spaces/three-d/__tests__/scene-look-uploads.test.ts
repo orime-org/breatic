@@ -59,7 +59,7 @@ function lookOf(doc: Y.Doc): unknown {
 }
 
 interface Harness {
-  uploads: { start: (input: { projectId: string; spaceId: string; name: string; objectId: string; part: string; file: File; ownBytes: number; clampBytes: Record<string, number>; limits: { maxTextureEdge: number; maxTextureBytes: number } }) => Promise<void>;
+  uploads: { start: (input: { projectId: string; spaceId: string; name: string; objectId: string; part: string; file: File; ownBytes: number; clampBytes: Record<string, number>; limits: { maxTextureEdge: number; maxTextureBytes: number; maxPictureHeaderBytes: number } }) => Promise<void>;
     get: (spaceId: string, objectId: string, part: string) => { percent: number } | undefined };
   upload: ReturnType<typeof vi.fn>;
   notify: ReturnType<typeof vi.fn>;
@@ -106,7 +106,7 @@ async function settle(): Promise<void> {
 /** A start request for part 0 of the object. */
 function startFor(file = new File(['x'], 'pattern.png', { type: 'image/png' })): Parameters<Harness['uploads']['start']>[0] {
   return { projectId: PROJECT, spaceId: SPACE, name: NAME, objectId: ID, part: '0', file, ownBytes: 0, clampBytes: {},
-    limits: { maxTextureEdge: 8192, maxTextureBytes: 268_435_456 } };
+    limits: { maxTextureEdge: 8192, maxTextureBytes: 268_435_456, maxPictureHeaderBytes: 67_108_864 } };
 }
 
 describe('SceneLookUploads', () => {

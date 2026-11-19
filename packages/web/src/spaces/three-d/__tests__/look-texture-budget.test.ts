@@ -14,7 +14,7 @@ import { uploadBytes } from '@web/spaces/three-d/model-texture-metadata';
 const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const C = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
-const LIMITS = { maxTextureEdge: 8192, maxTextureBytes: 268_435_456 };
+const LIMITS = { maxTextureEdge: 8192, maxTextureBytes: 268_435_456, maxPictureHeaderBytes: 67108864 };
 /** RGBA with a full mip chain, as the import budget counts it. */
 const bytes = (edge: number): number => Math.round((edge * edge * 4 * 4) / 3);
 
@@ -23,7 +23,7 @@ type Check = (input: {
   clampBytes: Readonly<Record<string, number>>;
   look: Readonly<Record<string, { map?: string; mapRepeat?: number[]; mapOffset?: number[]; mapRotation?: number }>>;
   sizes: ReadonlyMap<string, { width: number; height: number } | null>;
-  limits: { maxTextureEdge: number; maxTextureBytes: number };
+  limits: { maxTextureEdge: number; maxTextureBytes: number; maxPictureHeaderBytes: number };
 }) => ReadonlyMap<string, { usable: true } | { usable: false; reason: 'bytes' | 'unknown' }>;
 
 /**
