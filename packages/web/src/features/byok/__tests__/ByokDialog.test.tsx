@@ -442,6 +442,21 @@ describe('ByokDialog', () => {
       expect(await within(dialog).findByTestId('byok-detail-wavespeed')).toHaveTextContent('€12.00');
     });
 
+    it.each([
+      ['unsupported', 'This upstream does not report a balance.'],
+      ['forbidden', 'This key cannot read the balance.'],
+      ['no_cap', 'This key has no spending limit.'],
+    ] as const)('says a %s balance in its own sentence, and neither of the others', async (state, sentence) => {
+      serve(view({ keys: [{ ...WAVESPEED_KEY, lastBalanceState: state, lastBalanceAmount: null }] }));
+      const dialog = await mount();
+      const detail = await within(dialog).findByTestId('byok-detail-wavespeed');
+
+      expect(detail).toHaveTextContent(sentence);
+      for (const other of ['This upstream does not report a balance.', 'This key cannot read the balance.', 'This key has no spending limit.']) {
+        if (other !== sentence) expect(detail).not.toHaveTextContent(other);
+      }
+    });
+
     it('says a key that cannot read actual costs cannot, and says nothing of it otherwise', async () => {
       const user = userEvent.setup();
       serve(view({ keys: [WAVESPEED_KEY, { ...FAL_KEY, lastConnected: true, lastFailure: null, lastBalanceState: 'forbidden', costsReadable: false }] }));
