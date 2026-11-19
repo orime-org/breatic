@@ -8,8 +8,8 @@ const TRANSLATED_CATALOG = /^locales\/(zh-CN|zh-TW|ja|ko)\.json$/;
 
 /**
  * The non-English template style catalogs (inner#1817). Only the names a menu
- * shows are checked there: a style's own words say 画布 or キャンバス for the
- * painter's support, which is not the product's Canvas.
+ * shows are checked there: a style's own words use the Chinese and Japanese
+ * words for a painter's canvas, the support, which is not the product's Canvas.
  */
 const STYLE_CATALOG = /^locales\/template-styles\/(zh-CN|zh-TW|ja|ko)\.json$/;
 

@@ -97,7 +97,7 @@ export function describeTemplate(template: GenerationTemplate, style?: string): 
  * @returns Its first sentence.
  */
 function firstSentence(text: string): string {
-  return /^.*?(?:[.!?](?=\s|$)|[。！？])/su.exec(text)?.[0] ?? text;
+  return /^.*?(?:[.!?](?=\s|$)|[\u3002\uFF01\uFF1F])/su.exec(text)?.[0] ?? text;
 }
 
 /**
