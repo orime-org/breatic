@@ -146,20 +146,6 @@ async function spendCapHit(studioId: string, actorUserId: string, estimate: bigi
   return null;
 }
 
-/**
- * Judge work admitted on a balance above zero (Agent messages, text tools,
- * Timeline executions) against the studio's spend limits: it holds nothing and
- * passes while spent is below each limit. It writes nothing, so it reads the
- * limits and this month's spending once, with no lock.
- * @param studioId - The studio that pays for the work.
- * @param actorUserId - Who starts it.
- * @returns The limit passed, or null when it may start; null with payments off.
- */
-export async function spendCapFor(studioId: string, actorUserId: string): Promise<SpendCapHit | null> {
-  if (!env.PAYMENT_ENABLED) return null;
-  return spendCapHit(studioId, actorUserId, null);
-}
-
 /** Why work admitted on a balance above zero may not start. */
 export type BalanceRefusal =
   | { reason: "spend_cap"; cap: SpendCapHit }
@@ -167,18 +153,20 @@ export type BalanceRefusal =
 
 /**
  * The one admission of work that holds nothing (chat turns, text tools,
- * Timeline executions, including one that waited for a running slot): the
- * spend limits first, as every admission judges them (design 3.10), then a
- * balance that reaches `required`.
+ * Timeline executions): the spend limits first, as every admission judges them
+ * (design 3.10), passing while spent is below each limit, then a balance that
+ * reaches `required`. It writes nothing, so it reads the limits, this month's
+ * spending and the balance once, with no lock.
  * @param projectId - The project the work belongs to; its studio pays.
  * @param actorUserId - Who starts it.
  * @param required - Credits the studio's balance must at least reach.
  * @returns Why it may not start, or null when it may; null with payments off.
+ * @throws {NotFoundError} When the project has no live studio.
  */
 export async function judgeBalanceAdmission(projectId: string, actorUserId: string, required: number): Promise<BalanceRefusal | null> {
   if (!env.PAYMENT_ENABLED) return null;
   const studioId = await resolveOwnerStudioId(projectId);
-  const cap = await spendCapFor(studioId, actorUserId);
+  const cap = await spendCapHit(studioId, actorUserId, null);
   if (cap !== null) return { reason: "spend_cap", cap };
   const spendable = await getSpendableCredits(studioId);
   return parseCreditDecimal(spendable) >= quantizeQuotedCredits(required) ? null : { reason: "no_credits", studioId, spendable };
