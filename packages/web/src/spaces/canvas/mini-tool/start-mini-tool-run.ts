@@ -12,12 +12,12 @@ import { newId, t } from '@breatic/shared';
 import {
   outputTemplateOf,
   type MiniToolRequest,
-  type MiniToolRequestSlot,
   type MiniToolSlotValue,
   type MiniToolSnapshot,
   type MiniToolSpec,
 } from '@breatic/shared/mini-tools';
 
+import { miniToolRequestOf } from '@breatic/shared/mini-tools';
 import { miniToolsApi } from '@web/data/api/mini-tools';
 import { ApiException } from '@web/data/api/types';
 import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
@@ -145,15 +145,6 @@ export interface MiniToolRun {
 }
 
 /**
- * One picked item as the request carries it.
- * @param value - The pick.
- * @returns Its address and length.
- */
-function slotOf(value: MiniToolSlotValue): MiniToolRequestSlot {
-  return { url: value.url, ...(value.duration !== undefined && { duration: value.duration }) };
-}
-
-/**
  * The request a server tool's press sends.
  * @param run - The press.
  * @param nodeIds - The result nodes, in output order.
@@ -161,33 +152,15 @@ function slotOf(value: MiniToolSlotValue): MiniToolRequestSlot {
  * @returns The body.
  */
 function requestOf(run: MiniToolRun, nodeIds: string[], uploads: PressUploads): MiniToolRequest {
-  const { spec, snapshot, source } = run;
-  const slots: MiniToolRequest['slots'] = {};
-  for (const slot of spec.slots) {
-    const held = snapshot.slots[slot.key];
-    if (held === undefined) continue;
-    slots[slot.key] = Array.isArray(held)
-      ? (held as readonly MiniToolSlotValue[]).map(slotOf)
-      : slotOf(held as MiniToolSlotValue);
-  }
-  return {
-    tool: spec.id,
-    project_id: run.projectId,
-    space_id: run.spaceId,
-    node_ids: nodeIds,
-    source: {
-      url: snapshot.source.url,
-      ...(source.mimeType !== undefined && { mime_type: source.mimeType }),
-      ...(source.width !== undefined && { width: source.width }),
-      ...(source.height !== undefined && { height: source.height }),
-      ...(snapshot.source.duration !== undefined && { duration: snapshot.source.duration }),
-    },
-    ...(spec.prompt !== undefined && { prompt: snapshot.prompt }),
-    params: { ...snapshot.params },
-    slots,
-    ...(uploads.drawing !== undefined && { drawing: uploads.drawing }),
-    ...(uploads.expand !== undefined && { expand: uploads.expand }),
-  };
+  return miniToolRequestOf({
+    spec: run.spec,
+    projectId: run.projectId,
+    spaceId: run.spaceId,
+    nodeIds,
+    snapshot: run.snapshot,
+    source: run.source,
+    uploads,
+  });
 }
 
 /**
