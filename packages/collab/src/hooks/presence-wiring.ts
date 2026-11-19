@@ -36,6 +36,7 @@
 import { followingDeclarationSchema, parseDocName } from "@breatic/shared";
 
 import { stampConnectionIdentity } from "@collab/hooks/awareness-identity.js";
+import { viewOfAwareness, type ProjectMember, type ViewFields } from "@collab/services/last-view-cache.js";
 import {
   deleteFollowing,
   markOnline,
@@ -263,6 +264,31 @@ export function stampIdentityOnAwareness(payload: {
   if (!userId || !payload.connection) return;
 
   stampConnectionIdentity({ states: payload.states, userId });
+}
+
+/**
+ * What a member has on screen in a Space, from one frame their connection
+ * sent on that Space's document (#1488 §6). Runs after the identity stamp, so
+ * every entry carries the sender; the last entry publishing a view wins.
+ * @param payload - The `beforeHandleAwareness` payload.
+ * @param payload.states - The frame's entries, after the identity stamp.
+ * @param payload.context - Connection context; absent for a frame relayed from another instance.
+ * @param payload.connection - The originating connection.
+ * @param payload.documentName - The document the frame is for.
+ * @returns Whose view of which Space, or null when the frame is not a member's on a Space or publishes no view.
+ */
+export function lastViewOfAwareness(payload: {
+  states: Map<number, Record<string, unknown>>;
+  context?: PresenceContext;
+  connection?: ConnectionLike;
+  documentName: string;
+}): (ProjectMember & { spaceId: string; view: ViewFields }) | null {
+  const userId = userIdOf(payload);
+  const parsed = parseDocName(payload.documentName);
+  if (!userId || !parsed?.spaceId) return null;
+  let view: ViewFields | null = null;
+  for (const state of payload.states.values()) view = viewOfAwareness(state) ?? view;
+  return view === null ? null : { projectId: parsed.projectId, userId, spaceId: parsed.spaceId, view };
 }
 
 /**

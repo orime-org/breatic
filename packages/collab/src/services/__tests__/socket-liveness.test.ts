@@ -354,3 +354,51 @@ describe("the handler's promise settles once the seat work is done (#1326)", () 
     expect(logError).toHaveBeenCalledWith({ err: failure, socketId: "sock-1" }, "seat_refresh_failed");
   });
 });
+
+describe("a sign of life keeps what its owner has on screen (#1488)", () => {
+  const SPACE_DOC = `project-${PID}/canvas-33333333-3333-4333-8333-333333333333`;
+  const OTHER_PID = "44444444-4444-4444-8444-444444444444";
+
+  it("renews the view of the user behind each Project the socket carries a Space of, at the time it was heard", async () => {
+    const renewViews = vi.fn(async () => undefined);
+    const handler = createLivenessHandler({
+      refreshSeats: vi.fn(nothingToReport),
+      requestDemote: vi.fn(async () => undefined),
+      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000, agentIdleMs: 300_000, agentOnlineMs: 1_800_000 },
+      renewViews,
+    });
+    const user = { context: { user: { id: ALICE } }, document: new Y.Doc() };
+    await handler(
+      "sock-1",
+      new Map<string, unknown>([
+        [META_DOC, user],
+        [SPACE_DOC, user],
+        [`project-${PID}/document-55555555-5555-4555-8555-555555555555`, user],
+        [`project-${OTHER_PID}/canvas-66666666-6666-4666-8666-666666666666`, user],
+      ]) as Connections,
+      25_000,
+    );
+    expect(renewViews).toHaveBeenCalledWith(
+      [
+        { projectId: PID, userId: ALICE },
+        { projectId: OTHER_PID, userId: ALICE },
+      ],
+      25_000,
+    );
+  });
+
+  it("logs a failed renewal and still settles", async () => {
+    const failure = new Error("redis down");
+    const handler = createLivenessHandler({
+      refreshSeats: vi.fn(nothingToReport),
+      requestDemote: vi.fn(async () => undefined),
+      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000, agentIdleMs: 300_000, agentOnlineMs: 1_800_000 },
+      renewViews: vi.fn(async () => {
+        throw failure;
+      }),
+    });
+    const user = { context: { user: { id: ALICE } }, document: new Y.Doc() };
+    await expect(handler("sock-1", new Map<string, unknown>([[SPACE_DOC, user]]) as Connections, 31_000)).resolves.toBeUndefined();
+    expect(logError).toHaveBeenCalledWith({ err: failure, socketId: "sock-1" }, "last_view_renew_failed");
+  });
+});

@@ -11,6 +11,8 @@
  */
 
 import { readPresence } from "@collab/hooks/presence.js";
+import type { LastView } from "@collab/services/last-view-cache.js";
+import { canvasPeople, ownerView } from "@collab/services/agent-commands/people.js";
 import * as Y from "yjs";
 import type { z } from "zod";
 import {
@@ -62,6 +64,8 @@ export type Json = Extract<AgentReply, { status: "done" }>["result"];
 export interface Actor {
   /** The user's role on the Project. */
   role: ProjectRole;
+  /** What each member has on screen in the Project; read only for a command whose `views` is set. */
+  views: readonly LastView[];
 }
 
 /** One command type. */
@@ -88,6 +92,8 @@ interface CommandSpec<T extends AgentCommandType> {
   focus: (params: AgentCommandParams<T>, answer: Answer) => readonly string[] | undefined;
   /** Whether it counts against `commands_per_minute`; only the presence refresh does not. */
   counted: boolean;
+  /** Whether it reads what the members have on screen (§6). */
+  views?: true;
 }
 
 /** The command table, by type. */
@@ -103,6 +109,7 @@ export interface AnyCommandSpec {
   late: (doc: Y.Doc, params: unknown, command: AgentCommand) => Answer;
   focus: (params: unknown, answer: Answer) => readonly string[] | undefined;
   counted: boolean;
+  views?: true;
 }
 
 /**
@@ -182,20 +189,22 @@ const COMMANDS: CommandTable = {
     write: false,
     size: null,
     space: "canvas",
-    run: (doc, { nodeIds }) => readCanvas(doc, nodeIds),
+    run: (doc, { nodeIds }, command, actor) => readCanvas(doc, nodeIds, canvasPeople(actor.views, command)),
     late: unfinished,
     focus: ({ nodeIds }) => nodeIds,
     counted: true,
+    views: true,
   },
   create_canvas_nodes: {
     params: agentCommandParamsSchemas.create_canvas_nodes,
     write: true,
     size: "add",
     space: "canvas",
-    run: (doc, params, command) => createNodes(doc, params, command),
+    run: (doc, params, command, actor) => createNodes(doc, params, command, ownerView(actor.views, command)),
     late: createLate,
     focus: (_p, answer) => resultIds(answer, "nodeIds"),
     counted: true,
+    views: true,
   },
   update_canvas_node: {
     params: agentCommandParamsSchemas.update_canvas_node,
@@ -318,7 +327,7 @@ const COMMANDS: CommandTable = {
     write: true,
     size: "add",
     space: "canvas",
-    run: (doc, params, command) => createUploadNodes(doc, params, command),
+    run: (doc, params, command, actor) => createUploadNodes(doc, params, command, ownerView(actor.views, command)),
     late: (doc, { files }, command) => {
       const grouped = files.length >= 2;
       const slots = [...files.map((_, i) => `upload:${String(i)}`), ...(grouped ? ["group"] : [])];
@@ -326,6 +335,7 @@ const COMMANDS: CommandTable = {
     },
     focus: (_p, answer) => resultIds(answer, "nodeIds"),
     counted: true,
+    views: true,
   },
   check_upload_target: {
     params: agentCommandParamsSchemas.check_upload_target,
@@ -342,10 +352,11 @@ const COMMANDS: CommandTable = {
     write: false,
     size: null,
     space: "document",
-    run: (doc, _params, command) => readDocument(doc, command),
+    run: (doc, _params, command, actor) => readDocument(doc, command, actor.views),
     late: unfinished,
     focus: keepFocus,
     counted: true,
+    views: true,
   },
   // The document kinds are those collab's size gate gives the editor's own
   // updates: new blocks and comments add, a text change edits, and removing

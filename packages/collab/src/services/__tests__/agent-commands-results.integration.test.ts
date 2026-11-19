@@ -12,6 +12,8 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { getCollabRedis } from "@breatic/core";
+import { recordLastView } from "@collab/services/last-view-cache.js";
 import { randomUUID } from "node:crypto";
 
 import { callScopedId } from "@breatic/shared";
@@ -208,6 +210,25 @@ describe("create_upload_nodes", () => {
       ["video", groupId],
       ["text", groupId],
     ]);
+  });
+
+  it("places files that follow no node in the middle of what the user is looking at", async () => {
+    const world = await seedResults();
+    consumeOn(world, harness.instanceA);
+    await recordLastView(
+      getCollabRedis(),
+      world.prefix,
+      { projectId: world.projectId, userId: world.userId, spaceId: world.spaceId, view: { activeNodeIds: null, pointer: null, camera: { x: 8000, y: 8000, width: 1200, height: 900 }, cursor: null } },
+      60_000,
+      Date.now(),
+    );
+    const command = await send(world, "create_upload_nodes", { files: [{ type: "image", name: "a.png" }] });
+    expect(await replyOf(world, command.callId)).toMatchObject({ status: "done" });
+    const node = (await canvasNodes(harness.instanceB, world)).find((n) => n.id === callScopedId(command.callId, "upload:0"))!;
+    expect(node.position.x).toBeGreaterThan(8000);
+    expect(node.position.x).toBeLessThan(9200);
+    expect(node.position.y).toBeGreaterThan(8000);
+    expect(node.position.y).toBeLessThan(8900);
   });
 
   it("answers not_found for a node to follow that is not on the canvas", async () => {

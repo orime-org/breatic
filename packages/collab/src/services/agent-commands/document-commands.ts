@@ -19,6 +19,8 @@
  */
 
 import * as Y from "yjs";
+import type { LastView } from "@collab/services/last-view-cache.js";
+import { documentPeople } from "@collab/services/agent-commands/people.js";
 import { initProseMirrorDoc, updateYFragment } from "y-prosemirror";
 import { blockToNode, nodeToBlock, type PartialBlock } from "@blocknote/core";
 import { CommentMark, DefaultThreadStoreAuth } from "@blocknote/core/comments";
@@ -217,12 +219,14 @@ function commentText(body: unknown): string {
 
 /**
  * Read the document: each top-level block with its id, type, plain text and
- * block JSON, and each comment thread with the words it is on.
+ * block JSON, each comment thread with the words it is on, and who is in
+ * the document with the words they select.
  * @param ydoc - The document Space's document.
  * @param command - The command.
+ * @param views - Every live member view in the Project.
  * @returns The answer.
  */
-export function readDocument(ydoc: Y.Doc, command: AgentCommand): Answer {
+export function readDocument(ydoc: Y.Doc, command: AgentCommand, views: readonly LastView[]): Answer {
   const { doc } = readBody(ydoc);
   const blocks: Array<Record<string, unknown>> = [];
   const quoted = new Map<string, { blockId: string; text: string }>();
@@ -281,7 +285,7 @@ export function readDocument(ydoc: Y.Doc, command: AgentCommand): Answer {
   }));
   // The block JSON holds no value JSON cannot carry except `undefined`,
   // which the round trip drops.
-  return done(JSON.parse(JSON.stringify({ blocks, threads })) as Json);
+  return done(JSON.parse(JSON.stringify({ blocks, threads, people: documentPeople(ydoc, views, command) })) as Json);
 }
 
 /**

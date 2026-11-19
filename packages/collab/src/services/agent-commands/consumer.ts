@@ -54,7 +54,6 @@ import {
   type AgentCommand,
   type AgentCommandType,
   type AgentReply,
-  type ProjectRole,
 } from "@breatic/shared";
 import { createDocLease, type DocLeaseSettings } from "@collab/services/doc-lease.js";
 import {
@@ -64,7 +63,8 @@ import {
   type GroupConsumerSettings,
   type StreamEntry,
 } from "@collab/services/stream-group-consumer.js";
-import { commandSpec, type Answer } from "@collab/services/agent-commands/commands.js";
+import { commandSpec, type Actor, type Answer } from "@collab/services/agent-commands/commands.js";
+import { readLastViews } from "@collab/services/last-view-cache.js";
 import { measure, readDocSizeRecord } from "@collab/services/document-size.js";
 import { getCollabConfig } from "@collab/config.js";
 import { markAgentActive } from "@collab/hooks/presence.js";
@@ -250,10 +250,10 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
    * Whether the user may run this command now; counts it against the rate
    * limit when every other check passes.
    * @param item - The command.
-   * @returns The refusal, or the user's Project role when it may run.
+   * @returns The refusal, or who runs it (role, and the views it reads) when it may run.
    * @throws {Error} When the database or Redis read fails.
    */
-  async function refusalOf(item: Item): Promise<{ refused: Answer } | { role: ProjectRole }> {
+  async function refusalOf(item: Item): Promise<{ refused: Answer } | Actor> {
     const { command } = item;
     const spec = commandSpec(item.type);
     if (!(await agentAccessService.isCredentialUsable(command.credential))) {
@@ -280,7 +280,9 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
         return { refused: { status: "rejected", reason: "schema_mismatch" } };
       }
     }
-    if (!spec.counted) return { role };
+    // What the members have on screen, for the commands that read it (§6).
+    const views = spec.views ? await readLastViews(getCollabRedis(), prefix, command.projectId, Date.now()) : [];
+    if (!spec.counted) return { role, views };
     const verdict = await checkRateLimit(mcp, [
       {
         key: `mcp:rate:${command.userId}:${studioId}`,
@@ -288,7 +290,7 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
         windowSeconds: 60,
       },
     ]);
-    return verdict.allowed ? { role } : { refused: { status: "rejected", reason: "rate_limited" } };
+    return verdict.allowed ? { role, views } : { refused: { status: "rejected", reason: "rate_limited" } };
   }
 
   /** Timers that answer a capture nobody uploaded, cleared on stop. */

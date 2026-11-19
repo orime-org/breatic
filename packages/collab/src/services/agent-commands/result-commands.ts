@@ -12,6 +12,7 @@
  */
 
 import * as Y from "yjs";
+import type { LastView } from "@collab/services/last-view-cache.js";
 import {
   callScopedId,
   type AgentCommand,
@@ -215,9 +216,10 @@ export function createReadingNode(doc: Y.Doc, params: AgentCommandParams<"create
  * @param doc - The canvas document.
  * @param params - The command's parameters.
  * @param command - The command.
+ * @param view - What the user has on screen on this canvas, when they are on it.
  * @returns The answer.
  */
-export function createUploadNodes(doc: Y.Doc, params: AgentCommandParams<"create_upload_nodes">, command: AgentCommand): Answer {
+export function createUploadNodes(doc: Y.Doc, params: AgentCommandParams<"create_upload_nodes">, command: AgentCommand, view?: LastView): Answer {
   const { files, afterNodeId } = params;
   const nodeIds = files.map((_, i) => callScopedId(command.callId, `upload:${String(i)}`));
   const groupId = files.length >= 2 ? callScopedId(command.callId, "group") : undefined;
@@ -233,7 +235,7 @@ export function createUploadNodes(doc: Y.Doc, params: AgentCommandParams<"create
     const slot = resultBaseOf(at);
     tops = batchLayoutAt({ x: slot.x + EMPTY_NODE_SIZE.width / 2, y: slot.y + EMPTY_NODE_SIZE.height / 2 }, files.length).tops;
   } else {
-    const { centre, occupied } = newNodesAim(doc);
+    const { centre, occupied } = newNodesAim(doc, view);
     const layout = batchLayoutAt(centre, files.length);
     const searched = groupRectForMembers(
       [...(layout.frame ? [layout.frame] : []), ...layout.tops.map((top) => withTaskCounts({ ...top, ...EMPTY_NODE_SIZE }))],

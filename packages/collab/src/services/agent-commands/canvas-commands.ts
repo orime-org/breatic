@@ -11,6 +11,8 @@
  */
 
 import type * as Y from "yjs";
+import type { LastView } from "@collab/services/last-view-cache.js";
+import type { CanvasPerson } from "@collab/services/agent-commands/people.js";
 import {
   callScopedId,
   canConnect,
@@ -221,34 +223,39 @@ function growToWrap(doc: Y.Doc, groupId: string): void {
 }
 
 /**
- * What new nodes are aimed at when the agent names no place and the user's
- * view is not known (§8.2): the centre of what the canvas holds, or the
- * origin on an empty canvas; and what they must not cover.
+ * What new nodes are aimed at when the agent names no place (§8.2): the
+ * centre of the rectangle the user is looking at on this canvas, else their
+ * pointer, else the centre of what the canvas holds, or the origin on an
+ * empty canvas; and what they must not cover.
  * @param doc - The canvas document.
+ * @param view - What the user has on screen on this canvas, when they are on it.
  * @returns The point aimed at and every node's footprint.
  */
-export function newNodesAim(doc: Y.Doc): { centre: { x: number; y: number }; occupied: Rect[] } {
+export function newNodesAim(doc: Y.Doc, view?: LastView): { centre: { x: number; y: number }; occupied: Rect[] } {
   const occupied = occupiedRects(readNodePlacementsInDoc(doc), () => undefined);
+  if (view?.camera) return { centre: centerOf(view.camera), occupied };
+  if (view?.pointer) return { centre: view.pointer, occupied };
   const all = groupRectForMembers(occupied, 0);
   return { centre: all ? centerOf(all) : { x: 0, y: 0 }, occupied };
 }
 
 /**
- * Where new nodes go when the agent names no place and the user's view is
- * not known (§8.2): aimed at the centre of what the canvas holds, or the
- * origin on an empty canvas, laid out as the browser lays out a placed batch,
- * then moved right until it covers nothing.
+ * Where new nodes go when the agent names no place (§8.2): aimed as
+ * `newNodesAim` says, laid out as the browser lays out a placed batch, then
+ * moved right until it covers nothing.
  * @param doc - The canvas document.
  * @param nodes - The nodes to place.
  * @param edges - Edges between them, by index into `nodes`.
+ * @param view - What the user has on screen on this canvas.
  * @returns One top-left position per node.
  */
 function placeNewNodes(
   doc: Y.Doc,
   nodes: AgentCommandParams<"create_canvas_nodes">["nodes"],
   edges: CanvasProposal["edges"],
+  view: LastView | undefined,
 ): Array<{ x: number; y: number }> {
-  const { centre, occupied } = newNodesAim(doc);
+  const { centre, occupied } = newNodesAim(doc, view);
   const proposal: CanvasProposal = {
     nodes: nodes.map((node) => ({ role: "source", type: node.type, name: node.name ?? "" })),
     edges,
@@ -330,9 +337,10 @@ export function createLate(doc: Y.Doc, params: AgentCommandParams<"create_canvas
  * @param doc - The canvas document.
  * @param params - The command's parameters.
  * @param command - The command.
+ * @param view - What the user has on screen on this canvas, when they are on it.
  * @returns The answer.
  */
-export function createNodes(doc: Y.Doc, params: AgentCommandParams<"create_canvas_nodes">, command: AgentCommand): Answer {
+export function createNodes(doc: Y.Doc, params: AgentCommandParams<"create_canvas_nodes">, command: AgentCommand, view?: LastView): Answer {
   const { nodes, edges = [], group } = params;
   const ids = createdIds(command, nodes.length);
   const nodesMap = canvasNodesMap(doc);
@@ -367,7 +375,7 @@ export function createNodes(doc: Y.Doc, params: AgentCommandParams<"create_canva
     const toIndex = slotOf.get(edge.target.new);
     return fromIndex === undefined || toIndex === undefined ? [] : [{ fromIndex, toIndex }];
   });
-  const spots = placeNewNodes(doc, unplaced.map((m) => m.node), flowEdges);
+  const spots = placeNewNodes(doc, unplaced.map((m) => m.node), flowEdges, view);
   for (const { node, id, index } of missing) {
     const empty = createEmptyNode(node.type, node.position ?? spots[slotOf.get(index)!]!, command.userId);
     addNodeInDoc(doc, {
@@ -598,9 +606,10 @@ export function disconnectNodes(doc: Y.Doc, ids: string[]): Answer {
  * all of them, with the edges that touch what is returned.
  * @param doc - The canvas document.
  * @param nodeIds - The nodes to read; all of them when absent.
+ * @param people - Who is on this canvas now.
  * @returns The answer.
  */
-export function readCanvas(doc: Y.Doc, nodeIds: string[] | undefined): Answer {
+export function readCanvas(doc: Y.Doc, nodeIds: string[] | undefined, people: CanvasPerson[]): Answer {
   const wanted = nodeIds ? new Set(nodeIds) : null;
   const all = readNodes(doc).filter((node) => !wanted || wanted.has(node.id));
   const nodes = (wanted ? all : all.slice(0, getMcpConfig().read_canvas_max_nodes)).map((node) => ({
@@ -612,7 +621,7 @@ export function readCanvas(doc: Y.Doc, nodeIds: string[] | undefined): Answer {
   const cut = nodes.length < all.length ? { truncated: true, total: all.length } : {};
   // The views hold no value JSON cannot carry except `undefined`, which
   // the round trip drops.
-  return done(JSON.parse(JSON.stringify({ nodes, edges, ...cut })) as Json);
+  return done(JSON.parse(JSON.stringify({ nodes, edges, ...cut, people })) as Json);
 }
 
 /**

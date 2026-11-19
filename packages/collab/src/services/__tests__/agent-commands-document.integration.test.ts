@@ -27,6 +27,8 @@ import { readCommentAssignments } from "@breatic/shared/space-content";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
 import { getCollabConfig } from "@collab/config.js";
+import { getCollabRedis } from "@breatic/core";
+import { recordLastView } from "@collab/services/last-view-cache.js";
 import {
   call,
   consumeOn,
@@ -411,4 +413,39 @@ describe("document limits", () => {
     expect(await call(world, "comment_on_document", { blockId: "b0", text: "x" })).toMatchObject({ status: "rejected", reason: "space_full" });
     expect(await call(world, "delete_document_blocks", { blockIds: ["big"] })).toMatchObject({ status: "done" });
   }, 30_000);
+});
+
+describe("who is in the document and what they selected (#1488 §11.4)", () => {
+  it("turns each member's caret into the block it is in and the words it selects", async () => {
+    const first = paragraph("b-1", "Hello brave world");
+    const second = paragraph("b-2", "Second line");
+    const world = await seedDocumentWorld([first, second]);
+    consumeOn(world, harness.instanceA);
+    const words = (first.get(0) as Y.XmlElement).get(0) as Y.XmlText;
+    const other = (second.get(0) as Y.XmlElement).get(0) as Y.XmlText;
+    const at = (text: Y.XmlText, index: number): Record<string, unknown> =>
+      Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(text, index)) as Record<string, unknown>;
+    const member = randomUUID();
+    const view = { activeNodeIds: null, pointer: null, camera: null };
+    await recordLastView(getCollabRedis(), world.prefix, { projectId: world.projectId, userId: world.userId, spaceId: world.spaceId, view: { ...view, cursor: { anchor: at(words, 6), head: at(words, 11) } } }, 60_000, Date.now());
+    await recordLastView(getCollabRedis(), world.prefix, { projectId: world.projectId, userId: member, spaceId: world.spaceId, view: { ...view, cursor: { anchor: at(other, 3), head: at(other, 3) } } }, 60_000, Date.now());
+    await recordLastView(getCollabRedis(), world.prefix, { projectId: world.projectId, userId: randomUUID(), spaceId: world.canvasSpaceId, view: { ...view, cursor: null } }, 60_000, Date.now());
+    const { people } = (await readDocument(world)) as unknown as { people: unknown[] };
+    expect(people).toEqual(
+      expect.arrayContaining([
+        { userId: world.userId, you: true, blockId: "b-1", selectedText: "brave" },
+        { userId: member, you: false, blockId: "b-2", selectedText: "" },
+      ]),
+    );
+    expect(people).toHaveLength(2);
+  });
+
+  it("lists a member whose caret no longer resolves without a block", async () => {
+    const world = await seedDocumentWorld([paragraph("b-1", "Hello")]);
+    consumeOn(world, harness.instanceA);
+    const gone = { type: null, tname: null, item: { client: 999_999, clock: 5 }, assoc: 0 };
+    await recordLastView(getCollabRedis(), world.prefix, { projectId: world.projectId, userId: world.userId, spaceId: world.spaceId, view: { activeNodeIds: null, pointer: null, camera: null, cursor: { anchor: gone, head: gone } } }, 60_000, Date.now());
+    const { people } = (await readDocument(world)) as unknown as { people: unknown[] };
+    expect(people).toEqual([{ userId: world.userId, you: true, blockId: null, selectedText: null }]);
+  });
 });

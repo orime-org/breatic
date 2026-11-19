@@ -33,6 +33,7 @@ import {
 import { listAgentPresence, markAgentActive, markOnline, readFollowing, readPresence, writeFollowing } from "@collab/hooks/presence";
 import {
   forgetFollowingOnDisconnect,
+  lastViewOfAwareness,
   recordFollowingFromAwareness,
   recordPresenceOnConnect,
   refreshPresenceForSocket,
@@ -848,5 +849,31 @@ describe("presence wiring — the server keeps whom each connection follows", ()
 
     expect(readPresence(metaDoc(), ALICE)?.lastSeenAt).toBe(clock);
     expect(readFollowing(metaDoc(), socketId)?.lastSeenAt).toBe(clock);
+  });
+});
+
+describe("presence wiring — what a member has on screen (#1488)", () => {
+  const PROJECT = "11111111-1111-4111-8111-111111111111";
+  const SPACE = "22222222-2222-4222-8222-222222222222";
+  const CANVAS = `project-${PROJECT}/canvas-${SPACE}`;
+
+  it("takes the view a member's frame publishes on a Space document, with the Space it is of", () => {
+    const states = new Map<number, Record<string, unknown>>([
+      [1, {}],
+      [7, { user: { id: ALICE }, activeNodeIds: ["n1"], pointer: { x: 1, y: 2 } }],
+    ]);
+    expect(lastViewOfAwareness({ states, context: { user: { id: ALICE } }, documentName: CANVAS })).toEqual({
+      projectId: PROJECT,
+      userId: ALICE,
+      spaceId: SPACE,
+      view: { activeNodeIds: ["n1"], pointer: { x: 1, y: 2 }, camera: null, cursor: null },
+    });
+  });
+
+  it("takes nothing from the meta document, a relayed frame, or a frame with no view", () => {
+    const states = new Map<number, Record<string, unknown>>([[7, { activeNodeIds: ["n1"] }]]);
+    expect(lastViewOfAwareness({ states, context: { user: { id: ALICE } }, documentName: `project-${PROJECT}/meta` })).toBeNull();
+    expect(lastViewOfAwareness({ states, context: undefined, documentName: CANVAS })).toBeNull();
+    expect(lastViewOfAwareness({ states: new Map([[7, { user: { id: ALICE } }]]), context: { user: { id: ALICE } }, documentName: CANVAS })).toBeNull();
   });
 });

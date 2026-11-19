@@ -71,11 +71,13 @@ import { createActivityHook } from "@collab/hooks/account-activity.js";
 import { createAuthHook } from "@collab/hooks/auth.js";
 import {
   forgetFollowingOnDisconnect,
+  lastViewOfAwareness,
   recordFollowingFromAwareness,
   recordPresenceOnConnect,
   stampIdentityOnAwareness,
 } from "@collab/hooks/presence-wiring.js";
 import { createLivenessHandler } from "@collab/services/socket-liveness.js";
+import { recordLastView, renewLastViews } from "@collab/services/last-view-cache.js";
 import { keepDocumentSchemaPublished } from "@collab/services/document-schema-publisher.js";
 import { replySyncConfirmation } from "@collab/services/sync-receipt.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
@@ -195,6 +197,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         agentIdleMs: timings.agentIdleMs,
         agentOnlineMs: timings.agentOnlineMs,
       },
+      renewViews: (members, heardAt) => renewLastViews(getCollabRedis(), infra.redisKeyPrefix, members, timings.presenceStaleAfterMs, heardAt),
     }),
     pingIntervalMs: timings.pingIntervalMs,
   });
@@ -703,6 +706,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         agentIdleMs: timings.agentIdleMs,
         agentOnlineMs: timings.agentOnlineMs,
       });
+      // What the member has on screen, for the external agent's reads and
+      // placements (#1488 §6); a failed write loses one frame of it.
+      const view = lastViewOfAwareness({ states, connection, context, documentName });
+      if (view) {
+        recordLastView(getCollabRedis(), infra.redisKeyPrefix, view, timings.presenceStaleAfterMs, Date.now()).catch((err: unknown) => {
+          logger.error({ err, ctx: { documentName, userId: view.userId } }, "last_view_write_failed");
+        });
+      }
     },
 
     onDisconnect: async ({ documentName, context, socketId, document }) => {

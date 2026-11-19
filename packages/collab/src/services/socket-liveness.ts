@@ -23,6 +23,7 @@
  */
 
 import { createLogger } from "@breatic/core";
+import { parseDocName } from "@breatic/shared";
 
 import {
   refreshPresenceForSocket,
@@ -30,6 +31,7 @@ import {
   type SocketConnection,
 } from "@collab/hooks/presence-wiring.js";
 import type { SeatRefreshResult } from "@collab/services/connection-registry.js";
+import type { ProjectMember } from "@collab/services/last-view-cache.js";
 import {
   demoteForSeat,
   type DemotableConnection,
@@ -52,10 +54,31 @@ export interface SocketLivenessDeps {
   requestDemote: (documentName: string, member: string) => Promise<void>;
   /** Clock and presence threshold. */
   presencePolicy: PresencePolicy;
+  /**
+   * Keep what the members behind the socket's Space connections have on
+   * screen (#1488 §6), stamped at `heardAt`.
+   */
+  renewViews?: (members: ProjectMember[], heardAt: number) => Promise<void>;
 }
 
 /** One connection on the socket, as much of it as a refresh needs. */
 type LiveSocketConnection = SocketConnection & DemotableConnection;
+
+/**
+ * The member behind each Project the socket carries a Space document of.
+ * @param connections - What the socket carries, by document name.
+ * @returns One entry per Project and user.
+ */
+function spaceMembersOf(connections: ReadonlyMap<string, SocketConnection>): ProjectMember[] {
+  const members = new Map<string, ProjectMember>();
+  for (const [documentName, connection] of connections) {
+    const parsed = parseDocName(documentName);
+    const userId = connection.context?.user?.id;
+    if (!parsed?.spaceId || !userId) continue;
+    members.set(`${parsed.projectId}:${userId}`, { projectId: parsed.projectId, userId });
+  }
+  return [...members.values()];
+}
 
 /**
  * Build the callback the per-socket table calls on each sign of life it
@@ -73,7 +96,7 @@ export function createLivenessHandler(
   connections: ReadonlyMap<string, LiveSocketConnection>,
   heardAt: number,
 ) => Promise<void> {
-  const { refreshSeats, requestDemote, presencePolicy } = deps;
+  const { refreshSeats, requestDemote, presencePolicy, renewViews } = deps;
 
   /**
    * Act on what the seat renewal answered.
@@ -113,6 +136,9 @@ export function createLivenessHandler(
       logger.error({ err, socketId }, "seat_refresh_failed");
     });
     refreshPresenceForSocket(connections, presencePolicy, heardAt, socketId);
-    return seats;
+    const views = renewViews ? renewViews(spaceMembersOf(connections), heardAt).catch((err: unknown) => {
+      logger.error({ err, socketId }, "last_view_renew_failed");
+    }) : undefined;
+    return Promise.all([seats, views]).then(() => undefined);
   };
 }

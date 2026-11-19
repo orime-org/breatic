@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";
 import * as Y from "yjs";
 import { sql as dsql } from "drizzle-orm";
 
-import { getCanvasReferencePoolCap, getMcpConfig } from "@breatic/core";
+import { getCanvasReferencePoolCap, getCollabRedis, getMcpConfig } from "@breatic/core";
 import { callScopedId } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import {
@@ -27,6 +27,7 @@ import {
   nodeDataMap,
 } from "@breatic/shared/canvas-model";
 import { getCollabConfig } from "@collab/config.js";
+import { recordLastView, type ViewFields } from "@collab/services/last-view-cache.js";
 import {
   call,
   canvasEdges,
@@ -536,5 +537,75 @@ describe("whose edit it is", () => {
       await run<{ n: number }>(dsql`
         SELECT count(*)::int AS n FROM account_activity_events WHERE user_id = ${world.userId} AND kind = 'project_edit'`),
     ).toEqual([{ n: 0 }]);
+  });
+});
+
+/**
+ * Publish what a member has on screen, as their browser's awareness would.
+ * @param world - Whose Project.
+ * @param userId - The member.
+ * @param spaceId - The Space they are in.
+ * @param view - What they see.
+ */
+async function onScreen(world: World, userId: string, spaceId: string, view: Partial<ViewFields>): Promise<void> {
+  await recordLastView(
+    getCollabRedis(),
+    world.prefix,
+    { projectId: world.projectId, userId, spaceId, view: { activeNodeIds: null, pointer: null, camera: null, cursor: null, ...view } },
+    60_000,
+    Date.now(),
+  );
+}
+
+describe("what the members have on screen (#1488 §6, §8.2)", () => {
+  it("lists who is on this canvas with what they hold and where their pointer is, marking the user", async () => {
+    const world = await seedWorld();
+    consumeOn(world, harness.instanceA);
+    const other = randomUUID();
+    await onScreen(world, world.userId, world.spaceId, { activeNodeIds: [world.nodeId], pointer: { x: 5, y: 6 } });
+    await onScreen(world, other, world.spaceId, { activeNodeIds: null, pointer: { x: 7, y: 8 } });
+    await onScreen(world, randomUUID(), randomUUID(), { activeNodeIds: ["elsewhere"] });
+    const { people } = resultOf<{ people: unknown[] }>(await call(world, "read_canvas", {}));
+    expect(people).toEqual(
+      expect.arrayContaining([
+        { userId: world.userId, you: true, selectedNodeIds: [world.nodeId], pointer: { x: 5, y: 6 } },
+        { userId: other, you: false, selectedNodeIds: [], pointer: { x: 7, y: 8 } },
+      ]),
+    );
+    expect(people).toHaveLength(2);
+  });
+
+  it("aims new nodes at the centre of what the user is looking at", async () => {
+    const world = await seedWorld();
+    consumeOn(world, harness.instanceA);
+    await onScreen(world, world.userId, world.spaceId, { camera: { x: 5000, y: 5000, width: 1000, height: 800 } });
+    const command = await send(world, "create_canvas_nodes", { nodes: [{ type: "image" }] });
+    expect(await replyOf(world, command.callId)).toMatchObject({ status: "done" });
+    const { x, y } = (await nodeOf(world, callScopedId(command.callId, "node:0")))!.position;
+    expect(x).toBeGreaterThan(5000);
+    expect(x).toBeLessThan(6000);
+    expect(y).toBeGreaterThan(5000);
+    expect(y).toBeLessThan(5800);
+  });
+
+  it("aims at the user's pointer when their view carries no rectangle", async () => {
+    const world = await seedWorld();
+    consumeOn(world, harness.instanceA);
+    await onScreen(world, world.userId, world.spaceId, { pointer: { x: 3000, y: -2000 } });
+    const command = await send(world, "create_canvas_nodes", { nodes: [{ type: "image" }] });
+    expect(await replyOf(world, command.callId)).toMatchObject({ status: "done" });
+    const { x, y } = (await nodeOf(world, callScopedId(command.callId, "node:0")))!.position;
+    expect(Math.abs(x - 3000)).toBeLessThan(600);
+    expect(Math.abs(y + 2000)).toBeLessThan(600);
+  });
+
+  it("aims at what the canvas holds when the user is looking at another Space", async () => {
+    const world = await seedWorld();
+    consumeOn(world, harness.instanceA);
+    await onScreen(world, world.userId, randomUUID(), { camera: { x: 5000, y: 5000, width: 1000, height: 800 } });
+    const command = await send(world, "create_canvas_nodes", { nodes: [{ type: "image" }] });
+    expect(await replyOf(world, command.callId)).toMatchObject({ status: "done" });
+    const { x } = (await nodeOf(world, callScopedId(command.callId, "node:0")))!.position;
+    expect(x).toBeLessThan(2000);
   });
 });
