@@ -296,7 +296,7 @@ import type * as coreModule from "@breatic/core";
 import type * as domain from "@breatic/domain";
 import { runTask } from "@worker/handlers/dispatch.js";
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
-import { initCore, db as serviceDb, schema, createTestDb, createRedisClient, getStreamRedis, taskEventsStreamKey, type Redis } from "@breatic/core";
+import { initCore, db as serviceDb, schema, createTestDb, createRedisClient, taskEventsStreamKey, type Redis } from "@breatic/core";
 import { assetService, creditLotService, taskService } from "@breatic/domain";
 import { startTaskListener } from "@collab/services/task-listener.js";
 import type { GroupConsumer } from "@collab/services/stream-group-consumer.js";
