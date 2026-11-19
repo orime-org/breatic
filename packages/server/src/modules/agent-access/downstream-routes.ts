@@ -36,6 +36,7 @@ export const DOWNSTREAM_TOKEN_ROUTES: readonly DownstreamRoute[] = [
   { method: "GET", path: "/api/v1/canvas/nodes/:nodeId/history", project: "query" },
   { method: "GET", path: "/api/v1/canvas/node-tasks" },
   { method: "POST", path: "/api/v1/canvas/node-tasks/:taskId/failure" },
+  { method: "POST", path: "/api/v1/canvas/ingest-url", project: "json" },
   { method: "GET", path: "/api/v1/assets/upload-config" },
   { method: "POST", path: "/api/v1/assets/upload-ticket", project: "json" },
   { method: "POST", path: "/api/v1/assets/uploads/:uploadId/complete" },

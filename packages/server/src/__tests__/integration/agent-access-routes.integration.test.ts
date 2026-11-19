@@ -299,6 +299,7 @@ describe("the downstream token whitelist", () => {
     "GET /api/v1/canvas/nodes/:nodeId/history",
     "GET /api/v1/canvas/node-tasks",
     "POST /api/v1/canvas/node-tasks/:taskId/failure",
+    "POST /api/v1/canvas/ingest-url",
     "GET /api/v1/assets/upload-config",
     "POST /api/v1/assets/upload-ticket",
     "POST /api/v1/assets/uploads/:uploadId/complete",
