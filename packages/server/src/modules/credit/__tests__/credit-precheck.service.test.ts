@@ -48,7 +48,7 @@ vi.mock("@breatic/domain", () => ({
   assetService: { resolveOwnerStudioId: (...a: unknown[]) => resolveOwnerStudioId(...a) },
 }));
 
-const { CreditsHeldError, precheckCredits, reserveForRun } = await import("@server/modules/payment/credit-precheck.service.js");
+const { CreditsHeldError, precheckCredits, reserveForRun } = await import("@server/modules/credit/credit-precheck.service.js");
 
 const PROJECT = "p1";
 const USER = "u1";

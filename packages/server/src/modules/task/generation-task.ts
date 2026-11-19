@@ -19,7 +19,7 @@ import { randomUUID } from "node:crypto";
 import { getNodeTaskConfig, AppError, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { creditHoldService, nodeTaskService, taskService } from "@breatic/domain";
-import { CreditsHeldError, reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
+import { CreditsHeldError, reserveForRun } from "@server/modules/credit/credit-precheck.service.js";
 import { assertAccess } from "@server/modules/project/project.service.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { t } from "@breatic/shared";
