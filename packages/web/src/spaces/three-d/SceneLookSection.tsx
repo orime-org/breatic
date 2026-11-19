@@ -247,15 +247,15 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
   });
   const row = parts.find((part) => part.key === selectedPart);
   const stored: SceneLookPart = row ? look[row.key] ?? {} : {};
-  const shownUserPicture = isPicture(stored.map);
-  const shownPicture = stored.map === 'none' ? false : shownUserPicture || (row?.hasMap ?? false);
+  const storedUserPicture = isPicture(stored.map);
+  const hasPicture = stored.map === 'none' ? false : storedUserPicture || (row?.hasMap ?? false);
   const restricted = !row || row.unlit || row.line;
   const uploadPercent = row ? uploadPercentOf?.(row.key) : null;
   // A user picture starts untiled; the model's own picture starts from its own transform (design 3.3).
-  const ownTransform = shownUserPicture ? undefined : row;
+  const ownTransform = storedUserPicture ? undefined : row;
   // Tiling is stored per part, so its drafts are kept per part, as the position boxes keep theirs per field.
   const draftPrefix = `${objectId}:look:${row?.key ?? ''}`;
-  const fieldPicture = shownUserPicture ? pictureUrl?.(stored.map!) : stored.map === undefined ? row?.thumbnail : undefined;
+  const fieldPicture = storedUserPicture ? pictureUrl?.(stored.map!) : stored.map === undefined ? row?.thumbnail : undefined;
   // A material number past the stored key format cannot carry a look.
   const storable = !row || isSceneLookPartKey(row.key);
   const disabled = !mutable || !storable;
@@ -296,7 +296,7 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
       <div className='grid grid-cols-3 gap-1'>{PRESET_NAMES.map((name) => <Button key={name} variant='outline' size='compact' disabled={disabled || restricted}
         data-testid={`scene-look-preset-${name}`} onClick={() => write(row.key, PRESETS[name])}>{t(`spaces.threeD.look.presets.${name}`)}</Button>)}</div>
       <Row label={t('spaces.threeD.look.color')} labelId={`${ids}-color`}>
-        <SceneColorField value={stored.color ?? (shownUserPicture && showingPictures.has(stored.map!) ? SCENE_LOOK_PICTURE_COLOR : row.color)} disabled={disabled || !gesture} labelId={`${ids}-color`} spaceId={spaceId}
+        <SceneColorField value={stored.color ?? (storedUserPicture && showingPictures.has(stored.map!) ? SCENE_LOOK_PICTURE_COLOR : row.color)} disabled={disabled || !gesture} labelId={`${ids}-color`} spaceId={spaceId}
           onPressStart={gesture?.begin ?? NO_PRESS} onPreview={previewColor}
           onCommit={gesture?.commit ?? NOTHING} onCancel={gesture?.cancel ?? NOTHING} onWrite={writeColor} />
       </Row>
@@ -307,12 +307,12 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
             : <>
               {fieldPicture ? <img src={fieldPicture} alt='' className='size-8 rounded-chrome-sm border border-swatch-border object-cover' /> : null}
               <Button variant='outline' size='compact' disabled={disabled || row.line} data-testid='scene-look-choose-image'
-                onClick={() => onChoosePicture(row.key)}>{t(shownPicture ? 'spaces.threeD.look.replaceImage' : 'spaces.threeD.look.chooseImage')}</Button>
-              {shownPicture ? <Button variant='outline' size='compact' disabled={disabled || row.line} data-testid='scene-look-remove-image'
-                onClick={() => write(row.key, shownUserPicture ? TILING_FIELDS : { map: 'none' })}>{t('spaces.threeD.look.removeImage')}</Button> : null}
+                onClick={() => onChoosePicture(row.key)}>{t(hasPicture ? 'spaces.threeD.look.replaceImage' : 'spaces.threeD.look.chooseImage')}</Button>
+              {hasPicture ? <Button variant='outline' size='compact' disabled={disabled || row.line} data-testid='scene-look-remove-image'
+                onClick={() => write(row.key, storedUserPicture ? TILING_FIELDS : { map: 'none' })}>{t('spaces.threeD.look.removeImage')}</Button> : null}
             </>}
       </Row>
-      {shownPicture && !row.line ? <>
+      {hasPicture && !row.line ? <>
         <LookPair label={t('spaces.threeD.look.repeat')} labelId={`${ids}-repeat`} value={stored.mapRepeat ?? ownTransform?.mapRepeat ?? [1, 1]} accepts={acceptsRepeat} disabled={disabled}
           testId='scene-look-repeat' draftKey={`${draftPrefix}:repeat`} spaceId={spaceId} drafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
           onCommit={writeRepeat} />
