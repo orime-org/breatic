@@ -54,7 +54,7 @@ import {
   type ProposalNode,
 } from "@breatic/shared";
 
-import { renderPrice } from "@domain/agent/tools/generation-models.js";
+import { payerKeyWords, renderPrice } from "@domain/agent/tools/generation-models.js";
 import { upstreamRefusal } from "@domain/agent/tools/upstream-refusal.js";
 import { onDialogueSide, proposalDialogueText } from "@domain/agent/tools/proposal-dialogue.js";
 import { checkBlanks, checkGenerateNode, generateRunOf, takesPromptHere } from "@domain/agent/tools/proposal-generate-check.js";
@@ -529,8 +529,7 @@ export async function renderProposalForModel(answer: ProposalAnswer): Promise<st
     })),
   );
   const lines = generations.map(({ node, index, model }) => {
-    if (describedOnCredits.has(index)) return `- "${node.name}": it runs on the Studio payer's own key, but describing its inputs takes credits`;
-    if (onPayerKey.has(model)) return `- "${node.name}": no credits; it runs on the Studio payer's own key`;
+    if (onPayerKey.has(model)) return `- "${node.name}": ${payerKeyWords(describedOnCredits.has(index))}`;
     const price = priced.find((one) => one.index === index)?.price;
     return `- "${node.name}": ${price === undefined ? "no price on this deployment" : renderPrice(price, "at its params")}`;
   });

@@ -17,6 +17,7 @@ import { formatCredits, GENERATION_TEMPLATES, keyStanding, t, templateAnchor, te
 
 import { templateCraft } from "@domain/agent/tools/template-craft.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+import { payerKeyRun, studioToolContextSchema, type StudioToolContext } from "@domain/agent/tools/generation-models.js";
 import { templateSegmentsText } from "@domain/agent/tools/template-expansion.js";
 import { PROPOSE_CANVAS_ACTION } from "@domain/agent/tools/tool-names.js";
 
@@ -83,40 +84,51 @@ export function describeTemplate(template: GenerationTemplate): string {
 /**
  * What one apply of a template costs on this deployment, priced live: the
  * price list and its multiplier belong to the deployment, so a number
- * written into the template would be wrong elsewhere.
+ * written into the template would be wrong elsewhere. A generate node on the
+ * Studio payer's own key (inner#1953) costs no credits and is named apart.
  * @param template - The template.
- * @returns The sentence, or "" when none of its generate nodes is priced.
+ * @param studioId - The studio the turn runs in; our keys when absent.
+ * @returns The sentences, or "" when none of its generate nodes is priced or on the payer's key.
  */
-async function applyCost(template: GenerationTemplate): Promise<string> {
-  const prices = await Promise.all(
-    template.nodes.flatMap((node) => (node.role === "generate" ? [estimateModelCredits(node.model, { params: node.params })] : [])),
+async function applyCost(template: GenerationTemplate, studioId: string | undefined): Promise<string> {
+  const nodes = await Promise.all(
+    template.nodes.flatMap((node) => (node.role === "generate" ? [node] : [])).map(async (node) => {
+      const payer = await payerKeyRun(studioId, node.model, node.params);
+      return payer === undefined ? { price: await estimateModelCredits(node.model, { params: node.params }) } : { model: node.model, payer };
+    }),
   );
+  const prices = nodes.flatMap((node) => ("price" in node ? [node.price] : []));
   const priced = prices.filter((price) => price !== undefined);
-  if (priced.length === 0) return "";
+  const onPayer = nodes.flatMap((node) =>
+    "payer" in node
+      ? [`${node.model} runs on the Studio payer's own key, ${node.payer?.describedOnCredits === true ? "but describing its inputs takes credits" : "at no credits"}.`]
+      : [],
+  );
   const sum = priced.reduce((total, price) => total + price.credits, 0);
   const exact = priced.length === prices.length && priced.every((price) => price.bound === "exact");
-  return `One apply of this template costs ${exact ? "" : "at least "}${formatCredits(sum, "en-US")} credits at its settings.`;
+  const credits = priced.length === 0 ? [] : [`One apply of this template costs ${exact ? "" : "at least "}${formatCredits(sum, "en-US")} credits at its settings.`];
+  return [...credits, ...onPayer].join(" ");
 }
 
 /** The tool that reads one template; it renders in the turn's language when called, so one object serves every turn. */
-export const getGenerationTemplate: Tool<{ id: string }, string> = tool({
+export const getGenerationTemplate: Tool<{ id: string }, string, StudioToolContext> = tool({
   description:
     `Read one generation template in full before proposing it with ${PROPOSE_CANVAS_ACTION}: its nodes and wiring, ` +
     "the inputs the user supplies, each generate node's prompt in the user's language as the segments to send, " +
     "how to send it, and the craft for writing its prompts. The templates, and when to offer each, are listed in " +
     `${PROPOSE_CANVAS_ACTION}'s description.`,
   inputSchema: z.object({ id: z.enum(GENERATION_TEMPLATES.map((template) => template.id)).describe("The template's id, as the proposal tool's description lists it.") }),
+  contextSchema: studioToolContextSchema,
   metadata: { runningLine: "chat.tool.readingTemplate" },
   execute: async (
     { id }: { id: string },
-    // Unused: builds text and returns, so there is nothing to abandon.
-    // Declared so every tool has the same shape.
-    _options: { abortSignal?: AbortSignal },
+    // The signal is unused: builds text and returns, so there is nothing to abandon.
+    { context }: { abortSignal?: AbortSignal; context?: StudioToolContext },
   ): Promise<string> => {
     const template = GENERATION_TEMPLATES.find((one) => one.id === id);
     // The input schema admits only registered ids.
     if (template === undefined) throw new Error(`No template "${id}".`);
-    const cost = await applyCost(template);
+    const cost = await applyCost(template, context?.studioId);
     return [describeTemplate(template), ...(cost === "" ? [] : [cost]), HOW_TO_SEND, templateCraft(template)].join("\n\n");
   },
 });
