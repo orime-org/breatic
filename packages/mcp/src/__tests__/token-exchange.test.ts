@@ -96,8 +96,14 @@ describe("discoverTokenEndpoint", () => {
   it("reads the token endpoint from the issuer's authorization server metadata", async () => {
     const { url, seen } = await tokenEndpoint(200, { issuer: "http://127.0.0.1", token_endpoint: "http://127.0.0.1/oauth/token" });
     const issuer = new URL(url).origin;
-    expect(await discoverTokenEndpoint(issuer, 5_000)).toBe("http://127.0.0.1/oauth/token");
+    expect(await discoverTokenEndpoint(issuer, 5_000)).toBe(`${issuer}/oauth/token`);
     expect(seen.deliveries).toBe(1);
+  });
+
+  it("keeps the endpoint's path on the server address this service reaches, whatever host the public issuer names", async () => {
+    const { url } = await tokenEndpoint(200, { issuer: "https://breatic.example", token_endpoint: "https://breatic.example/oauth/token" });
+    const server = new URL(url).origin;
+    expect(await discoverTokenEndpoint(server, 5_000)).toBe(`${server}/oauth/token`);
   });
 
   it("refuses metadata without a token endpoint", async () => {

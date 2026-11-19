@@ -10,14 +10,13 @@ import { HEALTH_CHECK_TIMEOUT_MS } from "@breatic/core";
 import { httpRequest } from "@breatic/shared";
 
 /**
- * Probe whether the server answers for the issuer: the authorization metadata
- * is the first thing an agent asks for, and token exchange runs on the same
- * routes.
- * @param issuer - The OAuth issuer's origin.
+ * Probe whether the server answers its authorization metadata: the first
+ * thing an agent asks for, and token exchange runs on the same routes.
+ * @param server - The server's origin as this service reaches it.
  * @returns A check that is true when the metadata answers with a success.
  */
-export function serverAnswers(issuer: string): () => Promise<boolean> {
-  const url = new URL("/.well-known/oauth-authorization-server", issuer).toString();
+export function serverAnswers(server: string): () => Promise<boolean> {
+  const url = new URL("/.well-known/oauth-authorization-server", server).toString();
   return async () => {
     const res = await httpRequest(url, { method: "GET" }, { replaySafe: true, timeoutMs: HEALTH_CHECK_TIMEOUT_MS, signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS) });
     await res.body?.cancel();

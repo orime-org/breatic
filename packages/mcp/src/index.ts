@@ -68,8 +68,10 @@ async function main(): Promise<void> {
   const commandRedis = createRedisClient(mcpEnv.REDIS_MCP_URL, { name: "mcp-commands" });
   commandRedis.on("error", (err) => logger.error({ err }, "mcp_redis_error"));
 
+  // The server as this service reaches it; OAUTH_ISSUER is its public name.
+  const serverOrigin = new URL(mcpEnv.MCP_API_BASE_URL).origin;
   const checks: HealthCheck[] = [
-    { name: "server", check: serverAnswers(mcpEnv.OAUTH_ISSUER) },
+    { name: "server", check: serverAnswers(serverOrigin) },
     { name: "redis_mcp", check: redisAnswers(commandRedis) },
   ];
   for (const { name, check } of checks) {
@@ -97,7 +99,7 @@ async function main(): Promise<void> {
 
   // A task can run for its whole budget, and its outcome stays readable a while after.
   const taskListTtlSeconds = Math.ceil(getNodeTaskConfig().default_budget_ms / 1000) + mcpConfig.reply_ttl_seconds;
-  const tokenEndpoint = await discoverTokenEndpoint(mcpEnv.OAUTH_ISSUER, mcpConfig.call_timeout_ms);
+  const tokenEndpoint = await discoverTokenEndpoint(serverOrigin, mcpConfig.call_timeout_ms);
   const app = createMcpApp({
     resourceUrl: new URL(mcpEnv.MCP_PUBLIC_URL),
     issuer: mcpEnv.OAUTH_ISSUER,

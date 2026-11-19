@@ -87,14 +87,17 @@ export function createTokenExchanger(options: TokenExchangerOptions): (subjectTo
 
 /**
  * Find the server's token endpoint in its authorization server metadata (RFC 8414).
- * @param issuer - `OAUTH_ISSUER`.
+ * The metadata names the public issuer's host, which a service inside the
+ * deployment may not reach (behind the proxy it is the service itself), so
+ * the endpoint's path is kept on the server address this service calls.
+ * @param server - The server's origin as this service reaches it (`MCP_API_BASE_URL`'s).
  * @param timeoutMs - How long the read may take.
  * @returns The token endpoint.
  * @throws {Error} When the metadata cannot be read or names no token endpoint.
  */
-export async function discoverTokenEndpoint(issuer: string, timeoutMs: number): Promise<string> {
-  const res = await httpRequest(new URL("/.well-known/oauth-authorization-server", issuer).toString(), { method: "GET" }, { replaySafe: true, timeoutMs });
+export async function discoverTokenEndpoint(server: string, timeoutMs: number): Promise<string> {
+  const res = await httpRequest(new URL("/.well-known/oauth-authorization-server", server).toString(), { method: "GET" }, { replaySafe: true, timeoutMs });
   if (!res.ok) throw new Error(`authorization server metadata answered ${String(res.status)}`);
   const { token_endpoint: endpoint } = z.object({ token_endpoint: z.url() }).parse(await res.json());
-  return endpoint;
+  return new URL(new URL(endpoint).pathname, server).toString();
 }
