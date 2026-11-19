@@ -16,6 +16,7 @@ import { Button } from '@web/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
 import { Separator } from '@web/components/ui/separator';
 import { Slider } from '@web/components/ui/slider';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { spaceTasksQueryKey } from '@web/data/api/scene';
 import { useSceneControls } from '@web/data/api/use-scene-controls';
 import { serverMessage } from '@web/data/api/server-message';
@@ -603,11 +604,16 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         <Slider aria-label={t('timeline.seek')} value={seekValue} onValueChange={seekTo} min={0} max={Math.max(0.01, durationSeconds)} step={0.01} disabled={row === undefined} className='w-full' />
         {/* A 24px-wide transparent hit area above the track around the 6x10 mark, placed where the Slider puts its thumb
             for that time: Radix keeps the 12px thumb inside the track, so its centre runs from 6px to the width less 6px. */}
-        {playable(row) && docReady && resultThreads.map(({ thread, anchor }) => <Button key={thread.id} type='button' variant={null} size={null} data-testid={`motion-marker-${thread.id}`}
-          aria-label={bodyPreview(thread)} onClick={() => openThread(thread.id)} className='absolute top-0 flex h-3 w-6 -translate-x-1/2 justify-center'
-          style={{ left: `calc(6px + (100% - 12px) * ${anchor.timeSeconds / Math.max(0.01, durationSeconds)})` }}>
-          <span className={cn('h-2.5 w-1.5 rounded-sm', thread.resolved ? 'bg-muted-foreground' : 'bg-comment-outline')} />
-        </Button>)}
+        {playable(row) && docReady && resultThreads.map(({ thread, anchor }) => <Tooltip key={thread.id}>
+          <TooltipTrigger asChild>
+            <Button type='button' variant={null} size={null} data-testid={`motion-marker-${thread.id}`}
+              aria-label={bodyPreview(thread)} onClick={() => openThread(thread.id)} className='absolute top-0 flex h-3 w-6 -translate-x-1/2 justify-center'
+              style={{ left: `calc(6px + (100% - 12px) * ${anchor.timeSeconds / Math.max(0.01, durationSeconds)})` }}>
+              <span className={cn('h-2.5 w-1.5 rounded-sm', thread.resolved ? 'bg-muted-foreground' : 'bg-comment-outline')} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent className='line-clamp-3 max-w-64'>{bodyPreview(thread)}</TooltipContent>
+        </Tooltip>)}
       </div>
       {row !== undefined && <>
         <Separator orientation='vertical' className='mx-1 h-5' />

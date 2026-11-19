@@ -1340,6 +1340,12 @@ describe('annotation marks on the frame and the play bar', () => {
     expect(marker.style.left).toBe('calc(6px + 0.5 * (100% - 12px))');
   });
 
+  it('shows an annotation\'s words when the pointer rests on its marker', async () => {
+    const { ids: [id], user } = await onNewer([{ text: 'Halfway note', executionId: NEWER, timeSeconds: 2 }]);
+    await user.hover(await screen.findByTestId(`motion-marker-${id}`));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Halfway note');
+  });
+
   it('gives a marker a hit area 24px wide around its 6x10 mark, above the track', async () => {
     const { ids: [id] } = await onNewer([{ text: 'Halfway', executionId: NEWER, timeSeconds: 2 }]);
     const marker = await screen.findByTestId(`motion-marker-${id}`);
