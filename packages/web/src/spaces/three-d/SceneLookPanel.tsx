@@ -152,7 +152,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
       stepKey: (event) => { takeStepKey(event, begin, commit); },
     };
   }, [session, objectId]);
-  const onCommand = React.useCallback((command: Parameters<SceneSession['execute']>[0]): void => { session.execute(command); }, [session]);
+  const onCommand = React.useCallback((command: Parameters<SceneSession['execute']>[0]): boolean => session.execute(command).ok, [session]);
 
   const pictures = React.useMemo(() => [...new Set(Object.values(look).flatMap((fields) => (fields.map && fields.map !== 'none' ? [fields.map] : [])))], [look]);
   const urls = useQueries({ queries: pictures.map((assetId) => ({

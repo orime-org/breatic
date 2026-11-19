@@ -15,6 +15,18 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import * as sectionModule from '@web/spaces/three-d/SceneLookSection';
 import type { SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 
+const fieldRenders = vi.hoisted(() => new Map<string, number>());
+vi.mock('@web/spaces/three-d/SceneField', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/spaces/three-d/SceneField')>();
+  const React = await import('react');
+  // Counts each box's renders behind the same memo the real field has.
+  const Counted = React.memo(function Counted(props: React.ComponentProps<typeof actual.SceneField>): React.JSX.Element {
+    if (props.testId) fieldRenders.set(props.testId, (fieldRenders.get(props.testId) ?? 0) + 1);
+    return React.createElement(actual.SceneField, props);
+  });
+  return { ...actual, SceneField: Counted };
+});
+
 const ID = '11111111-1111-4111-8111-111111111111';
 const IMAGE = '66666666-6666-4666-8666-666666666666';
 const PARTS = [
@@ -30,7 +42,7 @@ type Props = {
   selectedPart: string | null;
   mutable: boolean;
   onSelectPart: (part: string | null) => void;
-  onCommand: (command: unknown) => void;
+  onCommand: (command: unknown) => boolean;
   onChoosePicture: (part: string) => void;
   showingPictures?: ReadonlySet<string>;
   uploadPercentOf?: (part: string) => number | null;
@@ -67,7 +79,7 @@ function renderSection(props: Partial<Props> = {}): { onCommand: ReturnType<type
   const Section = (sectionModule as Record<string, unknown>).SceneLookSection as React.ComponentType<Props> | undefined;
   expect(Section, 'SceneLookSection must be exported').toBeDefined();
   const Mounted = Section as React.ComponentType<Props>;
-  const onCommand = vi.fn(); const onSelectPart = vi.fn(); const onChoosePicture = vi.fn();
+  const onCommand = vi.fn(() => true); const onSelectPart = vi.fn(); const onChoosePicture = vi.fn();
   /** Keeps the number boxes' drafts as the properties panel does. */
   function DraftOwner(): React.JSX.Element {
     const [fieldDrafts, setFieldDrafts] = React.useState<ReadonlyMap<string, SceneFieldDraft>>(new Map());
@@ -216,6 +228,27 @@ describe('SceneLookSection', () => {
     expect(onCommand).not.toHaveBeenCalled();
     expect((screen.getByTestId(testId) as HTMLInputElement).value).toBe(value);
     expect(screen.getByText(t('spaces.threeD.valueFailed'))).toBeTruthy();
+  });
+
+  it('keeps a typed count in its box and says it was not applied when the Space refuses the write', async () => {
+    const { onCommand } = renderSection({ selectedPart: '0' });
+    onCommand.mockReturnValue(false);
+    await enter('scene-look-repeat-0', '2');
+    expect(onCommand).toHaveBeenCalledWith({ type: 'look', id: ID, part: '0', set: { mapRepeat: [2, 4] } });
+    expect((screen.getByTestId('scene-look-repeat-0') as HTMLInputElement).value).toBe('2');
+    expect(screen.getByText(t('spaces.threeD.valueFailed'))).toBeTruthy();
+  });
+
+  it('leaves the tiling and offset boxes alone when only the upload percent of the section changes', () => {
+    const Section = sectionModule.SceneLookSection as unknown as React.ComponentType<Props>;
+    const onCommand = vi.fn(() => true);
+    const stable = { objectId: ID, parts: PARTS, look: {}, selectedPart: '0', mutable: true, fieldDrafts: new Map(), onFieldDraftChange: vi.fn(),
+      onSelectPart: vi.fn(), onCommand, onChoosePicture: vi.fn() };
+    const view = render(<TooltipProvider><Section {...stable} uploadPercentOf={() => null} /></TooltipProvider>);
+    const before = fieldRenders.get('scene-look-repeat-0');
+    view.rerender(<TooltipProvider><Section {...stable} uploadPercentOf={() => null} /></TooltipProvider>);
+    expect(fieldRenders.get('scene-look-repeat-0')).toBe(before);
+    expect(fieldRenders.get('scene-look-offset-1')).toBeGreaterThan(0);
   });
 
   it('shows a stored user picture\'s part at white only while the scene shows the picture, and in the model colour otherwise', () => {

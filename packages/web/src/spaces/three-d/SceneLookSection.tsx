@@ -55,7 +55,8 @@ export interface SceneLookSectionProps {
   /** Whether the user can edit this unlocked object. */
   mutable: boolean;
   onSelectPart: (part: string | null) => void;
-  onCommand: (command: Extract<SceneCommand, { type: 'look' }>) => void;
+  /** Writes a look command and reports whether the Space took it. */
+  onCommand: (command: Extract<SceneCommand, { type: 'look' }>) => boolean;
   onChoosePicture: (part: string) => void;
   gesture?: SceneLookGesture;
   spaceId?: string;
@@ -180,21 +181,23 @@ const acceptsOffset = (value: number): boolean => value >= -100 && value <= 100;
 function LookPair({ label, labelId, value, accepts, disabled, testId, draftKey, spaceId, drafts, onFieldDraftChange, onCommit }: {
   label: string; labelId: string; value: readonly [number, number]; accepts: (value: number) => boolean; disabled: boolean; testId: string;
   draftKey: string; spaceId: string; drafts: SceneFieldDraftOwner['fieldDrafts']; onFieldDraftChange: SceneFieldDraftOwner['onFieldDraftChange'];
-  onCommit: (pair: [number, number]) => void;
+  onCommit: (pair: [number, number]) => boolean;
 }): React.JSX.Element {
+  // The shown pair is a new array on every render; its two numbers are what the commits depend on.
+  const [x, y] = value;
+  const commits = React.useMemo(() => ([0, 1] as const).map((index) => (text: string): boolean => {
+    const next = Number(text);
+    if (text.trim() === '' || !Number.isFinite(next) || !accepts(next)) return false;
+    const pair: [number, number] = [x, y];
+    pair[index] = next;
+    return onCommit(pair);
+  }), [x, y, accepts, onCommit]);
   return <div className='space-y-1'>
     <span id={labelId} className='text-xs text-muted-foreground'>{label}</span>
     <div className='grid grid-cols-2 gap-1'>{(['X', 'Y'] as const).map((axis, index) => <SceneField key={`${draftKey}:${index}`} label={axis} numeric
       value={String(value[index])} disabled={disabled} spaceId={spaceId} testId={`${testId}-${index}`}
       draftKey={`${draftKey}:${index}`} draft={drafts.get(`${draftKey}:${index}`)} onFieldDraftChange={onFieldDraftChange}
-      onCommit={(text) => {
-        const next = Number(text);
-        if (text.trim() === '' || !Number.isFinite(next) || !accepts(next)) return false;
-        const pair: [number, number] = [value[0], value[1]];
-        pair[index] = next;
-        onCommit(pair);
-        return true;
-      }} />)}</div>
+      onCommit={commits[index]!} />)}</div>
   </div>;
 }
 
@@ -212,9 +215,10 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
     showingPictures = NO_PICTURES, fieldDrafts, onFieldDraftChange } = props;
   const t = useTranslation();
   const ids = React.useId();
-  const write = React.useCallback((part: string | null, set: SceneLookSet): void => {
-    onCommand({ type: 'look', id: objectId, part, set });
-  }, [onCommand, objectId]);
+  const write = React.useCallback((part: string | null, set: SceneLookSet): boolean => onCommand({ type: 'look', id: objectId, part, set }),
+    [onCommand, objectId]);
+  const writeRepeat = React.useCallback((mapRepeat: [number, number]): boolean => selectedPart !== null && write(selectedPart, { mapRepeat }), [write, selectedPart]);
+  const writeOffset = React.useCallback((mapOffset: [number, number]): boolean => selectedPart !== null && write(selectedPart, { mapOffset }), [write, selectedPart]);
   const previewColor = React.useCallback((color: string): boolean => (selectedPart === null ? false : gesture?.preview(selectedPart, { color }) ?? false), [gesture, selectedPart]);
   const writeColor = React.useCallback((color: string): void => { if (selectedPart !== null) write(selectedPart, { color }); }, [write, selectedPart]);
   const previewEmissive = React.useCallback((emissive: string): boolean => (selectedPart === null ? false : gesture?.preview(selectedPart, { emissive }) ?? false), [gesture, selectedPart]);
@@ -305,10 +309,10 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
       {shownPicture && !row.line ? <>
         <LookPair label={t('spaces.threeD.look.repeat')} labelId={`${ids}-repeat`} value={stored.mapRepeat ?? ownTransform?.mapRepeat ?? [1, 1]} accepts={acceptsRepeat} disabled={disabled}
           testId='scene-look-repeat' draftKey={`${objectId}:look:${row.key}:repeat`} spaceId={spaceId} drafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
-          onCommit={(mapRepeat) => write(row.key, { mapRepeat })} />
+          onCommit={writeRepeat} />
         <LookPair label={t('spaces.threeD.look.offset')} labelId={`${ids}-offset`} value={stored.mapOffset ?? ownTransform?.mapOffset ?? [0, 0]} accepts={acceptsOffset} disabled={disabled}
           testId='scene-look-offset' draftKey={`${objectId}:look:${row.key}:offset`} spaceId={spaceId} drafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
-          onCommit={(mapOffset) => write(row.key, { mapOffset })} />
+          onCommit={writeOffset} />
         <LookSlider label={t('spaces.threeD.look.rotation')} labelId={`${ids}-rotation`} value={stored.mapRotation ?? ownTransform?.mapRotation ?? 0} min={-180} max={180} step={1} suffix='°'
           disabled={disabled} testId='scene-look-rotation' gesture={gesture} onPreview={(mapRotation) => preview({ mapRotation })} />
       </> : null}
