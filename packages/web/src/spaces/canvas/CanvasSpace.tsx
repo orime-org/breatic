@@ -160,7 +160,10 @@ import { steppedMarkSize } from '@web/stores/mark-draft';
 import { uploadDerivedImage } from '@web/spaces/canvas/upload-derived-image';
 import { failUploadIntoNode, startUploadIntoNode } from '@web/spaces/canvas/upload-into-node';
 import { useCanvasRevealReceiver } from '@web/spaces/canvas/use-canvas-reveal-receiver';
-import { useCommentRevealReceiver } from '@web/features/comment-reveal/use-comment-reveal-receiver';
+import {
+  useCommentRevealReceiver,
+  type ThreadPresence,
+} from '@web/features/comment-reveal/use-comment-reveal-receiver';
 import {
   fileToNodeSpec,
   checkFileAdmission,
@@ -3002,8 +3005,9 @@ function CanvasSpaceInner({
   }, [getInternalNode, nodes, setCenter, rfStoreApi, clearOpeningFit]);
   useCanvasRevealReceiver(spaceId, synced, hasNode, revealNode);
   // A link to a note (#1488 §11.6): the board moves to it and opens it.
-  const hasNote = React.useCallback(
-    (id: string): boolean => nodes.some((node) => node.id === id && node.type === 'annotation'),
+  const findNote = React.useCallback(
+    (id: string): ThreadPresence =>
+      nodes.some((node) => node.id === id && node.type === 'annotation') ? 'here' : 'gone',
     [nodes],
   );
   const openNotePanel = useCanvasSession((s) => s.openAnnotationPanel);
@@ -3014,7 +3018,7 @@ function CanvasSpaceInner({
     },
     [revealNode, openNotePanel],
   );
-  useCommentRevealReceiver(spaceId, synced, hasNote, showNote);
+  useCommentRevealReceiver(spaceId, synced, findNote, showNote);
 
   // One dispatch for Cmd+V and the menu's Paste (design 5.9): our nodes paste
   // as nodes, media copied in the document body as media nodes (inner#1537),

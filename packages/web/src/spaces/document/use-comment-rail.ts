@@ -75,6 +75,18 @@ function sameCards(a: readonly RailCard[], b: readonly RailCard[]): boolean {
 }
 
 /**
+ * The panel's threads as the editor stands now.
+ * @param editor - The document editor.
+ * @returns The two groups, each in body order.
+ */
+export function railOf(editor: ToolEditor): CommentRail {
+  const comments = commentsOn(editor);
+  if (comments === undefined) return EMPTY_RAIL;
+  const threads = [...comments.threadStore.getThreads().values()];
+  return commentRail(threads, commentPositions(editor.prosemirrorState.doc, threads, comments.store.state.threadPositions));
+}
+
+/**
  * Reads what the panel and the `⋯` button draw, and keeps it current.
  * @param editor - The document editor.
  * @returns The two groups, each in body order.
@@ -99,11 +111,7 @@ export function useCommentRail(editor: ToolEditor): CommentRail {
     [comments, editor],
   );
 
-  const read = React.useCallback((): CommentRail => {
-    if (comments === undefined) return EMPTY_RAIL;
-    const threads = [...comments.threadStore.getThreads().values()];
-    return commentRail(threads, commentPositions(editor.prosemirrorState.doc, threads, comments.store.state.threadPositions));
-  }, [comments, editor]);
+  const read = React.useCallback((): CommentRail => railOf(editor), [editor]);
 
   return useCachedSnapshot(subscribe, read, sameRail);
 }

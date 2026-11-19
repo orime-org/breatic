@@ -4,7 +4,10 @@
 import * as React from 'react';
 import { cn } from '@web/lib/utils';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { useCommentRevealReceiver } from '@web/features/comment-reveal/use-comment-reveal-receiver';
+import {
+  useCommentRevealReceiver,
+  type ThreadPresence,
+} from '@web/features/comment-reveal/use-comment-reveal-receiver';
 import { BODY_ROW_CLASS, BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import {
   adoptDocumentEditor,
@@ -34,7 +37,9 @@ import {
   selectThreads,
   selectedThreadsIn,
 } from '@web/spaces/document/document-comment-selection';
-import { useCommentRail } from '@web/spaces/document/use-comment-rail';
+import { railOf, useCommentRail } from '@web/spaces/document/use-comment-rail';
+import { commentsOn } from '@web/spaces/document/document-comment-extension';
+import type { CommentRail } from '@web/spaces/document/document-comment-rail';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
 import { DocumentTableCellButton } from '@web/spaces/document/DocumentTableCellButton';
 import { type FocusReturn, useFocusReturn } from '@web/lib/use-focus-return';
@@ -247,9 +252,23 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   }, [handle.editor]);
   const rail = useCommentRail(handle.editor);
   // A link to a comment (#1488 §11.6): reading its thread opens the panel at it.
-  const holdsThread = React.useCallback(
-    (id: string): boolean => rail.unresolved.some((c) => c.id === id) || rail.resolved.some((c) => c.id === id),
-    [rail],
+  // Read off the editor as it stands, not the last render: the body may have
+  // just been read in. A thread the store holds while the body is still empty
+  // waits for the body.
+  const findThread = React.useCallback(
+    (id: string): ThreadPresence => {
+      /**
+       * Whether a rail has a card for the thread.
+       * @param r - The rail.
+       * @returns True when it does.
+       */
+      const carded = (r: CommentRail): boolean => r.unresolved.some((c) => c.id === id) || r.resolved.some((c) => c.id === id);
+      if (carded(rail) || carded(railOf(handle.editor))) return 'here';
+      const thread = commentsOn(handle.editor)?.threadStore.getThreads().get(id);
+      if (thread === undefined || thread.deletedAt !== undefined) return 'gone';
+      return handle.editor.prosemirrorState.doc.textContent === '' ? 'wait' : 'gone';
+    },
+    [rail, handle.editor],
   );
   const [linked, setLinked] = React.useState<{ threadId: string } | null>(null);
   const showThread = React.useCallback(
@@ -259,7 +278,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     },
     [handle.editor],
   );
-  useCommentRevealReceiver(scope?.spaceId ?? '', scope !== null, holdsThread, showThread);
+  useCommentRevealReceiver(scope?.spaceId ?? '', scope !== null, findThread, showThread);
   // ScrollArea owns this viewport; pass it to document surfaces so a table's
   // nested horizontal viewport cannot become their vertical scroll boundary.
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);

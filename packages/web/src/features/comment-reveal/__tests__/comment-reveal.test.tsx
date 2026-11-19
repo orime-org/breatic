@@ -88,7 +88,7 @@ describe('the Space a comment is shown in', () => {
   it('shows a thread it holds, once', () => {
     useCommentRevealStore.getState().reveal('s-canvas', 't1');
     const show = vi.fn();
-    renderHook(() => useCommentRevealReceiver('s-canvas', true, (id) => id === 't1', show));
+    renderHook(() => useCommentRevealReceiver('s-canvas', true, (id) => (id === 't1' ? 'here' : 'gone'), show));
     expect(show).toHaveBeenCalledWith('t1');
     expect(useCommentRevealStore.getState().request).toBeNull();
   });
@@ -96,7 +96,7 @@ describe('the Space a comment is shown in', () => {
   it('says a thread it does not hold is gone', () => {
     useCommentRevealStore.getState().reveal('s-canvas', 't9');
     const show = vi.fn();
-    renderHook(() => useCommentRevealReceiver('s-canvas', true, () => false, show));
+    renderHook(() => useCommentRevealReceiver('s-canvas', true, () => 'gone', show));
     expect(show).not.toHaveBeenCalled();
     expect(toastMock.warning).toHaveBeenCalledWith('This comment is no longer here');
     expect(useCommentRevealStore.getState().request).toBeNull();
@@ -105,9 +105,24 @@ describe('the Space a comment is shown in', () => {
   it('leaves a request for another Space, and waits until its own content is in', () => {
     useCommentRevealStore.getState().reveal('s-doc', 't1');
     const show = vi.fn();
-    renderHook(() => useCommentRevealReceiver('s-canvas', true, () => true, show));
-    renderHook(() => useCommentRevealReceiver('s-doc', false, () => true, show));
+    renderHook(() => useCommentRevealReceiver('s-canvas', true, () => 'here', show));
+    renderHook(() => useCommentRevealReceiver('s-doc', false, () => 'here', show));
     expect(show).not.toHaveBeenCalled();
     expect(useCommentRevealStore.getState().request).toEqual({ spaceId: 's-doc', threadId: 't1' });
+  });
+
+  it('keeps the request while the Space is still reading its content in, and shows it once in', () => {
+    useCommentRevealStore.getState().reveal('s-doc', 't1');
+    const show = vi.fn();
+    let state: 'here' | 'wait' = 'wait';
+    const { rerender } = renderHook(({ find }) => useCommentRevealReceiver('s-doc', true, find, show), {
+      initialProps: { find: (): 'here' | 'wait' => state },
+    });
+    expect(show).not.toHaveBeenCalled();
+    expect(toastMock.warning).not.toHaveBeenCalled();
+    expect(useCommentRevealStore.getState().request).toEqual({ spaceId: 's-doc', threadId: 't1' });
+    state = 'here';
+    rerender({ find: (): 'here' | 'wait' => state });
+    expect(show).toHaveBeenCalledWith('t1');
   });
 });
