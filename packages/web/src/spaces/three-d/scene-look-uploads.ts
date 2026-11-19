@@ -249,6 +249,9 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       const overTotal = beforeLook === undefined ? null : await overLimit(input, beforeLook, stored.assetId, local);
       const session = deps.session(input.name);
       const object = session?.getSnapshot().objects.find((item) => item.id === input.objectId);
+      // A Space closed and opened again meanwhile has a session the watch above never saw.
+      const nowMap = object?.look?.[input.part]?.map;
+      if (nowMap !== undefined && nowMap !== startLook?.[input.part]?.map) partChanged = true;
       if (!session) deps.notify({ key: 'spaces.threeD.look.spaceClosed', severity: 'warning' });
       else if (!object || object.locked) deps.notify({ key: 'spaces.threeD.look.objectGone', severity: 'warning' });
       else if (!session.getSnapshot().canEdit) deps.notify({ key: 'spaces.threeD.look.noLongerEditable', severity: 'warning' });

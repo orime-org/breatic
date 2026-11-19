@@ -207,6 +207,21 @@ describe('SceneLookUploads', () => {
     expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.partChanged' }));
   });
 
+  it('does not write over a picture a collaborator set while the Space was closed and opened again', async () => {
+    const first = editor();
+    let current = first.session;
+    const h = harness(() => current);
+    const done = h.uploads.start(startFor());
+    await settle();
+    const reopened = editor();
+    applySceneCommand(reopened.doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
+    current = reopened.session;
+    h.finish();
+    await done;
+    expect(lookOf(reopened.doc)).toEqual({ 0: { map: OTHER_IMAGE } });
+    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.partChanged' }));
+  });
+
   it('still writes after the part was reset meanwhile, whether or not it had a picture', async () => {
     for (const before of [{}, { map: OTHER_IMAGE }]) {
       const { doc, session } = editor();
