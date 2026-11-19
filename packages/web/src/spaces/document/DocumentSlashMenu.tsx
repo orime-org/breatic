@@ -3,9 +3,11 @@
 
 /**
  * The slash menu: typing a slash (or its full-width form, or the ideographic
- * comma, `SLASH_TRIGGERS`) at the start of a line or after a space lists the
- * insert menu's entries under the caret, typing on narrows them, and a pick
- * inserts what the plus menu would (inner#1125).
+ * comma, `SLASH_TRIGGERS`) at the caret, at the start of a line or after a
+ * space, lists the insert menu's entries under the slash (over the line when
+ * there is no room below), typing on narrows them, and a pick turns a block
+ * holding only the slash and its query into the pick, as the plus does, or
+ * goes below any other block, as Insert below does (inner#1125).
  *
  * BlockNote's suggestion extension tracks the trigger and the query; what is
  * drawn, the keys and the pick are ours, because the library's controller
@@ -357,7 +359,7 @@ function OpenSlashMenu({ editor, menu, trigger, query, pointer }: OpenSlashMenuP
     [filterQuery],
   );
 
-  // Closes three characters past the last query that matched (5.3), and
+  // Closes more than three characters past the last query that matched (5.3), and
   // once the caret crosses a Shift+Enter line break, which the extension's
   // query leaves out (5.7).
   const lastUseful = React.useRef(0);

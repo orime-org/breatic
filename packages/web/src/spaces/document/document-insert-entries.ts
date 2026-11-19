@@ -93,8 +93,9 @@ export function ruleBetween(previous: InsertEntryId | undefined, id: InsertEntry
 
 /**
  * How a pick acts on the row: it turns the row itself into the pick (the plus
- * menu, the slash menu on a line with no text) or adds a row below it (the
- * insert-below submenu, the slash menu on a line with text).
+ * menu, the slash menu on a block holding nothing but the trigger and the
+ * query) or adds a row below it (the insert-below submenu, the slash menu on
+ * any other block).
  */
 export type InsertMode = 'fill' | 'below';
 

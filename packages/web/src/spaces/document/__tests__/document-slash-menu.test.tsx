@@ -201,7 +201,7 @@ describe('narrowing the menu (A2)', () => {
     expect(rows()).toEqual(['table']);
   });
 
-  it('says nothing matches, and closes three characters past the last match', () => {
+  it('says nothing matches, and closes more than three characters past the last match', () => {
     const { editor } = open([para('')]);
     const id = read(editor)[0]!.id;
     caretAtEnd(editor, id);

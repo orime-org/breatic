@@ -1897,7 +1897,7 @@ export function renderProductGuide(): string {
       "the list by an entry's name in the interface language or in English; when nothing matches it says " +
       `${quoted(t("spaces.document.slashMenu.empty"))}, and it closes once three more characters still match ` +
       "nothing. A space right after the slash closes it and keeps what was typed. The up and down arrows move " +
-      "through it and Enter or a click picks. On a block holding nothing but the slash and the letters after it the " +
+      "through it; Enter or a click picks. On a block holding nothing but the slash and the letters after it the " +
       "pick turns that block itself into it, as the plus does; on any other block it goes where " +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} puts it; lines made with Shift+Enter count with the ` +
       "rest of the block. Its greyed entries are as the insert menus' line says. " +
@@ -1907,7 +1907,7 @@ export function renderProductGuide(): string {
       `menus. ${quoted(t("spaces.document.commands.table"))} puts in an empty table of three rows and three ` +
       "columns at once; picking a size first is done from the plus on an empty paragraph or from " +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} elsewhere, and rows and columns are added ` +
-      "later from the table's handles. Esc, clicking elsewhere, moving the caret off the line or crossing a " +
+      "from the table's handles. Esc, clicking elsewhere, moving the caret off the line or crossing a " +
       "Shift+Enter line break closes it and " +
       "keeps what was typed; one undo after a pick brings the slash and its letters back. It does not open in a " +
       "code block.",
@@ -1933,8 +1933,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.commands.formula"))}, then ` +
       `${quoted(t("spaces.document.media.image"))}, ${quoted(t("spaces.document.media.audio"))} and ` +
       `${quoted(t("spaces.document.media.video"))}, and puts a new line of the one picked ` +
-      "below; the divider, the table and the formula each come with an empty line under them, a new table puts the caret " +
-      "in its first cell, and a new formula opens its box. Its greyed entries are as the insert menus' line says. " +
+      "below; the divider, the table, columns and the formula each come with an empty line under them, a new table puts " +
+      "the caret in its first cell, and a new formula opens its box. Its greyed entries are as the insert menus' line says. " +
       "The last three open the computer's file picker for that kind; the files chosen go " +
       "under the line, above an empty line made for the caret. " +
       `${quoted(t("spaces.document.commands.table"))} opens a grid of squares, nine across and nine down, with ` +
@@ -2149,7 +2149,7 @@ export function renderProductGuide(): string {
     "",
     "## Document columns",
     `${quoted(t("spaces.document.commands.columns"))} in a line's ${quoted(t("spaces.document.blockHandle.insertBelow"))} ` +
-      "menu, or behind the plus on an empty paragraph, puts two columns side by side, each holding an empty line, with the " +
+      "menu, behind the plus on an empty paragraph, or in the slash menu, puts two columns side by side, each holding an empty line, with the " +
       "caret in the first. It is greyed on a line in a column, on a line nested under another line and on a line " +
       `with lines nested under it, and pressing it there says ${quoted(t("spaces.document.columns.unavailable"))}`,
     "Dragging a line by its six dots (or a picture, video or audio by itself) onto the left or right " +

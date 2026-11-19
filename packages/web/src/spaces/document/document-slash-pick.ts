@@ -6,9 +6,9 @@
  * 5.6, 5.9).
  *
  * The trigger and the query typed after it are removed in the same write that
- * inserts the pick: a line left with no text turns into the pick, whatever its
- * type, and a line with text gets the pick below it. Media wait for the file
- * picker, so their query stays until the files land.
+ * inserts the pick: a block left empty (no text and no inline node) turns into
+ * the pick, whatever its type, and any other block gets the pick below it.
+ * Media wait for the file picker, so their query stays until the files land.
  */
 
 import type { Node as PMNode } from '@tiptap/pm/model';
@@ -117,12 +117,12 @@ function rowNow(editor: HandleEditor, blockId: string): PressedBlock | undefined
 }
 
 /**
- * Whether a row holds no text.
+ * Whether a row's content is empty: no text and no inline node.
  * @param doc - The document.
  * @param blockId - The row.
- * @returns True for a row with no characters, whatever its type.
+ * @returns True for a row with empty content, whatever its type.
  */
-function rowHasNoText(doc: PMNode, blockId: string): boolean {
+function rowIsEmpty(doc: PMNode, blockId: string): boolean {
   return rowText(doc, blockId)?.node.content.size === 0;
 }
 
@@ -143,7 +143,7 @@ export function pickInSlashMenu(editor: HandleEditor, record: SlashTyped, choice
   });
   const row = rowNow(editor, record.blockId);
   if (row === undefined) return undefined;
-  return rowHasNoText(editor.prosemirrorState.doc, record.blockId)
+  return rowIsEmpty(editor.prosemirrorState.doc, record.blockId)
     ? fillEmptyRow(editor, row, choice)
     : insertBelow(editor, row, choice);
 }
@@ -163,7 +163,7 @@ export function landSlashMedia(editor: HandleEditor, record: SlashTyped, blocks:
     removeTyped(tr, record);
     const row = rowNow(editor, record.blockId);
     if (row === undefined) return;
-    if (rowHasNoText(tr.doc, record.blockId)) insertMediaOnRow(editor, row, blocks);
+    if (rowIsEmpty(tr.doc, record.blockId)) insertMediaOnRow(editor, row, blocks);
     else insertMediaBelow(editor, row, blocks);
   });
   return true;
