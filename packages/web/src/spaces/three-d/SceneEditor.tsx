@@ -22,6 +22,7 @@ import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
 import { fillFromTask } from '@web/spaces/three-d/scene-generation';
 import { useSceneProposals } from '@web/stores/scene-proposals';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
+import { stopFollowing, useFollowStore } from '@web/stores/follow';
 import { useProjectSpaceList } from '@web/data/yjs/project-meta';
 import { SceneViewfinder, sceneViewfinderSafeArea } from '@web/spaces/three-d/SceneViewfinder';
 import { SceneDirectorFields } from '@web/spaces/three-d/SceneDirectorFields';
@@ -270,6 +271,19 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     };
   }, [session, userId, projectId, spaceId, t, dropAmbient]);
 
+  // A tab following a member publishes no camera for anyone to follow (#920):
+  // following is one level deep. It publishes its own again once following
+  // stops.
+  const following = useFollowStore((s) => s.targetUserId !== null);
+  const latestFollowing = React.useRef(following);
+  latestFollowing.current = following;
+  // The field of view the viewport last reported with the view; null until it
+  // has shown one, and nothing is published before then.
+  const fov = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    session.setCamera(following || fov.current === null ? null : { ...view.current, fov: fov.current });
+  }, [session, following]);
+
   React.useEffect(() => {
     const error = snapshot.commandError;
     // A size refusal is reported by its own warning.
@@ -329,7 +343,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
         else session.select(null, false);
         return;
       }
-      if (!modifier && !event.altKey && key === 'f') { event.preventDefault(); setFocusRevision((value) => value + 1); return; }
+      if (!modifier && !event.altKey && key === 'f') { event.preventDefault(); stopFollowing(); setFocusRevision((value) => value + 1); return; }
       if (modifier && !event.altKey && key === 'z') { event.preventDefault(); onHistory(event.shiftKey ? 'redo' : 'undo'); return; }
       if (event.ctrlKey && !event.metaKey && !event.altKey && key === 'y') { event.preventDefault(); onHistory('redo'); return; }
       if (modifier && !event.altKey && !event.shiftKey && key === 'd') { event.preventDefault(); if (!event.repeat) duplicate(); return; }
@@ -346,11 +360,13 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const resolveAsset = React.useCallback((assetId: string, signal: AbortSignal): Promise<{ url: string; mimeType: string; sizeBytes: number }> =>
     resolveSceneAsset(projectId, assetId, signal), [projectId]);
 
-  /** Persist only the personal camera; it never enters shared content or awareness. */
-  const onViewChange = React.useCallback((next: SceneView): void => {
+  /** Persist the personal camera and publish it for followers; it never enters shared content. */
+  const onViewChange = React.useCallback((next: SceneView, nextFov: number): void => {
     view.current = next;
+    fov.current = nextFov;
+    session.setCamera(latestFollowing.current ? null : { ...next, fov: nextFov });
     if (!writeSceneView(userId, projectId, spaceId, next)) toast.error(t('spaces.threeD.viewFailed'));
-  }, [userId, projectId, spaceId, t]);
+  }, [session, userId, projectId, spaceId, t]);
 
   /** Show model failures and finish a placement's requested focus after asynchronous loading. */
   const onModelStateChange = React.useCallback((id: string, state: SceneModelState, error?: Error): void => {
@@ -362,7 +378,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       next.delete(id);
       return next;
     });
-    if (state === 'ready' && pendingFocusIds.current.delete(id)) setFocusRevision((value) => value + 1);
+    // Only the user's own duplicate, add and place queue a frame, so it moves their camera.
+    if (state === 'ready' && pendingFocusIds.current.delete(id)) { stopFollowing(); setFocusRevision((value) => value + 1); }
     // The viewport holds the placed model itself now, or never will.
     if (state !== 'loading') {
       placements.current.get(id)?.();
@@ -493,6 +510,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     if (ids.length === 0) return;
     keepTasksPanel.current = true;
     ids.forEach((id, index) => session.select(id, index > 0));
+    stopFollowing();
     setFocusRevision((value) => value + 1);
   }, [snapshot.objects, session]);
 
@@ -665,7 +683,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    * Frame the current selection.
    * @throws {never} Never.
    */
-  const onFocus = React.useCallback((): void => setFocusRevision((value) => value + 1), []);
+  const onFocus = React.useCallback((): void => { stopFollowing(); setFocusRevision((value) => value + 1); }, []);
   /**
    * Delete the latest selection rather than a captured snapshot.
    * @throws {never} Never.
@@ -819,7 +837,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                   jointMode={jointMode} selectedJoint={selectedJoint} onJointSelect={setSelectedJoint} onSkeletonState={onSkeletonState}
                   onSelect={onSelect} onGestureStart={onGestureStart}
                   onGestureChange={onGestureChange} onGestureEnd={onGestureEnd}
-                  onViewChange={onViewChange} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} onResources={onResources}
+                  onViewChange={onViewChange} onUserCameraMove={stopFollowing} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} onResources={onResources}
                   onCapture={onCapture} viewLocked={shotTaken} cameraView={cameraView} viewFrame={viewFrame} environment={environment} director={director}
                   onPilotPreview={onPilotPreview} onPilotEnd={onPilotEnd} onPilotLocked={onPilotLocked} onPilotControl={onPilotControl}
                   onLightPlan={setLightPlan} monitors={monitors} />

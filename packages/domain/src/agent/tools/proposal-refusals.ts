@@ -57,6 +57,8 @@ export const REFUSALS = {
   "template-edge-into": "node",
   "template-input-into": "node",
   "template-input-missing": false,
+  "template-optional-input-untagged": "node",
+  "template-optional-input-paragraph": false,
   "template-no-prompt": "node",
   "template-tweak-unfilled": "node",
   "sources-no-taker": false,

@@ -478,6 +478,22 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
     expect(tryCheaply()).not.toContain("made at the lowest cost: every setting that sets the price at its cheapest value, on a fast and cheap model.");
   });
 
+  it("makes the takes of a step that comes with its own way of making them that way, naming no template and no prompt's author", () => {
+    // Right before the named-setting rule, so its "as above" covers a step's own way too.
+    expect(tryCheaply()).toContain("A step that comes with its own way of making takes is made that way. On a take, a setting they name is set as they name it and every other setting stays as above;");
+    expect(tryCheaply()).not.toContain("ready-written");
+    expect(tryCheaply()).not.toContain("already written for one model");
+    expect(tryCheaply()).not.toContain("A step whose prompt is written for one model");
+  });
+
+  it("counts a take that ends up on the final's model and settings, named or not, as that final, after the rule on named settings", () => {
+    const takeIsFinal = "A take that ends up on the model and at every setting its final would use, named or not, is that final; it is not made again.";
+    const naming = "naming one does not make the take a final.";
+    expect(tryCheaply()).toContain(takeIsFinal);
+    expect(tryCheaply().indexOf(takeIsFinal)).toBeGreaterThan(tryCheaply().indexOf(naming));
+    expect(tryCheaply()).not.toContain("A take made at every setting");
+  });
+
   it("sets a setting the user names on a take as named, keeps every other as above, and does not make the take a final", () => {
     expect(tryCheaply()).toContain("On a take, a setting they name is set as they name it and every other setting stays as above; naming one does not make the take a final.");
     expect(tryCheaply()).not.toContain("A setting they name is set as they name it; every other setting stays at its cheapest.");
@@ -583,9 +599,12 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     expect(reach).toContain("a timeline holds video clips from the Project's videos and web animations it makes from a typed request, shown on top of the video below them.");
   });
 
-  it("makes Video trial shots before the final shot as takes on a fast, cheap model", () => {
+  it("makes Video trial shots before the final shot as takes on a fast, cheap model or as the step's own way of making takes says", () => {
     const para = paragraphs().get("Video") ?? "";
-    expect(para).toContain("trial shots before the final shot, made as takes on a fast, cheap model;");
+    expect(para).toContain("trial shots before the final shot, made as takes on a fast, cheap model, or as the step's own way of making takes says;");
+    expect(para).not.toContain("ready-written");
+    expect(para).not.toContain("for a prompt that came already written for one model, on that model;");
+    expect(para).not.toContain("or on the one model their prompt is written for;");
     expect(para).not.toContain("trial shots short unless they named the length");
     expect(para).not.toContain("trial shots short and on a fast model");
   });

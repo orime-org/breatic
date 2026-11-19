@@ -29,6 +29,24 @@ Bring your brief, scenes and media into one project. Write in Document Spaces, g
 
 The hosted service has a free Starter plan. AI generation credits are purchased separately and are not included in membership plans. See [pricing and credits][hosted-pricing].
 
+## One project, four collaborative creative spaces
+
+In Breatic, you can revise the script, try different visuals, stage scenes, and arrange shots as you go. When you work with a team, everyone can work in the same project at the same time.
+
+| Feature | **Breatic** | Higgsfield | TapNow | LibTV | Luma | LTX Studio |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Collaborative documents** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Collaborative canvas** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Collaborative 3D** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Collaborative timeline** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 3D previs | ✅ | ✅ | ✅ | ✅ | ✗ | ✗ |
+| Timeline editing | ✅ | ✗ | ✅ | ✅ | ✗ | ✅ |
+| Project agent | ✅ | ✅ | ✅ | ✅ | ✅ | ✗ |
+| Review suggested rewrites | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Team sharing | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+Collaboration means multiple people can edit the same workspace in real time. Reviewing suggested rewrites means you can inspect an agent's proposed change before deciding whether to apply it to the original text. This comparison is based on public product information as of November 18, 2026. ✅ means support is confirmed. ✗ means support could not be confirmed from public information.
+
 ![Coffee-shop image candidates on a Breatic canvas beside the project chat](docs/images/readme/workspace-en.png)
 
 *A canvas example: compare generated visuals alongside the project's chat.*

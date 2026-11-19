@@ -165,12 +165,17 @@ function collectDoBlocks(
   for (const value of Object.values(record)) collectDoBlocks(value, found);
 }
 
+/** The parse mode the PL/pgSQL parser gives a whole SQL statement (RAW_PARSE_DEFAULT). */
+const STATEMENT_PARSE_MODE = 0;
+
 /**
  * The SQL statements written inside a PL/pgSQL body.
  *
  * The PL/pgSQL parser hands each one back as the text it was written as, so
  * each goes to the SQL parser in turn. Nothing here takes the body apart by
- * hand — every step is one parser or the other.
+ * hand — every step is one parser or the other. Expressions (a condition, the
+ * string an EXECUTE runs) come back too, marked with another parse mode; they
+ * are not statements and declare no foreign key, so they are left out.
  * @param node Any node of the PL/pgSQL parse tree.
  * @param found The accumulator. Mutated.
  * @returns The SQL each embedded statement holds.
@@ -184,8 +189,8 @@ function embeddedStatements(node: unknown, found: string[] = []): string[] {
   const record = node as Record<string, unknown>;
   const expression = record["PLpgSQL_expr"];
   if (typeof expression === "object" && expression !== null) {
-    const query = (expression as Record<string, unknown>)["query"];
-    if (typeof query === "string") found.push(query);
+    const { query, parseMode } = expression as Record<string, unknown>;
+    if (typeof query === "string" && (parseMode ?? STATEMENT_PARSE_MODE) === STATEMENT_PARSE_MODE) found.push(query);
   }
   for (const value of Object.values(record)) embeddedStatements(value, found);
   return found;

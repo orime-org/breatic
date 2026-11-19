@@ -4,7 +4,7 @@
 import type { Awareness } from 'y-protocols/awareness';
 
 import { collectNodeOccupants, sameOccupantTable } from '@web/spaces/canvas/node-occupants';
-import { useAwarenessSlice } from '@web/spaces/canvas/use-awareness-slice';
+import { useAwarenessSlice } from '@web/data/yjs/use-awareness-slice';
 
 /** Node id to the user ids holding it. */
 export type NodeOccupants = ReadonlyMap<string, readonly string[]>;

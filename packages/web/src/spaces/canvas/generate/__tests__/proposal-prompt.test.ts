@@ -149,3 +149,58 @@ describe('a ref to another proposed node', () => {
     expect(typesIn(json)).not.toContain(REFERENCE_MENTION_NODE);
   });
 });
+
+describe('a ref to an optional input (inner#1811, CAP-9)', () => {
+  const PRODUCT: ProposalMention = { sourceNodeId: 'n-product', label: 'Product', kind: 'image' };
+  const PERSON: ProposalMention = { sourceNodeId: 'n-person', label: 'Person', kind: 'image' };
+  const mentionOf = (index: number): ProposalMention | undefined => [PRODUCT, PERSON][index];
+  /**
+   * The product ad's words: the person in a paragraph of its own between two others.
+   * @param optional - Whether the person ref is marked optional.
+   * @returns The segments.
+   */
+  const words = (optional = true): PromptSegment[] => [
+    { text: 'An ad for ' },
+    { ref: 0 },
+    { text: '.\nThe person looks like ' },
+    optional ? { ref: 1, optional: true } : { ref: 1 },
+    { text: '.\nLit softly.' },
+  ];
+  /**
+   * The pool, the product holding a picture and the person as given.
+   * @param personPicture - The person's picture, or none.
+   * @returns The rows.
+   */
+  const pool = (personPicture?: string): ReferenceRailItem[] => [
+    { refId: 'e0', sourceNodeId: 'n-product', sourceNodeType: 'image', sourceNodeName: 'Product', mediaUrl: 'https://r2.example/product.png' },
+    { refId: 'e1', sourceNodeId: 'n-person', sourceNodeType: 'image', sourceNodeName: 'Person', ...(personPicture === undefined ? {} : { mediaUrl: personPicture }) },
+  ];
+
+  it('lands as a mention carrying optional, and only that one', () => {
+    const { json } = roundTrip(words(), mentionOf);
+    const mentions = (json.content ?? []).flatMap((block) => (block.content ?? []).filter((part) => part.type === REFERENCE_MENTION_NODE));
+    expect(mentions.map((mention) => [mention.attrs?.['sourceNodeId'], mention.attrs?.['optional'] ?? null])).toEqual([
+      ['n-product', null],
+      ['n-person', true],
+    ]);
+  });
+
+  it('leaves its paragraph out of what generation gets while the person holds no picture', () => {
+    const { sent } = roundTrip(words(), mentionOf, pool());
+    expect(sent).toContain('An ad for');
+    expect(sent).toContain('Lit softly.');
+    expect(sent).not.toContain('The person looks like');
+    expect(sent.split('\n\n')).toHaveLength(2);
+  });
+
+  it('sends its paragraph once the person holds a picture', () => {
+    const { sent } = roundTrip(words(), mentionOf, pool('https://r2.example/person.png'));
+    expect(sent).toContain('The person looks like');
+    expect(sent.split('\n\n')).toHaveLength(3);
+  });
+
+  it('keeps the sentence of a mention the user picked, its empty node read as nothing', () => {
+    const { sent } = roundTrip(words(false), mentionOf, pool());
+    expect(sent).toContain('The person looks like');
+  });
+});

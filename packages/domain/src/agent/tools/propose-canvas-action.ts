@@ -63,7 +63,13 @@ import { inputSchema, type ProposalVerdict } from "@domain/agent/tools/proposal-
 import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/tools/proposal-node-checks.js";
 import { fixEdges, fixGroup, nodeLabel, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { aNode, chosenModelOf, routeEdges, spaced, waysOrNone } from "@domain/agent/tools/proposal-routing.js";
-import { anchoredInstances, checkTemplateInstances, type AnchoredInstance } from "@domain/agent/tools/template-consistency.js";
+import {
+  anchoredInstances,
+  checkOptionalInputs,
+  checkTemplateInstances,
+  optionalInputRefs,
+  type AnchoredInstance,
+} from "@domain/agent/tools/template-consistency.js";
 import { expandAt, templatePlace, type TemplatePlace } from "@domain/agent/tools/template-expansion.js";
 import { GET_GENERATION_TEMPLATE, GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
@@ -243,10 +249,14 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable, insta
   // still short of that edge.
   const whole = checkTemplateInstances(proposal, instances);
   if (!whole.ok) return whole;
+  const optional = checkOptionalInputs(proposal, instances);
+  if (!optional.ok) return optional;
 
+  // An input is optional only in the template's own generations, where its refs are marked.
+  const optionalIn = optionalInputRefs(instances);
   for (const [index, node] of proposal.nodes.entries()) {
     if (node.role !== "generate") continue;
-    const verdict = checkGenerateNode(proposal, node, index);
+    const verdict = checkGenerateNode(proposal, node, index, new Set(optionalIn.get(index)?.keys()));
     if (!verdict.ok) return verdict;
   }
 
@@ -394,6 +404,36 @@ function markTemplateNodes(nodes: readonly ProposalNode[], instances: readonly A
 }
 
 /**
+ * Each ref an instance's own generation makes to an optional input's node
+ * marked optional (inner#1811, CAP-9), as the panel's expansion marks it: the
+ * mention lands marked, and the panel leaves its paragraph out while the node
+ * is empty.
+ * @param nodes - The proposal's nodes.
+ * @param instances - Each anchor and its match.
+ * @returns The nodes, those refs marked.
+ * @throws {never} Never.
+ */
+function markOptionalRefs(nodes: readonly ProposalNode[], instances: readonly AnchoredInstance[]): ProposalNode[] {
+  const refs = optionalInputRefs(instances);
+  return nodes.map((node, index) => {
+    const optional = refs.get(index);
+    if (optional === undefined) return node;
+    /**
+     * One run of words, its refs to an optional input marked.
+     * @param words - The words.
+     * @returns The words, marked.
+     */
+    const marked = (words: readonly PromptSegment[]): PromptSegment[] =>
+      words.map((segment) => (segment.ref !== undefined && optional.has(segment.ref) ? { ref: segment.ref, optional: true } : segment));
+    return {
+      ...node,
+      ...(node.prompt === undefined ? {} : { prompt: marked(node.prompt) }),
+      ...(node.shots === undefined ? {} : { shots: node.shots.map((shot) => ({ ...shot, prompt: marked(shot.prompt) })) }),
+    };
+  });
+}
+
+/**
  * The edges with the inputs wired into each generation put in the order the
  * template declares its inputs, so the reference rail, which lists the edges
  * in the order they were drawn, reads the same as a panel apply would.
@@ -453,7 +493,7 @@ export function answerFor(
     const guide = templateGuideNode(place.template, anchor);
     return guide === undefined ? [] : [guide];
   });
-  const nodes = [...markTemplateNodes(resolved.nodes, instances), ...guides];
+  const nodes = [...markOptionalRefs(markTemplateNodes(resolved.nodes, instances), instances), ...guides];
   const first = instances[0];
   const groupName =
     resolved.groupName ?? (nodes.length > 1 && first !== undefined ? t(`canvas.template.${first.place.template.id}.name`) : undefined);

@@ -63,6 +63,14 @@ import {
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import { useDocumentProposalRouting } from '@web/pages/project/use-document-proposal-routing';
 import { useCanvasRevealRouting } from '@web/pages/project/use-canvas-reveal-routing';
+import { useFollowRouting } from '@web/pages/project/use-follow-routing';
+import { usePublishView } from '@web/pages/project/use-publish-view';
+import { FollowBar } from '@web/features/follow/FollowBar';
+import { useFollowExitToast } from '@web/features/follow/use-follow-exit-toast';
+import { useFollowLeaderPresence } from '@web/features/follow/use-follow-leader-presence';
+import { useMemberViews } from '@web/features/follow/use-member-views';
+import { followTarget } from '@web/features/follow/follow-target';
+import { useFollowStore, type FollowOther } from '@web/stores/follow';
 import { useRefreshOnReauth } from '@web/pages/project/use-refresh-on-reauth';
 import { useRenameProject } from '@web/features/project-manage/use-rename-project';
 import {
@@ -337,6 +345,7 @@ function ProjectWorkspace({
     spaces,
     provider,
     users,
+    following,
     synced: metaSynced,
     status: connectionStatus,
   } = useProjectMeta(projectId);
@@ -385,6 +394,54 @@ function ProjectWorkspace({
   useDocumentProposalRouting(spaces, tabs.openIds, tabs.activeId, openSpace, metaSynced);
   // A 3D capture's "View" press opens its canvas here, where the strip is held (#1411).
   useCanvasRevealRouting(spaces, tabs.activeId, openSpace, metaSynced);
+
+  // ---- Following a member (#920) ----
+  // This tab's Space in front and whom this user follows go out on the meta
+  // awareness, the latter only for collab to keep the meta document's
+  // following table, which is what every peer reads; following someone takes this strip to their Space and stops
+  // when they go offline, leave the project or start following someone.
+  const metaAwareness = provider?.awareness ?? null;
+  usePublishView(metaAwareness, tabs.activeId);
+  const followedUserId = useFollowStore((s) => s.targetUserId);
+  const onlineUserIds = React.useMemo(
+    () => new Set([...users.values()].filter((u) => u.online).map((u) => u.id)),
+    [users],
+  );
+  const memberViews = useMemberViews(metaAwareness, following);
+  const leaderView = followedUserId === null ? undefined : memberViews.get(followedUserId);
+  const leaderSpaceId = leaderView?.spaceId ?? null;
+  const openFollowedSpace = React.useCallback((spaceId: string) => {
+    dispatchTabs({ type: 'open', spaceId, byFollow: true });
+  }, []);
+  useFollowRouting({
+    following: followedUserId !== null,
+    leaderSpaceId,
+    spaces,
+    activeId: tabs.activeId,
+    ready: tabs.ready,
+    persist: tabs.persist,
+    byFollow: tabs.byFollow,
+    open: openFollowedSpace,
+  });
+  const memberNames = React.useMemo(() => new Map(members.map((m) => [m.userId, m.name])), [members]);
+  // Whom each member follows here: it dims View in the member list and stops
+  // following a leader who follows someone.
+  const followTargets = React.useMemo(() => {
+    const out = new Map<string, FollowOther>();
+    for (const [memberId, view] of memberViews) {
+      const other = followTarget(view.following, userId, memberNames);
+      if (other !== null) out.set(memberId, other);
+    }
+    return out;
+  }, [memberViews, userId, memberNames]);
+  // The roster is empty until it loads, and a loaded one always lists at least this user.
+  useFollowLeaderPresence({
+    onlineUserIds,
+    memberNames,
+    synced: metaSynced && memberNames.size > 0,
+    leaderFollows: followedUserId === null ? null : followTargets.get(followedUserId) ?? null,
+  });
+  useFollowExitToast();
 
   // Hand the strip back to the browser so the next visit opens on it. Held
   // until `ready`, because the strip is empty before the Spaces arrive and
@@ -932,6 +989,8 @@ function ProjectWorkspace({
               onRename={(next) => renameMutation.mutate(next)}
               members={members}
               currentUserId={userId}
+              onlineUserIds={onlineUserIds}
+              followTargets={followTargets}
             />
             {/* Both panels are given `display: flex` and `overflow: visible`
             because the library's inner wrapper is a block box that hard-codes
@@ -1028,92 +1087,95 @@ function ProjectWorkspace({
                 disappearing (caught by the real-browser screenshot). Floating
                 UI that must escape the box (menus / tooltips) portals to
                 document.body and is unaffected. */}
-                  <div className='relative flex-1 overflow-hidden'>
-                    {/* Every open tab holds its document's connection; the
+                  <div className='relative flex flex-1 flex-col overflow-hidden'>
+                    <FollowBar spaceType={activeSpace?.type ?? null} />
+                    <div className='relative min-h-0 flex-1'>
+                      {/* Every open tab holds its document's connection; the
                     one on screen shows its body, and a tab switched away from
                     keeps its body mounted and hidden (inner#1235). */}
-                    {openBodies.map((tab) => (
-                      <OpenSpace
-                        key={tab.id}
-                        projectId={projectId}
-                        spaceId={tab.id}
-                        type={tab.type}
-                        active={tab.id === activeSpace?.id}
-                        visited={visited.has(tab.id)}
-                        readOnly={isViewer}
-                        myRole={role}
-                      />
-                    ))}
-                    {activeSpace ? null : (
-                      <div
-                        data-testid='no-active-space'
-                        className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
-                      >
-                        {t('project.space.noActive')}
-                      </div>
-                    )}
-                    {activeSpace?.type === 'canvas' ? (
-                      <>
-                        <input
-                          ref={uploadInputRef}
-                          type='file'
-                          multiple
-                          accept={`${uploadAcceptFor('all')},text/*`}
-                          hidden
-                          data-testid='canvas-upload-input'
-                          onChange={(e) => {
-                            const files = e.target.files;
-                            if (files && files.length > 0) {
-                              requestUpload([...files]);
-                            }
-                            // Reset so picking the same file again re-fires change.
-                            e.target.value = '';
-                          }}
+                      {openBodies.map((tab) => (
+                        <OpenSpace
+                          key={tab.id}
+                          projectId={projectId}
+                          spaceId={tab.id}
+                          type={tab.type}
+                          active={tab.id === activeSpace?.id}
+                          visited={visited.has(tab.id)}
+                          readOnly={isViewer}
+                          myRole={role}
                         />
-                        <LeftFloatingMenu
-                          disabled={isViewer}
-                          concealed={picking}
-                          armedTool={placingAnnotation ? 'comment' : undefined}
-                          onCreateNode={requestNodeCreate}
-                          onPick={(tool) => {
-                          // Open the file picker synchronously inside the click so
-                          // the browser keeps user-activation; the canvas fulfils
-                          // the picked files via the upload mailbox.
-                            if (tool === 'upload') uploadInputRef.current?.click();
-                            // Arm the annotation tool; the canvas is waiting for the
-                            // click that says where the note goes (#1881 §6.4).
-                            // The lit button is the third way back out, beside
-                            // Escape and dropping the note — pressing the tool
-                            // that is already in hand puts it down.
-                            if (tool === 'comment') {
-                              if (placingAnnotation) endAnnotationPlacement();
-                              else startAnnotationPlacement();
-                            }
-                          // Comment is the one button here that arms a mode, so
-                          // it is the one that wears a pressed state; upload is
-                          // fire and forget. The node-library (`nodes`) button
-                          // owns its own dropdown, and the shortcuts button its
-                          // own dialog.
-                          }}
-                        />
-                        <ViewportToolbar
-                          zoom={zoom}
-                          concealed={picking}
-                          minimapVisible={minimapVisible}
-                          snapToGrid={snapToGrid}
-                          canUndo={canUndo}
-                          canRedo={canRedo}
-                          onZoomIn={() => requestViewportCommand('zoomIn')}
-                          onZoomOut={() => requestViewportCommand('zoomOut')}
-                          onZoomChange={(z) => requestViewportCommand({ zoomTo: z })}
-                          onFit={() => requestViewportCommand('fit')}
-                          onToggleSnap={toggleSnapToGrid}
-                          onToggleMinimap={toggleMinimap}
-                          onUndo={() => requestHistoryCommand('undo')}
-                          onRedo={() => requestHistoryCommand('redo')}
-                        />
-                      </>
-                    ) : null}
+                      ))}
+                      {activeSpace ? null : (
+                        <div
+                          data-testid='no-active-space'
+                          className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
+                        >
+                          {t('project.space.noActive')}
+                        </div>
+                      )}
+                      {activeSpace?.type === 'canvas' ? (
+                        <>
+                          <input
+                            ref={uploadInputRef}
+                            type='file'
+                            multiple
+                            accept={`${uploadAcceptFor('all')},text/*`}
+                            hidden
+                            data-testid='canvas-upload-input'
+                            onChange={(e) => {
+                              const files = e.target.files;
+                              if (files && files.length > 0) {
+                                requestUpload([...files]);
+                              }
+                              // Reset so picking the same file again re-fires change.
+                              e.target.value = '';
+                            }}
+                          />
+                          <LeftFloatingMenu
+                            disabled={isViewer}
+                            concealed={picking}
+                            armedTool={placingAnnotation ? 'comment' : undefined}
+                            onCreateNode={requestNodeCreate}
+                            onPick={(tool) => {
+                              // Open the file picker synchronously inside the click so
+                              // the browser keeps user-activation; the canvas fulfils
+                              // the picked files via the upload mailbox.
+                              if (tool === 'upload') uploadInputRef.current?.click();
+                              // Arm the annotation tool; the canvas is waiting for the
+                              // click that says where the note goes (#1881 §6.4).
+                              // The lit button is the third way back out, beside
+                              // Escape and dropping the note — pressing the tool
+                              // that is already in hand puts it down.
+                              if (tool === 'comment') {
+                                if (placingAnnotation) endAnnotationPlacement();
+                                else startAnnotationPlacement();
+                              }
+                              // Comment is the one button here that arms a mode, so
+                              // it is the one that wears a pressed state; upload is
+                              // fire and forget. The node-library (`nodes`) button
+                              // owns its own dropdown, and the shortcuts button its
+                              // own dialog.
+                            }}
+                          />
+                          <ViewportToolbar
+                            zoom={zoom}
+                            concealed={picking}
+                            minimapVisible={minimapVisible}
+                            snapToGrid={snapToGrid}
+                            canUndo={canUndo}
+                            canRedo={canRedo}
+                            onZoomIn={() => requestViewportCommand('zoomIn')}
+                            onZoomOut={() => requestViewportCommand('zoomOut')}
+                            onZoomChange={(z) => requestViewportCommand({ zoomTo: z })}
+                            onFit={() => requestViewportCommand('fit')}
+                            onToggleSnap={toggleSnapToGrid}
+                            onToggleMinimap={toggleMinimap}
+                            onUndo={() => requestHistoryCommand('undo')}
+                            onRedo={() => requestHistoryCommand('redo')}
+                          />
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                 </section>
               </Panel>

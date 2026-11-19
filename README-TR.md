@@ -29,6 +29,24 @@ Brief’i, sahneleri ve medyayı tek bir Project içinde toplayın. Document Spa
 
 Barındırılan hizmet ücretsiz bir Starter planı sunar. Yapay zekâ üretim kredileri ayrıca satın alınır ve üyeliklere dahil değildir. [Fiyatları ve kredileri][hosted-pricing] inceleyin.
 
+## Tek proje, dört ortak yaratım alanı
+
+Breatic’te çalışırken senaryoyu gözden geçirebilir, farklı görseller deneyebilir, sahneleri kurabilir ve çekimleri sıralayabilirsiniz. Ekiple çalışırken herkes aynı projede eşzamanlı olarak çalışabilir.
+
+| Özellik | **Breatic** | Higgsfield | TapNow | LibTV | Luma | LTX Studio |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Ortak belge düzenleme** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Ortak tuval** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Ortak 3D düzenleme** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Ortak zaman çizelgesi** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 3D ön görselleştirme | ✅ | ✅ | ✅ | ✅ | ✗ | ✗ |
+| Zaman çizelgesinde kurgu | ✅ | ✗ | ✅ | ✅ | ✗ | ✅ |
+| Proje temsilcisi | ✅ | ✅ | ✅ | ✅ | ✅ | ✗ |
+| Metin önerilerini inceleme | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Ekiple paylaşım | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+Ortak çalışma, birden fazla kişinin aynı çalışma alanını gerçek zamanlı olarak düzenleyebilmesi demektir. Temsilcinin önerdiği metin değişikliğini, özgün metne uygulayıp uygulamayacağınıza karar vermeden önce inceleyebilirsiniz. Bu karşılaştırma 18 Kasım 2026 itibarıyla kamuya açık ürün bilgilerine dayanır. ✅ desteğin doğrulandığını, ✗ ise kamuya açık bilgilerden doğrulanamadığını gösterir.
+
 ![Breatic tuvalindeki kafe görseli seçenekleri ve proje sohbeti; İngilizce arayüz](docs/images/readme/workspace-en.png)
 
 ## Neler yapabilirsiniz?

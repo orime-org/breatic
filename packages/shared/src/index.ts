@@ -72,6 +72,7 @@ export type {
   NodeMediaNumbers,
   NodeTaskCountsEvent,
   NodeEvent,
+  SpaceTasksVersionEvent,
   ModelModality,
   ModelTier,
   ParamDescriptor,
@@ -164,6 +165,9 @@ export {
   MAX_NODE_NAME_LEN,
   canGenerate,
   CANVAS_NODES_KEY,
+  SPACE_TASKS_KEY,
+  SPACE_TASKS_TYPES,
+  SPACE_TASKS_VERSION,
   activityNewChannel,
   creditsChangedChannel,
   spaceTasksChangedChannel,
@@ -269,6 +273,7 @@ export {
   proposalWordRuns,
   markReadsBack,
   markText,
+  promptLines,
   writtenMark,
   markedSegments,
   marksTypedIn,
@@ -449,6 +454,8 @@ export { COLLAB_DOCUMENT_TOO_LARGE_REASON, COLLAB_REAUTH_REASONS, isReauthCloseR
 export { DOC_SIZE_ACK_PARAM, DOC_SIZE_EVENT_BYTES, DocSizeSeenSchema, DocSizeStatusSchema } from "@shared/doc-size.js";
 export type { DocSizeSeen, DocSizeStatus } from "@shared/doc-size.js";
 export { READ_ONLY_COLLAB_TOKEN } from "@shared/collab-read-only-token.js";
+export { FOLLOWING_TABLE, followingDeclarationSchema, followingEntrySchema } from "@shared/following-table.js";
+export type { FollowingDeclaration, FollowingEntry } from "@shared/following-table.js";
 export { COLLAB_CHUNK_ACK, COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema, sendInChunks } from "@shared/collab-frame-chunks.js";
 
 export {

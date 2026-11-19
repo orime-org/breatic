@@ -453,6 +453,7 @@ describe("authorisation table (§4.3)", () => {
         "GET /internal/v1/accounts/:userId/credit-grants/profile",
         "POST /internal/v1/accounts/:userId/credit-grants",
         "GET /internal/v1/credit-grant-operations/:key",
+        "GET /internal/v1/deployment-version",
         "GET /internal/v1/maintenance/queue",
         "GET /internal/v1/maintenance/reclaim/candidates",
         "POST /internal/v1/maintenance/reclaim/preview",

@@ -275,7 +275,24 @@ export function renderProductGuide(): string {
       "double-clicking it (Enter or clicking away saves, Esc or an empty name keeps the old one); and the user's role, " +
       `${quoted(t("role.owner"))} or ${quoted(t("role.editor"))}.`,
     "On the right: the members' pictures with a small arrow, which open " +
-      `${quoted(t("members.popover.title"))}. For an editor or a viewer that list ends with ` +
+      `${quoted(t("members.popover.title"))}. Each member's row says ${quoted(t("members.popover.online"))} or ` +
+      `${quoted(t("members.popover.offline"))}. Every role can follow another member who is online: pressing ` +
+      `${quoted(t("members.popover.follow"))} on their row takes the user to the Space they have in front, and on ` +
+      "to each Space they switch to; on a canvas or in a document the user's view also moves with theirs as they " +
+      "pan, zoom or scroll, while in a 3D or Timeline Space only the Space follows. While following, a bar in that member's colour " +
+      `across the top of the Space area reads ${quoted(t("members.follow.bar"))}, {name} being that member's name, ` +
+      `with ${quoted(t("members.follow.stop"))}, the Space area is outlined in the same colour, and their row shows ` +
+      `${quoted(t("members.popover.unfollow"))}. Following ends when the user presses either of those; when the user ` +
+      `moves the view themselves (${quoted(t("members.follow.stoppedViewport"))}) or switches Space themselves ` +
+      `(${quoted(t("members.follow.stoppedSpace"))}); when that member goes offline or leaves the project ` +
+      `(${quoted(t("members.follow.stoppedOffline"))}); or when that member starts following someone ` +
+      `(${quoted(t("members.follow.stoppedLeaderFollows"))}, or ` +
+      `${quoted(t("members.follow.stoppedLeaderFollowsYou"))} when that someone is the user). Pressing ` +
+      `${quoted(t("members.popover.follow"))} on someone else switches straight to them. Following is one level ` +
+      "deep: a member who is following someone cannot be followed. Their " +
+      `${quoted(t("members.popover.follow"))} is dimmed, and pressing it only says whom they follow ` +
+      `(${quoted(t("members.follow.busy"))}, or ${quoted(t("members.follow.busyYou"))}). ` +
+      "For an editor or a viewer that list ends with " +
       `${quoted(t("project.leave.action"))}, which asks to confirm first, with ` +
       `${quoted(t("project.leave.confirm"))}; once they leave they are taken back to their recent projects and can ` +
       "no longer open the project. A member of the project's studio also finds it on the project's card in " +
@@ -868,10 +885,14 @@ export function renderProductGuide(): string {
       "@'d in the prompt: a picture already " +
       "connected to the node is used as it is; for one that is missing, an empty node is placed to the left, " +
       "connected and @'d, and a note at the top of the prompt says what to put in it (with a shot list, at the " +
-      "top of the first shot). A template may also place " +
-      "picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt " +
-      "says to generate them first. A picture such a template places for the first or end frame is connected " +
-      "but not @'d, and its note says to pick it into that frame once it has generated. A template that needs a " +
+      "top of the first shot). A picture the template marks optional may be left empty and its note says so: the " +
+      "paragraph of the prompt that @'s it stands on its own, is greyed while that node holds no picture and is " +
+      "then left out of what generation gets, and hovering it says it is sent once that node holds a picture; " +
+      "once a picture is put in the node, the paragraph is sent again. A template may also place " +
+      "picture, video or sound nodes to the left that generate first, connected and @'d; a note at the top of the prompt " +
+      "says to generate them first. A picture or sound such a template generates for one of the model's slots, such as " +
+      "the first or end frame, the character or the audio the face speaks, is connected but not @'d, and its note says " +
+      "to pick it into that slot once it has generated. A template that needs a " +
       "video, picture or sound in one of the model's slots places an empty node for it, connected but not @'d, " +
       "with a note saying what to put in it and to pick it into that slot; when a node holding one is already " +
       "connected to the node, it goes straight into the slot instead. A template may also place nodes to the " +

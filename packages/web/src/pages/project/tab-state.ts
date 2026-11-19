@@ -38,6 +38,13 @@ export interface TabState {
    */
   persist: boolean;
   /**
+   * Whether the tab in front was put there by an open that following asked
+   * for, so the follow routing can tell a landing it caused from the user's
+   * own switch. Changes only when the tab in front changes; never stored, as
+   * it describes how that tab came to the front, not the strip.
+   */
+  byFollow: boolean;
+  /**
    * What the browser was holding for this project when the page opened, spent
    * by the first `spaces` action and null from then on.
    *
@@ -53,7 +60,7 @@ export type TabAction =
   /** The live Spaces, as a whole. The first arrival settles the strip; later ones drop tabs whose Space is gone. */
   | { type: 'spaces'; spaces: ReadonlyArray<TabOrderEntry> }
   /** Show a Space: from the drawer, from the strip, or straight after creating one. */
-  | { type: 'open'; spaceId: string }
+  | { type: 'open'; spaceId: string; byFollow?: true }
   /** Close one tab. */
   | { type: 'close'; spaceId: string }
   /** Drop a tab in front of another, or at the end when `beforeSpaceId` is null. */
@@ -70,6 +77,7 @@ export function initialTabState(restored: RestoredTabs | null): TabState {
     openIds: [],
     activeId: null,
     persist: false,
+    byFollow: false,
     restored,
   };
 }
@@ -149,17 +157,20 @@ function foldSpaces(
       openIds,
       activeId: settleActive(openIds, state.restored?.activeId ?? null),
       persist: true,
+      byFollow: false,
       restored: null,
     };
   }
   const live = new Set(spaces.map((s) => s.id));
   const openIds = state.openIds.filter((id) => live.has(id));
   if (openIds.length === state.openIds.length) return state;
+  const activeId = settleActive(openIds, state.activeId);
   return {
     ...state,
     openIds,
-    activeId: settleActive(openIds, state.activeId),
+    activeId,
     persist: false,
+    byFollow: activeId === state.activeId && state.byFollow,
   };
 }
 
@@ -175,23 +186,27 @@ export function reduceTabState(state: TabState, action: TabAction): TabState {
       return foldSpaces(state, action.spaces);
     case 'open': {
       if (state.activeId === action.spaceId) return state;
+      const byFollow = action.byFollow === true;
       if (state.openIds.includes(action.spaceId)) {
-        return { ...state, activeId: action.spaceId, persist: true };
+        return { ...state, activeId: action.spaceId, persist: true, byFollow };
       }
       return {
         ...state,
         openIds: [...state.openIds, action.spaceId],
         activeId: action.spaceId,
         persist: true,
+        byFollow,
       };
     }
     case 'close': {
       const openIds = state.openIds.filter((id) => id !== action.spaceId);
+      const activeId = settleActive(openIds, state.activeId);
       return {
         ...state,
         openIds,
-        activeId: settleActive(openIds, state.activeId),
+        activeId,
         persist: true,
+        byFollow: activeId === state.activeId && state.byFollow,
       };
     }
     case 'reorder': {

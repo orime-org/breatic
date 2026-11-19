@@ -41,7 +41,8 @@ vi.mock("ai", () => ({
 
 import type * as DomainModule from "@breatic/domain";
 import type { Job, Queue } from "bullmq";
-import { createPgClient, createQueue, createWorker, env, getStreamRedis, initCore, loadLocales, type Redis } from "@breatic/core";
+import { createPgClient, createQueue, createWorker, env, getStreamRedis, initCore, loadLocales, type Redis, taskEventsStreamKey } from "@breatic/core";
+import { timelineSpaceDocName } from "@breatic/shared";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
 import {
@@ -151,13 +152,19 @@ async function liveJob(executionId: string): Promise<{ state: string; data: unkn
 }
 
 /**
- * The space-tasks signals one Space received, after giving late ones time to arrive.
+ * What one Timeline Space was told, after giving late messages time to arrive: the changes on the task-events stream
+ * for its document, and the space-tasks signals on its Project's channel.
  * @param fx - The execution.
- * @returns Them.
+ * @returns Both.
  */
-async function signalsFor(fx: ExecutionFixture): Promise<Record<string, unknown>[]> {
+async function signalsFor(fx: ExecutionFixture): Promise<{ doc: Record<string, unknown>[]; meta: Record<string, unknown>[] }> {
   await new Promise((resolve) => setTimeout(resolve, 300));
-  return signals.filter((s) => s.channel.includes(fx.projectId) && s.message.spaceId === fx.spaceId).map((s) => s.message);
+  const docName = timelineSpaceDocName(fx.projectId, fx.spaceId);
+  const doc = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+"))
+    .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
+    .filter((event) => event.docName === docName);
+  const meta = signals.filter((s) => s.channel.includes(fx.projectId) && s.message.spaceId === fx.spaceId).map((s) => s.message);
+  return { doc, meta };
 }
 
 const WAITING = ["waiting", "delayed", "prioritized"];
@@ -172,15 +179,13 @@ async function expectNothingHeld(fx: ExecutionFixture): Promise<void> {
 }
 
 describe("sweeping rows that never landed", () => {
-  it("expires an awaiting-landing row past its original deadline, releasing nothing, and signals the Space", async () => {
+  it("expires an awaiting-landing row past its original deadline, releasing nothing, and tells its Space's document", async () => {
     const fx = await seed("awaiting_landing", { late: true });
     await sweepTimelineExecutions(queue);
     expect(await read(fx.execution.id)).toMatchObject({ status: "expired", fence: null });
     await expectNothingHeld(fx);
     expect(await liveJob(fx.execution.id)).toBeNull();
-    expect(await signalsFor(fx)).toEqual([
-      { type: "project-space-tasks:changed", projectId: fx.projectId, spaceId: fx.spaceId, ts: expect.any(Number) },
-    ]);
+    expect(await signalsFor(fx)).toEqual({ doc: [{ type: "space-tasks-version", docName: timelineSpaceDocName(fx.projectId, fx.spaceId) }], meta: [] });
   });
 
   it("leaves an awaiting-landing row whose Space was deleted alone until its original deadline, then expires it", async () => {
@@ -188,7 +193,7 @@ describe("sweeping rows that never landed", () => {
     await deleteSpace(fx.projectId, fx.spaceId);
     await sweepTimelineExecutions(queue);
     expect(await read(fx.execution.id)).toEqual(fx.execution);
-    expect(await signalsFor(fx)).toEqual([]);
+    expect(await signalsFor(fx)).toEqual({ doc: [], meta: [] });
     await sql`UPDATE timeline_executions SET deadline_at = now() - interval '1 minute' WHERE id = ${fx.execution.id}`;
     await sweepTimelineExecutions(queue);
     expect(await read(fx.execution.id)).toMatchObject({ status: "expired", failureReason: null, fence: null });
@@ -210,11 +215,10 @@ describe("sweeping rows that never landed", () => {
     await sweepTimelineExecutions(queue);
     const ended = await read(fx.execution.id);
     expect(ended.status).toBe("expired");
-    await signalsFor(fx);
-    signals.length = 0;
+    const told = await signalsFor(fx);
     await sweepTimelineExecutions(queue);
     expect(await read(fx.execution.id)).toEqual(ended);
-    expect(await signalsFor(fx)).toEqual([]);
+    expect(await signalsFor(fx)).toEqual(told);
   });
 });
 

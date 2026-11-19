@@ -41,6 +41,10 @@ import {
   touchLastSeen,
   sweepStalePresence,
   readPresence,
+  writeFollowing,
+  deleteFollowing,
+  touchFollowing,
+  readFollowing,
 } from "@collab/hooks/presence";
 
 const ALICE = "u-alice";
@@ -273,5 +277,148 @@ describe("presence — records nobody is refreshing any more", () => {
     expect(swept.sort()).toEqual([ALICE, BOB].sort());
     expect(readPresence(doc, ALICE)?.online).toBe(false);
     expect(readPresence(doc, BOB)?.online).toBe(false);
+  });
+});
+
+/*
+ * Whom each connection follows (#920, design 4.2.1), kept by the server in the
+ * meta document's `following` root, keyed by socket id, one nested Y.Map per
+ * entry like the `users` records. Expected from `hooks/presence.ts`:
+ *
+ *   writeFollowing({ document, socketId, userId, target, at, now }): boolean
+ *     Writes `{ userId, target, at, lastSeenAt: now }` when the socket has no
+ *     entry or its userId, target or at differ; otherwise writes nothing (no
+ *     Yjs update). Returns whether it wrote.
+ *   deleteFollowing({ document, socketId }): boolean
+ *     Removes that socket's entry. Returns whether there was one.
+ *   touchFollowing({ document, socketId, heardAt }): boolean
+ *     Moves that socket's `lastSeenAt` forward to `heardAt` (never back).
+ *     Creates nothing; returns whether there was an entry.
+ *   readFollowing(document, socketId): { userId, target, at, lastSeenAt } | null
+ *   sweepStalePresence(...) also deletes every following entry whose
+ *     `lastSeenAt` is `staleAfterMs` or more behind `now`.
+ */
+
+const SOCK_A = "sock-a";
+const SOCK_B = "sock-b";
+
+/**
+ * Count the Yjs updates a document emits while `fn` runs.
+ * @param doc - The document to watch.
+ * @param fn - What to run.
+ * @returns How many updates it emitted.
+ */
+function updatesDuring(doc: Y.Doc, fn: () => void): number {
+  let count = 0;
+  const onUpdate = (): void => {
+    count += 1;
+  };
+  doc.on("update", onUpdate);
+  try {
+    fn();
+  } finally {
+    doc.off("update", onUpdate);
+  }
+  return count;
+}
+
+describe("following — what each connection follows", () => {
+  it("records whom a connection follows, with the time the client gave and now as last seen", () => {
+    const doc = emptyMetaDoc();
+
+    const wrote = writeFollowing({ document: doc, socketId: SOCK_A, userId: ALICE, target: BOB, at: 500, now: 1_000 });
+
+    expect(wrote).toBe(true);
+    expect(readFollowing(doc, SOCK_A)).toEqual({ userId: ALICE, target: BOB, at: 500, lastSeenAt: 1_000 });
+  });
+
+  it("keeps each entry as a nested map under the socket id, like the users records", () => {
+    const doc = emptyMetaDoc();
+
+    writeFollowing({ document: doc, socketId: SOCK_A, userId: ALICE, target: BOB, at: 500, now: 1_000 });
+
+    const entry = doc.getMap("following").get(SOCK_A);
+    expect(entry).toBeInstanceOf(Y.Map);
+    expect((entry as Y.Map<unknown>).toJSON()).toEqual({ userId: ALICE, target: BOB, at: 500, lastSeenAt: 1_000 });
+  });
+
+  it("writes nothing when the same declaration arrives again", () => {
+    // Every awareness beat and every focus change resends the whole state;
+    // rewriting the entry each time would broadcast a meta update per beat.
+    const doc = emptyMetaDoc();
+    writeFollowing({ document: doc, socketId: SOCK_A, userId: ALICE, target: BOB, at: 500, now: 1_000 });
+
+    let wrote = true;
+    const updates = updatesDuring(doc, () => {
+      wrote = writeFollowing({ document: doc, socketId: SOCK_A, userId: ALICE, target: BOB, at: 500, now: 9_000 });
+    });
+
+    expect(wrote).toBe(false);
+    expect(updates).toBe(0);
+    expect(readFollowing(doc, SOCK_A)?.lastSeenAt).toBe(1_000);
+  });
+
+  it("rewrites the entry when the target or the start time changes", () => {
+    const doc = emptyMetaDoc();
+    writeFollowing({ document: doc, socketId: SOCK_A, userId: ALICE, target: BOB, at: 500, now: 1_000 });
+
+    expect(writeFollowing({ document: doc, socketId: SOCK_A, userId: ALICE, target: "u-carol", at: 700, now: 2_000 })).toBe(true);
+    expect(readFollowing(doc, SOCK_A)).toEqual({ userId: ALICE, target: "u-carol", at: 700, lastSeenAt: 2_000 });
+
+    expect(writeFollowing({ document: doc, socketId: SOCK_A, userId: ALICE, target: "u-carol", at: 800, now: 3_000 })).toBe(true);
+    expect(readFollowing(doc, SOCK_A)).toEqual({ userId: ALICE, target: "u-carol", at: 800, lastSeenAt: 3_000 });
+  });
+
+  it("keeps one entry per connection, so two tabs of one user are two entries", () => {
+    const doc = emptyMetaDoc();
+
+    writeFollowing({ document: doc, socketId: SOCK_A, userId: ALICE, target: BOB, at: 500, now: 1_000 });
+    writeFollowing({ document: doc, socketId: SOCK_B, userId: ALICE, target: "u-carol", at: 600, now: 1_000 });
+
+    expect(readFollowing(doc, SOCK_A)?.target).toBe(BOB);
+    expect(readFollowing(doc, SOCK_B)?.target).toBe("u-carol");
+  });
+
+  it("deletes one connection's entry and leaves the others", () => {
+    const doc = emptyMetaDoc();
+    writeFollowing({ document: doc, socketId: SOCK_A, userId: ALICE, target: BOB, at: 500, now: 1_000 });
+    writeFollowing({ document: doc, socketId: SOCK_B, userId: BOB, target: ALICE, at: 500, now: 1_000 });
+
+    expect(deleteFollowing({ document: doc, socketId: SOCK_A })).toBe(true);
+
+    expect(readFollowing(doc, SOCK_A)).toBeNull();
+    expect(readFollowing(doc, SOCK_B)?.target).toBe(ALICE);
+    expect(deleteFollowing({ document: doc, socketId: SOCK_A })).toBe(false);
+  });
+
+  it("moves last seen forward on a sign of life, and never back", () => {
+    const doc = emptyMetaDoc();
+    writeFollowing({ document: doc, socketId: SOCK_A, userId: ALICE, target: BOB, at: 500, now: 1_000 });
+
+    expect(touchFollowing({ document: doc, socketId: SOCK_A, heardAt: 5_000 })).toBe(true);
+    expect(readFollowing(doc, SOCK_A)).toEqual({ userId: ALICE, target: BOB, at: 500, lastSeenAt: 5_000 });
+
+    touchFollowing({ document: doc, socketId: SOCK_A, heardAt: 4_000 });
+    expect(readFollowing(doc, SOCK_A)?.lastSeenAt).toBe(5_000);
+  });
+
+  it("creates nothing for a socket that follows nobody", () => {
+    const doc = emptyMetaDoc();
+
+    expect(touchFollowing({ document: doc, socketId: SOCK_A, heardAt: 5_000 })).toBe(false);
+    expect(doc.getMap("following").size).toBe(0);
+  });
+
+  it("is cleared by the stale sweep once nothing refreshes it, at the same threshold as presence", () => {
+    // A crashed instance never runs the disconnect that would delete its
+    // connections' entries; nobody refreshes them either.
+    const doc = emptyMetaDoc();
+    writeFollowing({ document: doc, socketId: SOCK_A, userId: ALICE, target: BOB, at: 1, now: 1_000 });
+    writeFollowing({ document: doc, socketId: SOCK_B, userId: BOB, target: ALICE, at: 1, now: 1_002 });
+
+    sweepStalePresence({ document: doc, now: 1_001 + 90_000, staleAfterMs: 90_000 });
+
+    expect(readFollowing(doc, SOCK_A)).toBeNull();
+    expect(readFollowing(doc, SOCK_B)?.target).toBe(ALICE);
   });
 });
