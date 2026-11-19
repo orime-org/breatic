@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the membership panel is told, read from our own data (#106 §11, #307) —
@@ -50,6 +50,7 @@ import {
   loadLocales,
   getMembershipLimits,
   getSubscriptionStaleAfterDays,
+  db,
   upsertSubscription,
 } from "@breatic/core";
 import type { StripeSubscriptionStatus } from "@breatic/core";
@@ -145,7 +146,7 @@ async function storeRow(
   } = {},
 ): Promise<void> {
   seq += 1;
-  await upsertSubscription({
+  await upsertSubscription(db, {
     userId,
     stripeSubscriptionId: `sub_panel_row_${Date.now()}_${seq}`,
     tier: "pro",

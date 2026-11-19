@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { Bone, Box3, Matrix4, Quaternion, SkinnedMesh, Vector3, type Object3D } from 'three';
 import { SCENE_POSE_HIPS_KEY, SCENE_POSE_KEY_MAX_LENGTH, type ScenePose } from '@breatic/shared';

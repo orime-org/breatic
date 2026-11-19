@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Users routes — batch lookup for collaborator UI (v10 §7.2.6).
@@ -18,7 +18,7 @@
  */
 
 import { Hono } from "hono";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";

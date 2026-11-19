@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The note that tells the model when, on the user's own clock, a message
@@ -12,7 +12,7 @@
  * it was sent. It stays out of the system prompt; see `MainAgent.runTurn`.
  */
 
-import { isKnownTimeZone } from "@server/utils/time-zone.js";
+import { isKnownTimeZone } from "@breatic/core";
 
 /** The parts of a moment the note is built from, as `Intl` names them. */
 type ClockPart = "weekday" | "year" | "month" | "day" | "hour" | "minute";

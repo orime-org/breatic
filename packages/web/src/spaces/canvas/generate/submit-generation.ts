@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Send one Generate press, once (inner#1490).
@@ -17,7 +17,7 @@ import { toast } from '@web/lib/toast';
 import { canvasSessions, type CanvasSessionState } from '@web/stores/canvas-session';
 import { getRunning, runOnce, spaceTaskIntent, useRunning } from '@web/stores/task-actions-in-flight';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
-import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
+import { executeFailureMessage } from '@web/spaces/canvas/generate/execute-error-message';
 
 /** The three Generate panels. */
 type GeneratePanelKind = Extract<
@@ -88,7 +88,7 @@ export function submitGeneration(opts: {
     // Unconditional: a press that failed after the user closed the panel
     // still explains itself.
     onFailure: async (err) => {
-      toast.error(await executeErrorMessage(err, t));
+      toast.error(await executeFailureMessage(err, t));
     },
   });
 }

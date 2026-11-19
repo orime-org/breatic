@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a failed Generate submit says to the user.
@@ -64,4 +64,16 @@ export async function executeErrorMessage(err: unknown, translate: Translate): P
     default:
       return translate('canvas.generatePanel.errorFailed');
   }
+}
+
+/**
+ * Maps any failed execute press to what the user reads: the sentence our server refused it with (a 422 names the
+ * rule, the limit or the slot, in the user's language), else {@link executeErrorMessage}.
+ * @param err - What the request threw.
+ * @param translate - The i18n translate function.
+ * @returns A localized error message.
+ */
+export async function executeFailureMessage(err: unknown, translate: Translate): Promise<string> {
+  if (err instanceof ApiException && err.status === 422 && err.fromServer) return err.message;
+  return executeErrorMessage(err, translate);
 }

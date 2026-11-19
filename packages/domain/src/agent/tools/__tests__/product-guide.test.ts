@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The product guide answers how the user operates our product.
@@ -327,8 +327,8 @@ describe("what the guide says", () => {
   });
 
   it("walks through comments in a document: start, post, the panel, resolve and who may delete", () => {
-    const doc = section("Document spaces");
-    expect(doc).toMatch(/- Comments: select text and press the speech bubble/);
+    const doc = section("Document comments");
+    expect(doc).toMatch(/^Select text and press the speech bubble/m);
     expect(doc).toMatch(/"Comments" panel opens beside the text/);
     expect(doc).toMatch(/"Resolve" takes the highlight away and moves the card under "All", where "Reopen" brings it back/);
     expect(doc).toMatch(/for whoever wrote the first comment or a project owner/);
@@ -386,11 +386,11 @@ describe("what the guide says", () => {
   });
 
   it("says which comment controls depend on the thread or the panel being open", () => {
-    const doc = section("Document spaces");
-    expect(doc).toMatch(/a resolved card takes no replies until it is reopened/);
+    const comments = section("Document comments");
+    expect(comments).toMatch(/a resolved card takes no replies until it is reopened/);
     // DocumentCommentDraftCard.tsx: the outside-press check is against the whole card.
-    expect(doc).toMatch(/With nothing typed yet, clicking anywhere outside its card also drops it/);
-    expect(doc).toMatch(/The three dots are hidden while the comments panel or the snapshots panel is open/);
+    expect(comments).toMatch(/With nothing typed yet, clicking anywhere outside its card also drops it/);
+    expect(section("Document spaces")).toMatch(/The three dots are hidden while the comments panel or the snapshots panel is open/);
   });
 
   it("quotes no name the screen only gives a screen reader", () => {
@@ -661,7 +661,8 @@ describe("what the guide says", () => {
 
   it("says a template may place generations upstream to run first, wired and @'d, and nodes it places to take what it needs reuse a picture already connected, even one the node itself does not use", () => {
     const generating = section("Generating");
-    expect(generating).toMatch(/A template may also place picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt says to generate them first\./);
+    expect(generating).toMatch(/A template may also place picture, video or sound nodes to the left that generate first, connected and @'d; a note at the top of the prompt says to generate them first\./);
+    expect(generating).toMatch(/A picture or sound such a template generates for one of the model's slots, such as the first or end frame, the character or the audio the face speaks, is connected but not @'d, and its note says to pick it into that slot once it has generated\./);
     expect(generating).toMatch(/When a template places nodes that take what it needs, a picture already connected to the node is connected to them as well, also when the node itself does not use it\./);
     expect(generating).not.toMatch(/the two listed here do neither/);
   });
@@ -677,6 +678,71 @@ describe("what the guide says", () => {
     expect(webSource("spaces/document/document-tab.ts")).toContain("'Shift-Tab':");
     expect(doc).toMatch(/Tab indents the block under the one above/);
     expect(doc).toMatch(/Shift\+Tab moves it back out/);
+  });
+
+  it("says the slash menu reads the whole block, with its Shift+Enter lines, to place the pick", () => {
+    expect(webSource("spaces/document/DocumentSlashMenu.tsx")).toContain("bare: $from.parent.content.size === typed.length");
+    const lines = section("Document spaces").split("\n");
+    const slash = lines.find((line) => line.startsWith("- Typing a slash")) ?? "";
+    const greying = lines.find((line) => line.startsWith("- The insert menus (the plus menu, the slash menu and")) ?? "";
+    for (const sentence of [slash, greying]) {
+      expect(sentence).toMatch(/a block holding nothing but the slash and the letters after it/u);
+      expect(sentence).not.toMatch(/a line holding nothing but the slash/u);
+    }
+    expect(slash).toMatch(/lines made with Shift\+Enter count with the rest of the block/u);
+    expect(slash).toMatch(/crossing a Shift\+Enter line break/u);
+  });
+
+  it("names the slash menu's triggers by character and its place by the slash it hangs from", () => {
+    const slash = section("Document spaces").split("\n").find((line) => line.startsWith("- Typing a slash")) ?? "";
+    const triggers = /SLASH_TRIGGERS[^=]*= \[([^\]]*)\]/u.exec(webSource("spaces/document/document-slash-trigger.ts"))?.[1] ?? "";
+    const chars = [...triggers.matchAll(/'([^']*)'/gu)].map((m) => JSON.parse(`"${m[1] ?? ""}"`) as string);
+    expect(chars).toHaveLength(3);
+    for (const char of chars) expect(slash).toContain(char);
+    expect(slash).not.toMatch(/slash key|input method/u);
+    const menu = webSource("spaces/document/DocumentSlashMenu.tsx");
+    expect(menu).toContain("placement: 'bottom-start'");
+    expect(menu).toContain("flip({ padding: EDGE })");
+    expect(slash).toMatch(/opens, under the slash or, with no room under it, over the line,/u);
+  });
+
+  it("says the slash menu opens with nothing selected, as the trigger reads only a caret", () => {
+    const slash = section("Document spaces").split("\n").find((line) => line.startsWith("- Typing a slash")) ?? "";
+    expect(webSource("spaces/document/document-slash-trigger.ts")).toContain("tr.selection.$cursor");
+    expect(slash).toMatch(/^- Typing a slash \(\/\) with nothing selected at the start of a line or after a space opens,/u);
+  });
+
+  it("names the plus only on an empty paragraph, the one line it shows on", () => {
+    expect(webSource("spaces/document/document-insert-row.ts")).toContain("row?.type === 'paragraph' &&");
+    const doc = `${section("Document spaces")}\n${section("Document columns")}`;
+    expect(doc).not.toMatch(/plus on an? (?!empty paragraph)[\w ]*?\bline\b/);
+    expect(doc).not.toMatch(/\bline with the plus\b/);
+    expect(doc).not.toMatch(/where the plus puts it/);
+    expect(doc).toMatch(/from the plus on an empty paragraph/);
+    expect(doc).toMatch(/behind the plus on an empty paragraph/);
+    expect(doc).toMatch(/an empty paragraph with the plus/);
+  });
+
+  it("names in one sentence every entry the insert menus can grey", () => {
+    const entries = webSource("spaces/document/document-insert-entries.ts");
+    const reach = entries.split("export function insertReach")[1]?.split("\n}\n")[0] ?? "";
+    const greyed = [...reach.matchAll(/out\.add\(([\w']+)\)/g)].map((m) => m[1] ?? "");
+    expect(greyed.length).toBeGreaterThan(0);
+    // An entry's name: the other entries' own table, else its block type row.
+    const blockTypes = webSource("spaces/document/document-block-type.ts");
+    const keyOf = (added: string): string => {
+      const id = added.replaceAll("'", "");
+      const own = new RegExp(`^\\s*(?:\\[${id}\\]|${id}): \\{ Icon: \\w+, labelKey: '([\\w.]+)'`, "m").exec(entries);
+      if (own?.[1] !== undefined) return own[1];
+      const row = new RegExp(`id: '${id}',\\s*labelKey: '([\\w.]+)'`).exec(blockTypes);
+      if (row?.[1] === undefined) throw new Error(`no name for ${added}`);
+      return row[1];
+    };
+    const doc = section("Document spaces");
+    const opening = "- The insert menus (the plus menu, the slash menu and";
+    const sentences = doc.split("\n").filter((line) => line.startsWith(opening));
+    expect(sentences).toHaveLength(1);
+    for (const added of greyed) expect(sentences[0]).toContain(`"${t(keyOf(added))}"`);
   });
 
   it("lists the block menu rows in the order the menu shows them", () => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a committed disposition reports beyond the buyer's mails (inner#1442
@@ -15,7 +15,11 @@ const core = vi.hoisted(() => ({
   accountOnlyConsent: vi.fn(),
   trackServerEvent: vi.fn(),
 }));
-vi.mock("@breatic/core", () => ({ ...core, logger }));
+vi.mock("@breatic/core", async () => ({
+  ...core,
+  logger,
+  createAfterReply: (await import("../../../../../core/src/http/after-reply.js")).createAfterReply,
+}));
 
 const findById = vi.fn();
 vi.mock("@server/modules/credit-refund/operation.repo.js", () => ({ findById: (...a: unknown[]) => findById(...a) }));

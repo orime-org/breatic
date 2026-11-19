@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The agent reads a template in full before proposing it (inner#1807): the
@@ -11,7 +11,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { GENERATION_TEMPLATES, formatCredits, setLocale, type GenerationTemplate } from "@breatic/shared";
+import { GENERATION_TEMPLATES, formatCredits, setLocale, t, type GenerationTemplate } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
@@ -139,6 +139,10 @@ describe("get_generation_template", () => {
     expect(TEMPLATE_CRAFT.picture).toContain("put no text in the picture unless the template asks for it (labels, a title, lines of verse)");
   });
 
+  it("lets a template set a cut rhythm faster than the beat every 2 to 3 seconds", () => {
+    expect(TEMPLATE_CRAFT.video).toContain("a visible beat every 2 to 3 seconds unless the template sets its own cut rhythm");
+  });
+
   it("has words in every craft section", () => {
     for (const craft of Object.values(TEMPLATE_CRAFT)) expect(craft.trim().length).toBeGreaterThan(0);
   });
@@ -235,9 +239,53 @@ describe("what one apply of a template costs (inner#1816)", () => {
       for (const one of each) expect(one?.bound, id).toBe("exact");
       const sum = each.reduce((total, one) => total + (one?.credits ?? 0), 0);
       expect(sum).toBeGreaterThan(0);
-      expect(await read(id)).toContain(`One apply of this template costs ${formatCredits(sum, "en-US")} credits at its settings.`);
+      expect(await read(id)).toContain(`At its settings this template costs ${formatCredits(sum, "en-US")} credits.`);
     });
   }
+});
+
+describe("a take of a template (inner#1811)", () => {
+  /**
+   * The credits a sentence of the answer gives.
+   * @param text - The number as written.
+   * @returns The number.
+   */
+  const credits = (text: string | undefined): number => Number((text ?? "").replace(/,/g, ""));
+
+  it("names only the cheaper settings a take writes, keeps the mode, model and length, and prices the take below the final", async () => {
+    const out = await read("product-ad-15s");
+    const final = /At its settings this template costs ([\d.,]+) credits/.exec(out);
+    const take = /write these cheaper settings in its generate nodes' params: (\{.*?\}); its final runs them at \{.*?\}\. A take costs ([\d.,]+) credits/.exec(out);
+    expect(final, out).not.toBeNull();
+    expect(take, out).not.toBeNull();
+    const overrides = JSON.parse(take?.[1] ?? "{}") as Record<string, Record<string, unknown>>;
+    // The still's model is cheapest at its default 4k, so only the video changes.
+    expect(overrides).toEqual({ result: { resolution: "480p" } });
+    // The final's value of each lowered setting, here the video model's default, so a take brought up to it is known to be the final.
+    expect(out).toContain(`params: {"result":{"resolution":"480p"}}; its final runs them at {"result":{"resolution":"720p"}}. A take costs`);
+    const generates = byId("product-ad-15s").nodes.flatMap((node) => (node.role === "generate" ? [node] : []));
+    const each = await Promise.all(generates.map((node) => estimateModelCredits(node.model, { params: { ...node.params, ...overrides[node.key] } })));
+    const sum = each.reduce((total, one) => total + (one?.credits ?? 0), 0);
+    expect(credits(take?.[2])).toBe(credits(formatCredits(sum, "en-US")));
+    expect(credits(take?.[2])).toBeLessThan(credits(final?.[1]));
+  });
+
+  it("makes a take before the final, on the template's mode, model and length even once its words are the user's, and the final straight away when asked", async () => {
+    const out = await read("product-ad-15s");
+    expect(out).toContain(
+      "A take of it is made this way, and comes before its final: apply it keeping its mode, model and length, which its prompts and wiring are written for, " +
+        "even once its prompts are in the user's words and its tweak segments filled, and write these cheaper settings in its generate nodes' params: ",
+    );
+    expect(out).toContain("the final is made at its settings from the take they pick, keeping it as it is, or straight away when they ask for a final.");
+    expect(out).not.toContain("still deciding");
+  });
+
+  it("says a take of a template with nothing cheaper keeps its mode, model and length and is already its final", async () => {
+    const out = await read("character-bible");
+    expect(out).toMatch(/At its settings this template costs [\d.,]+ credits\. A take of it is made keeping its mode, model and length, at these settings, which are already its cheapest, so a take of it is already its final\./);
+    expect(out).not.toContain("A take costs");
+    expect(out).not.toContain("cheaper settings");
+  });
 });
 
 describe("a template whose input goes into a slot or whose node stands beside the anchor (inner#1825 design 4.1, 4.2)", () => {
@@ -299,5 +347,26 @@ describe("the craft each template gets by what it generates (inner#1825 design 1
       expect(craft, id).toContain(TEMPLATE_CRAFT.picture);
       expect(craft, id).not.toContain(TEMPLATE_CRAFT.audio);
     }
+  });
+});
+
+describe("get_generation_template, optional inputs (inner#1811, CAP-9)", () => {
+  it("marks an optional input optional, says its paragraph is not sent while its node is empty, asks { id, input } on its node and gives its note", () => {
+    const text = describeTemplate(byId("product-ad-15s"));
+    expect(text).toContain('"person" (image, optional) into "still", "result"');
+    expect(text).toContain('"product" (image) into "still", "result"');
+    expect(text).toContain("its ref stands in a paragraph of its own, which is not sent while its node is empty");
+    expect(text).toContain("its node carries { id, input }");
+    expect(text).toContain(`its note: "${t("canvas.template.product-ad-15s.input.person.note")}"`);
+  });
+
+  it("says no input is optional on a template whose inputs are all required", () => {
+    expect(describeTemplate(byId("food-money-shot"))).not.toContain("optional");
+  });
+
+  it("tells the agent an optional input's node is placed empty when the user has none for it, without asking them", async () => {
+    expect(await read("product-ad-15s")).toContain(
+      "An optional input's node is placed empty when the user has no material for it; do not ask them for it.",
+    );
   });
 });

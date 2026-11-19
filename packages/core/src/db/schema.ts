@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Drizzle ORM schema definitions for all database tables.
@@ -2157,7 +2157,7 @@ export const creditChargeRequests = pgTable(
     // What the settlement's ledger rows carry as their reference.
     referenceId: varchar("reference_id", { length: 255 }).notNull(),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
-    // The studio the charge is counted against (0126, inner#1968): backfilled
+    // The studio the charge is counted against (0128, inner#1968): backfilled
     // from the project, and written on every new request that has a project. The
     // monthly spend limits sum spending by it; which studio pays still follows
     // the project.
@@ -2190,7 +2190,7 @@ export const creditChargeRequests = pgTable(
   ],
 );
 
-// ── 8g. Spend limits (0126, inner#1968) ──────────────────────────────
+// ── 8g. Spend limits (0128, inner#1968) ──────────────────────────────
 
 /** A studio's monthly spend limits: the per-member default and the studio total. Null means not set. */
 export const studioSpendLimits = pgTable("studio_spend_limits", {
@@ -3595,7 +3595,7 @@ export const enterpriseMemberships = pgTable("enterprise_memberships", {
   studioMembers: integer("studio_members").notNull(),
   projectMembers: integer("project_members").notNull(),
   storageBytes: bigint("storage_bytes", { mode: "number" }).notNull(),
-  // 0126 (inner#1968); CHECK there: 1 to 30.
+  // 0128 (inner#1968); CHECK there: 1 to 30.
   runningTasksPerUser: integer("running_tasks_per_user").default(10).notNull(),
   fallbackTier: varchar("fallback_tier", { length: 16 }).notNull(),
   revision: integer("revision").notNull(),

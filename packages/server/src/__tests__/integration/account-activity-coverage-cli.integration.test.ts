@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** Post-implementation acceptance of the real maintenance process, not a TDD red claim. */
 import { execFile } from "node:child_process";

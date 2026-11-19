@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The account mails: the password-reset mail, which carries a one-time token
@@ -12,7 +12,7 @@
  * to its caller rather than going through the best-effort path.
  */
 
-import { renderMail, type RenderedMail } from "@server/utils/mail-shell.js";
+import { renderMail, type RenderedMail } from "@breatic/domain";
 
 const SECONDS_PER_HOUR = 3600;
 

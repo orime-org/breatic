@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The one HTTP surface behind `/decision?token=`.
@@ -16,8 +16,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { validate } from "@server/middleware/validate.js";
-import { NotFoundError } from "@breatic/core";
+import { validate, NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";

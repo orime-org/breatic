@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Generation models tool — which models back one mode of one node, and how.
@@ -366,7 +366,7 @@ function takenParams(model: ModelInfo, nodeType: GenerationNodeType, mode: strin
  * @param model - The model.
  * @returns The settings that move the price, each with its cheapest value.
  */
-async function lowestValues(model: ModelInfo): Promise<Record<string, unknown>> {
+export async function lowestValues(model: ModelInfo): Promise<Record<string, unknown>> {
   const settable = Object.entries(model.params).filter(([, spec]) => spec.filledBySource !== true && spec.noControl !== true);
   const found = await Promise.all(
     settable.map(async ([name, spec]) => {

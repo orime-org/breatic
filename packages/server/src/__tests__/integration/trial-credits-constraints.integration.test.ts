@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Where granted credits may go, and where they may not (task #267).
@@ -47,7 +47,7 @@ import postgres from "postgres";
 import { initCore, ForbiddenError, loadLocales, db } from "@breatic/core";
 import { creditLotService, creditLotRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
-import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
+import { precheckCredits } from "@server/modules/credit/credit-precheck.service.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import { openPaymentSource } from "./payment-source.js";
 

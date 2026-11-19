@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ProjectAssetPage, ProjectRegisteredAsset, TimelineClientLimits, TimelineExecution, TimelineExecutionRow, TimelineWebResolution } from '@breatic/shared';
 import type { TimelineExecutionCreateInput } from '@breatic/shared/space-content';

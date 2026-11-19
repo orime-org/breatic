@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The internal API's authorisation table (inner#1410 §4.3, §4.5): every
@@ -12,10 +12,9 @@
 
 import type { Context, Hono, MiddlewareHandler } from "hono";
 import { z } from "zod";
-import { storableText } from "@server/utils/storable-text.js";
+import { storableText, validate, fingerprint } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import "@server/middleware/internal-auth.js";
-import { validate } from "@server/middleware/validate.js";
 import {
   preview,
   requestOneShot,
@@ -24,12 +23,12 @@ import {
   type Answer,
   type WriteRequest,
 } from "@server/modules/credit-refund/disposition.service.js";
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
 import { RefundRefusal } from "@server/modules/credit-refund/refusal.js";
 import { registerMaintenanceRoutes } from "@server/routes/internal/maintenance.js";
 import { registerCreditGrantRoutes } from "@server/routes/internal/credit-grant.js";
 import { registerEnterpriseMembershipRoutes } from "@server/routes/internal/enterprise-membership.js";
 import { registerReferralRoutes } from "@server/routes/internal/referral.js";
+import { registerDeploymentVersionRoute } from "@server/routes/internal/deployment-version.js";
 
 const LOT = "/internal/v1/credit-lots/:lotId/refund";
 const RESEND = "/internal/v1/refund-operations/:operationId/mail/resend";
@@ -195,4 +194,5 @@ export function registerInternalRoutes(app: Hono): void {
   registerCreditGrantRoutes(app);
   registerMaintenanceRoutes(app);
   registerReferralRoutes(app);
+  registerDeploymentVersionRoute(app);
 }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
 
@@ -54,7 +54,7 @@ export const noRawBodyParse = createRule<[], "rawBodyParse">({
     schema: [],
     messages: {
       rawBodyParse:
-        "Do not read the request body with `req.{{method}}()` — mount `validate(target, schema)` from @server/middleware/validate and read `c.req.valid(target)`. Parsing here means a rejection escapes as a bare ZodError (500 + `Unhandled error`) instead of our localised envelope. Raw bytes for a signature check are a different need: `req.text()` is allowed.",
+        "Do not read the request body with `req.{{method}}()` — mount `validate(target, schema)` from @breatic/core and read `c.req.valid(target)`. Parsing here means a rejection escapes as a bare ZodError (500 + `Unhandled error`) instead of our localised envelope. Raw bytes for a signature check are a different need: `req.text()` is allowed.",
     },
   },
   defaultOptions: [],

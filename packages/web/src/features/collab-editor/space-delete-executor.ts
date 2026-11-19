@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The delete executor (inner#1790 design 5.3, steps 2 to 8): while a Space is
@@ -440,28 +440,73 @@ function keepMinimal(node: ProseMirrorNode, pos: number, targets: Targets): void
 }
 
 /**
+ * A column (inner#1314 design §5.2) that would be left with no blocks, as a
+ * target of its own; its group goes instead when it would be left with no
+ * columns. Each goes only where what holds it stays valid without it and
+ * without what else this deletion takes; a column whose group can neither
+ * keep another column nor go stays, emptied to a line. Other blocks that
+ * hold blocks (a table cell) keep their place.
+ * @param doc - The document before the deletion.
+ * @param pos - The block's position.
+ * @param node - The block.
+ * @param going - Where the blocks this deletion takes, or empties, start.
+ * @returns The target, or null when it has to stay.
+ */
+function holderGoing(doc: ProseMirrorNode, pos: number, node: ProseMirrorNode, going: ReadonlySet<number>): Whole | null {
+  if (pos < 0 || (node.type.name !== 'docColumn' && node.type.name !== 'docColumnList')) return null;
+  const $pos = doc.resolve(pos);
+  const holder = $pos.parent;
+  const index = $pos.index();
+  const rest: ProseMirrorNode[] = [];
+  holder.forEach((child, offset, at) => {
+    if (at !== index && !going.has($pos.start() + offset)) rest.push(child);
+  });
+  if (node.type.name === 'docColumn' && rest.length === 0) return holderGoing(doc, $pos.before(), holder, going);
+  if (!holder.type.validContent(Fragment.fromArray(rest))) return null;
+  return { pos, node, parent: holder, parentPos: $pos.depth > 0 ? $pos.before() : -1, index };
+}
+
+/**
  * Step 5's repairs, for each parent losing children: one that would lose a
  * child its schema requires keeps that child, emptied; one that would lose
  * every child keeps one, the first whose content is text when there is one,
- * in its smallest form.
+ * in its smallest form. A block left with no blocks (a column), or a column
+ * group left with no columns, goes whole instead where what holds it can do
+ * without it.
  * @param targets - The targets, changed in place.
+ * @param doc - The document before the deletion.
  */
-function keepRequired(targets: Targets): void {
+function keepRequired(targets: Targets, doc: ProseMirrorNode): void {
   // A wrapper of the whole body going whole is the blocks inside it going.
   for (const whole of [...targets.nodes.values()]) {
     if (whole.parentPos !== -1 || whole.node.isTextblock || whole.node.isLeaf) continue;
     targets.nodes.delete(whole.pos);
     whole.node.forEach((_block, offset, index) => addChild(targets, whole.node, whole.pos, index, offset));
   }
-  const groups = byParent(targets);
-  for (const group of groups.values()) {
-    const { parent } = group[0]!;
+  const groups = [...byParent(targets).values()].map((group) => {
     const gone = new Set(group.map((whole) => whole.index));
     const left: ProseMirrorNode[] = [];
-    parent.forEach((child, _offset, index) => {
+    group[0]!.parent.forEach((child, _offset, index) => {
       if (!gone.has(index)) left.push(child);
     });
-    if (parent.type.validContent(Fragment.fromArray(left))) continue;
+    return { group, left };
+  });
+  // What this deletion takes, and every parent it leaves with no child.
+  const going = new Set([
+    ...targets.nodes.keys(),
+    ...groups.filter(({ left }) => left.length === 0).map(({ group }) => group[0]!.parentPos),
+  ]);
+  for (const { group, left } of groups) {
+    const { parent } = group[0]!;
+    // A column group left with no columns is legal and shows nothing: it is
+    // repaired as a column left with no blocks is.
+    const emptiedGroup = parent.type.name === 'docColumnList' && left.length === 0;
+    if (!emptiedGroup && parent.type.validContent(Fragment.fromArray(left))) continue;
+    const holder = left.length === 0 ? holderGoing(doc, group[0]!.parentPos, parent, going) : null;
+    if (holder !== null) {
+      targets.nodes.set(holder.pos, holder);
+      continue;
+    }
     const ordered = group.sort((a, b) => a.index - b.index);
     // A child the schema requires (a block's content beside its children),
     // or, when every child goes, the first whose content is text.
@@ -712,7 +757,7 @@ function settle(
   at: number,
 ): SpaceDeletePlan {
   dropCovered(targets);
-  keepRequired(targets);
+  keepRequired(targets, doc);
   if (targets.nodes.size === 0 && targets.texts.length === 0) return { ok: false, refusal: 'compound' };
   const simulated = simulate(doc, targets);
   if (simulated === null) return { ok: false, refusal: 'compound' };

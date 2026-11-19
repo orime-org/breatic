@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * #1960 — how the panel finds, and reads, the param the voice picker fills.
@@ -20,6 +20,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  sampleLanguageFor,
   sampleUrlFor,
   voiceParamName,
   isVoiceChosen,
@@ -140,5 +141,35 @@ describe('sampleUrlFor', () => {
 
   it('has none for a voice without samples', () => {
     expect(sampleUrlFor({}, 'Japanese (Japan)')).toBeUndefined();
+  });
+});
+
+describe('sampleLanguageFor (#1521)', () => {
+  const offered = ['en', 'ja', 'ko', 'zh', 'th'];
+
+  it('reads any interface language by its language alone, so a locale added later starts on its own samples', () => {
+    expect(sampleLanguageFor(['en', 'fr', 'pt'], 'fr', null)).toBe('fr');
+    expect(sampleLanguageFor(['en', 'fr', 'pt'], 'pt-BR', null)).toBe('pt');
+  });
+
+  it('keeps the language the user picked while the model offers it', () => {
+    expect(sampleLanguageFor(offered, 'en', 'th')).toBe('th');
+  });
+
+  it('starts from the interface language, both Chinese interfaces reading Chinese', () => {
+    expect(sampleLanguageFor(offered, 'ja', null)).toBe('ja');
+    expect(sampleLanguageFor(offered, 'ko', null)).toBe('ko');
+    expect(sampleLanguageFor(offered, 'zh-CN', null)).toBe('zh');
+    expect(sampleLanguageFor(offered, 'zh-TW', null)).toBe('zh');
+    expect(sampleLanguageFor(offered, 'en', null)).toBe('en');
+  });
+
+  it('starts from English when the interface language has no sample, or the pick is no longer offered', () => {
+    expect(sampleLanguageFor(['en', 'fr'], 'ja', null)).toBe('en');
+    expect(sampleLanguageFor(offered, 'en', 'fr')).toBe('en');
+  });
+
+  it('takes the first offered language when English is not offered either', () => {
+    expect(sampleLanguageFor(['fr', 'de'], 'ja', null)).toBe('fr');
   });
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Sending one refund mail (inner#1410 §6.5 M1–M4, §8): who writes what.
@@ -44,9 +44,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const sendMail = vi.fn();
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async () => ({
   sendMail: (...args: unknown[]) => sendMail(...args),
   logger,
+  createAfterReply: (await import("../../../../../core/src/http/after-reply.js")).createAfterReply,
 }));
 
 const claimSend = vi.fn();

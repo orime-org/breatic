@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Membership quota configuration loader.
@@ -43,6 +43,7 @@ import {
   type ConfiguredMembershipTier,
   type MembershipLimits,
 } from "@breatic/shared";
+import type { SituationClock } from "@core/auth/subscription-state.js";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 // The shape of one tier's ceilings moved to `@breatic/shared` when the
@@ -153,4 +154,23 @@ export function getDefaultMembershipTier(): ConfiguredMembershipTier {
  */
 export function getSubscriptionStaleAfterDays(): number {
   return getMembershipConfig().stale_after_days;
+}
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * The clock every reading of an account's subscriptions is taken against.
+ *
+ * The renewal window comes from `config/membership.yaml`, read when a
+ * reading first asks for it, which only a row with a period end does.
+ * @param now - The moment to read at.
+ * @returns That moment with the configured renewal window.
+ */
+export function subscriptionClock(now: Date = new Date()): SituationClock {
+  return {
+    now,
+    get staleAfterMs(): number {
+      return getSubscriptionStaleAfterDays() * MS_PER_DAY;
+    },
+  };
 }

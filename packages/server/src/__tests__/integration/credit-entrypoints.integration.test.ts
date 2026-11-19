@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 碰积分的那几个入口，全部走新引擎（任务 #11）。
@@ -69,7 +69,7 @@ import { t } from "@breatic/shared";
 import { creditLotService } from "@breatic/domain";
 import * as paymentService from "@server/modules/payment/payment.service.js";
 import * as authService from "@server/modules/auth/auth.service.js";
-import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
+import { precheckCredits } from "@server/modules/credit/credit-precheck.service.js";
 import { openPaymentSource } from "./payment-source.js";
 import { chargeNow } from "./studio-credit-fixtures.js";
 

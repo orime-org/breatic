@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Canvas routes — task management.
@@ -12,9 +12,18 @@
 import { randomUUID } from "node:crypto";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
-import { currentConsent } from "@breatic/core";
+import {
+  currentConsent,
+  validate,
+  defaultJobOpts,
+  getMiniToolsConfig,
+  ConflictError,
+  ValidationError,
+  NotFoundError,
+  getUnderstandConfig,
+  logger,
+} from "@breatic/core";
 import { Hono } from "hono";
-import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
 
 import { z } from "zod";
@@ -31,7 +40,7 @@ import { requireAuth } from "@server/middleware/auth.js";
 import { acceptTransferBody } from "@server/middleware/transfer-body.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { userUrlSchema, voiceSampleUrl } from "@breatic/domain";
+import { userUrlSchema, voiceSampleUrl, nodeHistoryService, nodeTaskService, runningSlotService, UNDERSTAND_PINS } from "@breatic/domain";
 import {
   getCanvasReferencePoolCap,
   getNodeHistoryPageSize,
@@ -45,10 +54,8 @@ import {
   modelCatalog,
   violatesTextLengthForModel,
 } from "@breatic/domain";
-import { nodeHistoryService } from "@breatic/domain";
-import { assertLlmServable, assertServable } from "@server/modules/task/model-servable.js";
+import { assertLlmServable, assertServable, assertTakesInput } from "@server/modules/task/model-servable.js";
 import { catalogEntryOf } from "@breatic/shared/mini-tools";
-import { nodeTaskService, runningSlotService } from "@breatic/domain";
 import {
   holdRowedRun,
   holdRun,
@@ -60,20 +67,11 @@ import {
 } from "@server/modules/task/generation-task.js";
 import { startUrlIngest } from "@server/modules/asset/url-ingest.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
-import { UNDERSTAND_PINS } from "@breatic/domain";
 import {
   assertStorageAllowance,
   pasteAssetsService,
   projectService,
 } from "@server/modules";
-import { defaultJobOpts, getMiniToolsConfig } from "@breatic/core";
-import {
-  ConflictError,
-  ValidationError,
-  NotFoundError,
-  getUnderstandConfig,
-  logger,
-} from "@breatic/core";
 import { t, GENERATION_TEMPLATES, extractPromptText } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 import type { UnderstandInput } from "@breatic/shared";
@@ -241,6 +239,8 @@ canvas.post(
   // the id its task row will carry, BEFORE that row exists, so a refusal
   // leaves nothing behind. From here until the job is queued, every way out
   // releases the hold; once queued, the worker charges or releases it.
+  // The run as it is priced, and asked about before anything is held.
+  const estimateInput = { params: body.params, prompt: extractPromptText(body.params.prompt ?? body.params.text) };
   const { taskId } = await holdRun({
     projectId,
     userId: user.id,
@@ -311,14 +311,12 @@ canvas.post(
         logger.warn({ userId: user.id, projectId, model: body.model, reason: "param_too_short", field: short.param }, "execute_gate_rejected");
         throw new ValidationError(t("server.canvas.param_too_short", { name: t(`canvas.generatePanel.param.${short.param}`) }));
       }
-      return Promise.resolve();
+      // #1521: a run no upstream here takes (too long a text, too many lines) is refused naming the limit.
+      return entry === undefined
+        ? Promise.resolve()
+        : assertTakesInput(entry.name, entry.display_name, estimateInput, body.route, { userId: user.id, projectId });
     },
-    credits: () =>
-      estimateTaskCredits(
-        body.model,
-        { params: body.params, prompt: extractPromptText(body.params.prompt ?? body.params.text) },
-        body.route,
-      ),
+    credits: () => estimateTaskCredits(body.model, estimateInput, body.route),
   });
 
   let task: Awaited<ReturnType<typeof taskService.create>>;

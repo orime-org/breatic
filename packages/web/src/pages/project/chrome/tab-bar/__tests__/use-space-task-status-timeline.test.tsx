@@ -1,14 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The Timeline tab spinner (#1434 design §4.5).
  *
  * For a Timeline Space, `useSpaceTaskStatus` reads the Space's execution list through
- * `useTimelineExecutions(projectId, spaceId, refreshMs, { enabled: type === 'timeline' })`, polling at the Project's
- * `webAnimation.sourceRefreshIntervalMs`, and spins while any row has `!timelineExecutionEnded(status)`: the same
- * test the execution list's In Progress view uses. It needs no mounted Timeline editor, and the page's Space-task
- * signal refetches it at once. Canvas and Document tabs never read the list.
+ * `useTimelineExecutions(projectId, spaceId, { enabled: type === 'timeline' })` and spins while any row has
+ * `!timelineExecutionEnded(status)`: the same test the execution list's In Progress view uses. It needs no mounted
+ * Timeline editor; a new change version in the Timeline's document reads the list again, and nothing reads it on a
+ * timer. Canvas and Document tabs never read the list.
  */
 
 import * as React from 'react';
@@ -119,17 +119,27 @@ describe('useSpaceTaskStatus for a Timeline Space', () => {
     expect(vi.mocked(timelineApi.listExecutions).mock.calls.every(([projectId, spaceId]) => projectId === PROJECT && spaceId === SPACE)).toBe(true);
   });
 
-  it('stops once the last execution ends, by polling at the configured interval', async () => {
+  it('reads the list on no timer while an execution runs, even with a refresh interval configured', async () => {
     vi.mocked(timelineApi.limits).mockResolvedValue(limits(20));
     vi.mocked(timelineApi.listExecutions).mockResolvedValue([row(1, 'running'), row(2, 'succeeded')]);
     const { wrapper } = provider();
     const { result } = renderHook(() => useSpaceTaskStatus(PROJECT, SPACE, 'timeline'), { wrapper });
     await waitFor(() => expect(result.current).toBe(true));
-    vi.mocked(timelineApi.listExecutions).mockResolvedValue([row(1, 'failed'), row(2, 'succeeded')]);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(timelineApi.listExecutions).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops spinning once a change version reads the list with the last execution ended', async () => {
+    vi.mocked(timelineApi.listExecutions).mockResolvedValue([row(1, 'running')]);
+    const { client, wrapper } = provider();
+    const { result } = renderHook(() => useSpaceTaskStatus(PROJECT, SPACE, 'timeline'), { wrapper });
+    await waitFor(() => expect(result.current).toBe(true));
+    vi.mocked(timelineApi.listExecutions).mockResolvedValue([row(1, 'failed')]);
+    await client.invalidateQueries({ queryKey: spaceTasksQueryKey(PROJECT, SPACE) });
     await waitFor(() => expect(result.current).toBe(false));
   });
 
-  it('starts spinning at once when the Space-task signal refetches the list', async () => {
+  it('starts spinning at once when a change version reads the list again', async () => {
     const { client, wrapper } = provider();
     const { result } = renderHook(() => useSpaceTaskStatus(PROJECT, SPACE, 'timeline'), { wrapper });
     await waitFor(() => expect(timelineApi.listExecutions).toHaveBeenCalled());

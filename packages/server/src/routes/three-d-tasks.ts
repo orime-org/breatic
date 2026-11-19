@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A 3D Space's tasks (inner#1690, inner#1691): an editor submits a 3D
@@ -14,7 +14,7 @@ import { sceneGenerationBodySchema, t } from "@breatic/shared";
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { runOnce } from "@server/middleware/run-once.js";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { holdRun, sceneGenerationService, sceneTasksService } from "@server/modules";
 

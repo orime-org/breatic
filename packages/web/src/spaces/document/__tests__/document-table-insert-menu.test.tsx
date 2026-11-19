@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1619 T2: the insert menu in a cell is the body's, with the table entry
@@ -126,5 +126,40 @@ describe('the insert menu in a cell', () => {
     fireEvent.click(screen.getByTestId('doc-block-plus'));
 
     expect(tableGreyed()).toBe(false);
+  });
+});
+
+describe('the insert menu on a line with blocks under it', () => {
+  it('greys the table entry on the plus, since the table would take their place', () => {
+    openInBody([
+      { type: 'paragraph', children: [{ type: 'paragraph', content: 'child' }] },
+      { type: 'paragraph', content: 'after' },
+    ]);
+    render(<DocumentBlockHandle />);
+
+    fireEvent.click(screen.getByTestId('doc-block-plus'));
+
+    expect(tableGreyed()).toBe(true);
+  });
+});
+
+describe('a formula picked from the menu (inner#1423 A5)', () => {
+  it.each([
+    ['the plus of an empty line in a cell', () => openInCell([{ type: 'paragraph' }]), ['doc-block-plus']],
+    ['insert below on a block in a cell', () => openInCell([{ type: 'paragraph', content: 'words' }]), ['doc-block-handle', 'doc-block-row-insertBelow']],
+    ['the plus of an empty line in the body', () => openInBody([{ type: 'paragraph' }]), ['doc-block-plus']],
+  ] as const)('hands the keyboard to its box once the menu closes (%s)', async (_where, openIt, path) => {
+    openIt();
+    render(<DocumentBlockHandle />);
+    for (const id of path) fireEvent.click(screen.getByTestId(id));
+
+    fireEvent.click(screen.getByTestId('doc-block-insert-formula'));
+
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('menu')).toBeNull();
+      const field = document.querySelector('[data-formula-box] textarea');
+      expect(field).not.toBeNull();
+      expect(document.activeElement).toBe(field);
+    });
   });
 });

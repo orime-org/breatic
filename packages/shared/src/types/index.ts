@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
@@ -145,6 +145,7 @@ export {
   TEMPLATE_GUIDE_KEY,
   markReadsBack,
   markText,
+  promptLines,
   writtenMark,
   markedSegments,
   marksTypedIn,
@@ -235,6 +236,8 @@ export type {
 } from "@shared/types/project-invite.js";
 
 export type { SpaceType, Space } from "@shared/types/space.js";
+export { SPACE_TASKS_KEY, SPACE_TASKS_TYPES, SPACE_TASKS_VERSION } from "@shared/types/space-tasks.js";
+export type { SpaceTasksVersionEvent } from "@shared/types/space-tasks.js";
 export { SpaceTypeSchema } from "@shared/types/space.js";
 
 export {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Idempotency of the internal write endpoints (inner#1410 §4.6): one key
@@ -8,7 +8,6 @@
  * lock, before checking the target.
  */
 
-import { createHash } from "node:crypto";
 import type { DbTx } from "@breatic/core";
 import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
 import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
@@ -20,42 +19,6 @@ import { RefundRefusal } from "@server/modules/credit-refund/refusal.js";
 
 /** What an earlier request under the same key left. */
 export type Replay = { kind: "operation"; op: CreditRefundOperation } | { kind: "mail"; mail: RefundMail } | { kind: "refusal"; refusal: StoredRefusal };
-
-/**
- * JSON with every object's keys sorted, so field order does not make two
- * bodies different requests.
- * @param value - Parsed JSON.
- * @returns The canonical text.
- */
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, v]) => v !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
-/**
- * The request's fingerprint, kept in `request_hash`.
- * @param method - HTTP method.
- * @param routeTemplate - The route's path template.
- * @param targetId - The `lotId` or `operationId` in the path.
- * @param body - The parsed body.
- * @returns Lowercase hex SHA-256.
- */
-export function fingerprint(
-  method: string,
-  routeTemplate: string,
-  targetId: string,
-  body: unknown,
-): string {
-  return createHash("sha256")
-    .update([method, routeTemplate, targetId, canonicalJson(body)].join("\n"))
-    .digest("hex");
-}
 
 /**
  * Look the key up in all three tables and apply the §4.6 rules.

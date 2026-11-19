@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { z } from "zod";
 import { MEMBERSHIP_TIERS, tierLimitsSchema } from "@breatic/shared";
@@ -38,7 +38,7 @@ export const enterpriseMembershipLimitsSchema = z.object({
 
 /**
  * Tasks one person may have running at once on an enterprise account without
- * a saved agreement, and what the agreement column defaults to (migration 0126).
+ * a saved agreement, and what the agreement column defaults to (migration 0128).
  */
 export const MISSING_AGREEMENT_RUNNING_TASKS = 10;
 

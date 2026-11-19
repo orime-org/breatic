@@ -1,11 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
 import { isLoggerLevelAccess } from "#rules/logger-shape";
-
-/** The long-running services, each with one entry point. */
-const SERVICE_ENTRY = /packages\/(server|worker|collab)\/src\/index\.ts$/;
 
 /**
  * The two ways a logger is constructed here.
@@ -64,8 +61,6 @@ export const serviceObservability = createRule<
   },
   defaultOptions: [],
   create(context) {
-    if (!SERVICE_ENTRY.test(context.filename.replace(/\\/g, "/"))) return {};
-
     let hasLogger = false;
     let hasHealthServer = false;
 

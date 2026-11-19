@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Every refusal the proposal check gives, held to what it says (design 5.10):
@@ -22,7 +22,7 @@ import { inputSchema } from "../proposal-input.js";
 import { markTypedAsWords } from "../proposal-node-checks.js";
 import { REFUSALS, type RefusalId } from "../proposal-refusals.js";
 
-import { COVER_MODEL, FIXTURES, loadFixtureLocales, PLACED_FIXTURES } from "./template-fixtures.js";
+import { agentShape, COVER_MODEL, FIXTURES, loadFixtureLocales, PLACED_FIXTURES } from "./template-fixtures.js";
 
 beforeEach(() => {
   loadFixtureLocales();
@@ -80,7 +80,7 @@ const TTS = "realtime-tts-2";
 const SHOTS = "kling-v3.0-4k-text-to-video";
 const VID = "minimax-h3-image-to-video";
 const OMNI_SHOTS = "gemini-omni-1.1-flash-image-to-video";
-const DUO = "gemini-3.1-flash-text-to-speech";
+const DUO = "gemini-3.8-flash-text-to-speech";
 
 /** A note, as every to-do on a card is. */
 const NOTE = { slot: { kind: "note" as const, label: "Put the picture in Pic first" } };
@@ -166,6 +166,33 @@ function storyboardSegments(): NonNullable<Sent["nodes"][number]["prompt"]> {
  */
 function PICS(count: number): Sent["nodes"] {
   return Array.from({ length: count }, (_, i) => ({ ...EMPTY_PIC, name: `Pic ${String(i)}` }));
+}
+
+/**
+ * The product ad as the agent sends it (inner#1811), its person and product
+ * nodes empty and tagged, changed as asked.
+ * @param change - What to do to it: leave the person untagged, or @ the person and the product in one paragraph of the video.
+ * @returns The proposal.
+ */
+function productAd(change?: "untagged" | "shared"): Sent {
+  const template = GENERATION_TEMPLATES.find((one) => one.id === "product-ad-15s");
+  if (template === undefined) throw new Error("no product-ad-15s");
+  const { sent, at } = agentShape(template, { tagInputs: true });
+  const person = at.get("input:person") as number;
+  const product = at.get("input:product") as number;
+  const still = at.get("node:still") as number;
+  const result = at.get("node:result") as number;
+  return {
+    ...sent,
+    nodes: sent.nodes.map((node, i) => {
+      if (change === "untagged" && i === person) return { ...node, template: undefined };
+      if (change === "shared" && i === result) {
+        const notes = (node.prompt ?? []).filter((segment) => "slot" in segment && segment.slot.kind === "note");
+        return { ...node, prompt: [...notes, { text: "An ad for " }, { ref: product }, { text: " held by " }, { ref: person }, { text: ".\nLit like " }, { ref: still }, { text: "." }] };
+      }
+      return node;
+    }),
+  };
 }
 
 /**
@@ -457,6 +484,15 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([{ ...SOLO_ANCHOR, prompt: [{ text: "Make it a watercolour." }] }]),
     states: ['"reference"', '"fixture-solo"'],
     templates: FIXTURES,
+  }],
+  "template-optional-input-untagged": [{
+    meets: productAd("untagged"),
+    states: ['takes optional input "person"', 'node 3 ("Person") standing for it carries no { id, input }', 'add { id: "product-ad-15s", input: "person" } as its template'],
+    fix: productAd(),
+  }],
+  "template-optional-input-paragraph": [{
+    meets: productAd("shared"),
+    states: ['@s node 3 ("Person"), which stands for optional input "person"', 'also @s node 2 ("Product")', "a paragraph of its own"],
   }],
   "template-no-prompt": [{
     meets: group([EMPTY_PIC, { ...EDIT_POOL, prompt: undefined, template: { id: "storyboard-grid-25" }, mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),

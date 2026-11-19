@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a socket's sign of life (a pong, a ping or any message, the events
@@ -112,7 +112,7 @@ export function createLivenessHandler(
     const seats = settleSeats(socketId, connections, heardAt).catch((err: unknown) => {
       logger.error({ err, socketId }, "seat_refresh_failed");
     });
-    refreshPresenceForSocket(connections, presencePolicy, heardAt);
+    refreshPresenceForSocket(connections, presencePolicy, heardAt, socketId);
     return seats;
   };
 }

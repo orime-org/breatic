@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The price file's schema (task #13).
@@ -46,5 +46,13 @@ describe("the price file's currency", () => {
   it.each(["eur", "jpy"])("leaves %s as the tier wrote it", (written) => {
     const parsed = pricingSchema.parse({ tiers: [tier(written)] });
     expect(parsed.tiers[0]!.currency).toBe(written);
+  });
+});
+
+describe("the trial grant's old place", () => {
+  it("refuses a price file that still carries trial_grant and names where it went", () => {
+    const result = pricingSchema.safeParse({ tiers: [tier()], trial_grant: { credits: 100 } });
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.error?.issues)).toContain("config/credits.yaml");
   });
 });

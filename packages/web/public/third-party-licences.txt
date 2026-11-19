@@ -266,7 +266,7 @@ cmdk 1.1.1  MIT  https://github.com/pacocoursey/cmdk#readme
 codepage 1.15.0  Apache-2.0  https://sheetjs.com/
 combined-stream 1.0.8  MIT  https://github.com/felixge/node-combined-stream
 comma-separated-tokens 2.0.3  MIT  https://github.com/wooorm/comma-separated-tokens#readme
-commander 8.3.0  MIT  https://github.com/tj/commander.js#readme
+commander 15.1.0  MIT  https://github.com/tj/commander.js#readme
 content-type 1.0.5  MIT  https://github.com/jshttp/content-type#readme
 cookie 1.1.1  MIT  https://github.com/jshttp/cookie#readme
 copy-to-clipboard 3.3.3  MIT  https://github.com/sudodoki/copy-to-clipboard#readme
@@ -374,7 +374,7 @@ json-schema 0.4.0  (AFL-2.1 OR BSD-3-Clause)  https://github.com/kriszyp/json-sc
 json-schema-traverse 1.0.0  MIT  https://github.com/epoberezkin/json-schema-traverse#readme
 jsonata 2.2.2  MIT  http://jsonata.org/
 jszip 3.10.1  (MIT OR GPL-3.0-or-later)  https://github.com/Stuk/jszip#readme
-katex 0.16.47  MIT  https://katex.org
+katex 0.19.1  MIT  https://katex.org
 keycode 2.2.1  MIT  https://github.com/timoxley/keycode
 keycon 1.4.0  MIT  https://github.com/daybrush/keycon#readme
 lib0 0.2.117, 1.0.0-rc.36  MIT  https://github.com/dmonad/lib0#readme

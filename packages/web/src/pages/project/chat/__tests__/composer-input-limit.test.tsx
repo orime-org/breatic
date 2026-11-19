@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 输入框的上限，和它说出来的那一行（#148, G1）。
@@ -74,6 +74,23 @@ describe('输入框的上限', () => {
     });
 
     expect(box().state.doc.textContent).toBe(`${'y'.repeat(CHAT_MESSAGE_MAX_CHARS - 3)}abc`);
+    expect(toastSpy.warning).toHaveBeenCalledWith(translate('chat.composer.atLimit', { limit: CHAT_MESSAGE_MAX_CHARS }));
+  });
+
+  it('cuts a drop from a page past the limit down to it, the caret after it, and says so', () => {
+    setup('y'.repeat(CHAT_MESSAGE_MAX_CHARS - 3));
+    act(() => box().commands.focus('end'));
+
+    fireEvent.drop(box().view.dom, {
+      dataTransfer: {
+        files: [],
+        types: ['text/html', 'text/plain'],
+        getData: (type: string) => (type === 'text/plain' ? 'abcdef' : type === 'text/html' ? '<p>abcdef</p>' : ''),
+      },
+    });
+
+    expect(box().state.doc.textContent).toBe(`${'y'.repeat(CHAT_MESSAGE_MAX_CHARS - 3)}abc`);
+    expect(box().state.selection.from).toBe(box().state.doc.content.size - 1);
     expect(toastSpy.warning).toHaveBeenCalledWith(translate('chat.composer.atLimit', { limit: CHAT_MESSAGE_MAX_CHARS }));
   });
 

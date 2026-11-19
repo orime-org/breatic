@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Role-upgrade request routes — a viewer asks the owner for editor rights.
@@ -28,8 +28,7 @@
  */
 
 import { Hono } from "hono";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
-import { validate } from "@server/middleware/validate.js";
+import { frontendOrigin, validate, ForbiddenError } from "@breatic/core";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -39,7 +38,6 @@ import {
   roleUpgradeRequestService,
   projectService,
 } from "@server/modules";
-import { ForbiddenError } from "@breatic/core";
 import { t } from "@breatic/shared";
 
 // ── Per-project endpoints (the requester's side) ───────────────────

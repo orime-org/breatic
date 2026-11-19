@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 import { describe, expect, it } from "vitest";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";
@@ -8,6 +8,7 @@ import { fakeContext } from "#repo-lint/__tests__/fake-context";
 // fixture spelling one out would make this file a violation, and the rule
 // would need an exemption for its own test.
 const PRIVATE_REPO = ["breatic", "inner"].join("-");
+const COMMERCE_REPO = ["breatic", "commerce"].join("-");
 
 /**
  * Builds a private-repo directory path without writing it literally.
@@ -29,6 +30,14 @@ describe("no-private-repo-path", () => {
       "packages/core/src/a.ts": `// see ${PRIVATE_REPO} for the rationale\n`,
     });
     expect(noPrivateRepoPath.run(context)).toHaveLength(1);
+  });
+
+  it("catches the private commerce service's repo by name", () => {
+    const context = fakeContext({
+      "packages/core/src/a.ts": `// the service in ${COMMERCE_REPO} calls this\n`,
+      "docs/b.md": `See https://github.com/orime-org/${COMMERCE_REPO.toUpperCase()}\n`,
+    });
+    expect(noPrivateRepoPath.run(context)).toHaveLength(2);
   });
 
   it("catches a spec path even without the repo name", () => {

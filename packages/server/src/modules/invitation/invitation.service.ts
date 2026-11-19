@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
-import { ConflictError, logger, NotFoundError } from "@breatic/core";
+import { ConflictError, logger, NotFoundError, frontendOrigin } from "@breatic/core";
 import { enqueueMail } from "@breatic/domain";
 import { getActiveLocale, normalizeEmail, t } from "@breatic/shared";
 import type { SignupInvitationPreview } from "@breatic/shared";
@@ -13,7 +13,6 @@ export { claimEmailInvitations } from "@server/modules/invitation/claim-email-in
 import { invitationRepo, prepareInvitation, settleSignupInvitationDelivery } from "@server/modules/invitation/invitation-lifecycle.service.js";
 import type { InvitationKind, InvitationRole } from "@server/modules/invitation/invitation.types.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { decisionLink } from "@server/utils/decision-link.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import {

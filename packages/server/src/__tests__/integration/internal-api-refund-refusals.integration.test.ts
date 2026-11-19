@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The eight signed write endpoints retain final refusals under their shared
@@ -23,7 +23,7 @@ vi.mock("@server/infra/stripe.js", async () => {
   };
 });
 
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
+import { fingerprint } from "@breatic/core";
 import { aroundNextList, fakeStripe, stripeError } from "./fake-stripe-refunds.js";
 import { ADMIN, PREVIOUS_SECRET, SECRET, buildRequest, call, freshKey, holdersOf, mailsSettled, paths, useInternalApp, type CallResult } from "./internal-api-harness.js";
 import { CREDITS, PAID_CENTS, ledgerOf, readLot, readOp, reId, refundObject, refundedThenFailed, seedOperation, seedRefundLot, worldOf, type LotState, type SeededLot } from "./credit-refund-fixtures.js";

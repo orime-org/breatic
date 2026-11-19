@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the web, the server and the worker read off the registry (inner#888
@@ -8,6 +8,7 @@
  */
 
 import { defaultAdjustValue } from "@shared/adjust-value.js";
+import { extractPromptText } from "@shared/agent/extract-prompt.js";
 import { defaultDynamicsValue } from "@shared/audio-dynamics.js";
 import { defaultEqValue } from "@shared/audio-eq.js";
 import { MINI_TOOLS } from "@shared/mini-tools/tools.js";
@@ -261,12 +262,27 @@ function knownDurations(values: readonly MiniToolSlotValue[]): number[] | undefi
 }
 
 /**
+ * The prompt a run is sent: an empty one on a tool that has its own is sent as that one, and a tool's preamble goes
+ * before whatever the user wrote.
+ * @param spec - The tool.
+ * @param typed - What the user wrote.
+ * @returns The prompt, before the worker cleans it.
+ * @throws {never} Never.
+ */
+export function miniToolPrompt(spec: MiniToolSpec, typed: string): string {
+  const empty = typed.trim() === "";
+  const preamble = spec.prompt?.preamble;
+  if (preamble !== undefined) return empty ? preamble : `${preamble} Also: ${typed.trim()}`;
+  return empty && spec.prompt?.defaultText !== undefined ? spec.prompt.defaultText : typed;
+}
+
+/**
  * The estimate input of one run: the draft params first, then the source and
  * every filled slot written under the model params they fill. A sketch's
  * composite stands in for the source and a mask fills the mask param; an
  * expand's padded picture stands in for the source beside its mask.
  * @param spec - The tool.
- * @param snapshot - What the run reads.
+ * @param snapshot - What the run reads, its prompt as the user typed it.
  * @returns The run as set up, which `prepareRunParams` prepares for the pinned model.
  */
 export function miniToolEstimateInput(spec: MiniToolSpec, snapshot: MiniToolSnapshot): EstimateInput {
@@ -296,7 +312,8 @@ export function miniToolEstimateInput(spec: MiniToolSpec, snapshot: MiniToolSnap
   }
   return {
     params,
-    prompt: snapshot.prompt,
+    // The prompt as the worker sends it, so a limit on its length reads what the upstream is sent.
+    prompt: extractPromptText(miniToolPrompt(spec, snapshot.prompt)),
     durations,
     sources: toolFilledParams(spec),
   };

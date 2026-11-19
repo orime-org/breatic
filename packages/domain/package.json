@@ -34,10 +34,12 @@
     "ai": "catalog:",
     "drizzle-orm": "catalog:",
     "ipaddr.js": "catalog:",
+    "mjml": "5.4.1",
     "yaml": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@types/mjml": "5.0.0",
     "@types/node": "catalog:",
     "fast-check": "catalog:",
     "tsup": "catalog:",

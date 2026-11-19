@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { Box3, Group, InstancedMesh, MeshStandardMaterial, SkinnedMesh, Texture, Vector3 } from 'three';
 import type { BufferGeometry, Material, Skeleton, WebGLRenderer } from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { httpRequest, isSceneModelMediaType } from '@breatic/shared';
-import type { SceneImportLimits, SceneObject } from '@breatic/shared';
+import type { SceneImportLimits, SceneModelFile } from '@breatic/shared';
 import { createBuiltinBox } from '@web/spaces/three-d/viewport/builtin-models';
 import figureUrl from '@web/spaces/three-d/viewport/assets/figure.glb?url';
 import type { ResolvedSceneAsset } from '@web/spaces/three-d/viewport/scene-viewport-props';
@@ -23,7 +23,7 @@ import { isDrawable } from '@web/spaces/three-d/viewport/model-drawables';
 /** Additional parsed scenes stay owned until the active template is released. */
 const ownedScenes = new WeakMap<Group, readonly Group[]>();
 
-export type SceneModelSource = SceneObject['model'];
+export type SceneModelSource = SceneModelFile;
 export type SceneModelLoader = (source: SceneModelSource, signal: AbortSignal) => Promise<Group>;
 export interface SceneModelLease {
   ready: Promise<Group>;

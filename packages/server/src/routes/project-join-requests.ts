@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Project join request routes — a studio member who is not on a project asks
@@ -17,11 +17,10 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { validate } from "@server/middleware/validate.js";
+import { validate, frontendOrigin } from "@breatic/core";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { projectJoinRequestService } from "@server/modules";
 
 const paramSchema = z.object({ pid: z.string().uuid() });

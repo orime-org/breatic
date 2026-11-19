@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * One run prepared for an estimate, the same way on both sides: what a run means in our product, laid out in our
  * param names for provider, which prices it on each upstream (`@breatic/provider/pricing`); and that price in credits.
  */
 
+import { cleanTextParams, type TextParamSpec } from "@shared/agent/extract-prompt";
 import { isPresent } from "@shared/item-cap";
 import { joinSlotFiles } from "@shared/join-slot-files";
 import { ceilToCreditCent } from "@shared/credit-cent";
@@ -22,6 +23,8 @@ export interface PreparableParam {
   readonly prompt_note?: string;
   /** How a pool names its files in the prompt. */
   readonly mention?: string;
+  /** For an `items` param, the declaration of each field of an item. */
+  readonly fields?: TextParamSpec["fields"];
 }
 
 /** What preparing a run reads off one catalog model. */
@@ -107,7 +110,8 @@ export function prepareRunParams(model: PreparableModel, input: EstimateInput): 
   const isSource = (name: string, spec: PreparableParam): boolean =>
     spec.fill === "canvas" || spec.fill === "pool" || (input.sources?.includes(name) ?? false);
 
-  const own: Record<string, unknown> = { ...input.params };
+  // Text as the worker sends it, so a limit on its length reads what the upstream is sent.
+  const own: Record<string, unknown> = cleanTextParams(model, input.params);
   const placeholders: string[] = [];
   for (const [name, spec] of priced) {
     if (isSource(name, spec) && !isPresent(valueOf(own, name, spec)) && spec.optional !== true) {

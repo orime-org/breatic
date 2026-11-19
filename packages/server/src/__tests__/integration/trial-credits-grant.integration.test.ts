@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Trial credits — the grant a new account gets with its personal studio
@@ -48,7 +48,7 @@ vi.mock("ai", () => ({
 import postgres from "postgres";
 import { initCore } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
-import { getTrialGrantCredits } from "@server/config/pricing.js";
+import { getTrialGrantCredits } from "@server/config/credits.js";
 
 const PG_DRIVER_LOCAL = "trial-credits-grant-test-driver";
 

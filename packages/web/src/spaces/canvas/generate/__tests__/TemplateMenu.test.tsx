@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The template button in a generate panel's corner and the list it opens
@@ -127,12 +127,27 @@ describe('TemplateMenu', () => {
     expect(screen.queryByTestId('generate-template-costume-sheet')).toBeNull();
   });
 
+  it('keeps a hyphenated word of a template line on one line, the line reading as written', () => {
+    open('video');
+    openGoal('ecommerce');
+    const row = screen.getByTestId('generate-template-ugc-creator-review');
+    expect(row).toHaveTextContent('A creator talks up your product on a hand-held phone');
+    const kept = [...row.querySelectorAll('.whitespace-nowrap')].map((part) => part.textContent);
+    expect(kept).toEqual(['hand-held']);
+  });
+
   it('lists the video templates under their goal in a video panel', () => {
     open('video');
     expect(screen.getByTestId('generate-template-goal-character')).toBeInTheDocument();
-    expect(screen.queryByTestId('generate-template-goal-comics-storyboards')).toBeNull();
     openGoal('character');
     expect(screen.getByTestId('generate-template-single-view-refs-scene')).toBeInTheDocument();
+  });
+
+  it('lists the storyboard-to-video template under comics and storyboards in a video panel (inner#1815)', () => {
+    open('video');
+    openGoal('comics-storyboards');
+    expect(screen.getByTestId('generate-template-storyboard-to-video')).toBeInTheDocument();
+    expect(screen.queryByTestId('generate-template-storyboard-grid-25')).toBeNull();
   });
 
   it('lists the sound templates under their goal in an audio panel (inner#1825)', () => {

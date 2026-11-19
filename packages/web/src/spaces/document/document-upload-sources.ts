@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Where a pending block's bytes come from, and how each source ends
@@ -96,6 +96,8 @@ const FETCH_FAILURE: Readonly<Record<TaskFailureReason, UploadFailure>> = {
   cut_short: { reason: 'failed', retryable: false },
   // A fetch is not a task the running-slot cancel reaches; fetching again starts over.
   cancelled: { reason: 'failed', retryable: true },
+  input_refused: { reason: 'failed', retryable: false },
+  model_not_configured: { reason: 'failed', retryable: false },
 };
 
 /** What the block says for each way a file upload fails. */

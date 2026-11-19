@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The subscription clock never touches `config/subscription.yaml`.
@@ -28,7 +28,7 @@ vi.mock("node:fs", async (importOriginal) => {
   return { ...actual, readFileSync };
 });
 
-import { subscriptionClock } from "@core/config/subscription.js";
+import { subscriptionClock } from "@core/config/membership.js";
 import { subscriptionSituation } from "@core/auth/subscription-state.js";
 
 describe("subscriptionClock without config/subscription.yaml (#307, inner#1636)", () => {

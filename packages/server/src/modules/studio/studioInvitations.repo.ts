@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Studio invitations repository — `studio_invitations` table CRUD + the accept
@@ -371,64 +371,6 @@ export async function listPendingByStudio(
     expiresAt: r.expiresAt.toISOString(),
   }));
 }
-
-/**
- * Resolve a pending invite's landing-page detail by id (the email-link page
- * shows it before the invitee confirms). Joins the studio (name + slug) and the
- * inviter's personal studio (name). Includes EXPIRED pendings (the page renders
- * an "expired" state) — only non-pending / soft-deleted rows return null.
- * @param invitationId - Invitation id (resolved from the email-link token)
- * @returns Landing detail (incl. `invitedUserId` for the own-invite guard +
- *   `expiresAt` for the expiry check), or null if gone / no longer pending
- */
-export async function findLandingById(invitationId: string): Promise<{
-  studioName: string;
-  studioSlug: string;
-  inviterName: string;
-  role: StudioRole;
-  invitedUserId: string | null;
-  expiresAt: Date;
-} | null> {
-  const inviterStudio = alias(studios, "inviter_studio_landing");
-  const rows = await db
-    .select({
-      studioName: studios.name,
-      studioSlug: studios.slug,
-      inviterName: inviterStudio.name,
-      role: studioInvitations.role,
-      invitedUserId: studioInvitations.invitedUserId,
-      expiresAt: studioInvitations.expiresAt,
-    })
-    .from(studioInvitations)
-    .innerJoin(studios, eq(studios.id, studioInvitations.studioId))
-    .leftJoin(
-      inviterStudio,
-      and(
-        eq(inviterStudio.createdByUserId, studioInvitations.invitedBy),
-        eq(inviterStudio.type, "personal"),
-        isNull(inviterStudio.deletedAt),
-      ),
-    )
-    .where(
-      and(
-        eq(studioInvitations.id, invitationId),
-        eq(studioInvitations.status, "pending"),
-        isNull(studioInvitations.deletedAt),
-      ),
-    )
-    .limit(1);
-  const row = rows[0];
-  if (!row) return null;
-  return {
-    studioName: row.studioName,
-    studioSlug: row.studioSlug,
-    inviterName: row.inviterName ?? "",
-    role: row.role as StudioRole,
-    invitedUserId: row.invitedUserId,
-    expiresAt: row.expiresAt,
-  };
-}
-
 
 /** Fields shared by recipient arbitration and delivery settlement. */
 const recipientFields = {

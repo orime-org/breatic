@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The strip that hangs off the row under the pointer.
@@ -19,6 +19,7 @@ import { BlockNoteContext, SideMenuController } from '@blocknote/react';
 import * as React from 'react';
 
 import { DocumentBlockHandle } from '@web/spaces/document/DocumentBlockHandle';
+import { DocumentSlashMenu } from '@web/spaces/document/DocumentSlashMenu';
 import { DocumentTableHandlesController } from '@web/spaces/document/DocumentTableHandlesController';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
 import { stripPlacement } from '@web/spaces/document/document-strip-alignment';
@@ -65,6 +66,9 @@ export function DocumentBlockControls({
       )}
       {/* A table's row and column handles (inner#1126 §5.0). */}
       <DocumentTableHandlesController editor={editor} />
+      {/* The menu a typed slash opens (inner#1125); mounted here, so only on
+          a body the user may edit. */}
+      <DocumentSlashMenu editor={editor} />
     </BlockNoteContext.Provider>
   );
 }

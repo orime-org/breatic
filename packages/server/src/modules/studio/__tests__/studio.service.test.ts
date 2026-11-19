@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * studio.service unit tests — personal-studio creation + lookup.
@@ -45,10 +45,10 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
   };
 });
 
-// The price file is a deployment's own and git does not track it, so a test
+// The credits file is a deployment's own and git does not track it, so a test
 // that opened the real one would pass or fail on whether the machine running
-// it happens to sell anything.
-vi.mock("@server/config/pricing.js", () => ({
+// it happens to grant anything.
+vi.mock("@server/config/credits.js", () => ({
   getTrialGrantCredits: mockTrialGrantCredits,
 }));
 

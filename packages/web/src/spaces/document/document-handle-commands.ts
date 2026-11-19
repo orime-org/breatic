@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The two block handle commands that act on a whole block: copy it, remove it.
@@ -17,6 +17,7 @@ import type { BlockNoteEditor } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
+import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 
 /** The editor these commands work on. */
 export type HandleEditor = BlockNoteEditor<never, never, never>;
@@ -121,9 +122,10 @@ export function indentReach(doc: PMNode, blockId: string): IndentReach {
     // A block nests under the block before it only when that one is a
     // container (BlockNote's `sinkItem`); a table holds rows, not a group.
     // A block at the top of a table cell stays in the cell: only a block
-    // nested in a group comes out one level.
+    // nested in a group comes out one level. A column group never stands
+    // under another block (inner#1314 A1).
     reach = {
-      in: $before.nodeBefore?.type.name === 'blockContainer',
+      in: $before.nodeBefore?.type.name === 'blockContainer' && node.type.name !== DOC_COLUMN_LIST,
       out: $before.depth > 1 && $before.parent.type.name === 'blockGroup',
     };
     return false;

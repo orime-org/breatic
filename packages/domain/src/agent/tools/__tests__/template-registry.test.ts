@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Every generation template, applied from either entry, makes a proposal the
@@ -40,6 +40,7 @@ import {
   SLOTTED,
   SOLO,
   STANDALONE,
+  CAST,
   STEPPED,
 } from "./template-fixtures.js";
 
@@ -214,7 +215,7 @@ describe("the multi-node fixture passes from both entries (design 6.9)", () => {
 
   // inner#1825 design 4.1 and 4.2: an input into a slot, a node downstream of
   // the anchor, a node beside it no template edge touches.
-  for (const template of [SLOTTED, DOWNSTREAM, STANDALONE]) {
+  for (const template of [SLOTTED, DOWNSTREAM, STANDALONE, CAST]) {
     for (const locale of FIXTURE_LOCALES) {
       it(`${template.id} in ${locale}: the panel's expansion passes the check, the agent's proposal is placed, and the two agree`, () => {
         setLocale(locale);

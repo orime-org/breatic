@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the three buyer emails about a refund say (inner#1410 §8), in the
@@ -11,7 +11,7 @@
 import { formatCredits, getAvailableLocales, t, type CreditDecimal } from "@breatic/shared";
 import { getMailLayout, runWithLocale } from "@breatic/core";
 import { bothZones, formatMoney } from "@server/modules/payment/purchase-mail-template.js";
-import { renderMail, type RenderedMail } from "@server/utils/mail-shell.js";
+import { renderMail, type RenderedMail } from "@breatic/domain";
 
 /** What every refund email names. */
 interface RefundMailViewBase {

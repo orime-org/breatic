@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Fixture generation templates for the domain tests of the template framework
@@ -174,8 +174,37 @@ export const STANDALONE: GenerationTemplate = {
   triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
 };
 
-/** The fixtures with the new places a template node or input can stand (inner#1825), as a registry. */
-export const PLACED_FIXTURES: readonly GenerationTemplate[] = [...FIXTURES, SLOTTED, DOWNSTREAM, STANDALONE];
+/**
+ * A fixture whose multi-shot anchor takes a required input and an optional
+ * one (inner#1811, CAP-9), the optional input @'d alone in the second shot.
+ */
+export const CAST: GenerationTemplate = {
+  id: "fixture-cast",
+  anchor: "clip",
+  nodes: [
+    {
+      key: "clip",
+      role: "generate",
+      type: "video",
+      mode: "multi_shot",
+      model: "seedance-2.5-text-to-video",
+      params: { aspect_ratio: "9:16", duration: 10 },
+      shots: [{ seconds: 5 }, { seconds: 5 }],
+    },
+  ],
+  edges: [],
+  inputs: [
+    { key: "product", type: "image" },
+    { key: "person", type: "image", optional: true },
+  ],
+  steps: [],
+  agentNote: "a fixture clip of a product, someone optional holding it",
+  goal: "ecommerce",
+  triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
+};
+
+/** The fixtures with the new places a template node or input can stand (inner#1825) and an optional input of a multi-shot anchor (inner#1811), as a registry. */
+export const PLACED_FIXTURES: readonly GenerationTemplate[] = [...FIXTURES, SLOTTED, DOWNSTREAM, STANDALONE, CAST];
 
 /** The fixtures' strings, under `canvas.template`, by locale. */
 const STRINGS: Record<string, Record<string, unknown>> = {
@@ -207,6 +236,14 @@ const STRINGS: Record<string, Record<string, unknown>> = {
       name: "Fixture steps",
       prompt: "A lighthouse at dawn.",
       step: { upscale: "Once it has generated, upscale it from Tools" },
+    },
+    "fixture-cast": {
+      name: "Fixture cast",
+      shot: { 1: "[📎 Product] on a table.", 2: "Someone like [📎 Person] picks it up." },
+      input: {
+        product: { name: "Product", note: "Put the product in Product first" },
+        person: { name: "Person", note: "Optional: put someone in Person, or leave it empty" },
+      },
     },
     "fixture-shots": {
       name: "Fixture shots",
@@ -257,6 +294,14 @@ const STRINGS: Record<string, Record<string, unknown>> = {
       name: "フィクスチャ手順",
       prompt: "夜明けの灯台。",
       step: { upscale: "生成後、ツールからアップスケールする" },
+    },
+    "fixture-cast": {
+      name: "フィクスチャキャスト",
+      shot: { 1: "テーブルの上の [📎 商品]。", 2: "[📎 人物] のような人が手に取る。" },
+      input: {
+        product: { name: "商品", note: "先に商品に商品の画像を入れてください" },
+        person: { name: "人物", note: "任意：人物に人を入れるか、空のままにしてください" },
+      },
     },
     "fixture-shots": {
       name: "フィクスチャショット",
@@ -325,7 +370,7 @@ export interface AgentShape {
  * a node with dialogue lines sends them the same way from its `line.<n>` words.
  * No guide node.
  * @param template - The template.
- * @param options - `anchorKey`: write the anchor's key; `tagInputs`: tag each input node with `{ id, input }`; `material`: input key to the address its node holds.
+ * @param options - `anchorKey`: write the anchor's key; `tagInputs`: tag each input node with `{ id, input }`, which an optional input's node carries always; `material`: input key to the address its node holds.
  * @returns The proposal and where each identity sits.
  */
 export function agentShape(
@@ -358,6 +403,7 @@ export function agentShape(
    * @returns The address, or undefined for an empty node.
    */
   const materialOf = (key: string): string | undefined => (intoOf(key) === undefined ? undefined : options.material?.get(key));
+  const optionalKeys = new Set(template.inputs.flatMap((input) => (input.optional === true ? [input.key] : [])));
   for (const input of skeleton.inputs) {
     const name = t(`${base}.input.${input.key}.name`);
     const material = materialOf(input.key);
@@ -367,7 +413,8 @@ export function agentShape(
       type: input.type,
       name,
       ...(material === undefined ? {} : { material }),
-      ...(options.tagInputs === true ? { template: { id: template.id, input: input.key } } : {}),
+      // An optional input's node always carries its tag, as HOW_TO_SEND asks (inner#1811).
+      ...(options.tagInputs === true || optionalKeys.has(input.key) ? { template: { id: template.id, input: input.key } } : {}),
     });
   }
   const index = (identity: string): number => at.get(identity) as number;

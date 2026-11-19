@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The internal API's door (inner#1410 §4.1–§4.4, acceptance #1–#3): what a
@@ -453,6 +453,7 @@ describe("authorisation table (§4.3)", () => {
         "GET /internal/v1/accounts/:userId/credit-grants/profile",
         "POST /internal/v1/accounts/:userId/credit-grants",
         "GET /internal/v1/credit-grant-operations/:key",
+        "GET /internal/v1/deployment-version",
         "GET /internal/v1/maintenance/queue",
         "GET /internal/v1/maintenance/reclaim/candidates",
         "POST /internal/v1/maintenance/reclaim/preview",

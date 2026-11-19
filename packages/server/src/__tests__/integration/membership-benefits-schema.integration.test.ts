@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Migration 0126 and the constraints it adds, against real Postgres
+ * Migration 0128 and the constraints it adds, against real Postgres
  * (inner#1968, test spec area A: A-21, A-22, A-24, A-26).
  *
  * The constraint cases insert into the migrated database and check the
@@ -13,7 +13,7 @@
  * The two data cases (A-21, A-24) replay the part of the migration that
  * touches one table inside a transaction that is rolled back: the column is
  * dropped, a row from before the migration is written, and the statements of
- * 0126 that name the table are run again. Placement: the spec puts these at
+ * 0128 that name the table are run again. Placement: the spec puts these at
  * core integration; core has no integration harness.
  */
 
@@ -22,7 +22,7 @@ import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import postgres from "postgres";
 
-const MIGRATION = new URL("../../../../core/src/db/migrations/0126_running_tasks_and_spend_limits.sql", import.meta.url);
+const MIGRATION = new URL("../../../../core/src/db/migrations/0128_running_tasks_and_spend_limits.sql", import.meta.url);
 
 let sql: ReturnType<typeof postgres>;
 
@@ -55,7 +55,7 @@ async function rolledBack<T>(body: (tx: postgres.TransactionSql) => Promise<T>):
 }
 
 /**
- * The statements of 0126 that mention every one of `needles`.
+ * The statements of 0128 that mention every one of `needles`.
  * @param needles - Substrings a statement must contain.
  * @returns The statements, in file order.
  */
@@ -119,7 +119,7 @@ async function codeOf(run: () => Promise<unknown>): Promise<string> {
   }
 }
 
-describe("0126 migration", () => {
+describe("0128 migration", () => {
   it("A-21 an agreement written before the migration gets 10 running tasks", async () => {
     const statements = await statementsNaming("enterprise_memberships");
     const values = await rolledBack(async (tx) => {

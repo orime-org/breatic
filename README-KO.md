@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>크리에이티브 팀을 위한 실시간 협업 AI 작업 공간.</strong></p>
-<p align="center">온라인 서비스 제공 · 소스 코드 공개 · 데스크톱 브라우저</p>
+<p align="center">온라인 서비스 제공 · 오픈 소스 · 데스크톱 브라우저</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_ko">웹사이트</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -28,6 +28,24 @@
 브리프, 장면, 미디어를 하나의 Project에 모으세요. Document Spaces에서 글을 쓰고 Canvas Spaces에서 에셋을 생성·수정하며, 제작 맥락을 공유하는 AI 에이전트 및 팀원과 함께 작업할 수 있습니다.
 
 호스팅 서비스에는 무료 Starter 요금제가 있습니다. AI 생성 크레딧은 별도로 구매하며 멤버십에 포함되지 않습니다. [요금 및 크레딧][hosted-pricing]을 확인하세요.
+
+## 하나의 프로젝트, 네 가지 협업 창작 공간
+
+Breatic에서는 대본을 수정하고, 여러 비주얼을 시도하고, 장면을 구성하고, 샷을 배치하며 작업을 이어갈 수 있습니다. 팀으로 작업할 때는 모두가 같은 프로젝트에서 동시에 작업할 수 있습니다.
+
+| 기능 | **Breatic** | Higgsfield | TapNow | LibTV | Luma | LTX Studio |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **문서 공동 편집** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **캔버스 공동 편집** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **3D 공동 편집** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **타임라인 공동 편집** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 3D 사전 시각화 | ✅ | ✅ | ✅ | ✅ | ✗ | ✗ |
+| 타임라인 편집 | ✅ | ✗ | ✅ | ✅ | ✗ | ✅ |
+| 프로젝트 에이전트 | ✅ | ✅ | ✅ | ✅ | ✅ | ✗ |
+| 수정 제안 검토 | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 팀 공유 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+공동 편집은 여러 사람이 같은 작업 공간을 실시간으로 편집할 수 있다는 뜻입니다. 에이전트가 제안한 수정 내용을 검토한 뒤 원문에 반영할지 결정할 수 있습니다. 이 비교는 2026년 11월 18일 기준 공개된 제품 정보를 바탕으로 합니다. ✅는 지원이 확인된 기능, ✗는 공개 정보에서 지원 여부를 확인하지 못한 기능입니다.
 
 ![Breatic 캔버스의 카페 이미지 후보와 프로젝트 채팅. 영어 UI 예시](docs/images/readme/workspace-en.png)
 
@@ -96,7 +114,7 @@ Spaces를 “도입 · 0–10초”, “주요 장면 · 10–20초”, “마�
 
 ## 라이선스 및 허용 용도
 
-Breatic은 [Elastic License 2.0](LICENSE) (Elastic-2.0)으로 소스 코드를 공개합니다. 읽기, 수정, 재배포, 개인 또는 조직 내부 실행이 가능하며 상업적 작업에도 사용할 수 있습니다. Breatic을 제3자에게 호스팅 또는 관리형 서비스로 제공할 수는 없습니다. 전체 조건은 라이선스를 확인하세요.
+Breatic은 [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only)에 따른 오픈 소스입니다. 상업적 용도를 포함해 어떤 목적으로든 사용, 연구, 수정, 자체 호스팅할 수 있습니다. Breatic을 수정하고 수정한 버전을 네트워크를 통해 다른 사람이 사용하게 하는 경우, 같은 라이선스로 전체 소스 코드를 제공해야 합니다. 전체 조건은 라이선스를 확인하세요.
 
 Breatic 이름과 로고는 Orime, Inc.의 상표이며 소프트웨어 라이선스에 포함되지 않습니다. [TRADEMARKS.md](TRADEMARKS.md)를 확인하세요. 라이선스는 Breatic으로 만드는 콘텐츠를 제한하지 않습니다.
 

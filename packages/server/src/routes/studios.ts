@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Studio routes — the container shell (slice 1).
@@ -21,9 +21,8 @@
  */
 
 import { Hono } from "hono";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
+import { frontendOrigin, validate, logger, NotFoundError, ValidationError } from "@breatic/core";
 import { z } from "zod";
-import { validate } from "@server/middleware/validate.js";
 import { getActiveLocale, SPEND_LIMIT_MAX_CREDITS, t } from "@breatic/shared";
 import { createTeamStudioSchema, emailSchema, updateStudioSchema } from "@breatic/shared";
 import { creditPageQuerySchema, projectListQuerySchema } from "@server/routes/schemas.js";
@@ -38,7 +37,6 @@ import {
   recentService,
   creditViewService,
 } from "@server/modules";
-import { logger, NotFoundError, ValidationError } from "@breatic/core";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
 import * as studioAvatarService from "@server/modules/studio/studioAvatar.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";

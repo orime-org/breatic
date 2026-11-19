@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
@@ -29,6 +29,7 @@ vi.mock('@web/data/yjs/project-meta', async () => {
     useProjectMeta: () => ({
       spaces: [],
       users: new Map(),
+      following: new Map(),
       synced: true,
       provider: null,
       status: 'connected' as const,

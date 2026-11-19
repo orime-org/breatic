@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Reading a failed understand run as something the node's row can hold
@@ -202,6 +202,8 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
   tool_failed: false,
   no_audio_track: false,
   cut_short: false,
+  input_refused: false,
+  model_not_configured: false,
 };
 
 /**

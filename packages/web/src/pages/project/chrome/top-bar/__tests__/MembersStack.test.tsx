@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -7,8 +7,13 @@ import userEvent from '@testing-library/user-event';
 
 import { MembersStack } from '@web/pages/project/chrome/top-bar/MembersStack';
 import type { Member } from '@web/data/api/members';
+import { useFollowStore, type FollowOther } from '@web/stores/follow';
 import { useUIStore } from '@web/stores/ui';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
+import { t } from '@breatic/shared';
+
+const toastMock = vi.hoisted(() => ({ info: vi.fn(), warning: vi.fn(), error: vi.fn(), success: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast: toastMock }));
 
 // Real-shape members for the role-gating tests: an owner (me), a non-owner
 // editor, and a non-owner viewer. The popover is read-only — removing /
@@ -167,5 +172,126 @@ describe('MembersStack', () => {
     render(<MembersStack members={MEMBERS} currentUserRole='viewer' />);
     await user.click(screen.getByTestId('members-trigger'));
     expect(screen.queryByRole('button', { name: 'Leave project' })).toBeNull();
+  });
+});
+
+describe('MembersStack, following', () => {
+  beforeEach(() => {
+    useFollowStore.getState().reset();
+    toastMock.warning.mockClear();
+  });
+
+  it('dims View on a member who is following someone, and pressing it only says whom they follow', async () => {
+    const user = userEvent.setup();
+    render(
+      <MembersStack
+        members={MEMBERS}
+        currentUserId='u-vw'
+        onlineUserIds={new Set(['u-own', 'u-ed', 'u-vw'])}
+        followTargets={new Map<string, FollowOther>([['u-ed', { name: 'Owner Person' }]])}
+      />,
+    );
+    await user.click(screen.getByTestId('members-trigger'));
+    const view = screen.getByTestId('members-follow-m-ed');
+    expect(view).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('members-follow-m-own')).not.toHaveAttribute('aria-disabled');
+    await user.click(view);
+    expect(useFollowStore.getState().targetUserId).toBeNull();
+    expect(toastMock.warning).toHaveBeenCalledWith(t('members.follow.busy', { name: 'Editor Person', other: 'Owner Person' }));
+    // Nothing happened, so the list stays open for the user to pick someone else.
+    expect(screen.getByTestId('members-popover')).toBeInTheDocument();
+  });
+
+  it('ellipsizes a long member name beside the View button', async () => {
+    // Text directly inside a flex container takes no ellipsis; the name has
+    // its own truncating box so a cut name shows that it is cut.
+    const user = userEvent.setup();
+    render(
+      <MembersStack
+        members={MEMBERS}
+        currentUserId='u-vw'
+        onlineUserIds={new Set(['u-ed', 'u-vw'])}
+        followTargets={new Map<string, FollowOther>()}
+      />,
+    );
+    await user.click(screen.getByTestId('members-trigger'));
+    const name = screen.getByText('Editor Person');
+    expect(name).toHaveClass('min-w-0', 'truncate');
+    expect(name).not.toHaveClass('flex');
+  });
+
+  it('says a member is following this user when View is pressed on them', async () => {
+    const user = userEvent.setup();
+    render(
+      <MembersStack
+        members={MEMBERS}
+        currentUserId='u-vw'
+        onlineUserIds={new Set(['u-ed', 'u-vw'])}
+        followTargets={new Map<string, FollowOther>([['u-ed', 'you']])}
+      />,
+    );
+    await user.click(screen.getByTestId('members-trigger'));
+    await user.click(screen.getByTestId('members-follow-m-ed'));
+    expect(useFollowStore.getState().targetUserId).toBeNull();
+    expect(toastMock.warning).toHaveBeenCalledWith(t('members.follow.busyYou', { name: 'Editor Person' }));
+    // Nothing happened, so the list stays open for the user to pick someone else.
+    expect(screen.getByTestId('members-popover')).toBeInTheDocument();
+  });
+
+  it('shows each row online or offline', async () => {
+    const user = userEvent.setup();
+    render(<MembersStack members={MEMBERS} currentUserId='u-own' onlineUserIds={new Set(['u-own', 'u-ed'])} />);
+    await user.click(screen.getByTestId('members-trigger'));
+    expect(screen.getByTestId('members-status-m-ed')).toHaveAttribute('data-online', 'true');
+    expect(screen.getByTestId('members-status-m-vw')).toHaveAttribute('data-online', 'false');
+  });
+
+  it('offers View only on other members who are online', async () => {
+    const user = userEvent.setup();
+    render(<MembersStack members={MEMBERS} currentUserId='u-own' onlineUserIds={new Set(['u-own', 'u-ed'])} />);
+    await user.click(screen.getByTestId('members-trigger'));
+    expect(screen.getByTestId('members-follow-m-ed')).toBeInTheDocument();
+    expect(screen.queryByTestId('members-follow-m-own')).toBeNull();
+    expect(screen.queryByTestId('members-follow-m-vw')).toBeNull();
+  });
+
+  it('starts following on View and closes the list; the row then offers Stop, which closes it too', async () => {
+    const user = userEvent.setup();
+    render(<MembersStack members={MEMBERS} currentUserId='u-vw' currentUserRole='viewer' onlineUserIds={new Set(['u-vw', 'u-ed'])} />);
+    await user.click(screen.getByTestId('members-trigger'));
+    await user.click(screen.getByTestId('members-follow-m-ed'));
+    expect(useFollowStore.getState().targetUserId).toBe('u-ed');
+    expect(useFollowStore.getState().targetName).toBe('Editor Person');
+    expect(screen.queryByTestId('members-popover')).toBeNull();
+    await user.click(screen.getByTestId('members-trigger'));
+    expect(screen.queryByTestId('members-follow-m-ed')).toBeNull();
+    await user.click(screen.getByTestId('members-unfollow-m-ed'));
+    expect(useFollowStore.getState().targetUserId).toBeNull();
+    expect(useFollowStore.getState().stopped?.reason).toBe('button');
+    expect(screen.queryByTestId('members-popover')).toBeNull();
+  });
+
+  it('switches straight to another member when View is pressed on them', async () => {
+    const user = userEvent.setup();
+    render(<MembersStack members={MEMBERS} currentUserId='u-vw' onlineUserIds={new Set(['u-own', 'u-ed', 'u-vw'])} />);
+    useFollowStore.getState().start('u-ed', 'Editor Person');
+    await user.click(screen.getByTestId('members-trigger'));
+    await user.click(screen.getByTestId('members-follow-m-own'));
+    expect(useFollowStore.getState().targetUserId).toBe('u-own');
+    expect(useFollowStore.getState().stopped).toBeNull();
+  });
+
+  it('shows nobody online when it is given no presence', async () => {
+    const user = userEvent.setup();
+    render(<MembersStack members={MEMBERS} currentUserId='u-own' />);
+    await user.click(screen.getByTestId('members-trigger'));
+    expect(screen.queryByTestId('members-follow-m-ed')).toBeNull();
+  });
+
+  it('has no a11y violations with the follow controls open', async () => {
+    const user = userEvent.setup();
+    const { baseElement } = render(<MembersStack members={MEMBERS} currentUserId='u-own' onlineUserIds={new Set(['u-own', 'u-ed'])} />);
+    await user.click(screen.getByTestId('members-trigger'));
+    await expectNoA11yViolations(baseElement);
   });
 });

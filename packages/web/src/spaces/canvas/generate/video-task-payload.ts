@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Assembles the `POST /canvas/tasks` request body for a video-node Generate.
@@ -147,11 +147,16 @@ interface VideoEstimateSource {
  * the same source fields the submit sends, and how long those sources run.
  * @param vm - The panel's view model.
  * @param prompt - The prompt as the model reads it.
+ * @param storyboardParams - What the multi-shot mode adds, as the submit merges it.
  * @returns The estimate input.
  */
-export function videoEstimateInput(vm: VideoEstimateSource, prompt: string): EstimateInput {
+export function videoEstimateInput(
+  vm: VideoEstimateSource,
+  prompt: string,
+  storyboardParams: Readonly<Record<string, unknown>> = {},
+): EstimateInput {
   return {
-    params: { ...vm.params, ...sourceParams(vm.slots, vm.slotUrls, poolParams(vm.pool, vm.referenceUrls)) },
+    params: { ...vm.params, ...storyboardParams, ...sourceParams(vm.slots, vm.slotUrls, poolParams(vm.pool, vm.referenceUrls)) },
     prompt,
     durations: vm.sourceDurations,
   };

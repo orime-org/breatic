@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
-import { db, decodeActivityCursor, lockAccountRow } from "@breatic/core";
+import { db, decodeActivityCursor, lockAccountRow, toPage } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { CreditPage } from "@breatic/shared";
 import {
@@ -17,7 +17,6 @@ import { insertCode, listCodes, lockCode, setCodeStatus } from "@server/modules/
 import type { ReferralCodeStatus } from "@server/modules/referral/referral-code.repo.js";
 import { findOperation, insertOperation, lockOperationKey } from "@server/modules/referral/referral-operation.repo.js";
 import type { ReferralOperationKind, ReferralOperationResult } from "@server/modules/referral/referral-operation.repo.js";
-import { toPage } from "@server/utils/keyset-page.js";
 
 const GENERATION_ATTEMPTS = 5;
 

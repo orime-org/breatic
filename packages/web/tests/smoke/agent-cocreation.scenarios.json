@@ -104,7 +104,7 @@
     "lang": "zh-CN",
     "text": "做一段 15 秒的产品宣传视频，产品是一款白色保温杯。",
     "user": "A small brand owner. No product photo to share; no brand guidelines. It will be posted on Douyin (vertical). Answers in Simplified Chinese.",
-    "pass": "Before anything is spent, the agent lays out the steps with what each makes and the estimated credits of what it proposes now (later steps may be estimated roughly); a turn that proposes nothing yet, waiting for the user's photo, owes no credits. It makes key frames first as 2-3 different looks; video is made from the picked key frame, and trial shots run at the lowest settings on a fast, cheap model, keeping the length the user named. It asks only what changes the result (such as where it is posted, or whether there is a product photo)."
+    "pass": "Before anything is spent, the agent lays out the steps with what each makes and the estimated credits of what it proposes now (later steps may be estimated roughly); a turn that proposes nothing yet, waiting for the user's photo, owes no credits. It makes key frames first as 2-3 different looks (with no product photo, the looks may be of the product itself, and the key frame is then made from the one picked); video is made from the picked key frame, and trial shots come before the final video: they run at the lowest price settings, keeping the length the user named, on a fast, cheap model (on the template's own model when they follow a template). It asks only what changes the result (such as where it is posted, or whether there is a product photo)."
   },
   {
     "id": "timeline-cut",
@@ -279,6 +279,48 @@
     ],
     "user": "Picked this key frame from earlier directions for a promo; wants the final 5-second shot from it, no other changes. Answers in Simplified Chinese.",
     "pass": "The agent makes the shot from this key frame: an image-to-video step with this picture as its first frame or source, 5 seconds long; it does not make a new video from a prompt alone, and does not offer new looks."
+  },
+  {
+    "id": "template-final",
+    "lang": "zh-CN",
+    "text": "用这张产品图直接出 15 秒的产品广告成片，不用先试。",
+    "chips": [
+      {
+        "id": "product-1",
+        "name": "产品图",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/a/aa/18oz_Thermos_hydration_bottle.jpg"
+      }
+    ],
+    "user": "A small brand owner selling this insulated bottle on Douyin (vertical). Wants the finished 15-second ad now, with no trials first. Answers in Simplified Chinese.",
+    "pass": "The agent proposes the 15-second ad with this photo as the product, at its full settings straight away: no node carries a setting lowered for a trial (such as a lower resolution than the template's or the model's default, which a template's RETURNED cost paragraph names as a take's cheaper settings), and no trial or take is proposed or listed before it. It states the estimated credits of what it proposes."
+  },
+  {
+    "id": "template-take-is-final",
+    "lang": "zh-CN",
+    "text": "用这张角色图做一段 8 秒的短片，同一个角色连续三个镜头，脸和衣服不能变。",
+    "chips": [
+      {
+        "id": "character-1",
+        "name": "角色图",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/c/c0/Character_Sintel-portrait-young.png"
+      }
+    ],
+    "user": "Making a short for their fantasy web series; this is the heroine and they have no other picture of her. Leaves what happens in the shots to the agent. Answers in Simplified Chinese.",
+    "pass": "The agent makes the 8-second video from this picture, so the character stays the one in it. When it follows a template whose RETURNED cost paragraph says a take of it is already its final, the proposal keeps that template's model and 8-second length (a template node keeps the template's mode, model and every setting it does not write), and no later step, plan line or credit total makes or charges the same video again at the same settings as a separate final."
+  },
+  {
+    "id": "template-take-named-final",
+    "lang": "zh-CN",
+    "text": "用这张产品图做一条 15 秒的竖版产品广告。试拍也用 720p，我要看清细节。",
+    "chips": [
+      {
+        "id": "product-2",
+        "name": "产品图",
+        "url": "https://upload.wikimedia.org/wikipedia/commons/a/aa/18oz_Thermos_hydration_bottle.jpg"
+      }
+    ],
+    "user": "Sells this insulated bottle on Douyin (vertical). Wants a trial before the final, at 720p so the details show. Answers in Simplified Chinese.",
+    "pass": "The agent makes or plans the trial at 720p as asked. When that trial runs on the model, the length and every setting its final would use (as a template's RETURNED nodes and cost paragraph show), it treats the trial as the final: no later step, plan line or credit total makes the same video again at the same settings. A final at a setting the trial does not have, such as a higher resolution the user asks for, is not a breach."
   },
   {
     "id": "instructions-over-memory",

@@ -1,14 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Maintenance endpoints mount exclusively after signed internal authentication.
  */
 import type { Context, Hono } from "hono";
 import { z } from "zod";
-import { validate } from "@server/middleware/validate.js";
+import { validate, fingerprint } from "@breatic/core";
 import { maintenanceService } from "@server/modules/index.js";
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
 const BASE = "/internal/v1/maintenance";
 const uuid = z.string().uuid();
 const key = z.string().regex(/^bo-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);

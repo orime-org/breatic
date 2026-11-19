@@ -3,7 +3,9 @@
 # are unique per model. A model's `rejects` are its vendor's own input limits,
 # in our param names (the prompt as `prompt`), each with the vendor's words as
 # `reason`, the vendor page as `source` and, for a limit announced for a date,
-# `from`; no upstream takes a run past them. Each binding names the upstream's
+# `from`; no upstream takes a run past them. A reject whose condition counts
+# characters or lines states that count as `limit` (our param, `measure`,
+# `max` or `min`, `per` line or item). Each binding names the upstream's
 # model id, the field the prompt goes in (`send_empty` sends it and every param
 # even when empty), and how each of our params is written there: `field` (dots
 # write under nested objects), `values` (our value to the upstream's spelling),
@@ -31,9 +33,11 @@ models:
         reason: "Tripo generate_parts: Not compatible with smart_low_poly; smart_low_poly takes precedence and parts are NOT produced"
         source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
       - when: $length(prompt) > 1024
+        limit: { field: prompt, measure: characters, max: 1024 }
         reason: 'Tripo prompt: "Text prompt, up to 1024 characters."'
         source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
       - when: $length(negative_prompt) > 255
+        limit: { field: negative_prompt, measure: characters, max: 255 }
         reason: 'Tripo negative_prompt: "Negative prompt, up to 255 characters."'
         source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
       - when: smart_low_poly = true and (face_limit < 500 or face_limit > 20000)

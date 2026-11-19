@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Somebody coming online has to make this page re-fetch the roster.
@@ -63,6 +63,7 @@ vi.mock('@web/data/yjs/project-meta', async () => {
     useProjectMeta: () => ({
       spaces: [{ id: 's1', name: 'S1', type: 'canvas' }],
       users: usersNow,
+      following: new Map(),
       synced: true,
       provider: null,
       status: 'connected' as const,

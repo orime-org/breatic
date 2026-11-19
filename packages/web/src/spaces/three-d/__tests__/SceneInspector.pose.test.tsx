@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import * as Y from 'yjs';
@@ -11,6 +11,7 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
 import { SceneInspector } from '@web/spaces/three-d/SceneInspector';
+import { SceneDirectorFields } from '@web/spaces/three-d/SceneDirectorFields';
 import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 import { POSE_PRESETS } from '@web/spaces/three-d/viewport/pose-presets';
 
@@ -42,7 +43,7 @@ function Bound({ session, skeletonStates, jointMode, onJointModeChange }: { sess
   const onFieldDraftChange = React.useCallback((key: string, draft: SceneFieldDraft | undefined): void => {
     setFieldDrafts((previous) => { const next = new Map(previous); if (draft) next.set(key, draft); else next.delete(key); return next; });
   }, []);
-  return <TooltipProvider><SceneInspector spaceId='scene' session={session} snapshot={snapshot} namedPeers={[]} Field={SceneField}
+  return <TooltipProvider><SceneInspector DirectorFields={SceneDirectorFields} spaceId='scene' session={session} snapshot={snapshot} namedPeers={[]} Field={SceneField}
     fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} readObjects={() => readSceneDocument(session.doc).objects}
     skeletonStates={skeletonStates} jointMode={jointMode} onJointModeChange={onJointModeChange} /></TooltipProvider>;
 }

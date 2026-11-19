@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The rows of the block handle menu, and what each one runs: the seven of a
@@ -54,7 +54,6 @@ import { MenuTick } from '@web/spaces/document/MenuTick';
 import {
   TYPE_MENU_WIDTH,
   itemWithin,
-  rulesAfter,
   whenOutOfReach,
 } from '@web/spaces/document/document-block-menu-parts';
 import {
@@ -92,7 +91,7 @@ import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
-import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
+import { insertReach, reachFromKey, reachKey, ruleBetween } from '@web/spaces/document/document-insert-entries';
 import { openTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 import { copyTableLine, cutTableLine, firstCellOf } from '@web/spaces/document/document-table-line-clipboard';
 import { toast } from '@web/lib/toast';
@@ -102,8 +101,8 @@ interface DocumentBlockMenuProps {
   editor: HandleEditor;
   /** The block the pointer is over. */
   block: PressedBlock;
-  /** Closes the menu. */
-  close: () => void;
+  /** Closes the menu; a formula block made by the pick has its box opened then. */
+  close: (formula?: string) => void;
   /** The rows to draw, in order. */
   rows?: readonly BlockMenuRow[];
 }
@@ -240,7 +239,7 @@ function useFacesOf(editor: HandleEditor, blockId: string): StyleFaces {
  * @param props - See {@link DocumentBlockMenuProps}.
  * @param props.editor - The editor to write to.
  * @param props.block - The block the pointer is over.
- * @param props.close - Closes the menu.
+ * @param props.close - Closes the menu, naming a formula block whose box opens then.
  * @param props.rows - The rows to draw; a block's grip rows when left out.
  * @returns The rows.
  */
@@ -265,6 +264,10 @@ export function DocumentBlockMenu({
 
   const rowNow = useRowNow(editor, block.id);
   const projectId = useDocumentProjectId();
+  // Insert below adds a row under this one (design 5.2, `below`); one set per
+  // value so the memoised rows bail between renders.
+  const belowKey = reachKey(insertReach(editor.prosemirrorState.doc, block.id, 'below'));
+  const belowReach = React.useMemo(() => reachFromKey(belowKey), [belowKey]);
 
   /**
    * The range standing for this row, read off the document as it is now.
@@ -311,10 +314,7 @@ export function DocumentBlockMenu({
   const onInsertBelow = React.useCallback(
     (choice: InsertChoice): void => {
       const live = rowNow();
-      if (live !== undefined) {
-        insertBelow(editor, live, choice);
-      }
-      close();
+      close(live === undefined ? undefined : insertBelow(editor, live, choice));
     },
     [editor, rowNow, close],
   );
@@ -393,10 +393,8 @@ export function DocumentBlockMenu({
                   const ItemIcon = item.Icon;
                   const reachable =
                     item.id === 'quote' ? faces.quotable : faces.holdsText;
-                  const ruled = rulesAfter(
-                    item.id,
-                    BLOCK_TYPE_ITEMS[index + 1]?.id,
-                  );
+                  const next = BLOCK_TYPE_ITEMS[index + 1]?.id;
+                  const ruled = next !== undefined && ruleBetween(item.id, next);
                   return (
                     <React.Fragment key={item.id}>
                       <DropdownMenuItem
@@ -442,7 +440,7 @@ export function DocumentBlockMenu({
                 <DocumentInsertChoices
                   onPick={onInsertBelow}
                   onPickMedia={onInsertMediaBelow}
-                  tableUnreachable={blockInTableCell(editor.prosemirrorState.doc, block.id)}
+                  unreachable={belowReach}
                 />
               </DropdownMenuSubContent>
             </DropdownMenuSub>

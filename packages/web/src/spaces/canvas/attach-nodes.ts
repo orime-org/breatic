@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import {
   dialogueSideOf,
@@ -9,6 +9,7 @@ import {
   writtenMark,
   type ChatAttachedChip,
   type ModelCatalog,
+  withCurrentModelNames,
 } from '@breatic/shared';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import { catalogEntryOf } from '@breatic/shared/mini-tools';
@@ -25,6 +26,7 @@ import {
   MENTION_KIND_ATTR,
 } from '@web/spaces/canvas/generate/reference-mention';
 import { SPEAKER_ATTR } from '@web/spaces/canvas/generate/dialogue-line';
+import { MENTION_OPTIONAL_ATTR } from '@web/spaces/canvas/generate/optional-paragraph';
 import type { TrayItem } from '@web/stores/chat-attachments';
 
 /** The node kinds the chat can be handed; a group comes with its members. */
@@ -41,15 +43,20 @@ export interface NodeReaders {
 }
 
 /**
- * A reference mention read as the name the user sees on its chip, and a
- * note as its words in the form a template writes it.
+ * A reference mention read as the name the user sees on its chip, marked
+ * when it is of an optional template input, and a note as its words in the
+ * form a template writes it.
  * @param element - An element inside a prompt.
  * @returns The text, or undefined for anything else.
  */
 function mentionText(element: Y.XmlElement): string | undefined {
   // A note is handed over too: the agent is given everything the node holds.
   if (element.nodeName === PROMPT_NOTE_NODE) return writtenMark({ kind: 'note', label: String(element.getAttribute(PROMPT_NOTE_LABEL_ATTR) ?? '') });
-  return chipDisplayText(element, String(element.getAttribute(MENTION_KIND_ATTR) ?? ''));
+  const text = chipDisplayText(element, String(element.getAttribute(MENTION_KIND_ATTR) ?? ''));
+  // A mention of an optional template input says so: its paragraph is not sent while that node is empty (inner#1811).
+  // Yjs types attributes as strings; the mark is stored as the boolean true.
+  const optional: unknown = element.getAttribute(MENTION_OPTIONAL_ATTR);
+  return text !== undefined && optional === true ? `${text} (optional)` : text;
 }
 
 /**
@@ -216,11 +223,13 @@ export function snapshotOfPick(
    */
   const entry = (node: CanvasNodeView): Record<string, unknown> & { id: string } => {
     const stored = readers.dataOf(node.id);
-    const data = {
+    // The stored data wins over the view, so a node saved on a retired model is
+    // read under its replacement here too, as the view reads it (#1521).
+    const data = withCurrentModelNames({
       ...(node.data as unknown as Record<string, unknown>),
       ...(stored ? (plain(stored) as Record<string, unknown>) : {}),
       ...(stored?.has('prompts') === true ? { prompts: promptsOf(node, stored, readers.catalog) } : {}),
-    };
+    });
     const current = isGenerationNodeType(node.type)
       ? currentGeneration(
         node.type,

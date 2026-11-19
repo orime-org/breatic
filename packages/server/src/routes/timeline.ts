@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Timeline executions (inner#1711 design §4): accept a web-animation execution, list a Space's executions, resolve
@@ -12,7 +12,7 @@ import { TimelineExecutionCreateInputSchema } from "@breatic/shared/space-conten
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { runOnce } from "@server/middleware/run-once.js";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { timelineExecutionService } from "@server/modules";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Why a task failed, for the causes we author (#186 §7.1).
@@ -14,6 +14,7 @@
  * the provider said, and it travels as itself.
  */
 
+import type { InputLimitShape } from "@shared/input-refusal.js";
 import {
   INGEST_FAILURE_CODES,
   INGEST_NO_ANSWER,
@@ -108,6 +109,13 @@ export const TASK_FAILURE_REASONS = [
    * (inner#1968); it never ran, so nothing was charged.
    */
   "cancelled",
+  /**
+   * No upstream here takes the run as it was set up (#1521): the sentence
+   * names the model and, when the refusal states one, the limit it broke.
+   */
+  "input_refused",
+  /** No upstream of the model has its key on this deployment; the sentence names the variables. */
+  "model_not_configured",
 ] as const;
 
 /** One of the causes above. */
@@ -173,6 +181,12 @@ export interface TaskFailureDetail {
    * names the act the user asked for, on the row and in the history alike.
    */
   reading?: "transcribe";
+  /** What the user knows the model as, for a cause about the model. */
+  model?: string;
+  /** The limit a refused input broke, when the refusal states one. */
+  limit?: InputLimitShape;
+  /** The environment variables a deployment is missing. */
+  envVars?: string[];
 }
 
 /** A stored failure, read back. */
@@ -200,6 +214,9 @@ export function encodeTaskFailure(
     ...(about.type !== undefined && about.type !== "" && { type: about.type }),
     ...(Number.isFinite(about.bytes) && { bytes: about.bytes }),
     ...(about.reading === "transcribe" && { reading: about.reading }),
+    ...(about.model !== undefined && about.model !== "" && { model: about.model }),
+    ...(about.limit !== undefined && { limit: about.limit }),
+    ...(about.envVars !== undefined && about.envVars.length > 0 && { envVars: about.envVars }),
   };
   return Object.keys(detail).length === 0
     ? reason
@@ -240,6 +257,30 @@ export function readTaskFailure(message: string | null): StoredTaskFailure {
     ...(typeof held.type === "string" && { type: held.type }),
     ...(typeof held.bytes === "number" && { bytes: held.bytes }),
     ...(held.reading === "transcribe" && { reading: "transcribe" as const }),
+    ...(typeof held.model === "string" && held.model !== "" && { model: held.model }),
+    ...(isLimit(held.limit) && { limit: held.limit }),
+    ...(Array.isArray(held.envVars) && held.envVars.length > 0 && held.envVars.every((v) => typeof v === "string") && { envVars: held.envVars }),
   };
+}
+
+/**
+ * Whether a stored value is an input limit as provider states one.
+ * @param value - What the row held; anything.
+ * @returns True for a limit with a field, a known measure and exactly one bound.
+ * @throws {never} Never.
+ */
+function isLimit(value: unknown): value is InputLimitShape {
+  if (typeof value !== "object" || value === null) return false;
+  const l = value as Record<string, unknown>;
+  /**
+   * Whether one bound is absent or a count.
+   * @param n - The stored bound.
+   * @returns True for undefined or a non-negative integer.
+   */
+  const bound = (n: unknown): boolean => n === undefined || (typeof n === "number" && Number.isInteger(n) && n >= 0);
+  return typeof l.field === "string"
+    && (l.measure === "characters" || l.measure === "lines" || l.measure === "chinese_characters")
+    && bound(l.max) && bound(l.min) && ((l.max === undefined) !== (l.min === undefined))
+    && (l.per === undefined || l.per === "line" || l.per === "item");
 }
 

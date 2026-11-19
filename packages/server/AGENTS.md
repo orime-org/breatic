@@ -42,7 +42,7 @@ Who can reach the port is decided by where it is published. Before changing the 
 
 **The error handler decides the response by who caused the error: only `AppError` (ours) and `HTTPException` (Hono could not read the body) map to their own status; everything else is a 500 plus `logger.error`.** An exception's type says something failed to parse, not whose input it was; our own config yaml is parsed lazily inside requests.
 
-**Routes never parse request bodies themselves; they mount `validate(target, schema)` from `middleware/validate.ts`.** `breatic/no-untranslated-error-message` and `breatic/no-raw-body-parse` enforce both rules.
+**Routes never parse request bodies themselves; they mount `validate(target, schema)` from `@breatic/core` (`packages/core/src/http/validate.ts`).** `breatic/no-untranslated-error-message` and `breatic/no-raw-body-parse` enforce both rules.
 
 Check: will a user read this sentence? Then it must come from `t()`.
 
@@ -86,7 +86,7 @@ Check: am I writing to a conversation id the client gave me? Were all three chec
 
 ### Prompt changes run the co-create suite
 
-**A change to the system prompt, a tool's description or a template's words to the model runs `packages/web/tests/smoke/agent-cocreation.spec.ts` (`@needs-model @needs-internet`) on the dev stack before the PR, and the PR carries its per-row pass counts and overall rates.** Unit tests pin the words; only real turns show what a model does with them, and a wording that fixes one row often moves another. A behaviour newly expected of the agent gets a row in `agent-cocreation.scenarios.json`, and the judge is checked against hand labels (the suite's last case) whenever the criteria change.
+**A change to the system prompt, a tool's description or a template's words to the model runs `packages/web/tests/smoke/agent-cocreation.spec.ts` (`@needs-model @needs-internet`) on the dev stack before the PR, and the PR carries its per-row pass counts and overall rates.** Unit tests pin the words; only real turns show what a model does with them, and a wording that fixes one row often moves another. A behaviour newly expected of the agent gets a row in `agent-cocreation.scenarios.json`, and the judge is checked against hand labels (the suite's last case) whenever the criteria change. A series of PRs that each add generation templates and change no other words to the model runs the suite once, before the series' last PR, which carries the counts for the whole series; each earlier PR names the series it belongs to.
 
 ## Payments
 

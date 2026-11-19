@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * `@breatic/domain` — AIGC business kernel shared by server + worker.
@@ -200,7 +200,7 @@ export type { Instructions } from "@domain/agent/instructions.js";
 
 // ── Model catalog (incl. per-call credit cost: cost_per_call) ────
 export * as modelCatalog from "@domain/model-catalog/model-catalog.js";
-export { estimateTaskCredits, llmServability, sendsUntakenPrompt, servability, violatesSourceRequirementForModel, violatesReferenceCountForModel, violatesTextLengthForModel, MIN_TASK_CREDIT_COST, getFullModelConfig, type Servability } from "@domain/model-catalog/model-catalog.js";
+export { estimateTaskCredits, inputRefusalFor, llmServability, sendsUntakenPrompt, servability, violatesSourceRequirementForModel, violatesReferenceCountForModel, violatesTextLengthForModel, MIN_TASK_CREDIT_COST, getFullModelConfig, type Servability } from "@domain/model-catalog/model-catalog.js";
 export type { ReferenceCountViolation } from "@domain/model-catalog/reference-count.js";
 export type { FullModalityConfig, FullModelEntry, FullParamSpec } from "@domain/model-catalog/model-catalog.js";
 // Which upstream a model runs on in this deployment. One rule, two callers:
@@ -311,6 +311,7 @@ export type {
 
 // ── Mail (notification mail sent by the worker) ──
 export { MAIL_QUEUE, enqueueMail, type MailJob } from "@domain/mail/mail-queue.js";
+export { escapeHtml, renderMail, type MailMessage, type MailSpec, type RenderedMail } from "@domain/mail/mail-shell.js";
 
 export * as storageReclaimRepo from "@domain/asset/storage-reclaim.repo.js";
 

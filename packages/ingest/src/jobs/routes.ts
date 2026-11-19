@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The job endpoints (inner#888 §8.1, inner#1711 §3.7). Only our worker calls them: each takes the shared secret. A

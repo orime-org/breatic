@@ -1,12 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Context, Hono } from "hono";
 import { z } from "zod";
-import { creditGrantWriteSchema } from "@breatic/core";
-import { validate } from "@server/middleware/validate.js";
+import { creditGrantWriteSchema, validate, fingerprint } from "@breatic/core";
 import { creditGrantService } from "@server/modules/index.js";
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
 
 const ACCOUNT = "/internal/v1/accounts/:userId/credit-grants";
 const OPERATION = "/internal/v1/credit-grant-operations/:key";

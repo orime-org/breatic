@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * One pickup of a media run through provider's tickets (inner#1743, design §12.2): every paid request goes out with a
@@ -15,7 +15,7 @@ vi.mock("@breatic/core", () => ({ logger: { warn: vi.fn(), info: vi.fn(), error:
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { DeadlinePassed, setLocale, setLocaleMessages } from "@breatic/shared";
+import { DeadlinePassed, encodeTaskFailure, setLocale, setLocaleMessages } from "@breatic/shared";
 import { BilledAnswerLost, costsOf, DeadlinePassed as ProviderDeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamTaskFailed, type Cost } from "@breatic/provider";
 import type { MediaAnswer, MediaRunner, MediaTicket } from "@breatic/provider/media";
 import { logger } from "@breatic/core";
@@ -378,7 +378,7 @@ describe("how a run ends", () => {
     await expect(runMedia(run, deps)).rejects.toMatchObject({ message: reason.message });
   });
 
-  it("says which variables the deployment is missing when no upstream has its key, in the server's words", async () => {
+  it("stores which variables the deployment is missing when no upstream has its key, for each viewer's own sentence", async () => {
     setLocaleMessages("en", JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../../../locales/en.json"), "utf8")) as Record<string, unknown>);
     setLocale("en");
     const reason = new NoUpstreamAvailable("voice-model", [
@@ -389,8 +389,32 @@ describe("how a run ends", () => {
 
     await expect(runMedia(run, deps)).rejects.toMatchObject({
       reason,
-      message: "Voice Model is not set up on this deployment: it needs WAVESPEED_API_KEY, FAL_KEY.",
+      message: encodeTaskFailure("model_not_configured", { model: "Voice Model", envVars: ["WAVESPEED_API_KEY", "FAL_KEY"] }),
     });
+  });
+
+  it("stores which limit the run broke when the upstreams here refused its input, for each viewer's own sentence (#1521)", async () => {
+    setLocaleMessages("en", JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../../../locales/en.json"), "utf8")) as Record<string, unknown>);
+    setLocale("en");
+    const reason = new NoUpstreamAvailable("voice-model", [
+      { upstream: "wavespeed", kind: "unsupported_input", reason: "WaveSpeed text maxLength 8000", limit: { field: "prompt", measure: "characters", max: 8000 } },
+      { upstream: "fal", kind: "missing_key", envVar: "FAL_KEY" },
+    ]);
+    const { run, deps } = setup({ ticket: ticket(3, "running") }, { poll: vi.fn(async (): Promise<MediaAnswer> => ({ state: "failed", reason, costs: [], ...NONE })) });
+
+    await expect(runMedia(run, deps)).rejects.toMatchObject({
+      reason,
+      message: encodeTaskFailure("input_refused", { model: "Voice Model", limit: { field: "prompt", measure: "characters", max: 8000 } }),
+    });
+  });
+
+  it("stores the refusal without a limit when it names no count", async () => {
+    setLocaleMessages("en", JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../../../locales/en.json"), "utf8")) as Record<string, unknown>);
+    setLocale("en");
+    const reason = new NoUpstreamAvailable("voice-model", [{ upstream: "wavespeed", kind: "unsupported_input", param: "voice_id", value: "Nobody" }]);
+    const { run, deps } = setup({ ticket: ticket(3, "running") }, { poll: vi.fn(async (): Promise<MediaAnswer> => ({ state: "failed", reason, costs: [], ...NONE })) });
+
+    await expect(runMedia(run, deps)).rejects.toMatchObject({ message: encodeTaskFailure("input_refused", { model: "Voice Model" }) });
   });
 
   it("keeps provider's words when an upstream that had its key failed too", async () => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * `@server` module barrel - server-private domain SERVICES only.
@@ -34,8 +34,7 @@ export * as agentInstructionsService from "@server/modules/conversation/agent-in
 export * as runningTurnsService from "@server/modules/conversation/running-turns.service.js";
 export * as memoryService from "@server/modules/memory/memory.service.js";
 export * as paymentService from "@server/modules/payment/payment.service.js";
-export { precheckCredits, reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
-export { SpendCapReachedError } from "@server/modules/payment/spend-cap-error.js";
+export { precheckCredits, reserveForRun } from "@server/modules/credit/credit-precheck.service.js";
 export * as creditViewService from "@server/modules/credit/credit-view.service.js";
 export {
   assertStorageAllowance,

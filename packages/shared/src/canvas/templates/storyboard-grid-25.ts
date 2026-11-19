@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { GenerationTemplate } from "@shared/canvas/generation-templates.js";
 
@@ -25,11 +25,11 @@ export const STORYBOARD_GRID_25: GenerationTemplate = {
   goal: "comics-storyboards",
   triggers: {
     asks: [
-      "a storyboard",
-      "plan the shots of my story in one picture",
+      "a 25-panel storyboard",
+      "plan every shot of a long story in one picture",
     ],
     offerWhen: [
-      "the user wants a video that tells a story in several beats and has not planned its shots yet",
+      "the user is planning all the pictures of a long story, not making one video now",
     ],
   },
 };

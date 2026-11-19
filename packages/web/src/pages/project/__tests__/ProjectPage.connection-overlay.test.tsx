@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The workspace overlay must appear for every connection state the banner
@@ -66,6 +66,7 @@ vi.mock('@web/data/yjs/project-meta', async () => {
     > => ({
       spaces: [],
       users: new Map(),
+      following: new Map(),
       synced: true,
       provider: null,
       status: socket.status,

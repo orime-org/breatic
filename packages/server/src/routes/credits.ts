@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Credit routes (task #11) — the account's own view of its credits, and the
@@ -17,12 +17,11 @@
 import { Hono } from "hono";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { validate } from "@server/middleware/validate.js";
+import { validate, env, logger, ForbiddenError } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { creditViewService, paymentService } from "@server/modules";
 import * as studioCreditDesignation from "@server/modules/studio/studioCreditDesignation.service.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { env, logger, ForbiddenError } from "@breatic/core";
 import { logFulfillment } from "@server/modules/payment/fulfillment-log.js";
 import {
   creditAmountFormatQuerySchema,

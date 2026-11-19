@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * `@breatic/core` — shared backend runtime.
@@ -91,13 +91,13 @@ export {
   getMembershipLimits,
   getDefaultMembershipTier,
   getSubscriptionStaleAfterDays,
+  subscriptionClock,
 } from "@core/config/membership.js";
 export type { MembershipConfig, MembershipLimits } from "@core/config/membership.js";
 export {
   getSubscriptionPlans,
   getSubscriptionPlan,
   findOfferByPriceId,
-  subscriptionClock,
   getStripeCallTimeoutMs,
   resetSubscriptionConfigCache,
 } from "@core/config/subscription.js";
@@ -210,6 +210,7 @@ export * as assetRepo from "@core/asset/asset.repo.js";
 export { StorageKeyRetiredError, type RegisterAssetInput } from "@core/asset/asset.repo.js";
 export * as projectEditsRepo from "@core/project/project-edits.repo.js";
 export * as timelineExecutionRepo from "@core/timeline/timeline-execution.repo.js";
+export { announceExecutionChange } from "@core/timeline/execution-change.js";
 export {
   TIMELINE_QUEUE,
   TIMELINE_EXECUTION_JOB,
@@ -258,6 +259,7 @@ export {
 } from "@core/auth/subscription.repo.js";
 export type {
   StoredSubscription,
+  SubscriptionConn,
   SubscriptionWrite,
 } from "@core/auth/subscription.repo.js";
 export {
@@ -304,6 +306,8 @@ export {
   ValidationError,
   UnauthorizedError,
   TooManyRequestsError,
+  SpendCapReachedError,
+  type SpendCapLimit,
 } from "@core/app-errors.js";
 export {
   ADS_CONVERSION_QUEUE,
@@ -351,3 +355,31 @@ export * from "@core/credit/credit-grant-contract.js";
 
 export * as accountActivityRepo from "@core/activity/account-activity.repo.js";
 export * as accountActivityCoverageRepo from "@core/activity/account-activity-coverage.repo.js";
+
+// HTTP building blocks shared by every service that answers HTTP.
+export { validate, RequestShapeError } from "@core/http/validate.js";
+export * from "@core/http/internal-signature.js";
+export { closeAfterRefusal } from "@core/http/close-after-refusal.js";
+export { toPage } from "@core/http/keyset-page.js";
+export { frontendOrigin } from "@core/http/frontend-origin.js";
+export { fingerprint } from "@core/http/request-fingerprint.js";
+export { isKnownTimeZone } from "@core/util/time-zone.js";
+export { asStorable, holdsOnlyStorableText, isStorableText, storableText } from "@core/util/storable-text.js";
+export {
+  createRateLimiting,
+  type KeyBy,
+  type Quota,
+  type RateLimitAnswers,
+  type RateLimitEvent,
+  type RateLimiting,
+  type RateLimitingDeps,
+} from "@core/http/rate-limit.js";
+export { getRateLimit, rateLimitsConfigSchema } from "@core/config/rate-limits.js";
+export { createRunOnce, type RunContext, type RunOnceDeps, type RunOnceEvent } from "@core/http/run-once.js";
+export { getRunningLeaseMs, idempotencyConfigSchema } from "@core/config/idempotency.js";
+export { createAfterReply, type AfterReply, type AfterReplyDeps } from "@core/http/after-reply.js";
+export { createInternalAuth, type InternalAuthDeps, type InternalAuthEvent } from "@core/http/internal-auth.js";
+export { createErrorHandler, type ErrorHandlerEvent } from "@core/http/error-handler.js";
+export { createInternalErrorHandler, type InternalErrorHandlerDeps } from "@core/http/internal-errors.js";
+export { createLogRequest, type InternalRequestLine } from "@core/http/log-request.js";
+export { membershipReadingsAt, type MembershipSnapshotRow } from "@core/auth/membership.repo.js";

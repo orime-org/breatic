@@ -1,13 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Context, Hono } from "hono";
 import { z } from "zod";
 import { REFERRAL_CODE_INPUT_MAX } from "@breatic/shared";
-import { storableText } from "@server/utils/storable-text.js";
+import { storableText, validate, fingerprint } from "@breatic/core";
 import { requirePayments } from "@server/middleware/require-payments.js";
-import { validate } from "@server/middleware/validate.js";
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
 import * as referralAdmin from "@server/modules/referral/referral-admin.service.js";
 
 const APPLICATIONS = "/internal/v1/promoter-applications";

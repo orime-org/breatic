@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Stacking web-animation copies with video in the preview (inner#1711 design §7.3, breatic#1410 design §6.1).

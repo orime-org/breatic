@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Chat routes — conversational AI with SSE streaming.
@@ -9,14 +9,11 @@
  * which replays the run's resumable stream (inner#1717).
  */
 
-import { accountActivityRepo } from "@breatic/core";
-import { reportCollaboratorFirstAction } from "@breatic/core";
+import { accountActivityRepo, reportCollaboratorFirstAction, holdsOnlyStorableText, validate, AppError, getRedis, logger, getAgentConfig, NotFoundError, SpendCapReachedError, ValidationError } from "@breatic/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { randomUUID } from "node:crypto";
 import { runAfterReply } from "@server/utils/after-reply.js";
-import { holdsOnlyStorableText } from "@server/utils/storable-text.js";
-import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 
@@ -47,7 +44,6 @@ import { agentInstructionsService } from "@server/modules";
 import { runningTurnsService } from "@server/modules";
 import { projectService } from "@server/modules";
 import { precheckCredits } from "@server/modules";
-import { SpendCapReachedError } from "@server/modules";
 import { SMALLEST_CREDIT } from "@breatic/domain";
 import { startRun, stopChannel } from "@server/agent/chat-run.js";
 import { runStreams } from "@server/agent/run-stream.js";
@@ -55,7 +51,6 @@ import { isShuttingDown } from "@server/agent/shutdown-flag.js";
 import { takenMessageOf, userMessageData } from "@server/agent/taken-message.js";
 import { chatQueue, type QueueItem } from "@server/modules/chat-queue/chat-queue.service.js";
 import { toUiMessages } from "@server/modules/conversation/message-part-mapping.js";
-import { AppError, getRedis, logger, getAgentConfig, NotFoundError, ValidationError } from "@breatic/core";
 import { attachmentSection, getActiveLocale, messageLength, referenceCount, t } from "@breatic/shared";
 import type { ChatAttachedChip, ChatPendingItem, ChatSpaceContext, SpaceRequestAnswer } from "@breatic/shared";
 import { assertLlmServable } from "@server/modules/task/model-servable.js";

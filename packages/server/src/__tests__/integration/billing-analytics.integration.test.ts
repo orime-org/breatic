@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Purchase and subscription events (inner#1442 design §4.8, §4.9) — real PG
@@ -143,7 +143,6 @@ describe("credit purchases", () => {
 
     await fulfillPayment(sessionId, { id: `evt_${sessionId}`, type: "checkout.session.completed" });
     await fulfillPayment(sessionId, null);
-    await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(sent).toEqual([
       expect.objectContaining({
@@ -155,7 +154,7 @@ describe("credit purchases", () => {
     ]);
     // Google Ads caps a transaction id at 64 characters; a Session id alone is 66.
     expect(`purchase:${paymentId}`.length).toBeLessThanOrEqual(64);
-    expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: `purchase:${paymentId}` })).toBe("queued");
+    await expect.poll(() => getUploadStatus({ conversion: "credit_purchase", transactionId: `purchase:${paymentId}` })).toBe("queued");
     // The upload keeps no link to the order, so the order's row is never held by it.
     const columns = await sql<{ column_name: string }[]>`
       SELECT column_name FROM information_schema.columns WHERE table_name = 'ads_conversion_uploads'
@@ -253,8 +252,6 @@ describe("subscriptions", () => {
 
     await handleSubscriptionEvent(event("customer.subscription.updated", stripeSub(customerId, "active")));
     await handleSubscriptionEvent(event("customer.subscription.updated", stripeSub(customerId, "active")));
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
     const txn = `sub:sub_billing_${customerId}`;
     expect(sent).toEqual([
       expect.objectContaining({
@@ -264,7 +261,7 @@ describe("subscriptions", () => {
         event_properties: { tier: "pro", interval: "month", amount_cents: plan.priceCents, currency: plan.currency },
       }),
     ]);
-    expect(await getUploadStatus({ conversion: "subscription", transactionId: txn })).toBe("queued");
+    await expect.poll(() => getUploadStatus({ conversion: "subscription", transactionId: txn })).toBe("queued");
   });
 
   it("reports a renewal under the latest reported consent, and nothing without one", async () => {

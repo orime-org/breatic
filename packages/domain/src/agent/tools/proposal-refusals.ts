@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Every way the proposal check can refuse, by name, and whether its reason
@@ -57,6 +57,8 @@ export const REFUSALS = {
   "template-edge-into": "node",
   "template-input-into": "node",
   "template-input-missing": false,
+  "template-optional-input-untagged": "node",
+  "template-optional-input-paragraph": false,
   "template-no-prompt": "node",
   "template-tweak-unfilled": "node",
   "sources-no-taker": false,

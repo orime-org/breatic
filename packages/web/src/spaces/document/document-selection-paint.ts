@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A block with no text inside the user's selection is drawn as selected
@@ -44,6 +44,7 @@ import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selec
 import { bodyHolds } from '@web/spaces/document/document-body-focus';
 import { UNSUPPORTED_BLOCK } from '@web/spaces/document/document-unsupported-blocknote';
 import { DIVIDER } from '@web/spaces/document/document-divider';
+import { MATH_BLOCK } from '@web/spaces/document/document-math';
 import { heldRange } from '@web/spaces/document/document-table-leave-selection';
 import { MEDIA_BLOCK_TYPES, isMediaBlockType } from '@web/spaces/document/document-media-types';
 
@@ -79,12 +80,13 @@ export const MEDIA_IN_SELECTION_CLASS = 'doc-media-in-selection';
 
 
 /** The blocks with no text that a range selection paints. */
-const NO_TEXT = new Set<string>([DIVIDER, UNSUPPORTED_BLOCK, ...MEDIA_BLOCK_TYPES]);
+const NO_TEXT = new Set<string>([DIVIDER, UNSUPPORTED_BLOCK, MATH_BLOCK, ...MEDIA_BLOCK_TYPES]);
 
 /**
  * The node selections painted here. A media block the user selected draws
  * its own frame, with its corner knobs and its toolbar, off its own selected
- * state (`DocumentMediaBlock`), so all of it comes and goes together.
+ * state (`DocumentMediaBlock`), so all of it comes and goes together; a
+ * formula block draws its frame the same way (`document-math.tsx`).
  */
 const NODE_SELECTED = new Set([DIVIDER]);
 

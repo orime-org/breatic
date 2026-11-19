@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -43,7 +43,10 @@ const webAnimationSchema = z.object({
   sweep_batch_size: positiveInt.default(200),
   /** How long a pickup waits before asking the container job again. */
   poll_interval_ms: positiveInt.default(5_000),
-  /** How often web refetches web-source resolution while it references another Project's unfinished execution. */
+  /**
+   * The polling interval of web builds from before Timeline state moved into its document (#1568); the current web reads
+   * none. Remove, with `sourceRefreshIntervalMs` in the limits answer, in the release after #1568 ships.
+   */
   source_refresh_interval_ms: positiveInt.default(10_000),
   /** The container instance the cost of a run is computed for, priced by `config/mini-tools.yaml`. */
   container: z.object({

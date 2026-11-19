@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * How to write a template's prompts well (inner#1807), handed to the agent
@@ -20,7 +20,7 @@ export const TEMPLATE_CRAFT = {
   video:
     "Craft for video: the first frame is already the finished picture and already moving, with a hook within " +
     "2 seconds; timecodes are whole seconds, continuous, not overlapping and adding up to the duration, with a " +
-    "visible beat every 2 to 3 seconds; one main camera move per shot, with its start, direction and end and " +
+    "visible beat every 2 to 3 seconds unless the template sets its own cut rhythm; one main camera move per shot, with its start, direction and end and " +
     "what stays still; one light source logic; sound in layers, saying where silence falls.",
   audio:
     "Craft for sound: for music, name the genre, the BPM, the key, 2 to 3 instruments and how the energy rises " +

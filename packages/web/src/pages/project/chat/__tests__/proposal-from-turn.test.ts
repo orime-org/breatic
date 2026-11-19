@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Reading a proposal off a turn, so the card survives a reload (#229).
@@ -130,5 +130,20 @@ describe('a turn whose proposal was stored in a shape this build no longer place
 
   it('says nothing has expired on a proposal the tool refused', () => {
     expect(toChatMessage(turnWith({ placed: false, reason: 'no' })).hasExpiredProposal).toBeUndefined();
+  });
+});
+
+describe('a proposal with a ref to an optional input (inner#1811, CAP-9)', () => {
+  it('keeps the ref marked optional, which tells the canvas to leave its paragraph out while the node is empty', () => {
+    const message = toChatMessage(
+      turnWith({
+        ...ACCEPTED,
+        nodes: [
+          ACCEPTED.nodes[0]!,
+          { ...ACCEPTED.nodes[1]!, prompt: [{ text: 'Looks like ' }, { ref: 0, optional: true }, { text: '.' }] },
+        ],
+      }),
+    );
+    expect(message.proposals?.[0]?.nodes[1]?.prompt?.[1]).toEqual({ ref: 0, optional: true });
   });
 });

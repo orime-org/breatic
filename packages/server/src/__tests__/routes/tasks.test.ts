@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Tasks route tests — list, get, canvas task creation.
@@ -274,6 +274,33 @@ describe("Tasks routes", () => {
       expect(mocks.taskService.create).not.toHaveBeenCalled();
       expect(mockQueueAdd).not.toHaveBeenCalled();
       mocks.sendsUntakenPrompt.mockReturnValue(false);
+    });
+
+    it("rejects a run no upstream here takes BEFORE enqueue, naming the limit (#1521) — no task, no hold", async () => {
+      const tts = [{ name: "gemini-3.8-flash-text-to-speech", display_name: "Gemini 3.8 Flash TTS" }];
+      vi.mocked(domain.modelCatalog.getModelCatalog).mockReturnValueOnce({ image: [], video: [], audio: [], tts, three_d: [], total: 1 } as never);
+      mocks.inputRefusalFor.mockResolvedValueOnce({ reason: "WaveSpeed text maxLength 8000", limit: { field: "prompt", measure: "characters", max: 8000 } });
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "audio",
+          params: { prompt: "x".repeat(8001), voice_id: "Kore" },
+          model: "gemini-3.8-flash-text-to-speech",
+          source: "task",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+        }),
+      });
+
+      expect(res.status).toBe(422);
+      expect(((await res.json()) as { error: { message: string } }).error.message).toBe("server.model.input_limit.characters_max");
+      expect(mocks.inputRefusalFor).toHaveBeenCalledWith("gemini-3.8-flash-text-to-speech", expect.objectContaining({ prompt: "x".repeat(8001) }), undefined);
+      expect(mocks.creditHoldService.reserveCredits).not.toHaveBeenCalled();
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
+      expect(mockQueueAdd).not.toHaveBeenCalled();
     });
 
     it("rejects a submission with too many reference images BEFORE enqueue (#1735) — no task, no bill", async () => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The BlockNote schema this Space runs on.
@@ -102,13 +102,14 @@ describe('the document schema', () => {
     expect(audio).not.toContain('textAlignment');
   });
 
-  it('lets only the divider and the three media blocks be blocks with no content that carry `quoted`', () => {
+  it('lets only the divider, the three media blocks and the formula block be blocks with no content that carry `quoted`', () => {
     // `handleQuotedEnter`'s empty branch reads the caret's offset off the
     // block it is in, and reads it as 0 without asking. A block with no
     // content never gets there: the only selection it can hold is a node
     // selection, and Enter over one goes to `handleWholeBlockEnter` first
     // (`document-enter.ts`). That was checked for the divider (#124) and for
-    // the media blocks (inner#1127). Another such block has to be checked the
+    // the media blocks (inner#1127); a selected formula block's Enter opens its
+    // box first (inner#1423, `document-math-keys.test.ts`). Another such block has to be checked the
     // same way before it joins this list. A layout block (the table) holds no
     // caret of its own: Enter lands in a block inside it.
     const schema = buildDocumentSchema();
@@ -117,7 +118,7 @@ describe('the document schema', () => {
       .filter(([, config]) => config.content === 'none')
       .filter(([, config]) => (config as { layoutOnly?: boolean }).layoutOnly !== true)
       .map(([type]) => type);
-    expect(noContentCarriers.sort()).toEqual(['audio', 'divider', 'image', 'video']);
+    expect(noContentCarriers.sort()).toEqual(['audio', 'divider', 'image', 'mathBlock', 'video']);
   });
 
   it('gives a numbered list item the settable-number prop', () => {

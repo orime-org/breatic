@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The owner's side of a project invitation — create one, list what is pending,
@@ -15,10 +15,9 @@
  */
 
 import { Hono } from "hono";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
+import { frontendOrigin, validate } from "@breatic/core";
 import { z } from "zod";
 import { emailSchema } from "@breatic/shared";
-import { validate } from "@server/middleware/validate.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireRole, getProjectId } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";

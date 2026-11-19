@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Landing acceptance after a Timeline store (inner#1711 design §5.1).
@@ -7,7 +7,8 @@
  * The browser writes `operationReceipts[actionId]` once the server has accepted an execution. After collab stores
  * the document, the receipts in the bytes it just stored move each matching `awaiting_landing` row of that Project
  * and Space to `queued`: the action, the execution, the input hash, a listed Space, the document's frame rate and the
- * original deadline must all agree. Each accepted row is enqueued under its execution id and signals the Space.
+ * original deadline must all agree. Each accepted row is enqueued under its execution id and announced to the
+ * Timeline's document.
  *
  * A row left waiting is not lost: the next store tries it again, and the worker's sweep ends it at its deadline. A
  * duplicated Project's document carries its source's receipts; they name rows of another Project, which this
@@ -18,10 +19,10 @@ import * as Y from "yjs";
 import {
   TIMELINE_QUEUE,
   addTimelineExecutionJob,
+  announceExecutionChange,
   createLogger,
   createQueue,
   listedContentDocNamesInState,
-  publishSpaceTasksChanged,
   timelineExecutionRepo,
 } from "@breatic/core";
 import { parseDocName, projectMetaDocName, spaceContentDocName, type TimelineExecution, type TimelineRate } from "@breatic/shared";
@@ -68,7 +69,7 @@ async function isListed(projectId: string, documentName: string): Promise<boolea
 }
 
 /**
- * Land one execution: queue it, enqueue its job and signal the Space. A job that fails to enqueue is added by the
+ * Land one execution: queue it, enqueue its job and announce it to the Timeline's document. A job that fails to enqueue is added by the
  * worker's sweep, since the row is due at once.
  * @param row - The awaiting row.
  * @returns Nothing.
@@ -83,9 +84,9 @@ async function land(row: TimelineExecution): Promise<void> {
     logger.error({ err, executionId: row.id, projectId: row.projectId }, "timeline_execution_enqueue_failed");
   }
   try {
-    await publishSpaceTasksChanged(row.projectId, row.spaceId);
+    await announceExecutionChange(row);
   } catch (err) {
-    logger.error({ err, executionId: row.id, projectId: row.projectId, spaceId: row.spaceId }, "space_tasks_publish_failed");
+    logger.error({ err, executionId: row.id, projectId: row.projectId, spaceId: row.spaceId }, "execution_change_publish_failed");
   }
 }
 

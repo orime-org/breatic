@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The task rows a generation leaves on the nodes it will write to (#186).
@@ -19,7 +19,7 @@ import { randomUUID } from "node:crypto";
 import { getNodeTaskConfig, AppError, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { creditHoldService, nodeTaskService, taskService } from "@breatic/domain";
-import { reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
+import { reserveForRun } from "@server/modules/credit/credit-precheck.service.js";
 import { assertAccess } from "@server/modules/project/project.service.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { t } from "@breatic/shared";

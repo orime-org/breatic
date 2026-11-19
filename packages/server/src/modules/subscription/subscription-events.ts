@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What to do when Stripe tells us a subscription changed (task #106, §8).
@@ -48,6 +48,7 @@ import type {
 import { applySubscriptionWrite } from "@server/modules/subscription/apply-subscription.js";
 import { claimWebhookEvent } from "@server/modules/subscription/webhook-events.repo.js";
 import { sendMembershipEndedMail } from "@server/modules/subscription/settle-tier.js";
+import { INVOICE_PAID_EVENT_TYPE, SHARED_SESSION_EVENT_TYPES, SUBSCRIPTION_EVENT_TYPES } from "@server/modules/subscription/subscription-event-types.js";
 
 /**
  * What handling one event came to.
@@ -77,39 +78,6 @@ export type SubscriptionEventOutcome =
   | { status: "noop"; reasonCode: "no_account" | "unknown_price" | "no_subscription"; reason: string }
   | { status: "replay"; userId: string }
   | { status: "applied"; userId: string; tier: MembershipTier };
-
-/**
- * The event types that say something about a subscription's state.
- *
- * `checkout.session.completed` is absent here but still claimed below when its
- * session is a subscription one: it says the checkout flow finished, which is
- * not the same as the subscription being paid for — at that moment it may
- * still be `incomplete` — so there is nothing to do with it, and the state
- * arrives through `customer.subscription.*` instead.
- */
-const SUBSCRIPTION_EVENT_TYPES: ReadonlySet<string> = new Set([
-  "customer.subscription.created",
-  "customer.subscription.updated",
-  "customer.subscription.deleted",
-  "customer.subscription.pending_update_applied",
-  "customer.subscription.pending_update_expired",
-]);
-
-/**
- * The Checkout Session events both legs receive.
- *
- * Every one of these arrives for a membership checkout and for a credit-pack
- * checkout alike, and nothing but the session's `mode` separates them. A
- * membership event that falls through to the credit leg looks up a `payments`
- * row that was never written: the failure branch answers the webhook 404, and
- * Stripe redelivers a 404 for three days.
- */
-const SHARED_SESSION_EVENT_TYPES: ReadonlySet<string> = new Set([
-  "checkout.session.completed",
-  "checkout.session.async_payment_succeeded",
-  "checkout.session.async_payment_failed",
-  "checkout.session.expired",
-]);
 
 /**
  * Whether an event belongs to the membership leg at all.
@@ -220,7 +188,7 @@ function priceIdOfPendingUpdate(
 export async function handleSubscriptionEvent(
   event: Stripe.Event,
 ): Promise<SubscriptionEventOutcome> {
-  if (event.type === "invoice.paid") return handleInvoicePaid(event);
+  if (event.type === INVOICE_PAID_EVENT_TYPE) return handleInvoicePaid(event);
   if (!claimsEvent(event)) return { status: "notMine" };
 
   if (!SUBSCRIPTION_EVENT_TYPES.has(event.type)) {
@@ -338,7 +306,7 @@ async function handleInvoicePaid(event: Stripe.Event): Promise<SubscriptionEvent
   if (!userId) {
     return { status: "noop", reasonCode: "no_account", reason: `no account claims Stripe customer ${customerId ?? "(none named)"}` };
   }
-  const { record } = subscriptionSituation(await listSubscriptions(userId), subscriptionClock());
+  const { record } = subscriptionSituation(await listSubscriptions(db, userId), subscriptionClock());
   if (!record) return { status: "noop", reasonCode: "no_subscription", reason: `account ${userId} holds no subscription` };
   await reportSubscriptionRenewed({ eventId: event.id, userId, subscription: record });
   return { status: "acknowledged", reason: "renewal reported" };

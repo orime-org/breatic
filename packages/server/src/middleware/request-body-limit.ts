@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The public app's request body limit (inner#1006).
@@ -16,10 +16,9 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getConnInfo } from "@hono/node-server/conninfo";
-import { decideClientIdentity, logger } from "@breatic/core";
+import { decideClientIdentity, logger, closeAfterRefusal } from "@breatic/core";
 import { formatBytes, t } from "@breatic/shared";
-import { getRequestBodyMaxBytes } from "@server/config/limits.js";
-import { closeAfterRefusal } from "@server/middleware/close-after-refusal.js";
+import { getRequestBodyLingerSeconds, getRequestBodyMaxBytes } from "@server/config/limits.js";
 import { readSessionCookie } from "@server/middleware/session-cookie.js";
 import { authService } from "@server/modules";
 
@@ -71,7 +70,7 @@ export function payloadTooLarge(c: Context, limitBytes: number): Response {
  * @returns The 413 answer.
  */
 async function refuse(c: Context, maxSize: number): Promise<Response> {
-  closeAfterRefusal(c);
+  closeAfterRefusal(c, getRequestBodyLingerSeconds);
   logger.warn(
     {
       path: c.req.path,

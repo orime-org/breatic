@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { LayoutTemplate } from 'lucide-react';
 import * as React from 'react';
@@ -35,6 +35,18 @@ interface TemplateMenuProps {
   models: readonly { name: string }[];
   /** Applies the picked template to the node. */
   onPick: (template: GenerationTemplate) => void;
+}
+
+/**
+ * A template line with each hyphenated word kept whole: a browser may wrap
+ * after any hyphen, which leaves half a word on the next line.
+ * @param line - The line.
+ * @returns Its parts, each hyphenated word in a span that does not wrap.
+ */
+function keepHyphenatedWordsWhole(line: string): React.ReactNode[] {
+  return line
+    .split(/(\S+-\S+)/)
+    .map((part, index) => (index % 2 === 1 ? <span key={index} className='whitespace-nowrap'>{part}</span> : part));
 }
 
 /**
@@ -108,8 +120,8 @@ export const TemplateMenu = React.memo(function TemplateMenu({
                           <DropdownMenuTrailing>{t('canvas.template.unavailable')}</DropdownMenuTrailing>
                         )}
                       </span>
-                      <span className='text-xs text-muted-foreground in-data-[highlighted]:text-foreground'>
-                        {t(`canvas.template.${template.id}.description`)}
+                      <span className='text-pretty text-xs text-muted-foreground in-data-[highlighted]:text-foreground'>
+                        {keepHyphenatedWordsWhole(t(`canvas.template.${template.id}.description`))}
                       </span>
                     </DropdownMenuItem>
                   );

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Web i18n bootstrap — runs once at app startup, before React renders.
@@ -114,6 +114,21 @@ export async function changeLocale(locale: Locale): Promise<LocaleSwitch> {
   }
   activate(locale);
   return 'switched';
+}
+
+/**
+ * A key's message in English, whatever the active locale. English ships in
+ * the entry, so this reads the catalog already on the page; it is for text
+ * matched against what the user types in either language (the document
+ * body's slash menu).
+ * @param key - Dot-notation translation key.
+ * @returns The raw English message, or undefined when English has no string there.
+ */
+export function englishMessage(key: string): string | undefined {
+  const message: unknown = key
+    .split('.')
+    .reduce<unknown>((at, part) => (at as Record<string, unknown> | undefined)?.[part], en);
+  return typeof message === 'string' ? message : undefined;
 }
 
 /**

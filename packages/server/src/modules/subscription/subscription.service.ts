@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The four things a person can do to their membership (task #106, §7, §6.5.3).
@@ -93,7 +93,7 @@ export interface PlanChange {
 async function readSituation(
   userId: string,
 ): Promise<SituationReading<StoredSubscription>> {
-  const rows = await listSubscriptions(userId);
+  const rows = await listSubscriptions(db, userId);
   return subscriptionSituation(rows, subscriptionClock());
 }
 

@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import * as React from 'react';
 import * as Y from 'yjs';
 
-import type { SpaceType } from '@breatic/shared';
+import { FOLLOWING_TABLE, followingEntrySchema, type FollowingEntry, type SpaceType } from '@breatic/shared';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSocket, type ConnectionStatus } from '@web/data/yjs/use-socket';
 
@@ -15,7 +15,9 @@ import { useSocket, type ConnectionStatus } from '@web/data/yjs/use-socket';
  *
  * Y.Doc structure:
  *
- *   spaces:  Y.Map<spaceId, Y.Map<{ id, name, type, locked?, claimToken? }>>
+ *   spaces:    Y.Map<spaceId, Y.Map<{ id, name, type, locked?, claimToken? }>>
+ *   users:     Y.Map<userId, Y.Map<{ id, online, lastSeenAt }>>
+ *   following: Y.Map<socketId, Y.Map<{ userId, target, at, lastSeenAt }>>
  *
  * The tab bar is NOT in this doc: which Spaces are open, in what order, and
  * which one is showing belong to the person looking, not to the project. The
@@ -99,6 +101,14 @@ export interface ProjectMetaState {
    * here — resolve them from the project roster by id.
    */
   users: ReadonlyMap<string, ProjectUser>;
+  /**
+   * Whom each member follows (#920): user id → the user id they follow, from
+   * the table collab keeps per connection. A tab's own awareness `following`
+   * is only its declaration to the server; peers read this instead, because
+   * awareness drops a hidden tab on the browser's throttled timers while its
+   * connection, and so its entry, is still alive.
+   */
+  following: ReadonlyMap<string, string>;
   /** True once the initial Hocuspocus sync for this project has completed. */
   synced: boolean;
   /**
@@ -130,14 +140,11 @@ export function useProjectMeta(projectId: string): ProjectMetaState {
     doc,
   });
 
-  const [state, setState] = React.useState<{
-    spaces: ReadonlyArray<ProjectSpace>;
-    users: ReadonlyMap<string, ProjectUser>;
-  }>(() => readMetaState(doc));
+  const [state, setState] = React.useState<MetaProjection>(() => readMetaState(doc));
 
   React.useEffect(() => {
     /**
-     * Re-read the spaces and users maps from the doc into React state.
+     * Re-read the spaces, users and following maps from the doc into React state.
      * @returns Nothing.
      */
     const update = (): void => setState(readMetaState(doc));
@@ -149,12 +156,15 @@ export function useProjectMeta(projectId: string): ProjectMetaState {
     // never lands changes here — see PR-b post-merge bug.
     const spacesMap = doc.getMap<Y.Map<unknown>>(SPACES_KEY);
     const users = doc.getMap<Y.Map<unknown>>(USERS_KEY);
+    const following = doc.getMap(FOLLOWING_TABLE);
     spacesMap.observeDeep(update);
     users.observeDeep(update);
+    following.observeDeep(update);
     update();
     return () => {
       spacesMap.unobserveDeep(update);
       users.unobserveDeep(update);
+      following.unobserveDeep(update);
     };
   }, [doc]);
 
@@ -217,15 +227,34 @@ function readUsers(doc: Y.Doc): ReadonlyMap<string, ProjectUser> {
 }
 
 /**
+ * Read whom each member follows from the server's following table.
+ * @param doc - The project meta Y.Doc to read from.
+ * @returns User id → whom they follow; a member following from several tabs
+ *   counts the one that started latest (`lastSeenAt` only says a connection
+ *   is alive), and an entry that fails the schema counts as absent.
+ */
+function readFollowingTable(doc: Y.Doc): ReadonlyMap<string, string> {
+  const latest = new Map<string, FollowingEntry>();
+  doc.getMap(FOLLOWING_TABLE).forEach((value) => {
+    if (!(value instanceof Y.Map)) return;
+    const parsed = followingEntrySchema.safeParse(value.toJSON());
+    if (!parsed.success) return;
+    const best = latest.get(parsed.data.userId);
+    if (best === undefined || parsed.data.at > best.at) latest.set(parsed.data.userId, parsed.data);
+  });
+  return new Map([...latest].map(([userId, entry]) => [userId, entry.target]));
+}
+
+/** What `useProjectMeta` reads out of the meta doc itself. */
+type MetaProjection = Pick<ProjectMetaState, 'spaces' | 'users' | 'following'>;
+
+/**
  * Project the meta doc into the React-facing state shape.
  * @param doc - The project meta Y.Doc to read from.
- * @returns The spaces and the users map.
+ * @returns The spaces, the users map and whom each member follows.
  */
-function readMetaState(doc: Y.Doc): {
-  spaces: ReadonlyArray<ProjectSpace>;
-  users: ReadonlyMap<string, ProjectUser>;
-} {
-  return { spaces: readSpaces(doc), users: readUsers(doc) };
+function readMetaState(doc: Y.Doc): MetaProjection {
+  return { spaces: readSpaces(doc), users: readUsers(doc), following: readFollowingTable(doc) };
 }
 
 /**

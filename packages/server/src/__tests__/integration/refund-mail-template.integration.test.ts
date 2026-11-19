@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the three refund mails say (inner#1410 §8; `refund_restored` is v9).
@@ -280,7 +280,7 @@ describe("refund_restored: the detail block (v9 §8)", () => {
     expect(wording?.restored?.subject, `${locale} server.refund_mail.restored.subject`).toEqual(expect.any(String));
     expect(wording?.restored?.intro, `${locale} server.refund_mail.restored.intro`).toEqual(expect.any(String));
     const mail = await renderRefundMail(restored({ locale }));
-    // Every product mail's subject is "Breatic - <heading>" (utils/mail-shell.ts).
+    // Every product mail's subject is "Breatic - <heading>" (domain `mail/mail-shell.ts`).
     expect(mail.subject).toBe(`Breatic - ${wording!.restored!.subject}`);
   });
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** Reading one call's pages a few at a time, within its deadline (inner#1664). */
 import type { ReadPageResult } from "@breatic/shared";

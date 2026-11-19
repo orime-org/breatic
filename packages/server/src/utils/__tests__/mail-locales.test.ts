@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Every product email renders in each of the five languages, in the branded
@@ -37,7 +37,7 @@ import {
   buildMembershipEndedMail,
   buildStorageQuotaExceededMail,
 } from "@server/utils/notification-mail.js";
-import { escapeHtml, type RenderedMail } from "@server/utils/mail-shell.js";
+import { escapeHtml, type RenderedMail } from "@breatic/domain";
 import { buildSignupCodeMail, buildPasswordResetMail } from "@server/modules/auth/auth-mail.js";
 
 loadLocales();

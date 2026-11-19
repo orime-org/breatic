@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { serviceObservability } from "../service-observability";
 
@@ -31,17 +31,18 @@ ruleTester.run("service-observability", serviceObservability, {
       filename: entry,
       code: `initLogger("collab");\ncore.startHealthServer(1);`,
     },
-    // Not a service entry: this rule has nothing to say about it.
-    {
-      filename: "/repo/packages/core/src/index.ts",
-      code: `export const x = 1;`,
-    },
-    {
-      filename: "/repo/packages/server/src/routes/assets.ts",
-      code: `export const x = 1;`,
-    },
   ],
   invalid: [
+    // Which files are service entries is the config's choice (`files`); a
+    // service outside this repository's packages is held to the same rule.
+    {
+      filename: "/repo/packages/commerce/src/index.ts",
+      code: `export const x = 1;`,
+      errors: [
+        { messageId: "noLogger" },
+        { messageId: "noHealthServer" },
+      ],
+    },
     {
       filename: entry,
       code: `export const x = 1;`,

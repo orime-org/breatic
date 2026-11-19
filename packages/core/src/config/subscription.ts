@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Subscription plan configuration loader (task #106, design §12).
@@ -7,8 +7,7 @@
  * Reads `config/subscription.yaml`: what each subscribable tier costs over
  * each billing period, and which Stripe price sells it.
  *
- * Lives in core, beside the membership ceilings, with the clock every reading
- * of an account's subscriptions is taken against. Only server reads this file:
+ * Lives in core, beside the membership ceilings. Only server reads this file:
  * it holds a deployment's prices and is mounted into server alone, so the
  * renewal window that decides a tier is in `config/membership.yaml` instead
  * (inner#1636).
@@ -29,9 +28,7 @@ import {
   type MembershipOffer,
   type SubscribableMembershipTier,
 } from "@breatic/shared";
-import type { SituationClock } from "@core/auth/subscription-state.js";
 import { env, MONOREPO_ROOT } from "@core/config/env.js";
-import { getSubscriptionStaleAfterDays } from "@core/config/membership.js";
 
 /** What one tier costs over one billing period, and which price sells it. */
 const periodSchema = z.object({
@@ -169,25 +166,6 @@ export function getSubscriptionPlans(): SubscriptionPlans {
  */
 export function getStripeCallTimeoutMs(): number {
   return readFile().stripe_call_timeout_ms;
-}
-
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-/**
- * The clock every reading of an account's subscriptions is taken against.
- *
- * The renewal window comes from `config/membership.yaml`, read when a
- * reading first asks for it, which only a row with a period end does.
- * @param now - The moment to read at.
- * @returns That moment with the configured renewal window.
- */
-export function subscriptionClock(now: Date = new Date()): SituationClock {
-  return {
-    now,
-    get staleAfterMs(): number {
-      return getSubscriptionStaleAfterDays() * MS_PER_DAY;
-    },
-  };
 }
 
 /**

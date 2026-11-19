@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What Enter does inside a quote.
@@ -25,6 +25,7 @@
 import {
   createExtension,
   getBlockInfoNearPos,
+  type BlockNoteEditor,
 } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import {
@@ -309,6 +310,10 @@ export const documentEnterExtension = createExtension(() => {
 
   return {
     key: 'document-enter',
+    // Read by other key handlers too (the slash menu): a menu that opens on
+    // the commit itself has to see the composition that just ended, so one
+    // tracker lives as long as the editor (inner#1125 design 5.4).
+    compositionEnd: ended,
     // Ahead of the code block's own Enter, which asks only what type the
     // caret's block is and answers with `insertText`. Over a node selection
     // that replaces the whole block, so the two selection kinds this file
@@ -381,3 +386,16 @@ export const documentEnterExtension = createExtension(() => {
     },
   } as never;
 });
+
+/**
+ * The body's composition-end tracker, the one the Enter binding reads, for
+ * any other key handler of the same editor (inner#1125 design 5.4).
+ * @param editor - The editor.
+ * @returns The tracker, or undefined when the editor has no Enter extension.
+ */
+export function compositionEndOf(
+  editor: Pick<BlockNoteEditor<never, never, never>, 'getExtension'>,
+): CompositionEnd | undefined {
+  const extension = editor.getExtension(documentEnterExtension) as { compositionEnd?: CompositionEnd } | undefined;
+  return extension?.compositionEnd;
+}

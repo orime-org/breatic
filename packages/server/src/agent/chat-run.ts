@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * One run of the Agent in one conversation, started by whichever entrance
@@ -16,11 +16,11 @@
  * background. The whole run is after-reply work, from its first line, so a
  * shutdown waits for it before closing the pools it needs.
  */
-import { AppError, env, ForbiddenError, getAgentConfig, logger, NotFoundError, runWithContext, runWithLocale } from "@breatic/core";
+import { AppError, env, ForbiddenError, getAgentConfig, logger, NotFoundError, runWithContext, runWithLocale, SpendCapReachedError } from "@breatic/core";
 import { SMALLEST_CREDIT } from "@breatic/domain";
 import type { ChatSpaceContext } from "@breatic/shared";
 import type { UIMessageChunk } from "ai";
-import { conversationService, precheckCredits, projectService, runningTurnsService, SpendCapReachedError } from "@server/modules";
+import { conversationService, precheckCredits, projectService, runningTurnsService } from "@server/modules";
 import { chatQueue, type RunEnding } from "@server/modules/chat-queue/chat-queue.service.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { runAfterReply } from "@server/utils/after-reply.js";

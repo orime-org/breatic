@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the audio panel's voice-and-settings pill holds (#2156, design §16).
@@ -122,7 +122,7 @@ export function choiceLabel(
  * @param locale - The language to name it in.
  * @returns The name, or undefined when the runtime cannot name it.
  */
-function languageName(tag: string, locale: string): string | undefined {
+export function languageName(tag: string, locale: string): string | undefined {
   try {
     return new Intl.DisplayNames([locale], { type: 'language', languageDisplay: 'standard' }).of(tag);
   } catch {

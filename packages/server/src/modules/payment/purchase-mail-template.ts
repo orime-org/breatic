@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What one purchase's confirmation says, in the language it was bought in.
@@ -38,7 +38,7 @@ import { formatCredits } from "@breatic/shared";
 
 import { refundWindowCloses, t } from "@breatic/shared";
 import { getMailLayout, runWithLocale } from "@breatic/core";
-import { renderMail, type RenderedMail } from "@server/utils/mail-shell.js";
+import { renderMail, type RenderedMail } from "@breatic/domain";
 import type { ConfirmationView } from "@server/modules/payment/payment.repo.js";
 import {
   consentTextAt,

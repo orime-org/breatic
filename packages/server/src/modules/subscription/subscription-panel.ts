@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the membership panel is told about an account's subscription
@@ -13,6 +13,7 @@
  */
 
 import {
+  db,
   listSubscriptions,
   subscriptionClock,
   subscriptionSituation,
@@ -53,7 +54,7 @@ export async function readStoredSubscriptionSummary(
   userId: string,
 ): Promise<SubscriptionSummary> {
   const { situation, record } = subscriptionSituation(
-    await listSubscriptions(userId),
+    await listSubscriptions(db, userId),
     subscriptionClock(),
   );
   if (!record) return EMPTY_SUMMARY;

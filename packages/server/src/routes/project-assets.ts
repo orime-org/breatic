@@ -1,12 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { Hono } from "hono";
 import { z } from "zod";
 import { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@breatic/shared";
-import { projectAssetReferenceService } from "@breatic/core";
+import { projectAssetReferenceService, validate } from "@breatic/core";
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
-import { validate } from "@server/middleware/validate.js";
 
 const projectAssets = new Hono<{ Variables: AuthVariables }>();
 const projectParams = z.object({ projectId: z.uuid() });

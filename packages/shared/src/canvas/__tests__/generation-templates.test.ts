@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The template registry: what each generate panel lists and what a template
@@ -197,6 +197,48 @@ const SOCIAL_HOOK_VIDEOS = SOCIAL_HOOKS.filter((id) => id !== 'fisheye-clone-pov
 /** The poster and graphics templates (inner#1809), in registry order. */
 const POSTERS = ['name-as-world-typography', 'destination-festival-poster', 'photo-paper-diorama'];
 
+/** The comic and storyboard templates (inner#1815), after storyboard-grid-25, in registry order. */
+const COMICS = ['storyboard-sheet-9', 'comic-page', 'comic-4koma', 'storyboard-to-video', 'comic-page-to-motion', 'comic-panels-to-shots'];
+
+/** The comic and storyboard templates an image panel lists. */
+const COMICS_IMAGES = ['storyboard-grid-25', 'storyboard-sheet-9', 'comic-page', 'comic-4koma'];
+
+/** The comic and storyboard templates a video panel lists. */
+const COMICS_VIDEOS = ['storyboard-to-video', 'comic-page-to-motion', 'comic-panels-to-shots'];
+
+/** The animated short templates (inner#1814), in registry order. */
+const ANIMATION = ['cartoon-gag', '3d-cartoon-short', 'stop-motion-short', 'anime-scene', 'anime-action-climax', 'anime-opening-15s'];
+
+/** The e-commerce ad templates (inner#1811), in registry order. */
+const ECOMMERCE = [
+  'product-ad-15s',
+  'ugc-creator-review',
+  'livestream-pitch',
+  'hype-then-twist-ad',
+  'product-commercial-shotlist',
+  'unboxing-ad',
+  'variant-carousel-ad',
+];
+
+/** The product showcase templates (inner#1812), in registry order. */
+const PRODUCT_SHOWCASE = [
+  'product-hero-still',
+  'product-hero-motion',
+  'product-turntable-360',
+  'product-particle-reveal',
+  'product-hero-direct-i2v',
+  'product-state-change',
+];
+
+/** The product showcase video templates, in registry order. */
+const PRODUCT_SHOWCASE_VIDEOS = PRODUCT_SHOWCASE.filter((id) => id !== 'product-hero-still');
+
+/** The talking and dialogue templates (inner#1813), in registry order. */
+const TALKING = ['talking-presenter', 'talking-head-pitch', 'two-speaker-talk', 'talking-own-voice'];
+
+/** The motion and speed templates (inner#1810), in registry order. */
+const SPEED = ['vehicle-speed-cutlist', 'sports-live-coverage', 'extreme-sports-run'];
+
 /** The sound, music and voice templates (inner#1825), in registry order. */
 const SOUND = [
   'ambience-sfx-bed',
@@ -215,8 +257,8 @@ const SOUND = [
 /** The sound templates an audio panel lists: all but the one anchored on its video. */
 const SOUND_AUDIO = SOUND.filter((id) => id !== 'clip-ambience-foley');
 
-/** The templates the plan's G13, G15 and G19 give no case for offering unasked. */
-const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'photo-paper-diorama', 'song-cover'];
+/** The templates the plan's G13, G15, G18 and G19 give no case for offering unasked. */
+const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'photo-paper-diorama', 'sports-live-coverage', 'extreme-sports-run', 'song-cover', 'stop-motion-short'];
 
 /**
  * The template nodes a generate node's words carry a note for, counted the
@@ -299,7 +341,8 @@ describe('generation templates', () => {
       'character-bible',
       'expression-sheet',
       'character-design-from-text',
-      'storyboard-grid-25',
+      ...COMICS_IMAGES,
+      'product-hero-still',
       'dish-hero-still',
       'fisheye-clone-pov',
       'flash-photo-dump-grid',
@@ -309,8 +352,14 @@ describe('generation templates', () => {
       'single-view-refs-scene',
       'identity-locked-sequence',
       'character-showcase-orbit',
+      ...COMICS_VIDEOS,
+      ...ANIMATION,
+      ...ECOMMERCE,
+      ...PRODUCT_SHOWCASE_VIDEOS,
       ...FOOD_VIDEOS,
       ...SOCIAL_HOOK_VIDEOS,
+      ...TALKING,
+      ...SPEED,
       'clip-ambience-foley',
     ]);
     // inner#1825 changes this contract: audio had no template until the sound goal.
@@ -377,6 +426,85 @@ describe('generation templates', () => {
       'name-as-world-typography': { result: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '3:4' } } },
       'destination-festival-poster': { result: { type: 'image', mode: 't2i', model: 'seedream-v5.5-text-to-image', params: { aspect_ratio: '3:4' } } },
       'photo-paper-diorama': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '3:4' } } },
+      'product-ad-15s': {
+        still: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
+        ...t2v(15),
+      },
+      'ugc-creator-review': t2v(15),
+      'livestream-pitch': t2v(12),
+      'hype-then-twist-ad': t2v(12),
+      'product-commercial-shotlist': t2v(12, '16:9'),
+      'unboxing-ad': t2v(25),
+      'variant-carousel-ad': t2v(20),
+      'cartoon-gag': t2v(5),
+      '3d-cartoon-short': {
+        result: { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 10, generate_audio: true } },
+        design: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '1:1' } },
+      },
+      'stop-motion-short': t2v(8, '1:1'),
+      'anime-scene': {
+        result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 6, generate_audio: true } },
+        scene: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '16:9' } },
+      },
+      'storyboard-sheet-9': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9', resolution: '4k' } } },
+      'comic-page': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '2:3', resolution: '4k' } } },
+      'comic-4koma': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16', resolution: '4k' } } },
+      'storyboard-to-video': {
+        result: { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 15, generate_audio: true } },
+        sheet: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+      },
+      'comic-page-to-motion': t2v(10, '16:9'),
+      'comic-panels-to-shots': {
+        result: {
+          type: 'video',
+          mode: 'multi_shot',
+          model: T2V,
+          params: { aspect_ratio: '16:9', duration: 12, generate_audio: true },
+          shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
+        },
+      },
+      'anime-action-climax': t2v(10, '16:9'),
+      'anime-opening-15s': {
+        result: {
+          type: 'video',
+          mode: 'multi_shot',
+          model: T2V,
+          params: { aspect_ratio: '16:9', duration: 15, generate_audio: true },
+          shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
+        },
+      },
+      'talking-presenter': {
+        result: { type: 'video', mode: 'talking_head', model: 'seedance-2.5-talking-avatar', params: {} },
+        portrait: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
+        voice: { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: { emotion: 'neutral' } },
+      },
+      'talking-head-pitch': t2v(10),
+      'two-speaker-talk': {
+        result: { type: 'video', mode: 'talking_head', model: 'infinitetalk-multi', params: { order: 'left_right' } },
+        scene: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+        'left-voice': { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: { emotion: 'neutral' } },
+        'right-voice': { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: { emotion: 'neutral' } },
+      },
+      'talking-own-voice': { result: { type: 'video', mode: 'talking_head', model: 'seedance-2.5-talking-avatar', params: {} } },
+      'product-hero-still': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '1:1', resolution: '4k' } } },
+      'product-hero-motion': {
+        result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 5, generate_audio: false } },
+        still: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '1:1' } },
+      },
+      'product-turntable-360': t2v(10, '1:1'),
+      'product-particle-reveal': {
+        result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 6, generate_audio: true } },
+        render: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+      },
+      'product-hero-direct-i2v': { result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 5, generate_audio: false } } },
+      'product-state-change': {
+        result: { type: 'video', mode: 'first_last', model: I2V, params: { duration: 5, generate_audio: true } },
+        before: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '1:1' } },
+        after: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '1:1' } },
+      },
+      'vehicle-speed-cutlist': t2v(12, '16:9'),
+      'sports-live-coverage': t2v(12, '16:9'),
+      'extreme-sports-run': t2v(10),
       'vertical-15s-quick-tip': {
         result: {
           type: 'video',
@@ -479,16 +607,21 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'food', 'social-hooks', 'posters', 'sound']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'animation', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'talking', 'posters', 'speed', 'sound']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
     const goals: Record<string, string> = {
+      ...Object.fromEntries(ANIMATION.map((id) => [id, 'animation'])),
+      ...Object.fromEntries(ECOMMERCE.map((id) => [id, 'ecommerce'])),
+      ...Object.fromEntries(PRODUCT_SHOWCASE.map((id) => [id, 'product-showcase'])),
+      ...Object.fromEntries(TALKING.map((id) => [id, 'talking'])),
       ...Object.fromEntries(FOOD.map((id) => [id, 'food'])),
       ...Object.fromEntries(SOCIAL_HOOKS.map((id) => [id, 'social-hooks'])),
       ...Object.fromEntries(POSTERS.map((id) => [id, 'posters'])),
+      ...Object.fromEntries(SPEED.map((id) => [id, 'speed'])),
       ...Object.fromEntries(SOUND.map((id) => [id, 'sound'])),
-      'storyboard-grid-25': 'comics-storyboards',
+      ...Object.fromEntries(['storyboard-grid-25', ...COMICS].map((id) => [id, 'comics-storyboards'])),
       'costume-sheet': 'character',
       'character-bible': 'character',
       'expression-sheet': 'character',
@@ -500,7 +633,7 @@ describe('creative goals and triggers', () => {
     for (const template of GENERATION_TEMPLATES) {
       expect(template.goal, template.id).toBe(goals[template.id]);
       expect(template.triggers.asks.length, `${template.id} asks`).toBeGreaterThan(0);
-      // The plan's G13, G15 and G19 write "none" for when to offer these unasked.
+      // The plan's G5, G13, G15, G18 and G19 write "none" for when to offer these unasked.
       expect(template.triggers.offerWhen.length === 0, `${template.id} offerWhen`).toBe(NEVER_OFFERED_UNASKED.includes(template.id));
       for (const words of [...template.triggers.asks, ...template.triggers.offerWhen]) {
         expect(words.trim().length, template.id).toBeGreaterThan(0);
@@ -532,15 +665,22 @@ describe('creative goals and triggers', () => {
   it('groups a node type\'s templates under their goals in goal order, leaving out goals with none', () => {
     expect(templateGoalsFor('image').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['costume-sheet', 'character-bible', 'expression-sheet', 'character-design-from-text']],
-      ['comics-storyboards', ['storyboard-grid-25']],
+      ['comics-storyboards', COMICS_IMAGES],
+      ['product-showcase', ['product-hero-still']],
       ['food', ['dish-hero-still']],
       ['social-hooks', ['fisheye-clone-pov', 'flash-photo-dump-grid']],
       ['posters', POSTERS],
     ]);
     expect(templateGoalsFor('video').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['single-view-refs-scene', 'identity-locked-sequence', 'character-showcase-orbit']],
+      ['comics-storyboards', COMICS_VIDEOS],
+      ['animation', ANIMATION],
+      ['ecommerce', ECOMMERCE],
+      ['product-showcase', PRODUCT_SHOWCASE_VIDEOS],
       ['food', FOOD_VIDEOS],
       ['social-hooks', SOCIAL_HOOK_VIDEOS],
+      ['talking', TALKING],
+      ['speed', SPEED],
       ['sound', ['clip-ambience-foley']],
     ]);
     expect(templateGoalsFor('audio').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([['sound', SOUND_AUDIO]]);
@@ -553,6 +693,17 @@ describe('generation template registry checks', () => {
       for (const key of generateNodes(template).flatMap((node) => wordKeysOf(template, node).map((rest) => textKey(template, rest)))) {
         const reference = marksOf(raw('en', key) ?? '');
         for (const locale of LOCALES) expect(marksOf(raw(locale, key) ?? ''), `${key} ${locale}`).toEqual(reference);
+      }
+    }
+  });
+
+  it('writes no space between a fill-in mark and the Chinese or Japanese words around it, as the user’s words take its place', () => {
+    // A [📎] reference keeps its spaces: they belong to the chip's caret rules.
+    const cjk = '[\\u3040-\\u30ff\\u3400-\\u9fff\\u3000-\\u303f\\uff00-\\uffef]';
+    const spaced = new RegExp(`${cjk} \\{✏️|\\} ${cjk}`, 'u');
+    for (const template of GENERATION_TEMPLATES) {
+      for (const key of generateNodes(template).flatMap((node) => wordKeysOf(template, node).map((rest) => textKey(template, rest)))) {
+        for (const locale of ['zh-CN', 'zh-TW', 'ja']) expect(raw(locale, key) ?? '', `${key} ${locale}`).not.toMatch(spaced);
       }
     }
   });
@@ -675,10 +826,120 @@ describe('generation template registry checks', () => {
   });
 });
 
+describe('e-commerce ad templates (inner#1811)', () => {
+  it('feeds the product and an optional person into the still and the video, and wires the still into the video pool', () => {
+    const ad = byId('product-ad-15s');
+    expect(ad?.inputs).toEqual([
+      { key: 'product', type: 'image', feeds: ['still', 'result'] },
+      { key: 'person', type: 'image', feeds: ['still', 'result'], optional: true },
+    ]);
+    expect(ad?.edges).toEqual([{ from: 'still', to: 'result', into: 'pool' }]);
+  });
+
+  it('feeds each of the other six its user inputs, all required', () => {
+    const expected: Record<string, string[]> = {
+      'ugc-creator-review': ['creator', 'product'],
+      'livestream-pitch': ['host', 'product'],
+      'hype-then-twist-ad': ['product'],
+      'product-commercial-shotlist': ['product'],
+      'unboxing-ad': ['product'],
+      'variant-carousel-ad': ['variant-1', 'variant-2', 'variant-3'],
+    };
+    for (const [id, keys] of Object.entries(expected)) {
+      expect(byId(id)?.inputs, id).toEqual(keys.map((key) => ({ key, type: 'image' })));
+      expect(byId(id)?.edges, id).toEqual([]);
+    }
+  });
+
+  it('tells the agent the still comes first and goes into the video pool', () => {
+    expect(byId('product-ad-15s')?.agentNote).toMatch(/still .*first.*video'?s? pool/);
+  });
+
+  it('tells the agent which model kept the product in shape for the still, and which did not (inner#1811 §9)', () => {
+    const note = byId('product-ad-15s')?.agentNote ?? '';
+    const still = byId('product-ad-15s')?.nodes.find((node) => node.key === 'still');
+    expect(still?.role === 'generate' ? still.model : undefined).toBe('nano-banana-pro-edit-ultra');
+    expect(note).toMatch(/still runs on nano-banana-pro-edit-ultra, which kept the product's proportions/);
+    expect(note).toContain('gpt-image-2.5-sunburst-edit changed them');
+  });
+});
+
+describe('optional template inputs (inner#1811, CAP-9)', () => {
+  /** Every optional input, as `<template id>.<input key>`. */
+  const optionalInputs = (): string[] =>
+    GENERATION_TEMPLATES.flatMap((template) => template.inputs.filter((input) => input.optional === true).map((input) => `${template.id}.${input.key}`));
+
+  it('marks the setting of the nine-panel storyboard and the person of the product ad and of the pet selfie vlog optional, and no other input', () => {
+    expect(optionalInputs()).toEqual(['storyboard-sheet-9.setting', 'product-ad-15s.person', 'pet-selfie-vlog.person']);
+  });
+
+  it('feeds the pet selfie vlog an optional person after its pet', () => {
+    expect(byId('pet-selfie-vlog')?.inputs).toEqual([
+      { key: 'pet', type: 'image' },
+      { key: 'person', type: 'image', optional: true },
+    ]);
+  });
+
+  it('@s an optional input only in a paragraph of its own, holding no other reference, in every node it feeds and every language', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      for (const input of template.inputs.filter((one) => one.optional === true)) {
+        for (const locale of LOCALES) {
+          const name = raw(locale, textKey(template, `input.${input.key}.name`));
+          for (const key of feedsOf(template, input)) {
+            const node = generateNodes(template).find((one) => one.key === key);
+            if (!node) throw new Error(`${template.id} feeds ${key}`);
+            const paragraphs = wordKeysOf(template, node).flatMap((rest) => (raw(locale, textKey(template, rest)) ?? '').split('\n'));
+            const holding = paragraphs.filter((paragraph) => markedSegments(paragraph).some((s) => s.slot?.kind === 'asset' && s.slot.label === name));
+            const where = `${template.id} ${locale} ${key} ${input.key}`;
+            expect(holding.length, where).toBeGreaterThan(0);
+            for (const paragraph of holding) {
+              const labels = markedSegments(paragraph).flatMap((s) => (s.slot?.kind === 'asset' ? [s.slot.label] : []));
+              expect(new Set(labels), where).toEqual(new Set([name]));
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('says in English that an optional input can be left empty', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      for (const input of template.inputs.filter((one) => one.optional === true)) {
+        expect(raw('en', textKey(template, `input.${input.key}.note`)), `${template.id} ${input.key}`).toMatch(/^Optional: .*leave it empty/);
+      }
+    }
+  });
+
+  it('never feeds an optional input into a node of dialogue lines, whose lines are never left out', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      for (const input of template.inputs.filter((one) => one.optional === true)) {
+        for (const key of feedsOf(template, input)) {
+          expect(generateNodes(template).find((one) => one.key === key)?.lines, `${template.id} ${input.key} ${key}`).toBeUndefined();
+        }
+      }
+    }
+  });
+
+  it('never puts an optional input into a slot, as only a pool reference is left out with its paragraph', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      for (const input of template.inputs.filter((one) => one.optional === true)) expect(input.into, `${template.id} ${input.key}`).toBeUndefined();
+    }
+  });
+});
+
+describe('motion and speed templates (inner#1810)', () => {
+  it('tells the agent the user’s vehicle photo goes straight into the video, which takes only the vehicle from it', () => {
+    expect(byId('vehicle-speed-cutlist')?.agentNote).toContain(
+      "the user's photo goes straight into the video's pool, which takes only the vehicle from it, so its background needs no edit first",
+    );
+  });
+});
+
 describe('social hook templates (inner#1816)', () => {
   it('feeds each its user inputs and wires the carried object through two scenes into the first and last frame', () => {
     const expected: Record<string, { inputs: Array<{ key: string; type: string; feeds: readonly string[] }>; edges: GenerationTemplate['edges'] }> = {
-      'pet-selfie-vlog': { inputs: [{ key: 'pet', type: 'image', feeds: ['result'] }], edges: [] },
+      // inner#1811 adds the optional person filming.
+      'pet-selfie-vlog': { inputs: [{ key: 'pet', type: 'image', feeds: ['result'] }, { key: 'person', type: 'image', feeds: ['result'] }], edges: [] },
       'phone-vlog-realism': { inputs: [{ key: 'person', type: 'image', feeds: ['result'] }], edges: [] },
       'retro-found-footage': { inputs: [], edges: [] },
       'time-freeze-rewind': { inputs: [{ key: 'person', type: 'image', feeds: ['result'] }], edges: [] },
@@ -977,7 +1238,7 @@ describe('sound, music and voice templates (inner#1825)', () => {
   const ANCHORS: Record<string, Settings> = {
     'ambience-sfx-bed': { type: 'audio', mode: 'sfx', model: 'sfx-1.6-text-to-audio', params: { loop: true, duration: 30 } },
     'voice-line': { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd' },
-    'two-voice-dialogue': { type: 'audio', mode: 'tts', model: 'gemini-3.1-flash-text-to-speech' },
+    'two-voice-dialogue': { type: 'audio', mode: 'tts', model: 'gemini-3.8-flash-text-to-speech' },
     'underscore-bgm': { type: 'audio', mode: 't2m', model: MUREKA_BGM },
     'voice-from-descriptor': { type: 'audio', mode: 'tts', model: 'qwen3-tts-voice-design' },
     'song-cover': { type: 'audio', mode: 'a2m', model: 'minimax-music-cover' },

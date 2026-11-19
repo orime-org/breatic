@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The agent offers a character template (inner#1807): when the user asks
@@ -15,7 +15,11 @@
  * shot; given only a dish photo, what lands carries the dish. Posters
  * (inner#1809): asked outright for a festival travel poster with a title, it
  * reads the festival poster, builds on it and writes the title into every
- * version's prompt as given. And sound (inner#1825): given a video and asked
+ * version's prompt as given. Motion and speed (inner#1810): asked outright for
+ * a car commercial it reads the vehicle speed cut list; given only a photo of a
+ * car, what lands carries the car. E-commerce ads (inner#1811): asked outright for a
+ * product ad it reads the 15-second product ad; given only a product photo by a
+ * user who sells it, what lands carries the product. And sound (inner#1825): given a video and asked
  * outright for background music, it builds on a music template; given the
  * video and asked only to finish it, what lands offers an audio generation.
  *
@@ -274,16 +278,22 @@ test('asked outright for a pet video, it reads the pet selfie vlog and lands a p
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
-test('asked outright for a cheese pull food video, it reads the food money shot and lands the dish @needs-model', async () => {
-  await ask('Make a vertical food video of a pizza with a long cheese pull.', 'A margherita pizza from my restaurant, for Instagram Reels. I have no photo of it, so make the pizza too.');
-  const turn = await settledTurn(page);
-  expect(turn.read, `read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('food-money-shot');
-  // Solved when the dish lands as a video or, with no photo of it, as takes of its look made first; built on
-  // the template or on the agent's own setup drawing on it.
-  const made = (proposal: CanvasProposal): CanvasProposal['nodes'] => proposal.nodes.filter((node) => node.role === 'generate');
-  expect(answersVideoAsk(turn.landed, made), `made: ${turn.landed.flatMap(made).map((node) => node.type).join(', ')}; named: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBe(true);
-  await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
-});
+for (const [request, template, id, what, message, reply] of [
+  ['a cheese pull food video', 'food money shot', 'food-money-shot', 'dish', 'Make a vertical food video of a pizza with a long cheese pull.', 'A margherita pizza from my restaurant, for Instagram Reels. I have no photo of it, so make the pizza too.'],
+  ['a car commercial', 'vehicle speed cut list', 'vehicle-speed-cutlist', 'car', 'Make a car commercial of a red sports car racing along a mountain road.', 'A red two-door sports coupe, landscape for YouTube, with someone driving. I have no photo of it, so make the car too.'],
+  ['a product ad', '15-second product ad', 'product-ad-15s', 'product', 'Make a 15-second vertical ad to sell my water bottle.', 'It is the HYDRA insulated bottle in sage green with a bamboo cap; it keeps water cold for 24 hours. For TikTok. I have no photo of it, so make the bottle too.'],
+]) {
+  test(`asked outright for ${request}, it reads the ${template} and lands the ${what} @needs-model`, async () => {
+    await ask(message, reply);
+    const turn = await settledTurn(page);
+    expect(turn.read, `read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain(id);
+    // Solved when the subject lands as a video or, with no photo of it, as takes of its look made first; built
+    // on the template or on the agent's own setup drawing on it.
+    const made = (proposal: CanvasProposal): CanvasProposal['nodes'] => proposal.nodes.filter((node) => node.role === 'generate');
+    expect(answersVideoAsk(turn.landed, made), `made: ${turn.landed.flatMap(made).map((node) => node.type).join(', ')}; named: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBe(true);
+    await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
+  });
+}
 
 test('asked outright for a festival travel poster, it reads the festival poster and lands a picture @needs-model', async () => {
   await ask('Make a festival travel poster for Kyoto in the autumn maple season, with the title KYOTO AUTUMN.', 'A vertical poster for Instagram; the title is KYOTO AUTUMN exactly as written.');
@@ -301,6 +311,8 @@ test('asked outright for a festival travel poster, it reads the festival poster 
 for (const [what, reply, photo] of [
   ['dish', 'It is our margherita pizza, for the restaurant\'s Instagram, vertical.', 'dish.jpg'],
   ['pet', 'He is Bean, my golden retriever; a funny vertical video for TikTok.', 'pet.jpg'],
+  ['vehicle', 'It is my own car; a fast landscape video for YouTube, me driving it.', 'vehicle.jpg'],
+  ['product', 'It is the HYDRA water bottle I sell online; I want an ad to sell it on TikTok, vertical.', 'product.jpg'],
 ]) {
   test(`given a ${what} photo and asked only for a video of it, what lands carries that ${what} @needs-model`, async () => {
     await ask('Make a video with this.', reply, photo);

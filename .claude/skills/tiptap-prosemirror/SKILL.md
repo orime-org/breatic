@@ -75,6 +75,10 @@ A model position at a soft-wrap boundary has two visual places (end of the line,
 
 **Only one handler owns an Esc press: whoever calls `preventDefault`.** `defaultPrevented` is one bit shared by the tooltip capture layer, the `@` suggestion and inline rename editors, so a window-level handler cannot tell which one consumed it; skipping it when a tooltip is present, or tagging events from one consumer, lets one key press do two things. With a tooltip open, the user presses Esc once more.
 
+### A node view that moves its content keeps the page selection
+
+**A node view that moves its content DOM after ProseMirror has drawn the selection into it puts the page selection back after the move.** Removing a node collapses every range end inside it onto its old parent, and ProseMirror reads the page selection back on the DOM change, so with the body focused a caret put in the new node lands on the text before it. The table frame moves its `<table>` when its own React root commits; `moveKeepingSelection` in `spaces/document/document-table-nodes.tsx` records the selection before the move and restores it when either end lay inside. jsdom collapses ranges the same way, so a unit test can pin it by reading `document.getSelection()` after the commit.
+
 ### Input-method Enter is claimed by queue order
 
 **The Enter that confirms an input-method candidate is claimed by marking `compositionend` and releasing the mark with `setTimeout(0)`, never with a time window.** Chrome sends `compositionend` and then the key twice (keyCode 229, then 13); without a claim the second one splits the block. Keydowns from the same keystroke are already queued ahead of the release, a press the user makes later is queued behind it. Use `lib/composition-end.ts` (`compositionEnd`, `keyBelongsToInputMethod`); do not clear the mark inside the Enter handler, which lets the second keydown through.
@@ -100,6 +104,14 @@ y-prosemirror hands the pre-edit selection over on `stack-item-popped`, which yj
 ### Remote caret at document start
 
 **A remote caret that is a direct child of `.ProseMirror` is taken out of flow (`.ProseMirror > .collaboration-carets__caret { position: absolute }` in `index.css`).** At the very start of the document the caret widget sits before the first block, and an inline element there creates an anonymous line box that pushes everything down by an empty line. The child combinator leaves carets inside paragraphs alone.
+
+### A move between siblings is two transactions
+
+**A change that takes a block away from one place among its siblings and puts it in another goes out as two transactions, each touching one place: one that puts the block down (inserting it, or wrapping the target where it stands) and one that only deletes the original (`spaces/document/document-column-drop.ts`).** y-prosemirror's `updateYFragment` pairs a changed list of children by identity from both ends only and rewrites the middle in place by position, so one transaction that both inserts and deletes rewrites every sibling between the two places and drops the words a collaborator is typing in them. The undo manager's capture timeout merges the two into one undo step.
+
+### BlockNote keeps a collaborator's ids
+
+**`patches/@blocknote__core@0.56.0.patch` makes BlockNote's `UniqueID` leave the ids in a collaborator's change alone (y-sync meta with `isChangeOrigin` true and not an undo or redo), as Tiptap's own `UniqueID` does; local edits, undo, redo and redraws from Yjs still renew a repeated id.** Unpatched, a move that briefly holds a block twice gives the copy a new id on every receiving editor and not on the sender, and the ids drift apart. Test it with two real `Y.Doc`s (`spaces/document/__tests__/document-column-collab.test.ts`).
 
 ## Drag and drop
 

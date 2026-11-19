@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Stores one subscription as Stripe described it, and settles the tier that
@@ -59,11 +59,11 @@ export async function applySubscriptionWrite(input: {
 }): Promise<AppliedSubscription> {
   const { userId, write, referenceId, tx } = input;
   await lockAccountRow(userId, tx);
-  await upsertSubscription(write, tx);
+  await upsertSubscription(tx, write);
   const started = await markFirstActive(write.stripeSubscriptionId, tx);
 
   const reading = subscriptionSituation(
-    await listSubscriptions(userId, tx),
+    await listSubscriptions(tx, userId),
     subscriptionClock(),
   );
   const tier = tierForSituation(reading.situation, reading.record);

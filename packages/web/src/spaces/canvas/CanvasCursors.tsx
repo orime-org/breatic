@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { ViewportPortal, useStore } from '@xyflow/react';
 import type { Awareness } from 'y-protocols/awareness';
@@ -8,7 +8,7 @@ import * as React from 'react';
 import { useNamed } from '@web/features/collab-editor/collaborator-names-context';
 import { userPaletteColor } from '@web/lib/user-color';
 import { collectPointers, samePointers, type RemotePointer } from '@web/spaces/canvas/canvas-pointers';
-import { useAwarenessSlice } from '@web/spaces/canvas/use-awareness-slice';
+import { useAwarenessSlice } from '@web/data/yjs/use-awareness-slice';
 import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
 import { VIEWPORT_TOP_Z } from '@web/spaces/canvas/viewport-layers';
 

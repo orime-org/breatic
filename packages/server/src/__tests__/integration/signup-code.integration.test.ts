@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Sign-up with a code sent by email (#287) — the pending sign-up state
@@ -444,9 +444,9 @@ describe("two-step sign-up with a referral code (inner#1868)", () => {
     const { code } = await activeCode();
     const email = freshEmail();
     const first = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code, source: "signup_typed" } });
-    const firstCode = lastCode();
     await startSignup({ ticket: first.ticket, email, password: "password1", locale: "en" });
-    const verified = await verifySignupCode(first.ticket, firstCode);
+    // The resubmission mails a new code once the one-second resend wait has run out.
+    const verified = await verifySignupCode(first.ticket, lastCode());
     expect(verified.referral).toBeNull();
     expect(await sourceOf(email)).toBeNull();
   });

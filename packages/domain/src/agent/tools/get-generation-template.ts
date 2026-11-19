@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Read one generation template in full (inner#1807).
@@ -16,6 +16,8 @@ import { z } from "zod";
 import { formatCredits, GENERATION_TEMPLATES, keyStanding, t, templateAnchor, templateSkeleton, type GenerationTemplate } from "@breatic/shared";
 
 import { templateCraft } from "@domain/agent/tools/template-craft.js";
+import { lowestValues } from "@domain/agent/tools/generation-models.js";
+import { modelsForMode } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 import { templateSegmentsText } from "@domain/agent/tools/template-expansion.js";
 import { PROPOSE_CANVAS_ACTION } from "@domain/agent/tools/tool-names.js";
@@ -25,7 +27,7 @@ const HOW_TO_SEND =
   `To use one, send each of its nodes as a node in ${PROPOSE_CANVAS_ACTION}: { id } in template on the anchor, { id, key } on each other node, ` +
   "and wire them as its edges say. A node not wired stands beside the anchor with no edge and carries { id, key, anchor }, anchor being the anchor's index. " +
   "Give each input a node of your own wired into the nodes it feeds; " +
-  "{ id, input } on that node is optional. An input into a slot (its line says by which) whose node holds material goes in the fed node's fills under that slot, with no edge; " +
+  "{ id, input } on that node is optional unless the input is. An optional input's node is placed empty when the user has no material for it; do not ask them for it. An input into a slot (its line says by which) whose node holds material goes in the fed node's fills under that slot, with no edge; " +
   "an empty one is wired with into that slot. A resource node lands holding the template's file: send it with no material. " +
   "Leave out the mode and model you keep; while you keep them, a value you write in a node's params wins over the template's. Send each generate node's prompt as its own, rewritten in the language " +
   "the user writes in with their story or detail in it: fill every tweak segment with words before you send it: from what the user said, or, for one their words leave open, after asking them, making takes first, or choosing, as your working rules say. A template's tweak segment is never sent as it is. " +
@@ -68,9 +70,14 @@ export function describeTemplate(template: GenerationTemplate): string {
     return `"${node.key}"${node.key === anchor.key ? " (anchor)" : ""}: ${what}${where}`;
   });
   const edges = skeleton.edges.map((edge) => `"${edge.from}" into "${edge.to}" by "${edge.into ?? "pool"}"`);
-  const inputs = skeleton.inputs.map(
-    (input) => `"${input.key}" (${input.type}) into ${input.feeds.map((fed) => `"${fed}"`).join(", ")}${input.into === undefined ? "" : ` by "${input.into}"`}`,
-  );
+  const optional = new Set(template.inputs.flatMap((input) => (input.optional === true ? [input.key] : [])));
+  const inputs = skeleton.inputs.map((input) => {
+    const fed = `"${input.key}" (${input.type}${optional.has(input.key) ? ", optional" : ""}) into ${input.feeds.map((one) => `"${one}"`).join(", ")}${input.into === undefined ? "" : ` by "${input.into}"`}`;
+    // inner#1811, CAP-9: the panel leaves the paragraph out while the node is empty.
+    return optional.has(input.key)
+      ? `${fed} (its ref stands in a paragraph of its own, which is not sent while its node is empty; its node carries { id, input }; its note: "${t(`canvas.template.${template.id}.input.${input.key}.note`)}")`
+      : fed;
+  });
   const steps = skeleton.steps.map((step) => t(`canvas.template.${template.id}.step.${step}`));
   const prompts = template.nodes.flatMap((node) => (node.role === "generate" ? [`"${node.key}": ${templateSegmentsText(template, node.key)}`] : []));
   return (
@@ -80,22 +87,101 @@ export function describeTemplate(template: GenerationTemplate): string {
   );
 }
 
+/** A template's generate nodes priced together, and whether every one was priced exactly. */
+interface TemplatePrice {
+  credits: number;
+  exact: boolean;
+}
+
+/** One generate node of a template, with the settings a take of it changes. */
+interface NodeSettings {
+  key: string;
+  model: string;
+  own: Record<string, unknown>;
+  /** Each setting that moves the model's price, at the value lowestValues finds cheapest on its own where that differs from the final's; never the length. */
+  cheaper: Record<string, unknown>;
+  /** The value each of those settings has on the final: the template's, else the model's default. */
+  final: Record<string, unknown>;
+}
+
 /**
- * What one apply of a template costs on this deployment, priced live: the
- * price list and its multiplier belong to the deployment, so a number
- * written into the template would be wrong elsewhere.
+ * Each generate node of a template with the settings a take of it changes:
+ * every setting that moves its model's price, at the value lowestValues
+ * finds cheapest on its own where that differs from the template's or the
+ * model's default, but the length, which the template's timed
+ * parts are written for, and the value each has on the final, so a take the
+ * user brings up to those values is known to be the final (inner#1811).
  * @param template - The template.
- * @returns The sentence, or "" when none of its generate nodes is priced.
+ * @returns Its generate nodes.
+ */
+async function nodeSettings(template: GenerationTemplate): Promise<NodeSettings[]> {
+  return Promise.all(
+    template.nodes.flatMap((node) => (node.role === "generate" ? [node] : [])).map(async (node): Promise<NodeSettings> => {
+      const own = node.params ?? {};
+      const answer = modelsForMode(node.type, node.mode);
+      const model = answer.available ? answer.models.find((one) => one.name === node.model) : undefined;
+      const { duration: _length, ...lowest } = model === undefined ? {} : await lowestValues(model);
+      /**
+       * A setting's value on the final.
+       * @param name - The setting.
+       * @returns The template's value, else the model's default.
+       */
+      const atFinal = (name: string): unknown => own[name] ?? model?.params[name]?.default;
+      const cheaper = Object.fromEntries(Object.entries(lowest).filter(([name, value]) => value !== atFinal(name)));
+      const final = Object.fromEntries(Object.keys(cheaper).map((name) => [name, atFinal(name)]));
+      return { key: node.key, model: node.model, own, cheaper, final };
+    }),
+  );
+}
+
+/**
+ * Generate nodes priced together.
+ * @param nodes - Each node's model and the settings it is priced at.
+ * @returns The credits and whether every node was priced exactly, or undefined when none is priced.
+ */
+async function priceOf(nodes: ReadonlyArray<{ model: string; params: Record<string, unknown> }>): Promise<TemplatePrice | undefined> {
+  const prices = await Promise.all(nodes.map((node) => estimateModelCredits(node.model, { params: node.params })));
+  const priced = prices.filter((price) => price !== undefined);
+  if (priced.length === 0) return undefined;
+  return { credits: priced.reduce((total, price) => total + price.credits, 0), exact: priced.length === prices.length && priced.every((price) => price.bound === "exact") };
+}
+
+/**
+ * A price as the agent reads it.
+ * @param price - The price.
+ * @returns Its credits, marked a floor when not every node was priced exactly.
+ */
+function amount(price: TemplatePrice): string {
+  return `${price.exact ? "" : "at least "}${formatCredits(price.credits, "en-US")}`;
+}
+
+/**
+ * What a template costs on this deployment at its settings and how a take of
+ * it runs: at the cheaper settings and what that costs when some make it
+ * cheaper, else at its own settings as its final (inner#1811). Priced live:
+ * the price list and its multiplier belong to the deployment,
+ * so a number written into the template would be wrong elsewhere.
+ * @param template - The template.
+ * @returns The sentences, or "" when none of its generate nodes is priced.
  */
 async function applyCost(template: GenerationTemplate): Promise<string> {
-  const prices = await Promise.all(
-    template.nodes.flatMap((node) => (node.role === "generate" ? [estimateModelCredits(node.model, { params: node.params })] : [])),
+  const nodes = await nodeSettings(template);
+  const final = await priceOf(nodes.map((node) => ({ model: node.model, params: node.own })));
+  if (final === undefined) return "";
+  const finalSentence = `At its settings this template costs ${amount(final)} credits.`;
+  const changed = nodes.filter((node) => Object.keys(node.cheaper).length > 0);
+  const take = changed.length === 0 ? undefined : await priceOf(nodes.map((node) => ({ model: node.model, params: { ...node.own, ...node.cheaper } })));
+  if (take === undefined || take.credits >= final.credits) {
+    return `${finalSentence} A take of it is made keeping its mode, model and length, at these settings, which are already its cheapest, so a take of it is already its final.`;
+  }
+  const cheaper = JSON.stringify(Object.fromEntries(changed.map((node) => [node.key, node.cheaper])));
+  const atFinal = JSON.stringify(Object.fromEntries(changed.map((node) => [node.key, node.final])));
+  return (
+    `${finalSentence} A take of it is made this way, and comes before its final: apply it keeping its mode, model and length, which its prompts and wiring are written for, ` +
+    "even once its prompts are in the user's words and its tweak segments filled, " +
+    `and write these cheaper settings in its generate nodes' params: ${cheaper}; its final runs them at ${atFinal}. A take costs ${amount(take)} credits; ` +
+    "the final is made at its settings from the take they pick, keeping it as it is, or straight away when they ask for a final."
   );
-  const priced = prices.filter((price) => price !== undefined);
-  if (priced.length === 0) return "";
-  const sum = priced.reduce((total, price) => total + price.credits, 0);
-  const exact = priced.length === prices.length && priced.every((price) => price.bound === "exact");
-  return `One apply of this template costs ${exact ? "" : "at least "}${formatCredits(sum, "en-US")} credits at its settings.`;
 }
 
 /** The tool that reads one template; it renders in the turn's language when called, so one object serves every turn. */

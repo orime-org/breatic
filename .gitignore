@@ -9,12 +9,13 @@ dist/
 # Environment
 .env
 
-# Payment configuration — what this deployment charges and which Stripe
-# objects it sells. Copy the .template beside each and fill in your own.
-# The server checks both at startup when PAYMENT_ENABLED=true and refuses to
-# start without them.
+# Payment configuration — what this deployment charges, which Stripe objects
+# it sells and what it grants new accounts. Copy the .template beside each and
+# fill in your own. The server checks all three at startup when
+# PAYMENT_ENABLED=true and refuses to start without them.
 /config/subscription.yaml
 /config/pricing.yaml
+/config/credits.yaml
 # This deployment's upstream weights, copied from config/provider/routing.yaml.template.
 /config/provider/routing.yaml
 

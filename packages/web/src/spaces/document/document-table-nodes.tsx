@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The table, as four layout blocks whose cells hold blocks (inner#1619):
@@ -43,6 +43,7 @@ import { createRoot, type Root } from 'react-dom/client';
 
 import { DocumentTableScroller } from '@web/spaces/document/DocumentTableScroller';
 import { heldTables } from '@web/spaces/document/document-table-leave-selection';
+import { DOC_COLUMN } from '@web/spaces/document/document-column-geometry';
 
 /** The narrowest a column can be dragged. */
 const CELL_MIN_WIDTH = 35;
@@ -63,6 +64,9 @@ export const DOC_TABLE_ROW = 'docTableRow';
 export const DOC_TABLE_CELL = 'docTableCell';
 export const DOC_TABLE_HEADER = 'docTableHeader';
 
+/** Table nodes: ours, and the stored (legacy) one documents from before hold. */
+export const TABLES: ReadonlySet<string> = new Set([DOC_TABLE, 'table']);
+
 /** The prosemirror-tables role of each table node. */
 const TABLE_ROLES: Readonly<Record<string, string>> = {
   [DOC_TABLE]: 'table',
@@ -82,12 +86,13 @@ export function isTableCell(node: PMNode): boolean {
 }
 
 /**
- * Whether a node holds blocks as a body does: a block group or a table cell.
+ * Whether a node holds blocks as a body does: a block group, a table cell or
+ * a column (inner#1314).
  * @param node - The node.
- * @returns True for either.
+ * @returns True for any of them.
  */
 export function holdsBlocks(node: PMNode): boolean {
-  return node.type.name === 'blockGroup' || isTableCell(node);
+  return node.type.name === 'blockGroup' || node.type.name === DOC_COLUMN || isTableCell(node);
 }
 
 /**
@@ -196,6 +201,24 @@ function drawColumns(colgroup: HTMLElement, table: HTMLElement, block: TableBloc
 }
 
 /**
+ * Moves an element into another, and puts back a page selection with an end
+ * in it. Removing a node collapses every end of a range inside it onto its
+ * old parent, and ProseMirror reads the page selection back on the DOM
+ * change, so a caret just put in a new table, or a selection an undo runs
+ * into it, would end on the text before the table. The nodes the ends stand
+ * in move with the element, so the same ends are still valid after it.
+ * @param element - The element to move.
+ * @param into - Where it goes.
+ */
+function moveKeepingSelection(element: HTMLElement, into: HTMLElement): void {
+  const page = element.ownerDocument.getSelection();
+  const { anchorNode, anchorOffset, focusNode, focusOffset } = page ?? {};
+  const touched = [anchorNode, focusNode].some((node) => node != null && element.contains(node));
+  into.appendChild(element);
+  if (touched && anchorNode && focusNode) page?.setBaseAndExtent(anchorNode, anchorOffset ?? 0, focusNode, focusOffset ?? 0);
+}
+
+/**
  * Puts the table into the horizontal frame of `DocumentTableScroller`. The
  * table is attached before ProseMirror reads its content DOM. React owns a
  * separate chrome host, and the slot moves that same table into its viewport
@@ -216,7 +239,7 @@ function mountScroller(host: HTMLElement, table: HTMLElement, scrollLeft = 0): R
         className='tableWrapper'
         ref={(slot) => {
           if (slot === null || table.parentElement === slot) return;
-          slot.appendChild(table);
+          moveKeepingSelection(table, slot);
           const viewport = slot.closest<HTMLElement>('[data-radix-scroll-area-viewport]');
           if (viewport !== null && scrollLeft > 0) viewport.scrollLeft = scrollLeft;
         }}

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * TipTap custom node for an `@`-picked reference image in the prompt. It renders
@@ -23,6 +23,7 @@ import type * as Y from 'yjs';
 import { useTranslation } from '@web/i18n/use-translation';
 import { PROMPT_NOTE_NODE } from '@web/features/prompt-note/prompt-note';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
+import { blockMentions, heldBackBy, MENTION_OPTIONAL_ATTR } from '@web/spaces/canvas/generate/optional-paragraph';
 import { FOCUS_REF_PREFIX } from '@web/spaces/canvas/generate/derive-references';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
@@ -116,7 +117,8 @@ export function referenceMentionContent(item: ReferenceRailItem): {
  * way the model reads it (`tokens`, #2156) and adds nothing when the model names
  * no way; its file travels in the pool lists either way. A text chip whose
  * pool row vanished (edge removed mid-flight) or whose node is empty resolves
- * to an empty string. Pool content is read at CALL time, so invoking this at
+ * to an empty string. A paragraph an empty optional template input holds back
+ * is left out (`heldBackBy`). Pool content is read at CALL time, so invoking this at
  * execute-click picks up the text node's latest words even when the prompt doc
  * itself never changed.
  * @param editor - The prompt editor.
@@ -134,16 +136,14 @@ export function serializePromptText(
   tokens: MentionTokens = NO_MENTION_TOKENS,
 ): string {
   const { doc } = editor.state;
-  // Notes sit above the words and are never sent: reading starts after the
-  // last of them, so no block separator is left behind in their place.
-  let from = 0;
+  const textSerializers = promptSerializers(editor, pool, tokens);
+  // Notes are never sent, nor a paragraph an empty optional input holds back (inner#1811).
+  const sent: string[] = [];
   doc.forEach((block, offset) => {
-    if (block.type.name === PROMPT_NOTE_NODE) from = offset + block.nodeSize;
+    if (block.type.name === PROMPT_NOTE_NODE || heldBackBy(blockMentions(block), pool).length > 0) return;
+    sent.push(getTextBetween(doc, { from: offset, to: offset + block.nodeSize }, { blockSeparator, textSerializers }));
   });
-  return getTextBetween(doc, { from, to: doc.content.size }, {
-    blockSeparator,
-    textSerializers: promptSerializers(editor, pool, tokens),
-  });
+  return sent.join(blockSeparator);
 }
 
 /**
@@ -189,7 +189,8 @@ export function serializeDialogueText(
   const textSerializers = promptSerializers(editor, pool, tokens);
   const lines: Array<{ speaker: number | null; text: string }> = [];
   editor.state.doc.forEach((block, offset) => {
-    if (block.type.name !== 'paragraph') return;
+    // A line an empty optional input holds back is left out, as the box greys it (inner#1811).
+    if (block.type.name !== 'paragraph' || heldBackBy(blockMentions(block), pool).length > 0) return;
     const speaker = Number(block.attrs[SPEAKER_ATTR]);
     lines.push({
       speaker: Number.isInteger(speaker) ? speaker : null,
@@ -477,6 +478,12 @@ export const ReferenceMention = Node.create<ReferenceMentionOptions>({
           attrs[MENTION_KIND_ATTR]
             ? { 'data-kind': attrs[MENTION_KIND_ATTR] as string }
             : {},
+      },
+      // A template's mention of an input the user may leave empty (inner#1811).
+      [MENTION_OPTIONAL_ATTR]: {
+        default: null,
+        parseHTML: (el) => (el.getAttribute('data-optional') === 'true' ? true : null),
+        renderHTML: (attrs) => (attrs[MENTION_OPTIONAL_ATTR] === true ? { 'data-optional': 'true' } : {}),
       },
     };
   },

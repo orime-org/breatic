@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The account's referral routes (inner#1868 §7, §8): the membership panel's
@@ -10,7 +10,7 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
-import { storableText } from "@server/utils/storable-text.js";
+import { storableText, validate } from "@breatic/core";
 import {
   PROMOTER_CHANNEL_INPUT_MAX,
   PROMOTER_CHANNELS_MAX,
@@ -23,7 +23,6 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { requirePayments } from "@server/middleware/require-payments.js";
 import { runOnce } from "@server/middleware/run-once.js";
-import { validate } from "@server/middleware/validate.js";
 import { getLegalConfig } from "@server/config/legal.js";
 import { submitApplication } from "@server/modules/referral/promoter-application.service.js";
 import { bindLater, readAccountReferral } from "@server/modules/referral/referral.service.js";

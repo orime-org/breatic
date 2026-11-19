@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The Space tab strip, on a browser that has not opened this project before.
@@ -74,6 +74,7 @@ vi.mock('@web/data/yjs/project-meta', async () => {
     > => ({
       spaces: meta.spaces,
       users: new Map(),
+      following: new Map(),
       synced: meta.synced,
       provider: fakeProvider,
       status: 'connected',

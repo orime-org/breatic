@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 
@@ -46,8 +46,9 @@ function requestAddress(projectId: string, sourceVersionId: string, fresh: boole
 
 /**
  * Fetch a signed preview address for one source version (inner#1711 design §7.3 "address"). The address only loads
- * the page, so a loaded page keeps working after it expires: it is not fetched again on window focus, on the
- * Space-task signal, at its expiry or when a hidden Space tab is shown again, only when `refresh` asks for a new one.
+ * the page, so a loaded page keeps working after it expires: it is not fetched again on window focus, on a
+ * change version in the Timeline's document, at its expiry or when a hidden Space tab is shown again, only when `refresh`
+ * asks for a new one.
  * With the Timeline limits, mounts of one source version in this page share one address from when its request was
  * sent until its validity less the load timeout; without them each mount asks for its own.
  * @param projectId - The Project the page reads it through.

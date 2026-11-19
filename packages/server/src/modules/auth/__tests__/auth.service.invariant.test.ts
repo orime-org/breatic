@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * auth.service invariant tests — lock current behavior (PR-a task 1).
@@ -63,7 +63,8 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
 
 // Mocked EXPLICITLY (no importOriginal) so loading @breatic/domain never
 // pulls the real agent llm and the `ai` SDK behind it.
-vi.mock("@breatic/domain", () => ({
+vi.mock("@breatic/domain", async () => ({
+  ...(await import("../../../../../domain/src/mail/mail-shell.js")),
 }));
 
 vi.mock("@server/modules/invitation/claim-email-invitations.js", () => ({

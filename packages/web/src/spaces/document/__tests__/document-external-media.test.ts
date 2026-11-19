@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Media in pasted or dropped content (inner#1351 + inner#1390 design §5.4,
@@ -18,9 +18,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { ownMediaOnly } from '@web/spaces/document/document-external-media';
 
-import { drop, pasteFormats } from './paste-harness';
-
-type Editor = ReturnType<typeof buildDocumentEditor>;
+import { drop, pasteFormats, type Editor } from './paste-harness';
 
 const mounted: Editor[] = [];
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** The public request contract bounds video-page requests before config clamping. */
 export const MAX_TIMELINE_ASSET_PAGE_SIZE = 1000;
@@ -38,6 +38,7 @@ export interface TimelineClientLimits {
     /** The aspects the creation dialog offers, in the configured order. */
     aspects: string[];
     playerLoadTimeoutMs: number;
+    /** Read only by web builds from before #1568; remove in the release after it ships. */
     sourceRefreshIntervalMs: number;
     /**
      * How long a signed preview address stays readable; the preview shares one address within it. The server always

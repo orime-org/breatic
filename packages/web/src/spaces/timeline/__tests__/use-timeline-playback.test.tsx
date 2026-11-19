@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Playback of the Timeline preview over every visible video layer (#1410 design §6). The hook creates one video-layer
@@ -2677,5 +2677,35 @@ describe('video lane rate steering (#1410 design §6.3, §6.4)', () => {
     });
     expect(a.play).toHaveBeenCalledTimes(1);
     expect(hook.result.current.state).toBe('playing');
+  });
+});
+
+describe('useTimelinePlayback, the playback anchor for followers', () => {
+  it('has no anchor at rest', () => {
+    const media = mediaFixture();
+    const hook = renderPlayback(media);
+    expect(hook.result.current.anchor).toBeNull();
+  });
+
+  it('exposes the frame and wall-clock time playback started from', async () => {
+    const media = mediaFixture();
+    const hook = renderPlayback(media);
+    const before = Date.now();
+    act(() => hook.result.current.toggle());
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    const anchor = hook.result.current.anchor;
+    expect(anchor?.frame).toBe(0);
+    expect(anchor?.at).toBeGreaterThanOrEqual(before);
+    expect(anchor?.at).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('drops the anchor when playback pauses', async () => {
+    const media = mediaFixture();
+    const hook = renderPlayback(media);
+    act(() => hook.result.current.toggle());
+    await settle();
+    act(() => hook.result.current.toggle());
+    expect(hook.result.current.anchor).toBeNull();
   });
 });

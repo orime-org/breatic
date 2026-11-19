@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Tests for {@link parseConfig}'s yjs-DB separation invariant: outside
@@ -556,5 +556,25 @@ describe("parseConfig — internal API", () => {
         }),
       ),
     ).toThrow(/^FATAL: .*INTERNAL_API_SECRET_PREVIOUS.*Refusing to start\.$/s);
+  });
+});
+
+describe("parseConfig — variables left from the multi-region release", () => {
+  // A deployment upgraded from a multi-region release (#1556) may keep them.
+  it("starts with them set and carries none of them into the config", () => {
+    const left = {
+      REGION: "us-west",
+      GLOBAL_REGION: "us-west",
+      GLOBAL_API_URL: "https://global.example.test",
+      REGION_API_URLS: '{"sg":"https://sg.example.test"}',
+      IDENTITY_SIGNING_KEY: "not-a-key",
+      IDENTITY_SIGNING_KEY_ID: "k1",
+      IDENTITY_PUBLIC_KEYS: '{"k1":"not-a-key"}',
+      IDENTITY_COOKIE_DOMAIN: "example.test",
+      DIRECTORY_RECONCILE_ON_START: "true",
+      DATABASE_APP_ROLE: "breatic_app",
+    };
+    const config = parseConfig(baseEnv(left)) as Record<string, unknown>;
+    for (const key of Object.keys(left)) expect(config).not.toHaveProperty(key);
   });
 });

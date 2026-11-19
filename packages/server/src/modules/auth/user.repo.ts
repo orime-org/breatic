@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * User repository — data access for the users table.
  *
- * Handles CRUD operations and atomic credit modifications.
+ * Reads and writes account rows: identity, password, recovery codes, the
+ * Stripe customer and the Agent model last picked.
  */
 
 import { eq, and, or, isNull, inArray, sql } from "drizzle-orm";

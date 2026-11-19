@@ -1,15 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A run of a model no upstream can serve here is refused before anything is queued (inner#1743): every model is
  * listed whatever this deployment has configured, so the refusal names what is missing for whoever deploys it.
  */
 
-import { AppError, ValidationError } from "@breatic/core";
-import { llmServability, servability, type Servability } from "@breatic/domain";
+import { AppError, logger, ValidationError } from "@breatic/core";
+import { inputRefusalFor, llmServability, servability, type Servability } from "@breatic/domain";
 import type { Route } from "@breatic/provider";
-import { t } from "@breatic/shared";
+import { inputRefusalText, t } from "@breatic/shared";
+import type { EstimateInput } from "@breatic/shared/pricing";
 
 /**
  * Refuse a run of a model this deployment cannot serve on its route.
@@ -48,4 +49,28 @@ function refuseUnservable(served: Servability, displayName: string): void {
     throw new ValidationError(t("server.model.upstream_not_bound", { model: displayName, upstream: served.upstream }));
   }
   throw new AppError(503, t("server.model.not_configured", { model: displayName, envVars: served.envVars.join(", ") }));
+}
+
+/**
+ * Refuse a run no upstream here that its route may use takes (#1521), before anything is held or queued: the user is
+ * told which limit it broke, and the refusal is logged with the upstream's own words for whoever deploys it.
+ * @param model - The model's name.
+ * @param displayName - What the user knows the model as.
+ * @param input - The run as the request describes it, as it is priced.
+ * @param route - How the run chooses its upstream; the weights when left out.
+ * @param context - Who and where, for the log line.
+ * @returns Nothing when an upstream takes the run.
+ * @throws {ValidationError} When none does, naming the limit.
+ */
+export async function assertTakesInput(
+  model: string,
+  displayName: string,
+  input: EstimateInput,
+  route: Route | undefined,
+  context: Record<string, unknown>,
+): Promise<void> {
+  const refusal = await inputRefusalFor(model, input, route);
+  if (refusal === null) return;
+  logger.warn({ ...context, model, reason: "input_refused", refusal }, "execute_gate_rejected");
+  throw new ValidationError(inputRefusalText(refusal, displayName));
 }

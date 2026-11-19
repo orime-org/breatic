@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** Read-only CLI for the current smoke slot's own Project activity. */
 import { text } from 'node:stream/consumers';

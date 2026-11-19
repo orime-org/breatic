@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The Timeline execution routes' logic (inner#1711 design §4).
@@ -17,6 +17,7 @@ import {
   ConflictError,
   NotFoundError,
   ValidationError,
+  announceExecutionChange,
   budgetDeadlineFrom,
   db,
   env,
@@ -33,9 +34,8 @@ import {
   type TimelineExecutionCreateInput,
   type TimelineExecutionInput,
 } from "@breatic/shared/space-content";
-import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
+import { precheckCredits } from "@server/modules/credit/credit-precheck.service.js";
 import * as projectService from "@server/modules/project/project.service.js";
-import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 import * as grantRepo from "@server/modules/timeline/execution-grant.repo.js";
 
 /** What accepting answered: the row, and whether this request created it. */
@@ -220,7 +220,12 @@ export async function cancel(userId: string, executionId: string): Promise<Timel
   await projectService.assertAccess(row.projectId, userId, "editor");
   const result = await timelineExecutionRepo.transition({ id: executionId, event: { type: "cancel" } });
   if (!result.applied) return result.row;
-  await publishSpaceTasksQuietly(result.row.projectId, result.row.spaceId);
+  try {
+    await announceExecutionChange(result.row);
+  } catch (err) {
+    // The cancel stands; the Timeline's open tabs read the next change, and a tab opened later reads the list.
+    logger.error({ err, executionId: result.row.id, projectId: result.row.projectId, spaceId: result.row.spaceId }, "execution_change_publish_failed");
+  }
   return result.row;
 }
 

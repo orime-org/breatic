@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Shared @breatic/core mock for route-level tests.
@@ -201,6 +201,8 @@ export const mocks = {
   // breatic#1393 server gate (a style prompt with Mureka composing from a
   // melody). Default: no violation; the breatic#1393 test flips it.
   sendsUntakenPrompt: vi.fn().mockReturnValue(false),
+  // #1521 gate (no upstream here takes the run). Default: one does; the #1521 test flips it.
+  inputRefusalFor: vi.fn().mockResolvedValue(null),
   nodeHistoryService: {
     listByNode: vi.fn(),
     recordGenerationSuccess: vi.fn(),
@@ -474,6 +476,9 @@ mocks.authService.getUsersByIds = mocks.userRepo.getUsersByIds;
 // reason (the decision route now calls notificationService.getById).
 mocks.notificationService.getById = mocks.notificationRepo.findById;
 
+/** The one frontend origin the mocked `env` allows. */
+const MOCK_FRONTEND_ORIGIN = "http://localhost:8000";
+
 export const coreMock = async (importOriginal: () => Promise<Record<string, unknown>>) => {
   const actual = await importOriginal();
   return {
@@ -513,7 +518,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // the per-deployment suffix is covered by session-store's own test.
     sessionCookieName: () => "breatic_session",
     // Config
-    env: { ENV: "dev", PORT: 3000, CREDIT_MULTIPLIER: 2.5, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "r2", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled", INGEST_SHARED_SECRET: "test-ingest-secret", INGEST_BASE_URL: "https://ingest.test.example" },
+    env: { ENV: "dev", PORT: 3000, CREDIT_MULTIPLIER: 2.5, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: MOCK_FRONTEND_ORIGIN, COOKIE_DOMAIN: "", STORAGE_PROVIDER: "r2", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled", INGEST_SHARED_SECRET: "test-ingest-secret", INGEST_BASE_URL: "https://ingest.test.example" },
     // The real repository root, so a config loader the app runs on every
     // request (the request body limit reads config/limits.yaml) finds the
     // shipped yaml instead of ENOENT. Suites that need other values mock the
@@ -544,6 +549,8 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     ForbiddenError: actual.ForbiddenError,
     ConflictError: actual.ConflictError,
     ValidationError: actual.ValidationError,
+    // Core's own copy reads core's unmocked `env`; its rule is tested in core.
+    frontendOrigin: () => MOCK_FRONTEND_ORIGIN,
     UnauthorizedError: actual.UnauthorizedError,
   };
 };
@@ -648,6 +655,7 @@ export const domainMock = async () => ({
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,
   violatesTextLengthForModel: mocks.violatesTextLengthForModel,
   sendsUntakenPrompt: mocks.sendsUntakenPrompt,
+  inputRefusalFor: mocks.inputRefusalFor,
   // A provider whose calls run on no model until a test hands one over.
   provider: fakeProvider(() => undefined),
   instructionsText: REAL_INSTRUCTIONS_TEXT,

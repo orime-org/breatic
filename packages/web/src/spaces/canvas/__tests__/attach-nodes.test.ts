@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the canvas hands the chat when nodes are added to the agent.
@@ -106,8 +106,16 @@ function dataMaps(): (id: string) => Y.Map<unknown> | null {
   const root = doc.getMap<Y.Map<unknown>>('data');
   const styled = paragraph('Use ');
   styled.insert(1, [mention('Image 1'), new Y.XmlText(' as the style')]);
+  const person = mention('Person');
+  person.setAttribute('optional', true as unknown as string);
+  const optionalLine = paragraph('The person looks like ');
+  optionalLine.insert(1, [person, new Y.XmlText('.')]);
   root.set('i1', ymap({
-    prompts: ymap({ t2i: fragment(paragraph('a red car at dusk')), i2i: fragment(note('Pick the photo in the panel'), paragraph('make it blue')) }),
+    prompts: ymap({
+      t2i: fragment(paragraph('a red car at dusk')),
+      i2i: fragment(note('Pick the photo in the panel'), paragraph('make it blue')),
+      edit: fragment(paragraph('A product shot.'), optionalLine),
+    }),
   }));
   root.set('t1', ymap({ body: fragment(paragraph('Line one'), paragraph('Line two')) }));
   const shots = new Y.Array<Y.Map<unknown>>();
@@ -231,6 +239,12 @@ describe('a piece of the canvas handed to the agent', () => {
     const [image] = snapshot(['i1']).nodes;
 
     expect(image?.data).toMatchObject({ prompts: { i2i: '(💡 Pick the photo in the panel)\nmake it blue' } });
+  });
+
+  it('says which mention is of an optional template input (inner#1811)', () => {
+    const [image] = snapshot(['i1']).nodes;
+
+    expect(image?.data).toMatchObject({ prompts: { edit: 'A product shot.\nThe person looks like @Person (optional).' } });
   });
 
   it('gives the node its shots', () => {
@@ -373,6 +387,23 @@ describe('a dialogue handed over (inner#1825)', () => {
     expect(handed({ speakers: PAIR, _stand_in_on: true }, [paragraph('Ava：hi'), paragraph('Leo：hello')])?.data).toMatchObject({
       prompts: { tts: 'Ava: hi\nLeo: hello' },
     });
+  });
+
+  it('names the replacement of a retired model, before collab has stored the node under it (#1521)', () => {
+    const OLD = 'gemini-3.1-flash-text-to-speech';
+    const NEW = 'gemini-3.8-flash-text-to-speech';
+    const doc = new Y.Doc();
+    const root = doc.getMap<Y.Map<unknown>>('data');
+    root.set('d1', ymap({ mode: 'tts', model: OLD, modelByMode: { tts: OLD }, paramsByModel: { [OLD]: { speakers: PAIR, _stand_in_on: true } } }));
+    const viewed = node('d1', 'audio', { name: 'Dialogue', mode: 'tts', model: NEW, paramsByModel: { [NEW]: { speakers: PAIR, _stand_in_on: true } } });
+    const item = itemForPick({ nodes: [viewed], edges: [] }, ['d1'], {
+      dataOf: (id) => root.get(id) ?? null,
+      catalog: { image: [], video: [], audio: [{ ...GEMINI, name: NEW }], tts: [], three_d: [], total: 1, credit_multiplier: 1 } as unknown as ModelCatalog,
+      firstVoiceOf: () => undefined,
+    });
+    const data = (item?.chip?.data_snapshot as { nodes: Array<{ data: Record<string, unknown> }> } | undefined)?.nodes[0]?.data;
+    expect(data).toMatchObject({ model: NEW, modelByMode: { tts: NEW }, paramsByModel: { [NEW]: { speakers: PAIR } } });
+    expect(data?.paramsByModel).not.toHaveProperty(OLD);
   });
 
   it('gives the words as written when the node reads in one voice', () => {

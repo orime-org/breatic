@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The shape of a proposed group of canvas nodes (#229).
@@ -38,7 +38,17 @@ const promptSegmentSchema = z.union([
       z.object({ kind: z.literal("note"), label: z.string(), note: z.undefined().optional() }),
     ]),
   }),
-  z.object({ ref: z.number().int().nonnegative(), text: z.undefined().optional(), slot: z.undefined().optional() }),
+  z.object({
+    ref: z.number().int().nonnegative(),
+    /**
+     * The ref is to a template input the user may leave empty (inner#1811,
+     * CAP-9): it lands as a mention marked optional, and the panel leaves out
+     * its paragraph while the node it names holds nothing.
+     */
+    optional: z.literal(true).optional(),
+    text: z.undefined().optional(),
+    slot: z.undefined().optional(),
+  }),
 ]);
 
 /** One stretch of the prompt, as {@link promptSegmentSchema} describes it. */
@@ -82,6 +92,31 @@ export function writtenMark(slot: NonNullable<PromptSegment["slot"]>): string {
  */
 export function markText(slot: NonNullable<PromptSegment["slot"]>): string {
   return slot.kind === "note" ? "" : writtenMark(slot);
+}
+
+/**
+ * A prompt's lines as the box lays them out: a line break in words or in a
+ * mark's text starts the next line, a ref stays in the line it is written
+ * in, and a note is left out (it lands above the words). The canvas writes
+ * the box from these lines and the proposal check judges paragraphs by them
+ * (inner#1811), so the two cannot split a prompt differently.
+ * @param segments - The prompt as the model or a template wrote it.
+ * @returns Each line's words and refs, a mark's text as words.
+ * @throws {never} Never.
+ */
+export function promptLines(segments: readonly PromptSegment[]): PromptSegment[][] {
+  const lines: PromptSegment[][] = [[]];
+  for (const segment of segments) {
+    if (segment.slot?.kind === "note") continue;
+    if (segment.ref !== undefined) {
+      lines[lines.length - 1]?.push(segment);
+      continue;
+    }
+    const [first = "", ...rest] = (segment.slot === undefined ? segment.text : markText(segment.slot)).split("\n");
+    lines[lines.length - 1]?.push({ text: first });
+    for (const next of rest) lines.push([{ text: next }]);
+  }
+  return lines;
 }
 
 /**

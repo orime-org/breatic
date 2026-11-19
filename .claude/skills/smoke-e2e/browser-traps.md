@@ -47,6 +47,8 @@ await locator.evaluate((el) => {
 });
 ```
 
+**During a native drag, Chromium hands the page each `dragover` one mouse move late.** After `page.mouse.move(x, y, { steps })` the last `dragover` the page saw is from the step before, so a drop cursor read then belongs to that point. Move once more (`page.mouse.move(x, y + 1)`) before reading what the page drew for `(x, y)`.
+
 **"waiting for element to be visible, enabled and stable" lists the checks that have not passed yet, not a property that is changing.** Read the element's `disabled`, its `getBoundingClientRect()` and `elementFromPoint` at its centre once each before guessing which one failed.
 
 **A screenshot taken right after a click captures a colour transition mid-way.** Wait with a retrying assertion such as `await expect(row).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')`, and decide which row is open from `aria-expanded`, never from the picture.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The co-create acceptance suite's pure parts (breatic#1361): what one run
@@ -14,7 +14,7 @@
  * share of its runs rather than on every one.
  */
 
-import { ASK_USER_OTHER_MAX_CHARS } from '@breatic/shared';
+import { ASK_USER_OTHER_MAX_CHARS, GENERATION_TEMPLATES } from '@breatic/shared';
 
 /** The normal quantile of a two-sided 95% interval. */
 const Z = 1.96;
@@ -121,8 +121,10 @@ const PROPOSAL_TOOLS = new Set(['propose_canvas_action', 'propose_document_edit'
 /**
  * What of a call's answer the judge reads: for `list_generation_models`, each
  * model's name, what it is good at, its speed, its price with the settings it
- * is at, its cheapest settings and the values each setting takes; for a
- * proposal, whether it was placed and, when refused, why.
+ * is at, its cheapest settings and the values each setting takes; for
+ * `get_generation_template`, each generate node's mode, model and params and
+ * the template's cost and take; for a proposal, whether it was placed and,
+ * when refused, why.
  * @param tool - The tool called.
  * @param input - What the call sent.
  * @param output - What the tool returned.
@@ -134,7 +136,26 @@ export function forJudge(tool: string, input: unknown, output: unknown): unknown
     if (typeof answer !== 'object' || answer === null || typeof answer.placed !== 'boolean') return undefined;
     return answer.placed ? { placed: true } : { placed: false, reason: answer.reason };
   }
+  if (tool === 'get_generation_template') return templateForJudge(input, output);
   return tool === 'list_generation_models' ? modelListForJudge(input, output) : undefined;
+}
+
+/**
+ * A template read cut to what the judge decides a take or a final by: each
+ * generate node as the template sets it, which is what a node that names no
+ * mode or model keeps, and the answer's cost paragraph, which prices the final
+ * and says how a take of it is made.
+ * @param input - What the call sent.
+ * @param output - What `get_generation_template` returned.
+ * @returns The slim answer, or undefined for an id that is no template or an answer that is not text.
+ */
+function templateForJudge(input: unknown, output: unknown): unknown {
+  const id = (input as { id?: unknown } | null)?.id;
+  const template = GENERATION_TEMPLATES.find((one) => one.id === id);
+  if (template === undefined || typeof output !== 'string') return undefined;
+  const nodes = template.nodes.flatMap((node) => (node.role === 'generate' ? [{ key: node.key, mode: node.mode, model: node.model, params: node.params ?? {} }] : []));
+  const cost = output.split('\n\n').find((paragraph) => paragraph.startsWith('At its settings this template costs'));
+  return cost === undefined ? { nodes } : { nodes, cost };
 }
 
 /**
@@ -215,6 +236,7 @@ export function judgePrompt(scenario: Scenario, run: Run): string {
     'An answer on a question card is not a message: a few words in another language there do not change the user\'s language.',
     'When the user says they will send something, waiting for it before making anything it could change, the look included, is right.',
     'Judge a stated price only against a RETURNED price for the same model and settings; a price for settings the run never priced is not a breach.',
+    'A template node that names no mode or model keeps the template\'s mode, model and every setting it does not write.',
     'A proposal call is a card the user sees when it is in state output-available, unless its RETURNED line says placed false: that proposal was refused and the user never sees it.',
     'A TOOL line shows what the agent sent; null means the input was not recorded. A RETURNED line under it shows what came back, where it was recorded.',
     `RUN:\n${transcriptOf(scenario, run)}`,

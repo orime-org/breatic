@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The editor chrome: the scrolling body, the whole-document entry, the bubble
@@ -27,6 +27,7 @@ import { Awareness } from 'y-protocols/awareness';
 
 import { deriveId, documentBodyFragment, type DocumentProposal } from '@breatic/shared';
 
+import { useFollowStore } from '@web/stores/follow';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { requestCommentLocation, selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
@@ -117,6 +118,16 @@ describe('DocumentEditor', () => {
     expect(columns).toHaveLength(2);
     expect(columns[0]).toHaveAttribute('data-testid', 'doc-outline-column');
     expect(columns[1]).toHaveClass(BODY_SCROLLER_CLASS);
+  });
+
+  it('keeps the outline toggle and the whole-document entry in place while following', () => {
+    // The follow bar takes its own row above the Space, so nothing in the
+    // document steps down for it.
+    act(() => useFollowStore.getState().start('u2', 'Li Lei'));
+    render(<DocumentEditor handle={handle} />);
+    expect(screen.getByTestId('doc-doc-menu-trigger').closest('.sticky')).toHaveClass('top-5');
+    expect(screen.getByTestId('doc-outline-toggle').parentElement).toHaveClass('pt-5');
+    act(() => useFollowStore.getState().reset());
   });
 
   it('puts the whole-document entry inside the scroller, ahead of the page', () => {
