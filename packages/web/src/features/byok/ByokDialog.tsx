@@ -75,15 +75,24 @@ function ByokBody(): React.JSX.Element {
   }, [refetch]);
 
   if (view.data?.enabled === false) return <p className='px-4 pb-4 text-sm text-muted-foreground'>{t('byok.disabled')}</p>;
-  if (view.data === undefined && view.isError) {
-    return (
-      <div className='mx-4 mb-4 flex items-center justify-between rounded-content-sm border border-border px-4 py-3 text-sm'>
-        <span className='text-status-error'>{t('byok.loadFailed')}</span>
-        <Button type='button' variant='outline' size='sm' onClick={retry}>{t('byok.retry')}</Button>
-      </div>
-    );
-  }
+  if (view.data === undefined && view.isError) return <LoadFailed onRetry={retry} />;
   return <ByokTabs view={view.data} />;
+}
+
+/**
+ * What the dialog says when a read it needs failed, with a way to read it again.
+ * @param props - The retry.
+ * @param props.onRetry - Read again.
+ * @returns The line.
+ */
+function LoadFailed({ onRetry }: { onRetry: () => void }): React.JSX.Element {
+  const t = useTranslation();
+  return (
+    <div className='mx-4 mb-4 flex items-center justify-between rounded-content-sm border border-border px-4 py-3 text-sm'>
+      <span className='text-status-error'>{t('byok.loadFailed')}</span>
+      <Button type='button' variant='outline' size='sm' onClick={onRetry}>{t('byok.retry')}</Button>
+    </div>
+  );
 }
 
 /** What a tab shows while the view is on its way. */
@@ -102,6 +111,13 @@ function ByokTabs({ view }: { view: ByokView | undefined }): React.JSX.Element {
   const entries = React.useMemo(() => entriesOf(catalog.data), [catalog.data]);
   const changeTab = React.useCallback((next: string): void => setTab(next === 'models' ? 'models' : 'keys'), []);
   const goKeys = React.useCallback((): void => setTab('keys'), []);
+  const { refetch } = catalog;
+  const retry = React.useCallback((): void => {
+    void refetch();
+  }, [refetch]);
+  // Both tabs list models from the catalog: until it is here neither shows, and a failed read says so.
+  if (catalog.data === undefined && catalog.isError) return <LoadFailed onRetry={retry} />;
+  const ready = view !== undefined && catalog.data !== undefined;
 
   return (
     <Tabs value={tab} onValueChange={changeTab} className='flex min-h-0 flex-1 flex-col'>
@@ -112,12 +128,10 @@ function ByokTabs({ view }: { view: ByokView | undefined }): React.JSX.Element {
         </TabsList>
       </div>
       <TabsContent value='keys' className='hidden flex-1 border-t border-border data-[state=active]:flex'>
-        {view === undefined ? LOADING : <ByokUpstreamTab view={view} entries={entries} />}
+        {ready ? <ByokUpstreamTab view={view} entries={entries} /> : LOADING}
       </TabsContent>
       <TabsContent value='models' className='hidden flex-1 flex-col data-[state=active]:flex'>
-        {view === undefined ? LOADING : (
-          <ByokModelsTab view={view} entries={entries} loading={catalog.isPending} onAddKey={goKeys} />
-        )}
+        {ready ? <ByokModelsTab view={view} entries={entries} onAddKey={goKeys} /> : LOADING}
       </TabsContent>
     </Tabs>
   );

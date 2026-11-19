@@ -299,6 +299,23 @@ describe('ByokDialog', () => {
     expect(within(dialog).queryByRole('tab')).toBeNull();
   });
 
+  it('says the settings did not load, and offers a retry, when the model list fails to load', async () => {
+    const user = userEvent.setup();
+    let fail = true;
+    api.get.mockImplementation((url: string) => {
+      if (url === '/account/byok') return Promise.resolve(view());
+      if (url === '/models') return fail ? Promise.reject(new Error('network')) : Promise.resolve(CATALOG);
+      return Promise.reject(new Error(`unexpected GET ${url}`));
+    });
+    const dialog = await mount();
+
+    expect(await within(dialog).findByText('Couldn\'t load BYOK settings.')).toBeInTheDocument();
+    expect(within(dialog).queryByText('No model here runs on it.')).toBeNull();
+    fail = false;
+    await user.click(within(dialog).getByRole('button', { name: 'Retry' }));
+    expect(await within(dialog).findByTestId('byok-upstream-wavespeed')).toBeInTheDocument();
+  });
+
   describe('upstream keys tab', () => {
     it('lists added upstreams first, then the rest by language model, official API and reseller', async () => {
       const dialog = await mount();

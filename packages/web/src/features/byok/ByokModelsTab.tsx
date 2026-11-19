@@ -9,7 +9,6 @@ import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
-import { Skeleton } from '@web/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@web/components/ui/tabs';
 import { byokApi, type ByokView } from '@web/data/api/byok';
 import { rereadByok } from '@web/features/byok/byok-query';
@@ -34,19 +33,16 @@ interface ModelChoice {
  * @param props - The view, the catalog and the way back.
  * @param props.view - The account's BYOK view.
  * @param props.entries - Every model of the catalog.
- * @param props.loading - Whether the catalog is still on its way.
  * @param props.onAddKey - Switch to the upstream keys tab.
  * @returns The tab's content.
  */
 export function ByokModelsTab({
   view,
   entries,
-  loading,
   onAddKey,
 }: {
   view: ByokView;
   entries: ModelEntry[];
-  loading: boolean;
   onAddKey: () => void;
 }): React.JSX.Element {
   const t = useTranslation();
@@ -109,8 +105,7 @@ export function ByokModelsTab({
       </div>
       <ScrollArea className='min-h-0 flex-1 border-t border-border'>
         <div className='flex flex-col divide-y divide-border px-4'>
-          {loading ? <Skeleton className='my-3 h-8' /> : null}
-          {!loading && rows.length === 0 ? (
+          {rows.length === 0 ? (
             <p className='py-6 text-center text-xs text-muted-foreground'>
               {needle !== '' ? t('byok.noModelMatch') : t('byok.noModelsInModality')}
             </p>
