@@ -294,4 +294,36 @@ describe('MembersStack, following', () => {
     await user.click(screen.getByTestId('members-trigger'));
     await expectNoA11yViolations(baseElement);
   });
+
+  it('lists external agents under their own heading, each with its name and how it stands (#1488 design 19.2)', async () => {
+    const user = userEvent.setup();
+    render(
+      <MembersStack
+        members={MEMBERS}
+        currentUserId='u-own'
+        agents={[
+          { connectionId: 'c-work', label: 'Claude Code · Owner Person', status: 'working' },
+          { connectionId: 'c-on', label: 'Cursor · Editor Person', status: 'online' },
+          { connectionId: 'c-idle', label: 'Codex · Owner Person', status: 'idle' },
+          { connectionId: 'c-off', label: 'Zed · Viewer Person', status: 'offline' },
+        ]}
+      />,
+    );
+    await user.click(screen.getByTestId('members-trigger'));
+    expect(screen.getByText(t('members.popover.agents'))).toBeInTheDocument();
+    const status = (id: string): string | null => screen.getByTestId(`members-agent-status-${id}`).textContent;
+    expect(screen.getByTestId('members-agent-c-work')).toHaveTextContent('Claude Code · Owner Person');
+    expect(status('c-work')).toBe(t('members.popover.working'));
+    expect(status('c-on')).toBe(t('members.popover.online'));
+    expect(status('c-idle')).toBe(t('members.popover.idle'));
+    expect(status('c-off')).toBe(t('members.popover.offline'));
+  });
+
+  it('keeps the agent heading with an empty line when no agent has been here', async () => {
+    const user = userEvent.setup();
+    render(<MembersStack members={MEMBERS} currentUserId='u-own' />);
+    await user.click(screen.getByTestId('members-trigger'));
+    expect(screen.getByText(t('members.popover.agents'))).toBeInTheDocument();
+    expect(screen.getByText(t('members.popover.noAgents'))).toBeInTheDocument();
+  });
 });

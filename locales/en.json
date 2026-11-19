@@ -2252,7 +2252,11 @@
       "online": "Online",
       "offline": "Offline",
       "follow": "View",
-      "unfollow": "Stop"
+      "unfollow": "Stop",
+      "agents": "External agents",
+      "idle": "Idle",
+      "working": "Online · Working",
+      "noAgents": "No external agent has worked here yet"
     },
     "modal": {
       "title": "Collaborators",
@@ -4096,5 +4100,10 @@
   },
   "commentLink": {
     "gone": "This comment is no longer here"
+  },
+  "agentPresence": {
+    "label": "{agent} · {owner}",
+    "named": "{name} ({detail})",
+    "unknown": "External agent"
   }
 }

@@ -2252,7 +2252,11 @@
       "online": "온라인",
       "offline": "오프라인",
       "follow": "보기",
-      "unfollow": "중지"
+      "unfollow": "중지",
+      "agents": "외부 Agent",
+      "idle": "자리 비움",
+      "working": "온라인 · 작업 중",
+      "noAgents": "아직 이곳에서 작업한 외부 Agent가 없습니다"
     },
     "modal": {
       "title": "공동 작업자",
@@ -4096,5 +4100,10 @@
   },
   "commentLink": {
     "gone": "이 댓글은 더 이상 없습니다"
+  },
+  "agentPresence": {
+    "label": "{agent} · {owner}",
+    "named": "{name} ({detail})",
+    "unknown": "외부 Agent"
   }
 }

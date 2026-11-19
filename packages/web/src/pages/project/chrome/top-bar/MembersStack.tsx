@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Eye, LogOut, Users, X } from 'lucide-react';
+import { Bot, Eye, LogOut, Users, X } from 'lucide-react';
 import * as React from 'react';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
@@ -18,6 +18,7 @@ import { useUIStore } from '@web/stores';
 import { stopFollowing, useFollowStore, type FollowOther } from '@web/stores/follow';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { Member, MemberRole } from '@web/data/api/members';
+import type { AgentRow, AgentStatus } from '@web/features/agent-presence/agent-status';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
 
 export type { Member, MemberRole };
@@ -54,7 +55,28 @@ interface MembersStackProps {
    * it is dimmed and pressing it says whom they follow.
    */
   followTargets?: ReadonlyMap<string, FollowOther>;
+  /**
+   * External agents that have worked in this project, each with its
+   * "connection · owner" name and how it stands (#1488 design 19.2).
+   */
+  agents?: ReadonlyArray<AgentRow>;
 }
+
+const NO_AGENTS: ReadonlyArray<AgentRow> = [];
+
+const AGENT_STATUS_KEY: Record<AgentStatus, 'members.popover.working' | 'members.popover.online' | 'members.popover.idle' | 'members.popover.offline'> = {
+  working: 'members.popover.working',
+  online: 'members.popover.online',
+  idle: 'members.popover.idle',
+  offline: 'members.popover.offline',
+};
+
+const AGENT_DOT: Record<AgentStatus, string> = {
+  working: 'bg-status-success',
+  online: 'bg-status-success',
+  idle: 'bg-status-warning',
+  offline: 'bg-muted-foreground/40',
+};
 
 const NOBODY_ONLINE: ReadonlySet<string> = new Set();
 const NOBODY_FOLLOWING: ReadonlyMap<string, FollowOther> = new Map();
@@ -87,7 +109,7 @@ const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'>
 export const MembersStack = React.forwardRef<
   HTMLButtonElement,
   MembersStackProps
->(({ members, currentUserId, currentUserRole, onLeave, onlineUserIds = NOBODY_ONLINE, followTargets = NOBODY_FOLLOWING }, ref) => {
+>(({ members, currentUserId, currentUserRole, onLeave, onlineUserIds = NOBODY_ONLINE, followTargets = NOBODY_FOLLOWING, agents = NO_AGENTS }, ref) => {
   const t = useTranslation();
   // Owner-only affordance (B model — hidden, not disabled): the manage
   // button only renders when the current user is owner.
@@ -228,6 +250,23 @@ export const MembersStack = React.forwardRef<
             </li>
           ))}
         </ul>
+        <Separator className='my-1' />
+        <div className='px-2 pb-1 pt-1'>
+          <span className='text-2xs font-medium tracking-wide text-muted-foreground'>
+            {t('members.popover.agents')}
+          </span>
+        </div>
+        {agents.length === 0 ? (
+          <p className='px-2 pb-1.5 text-xs text-muted-foreground'>{t('members.popover.noAgents')}</p>
+        ) : (
+          <ul className='flex flex-col gap-0.5'>
+            {agents.map((a) => (
+              <li key={a.connectionId} data-testid={`members-agent-${a.connectionId}`}>
+                <AgentRowView row={a} />
+              </li>
+            ))}
+          </ul>
+        )}
         {/* No footer at all for a user without an action: no separator,
             no padded gap. Removing / role-changing members happens inside
             the manage modal — never inline in the popover. */}
@@ -365,6 +404,35 @@ function MemberRow({ member, isMe, online, followed, busyNotice, onFollowChanged
           {t('members.popover.follow')}
         </Button>
       )}
+    </div>
+  );
+}
+
+/**
+ * One external agent in the member list: a robot mark, "connection · owner"
+ * and how it stands (#1488 design 19.2).
+ * @param root0 - Props.
+ * @param root0.row - The agent.
+ * @returns The row.
+ */
+function AgentRowView({ row }: { row: AgentRow }): React.JSX.Element {
+  const t = useTranslation();
+  return (
+    <div className='flex items-center gap-2 rounded-chrome px-2 py-1.5 hover:bg-accent'>
+      <span
+        aria-hidden='true'
+        className='inline-flex shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground'
+        style={{ width: 'var(--avatar-md)', height: 'var(--avatar-md)' }}
+      >
+        <Bot className='size-4' />
+      </span>
+      <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
+        <span className='truncate text-sm text-foreground'>{row.label}</span>
+        <span className='flex items-center gap-1 text-xs text-muted-foreground'>
+          <span aria-hidden='true' className={cn('inline-block size-2 shrink-0 rounded-full', AGENT_DOT[row.status])} />
+          <span data-testid={`members-agent-status-${row.connectionId}`}>{t(AGENT_STATUS_KEY[row.status])}</span>
+        </span>
+      </div>
     </div>
   );
 }

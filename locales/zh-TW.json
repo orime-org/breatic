@@ -2252,7 +2252,11 @@
       "online": "線上",
       "offline": "離線",
       "follow": "查看",
-      "unfollow": "停止"
+      "unfollow": "停止",
+      "agents": "外部 Agent",
+      "idle": "閒置",
+      "working": "線上 · 正在操作",
+      "noAgents": "還沒有外部 Agent 在這裡操作過"
     },
     "modal": {
       "title": "協作者管理",
@@ -4096,5 +4100,10 @@
   },
   "commentLink": {
     "gone": "這條批註已不在了"
+  },
+  "agentPresence": {
+    "label": "{agent} · {owner}",
+    "named": "{name}（{detail}）",
+    "unknown": "外部 Agent"
   }
 }

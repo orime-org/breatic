@@ -25,6 +25,7 @@ vi.mock('@web/data/yjs/project-meta', async () => {
     useProjectMeta: () => ({
       spaces: [],
       users: new Map(),
+      agents: [],
       following: new Map(),
       synced: true,
       provider: null,

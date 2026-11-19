@@ -2252,7 +2252,11 @@
       "online": "オンライン",
       "offline": "オフライン",
       "follow": "表示",
-      "unfollow": "停止"
+      "unfollow": "停止",
+      "agents": "外部 Agent",
+      "idle": "アイドル",
+      "working": "オンライン · 操作中",
+      "noAgents": "まだ外部 Agent はここで操作していません"
     },
     "modal": {
       "title": "コラボレーター管理",
@@ -4096,5 +4100,10 @@
   },
   "commentLink": {
     "gone": "このコメントはもうありません"
+  },
+  "agentPresence": {
+    "label": "{agent} · {owner}",
+    "named": "{name}（{detail}）",
+    "unknown": "外部 Agent"
   }
 }

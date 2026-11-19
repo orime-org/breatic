@@ -2252,7 +2252,11 @@
       "online": "在线",
       "offline": "离线",
       "follow": "查看",
-      "unfollow": "停止"
+      "unfollow": "停止",
+      "agents": "外部 Agent",
+      "idle": "空闲",
+      "working": "在线 · 正在操作",
+      "noAgents": "还没有外部 Agent 在这里操作过"
     },
     "modal": {
       "title": "协作者管理",
@@ -4096,5 +4100,10 @@
   },
   "commentLink": {
     "gone": "这条批注已不在了"
+  },
+  "agentPresence": {
+    "label": "{agent} · {owner}",
+    "named": "{name}（{detail}）",
+    "unknown": "外部 Agent"
   }
 }
