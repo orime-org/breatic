@@ -70,7 +70,7 @@ describe("reading a styled template", () => {
 
   it("gives the picked style's words after the node's own", () => {
     const text = describeTemplate(STYLED, FIRST);
-    expect(text).toContain(JSON.stringify({ text: "\n\nThick oil paint in ridges. Warm gold." }));
+    expect(text).toContain(JSON.stringify({ text: "\nThick oil paint in ridges. Warm gold." }));
     expect(text).not.toContain("pass style to read the words for one");
     expect(templateSegmentsText(STYLED, "still", FIRST)).toContain("Warm gold.");
     expect(templateSegmentsText(STYLED, "still")).not.toContain("Warm gold.");

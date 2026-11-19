@@ -109,7 +109,7 @@ export function templateSegmentsText(template: GenerationTemplate, key: Template
   const words = templateNodeWords(template, key, style);
   if ("prompt" in words) {
     const own = segments(words.prompt);
-    return words.styleKey === undefined ? own : `${own.slice(0, -1)}, ${JSON.stringify({ text: `\n\n${t(words.styleKey)}` })}]`;
+    return words.styleKey === undefined ? own : `${own.slice(0, -1)}, ${JSON.stringify({ text: `\n${t(words.styleKey)}` })}]`;
   }
   if ("lines" in words) return `lines: [${words.lines.map((line) => `{"speaker": ${String(line.speaker)}, "prompt": ${segments(line.key)}}`).join(", ")}]`;
   return `shots: [${words.shots.map((shot) => `{"duration": ${String(shot.seconds)}, "prompt": ${segments(shot.key)}}`).join(", ")}]`;

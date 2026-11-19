@@ -699,8 +699,8 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
       });
     const words = templateNodeWords(template, key, input.style);
     if ("prompt" in words) {
-      // The style's words are a paragraph of plain text after the node's own, read from their absolute key.
-      const style = words.styleKey === undefined ? [] : markedSegments(`\n\n${t(words.styleKey)}`);
+      // The style's words are a paragraph of plain text on the line after the node's own, read from their absolute key.
+      const style = words.styleKey === undefined ? [] : markedSegments(`\n${t(words.styleKey)}`);
       return { prompt: [...notes, ...bound(words.prompt), ...style] };
     }
     if ("lines" in words) return { lines: words.lines.map((line, i) => ({ speaker: line.speaker, prompt: [...(i === 0 ? notes : []), ...bound(line.key)] })) };

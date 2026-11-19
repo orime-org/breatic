@@ -338,7 +338,7 @@ describe('useApplyTemplate', () => {
       const { result } = renderHook(() => useApplyTemplate('p', 's', 'target', [ULTRA], place));
       result.current(STYLED, 'impasto-oil');
       await vi.waitFor(() => expect(place).toHaveBeenCalledTimes(1));
-      expect(placed(place).proposal.nodes[0]?.prompt?.at(-1)).toEqual({ text: '\n\nThick oil paint.' });
+      expect(placed(place).proposal.nodes[0]?.prompt?.at(-1)).toEqual({ text: '\nThick oil paint.' });
     });
 
     it('places nothing and asks the user to refresh when the style words do not arrive', async () => {

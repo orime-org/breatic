@@ -108,8 +108,8 @@ describe('expandTemplate with a style', () => {
 
   it('writes the style paragraph after each styled node\'s own words', () => {
     const result = expandTemplate(STYLED, { ...input, style: STYLE });
-    expect(result.rewritten.get(0)?.prompt?.at(-1)).toEqual({ text: '\n\nShot words.' });
-    expect(result.appended.find((node) => node.name === 'Still')?.prompt?.at(-1)).toEqual({ text: '\n\nStill words.' });
+    expect(result.rewritten.get(0)?.prompt?.at(-1)).toEqual({ text: '\nShot words.' });
+    expect(result.appended.find((node) => node.name === 'Still')?.prompt?.at(-1)).toEqual({ text: '\nStill words.' });
     expect(result.appended.find((node) => node.name === 'Plain')?.prompt).toEqual([{ text: 'A plain picture.' }]);
   });
 
