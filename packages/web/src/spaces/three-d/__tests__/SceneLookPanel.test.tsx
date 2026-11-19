@@ -243,6 +243,30 @@ describe('a pick that ends after its Space or object changed', () => {
     await flush();
     expect(lookOf(doc)).toEqual({ 0: { map: NEW } });
     expect(toast.warning).not.toHaveBeenCalled();
+    // The pick is the open Space's own step: undoing there takes it off.
+    const reopened = getSceneSession(doc, NAME);
+    expect(reopened.history.undoStack).toHaveLength(1);
+    act(() => { reopened.historyStep('undo'); });
+    expect(lookOf(doc)).toBeUndefined();
+  });
+
+  it.each([
+    ['the Space was closed', (): void => { evictSceneSession(NAME); }, 'spaces.threeD.look.pickSpaceClosed'],
+    ['the object was deleted', (doc: Y.Doc): void => { applySceneCommand(doc, { type: 'delete', ids: [ID] }, Symbol('peer'), true, NAME); }, 'spaces.threeD.look.pickObjectGone'],
+  ] as const)('writes nothing and says so when %s while the other pictures were judged', async (_name, change, key) => {
+    const { doc, rerender } = panel();
+    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { map: OTHER } } as never, Symbol(), true, NAME);
+    rerender();
+    let releaseOther: () => void = () => undefined;
+    sizes.set(OTHER, () => new Promise((resolve) => { releaseOther = () => resolve({ width: 64, height: 64, type: 'png' }); }));
+    sizes.set(NEW, async () => ({ width: 64, height: 64, type: 'png' }));
+    await pick('0', NEW);
+    await flush();
+    change(doc);
+    releaseOther();
+    await flush();
+    expect(toast.warning).toHaveBeenCalledWith(t(key));
+    expect((readSceneDocument(doc).objects.find((object) => object.id === ID) as SceneObject | undefined)?.look?.[0]).toBeUndefined();
   });
 
   it('writes nothing and says so when the object was deleted meanwhile', async () => {
