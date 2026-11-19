@@ -541,6 +541,19 @@ export async function noteSlotCheck(id: string, limit: number, staleMs: number, 
 }
 
 /**
+ * Whether a task is still pending, read in the gate's transaction under the
+ * person's lock: another pickup may have started or ended it since this one
+ * read it.
+ * @param id - The task.
+ * @param tx - The gate's transaction.
+ * @returns True while it is pending.
+ */
+export async function isPending(id: string, tx: DbTx): Promise<boolean> {
+  const [row] = await tx.select({ status: tasks.status }).from(tasks).where(eq(tasks.id, id));
+  return row?.status === "pending";
+}
+
+/**
  * Mark a pending task as waiting for a slot, keeping the first moment it did,
  * and the job that judged it when the task has none recorded yet: that job is
  * the one that will pick it up again, and the stale-waiter sweep reads it.

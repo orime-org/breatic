@@ -908,6 +908,29 @@ describe("G a start releases the node row another pickup marked waiting", () => 
     expect(await pick(taskId)).toEqual({ started: true });
     expect((await nodeRow(nodeTaskId!)).waiting_since).toBeNull();
   });
+
+  // The other order: this pickup read the task pending, another started it
+  // while this one waited for the lock, and the one now running fills the limit.
+  it("leaves a task another pickup started meanwhile running, its node row not waiting", async () => {
+    const p = await person("enterprise", 1);
+    const { taskId, nodeTaskId } = await seedTask(p, { node: true });
+    const holder = await sql.reserve();
+    let picked: Promise<Picked>;
+    try {
+      await holder`select pg_advisory_lock(hashtext(${`running-tasks:${p.userId}`}))`;
+      picked = pick(taskId);
+      // Inside slot_lock_wait_ms: the pickup has read the task and is trying the lock.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await sql`update tasks set status = 'running', started_at = now() where id = ${taskId}`;
+    } finally {
+      await holder`select pg_advisory_unlock(hashtext(${`running-tasks:${p.userId}`}))`;
+      holder.release();
+    }
+    // It runs on under the start the other pickup stored, as a pickup of a running task does.
+    expect(await picked).toEqual({ started: true });
+    expect((await taskRow(taskId)).status).toBe("running");
+    expect((await nodeRow(nodeTaskId!)).waiting_since).toBeNull();
+  });
 });
 
 describe("G the gate answers the task's stored start", () => {

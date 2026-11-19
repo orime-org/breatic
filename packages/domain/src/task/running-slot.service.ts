@@ -206,6 +206,8 @@ async function failRows(taskId: string, errorMessage: string, sceneReason: TaskF
 async function judgeTask(row: taskRepo.GateTaskRow, jobId: string, limit: number): Promise<Judged<Date>> {
   return db.transaction(async (tx): Promise<Judged<Date>> => {
     if (!(await takeLock(row.userId, tx))) return { kind: "busy" };
+    // The task was read before the lock; another pickup may have started or ended it since.
+    if (!(await taskRepo.isPending(row.id, tx))) return { kind: "ended" };
     const { running, ahead } = await standing(row.userId, limit, row.createdAt, tx);
     if (running + ahead < limit) {
       const startedAt = await taskRepo.startPending(row.id, jobId, tx);
@@ -279,6 +281,9 @@ export async function startWithinLimit(input: { id: string; jobId: string }): Pr
   if (row.status === "failed") return { outcome: "ended", failed: true, publishFailures: await closeFailed(row) };
   if (row.status !== "pending") return { outcome: "ended", publishFailures: [] };
   const judged = await judgeTask(row, input.jobId, await limitFor(row.projectId, row.userId));
+  // Another pickup moved it on after it was read: answer it as it stands now,
+  // so a task another pickup started runs on under its stored start.
+  if (judged.kind === "ended") return startWithinLimit(input);
   return settleJudgement(judged, null);
 }
 
