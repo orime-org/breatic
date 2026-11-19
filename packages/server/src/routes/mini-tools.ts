@@ -4,8 +4,10 @@
 /**
  * `POST /mini-tools` — the one entry every server-run mini-tool shares
  * (inner#888 §6.1). The body is validated against the registry, the run is
- * prepared, and the result nodes' rows open before the credit gate so a
- * refusal has somewhere to be said. Browser tools never come here: their
+ * prepared, and its estimate is held before the task row and the result
+ * nodes' rows are written, so a refusal by credits or a spend limit answers
+ * 402 and leaves nothing on the nodes (inner#1968). Browser tools never come
+ * here: their
  * export uploads like any other file.
  */
 

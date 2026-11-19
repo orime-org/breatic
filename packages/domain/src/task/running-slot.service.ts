@@ -52,7 +52,7 @@ export type GateOutcome<S> =
   | {
       /** It reached its end before this pickup, or (a Timeline execution) another pickup holds it. */
       outcome: "ended";
-      /** On a task the old code failed and left open: true once its holdings and rows are closed here. */
+      /** On a task a worker before inner#1968 marked failed on a retryable error and left open: true once its holdings and rows are closed here. */
       failed?: boolean;
       /** Signals to the canvas that did not go out, for the caller to log. */
       publishFailures: unknown[];
@@ -252,8 +252,8 @@ async function judgeExecution(row: { id: string; actorUserId: string; createdAt:
 }
 
 /**
- * Close what a task the old code failed left open (design 3.9, round 7 W3):
- * its credit hold and its running node rows. Each step is a no-op on
+ * Close what a task left open when a worker before inner#1968 marked it
+ * failed on a retryable error: its credit hold and its running node rows. Each step is a no-op on
  * a task already closed.
  * @param row - The task.
  * @returns The signals that failed.

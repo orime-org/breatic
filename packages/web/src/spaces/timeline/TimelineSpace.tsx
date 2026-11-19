@@ -604,7 +604,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     }).then((outcome) => {
       if (outcome.kind !== 'done') {
         const failed = outcome.kind === 'failed' ? outcome.error : null;
-        // A spend limit is told in a toast with its limit and reset day, as
+        // A spend limit is told in a toast with its reset day (and a person's
+        // own limit with its amount), as
         // at every other entry (inner#1968, design 3.3a); the dialog comes
         // back with the input either way.
         const capped = refusalSentence(failed);

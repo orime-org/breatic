@@ -3,14 +3,16 @@
 
 /**
  * The spend caps section of a Studio's credits tab (inner#1968, test spec
- * H-34; the confirmed demo's "Studio · 积分 · 花费上限" page).
+ * H-34; the confirmed demo's Studio credits spend limit page).
  *
- * A team studio's admin sees "花费上限": the studio's monthly total, the
+ * A team studio's admin sees the spend limits section
+ * (`studio.container.credits.spendCap.title`): the studio's monthly total, the
  * per-person default, what the studio spent this month, when it resets, and a
  * row per member with their relation, what they spent and the cap in force,
- * with "单独设置…", whose dialog also puts the person back on the default; a
- * former member's row is read-only. A personal studio has no such section; a member who is not admin
- * sees neither the section nor a way to edit.
+ * with Set own limit… (`spendCap.override`), whose dialog also puts the person
+ * back on the default; a former member's row is read-only. A personal studio
+ * has no such section; a member who is not admin sees neither the section nor
+ * a way to edit.
  *
  * Shape this suite chose where the design names none: the tab reads
  * `GET /studio/:slug/spend-limits` through `apiGet`, and the server's 403 (not

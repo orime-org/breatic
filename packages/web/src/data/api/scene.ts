@@ -131,7 +131,8 @@ export async function reportSpaceTaskFailure(projectId: string, spaceId: string,
  * @returns The run and its row.
  */
 export function submitSceneGeneration(projectId: string, spaceId: string, body: SceneGenerationBody, key: string): Promise<SceneGenerationAnswer> {
-  // The submission holds its estimate, admitted or refused (inner#1968).
+  // Admitted or refused, the submission held or failed to hold the project's
+  // credits, so the top bar reads them again (inner#1611, inner#1968).
   return apiPost<SceneGenerationAnswer>(`/projects/${projectId}/three-d/${spaceId}/generations`, body, runOnceRequest(key)).finally(() => {
     noteCreditsChanged(projectId);
   });

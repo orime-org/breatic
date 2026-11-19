@@ -3,19 +3,21 @@
 
 /**
  * A canvas task that waits for a free slot (inner#1968, test spec G-34 and
- * G-38; the confirmed demo's "排队中" page).
+ * G-38; the confirmed demo's queued page).
  *
  * The counts carry `waiting`, a subset of `running`. The column draws
- * "running − waiting" as running and `waiting` as its own cell, whose tip says
- * how many wait and why: "发起人同时运行的任务已达上限（{limit} 个），等发起人前面的任务结束后自动开始".
- * A waiting row of the task list says "排队中", shows no running time and
- * offers "取消". A node whose only task waits is still busy: it cannot be
- * deleted or filled by a template.
+ * "running − waiting" as running and `waiting` as its own cell, whose tip names
+ * the state and says each queued task starts once its starter runs fewer tasks
+ * than the limit (`canvas.task.waitReasonEachLimit` with the counts'
+ * `waitingLimit`, `waitReasonEach` without one). A waiting row of the task list
+ * says why (`canvas.task.waitReasonLimit`), shows no running time and offers
+ * Cancel. A node whose only task waits is still busy: it cannot be deleted or
+ * filled by a template.
  *
  * Shapes this suite chose where the design names none: the row learns it waits
  * from `entry.waitingSince` and cancels through an `onCancel(taskId)` prop; the
- * tip's limit is not pinned to a number, since neither the counts nor the row
- * carry it.
+ * tip's limit comes from the counts' `waitingLimit`, the row's from
+ * `slotWaitLimit`.
  */
 
 import * as React from 'react';

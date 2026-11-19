@@ -3,8 +3,8 @@
 
 /**
  * A team Studio's monthly spend limits, which only its admin reads and writes
- * (inner#1968, design 3.10). A personal Studio answers 404 and anyone else
- * 403.
+ * (inner#1968, design 3.10). A personal Studio, or a deployment with payments
+ * off, answers 404; anyone but its admin 403.
  */
 
 import type { CreditDecimal } from '@breatic/shared';
@@ -47,7 +47,7 @@ export function spendLimitsQueryKey(slug: string): readonly [string, string] {
  * Read a Studio's spend limits.
  * @param slug - The Studio.
  * @returns The limits.
- * @throws {ApiException} 403 for anyone but its admin, 404 for a personal Studio.
+ * @throws {ApiException} 403 for anyone but its admin, 404 for a personal Studio or with payments off.
  */
 export function fetchSpendLimits(slug: string): Promise<SpendLimitsView> {
   return apiGet<SpendLimitsView>(`/studio/${slug}/spend-limits`);

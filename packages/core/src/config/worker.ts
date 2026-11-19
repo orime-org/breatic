@@ -34,7 +34,7 @@ export const workerConfigSchema = z.object({
   slot_wait_stale_ms: z.number().int().positive().default(120_000),
   /** The longest a task waiting for a running-task slot is put off before it is judged again. */
   slot_wait_max_delay_ms: z.number().int().positive().default(30_000),
-  /** How often the sweep that releases tasks still waiting for a slot runs. */
+  /** How often the sweep runs that ends as failed the stale slot waiters whose job will not pick them up again. */
   slot_wait_sweep_interval_ms: z.number().int().positive().default(60_000),
   /** How many stale waiters one round of that sweep looks at. */
   slot_wait_sweep_batch_size: z.number().int().positive().default(200),

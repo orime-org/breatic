@@ -22,7 +22,7 @@ import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import postgres from "postgres";
 
-const MIGRATION = new URL("../../../../core/src/db/migrations/0126_operation_ledger.sql", import.meta.url);
+const MIGRATION = new URL("../../../../core/src/db/migrations/0126_running_tasks_and_spend_limits.sql", import.meta.url);
 
 let sql: ReturnType<typeof postgres>;
 

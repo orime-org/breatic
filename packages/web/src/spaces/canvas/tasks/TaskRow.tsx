@@ -201,9 +201,10 @@ export const TaskRow = React.memo(function TaskRow({
           label={kind.label}
           colorClassName='text-foreground-secondary'
         />
-        {/* What the task acted on keeps its whole width; the starter, at the
-            right end, is the only part that gives way, down to 40px. A shrink
-            weight would still take a fraction of a pixel from the name and cut it. */}
+        {/* What the task acted on never shrinks and takes its width first, up to
+            3rem short of the line (the starter's 40px floor plus the gap); the
+            starter at the right end gives way down to 40px. A shrink weight
+            would still take a fraction of a pixel from the name and cut it. */}
         <span className='flex min-w-0 flex-1 items-center gap-2'>
           {kind.detail !== null ? (
             <Tooltip>

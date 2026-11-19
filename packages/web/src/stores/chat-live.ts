@@ -65,8 +65,9 @@ const askedAgain = new Set<string>();
 
 /**
  * What the tray says when a spend limit stopped the waiting messages' run
- * (inner#1968, design 3.10 and 21 row 23): the toast's own sentence, with the
- * limit and its reset day; a bare one only from a server that sent neither.
+ * (inner#1968, design 3.10 and 21 row 23): the toast's own sentence, with its
+ * reset day and, for a person's own limit, the amount; a bare one only from a
+ * server that sent neither.
  * @param seen - What the sync answered.
  * @returns The sentence, or null when no limit stopped it.
  */

@@ -28,7 +28,8 @@ import { ourSentence } from '@web/data/api/server-message';
  * The four kinds are not a matter of wording. What tells them apart is what
  * came back: `server` carries our sentence for the user -- the server's own
  * (out of credits, too many requests, not allowed), or, past a spend limit,
- * the one this end builds with the limit and its local reset day -- `turn`
+ * the one this end builds with its local reset day and, for a person's own
+ * limit, the amount -- `turn`
  * is an answer that came back with none of ours in it, so there is nothing
  * to quote and this end has to supply the words, `network` is no answer at all, and `gone` is
  * our own 404, where the server did answer and what it said is that the

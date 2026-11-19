@@ -3,11 +3,11 @@
 
 /**
  * A Timeline execution that waits for a free slot (inner#1968, test spec G-39;
- * the confirmed demo's "排队中 · Timeline 执行" page).
+ * the confirmed demo's queued Timeline execution page).
  *
- * A row carrying `slotWaitSince` says "排队中" without the working spinner, its
- * detail says why ("你同时运行的任务已达上限（{limit} 个），前面的任务结束后自动开始")
- * and it offers "取消", with the limit the row carries in `slotWaitLimit`.
+ * A row carrying `slotWaitSince` says Queued with the hourglass and without the
+ * working spinner, its detail says why (`canvas.task.waitReasonLimit`) and it
+ * offers Cancel, with the limit the row carries in `slotWaitLimit`.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

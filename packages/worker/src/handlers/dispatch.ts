@@ -1592,9 +1592,10 @@ export async function settleRunCharge(run: RunCharge): Promise<void> {
  * End a run that produced nothing, on every surface that was told it started.
  *
  * Five things, and every exit that ends a run does all five through here.
- * Two of them record the ATTEMPT — the task row is marked failed and each
- * target node gets a history entry — and happen however many attempts are
- * left. Three record the OUTCOME — the upstream steps still pending or
+ * Two of them record the ATTEMPT — the attempt's cause is written on the task
+ * row (which stays running and keeps its running slot while a retry is to
+ * come, and is marked failed only once `settles`) and each target node gets a
+ * history entry — and happen however many attempts are left. Three record the OUTCOME — the upstream steps still pending or
  * submitted are failed, the node's row is settled so its count stops saying a
  * run is happening, and the project feed gets the result — and wait for
  * `settles`, because a retry resumes from those steps and a row settled while

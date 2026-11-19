@@ -2158,8 +2158,9 @@ export const creditChargeRequests = pgTable(
     referenceId: varchar("reference_id", { length: 255 }).notNull(),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
     // The studio the charge is counted against (0126, inner#1968): backfilled
-    // from the project, and written on every new request. Statistics only;
-    // which studio pays still follows the project.
+    // from the project, and written on every new request that has a project. The
+    // monthly spend limits sum spending by it; which studio pays still follows
+    // the project.
     studioId: uuid("studio_id").references(() => studios.id, { onDelete: "restrict" }),
     // Above zero. CHECK in 0121.
     amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),

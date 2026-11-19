@@ -11,7 +11,7 @@
  * Under `pg_try_advisory_xact_lock(hashtext('running-tasks:' || user_id))` it
  * counts what the person runs (`R`: `tasks` running within
  * `default_budget_ms + reportGraceMs()` of their start, plus Timeline
- * `running`/`cancelling` within `reportGraceMs()` of their deadline) and the
+ * `running`/`cancelling` within `timelineReportGraceMs()` of their deadline) and the
  * earlier waiters under the same limit that were checked within
  * `slot_wait_stale_ms` (`W`). `R + W < L` starts the row; otherwise it waits:
  * the row keeps `pending`, `slot_wait_since` is written once, the node task row

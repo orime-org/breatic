@@ -764,9 +764,9 @@ describe('MembershipPanel', () => {
   });
 
   it('lists all seven figures for self-hosted, with no price, comparison table or upgrade button', async () => {
-    // It is not on the price list and has no comparison table, so the
-    // per-studio ceilings are listed in the allowance area or a self-hosted
-    // user would see none of them.
+    // It is not on the price list and has no comparison table, so its
+    // ceilings (the per-studio ones and running tasks per person) are listed
+    // in the allowance area, or a self-hosted user would see none of them.
     membershipMock.mockResolvedValue(
       answer({
         tier: 'self_hosted',

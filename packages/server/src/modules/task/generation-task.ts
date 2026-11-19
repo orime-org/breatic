@@ -98,14 +98,13 @@ export async function openGenerationTasks(opts: {
 }
 
 /**
- * Settle rows this request opened as failed, for a run it then refused.
+ * Settle rows this request opened as failed, for a run that then failed
+ * before its job was queued.
  *
- * The node was on the canvas before the request went out, so the refusal is
- * said where the node can show it: the row settles `failed` carrying the
- * cause, and the node's count moves with it (downstream-node-creation
- * decision, stage 4). Publishing is quiet for the same reason opening it is —
- * a refusal that also loses its broadcast is still a refusal, and the user
- * sees it on the next read of the list.
+ * The row settles `failed` carrying the cause, and the node's count moves with
+ * it; a row left running would count a run that is not happening. Publishing
+ * is quiet for the same reason opening it is — the user sees the outcome on
+ * the next read of the list.
  * @param projectId - Owning project.
  * @param spaceId - The space, so an event can name the document.
  * @param rows - What `openGenerationTasks` opened.
