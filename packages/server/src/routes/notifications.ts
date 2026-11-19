@@ -26,7 +26,7 @@
  */
 
 import { Hono } from "hono";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";

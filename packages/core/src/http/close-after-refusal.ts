@@ -31,7 +31,6 @@
 import type { IncomingMessage } from "node:http";
 import type { Socket } from "node:net";
 import type { Context } from "hono";
-import { getRequestBodyLingerSeconds } from "@server/config/limits.js";
 
 /** Sockets whose close is already taken over; a socket is taken over once. */
 const takenOver = new WeakSet<Socket>();
@@ -40,16 +39,17 @@ const takenOver = new WeakSet<Socket>();
  * Declare the close on a body-limit refusal and take over how the connection
  * ends. Call it before the 413 is built, so the header is on it.
  * @param c - The request context; `c.env.incoming` is node-server's request.
- * @throws {Error} when `config/limits.yaml` cannot be read or parsed, or holds
- * an invalid value (`z.ZodError`); it is read here, inside the request, so the
- * request answers 500 and the socket is left to Node.
+ * @param readLingerSeconds - Reads how long to keep reading the refused body;
+ * it is called here, inside the request, so a configuration it cannot read
+ * answers 500 and the socket is left to Node.
+ * @throws {Error} whatever `readLingerSeconds` throws.
  */
-export function closeAfterRefusal(c: Context): void {
+export function closeAfterRefusal(c: Context, readLingerSeconds: () => number): void {
   c.header("Connection", "close");
   const incoming = (c.env as { incoming?: IncomingMessage } | undefined)?.incoming;
   const socket = incoming?.socket;
   if (!incoming || !socket || takenOver.has(socket)) return;
-  const deadlineMs = getRequestBodyLingerSeconds() * 1000;
+  const deadlineMs = readLingerSeconds() * 1000;
   takenOver.add(socket);
   socket.destroySoon = lingeringClose(socket, incoming, deadlineMs);
 }

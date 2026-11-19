@@ -17,7 +17,7 @@
  * negotiated record is absent remains explicit and quota checks name it.
  */
 
-import { and, eq, isNull, getTableColumns, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, getTableColumns, sql } from "drizzle-orm";
 import {
   MEMBERSHIP_TIERS,
   type MembershipTier,
@@ -31,8 +31,7 @@ import {
   users,
 } from "@core/db/schema.js";
 import * as projectsRepo from "@core/project/projects.repo.js";
-import { getMembershipLimits, type MembershipLimits } from "@core/config/membership.js";
-import { subscriptionClock } from "@core/config/subscription.js";
+import { getMembershipLimits, subscriptionClock, type MembershipLimits } from "@core/config/membership.js";
 import { subscriptionFactsForMembership } from "@core/auth/subscription.repo.js";
 import { resolveMembershipReading } from "@core/auth/membership-reading.js";
 import { enterpriseRecordSchema, enterpriseMembershipProfileSchema } from "@core/auth/enterprise-membership-contract.js";
@@ -506,6 +505,38 @@ function enterpriseRecordOf(row: EnterpriseRecordRow): EnterpriseRecord {
   });
 }
 
+/** The membership facts every reading is taken from, one row per account. */
+const membershipFactsSelection = {
+  userId: users.id,
+  storedTier: users.membershipTier,
+  enterprise: enterpriseRecordSelection,
+  facts: subscriptionFactsForMembership(users.id),
+};
+
+/** Joins an account's live enterprise record; every reading joins it this way. */
+const liveEnterpriseRecord = and(eq(enterpriseMemberships.userId, users.id), isNull(enterpriseMemberships.deletedAt));
+
+/**
+ * Resolve one account's reading from its facts at a moment, by the rule every reading uses.
+ * @param row - The account's facts.
+ * @param row.storedTier - The tier stored on the account.
+ * @param row.enterprise - Its live enterprise record, if any.
+ * @param row.facts - Its subscriptions as the reading consumes them.
+ * @param subject - Who the reading is for, for the error naming an unknown tier.
+ * @param now - The moment to read at.
+ * @returns The stored tier, the enterprise record and the reading.
+ * @throws {Error} When the stored tier is unknown or the enterprise record is invalid.
+ */
+function readingOf(
+  row: { storedTier: string; enterprise: EnterpriseRecordRow | null; facts: Parameters<typeof resolveMembershipReading>[2] },
+  subject: TierSubject,
+  now: Date,
+): { storedTier: MembershipTier; enterprise: EnterpriseRecord | null; reading: EnterpriseMembershipProfile["reading"] } {
+  const storedTier = asKnownTier(row.storedTier, subject);
+  const enterprise = row.enterprise === null ? null : enterpriseRecordOf(row.enterprise);
+  return { storedTier, enterprise, reading: resolveMembershipReading(storedTier, enterprise, row.facts, subscriptionClock(now)) };
+}
+
 /**
  * Read every membership fact with one SQL statement, resolving Studio ownership inside it.
  * @param target - An account or Studio identity.
@@ -514,23 +545,54 @@ function enterpriseRecordOf(row: EnterpriseRecordRow): EnterpriseRecord {
  * @throws {Error} When membership data or tier configuration is invalid.
  */
 async function readMembershipProfile(target: { userId: string } | { studioId: string }, tx?: DbTx): Promise<{ profile: EnterpriseMembershipProfile; subject: TierSubject } | null> {
-  const selection = {
-    userId: users.id, email: users.email, storedTier: users.membershipTier,
-    enterprise: enterpriseRecordSelection,
-    facts: subscriptionFactsForMembership(users.id),
-    asOf: sql<string>`statement_timestamp()`,
-  };
-  const query = (tx ?? db).select(selection).from(users).leftJoin(enterpriseMemberships, and(eq(enterpriseMemberships.userId, users.id), isNull(enterpriseMemberships.deletedAt)));
+  const query = (tx ?? db)
+    .select({ ...membershipFactsSelection, email: users.email, asOf: sql<string>`statement_timestamp()` })
+    .from(users)
+    .leftJoin(enterpriseMemberships, liveEnterpriseRecord);
   const rows = "userId" in target
     ? await query.where(and(eq(users.id, target.userId), isNull(users.deletedAt))).limit(1)
     : await query.innerJoin(studioMembers, and(eq(studioMembers.userId, users.id), eq(studioMembers.role, "admin"), isNull(studioMembers.deletedAt))).innerJoin(studios, and(eq(studios.id, studioMembers.studioId), eq(studios.id, target.studioId), isNull(studios.deletedAt))).where(isNull(users.deletedAt)).limit(1);
   const row = rows[0];
   if (row === undefined) return null;
   const subject: TierSubject = { accountId: row.userId, ...("studioId" in target ? { studioId: target.studioId } : {}) };
-  const storedTier = asKnownTier(row.storedTier, subject);
-  const enterprise = row.enterprise === null ? null : enterpriseRecordOf(row.enterprise);
-  const reading = resolveMembershipReading(storedTier, enterprise, row.facts, { ...subscriptionClock(), now: new Date(row.asOf) });
+  const { storedTier, enterprise, reading } = readingOf(row, subject, new Date(row.asOf));
   return { subject, profile: { account: { id: row.userId, email: row.email }, snapshot: { userId: row.userId, storedTier, enterprise }, reading } };
+}
+
+/** One live account's membership at a fixed moment, as the cutover snapshot records it. */
+export interface MembershipSnapshotRow {
+  userId: string;
+  effectiveTier: MembershipTier;
+  limits: EnterpriseMembershipProfile["reading"]["limits"];
+  settlementProtected: boolean;
+}
+
+/**
+ * Every live account's membership at `now` instead of the clock, in account
+ * id order, read a page at a time from the same facts by the same rule every
+ * reading uses.
+ * @param now - The moment to read at.
+ * @param pageSize - How many accounts one query reads.
+ * @yields One row per live account.
+ * @throws {Error} When stored membership data or tier configuration is invalid.
+ */
+export async function* membershipReadingsAt(now: Date, pageSize: number): AsyncGenerator<MembershipSnapshotRow, void, undefined> {
+  let after: string | null = null;
+  for (;;) {
+    const rows = await db
+      .select(membershipFactsSelection)
+      .from(users)
+      .leftJoin(enterpriseMemberships, liveEnterpriseRecord)
+      .where(and(isNull(users.deletedAt), after === null ? undefined : gt(users.id, after)))
+      .orderBy(asc(users.id))
+      .limit(pageSize);
+    for (const row of rows) {
+      const { reading } = readingOf(row, { accountId: row.userId }, now);
+      yield { userId: row.userId, effectiveTier: reading.effectiveTier, limits: reading.limits, settlementProtected: reading.settlementProtected };
+    }
+    if (rows.length < pageSize) return;
+    after = rows[rows.length - 1]!.userId;
+  }
 }
 
 /**

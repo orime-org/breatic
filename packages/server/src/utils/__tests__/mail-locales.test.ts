@@ -37,7 +37,7 @@ import {
   buildMembershipEndedMail,
   buildStorageQuotaExceededMail,
 } from "@server/utils/notification-mail.js";
-import { escapeHtml, type RenderedMail } from "@server/utils/mail-shell.js";
+import { escapeHtml, type RenderedMail } from "@breatic/domain";
 import { buildSignupCodeMail, buildPasswordResetMail } from "@server/modules/auth/auth-mail.js";
 
 loadLocales();

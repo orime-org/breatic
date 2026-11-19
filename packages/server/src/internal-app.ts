@@ -13,8 +13,8 @@
 
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { logger } from "@breatic/core";
-import { closeAfterRefusal } from "@server/middleware/close-after-refusal.js";
+import { closeAfterRefusal, createLogRequest, logger } from "@breatic/core";
+import { getRequestBodyLingerSeconds } from "@server/config/limits.js";
 import { internalAuth } from "@server/middleware/internal-auth.js";
 import { internalErrorHandler } from "@server/middleware/internal-errors.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -23,43 +23,8 @@ import { registerInternalRoutes } from "@server/routes/internal/index.js";
 /** The largest legitimate body is about 26 KiB (§4.6). */
 const MAX_BODY_BYTES = 64 * 1024;
 
-/**
- * One structured line per request, refused ones included (acceptance #14).
- * Registered first, so it sees the status every later step answered with.
- * @param c - The request context.
- * @param next - The rest of the app.
- */
-const logRequest: MiddlewareHandler = async (c, next) => {
-  const start = Date.now();
-  await next();
-  logger.info(
-    {
-      adminId: c.get("internalAdmin"),
-      method: c.req.method,
-      path: c.req.path,
-      idempotencyKey: c.req.header("idempotency-key"),
-      reason: c.get("internalReason"),
-      status: c.res.status,
-      code: c.res.status >= 400 ? await answerCode(c.res) : undefined,
-      durationMs: Date.now() - start,
-    },
-    "internal_api_request",
-  );
-};
-
-/**
- * The `code` of a refusal's JSON body.
- * @param res - The response.
- * @returns The code, or undefined when the body carries none.
- */
-async function answerCode(res: Response): Promise<string | undefined> {
-  try {
-    const body: unknown = await res.clone().json();
-    return typeof body === "object" && body !== null && "code" in body ? String(body.code) : undefined;
-  } catch {
-    return undefined;
-  }
-}
+/** One structured line per request, refused ones included (acceptance #14). */
+const logRequest = createLogRequest((line) => logger.info(line, "internal_api_request"));
 
 /**
  * HEAD is answered by the GET route in Hono, which the authorisation table
@@ -94,7 +59,7 @@ export function createInternalApp(): Hono {
     bodyLimit({
       maxSize: MAX_BODY_BYTES,
       onError: (c) => {
-        closeAfterRefusal(c);
+        closeAfterRefusal(c, getRequestBodyLingerSeconds);
         return c.json({ code: "invalid_body" }, 413);
       },
     }),

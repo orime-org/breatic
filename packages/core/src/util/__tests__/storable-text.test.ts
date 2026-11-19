@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
-import { asStorable } from "@server/utils/storable-text.js";
+import { asStorable } from "@core/util/storable-text.js";
 
 describe("a value made storable", () => {
   it("loses NUL and has lone surrogates replaced, in strings and keys at any depth", () => {

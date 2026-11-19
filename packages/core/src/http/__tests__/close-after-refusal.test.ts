@@ -15,14 +15,18 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 const linger = vi.hoisted(() => ({ seconds: 30, broken: false }));
-vi.mock("@server/config/limits.js", () => ({
-  getRequestBodyLingerSeconds: () => {
-    if (linger.broken) throw new Error("config/limits.yaml failed to parse");
-    return linger.seconds;
-  },
-}));
+/**
+ * The linger reader handed to `closeAfterRefusal`, as the server passes its
+ * `config/limits.yaml` getter.
+ * @returns The configured seconds.
+ * @throws {Error} when a case marks the configuration broken.
+ */
+function readLinger(): number {
+  if (linger.broken) throw new Error("config/limits.yaml failed to parse");
+  return linger.seconds;
+}
 
-import { closeAfterRefusal } from "@server/middleware/close-after-refusal.js";
+import { closeAfterRefusal } from "@core/http/close-after-refusal.js";
 
 interface FakeSocket extends EventEmitter {
   destroyed: boolean;
@@ -88,7 +92,7 @@ function harness(): Harness {
 
 const app = new Hono();
 app.post("/x", (c) => {
-  closeAfterRefusal(c);
+  closeAfterRefusal(c, readLinger);
   return c.json({ code: "x" }, 413);
 });
 

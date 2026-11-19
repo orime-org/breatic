@@ -34,7 +34,7 @@ import {
   type TimelineExecutionCreateInput,
   type TimelineExecutionInput,
 } from "@breatic/shared/space-content";
-import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
+import { precheckCredits } from "@server/modules/credit/credit-precheck.service.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import * as grantRepo from "@server/modules/timeline/execution-grant.repo.js";
 

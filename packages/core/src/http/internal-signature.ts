@@ -14,7 +14,7 @@
  */
 
 import { createHmac } from "node:crypto";
-import { secretsMatch } from "@server/utils/secrets-match.js";
+import { secretsMatch } from "@core/http/secrets-match.js";
 
 /** Everything the signature covers. */
 export interface SignedParts {

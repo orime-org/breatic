@@ -12,7 +12,7 @@
  * to its caller rather than going through the best-effort path.
  */
 
-import { renderMail, type RenderedMail } from "@server/utils/mail-shell.js";
+import { renderMail, type RenderedMail } from "@breatic/domain";
 
 const SECONDS_PER_HOUR = 3600;
 

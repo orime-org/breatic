@@ -28,8 +28,7 @@
  */
 
 import { Hono } from "hono";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
-import { validate } from "@server/middleware/validate.js";
+import { frontendOrigin, validate, ForbiddenError } from "@breatic/core";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -39,7 +38,6 @@ import {
   roleUpgradeRequestService,
   projectService,
 } from "@server/modules";
-import { ForbiddenError } from "@breatic/core";
 import { t } from "@breatic/shared";
 
 // ── Per-project endpoints (the requester's side) ───────────────────

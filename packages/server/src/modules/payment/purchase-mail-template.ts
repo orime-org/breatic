@@ -38,7 +38,7 @@ import { formatCredits } from "@breatic/shared";
 
 import { refundWindowCloses, t } from "@breatic/shared";
 import { getMailLayout, runWithLocale } from "@breatic/core";
-import { renderMail, type RenderedMail } from "@server/utils/mail-shell.js";
+import { renderMail, type RenderedMail } from "@breatic/domain";
 import type { ConfirmationView } from "@server/modules/payment/payment.repo.js";
 import {
   consentTextAt,

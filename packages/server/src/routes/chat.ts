@@ -9,14 +9,11 @@
  * which replays the run's resumable stream (inner#1717).
  */
 
-import { accountActivityRepo } from "@breatic/core";
-import { reportCollaboratorFirstAction } from "@breatic/core";
+import { accountActivityRepo, reportCollaboratorFirstAction, holdsOnlyStorableText, validate, AppError, getRedis, logger, getAgentConfig, NotFoundError, ValidationError } from "@breatic/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { randomUUID } from "node:crypto";
 import { runAfterReply } from "@server/utils/after-reply.js";
-import { holdsOnlyStorableText } from "@server/utils/storable-text.js";
-import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 
@@ -54,7 +51,6 @@ import { isShuttingDown } from "@server/agent/shutdown-flag.js";
 import { takenMessageOf, userMessageData } from "@server/agent/taken-message.js";
 import { chatQueue, type QueueItem } from "@server/modules/chat-queue/chat-queue.service.js";
 import { toUiMessages } from "@server/modules/conversation/message-part-mapping.js";
-import { AppError, getRedis, logger, getAgentConfig, NotFoundError, ValidationError } from "@breatic/core";
 import { attachmentSection, getActiveLocale, messageLength, referenceCount, t } from "@breatic/shared";
 import type { ChatAttachedChip, ChatPendingItem, ChatSpaceContext, SpaceRequestAnswer } from "@breatic/shared";
 import { assertLlmServable } from "@server/modules/task/model-servable.js";

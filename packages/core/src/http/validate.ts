@@ -19,7 +19,7 @@
  */
 
 import { zValidator } from "@hono/zod-validator";
-import { ValidationError } from "@breatic/core";
+import { ValidationError } from "@core/app-errors.js";
 import { REQUEST_SHAPE_PARAMS, t } from "@breatic/shared";
 
 /**
