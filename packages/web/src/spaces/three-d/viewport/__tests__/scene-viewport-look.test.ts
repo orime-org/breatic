@@ -213,6 +213,27 @@ describe('the parts the page exposes for inspection (inner#1693)', () => {
 });
 
 describe('Retry (inner#1693 design 6.2)', () => {
+  it('loads a part picture again that failed to load, and shows it', async () => {
+    const picture = '11111111-1111-4111-8111-11111111111a';
+    const texture = new Texture();
+    const cache = { size: vi.fn(async () => ({ width: 64, height: 64, type: 'png' })), release: vi.fn(),
+      acquire: vi.fn().mockRejectedValueOnce(new Error('network')).mockResolvedValue(texture) };
+    const onLookPictures = vi.fn();
+    const initial = props({ objects: [{ ...BOX, look: { 0: { map: picture } } }], lookTextures: cache as never, onLookPictures } as Partial<SceneViewportProps>);
+    const { runtime } = await open(initial, '#969696');
+    await vi.waitFor(() => expect(onLookPictures).toHaveBeenLastCalledWith(BOX.id, expect.objectContaining({ retry: true })));
+    runtime.update({ ...initial, modelRetryRevision: 1 });
+    await vi.waitFor(() => expect(cache.acquire).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(onLookPictures).toHaveBeenLastCalledWith(BOX.id, { retry: false, over: false, shown: [picture] }));
+    const maps: Array<Texture | null> = [];
+    (runtime as unknown as { scene: Scene }).scene.traverse((object) => {
+      const material = (object as { material?: { userData: { lookPart?: string }; map?: Texture | null } }).material;
+      if (material && !Array.isArray(material) && material.userData.lookPart === '0') maps.push(material.map ?? null);
+    });
+    expect(maps.length).toBeGreaterThan(0);
+    expect(maps.every((map) => map?.source === texture.source)).toBe(true);
+  });
+
   it('loads again a model that failed to arrive, never one whose content was refused', async () => {
     const REFUSED = '22222222-2222-4222-8222-22222222222a';
     const LOST = '22222222-2222-4222-8222-22222222222b';

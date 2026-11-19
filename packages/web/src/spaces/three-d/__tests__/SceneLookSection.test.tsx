@@ -54,7 +54,7 @@ type Props = {
 
 // jsdom clears its focused element before dispatching blur, unlike the browser.
 beforeEach(() => { vi.spyOn(document, 'hasFocus').mockReturnValue(true); });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); fieldRenders.clear(); });
 
 /**
  * Type a value into a number box and leave it, as the user does.
@@ -270,9 +270,10 @@ describe('SceneLookSection', () => {
       onSelectPart: vi.fn(), onCommand, onChoosePicture: vi.fn() };
     const view = render(<TooltipProvider><Section {...stable} uploadPercentOf={() => null} /></TooltipProvider>);
     const before = fieldRenders.get('scene-look-repeat-0');
+    expect(before).toBeGreaterThan(0);
+    expect(fieldRenders.get('scene-look-offset-1')).toBeGreaterThan(0);
     view.rerender(<TooltipProvider><Section {...stable} uploadPercentOf={() => null} /></TooltipProvider>);
     expect(fieldRenders.get('scene-look-repeat-0')).toBe(before);
-    expect(fieldRenders.get('scene-look-offset-1')).toBeGreaterThan(0);
   });
 
   it('shows a stored user picture\'s part at white only while the scene shows the picture, and in the model colour otherwise', () => {
