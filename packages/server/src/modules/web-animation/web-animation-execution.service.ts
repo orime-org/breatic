@@ -27,6 +27,7 @@ import {
   getStorageConfig,
   getTimelineConfig,
   logger,
+  projectAssetReferenceService,
   timelineExecutionRepo,
 } from "@breatic/core";
 import {
@@ -353,13 +354,14 @@ function baseRef(input: Extract<WebAnimationExecutionInput, { kind: "web_animati
 
 /**
  * Turn rows into the row view every route answers (#1490 design §4.4). A row whose base or source cannot be read is
- * logged and left out.
+ * logged and left out. Every row passed in is one the asking Project holds a grant for; the video of a succeeded export
+ * another Project made is filed in the asking Project, so the video the view names opens there.
  * @param rows - The rows.
  * @param scope - Who asks.
  * @param scope.projectId - The Project asking, which decides `ownProject`.
  * @param scope.spaceId - The Motion Space asking, which decides `export`; null on routes the Timeline asks.
  * @returns The views, in the rows' order.
- * @throws {Error} When a read fails.
+ * @throws {Error} When a read or the video's filing fails.
  */
 async function toRowViews(rows: readonly TimelineExecution[], scope: { projectId: string; spaceId: string | null }): Promise<WebAnimationRowView[]> {
   const inputs = new Map<string, WebAnimationExecutionInput>();
@@ -379,6 +381,12 @@ async function toRowViews(rows: readonly TimelineExecution[], scope: { projectId
       if (!exports.has(source)) exports.set(source, { executionId: live.id, status: live.status });
     }
   }
+  // A Project duplicated while an export rendered holds its grant but not its video, whose reference the finish wrote
+  // for the exporting Project only; the read files it, as the copy would have had it copied.
+  const inherited = rows.flatMap((row) => (
+    row.kind === "web_animation_export" && row.status === "succeeded" && row.resultAssetId !== null && row.projectId !== scope.projectId ? [row.resultAssetId] : []
+  ));
+  if (inherited.length > 0) await projectAssetReferenceService.referenceRegisteredProjectMedia({ projectId: scope.projectId, assetIds: inherited });
   const sums = await sumCreditsByOperationKeys(rows.map((row) => timelineOperationKey(row.id)));
   const views: WebAnimationRowView[] = [];
   for (const row of rows) {

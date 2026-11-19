@@ -46,6 +46,7 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
 import { TIMELINE_QUEUE, coverKeyFor, createQueue, getTimelineConfig, timelineExecutionRepo } from "@breatic/core";
+import { ingestReportService } from "@breatic/domain";
 import { extractPromptText, t, webAnimationSpaceDocName, type TimelineExecution } from "@breatic/shared";
 import { WebAnimationRowViewSchema } from "@breatic/shared/space-content";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
@@ -571,6 +572,40 @@ describe("GET /timeline/space-executions", () => {
     await grant(execution.id, copy.projectId);
     const listed = await page(copy.viewer.cookie, `/timeline/space-executions?projectId=${copy.projectId}&spaceId=${fx.spaceId}&scope=space&group=succeeded`);
     expect(listed.rows).toEqual([expect.objectContaining({ id: execution.id, ownProject: false })]);
+  });
+
+  it("lets a Project duplicated while an export renders open that export's video once it finishes", async () => {
+    const fx = await seedProject();
+    const { versionId } = await finishedCreate(fx);
+    const made = await acceptRow(fx.editor.cookie, exportBody(fx, versionId), 201);
+    const duplicated = await app.request(`/api/v1/projects/${fx.projectId}/duplicate`, {
+      method: "POST",
+      headers: { Cookie: fx.owner.cookie, "Content-Type": "application/json" },
+    });
+    expect(duplicated.status, await duplicated.clone().text()).toBe(201);
+    const copyId = ((await duplicated.json()) as { data: { id: string } }).data.id;
+    // The render finishes after the copy exists: the video is filed through the upload acceptance opened, then the row succeeds.
+    const filed = await ingestReportService.applyIngestReport({
+      storageKey: (made.input as { videoKey: string }).videoKey,
+      outcome: "completed",
+      sha256: crypto.randomBytes(32).toString("hex"),
+      sizeBytes: 4096,
+      contentType: "video/mp4",
+      width: 1920,
+      height: 1080,
+      durationSeconds: 4,
+      cover: null,
+    });
+    expect(filed.status).toBe("registered");
+    if (filed.status !== "registered") return;
+    const running = await step(made.id, { type: "claim" });
+    await step(made.id, { type: "success", fence: running.fence, resultAssetId: filed.assetId });
+
+    const listed = await page(fx.owner.cookie, `/timeline/space-executions?projectId=${copyId}&spaceId=${fx.spaceId}&scope=space&group=succeeded`);
+    const exported = listed.rows.find((row) => row.id === made.id);
+    expect(exported).toMatchObject({ ownProject: false, resultAssetId: filed.assetId });
+    const video = await get(fx.owner.cookie, `/projects/${copyId}/assets/${filed.assetId}`);
+    expect(video.status, await video.clone().text()).toBe(200);
   });
 
   it("answers an outsider with 404", async () => {
