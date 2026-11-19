@@ -12,6 +12,7 @@
 
 import { randomUUID } from "node:crypto";
 import type Stripe from "stripe";
+import type { StripeWebhookResult } from "@breatic/shared";
 import { REFUND_EVENT_TYPES } from "@server/modules/credit-refund/refund-webhook.js";
 import { SHARED_SESSION_EVENT_TYPES, SUBSCRIPTION_EVENT_TYPES } from "@server/modules/subscription/subscription-events.js";
 import { listClaimedEventIds } from "@server/modules/subscription/webhook-events.repo.js";
@@ -95,22 +96,43 @@ export async function processedEventIds(ids: string[]): Promise<Set<string>> {
 }
 
 /**
- * Process one event through the webhook's recording and dispatch, as a delivery would be.
+ * Process one event through the webhook's recording and dispatch, with the
+ * webhook's failure rules (`middleware/stripe-webhook-recording.ts`): the
+ * start must be recorded before dispatch; a failure to record the outcome is
+ * reported and leaves the outcome as dispatched; a dispatch error is recorded
+ * as `handler_exception` and is the error that propagates.
  * @param event - The event Stripe holds.
+ * @param onRecordFailed - Log a failure to record the outcome.
  * @returns The status the webhook would have answered.
- * @throws {Error} When the event's shape cannot be recorded, or recording fails.
+ * @throws {Error} When the event's shape cannot be recorded, the start cannot be recorded, or dispatch fails.
  */
-export async function handleLikeWebhook(event: Stripe.Event): Promise<{ responseStatus: number }> {
+export async function handleLikeWebhook(
+  event: Stripe.Event,
+  onRecordFailed: (stage: "finish", err: unknown) => void,
+): Promise<{ responseStatus: number }> {
   const identity = parseWebhookIdentity(event);
   if (identity === null) throw new Error(`event ${event.id} has no recordable identity`);
   const id = randomUUID();
   await startWebhookAttempt(id, identity, new Date());
+  /**
+   * Record the outcome; a failure is reported, never raised.
+   * @param status - The response status.
+   * @param result - The processing result.
+   */
+  const finish = async (status: number, result: StripeWebhookResult): Promise<void> => {
+    try {
+      await finishWebhookAttempt(id, status, result);
+    } catch (err) {
+      onRecordFailed("finish", err);
+    }
+  };
+  let dispatched: Awaited<ReturnType<typeof dispatchStripeWebhook>>;
   try {
-    const result = await dispatchStripeWebhook(event);
-    await finishWebhookAttempt(id, result.responseStatus, result.result);
-    return { responseStatus: result.responseStatus };
+    dispatched = await dispatchStripeWebhook(event);
   } catch (err) {
-    await finishWebhookAttempt(id, 500, "handler_exception");
+    await finish(500, "handler_exception");
     throw err;
   }
+  await finish(dispatched.responseStatus, dispatched.result);
+  return { responseStatus: dispatched.responseStatus };
 }

@@ -39,7 +39,10 @@ if (options.help) {
       {
         listEvents: ({ types, createdGte }) => stripe.events.list({ types: [...types], created: { gte: createdGte }, limit: 100 }),
         processedIds: processedEventIds,
-        handle: handleLikeWebhook,
+        handle: (event) =>
+          handleLikeWebhook(event, (stage, err) =>
+            core.logger.error({ err, ctx: { eventId: event.id, type: event.type, stage } }, "stripe_webhook_record_failed"),
+          ),
         onFailed: (eventId, cause) => core.logger.error({ eventId, ...cause }, "stripe_catchup_event_failed"),
       },
       options.since,
