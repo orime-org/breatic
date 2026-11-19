@@ -38,7 +38,7 @@ export const ModelImportPreview = React.memo(function ModelImportPreview({ root 
     element.append(renderer.domElement);
     const scene = new Scene();
     // Metal and glass parts reflect the same neutral room as in the scene (inner#1693 design 5.7).
-    const environment = createSceneEnvironment(renderer);
+    let environment = createSceneEnvironment(renderer);
     scene.environment = environment.texture;
     scene.environmentIntensity = SCENE_ENVIRONMENT_INTENSITY;
     const camera = new PerspectiveCamera(45, 1, 0.01, 2000);
@@ -88,6 +88,17 @@ export const ModelImportPreview = React.memo(function ModelImportPreview({ root 
       applySceneGridTheme(grid, getComputedStyle(element).getPropertyValue('--color-muted-foreground').trim());
       draw();
     };
+    /**
+     * Build the environment again once a lost GPU context is back: the restore leaves the old one empty (design 5.7).
+     * @throws {never} Never directly.
+     */
+    const restore = (): void => {
+      environment.dispose();
+      environment = createSceneEnvironment(renderer);
+      scene.environment = environment.texture;
+      draw();
+    };
+    renderer.domElement.addEventListener('webglcontextrestored', restore);
     const observer = new ResizeObserver(resize);
     observer.observe(element);
     const themeObserver = new MutationObserver(theme);
@@ -99,6 +110,7 @@ export const ModelImportPreview = React.memo(function ModelImportPreview({ root 
       observer.disconnect();
       themeObserver.disconnect();
       orbit.removeEventListener('change', draw);
+      renderer.domElement.removeEventListener('webglcontextrestored', restore);
       orbit.dispose();
       instance.traverse((object) => { if (object instanceof SkinnedMesh) object.skeleton.dispose(); });
       instance.removeFromParent();
