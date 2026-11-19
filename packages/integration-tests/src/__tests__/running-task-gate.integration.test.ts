@@ -890,16 +890,48 @@ describe("G F8 a waiting Timeline execution has no deadline until it starts", ()
   });
 });
 
-// Two pickups of one execution can meet (a stalled worker, a redelivered job):
-// the later one must not run under the earlier one's claim. The gate starts
-// only a queued row and hands back what its own claim wrote; for any other it
-// answers ended, and the take reads the row again and retries it with a fresh
-// fence (inner#1968).
-// The worker times the task's budget from the start the gate answers, so it
-// must be the stored one, whether this pickup started the task or another did.
+/**
+ * Wait until a pickup holds its gate transaction open trying the person's lock:
+ * it has read its row and now waits for the lock this case holds.
+ * @returns Nothing.
+ */
+async function untilTryingLock(): Promise<void> {
+  for (let i = 0; i < 1000; i++) {
+    const [row] = await sql<{ n: number }[]>`select count(*)::int as n from pg_stat_activity
+      where pid <> pg_backend_pid() and state in ('active', 'idle in transaction') and query ilike '%pg_try_advisory_xact_lock%'`;
+    if (row!.n > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("no pickup came to try the lock");
+}
+
+/**
+ * Hold a person's lock while a pickup reads its row, change the row once the
+ * pickup is trying the lock, then let it in.
+ * @param userId - Whose lock.
+ * @param pickup - Starts the pickup.
+ * @param meanwhile - What another pickup did meanwhile.
+ * @returns What the pickup came to.
+ */
+async function pickWhileAnotherMovesIt(userId: string, pickup: () => Promise<Picked>, meanwhile: () => Promise<unknown>): Promise<Picked> {
+  const holder = await sql.reserve();
+  let picked: Promise<Picked> | undefined;
+  try {
+    await holder`select pg_advisory_lock(hashtext(${`running-tasks:${userId}`}))`;
+    picked = pickup();
+    await untilTryingLock();
+    await meanwhile();
+  } finally {
+    await holder`select pg_advisory_unlock(hashtext(${`running-tasks:${userId}`}))`;
+    holder.release();
+  }
+  return picked;
+}
+
 // Two pickups of one task can judge it at once: one marks it waiting (task and
 // node row) while the other, which read the task before that, starts it. The
-// start must release the node row whatever its own read of the task said.
+// start must release the node row whatever its own read of the task said; and
+// in the other order, a task another pickup started meanwhile stays running.
 describe("G a start releases the node row another pickup marked waiting", () => {
   it("clears the node row's waiting mark although this pickup read the task as never waiting", async () => {
     const p = await person();
@@ -914,25 +946,17 @@ describe("G a start releases the node row another pickup marked waiting", () => 
   it("leaves a task another pickup started meanwhile running, its node row not waiting", async () => {
     const p = await person("enterprise", 1);
     const { taskId, nodeTaskId } = await seedTask(p, { node: true });
-    const holder = await sql.reserve();
-    let picked: Promise<Picked>;
-    try {
-      await holder`select pg_advisory_lock(hashtext(${`running-tasks:${p.userId}`}))`;
-      picked = pick(taskId);
-      // Inside slot_lock_wait_ms: the pickup has read the task and is trying the lock.
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      await sql`update tasks set status = 'running', started_at = now() where id = ${taskId}`;
-    } finally {
-      await holder`select pg_advisory_unlock(hashtext(${`running-tasks:${p.userId}`}))`;
-      holder.release();
-    }
+    const picked = await pickWhileAnotherMovesIt(p.userId, () => pick(taskId),
+      () => sql`update tasks set status = 'running', started_at = now() where id = ${taskId}`);
     // It runs on under the start the other pickup stored, as a pickup of a running task does.
-    expect(await picked).toEqual({ started: true });
+    expect(picked).toEqual({ started: true });
     expect((await taskRow(taskId)).status).toBe("running");
     expect((await nodeRow(nodeTaskId!)).waiting_since).toBeNull();
   });
 });
 
+// The worker times the task's budget from the start the gate answers, so it
+// must be the stored one, whether this pickup started the task or another did.
 describe("G the gate answers the task's stored start", () => {
   it("answers the start it wrote, and the stored start of a task another pickup started", async () => {
     const p = await person();
@@ -947,7 +971,21 @@ describe("G the gate answers the task's stored start", () => {
   });
 });
 
+// Two pickups of one execution can meet (a stalled worker, a redelivered job):
+// the later one must not run under the earlier one's claim. The gate starts
+// only a queued row and hands back what its own claim wrote; for any other it
+// answers ended, and the take reads the row again and retries it with a fresh
+// fence (inner#1968).
 describe("G a Timeline pickup that finds the execution claimed by another", () => {
+  it("answers ended for one another pickup claimed while this one waited for the lock, whatever the limit", async () => {
+    const p = await person("enterprise", 1);
+    const id = await execution(p, "queued");
+    const picked = await pickWhileAnotherMovesIt(p.userId, () => pick(id, "timeline_executions"),
+      () => timelineExecutionRepo.transition({ id, event: { type: "claim" } }));
+    expect(picked).toEqual({ ended: true });
+    expect(await executionRow(id)).toMatchObject({ status: "running", attempt: 1 });
+  });
+
   it.each(["running", "cancelling"] as const)("answers ended for a %s execution and changes nothing", async (state) => {
     const p = await person();
     const id = await execution(p, state);
