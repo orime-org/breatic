@@ -6,17 +6,13 @@
  * and the shipped file's lease is what the accessor returns.
  */
 
-import { describe, it, expect, vi } from "vitest";
-
-// The package setup stubs this loader for the route suites; this file tests
-// the loader itself.
-vi.unmock("@server/config/idempotency.js");
-
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { describe, it, expect } from "vitest";
 import { parse } from "yaml";
-import { MONOREPO_ROOT } from "@breatic/core";
-import { idempotencyConfigSchema, getRunningLeaseMs } from "@server/config/idempotency.js";
+import { MONOREPO_ROOT } from "@core/config/env.js";
+import { idempotencyConfigSchema, getRunningLeaseMs } from "@core/config/idempotency.js";
 
 describe("idempotency config", () => {
   it("defaults the running lease to 30 seconds", () => {
@@ -32,5 +28,11 @@ describe("idempotency config", () => {
       readFileSync(resolve(MONOREPO_ROOT, "config", "idempotency.yaml"), "utf-8"),
     ) as { running_lease_ms: number };
     expect(getRunningLeaseMs()).toBe(raw.running_lease_ms);
+  });
+
+  it("reads the file in the configuration directory the caller names", () => {
+    const dir = mkdtempSync(join(tmpdir(), "idempotency-"));
+    writeFileSync(join(dir, "idempotency.yaml"), "running_lease_ms: 450\n");
+    expect(getRunningLeaseMs(dir)).toBe(450);
   });
 });

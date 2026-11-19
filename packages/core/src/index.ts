@@ -370,3 +370,5 @@ export {
   type RateLimitingDeps,
 } from "@core/http/rate-limit.js";
 export { getRateLimit, rateLimitsConfigSchema } from "@core/config/rate-limits.js";
+export { createRunOnce, type RunContext, type RunOnceDeps, type RunOnceEvent } from "@core/http/run-once.js";
+export { getRunningLeaseMs, idempotencyConfigSchema } from "@core/config/idempotency.js";
