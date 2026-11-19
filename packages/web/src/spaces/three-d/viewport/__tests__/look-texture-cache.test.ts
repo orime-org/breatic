@@ -230,9 +230,10 @@ describe('readPictureSize', () => {
   });
 
   it.each([
-    ['metadata that never reaches a frame header', [0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10, ...new Array<number>(14).fill(0)]],
-    ['a scan before any frame header', [0xff, 0xd8, 0xff, 0xda, 0x00, 0x02]],
-  ])('stops reading a JPEG start with %s after a bounded amount', async (_name, start) => {
+    // Metadata without an end runs to the cap; a scan before the frame header fails the parser at once.
+    ['metadata that never reaches a frame header', [0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10, ...new Array<number>(14).fill(0)], CAP + 65_536],
+    ['a scan before any frame header', [0xff, 0xd8, 0xff, 0xda, 0x00, 0x02], 2 * 65_536],
+  ] as const)('stops reading a JPEG start with %s after a bounded amount', async (_name, start, most) => {
     let first = true;
     const stream = streamOf(() => {
       if (!first) return new Uint8Array(65_536).fill(7);
@@ -240,7 +241,7 @@ describe('readPictureSize', () => {
       return new Uint8Array(start);
     });
     expect(await read()(stream.stream, CAP)).toBeNull();
-    expect(stream.pulled()).toBeLessThanOrEqual(CAP + 65_536);
+    expect(stream.pulled()).toBeLessThanOrEqual(most);
   });
 
   it('reads a WebP size once its image chunk header arrives, without reading on to the end', async () => {
@@ -264,9 +265,10 @@ describe('readPictureSize', () => {
     expect(await read()(streamOf([header]).stream, CAP)).toBeNull();
   });
 
-  it('stops reading a stream that is not a picture after a bounded amount', async () => {
+  it('stops reading a stream that is not a picture after its first chunk', async () => {
     const endless = streamOf(() => new Uint8Array(65_536).fill(7));
     expect(await read()(endless.stream, CAP)).toBeNull();
-    expect(endless.pulled()).toBeLessThanOrEqual(CAP + 65_536);
+    // Bytes that are no picture's start fail every parser at once; one more chunk may already be queued.
+    expect(endless.pulled()).toBeLessThanOrEqual(2 * 65_536);
   });
 });

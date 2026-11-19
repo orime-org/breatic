@@ -99,6 +99,21 @@ function renderSection(props: Partial<Props> = {}): { onCommand: ReturnType<type
   return { onCommand, onSelectPart, onChoosePicture };
 }
 
+/** A gesture that would take every press, so a control is disabled only by the section's own rule. */
+const OPEN_GESTURE = { begin: () => 1, preview: () => true, commit: () => undefined, cancel: () => undefined, stepKey: () => undefined };
+
+/** Every control of the selected part's settings is unavailable. */
+function expectEveryFieldDisabled(): void {
+  const fields = screen.getByTestId('scene-look-part-fields');
+  const controls = [...fields.querySelectorAll<HTMLElement>('button, input, [role="slider"]')];
+  expect(controls.length).toBeGreaterThan(10);
+  for (const control of controls) {
+    const off = (control as HTMLButtonElement | HTMLInputElement).disabled === true || control.getAttribute('aria-disabled') === 'true'
+      || control.hasAttribute('data-disabled');
+    expect(off, control.outerHTML.slice(0, 120)).toBe(true);
+  }
+}
+
 describe('SceneLookSection', () => {
   it('says the parts are loading, and that they cannot be changed when the model failed', () => {
     renderSection({ parts: 'loading' });
@@ -153,8 +168,8 @@ describe('SceneLookSection', () => {
   });
 
   it('disables every control without a note on a locked object or for a Viewer', () => {
-    renderSection({ selectedPart: '0', mutable: false });
-    expect((screen.getByTestId('scene-look-preset-metal') as HTMLButtonElement).disabled).toBe(true);
+    renderSection({ selectedPart: '0', mutable: false, look: { 0: { color: '#ff0000' } }, gesture: OPEN_GESTURE });
+    expectEveryFieldDisabled();
     expect((screen.getByTestId('scene-look-reset-all') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByTestId('scene-look-locked-note')).toBeNull();
   });
@@ -242,11 +257,9 @@ describe('SceneLookSection', () => {
 
   it('shows a part whose material number is past the look format as one that cannot be changed', () => {
     const far = [...PARTS, { key: '12000', name: 'Far', color: '#808080', hasMap: false, unlit: false, line: false }] as unknown as typeof PARTS;
-    const { onCommand } = renderSection({ parts: far, selectedPart: '12000' });
+    renderSection({ parts: far, selectedPart: '12000', gesture: OPEN_GESTURE });
     expect(screen.getByText(t('spaces.threeD.look.partNotEditable'))).toBeTruthy();
-    expect((screen.getByTestId('scene-look-preset-metal') as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByTestId('scene-look-choose-image') as HTMLButtonElement).disabled).toBe(true);
-    expect(onCommand).not.toHaveBeenCalled();
+    expectEveryFieldDisabled();
   });
 
   it('keeps a tiling value being typed when the picture of the part changes under it', () => {

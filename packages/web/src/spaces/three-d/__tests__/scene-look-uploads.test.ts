@@ -66,6 +66,8 @@ interface Harness {
   register: ReturnType<typeof vi.fn>;
   unregister: ReturnType<typeof vi.fn>;
   invalidateImages: ReturnType<typeof vi.fn>;
+  /** The header byte caps the local and Project size reads were given. */
+  caps: number[];
   finish: (assetId?: string) => void;
   fail: (error: unknown) => void;
 }
@@ -90,12 +92,13 @@ function harness(session: () => SceneSession | undefined, localSize: { width: nu
     fail = reject;
   })));
   const notify = vi.fn(); const register = vi.fn(); const unregister = vi.fn(); const invalidateImages = vi.fn();
+  const caps: number[] = [];
   const uploads = factory!({
     upload, notify, register, unregister, invalidateImages,
-    readLocalSize: async () => { if (localSize instanceof Error) throw localSize; return localSize; },
-    size: (_projectId: string, assetId: string) => size(assetId), session,
+    readLocalSize: async (_file: File, maxBytes: number) => { caps.push(maxBytes); if (localSize instanceof Error) throw localSize; return localSize; },
+    size: (_projectId: string, assetId: string, maxBytes: number) => { caps.push(maxBytes); return size(assetId); }, session,
   });
-  return { uploads, upload, notify, register, unregister, invalidateImages, finish: (id) => finish(id), fail: (error) => fail(error) };
+  return { uploads, upload, notify, register, unregister, invalidateImages, caps, finish: (id) => finish(id), fail: (error) => fail(error) };
 }
 
 /** Lets pending promises settle. */
@@ -241,6 +244,18 @@ describe('SceneLookUploads', () => {
     expect(lookOf(doc)).not.toHaveProperty('0');
     expect(h.notify).toHaveBeenCalledWith({ key: 'spaces.threeD.look.uploadedPartLimit', params: { max: '256' }, severity: 'warning' });
     expect(session.getSnapshot().commandError).toBeNull();
+  });
+
+  it('reads every header with the configured byte cap', async () => {
+    const { doc, session } = editor();
+    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    h.finish();
+    await done;
+    expect(h.caps.length).toBeGreaterThan(1);
+    expect(new Set(h.caps)).toEqual(new Set([67_108_864]));
   });
 
   it('judges every guard again after reading the other pictures, so a picture set on the part meanwhile stays', async () => {

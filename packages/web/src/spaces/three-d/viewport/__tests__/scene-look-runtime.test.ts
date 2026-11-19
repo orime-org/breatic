@@ -123,6 +123,7 @@ describe('SceneLookRuntime', () => {
     runtime.sync(withLook({ 0: { map: A } }), root);
     await settle();
     expect(fake.acquire).toHaveBeenCalledWith(A, 8192);
+    expect(fake.size).toHaveBeenCalledWith(A, 67108864);
   });
 
   it.each([['loads', true], ['fails', false]] as const)('tells the scene it changed when a picture %s after the look was applied', async (_name, loads) => {

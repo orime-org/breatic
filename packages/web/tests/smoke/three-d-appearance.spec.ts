@@ -282,6 +282,8 @@ test('a Viewer sees a part change at once and can read the parts with every sett
     await expect(peer.getByTestId('scene-look-part-fields')).toBeVisible();
     await expect(peer.getByTestId('scene-look-preset-metal')).toBeDisabled();
     await expect(peer.getByTestId('scene-look-reset-all')).toBeDisabled();
+    await expect(peer.getByTestId('scene-look-part-fields').getByRole('button', { name: 'Colour', exact: true })).toBeDisabled();
+    await expect(peer.getByTestId('scene-look-gloss')).toHaveAttribute('data-disabled', '');
 
     await page.getByRole('button', { name: 'Lock', exact: true }).click();
     await expect(page.getByTestId('scene-look-part-0')).toBeEnabled();

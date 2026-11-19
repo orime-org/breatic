@@ -26,11 +26,15 @@ const toast = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn(), success: vi.
 vi.mock('@web/lib/toast', () => ({ toast }));
 type SizeOf = () => Promise<{ width: number; height: number; type: string } | null>;
 const sizes = vi.hoisted(() => new Map<string, SizeOf>());
+const caps = vi.hoisted(() => [] as number[]);
 vi.mock('@web/spaces/three-d/viewport/look-texture-cache', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/spaces/three-d/viewport/look-texture-cache')>()),
   pageLookTextureCache: () => {
-    const read = (assetId: string): ReturnType<SizeOf> => sizes.get(assetId)?.() ?? Promise.resolve(null);
-    return { read, size: (assetId: string) => read(assetId).catch(() => null) };
+    const read = (assetId: string, maxBytes: number): ReturnType<SizeOf> => {
+      caps.push(maxBytes);
+      return sizes.get(assetId)?.() ?? Promise.resolve(null);
+    };
+    return { read, size: (assetId: string, maxBytes: number) => read(assetId, maxBytes).catch(() => null) };
   },
 }));
 const captured = vi.hoisted(() => ({ section: null as null | Record<string, unknown>, picker: null as null | Record<string, unknown> }));
@@ -51,7 +55,7 @@ const REPORT = { parts: [{ key: '0', name: null, color: '#969696', hasMap: false
 const cleanups: (() => void)[] = [];
 const NO_PICTURES: readonly string[] = [];
 const NO_DRAFTS: ReadonlyMap<string, SceneFieldDraft> = new Map<string, SceneFieldDraft>();
-afterEach(() => { cleanup(); cleanups.splice(0).forEach((done) => done()); sizes.clear(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); cleanups.splice(0).forEach((done) => done()); sizes.clear(); caps.length = 0; vi.clearAllMocks(); });
 
 /** A panel on a scene with one figure, and its document; it can show another part or be opened again. */
 function panel(): { doc: Y.Doc; session: SceneSession; rerender: () => void; select: (part: string) => void; reopen: () => void } {
@@ -114,6 +118,9 @@ describe('picking a Project picture for a part', () => {
     expect(toast.warning).toHaveBeenCalledWith(t('spaces.threeD.look.objectTexturesTooLarge', {
       actual: mib.format(Math.ceil(total / 1024 / 1024 * 10) / 10), allowed: mib.format(IMPORT_LIMITS.maxTextureBytes / 1024 / 1024) }));
     expect(lookOf(doc)).toEqual({ 1: { map: OTHER } });
+    // The picked picture and the one already on the object are both read with the configured header cap.
+    expect(caps.length).toBeGreaterThan(1);
+    expect(new Set(caps)).toEqual(new Set([IMPORT_LIMITS.maxPictureHeaderBytes]));
   });
 
   it('judges the picture against the look at the moment it is written, not the one the panel last drew', async () => {
