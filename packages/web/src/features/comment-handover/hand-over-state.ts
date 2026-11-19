@@ -7,7 +7,7 @@
  * it over sees while it waits, and the list the hand-over button offers.
  */
 
-import type { AgentConnectionItem, AnnotationAssignment } from '@breatic/shared';
+import { tellConnectionsApart, type AgentConnectionItem, type AnnotationAssignment, type ConnectionTellApart } from '@breatic/shared';
 import type { SpaceAssignment } from '@web/data/api/agent-access';
 
 /** The label on a thread waiting for an external agent, and what it says. */
@@ -83,7 +83,7 @@ export interface HandOverChoice {
   /** The one that just answered this thread, offered first to hand it again. */
   again: boolean;
   /** What tells it apart from another of the same name, or null when its name is its own. */
-  tellApart: { kind: 'token'; prefix: string } | { kind: 'since'; at: string } | null;
+  tellApart: ConnectionTellApart;
 }
 
 /**
@@ -98,18 +98,7 @@ export function handOverChoices(
   again: string | null,
 ): HandOverChoice[] {
   const usable = connections.filter((c) => c.status === 'active');
-  const named = new Map<string, number>();
-  for (const c of usable) named.set(c.displayName, (named.get(c.displayName) ?? 0) + 1);
-  const choices = usable.map((c): HandOverChoice => {
-    const shared = (named.get(c.displayName) ?? 0) > 1;
-    let tellApart: HandOverChoice['tellApart'] = null;
-    if (shared) {
-      tellApart =
-        c.kind === 'pat' && c.tokenPrefix !== undefined
-          ? { kind: 'token', prefix: c.tokenPrefix }
-          : { kind: 'since', at: c.createdAt };
-    }
-    return { id: c.id, name: c.displayName, again: c.id === again, tellApart };
-  });
+  const told = tellConnectionsApart(usable);
+  const choices = usable.map((c): HandOverChoice => ({ id: c.id, name: c.displayName, again: c.id === again, tellApart: told.get(c.id) ?? null }));
   return [...choices.filter((c) => c.again), ...choices.filter((c) => !c.again)];
 }
