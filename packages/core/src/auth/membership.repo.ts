@@ -17,7 +17,7 @@
  * negotiated record is absent remains explicit and quota checks name it.
  */
 
-import { and, eq, isNull, getTableColumns, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, getTableColumns, sql } from "drizzle-orm";
 import {
   MEMBERSHIP_TIERS,
   type MembershipTier,
@@ -530,6 +530,40 @@ async function readMembershipProfile(target: { userId: string } | { studioId: st
   const enterprise = row.enterprise === null ? null : enterpriseRecordOf(row.enterprise);
   const reading = resolveMembershipReading(storedTier, enterprise, row.facts, { ...subscriptionClock(), now: new Date(row.asOf) });
   return { subject, profile: { account: { id: row.userId, email: row.email }, snapshot: { userId: row.userId, storedTier, enterprise }, reading } };
+}
+
+/** One live account's membership at a fixed moment, as the cutover snapshot records it. */
+export interface MembershipSnapshotRow {
+  userId: string;
+  effectiveTier: MembershipTier;
+  limits: EnterpriseMembershipProfile["reading"]["limits"];
+  settlementProtected: boolean;
+}
+
+/**
+ * Read one page of every live account's membership at `now` instead of the
+ * clock, from the same facts and the same rule every reading uses.
+ * @param now - The moment to read at.
+ * @param afterUserId - The last account of the previous page, or null for the first.
+ * @param limit - The page size.
+ * @returns The page, in account id order.
+ * @throws {Error} When stored membership data or tier configuration is invalid.
+ */
+export async function listMembershipReadingsAt(now: Date, afterUserId: string | null, limit: number): Promise<MembershipSnapshotRow[]> {
+  const rows = await db
+    .select({ userId: users.id, storedTier: users.membershipTier, enterprise: enterpriseRecordSelection, facts: subscriptionFactsForMembership(users.id) })
+    .from(users)
+    .leftJoin(enterpriseMemberships, and(eq(enterpriseMemberships.userId, users.id), isNull(enterpriseMemberships.deletedAt)))
+    .where(and(isNull(users.deletedAt), afterUserId === null ? undefined : gt(users.id, afterUserId)))
+    .orderBy(asc(users.id))
+    .limit(limit);
+  const clock = { ...subscriptionClock(), now };
+  return rows.map((row) => {
+    const subject: TierSubject = { accountId: row.userId };
+    const enterprise = row.enterprise === null ? null : enterpriseRecordOf(row.enterprise);
+    const reading = resolveMembershipReading(asKnownTier(row.storedTier, subject), enterprise, row.facts, clock);
+    return { userId: row.userId, effectiveTier: reading.effectiveTier, limits: reading.limits, settlementProtected: reading.settlementProtected };
+  });
 }
 
 /**
