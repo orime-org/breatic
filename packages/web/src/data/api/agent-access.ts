@@ -7,7 +7,7 @@
  * tokens it creates.
  */
 
-import type { AgentConnectionItem, CreatedPersonalAccessToken, PersonalAccessTokenExpiryDays } from '@breatic/shared';
+import type { AgentConnectionItem, ConnectionName, CreatedPersonalAccessToken, PersonalAccessTokenExpiryDays } from '@breatic/shared';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 
 /** The React Query key of the user's connection list. */
@@ -78,11 +78,11 @@ export const agentAccessApi = {
    * The names of connections, anyone's and deleted ones included, so a reply
    * an external agent wrote can say which one.
    * @param ids - The connections.
-   * @returns Their names; unknown ids are left out.
+   * @returns Their names, with what tells same-named ones of one owner apart; unknown ids are left out.
    * @throws {import('@web/data/api/types').ApiException} When the read fails.
    */
-  connectionNames(ids: readonly string[]): Promise<Array<{ id: string; name: string }>> {
-    return apiGet<Array<{ id: string; name: string }>>(
+  connectionNames(ids: readonly string[]): Promise<ConnectionName[]> {
+    return apiGet<ConnectionName[]>(
       `/agent-access/connections/names?ids=${encodeURIComponent(ids.join(','))}`,
     );
   },

@@ -14,7 +14,7 @@
  */
 
 import crypto from "node:crypto";
-import type { AgentConnectionEntity, AgentConnectionKind } from "@breatic/shared";
+import { tellConnectionsApart, type AgentConnectionEntity, type AgentConnectionKind, type ConnectionName, type ConnectionTellApart } from "@breatic/shared";
 import { lockAccountRow } from "@core/auth/membership.repo.js";
 import { getMcpConfig } from "@core/config/mcp.js";
 import { db } from "@core/db/client.js";
@@ -178,13 +178,22 @@ export async function rename(connectionId: string, userId: string, name: string)
 }
 
 /**
- * Names of rows, deleted ones included, so history can still say who acted.
+ * Names of rows, deleted ones included, so history can still say who acted;
+ * a live row sharing its name with another of its owner's live rows carries
+ * what tells them apart (breatic#1488 design 19.2).
  * @param ids - The row ids.
+ * @param now - The clock that decides which rows are live.
  * @returns One entry per row found; unknown ids are left out.
  * @throws {Error} When the database read fails.
  */
-export async function connectionNames(ids: readonly string[]): Promise<Array<{ id: string; name: string }>> {
-  return connectionsRepo.names(ids);
+export async function connectionNames(ids: readonly string[], now: Date = new Date()): Promise<ConnectionName[]> {
+  const rows = await connectionsRepo.names(ids);
+  const told = new Map<string, ConnectionTellApart>();
+  for (const owner of new Set(rows.map((r) => r.userId))) {
+    const live = (await listConnections(owner, now)).filter((c) => c.status === "active");
+    for (const [id, tellApart] of tellConnectionsApart(live.map((c) => ({ ...c, createdAt: c.createdAt.toISOString() })))) told.set(id, tellApart);
+  }
+  return rows.map((r) => ({ id: r.id, name: r.name, tellApart: told.get(r.id) ?? null }));
 }
 
 /**

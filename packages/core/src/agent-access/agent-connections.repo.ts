@@ -146,13 +146,13 @@ export async function rename(id: string, userId: string, name: string): Promise<
 /**
  * Names of rows by id, deleted rows included.
  * @param ids - The row ids.
- * @returns One entry per row found.
+ * @returns One entry per row found, with its owner.
  * @throws {Error} When the database read fails.
  */
-export async function names(ids: readonly string[]): Promise<Array<{ id: string; name: string }>> {
+export async function names(ids: readonly string[]): Promise<Array<{ id: string; name: string; userId: string }>> {
   if (ids.length === 0) return [];
   return db
-    .select({ id: agentConnections.id, name: agentConnections.displayName })
+    .select({ id: agentConnections.id, name: agentConnections.displayName, userId: agentConnections.userId })
     .from(agentConnections)
     .where(inArray(agentConnections.id, [...ids]));
 }

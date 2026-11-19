@@ -322,11 +322,26 @@ describe("connections", () => {
     const names = await agentAccessService.connectionNames([live.connectionId, gone.connectionId, crypto.randomUUID()]);
     expect(names).toEqual(
       expect.arrayContaining([
-        { id: live.connectionId, name: "Claude Code" },
-        { id: gone.connectionId, name: "Old desktop" },
+        { id: live.connectionId, name: "Claude Code", tellApart: null },
+        { id: gone.connectionId, name: "Old desktop", tellApart: null },
       ]),
     );
     expect(names).toHaveLength(2);
+  });
+
+  it("tells an owner's same-named live connections apart, by token prefix or first authorization", async () => {
+    const user = await insertUser();
+    const other = await insertUser();
+    const oauth = await connect(user, `client-${recordId()}`);
+    const token = await agentAccessService.createPersonalAccessToken({ userId: user, name: "Claude Code", expiresAt: null });
+    const elsewhere = await connect(other, `client-${recordId()}`);
+    if (!token.ok) throw new Error("expected the token to be created");
+    const listed = await agentAccessService.listConnections(user);
+    const names = await agentAccessService.connectionNames([oauth.connectionId, token.connectionId, elsewhere.connectionId]);
+    const byId = new Map(names.map((n) => [n.id, n.tellApart]));
+    expect(byId.get(oauth.connectionId)).toEqual({ kind: "since", at: listed.find((r) => r.id === oauth.connectionId)!.createdAt.toISOString() });
+    expect(byId.get(token.connectionId)).toEqual({ kind: "token", prefix: token.token.slice(0, 8) });
+    expect(byId.get(elsewhere.connectionId)).toBeNull();
   });
 
   it("records the last use on the row", async () => {
