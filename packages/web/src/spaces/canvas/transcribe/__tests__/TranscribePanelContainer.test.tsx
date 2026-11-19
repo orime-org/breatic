@@ -8,6 +8,7 @@
  */
 
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
 import * as React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +16,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setLocale } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import type { KeyPlan } from '@web/data/api/byok';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { readingIntent } from '@web/spaces/canvas/start-understand-run';
@@ -22,6 +24,12 @@ import { TranscribePanelContainer } from '@web/spaces/canvas/transcribe/Transcri
 import { canvasSessions } from '@web/stores/canvas-session';
 import { runOnce } from '@web/stores/task-actions-in-flight';
 import { useTranscribePreference } from '@web/stores/transcribe-preference';
+
+const keyPlan = vi.hoisted(() => ({ current: undefined as unknown }));
+vi.mock('@web/data/api/byok', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@web/data/api/byok')>();
+  return { ...real, byokApi: { ...real.byokApi, keyPlan: async () => keyPlan.current ?? { payer: 'self', llm: { usesAccountKey: false }, models: {}, upstreamNames: {} } } };
+});
 
 const NODES: CanvasNodeView[] = [
   {
@@ -45,21 +53,24 @@ function tree(
   projectId = 'project',
 ): React.JSX.Element {
   return (
-    <TooltipProvider>
-      {/* Escape is the space region's, as on the real page. */}
-      <div data-region='space'>
-        <CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'owner', caretProvider: null }}>
-          <ReactFlow nodes={[{ id: 'src', position: { x: 0, y: 0 }, data: {} }]} edges={[]}>
-            <TranscribePanelContainer nodes={NODES} onRun={onRun} />
-          </ReactFlow>
-        </CanvasContext.Provider>
-      </div>
-    </TooltipProvider>
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <TooltipProvider>
+        {/* Escape is the space region's, as on the real page. */}
+        <div data-region='space'>
+          <CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'owner', caretProvider: null }}>
+            <ReactFlow nodes={[{ id: 'src', position: { x: 0, y: 0 }, data: {} }]} edges={[]}>
+              <TranscribePanelContainer nodes={NODES} onRun={onRun} />
+            </ReactFlow>
+          </CanvasContext.Provider>
+        </div>
+      </TooltipProvider>
+    </QueryClientProvider>
   );
 }
 
 beforeEach(() => {
   setLocale('en');
+  keyPlan.current = undefined;
   useTranscribePreference.setState({ keepFillers: true });
   canvasSessions.of('').getState().closeActivePanel();
   canvasSessions.of('').getState().openTranscribePanel('src');
@@ -73,6 +84,16 @@ describe('TranscribePanelContainer', () => {
     expect(screen.getByTestId('transcribe-keep-fillers')).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByTestId('transcribe-hint')).toHaveTextContent('Writes um, uh and the like as spoken');
     expect(screen.getByTestId('transcribe-credit')).toHaveTextContent('Billed by usage');
+  });
+
+  it.each([
+    ['self', 'Uses your key, no credits'],
+    ['admin', 'Uses the Studio\'s key, no credits'],
+  ] as const)('says whose key runs it when the %s payer\'s OpenRouter key does (inner#1953)', async (payer, words) => {
+    keyPlan.current = { payer, llm: { usesAccountKey: true }, models: {}, upstreamNames: {} } satisfies KeyPlan;
+    render(tree(vi.fn()));
+    expect(await screen.findByText(words)).toBeInTheDocument();
+    expect(screen.getByTestId('transcribe-credit')).not.toHaveTextContent('Billed by usage');
   });
 
   it('turns the hint with the switch', () => {
