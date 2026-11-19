@@ -6,15 +6,15 @@
  * (§10.3–§10.5): a `generate` step submitted once under a stored intent and its link fetched into a derived key, a container
  * step run to the frozen retries, each done object found again by its frozen step key along a retry chain.
  */
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { getMiniToolsConfig, getRawEnvVar, logger } from "@breatic/core";
+import { getMiniToolsConfig, getWorkerConfig, logger } from "@breatic/core";
 import {
-  backendUploadService, beginMiniToolStepAttempt, failMiniToolStep, getFullModelConfig, miniToolStepStateSchema, openContainerOutputs, openMiniToolPlanJob, recordMiniToolStepIdentity,
-  recordMiniToolStepResult, taskRepo, upstreamStepRepo, type FullModelEntry, type MiniToolStepJson, type RecordMiniToolStepResultInput,
+  appendMiniToolStepDeliveredCosts, backendUploadService, clearStepSending, endMiniToolModelStep, getStepTicket, markStepSending, MINI_TOOL_MODEL_ROUTE,
+  miniToolStepStateSchema, openContainerOutputs, openMiniToolPlanJob, recordMiniToolStepResult, recordStepSendNotAccepted, storeStepTicket, taskRepo,
+  upstreamCloneRepo, upstreamStepRepo, type RecordMiniToolStepResultInput,
 } from "@breatic/domain";
 import {
-  DeadlinePassed, HttpRetryError, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type MiniToolPlanExact, type MiniToolPlanJobRequest,
+  DeadlinePassed, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type MiniToolPlanExact, type MiniToolPlanJobRequest,
   type MiniToolPlanRecipe, type MiniToolPlanTarget, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import type { EraseFailureReason, ExpandFailureReason, LipsyncFailureReason, MiniToolExecutionRegistered } from "@breatic/shared/mini-tools";
@@ -24,9 +24,13 @@ import { appendStep, stepWorkKey } from "@worker/handlers/mini-tool/prepare-mode
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { registered } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { chunkInputId, FullLedgerInvalid, readJobLedger, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
-import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
+import { costsOf, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed } from "@breatic/provider";
+import type { MediaInput } from "@breatic/provider/media";
+import { MediaRunFailed, runMedia, type MediaRunDeps, type MediaRunDone } from "@worker/handlers/media-run.js";
+import { mediaRunner, sourceOf } from "@worker/handlers/model-task.js";
+import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
+import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
-import { runPrediction } from "@worker/providers/wavespeed.js";
 
 /** A model's configured asynchronous rejection field: a dot path into the structured error and the value it holds. */
 export interface ModelAsyncRejection { path: string; equals: unknown }
@@ -50,21 +54,28 @@ function atPath(value: unknown, path: string): unknown {
 }
 
 /**
- * A paid model step's failure category (execution design §9.4, §10.4, §10.5 category tables); never guessed from error text.
- * A refusal at submit (400, 422) and the configured asynchronous rejection are the model's; a passed deadline, exhausted
- * network retries, 408, 429 and 5xx are timeouts; anything else failed.
- * @param error - What the step threw.
+ * A paid model step's failure category from provider's errors (execution design §11.3 table); never guessed from error
+ * text. A refusal at submit (400, 422), an input no upstream takes and the model's configured asynchronous rejection are
+ * the model's; a passed deadline, and a run every upstream failed with 408, 429, 5xx or a request that never left, are
+ * timeouts; anything else failed.
+ * @param error - What the step's run threw.
  * @param rejection - The model's `async_rejection`, when it has one.
  * @returns The category.
  * @throws {never} Never.
  */
 export function modelStepCategory(error: unknown, rejection: ModelAsyncRejection | undefined): ModelStepCategory {
-  if (error instanceof DeadlinePassed || error instanceof HttpRetryError) return "timeout";
-  if (error instanceof HttpStatusError) {
-    if (error.status === 408 || error.status === 429 || error.status >= 500) return "timeout";
-    return error.status === 400 || error.status === 422 ? "model_rejected" : "failed";
+  if (error instanceof DeadlinePassed) return "timeout";
+  if (!(error instanceof MediaRunFailed)) return "failed";
+  const reason = error.reason;
+  if (reason instanceof UpstreamRequestRejected) return reason.status === 400 || reason.status === 422 ? "model_rejected" : "failed";
+  if (reason instanceof NoUpstreamAvailable) {
+    if (reason.reasons.some((r) => r.kind === "unsupported_input")) return "model_rejected";
+    const failed = reason.reasons.length > 0 && reason.reasons.every((r) => r.kind === "failed");
+    const transient = reason.reasons.some((r) => r.kind === "failed" && (r.failure === "not_sent"
+      || (r.status !== undefined && (r.status === 408 || r.status === 429 || r.status >= 500))));
+    return failed && transient ? "timeout" : "failed";
   }
-  if (error instanceof UpstreamTaskFailed && rejection !== undefined && atPath(error.structuredError, rejection.path) === rejection.equals) return "model_rejected";
+  if (reason instanceof UpstreamTaskFailed && rejection !== undefined && atPath(reason.detail, rejection.path) === rejection.equals) return "model_rejected";
   return "failed";
 }
 
@@ -196,18 +207,6 @@ export type StepEnded = { key: string } | { failed: string; step?: string; expir
 
 const objectResult = z.strictObject({ stepKey: z.string().min(1), object: z.string().min(1), providerURL: z.url() });
 const retryOf = z.object({ miniToolExecution: z.object({ retry: z.object({ runId: z.uuid() }).optional() }) });
-const sam3Outputs = z.tuple([z.object({ rle_url: z.url() })]);
-
-/**
- * The RLE link of a SAM3 tracking answer (execution design §10.3 track step): the `rle_url` of its one output.
- * @param outputs - The prediction's outputs.
- * @returns The link, or null for an answer of any other shape.
- * @throws {never} Never.
- */
-export function sam3RleLink(outputs: unknown): string | null {
-  const parsed = sam3Outputs.safeParse(outputs);
-  return parsed.success ? parsed.data[0].rle_url : null;
-}
 
 /**
  * An intermediate object's key: the step key, a colon and the attempt's id (§97 D17-6).
@@ -297,115 +296,172 @@ async function reused(run: ModelStepRun, stepKey: string): Promise<string | null
   return null;
 }
 
-/**
- * A catalog model's WaveSpeed model id.
- * @param name - The catalog model.
- * @returns Its provider model id.
- * @throws {Error} When the catalog offers it through no WaveSpeed upstream.
- */
-export function providerModel(name: string): string {
-  const id = catalogModel(name).providers?.find((provider) => provider.name === "wavespeed")?.model_id;
-  if (typeof id !== "string") throw new Error(`The model ${name} has no WaveSpeed upstream`);
-  return id;
-}
-
-/**
- * A catalog model's full entry.
- * @param name - The catalog model.
- * @returns The entry.
- * @throws {Error} When the catalog has no such model.
- */
-export function catalogModel(name: string): FullModelEntry {
-  const model = getFullModelConfig("video").models.find((candidate) => candidate.name === name);
-  if (model === undefined) throw new Error(`The catalog has no model ${name}`);
-  return model;
-}
-
-/** One generate step's identity and request. */
+/** One model step: the catalog model it runs, its identity in the run and its call in our param names. */
 export interface GenerateStep {
-  endpoint: string;
+  /** The catalog model; the step row's endpoint. */
+  model: string;
   itemIndex: number;
   stepKey: string;
   contentType: string;
-  body: () => Promise<Record<string, MiniToolStepJson>>;
-  link: (outputs: unknown) => string | null;
-  /** The failure category of what the provider call threw. */
+  /** The call in our param names and the prompt, read when the step's ticket is first planned. */
+  input: () => Promise<MediaInput>;
+  /** The model's configured asynchronous rejection, for `modelStepCategory`. */
+  rejection?: ModelAsyncRejection;
+  /** The failure category of what the step's run threw, `modelStepCategory` with `rejection` when absent. */
+  category?: (error: unknown) => string;
+}
+
+/**
+ * The dependencies `runMedia` reads a model step's run with: the step row holds its ticket and send mark.
+ * @param taskId - The run's task.
+ * @param deadlineAt - The run's deadline.
+ * @returns The dependencies.
+ */
+function stepRunDeps(taskId: string, deadlineAt: number): MediaRunDeps {
+  return {
+    // Built on first use: this process's one runner holds each upstream's concurrency.
+    get runner() { return mediaRunner(); },
+    tickets: {
+      getProviderTicket: (stepId: string) => getStepTicket(taskId, stepId),
+      storeTicket: (stepId: string, ticket: { version: number } & Record<string, unknown>) => storeStepTicket(taskId, stepId, ticket),
+      markSending: (stepId: string) => markStepSending(taskId, stepId, deadlineAt),
+      clearSending: (stepId: string) => clearStepSending(taskId, stepId),
+    },
+    clones: upstreamCloneRepo,
+    sourceOf,
+    // A model step is never a task from before provider.
+    legacy: () => Promise.resolve({}),
+    readingPlace: withUnderstandSlot,
+    pollIntervalMs: getWorkerConfig().poll_interval,
+  };
+}
+
+const stepResult = { kind: "generate" as const, parse: (value: unknown) => objectResult.parse(value) };
+
+/**
+ * Fetch a returned step's link into its derived key and record it done with the pin; a fetch that fails records the
+ * step failed and nothing is sent again (execution design §11.2 output row).
+ * @param run - The run.
+ * @param planned - The step.
+ * @param stepId - Its row.
+ * @param link - The upstream's link.
+ * @param userId - The run's user.
+ * @param deadlineAt - The run's deadline.
+ * @returns The object, or `failed`.
+ * @throws {Error} When recording fails.
+ */
+async function fetchReturned(run: ModelStepRun, planned: GenerateStep, stepId: string, link: string, userId: string, deadlineAt: number): Promise<StepEnded> {
+  const key = stepObjectKey(planned.stepKey, stepId);
+  const identity = { kind: "provider" as const, stepId };
+  try {
+    await backendUploadService.transferUrlToDerived(link, { storageKey: key, contentType: planned.contentType, projectId: run.projectId, actingUserId: userId, deadlineAt });
+  } catch (error) {
+    logger.error({ err: error, ctx: { taskId: run.taskId, stepId, stepKey: planned.stepKey } }, `mini_tool_${run.log}_output_fetch_failed`);
+    await recordMiniToolStepResult({ taskId: run.taskId, stepId, identity, outcome: "failed", result: { stepKey: planned.stepKey, object: key, providerURL: link },
+      error: { code: "failed", message: error instanceof Error ? error.message : String(error) } }, stepResult);
+    return { failed: "failed" };
+  }
+  await recordMiniToolStepResult({ taskId: run.taskId, stepId, identity, outcome: "done", result: { stepKey: planned.stepKey, object: key, providerURL: link },
+    presentation: { pin: [key] } }, stepResult);
+  return { key };
+}
+
+/** A model step's call: the catalog model, its input in our names and how its failures are classified. */
+export interface ModelStepCall {
+  model: string;
+  input: () => Promise<MediaInput>;
   category: (error: unknown) => string;
 }
 
 /**
- * Advance a `generate` step: reuse its done object, submit it once under a stored intent, or ask for its stored prediction;
- * once the provider returned, fetch its link into the derived key and record it with the pin in one transaction.
+ * Run a model step's provider ticket against its row until the upstream answered (execution design §11.2): a step
+ * found returned gives its link again; a done run ends the step returned with its link and costs; a failed run ends it
+ * failed with its category and costs; a send the upstream did not take comes back after `job_backoff_delay_ms × 2^n`
+ * and ends the step `timeout` after `job_attempts`; any other throw keeps the costs it handed over on the step and is
+ * thrown again, the ticket and send mark kept for the next pickup.
+ * @param taskId - The run's task.
+ * @param step - The step's row.
+ * @param call - The step's call.
+ * @param deadlineAt - The run's deadline.
+ * @param log - The log name prefix of the tool's steps.
+ * @returns The upstream's link, or the failure category.
+ * @throws {StillRunning} While the run is running upstream or a refused send waits.
+ * @throws {Error} When the run threw before ending (the queue retries it) or persistence fails.
+ */
+export async function runModelStep(taskId: string, step: Step, call: ModelStepCall, deadlineAt: number, log: string): Promise<{ link: string } | { failed: string }> {
+  const returned = step.output.providerReturn as { link: string } | undefined;
+  if (returned !== undefined) return { link: returned.link };
+  const ctx = { taskId, stepId: step.id, model: call.model };
+  let done: MediaRunDone;
+  try {
+    done = await runMedia({
+      taskId: step.id, studioId: null, model: call.model, displayName: call.model,
+      input: () => call.input(), route: MINI_TOOL_MODEL_ROUTE, deadlineAt, outputCount: 1, lastAttempt: false,
+    }, stepRunDeps(taskId, deadlineAt));
+  } catch (error) {
+    if (error instanceof StillRunning) throw error;
+    if (error instanceof MediaRunFailed) {
+      const category = call.category(error);
+      logger.error({ err: error, ctx: { ...ctx, category } }, `mini_tool_${log}_provider_failed`);
+      await endMiniToolModelStep({ taskId, stepId: step.id, end: { kind: "failed", category: category as "failed", error: { code: category, message: error.message } }, costs: error.costs, servedBy: null });
+      return { failed: category };
+    }
+    if (error instanceof SendNotAccepted) {
+      const refused = await recordStepSendNotAccepted(taskId, step.id);
+      const { job_attempts: attempts, job_backoff_delay_ms: delay } = getWorkerConfig();
+      if (refused < attempts) throw new StillRunning(Date.now() + delay * 2 ** refused);
+      logger.error({ err: error, ctx: { ...ctx, refused } }, `mini_tool_${log}_send_not_accepted`);
+      await endMiniToolModelStep({ taskId, stepId: step.id, end: { kind: "failed", category: "timeout", error: { code: "timeout", message: error.message } }, costs: [], servedBy: null });
+      return { failed: "timeout" };
+    }
+    // The run did not end: what it billed stays on the step, which keeps its ticket for the next pickup to recover.
+    await appendMiniToolStepDeliveredCosts(taskId, step.id, costsOf(error));
+    throw error;
+  }
+  const link = done.outputs.find((output) => output.kind === "url");
+  const costs = [...done.costs, ...done.passedOverCosts];
+  if (link === undefined || link.kind !== "url") {
+    logger.error({ ctx }, `mini_tool_${log}_provider_output_unreadable`);
+    await endMiniToolModelStep({ taskId, stepId: step.id, end: { kind: "failed", category: "failed", error: { code: "failed", message: "The provider answered no readable link" } }, costs, servedBy: done.servedBy });
+    return { failed: "failed" };
+  }
+  await endMiniToolModelStep({ taskId, stepId: step.id, end: { kind: "returned", link: link.url }, costs, servedBy: done.servedBy });
+  return { link: link.url };
+}
+
+/**
+ * Advance a model step (execution design §11.2): reuse a done object, or run its ticket with `runModelStep` and fetch the
+ * returned link into the step's derived key.
  * @param run - The run.
  * @param planned - The step.
  * @param userId - The run's user.
  * @param deadlineAt - The task deadline.
  * @returns The object, or the failure category (`timeout`, marked expired, when the step is due after the deadline).
- * @throws {StillRunning} While the prediction runs.
- * @throws {Error} When persistence or the link fetch fails.
+ * @throws {StillRunning} While the run is running upstream or a refused send waits.
+ * @throws {Error} When the run threw before ending (the queue retries it) or persistence fails.
  */
 export async function advanceGenerate(run: ModelStepRun, planned: GenerateStep, userId: string, deadlineAt: number): Promise<StepEnded> {
   const steps = await upstreamStepRepo.listSteps(run.taskId);
-  let step = steps.find((candidate) => candidate.kind === "generate" && candidate.endpoint === planned.endpoint && candidate.itemIndex === planned.itemIndex);
+  let step = steps.find((candidate) => candidate.kind === "generate" && candidate.endpoint === planned.model && candidate.itemIndex === planned.itemIndex);
   if (step === undefined) {
     const original = await reused(run, planned.stepKey);
     if (original !== null) return { key: original };
-    // A call opened after the deadline is never submitted, so no step is appended for it: the step ends expired, a timeout.
+    // A call opened after the deadline is never sent, so no step is appended for it: the step ends expired, a timeout.
     if (Date.now() >= deadlineAt) return { failed: "timeout", expired: true };
-    step = await appendStep(run.taskId, { kind: "generate", endpoint: planned.endpoint, itemIndex: planned.itemIndex });
+    step = await appendStep(run.taskId, { kind: "generate", endpoint: planned.model, itemIndex: planned.itemIndex });
   }
-  let state = stateOf(step);
+  const state = stateOf(step);
   if (state?.result?.outcome === "done") return { key: objectResult.parse(state.result.result).object };
-  if (step.status === "failed") return { failed: typeof state?.error?.code === "string" ? state.error.code : "failed" };
-  const connection = getFullModelConfig("video").providers.wavespeed;
-  const apiKey = getRawEnvVar(connection?.api_key_env ?? "");
-  if (!connection?.base_url || !apiKey) throw new Error("The WaveSpeed connection is unavailable");
-  let attemptId = state?.attempts.find((attempt) => attempt.resolution.kind === "identity" && attempt.resolution.predictionId === step!.predictionId)?.attemptId ?? null;
-  let submitted = false;
-  if (step.predictionId === null) {
-    const prepared = await beginMiniToolStepAttempt({ taskId: run.taskId, stepId: step.id, attemptId: randomUUID(),
-      requestBody: state?.requestBody ?? await planned.body(), deadlineAt: state?.deadlineAt ?? deadlineAt, chargeTo: "user" });
-    if (!prepared.shouldSubmit || prepared.attempt === null) throw new Error(`The ${run.log} submit intent requires reconciliation`);
-    attemptId = prepared.attempt.attemptId;
-    step = prepared.step;
-    state = stateOf(step);
+  if (step.status === "failed") {
+    const ended = step.output.modelStepError as { category?: string } | undefined;
+    return { failed: ended?.category ?? (typeof state?.error?.code === "string" ? state.error.code : "failed") };
   }
-  if (attemptId === null || state === null || state.requestBody === null) throw new Error(`The ${run.log} step has no stored submit intent`);
-  const owned = step;
-  const attempt = attemptId;
-  let prediction: Awaited<ReturnType<typeof runPrediction>>;
-  try {
-    prediction = await runPrediction({ baseUrl: connection.base_url, apiKey }, planned.endpoint, state.requestBody, {
-      storedTaskId: owned.predictionId, externalTaskId: owned.id, retryStarting: false, deadlineAt: state.deadlineAt ?? deadlineAt,
-      persistTaskId: async (predictionId): Promise<void> => {
-        const receipt = await recordMiniToolStepIdentity({ taskId: run.taskId, stepId: owned.id, attemptId: attempt, predictionId });
-        if (receipt.conflict) throw new Error("Provider receipt conflicts with its original prediction");
-        submitted = true;
-      },
-    });
-  } catch (error) {
-    if (error instanceof StillRunning) throw error;
-    const category = planned.category(error);
-    logger.error({ err: error, ctx: { taskId: run.taskId, stepId: owned.id, stepKey: planned.stepKey, category } }, `mini_tool_${run.log}_provider_failed`);
-    // A refusal answered before any prediction existed proves this attempt was never accepted.
-    const refused = error instanceof HttpStatusError && owned.predictionId === null && !submitted;
-    await failMiniToolStep({ taskId: run.taskId, stepId: owned.id, error: { code: category, message: error instanceof Error ? error.message : String(error) },
-      ...(refused ? { attempt: { attemptId: attempt, proof: "rejected" as const } } : {}) });
-    return { failed: category };
-  }
-  const link = planned.link(prediction.outputs);
-  if (link === null) {
-    logger.error({ ctx: { taskId: run.taskId, stepId: owned.id, stepKey: planned.stepKey } }, `mini_tool_${run.log}_provider_output_unreadable`);
-    await failMiniToolStep({ taskId: run.taskId, stepId: owned.id, error: { code: "failed", message: "The provider answered no readable link" } });
-    return { failed: "failed" };
-  }
-  const key = stepObjectKey(planned.stepKey, attempt);
-  await backendUploadService.transferUrlToDerived(link, { storageKey: key, contentType: planned.contentType, projectId: run.projectId, actingUserId: userId,
-    deadlineAt: state.deadlineAt ?? deadlineAt });
-  await recordMiniToolStepResult({ taskId: run.taskId, stepId: owned.id, identity: { kind: "provider", provider: "wavespeed", predictionId: prediction.taskId },
-    outcome: "done", result: { stepKey: planned.stepKey, object: key, providerURL: link }, presentation: { pin: [key] } },
-  { kind: "generate", parse: (value) => objectResult.parse(value) });
-  return { key };
+  const answered = await runModelStep(run.taskId, step, {
+    model: planned.model, input: planned.input,
+    category: (error) => planned.category?.(error) ?? modelStepCategory(error, planned.rejection),
+  }, deadlineAt, run.log);
+  if ("failed" in answered) return answered;
+  return fetchReturned(run, planned, step.id, answered.link, userId, deadlineAt);
 }
 
 /** One container step's request, whatever names it. */
@@ -551,7 +607,7 @@ export function exactSeconds(seconds: number): MiniToolPlanExact {
  * @param receipt - The frozen receipt.
  * @param deadlineAt - The task deadline.
  * @returns The ledger.
- * @throws {UpstreamTaskFailed} With `source_ledger_invalid` when the ledger fails its receipt.
+ * @throws {MiniToolStepFailed} With `source_ledger_invalid` when the ledger fails its receipt.
  * @throws {Error} When the read fails in transport.
  */
 export async function runLedger(run: ModelStepRun, receipt: VideoPresentationLedgerReceipt, deadlineAt: number): Promise<VideoPresentationLedger> {
@@ -560,7 +616,7 @@ export async function runLedger(run: ModelStepRun, receipt: VideoPresentationLed
   } catch (error) {
     if (!(error instanceof FullLedgerInvalid)) throw error;
     logger.error({ err: error, ctx: { taskId: run.taskId } }, `mini_tool_${run.log}_ledger_invalid`);
-    throw new UpstreamTaskFailed("container", "source_ledger_invalid");
+    throw new MiniToolStepFailed("source_ledger_invalid");
   }
 }
 

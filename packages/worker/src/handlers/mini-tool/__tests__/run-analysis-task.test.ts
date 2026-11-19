@@ -36,13 +36,13 @@ const record = miniToolAnalysisRecordSchema.parse({
   analysisRunId: TASK, acceptedAt: "2026-10-25T01:02:03.123456Z", kind: "people", inputFingerprint: "a".repeat(64),
   binding: { assetId: "40000000-0000-4000-8000-000000000001", contentHash: "b".repeat(64), canonicalURL: "https://assets.test.invalid/original.mp4",
     kind: "video", mediaInfo: { width: 400, height: 200, duration: 12, mimeType: "video/mp4" } },
-  analysisInput: { schemaVersion: 1, kind: "people", sourceURL: "https://assets.test.invalid/original.mp4", anchor: { frameIndex: 1, pts: 0.25 },
+  analysisInput: { schemaVersion: 1, kind: "people", sourceURL: "https://assets.test.invalid/original.mp4", anchor: { frameIndex: 1 },
     profile: { id: "original-profile", version: "original", weightsHash: null, params: {} } },
   status: "running", result: null, error: null, usage: [], artifactUnavailable: false,
 });
 const result: Extract<MiniToolAnalysisResult, { kind: "people" }> = { schemaVersion: 1, kind: "people", draftId: record.draftId,
   revision: record.revision, analysisRunId: TASK, acceptedAt: record.acceptedAt, binding: record.binding, analysisInput: record.analysisInput,
-  inputFingerprint: record.inputFingerprint, anchor: { frameIndex: 1, pts: 0.25 }, people: [] };
+  inputFingerprint: record.inputFingerprint, anchor: { frameIndex: 1 }, people: [] };
 const execution: miniToolAnalysisService.MiniToolAnalysisExecution = { record,
   context: { taskId: TASK, userId: "50000000-0000-4000-8000-000000000001", projectId: "60000000-0000-4000-8000-000000000001",
     spaceId: "70000000-0000-4000-8000-000000000001", hostNodeId: "80000000-0000-4000-8000-000000000001" },
@@ -65,7 +65,7 @@ function job(attemptsMade = 0): Job<MiniToolAnalysisJob> {
 function trackedFixture(): { original: miniToolAnalysisService.MiniToolAnalysisExecution; result: MiniToolAnalysisResult } {
   const original = structuredClone(execution);
   const input = { schemaVersion: 1, kind: "tracked_mask", sourceURL: record.binding.canonicalURL, profile: record.analysisInput.profile,
-    anchor: { frameIndex: 1, pts: 0.25 }, range: { start: 0, end: 1 },
+    anchor: { frameIndex: 1 }, range: { start: 0, end: 1 },
     region: { box: { x: 0.1, y: 0.1, width: 0.2, height: 0.3 }, points: [] }, trackingPrompt: "selected object" } as const;
   original.record = miniToolAnalysisRecordSchema.parse({ ...record, kind: "tracked_mask", analysisInput: input });
   original.params.analysis = { ...original.params.analysis, kind: "tracked_mask", analysisInput: original.record.analysisInput };

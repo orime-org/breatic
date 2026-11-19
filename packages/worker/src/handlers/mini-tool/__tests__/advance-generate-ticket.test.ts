@@ -30,7 +30,8 @@ const h = vi.hoisted(() => ({
 }));
 vi.mock("@breatic/core", async (original) => {
   const actual = await original<typeof coreModule>();
-  return { ...actual, getWorkerConfig: (): ReturnType<typeof actual.getWorkerConfig> => ({ ...actual.getWorkerConfig(), job_attempts: 3, job_backoff_delay_ms: 2000 }) };
+  return { ...actual, logger: { ...actual.logger, error: vi.fn(), warn: vi.fn() },
+    getWorkerConfig: (): ReturnType<typeof actual.getWorkerConfig> => ({ ...actual.getWorkerConfig(), job_attempts: 3, job_backoff_delay_ms: 2000 }) };
 });
 vi.mock("@breatic/domain", async (original) => {
   const actual = await original<typeof domainModule>();

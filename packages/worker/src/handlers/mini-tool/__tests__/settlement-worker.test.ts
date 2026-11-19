@@ -65,9 +65,11 @@ describe("durable mini-tool expense worker wiring", () => {
   it("routes a wake through SQL recovery and reads costs under a fresh bounded lifetime", async () => {
     const process = await boot(); wire.add.mockClear();
     const lookupInput: domainModule.MiniToolConsumptionLookupInput = { consumption: {
-      schemaVersion: 1, consumptionKey: "1".repeat(64), identity: { kind: "provider", provider: "wavespeed", predictionId: "original-prediction" },
+      schemaVersion: 1, consumptionKey: "1".repeat(64), identity: { kind: "provider", stepId: "30000000-0000-4000-8000-000000000001" },
       state: "pending", creditMultiplier: 2, chargeTo: "user", costUsd: null, costSource: null, raw: null, credits: null, containerPricing: null,
-    } };
+      servedBy: "wavespeed", costs: [], waiting: [{ lookup: { upstream: "wavespeed", predictionId: "original-prediction" } }], known: 0, attempts: 0,
+      windowEndsAt: 1792920000000, nextLookupAt: 1792910000000,
+    }, lastAttempt: false };
     wire.lookup.mockResolvedValue({ state: "pending", reason: "billing-delayed" });
     wire.run.mockImplementation(async (_scope: unknown, lookup: domainModule.MiniToolSettlementLookup) => {
       await lookup(lookupInput);

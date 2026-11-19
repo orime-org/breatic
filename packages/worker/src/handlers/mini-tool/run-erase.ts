@@ -12,19 +12,14 @@
  * - stitch: the chunks joined with the source's audio into the run's one registered output.
  * A step that fails for good ends the output with `{ kind: "erase", step, category }`.
  */
-import { z } from "zod";
 import { getStorageAdapter, logger } from "@breatic/core";
-import type { AcceptedMiniToolExecution, MiniToolStepJson } from "@breatic/domain";
+import type { AcceptedMiniToolExecution } from "@breatic/domain";
 import type { EraseFailureReason } from "@breatic/shared/mini-tools";
 import type { LipSyncPickup } from "@worker/handlers/mini-tool/run-lip-sync.js";
-import {
-  advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, eraseContainerCategory, modelRunFailure, modelStepCategory, providerModel, runLedger, type ModelRunAt,
-  type ModelRunPosition, type ModelStepRun,
-} from "@worker/handlers/mini-tool/model-run-steps.js";
+import { advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, eraseContainerCategory, modelRunFailure, runLedger, type ModelRunAt, type ModelRunPosition, type ModelStepRun } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { audioOf, chunkInputId, modelInputTarget, segmentTarget, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
-import { UpstreamTaskFailed } from "@worker/providers/http.js";
+import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
-import { upstreamBody } from "@worker/providers/upstream-body.js";
 
 type Erase = Extract<AcceptedMiniToolExecution, { tool: "video.erase" }>;
 type Step = EraseFailureReason["step"];
@@ -32,7 +27,6 @@ type Step = EraseFailureReason["step"];
 /** The input ids the recipes bind their objects under, fixed so a rebuilt request is the same request. */
 const RLE = "00000000-0000-4000-8002-000000000000";
 const RESULT = "00000000-0000-4000-8004-000000000000";
-const outputs = z.tuple([z.url()]);
 
 /**
  * A frozen step key.
@@ -91,10 +85,8 @@ export async function runMiniToolErase(execution: unknown, userId: string, deadl
     if (!("key" in mask)) return fail("mask", mask.failed as EraseFailureReason["category"], mask.expired);
     position.step = "generate";
     const storage = await getStorageAdapter();
-    const result = await advanceGenerate(run, { endpoint: providerModel(plan.model), itemIndex: 0, stepKey: keyOf(plan, "generate"), contentType: "video/mp4",
-      category: (error) => modelStepCategory(error, plan.asyncRejection),
-      link: (answer) => { const parsed = outputs.safeParse(answer); return parsed.success ? parsed.data[0] : null; },
-      body: () => Promise.resolve(upstreamBody(catalogModel(plan.model), { video: storage.publicUrl(prepared.key), mask_video: storage.publicUrl(mask.key), copy_audio: false }, "") as Record<string, MiniToolStepJson>) },
+    const result = await advanceGenerate(run, { model: plan.model, itemIndex: 0, stepKey: keyOf(plan, "generate"), contentType: "video/mp4", rejection: plan.asyncRejection,
+      input: () => Promise.resolve({ prompt: "", params: { video: storage.publicUrl(prepared.key), mask_video: storage.publicUrl(mask.key), copy_audio: false } }) },
     userId, deadlineAt);
     if (!("key" in result)) return fail("generate", result.failed as EraseFailureReason["category"], result.expired);
     position.step = "composite";
@@ -116,7 +108,7 @@ export async function runMiniToolErase(execution: unknown, userId: string, deadl
   } catch (error) {
     if (error instanceof StillRunning) { pickup.waiting = true; return pickup; }
     // Only the ledger read and the preparation throw this here; a provider's failure is caught where it is called.
-    if (error instanceof UpstreamTaskFailed) {
+    if (error instanceof MiniToolStepFailed) {
       logger.error({ err: error, ctx: { taskId: plan.taskId, step: position.step } }, "mini_tool_erase_step_failed");
       return fail(position.step, "failed");
     }

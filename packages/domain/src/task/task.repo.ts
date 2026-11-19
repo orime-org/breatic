@@ -250,12 +250,25 @@ export interface AnalysisTaskRow {
   billedCredits: number | null;
 }
 
-const analysisTaskSelection = {
-  id: tasks.id, userId: tasks.userId, projectId: tasks.projectId,
-  spaceId: tasks.spaceId, taskType: tasks.taskType, source: tasks.source, status: tasks.status,
-  params: tasks.params, result: tasks.result, errorMessage: tasks.errorMessage, billedCredits: tasks.billedCredits,
-  acceptedAt: sql<string>`to_char(${tasks.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+/** The columns an analysis task is read with. */
+type AnalysisTaskSelection = {
+  id: typeof tasks.id; userId: typeof tasks.userId; projectId: typeof tasks.projectId; spaceId: typeof tasks.spaceId;
+  taskType: typeof tasks.taskType; source: typeof tasks.source; status: typeof tasks.status; params: typeof tasks.params;
+  result: typeof tasks.result; errorMessage: typeof tasks.errorMessage; billedCredits: typeof tasks.billedCredits; acceptedAt: SQL<string>;
 };
+
+/**
+ * The columns an analysis task is read with, built when read so that loading this module reads no table.
+ * @returns The selection.
+ */
+function analysisTaskSelection(): AnalysisTaskSelection {
+  return {
+    id: tasks.id, userId: tasks.userId, projectId: tasks.projectId,
+    spaceId: tasks.spaceId, taskType: tasks.taskType, source: tasks.source, status: tasks.status,
+    params: tasks.params, result: tasks.result, errorMessage: tasks.errorMessage, billedCredits: tasks.billedCredits,
+    acceptedAt: sql<string>`to_char(${tasks.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+  };
+}
 
 /**
  * Read an analysis identity without losing SQL microseconds.
@@ -264,7 +277,7 @@ const analysisTaskSelection = {
  * @throws {Error} When the database read fails.
  */
 export async function getAnalysisTask(id: string): Promise<AnalysisTaskRow | null> {
-  const [row] = await db.select(analysisTaskSelection).from(tasks)
+  const [row] = await db.select(analysisTaskSelection()).from(tasks)
     .where(and(eq(tasks.id, id), isNull(tasks.deletedAt))).limit(1);
   return row ? { ...row, params: row.params ?? {} } : null;
 }
@@ -277,7 +290,7 @@ export async function getAnalysisTask(id: string): Promise<AnalysisTaskRow | nul
  * @throws {Error} When the database read fails.
  */
 export async function lockMiniToolAnalysisTask(id: string, tx: DbTx): Promise<AnalysisTaskRow | null> {
-  const [row] = await tx.select(analysisTaskSelection).from(tasks).where(eq(tasks.id, id)).for("update");
+  const [row] = await tx.select(analysisTaskSelection()).from(tasks).where(eq(tasks.id, id)).for("update");
   return row ? { ...row, params: row.params ?? {} } : null;
 }
 
@@ -306,7 +319,7 @@ export async function storeMiniToolAnalysisTransition(id: string, update: {
     errorMessage: update.errorMessage,
     completedAt: update.finish ? sql`coalesce(${tasks.completedAt}, clock_timestamp())` : tasks.completedAt,
     updatedAt: sql`clock_timestamp()`,
-  }).where(eq(tasks.id, id)).returning(analysisTaskSelection);
+  }).where(eq(tasks.id, id)).returning(analysisTaskSelection());
   if (!row) throw new Error("Analysis task no longer exists");
   return { ...row, params: row.params ?? {} };
 }

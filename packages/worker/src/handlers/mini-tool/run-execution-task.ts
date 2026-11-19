@@ -3,7 +3,7 @@
 
 import { DelayedError, type Job } from "bullmq";
 import { AppError, getMiniToolsConfig, getStreamRedis, getWorkerConfig, logger } from "@breatic/core";
-import { failureOutcome, miniToolExecutionService, miniToolStepStateSchema, upstreamStepRepo,
+import { failureOutcome, miniToolExecutionService,
   type MiniToolExecution, type MiniToolExecutionCompletion, type MiniToolExecutionJob } from "@breatic/domain";
 import { DeadlinePassed, type StudioAssetEntity } from "@breatic/shared";
 import { miniToolExecutionOutputSchema, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
@@ -20,7 +20,9 @@ import { modelRunFailure, type ModelRunAt } from "@worker/handlers/mini-tool/mod
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { verdictStands } from "@worker/handlers/understand-failure.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
-import { UpstreamTaskFailed } from "@worker/providers/http.js";
+import { MediaRunFailed } from "@worker/handlers/media-run.js";
+import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
+import { abandonUnresolvedModelSteps } from "@worker/handlers/mini-tool/run-end.js";
 
 /**
  * Run one planned pickup through its original SQL-owned lifecycle.
@@ -33,6 +35,8 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
   const taskId = job.data.taskId;
   let phase = "entry";
   let returned = false;
+  // Why the run ends, for the steps it abandons: its deadline, or anything else.
+  let endReason: "deadline" | "failed" = "failed";
   let ctx: Record<string, unknown> = { taskId, jobId: job.id, phase };
   try {
     const current = await miniToolExecutionService.startMiniToolExecution(taskId, job.id ?? taskId);
@@ -80,10 +84,8 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
             error: failed?.result?.status === "failed" ? failed.result.error : null };
         } else {
           const output = await runMiniToolRemoveBackground(taskId, deadlineAt, (job.attemptsMade ?? 0) + (job.stalledCounter ?? 0) > 0, (stepId) => {
-            returned = true;
             ctx = { ...ctx, stepId };
           });
-          returned = true;
           completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
             outputs: [registeredOutput(current, output)], error: null };
         }
@@ -94,19 +96,17 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
           await job.moveToDelayed(thrown.resumeAt, token);
           throw new DelayedError();
         }
-        const steps = await upstreamStepRepo.listSteps(taskId);
-        // Only the vendor call (generate) returning is the no-throw boundary; preparation container jobs retry on their own.
-        const pastReturn = steps.find((step) => step.kind === "generate" && step.output.miniToolStep !== undefined && miniToolStepStateSchema.parse(step.output.miniToolStep).result?.outcome === "done");
-        returned ||= pastReturn !== undefined;
-        ctx = { ...ctx, ...(pastReturn === undefined ? {} : { stepId: pastReturn.id }) };
+        // Each model step keeps where its upstream stands (its ticket, or its return), so a retry resends nothing that
+        // went out: a throw goes back to the queue until its attempts are used (execution design §11.2 retry row).
         const error = thrown instanceof DeadlinePassed || failureOutcome(deadlineAt) === "expired" ? new DeadlinePassed() : thrown;
-        if (!returned && !isTerminalAttempt(job) && !verdictStands(error)) throw error;
-        logger.error({ err: thrown, ctx: { ...ctx, phase: error instanceof UpstreamTaskFailed ? "provider" : returned ? "registration" : phase } }, "mini_tool_execution_computation_failed");
+        if (!isTerminalAttempt(job) && !verdictStands(error)) throw error;
+        endReason = error instanceof DeadlinePassed ? "deadline" : "failed";
+        logger.error({ err: thrown, ctx: { ...ctx, phase: error instanceof MediaRunFailed ? "provider" : phase } }, "mini_tool_execution_computation_failed");
         const tool = execution.tool;
         const failure: NonNullable<MiniToolExecutionCompletion["error"]> = tool === "video.erase" || tool === "video.expand" || tool === "video.lip-sync"
           ? { ...modelRunFailure(tool, at.position, error instanceof DeadlinePassed) }
           : error instanceof DeadlinePassed ? { code: "expired" }
-            : error instanceof AppError || error instanceof UpstreamTaskFailed ? { code: "mini_tool_failed", message: error.message }
+            : error instanceof AppError || error instanceof MiniToolStepFailed ? { code: "mini_tool_failed", message: error.message }
               : { code: "internal" };
         // Only outputs not yet committed or registered in this pickup fail; a committed result is never rewritten (design line 622).
         completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
@@ -117,8 +117,8 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
           }),
           error: failure };
       }
-      const steps = await upstreamStepRepo.listSteps(taskId);
-      returned ||= steps.some((step) => step.kind === "generate" && step.output.miniToolStep !== undefined && miniToolStepStateSchema.parse(step.output.miniToolStep).result?.outcome === "done");
+      // The run ends here: every model step still unresolved is abandoned before its final state is written (§11.4).
+      await abandonUnresolvedModelSteps(taskId, endReason);
     }
     phase = "ownership";
     if (!await verifyJobLockOwnership(job, token, getWorkerConfig().lock_duration_ms)) {

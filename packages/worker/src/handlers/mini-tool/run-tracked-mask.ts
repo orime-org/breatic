@@ -11,18 +11,15 @@
  */
 import { getMiniToolsConfig, getStorageAdapter } from "@breatic/core";
 import { DeadlinePassed } from "@breatic/shared";
-import { lipsyncStepKey, upstreamStepRepo, type miniToolAnalysisService, type MiniToolStepJson } from "@breatic/domain";
+import { lipsyncStepKey, upstreamStepRepo, type miniToolAnalysisService } from "@breatic/domain";
 import {
   hashMiniToolValue, miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, presentationFrameAt, presentationFramesIn, trackingClips, clipJobWindows,
   type MiniToolAnalysisResult,
 } from "@breatic/shared/mini-tools";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
-import {
-  advanceClip, advanceGenerate, catalogModel, eachSubmitted, modelStepCategory, providerModel, sam3RleLink, storedRequest, TrackedMaskFailed, trackedMaskFailure, type ModelStepRun,
-} from "@worker/handlers/mini-tool/model-run-steps.js";
+import { advanceClip, advanceGenerate, eachSubmitted, storedRequest, TrackedMaskFailed, trackedMaskFailure, type ModelStepRun } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { advanceAnalysisJob, frozenLedger } from "@worker/handlers/mini-tool/run-container-analysis.js";
 import { modelInputTarget } from "@worker/handlers/video-presentation-recipes.js";
-import { upstreamBody } from "@worker/providers/upstream-body.js";
 
 type Execution = miniToolAnalysisService.MiniToolAnalysisExecution;
 type TrackedMaskResult = Extract<MiniToolAnalysisResult, { kind: "tracked_mask" }>;
@@ -75,16 +72,15 @@ export async function runMiniToolTrackedMaskAnalysis(execution: Execution, deadl
   }));
   const tracks = await eachSubmitted(sides.map((side, at) => async (): Promise<string> => {
     // The selection in the clip's pixels on its frame 0, the anchor (§10.2); the RLE is read, so no mask is applied.
-    const ended = await advanceGenerate(run, { endpoint: providerModel(input.profile.id), itemIndex: side.itemIndex, stepKey: keyOf(`track:${side.suffix}`),
-      contentType: "text/plain", category: (error) => modelStepCategory(error, undefined),
-      link: sam3RleLink,
-      body: () => Promise.resolve(upstreamBody(catalogModel(input.profile.id), {
+    const ended = await advanceGenerate(run, { model: input.profile.id, itemIndex: side.itemIndex, stepKey: keyOf(`track:${side.suffix}`), contentType: "text/plain",
+      // The binding reads SAM3's object answer through its `output_field`, the RLE link (§11.2 output row).
+      input: () => Promise.resolve({ prompt: input.trackingPrompt, params: {
         video: storage.publicUrl(prepared[at]!), apply_mask: input.profile.params.apply_mask ?? false,
         ...(box === null ? {} : { box_prompts: [{ frame_index: 0, object_id: 1, x_min: Math.round(rect.x + box.x * rect.width), y_min: Math.round(rect.y + box.y * rect.height),
           x_max: Math.round(rect.x + (box.x + box.width) * rect.width), y_max: Math.round(rect.y + (box.y + box.height) * rect.height) }] }),
         ...(points.length === 0 ? {} : { point_prompts: points.map((point) => ({ frame_index: 0, object_id: 1, x: Math.round(rect.x + point.x * rect.width),
           y: Math.round(rect.y + point.y * rect.height), label: point.label === "positive" ? 1 : 0 })) }),
-      }, input.trackingPrompt) as Record<string, MiniToolStepJson>) }, context.userId, deadlineAt);
+      } }) }, context.userId, deadlineAt);
     if (!("key" in ended)) throw ended.expired === true ? new DeadlinePassed() : new TrackedMaskFailed({ code: ended.failed as "model_rejected" | "timeout" | "failed", step: "track" });
     return ended.key;
   }));

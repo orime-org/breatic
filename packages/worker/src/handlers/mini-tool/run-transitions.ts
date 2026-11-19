@@ -17,7 +17,7 @@ import { advanceChunks, advanceRegistered, type ContainerStep } from "@worker/ha
 import { failedResult, type VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { audioOf, chunkInputId, FullLedgerInvalid, readJobLedger, segmentTarget, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
-import { UpstreamTaskFailed } from "@worker/providers/http.js";
+import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 
 type Transitions = Extract<AcceptedMiniToolExecution, { tool: "video.transitions" }>;
@@ -74,7 +74,7 @@ function exact(numerator: bigint, denominator: bigint): MiniToolPlanExact {
  * @param userId - Who ran the tool.
  * @param deadlineAt - The task deadline.
  * @returns The one output once it is settled, and whether a job still runs.
- * @throws {UpstreamTaskFailed} With `source_ledger_invalid` when a frozen ledger fails its receipt.
+ * @throws {MiniToolStepFailed} With `source_ledger_invalid` when a frozen ledger fails its receipt.
  * @throws {Error} When a read in transport, persistence, grants or registration fail.
  */
 export async function runMiniToolTransitions(execution: AcceptedMiniToolExecution, userId: string, deadlineAt: number): Promise<VideoToolPickup> {
@@ -92,7 +92,7 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
     if (!(error instanceof FullLedgerInvalid)) throw error;
     // The receipts are frozen for the run, so a ledger that fails one never recovers here (§91 D3b-9).
     logger.error({ err: error, ctx: { taskId: execution.taskId } }, "mini_tool_transitions_ledger_invalid");
-    throw new UpstreamTaskFailed("container", "source_ledger_invalid");
+    throw new MiniToolStepFailed("source_ledger_invalid");
   }
   const pickup: VideoToolPickup = { results: new Map(), waiting: false };
   const boundary = timeline.window?.startFrame ?? clips[1]!.startFrame;

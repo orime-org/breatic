@@ -7,7 +7,7 @@ import { miniToolPeopleAnalysis, miniToolSceneAnalysis, openContainerOutputs, up
 import { assertBeforeDeadline, DeadlinePassed, MINI_TOOL_JOB_MAX_OUTPUTS, miniToolPlanJobRequestSchema,
   type MiniToolPlanJobRequest, type MiniToolPlanRecipe, type VideoPresentationLedger } from "@breatic/shared";
 import { chunkVideoOutputs, miniToolAnalysisRecordSchema, presentationFrameCount, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
-import { UpstreamTaskFailed } from "@worker/providers/http.js";
+import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
 import { FullLedgerInvalid, peopleRecipeOf, readJobLedger, sceneCutsRecipeOf, sceneCutsResultOf } from "@worker/handlers/video-presentation-recipes.js";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { advanceRegisteredMiniToolPlanJob, type RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
@@ -116,7 +116,7 @@ async function analysisJson(analysis: AnalysisJob, outputIndex: number): Promise
  * @param execution - The accepted analysis.
  * @param deadlineAt - The task deadline.
  * @returns The validated full ledger.
- * @throws {UpstreamTaskFailed} With `source_ledger_invalid` when the bytes fail the receipt.
+ * @throws {MiniToolStepFailed} With `source_ledger_invalid` when the bytes fail the receipt.
  * @throws {Error} When the read fails in transport or outlasts its bound.
  */
 export async function frozenLedger(execution: Execution, deadlineAt: number): Promise<VideoPresentationLedger> {
@@ -126,7 +126,7 @@ export async function frozenLedger(execution: Execution, deadlineAt: number): Pr
   } catch (error) {
     if (!(error instanceof FullLedgerInvalid)) throw error;
     logger.error({ err: error, ctx: { taskId: execution.context.taskId, toolInputId: presentationRef.source.toolInputId } }, "mini_tool_analysis_ledger_invalid");
-    throw new UpstreamTaskFailed("container", "source_ledger_invalid");
+    throw new MiniToolStepFailed("source_ledger_invalid");
   }
 }
 
@@ -148,7 +148,7 @@ function peopleRecipe(job: RegisteredMiniToolPlanJob): Extract<MiniToolPlanRecip
  * @param execution - The original SQL-owned execution identity, source and context.
  * @param deadlineAt - The task's unchanged computation deadline.
  * @returns The complete owned result after its registered dependencies are available.
- * @throws {UpstreamTaskFailed} With `source_ledger_invalid` when the frozen ledger fails its receipt.
+ * @throws {MiniToolStepFailed} With `source_ledger_invalid` when the frozen ledger fails its receipt.
  * @throws {Error} When an original step, artifact or analysis cannot be completed.
  */
 export async function runMiniToolContainerAnalysis(

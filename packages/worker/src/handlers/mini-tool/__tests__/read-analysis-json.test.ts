@@ -58,7 +58,7 @@ describe("registered analysis JSON delivery", () => {
 
   it.each([400, 404, 429, 503])("preserves HTTP %s as a delivery failure", async (status) => {
     h.request.mockResolvedValue(new Response("unavailable", { status }));
-    await expect(readMiniToolAnalysisJson(asset.id, deadlineAt)).rejects.toMatchObject({ name: "HttpStatusError", status });
+    await expect(readMiniToolAnalysisJson(asset.id, deadlineAt)).rejects.toMatchObject({ name: "MiniToolStepFailed", code: `analysis_artifact_http_${status}` });
   });
 
   it("preserves the original transport failure", async () => {

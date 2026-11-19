@@ -17,7 +17,7 @@ import { DeadlinePassed, videoPresentationWorkKeyFor, type MiniToolPlanJobReques
 import { videoContainerJobId, type VideoContainerJobSpec } from "@breatic/shared/mini-tools";
 import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { advanceChunks, advanceContainer, storedRequest, type ContainerStep, type ModelStepRun } from "@worker/handlers/mini-tool/model-run-steps.js";
-import { UpstreamTaskFailed } from "@worker/providers/http.js";
+import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
 import { EXTENSION_OF_TYPE } from "@worker/handlers/extension-of-type.js";
 import { audioOf, chunkInputId, FullLedgerInvalid, modelInputTarget, readJobLedger, SOURCE_INPUT_ID, windowDuration, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
 
@@ -85,7 +85,7 @@ export async function preparedRequest(owner: string, single: boolean): Promise<M
  * @param owner - The run whose preparation is used: this run, or the original run of a retry.
  * @returns The prepared object's storage key.
  * @throws {StillRunning} While a preparation job runs.
- * @throws {UpstreamTaskFailed} When the preparation failed for good.
+ * @throws {MiniToolStepFailed} When the preparation failed for good.
  * @throws {DeadlinePassed} When a preparation job's next attempt is due after the deadline.
  * @throws {Error} When the original preparation is missing, or persistence or the job boundary fails.
  */
@@ -103,7 +103,7 @@ export async function prepareModelInput(execution: PreparingRun, deadlineAt: num
   const ledger = await readJobLedger(execution.ledgerReceipts.source, planReadUntil(deadlineAt)).catch((error: unknown) => {
     if (error instanceof FullLedgerInvalid) {
       logger.error({ err: error, ctx: { taskId: execution.taskId, toolInputId: execution.presentationRef.source.toolInputId } }, "mini_tool_prepare_ledger_invalid");
-      throw new UpstreamTaskFailed("container", "source_ledger_invalid");
+      throw new MiniToolStepFailed("source_ledger_invalid");
     }
     throw error;
   });
@@ -136,12 +136,12 @@ export async function prepareModelInput(execution: PreparingRun, deadlineAt: num
    * The prepared input's key once its unit is done.
    * @param planned - The final unit.
    * @returns The key.
-   * @throws {UpstreamTaskFailed} When the unit failed for good.
+   * @throws {MiniToolStepFailed} When the unit failed for good.
    * @throws {DeadlinePassed} When its next attempt is due after the deadline.
    */
   const prepared = async (planned: ContainerStep): Promise<string> => {
     const ended = await advanceContainer(run, planned, deadlineAt);
-    if (!("key" in ended)) throw ended.expired === true ? new DeadlinePassed() : new UpstreamTaskFailed("container", PREPARATION_FAILED);
+    if (!("key" in ended)) throw ended.expired === true ? new DeadlinePassed() : new MiniToolStepFailed(PREPARATION_FAILED);
     return ended.key;
   };
   if (single) {
@@ -152,7 +152,7 @@ export async function prepareModelInput(execution: PreparingRun, deadlineAt: num
   // Every chunk advances in each pickup and the preparation settles once none still runs, each done chunk pinned with the run.
   const outputs = await advanceChunks(run, chunks.map((window, chunk) => unit((attempt) => ({ kind: "prep-chunk", taskId, input: 0, chunk, attempt }), chunk,
     { kind: "chunk_encode", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale, entries: windowEntries(ledger, window), target })), deadlineAt);
-  if (!("keys" in outputs)) throw outputs.expired === true ? new DeadlinePassed() : new UpstreamTaskFailed("container", PREPARATION_FAILED);
+  if (!("keys" in outputs)) throw outputs.expired === true ? new DeadlinePassed() : new MiniToolStepFailed(PREPARATION_FAILED);
   return prepared({ ...unit((attempt) => ({ kind: "prep-stitch", taskId, input: 0, attempt }), chunks.length, { kind: "stitch", inputId: SOURCE_INPUT_ID,
     chunks: chunks.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })),
     audio: audioOf(ledger, windowInterval(ledger, { start: chunks[0]!.start, end: chunks[chunks.length - 1]!.end })), target },

@@ -3,7 +3,7 @@
 
 import { assetRepo } from "@breatic/domain";
 import { assertBeforeDeadline, httpRequest, readBytesWithin, untilDeadline, type StudioAssetEntity } from "@breatic/shared";
-import { HttpStatusError } from "@worker/providers/http.js";
+import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
 
 /** A registered object and its JSON, ready for the operation's content parser. */
 export interface RegisteredAnalysisJson { asset: StudioAssetEntity; json: unknown }
@@ -13,7 +13,8 @@ export interface RegisteredAnalysisJson { asset: StudioAssetEntity; json: unknow
  * @param assetId - The canonical asset returned by the original registration.
  * @param deadlineAt - The read's bound in epoch milliseconds (the caller's `planReadUntil`).
  * @returns The registered facts and parsed JSON without changing their ownership.
- * @throws {Error} When registration, delivery, the original budget or JSON is invalid.
+ * @throws {MiniToolStepFailed} When the artifact answers an HTTP error.
+ * @throws {Error} When registration, the original budget or JSON is invalid.
  */
 export async function readMiniToolAnalysisJson(assetId: string, deadlineAt: number): Promise<RegisteredAnalysisJson> {
   assertBeforeDeadline(deadlineAt);
@@ -22,7 +23,7 @@ export async function readMiniToolAnalysisJson(assetId: string, deadlineAt: numb
   const response = await httpRequest(asset.fileUrl, { method: "GET" }, { replaySafe: true, ...untilDeadline(deadlineAt) });
   if (!response.ok) {
     await response.body?.cancel();
-    throw new HttpStatusError("analysis artifact", response.status, "");
+    throw new MiniToolStepFailed(`analysis_artifact_http_${response.status}`);
   }
   const bound = untilDeadline(deadlineAt);
   const bytes = await readBytesWithin(response, bound.timeoutMs, asset.sizeBytes, bound.signal);

@@ -19,23 +19,19 @@
  * - stitch: one registered job over the composite chunks with every person's stem summed (§97 D22-3).
  * - a retry finds each done step of the original run by its frozen step key and reuses its object (§97 D21-6).
  */
-import { z } from "zod";
 import { getMiniToolsConfig, getStorageAdapter, logger } from "@breatic/core";
 import {
-  lipsyncPersonStepKeys, type AcceptedMiniToolExecution, type LipSyncPersonStep, type MiniToolStepJson,
+  lipsyncPersonStepKeys, type AcceptedMiniToolExecution, type LipSyncPersonStep,
 } from "@breatic/domain";
 import { type MiniToolPlanExact, type MiniToolPlanJobRequest, type MiniToolPlanTarget, type VideoPresentationLedger } from "@breatic/shared";
 import { lipsyncChunkSourceWindow, trackingClips, type MiniToolExecutionRegistered, type TrackingClips } from "@breatic/shared/mini-tools";
 import { lipsyncFacesFailureLine, lipsyncStepCategory, lipsyncTrackJoinFailureLine } from "@worker/handlers/mini-tool/lipsync-steps.js";
-import {
-  advanceChunks, advanceClip, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, exactSeconds, providerModel, runsOf, sam3RleLink, type ContainerStep, type ModelStepRun, type StepEnded,
-} from "@worker/handlers/mini-tool/model-run-steps.js";
+import { advanceChunks, advanceClip, advanceContainer, advanceGenerate, advanceRegistered, exactSeconds, runsOf, type ContainerStep, type ModelStepRun, type StepEnded } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { prepareModelInput, preparedRequest, type PreparingRun } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { chunkInputId, FullLedgerInvalid, modelInputTarget, readJobLedger, segmentTarget, SOURCE_INPUT_ID, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
-import { UpstreamTaskFailed } from "@worker/providers/http.js";
+import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
-import { upstreamBody } from "@worker/providers/upstream-body.js";
 
 /** A lip-sync step kind in stage order. */
 export type LipSyncStepKind = "prepare" | "prepare:fwd" | "prepare:rev" | LipSyncPersonStep | "composite" | "stitch";
@@ -86,7 +82,6 @@ const ROW = 5;
 const STEM = 6;
 const TRACK_REV = 7;
 
-const genOutputs = z.tuple([z.url()]);
 
 /**
  * The run as the tool-independent step runner reads it.
@@ -143,7 +138,7 @@ async function preparedOf(execution: LipSync): Promise<MiniToolPlanJobRequest> {
  * @param execution - The frozen run.
  * @param deadlineAt - The task deadline.
  * @returns The ledger.
- * @throws {UpstreamTaskFailed} With `source_ledger_invalid` when the ledger fails its receipt.
+ * @throws {MiniToolStepFailed} With `source_ledger_invalid` when the ledger fails its receipt.
  * @throws {Error} When the read fails in transport.
  */
 async function ledgerOf(execution: LipSync, deadlineAt: number): Promise<VideoPresentationLedger> {
@@ -152,7 +147,7 @@ async function ledgerOf(execution: LipSync, deadlineAt: number): Promise<VideoPr
   } catch (error) {
     if (!(error instanceof FullLedgerInvalid)) throw error;
     logger.error({ err: error, ctx: { taskId: execution.taskId } }, "mini_tool_lipsync_ledger_invalid");
-    throw new UpstreamTaskFailed("container", "source_ledger_invalid");
+    throw new MiniToolStepFailed("source_ledger_invalid");
   }
 }
 
@@ -272,10 +267,9 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
     case "track:rev": {
       const order = kind === "track:fwd" ? "forward" : "reverse";
       // The RLE answer is JSON text, which the Worker names by its bytes: signature-less text reads as text/plain.
-      const ended = await advanceGenerate(stepRun(execution), { endpoint: providerModel(execution.tracking.model), itemIndex: index * 2 + (order === "forward" ? 0 : 1),
+      const ended = await advanceGenerate(stepRun(execution), { model: execution.tracking.model, itemIndex: index * 2 + (order === "forward" ? 0 : 1),
         stepKey: keyOf(keys, kind), contentType: "text/plain", category: (error) => lipsyncStepCategory("track", error, undefined),
-        link: sam3RleLink,
-        body: async () => {
+        input: async () => {
           const video = await clipVideo(execution, order, deadlineAt);
           if (!("key" in video)) throw new Error(`The lip-sync ${order} clip is not prepared`);
           const { target } = (await preparedOf(execution)).outputs[0]!.recipe as { target: MiniToolPlanTarget };
@@ -283,10 +277,10 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
           const box = person.anchorFaceBox;
           // §97 D21-4, execution design §10.2: one box in the clip's pixels on its frame 0, the anchor; the RLE is read, so no
           // mask is applied. The endpoint requires a text prompt; the box selects the person, so the prompt names the class.
-          return upstreamBody(catalogModel(execution.tracking.model), { video: storage.publicUrl(video.key), apply_mask: false, box_prompts: [{
+          return { prompt: "person", params: { video: storage.publicUrl(video.key), apply_mask: false, box_prompts: [{
             frame_index: 0, object_id: 1,
             x_min: Math.round(rect.x + box.x * rect.width), y_min: Math.round(rect.y + box.y * rect.height),
-            x_max: Math.round(rect.x + (box.x + box.width) * rect.width), y_max: Math.round(rect.y + (box.y + box.height) * rect.height) }] }, "person") as Record<string, MiniToolStepJson>;
+            x_max: Math.round(rect.x + (box.x + box.width) * rect.width), y_max: Math.round(rect.y + (box.y + box.height) * rect.height) }] } };
         } }, userId, deadlineAt);
       return "key" in ended ? ended : { failed: ended.failed as Category, step: "track", ...expiryOf(ended) };
     }
@@ -331,15 +325,14 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
       }, () => ({ failed: "failed" }), deadlineAt);
     case "gen": {
       const model = getMiniToolsConfig().executions["video.lip-sync"]?.models.find((candidate) => candidate.name === execution.generator.modelId);
-      const ended: StepEnded = await advanceGenerate(stepRun(execution), { endpoint: providerModel(execution.generator.modelId), itemIndex: index, stepKey: keyOf(keys, "gen"),
+      const ended: StepEnded = await advanceGenerate(stepRun(execution), { model: execution.generator.modelId, itemIndex: index, stepKey: keyOf(keys, "gen"),
         contentType: "video/mp4", category: (error) => lipsyncStepCategory("gen", error, model?.async_rejection),
-        link: (outputs) => { const parsed = genOutputs.safeParse(outputs); return parsed.success ? parsed.data[0] : null; },
-        body: async () => upstreamBody(catalogModel(execution.generator.modelId), {
+        input: async () => ({ prompt: "", params: {
           video: storage.publicUrl(await objectOf(execution, personId, "clip", userId, deadlineAt)),
           audio: storage.publicUrl(await objectOf(execution, personId, "stem", userId, deadlineAt)),
           // §9.3: only a model that accepts it is told to cut the result off at the audio's end.
           ...(execution.generator.providerSyncMode === "cut_off" ? { sync_mode: "cut_off" } : {}),
-        }, "") as Record<string, MiniToolStepJson> }, userId, deadlineAt);
+        } }) }, userId, deadlineAt);
       return "key" in ended ? ended : { failed: ended.failed as Category, step: "gen", ...expiryOf(ended) };
     }
     default: throw new Error(`The lip-sync step ${String(kind)} is no person's`);
@@ -449,7 +442,7 @@ export async function runLipSyncStep(execution: unknown, step: LipSyncStep, user
   } catch (error) {
     if (error instanceof StillRunning) return { state: "running" };
     // Only the preparation and the ledger read throw this here; a provider's failure is caught where it is called.
-    if (error instanceof UpstreamTaskFailed) {
+    if (error instanceof MiniToolStepFailed) {
       logger.error({ err: error, ctx: { taskId: run.taskId, step: step.kind } }, "mini_tool_lipsync_step_failed");
       return { state: "failed", step: step.kind.startsWith("prepare") ? "prepare" : step.kind.startsWith("track") ? "track" : step.kind as LipSyncLineStep, category: "failed" };
     }

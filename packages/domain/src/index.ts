@@ -365,6 +365,7 @@ export {
   endMiniToolModelStep, listUnresolvedMiniToolModelSteps, recordMiniToolConsumptionLookup, lastMiniToolConsumptionLookup,
   type EndMiniToolModelStepInput, type MiniToolModelStepEnd, type UnresolvedMiniToolModelStep, type RecordMiniToolConsumptionLookupInput,
 } from "@domain/mini-tool/model-step.service.js";
+export { admitModelCall, MINI_TOOL_MODEL_ROUTE } from "@domain/mini-tool/model-call-admission.js";
 export { miniToolStepStateSchema } from "@domain/mini-tool/upstream-step.types.js";
 
 export * as miniToolExecutionService from "@domain/mini-tool/execution.service.js";

@@ -62,7 +62,7 @@ export function mediaRunner(): MediaRunner {
  * @param url - A source url.
  * @returns Its hash and length, or null for a url that is not ours or that no live asset is stored under.
  */
-async function sourceOf(url: string): Promise<{ sha256: string; durationSeconds: number | null } | null> {
+export async function sourceOf(url: string): Promise<{ sha256: string; durationSeconds: number | null } | null> {
   const key = (await getStorageAdapter()).keyFromUrl(url);
   const asset = key === null ? null : await assetRepo.findLiveByStorageKey(key);
   return asset === null ? null : { sha256: asset.contentHash, durationSeconds: asset.durationSeconds };

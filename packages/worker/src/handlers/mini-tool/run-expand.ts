@@ -12,20 +12,15 @@
  * - stitch: the chunks joined with the source's audio into the run's one registered output.
  * A failure ends the output with `{ kind: "expand", windows, shared }`; every window after a failed one is `stopped`.
  */
-import { z } from "zod";
 import { getStorageAdapter, logger } from "@breatic/core";
-import type { AcceptedMiniToolExecution, MiniToolStepJson } from "@breatic/domain";
+import type { AcceptedMiniToolExecution } from "@breatic/domain";
 import type { MiniToolPlanExact, MiniToolPlanTarget } from "@breatic/shared";
 import { presentationFrameAt, presentationGridSpan, type ExpandFailureReason } from "@breatic/shared/mini-tools";
 import type { LipSyncPickup } from "@worker/handlers/mini-tool/run-lip-sync.js";
-import {
-  advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, alignedSpanStart, catalogModel, eachSubmitted, exactSeconds, expandFailureReason, modelRunFailure, modelStepCategory, providerModel, runLedger,
-  type ExpandWindowState, type ModelRunAt, type ModelRunPosition, type ModelStepRun,
-} from "@worker/handlers/mini-tool/model-run-steps.js";
+import { advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, alignedSpanStart, eachSubmitted, exactSeconds, expandFailureReason, modelRunFailure, runLedger, type ExpandWindowState, type ModelRunAt, type ModelRunPosition, type ModelStepRun } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { audioOf, chunkInputId, segmentTarget, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
-import { UpstreamTaskFailed } from "@worker/providers/http.js";
+import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
-import { upstreamBody } from "@worker/providers/upstream-body.js";
 
 type Expand = Extract<AcceptedMiniToolExecution, { tool: "video.expand" }>;
 type WindowStep = ExpandFailureReason["windows"][number]["step"];
@@ -39,7 +34,6 @@ const PREVIOUS = "00000000-0000-4000-8004-000000000000";
  * @throws {never} Never.
  */
 const backgroundOf = (k: number): string => `00000000-0000-4000-8008-${String(k).padStart(12, "0")}`;
-const outputs = z.tuple([z.url()]);
 // The VACE parameters measured in the §8 probe and fixed by execution design §10.5 model row.
 const VACE_FIXED = { task: "inpainting", num_inference_steps: 30, guidance_scale: 5, flow_shift: 16, context_scale: 1 } as const;
 
@@ -140,12 +134,10 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
       }
       position.current = { window: k, step: "generate" };
       windows[k]!.state = "submitted";
-      const ended = await advanceGenerate(run, { endpoint: providerModel(plan.model), itemIndex: k, stepKey: keyOf(plan, `generate:${k}`), contentType: "video/mp4",
-        category: (error) => modelStepCategory(error, undefined),
-        link: (answer) => { const parsed = outputs.safeParse(answer); return parsed.success ? parsed.data[0] : null; },
-        body: () => Promise.resolve(upstreamBody(catalogModel(plan.model), { video: storage.publicUrl((input as { key: string }).key), mask_video: storage.publicUrl((mask as { key: string }).key),
+      const ended = await advanceGenerate(run, { model: plan.model, itemIndex: k, stepKey: keyOf(plan, `generate:${k}`), contentType: "video/mp4",
+        input: () => Promise.resolve({ prompt: plan.prompt, params: { video: storage.publicUrl((input as { key: string }).key), mask_video: storage.publicUrl((mask as { key: string }).key),
           ...VACE_FIXED, size: plan.size, duration: window.duration, seed: plan.seed,
-          ...(condition === undefined ? {} : { image: storage.publicUrl((condition as { key: string }).key) }) }, plan.prompt) as Record<string, MiniToolStepJson>) }, userId, deadlineAt);
+          ...(condition === undefined ? {} : { image: storage.publicUrl((condition as { key: string }).key) }) } }) }, userId, deadlineAt);
       if (!("key" in ended)) {
         if (ended.expired === true) return expire();
         windows[k]!.failure = { step: "generate", category: ended.failed as "model_rejected" | "timeout" | "failed" };
@@ -178,7 +170,7 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
   } catch (error) {
     if (error instanceof StillRunning) { pickup.waiting = true; return pickup; }
     // Only the ledger read throws this here; a provider's failure is caught where it is called.
-    if (error instanceof UpstreamTaskFailed) {
+    if (error instanceof MiniToolStepFailed) {
       const { current } = position;
       logger.error({ err: error, ctx: { taskId: plan.taskId, current } }, "mini_tool_expand_step_failed");
       if ("shared" in current) return fail({ step: current.shared, category: "failed" });

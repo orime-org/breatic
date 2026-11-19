@@ -5,11 +5,10 @@
  * The pure rules of the lip-sync steps (execution design §9.3, §9.4; multi-person lip-sync DD §7.1): failure categories,
  * step and intermediate object keys, stopping the other people after a blocking failure, and the one CommitFail reason.
  */
-import { DeadlinePassed, HttpRetryError } from "@breatic/shared";
 // The step key is the plan's (DD §7.1); admission freezes it on a retry, so it is computed in one place.
 export { lipsyncStepKey } from "@breatic/domain";
 import type { LipsyncFailureReason } from "@breatic/shared/mini-tools";
-import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
+import { modelStepCategory } from "@worker/handlers/mini-tool/model-run-steps.js";
 
 /** A failure category of §9.4. */
 export type LipsyncCategory = LipsyncFailureReason["persons"][number]["category"];
@@ -33,38 +32,17 @@ export interface LipsyncPersonState {
 export type LipsyncPersonLine = LipsyncFailureReason["persons"][number];
 
 /**
- * Read a dot path inside a structured error value.
- * @param value - The structured error.
- * @param path - The dot path.
- * @returns The value there, or undefined.
- * @throws {never} Never.
- */
-function atPath(value: unknown, path: string): unknown {
-  let current = value;
-  for (const key of path.split(".")) {
-    if (current === null || typeof current !== "object" || !(key in current)) return undefined;
-    current = (current as Record<string, unknown>)[key];
-  }
-  return current;
-}
-
-/**
- * A model step's failure category (§9.4 category table); never guessed from error text.
+ * A lip-sync model step's failure category (§9.4 category table, read through `modelStepCategory`, §11.3): the tracker's
+ * refusal is not the model's verdict on the person, so a tracking step is never `model_rejected`.
  * @param step - The paid step that failed.
- * @param error - What it threw.
+ * @param error - What its run threw.
  * @param rejection - The selected model's `async_rejection`, when it has one.
  * @returns The category.
  * @throws {never} Never.
  */
 export function lipsyncStepCategory(step: "track" | "gen", error: unknown, rejection: LipsyncAsyncRejection | undefined): "model_rejected" | "timeout" | "failed" {
-  if (error instanceof DeadlinePassed || error instanceof HttpRetryError) return "timeout";
-  if (error instanceof HttpStatusError) {
-    if (error.status === 408 || error.status === 429 || error.status >= 500) return "timeout";
-    return step === "gen" && (error.status === 400 || error.status === 422) ? "model_rejected" : "failed";
-  }
-  if (error instanceof UpstreamTaskFailed && step === "gen" && rejection !== undefined
-    && atPath(error.structuredError, rejection.path) === rejection.equals) return "model_rejected";
-  return "failed";
+  const category = modelStepCategory(error, step === "gen" ? rejection : undefined);
+  return step === "track" && category === "model_rejected" ? "failed" : category;
 }
 
 /**
