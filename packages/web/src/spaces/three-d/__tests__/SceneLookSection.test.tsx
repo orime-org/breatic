@@ -168,7 +168,8 @@ describe('SceneLookSection', () => {
   });
 
   it('disables every control without a note on a locked object or for a Viewer', () => {
-    renderSection({ selectedPart: '0', mutable: false, look: { 0: { color: '#ff0000' } }, gesture: OPEN_GESTURE });
+    renderSection({ selectedPart: '0', mutable: false, look: { 0: { color: '#ff0000', map: IMAGE } }, showingPictures: new Set([IMAGE]), gesture: OPEN_GESTURE });
+    expect(screen.getByTestId('scene-look-remove-image')).toBeTruthy();
     expectEveryFieldDisabled();
     expect((screen.getByTestId('scene-look-reset-all') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByTestId('scene-look-locked-note')).toBeNull();

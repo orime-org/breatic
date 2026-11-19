@@ -109,7 +109,7 @@ async function settle(): Promise<void> {
 /** A start request for part 0 of the object. */
 function startFor(file = new File(['x'], 'pattern.png', { type: 'image/png' })): Parameters<Harness['uploads']['start']>[0] {
   return { projectId: PROJECT, spaceId: SPACE, name: NAME, objectId: ID, part: '0', file, ownBytes: 0, clampBytes: {},
-    limits: { maxTextureEdge: 8192, maxTextureBytes: 268_435_456, maxPictureHeaderBytes: 67_108_864 } };
+    limits: { maxTextureEdge: 8192, maxTextureBytes: 268_435_456, maxPictureHeaderBytes: 12_345_678 } };
 }
 
 describe('SceneLookUploads', () => {
@@ -168,6 +168,19 @@ describe('SceneLookUploads', () => {
     await done;
     expect(lookOf(doc)).toBeUndefined();
     expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.objectGone' }));
+  });
+
+  it('says the object is gone and writes nothing when it was deleted meanwhile', async () => {
+    const { doc, session } = editor();
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    applySceneCommand(doc, { type: 'delete', ids: [ID] }, Symbol(), true, NAME);
+    h.finish();
+    await done;
+    expect(readSceneDocument(doc).objects).toEqual([]);
+    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.objectGone' }));
+    expect(session.getSnapshot().commandError).toBeNull();
   });
 
   it('does not write when the user can no longer edit the Space', async () => {
@@ -255,7 +268,7 @@ describe('SceneLookUploads', () => {
     h.finish();
     await done;
     expect(h.caps.length).toBeGreaterThan(1);
-    expect(new Set(h.caps)).toEqual(new Set([67_108_864]));
+    expect(new Set(h.caps)).toEqual(new Set([12_345_678]));
   });
 
   it('judges every guard again after reading the other pictures, so a picture set on the part meanwhile stays', async () => {
