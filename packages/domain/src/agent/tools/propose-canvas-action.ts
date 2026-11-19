@@ -361,7 +361,7 @@ export async function checkedAnswerFor(
       const resolved = await keysFor({ kind: "media", model: run.model });
       if (resolved.keyId !== null) {
         onPayerKey.add(run.model);
-        if (runDescribesInput(run.model, run.params) && (await keysFor({ kind: "llm" })).keyId === null) describedOnCredits.add(run.model);
+        if (runDescribesInput(run.model, run.params) && (await keysFor({ kind: "llm" })).keyId === null) describedOnCredits.add(node.name);
       }
       const refusal = await inputRefusalFor(run.model, { params: run.params, prompt: run.prompt }, resolved.route, resolved.keyId === null ? undefined : resolved.keys);
       if (refusal !== null) return { placed: false, reason: upstreamRefusal(node.name, run.model, refusal) };
@@ -529,7 +529,7 @@ export async function renderProposalForModel(answer: ProposalAnswer): Promise<st
     })),
   );
   const lines = generations.map(({ node, index, model }) => {
-    if (describedOnCredits.has(model)) return `- "${node.name}": it runs on the Studio payer's own key, but describing its inputs takes credits`;
+    if (describedOnCredits.has(node.name)) return `- "${node.name}": it runs on the Studio payer's own key, but describing its inputs takes credits`;
     if (onPayerKey.has(model)) return `- "${node.name}": no credits; it runs on the Studio payer's own key`;
     const price = priced.find((one) => one.index === index)?.price;
     return `- "${node.name}": ${price === undefined ? "no price on this deployment" : renderPrice(price, "at its params")}`;

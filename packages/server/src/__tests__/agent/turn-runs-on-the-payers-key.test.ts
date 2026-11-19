@@ -26,6 +26,9 @@ const h = vi.hoisted(() => ({
   resolveKeys: vi.fn(),
   keysById: vi.fn(),
   keyOwnerOf: vi.fn(async (_id: string | null): Promise<string | undefined> => "payer-account"),
+  buildAgentConfig: vi.fn(async (_options: { toolContext?: Record<string, unknown> }) => ({
+    modelId: "deepseek/deepseek-v4.1-flash-1017", instructions: { base: "system" }, tools: {},
+  })),
   failWith: { value: undefined as Error | undefined },
   model: undefined as MockLanguageModelV4 | undefined,
 }));
@@ -79,7 +82,7 @@ vi.mock("@breatic/domain", async () => {
     ...base,
     streamTextRetry: actual.streamTextRetry,
     finalizeTurn: actual.finalizeTurn,
-    buildAgentConfig: async () => ({ modelId: "deepseek/deepseek-v4.1-flash-1017", instructions: { base: "system" }, tools: {} }),
+    buildAgentConfig: h.buildAgentConfig,
     creditLotService: { chargeOnce: h.chargeOnce },
     createUsageRecorder: vi.fn(recorder),
     resolveKeys: h.resolveKeys,
@@ -160,6 +163,15 @@ describe("a chat turn on the payer's OpenRouter key", () => {
 
     expect(h.resolveKeys).toHaveBeenCalledWith({ projectId: "p1" }, { kind: "llm" });
     expect(prepared()[3]).toBe(ACCOUNT);
+  });
+
+  it("tells the tools whose key it is: the Studio Admin's to a user who is not the payer, the user's own otherwise", async () => {
+    await drain(() => new MainAgent().chat("hi"));
+    expect(h.buildAgentConfig.mock.calls.at(-1)![0].toolContext).toMatchObject({ keyHolder: "admin" });
+
+    h.resolveKeys.mockResolvedValue({ keys: ACCOUNT, keyId: "key-1", route: { mode: "default" }, payerUserId: "u1" });
+    await drain(() => new MainAgent().chat("hi"));
+    expect(h.buildAgentConfig.mock.calls.at(-1)![0].toolContext).toMatchObject({ keyHolder: "self" });
   });
 
   it("records its usage under the key row and charges no credits", async () => {

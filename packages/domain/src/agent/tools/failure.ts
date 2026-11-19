@@ -42,23 +42,40 @@ const ACCOUNT_KEY_FACTS: Readonly<Record<string, string>> = {
   rate_limited: "is rate-limiting the key; asking again after a short wait may work",
 };
 
+/** Whose key a tool call ran on, to the user the Agent answers (inner#1953): their own, or the Studio Admin's. */
+export type KeyHolder = "self" | "admin";
+
+/**
+ * The key a tool call ran on, said the way the model passes it on to the user.
+ * @param holder - Whose key it is to the user; the payer's when not known.
+ * @returns The phrase.
+ */
+function keyPhrase(holder: KeyHolder | undefined): string {
+  if (holder === "self") return "the key the user saved in BYOK settings";
+  if (holder === "admin") return "the key the Studio Admin saved in BYOK settings";
+  return "the key the Studio's payer saved in BYOK settings";
+}
+
 /**
  * The failure of a call that ran on the key the Studio's payer saved in BYOK settings, when that is why it failed: no
  * other key is ever used instead, so the model is told whose key, which upstream and why.
  * @param err - What the call threw.
+ * @param holder - Whose key the turn runs on, to the user it answers; the payer's when not known.
  * @returns The error to throw, or undefined when the payer's key is not why it failed.
  */
-export function accountKeyFailed(err: unknown): Error | undefined {
+export function accountKeyFailed(err: unknown, holder?: KeyHolder): Error | undefined {
   const facts = accountKeyFailureIn(err);
   if (facts === undefined) return undefined;
   const upstream = facts.upstream === undefined || facts.upstream === "" ? "the upstream" : facts.upstream;
+  const key = keyPhrase(holder);
   const what =
     facts.kind === "account_key_missing"
-      ? `The key the Studio's payer saved for ${upstream} in BYOK settings was replaced or deleted, so this call ran on no key and no other key is used; asking again will not help`
+      ? `${key} for ${upstream} was replaced or deleted, so this call ran on no key and no other key is used; asking again will not help`
       : facts.kind === "upstream_unavailable"
-        ? `${upstream} could not be reached on the key the Studio's payer saved in BYOK settings; asking again after a short wait may work`
-        : `${upstream} ${ACCOUNT_KEY_FACTS[facts.reason ?? ""] ?? "refused the key the Studio's payer saved in BYOK settings"}`;
-  return toolFailed(`${what}. This call runs on the key the Studio's payer saved in BYOK settings, never on another key. Tell the user.`, FAILURE_LINES.accountKey, err);
+        ? `${upstream} could not be reached on ${key}; asking again after a short wait may work`
+        : `${upstream} ${ACCOUNT_KEY_FACTS[facts.reason ?? ""] ?? `refused ${key}`}`;
+  const ask = holder === "admin" ? " The user is not the Studio Admin, so they ask the Studio Admin to top it up or change it." : "";
+  return toolFailed(`${what}. This call runs on ${key}, never on another key.${ask} Tell the user.`, FAILURE_LINES.accountKey, err);
 }
 
 /**

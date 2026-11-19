@@ -784,6 +784,8 @@ export class MainAgent {
           preparePictures,
           // Whether a model-calling tool is offered, and the keys its calls go out on (inner#1953).
           ...(keys === undefined ? {} : { keys }),
+          // Whose key that is to the user the turn answers, so a tool's key failure says whose it was.
+          ...(keys === undefined || keyOwner === undefined ? {} : { keyHolder: keyOwner === userId ? "self" : "admin" }),
           // The Spaces a request to read Spaces may name: this turn's list.
           spaces: (opening.kind === "message" ? opening.turn.spaces : opening.space.spaces) ?? [],
         },

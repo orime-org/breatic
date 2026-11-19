@@ -16,7 +16,7 @@ import { z } from "zod";
 
 import { stripUnicodeTagsDeep } from "@domain/agent/strip-unicode-tags.js";
 import { provider } from "@domain/provider/instance.js";
-import type { FailureVoice } from "@domain/agent/tools/failure.js";
+import type { FailureVoice, KeyHolder } from "@domain/agent/tools/failure.js";
 import {
   accountKeyFailed,
   clip,
@@ -87,6 +87,8 @@ interface JevRequest {
   readonly onBilled: (billed: { cost: Cost; upstream: string; model: string }) => void;
   /** The key set the turn runs on (inner#1953); the deployment's when absent. */
   readonly keys?: KeySet;
+  /** Whose key that is to the user the turn answers. */
+  readonly keyHolder?: KeyHolder;
 }
 
 /** What the tool hands back: the keys that read, and the keys that did not. */
@@ -242,7 +244,7 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
     const lost = lostAnswerOf(err);
     if (lost?.served !== undefined) onBilled({ cost: lost.costs[0]!, ...lost.served });
     if (isStop(err, abortSignal)) throw stoppedByUser();
-    const keyFailure = accountKeyFailed(err);
+    const keyFailure = accountKeyFailed(err, request.keyHolder);
     if (keyFailure !== undefined) throw keyFailure;
     if (err instanceof NoUpstreamAvailable) {
       throw toolFailed(

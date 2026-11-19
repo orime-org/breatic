@@ -495,7 +495,7 @@ export type ProposalAnswer =
       placed: true;
       /** Models the Studio's payer runs on their own key (inner#1953). */
       onPayerKey?: string[];
-      /** Of those, the ones whose run describes its inputs on a language model that runs on our keys, in credits. */
+      /** The generate nodes on those models whose run describes its inputs on a language model on our keys, in credits. */
       describedOnCredits?: string[];
     })
   | ProposalRefused;

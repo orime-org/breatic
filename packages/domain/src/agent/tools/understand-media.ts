@@ -19,7 +19,7 @@ import { z } from "zod";
 import { budgetDeadlineFrom, getAgentConfig, getUnderstandConfig } from "@breatic/core";
 import type { Cost, KeySet } from "@breatic/provider";
 import { FAILURE_LINES, type FailureLine, type LongMediaSourceReference } from "@breatic/shared";
-import { accountKeyFailed, isStop, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
+import { accountKeyFailed, isStop, stoppedByUser, toolFailed, turnedAway, type KeyHolder } from "@domain/agent/tools/failure.js";
 import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import type { SaveToStorage } from "@domain/agent/tools/save-image.js";
@@ -258,10 +258,11 @@ const understandMediaContextSchema: z.ZodType<UnderstandMediaContext> = usageCon
  * @param options - The main model's resolved ability to see pictures.
  * @param options.seesPictures - Whether the main model receives prepared pictures directly.
  * @param options.keys - The key set the turn runs on (inner#1953); every reading, short or in batches, goes out on it.
+ * @param options.keyHolder - Whose key that is to the user the turn answers, for a failure of it.
  * @returns The tool.
  * @throws {Error} when the Agent configuration cannot be loaded.
  */
-export function makeUnderstandMediaTool(options: { seesPictures?: boolean; keys?: KeySet } = {}): Tool<UnderstandMediaInput, string, UnderstandMediaContext> {
+export function makeUnderstandMediaTool(options: { seesPictures?: boolean; keys?: KeySet; keyHolder?: KeyHolder } = {}): Tool<UnderstandMediaInput, string, UnderstandMediaContext> {
   const keys = options.keys === undefined ? {} : { keys: options.keys };
   const config = { ...getAgentConfig() };
   const inputSchema = z.object({
@@ -427,7 +428,7 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean; keys?
         }
         if (err instanceof MediaUnavailable) throw unavailableFailure(err);
         if (err instanceof UnderstandRefused) throw refusedFailure(err);
-        throw accountKeyFailed(err) ?? serviceSilent(err, FAILURE_LINES.noConnection);
+        throw accountKeyFailed(err, options.keyHolder) ?? serviceSilent(err, FAILURE_LINES.noConnection);
       } finally {
         running = false;
       }

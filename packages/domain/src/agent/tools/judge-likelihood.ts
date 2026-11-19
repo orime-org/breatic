@@ -21,6 +21,7 @@ import type { Tool } from "ai";
 import { z } from "zod";
 
 import type { KeySet } from "@breatic/provider";
+import type { KeyHolder } from "@domain/agent/tools/failure.js";
 import { askJev } from "@domain/agent/tools/jev.js";
 import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
@@ -129,9 +130,10 @@ const DESCRIPTION = [
 /**
  * The tool for a turn that runs on a key set (inner#1953).
  * @param keys - The turn's key set; the deployment's when absent.
+ * @param keyHolder - Whose key that is to the user the turn answers.
  * @returns The tool, ready to be registered.
  */
-export function makeJudgeLikelihood(keys?: KeySet): Tool<z.infer<typeof inputSchema>, JevAnswers, UsageContext> {
+export function makeJudgeLikelihood(keys?: KeySet, keyHolder?: KeyHolder): Tool<z.infer<typeof inputSchema>, JevAnswers, UsageContext> {
   return tool({
     description: DESCRIPTION,
     inputSchema,
@@ -153,6 +155,7 @@ export function makeJudgeLikelihood(keys?: KeySet): Tool<z.infer<typeof inputSch
         onBilled: ({ cost, upstream, model }) =>
           context.usage.recordModelCall({ source: "tool:judge_likelihood", model, upstream, cost, requests: 1 }),
         ...(keys === undefined ? {} : { keys }),
+        ...(keyHolder === undefined ? {} : { keyHolder }),
       });
     },
   });

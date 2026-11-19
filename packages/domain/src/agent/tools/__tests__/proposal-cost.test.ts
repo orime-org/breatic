@@ -12,11 +12,11 @@
 
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Whether a run describes an input first is provider's answer from the catalog; these tests pick it per model.
-const { describes } = vi.hoisted(() => ({ describes: vi.fn<(model: string) => boolean>() }));
+// Whether a run describes an input first is provider's answer from the catalog and the run's params; these tests pick it.
+const { describes } = vi.hoisted(() => ({ describes: vi.fn<(model: string, params: Readonly<Record<string, unknown>>) => boolean>() }));
 vi.mock("../../../provider/provider-keys.js", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  runDescribesInput: (model: string) => describes(model),
+  runDescribesInput: (model: string, params: Readonly<Record<string, unknown>>) => describes(model, params),
 }));
 
 import { loadLocales } from "@breatic/core";
@@ -147,10 +147,12 @@ describe("a generation the Studio's payer runs on their own key (inner#1953)", (
     expect(answer.placed && answer.describedOnCredits).toBeUndefined();
   });
 
-  it("marks a run on the payer's key whose description step runs on our keys, and only while it does", async () => {
-    describes.mockImplementation((model) => model === "nano-banana-2");
-    const onOurLlm = await checkedAnswerFor(inputSchema.parse(TAKES), undefined, undefined, keysFor);
-    expect(onOurLlm.placed && onOurLlm.describedOnCredits).toEqual(["nano-banana-2"]);
+  it("marks each run on the payer's key whose description step runs on our keys, node by node, and only while it does", async () => {
+    // Two runs of one model: only the one whose params ask for the description pays for it.
+    describes.mockImplementation((model, params) => model === "nano-banana-2" && params.resolution === "0.5k");
+    const twoRuns = { ...TAKES, nodes: [...TAKES.nodes, { ...TAKES.nodes[0]!, name: "Ink wash, larger", params: { resolution: "1k" } }] };
+    const onOurLlm = await checkedAnswerFor(inputSchema.parse(twoRuns), undefined, undefined, keysFor);
+    expect(onOurLlm.placed && onOurLlm.describedOnCredits).toEqual(["Ink wash"]);
 
     const onPayerLlm = await checkedAnswerFor(inputSchema.parse(TAKES), undefined, undefined, async (purpose) =>
       purpose.kind === "llm" ? { keyId: "or-row", route: { mode: "default" } } : keysFor(purpose));
@@ -158,7 +160,7 @@ describe("a generation the Studio's payer runs on their own key (inner#1953)", (
   });
 
   it("says such a run takes credits for its description, and still leaves it out of the total", async () => {
-    const said = await renderProposalForModel({ ...placed(), onPayerKey: ["nano-banana-2"], describedOnCredits: ["nano-banana-2"] } as ProposalAnswer);
+    const said = await renderProposalForModel({ ...placed(), onPayerKey: ["nano-banana-2"], describedOnCredits: ["Ink wash"] } as ProposalAnswer);
     const ink = said.split("\n").find((line) => line.includes('"Ink wash"')) ?? "";
     expect(ink).toContain("payer's own key");
     expect(ink).toContain("describing its inputs takes credits");

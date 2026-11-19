@@ -8,6 +8,7 @@ import type { Tool } from "ai";
 import { env } from "@breatic/core";
 import { UNDERSTAND_MODEL } from "@breatic/shared";
 import type { KeySet } from "@breatic/provider";
+import type { KeyHolder } from "@domain/agent/tools/failure.js";
 import { provider } from "@domain/provider/instance.js";
 
 import { makeAskUserTool, type AskUserContext } from "@domain/agent/tools/ask-user.js";
@@ -79,6 +80,8 @@ export type ToolContext = AskUserContext & ToolPictureContext & RequestSpaceCont
    * tool is offered is judged on it, and every call the tool makes goes out on it; the deployment's when absent.
    */
   keys?: KeySet;
+  /** Whose key `keys` is to the user the turn answers (inner#1953), so a tool's key failure says whose key it was. */
+  keyHolder?: KeyHolder;
 };
 
 /** The context a tool gets when its caller has none: no media is vouched for. */
@@ -105,6 +108,7 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   [UNDERSTAND_MEDIA]: (context = NO_TOOL_CONTEXT) => makeUnderstandMediaTool({
     seesPictures: context.seesPictures === true,
     ...(context.keys === undefined ? {} : { keys: context.keys }),
+    ...(context.keyHolder === undefined ? {} : { keyHolder: context.keyHolder }),
   }),
   // The name a tool answers to is this key, and it is the constant rather
   // than the string: the lists below and the turn's own test for whether to
@@ -133,7 +137,7 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   // picture at a time.
   [SAVE_IMAGE]: () => makeSaveImageTool(),
   // Built per turn: it asks on the turn's key set.
-  [JUDGE_LIKELIHOOD]: (context = NO_TOOL_CONTEXT) => makeJudgeLikelihood(context.keys),
+  [JUDGE_LIKELIHOOD]: (context = NO_TOOL_CONTEXT) => makeJudgeLikelihood(context.keys, context.keyHolder),
   // Record reads use the turn's execution context. Three reuse stateless
   // objects; node history binds this turn's picture capability and preparer.
   [SEARCH_CONVERSATIONS]: () => recordTools[SEARCH_CONVERSATIONS],
