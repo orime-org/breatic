@@ -253,8 +253,8 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
   const uploadPercent = row ? uploadPercentOf?.(row.key) : null;
   // A user picture starts untiled; the model's own picture starts from its own transform (design 3.3).
   const ownTransform = shownUserPicture ? undefined : row;
-  // A draft belongs to the picture it was typed for; another picture on the part starts from its own tiling.
-  const draftPrefix = `${objectId}:look:${row?.key ?? ''}:${stored.map ?? 'own'}`;
+  // Tiling is stored per part, so its drafts are kept per part, as the position boxes keep theirs per field.
+  const draftPrefix = `${objectId}:look:${row?.key ?? ''}`;
   const fieldPicture = shownUserPicture ? pictureUrl?.(stored.map!) : stored.map === undefined ? row?.thumbnail : undefined;
   const disabled = !mutable;
   /**

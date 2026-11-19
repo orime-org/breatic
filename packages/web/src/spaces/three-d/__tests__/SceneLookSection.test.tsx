@@ -16,15 +16,16 @@ import * as sectionModule from '@web/spaces/three-d/SceneLookSection';
 import type { SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 
 const fieldRenders = vi.hoisted(() => new Map<string, number>());
-vi.mock('@web/spaces/three-d/SceneField', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@web/spaces/three-d/SceneField')>();
+vi.mock('@web/components/ui/input', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/components/ui/input')>();
   const React = await import('react');
-  // Counts each box's renders behind the same memo the real field has.
-  const Counted = React.memo(function Counted(props: React.ComponentProps<typeof actual.SceneField>): React.JSX.Element {
-    if (props.testId) fieldRenders.set(props.testId, (fieldRenders.get(props.testId) ?? 0) + 1);
-    return React.createElement(actual.SceneField, props);
+  // Counts each box's renders below SceneField, so SceneField's own memo decides whether a box renders.
+  const Counted = React.forwardRef<HTMLInputElement, React.ComponentProps<typeof actual.Input>>(function Counted(props, ref) {
+    const testId = (props as { 'data-testid'?: string })['data-testid'];
+    if (testId) fieldRenders.set(testId, (fieldRenders.get(testId) ?? 0) + 1);
+    return React.createElement(actual.Input, { ...props, ref });
   });
-  return { ...actual, SceneField: Counted };
+  return { ...actual, Input: Counted };
 });
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -239,7 +240,7 @@ describe('SceneLookSection', () => {
     expect(screen.getByText(t('spaces.threeD.valueFailed'))).toBeTruthy();
   });
 
-  it('drops a refused tiling value once the part shows another picture', async () => {
+  it('keeps a tiling value being typed when the picture of the part changes under it', () => {
     const Section = sectionModule.SceneLookSection as unknown as React.ComponentType<Props>;
     let showLook: (look: Props['look']) => void = () => undefined;
     /** The section over a look the test changes, keeping drafts as the properties panel does. */
@@ -254,13 +255,13 @@ describe('SceneLookSection', () => {
         onSelectPart={vi.fn()} onCommand={vi.fn(() => true)} onChoosePicture={vi.fn()} showingPictures={new Set([IMAGE])} />;
     }
     render(<TooltipProvider><Harness /></TooltipProvider>);
-    await enter('scene-look-repeat-0', '0');
-    expect(screen.getByText(t('spaces.threeD.valueFailed'))).toBeTruthy();
-    act(() => { showLook({ 0: { map: 'none' } }); });
-    expect(screen.queryByTestId('scene-look-repeat-0')).toBeNull();
+    const box = screen.getByTestId('scene-look-repeat-0') as HTMLInputElement;
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: '5' } });
+    // A collaborator puts a picture on the part while the value is being typed.
     act(() => { showLook({ 0: { map: IMAGE } }); });
-    expect((screen.getByTestId('scene-look-repeat-0') as HTMLInputElement).value).toBe('1');
-    expect(screen.queryByText(t('spaces.threeD.valueFailed'))).toBeNull();
+    expect(screen.getByTestId('scene-look-repeat-0')).toBe(box);
+    expect(box.value).toBe('5');
   });
 
   it('leaves the tiling and offset boxes alone when only the upload percent of the section changes', () => {
