@@ -280,6 +280,19 @@ describe('a pick that ends after its Space or object changed', () => {
   });
 });
 
+describe('writing a look through the section', () => {
+  it('reports whether the Space took the write, so a refused value can stay in its box', () => {
+    const { doc } = panel();
+    const write = (): boolean => (captured.section!.onCommand as (command: unknown) => boolean)({ type: 'look', id: ID, part: '0', set: { mapRepeat: [2, 2] } });
+    applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true } as never, Symbol('peer'), true, NAME);
+    expect(write()).toBe(false);
+    expect(lookOf(doc)).toBeUndefined();
+    applySceneCommand(doc, { type: 'lock', ids: [ID], locked: false } as never, Symbol('peer'), true, NAME);
+    expect(write()).toBe(true);
+    expect(lookOf(doc)).toEqual({ 0: { mapRepeat: [2, 2] } });
+  });
+});
+
 describe('picking twice for one part', () => {
   it('keeps the later pick when the earlier one finishes checking last', async () => {
     const { doc } = panel();
