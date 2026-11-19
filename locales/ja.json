@@ -3990,5 +3990,29 @@
       "videoLoading": "{track}：動画を読み込み中…",
       "videoUnavailable": "{track}：動画を利用できません"
     }
+  },
+  "agentConnect": {
+    "title": "{client} が breatic への接続を求めています",
+    "returnHost": "回答後は {host} に戻ります",
+    "localhostNotice": "回答はこのコンピューターで動いているプログラムに渡されます。そのプログラムから自分で接続を始めたばかりの場合だけ許可してください。",
+    "canHeading": "許可すると次のことができます",
+    "canEdit": "あなたとして、開けるすべての Project の Canvas と Document を読み取り、変更する",
+    "canGenerate": "Canvas のノードで生成とツールを実行する",
+    "canSpend": "実行した操作にあなたのクレジットを使う（自分でボタンを押したときと同じ）",
+    "account": "ログイン中：{email}。設定の「外部 Agent」からいつでも切断できます。",
+    "allow": "許可",
+    "deny": "拒否",
+    "loadingTitle": "認可リクエストを読み込んでいます",
+    "loadFailedTitle": "認可リクエストを読み込めませんでした",
+    "loadFailedBody": "接続を確認して、もう一度お試しください。",
+    "retry": "再試行",
+    "expiredTitle": "この認可リクエストは無効です",
+    "expiredBody": "期限切れか、すでに使われています。Agent から接続をやり直してください。",
+    "invalidTitle": "この Agent は接続できません",
+    "invalidBody": "接続情報に誤りがあります：クライアントが無効か、コールバックアドレスが一致しません。提供元に問い合わせてください。",
+    "allowedTitle": "許可しました",
+    "deniedTitle": "拒否しました",
+    "returningBody": "{client} に戻っています…",
+    "answerFailed": "回答を送信できませんでした。もう一度お試しください。"
   }
 }

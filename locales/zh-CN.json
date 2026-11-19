@@ -3990,5 +3990,29 @@
       "videoLoading": "{track}：视频加载中…",
       "videoUnavailable": "{track}：视频不可用"
     }
+  },
+  "agentConnect": {
+    "title": "{client} 想连接你的 breatic",
+    "returnHost": "回答后会回到 {host}",
+    "localhostNotice": "你的回答会交给这台电脑上正在运行的程序。只有你自己刚从这个程序发起连接时才允许。",
+    "canHeading": "允许后它可以",
+    "canEdit": "以你的身份读取和修改你能打开的所有 Project 里的 Canvas 和 Document",
+    "canGenerate": "在 Canvas 节点上发起生成和工具",
+    "canSpend": "它发起的操作扣你的积分，跟你自己点按钮一样",
+    "account": "当前账号：{email}。随时可以在设置的「外部 Agent」里断开。",
+    "allow": "允许",
+    "deny": "拒绝",
+    "loadingTitle": "正在读取授权请求",
+    "loadFailedTitle": "读取授权请求失败",
+    "loadFailedBody": "请检查网络后重试。",
+    "retry": "重试",
+    "expiredTitle": "授权请求已失效",
+    "expiredBody": "它已过期或已经用过。请回到你的 Agent 重新发起连接。",
+    "invalidTitle": "这个 Agent 无法连接",
+    "invalidBody": "它的连接信息有误：客户端无效，或回调地址不匹配。请联系它的提供方。",
+    "allowedTitle": "已允许",
+    "deniedTitle": "已拒绝",
+    "returningBody": "正在回到 {client}…",
+    "answerFailed": "回答没有发送成功，请重试。"
   }
 }

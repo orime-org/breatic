@@ -137,6 +137,8 @@ describe('route table', () => {
       [
         '/*',
         '/choose-slug',
+        '/connect/:uid',
+        '/connect/error',
         '/decision',
         '/forgot-password',
         '/login',

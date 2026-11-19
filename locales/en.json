@@ -3990,5 +3990,29 @@
       "videoLoading": "{track}: video loading…",
       "videoUnavailable": "{track}: video unavailable"
     }
+  },
+  "agentConnect": {
+    "title": "{client} wants to connect to your breatic",
+    "returnHost": "After you answer, you go back to {host}",
+    "localhostNotice": "Your answer goes to a program running on this computer. Allow only if you just started connecting from that program yourself.",
+    "canHeading": "Once allowed, it can",
+    "canEdit": "Read and change the Canvases and Documents in every Project you can open, as you",
+    "canGenerate": "Start generations and tools on Canvas nodes",
+    "canSpend": "Spend your credits on what it starts, as when you press the button yourself",
+    "account": "Signed in as {email}. You can disconnect it any time under External Agents in your settings.",
+    "allow": "Allow",
+    "deny": "Deny",
+    "loadingTitle": "Reading the authorization request",
+    "loadFailedTitle": "Could not read the authorization request",
+    "loadFailedBody": "Check your connection and try again.",
+    "retry": "Try again",
+    "expiredTitle": "This authorization request is no longer valid",
+    "expiredBody": "It has expired or was already used. Start connecting again from your Agent.",
+    "invalidTitle": "This Agent cannot connect",
+    "invalidBody": "Its connection details are wrong: the client is not valid, or its callback address does not match. Contact whoever provides it.",
+    "allowedTitle": "Allowed",
+    "deniedTitle": "Denied",
+    "returningBody": "Going back to {client}…",
+    "answerFailed": "Could not send your answer. Try again."
   }
 }

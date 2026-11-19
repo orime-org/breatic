@@ -29,6 +29,8 @@ const ProjectPage = lazyRoute(routeImports.projectPage, {
   editingSurface: true,
 });
 const DecisionLandingPage = lazyRoute(routeImports.decisionLandingPage);
+const ConnectPage = lazyRoute(routeImports.connectPage);
+const ConnectErrorPage = lazyRoute(routeImports.connectErrorPage);
 const LoginPage = lazyRoute(routeImports.loginPage);
 const RegisterPage = lazyRoute(routeImports.registerPage);
 const RecoveryCodePage = lazyRoute(routeImports.recoveryCodePage);
@@ -130,6 +132,23 @@ export const baseRoutes: RouteObject[] = [
     element: (
       <ProtectedRoute>
         <DecisionLandingPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    // An external agent's authorization (#1488): the authorization server
+    // sends the browser to /connect/:uid to ask the signed-in user, and to
+    // /connect/error when the request never reached that question. The
+    // question needs the user, so an unauthenticated visit signs in first and
+    // returns here.
+    path: '/connect/error',
+    element: <ConnectErrorPage />,
+  },
+  {
+    path: '/connect/:uid',
+    element: (
+      <ProtectedRoute>
+        <ConnectPage />
       </ProtectedRoute>
     ),
   },

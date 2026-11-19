@@ -3990,5 +3990,29 @@
       "videoLoading": "{track}：影片載入中…",
       "videoUnavailable": "{track}：影片不可用"
     }
+  },
+  "agentConnect": {
+    "title": "{client} 想連接你的 breatic",
+    "returnHost": "回答後會回到 {host}",
+    "localhostNotice": "你的回答會交給這台電腦上正在執行的程式。只有你自己剛從這個程式發起連接時才允許。",
+    "canHeading": "允許後它可以",
+    "canEdit": "以你的身分讀取和修改你能開啟的所有 Project 裡的 Canvas 和 Document",
+    "canGenerate": "在 Canvas 節點上發起生成和工具",
+    "canSpend": "它發起的操作扣你的點數，跟你自己按按鈕一樣",
+    "account": "目前帳號：{email}。隨時可以在設定的「外部 Agent」裡斷開。",
+    "allow": "允許",
+    "deny": "拒絕",
+    "loadingTitle": "正在讀取授權請求",
+    "loadFailedTitle": "讀取授權請求失敗",
+    "loadFailedBody": "請檢查網路後重試。",
+    "retry": "重試",
+    "expiredTitle": "授權請求已失效",
+    "expiredBody": "它已過期或已經用過。請回到你的 Agent 重新發起連接。",
+    "invalidTitle": "這個 Agent 無法連接",
+    "invalidBody": "它的連接資訊有誤：用戶端無效，或回呼位址不符。請聯絡它的提供方。",
+    "allowedTitle": "已允許",
+    "deniedTitle": "已拒絕",
+    "returningBody": "正在回到 {client}…",
+    "answerFailed": "回答沒有送出成功，請重試。"
   }
 }
