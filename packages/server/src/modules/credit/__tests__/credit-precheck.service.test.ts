@@ -18,7 +18,7 @@ const { env } = vi.hoisted(() => ({ env: { PAYMENT_ENABLED: true } }));
 vi.mock("@breatic/core", async (importOriginal) => {
   const real = await importOriginal<typeof CoreModule>();
   return {
-    AppError: real.AppError,
+    ...real,
     env,
     getNodeTaskConfig: () => ({ default_budget_ms: 7_200_000 }),
   };
