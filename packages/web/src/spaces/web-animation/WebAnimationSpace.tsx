@@ -5,8 +5,8 @@ import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ThreadData } from '@blocknote/core/comments';
 import {
-  Check, CircleSlash, Dot, Download, Ellipsis, LayoutGrid, List, LoaderCircle, MessageSquare,
-  MessageSquarePlus, Pause, Pencil, Play, Plus, Undo2, Upload, Video, X,
+  Check, Download, Ellipsis, LayoutGrid, List, LoaderCircle, MessageSquare,
+  MessageSquarePlus, Pause, Pencil, Play, Plus, Undo2, Upload, Video,
 } from 'lucide-react';
 import { formatCredits, getLocale, newId } from '@breatic/shared';
 import { anchorTimeWithin, type WebAnimationRowView } from '@breatic/shared/space-content';
@@ -40,7 +40,7 @@ import { ANNOTATION_DRAFT_IDLE, transitionAnnotationDraft, type AnnotationDraftE
 import { webAnimationAnnotationStore } from '@web/spaces/web-animation/annotation-thread-store';
 import { CANVAS_PLACEMENT_IDLE, transitionCanvasPlacement, type CanvasPlacementEvent } from '@web/spaces/web-animation/canvas-placement';
 import { transitionCreationDraft, type CreationDraftInput, type CreationDraftState } from '@web/spaces/web-animation/creation-draft';
-import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, exportIntent, executionStepKeys, stepMark } from '@web/spaces/web-animation/execution-text';
+import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, exportIntent, executionStepKeys } from '@web/spaces/web-animation/execution-text';
 import { MOTION_PANELS_CLOSED, transitionMotionPanels, type MotionPanelsEvent, type MotionTab } from '@web/spaces/web-animation/motion-panels';
 import { ListLoadError, listShows } from '@web/spaces/web-animation/list-states';
 import { BarButton, PreviewUnavailable, playable, rowSeconds } from '@web/spaces/web-animation/motion-parts';
@@ -211,15 +211,7 @@ function Details({ row, open, onOpenChange, unresolvedOnBase, onOpenBase }: Deta
         </>}
       </dl>
       <ol className='flex flex-col gap-1'>
-        {executionStepKeys(row.kind).map((key, index) => {
-          const mark = stepMark(row, index);
-          const failedHere = mark === 'stopped' && row.status !== 'cancelled';
-          return <li key={key} data-mark={mark} className={cn('flex items-center gap-2', failedHere && 'text-status-error-foreground', (mark === 'pending' || (mark === 'stopped' && !failedHere)) && 'text-muted-foreground')}>
-            {mark === 'done' ? <Check className='size-3.5 shrink-0' /> : mark === 'current' ? <LoaderCircle className='size-3.5 shrink-0 animate-spin' />
-              : mark === 'stopped' ? (failedHere ? <X className='size-3.5 shrink-0' /> : <CircleSlash className='size-3.5 shrink-0' />) : <Dot className='size-3.5 shrink-0' />}
-            {t(key)}
-          </li>;
-        })}
+        {executionStepKeys(row.kind).map((key) => <li key={key} className='flex items-center gap-2'><Check className='size-3.5 shrink-0' />{t(key)}</li>)}
       </ol>
     </PopoverContent>
   </Popover>;

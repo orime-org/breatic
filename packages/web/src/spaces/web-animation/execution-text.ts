@@ -88,25 +88,6 @@ export function phaseKey(kind: WebAnimationRowView['kind'], phase: NonNullable<W
 }
 
 /**
- * Where a step stands: done, running now, where a run that did not succeed stopped, or not reached. A running row that
- * has reported no phase yet is on its first phase.
- * @param row - The execution.
- * @param index - The step: 0 is saving the request, then the phases.
- * @returns Its mark.
- * @throws {never} Never.
- */
-export function stepMark(row: Pick<WebAnimationRowView, 'kind' | 'status' | 'phase'>, index: number): 'done' | 'current' | 'stopped' | 'pending' {
-  if (row.status === 'succeeded') return 'done';
-  if (index === 0) return row.status === 'awaiting_landing' ? 'current' : 'done';
-  const phases: readonly string[] = row.kind === 'web_animation_export' ? EXPORT_PHASES : CREATION_PHASES;
-  const stopped = row.status === 'failed' || row.status === 'cancelled' || row.status === 'expired';
-  const reached = row.phase === null ? (row.status === 'running' || stopped ? 0 : -1) : phases.indexOf(row.phase);
-  if (index - 1 < reached) return 'done';
-  if (index - 1 > reached) return 'pending';
-  return row.status === 'running' ? 'current' : stopped ? 'stopped' : 'pending';
-}
-
-/**
  * The run-once intent of cancelling one execution, which its button reads.
  * @param executionId - The execution.
  * @returns The intent.
