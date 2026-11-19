@@ -32,10 +32,8 @@ import {
   spaceRequestInputSchema,
   stripDsml,
   TURNED_AWAY,
-  ACCOUNT_KEY_FAILURE_KINDS,
-  ACCOUNT_KEY_FAILURE_REASONS,
 } from '@breatic/shared';
-import type { CanvasProposal, ChatAttachedChip, ChatKeyFailureReason, ChatKeyRefusal, DocumentProposal, SceneGenerationProposal } from '@breatic/shared';
+import type { CanvasProposal, ChatAttachedChip, DocumentProposal, SceneGenerationProposal } from '@breatic/shared';
 import type {
   ChatAsset,
   ChatFailureLine,
@@ -46,6 +44,7 @@ import type {
   ChatSpaceRequest,
   ToolCall,
 } from '@web/pages/project/chat/types';
+import { readKeyFailure } from '@web/data/api/key-failure';
 import { failurePlaceholder, PLACEHOLDER_MARK } from '@web/pages/project/chat/tool-failure-plugin';
 
 /** The part type carrying a turn that was stopped. */
@@ -53,27 +52,6 @@ const INTERRUPTED = 'data-interrupted';
 
 /** The part type carrying a turn that could not be finished. */
 const FAILED = 'data-failed';
-
-/** The failed mark's reasons that are a failure of the payer's own key (inner#1953). */
-const KEY_FAILURES: ReadonlySet<string> = new Set(ACCOUNT_KEY_FAILURE_KINDS);
-
-/** Why an upstream refused the payer's own key, as the failed mark carries it. */
-const KEY_REFUSALS: ReadonlySet<string> = new Set(ACCOUNT_KEY_FAILURE_REASONS);
-
-/**
- * A failure of the payer's own key off a failed mark's data, live or reloaded alike.
- * @param data - The mark's data.
- * @returns The failure, or undefined for any other failure.
- */
-function keyFailureOf(data: unknown): ChatMessage['keyFailure'] {
-  const { reason, upstream, keyReason } = (data ?? {}) as { reason?: unknown; upstream?: unknown; keyReason?: unknown };
-  if (typeof reason !== 'string' || !KEY_FAILURES.has(reason)) return undefined;
-  return {
-    reason: reason as ChatKeyFailureReason,
-    ...(typeof upstream === 'string' && upstream !== '' ? { upstream } : {}),
-    ...(typeof keyReason === 'string' && KEY_REFUSALS.has(keyReason) ? { keyReason: keyReason as ChatKeyRefusal } : {}),
-  };
-}
 
 /** The part type carrying a turn the output ceiling cut off. */
 const TRUNCATED = 'data-truncated';
@@ -663,7 +641,7 @@ export function toChatMessage(
       failed = true;
       // A turn whose request could not be made to fit (inner#1567).
       if ((part as { data?: { reason?: unknown } | null }).data?.reason === 'too_long') tooLong = true;
-      keyFailure = keyFailureOf((part as { data?: unknown }).data);
+      keyFailure = readKeyFailure((part as { data?: unknown }).data);
     }
     else if (part.type === TRUNCATED) truncated = true;
     else if (part.type === BLOCKED) blocked = true;

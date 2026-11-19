@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { Check, CircleSlash, Code, Dot, LoaderCircle, Plus, RotateCcw, X } from 'lucide-react';
-import { encodeTaskFailure, formatCredits, getLocale, type TimelineExecutionRow, type TimelineExecutionStatus } from '@breatic/shared';
+import { ACCOUNT_KEY_FAILURE_KINDS, encodeTaskFailure, formatCredits, getLocale, type AccountKeyFailureKind, type TimelineExecutionRow, type TimelineExecutionStatus } from '@breatic/shared';
 import { TimelineExecutionInputSchema, timelineExecutionEnded, type TimelineExecutionInput } from '@breatic/shared/space-content';
 
 import { Button } from '@web/components/ui/button';
@@ -32,7 +32,7 @@ const FAILURE_SENTENCE: Readonly<Record<string, 'feature_disabled' | 'check' | '
 };
 
 /** The failures of the payer's own key or its upstream, told with the canvas task sentence that names the upstream (inner#1953). */
-const KEY_FAILURES: ReadonlySet<string> = new Set(['account_key_missing', 'account_key_failed', 'upstream_unavailable']);
+const KEY_FAILURES: ReadonlySet<string> = new Set(ACCOUNT_KEY_FAILURE_KINDS);
 
 /**
  * The sentence a failed execution is told with.
@@ -48,7 +48,7 @@ export function executionFailureSentence(
   keys: KeyFailureWords | undefined,
 ): string {
   if (row.failureReason !== null && KEY_FAILURES.has(row.failureReason)) {
-    const reason = row.failureReason as 'account_key_missing' | 'account_key_failed' | 'upstream_unavailable';
+    const reason = row.failureReason as AccountKeyFailureKind;
     const about = {
       ...(row.failureUpstream === null ? {} : { upstream: row.failureUpstream }),
       ...(row.failureKeyReason === null ? {} : { keyReason: row.failureKeyReason }),

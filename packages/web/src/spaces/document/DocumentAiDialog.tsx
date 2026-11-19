@@ -272,12 +272,8 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
             else if (event.type === 'error') {
               // A failure of the payer's own key names the key, the upstream and why, as a canvas task does (inner#1953).
               const keyFailure = event.keyFailure;
-              const about = keyFailure === undefined ? undefined : {
-                ...(keyFailure.upstream === undefined ? {} : { upstream: keyFailure.upstream }),
-                ...(keyFailure.keyReason === undefined ? {} : { keyReason: keyFailure.keyReason }),
-              };
               failure.current = keyFailure !== undefined
-                ? failureSentence(encodeTaskFailure(keyFailure.reason, about), t, undefined, keyWords)
+                ? failureSentence(encodeTaskFailure(keyFailure.reason, keyFailure), t, undefined, keyWords)
                 : event.message === '' ? null : event.message;
               send({ type: 'error', seq });
             }
