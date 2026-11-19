@@ -6,6 +6,7 @@ import { test, stateFile } from '../helpers/slot';
 import { openSmokeProject, smokeProjectId, smokeProjectUrl } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { liveModuleUrl } from '../helpers/live-module';
+import { handleUnder } from '../helpers/scene-viewport';
 import type * as ManagerModule from '../../src/data/yjs/manager';
 import type * as SceneSessionModule from '../../src/data/yjs/scene-session';
 import { POSE_PRESETS } from '../../src/spaces/three-d/viewport/pose-presets';
@@ -43,10 +44,7 @@ async function dragUp(page: Page, during: () => Promise<void>): Promise<void> {
   const native = JSON.parse(await canvas.getAttribute('data-native-controls') ?? '{}') as { center: number[] };
   const centre = await toPage(page, native.center);
   for (let offset = 30; offset <= 120; offset += 5) {
-    await page.mouse.move(centre.x, centre.y - offset);
-    // The handle under the pointer is reported from the frame loop.
-    await page.evaluate(() => new Promise<void>((resolve) => { requestAnimationFrame(() => requestAnimationFrame(() => resolve())); }));
-    const axis = (JSON.parse(await canvas.getAttribute('data-native-controls') ?? '{}') as { axis: string | null }).axis;
+    const axis = await handleUnder(page, canvas, { x: centre.x, y: centre.y - offset });
     if (axis === null) continue;
     await page.mouse.down();
     for (let step = 1; step <= 12; step += 1) {
@@ -127,8 +125,7 @@ async function dragRing(page: Page, ring: number, during: () => Promise<void> = 
   const used = new Set<string>();
   for (let radius = 56; radius <= 120; radius += 4) {
     for (const [dx, dy] of [[1, 0], [0, -1], [-1, 0], [0, 1]]) {
-      await page.mouse.move(centre.x + dx * radius, centre.y + dy * radius);
-      const axis = (JSON.parse(await canvas.getAttribute('data-native-controls') ?? '{}') as { axis: string | null }).axis;
+      const axis = await handleUnder(page, canvas, { x: centre.x + dx * radius, y: centre.y + dy * radius });
       if (axis !== 'X' && axis !== 'Y' && axis !== 'Z') continue;
       if (used.has(axis)) continue;
       used.add(axis);

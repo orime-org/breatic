@@ -18,6 +18,7 @@ import { cleanMembership, inviteMember } from '../helpers/project-members';
 import { credentialsFor } from '../helpers/credentials';
 import { dataOf } from '../helpers/api';
 import { uniquePicture } from '../helpers/upload';
+import { handleUnder } from '../helpers/scene-viewport';
 import type * as ManagerModule from '../../src/data/yjs/manager';
 import type * as SceneSessionModule from '../../src/data/yjs/scene-session';
 
@@ -88,14 +89,6 @@ async function setPartColor(page: Page, hex: string): Promise<void> {
 }
 
 /**
- * Wait until the viewport has drawn two more frames, so what it reports in its attributes follows the last pointer move.
- * @param page - The page.
- */
-async function nextFrames(page: Page): Promise<void> {
-  await page.evaluate(() => new Promise<void>((resolve) => { requestAnimationFrame(() => requestAnimationFrame(() => resolve())); }));
-}
-
-/**
  * The selected object's handle centre on the page.
  * @param page - The page with one object selected.
  * @returns The point.
@@ -133,27 +126,32 @@ async function meanColour(page: Page, point: { x: number; y: number }): Promise<
 }
 
 /**
- * Click the selected object in the scene at a point the transform handles do not answer.
+ * A point on the selected box's faces that the transform handles do not answer, with the pointer left on it.
  * @param page - The page with one object selected.
- * @param shift - Whether Shift is held.
+ * @returns The point.
  * @throws {Error} When no point near the object's centre is free of the handles.
  */
-async function clickSelectedObject(page: Page, shift = false): Promise<void> {
+async function freeFacePoint(page: Page): Promise<{ x: number; y: number }> {
   const canvas = visibleSpace(page).getByTestId('three-d-viewport');
   const centre = await selectedCentre(page);
   // The box stands on its origin, so its faces are above the handle centre.
   for (const [dx, dy] of [[-14, -30], [14, -30], [-20, -18], [20, -18], [0, -40], [-8, -48]]) {
-    await page.mouse.move(centre.x + dx, centre.y + dy);
-    // The handle under the pointer is reported from the frame loop.
-    await nextFrames(page);
-    const axis = (JSON.parse(await canvas.getAttribute('data-native-controls') ?? '{}') as { axis: string | null }).axis;
-    if (axis !== null) continue;
-    if (shift) await page.keyboard.down('Shift');
-    await page.mouse.click(centre.x + dx, centre.y + dy);
-    if (shift) await page.keyboard.up('Shift');
-    return;
+    const point = { x: centre.x + dx!, y: centre.y + dy! };
+    if (await handleUnder(page, canvas, point) === null) return point;
   }
   throw new Error('No point on the object is free of the transform handles.');
+}
+
+/**
+ * Click the selected object in the scene at a point the transform handles do not answer.
+ * @param page - The page with one object selected.
+ * @param shift - Whether Shift is held.
+ */
+async function clickSelectedObject(page: Page, shift = false): Promise<void> {
+  const point = await freeFacePoint(page);
+  if (shift) await page.keyboard.down('Shift');
+  await page.mouse.click(point.x, point.y);
+  if (shift) await page.keyboard.up('Shift');
 }
 
 test('a box part takes a preset and a colour, undo takes back one step, and the look stays after reload', async ({ page }) => {
@@ -166,11 +164,13 @@ test('a box part takes a preset and a colour, undo takes back one step, and the 
     // Glass lets light through, which takes the physical material.
     await expect.poll(async () => (await rendered(page))[0].parts['0'].type).toBe('MeshPhysicalMaterial');
     await expect(page.getByTestId('scene-look-modified-0')).toBeVisible();
-    // The glass face is drawn, neither black nor NaN (which draws black): a point on the face clear of the handles.
-    const centre = await selectedCentre(page);
-    await nextFrames(page);
-    const glass = await meanColour(page, { x: centre.x - 14, y: centre.y - 30 });
-    expect(Math.max(...glass), `glass face colour ${glass.join(',')}`).toBeGreaterThan(24);
+    // The glass face is drawn, neither black nor NaN (which draws black). The part is let go first, so its highlight
+    // tint is not what is read, and the point is one the handles leave clear.
+    await page.getByTestId('scene-look-part-0').click();
+    await expect(visibleSpace(page).getByTestId('three-d-viewport')).toHaveAttribute('data-part-highlight', '0');
+    const glass = await meanColour(page, await freeFacePoint(page));
+    expect(Math.min(...glass), `glass face colour ${glass.join(',')}`).toBeGreaterThan(60);
+    await page.getByTestId('scene-look-part-0').click();
 
     await setPartColor(page, '#ff0000');
     await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: { ...GLASS, color: '#ff0000' } }]);
