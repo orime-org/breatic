@@ -56,6 +56,9 @@ import { useTimelineDocument } from '@web/spaces/timeline/use-timeline-document'
 import { useTimelineEditPrefs } from '@web/spaces/timeline/use-timeline-edit-prefs';
 import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback';
 import { usePublishTimelineView } from '@web/spaces/timeline/use-publish-timeline-view';
+import { timelineCaptureView, visibleFrameRange } from '@web/spaces/timeline/timeline-view-capture';
+import { captureElement } from '@web/features/view-capture/capture-element';
+import { registerViewCapture } from '@web/features/view-capture/registry';
 import { userMovedScroll, type TrackScroll } from '@web/spaces/timeline/timeline-follow-scroll';
 import { useTimelineAsset, useTimelineAssets } from '@web/spaces/timeline/use-timeline-asset';
 import { TimelineExecutionList, timelineCancelIntent, timelineExecutionInput, type TimelineExecutionView } from '@web/spaces/timeline/TimelineExecutionList';
@@ -771,6 +774,20 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     }
   }, [session, fps, readOnly, undo, redo, duplicate, split, remove, toggleSnap, nudge, changeTrack]);
   const root = React.useRef<HTMLDivElement>(null);
+  // What an external agent sees when it asks for the user's screen (#1488
+  // §19.1): the Space as drawn, the frames on the track, the playhead and the
+  // clips there. The sandboxed web-animation players cannot be read, so they
+  // are left out and the view names them.
+  const captureInput = React.useRef({ clips, frame, pixelsPerFrame, trackScroller });
+  captureInput.current = { clips, frame, pixelsPerFrame, trackScroller };
+  React.useEffect(() => registerViewCapture(spaceId, async () => {
+    const element = root.current;
+    if (element === null) throw new Error('the Timeline is not mounted');
+    const canvas = await captureElement(element, { filter: (node) => !(node instanceof HTMLElement && node.tagName === 'HYPERFRAMES-PLAYER') });
+    const { clips: all, frame: playhead, pixelsPerFrame: ppf, trackScroller: track } = captureInput.current;
+    const range = track === null ? { startFrame: 0, endFrame: 1 } : visibleFrameRange(track, ppf, TIMELINE_TRACK_HEADER_PX);
+    return { canvas, view: timelineCaptureView({ clips: all, frame: playhead, ...range }) };
+  }), [spaceId]);
   const editorColumn = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     const element = editorColumn.current;

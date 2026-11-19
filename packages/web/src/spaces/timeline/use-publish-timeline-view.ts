@@ -7,6 +7,7 @@ import type { Awareness } from 'y-protocols/awareness';
 import type { FollowField, FollowFieldValue } from '@web/data/yjs/follow-presence';
 import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle, type PublishThrottle } from '@web/lib/publish-throttle';
 import type { TimelinePlaybackAnchor } from '@web/spaces/timeline/use-timeline-playback';
+import { visibleFrameRange } from '@web/spaces/timeline/timeline-view-capture';
 import { useFollowStore } from '@web/stores/follow';
 
 /** What one render of the Timeline tells its followers. */
@@ -60,9 +61,8 @@ export function usePublishTimelineView(input: PublishTimelineViewInput): void {
       if (state === null) return;
       const { pixelsPerFrame: ppf, headerPx: header, frame: current, intent: playIntent, anchor: started } = latest.current;
       const shown = playIntent === 'play' && started !== null ? started.frame : current;
-      const startFrame = Math.floor(viewport.scrollLeft / ppf);
       // A viewport without width (not laid out) still publishes a range the schema accepts.
-      const endFrame = Math.max(startFrame + 1, Math.ceil((viewport.scrollLeft + viewport.clientWidth - header) / ppf));
+      const { startFrame, endFrame } = visibleFrameRange(viewport, ppf, header);
       const view = { startFrame, endFrame, trackScrollTop: viewport.scrollTop, frame: shown, intent: playIntent, anchor: started };
       const key = JSON.stringify(view);
       if (key === published && state[FIELD] !== undefined) return;
