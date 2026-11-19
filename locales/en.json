@@ -27,7 +27,8 @@
       "refund_still_designated": "This purchase is assigned to a Studio. Unassign it first.",
       "refund_already_spent": "Credits from this purchase have been spent, so it cannot be refunded.",
       "refund_window_closed": "The refund window for this purchase has closed.",
-      "refund_state_changed": "This purchase's refund status has changed. Refresh and try again."
+      "refund_state_changed": "This purchase's refund status has changed. Refresh and try again.",
+      "refund_offline_contract": "Contact your contract representative for enterprise credit refunds."
     },
     "auth": {
       "invalid_credentials": "Invalid email or password",
@@ -3915,10 +3916,12 @@
     },
     "source": {
       "payment": "Purchase",
-      "gift": "Trial credits",
+      "gift": "Gift credits",
       "operatorGift": "Gift credits",
-      "compensation": "Compensation",
-      "discount": "Discount"
+      "compensation": "Gift credits",
+      "discount": "Discount",
+      "trial": "Trial credits",
+      "enterprise": "Enterprise credits"
     },
     "pinnedToPersonalStudio": "Your personal Studio only",
     "lifecycle": {
@@ -4023,11 +4026,19 @@
     "refundReason": {
       "spent": "Already used",
       "expired": "Over 30 days",
-      "restored": "Credits restored"
+      "restored": "Credits restored",
+      "offlineContract": "Contact your contract representative for enterprise credit refunds."
     },
     "refundHint": {
       "assigned": "Unassign it to ask for a refund"
-    }
+    },
+    "sourceDetail": {
+      "registration": "Registration gift",
+      "operator": "Operator gift",
+      "compensation": "Compensation",
+      "enterprise": "Business purchase"
+    },
+    "contractReference": "Contract {contract}"
   },
   "notFound": {
     "heading": "Page not found",

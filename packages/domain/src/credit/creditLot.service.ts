@@ -82,6 +82,7 @@ export const REFKEY_PATTERN = /^[A-Za-z0-9_:.-]{1,255}$/;
  * to be loading this module.
  */
 const REFUSAL_ERRORS: Record<RefundRefusal, () => AppError> = {
+  offline_contract: () => new AppError(422, t("server.credit.refund_offline_contract")),
   not_purchased: () =>
     new AppError(422, t("server.credit.refund_not_purchased")),
   already_asked: () =>
@@ -203,6 +204,29 @@ export async function grantFromPayment(
   // ours to grant. Opening a second one here would let the grant commit
   // while the decision rolls back.
   return outer ? run(outer) : db.transaction(run);
+}
+
+/**
+ * Open one corporate purchase lot in its original decision transaction.
+ * @param input - The confirmed quantity, account, contract and original operator.
+ * @param input.userId - The account owning the purchase.
+ * @param input.credits - The confirmed exact input quantity.
+ * @param input.contractNumber - The locked contract reference.
+ * @param input.reason - The operator's recorded business reason.
+ * @param input.operationKey - The original confirmation key.
+ * @param input.adminId - The authenticated original operator.
+ * @param tx - The transaction holding the original key and account locks.
+ * @returns The immutable initial creation facts.
+ * @throws {Error} When the source, receipt, lot or ledger write fails.
+ */
+export async function grantEnterpriseCredits(input: {
+  userId: string; credits: string; contractNumber: string; reason: string; operationKey: string; adminId: string;
+}, tx: DbTx): Promise<{ sourceId: string; sourceKind: "enterprise"; lotId: string; credits: CreditDecimal; contractNumber: string; designatedStudioId: null; remainingCredits: CreditDecimal }> {
+  const sourceId = randomUUID();
+  const credits = serializeCreditMicro(parseCreditDecimal(input.credits));
+  await creditSourceRepo.createEnterpriseSource({ ...input, id: sourceId, credits }, tx);
+  const lot = await creditLotRepo.createLot({ sourceId, sourceKind: "enterprise", userId: input.userId, purchasedCredits: credits, designatedStudioId: null }, tx);
+  return { sourceId, sourceKind: "enterprise", lotId: lot.id, credits, contractNumber: input.contractNumber, designatedStudioId: null, remainingCredits: credits };
 }
 
 /**
@@ -721,7 +745,7 @@ export async function requestRefund(input: {
     // cannot offer an ask this would turn down, or hide one it would allow.
     const refusal = refundRefusal(
       {
-        purchased: isPurchased(lot.sourceKind),
+        sourceKind: lot.sourceKind,
         lifecycle: lot.lifecycle,
         designated: lot.designatedStudioId !== null,
         everSpent: await creditLotRepo.hasEverSpent(input.lotId, tx),

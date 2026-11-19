@@ -20,7 +20,7 @@ const LATE = new Date("2026-03-01T12:00:00.000Z");
 function lot(over: Partial<RefundCandidate> = {}): RefundCandidate {
   return {
     lifecycle: "active",
-    purchased: true,
+    sourceKind: "payment",
     designated: false,
     everSpent: false,
     everRestored: false,
@@ -36,7 +36,7 @@ describe("refundRefusal", () => {
   });
 
   it("refuses credits nobody paid for", () => {
-    expect(refundRefusal(lot({ purchased: false }), NOW)).toBe("not_purchased");
+    expect(refundRefusal(lot({ sourceKind: "gift" }), NOW)).toBe("not_purchased");
   });
 
   it("answers that before anything about where the credits stand", () => {
@@ -47,7 +47,7 @@ describe("refundRefusal", () => {
     expect(
       refundRefusal(
         lot({
-          purchased: false,
+          sourceKind: "gift",
           lifecycle: "depleted",
           everSpent: true,
           designated: true,
@@ -90,7 +90,7 @@ describe("refundRefusal", () => {
   });
 
   it("answers not_purchased before the restore", () => {
-    expect(refundRefusal(lot({ everRestored: true, purchased: false }), NOW)).toBe(
+    expect(refundRefusal(lot({ everRestored: true, sourceKind: "gift" }), NOW)).toBe(
       "not_purchased",
     );
   });

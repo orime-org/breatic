@@ -56,3 +56,4 @@ export * as stripeWebhookDispatchService from "@server/modules/stripe-webhook/di
 export * as maintenanceService from "@server/modules/maintenance/maintenance.service.js";
 
 export * as creditGrantService from "@server/modules/credit-grant/credit-grant.service.js";
+export * as enterpriseCreditPurchaseService from "@server/modules/enterprise-credit-purchase/enterprise-credit-purchase.service.js";

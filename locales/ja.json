@@ -27,7 +27,8 @@
       "refund_still_designated": "この購入は Studio に割り当てられています。先に割り当てを解除してください。",
       "refund_already_spent": "この購入のクレジットは使用済みのため、返金できません。",
       "refund_window_closed": "この購入の返金期限は終了しました。",
-      "refund_state_changed": "この購入の返金状況が変わりました。再読み込みしてからもう一度お試しください。"
+      "refund_state_changed": "この購入の返金状況が変わりました。再読み込みしてからもう一度お試しください。",
+      "refund_offline_contract": "企業クレジットの返金は契約担当者にお問い合わせください。"
     },
     "auth": {
       "invalid_credentials": "メールアドレスまたはパスワードが正しくありません",
@@ -3915,10 +3916,12 @@
     },
     "source": {
       "payment": "購入",
-      "gift": "体験クレジット",
+      "gift": "ギフトクレジット",
       "operatorGift": "ギフトクレジット",
-      "compensation": "補償",
-      "discount": "割引"
+      "compensation": "ギフトクレジット",
+      "discount": "割引",
+      "trial": "体験クレジット",
+      "enterprise": "企業クレジット"
     },
     "pinnedToPersonalStudio": "個人 Studio でのみ使用",
     "lifecycle": {
@@ -4023,11 +4026,19 @@
     "refundReason": {
       "spent": "使用済み",
       "expired": "30 日超過",
-      "restored": "クレジットに戻しました"
+      "restored": "クレジットに戻しました",
+      "offlineContract": "企業クレジットの返金は契約担当者にお問い合わせください。"
     },
     "refundHint": {
       "assigned": "割り当てを解除すると返金を申請できます"
-    }
+    },
+    "sourceDetail": {
+      "registration": "登録ギフト",
+      "operator": "運営からのギフト",
+      "compensation": "補償",
+      "enterprise": "法人購入"
+    },
+    "contractReference": "契約 {contract}"
   },
   "notFound": {
     "heading": "ページが見つかりません",

@@ -1041,6 +1041,7 @@ describe('the credits overlay, section by section', () => {
           lot({
             id: 'lot-gift',
             sourceKind: 'gift',
+            giftOrigin: 'registration',
             paidCents: null,
             currency: null,
           }),
@@ -1760,6 +1761,7 @@ describe('the credits overlay, section by section', () => {
             lot({
               id: 'granted',
               sourceKind: 'gift',
+              giftOrigin: 'registration',
               paidCents: null,
               currency: null,
               designatedStudioId: 's1',

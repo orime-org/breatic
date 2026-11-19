@@ -16,6 +16,7 @@
 
 import { withinRefundWindow } from "@shared/refund-window.js";
 import type { CreditLotLifecycle } from "@shared/types/entities.js";
+import type { CreditSourceKind } from "@shared/types/credit.js";
 
 /** Lifecycles in which a purchase is on its way out of the account. */
 export const REFUND_LIFECYCLES: ReadonlySet<CreditLotLifecycle> = new Set([
@@ -27,6 +28,7 @@ export const REFUND_LIFECYCLES: ReadonlySet<CreditLotLifecycle> = new Set([
 /** Why a purchase cannot be asked about right now. */
 export type RefundRefusal =
   | "not_purchased"
+  | "offline_contract"
   | "already_asked"
   | "restored"
   | "still_designated"
@@ -35,14 +37,8 @@ export type RefundRefusal =
 
 /** What the rule reads off one purchase. */
 export interface RefundCandidate {
-  /**
-   * Whether anyone paid for these credits.
-   *
-   * A refund returns money, and there is none to return on credits that were
-   * granted. Unlike the conditions below this is not a state the lot
-   * passes through — it is what the lot is, and no later event changes it.
-   */
-  purchased: boolean;
+  /** The original receipt determines the financial refund channel. */
+  sourceKind: CreditSourceKind;
   /** Where it stands. */
   lifecycle: CreditLotLifecycle;
   /**
@@ -97,7 +93,8 @@ export function refundRefusal(
   lot: RefundCandidate,
   now: Date,
 ): RefundRefusal | null {
-  if (!lot.purchased) {
+  if (lot.sourceKind === "enterprise") return "offline_contract";
+  if (lot.sourceKind !== "payment") {
     return "not_purchased";
   }
   if (REFUND_LIFECYCLES.has(lot.lifecycle)) {

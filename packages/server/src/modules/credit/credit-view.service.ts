@@ -61,14 +61,14 @@ function toDecimal(value: string): CreditDecimal {
 /**
  * Map a lot to its display shape.
  * @param lot - The stored lot.
- * @param giftOrigin - The immutable gift receipt origin, when applicable.
+ * @param details - The immutable source receipt details, when applicable.
  * @returns The view.
  */
-function toLotView(lot: CreditLotEntity & LotContext, giftOrigin?: "registration" | "operator"): CreditLotView {
+function toLotView(lot: CreditLotEntity & LotContext, details: creditSourceRepo.CreditReceiptDetails = {}): CreditLotView {
   return {
     id: lot.id,
     sourceKind: lot.sourceKind,
-    ...(giftOrigin === undefined ? {} : { giftOrigin }),
+    ...details,
     purchasedCredits: toDecimal(lot.purchasedCredits),
     remainingCredits: toDecimal(lot.remainingCredits),
     designatedStudioId: lot.designatedStudioId,
@@ -87,11 +87,14 @@ function toLotView(lot: CreditLotEntity & LotContext, giftOrigin?: "registration
 /**
  * Map a lot to its display shape on a studio's page.
  * @param lot - The stored lot, with the buyer's name joined in.
+ * @param details - The recorded funding provenance.
  * @returns The view model.
  */
-function toStudioLotView(lot: creditLotRepo.StudioLot): StudioLotView {
+function toStudioLotView(lot: creditLotRepo.StudioLot, details: creditSourceRepo.CreditReceiptDetails = {}): StudioLotView {
   return {
     id: lot.id,
+    sourceKind: lot.sourceKind,
+    ...details,
     purchasedCredits: toDecimal(lot.purchasedCredits),
     remainingCredits: toDecimal(lot.remainingCredits),
     createdAt: lot.createdAt.toISOString(),
@@ -144,11 +147,8 @@ export async function getOverview(
 export async function getLot(userId: string, lotId: string): Promise<CreditLotView> {
   const [lot] = await creditLotRepo.listLotsByUser(userId, 1, null, undefined, lotId);
   if (!lot) throw new NotFoundError(t("server.error.not_found"));
-  if (lot.sourceKind !== "gift") return toLotView(lot);
-  const origins = await creditSourceRepo.readGiftOrigins([lot.sourceId]);
-  const origin = origins.get(lot.sourceId);
-  if (origin === undefined) throw new Error("Gift receipt origin missing");
-  return toLotView(lot, origin);
+  const details = await creditSourceRepo.readReceiptDetails([lot]);
+  return toLotView(lot, details.get(lot.sourceId));
 }
 
 /**
@@ -168,11 +168,8 @@ export async function listLots(
   const size = pageSize(rawLimit);
   const cursor = readCursor(rawCursor);
   const rows = await creditLotRepo.listLotsByUser(userId, size + 1, cursor, lifecycle);
-  const origins = await creditSourceRepo.readGiftOrigins(rows.filter((row) => row.sourceKind === "gift").map((row) => row.sourceId));
-  for (const row of rows) {
-    if (row.sourceKind === "gift" && !origins.has(row.sourceId)) throw new Error("Gift receipt origin missing");
-  }
-  return toPage(rows, size, (row) => toLotView(row, origins.get(row.sourceId)), (row) => ({
+  const details = await creditSourceRepo.readReceiptDetails(rows);
+  return toPage(rows, size, (row) => toLotView(row, details.get(row.sourceId)), (row) => ({
     cursorAt: row.cursorAt,
     id: row.id,
   }));
@@ -303,12 +300,13 @@ export async function getStudioCredits(
   }
 
   const snapshot = await creditLotService.readStudioCredits(studioId, size + 1);
+  const details = await creditSourceRepo.readReceiptDetails(snapshot.lots);
   return {
     spendable: snapshot.spendable,
     debt: snapshot.debt,
     held: snapshot.held,
     available: snapshot.available,
-    lots: snapshot.lots.map(toStudioLotView),
+    lots: snapshot.lots.map(lot => toStudioLotView(lot, details.get(lot.sourceId))),
     ledger: toPage(snapshot.ledger, size, toStudioLedgerView, studioLedgerKey),
   };
 }

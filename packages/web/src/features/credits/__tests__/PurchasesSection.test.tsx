@@ -141,6 +141,7 @@ describe('the purchase history', () => {
         row({
           rowId: 'lot-gift',
           sourceKind: 'gift',
+          giftOrigin: 'registration',
           paymentId: null,
           amountCents: null,
           totalCents: null,

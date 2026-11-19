@@ -27,7 +27,8 @@
       "refund_still_designated": "这笔已指定给某个 Studio，请先解除指定。",
       "refund_already_spent": "这笔的积分已经用过，不能退款。",
       "refund_window_closed": "这笔的退款期限已过。",
-      "refund_state_changed": "这笔的退款状态已经变了，请刷新后再试。"
+      "refund_state_changed": "这笔的退款状态已经变了，请刷新后再试。",
+      "refund_offline_contract": "企业积分退款请联系合同负责人。"
     },
     "text_tool": {
       "selection_too_long": "选中的内容太长，AI 处理不了：{actual} 个字符，上限是 {limit}。",
@@ -3915,10 +3916,12 @@
     },
     "source": {
       "payment": "充值",
-      "gift": "体验积分",
+      "gift": "赠送积分",
       "operatorGift": "赠送积分",
-      "compensation": "补偿",
-      "discount": "优惠"
+      "compensation": "赠送积分",
+      "discount": "优惠",
+      "trial": "体验积分",
+      "enterprise": "企业积分"
     },
     "pinnedToPersonalStudio": "只能用在你的个人 Studio",
     "lifecycle": {
@@ -4023,11 +4026,19 @@
     "refundReason": {
       "spent": "已经用过",
       "expired": "超过 30 天",
-      "restored": "积分已恢复"
+      "restored": "积分已恢复",
+      "offlineContract": "企业积分退款请联系合同负责人。"
     },
     "refundHint": {
       "assigned": "解除指定后可以申请退款"
-    }
+    },
+    "sourceDetail": {
+      "registration": "注册赠送",
+      "operator": "运营赠送",
+      "compensation": "补偿",
+      "enterprise": "公对公购买"
+    },
+    "contractReference": "合同 {contract}"
   },
   "notFound": {
     "heading": "页面未找到",

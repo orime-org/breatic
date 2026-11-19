@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { creditSourceLabelKey } from '@web/features/credits/credit-source-label';
+import { creditSourceText } from '@web/features/credits/credit-source-label';
 
 import { parseCreditDecimal } from '@breatic/shared';
 
 import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { refundRefusal, isPurchased } from '@breatic/shared';
+import { refundRefusal } from '@breatic/shared';
 import type { CreditLotView, RefundRefusal } from '@breatic/shared';
 
 import {
@@ -69,6 +69,7 @@ function noteOf(
   t: Translate,
 ): string | null {
   if (refusal === null) return null;
+  if (refusal === 'offline_contract') return t('credits.refundReason.offlineContract');
   if (refusal === 'already_asked') {
     return t(`credits.lifecycle.${lot.lifecycle}`);
   }
@@ -242,12 +243,7 @@ const LotRow = React.memo(function LotRow({
   const t = useTranslation();
   const client = useQueryClient();
   const [asking, setAsking] = React.useState(false);
-  // The view is the candidate in every field but one: the rule asks whether
-  // anyone paid, and the row carries where the credits came from.
-  const refusal = refundRefusal(
-    { ...lot, purchased: isPurchased(lot.sourceKind) },
-    now,
-  );
+  const refusal = refundRefusal(lot, now);
   const note = noteOf(lot, refusal, t);
 
   const askRefund = useMutation({
@@ -283,7 +279,7 @@ const LotRow = React.memo(function LotRow({
     <Row
       main={`${
         lot.paidCents === null
-          ? t(creditSourceLabelKey(lot))
+          ? creditSourceText(lot, t)
           : formatMoney(lot.paidCents, lot.currency ?? 'usd')
       } · ${formatLocalDay(lot.createdAt)}`}
       sub={
