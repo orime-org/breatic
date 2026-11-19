@@ -236,6 +236,8 @@ async function judgeTask(row: taskRepo.GateTaskRow, jobId: string, limit: number
 async function judgeExecution(row: { id: string; actorUserId: string; createdAt: string }, limit: number): Promise<Judged<TimelineExecution>> {
   return db.transaction(async (tx): Promise<Judged<TimelineExecution>> => {
     if (!(await takeLock(row.actorUserId, tx))) return { kind: "busy" };
+    // The row was read before the lock; another pickup may have claimed or ended it since.
+    if ((await timelineExecutionRepo.findById(row.id, tx))?.status !== "queued") return { kind: "ended" };
     const { running, ahead } = await standing(row.actorUserId, limit, row.createdAt, tx);
     if (running + ahead < limit) {
       const budgetMs = getNodeTaskConfig().default_budget_ms;
