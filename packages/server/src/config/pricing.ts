@@ -42,6 +42,11 @@ export const pricingSchema = z.object({
   reconcile: reconcileSchema.default({ batch_size: 3, min_age_seconds: 120 }),
   stale_sending_minutes: z.number().int().positive().default(10),
   confirm_timeout_ms: z.number().int().positive().default(15000),
+  // The trial grant lives in config/credits.yaml; a value left here would be
+  // dropped without a word, so a file still carrying it is refused.
+  trial_grant: z
+    .never({ error: "trial_grant moved to config/credits.yaml; move this deployment's value there" })
+    .optional(),
 });
 
 /** Resolved pricing tier with the correct Stripe Price ID for this environment. */

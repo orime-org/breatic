@@ -11,7 +11,7 @@
  * something granting knows.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
@@ -40,7 +40,14 @@ const cached = new Map<string, z.infer<typeof creditsConfigSchema>>();
 export function getTrialGrantCredits(configDir: string = resolve(MONOREPO_ROOT, "config")): number {
   let parsed = cached.get(configDir);
   if (!parsed) {
-    parsed = creditsConfigSchema.parse(parse(readFileSync(resolve(configDir, "credits.yaml"), "utf-8")) as unknown);
+    const file = resolve(configDir, "credits.yaml");
+    if (!existsSync(file)) {
+      throw new Error(
+        `${file} is missing: copy config/credits.yaml.template there and set trial_grant.credits to the value this deployment had under trial_grant in config/pricing.yaml`,
+      );
+    }
+    // A file holding only comments parses to null and means every section left out.
+    parsed = creditsConfigSchema.parse((parse(readFileSync(file, "utf-8")) as unknown) ?? {});
     cached.set(configDir, parsed);
   }
   return parsed.trial_grant.credits;
