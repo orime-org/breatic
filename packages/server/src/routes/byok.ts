@@ -53,7 +53,7 @@ byok.delete("/keys/:upstream", validate("param", upstreamParam), async (c) => {
 });
 
 /** `PUT /account/byok/models/:model` — point a media model at an upstream, or back at the deployment's keys. */
-byok.put("/models/:model", validate("param", modelParam), validate("json", modelBody), async (c) => {
+byok.put("/models/:model", rateLimitFor("byok-model-write", "user"), validate("param", modelParam), validate("json", modelBody), async (c) => {
   await byokService.setModelUpstream(c.get("user").id, c.req.valid("param").model, c.req.valid("json").upstream);
   return c.json({ data: null });
 });

@@ -46,6 +46,13 @@ export async function setModelUpstream(userId: string, model: string, upstream: 
         .limit(1);
       if (held === undefined) return false;
     }
+    const [live] = await tx
+      .select({ upstream: accountModelUpstreams.upstream })
+      .from(accountModelUpstreams)
+      .where(and(eq(accountModelUpstreams.userId, userId), eq(accountModelUpstreams.model, model), isNull(accountModelUpstreams.deletedAt)))
+      .limit(1);
+    // The same choice sent again changes nothing, so it writes nothing.
+    if ((live?.upstream ?? null) === upstream) return true;
     await tx
       .update(accountModelUpstreams)
       .set({ deletedAt: sql`now()` })

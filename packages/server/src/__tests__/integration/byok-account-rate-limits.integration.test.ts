@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 /** The two limits this file lowers. */
-const LOWERED = vi.hoisted(() => new Set(["byok-key-write", "byok-key-check"]));
+const LOWERED = vi.hoisted(() => new Set(["byok-key-write", "byok-key-check", "byok-model-write"]));
 
 vi.mock("@server/config/rate-limits.js", async (importOriginal) => {
   const actual = await importOriginal<typeof RateLimitsModule>();
@@ -93,6 +93,18 @@ const save = async (cookie: string): Promise<Response> =>
 const recheck = async (cookie: string): Promise<Response> =>
   app.request("/api/v1/account/byok/keys/fal/check", { method: "POST", headers: { Cookie: cookie } });
 
+/**
+ * Point a model back at the platform key.
+ * @param cookie - Whose session.
+ * @returns The response.
+ */
+const choose = async (cookie: string): Promise<Response> =>
+  app.request("/api/v1/account/byok/models/nano-banana-2", {
+    method: "PUT",
+    headers: { Cookie: cookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ upstream: null }),
+  });
+
 describe("the BYOK key routes' own limits", () => {
   it("are configured in config/rate-limits.yaml", async () => {
     const actual = await vi.importActual<typeof RateLimitsModule>("@server/config/rate-limits.js");
@@ -123,5 +135,13 @@ describe("the BYOK key routes' own limits", () => {
     expect((await recheck(cookie)).status).toBe(429);
     expect(checkKey).toHaveBeenCalledTimes(2);
     expect((await recheck(other)).status).toBe(200);
+  });
+
+  it("answers 429 to a third model choice in the window", async () => {
+    const cookie = await signedIn();
+
+    expect((await choose(cookie)).status).toBe(200);
+    expect((await choose(cookie)).status).toBe(200);
+    expect((await choose(cookie)).status).toBe(429);
   });
 });
