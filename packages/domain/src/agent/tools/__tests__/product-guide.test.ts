@@ -705,6 +705,12 @@ describe("what the guide says", () => {
     expect(slash).toMatch(/opens, under the slash or, with no room under it, over the line,/u);
   });
 
+  it("says the slash menu opens with nothing selected, as the trigger reads only a caret", () => {
+    const slash = section("Document spaces").split("\n").find((line) => line.startsWith("- Typing a slash")) ?? "";
+    expect(webSource("spaces/document/document-slash-trigger.ts")).toContain("tr.selection.$cursor");
+    expect(slash).toMatch(/^- Typing a slash \(\/\) with nothing selected at the start of a line or after a space opens,/u);
+  });
+
   it("names the plus only on an empty paragraph, the one line it shows on", () => {
     expect(webSource("spaces/document/document-insert-row.ts")).toContain("row?.type === 'paragraph' &&");
     const doc = `${section("Document spaces")}\n${section("Document columns")}`;

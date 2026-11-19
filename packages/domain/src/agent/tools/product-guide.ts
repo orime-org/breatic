@@ -1891,9 +1891,9 @@ export function renderProductGuide(): string {
       "when that line is the document's only block. Empty " +
       "paragraphs have no six-dot handle, so its menu and dragging are not offered on them; a selection that takes " +
       "in an empty paragraph acts on it as on any other paragraph.",
-    "- Typing a slash (/) at the start of a line or after a space opens, under the slash or, with no room under " +
+    "- Typing a slash (/) with nothing selected at the start of a line or after a space opens, under the slash or, with no room under " +
       `it, over the line, the same entries as ${quoted(t("spaces.document.blockHandle.insertBelow"))}; the ` +
-      "full-width slash (\uFF0F) and the ideographic comma (\u3001) do the same. Letters typed after it narrow " +
+      "full-width slash (\uFF0F) and the ideographic comma (\u3001) do the same. Letters after it filter " +
       "the list by an entry's name in the interface language or in English; when nothing matches it says " +
       `${quoted(t("spaces.document.slashMenu.empty"))}, and it closes once three more characters still match ` +
       "nothing. A space right after the slash closes it and keeps what was typed. The up and down arrows move " +
@@ -1903,11 +1903,11 @@ export function renderProductGuide(): string {
       "rest of the block. Its greyed entries are as the insert menus' line says. " +
       "Picking a block type, the divider, the table, columns or the formula removes the slash and its letters at " +
       "once; picking an image, audio or video opens the file picker and removes them when the files land, and " +
-      "closing the picker keeps them. The file picker and the formula box that follow a pick work as in those " +
+      "closing the picker keeps them. The file picker and formula box after a pick work as in those " +
       `menus. ${quoted(t("spaces.document.commands.table"))} puts in an empty table of three rows and three ` +
       "columns at once; picking a size first is done from the plus on an empty paragraph or from " +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} elsewhere, and rows and columns are added ` +
-      "later from the table's own handles. Esc, clicking elsewhere, moving the caret off the line or crossing a " +
+      "later from the table's handles. Esc, clicking elsewhere, moving the caret off the line or crossing a " +
       "Shift+Enter line break closes it and " +
       "keeps what was typed; one undo after a pick brings the slash and its letters back. It does not open in a " +
       "code block.",
