@@ -21,6 +21,7 @@ import {
   setLocaleMessages,
   t,
   templateMarkTargets,
+  templateNodeWords,
   templateSkeleton,
   type GenerationTemplate,
   type PromptSegment,
@@ -370,12 +371,12 @@ export interface AgentShape {
  * a node with dialogue lines sends them the same way from its `line.<n>` words.
  * No guide node.
  * @param template - The template.
- * @param options - `anchorKey`: write the anchor's key; `tagInputs`: tag each input node with `{ id, input }`, which an optional input's node carries always; `material`: input key to the address its node holds.
+ * @param options - `anchorKey`: write the anchor's key; `tagInputs`: tag each input node with `{ id, input }`, which an optional input's node carries always; `material`: input key to the address its node holds; `style`: the picked style, whose paragraph each node taking style words sends after its own words, as get_generation_template gives it (inner#1817).
  * @returns The proposal and where each identity sits.
  */
 export function agentShape(
   template: GenerationTemplate,
-  options: { anchorKey?: boolean; tagInputs?: boolean; material?: ReadonlyMap<string, string> } = {},
+  options: { anchorKey?: boolean; tagInputs?: boolean; material?: ReadonlyMap<string, string>; style?: string } = {},
 ): AgentShape {
   const skeleton = templateSkeleton(template);
   const base = `canvas.template.${template.id}`;
@@ -460,10 +461,12 @@ export function agentShape(
       };
       continue;
     }
+    const words = templateNodeWords(template, key, options.style);
+    const styled = "styleKey" in words && words.styleKey !== undefined ? [{ text: `\n${t(words.styleKey)}` }] : [];
     // A node with shots sends them in place of the prompt, the notes on top of the first shot.
     nodes[at_] =
       node.shots === undefined
-        ? { ...(nodes[at_] as SentNode), ...filled, prompt: [...notes, ...sent(t(`${head}.prompt`))] }
+        ? { ...(nodes[at_] as SentNode), ...filled, prompt: [...notes, ...sent(t(`${head}.prompt`)), ...styled] }
         : {
             ...(nodes[at_] as SentNode),
             ...filled,
