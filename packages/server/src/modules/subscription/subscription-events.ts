@@ -25,7 +25,7 @@
  * commits first.
  */
 
-import { reportSubscriptionRenewed, reportSubscriptionStarted } from "@server/modules/subscription/subscription-analytics.js";
+import { reportSubscriptionRenewed, checkoutStarted, reportSubscriptionStarted } from "@server/modules/subscription/subscription-analytics.js";
 import type Stripe from "stripe";
 import {
   db,
@@ -269,6 +269,7 @@ export async function handleSubscriptionEvent(
       userId,
       write,
       referenceId: event.id,
+      firstActiveAt: write.status === "active" || write.status === "trialing" ? write.observedAt : null,
       tx,
     });
     // Reads only the event, so where it sits in this transaction changes
@@ -282,7 +283,8 @@ export async function handleSubscriptionEvent(
   // After the commit, never inside it: an email about a change that then rolls
   // back cannot be recalled, and a send failure must not fail the webhook.
   if (endedFrom) await sendMembershipEndedMail(userId, endedFrom);
-  if (started) reportSubscriptionStarted(write, subscription.metadata, read.firstInvoiceAmountCents);
+  const report = started ? checkoutStarted(write, subscription.metadata, read.firstInvoiceAmountCents) : null;
+  if (report) reportSubscriptionStarted(userId, report);
 
   return outcome;
 }

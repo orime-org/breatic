@@ -9,7 +9,7 @@
  */
 
 import { accountOnlyConsent, enqueueAdsConversion, getSubscriptionPlan, logger, trackServerEvent } from "@breatic/core";
-import type { SubscriptionWrite } from "@breatic/core";
+import type { SubscriptionStarted, SubscriptionWrite } from "@breatic/core";
 import { SUBSCRIBABLE_MEMBERSHIP_TIERS, type SubscribableMembershipTier } from "@breatic/shared";
 import { readCheckoutSnapshot } from "@server/modules/analytics/checkout-snapshot.js";
 
@@ -29,32 +29,61 @@ function planProperties(
 }
 
 /**
- * Report a subscription's first activation, after the write that stamped it committed.
+ * What a subscription's first activation reports, read from the checkout
+ * snapshot the subscribing browser left on the Stripe subscription.
  * @param write - The stored snapshot.
  * @param metadata - The Stripe subscription's metadata, holding the checkout snapshot.
  * @param firstInvoiceAmountCents - What the first invoice charged before tax, or null to use the price list.
+ * @returns The start, or null for a tier with no plan.
  */
-export function reportSubscriptionStarted(
+export function checkoutStarted(
   write: SubscriptionWrite,
   metadata: Record<string, unknown> | null,
   firstInvoiceAmountCents: number | null,
-): void {
+): SubscriptionStarted | null {
   const properties = planProperties(write, firstInvoiceAmountCents);
-  if (properties === null) return;
+  if (properties === null) return null;
   const { consent, click } = readCheckoutSnapshot(metadata);
-  const transactionId = `sub:${write.stripeSubscriptionId}`;
-  trackServerEvent("subscription_started", { userId: write.userId, insertId: transactionId, properties }, consent);
+  return {
+    properties: {
+      tier: write.tier,
+      interval: write.period,
+      amountCents: properties.amount_cents as number,
+      currency: properties.currency as string,
+    },
+    consent,
+    click,
+    transactionId: `sub:${write.stripeSubscriptionId}`,
+  };
+}
+
+/**
+ * Report a subscription's first activation, after the write that stamped it committed.
+ * @param userId - The account.
+ * @param started - What the start reports.
+ */
+export function reportSubscriptionStarted(userId: string, started: SubscriptionStarted): void {
+  const { properties, consent, click, transactionId } = started;
+  trackServerEvent(
+    "subscription_started",
+    {
+      userId,
+      insertId: transactionId,
+      properties: { tier: properties.tier, interval: properties.interval, amount_cents: properties.amountCents, currency: properties.currency },
+    },
+    consent,
+  );
   enqueueAdsConversion(
     {
-      userId: write.userId,
+      userId,
       conversion: "subscription",
       transactionId,
       click,
-      value: { amountCents: properties.amount_cents as number, currency: properties.currency as string },
+      value: { amountCents: properties.amountCents, currency: properties.currency },
     },
     { consent: consent.ads },
   ).catch((err: unknown) => {
-    logger.error({ err, userId: write.userId, transactionId }, "ads_conversion_enqueue_failed");
+    logger.error({ err, userId, transactionId }, "ads_conversion_enqueue_failed");
   });
 }
 

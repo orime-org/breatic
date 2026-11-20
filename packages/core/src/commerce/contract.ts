@@ -8,8 +8,9 @@
  */
 
 import { z } from "zod";
-import { ANALYTICS_EVENT_NAMES, ConsentSnapshotSchema, type AnalyticsEventName } from "@breatic/shared";
+import { ANALYTICS_EVENT_NAMES, BILLING_PERIODS, ConsentSnapshotSchema, MEMBERSHIP_TIERS, type AnalyticsEventName } from "@breatic/shared";
 import { ADS_CONVERSIONS } from "@core/ads/ads-types.js";
+import { STRIPE_SUBSCRIPTION_STATUSES } from "@core/auth/subscription-state.js";
 
 const uuid = z.string().uuid();
 const cents = z.number().int().nonnegative();
@@ -97,3 +98,54 @@ export type ConversionReport = z.infer<typeof conversionReportSchema>;
 /** The answer to a conversion report: whether each side took it. */
 export const conversionAnswerSchema = z.object({ tracked: z.boolean(), adsQueued: z.boolean() }).strict();
 export type ConversionAnswer = z.infer<typeof conversionAnswerSchema>;
+
+/**
+ * One subscription as the billing service last read it from Stripe: the
+ * product's `SubscriptionWrite` less what only the billing service acts on
+ * (the item id, the invoice page), plus when it was first paid for.
+ */
+export const subscriptionFactSchema = z
+  .object({
+    stripeSubscriptionId: z.string().min(1).max(255),
+    tier: z.enum(MEMBERSHIP_TIERS),
+    period: z.enum(BILLING_PERIODS),
+    status: z.enum(STRIPE_SUBSCRIPTION_STATUSES),
+    currentPeriodEnd: instant.nullable(),
+    cancelAtPeriodEnd: z.boolean(),
+    hasPendingUpdate: z.boolean(),
+    pendingTier: z.enum(MEMBERSHIP_TIERS).nullable(),
+    pendingPeriod: z.enum(BILLING_PERIODS).nullable(),
+    observedAt: instant,
+    firstActiveAt: instant.nullable(),
+  })
+  .strict();
+export type SubscriptionFact = z.infer<typeof subscriptionFactSchema>;
+
+/** A bell notice written in the same transaction as the fact. */
+export const subscriptionNoticeSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("membership_upgrade_incomplete"), toTier: z.enum(MEMBERSHIP_TIERS), toPeriod: z.enum(BILLING_PERIODS) }).strict(),
+]);
+export type SubscriptionNotice = z.infer<typeof subscriptionNoticeSchema>;
+
+/** A subscription's first activation, reported after the fact commits. */
+export const subscriptionStartedSchema = z
+  .object({
+    properties: z.object({ tier: z.enum(MEMBERSHIP_TIERS), interval: z.enum(BILLING_PERIODS), amountCents: cents, currency: z.string().min(1).max(10) }).strict(),
+    consent: ConsentSnapshotSchema,
+    click: adClickSchema.nullable(),
+    transactionId: z.string().min(1).max(64),
+  })
+  .strict();
+export type SubscriptionStarted = z.infer<typeof subscriptionStartedSchema>;
+
+/** `PUT /internal/v1/commerce/subscription-facts/:deliveryId`: store a subscription fact. */
+export const subscriptionFactRequestSchema = z
+  .object({ userId: uuid, fact: subscriptionFactSchema, notices: z.array(subscriptionNoticeSchema).max(10), started: subscriptionStartedSchema.nullable() })
+  .strict();
+export type SubscriptionFactRequest = z.infer<typeof subscriptionFactRequestSchema>;
+
+/** The answer to a subscription fact: the tier now in force and the paid tier it ended, if any. */
+export const subscriptionFactAnswerSchema = z
+  .object({ tier: z.enum(MEMBERSHIP_TIERS), endedFrom: z.enum(MEMBERSHIP_TIERS).nullable() })
+  .strict();
+export type SubscriptionFactAnswer = z.infer<typeof subscriptionFactAnswerSchema>;

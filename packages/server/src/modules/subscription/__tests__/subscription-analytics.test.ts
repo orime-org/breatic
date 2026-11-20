@@ -15,7 +15,7 @@ vi.mock("@server/modules/analytics/checkout-snapshot.js", () => ({
 }));
 
 import { enqueueAdsConversion, trackServerEvent } from "@breatic/core";
-import { reportSubscriptionStarted, subscriptionConversion } from "../subscription-analytics.js";
+import { checkoutStarted, reportSubscriptionStarted, subscriptionConversion } from "../subscription-analytics.js";
 
 const write = {
   userId: "u-1",
@@ -23,7 +23,7 @@ const write = {
   status: "active",
   tier: "pro",
   period: "month",
-} as Parameters<typeof reportSubscriptionStarted>[0];
+} as Parameters<typeof checkoutStarted>[0];
 
 describe("the first conversion's amount (inner#1868 §6)", () => {
   it("is the first invoice's amount when there is one", () => {
@@ -35,7 +35,7 @@ describe("the first conversion's amount (inner#1868 §6)", () => {
   });
 
   it("reports the server-side start with the first invoice's amount, to analytics and ads alike", () => {
-    reportSubscriptionStarted(write, null, 1599);
+    reportSubscriptionStarted("u-1", checkoutStarted(write, null, 1599)!);
     expect(trackServerEvent).toHaveBeenCalledWith(
       "subscription_started",
       expect.objectContaining({ properties: expect.objectContaining({ amount_cents: 1599 }) }),

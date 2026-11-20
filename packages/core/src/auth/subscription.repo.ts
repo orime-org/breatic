@@ -16,7 +16,7 @@
  * converges on one row per Stripe subscription.
  */
 
-import { and, desc, eq, inArray, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { BillingPeriod, MembershipTier } from "@breatic/shared";
 import { db, type DbTx } from "@core/db/client.js";
@@ -230,25 +230,21 @@ export async function upsertSubscription(
 }
 
 /**
- * Stamp a subscription's first activation, once: the write that does it is
- * the one a subscription start is reported for (inner#1442 design §4.8).
- * Called after the snapshot is stored, so the status checked is the one the
- * row holds, not one an out-of-order snapshot carried.
+ * Record when a subscription was first paid for, once: the first non-null
+ * moment sticks (`coalesce`). Runs whether or not the snapshot itself was
+ * stored, since an older snapshot can still be the one that first learns of
+ * the activation (inner#1993 §4.3).
  * @param stripeSubscriptionId - Stripe's id for it.
+ * @param firstActiveAt - When it was first paid for, or null while it never was.
  * @param tx - The transaction the snapshot was stored in.
  * @returns True when this call stamped it.
  */
-export async function markFirstActive(stripeSubscriptionId: string, tx: DbTx): Promise<boolean> {
+export async function recordFirstActive(stripeSubscriptionId: string, firstActiveAt: Date | null, tx: DbTx): Promise<boolean> {
+  if (firstActiveAt === null) return false;
   const rows = await tx
     .update(subscriptions)
-    .set({ firstActiveAt: new Date() })
-    .where(
-      and(
-        eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId),
-        isNull(subscriptions.firstActiveAt),
-        inArray(subscriptions.status, ["active", "trialing"]),
-      ),
-    )
+    .set({ firstActiveAt })
+    .where(and(eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId), isNull(subscriptions.firstActiveAt)))
     .returning({ id: subscriptions.id });
   return rows.length > 0;
 }

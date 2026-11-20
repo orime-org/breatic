@@ -253,7 +253,7 @@ export type { EnterpriseMembershipWrite, EnterpriseMembershipProfile, Enterprise
 export {
   hasPaidMembership,
   listSubscriptions,
-  markFirstActive,
+  recordFirstActive,
   upsertSubscription,
 } from "@core/auth/subscription.repo.js";
 export type {
@@ -405,6 +405,16 @@ export {
   type PaymentGrantRequest,
   lotRefundFactsSchema,
   conversionAnswerSchema,
+  subscriptionFactAnswerSchema,
+  subscriptionFactRequestSchema,
+  subscriptionFactSchema,
+  subscriptionNoticeSchema,
+  subscriptionStartedSchema,
+  type SubscriptionFact,
+  type SubscriptionFactAnswer,
+  type SubscriptionFactRequest,
+  type SubscriptionNotice,
+  type SubscriptionStarted,
   conversionReportSchema,
   type ConversionAnswer,
   type ConversionReport,

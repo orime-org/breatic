@@ -25,7 +25,7 @@
  */
 
 import { takeCheckoutSnapshot, toStripeMetadata } from "@server/modules/analytics/checkout-snapshot.js";
-import { reportSubscriptionStarted } from "@server/modules/subscription/subscription-analytics.js";
+import { checkoutStarted, reportSubscriptionStarted } from "@server/modules/subscription/subscription-analytics.js";
 import type Stripe from "stripe";
 import {
   AppError,
@@ -157,12 +157,13 @@ async function writeSnapshot(
   firstInvoiceAmountCents: number | null,
 ): Promise<void> {
   const applied = await db.transaction((tx) =>
-    applySubscriptionWrite({ userId, write, referenceId, tx }),
+    applySubscriptionWrite({ userId, write, referenceId, firstActiveAt: write.status === "active" || write.status === "trialing" ? write.observedAt : null, tx }),
   );
   // After the commit: an email about a change that then rolled back cannot be
   // recalled.
   if (applied.endedFrom) await sendMembershipEndedMail(userId, applied.endedFrom);
-  if (applied.started) reportSubscriptionStarted(write, metadata, firstInvoiceAmountCents);
+  const started = applied.started ? checkoutStarted(write, metadata, firstInvoiceAmountCents) : null;
+  if (started) reportSubscriptionStarted(userId, started);
 }
 
 /**

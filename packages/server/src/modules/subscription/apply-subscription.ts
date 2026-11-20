@@ -19,7 +19,7 @@ import {
   subscriptionClock,
   subscriptionSituation,
   tierForSituation,
-  markFirstActive,
+  recordFirstActive,
   upsertSubscription,
 } from "@breatic/core";
 import type { DbTx, SubscriptionWrite } from "@breatic/core";
@@ -46,6 +46,7 @@ export interface AppliedSubscription {
  * @param input.userId - The account the subscription belongs to.
  * @param input.write - The snapshot, already read from Stripe.
  * @param input.referenceId - Identifies this change in the tier ledger.
+ * @param input.firstActiveAt - When the subscription was first paid for, or null while it never was.
  * @param input.tx - The caller's transaction.
  * @returns The tier now in force, whether an email is owed, and whether this
  *   write was the subscription's first activation.
@@ -55,12 +56,13 @@ export async function applySubscriptionWrite(input: {
   userId: string;
   write: SubscriptionWrite;
   referenceId: string;
+  firstActiveAt: Date | null;
   tx: DbTx;
 }): Promise<AppliedSubscription> {
   const { userId, write, referenceId, tx } = input;
   await lockAccountRow(userId, tx);
   await upsertSubscription(tx, write);
-  const started = await markFirstActive(write.stripeSubscriptionId, tx);
+  const started = await recordFirstActive(write.stripeSubscriptionId, input.firstActiveAt, tx);
 
   const reading = subscriptionSituation(
     await listSubscriptions(tx, userId),

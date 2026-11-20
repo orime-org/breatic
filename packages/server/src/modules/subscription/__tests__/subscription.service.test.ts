@@ -32,7 +32,7 @@ vi.mock("@breatic/core", () => ({
   currentConsent: vi.fn(() => ({ analytics: false, ads: false })),
   getAccountAttribution: vi.fn(async () => null),
   enqueueAdsConversion: vi.fn(async () => false),
-  markFirstActive: vi.fn(async () => false),
+  recordFirstActive: vi.fn(async () => false),
   listSubscriptions: vi.fn(),
   upsertSubscription: vi.fn(),
   subscriptionSituation: vi.fn(),

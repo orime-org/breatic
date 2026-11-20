@@ -406,7 +406,7 @@ describe("enterprise membership signed internal API", () => {
     expect(opened.status).toBe(200); expect(opened.json.status).toBe("applied");
     const observed = Date.now();
     for (const [index, status] of (["active", "canceled"] as const).entries()) {
-      const settled = await db.transaction((tx) => applySubscriptionWrite({ userId: id, write: subscriptionFact(id, subscriptionId, status, new Date(observed + index)), referenceId: `enterprise-origin-${status}`, tx }));
+      const settled = await db.transaction((tx) => applySubscriptionWrite({ userId: id, write: subscriptionFact(id, subscriptionId, status, new Date(observed + index)), referenceId: `enterprise-origin-${status}`, firstActiveAt: status === "active" ? new Date(observed) : null, tx }));
       expect(settled.endedFrom).toBeNull();
       const profile = await call(suite.baseUrl, path(id));
       expect(profile.status).toBe(200);
@@ -422,7 +422,7 @@ describe("enterprise membership signed internal API", () => {
     const opened = await call(suite.baseUrl, path(id), { body: { ...body, expiresAt: "2020-01-01T00:00:00.000Z" }, idempotencyKey: key() });
     expect(opened.status).toBe(200);
     const observed = Date.now();
-    const result = await db.transaction((tx) => applySubscriptionWrite({ userId: id, write: subscriptionFact(id, subscriptionId, status, new Date(observed)), referenceId: "enterprise-normalize", tx }));
+    const result = await db.transaction((tx) => applySubscriptionWrite({ userId: id, write: subscriptionFact(id, subscriptionId, status, new Date(observed)), referenceId: "enterprise-normalize", firstActiveAt: status === "active" ? new Date(observed) : null, tx }));
     expect(result.endedFrom).toBeNull();
     const profile = await call(suite.baseUrl, path(id));
     const tier = status === "active" ? "pro" : "base";
@@ -430,7 +430,7 @@ describe("enterprise membership signed internal API", () => {
     expect(profile.json.reading).toMatchObject({ enterpriseState: "ordinary", effectiveTier: tier, settlementProtected: false });
     expect(await suite.sql`select id from notifications where user_id=${id} and type='membership.ended'`).toEqual([]);
     if (status === "active") {
-      const ending = await db.transaction((tx) => applySubscriptionWrite({ userId: id, write: subscriptionFact(id, subscriptionId, "canceled", new Date(observed + 1)), referenceId: "ordinary-ending", tx }));
+      const ending = await db.transaction((tx) => applySubscriptionWrite({ userId: id, write: subscriptionFact(id, subscriptionId, "canceled", new Date(observed + 1)), referenceId: "ordinary-ending", firstActiveAt: null, tx }));
       expect(ending.endedFrom).toBe("pro");
       const notices = await suite.sql<{ payload: unknown }[]>`select payload from notifications where user_id=${id} and type='membership.ended'`;
       expect(notices).toEqual([{ payload: { fromTier: "pro" } }]);
