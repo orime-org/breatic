@@ -181,3 +181,37 @@ export type RefundStepAnswer = z.infer<typeof refundStepAnswerSchema>;
 /** `POST /internal/v1/commerce/accounts/lookup`: read many accounts' facts. */
 export const accountLookupRequestSchema = z.object({ userIds: z.array(uuid).min(1).max(100) }).strict();
 export type AccountLookupRequest = z.infer<typeof accountLookupRequestSchema>;
+
+/** What the product's outbox tells the billing service (inner#1993 §3.4). */
+export const COMMERCE_OUTBOX_TYPES = ["referral_binding", "lot_refund_lifecycle", "account_erasure"] as const;
+export type CommerceOutboxType = (typeof COMMERCE_OUTBOX_TYPES)[number];
+
+/** A bought lot's lifecycle, mirrored by the billing service for its refund views. */
+export const lotRefundLifecycleEventSchema = z
+  .object({ lotId: uuid, paymentId: uuid, userId: uuid, lifecycle: z.string().min(1) })
+  .strict();
+export type LotRefundLifecycleEvent = z.infer<typeof lotRefundLifecycleEventSchema>;
+
+/** A deleted account whose consent the billing service's orders must drop. */
+export const accountErasureEventSchema = z.object({ userId: uuid }).strict();
+export type AccountErasureEvent = z.infer<typeof accountErasureEventSchema>;
+
+/**
+ * `POST /v1/inbox/:outboxId` on the billing service: one outbox row. `seq`
+ * orders the rows of one aggregate.
+ */
+export const inboxDeliverySchema = z
+  .object({
+    type: z.enum(COMMERCE_OUTBOX_TYPES),
+    aggregateKey: z.string().min(1).max(200),
+    seq: z.number().int().positive(),
+    payload: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+export type InboxDelivery = z.infer<typeof inboxDeliverySchema>;
+
+/** The billing service's answer to one delivery. */
+export const inboxAnswerSchema = z
+  .object({ result: z.enum(["applied", "duplicate", "permanent_failure"]), detail: z.string().optional() })
+  .strict();
+export type InboxAnswer = z.infer<typeof inboxAnswerSchema>;

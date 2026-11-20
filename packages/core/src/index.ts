@@ -396,6 +396,9 @@ export {
   type RelayLoopDeps,
   type RelayLoopEvent,
 } from "@core/outbox/relay-loop.js";
+export { nextAttemptDelaySeconds } from "@core/outbox/backoff.js";
+export { commerceConfigSchema, getCommerceConfig, type CommerceConfig } from "@core/config/commerce.js";
+export * as commerceOutboxRepo from "@core/commerce/commerce-outbox.repo.js";
 export {
   adClickSchema,
   conversionContextSchema,
@@ -431,6 +434,16 @@ export {
   refundLotFactsRequestSchema,
   type LotRefundFacts,
   type RefundLotFactsRequest,
+  COMMERCE_OUTBOX_TYPES,
+  accountErasureEventSchema,
+  inboxAnswerSchema,
+  inboxDeliverySchema,
+  lotRefundLifecycleEventSchema,
+  type AccountErasureEvent,
+  type CommerceOutboxType,
+  type InboxAnswer,
+  type InboxDelivery,
+  type LotRefundLifecycleEvent,
 } from "@core/commerce/contract.js";
 export { createErrorHandler, type ErrorHandlerEvent } from "@core/http/error-handler.js";
 export { createInternalErrorHandler, type InternalErrorHandlerDeps } from "@core/http/internal-errors.js";

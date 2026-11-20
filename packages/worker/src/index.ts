@@ -46,6 +46,7 @@ import {
   unscheduleAdsUploadSweep,
   adsConversionConfig,
   type AdsConversionJob,
+  getCommerceConfig,
 } from "@breatic/core";
 import { onDatabaseWaitTimeout } from "@breatic/core";
 import { googleDataManagerSink, runAdsConversion, type AdsConversionSink } from "@worker/handlers/ads-conversion.js";
@@ -161,12 +162,16 @@ import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-ex
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
 import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
+import { reconcileLotMirror } from "@worker/handlers/commerce-lot-mirror.js";
 
 /** Queue holding the recurring sweep of Timeline executions that have not ended (inner#1711). */
 const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
 
 /** Queue holding the recurring sweep of charge requests still pending (inner#1617). */
 const CREDIT_CHARGE_SWEEP_QUEUE = "credit-charge-sweep";
+
+/** Queue holding the daily resend of bought lots to the billing service's mirror (inner#1993 §5.4). */
+const COMMERCE_LOT_MIRROR_QUEUE = "commerce-lot-mirror";
 
 /** Every BullMQ queue this process runs a worker for. */
 const WORKER_QUEUES: readonly string[] = [
@@ -182,6 +187,7 @@ const WORKER_QUEUES: readonly string[] = [
   TIMELINE_QUEUE,
   TIMELINE_SWEEP_QUEUE,
   CREDIT_CHARGE_SWEEP_QUEUE,
+  COMMERCE_LOT_MIRROR_QUEUE,
 ];
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
@@ -264,6 +270,20 @@ export function startWorker(): void {
     { name: creditChargeSweepJob, data: {}, opts: defaultJobOpts() },
   ).catch((err: unknown) => {
     logger.error({ err }, "credit_charge_sweep_schedule_failed");
+  });
+
+  const lotMirrorQueue = createQueue(COMMERCE_LOT_MIRROR_QUEUE);
+  const lotMirror = createWorker<Record<string, never>>(COMMERCE_LOT_MIRROR_QUEUE, () => reconcileLotMirror());
+  lotMirror.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "commerce_lot_mirror_failed");
+  });
+  const lotMirrorJob = "commerce-lot-mirror";
+  void lotMirrorQueue.upsertJobScheduler(
+    lotMirrorJob,
+    { pattern: getCommerceConfig().lot_mirror_reconcile_cron, tz: "UTC" },
+    { name: lotMirrorJob, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "commerce_lot_mirror_schedule_failed");
   });
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
@@ -575,6 +595,7 @@ export function startWorker(): void {
         () => timelineWorker.close(),
         () => timelineSweep.close(),
         () => creditChargeSweep.close(),
+        () => lotMirror.close(),
         () => timelineEvents.close(),
         () => urlIngest.close(),
         () => uploadFinish.close(),

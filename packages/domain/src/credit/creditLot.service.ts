@@ -38,6 +38,7 @@ import {
   serializeCreditPosition,
 } from "@domain/credit/credit-math.js";
 import {
+  commerceOutboxRepo,
   db,
   env,
   publishCreditsChanged,
@@ -183,7 +184,7 @@ export async function grantFromPayment(
    * @returns The new lot.
    */
   const run = async (tx: DbTx): Promise<CreditLotEntity> =>
-    creditLotRepo.createLot(
+    mirrored(await creditLotRepo.createLot(
       {
         // The payment's own id, which is also its source id — see
         // `createSource`. Opening a source here would hand every redelivery
@@ -198,7 +199,7 @@ export async function grantFromPayment(
         designatedStudioId: null,
       },
       tx,
-    );
+    ), tx);
   // The caller may already hold the transaction that decided this payment is
   // ours to grant. Opening a second one here would let the grant commit
   // while the decision rolls back.
@@ -743,7 +744,7 @@ export async function requestRefund(input: {
       // arrives, the buyer reads one answer.
       throw REFUSAL_ERRORS.already_asked();
     }
-    return asked;
+    return mirrored(asked, tx);
   });
 }
 
@@ -753,6 +754,39 @@ export async function requestRefund(input: {
 // row lock and decided the edge applies; the disposition and its ledger row
 // commit together or not at all. A lot no longer in the state the edge starts
 // from answers 409 and nothing is written.
+
+/**
+ * Tell the billing service where a lot now stands, in the transaction that
+ * moved it (inner#1993 §5.1); lots nobody paid for are left out.
+ * @param lot - The lot as it now stands.
+ * @param tx - The transaction that moved it.
+ * @returns The same lot.
+ */
+async function mirrored(lot: CreditLotEntity, tx: DbTx): Promise<CreditLotEntity> {
+  await commerceOutboxRepo.appendLotLifecycle(lot, tx);
+  return lot;
+}
+
+/**
+ * Resend bought lots' current lifecycle to the billing service, once a day
+ * (inner#1993 §5.4), so its mirror converges even when a delivery was lost.
+ * Each lot is read under its own lock, in a transaction of its own, so the
+ * snapshot is ordered after any edge that committed before it.
+ * @param windowDays - How far back an active lot must have changed.
+ * @returns How many lots were resent.
+ * @throws {Error} When the database fails; lots already resent stay resent.
+ */
+export async function resendLotMirror(windowDays: number): Promise<number> {
+  if (!env.SELLING) return 0;
+  const ids = await creditLotRepo.listLotIdsForMirror(windowDays);
+  for (const id of ids) {
+    await db.transaction(async (tx) => {
+      const lot = await creditLotRepo.lockLot(id, tx);
+      if (lot) await mirrored(lot, tx);
+    });
+  }
+  return ids.length;
+}
 
 /**
  * The 409 every refund edge answers when the lot has moved on.
@@ -776,7 +810,7 @@ export async function markRefunding(
 ): Promise<CreditLotEntity> {
   const lot = await creditLotRepo.markRefunding(input.lotId, tx);
   if (!lot) throw refundStateChanged();
-  return lot;
+  return mirrored(lot, tx);
 }
 
 /**
@@ -811,7 +845,7 @@ export async function settleRefund(
     },
     tx,
   );
-  return lot;
+  return mirrored(lot, tx);
 }
 
 /**
@@ -829,7 +863,7 @@ export async function sendBackRefund(
 ): Promise<CreditLotEntity> {
   const lot = await creditLotRepo.markSentBack(input.lotId, tx);
   if (!lot) throw refundStateChanged();
-  return lot;
+  return mirrored(lot, tx);
 }
 
 /**
@@ -858,7 +892,7 @@ export async function rejectRefund(
     },
     tx,
   );
-  return lot;
+  return mirrored(lot, tx);
 }
 
 /**
@@ -894,7 +928,7 @@ export async function restoreRefundedCredits(
     },
     tx,
   );
-  return lot;
+  return mirrored(lot, tx);
 }
 
 /**

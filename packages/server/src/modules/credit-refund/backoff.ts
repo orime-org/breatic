@@ -2,27 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The refund loop's retry backoff (inner#1410 §7.1, §7.4).
+ * The refund loop's retry backoff (inner#1410 §7.1, §7.4). The delay before
+ * the n-th retry is core's `nextAttemptDelaySeconds`.
  */
-
-/**
- * How long to wait before the n-th retry: `min(base * 2^(n-1), max)`.
- * @param attempt - Which retry this is, counting from 1.
- * @param config - The backoff bounds from `config/credit-refund.yaml`.
- * @param config.backoffBaseSeconds - The first wait.
- * @param config.backoffMaxSeconds - The longest wait.
- * @returns Seconds to wait.
- * @throws {RangeError} When `attempt` is not a positive integer.
- */
-export function nextAttemptDelaySeconds(
-  attempt: number,
-  config: { backoffBaseSeconds: number; backoffMaxSeconds: number },
-): number {
-  if (!Number.isInteger(attempt) || attempt < 1) {
-    throw new RangeError(`attempt must be a positive integer, got ${attempt}`);
-  }
-  return Math.min(config.backoffBaseSeconds * 2 ** (attempt - 1), config.backoffMaxSeconds);
-}
 
 /**
  * Whether a disposition has used up its attempts (E11, `attempts_exhausted`).

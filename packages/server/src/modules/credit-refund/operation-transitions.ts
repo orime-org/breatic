@@ -12,11 +12,11 @@
  * {@link ImpossibleTransitionError} before writing anything.
  */
 
-import type { DbTx } from "@breatic/core";
+import { nextAttemptDelaySeconds, type DbTx } from "@breatic/core";
 import type { CreditLotEntity } from "@breatic/shared";
 import { creditLotRepo, creditLotService } from "@breatic/domain";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
-import { nextAttemptDelaySeconds, waitedBackoffSeconds } from "@server/modules/credit-refund/backoff.js";
+import { waitedBackoffSeconds } from "@server/modules/credit-refund/backoff.js";
 import * as operationRepo from "@server/modules/credit-refund/operation.repo.js";
 import type {
   AttentionReason,

@@ -1280,6 +1280,27 @@ export async function readLotRefundFacts(lotIds: string[]): Promise<LotRefundFac
   }));
 }
 
+/**
+ * The bought lots the daily lot-mirror reconcile resends (inner#1993 §5.4):
+ * every one not active, and the active ones that changed within the window.
+ * Soft-deleted lots are included; the billing service mirrors them too.
+ * @param windowDays - How far back an active lot must have changed.
+ * @returns Their ids, oldest first.
+ */
+export async function listLotIdsForMirror(windowDays: number): Promise<string[]> {
+  const rows = await db
+    .select({ id: creditLots.id })
+    .from(creditLots)
+    .where(
+      and(
+        eq(creditLots.sourceKind, "payment"),
+        or(ne(creditLots.lifecycle, "active"), sql`${creditLots.updatedAt} > now() - make_interval(days => ${windowDays})`),
+      ),
+    )
+    .orderBy(asc(creditLots.createdAt), asc(creditLots.id));
+  return rows.map((r) => r.id);
+}
+
 /** One lot a studio holds, with the buyer's display name. */
 export interface StudioLot extends CreditLotEntity {
   /** Who bought it. Absent when their personal studio is gone. */
