@@ -278,6 +278,15 @@ describe("a send on the payer's own OpenRouter key the balance cannot pay for (i
     await getRedis().rpush(keysOf(who.conversationId).queue, itemOf(who, crypto.randomUUID()));
     expect(await synced(who)).toMatchObject({ blocked: "credits", own_key: "self" });
   });
+
+  it("still says the balance is why no run opened when the payer's key cannot be opened", async () => {
+    const who = await seedOwner(0);
+    await accountProviderKeysRepo.saveKey({
+      userId: who.userId, upstream: "openrouter", ciphertext: sealProviderKey("sk-or-own", { current: "gone", keys: { gone: crypto.randomBytes(32) } }), displayHint: "hint",
+    });
+    await getRedis().rpush(keysOf(who.conversationId).queue, itemOf(who, crypto.randomUUID()));
+    expect(await synced(who)).toMatchObject({ blocked: "credits" });
+  });
 });
 
 describe("a sync while the balance cannot pay", () => {

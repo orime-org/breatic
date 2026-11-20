@@ -44,7 +44,7 @@ import { agentInstructionsService } from "@server/modules";
 import { runningTurnsService } from "@server/modules";
 import { projectService } from "@server/modules";
 import { precheckAgentTurn, precheckCredits } from "@server/modules";
-import { SMALLEST_CREDIT, resolveKeys } from "@breatic/domain";
+import { SMALLEST_CREDIT } from "@breatic/domain";
 import { turnKeysOf } from "@server/agent/turn-keys.js";
 import type { KeySet } from "@breatic/provider";
 import { startRun, stopChannel } from "@server/agent/chat-run.js";
@@ -408,8 +408,10 @@ chat.post(
           });
         }
         // On the payer's own OpenRouter key the page says the Agent's paid tools are what need credits (inner#1953).
-        const { payerUserId } = await resolveKeys({ projectId }, { kind: "llm" });
-        const ownKey = payerUserId === null ? undefined : payerUserId === user.id ? "self" : "admin";
+        const turnKeys = await turnKeysOf(projectId);
+        if ("failed" in turnKeys) logger.warn({ err: turnKeys.failed, userId: user.id, conversationId: conversation.id }, "chat_turn_keys_unreadable");
+        const { keyOwner } = turnKeys;
+        const ownKey = keyOwner === undefined ? undefined : keyOwner === user.id ? "self" : "admin";
         return c.json({ data: { pending, running: false, awaiting: false, blocked: "credits", ...(ownKey === undefined ? {} : { own_key: ownKey }), next_sync_ms } });
       }
       const claimed = await queue.claim(conversation.id);
