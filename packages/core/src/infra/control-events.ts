@@ -61,6 +61,7 @@ import {
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
+  notificationsChangedChannel,
   type ActivityNewControlEvent,
   type CreditsChangedControlEvent,
   type SpaceTasksChangedControlEvent,
@@ -69,6 +70,7 @@ import {
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
   type SessionsRevokedEvent,
+  type NotificationsChangedControlEvent,
 } from "@breatic/shared";
 
 /**
@@ -152,6 +154,19 @@ export async function publishSpaceTasksChanged(projectId: string, spaceId: strin
 export async function publishAssignmentsChanged(projectId: string, spaceId: string): Promise<void> {
   const event: AssignmentsChangedControlEvent = { type: "project-assignments:changed", projectId, spaceId, ts: Date.now() };
   await getStreamRedis().publish(assignmentsChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+}
+
+/**
+ * Tell every collab instance that these users' notifications changed
+ * (breatic#1488 §11.9), for it to send `notifications:changed` to their meta
+ * connections there. Call it after the transaction that wrote them commits.
+ * @param userIds - Whose notifications changed; nothing is sent for none.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function publishNotificationsChanged(userIds: readonly string[]): Promise<void> {
+  if (userIds.length === 0) return;
+  const event: NotificationsChangedControlEvent = { type: "notifications:changed", userIds: [...new Set(userIds)], ts: Date.now() };
+  await getStreamRedis().publish(notificationsChangedChannel(env.REDIS_KEY_PREFIX), JSON.stringify(event));
 }
 
 /**

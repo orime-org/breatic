@@ -182,6 +182,7 @@ export {
   publishCreditsChanged,
   publishSpaceTasksChanged,
   publishAssignmentsChanged,
+  publishNotificationsChanged,
   publishViewCaptureRequested,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
@@ -233,7 +234,8 @@ export * as notificationRepo from "@core/notification/notification.repo.js";
 export * as commentRecordService from "@core/comment-record/comment-record.service.js";
 export * as commentAssignmentsRepo from "@core/comment-record/comment-assignments.repo.js";
 export type { MentionRow } from "@core/comment-record/comment-mentions.repo.js";
-export type { AssignmentRow, AssignmentStatus } from "@core/comment-record/comment-assignments.repo.js";
+export type { AssignmentStatus, ThreadPlace } from "@core/comment-record/comment-assignments.repo.js";
+export type { HandedThread } from "@core/comment-record/comment-record.service.js";
 export type { NotificationType, NewNotificationInput } from "@core/notification/notification.repo.js";
 export * as projectAssetReferenceService from "@core/asset/project-asset-reference.service.js";
 export * as assetRepo from "@core/asset/asset.repo.js";

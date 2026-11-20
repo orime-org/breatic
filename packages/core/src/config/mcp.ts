@@ -44,6 +44,8 @@ export const mcpConfigSchema = z.object({
   startup_retry_interval_ms: positiveInt.default(1_000),
   /** How long a command's reply (a capture's result included) stays readable. */
   reply_ttl_seconds: positiveInt.default(600),
+  /** How long a connection's set of newly handed threads lives after its last change (breatic#1488 §15.11). */
+  new_assignments_ttl_seconds: positiveInt.default(604_800),
   task_query_max_ids: positiveInt.default(50),
   read_canvas_max_nodes: positiveInt.default(500),
   view_capture: viewCaptureSchema.prefault({}),

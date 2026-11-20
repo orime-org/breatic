@@ -30,6 +30,10 @@ startup_retry_interval_ms: 1000
 # How long a command's reply, a capture's result included, stays readable.
 reply_ttl_seconds: 600
 
+# How long a connection's set of newly handed threads lives after its last
+# change: an agent idle this long starts again from list_assignments.
+new_assignments_ttl_seconds: 604800
+
 # Most task ids one task query may name.
 task_query_max_ids: 50
 # Most nodes one canvas read returns.

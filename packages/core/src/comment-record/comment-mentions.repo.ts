@@ -2,15 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * `comment_mentions` (#1488 §11.6): one row per comment entry and member it
- * mentions, synced by collab from a Space document after each store.
+ * `comment_mentions` (#1488 §11.6, §15.8): one row per comment entry and
+ * member it mentions, inserted by collab when the browser asks it to record
+ * an entry's mentions. Rows are only inserted; a deleted Space voids them and
+ * its restore brings them back.
  */
 
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { db, type DbTx } from "@core/db/client.js";
+import { type DbTx } from "@core/db/client.js";
 import { commentMentions } from "@core/db/schema.js";
 
-/** One mention as a Space document holds it. */
+/** One mention as the document reads it. */
 export interface MentionRow {
   entryId: string;
   threadId: string;
@@ -25,52 +27,23 @@ export interface InsertedMention extends MentionRow {
 }
 
 /**
- * Make one Space's rows what its document reads now: rows read for the first
- * time are inserted, rows read again come back from void, and rows no longer
- * read are voided.
+ * Insert the rows not recorded yet.
  * @param projectId - The project.
  * @param spaceId - The Space.
- * @param rows - What the document reads.
+ * @param rows - What the entry mentions now.
  * @param tx - The open transaction.
- * @returns The rows inserted for the first time.
+ * @returns The rows inserted by this call.
  * @throws {Error} When the database write fails.
  */
-export async function syncSpace(projectId: string, spaceId: string, rows: readonly MentionRow[], tx: DbTx): Promise<InsertedMention[]> {
-  const existing = await tx
-    .select({ id: commentMentions.id, entryId: commentMentions.entryId, userId: commentMentions.userId, deletedAt: commentMentions.deletedAt })
-    .from(commentMentions)
-    .where(and(eq(commentMentions.projectId, projectId), eq(commentMentions.spaceId, spaceId)))
-    .for("update");
-  /**
-   * One row's identity within the Space.
-   * @param entryId - The comment entry.
-   * @param userId - The member.
-   * @returns The key.
-   */
-  const key = (entryId: string, userId: string): string => `${entryId}\u0000${userId}`;
-  const byKey = new Map(existing.map((r) => [key(r.entryId, r.userId), r]));
-  const read = new Set(rows.map((r) => key(r.entryId, r.userId)));
+export async function insertMissing(projectId: string, spaceId: string, rows: readonly MentionRow[], tx: DbTx): Promise<InsertedMention[]> {
   const inserted: InsertedMention[] = [];
   for (const row of rows) {
-    const found = byKey.get(key(row.entryId, row.userId));
-    if (found === undefined) {
-      // Another instance may insert the same row first; it notifies.
-      const [made] = await tx
-        .insert(commentMentions)
-        .values({ projectId, spaceId, ...row, mentionedAt: new Date(row.mentionedAt) })
-        .onConflictDoNothing()
-        .returning({ id: commentMentions.id });
-      if (made) inserted.push({ id: made.id, ...row });
-    } else if (found.deletedAt !== null) {
-      await tx
-        .update(commentMentions)
-        .set({ deletedAt: null, threadId: row.threadId, authorId: row.authorId, mentionedAt: new Date(row.mentionedAt), updatedAt: sql`now()` })
-        .where(eq(commentMentions.id, found.id));
-    }
-  }
-  const gone = existing.filter((r) => r.deletedAt === null && !read.has(key(r.entryId, r.userId)));
-  for (const { id } of gone) {
-    await tx.update(commentMentions).set({ deletedAt: sql`now()`, updatedAt: sql`now()` }).where(eq(commentMentions.id, id));
+    const [made] = await tx
+      .insert(commentMentions)
+      .values({ projectId, spaceId, ...row, mentionedAt: new Date(row.mentionedAt) })
+      .onConflictDoNothing()
+      .returning({ id: commentMentions.id });
+    if (made) inserted.push({ id: made.id, ...row });
   }
   return inserted;
 }
@@ -92,15 +65,29 @@ export async function markNotified(id: string, tx: DbTx): Promise<boolean> {
 }
 
 /**
- * Void every row of a deleted Space.
+ * Void every live row of a deleted Space.
  * @param projectId - The project.
  * @param spaceId - The Space.
- * @param tx - The open transaction, when there is one.
+ * @param tx - The open transaction.
  * @throws {Error} When the database write fails.
  */
-export async function voidSpace(projectId: string, spaceId: string, tx?: DbTx): Promise<void> {
-  await (tx ?? db)
+export async function voidSpace(projectId: string, spaceId: string, tx: DbTx): Promise<void> {
+  await tx
     .update(commentMentions)
-    .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
+    .set({ deletedAt: sql`now()`, voidReason: "space_deleted", updatedAt: sql`now()` })
     .where(and(eq(commentMentions.projectId, projectId), eq(commentMentions.spaceId, spaceId), isNull(commentMentions.deletedAt)));
+}
+
+/**
+ * Bring back the rows its delete voided when a Space is restored.
+ * @param projectId - The project.
+ * @param spaceId - The Space.
+ * @param tx - The open transaction.
+ * @throws {Error} When the database write fails.
+ */
+export async function restoreSpace(projectId: string, spaceId: string, tx: DbTx): Promise<void> {
+  await tx
+    .update(commentMentions)
+    .set({ deletedAt: null, voidReason: null, updatedAt: sql`now()` })
+    .where(and(eq(commentMentions.projectId, projectId), eq(commentMentions.spaceId, spaceId), eq(commentMentions.voidReason, "space_deleted")));
 }

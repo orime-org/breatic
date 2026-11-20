@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * `comment_assignments` (#1488 §11.7): one row per thread handed to an
- * external agent, synced by collab from a Space document after each store.
- * The MCP service and the hand-giver's thread labels read it.
+ * `comment_assignments` (#1488 §11.7, §15.10): one row per thread handed to
+ * an external agent, written by collab while it handles a hand-over request,
+ * a cancel request or the agent's reply, and voided or restored with its
+ * Space. The MCP service and the hand-giver's thread labels read it.
  */
 
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
@@ -12,80 +13,102 @@ import { db, type DbTx } from "@core/db/client.js";
 import { commentAssignments } from "@core/db/schema.js";
 
 /** Where a hand-over stands. */
-export type AssignmentStatus = "pending" | "answered" | "resolved";
+export type AssignmentStatus = "pending" | "answered";
 
-/** One hand-over as a Space document holds it. */
-export interface AssignmentRow {
+/** One thread's hand-over, as the record holds it. */
+export interface AssignmentRecord {
+  id: string;
   threadId: string;
   connectionId: string;
   assignedBy: string;
   assignedAt: number;
   status: AssignmentStatus;
+  notifiedAt: Date | null;
+  voidReason: "cancelled" | "space_deleted" | null;
 }
 
-/** A hand-over its agent answered in this sync, not yet notified. */
-export interface AnsweredAssignment extends AssignmentRow {
-  id: string;
-}
-
-/** What one sync changed. */
-export interface AssignmentSync {
-  /** Whether any row was inserted, changed, restored or voided. */
-  changed: boolean;
-  /** The rows that became answered and whose giver was not told yet. */
-  answered: AnsweredAssignment[];
+/** Which thread, in which Space. */
+export interface ThreadPlace {
+  projectId: string;
+  spaceId: string;
+  threadId: string;
 }
 
 /**
- * Make one Space's rows what its document reads now. A hand-over given again
- * (a new `assignedAt`) clears `notified_at`, so each hand-over notifies once.
- * @param projectId - The project.
- * @param spaceId - The Space.
- * @param rows - What the document reads.
+ * One thread's row, locked for the rest of the transaction.
+ * @param place - The thread.
  * @param tx - The open transaction.
- * @returns Whether anything changed, and the rows that became answered.
+ * @returns The row, voided or not, or undefined when there is none.
+ * @throws {Error} When the database read fails.
+ */
+export async function lockForThread(place: ThreadPlace, tx: DbTx): Promise<AssignmentRecord | undefined> {
+  const [row] = await tx
+    .select({
+      id: commentAssignments.id,
+      threadId: commentAssignments.threadId,
+      connectionId: commentAssignments.connectionId,
+      assignedBy: commentAssignments.assignedBy,
+      assignedAt: commentAssignments.assignedAt,
+      status: commentAssignments.status,
+      notifiedAt: commentAssignments.notifiedAt,
+      voidReason: commentAssignments.voidReason,
+    })
+    .from(commentAssignments)
+    .where(and(
+      eq(commentAssignments.projectId, place.projectId),
+      eq(commentAssignments.spaceId, place.spaceId),
+      eq(commentAssignments.threadId, place.threadId),
+    ))
+    .for("update");
+  return row;
+}
+
+/**
+ * Hand a thread over: insert its row, or make the existing one this
+ * hand-over, pending, live and not yet notified.
+ * @param place - The thread.
+ * @param given - Who handed it to which connection, and when.
+ * @param given.connectionId - The connection.
+ * @param given.assignedBy - Who handed it over.
+ * @param given.assignedAt - When, epoch milliseconds.
+ * @param tx - The open transaction.
  * @throws {Error} When the database write fails.
  */
-export async function syncSpace(projectId: string, spaceId: string, rows: readonly AssignmentRow[], tx: DbTx): Promise<AssignmentSync> {
-  const existing = await tx
-    .select()
-    .from(commentAssignments)
-    .where(and(eq(commentAssignments.projectId, projectId), eq(commentAssignments.spaceId, spaceId)))
-    .for("update");
-  const byThread = new Map(existing.map((r) => [r.threadId, r]));
-  const read = new Set(rows.map((r) => r.threadId));
-  let changed = false;
-  const answered: AnsweredAssignment[] = [];
-  for (const row of rows) {
-    const found = byThread.get(row.threadId);
-    if (found === undefined) {
-      const [made] = await tx
-        .insert(commentAssignments)
-        .values({ projectId, spaceId, ...row })
-        .onConflictDoNothing()
-        .returning({ id: commentAssignments.id });
-      if (!made) continue;
-      changed = true;
-      if (row.status === "answered") answered.push({ id: made.id, ...row });
-      continue;
-    }
-    const regiven = found.assignedAt !== row.assignedAt || found.connectionId !== row.connectionId;
-    const same = !regiven && found.deletedAt === null && found.status === row.status && found.assignedBy === row.assignedBy;
-    if (same) continue;
-    await tx
-      .update(commentAssignments)
-      .set({ ...row, deletedAt: null, ...(regiven ? { notifiedAt: null } : {}), updatedAt: sql`now()` })
-      .where(eq(commentAssignments.id, found.id));
-    changed = true;
-    const notified = regiven ? null : found.notifiedAt;
-    if (row.status === "answered" && notified === null && (regiven || found.status !== "answered")) answered.push({ id: found.id, ...row });
-  }
-  for (const r of existing) {
-    if (r.deletedAt !== null || read.has(r.threadId)) continue;
-    await tx.update(commentAssignments).set({ deletedAt: sql`now()`, updatedAt: sql`now()` }).where(eq(commentAssignments.id, r.id));
-    changed = true;
-  }
-  return { changed, answered };
+export async function handOver(
+  place: ThreadPlace,
+  given: { connectionId: string; assignedBy: string; assignedAt: number },
+  tx: DbTx,
+): Promise<void> {
+  await tx
+    .insert(commentAssignments)
+    .values({ ...place, ...given, status: "pending" })
+    .onConflictDoUpdate({
+      target: [commentAssignments.projectId, commentAssignments.spaceId, commentAssignments.threadId],
+      set: { ...given, status: "pending", notifiedAt: null, voidReason: null, deletedAt: null, updatedAt: sql`now()` },
+    });
+}
+
+/**
+ * Void a hand-over its giver took back.
+ * @param id - The row.
+ * @param tx - The open transaction.
+ * @throws {Error} When the database write fails.
+ */
+export async function cancel(id: string, tx: DbTx): Promise<void> {
+  await tx
+    .update(commentAssignments)
+    .set({ deletedAt: sql`now()`, voidReason: "cancelled", updatedAt: sql`now()` })
+    .where(eq(commentAssignments.id, id));
+}
+
+/**
+ * Mark a pending hand-over answered.
+ * @param id - The row.
+ * @param tx - The open transaction.
+ * @throws {Error} When the database write fails.
+ */
+export async function markAnswered(id: string, tx: DbTx): Promise<void> {
+  await tx.update(commentAssignments).set({ status: "answered", updatedAt: sql`now()` }).where(eq(commentAssignments.id, id));
 }
 
 /**
@@ -105,20 +128,43 @@ export async function markNotified(id: string, tx: DbTx): Promise<boolean> {
 }
 
 /**
- * Void every row of a deleted Space.
+ * Void every live row of a deleted Space.
  * @param projectId - The project.
  * @param spaceId - The Space.
- * @param tx - The open transaction, when there is one.
- * @returns Whether any row was voided.
+ * @param tx - The open transaction.
+ * @returns The rows voided.
  * @throws {Error} When the database write fails.
  */
-export async function voidSpace(projectId: string, spaceId: string, tx?: DbTx): Promise<boolean> {
-  const voided = await (tx ?? db)
+export async function voidSpace(
+  projectId: string,
+  spaceId: string,
+  tx: DbTx,
+): Promise<Array<{ threadId: string; connectionId: string; status: AssignmentStatus }>> {
+  return tx
     .update(commentAssignments)
-    .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
+    .set({ deletedAt: sql`now()`, voidReason: "space_deleted", updatedAt: sql`now()` })
     .where(and(eq(commentAssignments.projectId, projectId), eq(commentAssignments.spaceId, spaceId), isNull(commentAssignments.deletedAt)))
-    .returning({ id: commentAssignments.id });
-  return voided.length > 0;
+    .returning({ threadId: commentAssignments.threadId, connectionId: commentAssignments.connectionId, status: commentAssignments.status });
+}
+
+/**
+ * Bring back the rows its delete voided when a Space is restored.
+ * @param projectId - The project.
+ * @param spaceId - The Space.
+ * @param tx - The open transaction.
+ * @returns The rows restored.
+ * @throws {Error} When the database write fails.
+ */
+export async function restoreSpace(
+  projectId: string,
+  spaceId: string,
+  tx: DbTx,
+): Promise<Array<{ threadId: string; connectionId: string; status: AssignmentStatus }>> {
+  return tx
+    .update(commentAssignments)
+    .set({ deletedAt: null, voidReason: null, updatedAt: sql`now()` })
+    .where(and(eq(commentAssignments.projectId, projectId), eq(commentAssignments.spaceId, spaceId), eq(commentAssignments.voidReason, "space_deleted")))
+    .returning({ threadId: commentAssignments.threadId, connectionId: commentAssignments.connectionId, status: commentAssignments.status });
 }
 
 /**
@@ -142,6 +188,25 @@ export async function listPendingForConnection(
       isNull(commentAssignments.deletedAt),
     ))
     .orderBy(asc(commentAssignments.assignedAt));
+}
+
+/**
+ * The live pending hand-overs in one Space, whoever gave them.
+ * @param projectId - The project.
+ * @param spaceId - The Space.
+ * @returns Each thread and the connection it waits for.
+ * @throws {Error} When the database read fails.
+ */
+export async function listPendingInSpace(projectId: string, spaceId: string): Promise<Array<{ threadId: string; connectionId: string }>> {
+  return db
+    .select({ threadId: commentAssignments.threadId, connectionId: commentAssignments.connectionId })
+    .from(commentAssignments)
+    .where(and(
+      eq(commentAssignments.projectId, projectId),
+      eq(commentAssignments.spaceId, spaceId),
+      eq(commentAssignments.status, "pending"),
+      isNull(commentAssignments.deletedAt),
+    ));
 }
 
 /**

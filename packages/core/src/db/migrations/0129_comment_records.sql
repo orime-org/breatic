@@ -1,7 +1,8 @@
--- Comment records (#1488 §11.6, §11.7): which members each comment entry
--- mentions and which threads are handed to an external agent, derived by
--- collab from a Space document's bytes after each store. Rows a store no
--- longer reads are voided (deleted_at), and come back when the content does.
+-- Comment records (#1488 §11.6, §11.7, §11.9): which members each comment
+-- entry mentions and which threads are handed to an external agent. Collab
+-- writes them while it handles the browser's comment requests and the
+-- agent's reply. A voided row (deleted_at) says why in void_reason: a
+-- hand-over taken back, or its Space deleted, which a restore undoes.
 CREATE TABLE comment_mentions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id uuid NOT NULL,
@@ -12,14 +13,15 @@ CREATE TABLE comment_mentions (
   author_id uuid NOT NULL,
   mentioned_at timestamptz NOT NULL,
   notified_at timestamptz,
+  void_reason text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
-  CONSTRAINT comment_mentions_project_fk FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT
+  CONSTRAINT comment_mentions_project_fk FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+  CONSTRAINT comment_mentions_void_reason_check CHECK (void_reason IN ('space_deleted'))
 );
 --> statement-breakpoint
--- One row per entry and member, voided or not, so a mention that comes back
--- reuses its row and its notified_at.
+-- One row per entry and member, so a mention asked about again notifies nobody.
 CREATE UNIQUE INDEX comment_mentions_entry_user_key ON comment_mentions (project_id, space_id, entry_id, user_id);
 --> statement-breakpoint
 CREATE TABLE comment_assignments (
@@ -32,11 +34,13 @@ CREATE TABLE comment_assignments (
   assigned_at bigint NOT NULL,
   status text NOT NULL,
   notified_at timestamptz,
+  void_reason text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   deleted_at timestamptz,
   CONSTRAINT comment_assignments_project_fk FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT,
-  CONSTRAINT comment_assignments_status_check CHECK (status IN ('pending', 'answered', 'resolved'))
+  CONSTRAINT comment_assignments_status_check CHECK (status IN ('pending', 'answered')),
+  CONSTRAINT comment_assignments_void_reason_check CHECK (void_reason IN ('cancelled', 'space_deleted'))
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX comment_assignments_thread_key ON comment_assignments (project_id, space_id, thread_id);

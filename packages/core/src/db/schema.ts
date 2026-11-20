@@ -3740,10 +3740,14 @@ export const commentMentions = pgTable(
     authorId: uuid("author_id").notNull(),
     mentionedAt: timestamp("mentioned_at", { withTimezone: true }).notNull(),
     notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    voidReason: text("void_reason").$type<"space_deleted">(),
     ...timestamps,
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
-  (table) => [uniqueIndex("comment_mentions_entry_user_key").on(table.projectId, table.spaceId, table.entryId, table.userId)],
+  (table) => [
+    uniqueIndex("comment_mentions_entry_user_key").on(table.projectId, table.spaceId, table.entryId, table.userId),
+    check("comment_mentions_void_reason_check", sql`${table.voidReason} IN ('space_deleted')`),
+  ],
 );
 
 export const commentAssignments = pgTable(
@@ -3755,10 +3759,11 @@ export const commentAssignments = pgTable(
     threadId: text("thread_id").notNull(),
     connectionId: uuid("connection_id").notNull(),
     assignedBy: uuid("assigned_by").notNull(),
-    // Epoch milliseconds, compared for equality with the `answers` replies carry.
+    // Epoch milliseconds: when it was handed over, each hand-over a new value.
     assignedAt: bigint("assigned_at", { mode: "number" }).notNull(),
-    status: text("status").$type<"pending" | "answered" | "resolved">().notNull(),
+    status: text("status").$type<"pending" | "answered">().notNull(),
     notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    voidReason: text("void_reason").$type<"cancelled" | "space_deleted">(),
     ...timestamps,
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
@@ -3766,7 +3771,8 @@ export const commentAssignments = pgTable(
     uniqueIndex("comment_assignments_thread_key").on(table.projectId, table.spaceId, table.threadId),
     index("comment_assignments_connection_idx").on(table.connectionId, table.status).where(sql`${table.deletedAt} IS NULL`),
     index("comment_assignments_space_giver_idx").on(table.projectId, table.spaceId, table.assignedBy).where(sql`${table.deletedAt} IS NULL`),
-    check("comment_assignments_status_check", sql`${table.status} IN ('pending', 'answered', 'resolved')`),
+    check("comment_assignments_status_check", sql`${table.status} IN ('pending', 'answered')`),
+    check("comment_assignments_void_reason_check", sql`${table.voidReason} IN ('cancelled', 'space_deleted')`),
   ],
 );
 
