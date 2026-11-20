@@ -60,12 +60,6 @@ timeline.post(
   },
 );
 
-// Kept for the older tabs of the deploy window: they read this array for their list and tab status. Removed in the
-// next release, with the kind-less create the accept route still takes.
-timeline.get("/executions", validate("query", spaceQuery), async (c) => {
-  const { projectId, spaceId } = c.req.valid("query");
-  return c.json({ data: await executions.list(c.get("user").id, projectId, spaceId) });
-});
 
 timeline.get("/space-executions", validate("query", spaceExecutionsQuery), async (c) => {
   return c.json({ data: await executions.listSpace(c.get("user").id, c.req.valid("query")) });

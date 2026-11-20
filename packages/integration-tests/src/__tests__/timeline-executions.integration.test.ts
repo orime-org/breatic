@@ -375,16 +375,6 @@ describe("timelineExecutionRepo.markBilled — the billed_at gate", () => {
 });
 
 describe("timelineExecutionRepo reads", () => {
-  it("lists a Space's executions newest first, only for its own Project", async () => {
-    const fixture = await seedProject();
-    const spaceId = randomUUID();
-    const older = await accept({ ...fixture, spaceId });
-    const newer = await accept({ ...fixture, spaceId });
-    const other = await seedProject();
-    await accept({ ...other, spaceId });
-    const listed = await timelineExecutionRepo.listForSpace({ projectId: fixture.projectId, spaceId });
-    expect(listed.map((row) => row.id)).toEqual([newer.id, older.id]);
-  });
 
   it("offers every non-terminal row to the worker sweep and no terminal one", async () => {
     const rows = await Promise.all((["awaiting_landing", "queued", "running", "cancelling", "succeeded", "failed", "cancelled", "expired"] as const).map(reach));

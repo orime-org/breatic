@@ -284,44 +284,6 @@ describe("POST /timeline/executions", () => {
   });
 });
 
-describe("GET /timeline/executions", () => {
-  it("lists only the requested Project's executions in the Space, newest first, with each one's usage credits", async () => {
-    const fx = await seedProject(0);
-    // Another Project with a Space of the same id, as a Project copy has; its executions are not this list's.
-    const copy = await seedProject(0);
-    const older = await insertExecution(fx.projectId, fx.spaceId, fx.owner.userId);
-    const newer = await insertExecution(fx.projectId, fx.spaceId, fx.owner.userId);
-    await insertExecution(fx.projectId, crypto.randomUUID(), fx.owner.userId);
-    const inCopy = await insertExecution(copy.projectId, fx.spaceId, copy.owner.userId);
-    await grant(inCopy.id, fx.projectId);
-    await sql`UPDATE timeline_executions SET created_at = now() - interval '2 minutes' WHERE id = ${older.id}`;
-    await sql`UPDATE timeline_executions SET created_at = now() - interval '1 minute' WHERE id = ${newer.id}`;
-    for (const credits of ["1.5", "2.25"]) {
-      await sql`
-        INSERT INTO agent_usage_records (operation_key, feature, source, actor_user_id, project_id, model, provider, cost_usd, cost_source, credits)
-        VALUES (${`timeline:${older.id}`}, 'timeline_web_animation', 'model', ${fx.owner.userId}, ${fx.projectId},
-                'deepseek/deepseek-v4.1-flash-1017', 'openrouter', 0.01, 'provider', ${credits})
-      `;
-    }
-    const res = await app.request(`/api/v1/timeline/executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}`, {
-      headers: { Cookie: fx.viewer.cookie },
-    });
-    expect(res.status, await res.clone().text()).toBe(200);
-    const { data } = (await res.json()) as { data: (TimelineExecution & { usageCredits: number })[] };
-    expect(data.map((row) => row.id)).toEqual([newer.id, older.id]);
-    expect(data.map((row) => row.usageCredits)).toEqual([0, 3.75]);
-    expect(data[1]).toMatchObject({ id: older.id, projectId: fx.projectId, spaceId: fx.spaceId, status: "queued", steps: [], phase: null });
-  });
-
-  it("answers an outsider with 404", async () => {
-    const fx = await seedProject(0);
-    const outsider = await seedUser();
-    const res = await app.request(`/api/v1/timeline/executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}`, {
-      headers: { Cookie: outsider.cookie },
-    });
-    await expectNotFound(res);
-  });
-});
 
 describe("GET /timeline/web-sources", () => {
   it("resolves only the sources and executions this Project holds a grant for", async () => {

@@ -43,7 +43,7 @@ import {
   signPayload,
   t,
   type TimelineExecution,
-  type TimelineExecutionRow,
+
   type TimelineWebResolution,
   type TimelineWebResolutionOrigin,
   type WebAnimationSourceVersion,
@@ -510,21 +510,6 @@ export async function getOne(userId: string, executionId: string, projectId: str
   return view;
 }
 
-/**
- * List a Space's executions in this Project, newest first, each with the credits its usage adds up to. Kept for the
- * older tabs of the deploy window; removed in the next release.
- * @param userId - The caller.
- * @param projectId - The Project.
- * @param spaceId - The Space.
- * @returns The rows.
- * @throws {NotFoundError} When the caller is not a member of the Project.
- */
-export async function list(userId: string, projectId: string, spaceId: string): Promise<TimelineExecutionRow[]> {
-  await projectService.assertAccess(projectId, userId, "viewer");
-  const rows = await timelineExecutionRepo.listForSpace({ projectId, spaceId });
-  const sums = await sumCreditsByOperationKeys(rows.map((row) => timelineOperationKey(row.id)));
-  return rows.map((row) => ({ ...row, usageCredits: ceilToCreditCent(Number(sums.get(timelineOperationKey(row.id)) ?? 0)) }));
-}
 
 /**
  * Resolve the sources and executions a Project's web clips reference, through its grants, with what made each so the

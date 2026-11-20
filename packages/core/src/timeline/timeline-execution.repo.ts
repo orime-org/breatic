@@ -9,7 +9,7 @@
  * answered with the current row and `applied: false` instead of a write.
  */
 
-import { and, asc, desc, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { PgColumn, PgUpdateSetSource } from "drizzle-orm/pg-core";
 import type { TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
@@ -299,30 +299,6 @@ export async function markBilled(id: string, credits: string, tx?: DbTx): Promis
   return rows.length > 0;
 }
 
-/**
- * List a Space's executions in its own Project, newest first.
- * @param key - The Space.
- * @param key.projectId - Its Project.
- * @param key.spaceId - The Space.
- * @param tx - The transaction to read in.
- * @returns The rows.
- * @throws {Error} When the read fails.
- */
-export async function listForSpace(
-  key: { projectId: string; spaceId: string },
-  tx?: DbTx,
-): Promise<TimelineExecution[]> {
-  const rows = await (tx ?? db)
-    .select(columns)
-    .from(t)
-    .where(and(
-      eq(t.projectId, key.projectId),
-      eq(t.spaceId, key.spaceId),
-      isNull(t.deletedAt),
-    ))
-    .orderBy(desc(t.createdAt), desc(t.id));
-  return rows.map(toEntity);
-}
 
 /**
  * List one page of the executions that have not reached a terminal state, by id, for the worker sweep, which pages

@@ -988,8 +988,6 @@ export interface TimelineExecution {
   updatedAt: string;
 }
 
-/** One row `GET /timeline/executions` answers: the execution and the credits its usage rows add up to so far. */
-export type TimelineExecutionRow = TimelineExecution & { usageCredits: number };
 
 /**
  * What `GET /timeline/web-sources` answers for the references of a document's web-animation copies (inner#1711
