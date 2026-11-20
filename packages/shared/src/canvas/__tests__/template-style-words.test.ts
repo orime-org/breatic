@@ -93,11 +93,23 @@ const SUBJECT_KEEPS_COLOUR = [
  * that keeps the subject in colour, a sentence using the first must name the second, or it overrules the subject.
  */
 const WHOLE_PICTURE_COLOUR: Record<string, { absolute: RegExp; subject: string }> = {
-  en: { absolute: /sepia only|other colours|only warm colour|colour leaks/iu, subject: 'subject' },
-  'zh-CN': { absolute: /只用棕褐色|其他颜色|唯一的暖色/u, subject: '主体' },
-  'zh-TW': { absolute: /只用棕褐色|其他顏色|唯一的暖色/u, subject: '主體' },
-  ja: { absolute: /セピアだけ|ほかの色|唯一の暖色/u, subject: '主体' },
-  ko: { absolute: /세피아뿐|다른 색|유일한 따뜻한 색|색 번짐/u, subject: '주체' },
+  en: { absolute: /sepia only|other colours|only warm colour|colour leaks|black[- ]and[- ]white|greyscale|grayscale|monochrome/iu, subject: 'subject' },
+  'zh-CN': { absolute: /只用棕褐色|其他颜色|唯一的暖色|黑白|灰阶/u, subject: '主体' },
+  'zh-TW': { absolute: /只用棕褐色|其他顏色|唯一的暖色|黑白|灰階/u, subject: '主體' },
+  ja: { absolute: /セピアだけ|ほかの色|唯一の暖色|白黒|グレースケール|モノクロ/u, subject: '主体' },
+  ko: { absolute: /세피아뿐|다른 색|유일한 따뜻한 색|색 번짐|흑백|회색조/u, subject: '주체' },
+};
+
+/** What English still words ask for when they put lettering in the picture. */
+const ASKS_FOR_LETTERING = /\b(lettering|captions?|headlines?|mottos?|balloons?|inscriptions?|legends?|labels|notes|title cards?)\b/iu;
+
+/** How each locale says lettering is written in the language of the prompt. */
+const PROMPT_LANGUAGE: Record<string, string> = {
+  en: 'in the language of this prompt',
+  'zh-CN': '这段提示词的语言',
+  'zh-TW': '這段提示詞的語言',
+  ja: 'このプロンプトの言語',
+  ko: '이 프롬프트의 언어',
 };
 
 /** The sentence, in each locale, that keeps the subject in colour. */
@@ -321,6 +333,19 @@ describe('template style words', () => {
       '땅가', '슬레이트색는', '금색로', '주황를', '벽돌색와', '바다으로', '물으로',
     ]);
     expect(koreanParticleMismatches('땅이 크다. 슬레이트색은 하늘. 금색으로 타오르고 선으로 그린다. 주황을 거쳐 벽돌색과 하늘.')).toEqual([]);
+  });
+
+  it('writes every lettering a still asks for in the language of the prompt', () => {
+    const english = styleWords('en');
+    const unlanguaged: string[] = [];
+    for (const locale of LOCALES) {
+      const words = styleWords(locale);
+      for (const [key, text] of english) {
+        if (!key.endsWith('.still') || !ASKS_FOR_LETTERING.test(text.split('Avoid:')[0] ?? '')) continue;
+        if (!(words.get(key) ?? '').includes(PROMPT_LANGUAGE[locale] ?? '\u0000')) unlanguaged.push(`${locale} ${key}`);
+      }
+    }
+    expect(unlanguaged).toEqual([]);
   });
 
   it('limits every whole-picture colour rule to what lies outside the subject in the styles that keep the subject in colour', () => {
