@@ -54,6 +54,7 @@ export interface CommentCaller {
 /** A refusal, with the request's id. */
 class Refusal extends Error {
   /**
+   * A request collab will not carry out, and why.
    * @param code - Why.
    * @param message - What to log and show.
    */

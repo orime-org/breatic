@@ -145,32 +145,28 @@ export async function answerHandOver(place: ThreadPlace, connectionId: string): 
  * Void a deleted Space's records.
  * @param projectId - The project.
  * @param spaceId - The Space.
- * @param tx - The open transaction the delete runs in, when it has one.
  * @returns The pending hand-overs voided, and whether any hand-over was.
  * @throws {Error} When the database fails.
  */
-export async function voidSpace(projectId: string, spaceId: string, tx?: DbTx): Promise<{ pending: HandedThread[]; changed: boolean }> {
-  const run = async (t: DbTx): Promise<{ pending: HandedThread[]; changed: boolean }> => {
-    await mentionsRepo.voidSpace(projectId, spaceId, t);
-    const voided = await assignmentsRepo.voidSpace(projectId, spaceId, t);
+export async function voidSpace(projectId: string, spaceId: string): Promise<{ pending: HandedThread[]; changed: boolean }> {
+  return db.transaction(async (tx) => {
+    await mentionsRepo.voidSpace(projectId, spaceId, tx);
+    const voided = await assignmentsRepo.voidSpace(projectId, spaceId, tx);
     return { pending: voided.filter((r) => r.status === "pending").map(({ threadId, connectionId }) => ({ threadId, connectionId })), changed: voided.length > 0 };
-  };
-  return tx ? run(tx) : db.transaction(run);
+  });
 }
 
 /**
  * Bring back what a Space's delete voided, when it is restored.
  * @param projectId - The project.
  * @param spaceId - The Space.
- * @param tx - The open transaction the restore runs in, when it has one.
  * @returns The pending hand-overs restored, and whether any hand-over was.
  * @throws {Error} When the database fails.
  */
-export async function restoreSpace(projectId: string, spaceId: string, tx?: DbTx): Promise<{ pending: HandedThread[]; changed: boolean }> {
-  const run = async (t: DbTx): Promise<{ pending: HandedThread[]; changed: boolean }> => {
-    await mentionsRepo.restoreSpace(projectId, spaceId, t);
-    const restored = await assignmentsRepo.restoreSpace(projectId, spaceId, t);
+export async function restoreSpace(projectId: string, spaceId: string): Promise<{ pending: HandedThread[]; changed: boolean }> {
+  return db.transaction(async (tx) => {
+    await mentionsRepo.restoreSpace(projectId, spaceId, tx);
+    const restored = await assignmentsRepo.restoreSpace(projectId, spaceId, tx);
     return { pending: restored.filter((r) => r.status === "pending").map(({ threadId, connectionId }) => ({ threadId, connectionId })), changed: restored.length > 0 };
-  };
-  return tx ? run(tx) : db.transaction(run);
+  });
 }
