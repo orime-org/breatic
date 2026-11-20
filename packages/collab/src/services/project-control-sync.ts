@@ -12,6 +12,8 @@
  *     credits signal on the `meta` doc.
  *   - `{prefix}:project:{pid}:space-tasks:changed` (server, worker) — relay
  *     a 3D Space's task list signal on the `meta` doc.
+ *   - `{prefix}:project:{pid}:scene-look:refused` (collab's task listener) —
+ *     relay that an uploaded 3D part picture was not written, and why.
  *   - `{prefix}:project:{pid}:connections:close` (collab's lifecycle
  *     consumer) — close every connection to the project.
  *
@@ -52,13 +54,16 @@ import {
   type ActivityNewControlEvent,
   type CreditsChangedControlEvent,
   type SpaceTasksChangedControlEvent,
+  type SceneLookRefusedControlEvent,
   type ProjectConnectionsCloseEvent,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
   SPACE_TASKS_CHANGED_SIGNAL,
+  SCENE_LOOK_REFUSED_SIGNAL,
   type ActivityNewSignal,
   type CreditsChangedSignal,
   type SpaceTasksChangedSignal,
+  type SceneLookRefusedSignal,
 } from "@breatic/shared";
 import { closeProjectConnections } from "@collab/services/project-connections.js";
 
@@ -68,6 +73,7 @@ type ProjectControlEvent =
   | ActivityNewControlEvent
   | CreditsChangedControlEvent
   | SpaceTasksChangedControlEvent
+  | SceneLookRefusedControlEvent
   | ProjectConnectionsCloseEvent;
 
 /**
@@ -81,7 +87,7 @@ type ProjectControlEvent =
 function relayOnMetaDoc(
   hocuspocus: Hocuspocus,
   projectId: string,
-  signal: ActivityNewSignal | CreditsChangedSignal | SpaceTasksChangedSignal,
+  signal: ActivityNewSignal | CreditsChangedSignal | SpaceTasksChangedSignal | SceneLookRefusedSignal,
 ): void {
   const docName = projectMetaDocName(projectId);
   const doc = hocuspocus.documents?.get(docName);
@@ -139,6 +145,14 @@ async function handleEvent(
       projectId: event.projectId,
       spaceId: event.spaceId,
     });
+    return;
+  }
+
+  if (event.type === "project-scene-look:refused") {
+    // Every member's page hears it; the uploader's page tells them why their
+    // picture is not on the part.
+    const { type: _type, ts: _ts, ...refusal } = event;
+    relayOnMetaDoc(hocuspocus, event.projectId, { t: SCENE_LOOK_REFUSED_SIGNAL, ...refusal });
     return;
   }
 

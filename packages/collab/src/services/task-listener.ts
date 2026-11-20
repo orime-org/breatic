@@ -34,11 +34,14 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import { ExecutionError, Redlock, ResourceLockedError } from "@sesamecare-oss/redlock";
-import type { NodeTaskCountsEvent, SpaceTasksVersionEvent } from "@breatic/shared";
+import type {
+  NodeTaskCountsEvent, SceneLookPictureEvent, SceneLookPictureRefusal, SceneLookRefusedControlEvent, SpaceTasksVersionEvent,
+} from "@breatic/shared";
 import { parseDocName, SPACE_TASKS_TYPES } from "@breatic/shared";
 import { createLogger, type Redis } from "@breatic/core";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
 import { applySpaceTasksVersion } from "@collab/services/space-tasks-version.js";
+import { applySceneLookPicture } from "@collab/services/scene-look-picture.js";
 import { isLiveDoc } from "@collab/services/yjs-documents.repo.js";
 import {
   startGroupConsumer,
@@ -61,8 +64,14 @@ const RELEASE_WAITER_SCRIPT =
 const MARK_WAITER_SCRIPT =
   'local v = redis.call("get", KEYS[1]) if v == false or v == ARGV[1] then return redis.call("set", KEYS[1], ARGV[1], "PX", ARGV[2]) end return 0';
 
-/** How long a node's counts version is kept after its last write. */
+/** How long a node's counts version, and the mark of an applied part picture upload, are kept after their last write. */
 const COUNTS_VERSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+/** Every event this listener writes. */
+type TaskEvent = NodeTaskCountsEvent | SpaceTasksVersionEvent | SceneLookPictureEvent;
+
+/** A part picture collab did not write, said to its uploader. */
+export type SceneLookRefusal = Omit<SceneLookRefusedControlEvent, "type" | "ts">;
 
 /** Settings of the task listener: the consumer group's, plus the per-document ones. */
 export interface TaskListenerSettings extends GroupConsumerSettings {
@@ -92,12 +101,14 @@ export interface TaskListenerDeps {
   coordination: Redis;
   /** Timing and limits. */
   settings: TaskListenerSettings;
+  /** Tell a part picture's uploader it was not written, and why (inner#1693 design 6.3). */
+  refuseSceneLook: (refusal: SceneLookRefusal) => Promise<void>;
 }
 
 /** One parsed event and the stream entry it came from. */
 interface Item {
   entry: StreamEntry;
-  event: NodeTaskCountsEvent | SpaceTasksVersionEvent;
+  event: TaskEvent;
 }
 
 /** One document's events, in stream order. */
@@ -125,8 +136,9 @@ function outcomeForAll(batch: DocBatch, outcome: EntryOutcome): Map<string, Entr
 function docKeys(
   keyPrefix: string,
   docName: string,
-): { lease: string; waiter: string; handoff: string; versions: string } {
+): { lease: string; waiter: string; handoff: string; versions: string; applied: string } {
   return {
+    applied: `${keyPrefix}:collab:scene-look-applied:${docName}`,
     lease: `${keyPrefix}:collab:task-doc-lease:${docName}`,
     waiter: `${keyPrefix}:collab:task-doc-lease-waiter:${docName}`,
     handoff: `${keyPrefix}:collab:task-doc-handoff:${docName}`,
@@ -170,7 +182,7 @@ async function leaseHeldElsewhere(err: unknown): Promise<boolean> {
  * @param entry - The stream entry.
  * @returns The event, or why it is skipped.
  */
-function readItem(entry: StreamEntry): NodeTaskCountsEvent | SpaceTasksVersionEvent | { skip: string } {
+function readItem(entry: StreamEntry): TaskEvent | { skip: string } {
   let event: unknown;
   try {
     event = JSON.parse(entry.payload ?? "");
@@ -178,12 +190,16 @@ function readItem(entry: StreamEntry): NodeTaskCountsEvent | SpaceTasksVersionEv
     return { skip: "task_event_unparseable_skipped" };
   }
   const type = typeof event === "object" && event !== null ? (event as { type?: unknown }).type : undefined;
-  if (type !== "node-task-counts" && type !== "space-tasks-version") return { skip: "task_event_unknown_type_skipped" };
+  if (type !== "node-task-counts" && type !== "space-tasks-version" && type !== "scene-look-picture") {
+    return { skip: "task_event_unknown_type_skipped" };
+  }
   const docName = (event as { docName?: unknown }).docName;
   const parsed = typeof docName === "string" ? parseDocName(docName) : null;
-  const fits = parsed !== null && (type === "node-task-counts" ? parsed.kind === "canvas" : parsed.kind !== "meta" && SPACE_TASKS_TYPES.has(parsed.kind));
+  const fits = parsed !== null && (type === "node-task-counts" ? parsed.kind === "canvas"
+    : type === "scene-look-picture" ? parsed.kind === "3d"
+      : parsed.kind !== "meta" && SPACE_TASKS_TYPES.has(parsed.kind));
   if (!fits) return { skip: "task_event_unknown_doc_skipped" };
-  return event as NodeTaskCountsEvent | SpaceTasksVersionEvent;
+  return event as TaskEvent;
 }
 
 /**
@@ -244,13 +260,20 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
     stopping: () => boolean,
   ): Promise<Map<string, EntryOutcome>> {
     const outcomes = new Map<string, EntryOutcome>();
-    const spaceTasks = batch.items[0]!.event.type === "space-tasks-version";
+    // Only a canvas document takes node counts, so a batch is one kind of document throughout.
+    const spaceTasks = batch.items[0]!.event.type !== "node-task-counts";
+    /**
+     * Skip a batch whose Space has no live document; a part picture for it is refused as gone.
+     * @returns Every event done.
+     */
+    const skipNotLive = async (): Promise<Map<string, EntryOutcome>> => {
+      logger.info({ docName: batch.docName }, "task_doc_not_live_skipped");
+      await refuse(batch.items.flatMap(({ event }) => (event.type === "scene-look-picture" ? [{ event, reason: "objectGone" as const }] : [])));
+      return outcomeForAll(batch, "done");
+    };
     // A Space with no live row is skipped before its document is loaded into this instance.
     try {
-      if (spaceTasks && !(await isLiveDoc(batch.docName))) {
-        logger.info({ docName: batch.docName }, "task_doc_not_live_skipped");
-        return outcomeForAll(batch, "done");
-      }
+      if (spaceTasks && !(await isLiveDoc(batch.docName))) return await skipNotLive();
     } catch (err) {
       logger.error({ err, docName: batch.docName }, "task_doc_live_check_failed");
       return outcomeForAll(batch, { failed: err });
@@ -281,21 +304,33 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       const doc = connection.document!;
       // Checked again after the load: a Space deleted while it loaded reads as empty, and a version written into that
       // empty document would be stored over the deleted row's content.
-      if (spaceTasks && !(await isLiveDoc(batch.docName))) {
-        logger.info({ docName: batch.docName }, "task_doc_not_live_skipped");
-        return outcomeForAll(batch, "done");
-      }
+      if (spaceTasks && !(await isLiveDoc(batch.docName))) return await skipNotLive();
       if (!(await awaitHandOver(doc, keys.handoff, stopping))) {
         if (!stopping()) logger.warn({ docName: batch.docName }, "task_doc_handoff_not_reached");
         return outcomeForAll(batch, "wait");
       }
       const versions = await coordination.hgetall(keys.versions);
+      // A part picture upload is applied once: its event comes again when a finish is retried, and by then the part
+      // may hold its starting picture again.
+      const uploads = batch.items.flatMap(({ event }) => (event.type === "scene-look-picture" ? [event.uploadKey] : []));
+      const applied = new Set(uploads.length === 0 ? [] : (await coordination.hmget(keys.applied, ...uploads))
+        .flatMap((mark, at) => (mark === null ? [] : [uploads[at]!])));
       // Nothing awaits between here and the transaction, which runs synchronously.
       if (stopping() || signal.aborted) return outcomeForAll(batch, "wait");
       const moved = new Map<string, string>();
+      const pictures: { event: SceneLookPictureEvent; reason: SceneLookPictureRefusal | null }[] = [];
       await connection.transact((d) => {
         for (const { entry, event } of batch.items) {
           try {
+            if (event.type === "scene-look-picture") {
+              if (!applied.has(event.uploadKey)) {
+                const outcome = applySceneLookPicture(d, event);
+                applied.add(event.uploadKey);
+                pictures.push({ event, reason: outcome === "write" || outcome === "done" ? null : outcome });
+              }
+              outcomes.set(entry.id, "done");
+              continue;
+            }
             if (event.type === "space-tasks-version") {
               applySpaceTasksVersion(d, entry.originId ?? entry.id);
               outcomes.set(entry.id, "done");
@@ -325,6 +360,11 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
         await coordination.hset(keys.versions, Object.fromEntries(moved));
         await coordination.expire(keys.versions, COUNTS_VERSION_TTL_SECONDS);
       }
+      if (pictures.length > 0) {
+        await coordination.hset(keys.applied, Object.fromEntries(pictures.map(({ event }) => [event.uploadKey, "1"])));
+        await coordination.expire(keys.applied, COUNTS_VERSION_TTL_SECONDS);
+        await refuse(pictures.flatMap(({ event, reason }) => (reason === null ? [] : [{ event, reason }])));
+      }
       await coordination.set(keys.handoff, Buffer.from(vector).toString("base64"), "PX", settings.docLeaseMs * 2);
       logger.info(
         { docName: batch.docName, events: batch.items.length, applied: [...outcomes.values()].filter((o) => o === "done").length },
@@ -339,6 +379,26 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       await disconnect();
     }
     return outcomes;
+  }
+
+  /**
+   * Tell each uploader why their part picture was not written. The picture is in the Project's pictures either way,
+   * so a notice that cannot be sent is logged and the event still counts as handled.
+   * @param refused - The events and why.
+   */
+  async function refuse(refused: { event: SceneLookPictureEvent; reason: SceneLookPictureRefusal }[]): Promise<void> {
+    for (const { event, reason } of refused) {
+      const parsed = parseDocName(event.docName);
+      if (parsed === null || parsed.kind !== "3d") continue;
+      try {
+        await deps.refuseSceneLook({
+          projectId: parsed.projectId, spaceId: parsed.spaceId, objectId: event.objectId, part: event.part,
+          picture: event.picture, userId: event.userId, reason,
+        });
+      } catch (err) {
+        logger.error({ err, docName: event.docName, uploadKey: event.uploadKey, reason }, "scene_look_refusal_publish_failed");
+      }
+    }
   }
 
   /**

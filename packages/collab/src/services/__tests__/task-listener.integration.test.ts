@@ -20,7 +20,10 @@ import { ExecutionError, Redlock, type ExecutionStats } from "@sesamecare-oss/re
 
 import { createRedisClient, db, initCore, schema, type Redis } from "@breatic/core";
 import { eq } from "drizzle-orm";
-import { CANVAS_NODES_KEY, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, timelineSpaceDocName, type NodeTaskCountsEvent } from "@breatic/shared";
+import {
+  CANVAS_NODES_KEY, SCENE_FORMAT_VERSION, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, threeDSpaceDocName, timelineSpaceDocName,
+  type NodeTaskCountsEvent, type SceneLookPictureEvent, type SceneLookRefusedControlEvent,
+} from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import {
@@ -269,6 +272,9 @@ async function readRestored(docName: string): Promise<{ note: unknown; version: 
  * @param settings - Overrides.
  * @returns The listener.
  */
+/** Every part picture the listeners did not write, in order. */
+const refusals: Omit<SceneLookRefusedControlEvent, "type" | "ts">[] = [];
+
 function listen(
   c: Case,
   hocuspocus: Hocuspocus,
@@ -284,6 +290,7 @@ function listen(
     instanceId,
     coordination,
     settings: { ...SETTINGS, ...settings },
+    refuseSceneLook: async (refusal) => { refusals.push(refusal); },
   });
   listeners.push(l);
   return l;
@@ -851,6 +858,109 @@ describe("task events across two collab instances", () => {
     await untilUnloaded(c.docName);
     expect(await yjsRepo.fetchDocData(c.docName)).toBeNull();
     expect(await yjsRepo.restoreByName(c.docName)).toBe(false);
+  });
+});
+
+describe("stored 3D part pictures (inner#1693 design 6.3)", () => {
+  const OBJECT = "0b8c7f1a-3e2d-4a5b-8c9d-0e1f2a3b4c5d";
+  const START = "4b7f3c1e-2d0a-4c6b-9f1e-8a5b2c3d4e5f";
+  const PICTURE = "9a1b2c3d-4e5f-4a6b-8c7d-0e1f2a3b4c5d";
+  const OTHER = "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f";
+
+  /**
+   * A 3D Space document holding one model whose part 3 shows `map`.
+   * @param map - The part's picture, or undefined for none.
+   * @returns The case, and the event a picture uploaded from that state makes.
+   */
+  async function sceneCase(map: string | undefined): Promise<{ c: Case; event: SceneLookPictureEvent; spaceId: string }> {
+    const spaceId = randomUUID();
+    const c = bareCase(threeDSpaceDocName(PID, spaceId));
+    const doc = new Y.Doc();
+    doc.getMap("scene").set("formatVersion", SCENE_FORMAT_VERSION);
+    const record = new Y.Map<unknown>();
+    doc.getMap("objects").set(OBJECT, record);
+    record.set("model", { kind: "builtin", id: "figure" });
+    if (map !== undefined) record.set("look.3.map", map);
+    await yjsRepo.seedInitialState(c.docName, Y.encodeStateAsUpdate(doc));
+    return { c, spaceId, event: {
+      type: "scene-look-picture", docName: c.docName, objectId: OBJECT, part: "3", startMap: START,
+      picture: PICTURE, userId: "uploader", uploadKey: randomUUID(),
+    } };
+  }
+
+  /**
+   * Publish stored picture events.
+   * @param c - The case.
+   * @param events - The events, in order.
+   * @returns Their stream ids.
+   */
+  async function publishPictures(c: Case, events: SceneLookPictureEvent[]): Promise<string[]> {
+    const ids: string[] = [];
+    for (const event of events) ids.push((await stream.xadd(c.streamKey, "*", "payload", JSON.stringify(event)))!);
+    return ids;
+  }
+
+  /**
+   * Read or write part 3's picture on the stored and synced document.
+   * @param docName - The document.
+   * @param set - A picture to write first, as a member would.
+   * @returns The part's picture.
+   */
+  async function partMap(docName: string, set?: string): Promise<unknown> {
+    const conn = await instanceA.openDirectConnection(docName, { context: { user: { id: "test" } } });
+    try {
+      const record = conn.document!.getMap("objects").get(OBJECT) as Y.Map<unknown>;
+      if (set !== undefined) await conn.transact(() => { record.set("look.3.map", set); });
+      return record.get("look.3.map");
+    } finally {
+      await conn.disconnect();
+    }
+  }
+
+  it("puts the picture on the part it was uploaded for, while nobody has the Space open", async () => {
+    const { c, event } = await sceneCase(START);
+    const ids = await publishPictures(c, [event]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await partMap(c.docName)).toBe(PICTURE);
+    expect(refusals.filter((r) => r.picture === PICTURE && r.spaceId === c.docName.split("/3d-")[1])).toEqual([]);
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("applies one upload once, even when its event comes again after the part went back to its starting picture", async () => {
+    const { c, event } = await sceneCase(START);
+    const first = await publishPictures(c, [event]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, first));
+    expect(await partMap(c.docName, START)).toBe(START);
+    const again = await publishPictures(c, [event]);
+    await until(() => handled(c.streamKey, again));
+    expect(await partMap(c.docName)).toBe(START);
+  });
+
+  it("writes nothing on a part someone gave another picture, and tells the uploader why", async () => {
+    const { c, event, spaceId } = await sceneCase(OTHER);
+    const ids = await publishPictures(c, [event]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await partMap(c.docName)).toBe(OTHER);
+    expect(refusals).toContainEqual({
+      projectId: PID, spaceId, objectId: OBJECT, part: "3", picture: PICTURE, userId: "uploader", reason: "partChanged",
+    });
+  });
+
+  it("creates no document for a Space that has none, and tells the uploader the object is gone", async () => {
+    const spaceId = randomUUID();
+    const c = bareCase(threeDSpaceDocName(PID, spaceId));
+    const ids = await publishPictures(c, [{
+      type: "scene-look-picture", docName: c.docName, objectId: OBJECT, part: "3", startMap: null,
+      picture: PICTURE, userId: "uploader", uploadKey: randomUUID(),
+    }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    await untilUnloaded(c.docName);
+    expect(await yjsRepo.fetchDocData(c.docName)).toBeNull();
+    expect(refusals).toContainEqual(expect.objectContaining({ spaceId, reason: "objectGone" }));
   });
 });
 
