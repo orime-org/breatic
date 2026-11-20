@@ -37,7 +37,7 @@
  * would be the rules written out in code.
  */
 import { tool, type Tool } from "ai";
-import { z } from "zod";
+import type { z } from "zod";
 
 import {
   canConnect,
