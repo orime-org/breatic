@@ -28,7 +28,8 @@ export interface AnchoredThread {
 
 /** What the annotations are tied to. */
 export interface MotionAnnotationsInput {
-  store: YjsThreadStore;
+  /** The Space's threads, from {@link useThreads}. */
+  threads: ThreadData[];
   /** The shown result. */
   selectedId: string | null;
   /** The thread the selection was asked to focus, until the playhead reaches its time. */
@@ -48,7 +49,6 @@ export interface MotionAnnotationsInput {
 
 /** The annotations and what opens, closes and keeps them. */
 export interface MotionAnnotations {
-  threads: ThreadData[];
   /** The live threads on the shown result. */
   resultThreads: AnchoredThread[];
   /** The thread whose card is open. */
@@ -79,7 +79,7 @@ export interface MotionAnnotations {
  * @returns The threads.
  * @throws {never} Never.
  */
-function useThreads(store: YjsThreadStore): ThreadData[] {
+export function useThreads(store: YjsThreadStore): ThreadData[] {
   const [threads, setThreads] = React.useState<ThreadData[]>(() => [...store.getThreads().values()]);
   React.useEffect(() => {
     setThreads([...store.getThreads().values()]);
@@ -105,8 +105,7 @@ function anchorOf(thread: ThreadData): WebAnimationAnchor | null {
  * @throws {never} Never.
  */
 export function useMotionAnnotations(input: MotionAnnotationsInput): MotionAnnotations {
-  const { store, selectedId, focusThreadId, baseExecutionId, showResult, locate, openPanel, seek, onFocused } = input;
-  const threads = useThreads(store);
+  const { threads, selectedId, focusThreadId, baseExecutionId, showResult, locate, openPanel, seek, onFocused } = input;
   const [activeThreadId, setActiveThreadId] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<AnnotationFilter>('open');
   const [detailsOpen, setDetailsOpen] = React.useState(false);
@@ -190,7 +189,7 @@ export function useMotionAnnotations(input: MotionAnnotationsInput): MotionAnnot
   }, [focusThreadId, activeThread, selectedId, seek, onFocused]);
 
   return {
-    threads, resultThreads, activeThread, unresolvedCount, openOnBaseCount: openOnBase.length, filter, setFilter, viewportRef,
+    resultThreads, activeThread, unresolvedCount, openOnBaseCount: openOnBase.length, filter, setFilter, viewportRef,
     drafts, setDraft, detailsOpen, setDetailsOpen, openThread, openBase, closeThread, showWritten,
   };
 }

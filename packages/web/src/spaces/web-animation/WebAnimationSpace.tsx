@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import {
   Check, Download, Ellipsis, LayoutGrid, List, LoaderCircle, MessageSquare,
   MessageSquarePlus, Pause, Pencil, Play, Plus, Undo2, Upload, Video,
 } from 'lucide-react';
 import { formatCredits, getLocale, newId } from '@breatic/shared';
-import { anchorTimeWithin, type WebAnimationRowView } from '@breatic/shared/space-content';
+import { anchorTimeWithin, readWebAnimationAnchor, type WebAnimationRowView } from '@breatic/shared/space-content';
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@web/components/ui/alert-dialog';
 import { Button } from '@web/components/ui/button';
@@ -50,7 +50,7 @@ import { MotionExecutionsPanel } from '@web/spaces/web-animation/MotionExecution
 import { MotionResultPlayer } from '@web/spaces/web-animation/MotionResultPlayer';
 import { MotionFrameCard } from '@web/spaces/web-animation/MotionFrameCard';
 import { MotionThreadCard } from '@web/spaces/web-animation/MotionThreadCard';
-import { useMotionAnnotations } from '@web/spaces/web-animation/use-motion-annotations';
+import { useMotionAnnotations, useThreads } from '@web/spaces/web-animation/use-motion-annotations';
 import { useMotionClock } from '@web/spaces/web-animation/use-motion-clock';
 import { rowsOf, useMotionLists } from '@web/spaces/web-animation/use-motion-lists';
 import { WebAnimationDialog } from '@web/spaces/web-animation/WebAnimationDialog';
@@ -83,6 +83,16 @@ const PIN_WINDOW_SECONDS = 0.15;
  */
 const BAR_MENU_OFFSET = 4 + 7 + 1;
 const PIN_CLASS = 'absolute size-5 -translate-y-full rounded-full rounded-bl-none border border-background';
+
+/**
+ * The rows read by id, by id.
+ * @param results - The reads.
+ * @returns Each read that answered.
+ * @throws {never} Never.
+ */
+function rowsRead(results: Array<UseQueryResult<WebAnimationRowView>>): ReadonlyMap<string, WebAnimationRowView> {
+  return new Map(results.flatMap((result) => (result.data === undefined ? [] : [[result.data.id, result.data] as const])));
+}
 
 /**
  * The frame ratio a row is shown at.
@@ -290,14 +300,30 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
       }
     }
   }, [projectId, spaceId, t]);
-  // A row by id: its copy on a loaded page, or the shown row as the selection last saw it.
-  const rowById = React.useCallback((id: string): WebAnimationRowView | undefined => {
-    const held = shown(selectionRef.current);
-    return lists.byId.get(id) ?? (held?.id === id ? held : undefined);
-  }, [lists.byId]);
   // While another row is read by id, the preview keeps the one it showed (design §13.2).
   const selected = shown(selection) ?? undefined;
   const selectedId = selected?.id ?? null;
+  // The annotation panel groups threads by result (design §10.1): a result an annotation points at on no loaded page,
+  // other than the shown one, is read by id under the key the shown one is read under below, so a change in the
+  // Space's document reads it again too.
+  const threads = useThreads(store);
+  const unlistedIds = React.useMemo(() => [...new Set(threads.flatMap((thread) => {
+    const anchor = thread.deletedAt === undefined ? readWebAnimationAnchor(thread.metadata) : null;
+    return anchor === null || lists.byId.has(anchor.executionId) || anchor.executionId === selectedId ? [] : [anchor.executionId];
+  }))], [threads, lists.byId, selectedId]);
+  const unlistedRows = useQueries({
+    queries: unlistedIds.map((id) => ({
+      queryKey: [...spaceTasksQueryKey(projectId, spaceId), 'motion-held', id],
+      queryFn: ({ signal }: { signal: AbortSignal }) => timelineApi.getExecution(projectId, spaceId, id, signal),
+      staleTime: Infinity,
+    })),
+    combine: rowsRead,
+  });
+  // A row by id: its copy on a loaded page, the shown row as the selection last saw it, or its read by id.
+  const rowById = React.useCallback((id: string): WebAnimationRowView | undefined => {
+    const held = shown(selectionRef.current);
+    return lists.byId.get(id) ?? (held?.id === id ? held : undefined) ?? unlistedRows.get(id);
+  }, [lists.byId, unlistedRows]);
   // The result being read by id: the button that asked for it waits until it lands, and no annotation starts meanwhile.
   const readingId = selection.status === 'fetching' ? selection.executionId : null;
   // A shown row on no loaded page is read under the Space-task key, so a change in the Space's document reads it again
@@ -533,11 +559,11 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const openAnnotationPanel = React.useCallback((): void => dispatchPanels({ type: 'open_thread' }), []);
   const focused = React.useCallback((threadId: string): void => select({ type: 'focused', threadId }), [select]);
   const annotations = useMotionAnnotations({
-    store, selectedId, focusThreadId: selection.status === 'selected' ? selection.focusThreadId : null,
+    threads, selectedId, focusThreadId: selection.status === 'selected' ? selection.focusThreadId : null,
     baseExecutionId: row?.kind === 'web_animation_modify' ? row.base.executionId : null,
     showResult, locate, openPanel: openAnnotationPanel, seek: seekClock, onFocused: focused,
   });
-  const { threads, resultThreads, activeThread, openThread, closeThread } = annotations;
+  const { resultThreads, activeThread, openThread, closeThread } = annotations;
   showWritten.current = annotations.showWritten;
   React.useEffect(() => { annotate(docReady ? { type: 'reconnect' } : { type: 'disconnect' }); }, [docReady, annotate]);
   const addAnnotation = React.useCallback((): void => {

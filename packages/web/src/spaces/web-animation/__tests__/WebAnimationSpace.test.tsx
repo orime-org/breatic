@@ -771,6 +771,20 @@ describe('one owner for opening an annotation', () => {
     expect(within(panel).getByRole('heading', { name: 'Far logo' })).toBeInTheDocument();
     expect(within(panel).queryByText(t('spaces.webAnimation.unlistedResult'))).toBeNull();
   });
+
+  it('titles the group of a result on no loaded page and not shown by that result, read by id', async () => {
+    const FAR = '90000000-0000-4000-8000-0000000000d4';
+    vi.mocked(timelineApi.getExecution).mockReset().mockImplementation(async (_project: string, _space: string, id: string) => {
+      if (id !== FAR) throw new Error('not found');
+      return done(FAR, 'Far logo', '2026-11-14T09:00:00.000000Z') as never;
+    });
+    const { user } = await onNewer([{ text: 'Far note', executionId: FAR, timeSeconds: 1 }]);
+    await user.click(screen.getByTestId('motion-open-annotations'));
+    const panel = await screen.findByTestId('motion-panel-annotations');
+    expect(await within(panel).findByRole('heading', { name: 'Far logo' })).toBeInTheDocument();
+    expect(within(panel).queryByText(t('spaces.webAnimation.unlistedResult'))).toBeNull();
+    expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER);
+  });
 });
 
 describe('the thread card over the frame', () => {
