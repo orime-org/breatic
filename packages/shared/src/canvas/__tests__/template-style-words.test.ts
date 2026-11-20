@@ -113,16 +113,44 @@ const COLOUR_SHARE: Record<string, { share: RegExp; colour: RegExp; exempt: RegE
 };
 
 /**
- * Ways, in each locale, a subject-keeps-colour sentence would print the subject in a single colour or only where
- * black would go, which takes back the colours the same sentence keeps.
+ * Ways, in each locale, a still that keeps the subject in colour would print the subject in a single colour or only
+ * where black would go, which takes back the colours the subject keeps.
  */
 const SUBJECT_COLOUR_LIMIT: Record<string, RegExp> = {
-  en: /\b(one|a single) (flat )?colou?r\b|\bspot plate\b|\bown plate\b|where black would go/iu,
+  en: /\b(one|a single) (flat )?colou?r\b|\bspot plate\b|\bown plate\b|where black would go|single colou?r accent/iu,
   'zh-CN': /一块[^，；。]*色版|专色版|取代原本的黑块/u,
   'zh-TW': /一塊[^，；。]*色版|特別色版|取代原本的黑塊/u,
-  ja: /一枚の[^、。]*色版|(自分|専用)の(特)?色版|黒ベタの代わり/u,
-  ko: /한 장의[^,.]*색판|자기(만의)?\s*(별색\s*)?(색)?판|검정 면 대신/u,
+  ja: /一枚の[^、。]*色版|(自分|専用)の(特)?色版|黒ベタの代わり|唯一の色/u,
+  ko: /한 장의[^,.]*색판|자기(만의)?\s*(별색\s*)?(색)?판|검정 면 대신|유일한 색/u,
 };
+
+/**
+ * Places and scene elements a still or shot can name in English. The user writes the scene in the template, so a
+ * style names one only where it is conditional on the scene ("where the scene shows sky"); the other locales say the
+ * same as English.
+ */
+const PLACE_WORDS = /\b(sky|skies|sea|seas|ocean|water|waves|hills?|landscape|interior|indoors?|outdoors?|rooms?|street|horizon|slopes?|shore|harbou?r|moon|forest|trees?|branches|foliage|mountains?|city|floor|garden|river|clouds?|plains|panorama|stage)\b/giu;
+
+/** Words that make an English clause conditional on the scene. */
+const ON_THE_SCENE = /\b(where|wherever|if|when|any)\b/iu;
+
+/** Places that are the medium itself in a style, where the user's scene is shown inside them. */
+const FRAME_PLACES: Record<string, RegExp> = {
+  'kinescope-tv': /^room$/u,
+  'toy-theatre': /^(stage|room)$/u,
+  'rococo-silhouette': /^stage$/u,
+  'red-black-stage': /^(stage|floor)$/u,
+  'pop-up-book': /^room$/u,
+  'roman-mosaic': /^floor$/u,
+  'stained-glass': /^floor$/u,
+  'street-stencil': /^street$/u,
+  'rubber-hose': /^stage$/u,
+  'pixel-16bit': /^stage$/u,
+  'cyanotype-blueprint': /^(water|clouds)$/u,
+};
+
+/** How each locale opens the avoid list at the end of a still. */
+const AVOID_LABEL: Record<string, string> = { en: 'Avoid:', 'zh-CN': '避免：', 'zh-TW': '避免：', ja: '避けるもの：', ko: '피할 것:' };
 
 /** What English still words ask for when they put lettering in the picture. */
 const ASKS_FOR_LETTERING = /\b(lettering|fonts?|(?<!plain )banners?|captions?|headlines?|mottos?|balloons?|inscriptions?|legends?|labels|notes|title cards?)\b/iu;
@@ -171,11 +199,11 @@ const LEFTOVERS: Record<string, RegExp[]> = {
  * overrule what the user asks to move in the shot template.
  */
 const SHOT_HOLDS_MOTION: Record<string, RegExp> = {
-  en: /\bonly\b[^.;]*\b(mov|stir|boil|sway|breath)|\b(drawing|picture|plate|image|print|page|everything( else)?|the rest)\b[^.;]{0,24}\b(holds?|freezes?|stays? still|keeps? still)\b|\bstillness\b|\bholds? still\b|single small movement/iu,
-  'zh-CN': /只有[^，。；]*动|画面?[^，。；]{0,6}(停住|定住|不动|静止)|静止感|其余[^，。；]{0,6}不动/u,
-  'zh-TW': /只有[^，。；]*動|畫面?[^，。；]{0,6}(停住|定住|不動|靜止)|靜止感|其餘[^，。；]{0,6}不動/u,
-  ja: /だけが?(動|揺)|動くのは[^。]*だけ|(絵|画面|図|版)[^。]{0,8}(そのまま|止ま|静止)|ほかは動かない/u,
-  ko: /만 (움직|흔들)|(그림|화면|판)[^.]{0,10}(그대로 두|멈춘|정지)|나머지는 움직이지/u,
+  en: /\bonly\b[^.;]*\b(mov|stir|boil|sway|breath)|\b(drawing|picture|plate|image|print|page|everything( else)?|the rest)\b[^.;]{0,24}\b(holds?|freezes?|stays? still|keeps? still)\b|\bstillness\b|\bholds? still\b|single small movement|\bheld lines\b/iu,
+  'zh-CN': /只有[^，。；]*动|画面?[^，。；]{0,6}(停住|定住|不动|静止)|静止感|其余[^，。；]{0,6}不动|停住的线条/u,
+  'zh-TW': /只有[^，。；]*動|畫面?[^，。；]{0,6}(停住|定住|不動|靜止)|靜止感|其餘[^，。；]{0,6}不動|停住的線條/u,
+  ja: /だけが?(動|揺)|動くのは[^。]*だけ|(絵|画面|図|版)[^。]{0,8}(そのまま|止ま|静止)|ほかは動かない|止まった線/u,
+  ko: /만 (움직|흔들)|(그림|화면|판)[^.]{0,10}(그대로 두|멈춘|정지)|나머지는 움직이지|멈춘 선/u,
 };
 
 const PICTURE_RULES: Record<string, { shotStart: RegExp; shotOpens: RegExp; stillMotion: RegExp; caseWithPromptLanguage?: RegExp }> = {
@@ -218,7 +246,7 @@ const BRACKETS = [['(', ')'], ['（', '）']] as const;
  * particle: nouns (노을, 아이, 찬송가) and verb forms before a noun (있는, 걷는).
  */
 const KOREAN_WORDS_NOT_NOUN_AND_PARTICLE = new Set([
-  '가까이', '가라앉는', '가을', '걷는', '경로', '노을', '늦가을', '닿는', '덮는', '뜯는', '맡는', '받는', '뿜는', '스프레이', '아이',
+  '가까이', '가라앉는', '가을', '걷는', '경로', '노을', '늦가을', '닿는', '덮는', '뜯는', '맡는', '받는', '뿜는', '사이', '스프레이', '아이',
   '않는', '얻는', '없는', '웃는', '읽는', '있는', '조명받는', '지은', '찍는', '찬송가', '토이', '파이', '훑는',
 ]);
 
@@ -408,15 +436,28 @@ describe('template style words', () => {
     const limited: string[] = [];
     for (const locale of LOCALES) {
       const words = styleWords(locale);
-      const opening = SUBJECT_COLOUR_SENTENCE[locale] ?? '\u0000';
       for (const style of SUBJECT_KEEPS_COLOUR) {
         const still = words.get(`canvas.template.styleSet.film-styles.style.${style}.still`) ?? '';
-        const sentence = still.slice(still.indexOf(opening)).split(/(?<=[.。])\s*/u)[0] ?? '';
-        const hit = SUBJECT_COLOUR_LIMIT[locale]?.exec(sentence);
+        const hit = SUBJECT_COLOUR_LIMIT[locale]?.exec(still.split(AVOID_LABEL[locale] ?? '\u0000')[0] ?? '');
         if (hit) limited.push(`${locale} ${style}: ${hit[0]}`);
       }
     }
     expect(limited).toEqual([]);
+  });
+
+  it('leaves the place to the scene the user writes: a still or shot names a place only on the scene', () => {
+    const fixed: string[] = [];
+    for (const [key, text] of styleWords('en')) {
+      if (!key.endsWith('.still') && !key.endsWith('.shot')) continue;
+      const style = key.split('.')[5] ?? '';
+      for (const clause of (text.split('Avoid:')[0] ?? '').split(/[.;:,]\s*/u)) {
+        if (ON_THE_SCENE.test(clause)) continue;
+        for (const [word] of clause.matchAll(PLACE_WORDS)) {
+          if (!FRAME_PLACES[style]?.test(word.toLowerCase())) fixed.push(`${key}: ${word}`);
+        }
+      }
+    }
+    expect(fixed).toEqual([]);
   });
 
   it('labels every Japanese avoid list the same way', () => {
