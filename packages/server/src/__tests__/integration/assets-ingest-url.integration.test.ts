@@ -199,6 +199,8 @@ describe("POST /assets/ingest-url — a Document body block (breatic#1574)", () 
     expect(events).toEqual([expect.objectContaining({
       docName: `project-${projectId}/document-${spaceId}`, state: "processing", deadline: expect.any(Number),
     })]);
+    // The page holds the same deadline as the block.
+    expect(((await res.json()) as { data: Record<string, unknown> }).data.deadline).toBe(events[0]!.deadline);
   });
 });
 

@@ -88,7 +88,13 @@ function useNowPast(deadline: number | undefined): number {
  */
 function usePendingStatus(props: MediaBlockProps): PendingStatus {
   const store = React.useContext(PendingUploadsContext);
-  const now = useNowPast(props.uploadDeadline);
+  const handedOffDeadline = React.useCallback((): number | undefined => {
+    const entry = store.factsOf(props.uploadId).entry;
+    return entry?.phase === 'handedOff' ? entry.deadline : undefined;
+  }, [store, props.uploadId]);
+  // The block's deadline once collab wrote it; until then the one the server named this page.
+  const pageDeadline = React.useSyncExternalStore(store.subscribe, handedOffDeadline);
+  const now = useNowPast(props.uploadDeadline ?? pageDeadline);
   const block = blockFactsOf(props, store.docName);
   const blockKey = JSON.stringify(block);
   const snapshot = React.useCallback(

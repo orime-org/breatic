@@ -516,9 +516,9 @@ describe('handing the upload to the server (breatic#1574)', () => {
     world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     await settle();
     expect(world.register.mock.calls).toEqual([[SPACE, 'u1']]);
-    world.uploads.get('u1')!.resolve({ ok: true, handedOff: true });
+    world.uploads.get('u1')!.resolve({ ok: true, handedOff: true, deadline: 5 });
     await settle();
-    expect(world.controller.entry('u1')).toEqual({ phase: 'handedOff' });
+    expect(world.controller.entry('u1')).toEqual({ phase: 'handedOff', deadline: 5 });
     expect(world.unregister.mock.calls).toEqual([[SPACE, 'u1']]);
     expectEverywhere(world, [PENDING('u1')]);
   });

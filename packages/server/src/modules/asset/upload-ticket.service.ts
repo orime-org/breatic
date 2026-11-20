@@ -15,7 +15,7 @@
  */
 
 import { accountActivityRepo } from "@breatic/core";
-import { AppError, env, getNodeTaskConfig, getStorageConfig, logger } from "@breatic/core";
+import { AppError, budgetDeadlineFrom, env, getNodeTaskConfig, getStorageConfig, logger } from "@breatic/core";
 import {
   announceDocumentUploadAsset,
   assetService,
@@ -88,6 +88,8 @@ export type TicketOutcome =
     }
   | {
       kind: "alreadyExists";
+      /** A Document block's deadline, two hours from the hit (breatic#1574); absent elsewhere. */
+      deadline?: number;
       assetId: string;
       /** A 3D model's task row, opened already done; absent elsewhere. */
       taskId?: string | undefined;
@@ -308,6 +310,8 @@ async function prepareUpload(
     }
     return {
       kind: "alreadyExists",
+      // An upload with no node runs two hours from its grant; a hit has none, so from now.
+      ...(item.upload_id !== undefined && { deadline: budgetDeadlineFrom(Date.now()) }),
       assetId: dedupHit.assetId,
       taskId: sceneTaskId,
       fileUrl: dedupHit.fileUrl,

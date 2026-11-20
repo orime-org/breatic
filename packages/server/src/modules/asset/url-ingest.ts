@@ -57,24 +57,24 @@ export interface UrlIngestRequest {
  */
 export async function startUrlIngest(
   request: UrlIngestRequest & { nodeId: string },
-): Promise<OpenedUpload & { taskId: string }>;
+): Promise<OpenedUpload & { taskId: string; deadline?: number }>;
 
 /**
  * Start a fetch, with a node or without one.
  * @param request - The address and where it lands.
  * @returns The storage key, the studio, and the node's row id when a node was named.
  */
-export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedUpload>;
+export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedUpload & { deadline?: number }>;
 
 /**
  * Check the caller may add to the project, open the upload and queue the
  * fetch.
  * @param request - The address and where it lands.
- * @returns The storage key, the studio, and the node's row id when a node was named.
+ * @returns The storage key, the studio, the node's row id when a node was named, and a Document block's deadline.
  * @throws {AppError} 404 / 403 without access, 507 with no storage left.
  * @throws {Error} When the job cannot be queued; the upload is settled as not started first.
  */
-export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedUpload> {
+export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedUpload & { deadline?: number }> {
   const { url, projectId, spaceId, nodeId, documentUploadId, userId } = request;
   await projectService.assertAccess(projectId, userId, "editor");
   await assertStorageAllowance(projectId, "upload");
@@ -133,11 +133,12 @@ export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedU
     throw err;
   }
   // A Document block shows every member the wait; its ending arrives with the fetch, so losing this only costs that
-  // display (breatic#1574).
+  // display (breatic#1574). The page is told the same deadline.
+  let deadline: number | null = null;
   try {
-    await announceDocumentUploadProcessing(opened.key);
+    deadline = await announceDocumentUploadProcessing(opened.key);
   } catch (err) {
     logger.error({ err, key: opened.key, projectId }, "document_upload_processing_publish_failed");
   }
-  return opened;
+  return deadline === null ? opened : { ...opened, deadline };
 }

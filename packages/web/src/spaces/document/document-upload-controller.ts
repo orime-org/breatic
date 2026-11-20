@@ -59,7 +59,7 @@ export type UploadOutcome =
   /** Answered on the spot: this page writes the address. */
   | { readonly ok: true; readonly result: UploadResult }
   /** The server took the bytes or the address: it announces the ending and collab writes the block (breatic#1574). */
-  | { readonly ok: true; readonly handedOff: true }
+  | { readonly ok: true; readonly handedOff: true; readonly deadline?: number }
   | { readonly ok: false; readonly failure: UploadFailure };
 
 /** Where an upload stands on this page: a failure always says why, a finished one always holds its result. */
@@ -68,8 +68,8 @@ export type UploadEntry =
   | { readonly phase: 'uploading'; readonly progress: number | null }
   | { readonly phase: 'failed'; readonly failure: UploadFailure }
   | { readonly phase: 'done'; readonly result: UploadResult }
-  /** The server has it; the block learns the ending from collab. */
-  | { readonly phase: 'handedOff' };
+  /** The server has it until `deadline`; the block learns the ending from collab. */
+  | { readonly phase: 'handedOff'; readonly deadline?: number };
 
 /** The part of a body's awareness the controller publishes claims through. */
 export interface ClaimChannel {
@@ -318,8 +318,9 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
 
   /**
    * Publishes this page's claims in one body's awareness, for the pending
-   * blocks in it this page ran: failed, or in flight — a finished one whose
-   * block still waits to be written is still in flight to a reader.
+   * blocks in it this page ran and still holds: failed, or in flight — a
+   * finished one whose block still waits to be written is still in flight to
+   * a reader. One handed to the server is the server's to report.
    * @param entry - The body.
    * @param present - The upload ids of the pending blocks in it.
    */
@@ -327,7 +328,10 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
     const claims: Record<string, UploadClaim> = {};
     for (const uploadId of present) {
       const record = records.get(uploadId);
-      if (record !== undefined) claims[uploadId] = record.state.phase === 'failed' ? 'failed' : 'uploading';
+      // Once the server has it, the block carries what the server wrote.
+      if (record !== undefined && record.state.phase !== 'handedOff') {
+        claims[uploadId] = record.state.phase === 'failed' ? 'failed' : 'uploading';
+      }
     }
     claim(entry, claims);
   };
@@ -381,7 +385,7 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
       .then((outcome) => {
         if (outcome.ok && 'handedOff' in outcome) {
           // The source stays: a server failure the block shows can still be retried from it.
-          record.state = { phase: 'handedOff' };
+          record.state = { phase: 'handedOff', ...(outcome.deadline !== undefined && { deadline: outcome.deadline }) };
         } else if (outcome.ok) {
           record.state = { phase: 'done', result: outcome.result };
           record.source = null;

@@ -55,14 +55,16 @@ async function publish(target: DocumentUploadTarget, fields: Omit<DocumentUpload
 /**
  * Tell the block its bytes were handed over, and until when the upload may run.
  * @param storageKey - The key the upload's grant was opened on.
- * @returns Nothing; a key with no Document block publishes nothing.
+ * @returns The deadline the block was told, in epoch ms; null for a key with no Document block, which publishes nothing.
  * @throws {Error} When reading the grant or publishing fails.
  */
-export async function announceDocumentUploadProcessing(storageKey: string): Promise<void> {
+export async function announceDocumentUploadProcessing(storageKey: string): Promise<number | null> {
   const grant = await findGrantByKey(storageKey);
   const target = grant === null ? null : documentTargetOf(grant);
-  if (grant === null || target === null) return;
-  await publish(target, { state: "processing", deadline: await uploadDeadline(grant) });
+  if (grant === null || target === null) return null;
+  const deadline = await uploadDeadline(grant);
+  await publish(target, { state: "processing", deadline });
+  return deadline;
 }
 
 /**

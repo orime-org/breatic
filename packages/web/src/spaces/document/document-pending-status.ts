@@ -91,7 +91,12 @@ export function pendingStatus(facts: PendingFacts): PendingStatus {
     return { kind: 'processing' };
   }
   if (entry !== undefined) {
-    if (entry.phase === 'handedOff') return { kind: 'processing' };
+    if (entry.phase === 'handedOff') {
+      // Until collab writes the block, the deadline the server named this page reads the same way the block's would.
+      if (entry.deadline === undefined) return { kind: 'notFinished' };
+      if ((facts.now ?? 0) > entry.deadline) return { kind: 'serverFailed', failure: TIMED_OUT, retry: holdsSource };
+      return { kind: 'processing' };
+    }
     if (entry.phase === 'failed') return { kind: 'failed', failure: entry.failure };
     if (entry.phase === 'done' && facts.access === 'denied') {
       return facts.refused ? { kind: 'waitingRefused' } : { kind: 'waitingDemoted' };

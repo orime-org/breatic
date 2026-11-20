@@ -32,8 +32,8 @@ function sources(overrides: Partial<UploadSourceDeps> = {}): {
   deps: UploadSourceDeps;
 } {
   const deps: UploadSourceDeps = {
-    uploadFile: vi.fn(async () => {}),
-    ingest: vi.fn(async () => {}),
+    uploadFile: vi.fn(async () => ({})),
+    ingest: vi.fn(async () => ({ deadline: 6 })),
     register: vi.fn(async ({ urls, pairs }: Parameters<UploadSourceDeps['register']>[0]) =>
       Object.fromEntries([...urls, ...pairs.flatMap((p) => [p.url, p.cover])].map((u) => [u, `${u}?copy`])),
     ),
@@ -61,12 +61,13 @@ describe('a file', () => {
   it('is handed to the server for its block, its progress passed on, and this page is done with it', async () => {
     const uploadFile = vi.fn(async (_file: File, _uploadId: string, onProgress: (share: number) => void) => {
       onProgress(0.5);
+      return { deadline: 5 };
     });
     const { run } = sources({ uploadFile });
     const progress = vi.fn();
     const file = new File(['x'], 'a.png', { type: 'image/png' });
     const outcome = await run('u1', { kind: 'file', file }, progress);
-    expect(outcome).toEqual({ ok: true, handedOff: true });
+    expect(outcome).toEqual({ ok: true, handedOff: true, deadline: 5 });
     expect(uploadFile).toHaveBeenCalledWith(file, 'u1', expect.any(Function));
     expect(progress).toHaveBeenCalledWith(0.5);
   });
@@ -89,14 +90,14 @@ describe('an https address', () => {
     const { run, deps } = sources();
     const outcome = await run('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' }, noProgress);
     expect(deps.ingest).toHaveBeenCalledWith('https://imgs.example/x.jpg', 'u1');
-    expect(outcome).toEqual({ ok: true, handedOff: true });
+    expect(outcome).toEqual({ ok: true, handedOff: true, deadline: 6 });
   });
 
   it('turned away for the rate waits as long as the server says, then is sent again', async () => {
     const ingest = vi
       .fn<UploadSourceDeps['ingest']>()
       .mockRejectedValueOnce(new ApiException({ status: 429, message: 'slow', retryAfterSeconds: 7 }))
-      .mockResolvedValueOnce(undefined);
+      .mockResolvedValueOnce({});
     const { run, deps } = sources({ ingest });
     const outcome = await run('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' }, noProgress);
     expect(deps.sleep).toHaveBeenCalledWith(7000);
@@ -121,8 +122,8 @@ describe('an https address', () => {
     let release!: () => void;
     const ingest = vi
       .fn<UploadSourceDeps['ingest']>()
-      .mockImplementationOnce(() => new Promise((resolve) => (release = resolve)))
-      .mockResolvedValueOnce(undefined);
+      .mockImplementationOnce(() => new Promise((resolve) => (release = () => resolve({}))))
+      .mockResolvedValueOnce({});
     const { run } = sources({ ingest });
     const first = run('u1', { kind: 'address', url: 'https://imgs.example/1.jpg' }, noProgress);
     const second = run('u2', { kind: 'address', url: 'https://imgs.example/2.jpg' }, noProgress);

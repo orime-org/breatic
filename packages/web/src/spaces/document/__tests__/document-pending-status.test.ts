@@ -118,9 +118,18 @@ describe('what collab wrote onto the block (breatic#1574)', () => {
     expect(pendingStatus({ entry: undefined, access: 'granted', refused: false, claim: null, block: retryable })).toMatchObject({ retry: false });
   });
 
-  it('handed off with nothing written yet: uploading', () => {
+  it('handed off with nothing written yet: processing until the deadline the server named, then timed out', () => {
+    const entry = { phase: 'handedOff' as const, deadline: 1000 };
+    const block = { state: '' as const, foreign: false };
+    expect(pendingStatus({ entry, access: 'granted', refused: false, claim: null, block, now: 1000 })).toEqual({ kind: 'processing' });
+    expect(pendingStatus({ entry, access: 'granted', refused: false, claim: null, block, now: 1001 })).toEqual({
+      kind: 'serverFailed', failure: { reason: 'failed', retryable: true }, retry: true,
+    });
+  });
+
+  it('handed off with no deadline named and nothing written: not finished', () => {
     expect(pendingStatus({ entry: { phase: 'handedOff' }, access: 'granted', refused: false, claim: null, block: { state: '', foreign: false } })).toEqual({
-      kind: 'processing',
+      kind: 'notFinished',
     });
   });
 

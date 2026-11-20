@@ -41,6 +41,8 @@ export class BytesNotDelivered extends Error {
 /** What our server answers a finish with: it queued it, under this key. */
 export interface QueuedFinish {
   storageKey: string;
+  /** A Document body block's deadline, in epoch ms (breatic#1574). */
+  deadline?: number;
 }
 
 /**

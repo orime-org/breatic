@@ -89,7 +89,10 @@ function runnerFor(target: UploadTarget): UploadControllerDeps['run'] {
     const sources = createUploadSources({
       uploadFile: (file, uploadId, onProgress) => handOffDocumentMedia(file, { ...target, uploadId }, onProgress),
       ingest: async (url, uploadId) => {
-        await assetsApi.ingestUrl({ url, project_id: target.projectId, space_id: target.spaceId, upload_id: uploadId });
+        const { deadline } = await assetsApi.ingestUrl({
+          url, project_id: target.projectId, space_id: target.spaceId, upload_id: uploadId,
+        });
+        return deadline === undefined ? {} : { deadline };
       },
       register: async ({ urls, pairs }) =>
         (await canvasApi.paste({ project_id: target.projectId, urls, pairs, history: [] })).map,
