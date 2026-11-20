@@ -268,6 +268,9 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       entries.set(key, { spaceId: input.spaceId, objectId: input.objectId, part: input.part, percent: 0, operationId });
       deps.register(input.spaceId, operationId);
       changed();
+      // The part's look as the user saw it when starting; the conditional write at completion compares against it.
+      const starting = deps.session(input.name);
+      const startLook = starting ? lookOf(starting, input.objectId) : undefined;
       try {
         let local: LookPictureSize | null;
         try {
@@ -286,7 +289,7 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
           return;
         }
         // The object total is judged once the server says whether it already holds this picture.
-        await upload(input, local, opened ? lookOf(opened, input.objectId) : undefined, key);
+        await upload(input, local, startLook, key);
       } finally {
         if (entries.get(key)?.operationId === operationId) entries.delete(key);
         deps.unregister(input.spaceId, operationId);

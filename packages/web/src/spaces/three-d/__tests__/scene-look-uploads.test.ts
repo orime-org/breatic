@@ -236,6 +236,37 @@ describe('SceneLookUploads', () => {
     }
   });
 
+  it('does not write over a picture a collaborator set while the file header was being read', async () => {
+    const { doc, session } = editor();
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    // start() is now awaiting the local header read.
+    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
+    await settle();
+    h.finish();
+    await done;
+    expect(lookOf(doc)).toEqual({ 0: { map: OTHER_IMAGE } });
+    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.partChanged' }));
+  });
+
+  it('writes when the Space was reopened during the header read and still shows the picture it had at start', async () => {
+    const first = editor();
+    applySceneCommand(first.doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
+    let current: SceneSession | undefined = first.session;
+    const h = harness(() => current);
+    const done = h.uploads.start(startFor());
+    // Closed during the header read, opened again showing the same picture.
+    current = undefined;
+    await settle();
+    const reopened = editor();
+    applySceneCommand(reopened.doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
+    current = reopened.session;
+    h.finish();
+    await done;
+    expect(lookOf(reopened.doc)).toEqual({ 0: { map: UPLOADED } });
+    expect(h.notify).not.toHaveBeenCalled();
+  });
+
   it('does not write after the part was set to no picture meanwhile', async () => {
     const { doc, session } = editor();
     const h = harness(() => session);
