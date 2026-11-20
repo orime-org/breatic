@@ -11,7 +11,6 @@ import { canonicalMiniToolValue, miniToolConsumptionIdentitySchema } from "@brea
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as stepRepo from "@domain/task/upstreamStep.repo.js";
 import { miniToolConsumptionRecordSchema } from "@domain/mini-tool/consumption.types.js";
-import { completeResolvedMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
 import { miniToolStepStateSchema, type MiniToolStepState, type MiniToolStepJson } from "@domain/mini-tool/upstream-step.types.js";
 import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
 import * as pinRepo from "@domain/presentation/presentation-pin.repo.js";
@@ -33,11 +32,6 @@ export interface RecordMiniToolStepResultInput {
    * execution design §10.3: a tracking analysis's clips and RLE).
    */
   presentation?: { prepared?: { toolInputId: string; preparedKey: string }; retire?: string[]; pin?: string[] };
-}
-/** Explicit attempt resolution can only describe that particular original request. */
-export interface FailMiniToolStepInput {
-  taskId: string; stepId: string; error: Record<string, MiniToolStepJson>;
-  attempt?: { attemptId: string; proof: "not_sent" | "rejected" };
 }
 
 /**
@@ -85,34 +79,6 @@ export async function recordMiniToolStepResult(input: RecordMiniToolStepResultIn
   return answer;
 }
 
-/**
- * Preserve the first failure and any explicit resolution of its own submit intent.
- * @param input - The failure and any specifically evidenced attempt resolution.
- * @returns The preserved terminal step or newly saved failure.
- * @throws {Error} When ownership, resolution proof or persistence fails.
- */
-export async function failMiniToolStep(input: FailMiniToolStepInput): Promise<UpstreamStep> {
-  const request = failureSchema.parse(input);
-  return db.transaction(async (tx) => {
-    const { task, step, state } = await ownedStep(request.taskId, request.stepId, tx);
-    let changed = false;
-    if (request.attempt !== undefined) {
-      const attempt = state.attempts.find((candidate) => candidate.attemptId === request.attempt!.attemptId);
-      if (!attempt) throw new Error("Failure resolution has no matching persisted attempt");
-      const resolution = { kind: request.attempt.proof, error: request.error };
-      if (attempt.resolution.kind === "unresolved") { attempt.resolution = resolution; changed = true; }
-      else if (canonicalMiniToolValue(attempt.resolution) !== canonicalMiniToolValue(resolution)) throw new Error("Failure proof conflicts with the original attempt resolution");
-    }
-    const terminal = step.status === "done" || step.status === "failed";
-    if (!terminal) { state.error = request.error; changed = true; }
-    if (!changed) return step;
-    await stepRepo.storeMiniToolStepExecution(task.id, step.id, state, terminal ? {} : { status: "failed" }, tx);
-    // A proof that arrives after the task ended may resolve its last attempt, so its call set closes here.
-    await completeResolvedMiniToolConsumptionSet(task.id, tx);
-    return reread(task.id, step.id, tx);
-  });
-}
-
 
 const scope = { taskId: z.uuid(), stepId: z.uuid() };
 const jsonObject = z.record(z.string(), z.json());
@@ -122,7 +88,6 @@ const resultSchema = z.strictObject({ ...scope, identity: miniToolConsumptionIde
     retire: z.array(z.string().min(1)).optional(),
     pin: z.array(z.string().min(1)).optional(),
   }).optional() });
-const failureSchema = z.strictObject({ ...scope, error: jsonObject, attempt: z.strictObject({ attemptId: z.uuid(), proof: z.enum(["not_sent", "rejected"]) }).optional() });
 
 /**
  * Acquire the common immutable task lock and bind execution metadata to its original step.
