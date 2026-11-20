@@ -19,7 +19,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { PICK_PURPOSE_UI, pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
+import { PICK_PURPOSE_UI } from '@web/spaces/canvas/pick-purpose-ui';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 describe('every pick says what IT is asking for (#1918)', () => {
@@ -92,24 +92,3 @@ describe('the focus pick has a trigger in both panels (#1978)', () => {
   });
 });
 
-// Video tools declare no registry slots (their inputs live in the draft), so their picks are named here: the demo's banner
-// for each, and the slot that started it, which Escape and Exit hand focus back to (canvas design §11, §28).
-describe('a video tool slot pick says what it asks for and returns focus to its slot', () => {
-  const NODE = '10000000-0000-4000-8000-000000000001';
-
-  it('asks for an audio node and returns to that dialogue row\'s audio slot', () => {
-    expect(pickSessionUi({ nodeId: NODE, purpose: 'miniToolSlot', slotKey: 'dialogue:row-1' }, 'video.lip-sync'))
-      .toEqual({ banner: 'canvas.miniTool.videoUI.pickAudio', triggers: ['video-audio-row-1'] });
-  });
-
-  it('asks for a video node and returns to the transitions input slot', () => {
-    expect(pickSessionUi({ nodeId: NODE, purpose: 'miniToolSlot', slotKey: 'timeline' }, 'video.transitions'))
-      .toEqual({ banner: 'canvas.miniTool.videoUI.pickVideo', triggers: ['video-timeline-input'] });
-  });
-
-  it('shows the demo\'s sentences', () => {
-    const en = new Map(LOCALE_CATALOGS).get('en')!;
-    expect(readPath(en, 'canvas.miniTool.videoUI.pickAudio')).toBe('Choose an audio node on the Canvas.');
-    expect(readPath(en, 'canvas.miniTool.videoUI.pickVideo')).toBe('Click a video node to fill the slot. Press Escape to finish.');
-  });
-});

@@ -15,7 +15,7 @@ import * as React from 'react';
 
 import type { NodeRef } from '@web/data/yjs/node-view';
 import type { NodeTaskEntry } from '@breatic/shared';
-import { eraseFailureReasonSchema, expandFailureReasonSchema, lipsyncFailureReasonSchema, miniToolById, plannedOutputRetryable, type EraseFailureReason, type ExpandFailureReason, type MiniToolExecutionRetryRequest } from '@breatic/shared/mini-tools';
+import { miniToolById, plannedOutputRetryable, type MiniToolExecutionRetryRequest } from '@breatic/shared/mini-tools';
 
 import { canvasApi } from '@web/data/api/canvas';
 import { miniToolsApi } from '@web/data/api/mini-tools';
@@ -23,9 +23,7 @@ import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-que
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
-import { plannedRetryIntent, retryPlannedVideoRun } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
-import { LipSyncFailure } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
-import { ModelRunFailure } from '@web/spaces/canvas/mini-tool/video/ModelRunFailure';
+import { retryPlannedVideoRun } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { useTickingClock } from '@web/spaces/canvas/tasks/use-ticking-clock';
 import {
@@ -41,8 +39,8 @@ import {
   type TaskActionRequest,
 } from '@web/stores/task-actions-in-flight';
 
-/** The planned tools whose failed output retries from its task row; lip-sync, erase and expand retry from their failure block. */
-const ROW_RETRY_TOOLS = ['video.remove-bg', 'video.extract-frames', 'video.split'] as const;
+/** The planned tools whose failed output retries from its task row. */
+const ROW_RETRY_TOOLS = ['video.extract-frames', 'video.split'] as const;
 
 /** The media a refusal can name formats for. */
 const LISTED_MEDIA = ['image', 'video', 'audio'] as const;
@@ -178,38 +176,9 @@ function OpenNodeTaskPanel({
       refetchOnMount: 'always' as const,
     })),
   });
-  // A lip-sync run's output node is where its failure is shown: one line per person and, when every failure can clear on a
-  // retry, the retry of the failed output on the run's frozen plan (§97 D24-1; execution design §9.4).
-  // An erase or expand output shows its run's failure the same way (execution design §10.4, §10.5).
-  const lipSyncFailures = React.useMemo(() => new Map(parentRunIds.flatMap((runId, at) => {
-    const result = runs[at]?.data?.outputs[0]?.result;
-    const reason = result?.status === 'failed' ? lipsyncFailureReasonSchema.safeParse(result.error) : null;
-    return reason?.success === true ? [[runId, reason.data] as const] : [];
-  })), [parentRunIds, runs]);
-  const modelFailures = React.useMemo(() => new Map(parentRunIds.flatMap((runId, at) => {
-    const result = runs[at]?.data?.outputs[0]?.result;
-    if (result?.status !== 'failed') return [];
-    const erase = eraseFailureReasonSchema.safeParse(result.error);
-    const expand = expandFailureReasonSchema.safeParse(result.error);
-    const reason: EraseFailureReason | ExpandFailureReason | null = erase.success ? erase.data : expand.success ? expand.data : null;
-    return reason === null ? [] : [[runId, reason] as const];
-  })), [parentRunIds, runs]);
-  // A failed output offers a retry only while a retry can clear it and no admitted retry took it over; the next one starts
-  // from that retry's run (frames-split §7.15 end of retryability). Lip-sync, erase and expand runs have one output.
-  /**
-   * Whether a single-output run's failed output offers a retry now.
-   * @param runId - The run.
-   * @param tool - Its tool.
-   * @returns True when the retry is offered.
-   * @throws {never} Never.
-   */
-  const retryableRun = React.useCallback((runId: string, tool: MiniToolExecutionRetryRequest['tool']): boolean => {
-    const output = runs[parentRunIds.indexOf(runId)]?.data?.outputs[0];
-    return output !== undefined && plannedOutputRetryable(tool, output);
-  }, [parentRunIds, runs]);
-  const retryFailed = React.useCallback((runId: string, tool: MiniToolExecutionRetryRequest['tool'] = 'video.lip-sync', outputIndex = 0): Promise<unknown> =>
+  const retryFailed = React.useCallback((runId: string, tool: MiniToolExecutionRetryRequest['tool'], outputIndex: number): Promise<unknown> =>
     retryPlannedVideoRun({ projectId, spaceId, tool, runId, outputIndex, onDone: () => { void query.refetch(); } }), [projectId, spaceId, query]);
-  // Every other planned output retries from its own failed task row (frames-split §10.8 retry row): the node's output of
+  // A planned output retries from its own failed task row (frames-split §10.8 retry row): the node's output of
   // the parent run, matched by node id, when it failed for a reason a retry can clear.
   const plannedRetryOf = React.useCallback((taskId: string): { runId: string; tool: MiniToolExecutionRetryRequest['tool']; outputIndex: number } | null => {
     const entry = entries.find((candidate) => candidate.id === taskId);
@@ -219,19 +188,6 @@ function OpenNodeTaskPanel({
     const output = runs[parentRunIds.indexOf(runId)]?.data?.outputs.find((candidate) => candidate.nodeId === nodeId);
     return output !== undefined && plannedOutputRetryable(tool, output) ? { runId, tool, outputIndex: output.outputIndex } : null;
   }, [entries, runs, parentRunIds, nodeId]);
-  const detailOf = React.useCallback((taskId: string): React.ReactNode => {
-    const entry = entries.find((candidate) => candidate.id === taskId);
-    const runId = entry?.taskId;
-    if (runId == null) return null;
-    if (entry?.label === 'video.erase' || entry?.label === 'video.expand') {
-      const tool = entry.label;
-      const failure = modelFailures.get(runId);
-      return failure === undefined ? null : <ModelRunFailure reason={failure} disabled={readOnly} retryIntent={plannedRetryIntent(runId)} {...(retryableRun(runId, tool) ? { onRetry: () => { void retryFailed(runId, tool); } } : {})} />;
-    }
-    const reason = entry?.label === 'video.lip-sync' ? lipSyncFailures.get(runId) : undefined;
-    return reason === undefined ? null
-      : <LipSyncFailure reason={reason} disabled={readOnly} retryIntent={plannedRetryIntent(runId)} {...(retryableRun(runId, 'video.lip-sync') ? { onRetry: () => { void retryFailed(runId); } } : {})} />;
-  }, [entries, lipSyncFailures, modelFailures, readOnly, retryFailed, retryableRun]);
   // Only the running list reads the clock, and only while it has a row: the
   // three settled states show fixed instants.
   const counting = React.useMemo(
@@ -341,7 +297,6 @@ function OpenNodeTaskPanel({
         displayNameOf={displayNameOf}
         onRetry={retry}
         onDismiss={dismiss}
-        detailOf={detailOf}
       />
     </NodeToolbar>
   );

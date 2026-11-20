@@ -19,7 +19,7 @@ vi.mock('@web/spaces/canvas/mini-tool/video/use-video-frame-thumbnails', async (
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.webm', mediaInfo: { width: 160, height: 240, duration: 0.28, mimeType: 'video/webm' } };
 const draft = { version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [], params: { mode: 'first', frameIndex: 0 } } as unknown as VideoToolDraftById['video.extract-frames'];
 const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 7 };
-const common = { toolId: 'video.extract-frames' as const, draft, analyses: [], disabled: false, pickingSlot: null, inputNames: new Map(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn(), onChange: vi.fn(), presentedTime: 0.1 };
+const common = { toolId: 'video.extract-frames' as const, draft, analyses: [], disabled: false, onAnalyse: vi.fn(), analysing: false, onChange: vi.fn(), presentedTime: 0.1 };
 
 describe('extract frames layout (canvas design §4 frames row)', () => {
   it('puts the three modes as equal thirds of one row with no heading above them', () => {

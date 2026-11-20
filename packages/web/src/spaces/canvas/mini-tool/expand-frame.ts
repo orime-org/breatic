@@ -10,12 +10,10 @@
  * turned into shares through the source's pixel size.
  */
 
-import { isExpanded } from '@breatic/shared/mini-tools';
 import type { CropHandle } from '@web/lib/crop-math';
 import { UNIT_FRAME, type ExpandDraft, type ExpandFrame, type ExpandRatio } from '@web/stores/expand-draft';
 
 export { EXPAND_RATIOS, UNIT_FRAME, type ExpandFrame, type ExpandRatio } from '@web/stores/expand-draft';
-export { expandLayout, isExpanded, type ExpandLayout } from '@breatic/shared/mini-tools';
 
 /** A source's pixel size. */
 export interface PixelSize {
@@ -47,6 +45,44 @@ export function ratioValue(ratio: ExpandRatio): number | null {
   if (ratio === 'free') return null;
   const [w, h] = ratio.split(':').map(Number);
   return (w ?? 1) / (h ?? 1);
+}
+
+/** The padded canvas's size and where the source's top left sits on it, in source pixels. */
+export interface ExpandLayout {
+  width: number;
+  height: number;
+  sourceX: number;
+  sourceY: number;
+}
+
+/**
+ * Lay the source on the frame's canvas in whole pixels, never cutting into it.
+ * @param frame - The frame, as shares of the source.
+ * @param source - The source's pixels.
+ * @returns The canvas size and the source's offset on it.
+ */
+export function expandLayout(frame: ExpandFrame, source: PixelSize): ExpandLayout {
+  const sourceX = Math.round(-frame.x * source.width);
+  const sourceY = Math.round(-frame.y * source.height);
+  return {
+    width: Math.max(sourceX + source.width, Math.round(frame.width * source.width)),
+    height: Math.max(sourceY + source.height, Math.round(frame.height * source.height)),
+    sourceX,
+    sourceY,
+  };
+}
+
+/**
+ * Whether the frame pads the source by at least one pixel on some side, read
+ * from the same whole-pixel layout the export draws.
+ * @param frame - The frame.
+ * @param source - The source's pixels.
+ * @returns True when the export would be larger than the source.
+ * @throws {never} Never.
+ */
+export function isExpanded(frame: ExpandFrame, source: PixelSize): boolean {
+  const layout = expandLayout(frame, source);
+  return layout.width > source.width || layout.height > source.height;
 }
 
 /**
@@ -176,7 +212,7 @@ function resizeLocked(
   if (least > most + EPS) return frame;
   const width = clamp(wanted, least, most);
   const height = width / shareRatio;
-  // Center the unconstrained axis while keeping the complete source inside the frame.
+  // As the crop box does (crop-math.ts), so a picture moved inside the frame stays where it is.
   const middleX = clamp(frame.x + frame.width / 2 - width / 2, 1 - width, 0);
   const middleY = clamp(frame.y + frame.height / 2 - height / 2, 1 - height, 0);
   const x = handle.includes('w') ? right - width : handle.includes('e') ? frame.x : middleX;
@@ -211,17 +247,18 @@ export function resizeFrame(
 }
 
 /**
- * Move the target frame around the fixed source while retaining its size.
+ * Move the source inside the frame: the frame keeps its size and slides the
+ * other way, and the source stops at the frame's edges.
  * @param frame - The frame at the start of the move.
- * @param delta - How far the target moves, in shares of the source.
+ * @param delta - How far the source moves, in shares of it.
  * @param delta.x - Across.
  * @param delta.y - Down.
  * @returns The frame.
  */
-export function moveFrame(frame: ExpandFrame, delta: { x: number; y: number }): ExpandFrame {
+export function moveSource(frame: ExpandFrame, delta: { x: number; y: number }): ExpandFrame {
   return {
-    x: clamp(frame.x + delta.x, 1 - frame.width, 0),
-    y: clamp(frame.y + delta.y, 1 - frame.height, 0),
+    x: clamp(frame.x - delta.x, 1 - frame.width, 0),
+    y: clamp(frame.y - delta.y, 1 - frame.height, 0),
     width: frame.width,
     height: frame.height,
   };
@@ -231,18 +268,18 @@ export function moveFrame(frame: ExpandFrame, delta: { x: number; y: number }): 
  * How far the frame reaches below its node, for the panel hung under it. Read
  * from the draft and the node's size, which the canvas keeps while the node
  * itself is off screen and not drawn.
- * @param expand - The target frame and where the node shows the source.
+ * @param expand - The frame, how far the picture moved in it, and where the node shows the picture.
  * @param nodeHeight - The node's height, in canvas pixels.
  * @param zoom - The canvas zoom.
  * @returns The reach in screen pixels, 0 when the frame ends inside the node.
  */
 export function expandDrop(
-  expand: Pick<ExpandDraft, 'frame' | 'view'>,
+  expand: Pick<ExpandDraft, 'frame' | 'shift' | 'view'>,
   nodeHeight: number,
   zoom: number,
 ): number {
-  const { frame, view } = expand;
+  const { frame, shift, view } = expand;
   if (view === null) return 0;
-  const bottom = view.at.y + (frame.y + frame.height) * view.box.height;
+  const bottom = view.at.y + (frame.y + shift.y + frame.height) * view.box.height;
   return Math.max(0, bottom - nodeHeight) * zoom;
 }

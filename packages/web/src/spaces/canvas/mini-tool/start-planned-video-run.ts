@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { newId, t } from '@breatic/shared';
-import { miniToolById, miniToolPlannedRequestSchema, planVideoFrames, planVideoSplit, videoExpandLayout, videoToolDraftSchema, type MiniToolAnalysisRecord, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type VideoPlanGrid, type VideoToolAnalysisRef, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
+import { miniToolById, miniToolPlannedRequestSchema, planVideoFrames, planVideoSplit, videoToolDraftSchema, type MiniToolAnalysisRecord, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type VideoPlanGrid, type VideoToolAnalysisRef, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { miniToolsApi, type MiniToolPlannedRunAnswer } from '@web/data/api/mini-tools';
 import { ApiException } from '@web/data/api/types';
-import { addEdge, addNode, nodeDataMap, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
-import { docName, getDoc } from '@web/data/yjs/manager';
+import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { toast } from '@web/lib/toast';
 import { createEmptyNode } from '@web/spaces/canvas/node-factory';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
@@ -28,8 +27,6 @@ export interface PlannedVideoRun extends Pick<MiniToolRun, 'projectId' | 'spaceI
   plan?: Pick<PlannedVideoPress, 'analysisRefs' | 'outputNodeIds'>;
   /** The source's compact presentation table, which frames and split plan their outputs from; null while not read. */
   grid?: VideoPlanGrid | null;
-  /** The selected version's display size, which an expansion's node is sized on as admission sizes it (§10.5). */
-  display?: { width: number; height: number };
 }
 
 /**
@@ -78,7 +75,7 @@ export function retryPlannedVideoRun(retry: PlannedVideoRetry): Promise<RunOnceO
 export interface PlannedVideoFacts {
   projectId: string;
   spaceId: string;
-  /** The selected version of each input: `{ source }` for one input, input id → ref for transitions. */
+  /** The selected version of the source, `{ source }`. */
   presentationRef: MiniToolPlannedRequest['presentation_ref'];
   /** The analysis refs the node holds; the draft's own are the ones the request names. */
   analysisRefs: readonly VideoToolAnalysisRef[];
@@ -90,11 +87,6 @@ export interface PlannedVideoFacts {
 export interface PlannedVideoPress extends PlannedVideoFacts { outputNodeIds: readonly string[] }
 
 type PlannedRecipe = MiniToolPlannedRequest['outputs'][number]['recipe'];
-/** The one output recipe each single-output planned video tool's request names. */
-const SINGLE_RECIPES: Partial<Record<VideoToolId, PlannedRecipe>> = {
-  'video.remove-bg': { kind: 'remove-bg' }, 'video.lip-sync': { kind: 'lip-sync' }, 'video.transitions': { kind: 'transitions' },
-  'video.erase': { kind: 'erase' }, 'video.expand': { kind: 'expand' },
-};
 
 /**
  * Each output's recipe, in output order: frames and split plan theirs on the selected version's grid with the shared planner
@@ -103,19 +95,14 @@ const SINGLE_RECIPES: Partial<Record<VideoToolId, PlannedRecipe>> = {
  * @param draft - The draft.
  * @param grid - The selected version's grid.
  * @returns The recipes.
- * @throws {Error} When the tool has no planned request, or frames and split have no grid.
+ * @throws {Error} When frames and split have no grid.
  * @throws {z.ZodError} When the grid or the draft's selection is invalid.
  */
 export function plannedVideoRecipes(tool: VideoToolId, draft: VideoToolDraft, grid: VideoPlanGrid | null | undefined): PlannedRecipe[] {
-  if (tool === 'video.extract-frames' || tool === 'video.split') {
-    if (grid == null) throw new Error('Frames and split plan their outputs on the selected version grid');
-    return tool === 'video.extract-frames'
-      ? planVideoFrames(grid, (draft as VideoToolDraftById['video.extract-frames']).params).map(({ frameIndex }) => ({ kind: 'frame' as const, frameIndex }))
-      : planVideoSplit(grid, (draft as VideoToolDraftById['video.split']).params.cuts).map(({ start, end }) => ({ kind: 'segment' as const, range: { start, end } }));
-  }
-  const recipe = SINGLE_RECIPES[tool];
-  if (recipe === undefined) throw new Error(`${tool} has no planned request`);
-  return [recipe];
+  if (grid == null) throw new Error('Frames and split plan their outputs on the selected version grid');
+  return tool === 'video.extract-frames'
+    ? planVideoFrames(grid, (draft as VideoToolDraftById['video.extract-frames']).params).map(({ frameIndex }) => ({ kind: 'frame' as const, frameIndex }))
+    : planVideoSplit(grid, (draft as VideoToolDraftById['video.split']).params.cuts).map(({ start, end }) => ({ kind: 'segment' as const, range: { start, end } }));
 }
 
 /**
@@ -127,7 +114,7 @@ export function plannedVideoRecipes(tool: VideoToolId, draft: VideoToolDraft, gr
  * @param outputNodeIds - The output nodes, in output order.
  * @returns The request.
  * @throws {z.ZodError} When the request is not a complete planned request.
- * @throws {Error} When the tool has no single-recipe planned request.
+ * @throws {Error} When frames and split have no grid.
  */
 export function buildPlannedVideoRequest(tool: VideoToolId, draft: VideoToolDraft, facts: PlannedVideoFacts, outputNodeIds: readonly string[]): MiniToolPlannedRequest {
   const recipes = plannedVideoRecipes(tool, draft, facts.grid);
@@ -152,9 +139,7 @@ export async function preparePlannedVideoRun(run: PlannedVideoRun): Promise<Mini
   const recipes = plannedVideoRecipes(run.toolId, held, run.grid);
   const spec = miniToolById(run.toolId);
   if (spec === undefined || spec.run.kind !== 'planned' || spec.outputs?.length !== 1) throw new Error('Planned video execution has no output descriptor');
-  // An expansion's node takes the widened frame the quote and the admission size it to (execution design §10.5 geometry row).
-  const layout = run.toolId === 'video.expand' ? videoExpandLayout((held as VideoToolDraftById['video.expand']).params.frame, run.display ?? held.source.mediaInfo, Infinity) : held.source.mediaInfo;
-  const size = { width: layout.width, height: layout.height };
+  const size = { width: held.source.mediaInfo.width, height: held.source.mediaInfo.height };
   const placements = plannedOutputPlacementOf(recipes.map(() => spec.outputs![0]!), recipes.map(() => size), source.name);
   const nodes = placements.map((placed, index) => {
     const node = createEmptyNode(placed.output.modality, {
@@ -167,17 +152,11 @@ export async function preparePlannedVideoRun(run: PlannedVideoRun): Promise<Mini
   });
   const body = buildPlannedVideoRequest(run.toolId, held, { projectId: run.projectId, spaceId: run.spaceId, presentationRef: run.presentationRef, analysisRefs: run.plan?.analysisRefs ?? [], grid: run.grid },
     nodes.map((node) => node.id));
-  // A transitions or lip-sync result is also linked from each input node it uses (the picked video, each dialogue audio)
-  // while that node is still on the canvas (canvas design §3 inputs row: sourceNodeId gives the edge relation, §4).
-  const doc = getDoc(docName.canvasSpace(run.projectId, run.spaceId));
-  const linksInputs = run.toolId === 'video.transitions' || run.toolId === 'video.lip-sync';
-  const linked = [source.id, ...new Set(held.inputs.flatMap((input) =>
-    linksInputs && input.sourceNodeId !== undefined && input.sourceNodeId !== source.id && nodeDataMap(doc, input.sourceNodeId) !== null ? [input.sourceNodeId] : []))];
   // The nodes and their edges are one add for the size cap, judged before the request: no room means no run.
   const placed = runCanvasUndoBatch(run.projectId, run.spaceId, { kind: 'add' }, () => {
     for (const node of nodes) {
       addNode(run.projectId, run.spaceId, node);
-      for (const from of linked) addEdge(run.projectId, run.spaceId, { id: `${from}->${node.id}`, source: from, target: node.id, toolId: run.toolId });
+      addEdge(run.projectId, run.spaceId, { id: `${source.id}->${node.id}`, source: source.id, target: node.id, toolId: run.toolId });
     }
   });
   if (!placed.ok) return null;

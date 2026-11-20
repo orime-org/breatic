@@ -84,12 +84,7 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
   // Which video focus crops collab handled, task state rather than content (frames-split §5.5).
   focusCropOutcomes: 'other',
   miniToolAssetUrls: 'reference',
-  'miniToolDraft:video.expand': 'other',
-  'miniToolDraft:video.erase': 'other',
-  'miniToolDraft:video.lip-sync': 'other',
-  'miniToolDraft:video.remove-bg': 'other',
   'miniToolDraft:video.extract-frames': 'other',
-  'miniToolDraft:video.transitions': 'other',
   'miniToolDraft:video.split': 'other',
   replies: 'each',
   attachments: 'each',

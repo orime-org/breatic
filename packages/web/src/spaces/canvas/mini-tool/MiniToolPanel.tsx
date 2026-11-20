@@ -77,8 +77,6 @@ export interface MiniToolPanelProps {
   spec: MiniToolSpec;
   /** Approved tool-specific content inside the standard panel and footer. */
   customBody?: React.ReactNode;
-  /** Whether the approved controls need the wide panel. */
-  customWide?: boolean;
   /** Whether the title starts with the tool's icon (demo 2026-10-23-1306 main.tsx, the video tool panels). */
   titleIcon?: boolean;
   /** A count beside the title, such as the outputs a run plans. */
@@ -529,7 +527,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
       closeTestId='mini-tool-panel-close'
       onClose={onClose}
       // The camera sphere lays itself beside its sliders, which takes the wide panel too.
-      wide={props.customWide || columns !== undefined || visibleControls.some((control) => control.kind === 'cameraAngle')}
+      wide={columns !== undefined || visibleControls.some((control) => control.kind === 'cameraAngle')}
       testId='mini-tool-panel'
     >
       <div data-testid={joinSlot === undefined ? undefined : 'join-panel'} className='flex flex-col gap-2.5 px-3 pb-2.5'>

@@ -1053,7 +1053,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     expect(screen.getByText('Pick an image for the character')).toBeInTheDocument();
     clickSource();
     await waitFor(() =>
-      expect(canvasSessions.of('s').getState().miniTool?.slots.character).toEqual({ url: 'https://cdn/x.png', nodeId: 'src-image' }),
+      expect(canvasSessions.of('s').getState().miniTool?.slots.character).toEqual({ url: 'https://cdn/x.png' }),
     );
     expect(canvasSessions.of('s').getState().pickSession).toBeNull();
     expect(write).not.toHaveBeenCalled();

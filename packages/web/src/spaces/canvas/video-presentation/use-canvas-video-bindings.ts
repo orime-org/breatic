@@ -172,9 +172,7 @@ export function useCanvasVideoBindings(hostId: string | null, canonicalURL: stri
         toolInputId: resourceVersionId !== null && resourceVersionId === selected?.versionId ? selected.toolInputId : null, retrying: facts.retrying });
       presentations.set(hostId, { status: snapshot?.status === 'failed' ? 'failed' : 'ready', sourceURL: canonicalURL, sourceEpoch: binding.sourceEpoch, seekEpoch: binding.getSeekEpoch(), presentedTime: frame?.mediaTime ?? null, grid: selected !== null && panelState === 'usable' ? { fps: selected.display.fps, frameCount: selected.display.frameCount } : null, getPresentedFrame: actualFrame, onSeek: binding.seek, onPlayRange: (start, end) => playSourceRange(live, start, end),
         ...(facts === undefined ? {} : { panelState, failure: facts.response?.presentation === null ? facts.response.preparation?.failure ?? null : null, retrying: facts.retrying, onRetry: facts.onRetry, previewSource: facts.previewSource }),
-        // A transparent source plays as an alpha-packed version (execution design §10.4 transparent source row).
         ...(selected ? { presentationRef: { source: { toolInputId: selected.toolInputId, planSha256: selected.planSha256 } },
-          transparent: selected.playback.kind === 'alpha-packed',
           display: { width: selected.display.width, height: selected.display.height, duration: gridDuration(selected.display) } } : {}),
       });
     } else if (hostId !== null && canonicalURL !== null && facts !== undefined) {

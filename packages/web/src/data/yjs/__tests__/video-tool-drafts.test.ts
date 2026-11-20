@@ -8,7 +8,7 @@ import * as Y from 'yjs';
 import { addNode, CANVAS_UNDO, createCanvasUndoManager, nodeDataMap, removeNode } from '../canvas-space';
 import { _resetForTests, docName, getDoc } from '../manager';
 
-type ToolId = 'video.expand' | 'video.erase' | 'video.lip-sync' | 'video.remove-bg' | 'video.extract-frames' | 'video.transitions' | 'video.split';
+type ToolId = 'video.extract-frames' | 'video.split';
 
 interface Draft {
   version: 1;
@@ -23,7 +23,7 @@ interface AnalysisRef {
   version: 1;
   draftId: string;
   toolId: ToolId;
-  kind: 'people' | 'scene_cuts' | 'tracked_mask';
+  kind: 'scene_cuts';
   analysisRunId: string;
   inputFingerprint: string;
 }
@@ -209,13 +209,13 @@ describe('video mini-tool raw draft storage', () => {
     const { doc: a } = space();
     const b = collaborator(a);
     const split = splitDraft();
-    const expand = splitDraft({ frame: { x: -0.5, y: -0.5, width: 2, height: 2 }, ratio: 'free', prompt: '' }, { draftId: otherDraftId, revision: secondRevision });
+    const frames = splitDraft({ mode: 'first', frameIndex: 0 }, { draftId: otherDraftId, revision: secondRevision });
     api.commitVideoToolDraft(a, hostId, 'video.split', split);
-    api.commitVideoToolDraft(b, hostId, 'video.expand', expand);
+    api.commitVideoToolDraft(b, hostId, 'video.extract-frames', frames);
     merge(a, b);
     for (const doc of [a, b]) {
       expect(dataOf(doc).get('miniToolDraft:video.split')).toEqual(split);
-      expect(dataOf(doc).get('miniToolDraft:video.expand')).toEqual(expand);
+      expect(dataOf(doc).get('miniToolDraft:video.extract-frames')).toEqual(frames);
     }
   });
 
@@ -307,9 +307,9 @@ describe('video mini-tool raw draft storage', () => {
   it('clears one tool and its own analysis references in one undoable transaction', () => {
     const { doc } = space();
     const draft = splitDraft();
-    const expand = splitDraft({ frame: { x: 0, y: 0, width: 1, height: 1 }, ratio: 'free', prompt: '' }, { draftId: otherDraftId });
+    const frames = splitDraft({ mode: 'first', frameIndex: 0 }, { draftId: otherDraftId });
     api.commitVideoToolDraft(doc, hostId, 'video.split', draft);
-    api.commitVideoToolDraft(doc, hostId, 'video.expand', expand);
+    api.commitVideoToolDraft(doc, hostId, 'video.extract-frames', frames);
     const own = analysisRef();
     const ownSecond = analysisRef({ analysisRunId: secondRunId });
     const other = analysisRef({ draftId: otherDraftId, analysisRunId: thirdRunId });
@@ -322,7 +322,7 @@ describe('video mini-tool raw draft storage', () => {
     expect(dataOf(doc).has('miniToolDraft:video.split')).toBe(false);
     expect(dataOf(doc).has(`miniToolAnalysis:${firstRunId}`)).toBe(false);
     expect(dataOf(doc).has(`miniToolAnalysis:${secondRunId}`)).toBe(false);
-    expect(dataOf(doc).get('miniToolDraft:video.expand')).toEqual(expand);
+    expect(dataOf(doc).get('miniToolDraft:video.extract-frames')).toEqual(frames);
     expect(dataOf(doc).get(`miniToolAnalysis:${thirdRunId}`)).toEqual(other);
     undo.undo();
     expect(dataOf(doc).get('miniToolDraft:video.split')).toEqual(draft);

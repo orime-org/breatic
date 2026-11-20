@@ -11,8 +11,6 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { VideoNode } from '@web/spaces/canvas/nodes/VideoNode';
-import { VideoTimelinePreview } from '@web/spaces/canvas/mini-tool/video/VideoTimelinePreview';
-import { CanonicalTimelineDecoder } from '../CanonicalTimelineDecoder';
 import { createVideoPresentationRecovery } from '../video-presentation-recovery';
 import { preparationFailureKey } from '../VideoPreparationNotice';
 import { videoPresentationQuery } from '../video-presentation-query';
@@ -26,7 +24,6 @@ const platform = vi.hoisted(() => ({
 }));
 vi.mock('@web/data/api/request', async (original) => ({ ...await original<Record<string, unknown>>(), apiGet: platform.apiGet, apiPost: platform.apiPost }));
 vi.mock('@web/lib/toast', async (original) => ({ ...await original<Record<string, unknown>>(), toast: { error: platform.toastError } }));
-vi.mock('gl-transition', () => ({ default: () => ({ draw: vi.fn(), dispose: vi.fn() }) }));
 vi.mock('@web/spaces/canvas/video-presentation/create-video-renderer', async (original) => ({
   ...await original<Record<string, unknown>>(),
   createVideoRenderer: (host: HTMLElement, _source: VideoPresentationSource, callbacks: VideoRendererCallbacks) => {
@@ -56,13 +53,6 @@ function seed(data: VideoPresentationResponse): void {
 
 function mount(content: React.ReactNode): ReturnType<typeof render> {
   return render(<QueryClientProvider client={client}><TooltipProvider><CanvasContext.Provider value={{ projectId: input.projectId, spaceId: 'space', readOnly: true, myRole: 'viewer', caretProvider: null }}>{content}</CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
-}
-
-function timeline(): React.JSX.Element {
-  const clip = { clipId: '10000000-0000-4000-8000-000000000001', inputId: '20000000-0000-4000-8000-000000000001', in: 0, out: 1, transition: { kind: 'cut' as const, duration: 0 }, start: 0, end: 1, overlap: 0 };
-  return <VideoTimelinePreview plan={{ duration: 1, clips: [clip] }} inputs={[{ inputId: clip.inputId, url: input.canonicalURL }]} cursor={0} playing={false}
-    onCursorChange={vi.fn()} onPlayingChange={vi.fn()}
-    renderDecoder={(source, onBinding, onPresentedFrame) => <CanonicalTimelineDecoder input={source} onBinding={onBinding} onPresentedFrame={onPresentedFrame} />} />;
 }
 
 beforeEach(() => {
@@ -161,25 +151,4 @@ describe('approved canonical Retry recovery (inner#1306 Canvas recovery oracle)'
     expect(screen.queryByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') })).toBeNull();
   });
 
-  it('the actual timeline Retry repairs a failed fresh descriptor before rebuilding its decoder', async () => {
-    seed(failed);
-    mount(timeline());
-    await waitFor(() => expect(platform.frames.length).toBeGreaterThan(0));
-    act(() => platform.frames.shift()!(performance.now()));
-    fireEvent.click(await screen.findByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') }));
-    await waitFor(() => expect(platform.apiPost).toHaveBeenCalledOnce());
-    await waitFor(() => expect(platform.sessions).toHaveLength(1));
-    expect(platform.apiGet).toHaveBeenCalledOnce();
-  });
-
-  it('rebuilds a transient decoder failure without starting another platform media job', async () => {
-    seed(ready);
-    mount(timeline());
-    await waitFor(() => expect(platform.sessions).toHaveLength(1));
-    act(() => platform.sessions[0]!.callbacks.error('media-load-failed'));
-    act(() => platform.frames.shift()!(performance.now()));
-    fireEvent.click(await screen.findByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') }));
-    await waitFor(() => expect(platform.sessions).toHaveLength(2));
-    expect(platform.apiPost).not.toHaveBeenCalled();
-  });
 });

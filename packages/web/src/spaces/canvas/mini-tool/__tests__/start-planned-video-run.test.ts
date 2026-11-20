@@ -28,11 +28,11 @@ const TASK = '10000000-0000-4000-8000-000000000004';
 const URL = 'https://assets.example.test/original.webm';
 
 /** Original editable source snapshot, independent of future preparation. @throws {never} Never. */
-function draft(): VideoToolDraftById['video.remove-bg'] {
+function draft(): VideoToolDraftById['video.split'] {
   return {
     version: 1, draftId: '10000000-0000-4000-8000-000000000005', revision: '10000000-0000-4000-8000-000000000006',
     source: { nodeId: SOURCE, canonicalURL: URL, mediaInfo: { width: 400, height: 200, duration: 0.28, mimeType: 'video/webm' } },
-    inputs: [], params: {},
+    inputs: [], params: { cuts: [] },
   };
 }
 
@@ -42,7 +42,7 @@ const PRESENTATION_REF = { source: { toolInputId: 'd'.repeat(64), planSha256: 'f
 
 /** Existing Canvas capabilities attached to a real source document. @throws {never} Never. */
 function press(over: Partial<PlannedVideoRun> = {}): PlannedVideoRun {
-  return { projectId: PROJECT, spaceId: SPACE, userId: 'author', toolId: 'video.remove-bg', draft: draft(), analyses: [], presentationRef: PRESENTATION_REF,
+  return { projectId: PROJECT, spaceId: SPACE, userId: 'author', toolId: 'video.split', draft: draft(), analyses: [], presentationRef: PRESENTATION_REF, grid: GRID,
     source: { id: SOURCE, name: 'ORIGINAL', position: { x: 30, y: 40 }, groupOrigin: null, width: 400, height: 200, mimeType: 'video/webm' },
     sourceExists: () => getDoc(docName.canvasSpace(PROJECT, SPACE)).getMap(CANVAS_NODES_KEY).has(SOURCE),
     canWrite: () => true, stillOpen: () => true, onBuilt: vi.fn(), ...over } as PlannedVideoRun;
@@ -90,82 +90,10 @@ describe('planned frame and segment outputs', () => {
     expect(new Set(targets().map((node) => node.id))).toEqual(new Set(body!.outputs.map((output) => output.nodeId)));
   });
 
-  // Execution design §10.5 geometry row: the expand node is sized by shared videoExpandLayout, as the quote and the admission are.
-  it('F23 sizes an expand destination as the widened frame, each side rounded up to even', async () => {
-    const expandDraft: VideoToolDraftById['video.expand'] = { ...COMMON, params: { frame: { x: -0.25, y: -0.1, width: 1.5025, height: 1.2 }, ratio: 'free', prompt: '' } };
-    const body = await preparePlannedVideoRun(press({ toolId: 'video.expand', draft: expandDraft }));
-    expect(body?.outputs.map((output) => output.recipe)).toEqual([{ kind: 'expand' }]);
-    expect(targets().map((node) => node.type === 'video' ? [node.data.width, node.data.height] : null)).toEqual([[602, 240]]);
-  });
-
-  // Execution design §10.5: admission lays the target out on the ledger's display size, which applies the sample aspect ratio.
-  it('F26 sizes an anamorphic source\'s expand destination from the presentation display size', async () => {
-    const anamorphic = { ...COMMON, source: { ...COMMON.source, mediaInfo: { ...COMMON.source.mediaInfo, width: 1440, height: 1080 } } };
-    const expandDraft: VideoToolDraftById['video.expand'] = { ...anamorphic, params: { frame: { x: 0, y: -0.5 + 1080 / 3840, width: 1, height: 1920 / 1080 }, ratio: '1:1', prompt: '' } };
-    await preparePlannedVideoRun(press({ toolId: 'video.expand', draft: expandDraft, display: { width: 1920, height: 1080 } }));
-    expect(targets().map((node) => node.type === 'video' ? [node.data.width, node.data.height] : null)).toEqual([[1920, 1920]]);
-  });
-
   it('F22 builds nothing for a frame or segment run without the selected version grid', async () => {
     const splitDraft: VideoToolDraftById['video.split'] = { ...COMMON, params: { cuts: [2] } };
     await expect(preparePlannedVideoRun(press({ toolId: 'video.split', draft: splitDraft, grid: null }))).rejects.toThrow();
     expect(targets()).toHaveLength(0);
-  });
-});
-
-// Canvas design §4 transitions row (a new composed video, linked from the current and input nodes) and tools design §5 (result edges come from the current and input nodes): a
-// transitions result is linked from the current node and from the picked input's node, in the press's one undo batch.
-describe('a transitions result is linked from both of its videos', () => {
-  const PICKED_NODE = '10000000-0000-4000-8000-000000000007';
-  const CURRENT = '80000000-0000-4000-8000-000000000001'; const PICKED = '80000000-0000-4000-8000-000000000002';
-  const media = { width: 400, height: 200, duration: 5, mimeType: 'video/webm' };
-  /** A two-clip transitions draft of the host and the picked node. @param picked - The picked input's node. @returns The draft. */
-  const transitions = (picked: string | undefined = PICKED_NODE): VideoToolDraftById['video.transitions'] => ({
-    version: 1, draftId: draft().draftId, revision: draft().revision, source: { ...draft().source, mediaInfo: media },
-    inputs: [{ inputId: CURRENT, url: URL, mediaInfo: media, sourceNodeId: SOURCE },
-      { inputId: PICKED, url: 'https://assets.example.test/picked.webm', mediaInfo: media, ...(picked === undefined ? {} : { sourceNodeId: picked }) }],
-    params: { clips: [
-      { clipId: '90000000-0000-4000-8000-000000000011', inputId: CURRENT, in: 0, out: 4, transition: { kind: 'fade', duration: 0.5 } },
-      { clipId: '90000000-0000-4000-8000-000000000012', inputId: PICKED, in: 0, out: 4, transition: { kind: 'cut', duration: 0 } },
-    ] },
-  }) as VideoToolDraftById['video.transitions'];
-  const REF = { [CURRENT]: { toolInputId: 'a'.repeat(64), planSha256: 'd'.repeat(64) }, [PICKED]: { toolInputId: 'b'.repeat(64), planSha256: 'd'.repeat(64) } };
-
-  it('F24 adds an edge from the host and one from the picked input node to the result', async () => {
-    addNode(PROJECT, SPACE, { id: PICKED_NODE, type: 'video', position: { x: 0, y: 400 }, data: { content: 'https://assets.example.test/picked.webm', name: 'PICKED', locked: false, createdBy: 'author', createdAt: 0, attachments: [] } });
-    const body = await preparePlannedVideoRun(press({ toolId: 'video.transitions', draft: transitions(), presentationRef: REF as PlannedVideoRun['presentationRef'] }));
-    const output = body!.outputs[0]!.nodeId;
-    const edges = readEdges(getDoc(docName.canvasSpace(PROJECT, SPACE))).map((edge) => ({ source: edge.source, target: edge.target, toolId: edge.toolId }));
-    expect(edges).toEqual(expect.arrayContaining([{ source: SOURCE, target: output, toolId: 'video.transitions' }, { source: PICKED_NODE, target: output, toolId: 'video.transitions' }]));
-    expect(edges).toHaveLength(2);
-  });
-
-  it('F25 adds no edge from a picked node that no longer exists', async () => {
-    const body = await preparePlannedVideoRun(press({ toolId: 'video.transitions', draft: transitions(), presentationRef: REF as PlannedVideoRun['presentationRef'] }));
-    const output = body!.outputs[0]!.nodeId;
-    expect(readEdges(getDoc(docName.canvasSpace(PROJECT, SPACE))).map((edge) => edge.source + '>' + edge.target)).toEqual([`${SOURCE}>${output}`]);
-  });
-});
-
-// Canvas design §3 inputs row (sourceNodeId gives the edge relation): a lip-sync result is linked from each dialogue audio
-// node it uses that is still on the canvas, as a transitions result is from its picked video.
-describe('a lip-sync result is linked from its dialogue audio nodes', () => {
-  const AUDIO_NODE = '10000000-0000-4000-8000-000000000008';
-  const GONE_NODE = '10000000-0000-4000-8000-000000000009';
-  const AUDIO = '80000000-0000-4000-8000-000000000003'; const GONE = '80000000-0000-4000-8000-000000000004';
-  const lipSync: VideoToolDraftById['video.lip-sync'] = { ...COMMON,
-    inputs: [{ inputId: AUDIO, url: 'https://assets.example.test/a.mp3', mediaInfo: { duration: 1 }, sourceNodeId: AUDIO_NODE }, { inputId: GONE, url: 'https://assets.example.test/b.mp3', mediaInfo: { duration: 1 }, sourceNodeId: GONE_NODE }],
-    params: { anchor: { frameIndex: 0 }, syncMode: 'cut_off', dialogues: [
-      { dialogueId: '90000000-0000-4000-8000-000000000021', personId: 'p1', analysisRunId: '90000000-0000-4000-8000-000000000031', audioInputId: AUDIO, startTime: 0 },
-      { dialogueId: '90000000-0000-4000-8000-000000000022', personId: 'p1', analysisRunId: '90000000-0000-4000-8000-000000000031', audioInputId: GONE, startTime: 0 },
-    ] } } as VideoToolDraftById['video.lip-sync'];
-
-  it('F27 adds an edge from the host and from each dialogue audio node still on the canvas', async () => {
-    addNode(PROJECT, SPACE, { id: AUDIO_NODE, type: 'audio', position: { x: 0, y: 400 }, data: { content: 'https://assets.example.test/a.mp3', name: 'A', locked: false, createdBy: 'author', createdAt: 0, attachments: [] } });
-    const body = await preparePlannedVideoRun(press({ toolId: 'video.lip-sync', draft: lipSync }));
-    const output = body!.outputs[0]!.nodeId;
-    expect(readEdges(getDoc(docName.canvasSpace(PROJECT, SPACE))).map((edge) => `${edge.source}>${edge.target}:${edge.toolId}`).sort())
-      .toEqual([`${AUDIO_NODE}>${output}:video.lip-sync`, `${SOURCE}>${output}:video.lip-sync`].sort());
   });
 });
 
@@ -179,11 +107,11 @@ describe('planned video press: independent frozen body and original graph', () =
     expect(body).not.toBeNull();
     if (body === null) throw new Error('Expected prepared request');
     expect(miniToolPlannedRequestSchema.safeParse(body).success).toBe(true);
-    expect(body).toEqual({ tool: 'video.remove-bg', project_id: PROJECT, space_id: SPACE, run_id: expect.any(String), draft: draft(), analysis_refs: [], presentation_ref: PRESENTATION_REF, outputs: [{ outputIndex: 0, nodeId: expect.any(String), recipe: { kind: 'remove-bg' } }] });
+    expect(body).toEqual({ tool: 'video.split', project_id: PROJECT, space_id: SPACE, run_id: expect.any(String), draft: draft(), analysis_refs: [], presentation_ref: PRESENTATION_REF, outputs: [{ outputIndex: 0, nodeId: expect.any(String), recipe: { kind: 'segment', range: { start: 0, end: 7 } } }] });
     expect(body.outputs[0]!.nodeId).not.toBe(SOURCE);
     expect(targets()).toHaveLength(1);
-    expect(targets()[0]).toMatchObject({ id: body.outputs[0]!.nodeId, type: 'video', data: { name: 'MATTE-ORIGINAL' } });
-    expect(readEdges(doc)).toEqual([expect.objectContaining({ source: SOURCE, target: body.outputs[0]!.nodeId, toolId: 'video.remove-bg' })]);
+    expect(targets()[0]).toMatchObject({ id: body.outputs[0]!.nodeId, type: 'video', data: { name: 'SPLIT-ORIGINAL' } });
+    expect(readEdges(doc)).toEqual([expect.objectContaining({ source: SOURCE, target: body.outputs[0]!.nodeId, toolId: 'video.split' })]);
     expect(JSON.stringify(original)).toBe(sourceBefore);
     expect(Object.keys(body).sort()).toEqual(['analysis_refs', 'draft', 'outputs', 'presentation_ref', 'project_id', 'run_id', 'space_id', 'tool']);
     expect(run.onBuilt).toHaveBeenCalledOnce();
@@ -227,7 +155,7 @@ describe('planned video press: independent frozen body and original graph', () =
     const again = startPlannedVideoRun(press({ onBuilt: vi.fn() }));
     void again.catch(() => undefined);
     await vi.waitFor(() => expect(miniToolsApi.runPlanned).toHaveBeenCalledOnce());
-    expect(getRunning(miniToolIntent(SPACE, SOURCE, 'video.remove-bg'))).toBeDefined();
+    expect(getRunning(miniToolIntent(SPACE, SOURCE, 'video.split'))).toBeDefined();
     expect(targets()).toHaveLength(1);
     expect(readEdges(getDoc(docName.canvasSpace(PROJECT, SPACE)))).toHaveLength(1);
     const body = vi.mocked(miniToolsApi.runPlanned).mock.calls[0]![0];
@@ -236,7 +164,7 @@ describe('planned video press: independent frozen body and original graph', () =
     answer?.({ task_id: TASK, status: 'pending' });
     expect(await first).toEqual({ kind: 'done', result: { task_id: TASK, status: 'pending' } });
     expect(await again).toEqual(await first);
-    expect(getRunning(miniToolIntent(SPACE, SOURCE, 'video.remove-bg'))).toBeUndefined();
+    expect(getRunning(miniToolIntent(SPACE, SOURCE, 'video.split'))).toBeUndefined();
     expect(useUploadMarksStore.getState().markOf(SPACE, body.outputs[0]!.nodeId)).toBeUndefined();
   });
 
@@ -299,7 +227,7 @@ describe('retrying a planned run\'s failed output', () => {
   it('says why the retry was refused', async () => {
     vi.mocked(miniToolsApi.retryPlannedVideoRun).mockRejectedValue(new Error('down'));
     const onDone = vi.fn();
-    await retryPlannedVideoRun({ projectId: PROJECT, spaceId: SPACE, tool: 'video.lip-sync', runId: RUN, onDone });
+    await retryPlannedVideoRun({ projectId: PROJECT, spaceId: SPACE, tool: 'video.split', runId: RUN, onDone });
     expect(toast.error).toHaveBeenCalledExactlyOnceWith(t('canvas.miniTool.panel.couldNotStart'));
     expect(onDone).not.toHaveBeenCalled();
   });

@@ -45,8 +45,8 @@ function draftWith(cuts: number[]): VideoToolDraftById['video.split'] {
  */
 function mount(overrides: Partial<VideoToolControlsProps> = {}): { onChange: ReturnType<typeof vi.fn>; rerender: (next: Partial<VideoToolControlsProps>) => void } {
   const onChange = vi.fn();
-  const props = (next: Partial<VideoToolControlsProps>): VideoToolControlsProps => ({ toolId: 'video.split', draft: draftWith([25, 75]), onChange, analyses: [], grid, presentedTime: 1.25, disabled: false, pickingSlot: null,
-    inputNames: new Map(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn(), onSeek: vi.fn(), ...overrides, ...next });
+  const props = (next: Partial<VideoToolControlsProps>): VideoToolControlsProps => ({ toolId: 'video.split', draft: draftWith([25, 75]), onChange, analyses: [], grid, presentedTime: 1.25, disabled: false,
+    onAnalyse: vi.fn(), analysing: false, onSeek: vi.fn(), ...overrides, ...next });
   const view = render(<VideoToolControls {...props({})} />);
   return { onChange, rerender: (next) => view.rerender(<VideoToolControls {...props(next)} />) };
 }
@@ -191,8 +191,7 @@ describe('cut rows and count (canvas design §4 split row)', () => {
      */
     function Stateful(): React.JSX.Element {
       const [draft, setDraft] = React.useState(draftWith([25, 75]));
-      return <VideoToolControls toolId='video.split' draft={draft} onChange={(next) => { const split = next as VideoToolDraftById['video.split']; changes.push(split.params.cuts); setDraft(split); }} analyses={[]} grid={grid} presentedTime={1.25} disabled={false} pickingSlot={null}
-        inputNames={new Map()} onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} onSeek={vi.fn()} />;
+      return <VideoToolControls toolId='video.split' draft={draft} onChange={(next) => { const split = next as VideoToolDraftById['video.split']; changes.push(split.params.cuts); setDraft(split); }} analyses={[]} grid={grid} presentedTime={1.25} disabled={false} onAnalyse={vi.fn()} analysing={false} onSeek={vi.fn()} />;
     }
     render(<Stateful />);
     fireEvent.change(screen.getByTestId('video-cut-0'), { target: { value: '' } });
@@ -303,8 +302,7 @@ function StatefulSplit(props: { cuts: number[]; presentedTime?: number | null; l
   const [draft, setDraft] = React.useState(draftWith(props.cuts));
   const { invalid } = props;
   const onInvalidChange = React.useCallback((key: string, bad: boolean) => { if (bad) invalid?.add(key); else invalid?.delete(key); }, [invalid]);
-  return <VideoToolControls toolId='video.split' draft={draft} onChange={(next) => { const split = next as VideoToolDraftById['video.split']; props.changes?.push(split.params.cuts); setDraft({ ...split, revision: crypto.randomUUID() }); }} analyses={[]} grid={grid} presentedTime={props.presentedTime ?? 1.25} liveClock={props.liveClock} disabled={false} pickingSlot={null}
-    inputNames={new Map()} onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} onSeek={vi.fn()} onInvalidChange={onInvalidChange} />;
+  return <VideoToolControls toolId='video.split' draft={draft} onChange={(next) => { const split = next as VideoToolDraftById['video.split']; props.changes?.push(split.params.cuts); setDraft({ ...split, revision: crypto.randomUUID() }); }} analyses={[]} grid={grid} presentedTime={props.presentedTime ?? 1.25} liveClock={props.liveClock} disabled={false} onAnalyse={vi.fn()} analysing={false} onSeek={vi.fn()} onInvalidChange={onInvalidChange} />;
 }
 
 describe('an invalid cut row keeps blocking the run wherever it moves (web AGENTS "Inputs send what they show")', () => {

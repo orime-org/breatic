@@ -3,7 +3,7 @@
 
 /**
  * The expand frame (inner#1303 §6.3): handles grow the frame past the
- * picture while the target background moves around the fixed source. The node sits at
+ * picture, and once grown the picture can be moved inside it. The node sits at
  * the canvas's origin, which is on screen at 100,50, so its picture shows
  * 400×300 at 100,50; the source is 1600×1000 pixels. The frame is drawn in the
  * canvas's viewport, the cover in the node.
@@ -117,42 +117,6 @@ function drag(target: Element, from: [number, number], to: [number, number]): vo
 }
 
 describe('NodeExpandLayer', () => {
-  it.each([
-    { label: 'right and down', zoom: 1, to: [90, 50], x: -0.4, y: -0.4, snap: false },
-    { label: 'left and up', zoom: 1, to: [10, -10], x: -0.6, y: -0.6, snap: false },
-    { label: 'zoomed out', zoom: 0.5, to: [90, 50], x: -0.3, y: -0.3, snap: false },
-    { label: 'zoomed in', zoom: 2, to: [90, 50], x: -0.45, y: -0.45, snap: false },
-    { label: 'right and bottom limits', zoom: 1, to: [450, 320], x: 0, y: 0, snap: false },
-    { label: 'left and top limits', zoom: 1, to: [-350, -280], x: -1, y: -1, snap: false },
-    { label: 'grid enabled', zoom: 1, to: [90, 50], x: -0.4, y: -0.4, snap: true },
-  ])('moves the background with the pointer at $label while the source stays fixed', ({ zoom, to, x, y, snap }) => {
-    mount('image.expand', zoom, snap);
-    act(() => store().setExpand({ frame: { x: -0.5, y: -0.5, width: 2, height: 2 }, ratio: 'free' }));
-    const position = { ...flowApi!.getNode('n1')!.position };
-    const frame = screen.getByTestId('mini-tool-expand-frame');
-    drag(frame, [50, 20], [to[0]!, to[1]!]);
-    expect(store().miniTool?.expand?.frame).toEqual({ x, y, width: 2, height: 2 });
-    const source = screen.getByTestId('mini-tool-expand-source');
-    expect(parseFloat(frame.style.left) + parseFloat(frame.style.borderWidth) + parseFloat(source.style.left)).toBeCloseTo(0, 9);
-    expect(parseFloat(frame.style.top) + parseFloat(frame.style.borderWidth) + parseFloat(source.style.top)).toBeCloseTo(0, 9);
-    expect(flowApi!.getNode('n1')!.position).toEqual(position);
-    expect(source.getAttribute('src')).toBe(NODE.src);
-    expect([source.style.width, source.style.height]).toEqual(['400px', '300px']);
-  });
-
-  it('keeps the source at its node when the source itself is dragged', () => {
-    mount();
-    const frame = { x: -0.5, y: -0.5, width: 2, height: 2 };
-    act(() => store().setExpand({ frame, ratio: 'free' }));
-    drag(screen.getByTestId('mini-tool-expand-source'), [300, 200], [340, 230]);
-    expect(store().miniTool?.expand?.frame).toEqual(frame);
-    const element = screen.getByTestId('mini-tool-expand-frame');
-    const source = screen.getByTestId('mini-tool-expand-source');
-    expect(parseFloat(element.style.left) + parseFloat(element.style.borderWidth) + parseFloat(source.style.left)).toBeCloseTo(0, 9);
-    expect(parseFloat(element.style.top) + parseFloat(element.style.borderWidth) + parseFloat(source.style.top)).toBeCloseTo(0, 9);
-    expect(flowApi!.getNode('n1')!.position).toEqual({ x: 0, y: 0 });
-  });
-
   it('shows a frame at the picture only while the expand tool is open', () => {
     mount('image.crop');
     expect(screen.queryByTestId('mini-tool-expand-frame')).toBeNull();
@@ -189,15 +153,15 @@ describe('NodeExpandLayer', () => {
     expect(screen.getByTestId('mini-tool-expand-cover').closest('.react-flow__node')).not.toBeNull();
   });
 
-  it('keeps the target frame and fixed source when the canvas is drawn again', () => {
+  it('keeps the frame and the moved picture where they were when the canvas is drawn again', () => {
     const { unmount } = mount();
     act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: 'free' }));
-    drag(screen.getByTestId('mini-tool-expand-frame'), [50, 150], [90, 150]);
+    drag(screen.getByTestId('mini-tool-expand-source'), [300, 200], [340, 200]);
     const left = screen.getByTestId('mini-tool-expand-frame').style.left;
     unmount();
     render(canvas());
     expect(screen.getByTestId('mini-tool-expand-frame').style.left).toBe(left);
-    expect(store().miniTool?.expand?.frame).toEqual({ x: -0.4, y: 0, width: 2, height: 1 });
+    expect(store().miniTool?.expand?.frame).toEqual({ x: -0.6, y: 0, width: 2, height: 1 });
   });
 
   it('keeps the canvas marquee and node clicks off its frame', () => {
@@ -227,17 +191,17 @@ describe('NodeExpandLayer', () => {
     expect(store().miniTool?.expand?.frame.width).toBeCloseTo(2000 / 1600, 9);
   });
 
-  it('moves the background while keeping a source-height target at the source vertically', () => {
+  it('moves the picture inside a grown frame and keeps the frame’s size', () => {
     mount();
     act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: 'free' }));
-    drag(screen.getByTestId('mini-tool-expand-frame'), [50, 150], [90, 180]);
-    expect(store().miniTool?.expand?.frame).toEqual({ x: -0.4, y: 0, width: 2, height: 1 });
+    drag(screen.getByTestId('mini-tool-expand-source'), [300, 200], [340, 200]);
+    expect(store().miniTool?.expand?.frame).toEqual({ x: -0.6, y: 0, width: 2, height: 1 });
   });
 
-  it('keeps the source over the node when a ratio rewrites a moved target', () => {
+  it('puts a moved picture back over the node when a ratio rewrites the frame', () => {
     mount();
     act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: 'free' }));
-    drag(screen.getByTestId('mini-tool-expand-frame'), [50, 150], [90, 150]);
+    drag(screen.getByTestId('mini-tool-expand-source'), [300, 200], [340, 200]);
     act(() => store().setExpand({ frame: { x: -0.25, y: 0, width: 1.5, height: 1 }, ratio: '16:9' }));
     // The frame wraps the picture where the node shows it: the picture's copy
     // sits at the node's own picture, 0px from it (−100 + the 1px border + 99).
@@ -246,21 +210,23 @@ describe('NodeExpandLayer', () => {
     expect(screen.getByTestId('mini-tool-expand-source').style.left).toBe('99px');
   });
 
-  it('keeps the frame and source cover anchored when an edge reaches the source', () => {
+  // The node's own picture stays where it is while its copy moves in the
+  // frame; a frame shrunk off that spot must not let it show beside the copy.
+  it('covers the node\'s own picture wherever the frame is', () => {
     mount();
     act(() => store().setExpand({ frame: { x: 0, y: 0, width: 2, height: 1 }, ratio: 'free' }));
-    drag(screen.getByTestId('mini-tool-expand-frame'), [600, 150], [640, 150]);
+    drag(screen.getByTestId('mini-tool-expand-source'), [200, 150], [400, 150]);
     drag(screen.getByTestId('mini-tool-expand-handle-w'), [200, 150], [400, 150]);
     const frame = screen.getByTestId('mini-tool-expand-frame');
-    expect(parseFloat(frame.style.left)).toBe(0);
+    expect(parseFloat(frame.style.left)).toBeGreaterThan(0);
     const cover = screen.getByTestId('mini-tool-expand-cover');
     expect([cover.style.left, cover.style.top, cover.style.width, cover.style.height]).toEqual(['0px', '0px', '400px', '300px']);
   });
 
-  it('keeps the moved target when Free leaves the frame as it was', () => {
+  it('keeps a moved picture where it is when Free leaves the frame as it was', () => {
     mount();
     act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: '16:9' }));
-    drag(screen.getByTestId('mini-tool-expand-frame'), [50, 150], [90, 150]);
+    drag(screen.getByTestId('mini-tool-expand-source'), [300, 200], [340, 200]);
     const left = screen.getByTestId('mini-tool-expand-frame').style.left;
     act(() => store().setExpand({ frame: store().miniTool!.expand!.frame, ratio: 'free' }));
     expect(screen.getByTestId('mini-tool-expand-frame').style.left).toBe(left);
@@ -269,7 +235,7 @@ describe('NodeExpandLayer', () => {
   it('starts a new opening with the picture over the node', () => {
     mount();
     act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: 'free' }));
-    drag(screen.getByTestId('mini-tool-expand-frame'), [50, 150], [90, 150]);
+    drag(screen.getByTestId('mini-tool-expand-source'), [300, 200], [340, 200]);
     // Pull both sides back in to the picture: the frame is the picture's size again.
     drag(screen.getByTestId('mini-tool-expand-handle-w'), [-160, 150], [600, 150]);
     drag(screen.getByTestId('mini-tool-expand-handle-e'), [600, 150], [-600, 150]);
@@ -304,17 +270,19 @@ describe('NodeExpandLayer', () => {
     expect(store().miniTool?.expand?.frame.width).toBeCloseTo(1.025, 9);
   });
 
-  it('keeps the grabbed background point under the pointer when the canvas zooms mid-drag', () => {
+  // The picture point the pointer took keeps under it when the canvas zooms
+  // mid-drag: the move is measured on the canvas, not on the screen.
+  it('keeps the grabbed picture point under the pointer when the canvas zooms mid-drag', () => {
     mount();
     act(() => store().setExpand({ frame: { x: -0.5, y: 0, width: 2, height: 1 }, ratio: 'free' }));
-    const frame = screen.getByTestId('mini-tool-expand-frame');
-    fireEvent.pointerDown(frame, { clientX: 50, clientY: 150, button: 0, pointerId: 1 });
+    const source = screen.getByTestId('mini-tool-expand-source');
+    fireEvent.pointerDown(source, { clientX: 300, clientY: 200, button: 0, pointerId: 1 });
     act(() => {
       void flowApi?.setViewport({ x: 100, y: 50, zoom: 2 });
     });
-    fireEvent.pointerMove(frame, { clientX: 70, clientY: 150, pointerId: 1 });
-    // Canvas x changes from -50 to -15 as the viewport zoom changes.
-    expect(store().miniTool?.expand?.frame.x).toBeCloseTo(-0.5 + 35 / 400, 9);
+    fireEvent.pointerMove(source, { clientX: 320, clientY: 200, pointerId: 1 });
+    // Grabbed at canvas x 200; the pointer now sits at canvas x (320 - 100) / 2 = 110.
+    expect(store().miniTool?.expand?.shift.x).toBeCloseTo(-90 / 400, 9);
   });
 
   // A drag the panel closed under (the host deleted while the button is held)

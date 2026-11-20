@@ -43,7 +43,7 @@ let client: QueryClient;
  * @throws {never} Never.
  */
 function row(patch: Partial<CompatibleRow> = {}): CompatibleRow {
-  return { id: ROW, taskId: RUN, projectId: PROJECT, spaceId: SPACE, nodeId: NODE, kind: 'generation', action: 'mini_tool', label: 'video.remove-bg', status: 'done', startedByUserId: 'reader', startedAt: '2026-10-26T00:00:00.000Z', settledAt: '2026-10-26T00:00:01.000Z', budgetMs: 7_200_000,
+  return { id: ROW, taskId: RUN, projectId: PROJECT, spaceId: SPACE, nodeId: NODE, kind: 'generation', action: 'mini_tool', label: 'video.split', status: 'done', startedByUserId: 'reader', startedAt: '2026-10-26T00:00:00.000Z', settledAt: '2026-10-26T00:00:01.000Z', budgetMs: 7_200_000,
     errorMessage: null, nodeHistoryId: null, content: null, coverUrl: null, mediaWidth: null, mediaHeight: null, duration: null, mimeType: null, size: null, ...patch };
 }
 /** Literal independent public record; source and output duration deliberately differ.
@@ -52,7 +52,7 @@ function row(patch: Partial<CompatibleRow> = {}): CompatibleRow {
 function record(runId = RUN, version = 1): MiniToolExecutionRecord {
   return { schemaVersion: 1, runId, status: 'completed', planFingerprint: 'a'.repeat(64), resultVersion: version,
     sourceBindings: [{ assetId: '80000000-0000-4000-8000-000000000001', contentHash: 'b'.repeat(64), canonicalURL: 'https://assets.example.test/video/source.mp4', kind: 'video', mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: 'video/mp4' } }],
-    outputs: [{ outputIndex: 0, nodeId: NODE, recipe: { kind: 'remove-bg' }, late: false, result: { status: 'registered', assetId: '90000000-0000-4000-8000-000000000001', canonicalURL: WINNER, kind: 'video', mimeType: 'video/webm', size: 1588436, contentHash: 'c'.repeat(64), width: 960, height: 540, duration: 5.013, cover: null } }],
+    outputs: [{ outputIndex: 0, nodeId: NODE, recipe: { kind: 'segment', range: { start: 0, end: 30 } }, late: false, result: { status: 'registered', assetId: '90000000-0000-4000-8000-000000000001', canonicalURL: WINNER, kind: 'video', mimeType: 'video/webm', size: 1588436, contentHash: 'c'.repeat(64), width: 960, height: 540, duration: 5.013, cover: null } }],
     usage: [{ consumptionKey: 'd'.repeat(64), state: 'pending', chargeTo: 'user', costUsd: null, credits: null }], billingState: 'waiting', error: null };
 }
 /** Supply the real view-layer node shape, with current user content independent from the restored result.
@@ -110,8 +110,8 @@ describe('original node-task panel parent-run recovery', () => {
     view.unmount(); render(tree(held)); await waitFor(() => expect(runPaths()).toHaveLength(2));
     expect(held).toEqual(before); expect(entry.content).toBe('https://assets.example.test/video/history.webm'); expect(apiPost).not.toHaveBeenCalled();
   });
-  it('N18 uses the existing seven planned labels, skips unrelated/missing parents and deduplicates the original run ID', async () => {
-    const labels = ['video.expand', 'video.erase', 'video.lip-sync', 'video.remove-bg', 'video.extract-frames', 'video.transitions', 'video.split'];
+  it('N18 uses the existing planned labels, skips unrelated/missing parents and deduplicates the original run ID', async () => {
+    const labels = ['video.extract-frames', 'video.split'];
     const rows = labels.map((label, i) => row({ id: `planned-${i}`, label, taskId: RUN }));
     rows.push(row({ id: 'generate', action: 'generate', taskId: OTHER_RUN }), row({ id: 'legacy', label: 'video.upscale', taskId: OTHER_RUN }), row({ id: 'no-parent', taskId: null }));
     vi.mocked(canvasApi.listNodeTasks).mockResolvedValue(rows); render(tree(nodes(rows.length)));

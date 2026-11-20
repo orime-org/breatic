@@ -24,8 +24,6 @@ interface ModelPickerProps {
   value: string;
   /** Called with the picked model id. */
   onChange: (modelId: string) => void;
-  /** Whether the picker is locked, as the panel around it is. */
-  disabled?: boolean;
 }
 
 /**
@@ -40,14 +38,12 @@ interface ModelPickerProps {
  * @param root0.models - The catalog models to offer.
  * @param root0.value - The current model id.
  * @param root0.onChange - Called with the picked model id.
- * @param root0.disabled - Whether the picker is locked.
  * @returns The model picker.
  */
 export const ModelPicker = React.memo(function ModelPicker({
   models,
   value,
   onChange,
-  disabled,
 }: ModelPickerProps): React.JSX.Element {
   const [open, setOpen] = React.useState(false);
   // Follow the ReactFlow viewport while open (#1796): Radix's Floating-UI
@@ -64,7 +60,6 @@ export const ModelPicker = React.memo(function ModelPicker({
           variant={null}
           size={null}
           data-testid='generate-model-trigger'
-          disabled={disabled}
           className='flex h-8 min-w-0 max-w-[8rem] items-center gap-1 rounded-full border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
         >
           <ModelIcon name={current?.icon} className='h-4 w-4 shrink-0' />

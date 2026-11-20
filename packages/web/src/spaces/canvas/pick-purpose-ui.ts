@@ -161,15 +161,6 @@ export function pickSessionUi(session: PickSession, miniToolId: string | undefin
     const row = PICK_PURPOSE_UI[session.purpose];
     return { banner: row.banner, triggers: Object.values(row.trigger) };
   }
-  // Video tools keep their inputs in the draft and declare no registry slots: a lip-sync dialogue row's audio and the
-  // transitions input video (canvas design §28), whose slot buttons VideoToolControls renders with these ids.
-  const slotKey = session.slotKey ?? '';
-  if (miniToolId === 'video.lip-sync' && slotKey.startsWith('dialogue:')) {
-    return { banner: 'canvas.miniTool.videoUI.pickAudio', triggers: [`video-audio-${slotKey.slice('dialogue:'.length)}`] };
-  }
-  if (miniToolId === 'video.transitions' && slotKey === 'timeline') {
-    return { banner: 'canvas.miniTool.videoUI.pickVideo', triggers: ['video-timeline-input'] };
-  }
   const slot = miniToolId === undefined
     ? undefined
     : miniToolById(miniToolId)?.slots.find((candidate) => candidate.key === session.slotKey);

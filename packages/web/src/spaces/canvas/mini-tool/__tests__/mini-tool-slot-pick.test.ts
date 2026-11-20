@@ -52,23 +52,10 @@ describe('miniToolSlotCandidate', () => {
 
 describe('miniToolSlotValue', () => {
   // §7.3: the pick is a snapshot of the node at that moment, cover and length included.
-  // The node it was picked from travels with it, so two nodes holding the same address stay apart (inner#1306 #14).
-  it('copies the address, the cover, the length and the clicked node', () => {
+  it('copies the address, the cover and the length', () => {
     expect(
-      miniToolSlotValue({ id: 'v', type: 'video', data: { content: 'v.mp4', coverUrl: 'c.jpg', duration: 4 } }),
-    ).toEqual({ url: 'v.mp4', cover: 'c.jpg', duration: 4, nodeId: 'v' });
-    expect(miniToolSlotValue({ id: 'i', type: 'image', data: { content: 'i.png' } })).toEqual({ url: 'i.png', nodeId: 'i' });
-  });
-});
-
-describe('video tool independent copied-input slots', () => {
-  it('accepts audio for a stable dialogue identity and ends after one selection', () => {
-    expect(activeMiniToolSlot({ nodeId: 'n', purpose: 'miniToolSlot', slotKey: 'dialogue:pair-2' }, { ...DRAFT, toolId: 'video.lip-sync' })).toEqual({ key: 'dialogue:pair-2', param: 'audio', accepts: 'audio', many: false, bannerKey: 'canvas.miniTool.videoUI.pickAudio' });
-  });
-  it('accepts a single video click for the transitions asset rail', () => {
-    expect(activeMiniToolSlot({ nodeId: 'n', purpose: 'miniToolSlot', slotKey: 'timeline' }, { ...DRAFT, toolId: 'video.transitions' })).toEqual({ key: 'timeline', param: 'video', accepts: 'video', many: false, bannerKey: 'canvas.miniTool.videoUI.pickVideo' });
-  });
-  it('does not reinterpret a dialogue key outside the lip sync tool', () => {
-    expect(activeMiniToolSlot({ nodeId: 'n', purpose: 'miniToolSlot', slotKey: 'dialogue:pair-2' }, DRAFT)).toBeUndefined();
+      miniToolSlotValue({ type: 'video', data: { content: 'v.mp4', coverUrl: 'c.jpg', duration: 4 } }),
+    ).toEqual({ url: 'v.mp4', cover: 'c.jpg', duration: 4 });
+    expect(miniToolSlotValue({ type: 'image', data: { content: 'i.png' } })).toEqual({ url: 'i.png' });
   });
 });

@@ -53,7 +53,7 @@ const SOURCE = '30000000-0000-4000-8000-000000000003';
 const URL = 'https://assets.example.test/canonical.webm';
 // The selected version's grid: 7 frames at 25 fps, 0.28 s.
 const GRID: VideoPlanGrid = { fps: { numerator: 25, denominator: 1 }, frameCount: 7 };
-const DRAFT: VideoToolDraftById['video.remove-bg'] = { version: 1, draftId: '30000000-0000-4000-8000-000000000004', revision: '30000000-0000-4000-8000-000000000005', source: { nodeId: SOURCE, canonicalURL: URL, mediaInfo: { width: 400, height: 200, duration: 0.28, mimeType: 'video/webm' } }, inputs: [], params: {} };
+const DRAFT: VideoToolDraftById['video.split'] = { version: 1, draftId: '30000000-0000-4000-8000-000000000004', revision: '30000000-0000-4000-8000-000000000005', source: { nodeId: SOURCE, canonicalURL: URL, mediaInfo: { width: 400, height: 200, duration: 0.28, mimeType: 'video/webm' } }, inputs: [], params: { cuts: [] } };
 const SOURCE_BINDING: VideoPresentationSourceBinding = { assetId: '30000000-0000-4000-8000-000000000007', contentHash: 'a'.repeat(64), canonicalURL: URL, kind: 'video', mediaInfo: DRAFT.source.mediaInfo };
 const clients: QueryClient[] = [];
 
@@ -67,7 +67,7 @@ function presentation(grid: VideoPlanGrid | null, sourceURL = URL, status: Video
   const element = document.createElement('video');
   const binding = { sourceKey: 'registered-source', sourceEpoch: 1, element, surface: element, container: document.createElement('div'), original: DRAFT.source.mediaInfo, getSeekEpoch: () => 0, getPresentedFrame: () => null, seek: vi.fn(), play: vi.fn().mockResolvedValue(undefined), pause: vi.fn() };
   const facts: BindingModule.CanvasVideoBindings = {
-    bindings: new Map([[SOURCE, { binding, status, error: null, overlayTarget: null, sourceBinding: SOURCE_BINDING }]]),
+    bindings: new Map([[SOURCE, { binding, status, error: null, sourceBinding: SOURCE_BINDING }]]),
     presentations: new Map([[SOURCE, { status, grid, presentedTime: null, sourceURL, sourceEpoch: 1, seekEpoch: 0, ...(presentationRef === null || presentationRef === undefined ? {} : { presentationRef }) }]]),
     onVideoBinding: vi.fn(), onVideoFrame: vi.fn(),
   };
@@ -91,11 +91,11 @@ beforeEach(() => {
   vi.spyOn(miniToolAnalysesApi, 'start');
   const doc = getDoc(docName.canvasSpace(PROJECT, SPACE));
   addNode(PROJECT, SPACE, { id: SOURCE, type: 'video', position: { x: 30, y: 40 }, data: { content: URL, name: 'ORIGINAL', mediaWidth: 400, mediaHeight: 200, duration: 0.28, mimeType: 'video/webm', locked: false, createdBy: 'author', createdAt: 0, attachments: [] } });
-  commitVideoToolDraft(doc, SOURCE, 'video.remove-bg', structuredClone(DRAFT));
+  commitVideoToolDraft(doc, SOURCE, 'video.split', structuredClone(DRAFT));
   vi.mocked(useCanvasSpace).mockReturnValue({ nodes: readNodes(doc), edges: [], undo: vi.fn(), redo: vi.fn(), canUndo: false, canRedo: false, getLastWriteWasLocal: () => true, deletedByPeer: () => false });
   vi.mocked(startPlannedVideoRun).mockResolvedValue({ kind: 'done', result: { task_id: '30000000-0000-4000-8000-000000000006', status: 'pending' } });
   presentation(GRID);
-  act(() => canvasSessions.of(SPACE).getState().openMiniTool(SOURCE, 'video.remove-bg', { sourceContent: URL, params: {} }));
+  act(() => canvasSessions.of(SPACE).getState().openMiniTool(SOURCE, 'video.split', { sourceContent: URL, params: {} }));
 });
 afterEach(() => { cleanup(); clients.splice(0).forEach((client) => client.clear()); canvasSessions.of(SPACE).getState().closeActivePanel(); destroyDoc(docName.canvasSpace(PROJECT, SPACE)); vi.restoreAllMocks(); });
 

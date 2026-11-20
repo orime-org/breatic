@@ -384,7 +384,7 @@ export interface CanvasSessionState {
    * around the picture where the node shows it, and one that leaves the frame
    * as it was leaves the picture where it is.
    */
-  setExpand: (next: Pick<ExpandDraft, 'frame' | 'ratio'>) => void;
+  setExpand: (next: Pick<ExpandDraft, 'frame' | 'ratio'> & { shift?: ExpandDraft['shift'] }) => void;
   /** Record where the node shows the picture, for the expand frame drawn outside it. */
   setExpandView: (view: ExpandView) => void;
   /** Pick what a press on the node does in markup. */
@@ -807,9 +807,11 @@ export function createCanvasSessionStore(): CanvasSessionStore {
         set((s) => {
           const held = s.miniTool?.expand;
           if (s.miniTool && held) {
+            const same = JSON.stringify(held.frame) === JSON.stringify(next.frame);
+            const shift = next.shift ?? (same ? held.shift : EMPTY_EXPAND.shift);
             s.miniTool = {
               ...s.miniTool,
-              expand: castDraft({ ...held, frame: { ...next.frame }, ratio: next.ratio }),
+              expand: castDraft({ ...held, frame: { ...next.frame }, ratio: next.ratio, shift: { ...shift } }),
             };
           }
         }),

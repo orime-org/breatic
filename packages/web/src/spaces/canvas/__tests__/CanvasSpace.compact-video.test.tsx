@@ -16,7 +16,7 @@ import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
 import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import { modelsApi } from '@web/data/api/models';
 import { miniToolAnalysesApi } from '@web/data/api/mini-tool-analyses';
-import { commitVideoToolDraft, readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
+import { readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
 import * as request from '@web/data/api/request';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { canvasSessions } from '@web/stores/canvas-session';
@@ -44,11 +44,11 @@ vi.mock('@web/spaces/canvas/nodes/VideoNode', () => ({
       const send = (): void => {
         const element = document.createElement('video');
         const binding = { sourceKey: JSON.stringify([data.content, HASH, page.shown]), sourceEpoch: 1, element, surface: element, container: document.createElement('div'), original: { width: 400, height: 200, duration: 4 }, getSeekEpoch: () => 0, getPresentedFrame: () => ({ sourceKey: JSON.stringify([data.content, HASH, page.shown]), sourceEpoch: 1, seekEpoch: 0, mediaTime: 2.62, surface: element }), seek: vi.fn(), play: async () => undefined, pause: () => undefined };
-        notify?.(SOURCE, data.content, { binding, status: 'ready', error: null, overlayTarget: null, sourceBinding: sourceResponse().sourceBinding });
+        notify?.(SOURCE, data.content, { binding, status: 'ready', error: null, sourceBinding: sourceResponse().sourceBinding });
       };
       send();
       page.renotify = send;
-      return () => notify?.(SOURCE, data.content, { binding: null, status: 'detached', error: null, overlayTarget: null });
+      return () => notify?.(SOURCE, data.content, { binding: null, status: 'detached', error: null });
     }, [notify, data.content]);
     return <div data-testid='renderer-boundary' />;
   },
@@ -103,28 +103,12 @@ describe('S4 actual Canvas → bindings → tools on the frame grid', () => {
     mount(); await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
     expect(screen.getByText(/1.*(?:segment|clip)/i)).toBeInTheDocument();
   });
-  // An erase draft starts on the whole grid, so a first erase while preparing has no draft yet: only the waiting state shows.
-  it('C02 video.erase with no draft yet shows only the preparing state, with no Run', async () => {
-    mount(); await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
-    act(() => {
-      publish(unselected(null));
-      canvasSessions.of(SPACE).getState().openMiniTool(SOURCE, 'video.erase', { sourceContent: URL, params: {} });
-    });
-    expect(await screen.findByTestId('video-tool-waiting')).toHaveTextContent(t('canvas.miniTool.videoUI.preparingVideo'));
-    expect(screen.queryByTestId('mini-tool-run')).toBeNull();
-  });
-  it.each(['video.extract-frames', 'video.split', 'video.expand', 'video.lip-sync', 'video.transitions'] as const)('C02 %s waits while the video is being prepared', async (tool) => {
+  it.each(['video.extract-frames', 'video.split'] as const)('C02 %s waits while the video is being prepared', async (tool) => {
     mount(); await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
     act(() => {
       publish(unselected(null));
       canvasSessions.of(SPACE).getState().openMiniTool(SOURCE, tool, { sourceContent: URL, params: {} });
     });
-    await waitFor(() => expect(screen.getByTestId('mini-tool-run')).toBeDisabled());
-    expect(screen.getAllByText(t('canvas.miniTool.videoUI.preparingVideo'))[0]).toBeInTheDocument();
-  });
-  // Frames-split §10.6 panel hookup: remove background waits for the presentation like the other tools.
-  it('C03 remove-background waits while the video is being prepared like the other tools', async () => {
-    publish(unselected(null)); mount('video.remove-bg');
     await waitFor(() => expect(screen.getByTestId('mini-tool-run')).toBeDisabled());
     expect(screen.getAllByText(t('canvas.miniTool.videoUI.preparingVideo'))[0]).toBeInTheDocument();
   });
@@ -168,13 +152,6 @@ describe('S4 actual Canvas → bindings → tools on the frame grid', () => {
     expect(reading.draft.params).toEqual({ cuts: [CURRENT_FRAME + 1] });
     expect(screen.getByTestId('video-cut-count')).toHaveTextContent('1 cut point · 2 segments');
   });
-  it('C08 the lip-sync anchor is the current grid frame, not registry FPS', async () => {
-    const start = vi.spyOn(miniToolAnalysesApi, 'start').mockImplementation(() => new Promise(() => undefined));
-    mount('video.lip-sync');
-    await waitFor(() => expect(start).toHaveBeenCalledOnce());
-    // §95 D9-4 (design §7.11 analysis admission): every analysis request names the selected bundle's tool input.
-    expect(start.mock.calls[0]?.[0]).toMatchObject({ kind: 'people', params: { anchor: { frameIndex: CURRENT_FRAME } }, presentationRef: PRESENTATION_REF });
-  });
   // §96 (design §7.12 step 3, §7.8, §3.3): while the page still shows the earlier version the panel waits for the
   // presentation; it moves on only once the page reports the selected version.
   it('C12 the panel waits while the page shows another version, and becomes usable once the page shows the selected one', async () => {
@@ -194,20 +171,6 @@ describe('S4 actual Canvas → bindings → tools on the frame grid', () => {
     fireEvent.click(detect);
     await waitFor(() => expect(start).toHaveBeenCalledOnce());
     expect(start.mock.calls[0]?.[0]).toMatchObject({ kind: 'scene_cuts', presentationRef: PRESENTATION_REF });
-  });
-  it('C11 object tracking requests the analysis against the selected bundle\'s tool input (§95 D9-4)', async () => {
-    const start = vi.spyOn(miniToolAnalysesApi, 'start').mockImplementation(() => new Promise(() => undefined));
-    mount('video.erase');
-    const doc = getDoc(docName.canvasSpace(PROJECT, SPACE));
-    await waitFor(() => expect(readVideoToolDraft(doc, SOURCE, 'video.erase').state).toBe('supported'));
-    const held = readVideoToolDraft(doc, SOURCE, 'video.erase');
-    if (held.state !== 'supported') throw new Error('Expected the persisted erase draft');
-    act(() => { commitVideoToolDraft(doc, SOURCE, 'video.erase', { ...held.draft, params: { ...held.draft.params, region: { box: null, points: [{ x: 0.5, y: 0.5, label: 'positive' }] } } }); });
-    const track = await screen.findByRole('button', { name: t('canvas.miniTool.videoUI.trackObject') });
-    await waitFor(() => expect(track).not.toBeDisabled());
-    fireEvent.click(track);
-    await waitFor(() => expect(start).toHaveBeenCalledOnce());
-    expect(start.mock.calls[0]?.[0]).toMatchObject({ kind: 'tracked_mask', presentationRef: PRESENTATION_REF });
   });
   it('C06 accepted retry completes even after the panel closes', async () => {
     publish(unselected('expired')); let finish!: (value: unknown) => void;

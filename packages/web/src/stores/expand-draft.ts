@@ -36,6 +36,13 @@ export interface ExpandDraft {
   readonly frame: ExpandFrame;
   readonly ratio: ExpandRatio;
   /**
+   * How far the picture has been moved inside the frame since the frame last
+   * wrapped it, as shares of it: the frame keeps its place on the canvas and
+   * the picture moves. Held here rather than in the node, which the canvas
+   * unmounts while it is off screen.
+   */
+  readonly shift: { readonly x: number; readonly y: number };
+  /**
    * Where the node last showed the picture, which the frame is drawn from: the
    * frame is drawn outside the node, so it stays while the node is off screen
    * and unmounted. Null until the node has measured it.
@@ -47,5 +54,6 @@ export interface ExpandDraft {
 export const EMPTY_EXPAND: Readonly<ExpandDraft> = Object.freeze({
   frame: UNIT_FRAME,
   ratio: 'free',
+  shift: Object.freeze({ x: 0, y: 0 }),
   view: null,
 });

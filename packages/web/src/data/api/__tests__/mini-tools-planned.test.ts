@@ -17,16 +17,16 @@ const RUN = '20000000-0000-4000-8000-000000000002';
 const SOURCE = '20000000-0000-4000-8000-000000000003';
 const TARGET = '20000000-0000-4000-8000-000000000004';
 const BODY: MiniToolPlannedRequest = {
-  tool: 'video.remove-bg', project_id: PROJECT, space_id: '20000000-0000-4000-8000-000000000005', run_id: RUN,
-  draft: { version: 1, draftId: '20000000-0000-4000-8000-000000000006', revision: '20000000-0000-4000-8000-000000000007', source: { nodeId: SOURCE, canonicalURL: 'https://assets.example.test/source.webm', mediaInfo: { width: 400, height: 200, duration: 0.28, mimeType: 'video/webm' } }, inputs: [], params: {} },
+  tool: 'video.split', project_id: PROJECT, space_id: '20000000-0000-4000-8000-000000000005', run_id: RUN,
+  draft: { version: 1, draftId: '20000000-0000-4000-8000-000000000006', revision: '20000000-0000-4000-8000-000000000007', source: { nodeId: SOURCE, canonicalURL: 'https://assets.example.test/source.webm', mediaInfo: { width: 400, height: 200, duration: 0.28, mimeType: 'video/webm' } }, inputs: [], params: { cuts: [] } },
   // §95: the planned request now carries the selected bundle's presentation_ref (design §10.8; fixture migration, 4.4.5).
   analysis_refs: [], presentation_ref: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } },
-  outputs: [{ outputIndex: 0, nodeId: TARGET, recipe: { kind: 'remove-bg' } }],
+  outputs: [{ outputIndex: 0, nodeId: TARGET, recipe: { kind: 'segment', range: { start: 0, end: 7 } } }],
 };
 const RECORD: MiniToolExecutionRecord = {
   schemaVersion: 1, runId: RUN, status: 'completed', planFingerprint: 'b'.repeat(64), resultVersion: 1,
   sourceBindings: [{ assetId: SOURCE, contentHash: 'a'.repeat(64), canonicalURL: BODY.draft.source.canonicalURL, kind: 'video', mediaInfo: BODY.draft.source.mediaInfo }],
-  outputs: [{ outputIndex: 0, nodeId: TARGET, recipe: { kind: 'remove-bg' }, late: false, result: { status: 'registered', assetId: '20000000-0000-4000-8000-000000000008', canonicalURL: 'https://assets.example.test/canonical-alpha.webm', kind: 'video', mimeType: 'video/webm', size: 321, contentHash: 'c'.repeat(64), width: 400, height: 200, duration: 0.28, cover: null } }],
+  outputs: [{ outputIndex: 0, nodeId: TARGET, recipe: { kind: 'segment', range: { start: 0, end: 7 } }, late: false, result: { status: 'registered', assetId: '20000000-0000-4000-8000-000000000008', canonicalURL: 'https://assets.example.test/canonical-alpha.webm', kind: 'video', mimeType: 'video/webm', size: 321, contentHash: 'c'.repeat(64), width: 400, height: 200, duration: 0.28, cover: null } }],
   usage: [], billingState: 'waiting', error: null,
 };
 
@@ -68,8 +68,8 @@ describe('planned mini-tool API public wire, independent of HTTP envelope transp
     expect(apiGet).toHaveBeenCalledExactlyOnceWith(`/projects/${PROJECT}/mini-tool-runs/${RUN}`);
   });
 
-  it('D24-1 retries a lip-sync run through retryPlannedVideoRun: the retry form, its press key and a credit refresh', async () => {
-    const retry: MiniToolExecutionRetryRequest = { tool: 'video.lip-sync', project_id: PROJECT, space_id: BODY.space_id, run_id: '20000000-0000-4000-8000-000000000009', retry: { runId: RUN, outputIndexes: [0] } };
+  it('retries a split run through retryPlannedVideoRun: the retry form, its press key and a credit refresh', async () => {
+    const retry: MiniToolExecutionRetryRequest = { tool: 'video.split', project_id: PROJECT, space_id: BODY.space_id, run_id: '20000000-0000-4000-8000-000000000009', retry: { runId: RUN, outputIndexes: [0] } };
     const answer = { task_id: retry.run_id, status: 'pending' };
     vi.mocked(apiPost).mockResolvedValueOnce(answer);
     expect(await miniToolsApi.retryPlannedVideoRun(structuredClone(retry), 'retry-press-key')).toEqual(answer);

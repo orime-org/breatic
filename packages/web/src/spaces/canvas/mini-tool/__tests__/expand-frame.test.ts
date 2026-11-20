@@ -15,7 +15,7 @@ import {
   expandLayout,
   frameForRatio,
   isExpanded,
-  moveFrame,
+  moveSource,
   ratioFits,
   resizeFrame,
   sourceTooLargeToExpand,
@@ -41,19 +41,20 @@ function pixels(frame: ExpandFrame, source: { width: number; height: number }): 
 // offset comes from the draft and the node's size alone.
 describe('expandDrop', () => {
   const view = { at: { x: 0, y: 20 }, box: { width: 400, height: 300 }, src: null };
+  const still = { x: 0, y: 0 };
 
   it('is nothing while the frame ends inside the node', () => {
-    expect(expandDrop({ frame: UNIT_FRAME, view }, 340, 2)).toBe(0);
+    expect(expandDrop({ frame: UNIT_FRAME, shift: still, view }, 340, 2)).toBe(0);
   });
 
   it('is how far the frame reaches below the node, in screen pixels', () => {
     const frame = { x: 0, y: 0, width: 1, height: 1.5 };
-    expect(expandDrop({ frame, view }, 340, 2)).toBeCloseTo(260, 9);
-    expect(expandDrop({ frame: { ...frame, y: -0.1 }, view }, 340, 2)).toBeCloseTo(200, 9);
+    expect(expandDrop({ frame, shift: still, view }, 340, 2)).toBeCloseTo(260, 9);
+    expect(expandDrop({ frame, shift: { x: 0, y: 0.1 }, view }, 340, 2)).toBeCloseTo(320, 9);
   });
 
   it('is nothing until the node has shown the picture', () => {
-    expect(expandDrop({ frame: { x: 0, y: 0, width: 1, height: 3 }, view: null }, 340, 1)).toBe(0);
+    expect(expandDrop({ frame: { x: 0, y: 0, width: 1, height: 3 }, shift: still, view: null }, 340, 1)).toBe(0);
   });
 });
 
@@ -121,7 +122,8 @@ describe('resizeFrame', () => {
     expect(frame.y + frame.height / 2).toBeCloseTo(0.5, 6);
   });
 
-  it('keeps a locked frame centred on its own middle across a resize', () => {
+  it('keeps a locked frame centred on its own middle across the drag, where the picture was moved in it', () => {
+    // The picture moved to the frame's top edge: the frame's top is the picture's.
     const moved = { ...frameForRatio('9:16', LANDSCAPE, UNIT_FRAME), y: 0 };
     const middle = moved.y + moved.height / 2;
     const frame = resizeFrame(moved, 'e', { x: 1.2, y: 0.5 }, '9:16', LANDSCAPE, CAP);
@@ -132,9 +134,10 @@ describe('resizeFrame', () => {
   });
 
   it('shifts a locked frame only as far as it takes to keep wrapping the picture', () => {
-    // The target's top edge reaches the fixed source's top edge.
+    // Grown, then the picture moved to the frame's top: shrinking about the
+    // frame's middle would leave the picture's top outside, so the frame stops at it.
     const grown = resizeFrame(frameForRatio('9:16', LANDSCAPE, UNIT_FRAME), 'e', { x: 1.5, y: 0.5 }, '9:16', LANDSCAPE, CAP);
-    const atTop = moveFrame(grown, { x: 0, y: 10 });
+    const atTop = moveSource(grown, { x: 0, y: -10 });
     expect(atTop.y).toBe(0);
     const shrunk = resizeFrame(atTop, 'e', { x: 1.1, y: 0.5 }, '9:16', LANDSCAPE, CAP);
     expect(shrunk.height).toBeLessThan(atTop.height);
@@ -173,16 +176,16 @@ describe('resizeFrame', () => {
   });
 });
 
-describe('moveFrame', () => {
-  it('moves the target in the pointer direction and keeps its size', () => {
+describe('moveSource', () => {
+  it('moves the source inside the frame and keeps the frame’s size', () => {
     const frame = { x: -0.5, y: 0, width: 2, height: 1 };
-    const moved = moveFrame(frame, { x: 0.2, y: 0 });
-    expect(moved).toEqual({ x: -0.3, y: 0, width: 2, height: 1 });
+    const moved = moveSource(frame, { x: 0.2, y: 0 });
+    expect(moved).toEqual({ x: -0.7, y: 0, width: 2, height: 1 });
   });
 
-  it('stops the target edges at the complete fixed source', () => {
+  it('stops the source at the frame’s edge', () => {
     const frame = { x: -0.5, y: -0.25, width: 2, height: 1.5 };
-    expect(moveFrame(frame, { x: 3, y: -3 })).toEqual({ x: 0, y: -0.5, width: 2, height: 1.5 });
+    expect(moveSource(frame, { x: 3, y: -3 })).toEqual({ x: -1, y: 0, width: 2, height: 1.5 });
   });
 });
 

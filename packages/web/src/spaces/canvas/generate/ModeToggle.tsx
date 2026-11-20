@@ -29,8 +29,6 @@ interface ModeToggleProps {
   onChange: (mode: string) => void;
   /** Test id for the trigger pill. */
   triggerTestId: string;
-  /** Whether the toggle is locked, as the panel around it is. */
-  disabled?: boolean;
 }
 
 /**
@@ -50,7 +48,6 @@ interface ModeToggleProps {
  * @param root0.options - The modes this panel offers.
  * @param root0.onChange - Called with the newly-picked mode.
  * @param root0.triggerTestId - Test id for the trigger pill.
- * @param root0.disabled - Whether the toggle is locked.
  * @returns The mode picker.
  */
 export const ModeToggle = React.memo(function ModeToggle({
@@ -58,7 +55,6 @@ export const ModeToggle = React.memo(function ModeToggle({
   options,
   onChange,
   triggerTestId,
-  disabled,
 }: ModeToggleProps): React.JSX.Element {
   const [open, setOpen] = React.useState(false);
   // Follow the ReactFlow viewport while open (#1796): Radix's Floating-UI
@@ -67,7 +63,7 @@ export const ModeToggle = React.memo(function ModeToggle({
   // pickers. Inert while closed.
   useFollowCanvasViewport(open);
   return (
-    <ModePill value={value} options={options} onChange={onChange} triggerTestId={triggerTestId} disabled={disabled}
+    <ModePill value={value} options={options} onChange={onChange} triggerTestId={triggerTestId}
       // Clip, don't flip/shift, at a screen edge (like the ratio / camera / model
       // pickers): a following popover that flipped would fight the follow and
       // jump as the canvas pans (user's clip-not-jump, #1788).

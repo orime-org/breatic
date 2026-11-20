@@ -149,8 +149,8 @@ describe('video focus crop press (design §5.5)', () => {
     for (const tool of VIDEO_TOOL_IDS.filter((id) => id !== 'video.extract-frames')) expect(shared.miniToolTaskType!(tool)).toBe('video');
   });
 
-  it('F06: the video submenu and VIDEO_TOOL_IDS keep the seven panel tools and never list video.focus-crop', () => {
-    expect(VIDEO_TOOL_IDS).toHaveLength(7);
+  it('F06: the video submenu and VIDEO_TOOL_IDS keep the panel tools and never list video.focus-crop', () => {
+    expect(VIDEO_TOOL_IDS).toHaveLength(2);
     expect(VIDEO_TOOL_IDS).not.toContain('video.focus-crop');
     const submenu = miniToolsFor('video').map((tool) => tool.id);
     expect(submenu).not.toContain('video.focus-crop');

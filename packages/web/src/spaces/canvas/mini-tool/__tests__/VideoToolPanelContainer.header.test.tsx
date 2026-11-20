@@ -52,14 +52,14 @@ function open(toolId: VideoToolId, cuts?: number[], table: typeof grid | null = 
   const presentation = { grid: table, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0,
     presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } } } as VideoToolPresentation;
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId={toolId} node={node} nodes={[node]} presentation={presentation} onRunVideo={vi.fn()} costs={{ execution: '1' }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId={toolId} node={node} presentation={presentation} onRunVideo={vi.fn()} costs={{ execution: '1' }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
 }
 
 afterEach(() => { destroyDoc(name); canvasSessions.of(spaceId).getState().closeActivePanel(); });
 
 describe('a video tool panel header', () => {
   it('shows the tool icon before its title and the one output a run makes', () => {
-    open('video.remove-bg');
+    open('video.extract-frames');
     const title = screen.getByTestId('mini-tool-panel-title');
     expect(title.firstElementChild?.tagName.toLowerCase()).toBe('svg');
     expect(screen.getByText(t('canvas.miniTool.videoUI.outputCount', { count: 1 }))).toBeInTheDocument();
@@ -76,9 +76,4 @@ describe('a video tool panel header', () => {
     await waitFor(() => expect(screen.getByText(t('canvas.miniTool.videoUI.outputCount', { count: 3 }))).toBeInTheDocument());
   });
 
-  it('keeps the image Expand panel header on expand', () => {
-    open('video.expand');
-    expect(screen.getByTestId('mini-tool-panel-title').querySelector('svg')).toBeNull();
-    expect(screen.queryByText(t('canvas.miniTool.videoUI.outputCount', { count: 1 }))).toBeNull();
-  });
 });

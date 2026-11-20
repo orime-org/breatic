@@ -43,7 +43,7 @@ function footerText(costs?: VideoToolCostText): string {
   commitVideoToolDraft(doc, nodeId, 'video.extract-frames', createVideoToolDraft('video.extract-frames', { nodeId, canonicalURL: sourceURL, mediaInfo }));
   canvasSessions.of(spaceId).getState().openMiniTool(nodeId, 'video.extract-frames', { sourceContent: sourceURL, params: {} });
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.extract-frames' node={node} nodes={[node]} costs={costs} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.extract-frames' node={node} costs={costs} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
   return screen.getByTestId('mini-tool-credit').textContent ?? '';
 }
 

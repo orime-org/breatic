@@ -3,7 +3,6 @@
 
 import * as React from 'react';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
-import { Slider } from '@web/components/ui/slider';
 
 /** The source player's live clock, which the strip reads every animation frame while the source plays. */
 export interface VideoPlaybackLiveClock {
@@ -26,16 +25,6 @@ export interface VideoPlaybackStripProps {
   liveClock?: VideoPlaybackLiveClock;
   /** Seeks the source player; without it the strip only shows. */
   onSeek?: (time: number) => void;
-  /** A range to highlight: outside it is dimmed, inside it is outlined, and the row below reads its ends and length. */
-  range?: { start: number; end: number };
-  /** Edits the range with a two-thumb slider under the strip, committed once a thumb is released. */
-  onRangeChange?: (range: { start: number; end: number }) => void;
-  /** Names the range in the row below and on the slider. */
-  rangeLabel?: string;
-  /** Seconds one range slider step moves: one grid frame when the grid is known, so an arrow key moves a whole frame. */
-  rangeStep?: number;
-  /** Whether the range slider takes edits. */
-  disabled?: boolean;
   /** Marks drawn on the strip above the filmstrip, such as split's cut handles. */
   children?: React.ReactNode;
 }
@@ -113,13 +102,9 @@ export function useShownTime(clock: VideoPlaybackLiveClock | undefined, presente
  * @throws {never} Never.
  */
 export function VideoPlaybackStrip(props: VideoPlaybackStripProps): React.JSX.Element {
-  const { src, duration, aspect, onSeek, onRangeChange, rangeLabel, children } = props;
+  const { src, duration, aspect, onSeek, children } = props;
   const presentedTime = useShownTime(props.liveClock, props.presentedTime);
   const track = React.useRef<HTMLDivElement>(null);
-  // A thumb being dragged is shown locally and committed once on release, so a drag is one edit.
-  const [dragged, setDragged] = React.useState<{ start: number; end: number } | null>(null);
-  React.useEffect(() => setDragged(null), [props.range?.start, props.range?.end]);
-  const range = dragged ?? props.range;
   /**
    * Seeks to the pressed place on the strip as it is laid out on screen.
    * @param event - The press.
@@ -134,18 +119,11 @@ export function VideoPlaybackStrip(props: VideoPlaybackStripProps): React.JSX.El
   return <div className='nodrag nowheel grid gap-1.5' data-testid='video-playback-strip'>
     <div ref={track} data-testid='video-playback-track' className='relative h-12 select-none overflow-hidden rounded-chrome border border-border bg-muted' onPointerDown={seekAt}>
       <FilmStrip src={src} duration={duration} aspect={aspect} />
-      {range === undefined ? null : <>
-        <span data-testid='video-playback-before' className='pointer-events-none absolute inset-y-0 left-0 bg-background/70' style={{ width: percent(range.start, duration) }} />
-        <span data-testid='video-playback-after' className='pointer-events-none absolute inset-y-0 right-0 bg-background/70' style={{ width: percent(duration - range.end, duration) }} />
-        <span data-testid='video-playback-range' className='pointer-events-none absolute inset-y-0 border border-status-selected' style={{ left: percent(range.start, duration), width: percent(range.end - range.start, duration) }} />
-      </>}
       {presentedTime === null ? null : <span data-testid='video-playback-head' className='pointer-events-none absolute inset-y-0 border-l border-primary' style={{ left: percent(presentedTime, duration) }}><span className='absolute -left-1 top-0 size-2 bg-primary' /></span>}
       {children}
     </div>
-    {range === undefined || onRangeChange === undefined ? null : <Slider aria-label={rangeLabel} value={[range.start, range.end]} min={0} max={duration} step={props.rangeStep ?? 0.01} minStepsBetweenThumbs={1} disabled={props.disabled}
-      onValueChange={([start, end]) => setDragged({ start: start!, end: end! })} onValueCommit={([start, end]) => { setDragged(null); onRangeChange({ start: start!, end: end! }); }} />}
     <div data-testid='video-playback-times' className='flex justify-between text-xs tabular-nums text-muted-foreground'>
-      <span>{secondsLabel(range?.start ?? 0)}</span><span>{range !== undefined ? [rangeLabel, secondsLabel(range.end - range.start)].filter((part) => part !== undefined).join(' · ') : presentedTime === null ? '' : secondsLabel(presentedTime)}</span><span>{secondsLabel(range?.end ?? duration)}</span>
+      <span>{secondsLabel(0)}</span><span>{presentedTime === null ? '' : secondsLabel(presentedTime)}</span><span>{secondsLabel(duration)}</span>
     </div>
   </div>;
 }

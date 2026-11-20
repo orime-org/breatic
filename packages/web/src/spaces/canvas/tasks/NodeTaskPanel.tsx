@@ -72,8 +72,6 @@ export interface NodeTaskPanelProps {
   onRetry: (taskId: string) => void;
   /** Drop one row. */
   onDismiss: (taskId: string) => void;
-  /** What a row's run says beyond the row, such as a lip-sync run's failed people, shown under it. */
-  detailOf?: (taskId: string) => React.ReactNode;
 }
 
 /**
@@ -94,7 +92,6 @@ export interface NodeTaskPanelProps {
  * @param props.displayNameOf - The catalog's name for a model id.
  * @param props.onRetry - Send one task's stashed File again.
  * @param props.onDismiss - Drop one row.
- * @param props.detailOf - What a row's run says beyond the row.
  * @returns The panel element.
  */
 export function NodeTaskPanel({
@@ -113,7 +110,6 @@ export function NodeTaskPanel({
   displayNameOf,
   onRetry,
   onDismiss,
-  detailOf,
 }: NodeTaskPanelProps): JSX.Element {
   const t = useTranslation();
   const shown = React.useMemo(
@@ -187,22 +183,20 @@ export function NodeTaskPanel({
         <ScrollArea viewportClassName='max-h-[318px] px-1.5 pb-1.5'>
           <div className='flex flex-col gap-0.5'>
             {shown.map((task) => (
-              <React.Fragment key={task.id}>
-                <TaskRow
-                  entry={task}
-                  now={now}
-                  canRetry={canRetry(task.id)}
-                  retrying={isWaiting(task.id, 'retry')}
-                  dismissing={isWaiting(task.id, 'dismiss')}
-                  readOnly={readOnly}
-                  {...(medium !== undefined && { medium })}
-                  onView={onView}
-                  {...(displayNameOf !== undefined && { displayNameOf })}
-                  onRetry={onRetry}
-                  onDismiss={onDismiss}
-                />
-                {detailOf?.(task.id)}
-              </React.Fragment>
+              <TaskRow
+                key={task.id}
+                entry={task}
+                now={now}
+                canRetry={canRetry(task.id)}
+                retrying={isWaiting(task.id, 'retry')}
+                dismissing={isWaiting(task.id, 'dismiss')}
+                readOnly={readOnly}
+                {...(medium !== undefined && { medium })}
+                onView={onView}
+                {...(displayNameOf !== undefined && { displayNameOf })}
+                onRetry={onRetry}
+                onDismiss={onDismiss}
+              />
             ))}
           </div>
         </ScrollArea>

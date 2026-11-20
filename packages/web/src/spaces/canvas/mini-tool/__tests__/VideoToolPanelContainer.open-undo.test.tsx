@@ -27,7 +27,6 @@ import { addNode, getCanvasUndoManager, type CanvasNodeView } from '@web/data/yj
 import { commitVideoToolDraft, readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
 import { createVideoToolDraft } from '../video/video-tool-edit';
 import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
-import { miniToolAnalysesApi } from '@web/data/api/mini-tool-analyses';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 
@@ -52,7 +51,7 @@ function open(toolId: VideoToolId, onRunVideo = vi.fn()): number {
   const presentation = { grid, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0,
     presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } } } as VideoToolPresentation;
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId={toolId} node={node} nodes={[node]} presentation={presentation} onRunVideo={onRunVideo} lipSync={{ models: [], tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 } }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId={toolId} node={node} presentation={presentation} onRunVideo={onRunVideo} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
   return before;
 }
 
@@ -66,12 +65,6 @@ describe('opening a video tool leaves the canvas undo stack alone', () => {
     expect(getCanvasUndoManager(getDoc(name), name).undoStack).toHaveLength(before);
   });
 
-  it('freezes the automatic lip-sync people anchor without an undo step', async () => {
-    const start = vi.spyOn(miniToolAnalysesApi, 'start').mockReturnValue(new Promise(() => undefined));
-    const before = open('video.lip-sync');
-    await waitFor(() => expect(start).toHaveBeenCalledOnce());
-    expect(getCanvasUndoManager(getDoc(name), name).undoStack).toHaveLength(before);
-  });
 });
 
 // Canvas design §3.3 undo row: a run's created nodes and edges are one undo batch, so the frame Current freezes at the press

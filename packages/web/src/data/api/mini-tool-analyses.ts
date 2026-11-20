@@ -24,15 +24,6 @@ export const miniToolAnalysesApi = {
     }
   },
   /**
-   * Quotes the analysis a press would start, with admission's own checks and price; nothing is written.
-   * @throws {Error} When the server refuses the request.
-   * @param body - The request the press would send.
-   * @returns The credits admission would hold.
-   */
-  async quote(body: MiniToolAnalysisRequest): Promise<{ credits: number }> {
-    return apiPost<{ credits: number }>('/mini-tools/analyses/quote', miniToolAnalysisRequestSchema.parse(body));
-  },
-  /**
    * Reads one authorized analysis without changing its accepted identity.
    * @throws {Error} When reading or response validation fails.
    * @param runId - The accepted analysis identity.

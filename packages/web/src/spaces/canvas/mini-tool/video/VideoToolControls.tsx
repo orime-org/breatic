@@ -5,37 +5,18 @@ import * as React from 'react';
 import { useVideoFrameThumbnails } from '@web/spaces/canvas/mini-tool/video/use-video-frame-thumbnails';
 import type { VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 import { Skeleton } from '@web/components/ui/skeleton';
-import { ArrowUpRight, AudioLines, Check, Film, MousePointer2, Plus, RefreshCw, RotateCcw, Scan, Square, Trash2, Users } from 'lucide-react';
-import { newId, type ModelEntry } from '@breatic/shared';
-import { lipsyncFailureRetryable, planVideoFrames, trackedMaskRetryable, planVideoSplit, type LipsyncFailureReason, type MiniToolAnalysisRecord, type VideoPlanGrid, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
+import { Plus, Trash2 } from 'lucide-react';
+import { newId } from '@breatic/shared';
+import { planVideoFrames, planVideoSplit, type MiniToolAnalysisRecord, type VideoPlanGrid, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { frameIndexOfMediaTime, frameMidpointSeconds, gridDuration, gridFrameCovering, gridSeconds } from '@web/spaces/canvas/video-presentation/frame-grid-time';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
 import { secondsLabel, useShownTime, VideoPlaybackStrip, type VideoPlaybackLiveClock } from '@web/spaces/canvas/mini-tool/video/VideoPlaybackStrip';
 import type { SourceRangePlayback } from '@web/spaces/canvas/video-presentation/play-source-range';
-import { Textarea } from '@web/components/ui/textarea';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { latestMiniToolAnalysis } from '@web/data/api/mini-tool-analyses';
 import { useTranslation } from '@web/i18n/use-translation';
-import { toast } from '@web/lib/toast';
-import { useRunning } from '@web/stores/task-actions-in-flight';
-import { SlotTool } from '@web/spaces/canvas/generate/generate-tools';
-import { PreviewImg } from '@web/components/PreviewImg';
 import { PARAM_OPTION_CLASS } from '@web/spaces/canvas/generate/ParamOptionGroup';
-import { EXPAND_RATIOS, frameForRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
-import { currentPeopleResult, editDialogue, overPeopleLimit, transitionHostInputId, type EraseTrackingStatus } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
-import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
-import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
-import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';
-
-/** A duration range a lip-sync model accepts, both ends included (config `executions.video.lip-sync`). */
-/** Lip-sync duration modes, named in English like every generation-panel value (web AGENTS "Product terms"). */
-const SYNC_MODES = (['cut_off', 'silence', 'loop', 'bounce', 'remap'] as const).map((value) => ({ value, label: { cut_off: 'Cut off', silence: 'Silence', loop: 'Loop', bounce: 'Bounce', remap: 'Remap' }[value], testId: `video-sync-${value}` }));
-
-export interface LipSyncDurationRange { minDurationSeconds: number; maxDurationSeconds: number }
-/** The configured lip-sync models in order, the first the default, and the tracking model's range. */
-export interface LipSyncChoices { models: (ModelEntry & LipSyncDurationRange)[]; tracking: LipSyncDurationRange; maxPeople?: number; maxDialogues?: number }
 
 export interface VideoToolControlsProps<K extends VideoToolId = VideoToolId> {
   toolId: K;
@@ -49,47 +30,16 @@ export interface VideoToolControlsProps<K extends VideoToolId = VideoToolId> {
   /** The source player's live clock, which the playback strip follows while the source plays. */
   liveClock?: VideoPlaybackLiveClock;
   disabled: boolean;
-  pickingSlot: string | null;
-  inputNames: ReadonlyMap<string, string>;
-  onPick: (key: string) => void;
-  onAnalyse: (kind: 'people' | 'scene_cuts' | 'tracked_mask') => void;
-  /** Starts a new tracking run with a failed one's frozen input (execution design §10.3), leaving the draft as it is. */
-  onRetryTracking?: (failed: MiniToolAnalysisRecord) => void;
+  onAnalyse: (kind: 'scene_cuts') => void;
   analysing: boolean;
   analysisCreditText?: string;
-  /** What a finished tracking actually used, shown where its estimate was (canvas design §4 erase row). */
-  analysisActualCreditText?: string;
-  onEditTimeline: () => void;
   onInvalidChange?: (key: string, invalid: boolean) => void;
-  onActiveDialogue?: (dialogueId: string) => void;
-  onEndPick?: () => void;
-  regionSelection?: 'rectangle' | 'point';
-  onRegionSelection?: (selection: 'rectangle' | 'point') => void;
   onSeek?: (time: number) => void;
   /** Plays exactly one source range in the node's player (canvas design §4 split row preview). */
   onPlayRange?: (start: number, end: number) => SourceRangePlayback;
   sourceEpoch?: number;
   seekEpoch?: number;
-  /** The lip-sync models to choose from and the tracking range. */
-  lipSync?: LipSyncChoices;
-  /** Why the last lip-sync run failed, per person and shared step (execution design §9.4). */
-  lipSyncFailure?: LipsyncFailureReason | null;
-  /** Retries the failed items of the last lip-sync run. */
-  onRetryFailed?: () => void;
-  /** That retry's press intent, which its button waits on. */
-  retryIntent?: string;
-  /** Why "Track selection" cannot track this selection now; a press shows it (execution design §10.2, §10.4). */
-  trackBlockedReason?: string;
-  /** Whether the erase tracking applies to the current selection, no longer applies, or has not been made. */
-  trackingStatus?: EraseTrackingStatus;
-  /** The source's display size an expansion's ratio frames wrap (the presentation's, sample aspect ratio applied). */
-  expandSize?: { width: number; height: number };
-  /** Opens the newest ready remove-background result of this source; absent while there is none. */
-  onOpenResult?: () => void;
 }
-
-/** The tracking failure codes the panel names (execution design §10.3). */
-const TRACKING_FAILURES = ['empty_foreground', 'tracking_output_mismatch', 'model_rejected', 'timeout', 'failed'] as const;
 
 interface NumericProps {
   value: number;
@@ -104,8 +54,6 @@ interface NumericProps {
   onInvalidChange?: (key: string, invalid: boolean) => void;
   /** Called when the field loses focus; with it, Enter also leaves the field. */
   onSettle?: () => void;
-  /** Whether leaving the field (blur or Enter) turns a number outside `[min, max]` into the nearest bound. */
-  clampOnSettle?: boolean;
 }
 
 /**
@@ -143,167 +91,10 @@ export function VideoNumericInput(props: NumericProps): React.JSX.Element {
     onInvalidChange?.(testId, invalid);
     return () => onInvalidChange?.(testId, false);
   }, [onInvalidChange, testId, invalid]);
-  const settles = props.onSettle !== undefined || props.clampOnSettle === true;
-  /**
-   * Turns a number outside the limits into the nearest bound when the field clamps. Tab and Enter run it while the field
-   * still holds the focus: the write it causes can remount the owner's other controls, and a remount after focus has left
-   * would send the focus to the dialog instead of the next control.
-   * @throws {never} Never.
-   */
-  const clamp = (): void => {
-    if (props.clampOnSettle === true && invalid && Number.isFinite(shown)) setText(String(Math.min(props.max ?? shown, Math.max(props.min, shown))));
-  };
-  /**
-   * Leaves the field: the number is clamped, then the owner settles.
-   * @throws {never} Never.
-   */
-  const settle = (): void => {
-    clamp();
-    props.onSettle?.();
-  };
-  return <Input type='text' inputMode='decimal' autoComplete='off' value={text} aria-label={props.label} data-testid={props.testId} aria-invalid={invalid} disabled={props.disabled} className='h-[var(--control-height)] min-w-0 px-2 text-xs tabular-nums md:text-xs' onBlur={settles ? settle : undefined} onKeyDown={(event) => {
-    if (event.key === 'Tab') clamp();
-    if (event.key === 'Enter' && settles) { clamp(); event.currentTarget.blur(); }
+  const { onSettle } = props;
+  return <Input type='text' inputMode='decimal' autoComplete='off' value={text} aria-label={props.label} data-testid={props.testId} aria-invalid={invalid} disabled={props.disabled} className='h-[var(--control-height)] min-w-0 px-2 text-xs tabular-nums md:text-xs' onBlur={onSettle} onKeyDown={(event) => {
+    if (event.key === 'Enter' && onSettle !== undefined) event.currentTarget.blur();
   }} onChange={(event) => setText(event.currentTarget.value)} />;
-}
-
-/**
- * Uses registered thumbnail artifacts for person identities.
- * @throws {never} Never.
- * @param props - The current values and the callbacks that own edits.
- * @returns The current value derived from these inputs.
- */
-function PeopleDialogues(props: VideoToolControlsProps): React.JSX.Element {
-  const t = useTranslation();
-  const draft = props.draft as VideoToolDraftById['video.lip-sync'];
-  const [open, setOpen] = React.useState(false);
-  useFollowCanvasViewport(open);
-  const record = latestMiniToolAnalysis(props.analyses.filter((item) => item.kind === 'people'));
-  // Only the newest identification counts: a running or failed re-detect hides the earlier people (demo redetectPatch).
-  const result = currentPeopleResult(props.analyses);
-  const people = result?.people ?? [];
-  const ready = result !== undefined;
-  const failed = record?.status === 'failed';
-  const rows = draft.params.dialogues;
-  const maxPeople = props.lipSync?.maxPeople;
-  const maxDialogues = props.lipSync?.maxDialogues;
-  const rowsFull = maxDialogues !== undefined && rows.length >= maxDialogues;
-  /**
-   * Commits all rows atomically without collapsing repeated people.
-   * @throws {never} Never.
-   * @param next - The complete next snapshot or sequence.
-   */
-  function changeRows(next: typeof rows): void {
-    const referenced = new Set(next.map((row) => row.audioInputId));
-    props.onChange({ ...draft, inputs: draft.inputs.filter((input) => referenced.has(input.inputId)), params: { ...draft.params, dialogues: next } });
-  }
-  // The start fields whose text is not a time of 0 s or later, each said under its own row (demo DialogueStartTime).
-  const [invalidStarts, setInvalidStarts] = React.useState<ReadonlySet<string>>(new Set());
-  const { onInvalidChange } = props;
-  /**
-   * Records a start field's validity for its row and reports it to the panel.
-   * @param key - The field's test id.
-   * @param invalid - Whether its text is invalid.
-   * @throws {never} Never.
-   */
-  const startInvalidChange = React.useCallback((key: string, invalid: boolean): void => {
-    setInvalidStarts((before) => before.has(key) === invalid ? before : new Set(invalid ? [...before, key] : [...before].filter((item) => item !== key)));
-    onInvalidChange?.(key, invalid);
-  }, [onInvalidChange]);
-  return <section className='grid min-w-0 gap-2.5' data-testid='video-lip-sync-controls'>
-    <div className='flex items-center justify-between gap-3'>
-      <span className='flex items-center gap-1.5 text-xs font-medium'><Users className='size-3.5' aria-hidden='true' />{t('canvas.miniTool.videoUI.dialoguePairs')}</span>
-      <Button variant='outline' size='compact' data-testid='video-identify-people' loading={props.analysing} disabled={props.disabled || props.analysing} icon={<RefreshCw className='size-3' />} onClick={() => props.onAnalyse('people')}>{t(failed ? 'canvas.miniTool.videoUI.retryPeople' : 'canvas.miniTool.videoUI.redetectPeople')}{props.analysisCreditText === undefined ? null : <span className='text-xs text-muted-foreground'>{props.analysisCreditText}</span>}</Button>
-    </div>
-    {ready && people.length > 0 && !props.analysing ? null : <p className={`rounded-chrome border p-2.5 text-xs ${failed && !props.analysing ? 'border-status-error text-status-error-foreground' : 'border-border text-muted-foreground'}`}>{props.analysing ? t('canvas.miniTool.videoUI.identifyingPeople') : failed ? t('canvas.miniTool.videoUI.peopleIdentificationFailed') : ready ? t('canvas.miniTool.videoUI.peopleEmpty') : t('canvas.miniTool.videoUI.peopleIdle')}</p>}
-    <div className='grid grid-cols-[max-content_minmax(0,1fr)_8ch_24px] items-center gap-x-2 gap-y-1.5'>
-      <span className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.targetPerson')}</span><span className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.dialogueAudio')}</span><span className='whitespace-nowrap text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.dialogueStartTime')}</span><span />
-      {rows.map((row, index) => {
-        const input = draft.inputs.find((item) => item.inputId === row.audioInputId);
-        const selected = row.analysisRunId === result?.analysisRunId ? people.find((person) => person.personId === row.personId) : undefined;
-        const startKey = `video-start-${row.dialogueId}`;
-        const thumbnail = selected?.artifactRefs.find((artifact) => artifact.role === 'thumbnail')?.canonicalURL;
-        const slotKey = `dialogue:${row.dialogueId}`;
-        return <div key={row.dialogueId} className='col-span-4 grid grid-cols-subgrid items-center gap-x-2 gap-y-1.5' data-testid={`video-dialogue-${row.dialogueId}`} onFocusCapture={() => props.onActiveDialogue?.(row.dialogueId)}>
-          <Select onOpenChange={setOpen} value={selected?.personId ?? ''} disabled={props.disabled || props.analysing || !ready || people.length === 0} onValueChange={(personId) => {
-            if (overPeopleLimit(rows, row.dialogueId, personId, maxPeople)) { toast.warning(t('server.mini_tool.lipSyncTooManyPeople', { max: maxPeople ?? 0 })); return; }
-            changeRows(editDialogue(rows, row.dialogueId, { personId, analysisRunId: result?.analysisRunId ?? null }));
-          }}>
-            <SelectTrigger data-testid={`video-person-${row.dialogueId}`} className='w-auto gap-1.5 px-2 text-xs'><span className='relative size-5 shrink-0 overflow-hidden rounded-content-xs bg-muted'>{thumbnail === undefined ? <Users className='size-5 text-muted-foreground' /> : <img src={thumbnail} alt='' className='size-full object-cover' />}</span><span className='min-w-0 truncate'><SelectValue placeholder={t('canvas.miniTool.videoUI.choosePerson')} /></span></SelectTrigger>
-            <SelectContent avoidCollisions={false}>{people.map((person, personIndex) => { const capped = overPeopleLimit(rows, row.dialogueId, person.personId, maxPeople); return <SelectItem key={person.personId} value={person.personId} aria-disabled={capped ? true : undefined} className='aria-disabled:opacity-50'>{t('canvas.miniTool.videoUI.personNumber', { number: personIndex + 1 })}{capped ? <span className='ml-2 text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.personCapReached', { count: maxPeople ?? 0 })}</span> : null}</SelectItem>; })}</SelectContent>
-          </Select>
-          <div className={'min-w-0 [&>div]:min-w-0 [&>div>button:first-child]:h-[var(--control-height)] [&>div>button:first-child]:w-full [&>div>button:first-child]:min-w-0 [&>div>button:first-child]:flex-row [&>div>button:first-child]:justify-start [&>div>button:first-child]:gap-1.5 [&>div>button:first-child]:pr-6 [&>div>button:first-child>span]:truncate [&>div>button[aria-pressed=false]]:border-border [&>div>button[aria-pressed=true]]:border-active-border [&>div>button[aria-pressed=true]]:bg-accent [&>div>button[aria-pressed=true]]:text-foreground' + (input === undefined ? '' : ' [&>div>button:first-child>svg]:hidden [&>div>button:first-child]:pl-2')}>
-            <SlotTool testId={`video-audio-${row.dialogueId}`} thumbnailTestId={`video-audio-thumbnail-${row.dialogueId}`} clearTestId={`video-audio-clear-${row.dialogueId}`} Icon={AudioLines} onPick={() => props.onPick(slotKey)} active={props.pickingSlot === slotKey} pick={input === undefined ? undefined : { kind: 'audio', url: input.url }} disabled={props.disabled} onClear={() => { if (props.pickingSlot === slotKey) props.onEndPick?.(); changeRows(editDialogue(rows, row.dialogueId, { audioInputId: null })); }} clearLabel={t('canvas.miniTool.panel.clearSlot')} label={input === undefined ? t('canvas.miniTool.videoUI.chooseDialogueAudio') : props.inputNames.get(input.inputId) ?? input.url.split('/').at(-1) ?? ''} tip={t('canvas.miniTool.videoUI.pickAudio')} />
-          </div>
-          <div className='flex min-w-0 items-center gap-1'><VideoNumericInput value={row.startTime} label={`${t('canvas.miniTool.videoUI.dialogueStartTime')} ${index + 1}`} testId={startKey} min={0} disabled={props.disabled} onInvalidChange={startInvalidChange} onChange={(startTime) => changeRows(editDialogue(rows, row.dialogueId, { startTime }))} /><span className='text-xs text-muted-foreground'>s</span></div>
-          <Button variant='ghost' size='compact' className='size-6 px-0' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeDialogue')} onClick={() => { if (props.pickingSlot === slotKey) props.onEndPick?.(); changeRows(rows.length > 1 ? rows.filter((item) => item.dialogueId !== row.dialogueId) : [{ dialogueId: newId(), personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }]); }}><Trash2 className='size-3.5' /></Button>
-          {invalidStarts.has(startKey) ? <p className='col-span-4 text-right text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.dialogueStartInvalid')}</p> : null}
-        </div>;
-      })}
-    </div>
-    <Button variant='outline' size='compact' className='w-fit aria-disabled:opacity-50' disabled={props.disabled || props.analysing || !ready || people.length === 0} aria-disabled={rowsFull ? true : undefined} onClick={() => {
-      if (rowsFull) { toast.warning(t('server.mini_tool.lipSyncTooManyDialogues', { max: maxDialogues })); return; }
-      const dialogueId = newId();
-      changeRows([...rows, { dialogueId, personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }]);
-      // The new row is the active one, so the next box pressed on the node fills it (demo addDialogue).
-      props.onActiveDialogue?.(dialogueId);
-    }} icon={<Plus className='size-3.5' />}>{t('canvas.miniTool.videoUI.addDialogue')}</Button>
-    <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.dialogueTimingHint')}</p>
-    {/* Demo lip-sync-controls.tsx: the source's playback strip, on which people are identified, above the model row. */}
-    <VideoPlaybackStrip src={draft.source.canonicalURL} duration={props.grid === null ? draft.source.mediaInfo.duration : gridDuration(props.grid)} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height}
-      presentedTime={props.presentedTime} liveClock={props.liveClock} onSeek={props.onSeek} />
-    {/* Canvas design §4 lip-sync row: the bottom row holds the model on the left and the duration mode on the right. */}
-    <div data-testid='video-lipsync-bottom-row' className='flex items-center gap-1.5'>{props.lipSync === undefined || props.lipSync.models.length === 0 ? null : <ModelPicker models={props.lipSync.models} value={draft.params.modelId ?? props.lipSync.models[0].name} disabled={props.disabled} onChange={(modelId) => props.onChange({ ...draft, params: { ...draft.params, modelId } })} />}<ModeToggle value={draft.params.syncMode} options={SYNC_MODES} triggerTestId='video-sync-mode' disabled={props.disabled} onChange={(syncMode) => props.onChange({ ...draft, params: { ...draft.params, syncMode: syncMode as typeof draft.params.syncMode } })} /></div>
-    {/* Hidden while identification restarts, as the demo's re-detect clears the failure (main.tsx person-failure-redetect). */}
-    {props.lipSyncFailure && !props.analysing ? <LipSyncFailure reason={props.lipSyncFailure} disabled={props.disabled} onRetry={props.onRetryFailed} retryIntent={props.retryIntent} onRedetect={() => props.onAnalyse('people')} /> : null}
-  </section>;
-}
-
-const PERSON_CATEGORY_KEYS = { no_face: 'personFailNoFace', model_rejected: 'personFailRejected', timeout: 'personFailTimeout', failed: 'personFailFailed', stopped: 'personFailStopped' } as const;
-const PERSON_NEXT_KEYS = { no_face: 'personFailNoFaceNext', model_rejected: 'personFailRejectedNext', timeout: 'personFailRetryNext', failed: 'personFailRetryNext', stopped: 'personFailStoppedNext' } as const;
-const SHARED_STEP_KEYS = { prepare: 'sharedFailPreparation', composite: 'sharedFailCompositing', stitch: 'sharedFailStitching', expired: 'sharedFailExpired' } as const;
-
-/**
- * A failed lip-sync run (canvas design §4 lip-sync row, execution design §9.4): one line per person that did not succeed, by
- * detection number, with its category and next step, and one line for a failed shared step; once a person has no face or
- * was rejected, the other people and the shared step follow that person. Retry is offered only when the shared rule says every failure can
- * clear on a retry; with a person without a face, identifying people again is.
- * @param props - The reason and the actions.
- * @param props.reason - The failure reason.
- * @param props.disabled - Whether the panel takes edits.
- * @param props.onRetry - Retries the failed items; without it no retry is offered.
- * @param props.retryIntent - The retry's press intent, which the button waits on.
- * @param props.onRedetect - Identifies the people again, where the people are identified (the host's panel).
- * @returns The failure block.
- * @throws {z.ZodError} When the reason is malformed.
- */
-export function LipSyncFailure(props: { reason: LipsyncFailureReason; disabled: boolean; onRetry?: () => void; retryIntent?: string; onRedetect?: () => void }): React.JSX.Element {
-  const t = useTranslation();
-  const retrying = Boolean(useRunning(props.retryIntent ?? ''));
-  const { persons, shared } = props.reason;
-  const blocker = persons.find((person) => person.category === 'no_face' || person.category === 'model_rejected')?.detectionNumber;
-  // No retry is offered without a handler: the node hides it for an output a retry already took over (frames-split §7.15).
-  const retryable = lipsyncFailureRetryable(props.reason) && props.onRetry !== undefined;
-  const noFace = persons.some((person) => person.category === 'no_face');
-  /**
-   * A line's next step: a person or the shared step that a retry could clear follows the blocker once one exists.
-   * @param category - The line's category.
-   * @returns The next step.
-   * @throws {never} Never.
-   */
-  const next = (category: keyof typeof PERSON_NEXT_KEYS): string => {
-    const follows = blocker !== undefined && category !== 'no_face' && category !== 'model_rejected';
-    return follows ? t(`canvas.miniTool.videoUI.${category === 'stopped' ? 'personFailStoppedNext' : 'personFailFollowNext'}`, { number: blocker }) : t(`canvas.miniTool.videoUI.${PERSON_NEXT_KEYS[category]}`);
-  };
-  return <div className='grid gap-2 rounded-chrome border border-status-error-border bg-status-error-bg p-2 text-xs text-status-error-foreground' data-testid='video-lip-sync-failure'>
-    <ul className='grid min-w-0 gap-1.5'>
-      {persons.map((person) => <li key={person.personId} className='grid gap-0.5'><span className='font-medium'>{`${t('canvas.miniTool.videoUI.personNumber', { number: person.detectionNumber })} · ${t(`canvas.miniTool.videoUI.${PERSON_CATEGORY_KEYS[person.category]}`)}`}</span><span>{next(person.category)}</span></li>)}
-      {shared === null ? null : <li className='grid gap-0.5'><span className='font-medium'>{t(`canvas.miniTool.videoUI.${SHARED_STEP_KEYS[shared.step]}`)}</span><span>{next(shared.category)}</span></li>}
-    </ul>
-    {retryable || (noFace && props.onRedetect !== undefined) ? <div className='flex justify-end'>{retryable
-      ? <Button variant='outline' size='compact' loading={retrying} disabled={props.disabled} onClick={props.onRetry}>{t('canvas.miniTool.videoUI.retryFailedPeople')}</Button>
-      : <Button variant='outline' size='compact' disabled={props.disabled} onClick={props.onRedetect}>{t('canvas.miniTool.videoUI.redetectPeople')}</Button>}</div> : null}
-  </div>;
 }
 
 /**
@@ -322,65 +113,6 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
     return planVideoFrames(props.grid, request).map((frame) => frame.frameIndex);
   }, [props.toolId, props.grid, props.draft, props.presentedTime]);
   switch (props.toolId) {
-    case 'video.expand': {
-      const draft = props.draft as VideoToolDraftById['video.expand'];
-      // Demo outpaint-controls.tsx: the image Expand panel's structure, its ratio heading over the grid.
-      return <><div><p className='mb-1.5 text-xs font-medium text-muted-foreground'>{t('canvas.miniTool.param.aspect.label')}</p><div className='grid grid-cols-4 gap-1.5' data-testid='video-expand-ratios'>{EXPAND_RATIOS.map((ratio) => <Button key={ratio} variant={null} size={null} disabled={props.disabled} aria-current={draft.params.ratio === ratio} className={PARAM_OPTION_CLASS} onClick={() => props.onChange({ ...draft, params: { ...draft.params, ratio, frame: frameForRatio(ratio, props.expandSize ?? draft.source.mediaInfo, draft.params.frame) } })}>{ratio === 'free' ? 'Free' : ratio}</Button>)}</div></div><Textarea autoComplete='off' value={draft.params.prompt} disabled={props.disabled} placeholder={t('canvas.miniTool.videoUI.expandPrompt')} onChange={(event) => props.onChange({ ...draft, params: { ...draft.params, prompt: event.currentTarget.value } })} /></>;
-    }
-    case 'video.lip-sync': return <PeopleDialogues {...props} />;
-    case 'video.erase': {
-      const draft = props.draft as VideoToolDraftById['video.erase'];
-      // The last tracking's failure, named by its stored code (execution design §10.3 code table).
-      const tracking = latestMiniToolAnalysis(props.analyses.filter((record) => record.kind === 'tracked_mask'));
-      const code = tracking?.status === 'failed' ? tracking.error?.code : undefined;
-      const trackingFailure = typeof code === 'string' ? TRACKING_FAILURES.find((known) => known === code) ?? 'failed' : null;
-      const range = draft.params.range;
-      const hasSelection = draft.params.region.box !== null || draft.params.region.points.length > 0;
-      const grid = props.grid;
-      // The range is grid frames; the strip and the fields show it in seconds (frames-split §7.16 range row).
-      const shownRange = grid === null ? null : { start: gridSeconds(grid, range.start), end: gridSeconds(grid, range.end) };
-      /**
-       * Commits a new range, given in seconds, as the grid frames it covers.
-       * @param next - The range.
-       * @param next.start - Its start in seconds.
-       * @param next.end - Its end in seconds.
-       * @throws {Error} When the edited draft fails its schema.
-       */
-      const setRange = (next: { start: number; end: number }): void => {
-        if (grid === null) return;
-        const start = Math.min(grid.frameCount - 1, Math.max(0, Math.round(next.start * grid.fps.numerator / grid.fps.denominator)));
-        const end = Math.min(grid.frameCount, Math.max(start + 1, Math.round(next.end * grid.fps.numerator / grid.fps.denominator)));
-        props.onChange({ ...draft, params: { ...draft.params, range: { start, end } } });
-      };
-      // Demo main.tsx erase branch: the range strip, the tracking status, one row with the selection modes and clear on the
-      // left and the tracking cost and Track selection on the right, then the prompt.
-      return <>
-        <VideoPlaybackStrip src={draft.source.canonicalURL} duration={grid === null ? draft.source.mediaInfo.duration : gridDuration(grid)} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} liveClock={props.liveClock} onSeek={props.onSeek}
-          {...(shownRange === null ? {} : { range: shownRange, onRangeChange: setRange, rangeLabel: t('canvas.miniTool.videoUI.timeRange') })} {...(grid === null ? {} : { rangeStep: gridSeconds(grid, 1) })} disabled={props.disabled} />
-        {shownRange === null || grid === null ? null : <div className='grid grid-cols-2 gap-2'>
-          <label className='grid gap-1 text-xs'>{t('canvas.miniTool.videoUI.rangeStart')}<VideoNumericInput value={shownRange.start} label={t('canvas.miniTool.videoUI.rangeStart')} testId='video-range-start' exclusiveMax min={0} max={shownRange.end} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(start) => setRange({ ...shownRange, start })} /></label>
-          <label className='grid gap-1 text-xs'>{t('canvas.miniTool.videoUI.rangeEnd')}<VideoNumericInput value={shownRange.end} label={t('canvas.miniTool.videoUI.rangeEnd')} testId='video-range-end' exclusiveMin min={shownRange.start} max={gridDuration(grid)} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(end) => setRange({ ...shownRange, end })} /></label>
-        </div>}
-        <div data-testid='video-tracking-status' className='flex items-center gap-2 text-xs text-muted-foreground'><span aria-hidden='true' className={`size-2 shrink-0 rounded-full ${props.trackingStatus === 'tracked' ? 'bg-status-success' : 'bg-muted-foreground'}`} /><span>{t(props.trackingStatus === 'tracked' ? 'canvas.miniTool.videoUI.trackingReview' : props.trackingStatus === 'stale' ? 'canvas.miniTool.videoUI.trackingStale' : 'canvas.miniTool.videoUI.drawBox')}</span></div>
-        <div data-testid='video-selection-row' className='flex flex-wrap items-center justify-between gap-2'>
-          <div className='flex items-center gap-1'>
-            {([['rectangle', Square], ['point', MousePointer2]] as const).map(([mode, Icon]) => <Button key={mode} variant={null} size={null} data-testid={`video-region-selection-${mode}`} aria-current={(props.regionSelection ?? 'rectangle') === mode} disabled={props.disabled} className={`${PARAM_OPTION_CLASS} gap-1`} onClick={() => props.onRegionSelection?.(mode)}><Icon className='size-3' aria-hidden='true' />{t(`canvas.miniTool.videoUI.${mode}`)}</Button>)}
-            <Button variant='ghost' size='compact' aria-label={t('canvas.miniTool.videoUI.clearSelection')} disabled={props.disabled || !hasSelection} onClick={() => props.onChange({ ...draft, params: { ...draft.params, region: { box: null, points: [] } } })}><RotateCcw className='size-3.5' /></Button>
-          </div>
-          <div className='ml-auto flex items-center gap-2'>
-            {props.analysisActualCreditText !== undefined ? <span className='whitespace-nowrap text-xs tabular-nums text-muted-foreground'>{t('canvas.miniTool.videoUI.trackingActual', { credits: props.analysisActualCreditText })}</span> : props.analysisCreditText === undefined ? null : <span className='whitespace-nowrap text-xs tabular-nums text-muted-foreground'>{t('canvas.miniTool.videoUI.trackingEstimate', { credits: props.analysisCreditText })}</span>}
-            <Button variant='outline' size='sm' loading={props.analysing} icon={<Scan className='size-3.5' />} aria-disabled={props.trackBlockedReason === undefined ? undefined : true} disabled={props.disabled || props.analysing || !hasSelection} className='aria-disabled:opacity-50' onClick={() => { if (props.trackBlockedReason !== undefined) toast.warning(props.trackBlockedReason); else props.onAnalyse('tracked_mask'); }}>{t('canvas.miniTool.videoUI.trackObject')}</Button>
-          </div>
-        </div>
-        {trackingFailure === null ? null : <div data-testid='video-tracking-failure' className='flex items-center justify-between gap-3 rounded-chrome border border-status-error-border bg-status-error-bg p-2 text-xs text-status-error-foreground'><span>{t(`canvas.miniTool.videoUI.trackingFailure.${trackingFailure}`)}</span>{trackedMaskRetryable(trackingFailure) ? <Button variant='outline' size='compact' loading={props.analysing} disabled={props.disabled || props.analysing} onClick={() => props.onRetryTracking?.(tracking!)}>{t('canvas.miniTool.videoUI.retryTracking')}</Button> : null}</div>}
-        <Textarea autoComplete='off' value={draft.params.trackingPrompt} disabled={props.disabled} placeholder={t('canvas.miniTool.videoUI.trackingPrompt')} onChange={(event) => props.onChange({ ...draft, params: { ...draft.params, trackingPrompt: event.currentTarget.value } })} />
-      </>;
-    }
-    case 'video.remove-bg': {
-      const draft = props.draft as VideoToolDraftById['video.remove-bg'];
-      // Canvas design §4 remove-background row: the source preview, the fixed kept audio and transparent output, and the newest ready result.
-      return <><VideoPlaybackStrip src={draft.source.canonicalURL} duration={props.grid === null ? draft.source.mediaInfo.duration : gridDuration(props.grid)} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} liveClock={props.liveClock} onSeek={props.onSeek} /><div className='flex items-center justify-between text-xs'><span>{t('canvas.miniTool.videoUI.preserveAudio')}</span><Check className='size-3.5 text-status-success' aria-hidden='true' /></div><p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.transparentOutput')}</p>{props.onOpenResult === undefined ? null : <Button variant='outline' size='sm' className='gap-1.5' onClick={props.onOpenResult}>{t('canvas.miniTool.videoUI.resultsReady')}<ArrowUpRight className='size-3.5' aria-hidden='true' /></Button>}</>;
-    }
     case 'video.extract-frames': {
       const draft = props.draft as VideoToolDraftById['video.extract-frames'];
       const planned = previewFrames;
@@ -396,16 +128,6 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
       // Canvas design §4 frames row: three equal buttons in one row; while the grid is not usable the panel shows only
       // its ledger line (frames-split §10.6), and the modes stay usable (only Run waits).
       return <><div className='grid grid-cols-3 gap-1.5' data-testid='video-frame-modes'>{(['first', 'last', 'current'] as const).map((mode) => <Button key={mode} variant={null} size={null} data-testid={`video-frame-mode-${mode}`} aria-current={draft.params.mode === mode} disabled={props.disabled || mode === 'current' && props.presentedTime === null} className={PARAM_OPTION_CLASS} onClick={() => choose(mode)}>{t(`canvas.miniTool.videoUI.${mode}`)}</Button>)}</div>{props.grid === null ? null : <>{draft.params.mode === 'current' && props.presentedTime === null ? <p className='text-center text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.currentFrameUnavailable')}</p> : null}<VideoFramePreview source={props.previewSource ?? null} grid={props.grid} frames={planned} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} onSeek={props.onSeek} /></>}</>;
-    }
-    case 'video.transitions': {
-      const draft = props.draft as VideoToolDraftById['video.transitions'];
-      // One input slot (canvas design invariant 11.2): it holds the input that is not the current video.
-      const hostId = transitionHostInputId(draft);
-      const input = draft.inputs.find((item) => item.inputId !== hostId);
-      return <><span className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.videoInputs')}</span><div className='flex flex-wrap gap-2'><SlotTool testId='video-timeline-input' thumbnailTestId='video-timeline-thumbnail' clearTestId='video-timeline-clear' Icon={Film} onPick={() => props.onPick('timeline')} active={props.pickingSlot === 'timeline'} pick={input === undefined ? undefined : { kind: 'video', url: input.url, thumbnail: input.cover }} disabled={props.disabled} onClear={() => { if (input === undefined) return; if (props.pickingSlot === 'timeline') props.onEndPick?.(); props.onChange({ ...draft, inputs: draft.inputs.filter((item) => item.inputId !== input.inputId), params: { clips: draft.params.clips.filter((clip) => clip.inputId !== input.inputId) } }); }} clearLabel={t('canvas.miniTool.panel.clearSlot')} label={input === undefined ? t('canvas.miniTool.videoUI.addVideoSlot') : props.inputNames.get(input.inputId) ?? t('canvas.miniTool.videoUI.video')} tip={t('canvas.miniTool.videoUI.pickVideo')} /></div><p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.timelineSlotHint')}</p>
-        {/* What Run will join, in timeline order (tools design §4 transitions row: the two clips' summary). */}
-        <div className='grid gap-2'>{draft.params.clips.map((clip, index) => { const clipInput = draft.inputs.find((item) => item.inputId === clip.inputId); return <div key={clip.clipId} data-testid='video-timeline-clip-summary' className='flex items-center gap-2 rounded-chrome border border-border p-2 text-xs'>{clipInput?.cover === undefined ? <Film className='size-4 shrink-0 text-muted-foreground' aria-hidden='true' /> : <PreviewImg src={clipInput.cover} alt='' className='h-8 w-14 shrink-0 rounded-content-xs object-cover' />}<span className='min-w-0 flex-1 truncate'>{index + 1} · {props.inputNames.get(clip.inputId) ?? t('canvas.miniTool.videoUI.video')}</span><span className='shrink-0 tabular-nums text-muted-foreground'>{(clip.out - clip.in).toFixed(2)} s</span></div>; })}</div>
-        {input === undefined ? null : <Button variant='outline' size='sm' onClick={props.onEditTimeline}>{t('canvas.miniTool.videoUI.editTimeline')}</Button>}</>;
     }
     case 'video.split': {
       // Demo main.tsx split branch: Detect, then the cut editor once the grid is usable (frames-split §10.6: until then

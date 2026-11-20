@@ -32,8 +32,6 @@ export function activeMiniToolSlot(
   draft: MiniToolDraft | null,
 ): MiniToolSlot | undefined {
   if (session.purpose !== 'miniToolSlot' || draft === null) return undefined;
-  if (draft.toolId === 'video.lip-sync' && session.slotKey?.startsWith('dialogue:')) return { key: session.slotKey, param: 'audio', accepts: 'audio', many: false, bannerKey: 'canvas.miniTool.videoUI.pickAudio' };
-  if (draft.toolId === 'video.transitions' && session.slotKey === 'timeline') return { key: 'timeline', param: 'video', accepts: 'video', many: false, bannerKey: 'canvas.miniTool.videoUI.pickVideo' };
   return miniToolById(draft.toolId)?.slots.find((slot) => slot.key === session.slotKey);
 }
 
@@ -81,7 +79,6 @@ export function miniToolSlotCandidate(
  * What a pick copies off the clicked node: its address, its poster, its
  * length, and the node's id and name, which the draft orders and wires by.
  * @param node - The clicked node.
- * @param node.id - Its id, which tells it apart from another node holding the same address.
  * @returns The slot value, or null when the node holds nothing.
  */
 export function miniToolSlotValue(node: ClickedNode & { id?: string; data?: { name?: unknown } }): MiniToolSlotValue | null {

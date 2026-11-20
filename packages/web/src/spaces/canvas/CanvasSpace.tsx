@@ -67,7 +67,6 @@ import {
   validFocusImages,
 } from '@web/data/focus-images';
 import {
-  canvasLimitsQuery,
   getCachedReferencePoolCap,
   type NodeHistoryEntry,
 } from '@web/data/api/canvas';
@@ -241,9 +240,6 @@ import { downloadAsset } from '@web/lib/download';
 import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
 import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
-import { CanonicalTimelineDecoder } from '@web/spaces/canvas/video-presentation/CanonicalTimelineDecoder';
-import type { VideoTimelineDecoderRenderer } from '@web/spaces/canvas/mini-tool/video/video-timeline-decoder';
-import { CanvasVideoExpandBridge } from '@web/spaces/canvas/video-presentation/CanvasVideoExpandBridge';
 import { useCanvasVideoBindings } from '@web/spaces/canvas/video-presentation/use-canvas-video-bindings';
 import { useResolvedVideoPresentation } from '@web/spaces/canvas/video-presentation/use-resolved-video-presentation';
 import { useVideoPresentationRepair } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
@@ -2040,11 +2036,9 @@ function CanvasSpaceInner({
         if (!miniToolSlotCandidate(node, target, slot, held)) return;
         const value = miniToolSlotValue(node);
         if (value === null) return;
-        // Only a join's list is ordered and wired by node, with its names
-        // (inner#1825 §6.5); every other slot keeps the clicked node without
-        // its name, which a video tool's input links its result from (canvas
-        // design §3 inputs row).
-        const { name: _name, ...copy } = value;
+        // Only a join's list is ordered and wired by node (inner#1825 §6.5);
+        // any other slot keeps the copy it always held.
+        const { nodeId: _nodeId, name: _name, ...copy } = value;
         fillMiniToolSlot(slot.key, isJoinSlot(slot) ? value : copy, slot.many);
         if (!slot.many || (session.capacity !== undefined && held.size + 1 >= session.capacity)) endPick();
         return;
@@ -4008,19 +4002,17 @@ function CanvasSpaceInner({
   // when Download is offered (inner#888 §7.1).
   // A model tool whose pinned model the catalog does not serve is left off,
   // as the generation panel leaves such models off its list.
-  // A deployment that configures no lip-sync leaves it off the list too (canvas design §4 lip-sync row).
-  const menuLipSync = useQuery(canvasLimitsQuery()).data?.lipSync;
   const menuTools = React.useMemo(
     () =>
       menuDownloadUrl === null
         ? undefined
-        : servedMiniToolsFor(nodeMenu.type, modelCatalog).filter((tool) => tool.id !== 'video.lip-sync' || menuLipSync !== null).map((tool) => ({
+        : servedMiniToolsFor(nodeMenu.type, modelCatalog).map((tool) => ({
           id: tool.id,
           labelKey: tool.labelKey,
           icon: tool.icon,
           model: tool.run.kind === 'model',
         })),
-    [menuDownloadUrl, nodeMenu.type, modelCatalog, menuLipSync],
+    [menuDownloadUrl, nodeMenu.type, modelCatalog],
   );
   const openMiniTool = useCanvasSession((s) => s.openMiniTool);
   // The picture adjust is judged in fine detail (inner#1303 §6.1): on opening
@@ -4311,7 +4303,6 @@ function CanvasSpaceInner({
   const videoHost = miniToolDraft === null ? null : panelHostId;
   const videoNode = nodes.find((node) => node.id === videoHost);
   const videoSource = videoNode && 'content' in videoNode.data ? videoNode.data.content : null;
-  const videoExpansion = miniToolDraft?.toolId === 'video.expand' && videoHost !== null && typeof videoSource === 'string';
   const videoURL = videoNode?.type === 'video' && typeof videoSource === 'string' ? videoSource : '';
   const videoResolved = useResolvedVideoPresentation(projectId, videoURL, videoURL !== '');
   const { repair: repairVideoSource, repairing: repairingVideoSources } = useVideoPresentationRepair(projectId);
@@ -4363,7 +4354,6 @@ function CanvasSpaceInner({
     const session = sessionStore.getState().panelSession;
     return startPlannedVideoRun({
       projectId, spaceId, userId: viewerId ?? '', toolId, draft, analyses, presentationRef, grid: presented?.grid ?? null,
-      ...(presented?.display === undefined ? {} : { display: presented.display }),
       ...(plan === undefined ? {} : { plan: { analysisRefs: plan.analysisRefs, outputNodeIds: plan.outputNodeIds } }),
       source: { id: host.id, name: view.name, position: host.position, groupOrigin: group?.position ?? null,
         mimeType: view.mimeType, width: draft.source.mediaInfo.width, height: draft.source.mediaInfo.height },
@@ -4373,16 +4363,6 @@ function CanvasSpaceInner({
       onBuilt: (built, outputGroup) => showMiniToolResults(nodeId, built, outputGroup),
     });
   }, [readOnly, nodes, projectId, spaceId, viewerId, t, sessionStore, buffer, showMiniToolResults, videoRuntime.presentations]);
-
-  /**
-   * Uses the same canonical presentation owner for both composition decode slots.
-   * @param input - Copied registered input.
-   * @param onBinding - Actual transport consumer.
-   * @param onPresentedFrame - Synchronous stable-texture consumer.
-   * @returns The independently owned source decoder.
-   * @throws {never} Errors enter the existing preview recovery state.
-   */
-  const renderVideoDecoder = React.useCallback<VideoTimelineDecoderRenderer>((input, onBinding, onPresentedFrame) => <CanonicalTimelineDecoder input={input} onBinding={onBinding} onPresentedFrame={onPresentedFrame} />, []);
 
   const actions = React.useMemo<CanvasActions>(
     () => ({
@@ -4987,8 +4967,8 @@ function CanvasSpaceInner({
               unmounts while its own box is off screen; drawn here, over every
               node like the new-note box, it stays while any part is visible. */}
             <ViewportPortal>
-              <div className='absolute top-0 left-0' style={videoExpansion ? undefined : { zIndex: VIEWPORT_TOP_Z }}>
-                {videoExpansion ? <CanvasVideoExpandBridge nodeId={videoHost} canonicalURL={videoSource} locked={videoNode?.data.locked === true} snapshot={videoRuntime.bindings.get(videoHost)} onNodeContextMenu={onNodeContextMenu} /> : <ExpandFrameOverlay onNodeContextMenu={onNodeContextMenu} />}
+              <div className='absolute top-0 left-0' style={{ zIndex: VIEWPORT_TOP_Z }}>
+                <ExpandFrameOverlay onNodeContextMenu={onNodeContextMenu} />
               </div>
             </ViewportPortal>
             {composerAt === null ? null : (
@@ -5102,7 +5082,6 @@ function CanvasSpaceInner({
               onRunVideo={runVideoMiniTool}
               videoPresentation={videoRuntime.presentations}
               videoBindings={videoRuntime.bindings}
-              renderVideoDecoder={renderVideoDecoder}
             />
             {/* The transcribe panel (inner#856), in the same slot. */}
             <TranscribePanelContainer nodes={nodes} onRun={runTranscribe} />

@@ -21,8 +21,7 @@ const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 7 };
 
 describe('the single frame preview (§97 G1; canvas design §4)', () => {
   it('shows exactly one full-row preview of the selected frame with its image and time', () => {
-    render(<VideoToolControls toolId='video.extract-frames' draft={draft} analyses={[]} grid={grid} disabled={false} pickingSlot={null} inputNames={new Map()}
-      onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} presentedTime={0.13} onChange={vi.fn()} />);
+    render(<VideoToolControls toolId='video.extract-frames' draft={draft} analyses={[]} grid={grid} disabled={false} onAnalyse={vi.fn()} analysing={false} presentedTime={0.13} onChange={vi.fn()} />);
     const previews = screen.getByTestId('video-frame-previews');
     const images = previews.querySelectorAll('img');
     expect(images).toHaveLength(1);
