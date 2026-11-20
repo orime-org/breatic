@@ -1217,10 +1217,10 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.videoUI.ledgerUnsupported"))}, both without Retry.`,
     `In ${quoted(t("canvas.miniTool.video.extract-frames.label"))}, ${quoted(t("canvas.miniTool.videoUI.first"))}, ` +
       `${quoted(t("canvas.miniTool.videoUI.last"))} and ${quoted(t("canvas.miniTool.videoUI.current"))} sit side by side in one row, ` +
-      "and stay choosable while the frame table is still being read; only Run waits for it. " +
+      "and stay choosable while the video is being prepared; only Run waits for it. " +
       `Current requires an actually displayed frame. Until one is available, ` +
       `${quoted(t("canvas.miniTool.videoUI.currentFrameUnavailable"))} explains why Current cannot run; ` +
-      `the other modes can still use their verified frame table. ` +
+      `the other modes can still run. ` +
       "The current-frame mode uses the frame actually shown by the player. One preview of the selected frame fills " +
       "the row below the modes; click it to move the player there. " +
       `In ${quoted(t("canvas.miniTool.video.split.label"))}, ${quoted(t("canvas.miniTool.videoUI.detectScenes"))} ` +
