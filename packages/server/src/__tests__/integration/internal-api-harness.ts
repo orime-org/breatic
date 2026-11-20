@@ -30,6 +30,8 @@ export const SECRET = "internal-secret-current-0123456789abcdef";
 export const PREVIOUS_SECRET = "internal-secret-previous-0123456789abcdef";
 /** The back office admin id the requests carry. */
 export const ADMIN = "admin_7";
+/** The billing service's secret on this listener (inner#1993 §3.1). */
+export const COMMERCE_SECRET = "commerce-secret-current-0123456789abcdef";
 
 /**
  * Point core at an environment with payments and the internal API on.
@@ -44,6 +46,7 @@ export function initInternalCore(): void {
     INTERNAL_API_ENABLED: "true",
     INTERNAL_API_SECRET: SECRET,
     INTERNAL_API_SECRET_PREVIOUS: PREVIOUS_SECRET,
+    COMMERCE_API_SECRET: COMMERCE_SECRET,
   });
 }
 
@@ -88,7 +91,7 @@ export function freshKey(label = "op"): string {
 
 /** How one request is sent; anything left out is the honest value. */
 export interface CallOptions {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PUT";
   /** JSON body; sent as `JSON.stringify(body)` unless `rawBody` is given. */
   body?: unknown;
   /** Exact bytes to send (and sign, unless `signedBody` says otherwise). */
@@ -183,17 +186,19 @@ export async function call(baseUrl: string, path: string, opts: CallOptions = {}
 }
 
 /**
- * Empty the internal API's rate-limit buckets, so one case's requests never
- * count against the next. All suites share one loopback address.
+ * Empty the internal listener's rate-limit buckets (`internal-api` and
+ * `commerce-api`), so one case's requests never count against the next. All suites share one loopback address.
  */
 export async function resetInternalRateLimit(): Promise<void> {
   const redis = getRedis();
-  let cursor = "0";
-  do {
-    const [next, keys] = await redis.scan(cursor, "MATCH", `${env.ENV}:ratelimit:internal-api*`, "COUNT", 500);
-    if (keys.length > 0) await redis.del(...keys);
-    cursor = next;
-  } while (cursor !== "0");
+  for (const name of ["internal-api", "commerce-api"]) {
+    let cursor = "0";
+    do {
+      const [next, keys] = await redis.scan(cursor, "MATCH", `${env.ENV}:ratelimit:${name}*`, "COUNT", 500);
+      if (keys.length > 0) await redis.del(...keys);
+      cursor = next;
+    } while (cursor !== "0");
+  }
 }
 
 /** What a suite reads inside its tests. */

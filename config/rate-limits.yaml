@@ -203,6 +203,11 @@ project-join-request: { max: 20, window_seconds: 3600 }
 # off before it spends HMAC work or Redis nonce writes.
 internal-api: { max: 120, window_seconds: 60 }
 
+# The billing service on the same listener (inner#1993), keyed by connection
+# address. Its forwarded user requests and outbox deliveries grow with every
+# user's purchases, so it has its own budget apart from the back office's.
+commerce-api: { max: 6000, window_seconds: 60 }
+
 # Outbound invitations share one per-account daily budget across both targets.
 invite: { max: 50, window_seconds: 86400 }
 # Registration-link previews are public and counted by client address.

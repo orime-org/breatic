@@ -405,6 +405,8 @@ export {
   type PaymentGrantRequest,
   lotRefundFactsSchema,
   conversionAnswerSchema,
+  accountLookupRequestSchema,
+  type AccountLookupRequest,
   REFUND_STEPS,
   refundStepAnswerSchema,
   refundStepRequestSchema,

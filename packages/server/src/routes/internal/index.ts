@@ -29,6 +29,7 @@ import { registerCreditGrantRoutes } from "@server/routes/internal/credit-grant.
 import { registerEnterpriseMembershipRoutes } from "@server/routes/internal/enterprise-membership.js";
 import { registerReferralRoutes } from "@server/routes/internal/referral.js";
 import { registerDeploymentVersionRoute } from "@server/routes/internal/deployment-version.js";
+import { registerCommerceRoutes } from "@server/routes/internal/commerce.js";
 
 const LOT = "/internal/v1/credit-lots/:lotId/refund";
 const RESEND = "/internal/v1/refund-operations/:operationId/mail/resend";
@@ -195,4 +196,5 @@ export function registerInternalRoutes(app: Hono): void {
   registerMaintenanceRoutes(app);
   registerReferralRoutes(app);
   registerDeploymentVersionRoute(app);
+  registerCommerceRoutes(app);
 }

@@ -17,7 +17,7 @@ const COMMERCE_SIGNER = "commerce";
 /** The name this server signs as when it calls the billing service. */
 const PRODUCT_SIGNER = "product";
 /** The paths only the billing service may reach. */
-const COMMERCE_PREFIX = "/internal/v1/commerce/";
+export const COMMERCE_PREFIX = "/internal/v1/commerce/";
 
 /**
  * The secrets a signer's requests are checked against on this listener.

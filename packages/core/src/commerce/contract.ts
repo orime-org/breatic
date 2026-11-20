@@ -177,3 +177,7 @@ export const refundStepAnswerSchema = z
   .object({ status: z.enum(["applied", "refused"]), code: z.literal("lot_state_changed").optional(), lot: lotRefundFactsSchema })
   .strict();
 export type RefundStepAnswer = z.infer<typeof refundStepAnswerSchema>;
+
+/** `POST /internal/v1/commerce/accounts/lookup`: read many accounts' facts. */
+export const accountLookupRequestSchema = z.object({ userIds: z.array(uuid).min(1).max(100) }).strict();
+export type AccountLookupRequest = z.infer<typeof accountLookupRequestSchema>;
