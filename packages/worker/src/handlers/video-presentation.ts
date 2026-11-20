@@ -17,13 +17,14 @@ import { env, getMiniToolsConfig, logger } from '@breatic/core';
 import { assetRepo, containerCostUsd, createUsageRecorder, syncPresentationPins, type VideoPresentationJob } from '@breatic/domain';
 import {
   prepareVideoPresentationAtIngest, readMiniToolPlanJob, stepVideoPresentationAtIngest, untilDeadline, videoPresentationAtIngest,
-  videoPresentationWorkKeyFor, type MiniToolPlanJobReport, type MiniToolPlanJobRequest, type MiniToolPlanRecipe, type VideoPresentationChunkReport,
-  type VideoPresentationChunkUnit, type VideoPresentationLedger, type VideoPresentationPrepareAnswer, type VideoPresentationPricing,
+  videoPresentationWorkKeyFor, type MiniToolPlanJobReport, type MiniToolPlanJobRequest, type VideoPresentationChunkReport,
+  type VideoPresentationChunkUnit, type VideoPresentationPrepareAnswer, type VideoPresentationPricing,
 } from '@breatic/shared';
 import { videoContainerJobId } from '@breatic/shared/mini-tools';
 import { advanceMiniToolPlanJob, planReadUntil } from '@worker/handlers/mini-tool/advance-plan-job.js';
 import { StillRunning } from '@worker/handlers/still-running.js';
-import { audioOf, carrierTarget, chunkInputId, FullLedgerInvalid, readJobLedger, SOURCE_INPUT_ID, windowDuration, windowEntries } from '@worker/handlers/video-presentation-recipes.js';
+import { gridCountOf, presentationRecipeOf } from '@worker/handlers/frozen-plan-facts.js';
+import { chunkInputId } from '@worker/handlers/video-presentation-recipes.js';
 
 /** Everything one pickup acts with. */
 interface Pickup {
@@ -31,10 +32,14 @@ interface Pickup {
   capability: { storageKey: string; sourceFingerprint: string; jobId: string; deadlineAt: number; token: string };
   answer: VideoPresentationPrepareAnswer;
   frozen: NonNullable<VideoPresentationPrepareAnswer['frozen']>;
-  /** The job's full ledger, read once per pickup when a recipe needs it. */
-  ledger?: Promise<VideoPresentationLedger>;
 }
 type Unit = VideoPresentationPrepareAnswer['units'][string];
+/** A stage of a presentation route. */
+type Stage = NonNullable<VideoPresentationPrepareAnswer['plan']>['stages'][number];
+/** The unit key suffix of each single unit. */
+const SINGLE: Record<string, VideoPresentationChunkUnit> = {
+  count: { kind: 'presentation-count' }, stitch: { kind: 'presentation-stitch' }, 'edit-stitch': { kind: 'presentation-edit-stitch' },
+};
 
 /**
  * The unit a DO unit key names.
@@ -45,10 +50,12 @@ type Unit = VideoPresentationPrepareAnswer['units'][string];
  */
 function unitOf(jobId: string, key: string): VideoPresentationChunkUnit | null {
   const suffix = key.startsWith(`video-presentation:${jobId}:`) ? key.slice(`video-presentation:${jobId}:`.length) : null;
-  if (suffix === 'stitch') return { kind: 'presentation-stitch' };
-  if (suffix === 'copy') return { kind: 'presentation-copy' };
-  const chunk = suffix?.match(/^chunk:(\d+)$/)?.[1];
-  return chunk === undefined ? null : { kind: 'presentation-chunk', chunk: Number(chunk) };
+  if (suffix === null) return null;
+  const single = SINGLE[suffix];
+  if (single !== undefined) return single;
+  const chunk = suffix.match(/^(chunk|edit):(\d+)$/);
+  if (chunk === null) return null;
+  return { kind: chunk[1] === 'edit' ? 'presentation-edit' : 'presentation-chunk', chunk: Number(chunk[2]) };
 }
 
 /**
@@ -59,7 +66,32 @@ function unitOf(jobId: string, key: string): VideoPresentationChunkUnit | null {
  * @throws {never} Never.
  */
 function unitKey(jobId: string, unit: VideoPresentationChunkUnit): string {
-  return unit.kind === 'presentation-chunk' ? `video-presentation:${jobId}:chunk:${unit.chunk}` : `video-presentation:${jobId}:${unit.kind === 'presentation-stitch' ? 'stitch' : 'copy'}`;
+  switch (unit.kind) {
+    case 'presentation-count': return `video-presentation:${jobId}:count`;
+    case 'presentation-chunk': return `video-presentation:${jobId}:chunk:${unit.chunk}`;
+    case 'presentation-stitch': return `video-presentation:${jobId}:stitch`;
+    case 'presentation-edit': return `video-presentation:${jobId}:edit:${unit.chunk}`;
+    case 'presentation-edit-stitch': return `video-presentation:${jobId}:edit-stitch`;
+  }
+}
+
+/**
+ * The units a stage runs (§7.1.1, the DO's stage units): the count, the edit chunks, the edit stitch, the playback chunks
+ * or the stitch; none for plan and publish.
+ * @param stage - The stage.
+ * @param work - The answer's work.
+ * @returns The units.
+ * @throws {never} Never.
+ */
+function stageUnits(stage: Stage, work: VideoPresentationPrepareAnswer['work']): VideoPresentationChunkUnit[] {
+  switch (stage) {
+    case 'count': return [{ kind: 'presentation-count' }];
+    case 'edit': return work.kind === 'edit' ? work.editChunks.map((_window, chunk) => ({ kind: 'presentation-edit' as const, chunk })) : [];
+    case 'edit_stitch': return [{ kind: 'presentation-edit-stitch' }];
+    case 'encode': return work.kind === 'none' ? [] : work.chunks.map((_window, chunk) => ({ kind: 'presentation-chunk' as const, chunk }));
+    case 'stitch': return [{ kind: 'presentation-stitch' }];
+    default: return [];
+  }
 }
 
 /**
@@ -75,73 +107,34 @@ function attemptJobId(jobId: string, unit: VideoPresentationChunkUnit, attempt: 
 }
 
 /**
- * The job's full ledger, read once per pickup: only the candidate's own ledger, keyed by the plan's toolInputId, once it is
- * ready; until then the pickup waits (E2-6). The selected version's ledger is never a stand-in: with the same toolInputId it
- * is the same ledger, with another it is another plan's. A ready ledger that fails its receipt is the DO's to check and
- * repair (§91 D3b-9; design §7.4 `Check`, §7.1 `Lt`): the pickup logs it, asks the DO to read, which runs Check against R2,
- * and waits for the repaired receipt.
- * @param pickup - The pickup.
- * @returns The validated full ledger.
- * @throws {StillRunning} While the candidate's ledger is not ready, or after it failed its receipt and the DO was asked to check it.
- * @throws {Error} When the read fails in transport.
+ * The kind of chunk a stitch unit joins: the playback chunks for the stitch, the edit chunks for the edit stitch.
+ * @param unit - The unit.
+ * @returns The chunk kind, or null for a unit that joins none.
+ * @throws {never} Never.
  */
-function ledgerOf(pickup: Pickup): Promise<VideoPresentationLedger> {
-  const { answer, capability, identity } = pickup;
-  const candidate = answer.candidateLedger;
-  // Wait for the candidate's own ledger: no read, no check request and no log until it is ready.
-  if (candidate?.state !== 'ready') return Promise.reject(new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms));
-  const receipt = candidate.receipt;
-  pickup.ledger ??= readJobLedger(receipt, planReadUntil(capability.deadlineAt)).catch(async (error: unknown) => {
-    if (!(error instanceof FullLedgerInvalid)) throw error;
-    logger.error({ err: error, ctx: { ...identity, toolInputId: answer.plan?.toolInputId, receiptSha256: receipt.sha256 } }, 'video_presentation_ledger_invalid');
-    const policy = answer.preparation?.targetPolicyVersion;
-    if (policy !== undefined) {
-      await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, { action: 'read', storageKey: identity.storageKey, sourceFingerprint: identity.sourceFingerprint, targetPolicyVersion: policy });
-    }
-    throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
-  });
-  return pickup.ledger;
+function joined(unit: VideoPresentationChunkUnit): VideoPresentationChunkUnit['kind'] | null {
+  return unit.kind === 'presentation-stitch' ? 'presentation-chunk' : unit.kind === 'presentation-edit-stitch' ? 'presentation-edit' : null;
 }
 
 /**
  * The complete standard-4 request of one attempt: the frozen class and D, the attempt's own output key, and its recipe
- * built from the full ledger (§7.17, §91 D3b): the source as input, and for a stitch each done chunk bound beside it.
+ * on the candidate's grid (§7.17): its source inputs, and for a stitch each done chunk bound under its chunk id.
  * @param pickup - The pickup.
  * @param unit - The unit.
  * @param jobId - The attempt's job id.
- * @returns The request, or null when the recipe cannot be formed from the DO's answer.
- * @throws {Error} When the full ledger cannot be read or is not the planned one.
+ * @returns The request, or null while a stitch's chunks are not all done.
+ * @throws {PresentationFactsUnavailable} When the answer does not carry the plan's facts for the recipe.
  */
-async function requestFor(pickup: Pickup, unit: VideoPresentationChunkUnit, jobId: string): Promise<MiniToolPlanJobRequest | null> {
+function requestFor(pickup: Pickup, unit: VideoPresentationChunkUnit, jobId: string): MiniToolPlanJobRequest | null {
   const { answer, identity, capability, frozen } = pickup;
-  const windows = answer.work.kind === 'encode' ? answer.work.chunks : [];
-  const inputs = [{ inputId: SOURCE_INPUT_ID, storageKey: identity.storageKey }];
-  let recipe: MiniToolPlanRecipe;
-  if (unit.kind === 'presentation-copy') {
-    // The audio choice is the DO's, from the probe's audioCopyable (§7.17 copy_carrier row); encoding uses the stitch's entries.
-    const ledger = await ledgerOf(pickup);
-    const choice = answer.copyAudio;
-    if (choice === undefined) return null;
-    recipe = { kind: 'copy_carrier', inputId: SOURCE_INPUT_ID, colorMatrix: ledger.plan.colorMatrix, origin: ledger.plan.originMapping.origin,
-      audio: choice === null ? null : choice === 'copy' ? { kind: 'copy' } : { kind: 'encode', ...audioOf(ledger) } };
-  }
-  else if (unit.kind === 'presentation-chunk') {
-    const window = windows[unit.chunk];
-    if (window === undefined) return null;
-    const ledger = await ledgerOf(pickup);
-    recipe = { kind: 'chunk_encode', inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale: ledger.plan.presentation.timescale,
-      entries: windowEntries(ledger, window), target: carrierTarget(ledger, frozen.carrier) };
-  } else {
-    const chunks = windows.map((_window, chunk) => doneOutput(pickup, { kind: 'presentation-chunk', chunk }));
-    if (chunks.length === 0 || chunks.some((key) => key === null)) return null;
-    const ledger = await ledgerOf(pickup);
-    inputs.push(...chunks.map((key, chunk) => ({ inputId: chunkInputId(chunk), storageKey: key! })));
-    recipe = { kind: 'stitch', inputId: SOURCE_INPUT_ID, chunks: windows.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })),
-      audio: audioOf(ledger), target: carrierTarget(ledger, frozen.carrier) };
-  }
+  const chunkKind = joined(unit);
+  const chunks = chunkKind === null ? [] : stageUnits(chunkKind === 'presentation-edit' ? 'edit' : 'encode', answer.work).map((chunk) => doneOutput(pickup, chunk));
+  if (chunkKind !== null && (chunks.length === 0 || chunks.some((key) => key === null))) return null;
+  const { recipe, inputs, contentType } = presentationRecipeOf(answer, unit, identity.storageKey);
   return {
     schemaVersion: 2, jobId, containerClass: frozen.pricing.standard4.containerClass, deadlineAt: capability.deadlineAt, limits: getMiniToolsConfig().plan_limits,
-    inputs, outputs: [{ outputIndex: 0, storageKey: videoPresentationWorkKeyFor(identity.storageKey, jobId), contentType: 'video/mp4', recipe }],
+    inputs: [...inputs, ...chunks.map((key, chunk) => ({ inputId: chunkInputId(chunk), storageKey: key! }))],
+    outputs: [{ outputIndex: 0, storageKey: videoPresentationWorkKeyFor(identity.storageKey, jobId), contentType, recipe }],
   };
 }
 
@@ -195,8 +188,31 @@ function reportUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, report: Vi
  * @returns Whether the DO accepted it.
  * @throws {Error} When ingest refuses.
  */
-function advanceStage(pickup: Pickup, stage: 'dispatch_copy' | 'encode' | 'stitch' | 'publish'): Promise<boolean> {
+function advanceStage(pickup: Pickup, stage: Stage): Promise<boolean> {
   return stepVideoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, { action: 'advance_stage', ...pickup.capability, stage });
+}
+
+/**
+ * What a unit's Done report carries (§7.1.1): a stitch the carrier it wrote (alpha-packed with the geometry the container
+ * reported, else native; the DO writes the manifest, §91 D3-3), an edit stitch the edit file, the count its measurement,
+ * and a chunk nothing.
+ * @param unit - The unit.
+ * @param request - The attempt's request, whose edit stitch recipe names the edit tier.
+ * @param report - The done job report.
+ * @returns The receipts or the count.
+ * @throws {PresentationFactsUnavailable} When the count's measurement is not in the report.
+ */
+function doneFacts(unit: VideoPresentationChunkUnit, request: MiniToolPlanJobRequest, report: Extract<MiniToolPlanJobReport, { state: 'done' }>): Pick<Extract<VideoPresentationChunkReport, { kind: 'Done' }>, 'receipts' | 'count'> {
+  if (unit.kind === 'presentation-count') return { count: gridCountOf(report) };
+  const output = report.outputs[0];
+  if (output === undefined || (unit.kind !== 'presentation-stitch' && unit.kind !== 'presentation-edit-stitch')) return {};
+  const measured = { storageKey: output.storageKey, sha256: output.sha256, sizeBytes: output.sizeBytes, contentType: output.contentType };
+  if (unit.kind === 'presentation-edit-stitch') {
+    const recipe = request.outputs[0]!.recipe;
+    if (recipe.kind !== 'stitch' || !('edit' in recipe)) throw new Error('An edit stitch request carries its edit stitch recipe');
+    return { receipts: [{ role: 'edit', ...measured, tier: recipe.edit.profile }] };
+  }
+  return { receipts: [{ role: 'carrier', ...measured, ...(output.packing === undefined ? { packing: 'native' as const } : { packing: 'alpha-packed' as const, geometry: output.packing }) }] };
 }
 
 /**
@@ -212,7 +228,7 @@ async function settleUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, stat
   for (const attempt of state.attempts) {
     const latestPending = attempt.state === 'pending' && attempt.attempt === state.attempt && state.state === 'open';
     if (!latestPending && attempt.usageRecorded) continue;
-    const request = await requestFor(pickup, unit, attempt.jobId);
+    const request = requestFor(pickup, unit, attempt.jobId);
     if (request === null) { again = true; continue; }
     let report: MiniToolPlanJobReport | null;
     if (latestPending) {
@@ -222,12 +238,7 @@ async function settleUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, stat
         continue;
       }
       if (report.state === 'done') {
-        const output = report.outputs[0];
-        // The one carrier the job wrote: alpha-packed with the geometry the container reported, else native; the DO writes the manifest (§91 D3-3).
-        const carrier = output === undefined ? undefined : { role: 'carrier' as const, storageKey: output.storageKey, sha256: output.sha256, sizeBytes: output.sizeBytes, contentType: output.contentType,
-          ...(output.packing === undefined ? { packing: 'native' as const } : { packing: 'alpha-packed' as const, geometry: output.packing }) };
-        const receipt = unit.kind !== 'presentation-chunk' && carrier !== undefined ? { receipts: [carrier] } : {};
-        await reportUnit(pickup, unit, { kind: 'Done', attempt: attempt.attempt, usage: report.usage.wallMs, ...receipt });
+        await reportUnit(pickup, unit, { kind: 'Done', attempt: attempt.attempt, usage: report.usage.wallMs, ...doneFacts(unit, request, report) });
       } else {
         await reportUnit(pickup, unit, { kind: 'Fail', attempt: attempt.attempt, code: report.reason, usage: report.usage?.wallMs ?? null });
       }
@@ -255,13 +266,15 @@ async function settleUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, stat
  */
 async function dispatch(pickup: Pickup, unit: VideoPresentationChunkUnit): Promise<void> {
   if (!await reportUnit(pickup, unit, { kind: 'Sub' })) return;
-  const request = await requestFor(pickup, unit, attemptJobId(pickup.identity.jobId, unit, 1));
+  const request = requestFor(pickup, unit, attemptJobId(pickup.identity.jobId, unit, 1));
   if (request === null) return;
   try { await advanceMiniToolPlanJob(request); } catch (error) { if (!(error instanceof StillRunning)) throw error; }
 }
 
 /**
- * Take the next allowed step of the route: dispatch the copy, the chunks or the stitch, or advance to publish.
+ * Take the next allowed step of the route (§7.1.1): from plan, advance to the route's first working stage and dispatch its
+ * units; in a working stage, dispatch any unit not yet opened, and once every unit is done advance to the next stage and
+ * dispatch its units, or to publish.
  * @param pickup - The pickup.
  * @returns Whether this pickup must come back.
  * @throws {Error} When ingest or a job submission fails.
@@ -270,41 +283,31 @@ async function nextStep(pickup: Pickup): Promise<boolean> {
   const { answer, identity } = pickup;
   const plan = answer.plan;
   const stage = answer.preparation?.stage ?? null;
-  if (plan === null || answer.work.kind === 'none') return false;
-  // Sub-jobs read the full ledger; nothing is dispatched until the candidate's own ledger is ready (E2-6) and has been read
-  // against its receipt (§91 D3b-9), before any stage moves.
-  if (answer.candidateLedger?.state !== 'ready') return true;
-  await ledgerOf(pickup);
+  if (plan === null || stage === null || answer.work.kind === 'none') return false;
   /**
-   * The DO's state of one unit of this job.
-   * @param unit - The unit.
-   * @returns Its state, or undefined before its first attempt.
-   * @throws {never} Never.
+   * Advance to the stage after the current one and dispatch its units.
+   * @returns Whether this pickup must come back.
+   * @throws {Error} When ingest or a job submission fails.
    */
-  const unitState = (unit: VideoPresentationChunkUnit): Unit | undefined => answer.units[unitKey(identity.jobId, unit)];
-  const last: VideoPresentationChunkUnit = answer.work.kind === 'dispatch_copy' ? { kind: 'presentation-copy' } : { kind: 'presentation-stitch' };
-  if (stage === 'plan') {
-    if (!await advanceStage(pickup, answer.work.kind)) return true;
-    if (answer.work.kind === 'dispatch_copy') await dispatch(pickup, last);
-    else for (const [chunk] of answer.work.chunks.entries()) await dispatch(pickup, { kind: 'presentation-chunk', chunk });
-    return true;
-  }
-  if (stage === 'encode' && answer.work.kind === 'encode') {
-    const chunks = answer.work.chunks.map((_window, chunk) => ({ kind: 'presentation-chunk' as const, chunk }));
-    const missing = chunks.filter((unit) => unitState(unit) === undefined);
-    for (const unit of missing) await dispatch(pickup, unit);
-    if (missing.length > 0) return true;
-    // Every chunk exists and none is open (settleUnit came back for those): the DO refuses stitch until all are done.
-    if (await advanceStage(pickup, 'stitch')) await dispatch(pickup, last);
-    return true;
-  }
-  if (stage === 'dispatch_copy' || stage === 'stitch') {
-    const state = unitState(last);
-    if (state === undefined) { await dispatch(pickup, last); return true; }
-    if (state.state !== 'done') return false;
-    if (!await advanceStage(pickup, 'publish')) logger.warn({ ctx: { ...identity, stage } }, 'video_presentation_publish_refused');
-  }
-  return false;
+  const advance = async (): Promise<boolean> => {
+    const next = plan.stages[plan.stages.indexOf(stage) + 1];
+    if (next === undefined) return false;
+    if (!await advanceStage(pickup, next)) {
+      if (next === 'publish') logger.warn({ ctx: { ...identity, stage } }, 'video_presentation_publish_refused');
+      return next !== 'publish';
+    }
+    for (const unit of stageUnits(next, answer.work)) await dispatch(pickup, unit);
+    return next !== 'publish';
+  };
+  if (stage === 'plan') return advance();
+  const units = stageUnits(stage, answer.work);
+  if (units.length === 0) return false;
+  const missing = units.filter((unit) => answer.units[unitKey(identity.jobId, unit)] === undefined);
+  for (const unit of missing) await dispatch(pickup, unit);
+  if (missing.length > 0) return true;
+  // Every unit exists and none is open (settleUnit came back for those): only a stage whose units are all done moves on.
+  if (units.some((unit) => answer.units[unitKey(identity.jobId, unit)]!.state !== 'done')) return false;
+  return advance();
 }
 
 /**

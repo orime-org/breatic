@@ -14,11 +14,11 @@
  */
 import { getStorageAdapter, logger } from "@breatic/core";
 import type { AcceptedMiniToolExecution } from "@breatic/domain";
-import type { MiniToolPlanExact, MiniToolPlanTarget } from "@breatic/shared";
-import { presentationFrameAt, presentationGridSpan, type ExpandFailureReason } from "@breatic/shared/mini-tools";
+import type { MiniToolPlanExact, MiniToolPlanRecipe, MiniToolPlanTarget } from "@breatic/shared";
+import { gridSpanFrames, type ExpandFailureReason } from "@breatic/shared/mini-tools";
 import type { LipSyncPickup } from "@worker/handlers/mini-tool/run-lip-sync.js";
-import { advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, alignedSpanStart, eachSubmitted, exactSeconds, expandFailureReason, modelRunFailure, runLedger, type ExpandWindowState, type ModelRunAt, type ModelRunPosition, type ModelStepRun } from "@worker/handlers/mini-tool/model-run-steps.js";
-import { audioOf, chunkInputId, segmentTarget, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
+import { advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, alignedSpanStart, eachSubmitted, exactSeconds, expandFailureReason, modelRunFailure, type ExpandWindowState, type ModelRunAt, type ModelRunPosition, type ModelStepRun } from "@worker/handlers/mini-tool/model-run-steps.js";
+import { chunkInputId, segmentTarget, stitchOf, toolInputOf, windowOf } from "@worker/handlers/video-presentation-recipes.js";
 import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 
@@ -58,7 +58,27 @@ function keyOf(plan: Expand, step: string): string {
  * @throws {never} Never.
  */
 function minus(a: MiniToolPlanExact, b: MiniToolPlanExact): MiniToolPlanExact {
-  return { numerator: String(BigInt(a.numerator) * BigInt(b.denominator) - BigInt(b.numerator) * BigInt(a.denominator)), denominator: String(BigInt(a.denominator) * BigInt(b.denominator)) };
+  return { numerator: a.numerator * b.denominator - b.numerator * a.denominator, denominator: a.denominator * b.denominator };
+}
+
+/**
+ * The condition picture of window k (§10.5 condition step): the frame of window k − 1's model output at the time window k
+ * starts on it. The output is a fixed-rate video from 0 that is not all-intra, so it is read as an original whose keyframe
+ * interval spans it, which decodes it from its start (§7.16 原片 row threshold).
+ * @param plan - The frozen run.
+ * @param k - The window, at least 1.
+ * @param offset - Window k's start on window k − 1's output, in seconds.
+ * @returns The recipe.
+ * @throws {never} Never.
+ */
+function previousFrameOf(plan: Expand, k: number, offset: MiniToolPlanExact): Extract<MiniToolPlanRecipe, { kind: "frame_at" }> {
+  const duration = plan.windows[k - 1]!.duration;
+  const frameCount = plan.modelFps * duration;
+  // The output frame showing that time: floor(offset × fps), inside the output.
+  const frameIndex = Math.min(frameCount - 1, Math.floor((offset.numerator * plan.modelFps) / offset.denominator));
+  return { kind: "frame_at", inputId: PREVIOUS, frameIndex, target: plan.frame,
+    grid: { fps: { numerator: plan.modelFps, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount, realFrameCount: frameCount },
+    source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: duration, allKeyframes: false } } };
 }
 
 /**
@@ -98,31 +118,32 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
     return pickup;
   };
   try {
-    const ledger = await runLedger(run, plan.ledgerReceipts.source, deadlineAt);
-    const table = ledger.plan.presentation;
-    const { display } = ledger.plan;
-    const encoded = segmentTarget(ledger, plan.container.encode);
+    // Every recipe reads the frozen version's grid frames from its tool source (§7.16).
+    const version = plan.presentations.source;
+    const { display } = version;
+    const tool = toolInputOf(version, plan.sourceKey);
+    const source = tool.inputs.slice(0, 1);
+    const encoded = segmentTarget(version, plan.container.encode);
     const storage = await getStorageAdapter();
     const spans = plan.windows.map((window) => ({ start: exactSeconds(window.span.start), end: exactSeconds(window.span.end) }));
     const results: string[] = [];
     for (const [k, window] of plan.windows.entries()) {
-      // The frames the window's span touches on the grid its entries carry; the span is the grid's origin and length.
-      const frames = presentationGridSpan(table, window.span);
-      const entries = windowEntries(ledger, frames, undefined, true);
-      // The frozen float start is the opening frame's start when it lies within float precision below its grid time.
-      const opening = entries[0]!.kind === "source" ? entries[0]!.displayStart : entries[0]!.window.start;
+      // The grid frames the window's span touches; the span is the model grid's origin and length.
+      const frames = gridSpanFrames(window.span, display.fps, display.frameCount);
+      // The frozen float start is the opening frame's grid time when it lies within float precision below it.
+      const opening = { numerator: frames.start * display.fps.denominator, denominator: display.fps.numerator };
       spans[k] = { ...spans[k]!, start: alignedSpanStart(spans[k]!.start, opening) };
-      const grid = { fps: plan.modelFps, frameCount: plan.modelFps * window.duration };
+      const model = { fps: plan.modelFps, frameCount: plan.modelFps * window.duration };
       const layer: MiniToolPlanTarget = { ...encoded, width: plan.sourceRoi.width, height: plan.sourceRoi.height, displayRect: null, format: undefined };
       // Each step names itself just before it runs, so a step that throws leaves the run standing at it (§10.5).
       const [input, mask, condition] = await eachSubmitted([
         () => { position.current = { window: k, step: "window" }; return advanceContainer(run, { stepKey: keyOf(plan, `window:${k}`), contentType: "video/mp4", failed: () => ({ failed: "failed", step: "window" }),
-          build: () => Promise.resolve({ recipe: { kind: "model_window", inputId: SOURCE_INPUT_ID, window: frames, timescale: table.timescale, entries,
-            target: layer, grid, frame: plan.frame, sourceRoi: plan.sourceRoi, fill: [127, 127, 127], span: spans[k]! }, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }] }) }, deadlineAt); },
+          build: () => Promise.resolve({ recipe: { kind: "model_window", ...windowOf(tool, frames, layer), model, frame: plan.frame, sourceRoi: plan.sourceRoi,
+            fill: [127, 127, 127], span: spans[k]! }, inputs: source }) }, deadlineAt); },
         () => { position.current = { window: k, step: "window_mask" }; return advanceContainer(run, { stepKey: keyOf(plan, `window_mask:${k}`), contentType: "video/mp4", failed: () => ({ failed: "failed", step: "window_mask" }),
-          build: () => Promise.resolve({ recipe: { kind: "model_window_mask", grid, frame: plan.frame, sourceRoi: plan.sourceRoi, span: spans[k]! }, inputs: [] }) }, deadlineAt); },
+          build: () => Promise.resolve({ recipe: { kind: "model_window_mask", model, frame: plan.frame, sourceRoi: plan.sourceRoi, span: spans[k]! }, inputs: [] }) }, deadlineAt); },
         ...(k === 0 ? [] : [() => { position.current = { window: k, step: "condition" }; return advanceContainer(run, { stepKey: keyOf(plan, `condition:${k}`), contentType: "image/png", failed: () => ({ failed: "failed", step: "condition" }),
-          build: () => Promise.resolve({ recipe: { kind: "frame_at", inputId: PREVIOUS, time: minus(spans[k]!.start, spans[k - 1]!.start), target: plan.frame },
+          build: () => Promise.resolve({ recipe: previousFrameOf(plan, k, minus(spans[k]!.start, spans[k - 1]!.start)),
             inputs: [{ inputId: PREVIOUS, storageKey: results[k - 1]! }] }) }, deadlineAt); }]),
       ]);
       for (const ended of [input, mask, condition]) {
@@ -134,7 +155,7 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
       }
       position.current = { window: k, step: "generate" };
       windows[k]!.state = "submitted";
-      const ended = await advanceGenerate(run, { model: plan.model, itemIndex: k, stepKey: keyOf(plan, `generate:${k}`), contentType: "video/mp4",
+      const ended = await advanceGenerate(run, { route: plan.route, model: plan.model, itemIndex: k, stepKey: keyOf(plan, `generate:${k}`), contentType: "video/mp4",
         input: () => Promise.resolve({ prompt: plan.prompt, params: { video: storage.publicUrl((input as { key: string }).key), mask_video: storage.publicUrl((mask as { key: string }).key),
           ...VACE_FIXED, size: plan.size, duration: window.duration, seed: plan.seed,
           ...(condition === undefined ? {} : { image: storage.publicUrl((condition as { key: string }).key) }) } }) }, userId, deadlineAt);
@@ -150,26 +171,25 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
     const output: MiniToolPlanTarget & { format?: "mp4-h264" | "webm-vp9" } = { ...encoded, width: plan.layout.width, height: plan.layout.height,
       displayRect: { x: plan.layout.sourceX, y: plan.layout.sourceY, width: display.width, height: display.height } };
     const chunks = await advanceChunks(run, plan.composite.map((chunk, c) => {
-      const [from, to] = [presentationFrameAt(table, chunk.start).pts, presentationFrameAt(table, chunk.end - 1).displayEnd];
+      // The windows whose span overlaps the chunk's grid time [start / fps, end / fps).
+      const [from, to] = [chunk.start / (display.fps.numerator / display.fps.denominator), chunk.end / (display.fps.numerator / display.fps.denominator)];
       const shown = plan.windows.flatMap((window, k) => (window.span.start < to && window.span.end > from ? [k] : []));
       return { stepKey: keyOf(plan, `composite:${c}`), contentType: "video/mp4", failed: () => ({ failed: "failed" }),
-        build: () => Promise.resolve({ recipe: { kind: "model_composite" as const, mode: "expand" as const, inputId: SOURCE_INPUT_ID, window: chunk, timescale: table.timescale,
-          entries: windowEntries(ledger, chunk), target: { ...output, format: undefined },
+        build: () => Promise.resolve({ recipe: { kind: "model_composite" as const, mode: "expand" as const, ...windowOf(tool, chunk, { ...output, format: undefined }),
           backgrounds: shown.map((k) => ({ inputId: backgroundOf(k), window: spans[k]!, crop: plan.targetRoi })) },
-        inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }, ...shown.map((k) => ({ inputId: backgroundOf(k), storageKey: results[k]! }))] }) };
+        inputs: [...source, ...shown.map((k) => ({ inputId: backgroundOf(k), storageKey: results[k]! }))] }) };
     }), deadlineAt);
     if (!("keys" in chunks)) return chunks.expired === true ? expire() : fail({ step: "composite", category: "failed" });
     position.current = { shared: "stitch" };
     const written = await advanceRegistered(run, { stepKey: keyOf(plan, "stitch"), namePrefix: "EXPAND", container: output.format === "webm-vp9" ? "webm" : "mp4",
-      build: () => Promise.resolve({ recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, target: output, audio: audioOf(ledger),
-        chunks: plan.composite.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })) },
-      inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))] }) }, userId, deadlineAt);
+      build: () => Promise.resolve({ recipe: stitchOf(tool, plan.composite, output, true),
+      inputs: [...tool.inputs, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))] }) }, userId, deadlineAt);
     if ("failed" in written) return written.expired === true ? expire() : fail({ step: "stitch", category: "failed" });
     pickup.results.set(0, written);
     return pickup;
   } catch (error) {
     if (error instanceof StillRunning) { pickup.waiting = true; return pickup; }
-    // Only the ledger read throws this here; a provider's failure is caught where it is called.
+    // Only the recipe targets throw this here; a provider's failure is caught where it is called.
     if (error instanceof MiniToolStepFailed) {
       const { current } = position;
       logger.error({ err: error, ctx: { taskId: plan.taskId, current } }, "mini_tool_expand_step_failed");

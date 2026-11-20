@@ -7,9 +7,8 @@
  *
  * Admission freezes `chargeTo` (`platform` for a tool or analysis kind in the shared platform-funded set, else `user`) into
  * the execution plan (`storedPlanSchema`) and into the analysis's frozen parameters (`miniToolFrozenAnalysisSchema`). The
- * runners never decide it again: `run-video-tool.ts` (today the literal "user") and `run-container-analysis.ts` (today
- * "platform" exactly for people) open every job's consumption with the frozen value, so a later change of the set never
- * reaches an admitted run.
+ * runners never decide it again: `run-video-tool.ts` and `run-container-analysis.ts` open every job's consumption with the
+ * frozen value, so a later change of the set never reaches an admitted run.
  *
  * Only the job boundary (`advanceRegisteredMiniToolPlanJob`), the step store and the request schema are replaced: the
  * stored step already carries its request, so no recipe or grant is built, and the call that opens the job's consumption
@@ -26,7 +25,7 @@ import { StillRunning } from "@worker/handlers/still-running.js";
 import { advanceAnalysisJob } from "../run-container-analysis.js";
 import { runMiniToolVideoTool } from "../run-video-tool.js";
 
-const h = vi.hoisted(() => ({ list: vi.fn(), advance: vi.fn(), ledger: vi.fn() }));
+const h = vi.hoisted(() => ({ list: vi.fn(), advance: vi.fn() }));
 vi.mock("@breatic/domain", async (original) => {
   const actual = await original<typeof domainModule>();
   return { ...actual, upstreamStepRepo: { ...actual.upstreamStepRepo, listSteps: h.list } };
@@ -35,8 +34,6 @@ vi.mock("@breatic/domain", async (original) => {
 vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof sharedModule>(),
   miniToolPlanJobRequestSchema: z.custom<MiniToolPlanJobRequest>((value) => typeof value === "object" && value !== null) }));
 vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceRegisteredMiniToolPlanJob: h.advance }));
-// A runner that still reads a frozen ledger before its jobs gets an empty one; the stored request needs none.
-vi.mock("@worker/handlers/video-presentation-recipes.js", async (original) => ({ ...await original<Record<string, unknown>>(), readJobLedger: h.ledger }));
 
 const TASK = "50000000-0000-4000-8000-000000000011";
 const PROJECT = "10000000-0000-4000-8000-000000000011";
@@ -66,7 +63,7 @@ function storedStep(request: Record<string, unknown>, endpoint: string): Step {
  */
 function plan(tool: "video.extract-frames" | "video.split", chargeTo: "platform" | "user"): AcceptedMiniToolExecution {
   return { schemaVersion: 1, tool, taskId: TASK, projectId: PROJECT, spaceId: SPACE, sourceKey: "video/source.mp4", chargeTo,
-    presentationRef: { source: { toolInputId: "a".repeat(64), planSha256: "b".repeat(64) } }, ledgerReceipts: { source: {} },
+    presentationRef: { source: { toolInputId: "a".repeat(64), planSha256: "b".repeat(64) } },
     outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000011", recipe: tool === "video.split" ? { kind: "segment", range: { start: 0, end: 48 } } : { kind: "frame", frameIndex: 0 } }],
     layout: { batches: [[0]], encodes: [] },
     container: { containerClass: "MiniToolContainerStd4", chunkRetries: 0, encode: { crf: 18, preset: "medium" } } } as unknown as AcceptedMiniToolExecution;
@@ -93,9 +90,6 @@ function chargedTo(): unknown {
   return (h.advance.mock.calls[0]![0] as OpenMiniToolPlanJobInput).chargeTo;
 }
 
-beforeEach(() => {
-  h.ledger.mockResolvedValue({});
-});
 afterEach(() => { vi.clearAllMocks(); });
 
 describe("the extract-frames and split runners open each job with the frozen payer (§67.3 W02, W03)", () => {

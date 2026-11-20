@@ -16,22 +16,22 @@
  *
  * As in run-video-tool.test.ts, the job boundaries (`openMiniToolPlanJob` + `advanceMiniToolPlanJob` for unregistered work
  * objects, `advanceRegisteredMiniToolPlanJob` for registered ones), grants, steps, the SQL lifecycle and the completion owner
- * are mocked; the ledger reads and the shared planners stay real. Requests are read from both boundaries, so either may
- * carry a chunk. The frozen plan below names each clip by its draft input id (`presentationRef`, `ledgerReceipts`,
- * `versionIds`, and, chosen here, `bindings` and `sourceKeys`); the runner rebuilds the frame-grid timeline from the frozen
- * `draft.params.clips` and `profile.fps` with `planVideoTimeline`, the planner the panel uses.
+ * are mocked; the recipe builders and the shared planners stay real, with the plan colour a frozen version does not carry
+ * yet stood in by `PLAN_COLOR`. Requests are read from both boundaries, so either may carry a chunk. The frozen plan below
+ * names each clip by its draft input id (`presentationRef`, `presentations`, `versionIds`, `bindings` and `sourceKeys`); the
+ * runner rebuilds the frame-grid timeline from the frozen `draft.params.clips` and `profile.fps` with `planVideoTimeline`,
+ * the planner the panel uses, and each chunk names its clip's grid and place on the output grid (§7.16, §7.17).
  */
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import type { Job } from "bullmq";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as coreModule from "@breatic/core";
 import type * as domainModule from "@breatic/domain";
 import type { MiniToolExecutionCompletion, MiniToolExecutionJob, OpenMiniToolPlanJobInput } from "@breatic/domain";
-import type { MiniToolPlanJobRequest, StudioAssetEntity, VideoPresentationLedger } from "@breatic/shared";
+import type { MiniToolPlanJobRequest, StudioAssetEntity, VideoPresentationVersion } from "@breatic/shared";
 import { planTransitionChunks, plannedStageJobs, planVideoTimeline, transitionOutputProfile, type FrameWindow } from "@breatic/shared/mini-tools";
 import type { RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
-import { readJobLedger } from "@worker/handlers/video-presentation-recipes.js";
+import { PLAN_COLOR, frozenVersion } from "./frozen-presentation.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 import { runMiniToolExecutionTask } from "../run-execution-task.js";
 
@@ -62,6 +62,9 @@ vi.mock("@worker/handlers/mini-tool/delivery-worker.js", () => ({ deliverMiniToo
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }));
 vi.mock("@worker/handlers/mini-tool/run-remove-background.js", () => ({ runMiniToolRemoveBackground: h.removal }));
 vi.mock("@worker/handlers/dispatch.js", () => ({ isTerminalAttempt: () => false, verifyJobLockOwnership: async () => true }));
+vi.mock("@worker/handlers/frozen-plan-facts.js", () => ({ planColorOf: () => PLAN_COLOR }));
+// A run's end abandons its unresolved model steps through the step store; these runs hold no model step.
+vi.mock("@worker/handlers/mini-tool/run-end.js", () => ({ abandonUnresolvedModelSteps: async () => undefined }));
 
 const TASK = "50000000-0000-4000-8000-000000000001";
 const PROJECT = "10000000-0000-4000-8000-000000000001";
@@ -79,24 +82,14 @@ const ENCODE = { crf: 23, preset: "fast" } as const;
 const SIZE = { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 };
 const PRICES = { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 };
 
-/** One served full ledger fixture. */
-interface Served { bytes: Buffer; ledger: VideoPresentationLedger; url: string; key: string }
-/**
- * Load a presentation ledger fixture and where it is served.
- * @param file - The fixture file.
- * @param key - The source's storage key.
- * @returns The fixture.
- */
-function served(file: string, key: string): Served {
-  const bytes = readFileSync(new URL(`../../__tests__/fixtures/presentation/${file}`, import.meta.url));
-  return { bytes, ledger: JSON.parse(bytes.toString("utf8")) as VideoPresentationLedger, url: `https://assets.example.test/${key}.ledger.json`, key };
-}
-// 96 frames at 25 fps, 320×180, with audio (PROVENANCE.txt).
-const A = served("cfr96.ledger.json", "video/current.mp4");
-// The same picture bound to another source fingerprint, with audio.
-const B = served("cfr96-source-a.ledger.json", "video/picked.mp4");
-// 38 frames over 1.5 s, 160×96, without audio.
-const SILENT = served("cut.ledger.json", "video/silent.mp4");
+/** One frozen source: its selected version and its storage key. */
+interface Served { version: VideoPresentationVersion; key: string }
+// 96 grid frames at 25 fps, 320×180.
+const A: Served = { version: frozenVersion(), key: "video/current.mp4" };
+// The same picture from another source.
+const B: Served = { version: frozenVersion(), key: "video/picked.mp4" };
+// 38 grid frames at 25 fps, 160×96; it has no audio track, which the frozen version does not record.
+const SILENT: Served = { version: frozenVersion({ width: 160, height: 96, frameCount: 38 }), key: "video/silent.mp4" };
 
 type Steps = Awaited<ReturnType<typeof domainModule.upstreamStepRepo.listSteps>>;
 type StepPlan = Parameters<typeof domainModule.upstreamStepRepo.ensureSteps>[1];
@@ -108,28 +101,15 @@ let grantSequence: number;
 let current: Record<string, unknown> & { resultVersion: number; status: string; outputs: { result: unknown }[] };
 
 /**
- * The frozen receipt of a served ledger.
- * @param source - The fixture.
- * @returns The receipt.
- */
-function receipt(source: Served): Record<string, unknown> {
-  const ledger = source.ledger as unknown as { sourceFingerprint: string; toolInputId: string; planSha256: string; attempt: unknown };
-  return { schemaVersion: 2, sourceFingerprint: ledger.sourceFingerprint, toolInputId: ledger.toolInputId, planSha256: ledger.planSha256, producerVersion: 2,
-    attempt: ledger.attempt, url: source.url, etag: "full-etag", size: source.bytes.byteLength, sha256: createHash("sha256").update(source.bytes).digest("hex"),
-    contentType: "application/json", table: { url: `${source.url}.table`, sha256: "e".repeat(64), size: 81, contentType: "application/json",
-      frameCount: source.ledger.plan.presentation.runs.reduce((total, run) => total + run.count, 0) } };
-}
-
-/**
  * The registered binding of a served source.
  * @param source - The fixture.
  * @returns The binding.
  */
 function binding(source: Served): Record<string, unknown> {
-  const { display } = source.ledger.plan;
+  const { display } = source.version;
   return { assetId: createHash("sha256").update(source.key).digest("hex").replace(/^(.{8})(.{4}).(.{3}).(.{3})(.{12}).*$/, "$1-$2-4$3-8$4-$5"),
-    contentHash: (source.ledger as unknown as { sourceFingerprint: string }).sourceFingerprint, canonicalURL: `https://assets.example.test/${source.key}`, kind: "video",
-    mediaInfo: { width: display.width, height: display.height, duration: Number(display.duration.numerator) / Number(display.duration.denominator), mimeType: "video/mp4" } };
+    contentHash: source.version.sourceFingerprint, canonicalURL: `https://assets.example.test/${source.key}`, kind: "video",
+    mediaInfo: { width: display.width, height: display.height, duration: (display.frameCount * display.fps.denominator) / display.fps.numerator, mimeType: "video/mp4" } };
 }
 
 /** The two clips of a run in timeline order, the frame-grid timeline, the frozen layout and profile. */
@@ -149,24 +129,10 @@ function run(transition: Transition, second: Served, secondOut: number, target: 
     { clipId: "a0000000-0000-4000-8000-000000000001", inputId: CURRENT, in: 0, out: 3.84, transition },
     { clipId: "a0000000-0000-4000-8000-000000000002", inputId: PICKED, in: 0, out: secondOut, transition: { kind: "cut", duration: 0 } },
   ];
-  const profile = transitionOutputProfile(A.ledger.plan, second.ledger.plan, { encode: ENCODE });
+  const clip = (source: Served): Parameters<typeof transitionOutputProfile>[0] => ({ display: source.version.display, alpha: source.version.playback.kind === "alpha-packed" });
+  const profile = transitionOutputProfile(clip(A), clip(second), { encode: ENCODE });
   const timeline = planVideoTimeline(clips as Parameters<typeof planVideoTimeline>[0], profile.fps);
   return { first: A, second, clips, timeline, layout: planTransitionChunks(timeline, { targetSeconds: target, frameSeconds: () => 1 }), profile };
-}
-
-/**
- * Each clip's stitch audio interval, in seconds, beside the interval its output frames show: [In slot, In slot + frames / fps).
- * @param value - The run.
- * @param clips - The stitch's clips.
- * @returns Both, per clip.
- */
-function audioAgainstVideo(value: Run, clips: { audio: unknown }[]): { audio: [number, number]; video: [number, number] }[] {
-  const seconds = (exact: { numerator: string; denominator: string }): number => Number(exact.numerator) / Number(exact.denominator);
-  const fps = seconds(value.profile.fps);
-  return value.timeline.clips.map((clip, at) => {
-    const audio = clips[at]!.audio as { start: { numerator: string; denominator: string }; end: { numerator: string; denominator: string } };
-    return { audio: [seconds(audio.start), seconds(audio.end)], video: [clip.inFrame / fps, (clip.inFrame + clip.frameCount) / fps] };
-  });
 }
 
 /**
@@ -177,7 +143,7 @@ function audioAgainstVideo(value: Run, clips: { audio: unknown }[]): { audio: [n
 function plan(value: Run): Record<string, unknown> {
   const { first, second } = value;
   const media = (source: Served): unknown => binding(source).mediaInfo;
-  const ledgerOf = (source: Served): { toolInputId: string; planSha256: string } => source.ledger;
+  const versionOf = (source: Served): { toolInputId: string; planSha256: string } => source.version;
   return {
     schemaVersion: 1, tool: "video.transitions", taskId: TASK, projectId: PROJECT, spaceId: SPACE, targetNodeIds: [NODE],
     binding: binding(first), sourceKey: first.key,
@@ -189,9 +155,9 @@ function plan(value: Run): Record<string, unknown> {
       params: { clips: value.clips } },
     analysisRefs: [], outputs: [{ outputIndex: 0, nodeId: NODE, recipe: { kind: "transitions" } }],
     model: "video.transitions", credits: 1, requestFingerprint: "c".repeat(64), planFingerprint: "d".repeat(64),
-    presentationRef: { [CURRENT]: { toolInputId: ledgerOf(first).toolInputId, planSha256: ledgerOf(first).planSha256 },
-      [PICKED]: { toolInputId: ledgerOf(second).toolInputId, planSha256: ledgerOf(second).planSha256 } },
-    ledgerReceipts: { [CURRENT]: receipt(first), [PICKED]: receipt(second) }, versionIds: { [CURRENT]: "f".repeat(64), [PICKED]: "e".repeat(64) },
+    presentationRef: { [CURRENT]: { toolInputId: versionOf(first).toolInputId, planSha256: versionOf(first).planSha256 },
+      [PICKED]: { toolInputId: versionOf(second).toolInputId, planSha256: versionOf(second).planSha256 } },
+    presentations: { [CURRENT]: first.version, [PICKED]: second.version }, versionIds: { [CURRENT]: first.version.versionId, [PICKED]: second.version.versionId },
     layout: value.layout, stageJobs: plannedStageJobs(value.layout), profile: value.profile,
     container: { containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: SIZE, prices: PRICES, limits: LIMITS, startSeconds: 3, encode: ENCODE, chunkRetries: 2 },
     windowContainer: { containerClass: "MiniToolContainerGl", precheckSeconds: 300, size: SIZE, prices: PRICES, limits: LIMITS },
@@ -408,14 +374,8 @@ beforeEach(() => {
       outputs: current.outputs.flatMap((output, outputIndex) => output.result === null ? [] : [{ outputIndex, state: "pending" }]) } }));
   h.deliver.mockImplementation(async (value: unknown) => value);
   h.finish.mockImplementation(async (_taskId: string, completion: MiniToolExecutionCompletion) => ({ record: { status: completion.error === null ? "completed" : "failed" } }));
-  vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
-    const url = typeof input === "string" || input instanceof URL ? input.toString() : input.url;
-    const source = [A, B, SILENT].find((item) => item.url === url);
-    if (source === undefined) return new Response("unexpected", { status: 500 });
-    return new Response(source.bytes, { headers: { "content-type": "application/json" } });
-  }));
 });
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe("a transitions pickup runs its frozen chunks on their container classes, then one stitch (§5.4 派发; §7.17)", () => {
   // A 1 s fade at 25 fps: the window is [71, 96); chunks of at most 24 frames give three encode chunks on each side and
@@ -430,12 +390,6 @@ describe("a transitions pickup runs its frozen chunks on their container classes
     expect(plannedStageJobs(value.layout)).toEqual([{ stage: "encode", jobs: 8 }, { stage: "stitch", jobs: 1 }]);
   });
 
-  it("TW00b each frozen receipt reads its served full ledger", async () => {
-    for (const source of [A, B, SILENT]) {
-      expect(await readJobLedger(receipt(source) as unknown as Parameters<typeof readJobLedger>[0], DEADLINE)).toEqual(source.ledger);
-    }
-  });
-
   it("TW01 sends one standard-4 chunk_encode per frozen encode window, on the clip it lies in, with the frozen profile", async () => {
     const value = fade();
     serve(plan(value));
@@ -446,8 +400,10 @@ describe("a transitions pickup runs its frozen chunks on their container classes
       const recipe = recipeOf(request);
       expect({ containerClass: request.containerClass, kind: recipe.kind, profile: recipe.profile, frames: recipe.frames })
         .toEqual({ containerClass: "MiniToolContainerStd4", kind: "chunk_encode", profile: value.profile, frames: { start: window.start, end: window.end } });
-      // Encode chunks before the window lie in the first clip, the others in the second.
-      expect(bound(request, recipe.inputId)).toBe(window.end <= value.timeline.window!.startFrame ? A.key : B.key);
+      // Encode chunks before the window lie in the first clip, the others in the second: its grid and tool source (§7.16).
+      const onFirst = window.end <= value.timeline.window!.startFrame;
+      expect(bound(request, recipe.inputId)).toBe(onFirst ? A.key : B.key);
+      expect(recipe).toMatchObject({ grid: { fps: { numerator: 25, denominator: 1 }, frameCount: 96 }, source: { kind: "original", keyframes: A.version.toolSource.keyframes } });
     }
     expect(statuses(completion)).toEqual(["registered"]);
     expect(completion!.error).toBeNull();
@@ -464,6 +420,9 @@ describe("a transitions pickup runs its frozen chunks on their container classes
       expect(request.containerClass).toBe("MiniToolContainerGl");
       expect(recipe).toMatchObject({ kind: "transition_window", frames, window: { startFrame: 71, frameCount: 25 }, transition: "fade", profile: value.profile });
       expect((recipe.clips as { inputId: string }[]).map((clip) => bound(request, clip.inputId))).toEqual([A.key, B.key]);
+      // Each clip converts by its own plan's matrix and tone mapping, and sits at its place on the output grid (§97 D23-4).
+      expect(recipe.clips).toEqual(value.timeline.clips.map((clip) => expect.objectContaining({ colorMatrix: PLAN_COLOR.colorMatrix, toneMap: PLAN_COLOR.toneMap,
+        placement: { startFrame: clip.startFrame, inFrame: clip.inFrame } })));
     }
   });
 
@@ -479,8 +438,8 @@ describe("a transitions pickup runs its frozen chunks on their container classes
     expect(recipe).toMatchObject({ kind: "stitch", crossfade: { startFrame: 71, frameCount: 25 }, profile: value.profile });
     const clips = recipe.clips as { inputId: string; audio: unknown }[];
     expect(clips.map((clip) => bound(request, clip.inputId))).toEqual([A.key, B.key]);
-    // Both fixtures carry an audio track.
-    expect(clips.every((clip) => clip.audio !== null && typeof clip.audio === "object")).toBe(true);
+    // Each clip's audio is read from its original over the output frames it shows (§97 D16-1).
+    expect(clips).toEqual(value.timeline.clips.map((clip) => expect.objectContaining({ audio: true, frameCount: clip.frameCount, placement: { startFrame: clip.startFrame, inFrame: clip.inFrame } })));
     // The chunks in output-frame order: three encode chunks of the first clip, the two window chunks, three of the second.
     const order = [...value.layout.encode.map((window, k) => ({ start: window.start, id: encId(k) })), ...value.layout.window.map((window, k) => ({ start: window.start, id: winId(k) }))]
       .sort((left, right) => left.start - right.start);
@@ -638,10 +597,10 @@ describe("the frozen chunk boundaries are dispatched as they are (§97 D23-3)", 
       const recipe = recipeOf(request);
       const onFirst = window.end <= value.timeline.window!.startFrame;
       expect(bound(request, recipe.inputId)).toBe(onFirst ? A.key : B.key);
-      // Both clips present at the output's 25 fps from their in point 0: output frame k is the first clip's presentation
-      // frame k and the second clip's frame k − its start frame.
-      const offset = onFirst ? 0 : second.startFrame - second.inFrame;
-      expect(recipe.window).toEqual({ start: window.start - offset, end: window.end - offset });
+      // A chunk names its output frames and its clip's place on the output grid; the container takes each clip's grid frames
+      // from that place (§7.17 transition output profile row).
+      const clip = onFirst ? value.timeline.clips[0]! : second;
+      expect(recipe.placement).toEqual({ startFrame: clip.startFrame, inFrame: clip.inFrame });
       expect(recipe.frames).toEqual({ start: window.start, end: window.end });
     }
     for (const [k, frames] of FROZEN.window.entries()) {
@@ -658,30 +617,21 @@ describe("the frozen chunk boundaries are dispatched as they are (§97 D23-3)", 
   });
 });
 
-// frames-split §7.17 transition output profile row (每段从输出帧k取覆盖该时刻的源呈现帧) and §5.4 chunking row: a chunk's frames are the output
-// slots k0..k1-1, so its picture starts at slot k0's time in the clip, which can fall inside a source frame.
-describe("a chunk starts at its first output slot's time in the clip (§7.17 transition output profile row; §5.4 chunking row)", () => {
-  // The cut fixture presents frame i (i ≥ 1) over [0.04i − 0.02, 0.04i + 0.02) s, so every 25 fps output slot of it falls
-  // in the middle of a source frame. The second clip starts at output frame 96 and is split at 110.
+// frames-split §7.17 transition output profile row (每段从输出帧k取覆盖该时刻的该段网格帧，两段帧率不同时按§7.16换算) and §5.4
+// chunking row: a chunk's frames are output slots k0..k1-1; the container finds the clip's covering grid frame from the
+// clip's own grid and its place on the output grid, so a chunk of the second clip names both.
+describe("a chunk names its clip's own grid and place on the output grid (§7.17 transition output profile row; §5.4 chunking row)", () => {
   const FROZEN = { encode: [{ start: 0, end: 96 }, { start: 96, end: 110 }, { start: 110, end: 133 }], window: [] };
 
-  it("TS01 each chunk of the second clip opens on the frame covering its first slot's time, shown from that time", async () => {
+  it("TS01 each chunk of the second clip carries the second clip's grid and placement, with its output frames", async () => {
     const value = { ...run({ kind: "cut", duration: 0 }, SILENT, 1.48, 48), layout: FROZEN };
     serve(plan(value));
     await drive();
     const second = value.timeline.clips[1]!;
-    const seconds = (time: { numerator: string; denominator: string }): number => Number(time.numerator) / Number(time.denominator);
     for (const [k, window] of FROZEN.encode.entries()) {
       if (window.end <= second.startFrame) continue;
-      const recipe = recipeOf(requestOf(encId(k)));
-      const slot = (window.start - second.startFrame + second.inFrame) / 25;
-      // Frame 0 is [0, 0.02) s; frame i ≥ 1 starts at 0.04i − 0.02.
-      const covering = slot < 0.02 ? 0 : Math.floor((slot + 0.02) / 0.04 + 1e-9);
-      expect((recipe.window as FrameWindow).start, `chunk ${k}`).toBe(covering);
-      const [first] = recipe.entries as { kind: string; displayStart: { numerator: string; denominator: string }; clipStart: { numerator: string; denominator: string } }[];
-      expect(seconds(first!.displayStart), `chunk ${k} display start`).toBeCloseTo(slot, 9);
-      // The one edit shows media from 0.1 s at presentation 0.
-      expect(seconds(first!.clipStart), `chunk ${k} clip start`).toBeCloseTo(slot + 0.1, 9);
+      expect(recipeOf(requestOf(encId(k))), `chunk ${k}`).toMatchObject({ frames: window, placement: { startFrame: second.startFrame, inFrame: second.inFrame },
+        grid: { fps: SILENT.version.display.fps, gridStart: SILENT.version.display.gridStart, frameCount: 38, realFrameCount: 38 } });
     }
   });
 });
@@ -728,15 +678,11 @@ describe("a Cut transition (§5.4 派发: 转场选「直接切换」时不派 t
     expect(recipe).toMatchObject({ kind: "stitch", crossfade: null, profile: value.profile });
     const clips = recipe.clips as { inputId: string; audio: unknown }[];
     expect(clips.map((clip) => bound(request, clip.inputId))).toEqual([A.key, SILENT.key]);
-    // The plan cannot tell a silent source from one with audio (`audioSpans: null` is ambiguous), so the stitch names both
-    // clips' audio and the container reads the real file, filling silence where it has no audio track.
-    expect(clips.every((clip) => clip.audio !== null && typeof clip.audio === "object")).toBe(true);
-    // Each clip's audio covers exactly the time its output frames show (frames-split §7.17 stitch row), so the second clip's
-    // sound starts with its picture; the silent source's 38 frames over 1.5 s do not end on the 25 fps grid at 1.48 s.
-    for (const { audio, video } of audioAgainstVideo(value, clips)) {
-      expect(audio[0]).toBeCloseTo(video[0], 9);
-      expect(audio[1]).toBeCloseTo(video[1], 9);
-    }
+    // The frozen version does not tell a silent source from one with audio, so the stitch names both clips' audio and the
+    // container reads the real file, filling silence where it has no audio track.
+    expect(clips.every((clip) => clip.audio === true)).toBe(true);
+    // Each clip's audio covers exactly the output frames it shows, from its in-frame (frames-split §7.17 stitch row).
+    expect(clips).toEqual(value.timeline.clips.map((clip) => expect.objectContaining({ frameCount: clip.frameCount, placement: { startFrame: clip.startFrame, inFrame: clip.inFrame } })));
     expect(statuses(completion)).toEqual(["registered"]);
   });
 });

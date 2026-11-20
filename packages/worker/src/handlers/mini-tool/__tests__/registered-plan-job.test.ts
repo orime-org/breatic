@@ -29,10 +29,9 @@ const plan: MiniToolPlanJobRequest = {
   limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 },
   inputs: [{ inputId, storageKey: "original/video.mp4" }],
   // §93 D5 (frames-split design §7.17 scene_cuts row 「去掉inspect_video步骤」, people anchor row): the text outputs are people
-  // detections on a full-ledger entry, not the removed inspect_video recipe.
+  // detections on a grid frame, not the removed inspect_video recipe.
   outputs: [8, 9].map((outputIndex) => ({ outputIndex, storageKey: `declared/${outputIndex}.txt`, contentType: "text/plain", recipe: { kind: "people", inputId,
-    entry: { kind: "source", decodeStart: { numerator: "0", denominator: "1" }, clipStart: { numerator: "0", denominator: "1" }, displayStart: { numerator: "0", denominator: "1" },
-      displayEnd: { numerator: "1", denominator: "25" }, rate: { numerator: "1", denominator: "1" } },
+    grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 96, realFrameCount: 96 }, source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1.92, allKeyframes: false } }, frameIndex: 0,
     target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" },
     profile: { id: "opencv-yunet-2023mar", version: "2023mar", weightsHash: null, params: {} } } })),
 };

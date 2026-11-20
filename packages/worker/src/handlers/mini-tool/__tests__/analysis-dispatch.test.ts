@@ -27,7 +27,7 @@ const DEADLINE = 1792927200000;
 function originalExecution(kind: "people" | "scene_cuts"): miniToolAnalysisService.MiniToolAnalysisExecution {
   const profile = { id: "original-profile", version: "original", weightsHash: null, params: {} };
   const url = "https://assets.test.invalid/original.mp4";
-  const input = kind === "people" ? { schemaVersion: 1, kind, sourceURL: url, profile, anchor: { frameIndex: 1, pts: 0.25 } }
+  const input = kind === "people" ? { schemaVersion: 1, kind, sourceURL: url, profile, anchor: { frameIndex: 1 } }
     : { schemaVersion: 1, kind, sourceURL: url, profile, range: { start: 0, end: 5 } };
   const record = miniToolAnalysisRecordSchema.parse({ schemaVersion: 1, kind, analysisRunId: TASK,
     draftId: "20000000-0000-4000-8000-000000000001", revision: "30000000-0000-4000-8000-000000000001",
@@ -42,7 +42,7 @@ function originalExecution(kind: "people" | "scene_cuts"): miniToolAnalysisServi
     analysisRunId: TASK, draftId: record.draftId, revision: record.revision, kind,
     source: { nodeId: context.hostNodeId, canonicalURL: url, mediaInfo: record.binding.mediaInfo },
     binding: record.binding, analysisInput: record.analysisInput, inputFingerprint: record.inputFingerprint,
-    ...FROZEN_PRESENTATION,
+    ...FROZEN_PRESENTATION, chargeTo: kind === "people" ? "platform" : "user",
   } } };
 }
 

@@ -25,14 +25,14 @@ import { StillRunning } from "@worker/handlers/still-running.js";
 const inputId = "20000000-0000-4000-8000-000000000001";
 const DEADLINE = 1792920000000;
 const GRACE_END = DEADLINE + 10000;
-// §93 D5 (frames-split design §7.17 frame row 「不得把presentation ordinal当原解码n」, 「唯一写点：worker的配方构造」): a job frame recipe names a full-ledger entry and its PNG target, not a frameIndex.
+// §93 D5 (frames-split design §7.17 frame row 「不得把presentation ordinal当原解码n」, 「唯一写点：worker的配方构造」): a job frame recipe names a grid frame of its tool source and its PNG target (§7.16).
 const plan: MiniToolPlanJobRequest = {
   schemaVersion: 2, jobId: "task:T/chunk:3", containerClass: "OriginalClass", deadlineAt: DEADLINE,
   limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 },
   inputs: [{ inputId, storageKey: "source/video.mp4" }],
   outputs: [
-    { outputIndex: 24, storageKey: "result/frame-24.png", contentType: "image/png", recipe: { kind: "frame", inputId, entry: { kind: "source", decodeStart: { numerator: "42", denominator: "25" }, clipStart: { numerator: "42", denominator: "25" }, displayStart: { numerator: "42", denominator: "25" }, displayEnd: { numerator: "43", denominator: "25" }, rate: { numerator: "1", denominator: "1" } }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } },
-    { outputIndex: 25, storageKey: "result/frame-25.png", contentType: "image/png", recipe: { kind: "frame", inputId, entry: { kind: "source", decodeStart: { numerator: "43", denominator: "25" }, clipStart: { numerator: "43", denominator: "25" }, displayStart: { numerator: "43", denominator: "25" }, displayEnd: { numerator: "44", denominator: "25" }, rate: { numerator: "1", denominator: "1" } }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } },
+    { outputIndex: 24, storageKey: "result/frame-24.png", contentType: "image/png", recipe: { kind: "frame", inputId, grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 96, realFrameCount: 96 }, source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1.92, allKeyframes: false } }, frameIndex: 42, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } },
+    { outputIndex: 25, storageKey: "result/frame-25.png", contentType: "image/png", recipe: { kind: "frame", inputId, grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 96, realFrameCount: 96 }, source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1.92, allKeyframes: false } }, frameIndex: 43, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } },
   ],
 };
 const outputs = [24, 25].map((outputIndex) => ({

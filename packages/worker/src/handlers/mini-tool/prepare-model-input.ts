@@ -4,26 +4,24 @@
 /**
  * The model-input preparation of a planned removal (inner#1306; frames-split design §5.3 model-input row, §5.4 job identities,
  * §7.1.1): before `generate`, the frozen preparation runs as standard-4 `container_job` steps — one `prepare_model_input`
- * job over the whole presentation window, or `chunk_encode` jobs plus a `stitch` — each attempt under its §5.4 id, its
+ * job over the frozen grid window, or `chunk_encode` jobs plus a `stitch` — each attempt under its §5.4 id, its
  * output key from the shared key function and its expense opened with the step, on the model runs' step runner
  * (`model-run-steps.ts`). A failed attempt is retried under the next attempt's id up to the frozen chunk retries; the
  * chunks advance as one chunk list, each done chunk pinned with the run. A failed-output retry reuses the original run's
  * prepared object.
  */
 
-import { logger } from "@breatic/core";
 import { miniToolStepStateSchema, upstreamStepRepo, type AcceptedMiniToolExecution } from "@breatic/domain";
 import { DeadlinePassed, videoPresentationWorkKeyFor, type MiniToolPlanJobRequest, type MiniToolPlanRecipe } from "@breatic/shared";
 import { videoContainerJobId, type VideoContainerJobSpec } from "@breatic/shared/mini-tools";
-import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { advanceChunks, advanceContainer, storedRequest, type ContainerStep, type ModelStepRun } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
 import { EXTENSION_OF_TYPE } from "@worker/handlers/extension-of-type.js";
-import { audioOf, chunkInputId, FullLedgerInvalid, modelInputTarget, readJobLedger, SOURCE_INPUT_ID, windowDuration, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
+import { audioRefOf, chunkInputId, modelInputTarget, stitchOf, toolInputOf, windowOf } from "@worker/handlers/video-presentation-recipes.js";
 
 type Removal = Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
 /** What a model-input preparation reads of its run: a removal's, or a lip-sync run's used source range (§97 D21). */
-export type PreparingRun = Pick<Removal, "taskId" | "projectId" | "sourceKey" | "ledgerReceipts" | "presentationRef" | "preparation">;
+export type PreparingRun = Pick<Removal, "taskId" | "projectId" | "sourceKey" | "presentations" | "presentationRef" | "preparation">;
 type UpstreamStep = upstreamStepRepo.UpstreamStep;
 /**
  * A step's work object key: the source's work key for the job, ending in the extension of the type it holds.
@@ -96,19 +94,10 @@ export async function prepareModelInput(execution: PreparingRun, deadlineAt: num
   if (done !== null) return done.outputs[0]!.storageKey;
   if (owner !== execution.taskId) throw new Error("The original run has no prepared model input");
   const taskId = execution.taskId;
-  // The recipes come from the full ledger the run froze (§91 D3b-5), checked against its presentation plan.
-  // The receipt is frozen for the run, so a ledger that fails it never recovers here: the run fails at once (§91 D3b-9; a
-  // new run freezes the repaired ledger). A transport failure keeps the normal retry.
-  // Reading it starts no new work, so a pickup after the deadline still reads the jobs submitted before it (`planReadUntil`).
-  const ledger = await readJobLedger(execution.ledgerReceipts.source, planReadUntil(deadlineAt)).catch((error: unknown) => {
-    if (error instanceof FullLedgerInvalid) {
-      logger.error({ err: error, ctx: { taskId: execution.taskId, toolInputId: execution.presentationRef.source.toolInputId } }, "mini_tool_prepare_ledger_invalid");
-      throw new MiniToolStepFailed("source_ledger_invalid");
-    }
-    throw error;
-  });
-  const target = modelInputTarget(ledger, execution.preparation.encode);
-  const timescale = ledger.plan.presentation.timescale;
+  // The recipes read the frozen version's grid frames from its tool source (§5.3 model-input row, §7.16).
+  const version = execution.presentations.source;
+  const input = toolInputOf(version, execution.sourceKey);
+  const target = modelInputTarget(version, execution.preparation.encode);
   // The retry cap frozen at admission (§3.2 item 1), never today's configuration.
   const { preparation } = execution;
   const run: ModelStepRun = { taskId, projectId: execution.projectId, sourceKey: execution.sourceKey, log: "prepare",
@@ -118,13 +107,13 @@ export async function prepareModelInput(execution: PreparingRun, deadlineAt: num
    * @param spec - Its §5.4 id per attempt.
    * @param chunkIndex - Its consumption chunk index.
    * @param recipe - Its recipe.
-   * @param bound - The inputs it binds besides the source (a stitch's chunks).
+   * @param bound - The inputs it binds besides the tool source and the original (a stitch's chunks).
    * @returns The step.
    * @throws {never} Never.
    */
   const unit = (spec: (attempt: number) => VideoContainerJobSpec, chunkIndex: number, recipe: MiniToolPlanRecipe, bound: { inputId: string; storageKey: string }[] = []): ContainerStep => ({
     contentType: "video/mp4", jobId: (attempt) => videoContainerJobId(spec(attempt)), chunkIndex,
-    failed: () => ({ failed: PREPARATION_FAILED }), build: () => Promise.resolve({ recipe, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...bound] }) });
+    failed: () => ({ failed: PREPARATION_FAILED }), build: () => Promise.resolve({ recipe, inputs: [...input.inputs, ...bound] }) });
   /**
    * The pins of the done prepared input: the run keeps it, and the chunks it consumed are retired (§7.15).
    * @param consumed - The chunk outputs it consumed.
@@ -145,16 +134,13 @@ export async function prepareModelInput(execution: PreparingRun, deadlineAt: num
     return ended.key;
   };
   if (single) {
-    const window = { start: chunks[0]!.start, end: chunks[0]!.end };
-    return prepared({ ...unit((attempt) => ({ kind: "prep", taskId, input: 0, attempt }), 0, { kind: "prepare_model_input", inputId: SOURCE_INPUT_ID, window, timescale,
-      entries: windowEntries(ledger, window), target, audio: audioOf(ledger, windowInterval(ledger, window)) }), done: final([]) });
+    return prepared({ ...unit((attempt) => ({ kind: "prep", taskId, input: 0, attempt }), 0,
+      { kind: "prepare_model_input", ...windowOf(input, chunks[0]!, target), ...audioRefOf(input) }), done: final([]) });
   }
   // Every chunk advances in each pickup and the preparation settles once none still runs, each done chunk pinned with the run.
   const outputs = await advanceChunks(run, chunks.map((window, chunk) => unit((attempt) => ({ kind: "prep-chunk", taskId, input: 0, chunk, attempt }), chunk,
-    { kind: "chunk_encode", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale, entries: windowEntries(ledger, window), target })), deadlineAt);
+    { kind: "chunk_encode", ...windowOf(input, window, target) })), deadlineAt);
   if (!("keys" in outputs)) throw outputs.expired === true ? new DeadlinePassed() : new MiniToolStepFailed(PREPARATION_FAILED);
-  return prepared({ ...unit((attempt) => ({ kind: "prep-stitch", taskId, input: 0, attempt }), chunks.length, { kind: "stitch", inputId: SOURCE_INPUT_ID,
-    chunks: chunks.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: windowDuration(ledger, window) })),
-    audio: audioOf(ledger, windowInterval(ledger, { start: chunks[0]!.start, end: chunks[chunks.length - 1]!.end })), target },
-  outputs.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))), done: final(outputs.keys) });
+  return prepared({ ...unit((attempt) => ({ kind: "prep-stitch", taskId, input: 0, attempt }), chunks.length, stitchOf(input, chunks, target, true),
+    outputs.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))), done: final(outputs.keys) });
 }

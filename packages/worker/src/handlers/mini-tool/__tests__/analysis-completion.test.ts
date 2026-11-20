@@ -22,6 +22,8 @@ vi.mock("@breatic/core", async (original) => ({
   ...await original<typeof coreModule>(), logger: { error: h.error, warn: vi.fn(), info: vi.fn() },
   projectActivitiesRepo: { insertGenerationFailedIfAbsent: h.activity, upsertGenerationSucceeded: h.activity },
 }));
+// A run's end abandons its unresolved model steps through the step store; these analyses hold no model step.
+vi.mock("@worker/handlers/mini-tool/run-end.js", () => ({ abandonUnresolvedModelSteps: async () => undefined }));
 vi.mock("@worker/handlers/dispatch.js", () => ({
   releaseRunHold: h.releaseHold, recordGenerationForNodes: h.history, mediaKindForActivity: () => "video",
 }));
@@ -36,10 +38,10 @@ const identity = {
   schemaVersion: 1, draftId: "60000000-0000-4000-8000-000000000001", revision: "70000000-0000-4000-8000-000000000001",
   analysisRunId: taskId, acceptedAt: "2026-10-25T00:00:00.123456Z", kind: "people", inputFingerprint: "a".repeat(64),
   binding: { assetId: "80000000-0000-4000-8000-000000000001", contentHash: "b".repeat(64), canonicalURL: sourceURL, kind: "video", mediaInfo: { width: 320, height: 180, duration: 5, mimeType: "video/mp4" } },
-  analysisInput: { schemaVersion: 1, kind: "people", sourceURL, anchor: { frameIndex: 0, pts: 0 }, profile: { id: "detector", version: "1", weightsHash: null, params: {} } },
+  analysisInput: { schemaVersion: 1, kind: "people", sourceURL, anchor: { frameIndex: 0 }, profile: { id: "detector", version: "1", weightsHash: null, params: {} } },
 };
 const record = miniToolAnalysisRecordSchema.parse({ ...identity, status: "failed", result: null, error: { code: "analysis_failed", message: "worker stopped" }, usage: [], artifactUnavailable: false });
-const ready = miniToolAnalysisRecordSchema.parse({ ...record, status: "completed", error: null, result: { ...identity, anchor: { frameIndex: 0, pts: 0 }, people: [] } });
+const ready = miniToolAnalysisRecordSchema.parse({ ...record, status: "completed", error: null, result: { ...identity, anchor: { frameIndex: 0 }, people: [] } });
 const stream = {} as ReturnType<typeof coreModule.getStreamRedis>;
 const docName = `project-${context.projectId}/canvas-${context.spaceId}`;
 

@@ -1,14 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { getMiniToolsConfig, logger } from "@breatic/core";
+import { getMiniToolsConfig } from "@breatic/core";
 import { miniToolPeopleAnalysis, miniToolSceneAnalysis, openContainerOutputs, upstreamStepRepo,
   type miniToolAnalysisService } from "@breatic/domain";
 import { assertBeforeDeadline, DeadlinePassed, MINI_TOOL_JOB_MAX_OUTPUTS, miniToolPlanJobRequestSchema,
-  type MiniToolPlanJobRequest, type MiniToolPlanRecipe, type VideoPresentationLedger } from "@breatic/shared";
-import { chunkVideoOutputs, miniToolAnalysisRecordSchema, presentationFrameCount, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
-import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
-import { FullLedgerInvalid, peopleRecipeOf, readJobLedger, sceneCutsRecipeOf, sceneCutsResultOf } from "@worker/handlers/video-presentation-recipes.js";
+  type MiniToolPlanJobRequest, type MiniToolPlanRecipe } from "@breatic/shared";
+import { chunkVideoOutputs, miniToolAnalysisRecordSchema, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
+import { originalInputOf, peopleRecipeOf, sceneCutsRecipeOf, toolInputOf } from "@worker/handlers/video-presentation-recipes.js";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { advanceRegisteredMiniToolPlanJob, type RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
@@ -22,9 +21,6 @@ type Step = Awaited<ReturnType<typeof upstreamStepRepo.listSteps>>[number];
 export interface AnalysisOutput { outputIndex: number; modality: "text" | "image"; recipe: MiniToolPlanRecipe }
 /** The original step supplies cached JSON while its job supplies live canonical rows. */
 export interface AnalysisJob { step: Step; job: RegisteredMiniToolPlanJob }
-/** The scene cuts placed on the presentation, cached in the step so a replay after D needs neither JSON nor ledger. */
-interface ScenePlacement { placed: { frameIndex: number; pts: number }[]; clock: { frameCount: number; timescale: number } }
-const SCENE_PLACEMENT = "miniToolScenePlacement";
 
 /**
  * Restore a saved plan or open one new original job within the unchanged deadline.
@@ -79,7 +75,8 @@ export async function advanceAnalysisJob(
   if (step.kind !== "container_job" || step.endpoint !== request.containerClass) throw new Error("Analysis plan differs from its original container step");
   const job = await advanceRegisteredMiniToolPlanJob({
     taskId: context.taskId, stepId: step.id, chunkIndex: position,
-    chargeTo: record.kind === "people" ? "platform" : "user", request,
+    // Who pays is the payer admission froze (frames-split §5.5 configuration row), never decided again here.
+    chargeTo: params.analysis.chargeTo, request,
   });
   // A job ingest ended at the deadline is the analysis running out of time, as a deadline passed here is.
   if (job.report.state === "failed") throw job.report.reason === "expired" ? new DeadlinePassed() : new ContainerJobFailed(job.report.reason);
@@ -110,45 +107,24 @@ async function analysisJson(analysis: AnalysisJob, outputIndex: number): Promise
 }
 
 /**
- * Read the full ledger the analysis froze (§93 D5, D4-7): bytes that fail the frozen receipt never recover in this run, so
- * the analysis ends as `source_ledger_invalid` (a new run freezes the repaired ledger); a transport failure keeps the retry.
- * Reading it starts no new work, so a pickup after the deadline still reads it (`planReadUntil`).
- * @param execution - The accepted analysis.
- * @param deadlineAt - The task deadline.
- * @returns The validated full ledger.
- * @throws {MiniToolStepFailed} With `source_ledger_invalid` when the bytes fail the receipt.
- * @throws {Error} When the read fails in transport or outlasts its bound.
- */
-export async function frozenLedger(execution: Execution, deadlineAt: number): Promise<VideoPresentationLedger> {
-  const { ledgerReceipts, presentationRef } = execution.params.analysis;
-  try {
-    return await readJobLedger(ledgerReceipts.source, planReadUntil(deadlineAt));
-  } catch (error) {
-    if (!(error instanceof FullLedgerInvalid)) throw error;
-    logger.error({ err: error, ctx: { taskId: execution.context.taskId, toolInputId: presentationRef.source.toolInputId } }, "mini_tool_analysis_ledger_invalid");
-    throw new MiniToolStepFailed("source_ledger_invalid");
-  }
-}
-
-/**
- * The people recipe a stored people job carries (the anchor's entry and PNG target).
+ * The people recipe a stored people job carries (the anchor's grid frame and PNG target).
  * @param job - The people job.
  * @returns Its recipe.
- * @throws {Error} When the job is not a people job on an entry.
+ * @throws {Error} When the job is not a people job.
  */
-function peopleRecipe(job: RegisteredMiniToolPlanJob): Extract<MiniToolPlanRecipe, { kind: "people"; entry: unknown }> {
+function peopleRecipe(job: RegisteredMiniToolPlanJob): Extract<MiniToolPlanRecipe, { kind: "people" }> {
   const recipe = job.request.outputs[0]?.recipe;
-  if (recipe?.kind !== "people" || !("entry" in recipe)) throw new Error("People analysis requires its people recipe on the anchor entry");
+  if (recipe?.kind !== "people") throw new Error("People analysis requires its people recipe on the anchor frame");
   return recipe;
 }
 
 /**
- * Advance the accepted people or scene analysis through its original container steps, its recipes built from the frozen
- * full ledger with the D4 builders (§93 D5; design §7.17); scene cuts come back as presentation ordinals (§93 D5-8).
+ * Advance the accepted people or scene analysis through its original container steps, its recipes on the frozen version's
+ * grid (§7.16, §7.17); scene cuts come back as grid frame numbers (§7.17 scene_cuts row).
  * @param execution - The original SQL-owned execution identity, source and context.
  * @param deadlineAt - The task's unchanged computation deadline.
  * @returns The complete owned result after its registered dependencies are available.
- * @throws {MiniToolStepFailed} With `source_ledger_invalid` when the frozen ledger fails its receipt.
+ * @throws {MiniToolStepFailed} When the plan's colour is not available.
  * @throws {Error} When an original step, artifact or analysis cannot be completed.
  */
 export async function runMiniToolContainerAnalysis(
@@ -158,50 +134,35 @@ export async function runMiniToolContainerAnalysis(
   const input = record.analysisInput;
   const inputId = record.binding.assetId;
   if (input.kind === "tracked_mask") throw new Error("Tracked masks require their original provider analysis executor");
-  let ledger: Promise<VideoPresentationLedger> | undefined;
-  /**
-   * The frozen full ledger, read once and only when a recipe or placement needs it.
-   * @returns It.
-   * @throws {Error} When it cannot be read.
-   */
-  const frozen = (): Promise<VideoPresentationLedger> => (ledger ??= frozenLedger(execution, deadlineAt));
+  const version = execution.params.analysis.presentations.source;
+  const { sourceKey } = execution.params;
   if (input.kind === "scene_cuts") {
-    const initial = await advanceAnalysisJob(execution, deadlineAt, 0, async () => [
-      { outputIndex: 0, modality: "text", recipe: sceneCutsRecipeOf(await frozen(), input.range, inputId, input.profile) },
-    ]);
-    const observations = await analysisJson(initial, 0);
-    let placement = initial.step.output[SCENE_PLACEMENT] as ScenePlacement | undefined;
-    const fresh = placement === undefined;
-    if (placement === undefined) {
-      const recipe = initial.job.request.outputs[0]?.recipe;
-      if (recipe?.kind !== "scene_cuts" || !("window" in recipe)) throw new Error("Scene analysis requires its scene_cuts recipe on entries");
-      const full = await frozen();
-      const cuts = (observations as { cuts?: { ordinal?: unknown }[] } | null)?.cuts;
-      if (!Array.isArray(cuts)) throw new Error("Scene observations carry no cuts");
-      placement = { placed: sceneCutsResultOf(full, recipe.window, cuts.map((cut) => Number((cut as { ordinal?: unknown } | null)?.ordinal))),
-        clock: { frameCount: presentationFrameCount(full.plan.presentation), timescale: full.plan.presentation.timescale } };
-    }
-    const result = miniToolSceneAnalysis.assembleMiniToolSceneAnalysis(record, observations, placement.placed, placement.clock);
-    if (fresh) await upstreamStepRepo.recordInline(initial.step.id, { [SCENE_PLACEMENT]: placement }, 0);
-    return result;
+    // The detector reads the range's grid frames from the tool source, bound under the binding's id (§7.17 scene_cuts row).
+    const tool = toolInputOf(version, sourceKey, inputId);
+    const initial = await advanceAnalysisJob(execution, deadlineAt, 0, () => Promise.resolve([
+      { outputIndex: 0, modality: "text", recipe: sceneCutsRecipeOf(version, tool, input.range, input.profile) },
+    ]), undefined, () => Promise.resolve(tool.inputs.slice(0, 1)));
+    return miniToolSceneAnalysis.assembleMiniToolSceneAnalysis(record, await analysisJson(initial, 0), { fps: version.display.fps, frameCount: version.display.frameCount });
   }
-  const initial = await advanceAnalysisJob(execution, deadlineAt, 0, async () => [
-    { outputIndex: 0, modality: "text", recipe: peopleRecipeOf(await frozen(), input.anchor, inputId, input.profile) },
-  ]);
+  // The anchor and its thumbnails read the original under the binding's id, the source the people assembly checks.
+  const original = originalInputOf(version, sourceKey, inputId);
+  const initial = await advanceAnalysisJob(execution, deadlineAt, 0, () => Promise.resolve([
+    { outputIndex: 0, modality: "text", recipe: peopleRecipeOf(version, original, input.anchor.frameIndex, input.profile) },
+  ]));
   const anchor = peopleRecipe(initial.job);
   const observations = miniToolPeopleAnalysis.readMiniToolDisplayPeople(record, await analysisJson(initial, 0), anchor.target);
   const groups = chunkVideoOutputs(observations.candidates, MINI_TOOL_JOB_MAX_OUTPUTS);
   const jobs: RegisteredMiniToolPlanJob[] = [];
   for (const [index, candidates] of groups.entries()) {
-    // Each crop is the anchor's frame recipe on its entry (candidateCropRecipeOf), cropped in the display geometry.
+    // Each crop is the stored anchor recipe's grid frame and PNG target, cropped in the display geometry the detector measured.
     const outputs: AnalysisOutput[] = candidates.map((candidate) => ({
       outputIndex: candidate.detectionIndex, modality: "image", recipe: {
-        kind: "frame", inputId, entry: anchor.entry, target: anchor.target,
+        kind: "frame", inputId: anchor.inputId, grid: anchor.grid, source: anchor.source, frameIndex: anchor.frameIndex, target: anchor.target,
         crop: { sourceWidth: observations.width, sourceHeight: observations.height, rect: candidate.pixelCrop },
       },
     }));
     const next = await advanceAnalysisJob(execution, initial.job.request.deadlineAt, index + 1, () => Promise.resolve(outputs), initial.job.request);
     jobs.push(next.job);
   }
-  return miniToolPeopleAnalysis.assembleMiniToolPeopleAnalysis(record, execution.params.sourceKey, observations, jobs, anchor.entry);
+  return miniToolPeopleAnalysis.assembleMiniToolPeopleAnalysis(record, sourceKey, observations, jobs);
 }

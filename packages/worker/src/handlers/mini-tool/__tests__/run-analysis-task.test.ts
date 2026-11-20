@@ -51,7 +51,7 @@ const execution: miniToolAnalysisService.MiniToolAnalysisExecution = { record,
     hostNodeId: "80000000-0000-4000-8000-000000000001", draftId: record.draftId, revision: record.revision, kind: "people",
     source: { nodeId: "80000000-0000-4000-8000-000000000001", canonicalURL: record.binding.canonicalURL, mediaInfo: record.binding.mediaInfo },
     binding: record.binding, analysisInput: record.analysisInput, inputFingerprint: record.inputFingerprint,
-    ...FROZEN_PRESENTATION,
+    ...FROZEN_PRESENTATION, chargeTo: "platform",
   } } };
 
 /** Build a queue envelope whose non-authoritative source differs from the SQL original. @returns The delivery. */
@@ -69,12 +69,11 @@ function trackedFixture(): { original: miniToolAnalysisService.MiniToolAnalysisE
     region: { box: { x: 0.1, y: 0.1, width: 0.2, height: 0.3 }, points: [] }, trackingPrompt: "selected object" } as const;
   original.record = miniToolAnalysisRecordSchema.parse({ ...record, kind: "tracked_mask", analysisInput: input });
   original.params.analysis = { ...original.params.analysis, kind: "tracked_mask", analysisInput: original.record.analysisInput };
-  const metadata = { width: 400, height: 200, frameCount: 4, timeBase: { numerator: 1, denominator: 4 } };
+  const metadata = { width: 400, height: 200, frameCount: 4, fps: { numerator: 4, denominator: 1 } };
   const computed = miniToolAnalysisResultSchema.parse({
     schemaVersion: 1, kind: "tracked_mask", draftId: record.draftId, revision: record.revision, analysisRunId: TASK,
     acceptedAt: record.acceptedAt, binding: record.binding, analysisInput: input, inputFingerprint: record.inputFingerprint,
     ...metadata, anchor: input.anchor, regionFingerprint: "d".repeat(64),
-    sourceFrameMapping: [0, 1, 2, 3].map((frameIndex) => ({ frameIndex, sourcePts: frameIndex / 4 })),
     artifactRefs: ["rle"].map((role, index) => ({
       role, assetId: `90000000-0000-4000-8000-00000000000${index + 1}`, canonicalURL: `https://assets.test.invalid/${role}`,
       contentHash: "e".repeat(64), kind: "document", mimeType: "text/plain", size: 100, frameMetadata: null,

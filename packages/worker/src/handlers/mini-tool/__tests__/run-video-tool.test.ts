@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The extract-frames and split runners (inner#1306 test plan §93 D5-1..D5-5; frames-split design §5.4 用户运行的两层编码 and
- * 作业身份, §7.11 逐项结果, §7.15, §7.17 「唯一写点：worker的配方构造」, §10.8 作业 and 失败与提交).
+ * The extract-frames, split and video focus crop runners (inner#1306 test plan §67.3 W01–W03, §68 F01; frames-split design
+ * §5.4 用户运行的两层编码 and 作业身份, §5.5, §7.11 逐项结果, §7.15, §7.16, §7.17 「唯一写点：worker的配方构造」, §10.8 作业 and 失败与提交).
  *
- * A planned extract-frames or split pickup enters through `runMiniToolExecutionTask` (as the removal does) and runs the
- * frozen plan: it reads the full ledger of the frozen `ledgerReceipts.source` (served here at its receipt URL with the
- * cfr96 bytes), uses the frozen `layout` as it is (D5-1), writes each output's job recipe with `frameRecipeOf` /
- * `segmentRecipesOf` and the frozen `container.encode` (D5-2), and submits each batch as a `run-batch` job through
- * `advanceRegisteredMiniToolPlanJob` (D5-4, D5-5). A failed batch attempt's next attempt carries only the outputs not yet
- * done, up to the frozen `chunkRetries`; exhausted outputs fail one by one and the others are delivered (D5-3, §7.11).
+ * A planned extract-frames, split or focus crop pickup enters through `runMiniToolExecutionTask` (as the removal does) and
+ * runs the frozen plan: it reads the frozen version's grid, tool source and source keyframe statistics, uses the frozen
+ * `layout` as it is (D5-1), writes each output's job recipe with `frameRecipeOf` / `segmentRecipesOf` and the frozen
+ * `container.encode` (D5-2), and submits each batch as a `run-batch` job through `advanceRegisteredMiniToolPlanJob` with
+ * the frozen payer (D5-4, D5-5; W02, W03). A failed batch attempt's next attempt carries only the outputs not yet done, up
+ * to the frozen `chunkRetries`; exhausted outputs fail one by one and the others are delivered (D5-3, §7.11).
  *
  * The job boundary (`advanceRegisteredMiniToolPlanJob`), grants, steps, the SQL lifecycle and the completion owner are
- * mocked; the recipe builders and the ledger read stay real. Every frame and span starts on a cfr96 keyframe (0 or 48).
+ * mocked; the recipe builders stay real, with the plan colour a frozen version does not carry yet stood in by `PLAN_COLOR`.
  *
  * §93 D5-10: a segment in `layout.encodes` runs its frozen chunk windows as `run-chunk` jobs on the model-input preparation
  * path (work keys, `openMiniToolPlanJob` + `advanceMiniToolPlanJob`, a failed attempt's output retired with its result,
@@ -23,18 +23,18 @@
  * terminal commit follows once all outputs have ended, and a caught exception fails only outputs not yet committed.
  */
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import type { Job } from "bullmq";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as coreModule from "@breatic/core";
 import type * as domainModule from "@breatic/domain";
 import type { MiniToolExecutionCompletion, MiniToolExecutionJob, OpenMiniToolPlanJobInput } from "@breatic/domain";
-import { DeadlinePassed, videoPresentationWorkKeyFor, type MiniToolPlanJobRequest, type StudioAssetEntity, type VideoPresentationLedger } from "@breatic/shared";
+import { DeadlinePassed, videoPresentationWorkKeyFor, type MiniToolPlanJobRequest, type StudioAssetEntity } from "@breatic/shared";
 import { videoContainerJobId } from "@breatic/shared/mini-tools";
 import type { RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
-import { chunkInputId, frameRecipeOf, segmentRecipesOf } from "@worker/handlers/video-presentation-recipes.js";
-import { UpstreamTaskFailed } from "@worker/providers/http.js";
+import { AUDIO_INPUT_ID, chunkInputId, frameRecipeOf, segmentRecipesOf, SOURCE_INPUT_ID, toolInputOf } from "@worker/handlers/video-presentation-recipes.js";
+import { PLAN_COLOR, frozenVersion, type VersionFields } from "./frozen-presentation.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
+import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { runMiniToolExecutionTask } from "../run-execution-task.js";
 
 const h = vi.hoisted(() => ({
@@ -64,8 +64,11 @@ vi.mock("@worker/handlers/mini-tool/advance-plan-job.js", async (original) => ({
 // §93 D6 (design §7.11, §10.8): delivery after a progress commit; the delivery workers are mocked, the wrapper is real.
 vi.mock("@worker/handlers/mini-tool/delivery-worker.js", () => ({ deliverMiniToolOutput: h.deliver, wakePendingMiniToolDelivery: h.wake }));
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }));
+// A run's end abandons its unresolved model steps through the step store; these runs hold no model step.
+vi.mock("@worker/handlers/mini-tool/run-end.js", () => ({ abandonUnresolvedModelSteps: async () => undefined }));
 vi.mock("@worker/handlers/mini-tool/run-remove-background.js", () => ({ runMiniToolRemoveBackground: h.removal }));
 vi.mock("@worker/handlers/dispatch.js", () => ({ isTerminalAttempt: () => false, verifyJobLockOwnership: async () => true }));
+vi.mock("@worker/handlers/frozen-plan-facts.js", () => ({ planColorOf: () => PLAN_COLOR }));
 
 const TASK = "50000000-0000-4000-8000-000000000001";
 const PROJECT = "10000000-0000-4000-8000-000000000001";
@@ -78,15 +81,10 @@ const DEADLINE = Date.now() + 3_600_000;
 const LIMITS = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
 // The frozen encode differs from today's configuration (crf 18, medium), so a recipe carrying it proves which one was used.
 const ENCODE = { crf: 23, preset: "fast" } as const;
-const CFR96 = readFileSync(new URL("../../__tests__/fixtures/presentation/cfr96.ledger.json", import.meta.url));
-const LEDGER = JSON.parse(CFR96.toString("utf8")) as VideoPresentationLedger;
-const LEDGER_URL = "https://assets.example.test/video/source.mp4.video-source-ledger.cfr96.json";
-let ledgerBytes: Buffer = CFR96;
-let ledgerFault: "reset" | null = null;
-// How long the ledger read takes on a faked clock; the fetch fake moves the clock and honours the read's signal, as a real one would.
-let ledgerReadMs = 0;
+// The frozen version: 320x180, 25 fps, 96 grid frames, read from its original; a case may freeze another.
+let version = frozenVersion();
 
-type Tool = "video.extract-frames" | "video.split";
+type Tool = "video.extract-frames" | "video.split" | "video.focus-crop";
 type Steps = Awaited<ReturnType<typeof domainModule.upstreamStepRepo.listSteps>>;
 type StepPlan = Parameters<typeof domainModule.upstreamStepRepo.ensureSteps>[1];
 type GrantInput = Parameters<typeof domainModule.openContainerOutputs>[0];
@@ -98,35 +96,36 @@ let scripted: Map<string, { written: number[]; state: "done" | "failed"; reason?
 let staleProgress = 0;
 let current: Record<string, unknown> & { resultVersion: number; status: string; outputs: { result: unknown }[] };
 
-// Two outputs per tool, each on a keyframe: frames 0 and 48; segments [0, 1.92) and [1.92, 3.84) (frames 0–47 and 48–95).
-const RECIPES: Record<Tool, ({ kind: "frame"; frameIndex: number; pts: number } | { kind: "segment"; range: { start: number; end: number } })[]> = {
-  "video.extract-frames": [{ kind: "frame", frameIndex: 0, pts: 0 }, { kind: "frame", frameIndex: 48, pts: 1.92 }],
-  "video.split": [{ kind: "segment", range: { start: 0, end: 1.92 } }, { kind: "segment", range: { start: 1.92, end: 3.84 } }],
+// Two outputs per tool: grid frames 0 and 48; segments over grid frames [0, 48) and [48, 96); a focus crop has one.
+type Recipe = { kind: "frame"; frameIndex: number; crop?: { x: number; y: number; width: number; height: number } } | { kind: "segment"; range: { start: number; end: number } };
+const RECIPES: Record<Tool, Recipe[]> = {
+  "video.extract-frames": [{ kind: "frame", frameIndex: 0 }, { kind: "frame", frameIndex: 48 }],
+  "video.split": [{ kind: "segment", range: { start: 0, end: 48 } }, { kind: "segment", range: { start: 48, end: 96 } }],
+  "video.focus-crop": [{ kind: "frame", frameIndex: 30, crop: { x: 10, y: 20, width: 100, height: 50 } }],
 };
+// The payer admission freezes from the platform-funded set (frames-split §5.5 configuration row).
+const PAYER: Record<Tool, "platform" | "user"> = { "video.extract-frames": "platform", "video.split": "user", "video.focus-crop": "platform" };
 
 /**
- * A frozen extract-frames or split plan on the cfr96 ledger (shape of `execution-plan.service.ts` storedPlanSchema).
+ * A frozen extract-frames, split or focus crop plan on the frozen version (shape of `execution-plan.service.ts` storedPlanSchema).
  * @param tool - The tool.
  * @param layout - The frozen layout.
  * @param chunkRetries - The frozen retry cap.
+ * @param recipes - The outputs' recipes.
  * @returns The plan.
  */
-function plan(tool: Tool, layout: { batches: number[][]; encodes: { outputIndex: number; chunks: { start: number; end: number }[] }[] } = { batches: [[0, 1]], encodes: [] },
+function plan(tool: Tool, layout: { batches: number[][]; encodes: { outputIndex: number; chunks: { start: number; end: number }[] }[] } = { batches: [RECIPES[tool].map((_recipe, at) => at)], encodes: [] },
   chunkRetries = 2, recipes = RECIPES[tool]): Record<string, unknown> {
-  const ledger = LEDGER as unknown as { sourceFingerprint: string; toolInputId: string; planSha256: string };
+  const frozen = { sourceFingerprint: version.sourceFingerprint, toolInputId: version.toolInputId, planSha256: version.planSha256 };
   return {
     schemaVersion: 1, tool, taskId: TASK, projectId: PROJECT, spaceId: SPACE, targetNodeIds: NODES.slice(0, recipes.length),
-    binding: { assetId: SOURCE_ID, contentHash: ledger.sourceFingerprint, canonicalURL: "https://assets.example.test/video/source.mp4", kind: "video",
+    binding: { assetId: SOURCE_ID, contentHash: frozen.sourceFingerprint, canonicalURL: "https://assets.example.test/video/source.mp4", kind: "video",
       mediaInfo: { width: 320, height: 180, duration: 3.84, mimeType: "video/mp4" } },
     sourceKey: SOURCE_KEY, draft: {}, analysisRefs: [],
     outputs: recipes.map((recipe, outputIndex) => ({ outputIndex, nodeId: NODES[outputIndex]!, recipe })),
-    model: tool, credits: 1, requestFingerprint: "c".repeat(64), planFingerprint: "d".repeat(64),
-    presentationRef: { source: { toolInputId: ledger.toolInputId, planSha256: ledger.planSha256 } },
-    ledgerReceipts: { source: { schemaVersion: 2, sourceFingerprint: ledger.sourceFingerprint, toolInputId: ledger.toolInputId, planSha256: ledger.planSha256, producerVersion: 2,
-      attempt: { jobId: "video-presentation:fixture", deadlineAt: 1900000000000 }, url: LEDGER_URL, etag: "full-etag", size: ledgerBytes.byteLength,
-      sha256: createHash("sha256").update(ledgerBytes).digest("hex"), contentType: "application/json",
-      table: { url: "https://assets.example.test/video/source.mp4.video-presentation-table.cfr96.json", sha256: "e".repeat(64), size: 81, contentType: "application/json", frameCount: 96 } } },
-    versionIds: { source: "f".repeat(64) },
+    model: tool, credits: 1, requestFingerprint: "c".repeat(64), planFingerprint: "d".repeat(64), chargeTo: PAYER[tool],
+    presentationRef: { source: { toolInputId: frozen.toolInputId, planSha256: frozen.planSha256 } },
+    presentations: { source: version }, versionIds: { source: version.versionId },
     layout, outputSeconds: recipes.map(() => 1),
     container: { containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
       prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 }, limits: LIMITS, startSeconds: 3,
@@ -174,7 +173,7 @@ async function advance(input: OpenMiniToolPlanJobInput): Promise<RegisteredMiniT
   step.output = { ...step.output, miniToolPlanJob: structuredClone(request) };
   const script = scripted.get(request.jobId);
   if (script === "running") throw new StillRunning(Date.now() + 5000);
-  if (script === "throws") throw new UpstreamTaskFailed("container", "tool_failed");
+  if (script === "throws") throw new ContainerJobFailed("tool_failed");
   const declared = request.outputs.map((output) => output.outputIndex);
   const written = script?.written ?? declared;
   const state = script?.state ?? "done";
@@ -312,7 +311,7 @@ function statuses(completion: MiniToolExecutionCompletion | null): (string | nul
 
 beforeEach(() => {
   vi.resetAllMocks();
-  steps = []; grantSequence = 0; scripted = new Map(); staleProgress = 0; ledgerBytes = CFR96; ledgerFault = null; ledgerReadMs = 0;
+  steps = []; grantSequence = 0; scripted = new Map(); staleProgress = 0; version = frozenVersion();
   h.deadline.mockResolvedValue(DEADLINE);
   h.removal.mockRejectedValue(new Error("A frames or split run must not take the removal runner"));
   h.list.mockImplementation(async () => steps);
@@ -355,19 +354,11 @@ beforeEach(() => {
       outputs: current.outputs.flatMap((output, outputIndex) => output.result === null ? [] : [{ outputIndex, state: "pending" }]) } }));
   h.deliver.mockImplementation(async (value: unknown) => value);
   h.finish.mockImplementation(async (_taskId: string, completion: MiniToolExecutionCompletion) => ({ record: { status: completion.error === null ? "completed" : "failed" } }));
-  vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === "string" || input instanceof URL ? input.toString() : input.url;
-    if (url !== LEDGER_URL) return new Response("unexpected", { status: 500 });
-    if (ledgerFault === "reset") throw new TypeError("fetch failed: connection reset");
-    if (ledgerReadMs > 0) vi.setSystemTime(Date.now() + ledgerReadMs);
-    init?.signal?.throwIfAborted();
-    return new Response(ledgerBytes, { headers: { "content-type": "application/json" } });
-  }));
 });
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe("extract-frames and split run the frozen plan (§93 D5-1, D5-2, D5-4, D5-5; design §7.17, §5.4)", () => {
-  it("VT01 extract-frames: one run-batch job of the frozen batch, each frame recipe from the frozen ledger, every output delivered", async () => {
+  it("VT01 extract-frames: one run-batch job of the frozen batch, each frame recipe on the frozen grid, every output delivered", async () => {
     serve(plan("video.extract-frames"));
     const completion = await drive();
     expect(h.removal).not.toHaveBeenCalled();
@@ -375,13 +366,15 @@ describe("extract-frames and split run the frozen plan (§93 D5-1, D5-2, D5-4, D
     const [request] = submitted();
     expect(request).toMatchObject({ containerClass: "MiniToolContainerStd4", deadlineAt: DEADLINE, limits: LIMITS });
     expect(request!.inputs).toEqual([expect.objectContaining({ storageKey: SOURCE_KEY })]);
-    const inputId = request!.inputs[0]!.inputId;
-    // §7.17 「唯一写点：worker的配方构造」: the execution-level { frameIndex, pts } becomes the D4-3 frame recipe.
+    // §7.17 「唯一写点：worker的配方构造」: the execution-level grid frame becomes the frame recipe on the frozen tool source (W01).
+    const tool = toolInputOf(version, SOURCE_KEY);
     expect(request!.outputs.map(({ outputIndex, contentType, recipe }) => ({ outputIndex, contentType, recipe }))).toEqual([
-      { outputIndex: 0, contentType: "image/png", recipe: frameRecipeOf(LEDGER, { frameIndex: 0, pts: 0 }, inputId) },
-      { outputIndex: 1, contentType: "image/png", recipe: frameRecipeOf(LEDGER, { frameIndex: 48, pts: 1.92 }, inputId) },
+      { outputIndex: 0, contentType: "image/png", recipe: frameRecipeOf(version, tool, 0).recipe },
+      { outputIndex: 1, contentType: "image/png", recipe: frameRecipeOf(version, tool, 48).recipe },
     ]);
-    expect(h.advance.mock.calls.every((call) => (call[0] as OpenMiniToolPlanJobInput).chargeTo === "user")).toBe(true);
+    expect(request!.outputs[1]!.recipe).toMatchObject({ grid: tool.grid, source: { kind: "original", keyframes: version.toolSource.keyframes }, frameIndex: 48 });
+    // W02: the frozen payer, platform for frame extraction.
+    expect(h.advance.mock.calls.every((call) => (call[0] as OpenMiniToolPlanJobInput).chargeTo === "platform")).toBe(true);
     expect(statuses(completion)).toEqual(["registered", "registered"]);
     expect(completion!.outputs.map((output) => output.result)).toEqual(request!.outputs.map((output) => expect.objectContaining({
       status: "registered", assetId: asset(output.storageKey, false).id, kind: "image" })));
@@ -401,11 +394,12 @@ describe("extract-frames and split run the frozen plan (§93 D5-1, D5-2, D5-4, D
     const completion = await drive();
     expect(submitted().map((request) => request.jobId)).toEqual([batchId(0, 1)]);
     const [request] = submitted();
-    const inputId = request!.inputs[0]!.inputId;
     expect(request!.outputs.map(({ outputIndex, recipe }) => ({ outputIndex, recipe }))).toEqual([
-      { outputIndex: 0, recipe: segmentRecipesOf(LEDGER, { range: { start: 0, end: 1.92 } }, inputId, ENCODE, [{ start: 0, end: 48 }])[0] },
-      { outputIndex: 1, recipe: segmentRecipesOf(LEDGER, { range: { start: 1.92, end: 3.84 } }, inputId, ENCODE, [{ start: 48, end: 96 }])[0] },
+      { outputIndex: 0, recipe: segmentRecipesOf(version, SOURCE_KEY, { start: 0, end: 48 }, ENCODE, [{ start: 0, end: 48 }]).recipes[0] },
+      { outputIndex: 1, recipe: segmentRecipesOf(version, SOURCE_KEY, { start: 48, end: 96 }, ENCODE, [{ start: 48, end: 96 }]).recipes[0] },
     ]);
+    // W03: a split stays user-paid.
+    expect(h.advance.mock.calls.every((call) => (call[0] as OpenMiniToolPlanJobInput).chargeTo === "user")).toBe(true);
     expect(request!.outputs.every((output) => output.contentType.startsWith("video/"))).toBe(true);
     expect(statuses(completion)).toEqual(["registered", "registered"]);
   });
@@ -466,27 +460,38 @@ describe("per-output retries and delivery (§93 D5-3; design §7.11, §7.1.1)", 
   });
 });
 
-// D4-7 / §91 D3b-9: the run froze its receipt, so a ledger that fails it never recovers in this run. A transport failure
-// is not a content mismatch and keeps the normal retry.
-describe("the frozen full ledger of a run (§92 D4-7)", () => {
-  it.each(["video.extract-frames", "video.split"] as const)("VT08 %s: frozen ledger bytes that fail the receipt fail every output as source_ledger_invalid, nothing submitted", async (tool) => {
-    serve(plan(tool));
-    ledgerBytes = Buffer.concat([CFR96, Buffer.from(" ")]);
-    const completion = await drive();
-    expect(h.advance).not.toHaveBeenCalled(); expect(h.grants).not.toHaveBeenCalled();
-    expect(statuses(completion)).toEqual(["failed", "failed"]);
-    expect(JSON.stringify(completion!.error)).toContain("source_ledger_invalid");
-    expect(h.logger.error).toHaveBeenCalledWith(expect.objectContaining({ ctx: expect.objectContaining({ taskId: TASK,
-      toolInputId: (LEDGER as unknown as { toolInputId: string }).toolInputId }) }), expect.any(String));
-  });
-
-  it("VT09 a ledger read that fails in transport submits nothing and leaves the run to the queue retry", async () => {
+// §7.16: a version with an edit file is read from it; the original is bound beside it for a segment's audio (§4.4).
+describe("the frozen tool source of a run (§67.3 W01; design §7.16)", () => {
+  it("VT08 a version with an edit file: frames read the edit file alone; segments read it with the original bound for audio", async () => {
+    version = frozenVersion({ editKey: "video/source.edit.mp4" });
     serve(plan("video.extract-frames"));
-    ledgerFault = "reset";
-    const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
-    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toThrow();
-    expect(h.removal).not.toHaveBeenCalled();
-    expect(h.advance).not.toHaveBeenCalled(); expect(h.finish).not.toHaveBeenCalled();
+    await drive();
+    expect(submitted()[0]!.inputs).toEqual([{ inputId: SOURCE_INPUT_ID, storageKey: "video/source.edit.mp4" }]);
+    expect(submitted()[0]!.outputs[0]!.recipe).toMatchObject({ source: { kind: "edit" } });
+    vi.clearAllMocks();
+    h.advance.mockImplementation(advance); h.list.mockImplementation(async () => steps);
+    steps = [];
+    serve(plan("video.split"));
+    await drive();
+    const request = submitted()[0]!;
+    expect(request.inputs).toEqual([{ inputId: SOURCE_INPUT_ID, storageKey: "video/source.edit.mp4" }, { inputId: AUDIO_INPUT_ID, storageKey: SOURCE_KEY }]);
+    expect(request.outputs[0]!.recipe).toMatchObject({ kind: "segment", source: { kind: "edit" }, audio: true, audioInputId: AUDIO_INPUT_ID });
+  });
+});
+
+// §68 F01, frames-split §5.5: a video focus crop is the frame recipe of its grid frame with its rectangle in P.display,
+// one PNG on the panel node, paid by the platform.
+describe("a video focus crop (§68; design §5.5)", () => {
+  it("VF01 runs one run-batch job of its frame recipe with the crop, registers a FOCUS image and opens it with the frozen payer", async () => {
+    serve(plan("video.focus-crop"));
+    const completion = await drive();
+    const request = submitted()[0]!;
+    expect(request.outputs).toHaveLength(1);
+    expect(request.outputs[0]!.recipe).toEqual(frameRecipeOf(version, toolInputOf(version, SOURCE_KEY), 30, { x: 10, y: 20, width: 100, height: 50 }).recipe);
+    expect(request.outputs[0]!.recipe).toMatchObject({ crop: { sourceWidth: 320, sourceHeight: 180, rect: { x: 10, y: 20, width: 100, height: 50 } } });
+    expect((h.grants.mock.calls[0]![0] as GrantInput).outputs).toEqual([{ modality: "image", namePrefix: "FOCUS" }]);
+    expect((h.advance.mock.calls[0]![0] as OpenMiniToolPlanJobInput).chargeTo).toBe("platform");
+    expect(statuses(completion)).toEqual(["registered"]);
   });
 });
 
@@ -508,7 +513,7 @@ describe("progress commits and the caught exception (§93 D5-11)", () => {
 
 // §93 D5-10 (design §5.4 用户运行的两层编码, §7.15 块对象「拼接提交后」, §7.17 「产出都是不登记的中间对象」).
 describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)", () => {
-  const WHOLE = { kind: "segment" as const, range: { start: 0, end: 3.84 } };
+  const WHOLE = { kind: "segment" as const, range: { start: 0, end: 96 } };
   const CHUNKS = [{ start: 0, end: 48 }, { start: 48, end: 96 }];
   /**
    * The §5.4 id of a run chunk attempt.
@@ -520,13 +525,11 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
   const stitchId = (attempt = 1): string => videoContainerJobId({ kind: "run-stitch", taskId: TASK, output: 0, attempt });
 
   it("VC01 each frozen chunk window runs as an unregistered work object; the stitch binds them, registers the output and retires them", async () => {
-    // [0, 3.84) spans both cfr96 keyframes; its frozen windows start on them (0 and 48).
     serve(plan("video.split", { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 2, [WHOLE]));
     const completion = await drive();
     const opened = h.openPlan.mock.calls.map((call) => (call[0] as OpenMiniToolPlanJobInput));
     expect(opened.map((input) => input.request.jobId)).toEqual([chunkId(0), chunkId(1)]);
-    const inputId = opened[0]!.request.inputs[0]!.inputId;
-    const recipes = segmentRecipesOf(LEDGER, { range: WHOLE.range }, inputId, ENCODE, CHUNKS);
+    const { recipes } = segmentRecipesOf(version, SOURCE_KEY, WHOLE.range, ENCODE, CHUNKS);
     const keys = [chunkId(0), chunkId(1)].map((id) => videoPresentationWorkKeyFor(SOURCE_KEY, id));
     expect(opened.map((input) => ({ chargeTo: input.chargeTo, key: input.request.outputs[0]!.storageKey, recipe: input.request.outputs[0]!.recipe, containerClass: input.request.containerClass })))
       .toEqual([0, 1].map((k) => ({ chargeTo: "user", key: keys[k], recipe: recipes[k], containerClass: "MiniToolContainerStd4" })));
@@ -556,7 +559,7 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
   });
 
   it("VC02 a chunk whose attempts are exhausted fails only its own segment; another segment is delivered and no stitch runs", async () => {
-    // Output 1 [1.92, 3.84) overlaps output 0 only so that both start on a cfr96 keyframe (48); the runner does not care.
+    // Output 1 [48, 96) overlaps output 0; the runner does not care.
     serve(plan("video.split", { batches: [[1]], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 0, [WHOLE, RECIPES["video.split"][1]!]));
     scripted.set(chunkId(1), { written: [], state: "failed" });
     const completion = await drive();
@@ -641,9 +644,7 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
 // MP4. This round's choice of the grant input (may be vetoed): `{ modality: "video", namePrefix, container: "webm" }`.
 describe("the container of a split output follows the plan's alpha (§93 D5-12)", () => {
   it("VW01 a transparent source's segments are granted, declared and registered as WebM", async () => {
-    const transparent = JSON.parse(CFR96.toString("utf8")) as { plan: { policy: { emptyFill: string } } };
-    transparent.plan.policy.emptyFill = "transparent";
-    ledgerBytes = Buffer.from(JSON.stringify(transparent));
+    version = frozenVersion({ transparent: true });
     serve(plan("video.split"));
     const completion = await drive();
     expect((h.grants.mock.calls[0]![0] as GrantInput).outputs).toEqual([0, 1].map(() => expect.objectContaining({ modality: "video", container: "webm" })));
@@ -666,16 +667,11 @@ describe("the container of a split output follows the plan's alpha (§93 D5-12)"
 // §93 D5-12 (frames-split design §7.17 segment row 「超过一个块份额时按§5.4分块，chunk_encode用同样的条目写法」): the chunks of an
 // oversized segment are encoded for the same output, so a transparent source's chunk work objects are declared WebM too.
 describe("the container of an oversized segment's chunks follows the plan's alpha (§93 D5-12)", () => {
-  const WHOLE = { kind: "segment" as const, range: { start: 0, end: 3.84 } };
-  // [0, 3.84) spans both cfr96 keyframes; the frozen windows start on them (0 and 48).
+  const WHOLE = { kind: "segment" as const, range: { start: 0, end: 96 } };
   const CHUNKS = [{ start: 0, end: 48 }, { start: 48, end: 96 }];
 
   it.each([["transparent", "video/webm", "webm-vp9"], ["opaque", "video/mp4", "mp4-h264"]] as const)("VW03 a %s source's run-chunk work objects are declared %s", async (alpha, contentType, format) => {
-    if (alpha === "transparent") {
-      const transparent = JSON.parse(CFR96.toString("utf8")) as { plan: { policy: { emptyFill: string } } };
-      transparent.plan.policy.emptyFill = "transparent";
-      ledgerBytes = Buffer.from(JSON.stringify(transparent));
-    }
+    if (alpha === "transparent") version = frozenVersion({ transparent: true } satisfies VersionFields);
     serve(plan("video.split", { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 2, [WHOLE]));
     await drive();
     const chunks = h.openPlan.mock.calls.map((call) => (call[0] as OpenMiniToolPlanJobInput).request.outputs[0]!);
@@ -689,7 +685,7 @@ describe("the container of an oversized segment's chunks follows the plan's alph
 // An attempt due after the run's deadline ends its step as expired instead of throwing for the whole pickup, so the other
 // outputs of the same pickup settle; and an output registered in a pickup that then throws stays registered.
 describe("an attempt due after the deadline and an output registered before a throw", () => {
-  const WHOLE = { kind: "segment" as const, range: { start: 0, end: 3.84 } };
+  const WHOLE = { kind: "segment" as const, range: { start: 0, end: 96 } };
   const CHUNKS = [{ start: 0, end: 48 }, { start: 48, end: 96 }];
   const LAYOUT = { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }, { outputIndex: 1, chunks: [{ start: 48, end: 96 }] }] };
   const RECIPES2 = [WHOLE, RECIPES["video.split"][1]!];
@@ -840,19 +836,6 @@ describe("an attempt due after the deadline and an output registered before a th
     const completion = await drive();
     expect(statuses(completion)).toEqual(["failed", "registered"]);
     expect(completion!.outputs[0]!.result).toEqual({ status: "failed", error: { code: "expired" } });
-  });
-
-  // Reading the frozen ledger starts no new work, so a read started 1 ms before the reporting window ends is not cut at it.
-  it("DL11 a pickup whose ledger read starts 1 ms before the reporting window ends registers the batches that reported done", async () => {
-    serve(plan("video.split", { batches: [[0], [1]], encodes: [] }, 1));
-    scripted.set(batchId(0, 1), "running"); scripted.set(batchId(1, 1), "running");
-    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
-    scripted.delete(batchId(0, 1)); scripted.delete(batchId(1, 1));
-    vi.setSystemTime(DEADLINE + 2 * 5000 - 1);
-    ledgerReadMs = 5;
-    const completion = await drive();
-    expect(statuses(completion)).toEqual(["registered", "registered"]);
-    expect(completion!.error).toBeNull();
   });
 
   it("DL04 an output registered in a pickup that then throws stays registered in the terminal commit", async () => {

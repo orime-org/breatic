@@ -38,6 +38,8 @@ vi.mock("@breatic/domain", async (original) => {
 });
 vi.mock("@worker/handlers/mini-tool/execution-completion.js", async (original) => ({ ...await original<Record<string, unknown>>(), finishMiniToolExecutionAndNotify: h.finish }));
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }));
+// A run's end abandons its unresolved model steps through the step store; these cases hold no model step.
+vi.mock("@worker/handlers/mini-tool/run-end.js", () => ({ abandonUnresolvedModelSteps: async () => undefined }));
 vi.mock("@worker/handlers/mini-tool/run-remove-background.js", () => ({ runMiniToolRemoveBackground: h.removal }));
 vi.mock("@worker/handlers/mini-tool/run-video-tool.js", () => ({ runMiniToolVideoTool: h.videoTool }));
 vi.mock("@worker/handlers/mini-tool/run-lip-sync.js", () => ({ runMiniToolLipSync: h.lipSync }));

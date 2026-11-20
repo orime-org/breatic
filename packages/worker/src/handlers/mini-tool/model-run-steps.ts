@@ -9,27 +9,26 @@
 import { z } from "zod";
 import { getMiniToolsConfig, getWorkerConfig, logger } from "@breatic/core";
 import {
-  appendMiniToolStepDeliveredCosts, backendUploadService, clearStepSending, endMiniToolModelStep, getStepTicket, markStepSending, MINI_TOOL_MODEL_ROUTE,
+  appendMiniToolStepDeliveredCosts, backendUploadService, clearStepSending, endMiniToolModelStep, getStepTicket, markStepSending,
   miniToolStepStateSchema, openContainerOutputs, openMiniToolPlanJob, recordMiniToolStepResult, recordStepSendNotAccepted, storeStepTicket, taskRepo,
-  upstreamCloneRepo, upstreamStepRepo, type RecordMiniToolStepResultInput,
+  upstreamCloneRepo, upstreamStepRepo, type MiniToolModelRoute, type RecordMiniToolStepResultInput,
 } from "@breatic/domain";
 import {
   DeadlinePassed, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type MiniToolPlanExact, type MiniToolPlanJobRequest,
-  type MiniToolPlanRecipe, type MiniToolPlanTarget, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
+  type MiniToolPlanRecipe, type MiniToolPlanTarget,
 } from "@breatic/shared";
 import type { EraseFailureReason, ExpandFailureReason, LipsyncFailureReason, MiniToolExecutionRegistered } from "@breatic/shared/mini-tools";
 import { lipsyncFailureReason, type LipsyncPersonState, type LipsyncPersonStep } from "@worker/handlers/mini-tool/lipsync-steps.js";
-import { advanceMiniToolPlanJob, planReadUntil, type EndedMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
+import { advanceMiniToolPlanJob, type EndedMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { appendStep, stepWorkKey } from "@worker/handlers/mini-tool/prepare-model-input.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { registered } from "@worker/handlers/mini-tool/run-video-tool.js";
-import { chunkInputId, FullLedgerInvalid, readJobLedger, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
+import { chunkInputId, stitchOf, windowOf, type ToolInput } from "@worker/handlers/video-presentation-recipes.js";
 import { costsOf, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed } from "@breatic/provider";
 import type { MediaInput } from "@breatic/provider/media";
 import { MediaRunFailed, runMedia, type MediaRunDeps, type MediaRunDone } from "@worker/handlers/media-run.js";
 import { mediaRunner, sourceOf } from "@worker/handlers/model-task.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
-import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 
 /** A model's configured asynchronous rejection field: a dot path into the structured error and the value it holds. */
@@ -305,6 +304,8 @@ export interface GenerateStep {
   contentType: string;
   /** The call in our param names and the prompt, read when the step's ticket is first planned. */
   input: () => Promise<MediaInput>;
+  /** The route frozen into the run's plan at admission. */
+  route: MiniToolModelRoute;
   /** The model's configured asynchronous rejection, for `modelStepCategory`. */
   rejection?: ModelAsyncRejection;
   /** The failure category of what the step's run threw, `modelStepCategory` with `rejection` when absent. */
@@ -315,16 +316,17 @@ export interface GenerateStep {
  * The dependencies `runMedia` reads a model step's run with: the step row holds its ticket and send mark.
  * @param taskId - The run's task.
  * @param deadlineAt - The run's deadline.
+ * @param upstream - The upstream of the run's frozen route, recorded with each send mark.
  * @returns The dependencies.
  */
-function stepRunDeps(taskId: string, deadlineAt: number): MediaRunDeps {
+function stepRunDeps(taskId: string, deadlineAt: number, upstream: string): MediaRunDeps {
   return {
     // Built on first use: this process's one runner holds each upstream's concurrency.
     get runner() { return mediaRunner(); },
     tickets: {
       getProviderTicket: (stepId: string) => getStepTicket(taskId, stepId),
       storeTicket: (stepId: string, ticket: { version: number } & Record<string, unknown>) => storeStepTicket(taskId, stepId, ticket),
-      markSending: (stepId: string) => markStepSending(taskId, stepId, deadlineAt),
+      markSending: (stepId: string) => markStepSending(taskId, stepId, deadlineAt, upstream),
       clearSending: (stepId: string) => clearStepSending(taskId, stepId),
     },
     clones: upstreamCloneRepo,
@@ -369,6 +371,8 @@ async function fetchReturned(run: ModelStepRun, planned: GenerateStep, stepId: s
 /** A model step's call: the catalog model, its input in our names and how its failures are classified. */
 export interface ModelStepCall {
   model: string;
+  /** The route frozen into the run's plan at admission. */
+  route: MiniToolModelRoute;
   input: () => Promise<MediaInput>;
   category: (error: unknown) => string;
 }
@@ -396,8 +400,8 @@ export async function runModelStep(taskId: string, step: Step, call: ModelStepCa
   try {
     done = await runMedia({
       taskId: step.id, studioId: null, model: call.model, displayName: call.model,
-      input: () => call.input(), route: MINI_TOOL_MODEL_ROUTE, deadlineAt, outputCount: 1, lastAttempt: false,
-    }, stepRunDeps(taskId, deadlineAt));
+      input: () => call.input(), route: call.route, deadlineAt, outputCount: 1, lastAttempt: false,
+    }, stepRunDeps(taskId, deadlineAt, call.route.upstream));
   } catch (error) {
     if (error instanceof StillRunning) throw error;
     if (error instanceof MediaRunFailed) {
@@ -457,7 +461,7 @@ export async function advanceGenerate(run: ModelStepRun, planned: GenerateStep, 
     return { failed: ended?.category ?? (typeof state?.error?.code === "string" ? state.error.code : "failed") };
   }
   const answered = await runModelStep(run.taskId, step, {
-    model: planned.model, input: planned.input,
+    model: planned.model, route: planned.route, input: planned.input,
     category: (error) => planned.category?.(error) ?? modelStepCategory(error, planned.rejection),
   }, deadlineAt, run.log);
   if ("failed" in answered) return answered;
@@ -586,7 +590,7 @@ export function alignedSpanStart(start: MiniToolPlanExact, opening: MiniToolPlan
  * The reduced exact time of seconds written in decimal.
  * @param seconds - The seconds.
  * @returns The exact time.
- * @throws {RangeError} When the number is negative, not finite or only writable in exponent form.
+ * @throws {RangeError} When the number is negative, not finite, only writable in exponent form or past safe integers.
  */
 export function exactSeconds(seconds: number): MiniToolPlanExact {
   const text = String(seconds);
@@ -597,27 +601,9 @@ export function exactSeconds(seconds: number): MiniToolPlanExact {
   let [a, b] = [numerator, denominator];
   while (b !== 0n) [a, b] = [b, a % b];
   const divisor = a === 0n ? denominator : a;
-  return { numerator: String(numerator / divisor), denominator: String(denominator / divisor) };
-}
-
-/**
- * Read a run's frozen full ledger; one that fails its receipt fails the run (§91 D3b-9). Reading it starts no new work, so it
- * is read after the deadline too, and a pickup then still reads the jobs submitted before it (`planReadUntil`).
- * @param run - The run.
- * @param receipt - The frozen receipt.
- * @param deadlineAt - The task deadline.
- * @returns The ledger.
- * @throws {MiniToolStepFailed} With `source_ledger_invalid` when the ledger fails its receipt.
- * @throws {Error} When the read fails in transport.
- */
-export async function runLedger(run: ModelStepRun, receipt: VideoPresentationLedgerReceipt, deadlineAt: number): Promise<VideoPresentationLedger> {
-  try {
-    return await readJobLedger(receipt, planReadUntil(deadlineAt));
-  } catch (error) {
-    if (!(error instanceof FullLedgerInvalid)) throw error;
-    logger.error({ err: error, ctx: { taskId: run.taskId } }, `mini_tool_${run.log}_ledger_invalid`);
-    throw new MiniToolStepFailed("source_ledger_invalid");
-  }
+  const exact = { numerator: Number(numerator / divisor), denominator: Number(denominator / divisor) };
+  if (!Number.isSafeInteger(exact.numerator) || !Number.isSafeInteger(exact.denominator)) throw new RangeError(`${text} seconds have no exact safe-integer form`);
+  return exact;
 }
 
 /**
@@ -757,7 +743,8 @@ export interface ClipStep {
   /** One window for a clip prepared whole; a reversed clip's chunks in source order. */
   windows: readonly { start: number; end: number }[];
   order: "forward" | "reverse";
-  ledger: VideoPresentationLedger;
+  /** The frozen tool source the clip's grid frames are read from (§7.16). */
+  input: ToolInput;
   target: MiniToolPlanTarget;
   /** The failed line of a job that failed for good. */
   failed: (reason: string) => StepEnded;
@@ -775,7 +762,8 @@ export interface ClipStep {
  * @throws {Error} When persistence or the job boundary fails.
  */
 export async function advanceClip(run: ModelStepRun, planned: ClipStep, deadlineAt: number): Promise<StepEnded> {
-  const { ledger, target, windows, order } = planned;
+  const { input, target, windows, order } = planned;
+  const source = input.inputs.slice(0, 1);
   /**
    * The job preparing one window of the clip.
    * @param window - The window.
@@ -786,15 +774,16 @@ export async function advanceClip(run: ModelStepRun, planned: ClipStep, deadline
    * @throws {never} Never.
    */
   const prepare = (window: { start: number; end: number }, stepKey: string): ContainerStep => ({ stepKey, contentType: "video/mp4", failed: planned.failed,
-    build: () => Promise.resolve({ recipe: { kind: "prepare_model_input", inputId: SOURCE_INPUT_ID, window, timescale: ledger.plan.presentation.timescale,
-      entries: windowEntries(ledger, window), target, audio: null, order }, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: run.sourceKey }] }) });
+    build: () => Promise.resolve({ recipe: { kind: "prepare_model_input", ...windowOf(input, window, target), audio: false, order }, inputs: source }) });
   if (windows.length === 1) return advanceContainer(run, prepare(windows[0]!, planned.stepKey), deadlineAt);
   // A chunk's key is the clip's with its index, so no chunk is found again as the whole clip.
   const chunks = await advanceChunks(run, windows.map((window, k) => prepare(window, `${planned.stepKey}.c${k}`)), deadlineAt);
   if (!("keys" in chunks)) return chunks;
-  const latestFirst = windows.map((window, k) => ({ window, key: chunks.keys[k]! })).reverse();
+  // Latest chunk first; each names the slots it fills in the reversed clip, laid on the clip's own frames so they tile it
+  // in order: source frames [a, b) of the clip [s, e) are its played slots [e − b, e − a), named from s.
+  const [first, last] = [windows[0]!.start, windows.at(-1)!.end];
+  const latestFirst = windows.map((window, k) => ({ played: { start: first + last - window.end, end: first + last - window.start }, key: chunks.keys[k]! })).reverse();
   return advanceContainer(run, { stepKey: planned.stepKey, contentType: "video/mp4", failed: planned.failed,
-    build: () => Promise.resolve({ recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, target, audio: null,
-      chunks: latestFirst.map((chunk, at) => ({ inputId: chunkInputId(at), duration: windowDuration(ledger, chunk.window) })) },
-    inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: run.sourceKey }, ...latestFirst.map((chunk, at) => ({ inputId: chunkInputId(at), storageKey: chunk.key }))] }) }, deadlineAt);
+    build: () => Promise.resolve({ recipe: stitchOf(input, latestFirst.map((chunk) => chunk.played), target, false),
+      inputs: [...source, ...latestFirst.map((chunk, at) => ({ inputId: chunkInputId(at), storageKey: chunk.key }))] }) }, deadlineAt);
 }

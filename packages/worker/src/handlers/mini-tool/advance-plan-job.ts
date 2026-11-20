@@ -25,7 +25,7 @@ export function planReportingEnd(deadlineAt: number): number {
 }
 
 /**
- * The bound of a read of what already exists (a job's report, a run's frozen ledger, a registered result): the reporting
+ * The bound of a read of what already exists (a job's report, a registered result): the reporting
  * window or the transport's own bound, whichever ends later. Reading what is stored starts no new work, so a read started
  * just before the window ends is never cut at it; whether a job still running then has expired is the caller's check after
  * the read.

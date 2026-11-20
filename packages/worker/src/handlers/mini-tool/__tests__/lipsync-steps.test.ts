@@ -26,10 +26,11 @@
  *   its `detectionNumber`, successful people left out, valid under shared `lipsyncFailureReasonSchema`.
  */
 import { describe, expect, it } from "vitest";
-import { DeadlinePassed, HttpRetryError } from "@breatic/shared";
+import { DeadlinePassed } from "@breatic/shared";
+import { NoUpstreamAvailable, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@breatic/provider";
 import * as miniTools from "@breatic/shared/mini-tools";
 import { stepObjectKey } from "@worker/handlers/mini-tool/model-run-steps.js";
-import { HttpStatusError, UpstreamTaskFailed } from "@worker/providers/http.js";
+import { MediaRunFailed } from "@worker/handlers/media-run.js";
 
 type Category = "no_face" | "model_rejected" | "timeout" | "failed" | "stopped";
 type PersonStep = "track" | "faces" | "clip" | "stem" | "gen";
@@ -53,30 +54,57 @@ const steps = async (): Promise<StepsApi> => (await import(/* @vite-ignore */ MO
 const reasonSchema = (miniTools as unknown as { lipsyncFailureReasonSchema: { safeParse: (value: unknown) => { success: boolean } } }).lipsyncFailureReasonSchema;
 
 /**
+ * A run provider answered failed, as `runMedia` throws it.
+ * @param reason - provider's reason.
+ * @returns The error.
+ */
+function failed(reason: Error): MediaRunFailed {
+  return new MediaRunFailed(reason, [], "Model");
+}
+
+/**
+ * A refusal of the submit with a status.
+ * @param status - The status.
+ * @returns The error.
+ */
+function refused(status: number): MediaRunFailed {
+  return failed(new UpstreamRequestRejected("m", "wavespeed", "refused", [], { status }));
+}
+
+/**
+ * A run every upstream failed for one reason.
+ * @param reason - Why.
+ * @returns The error.
+ */
+function unavailable(reason: UnavailableReason): MediaRunFailed {
+  return failed(new NoUpstreamAvailable("m", [reason]));
+}
+
+/**
  * An asynchronous model failure carrying the upstream's error value.
  * @param value - The structured error.
  * @returns The error.
  */
-function asyncFailure(value: unknown): UpstreamTaskFailed {
-  return Object.assign(new UpstreamTaskFailed("wavespeed", JSON.stringify(value)), { structuredError: value });
+function asyncFailure(value: unknown): MediaRunFailed {
+  return failed(new UpstreamTaskFailed("wavespeed", JSON.stringify(value), value));
 }
 const REJECTION = { path: "code", equals: "face_not_detected" };
 
 describe("model step failure categories (§97; execution design §9.4 category table)", () => {
   it.each([
-    ["gen refused at submit with 400", "gen", new HttpStatusError("wavespeed", 400, "{}"), REJECTION, "model_rejected"],
-    ["gen refused at submit with 422", "gen", new HttpStatusError("wavespeed", 422, "{}"), REJECTION, "model_rejected"],
-    ["track refused with 400 is not a model rejection", "track", new HttpStatusError("wavespeed", 400, "{}"), undefined, "failed"],
+    ["gen refused at submit with 400", "gen", refused(400), REJECTION, "model_rejected"],
+    ["gen refused at submit with 422", "gen", refused(422), REJECTION, "model_rejected"],
+    ["track refused with 400 is not a model rejection", "track", refused(400), undefined, "failed"],
     ["gen failing with the configured rejection field", "gen", asyncFailure({ code: "face_not_detected" }), REJECTION, "model_rejected"],
     ["gen failing at a nested rejection path", "gen", asyncFailure({ detail: { reason: "no_speaker" } }), { path: "detail.reason", equals: "no_speaker" }, "model_rejected"],
     ["gen failing with another structured error", "gen", asyncFailure({ code: "internal" }), REJECTION, "failed"],
     ["gen failing when the model has no rejection field", "gen", asyncFailure({ code: "face_not_detected" }), undefined, "failed"],
     ["text that reads like a rejection is not guessed", "gen", asyncFailure("face_not_detected"), REJECTION, "failed"],
     ["a passed deadline", "gen", new DeadlinePassed(), REJECTION, "timeout"],
-    ["exhausted network retries", "track", new HttpRetryError("POST https://api.example.test", 3, new TypeError("fetch failed")), undefined, "timeout"],
-    ["a 408", "gen", new HttpStatusError("wavespeed", 408, ""), REJECTION, "timeout"],
-    ["a 429", "gen", new HttpStatusError("wavespeed", 429, ""), REJECTION, "timeout"],
-    ["a 503", "track", new HttpStatusError("wavespeed", 503, ""), undefined, "timeout"],
+    ["exhausted network retries", "track", unavailable({ upstream: "wavespeed", kind: "failed", failure: "not_sent" }), undefined, "timeout"],
+    ["a 408", "gen", unavailable({ upstream: "wavespeed", kind: "failed", failure: "http_status", status: 408 }), REJECTION, "timeout"],
+    ["a 429", "gen", unavailable({ upstream: "wavespeed", kind: "failed", failure: "http_status", status: 429 }), REJECTION, "timeout"],
+    ["a 503", "track", unavailable({ upstream: "wavespeed", kind: "failed", failure: "http_status", status: 503 }), undefined, "timeout"],
     ["any other error", "gen", new Error("boom"), REJECTION, "failed"],
   ] as const)("SC01 %s", async (_name, step, error, rejection, category) => {
     expect((await steps()).lipsyncStepCategory(step, error, rejection)).toBe(category);

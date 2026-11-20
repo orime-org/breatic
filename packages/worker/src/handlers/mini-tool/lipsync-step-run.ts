@@ -23,13 +23,12 @@ import { getMiniToolsConfig, getStorageAdapter, logger } from "@breatic/core";
 import {
   lipsyncPersonStepKeys, type AcceptedMiniToolExecution, type LipSyncPersonStep,
 } from "@breatic/domain";
-import { type MiniToolPlanExact, type MiniToolPlanJobRequest, type MiniToolPlanTarget, type VideoPresentationLedger } from "@breatic/shared";
-import { lipsyncChunkSourceWindow, trackingClips, type MiniToolExecutionRegistered, type TrackingClips } from "@breatic/shared/mini-tools";
+import type { MiniToolPlanJobRequest, MiniToolPlanTarget } from "@breatic/shared";
+import { trackingClips, type MiniToolExecutionRegistered, type TrackingClips } from "@breatic/shared/mini-tools";
 import { lipsyncFacesFailureLine, lipsyncStepCategory, lipsyncTrackJoinFailureLine } from "@worker/handlers/mini-tool/lipsync-steps.js";
 import { advanceChunks, advanceClip, advanceContainer, advanceGenerate, advanceRegistered, exactSeconds, runsOf, type ContainerStep, type ModelStepRun, type StepEnded } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { prepareModelInput, preparedRequest, type PreparingRun } from "@worker/handlers/mini-tool/prepare-model-input.js";
-import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
-import { chunkInputId, FullLedgerInvalid, modelInputTarget, readJobLedger, segmentTarget, SOURCE_INPUT_ID, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
+import { chunkInputId, chunkRefsOf, gridOf, modelInputTarget, segmentTarget, toolInputOf, windowOf } from "@worker/handlers/video-presentation-recipes.js";
 import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 
@@ -133,39 +132,6 @@ async function preparedOf(execution: LipSync): Promise<MiniToolPlanJobRequest> {
 }
 
 /**
- * Read the frozen full ledger; one that fails its receipt fails the run (§91 D3b-9). Reading it starts no new work, so it is
- * read after the deadline too, and a pickup then still reads the jobs submitted before it (`planReadUntil`).
- * @param execution - The frozen run.
- * @param deadlineAt - The task deadline.
- * @returns The ledger.
- * @throws {MiniToolStepFailed} With `source_ledger_invalid` when the ledger fails its receipt.
- * @throws {Error} When the read fails in transport.
- */
-async function ledgerOf(execution: LipSync, deadlineAt: number): Promise<VideoPresentationLedger> {
-  try {
-    return await readJobLedger(execution.ledgerReceipts.source, planReadUntil(deadlineAt));
-  } catch (error) {
-    if (!(error instanceof FullLedgerInvalid)) throw error;
-    logger.error({ err: error, ctx: { taskId: execution.taskId } }, "mini_tool_lipsync_ledger_invalid");
-    throw new MiniToolStepFailed("source_ledger_invalid");
-  }
-}
-
-/**
- * A reduced exact fraction.
- * @param numerator - The numerator.
- * @param denominator - The positive denominator.
- * @returns The exact time.
- * @throws {never} Never.
- */
-function exact(numerator: bigint, denominator: bigint): MiniToolPlanExact {
-  let [a, b] = [numerator < 0n ? -numerator : numerator, denominator];
-  while (b !== 0n) [a, b] = [b, a % b];
-  const divisor = a === 0n ? denominator : a;
-  return { numerator: String(numerator / divisor), denominator: String(denominator / divisor) };
-}
-
-/**
  * A person of the frozen run and its frozen step keys (DD §7.1 persons row).
  * @param execution - The frozen run.
  * @param personId - The person.
@@ -244,7 +210,7 @@ async function clipVideo(execution: LipSync, order: "forward" | "reverse", deadl
   const { target } = prepared.outputs[0]!.recipe as { target: MiniToolPlanTarget };
   const windows = execution.layout.tracking[order];
   return await advanceClip(stepRun(execution), { stepKey: sharedKeyOf(execution, order === "forward" ? "prepare:fwd" : "prepare:rev"), windows, order,
-    ledger: await ledgerOf(execution, deadlineAt), target: { ...target, format: undefined }, failed: () => ({ failed: "failed", step: "prepare" }) }, deadlineAt) as Ended;
+    input: toolInputOf(execution.presentations.source, execution.sourceKey), target: { ...target, format: undefined }, failed: () => ({ failed: "failed", step: "prepare" }) }, deadlineAt) as Ended;
 }
 
 /**
@@ -267,7 +233,7 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
     case "track:rev": {
       const order = kind === "track:fwd" ? "forward" : "reverse";
       // The RLE answer is JSON text, which the Worker names by its bytes: signature-less text reads as text/plain.
-      const ended = await advanceGenerate(stepRun(execution), { model: execution.tracking.model, itemIndex: index * 2 + (order === "forward" ? 0 : 1),
+      const ended = await advanceGenerate(stepRun(execution), { route: execution.route, model: execution.tracking.model, itemIndex: index * 2 + (order === "forward" ? 0 : 1),
         stepKey: keyOf(keys, kind), contentType: "text/plain", category: (error) => lipsyncStepCategory("track", error, undefined),
         input: async () => {
           const video = await clipVideo(execution, order, deadlineAt);
@@ -304,12 +270,11 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
       }, (reason) => { const line = lipsyncFacesFailureLine(reason); return { failed: line.category as Category, step: line.step }; }, deadlineAt);
     case "clip":
       return personContainer(execution, keyOf(keys, "clip"), "video/mp4", async () => {
-        const ledger = await ledgerOf(execution, deadlineAt);
         const inputs = [{ inputId: PREPARED, storageKey: (await preparedOf(execution)).outputs[0]!.storageKey },
           { inputId: inputOf(FACES, 0), storageKey: await objectOf(execution, personId, "faces", userId, deadlineAt) },
           { inputId: inputOf(TRACK, 0), storageKey: await objectOf(execution, personId, "track_join", userId, deadlineAt) }];
         return { recipe: { kind: "lipsync_clip", inputId: PREPARED, faces: inputOf(FACES, 0), track: inputOf(TRACK, 0), cropSize: execution.cropSize,
-          timeline: execution.timeline, table: ledger.plan.presentation, encode: execution.container.encode }, inputs };
+          timeline: execution.timeline, grid: gridOf(execution.presentations.source), encode: execution.container.encode }, inputs };
       }, () => ({ failed: "failed" }), deadlineAt);
     case "stem":
       return personContainer(execution, keyOf(keys, "stem"), "audio/mp4", async () => {
@@ -325,7 +290,7 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
       }, () => ({ failed: "failed" }), deadlineAt);
     case "gen": {
       const model = getMiniToolsConfig().executions["video.lip-sync"]?.models.find((candidate) => candidate.name === execution.generator.modelId);
-      const ended: StepEnded = await advanceGenerate(stepRun(execution), { model: execution.generator.modelId, itemIndex: index, stepKey: keyOf(keys, "gen"),
+      const ended: StepEnded = await advanceGenerate(stepRun(execution), { route: execution.route, model: execution.generator.modelId, itemIndex: index, stepKey: keyOf(keys, "gen"),
         contentType: "video/mp4", category: (error) => lipsyncStepCategory("gen", error, model?.async_rejection),
         input: async () => ({ prompt: "", params: {
           video: storage.publicUrl(await objectOf(execution, personId, "clip", userId, deadlineAt)),
@@ -351,10 +316,11 @@ async function personStep(execution: LipSync, kind: LipSyncPersonStep, personId:
  */
 async function composite(execution: LipSync, userId: string, deadlineAt: number): Promise<{ keys: string[] } | { failed: Category; expired?: true }> {
   // A transparent original's chunks are VP9 WebM with alpha, as its stitch is (§7.17 lipsync_composite row, §4.3).
-  const ledger = await ledgerOf(execution, deadlineAt);
-  const target = segmentTarget(ledger, execution.container.encode);
+  const version = execution.presentations.source;
+  const tool = toolInputOf(version, execution.sourceKey);
+  const target = segmentTarget(version, execution.container.encode);
   // The prepared video the tracks and face tables are in, as the preparation encoded it (§5.3 model-input row).
-  const { width, height, displayRect } = modelInputTarget(ledger, execution.container.encode);
+  const { width, height, displayRect } = modelInputTarget(version, execution.container.encode);
   // Every chunk advances in each pickup and the composite settles once none still runs (frames-split §5.4 parallel stage).
   const ended = await advanceChunks(stepRun(execution), execution.layout.composite.map((window, chunk): ContainerStep => ({
     stepKey: sharedKeyOf(execution, `composite:${chunk}`), contentType: target.format === "webm-vp9" ? "video/webm" : "video/mp4",
@@ -363,11 +329,11 @@ async function composite(execution: LipSync, userId: string, deadlineAt: number)
         ids: { result: inputOf(RESULT, at), faces: inputOf(FACES, at), track: inputOf(TRACK, at) },
         keys: { result: await objectOf(execution, person.personId, "gen", userId, deadlineAt), faces: await objectOf(execution, person.personId, "faces", userId, deadlineAt),
           track: await objectOf(execution, person.personId, "track_join", userId, deadlineAt) } })));
-      return { recipe: { kind: "lipsync_composite", inputId: SOURCE_INPUT_ID, window: { start: window.start, end: window.end }, timescale: ledger.plan.presentation.timescale,
-        entries: windowEntries(ledger, lipsyncChunkSourceWindow(execution.timeline, ledger.plan.presentation, window)), target,
-        timeline: execution.timeline, table: ledger.plan.presentation, persons: persons.map((person) => ({ ...person.ids, cropSize: execution.cropSize })),
+      // The chunk's frames are result frames; the container maps each through the timeline to the grid frame it shows (§7.17).
+      return { recipe: { kind: "lipsync_composite", ...windowOf(tool, window, target),
+        timeline: execution.timeline, persons: persons.map((person) => ({ ...person.ids, cropSize: execution.cropSize })),
         rawDiskBytes: execution.container.rawDiskBytes, feather: execution.faceFeather, prepared: { width, height, displayRect } },
-      inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...persons.flatMap((person) => (["result", "faces", "track"] as const)
+      inputs: [...tool.inputs.slice(0, 1), ...persons.flatMap((person) => (["result", "faces", "track"] as const)
         .map((role) => ({ inputId: person.ids[role], storageKey: person.keys[role] })))] };
     } })), deadlineAt);
   return "keys" in ended ? ended : { failed: ended.failed as Category, ...expiryOf(ended) };
@@ -385,17 +351,15 @@ async function composite(execution: LipSync, userId: string, deadlineAt: number)
 async function stitch(execution: LipSync, userId: string, deadlineAt: number): Promise<LipSyncStepOutcome> {
   const chunks = await composite(execution, userId, deadlineAt);
   if (!("keys" in chunks)) return { state: "failed", step: "stitch", category: chunks.failed, ...expiryOf(chunks) };
-  const ledger = await ledgerOf(execution, deadlineAt);
-  const target = segmentTarget(ledger, execution.container.encode);
+  const version = execution.presentations.source;
+  const tool = toolInputOf(version, execution.sourceKey);
+  const target = segmentTarget(version, execution.container.encode);
   const done = await advanceRegistered(stepRun(execution), { stepKey: sharedKeyOf(execution, "stitch"), namePrefix: "LIPSYNC", container: target.format === "webm-vp9" ? "webm" : "mp4",
     build: async () => {
-      const table = ledger.plan.presentation;
-      const step0 = table.runs[0]!.step;
       const stems = await Promise.all(execution.persons.map(async (person) => objectOf(execution, person.personId, "stem", userId, deadlineAt)));
-      return { recipe: { kind: "stitch", inputId: SOURCE_INPUT_ID, target,
-        chunks: execution.layout.composite.map((window, chunk) => ({ inputId: chunkInputId(chunk), duration: exact(BigInt((window.end - window.start) * step0), BigInt(table.timescale)) })),
+      return { recipe: { kind: "stitch", inputId: tool.inputId, grid: tool.grid, target, chunks: chunkRefsOf(execution.layout.composite),
         audio: { kind: "mix", inputs: stems.map((_key, at) => inputOf(STEM, at)) } },
-      inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: execution.sourceKey }, ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey })),
+      inputs: [...tool.inputs.slice(0, 1), ...chunks.keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey })),
         ...stems.map((storageKey, at) => ({ inputId: inputOf(STEM, at), storageKey }))] };
     } }, userId, deadlineAt);
   return "failed" in done ? { state: "failed", step: "stitch", category: "failed", ...expiryOf(done) } : { state: "done", result: done };
@@ -414,7 +378,7 @@ export async function runLipSyncStep(execution: unknown, step: LipSyncStep, user
   const run = execution as LipSync;
   try {
     if (step.kind === "prepare") {
-      const preparing: PreparingRun = { taskId: run.taskId, projectId: run.projectId, sourceKey: run.sourceKey, ledgerReceipts: run.ledgerReceipts, presentationRef: run.presentationRef,
+      const preparing: PreparingRun = { taskId: run.taskId, projectId: run.projectId, sourceKey: run.sourceKey, presentations: run.presentations, presentationRef: run.presentationRef,
         preparation: { ...run.container, chunks: run.layout.preparation } };
       // A retry reuses the preparation of its chain's original run (frames-split §7.11 retry row).
       for (const owner of (await runsOf(stepRun(run))).slice(1)) if (await preparedRequest(owner, run.layout.preparation.length === 1) !== null) return { state: "done" };
@@ -441,7 +405,7 @@ export async function runLipSyncStep(execution: unknown, step: LipSyncStep, user
     return "key" in ended ? { state: "done" } : { state: "failed", step: ended.step ?? (step.kind as LipSyncLineStep), category: ended.failed, ...expiryOf(ended) };
   } catch (error) {
     if (error instanceof StillRunning) return { state: "running" };
-    // Only the preparation and the ledger read throw this here; a provider's failure is caught where it is called.
+    // Only the preparation and the recipe targets throw this here; a provider's failure is caught where it is called.
     if (error instanceof MiniToolStepFailed) {
       logger.error({ err: error, ctx: { taskId: run.taskId, step: step.kind } }, "mini_tool_lipsync_step_failed");
       return { state: "failed", step: step.kind.startsWith("prepare") ? "prepare" : step.kind.startsWith("track") ? "track" : step.kind as LipSyncLineStep, category: "failed" };

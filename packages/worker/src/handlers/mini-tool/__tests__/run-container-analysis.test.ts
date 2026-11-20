@@ -2,30 +2,29 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The people and scene analysis runner (O-* oracle ids below). S6d D5 (inner#1306 test plan §93; frames-split design
- * §7.17 「唯一写点：worker的配方构造」, people anchor and scene_cuts rows, D4-5, D5-7): the runner reads the full ledger
- * the analysis froze (`ledgerReceipts.source`, served here at its receipt URL with the cfr96 bytes) and writes the
- * job recipes with the D4 builders; there is no inspect_video output. The anchor is frame 48, a source keyframe of
- * cfr96 (keyframes 0 and 48), so the decodeStart rule does not change any expectation.
+ * The people and scene analysis runner (O-* oracle ids below; inner#1306 test plan §67.2 A03, §67.3 W01; frames-split design
+ * §7.16, §7.17 「唯一写点：worker的配方构造」, people anchor and scene_cuts rows): the runner reads the frozen version's grid,
+ * tool source and source keyframe statistics and writes the job recipes on them; there is no inspect_video output, and
+ * scene cuts come back as grid frame numbers. The people anchor and its thumbnails read the original under the binding's
+ * id, the source the domain people assembly checks. Each job is opened with the payer the analysis froze. The plan colour
+ * a frozen version does not carry yet is stood in by `PLAN_COLOR`.
  */
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as domainModule from "@breatic/domain";
 import type * as coreModule from "@breatic/core";
 import type { OpenMiniToolPlanJobInput, miniToolAnalysisService, MiniToolDisplayPeople } from "@breatic/domain";
-import { DeadlinePassed, DEFAULT_TIMEOUT_MS, miniToolPlanJobRequestSchema, type MiniToolPlanJobRequest, type StudioAssetEntity, type VideoPresentationLedger } from "@breatic/shared";
+import { DeadlinePassed, DEFAULT_TIMEOUT_MS, miniToolPlanJobRequestSchema, type MiniToolPlanJobRequest, type StudioAssetEntity } from "@breatic/shared";
 import { miniToolAnalysisRecordSchema, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
 import type { RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
-import { verdictStands } from "@worker/handlers/understand-failure.js";
-import { candidateCropRecipeOf, peopleRecipeOf, sceneCutsRecipeOf } from "@worker/handlers/video-presentation-recipes.js";
+import { frameTarget, originalInputOf, peopleRecipeOf, sceneCutsRecipeOf, toolInputOf } from "@worker/handlers/video-presentation-recipes.js";
+import { PLAN_COLOR, frozenVersion } from "./frozen-presentation.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 import { runMiniToolContainerAnalysis } from "../run-container-analysis.js";
 
 const h = vi.hoisted(() => ({ config: vi.fn(), list: vi.fn(), ensure: vi.fn(), inline: vi.fn(), grants: vi.fn(),
   advance: vi.fn(), read: vi.fn(), finish: vi.fn(), charge: vi.fn(),
-  // Every application-layer catch logs (root AGENTS.md); the frozen-ledger failure is logged with its task and tool input.
+  // Every application-layer catch logs (root AGENTS.md).
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() } }));
 vi.mock("@breatic/core", async (original) => ({ ...await original<typeof coreModule>(), getMiniToolsConfig: h.config,
   logger: h.logger as unknown as typeof coreModule.logger }));
@@ -37,6 +36,7 @@ vi.mock("@breatic/domain", async (original) => {
 });
 vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceRegisteredMiniToolPlanJob: h.advance }));
 vi.mock("@worker/handlers/mini-tool/read-analysis-json.js", () => ({ readMiniToolAnalysisJson: h.read }));
+vi.mock("@worker/handlers/frozen-plan-facts.js", () => ({ planColorOf: () => PLAN_COLOR }));
 
 const TASK = "10000000-0000-4000-8000-000000000001";
 const SOURCE = "20000000-0000-4000-8000-000000000001";
@@ -54,36 +54,15 @@ const DEADLINE = 1792927200000;
  */
 const readUntil = (now: number = Date.now()): number => Math.max(DEADLINE + 2 * 5000, now + DEFAULT_TIMEOUT_MS);
 const LIMITS = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
-// §93 D5 (design §7.17 people anchor row): the frozen full ledger is the container-written cfr96 ledger (96 frames of
-// 1/25 s, 320x180, keyframes 0 and 48; worker fixtures/presentation/PROVENANCE.txt). A case may serve other bytes.
-const CFR96 = readFileSync(new URL("../../__tests__/fixtures/presentation/cfr96.ledger.json", import.meta.url));
-/** The ledger the receipt names, with an optional plan edit (served bytes and receipt follow it). @returns Its bytes. */
-function ledgerBytesOf(edit?: (plan: Record<string, unknown>) => void): Buffer {
-  const ledger = JSON.parse(CFR96.toString("utf8")) as { plan: Record<string, unknown> };
-  if (edit === undefined) return CFR96;
-  edit(ledger.plan); return Buffer.from(JSON.stringify(ledger));
+// The frozen version: 320x180, 25 fps, 96 grid frames, read from its original; a case may freeze another display.
+let version = frozenVersion();
+/** The frozen tool input of the analysis: presentation ref, selected version and payer. @returns It. */
+function frozenPresentation(kind: "people" | "scene_cuts"): Record<string, unknown> {
+  return { presentationRef: { source: { toolInputId: version.toolInputId, planSha256: version.planSha256 } }, presentations: { source: version },
+    versionIds: { source: version.versionId }, chargeTo: kind === "people" ? "platform" : "user" };
 }
-const LEDGER_URL = "https://assets.test.invalid/original.mp4.video-source-ledger.cfr96.json";
-const LEDGER_CONFIG = { source_ledger: { max_bytes: 1048576 } };
-let ledgerBytes: Buffer = CFR96;
-let receiptBytes: Buffer = CFR96;
-let ledgerFault: "reset" | null = null;
-/** The frozen tool input of the analysis: presentation ref, receipt of `receiptBytes` and version id. @returns It. */
-function frozenPresentation(): Record<string, unknown> {
-  const ledger = JSON.parse(receiptBytes.toString("utf8")) as { sourceFingerprint: string; toolInputId: string; planSha256: string };
-  return { presentationRef: { source: { toolInputId: ledger.toolInputId, planSha256: ledger.planSha256 } },
-    ledgerReceipts: { source: { schemaVersion: 2, sourceFingerprint: ledger.sourceFingerprint, toolInputId: ledger.toolInputId, planSha256: ledger.planSha256,
-      producerVersion: 2, attempt: { jobId: "video-presentation:analysis-source", deadlineAt: 1900000000000 }, url: LEDGER_URL, etag: "full-etag",
-      size: receiptBytes.byteLength, sha256: createHash("sha256").update(receiptBytes).digest("hex"), contentType: "application/json",
-      table: { url: "https://assets.test.invalid/original.mp4.video-presentation-table.cfr96.json", sha256: "d".repeat(64), size: 81, contentType: "application/json", frameCount: 96 } } },
-    versionIds: { source: "e".repeat(64) } };
-}
-/** The ledger the builders read, parsed from the served bytes. @returns It. */
-function ledger(): VideoPresentationLedger {
-  return JSON.parse(ledgerBytes.toString("utf8")) as VideoPresentationLedger;
-}
-// The anchor is presented frame 48 at 48/25 s, a source keyframe; the crops lie inside the 320x180 display.
-const ANCHOR = { frameIndex: 48, pts: 1.92 };
+// The anchor is grid frame 48; the crops lie inside the 320x180 display.
+const ANCHOR = { frameIndex: 48 };
 /** Display people as the container writes them on an entry: no anchor echo (§93 D5-8). */
 type Display = Omit<MiniToolDisplayPeople, "anchor">;
 const people: Display = { schemaVersion: 1, kind: "people", coordinateSpace: "display",
@@ -92,11 +71,10 @@ const people: Display = { schemaVersion: 1, kind: "people", coordinateSpace: "di
     { detectionIndex: 2, faceBox: { x: 0.5, y: 0.2, width: 0.1, height: 0.25 }, pixelCrop: { x: 200, y: 40, width: 40, height: 50 } },
     { detectionIndex: 5, faceBox: { x: 0.7, y: 0.5, width: 0.2, height: 0.3 }, pixelCrop: { x: 240, y: 100, width: 80, height: 60 } },
   ] };
-// The scanned scene range starts on keyframe 48 and ends at the display end (3.84 s).
-const SCENE_RANGE = { start: 1.92, end: 3.84 };
-// §93 D5-8 (design §7.17 scene_cuts row 「切点按呈现序号记录；结果组装按compact核对」): the container records cuts by
-// presentation ordinal; the worker gives each its displayed pts through sceneCutsResultOf on the frozen ledger.
-const scenes = { schemaVersion: 1, kind: "scene_cuts", cuts: [{ ordinal: 60, detectionScore: 85 }] };
+// The scanned scene range is grid frames [48, 96), the display end.
+const SCENE_RANGE = { start: 48, end: 96 };
+// Design §7.17 scene_cuts row 「切点按网格帧号记录」: the container records each cut by its grid frame number.
+const scenes = { schemaVersion: 1, kind: "scene_cuts", cuts: [{ frameIndex: 60, detectionScore: 85 }] };
 type Execution = miniToolAnalysisService.MiniToolAnalysisExecution;
 type Step = Awaited<ReturnType<typeof domainModule.upstreamStepRepo.listSteps>>[number];
 type StepPlan = Parameters<typeof domainModule.upstreamStepRepo.ensureSteps>[1];
@@ -110,10 +88,10 @@ function execution(kind: "people" | "scene_cuts" = "people", range: { start: num
   const profile = { id: `original-${kind}-profile`, version: "original-version", weightsHash: null, params: { threshold: 27 } };
   const input = kind === "people" ? { schemaVersion: 1, kind, sourceURL: "https://assets.test.invalid/original.mp4", profile, anchor: ANCHOR }
     : { schemaVersion: 1, kind, sourceURL: "https://assets.test.invalid/original.mp4", profile, range };
-  const presented = frozenPresentation() as { ledgerReceipts: { source: { sourceFingerprint: string } } };
+  const presented = frozenPresentation(kind);
   const record = miniToolAnalysisRecordSchema.parse({ schemaVersion: 1, draftId: "70000000-0000-4000-8000-000000000001",
     revision: "80000000-0000-4000-8000-000000000001", analysisRunId: TASK, acceptedAt: "2026-10-25T01:02:03.123456Z", kind,
-    inputFingerprint: "a".repeat(64), analysisInput: input, binding: { assetId: SOURCE, contentHash: presented.ledgerReceipts.source.sourceFingerprint,
+    inputFingerprint: "a".repeat(64), analysisInput: input, binding: { assetId: SOURCE, contentHash: version.sourceFingerprint,
       canonicalURL: input.sourceURL, kind: "video", mediaInfo: { width: 400, height: 200, duration: 36, mimeType: "video/mp4" } },
     status: "running", result: null, error: null, usage: [], artifactUnavailable: false });
   return { record, context: { taskId: TASK, userId: USER, projectId: PROJECT, spaceId: SPACE, hostNodeId: HOST },
@@ -158,18 +136,11 @@ function expectedPeople(original: Execution, observations: Display = people): Ex
 
 beforeEach(() => {
   vi.resetAllMocks(); steps = []; grantSequence = 0; payload = structuredClone(people);
-  ledgerBytes = CFR96; receiptBytes = CFR96; ledgerFault = null;
+  version = frozenVersion();
   vi.spyOn(Date, "now").mockReturnValue(DEADLINE - 60000);
-  h.config.mockReturnValue({ plan_limits: LIMITS, presentation: LEDGER_CONFIG, poll_interval_ms: 5000, analyses: {
+  h.config.mockReturnValue({ plan_limits: LIMITS, poll_interval_ms: 5000, analyses: {
     people: { container_class: "MiniToolContainerStd1" }, scene_cuts: { container_class: "MiniToolContainerStd1" },
   } });
-  // The frozen ledger is served at its receipt URL; nothing else goes over HTTP here (the job boundary is mocked).
-  vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
-    const url = typeof input === "string" || input instanceof URL ? input.toString() : input.url;
-    if (url !== LEDGER_URL) return new Response("unexpected", { status: 500 });
-    if (ledgerFault === "reset") throw new TypeError("fetch failed: connection reset");
-    return new Response(ledgerBytes, { headers: { "content-type": "application/json" } });
-  }));
   h.list.mockImplementation(async () => steps);
   h.ensure.mockImplementation(async (_taskId: string, plan: StepPlan) => {
     for (const [position, planned] of plan.entries()) {
@@ -203,28 +174,27 @@ beforeEach(() => {
     return { asset: asset(index, false), json: structuredClone(payload) };
   });
 });
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 /**
- * Today's configuration on a replay: the run class and limits come from the stored request, so reading them throws; the
- * ledger read's byte cap stays readable (the frozen receipt, not today's configuration, decides which ledger is read).
+ * Today's configuration on a replay: the run class and limits come from the stored request, so reading them throws.
  * @param message - The thrown message.
  * @returns The configuration double.
  */
 function replayConfig(message: string): Record<string, unknown> {
-  return { presentation: LEDGER_CONFIG, poll_interval_ms: 5000, get plan_limits(): never { throw new Error(message); }, get analyses(): never { throw new Error(message); } };
+  return { poll_interval_ms: 5000, get plan_limits(): never { throw new Error(message); }, get analyses(): never { throw new Error(message); } };
 }
 
 /** Make the original initial request independently from the new orchestration. @returns The stored first plan. */
 function initialRequest(original: Execution = execution()): MiniToolPlanJobRequest {
   const input = original.record.analysisInput;
-  // §93 D5 (design §7.17 people anchor row, 「唯一写点：worker的配方构造」): the anchor becomes its full-ledger entry and PNG target.
-  // §93 D5 (design §7.17 scene_cuts row, 「去掉inspect_video步骤」): one scene_cuts output on the range's entries, no inspect_video.
-  const outputs = (input.kind === "people" ? [{ outputIndex: 0, storageKey: "persisted/people.txt", contentType: "text/plain",
-    recipe: peopleRecipeOf(ledger(), input.anchor, SOURCE, input.profile) }]
+  // Design §7.17 people anchor row, 「唯一写点：worker的配方构造」: the anchor is its grid frame of the original and the PNG target.
+  // Design §7.17 scene_cuts row, 「去掉inspect_video步骤」: one scene_cuts output on the range's grid frames, no inspect_video.
+  const outputs: MiniToolPlanJobRequest["outputs"] = input.kind === "people" ? [{ outputIndex: 0, storageKey: "persisted/people.txt", contentType: "text/plain",
+    recipe: peopleRecipeOf(version, originalInputOf(version, SOURCE_KEY, SOURCE), input.anchor.frameIndex, input.profile) }]
     : input.kind === "scene_cuts" ? [
-      { outputIndex: 0, storageKey: "persisted/scenes.txt", contentType: "text/plain", recipe: sceneCutsRecipeOf(ledger(), input.range, SOURCE, input.profile) },
-    ] : []) as unknown as MiniToolPlanJobRequest["outputs"]; // The shared recipe types gain people and scene_cuts on entries with the runner.
+      { outputIndex: 0, storageKey: "persisted/scenes.txt", contentType: "text/plain", recipe: sceneCutsRecipeOf(version, toolInputOf(version, SOURCE_KEY, SOURCE), input.range, input.profile) },
+    ] : [];
   return { schemaVersion: 2, jobId: `task:${original.context.taskId}/chunk:0`, containerClass: "MiniToolContainerStd1", deadlineAt: DEADLINE,
     limits: structuredClone(LIMITS), inputs: [{ inputId: SOURCE, storageKey: SOURCE_KEY }], outputs };
 }
@@ -241,27 +211,28 @@ function storedStep(request: MiniToolPlanJobRequest, position: number, json: Rec
 
 /** The golden thumbnail request consumes original display pixels without normalized inversion. @returns The stored thumbnail plan. */
 function thumbnailRequest(candidates: Display["candidates"] = people.candidates, position = 1): MiniToolPlanJobRequest {
-  // §93 D5 (design §7.17 「唯一写点：worker的配方构造」; D4-5): each crop is the anchor's frame recipe on its full-ledger entry plus
-  // the existing display crop, instead of the source frameIndex with orientation display.
+  // Design §7.17 「唯一写点：worker的配方构造」: each crop is the anchor's grid frame of the original and its PNG target, plus the
+  // display crop the detector measured.
+  const { grid, source } = originalInputOf(version, SOURCE_KEY, SOURCE);
+  const { width, height } = version.display;
   return { ...initialRequest(), jobId: `task:${TASK}/chunk:${position}`, outputs: candidates.map((candidate) => ({
     outputIndex: candidate.detectionIndex, storageKey: `persisted/thumbnail-${candidate.detectionIndex}.png`, contentType: "image/png",
-    recipe: candidateCropRecipeOf(ledger(), ANCHOR, SOURCE, { sourceWidth: 320, sourceHeight: 180, rect: candidate.pixelCrop }),
+    recipe: { kind: "frame", inputId: SOURCE, grid, source, frameIndex: ANCHOR.frameIndex, target: frameTarget(version), crop: { sourceWidth: width, sourceHeight: height, rect: candidate.pixelCrop } },
   })) };
 }
 
 /** Retain the complete original accepted scene identity and nonlinear source clock. @returns The exact scene expected value. */
 function expectedScene(original: Execution): Extract<MiniToolAnalysisResult, { kind: "scene_cuts" }> {
   const { status: _status, result: _result, error: _error, usage: _usage, artifactUnavailable: _unavailable, ...identity } = original.record;
-  // §93 D5-8: the presentation clock (1/25, 96 ledger frames); cut ordinal 60 is shown at 60/25 s.
-  return { ...identity, kind: "scene_cuts", timeBase: { numerator: 1, denominator: 25 }, frameCount: 96,
-    cuts: [{ frameIndex: 60, pts: 2.4, detectionScore: 85 }] };
+  // The version's grid: 25 fps, 96 frames; the cut keeps its grid frame number.
+  return { ...identity, kind: "scene_cuts", fps: { numerator: 25, denominator: 1 }, frameCount: 96, cuts: [{ frameIndex: 60, detectionScore: 85 }] };
 }
 
 // O-A1/A2/A4, O-S1/S3, O-P1 and O-F1/F2: IO is mocked; both domain assemblers stay real.
 describe("accepted container analysis orchestration", () => {
-  // §93 D5 (design §7.17 scene_cuts row 「去掉inspect_video步骤」, 「唯一写点：worker的配方构造」): the one job carries a single
-  // scene_cuts output on the range's full-ledger entries; §93 D5-8: its ordinal cuts get their presented pts from the ledger.
-  it("AR01 runs one user-funded scene_cuts output built from the frozen ledger, no inspect_video, cuts on presentation ordinals", async () => {
+  // Design §7.17 scene_cuts row 「去掉inspect_video步骤」, 「唯一写点：worker的配方构造」: the one job carries a single scene_cuts
+  // output on the range's grid frames; its cuts are grid frame numbers.
+  it("AR01 runs one user-funded scene_cuts output on the frozen grid, no inspect_video, cuts on grid frame numbers", async () => {
     const original = execution("scene_cuts"); payload = structuredClone(scenes);
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedScene(original));
     expect(h.grants).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ projectId: PROJECT, actingUserId: USER, taskId: TASK, deadlineAt: DEADLINE,
@@ -328,10 +299,10 @@ describe("accepted container analysis orchestration", () => {
     expect(h.advance.mock.calls[1]?.[0].request.outputs[0]).toMatchObject({ outputIndex: 5, recipe: { crop: { rect: { x: 40, y: 20, width: 1, height: 1 } } } });
   });
 
-  // §93 D5 (design §7.17 「方向与几何」): a portrait display comes from the frozen plan (180x320), so the served ledger is
-  // cfr96 with that display; the crop and the PNG target both use it while the binding keeps the encoded 400x200.
+  // Design §7.17 「方向与几何」: a portrait display comes from the frozen version (180x320); the crop and the PNG target both
+  // use it while the binding keeps the encoded 400x200.
   it("AR03 uses actual portrait display geometry while preserving the original encoded binding", async () => {
-    ledgerBytes = receiptBytes = ledgerBytesOf((plan) => { plan.display = { ...plan.display as object, width: 180, height: 320 }; });
+    version = frozenVersion({ width: 180, height: 320 });
     const original = execution(); const observations = { ...people, width: 180, height: 320, candidates: [{ detectionIndex: 2,
       faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.3 }, pixelCrop: { x: 20, y: 40, width: 40, height: 120 } }] }; payload = observations;
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedPeople(original, observations));
@@ -460,19 +431,18 @@ describe("unchanged deadline and late pure assembly", () => {
     expect(h.grants).not.toHaveBeenCalled(); expect(h.read).not.toHaveBeenCalled();
   });
 
-  // §93 D5-8: the worker caches the assembled cuts in the step, so a complete run replayed after D needs neither the scene
-  // JSON nor the frozen ledger again (no new read after D).
-  it("AR06 replays a completed scene result after the report window from its cached cuts, reading neither JSON nor ledger", async () => {
+  // The step caches the scene JSON, so a complete run replayed after D reads nothing again (no new read after D).
+  it("AR06 replays a completed scene result after the report window from its cached cuts, reading no JSON", async () => {
     const original = execution("scene_cuts"); payload = structuredClone(scenes);
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedScene(original));
-    h.grants.mockClear(); h.read.mockClear(); vi.mocked(fetch).mockClear();
+    h.grants.mockClear(); h.read.mockClear();
     vi.mocked(Date.now).mockReturnValue(DEADLINE + 10001);
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedScene(original));
-    expect(h.grants).not.toHaveBeenCalled(); expect(h.read).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+    expect(h.grants).not.toHaveBeenCalled(); expect(h.read).not.toHaveBeenCalled();
   });
 
   // User decision (same rule as runs): a pickup after D still reads what already finished and hands it to the user; reading the
-  // stored JSON and the frozen ledger starts no new work, so it is bounded by planReadUntil, not refused at D.
+  // stored JSON starts no new work, so it is bounded by planReadUntil, not refused at D.
   it.each([
     ["people", DEADLINE + 1], ["scene_cuts", DEADLINE + 1], ["people", DEADLINE + 2 * 5000 + 1], ["scene_cuts", DEADLINE + 2 * 5000 + 1],
   ] as const)("reads a stored %s report's JSON after D and completes (first pickup at %s)", async (kind, now) => {
@@ -523,11 +493,12 @@ describe("registered content and failure propagation", () => {
     expect(h.advance).toHaveBeenCalledTimes(1); expect(h.grants).toHaveBeenCalledTimes(1);
   });
 
-  // §93 D5-8: cuts outside the scanned window (sceneCutsResultOf), repeated ordinals and the pre-D5 fields are refused.
+  // Cuts outside the scanned range or the grid, repeated frames, the presentation-ordinal and pts shapes are refused.
   it.each([
-    { ...scenes, cuts: [{ ordinal: 40, detectionScore: 85 }] }, { ...scenes, cuts: [{ ordinal: 96, detectionScore: 85 }] },
+    { ...scenes, cuts: [{ frameIndex: 40, detectionScore: 85 }] }, { ...scenes, cuts: [{ frameIndex: 96, detectionScore: 85 }] },
     { ...scenes, cuts: [...scenes.cuts, ...scenes.cuts] }, { ...scenes, timeBase: "1/100" },
-    { ...scenes, cuts: [{ frameIndex: 60, pts: 2.4, detectionScore: 85 }] }, { ...scenes, cuts: [{ ordinal: 60, detectionScore: "85" }] },
+    { ...scenes, cuts: [{ frameIndex: 60, pts: 2.4, detectionScore: 85 }] }, { ...scenes, cuts: [{ ordinal: 60, detectionScore: 85 }] },
+    { ...scenes, cuts: [{ frameIndex: 60, detectionScore: "85" }] },
   ])("does not turn conflicting scene observations into a complete result %j", async (json) => {
     payload = json;
     await expect(runMiniToolContainerAnalysis(execution("scene_cuts"), DEADLINE)).rejects.toThrow();
@@ -660,32 +631,5 @@ describe("registered content and failure propagation", () => {
     original.record.analysisRunId = next; original.params.analysis.analysisRunId = next; original.context.taskId = next;
     expect(await runMiniToolContainerAnalysis(original, DEADLINE)).toEqual(expectedPeople(original));
     expect(h.advance.mock.calls[0]?.[0].request.jobId).toBe(`task:${next}/chunk:0`);
-  });
-});
-
-// §93 D5 (D4-7, §91 D3b-9 frozen-run rule, same as prepare-model-input.ts): the analysis froze its ledger receipt, so
-// bytes that fail it never recover in this run: it ends as source_ledger_invalid before any grant or job, and the
-// failure is logged with its task and tool input. A transport failure is not a content mismatch and keeps the retry.
-describe("the frozen full ledger (§93 D5, D4-7)", () => {
-  it.each([["people", undefined], ["scene_cuts", SCENE_RANGE]] as const)("AR04 %s: frozen ledger bytes that fail the receipt end the run as source_ledger_invalid", async (kind, range) => {
-    ledgerBytes = Buffer.concat([CFR96, Buffer.from(" ")]);
-    const original = execution(kind, range);
-    const thrown: unknown = await runMiniToolContainerAnalysis(original, DEADLINE).then(() => null, (error: unknown) => error);
-    expect(thrown).toBeInstanceOf(Error);
-    expect(String((thrown as Error).message)).toContain("source_ledger_invalid");
-    // The verdict stands: the outer lane fails the analysis at once instead of rereading the same bytes.
-    expect(verdictStands(thrown)).toBe(true);
-    expect(h.grants).not.toHaveBeenCalled(); expect(h.advance).not.toHaveBeenCalled(); expect(h.ensure).not.toHaveBeenCalled();
-    const toolInputId = (original.params.analysis as unknown as { presentationRef: { source: { toolInputId: string } } }).presentationRef.source.toolInputId;
-    expect(h.logger.error).toHaveBeenCalledWith(expect.objectContaining({ ctx: expect.objectContaining({ taskId: TASK, toolInputId }) }), expect.any(String));
-  });
-
-  it("AR05 a ledger read that fails in transport submits nothing and keeps the normal retry", async () => {
-    ledgerFault = "reset";
-    const thrown: unknown = await runMiniToolContainerAnalysis(execution(), DEADLINE).then(() => null, (error: unknown) => error);
-    expect(thrown).toBeInstanceOf(Error);
-    expect(verdictStands(thrown)).toBe(false);
-    expect(String((thrown as Error).message)).not.toContain("source_ledger_invalid");
-    expect(h.grants).not.toHaveBeenCalled(); expect(h.advance).not.toHaveBeenCalled();
   });
 });

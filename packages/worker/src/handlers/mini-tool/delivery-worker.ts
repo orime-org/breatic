@@ -7,8 +7,8 @@ import {
   MINI_TOOL_DELIVERY_JOB, MINI_TOOL_DELIVERY_DISCOVERY_JOB,
   miniToolDeliveryWakeSchema, miniToolDeliveryDiscoverySchema, type MiniToolDeliveryWake,
 } from "@breatic/core";
-import { miniToolDeliveryService, type MiniToolDeliveryContext } from "@breatic/domain";
-import { canvasSpaceDocName } from "@breatic/shared";
+import { miniToolDeliveryService, settleTaskForNode, type MiniToolDeliveryContext } from "@breatic/domain";
+import { canvasSpaceDocName, type FocusImage } from "@breatic/shared";
 import { recordGenerationForNodes } from "@worker/handlers/dispatch.js";
 import { generationMetadata } from "@worker/handlers/persisted-output.js";
 
@@ -54,7 +54,18 @@ export async function deliverMiniToolOutput(
   const observed: { landed: boolean | null } = { landed: null };
   const ctx = { taskId: task.id, deliveryVersion: delivery?.version, outputIndex, projectId: execution.projectId, spaceId: execution.spaceId };
   try {
-    await recordGenerationForNodes(streamRedis, canvasSpaceDocName(execution.projectId, execution.spaceId), {
+    if (execution.tool === "video.focus-crop") {
+      // A video focus crop is no node content (frames-split §5.5 delivery row): the panel node's row settles done and its
+      // counts event carries the image collab appends to the node's focus images, only when the row landed; no history.
+      stage = "publish";
+      const params = execution.draft.params as { sourceName: string };
+      const image: FocusImage & { nodeId: string } = { nodeId: output.nodeId, id: task.id, url: media.canonicalURL, name: params.sourceName,
+        width: media.width ?? 0, height: media.height ?? 0 };
+      const verdict = await settleTaskForNode(streamRedis, canvasSpaceDocName(execution.projectId, execution.spaceId),
+        { taskId: task.id, nodeId: output.nodeId, outcome: "done", focusImageAppend: image });
+      if (verdict === null) { stage = "node-task"; throw new Error("Planned delivery has no original node task"); }
+      observed.landed = verdict.landed;
+    } else await recordGenerationForNodes(streamRedis, canvasSpaceDocName(execution.projectId, execution.spaceId), {
       taskId: task.id, projectId: execution.projectId, userId: task.userId, taskType: task.taskType,
       metadata: generationMetadata({
         reportedModel: undefined, jobModel: execution.model, credits: task.billedCredits ?? undefined,
