@@ -17,9 +17,10 @@
  */
 
 import { and, desc, eq, isNull, lte, sql, type SQL } from "drizzle-orm";
-import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import type { AnyPgColumn, PgDatabase } from "drizzle-orm/pg-core";
+import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
 import type { BillingPeriod, MembershipTier } from "@breatic/shared";
-import type { db, DbTx } from "@core/db/client.js";
+import type { DbTx } from "@core/db/client.js";
 import { subscriptions } from "@core/db/schema.js";
 import type {
   StripeSubscriptionStatus,
@@ -30,7 +31,7 @@ import type {
  * The database a caller reads and writes subscriptions through: the product
  * hands its projection's client or transaction, the private service its own.
  */
-export type SubscriptionConn = typeof db | DbTx;
+export type SubscriptionConn = PgDatabase<PostgresJsQueryResultHKT, Record<string, unknown>>;
 
 /** One stored subscription, whole. */
 export interface StoredSubscription extends SubscriptionRecord {
