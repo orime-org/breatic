@@ -19,14 +19,17 @@ interface Consumption {
   creditMultiplier: number;
   chargeTo: "user" | "platform";
   costUsd: number | null;
-  costSource: "generation_lookup" | "computed" | null;
-  raw: { deductUsd: number; refundUsd: number } | { wallMs: number; cpuUsec: number | null } | null;
+  costSource: "computed" | null;
+  raw: { wallMs: number; cpuUsec: number | null } | null;
   credits: number | null;
   containerPricing: {
     configVersion: string;
     size: { vcpu: number; memory_gib: number; disk_gb: number };
     prices: { vcpu_second_usd: number; memory_gib_second_usd: number; disk_gb_second_usd: number };
   } | null;
+  // A model step's cost wait (inner#1306 §11.4).
+  servedBy?: string | null; costs?: unknown[]; waiting?: { lookup: unknown; cost?: unknown }[];
+  known?: number; attempts?: number; windowEndsAt?: number; nextLookupAt?: number | null;
 }
 
 interface RecordInput {
@@ -80,8 +83,8 @@ interface Snapshot {
 
 const FIXED_TASK = "10000000-0000-4000-8000-000000000001";
 const FIXED_STEP = "20000000-0000-4000-8000-000000000001";
-const FIXED_IDENTITY = { kind: "provider", provider: "wavespeed", predictionId: "prediction-001" } as const;
-const FIXED_KEY = "cdae9c015bd2ab630eb20c226b748a94cc5c8515170d1a292fff04d60d9caec7";
+const FIXED_IDENTITY = { kind: "provider", stepId: FIXED_STEP } as const;
+const FIXED_KEY = "6be748b9e9861bdb4fe2e0f49a4799824f89dd795967f8186e9a2240222e45cd";
 const T0 = "2026-10-24T09:03:03.100001Z";
 const MANIFEST = { resultVersion: 3, outputs: [{ outputIndex: 0, registeredUrl: "https://assets.test.invalid/kept.mp4" }] };
 let rawPg: ReturnType<typeof createPgClient>;
@@ -328,14 +331,14 @@ describe("mini-tool consumption producer persistence", () => {
     expect((await snapshot(fixture)).step.output.miniToolConsumption).toBeUndefined();
   });
 
-  it("requires a provider prediction to match the actual persisted step", async () => {
+  // A model step's consumption is opened by its end (model-step.service.ts), never through the generic producer.
+  it("refuses to open a model step's consumption", async () => {
     const fixture = await seed({ state: "pending", parentStatus: "running" });
     await rawPg`UPDATE tasks SET result = result - 'settlement', completed_at = NULL WHERE id = ${fixture.taskId}`;
     await rawPg`UPDATE task_upstream_steps SET output = output - 'miniToolConsumption' WHERE id = ${fixture.stepId}`;
-    const input: OpenInput = { taskId: fixture.taskId, stepId: fixture.stepId, identity: fixture.identity,
-      chargeTo: "user", creditMultiplier: 2, containerPricing: null };
-    await expect(openConsumption({ ...input, identity: { kind: "provider", provider: "wavespeed", predictionId: "other" } })).rejects.toThrow();
-    expect(await openConsumption(input)).toEqual(fixture.consumption);
+    const before = await rawPg`SELECT output FROM task_upstream_steps WHERE id = ${fixture.stepId}`;
+    await expect(openConsumption({ taskId: fixture.taskId, stepId: fixture.stepId, identity: fixture.identity, chargeTo: "user", creditMultiplier: 2, containerPricing: null })).rejects.toThrow();
+    expect(await rawPg`SELECT output FROM task_upstream_steps WHERE id = ${fixture.stepId}`).toEqual(before);
   });
 
   it("keeps incomplete costs pending when a failed computation closes its call set", async () => {
@@ -532,20 +535,24 @@ async function seed(options: SeedOptions = {}): Promise<Fixture> {
   const projectId = crypto.randomUUID();
   const spaceId = crypto.randomUUID();
   const nodeTaskId = crypto.randomUUID();
-  const identity = options.identity ?? { kind: "provider", provider: "wavespeed", predictionId: `prediction-${crypto.randomUUID()}` };
+  const identity = options.identity ?? { kind: "provider", stepId };
   const state = options.state ?? "known";
   const costUsd = state === "pending" ? null : options.costUsd ?? (identity.kind === "provider" ? 0.000055 : 0.00001256);
   const consumption: Consumption = {
     schemaVersion: 1, consumptionKey: await miniToolConsumptionKey({ taskId, stepId, identity }), identity,
     state, creditMultiplier: options.creditMultiplier ?? 2, chargeTo: options.chargeTo ?? "user",
-    costUsd, costSource: state === "pending" ? null : identity.kind === "provider" ? "generation_lookup" : "computed",
-    raw: costUsd === null ? null : identity.kind === "provider" ? { deductUsd: costUsd, refundUsd: 0 } : { wallMs: 1000, cpuUsec: 100000 },
+    costUsd, costSource: state === "pending" || identity.kind === "provider" ? null : "computed",
+    raw: costUsd === null || identity.kind === "provider" ? null : { wallMs: 1000, cpuUsec: 100000 },
     credits: state === "recorded" ? (options.chargeTo === "platform" ? 0 : costUsd! * 100 * (options.creditMultiplier ?? 2)) : null,
     containerPricing: identity.kind === "provider" ? null : {
       configVersion: "cloudflare-2026-10-07",
       size: { vcpu: 0.5, memory_gib: 4, disk_gb: 8 },
       prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
     },
+    ...(identity.kind === "provider" ? {
+      servedBy: "wavespeed", costs: [], known: costUsd ?? 0, attempts: 0, windowEndsAt: 4070908800000, nextLookupAt: costUsd === null ? Date.parse(T0) : null,
+      waiting: [{ lookup: { upstream: "wavespeed", predictionId: `prediction-${stepId}` }, ...(costUsd === null ? {} : { cost: { state: "known", usd: costUsd, source: "billing" } }) }],
+    } : {}),
   };
   const settlement: Settlement = {
     version: 7, state: options.checking ? "checking" : "waiting",
@@ -568,10 +575,9 @@ async function seed(options: SeedOptions = {}): Promise<Fixture> {
       ${T0}::text::timestamptz, ${T0}::text::timestamptz, ${getNodeTaskConfig().default_budget_ms}, 'analysis', ${taskId})
   `;
   await rawPg`
-    INSERT INTO task_upstream_steps (id, task_id, position, kind, endpoint, status, prediction_id, output)
+    INSERT INTO task_upstream_steps (id, task_id, position, kind, endpoint, status, output)
     VALUES (${stepId}, ${taskId}, 0, ${identity.kind === "provider" ? "generate" : "container_job"},
-      ${identity.kind === "provider" ? "wavespeed-ai/sam3-video-rle" : "scene_cuts"}, 'done',
-      ${identity.kind === "provider" ? identity.predictionId : null},
+      ${identity.kind === "provider" ? "sam3-video-rle" : "scene_cuts"}, 'done',
       ${rawPg.json({ preservedOutput: { original: true }, miniToolConsumption: { ...consumption } })})
   `;
   return { taskId, stepId, identity, userId, projectId, nodeTaskId, consumption, settlement };
@@ -722,7 +728,7 @@ describe("mini-tool consumption recording transaction", () => {
     expect(Reflect.get(domain, "recordMiniToolConsumption")).toBeTypeOf("function");
     const fixture = await seed();
     const before = await snapshot(fixture);
-    await expect(record({ ...fixture, identity: { kind: "provider", provider: "wavespeed", predictionId: "replacement" } })).rejects.toThrow();
+    await expect(record({ ...fixture, identity: { kind: "provider", stepId: crypto.randomUUID() } })).rejects.toThrow();
     expect(await snapshot(fixture)).toEqual(before);
   });
 
@@ -789,7 +795,7 @@ describe("mini-tool consumption recording transaction", () => {
     const before = await snapshot(fixture);
     const input: RecordInput = {
       taskId: fixture.taskId, stepId: fixture.stepId,
-      identity: fault === "identity" ? { kind: "provider", provider: "wavespeed", predictionId: "stale-prediction" } : fixture.identity,
+      identity: fault === "identity" ? { kind: "provider", stepId: crypto.randomUUID() } : fixture.identity,
       claim: { version: fault === "version" ? 6 : 7, leaseToken: fault === "token" ? crypto.randomUUID() : fixture.settlement.leaseToken! },
     };
     await Promise.allSettled([record(input)]);
@@ -846,12 +852,12 @@ describe("mini-tool consumption recording transaction", () => {
   it("records different keys separately and keeps raw credits for one later aggregate rounding", async () => {
     const fixture = await seed();
     const secondStep = crypto.randomUUID();
-    const identity = { kind: "provider", provider: "wavespeed", predictionId: "prediction-second" } as const;
+    const identity = { kind: "provider", stepId: secondStep } as const;
     const key = await miniToolConsumptionKey({ taskId: fixture.taskId, stepId: secondStep, identity });
     const second = { ...fixture.consumption, consumptionKey: key, identity };
     await rawPg`
-      INSERT INTO task_upstream_steps (id, task_id, position, kind, endpoint, status, prediction_id, output)
-      VALUES (${secondStep}, ${fixture.taskId}, 1, 'generate', 'wavespeed-ai/sam3-video-rle', 'done', ${identity.predictionId},
+      INSERT INTO task_upstream_steps (id, task_id, position, kind, endpoint, status, output)
+      VALUES (${secondStep}, ${fixture.taskId}, 1, 'generate', 'sam3-video-rle', 'done',
         ${rawPg.json({ miniToolConsumption: { ...second } })})
     `;
     await rawPg`UPDATE tasks SET result = jsonb_set(result, '{settlement,pendingConsumptionKeys}', ${rawPg.json([fixture.consumption.consumptionKey, key])}) WHERE id = ${fixture.taskId}`;
@@ -893,7 +899,7 @@ describe("mini-tool consumption recording transaction", () => {
       operationKey, feature: "chat_turn", source: "model", actorUserId: fixture.userId,
       projectId: fixture.projectId, model: "deepseek/deepseek-v4-pro", provider: "deepseek",
       inputTokens: null, cachedInputTokens: null, outputTokens: null, reasoningTokens: null,
-      requestCount: 1, costUsd: 0.000055, costSource: "provider", credits: 0.011,
+      requestCount: 1, costUsd: 0.000055, costSource: "provider", costIdentity: null, credits: 0.011,
     };
     await insertUsageRecord(row);
     await insertUsageRecord(row);
