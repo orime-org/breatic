@@ -28,8 +28,11 @@ vi.mock("@breatic/core", async (importOriginal) => {
   return { ...base, env: { ...(base as { env: object }).env, ENV: "test", CREDIT_MULTIPLIER: 1 } };
 });
 
+// The real watch, whose hand-off is this file's double.
+vi.mock("../../../../../domain/src/credit/generation-lookup.js", () => ({ handOffLookups: h.handOffLookups }));
 vi.mock("@breatic/domain", async () => ({
   handOffLookups: h.handOffLookups,
+  watchModelCalls: (await import("../../../../../domain/src/credit/model-call-watch.js")).watchModelCalls,
   provider: () => ({
     llm: {
       prepare: h.prepare.mockImplementation(() => ({

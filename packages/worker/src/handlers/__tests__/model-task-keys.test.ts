@@ -34,7 +34,7 @@ vi.mock("@breatic/core", () => ({
   getStorageAdapter: async () => ({ keyFromUrl: () => null }),
 }));
 vi.mock("@breatic/domain", () => ({
-  provider: () => ({ name: "the-provider" }),
+  provider: () => ({ name: "the-provider", llm: { name: "the-llm" } }),
   keysById: h.keysById,
   taskRepo: { getProviderTicket: vi.fn() },
   taskService: { getByIdInternal: h.getByIdInternal },
@@ -144,7 +144,7 @@ describe("the keys a model run uses", () => {
 
     expect((await run.input({})).prompt).toBe("{}");
     expect(h.createUsageRecorder).toHaveBeenCalledWith(expect.objectContaining({ operationKey: "task:task-1", actorUserId: "user-1", keyId: LLM_KEY_ID }));
-    expect(h.watchModelCalls).toHaveBeenCalledWith(expect.anything(), { model: "deepseek/deepseek-chat", description: "Task: prompt rewrite", keyId: LLM_KEY_ID }, pending);
+    expect(h.watchModelCalls).toHaveBeenCalledWith(expect.anything(), { model: "deepseek/deepseek-chat", description: "Task: prompt rewrite", keyId: LLM_KEY_ID }, pending, { name: "the-llm" });
     expect(h.callEnded).toHaveBeenCalledWith(ended);
     expect(h.handOff).toHaveBeenCalled();
     expect(settle).toHaveBeenCalled();

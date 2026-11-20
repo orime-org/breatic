@@ -186,7 +186,7 @@ async function recordRewrite(task: ModelTask, keyId: string, billed: RewriteBill
       keyId,
       onMissingCost: (row) => logger.error({ row, taskId: task.taskId }, "agent_usage_cost_missing"),
     });
-    const watch = watchModelCalls(usage, { model: REWRITE_MODEL, description: "Task: prompt rewrite", keyId }, billed.pending);
+    const watch = watchModelCalls(usage, { model: REWRITE_MODEL, description: "Task: prompt rewrite", keyId }, billed.pending, provider().llm);
     if (billed.ended !== undefined) watch.callEnded(billed.ended);
     await watch.handOff();
     await usage.settle();

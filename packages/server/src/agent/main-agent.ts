@@ -973,7 +973,7 @@ export class MainAgent {
       const wants = { thinking: true, cache: agentCfg.prompt_cache_ttl, session: conversationId };
       const route = resumeOn === undefined ? undefined : { mode: "upstream" as const, upstream: resumeOn };
       const prepared = provider().llm.prepare(agentConfig.modelId, wants, route, keys);
-      const watch = watchModelCalls(usage, { model: agentConfig.modelId, description: "Agent chat", keyId }, prepared.pendingCosts);
+      const watch = watchModelCalls(usage, { model: agentConfig.modelId, description: "Agent chat", keyId }, prepared.pendingCosts, provider().llm);
       calls = watch;
 
       let messages = sent.messages;

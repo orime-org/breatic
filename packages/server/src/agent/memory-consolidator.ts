@@ -389,7 +389,7 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
       onMissingCost: (row) => logger.error({ row, ...where }, "agent_usage_cost_missing"),
       ...(keyId === null ? {} : { keyId }),
     });
-    const watch = watchModelCalls(usage, { model: config.consolidation_model, description: "Memory consolidation", keyId }, prepared.pendingCosts);
+    const watch = watchModelCalls(usage, { model: config.consolidation_model, description: "Memory consolidation", keyId }, prepared.pendingCosts, provider().llm);
     await watch.handOff().catch((err: unknown) => logger.error({ err, ...where }, "usage_lookup_enqueue_failed"));
     await bill({ userId, conversationId, projectId, watermarkBefore, usage, model: config.consolidation_model, upstream: watch.served() ?? "", keyId });
   }

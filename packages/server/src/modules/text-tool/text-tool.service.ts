@@ -138,7 +138,7 @@ export async function* executeTextTool(
     // No temperature: Gemini 3.8 deprecates the sampling parameters.
     const wants = { thinking: true, thinkingLevel: getTextToolsConfig().thinking_level, cache: false } as const;
     const prepared = provider().llm.prepare(model, wants, undefined, resolved.keys);
-    const watch = watchModelCalls(usage, { model, description: `Text tool: ${tool}`, keyId: resolved.keyId }, prepared.pendingCosts);
+    const watch = watchModelCalls(usage, { model, description: `Text tool: ${tool}`, keyId: resolved.keyId }, prepared.pendingCosts, provider().llm);
     calls = watch;
     const systemPrompt = getPromptForTool(tool);
     const userMessage = buildUserMessage(tool, params);

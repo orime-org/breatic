@@ -56,8 +56,11 @@ const recorders = vi.hoisted(() => ({
   writeFailure: null as Error | null,
 }));
 
+// The real watch, whose hand-off is this file's double.
+vi.mock("../../../../../domain/src/credit/generation-lookup.js", () => ({ handOffLookups }));
 vi.mock("@breatic/domain", async () => ({
   handOffLookups,
+  watchModelCalls: (await import("../../../../../domain/src/credit/model-call-watch.js")).watchModelCalls,
   // The run goes out on the deployment's keys (inner#1953).
   resolveKeys: async () => ({ keys: { owner: "deployment", keyOf: () => undefined }, route: { mode: "default" }, keyId: null, payerUserId: null }),
   // A run cut off before its finish leaves its generation among the prepared call's pending costs.

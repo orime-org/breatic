@@ -12,7 +12,7 @@ import type { PendingCost } from "@breatic/provider";
 
 const handOffLookups = vi.hoisted(() => vi.fn(async () => undefined));
 
-vi.mock("@domain/provider/instance.js", () => ({ provider: () => ({ llm: { costOf: vi.fn(), servedBy: vi.fn(() => "openrouter") } }) }));
+const LLM = { costOf: vi.fn(), servedBy: vi.fn(() => "openrouter") };
 vi.mock("@domain/credit/generation-lookup.js", () => ({ handOffLookups }));
 
 import type { UsageRecorder } from "@domain/credit/usage-recorder.js";
@@ -43,7 +43,7 @@ beforeEach(() => {
 
 describe("handing off a cut-off call's lookup", () => {
   it("names the account's key row and leaves each lookup's charge to its payer", async () => {
-    const watch = watchModelCalls(recorder(), { model: "m", description: "Agent chat", keyId: "key-1" }, () => [CUT_OFF]);
+    const watch = watchModelCalls(recorder(), { model: "m", description: "Agent chat", keyId: "key-1" }, () => [CUT_OFF], LLM);
 
     await watch.handOff();
 
@@ -51,7 +51,7 @@ describe("handing off a cut-off call's lookup", () => {
   });
 
   it("is charged and names no key row on the deployment's keys", async () => {
-    const watch = watchModelCalls(recorder(), { model: "m", description: "Agent chat", keyId: null }, () => [CUT_OFF]);
+    const watch = watchModelCalls(recorder(), { model: "m", description: "Agent chat", keyId: null }, () => [CUT_OFF], LLM);
 
     await watch.handOff();
 

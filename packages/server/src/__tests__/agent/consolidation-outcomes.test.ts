@@ -84,6 +84,8 @@ const llm = vi.hoisted(() => ({
   servedBy: vi.fn(() => "openrouter"),
 }));
 
+// The real watch domainMock hands over, whose hand-off is the shared double this file reads.
+vi.mock("../../../../domain/src/credit/generation-lookup.js", async () => ({ handOffLookups: (await import("../helpers/mock-core.js")).mocks.handOffLookups }));
 vi.mock("@breatic/domain", async (importOriginal) => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();

@@ -11,10 +11,9 @@
  */
 
 import type { LanguageModelUsage, ProviderMetadata } from "ai";
-import type { PendingCost } from "@breatic/provider";
+import type { LlmApi, PendingCost } from "@breatic/provider";
 import { handOffLookups } from "@domain/credit/generation-lookup.js";
 import type { AwaitedLookup, UsageRecorder } from "@domain/credit/usage-recorder.js";
-import { provider } from "@domain/provider/instance.js";
 
 /** What a model call's end event carries, as far as this reads it. */
 export interface ModelCallEnd {
@@ -40,19 +39,21 @@ export interface ModelCallWatch {
  * @param call.description - What the ledger row says the charge was for.
  * @param call.keyId - The account key row the stream runs on (inner#1953); null or absent for our keys.
  * @param pendingCosts - The prepared call's `pendingCosts`.
+ * @param llm - The language-model calls of the provider the call was prepared on, which say what it cost and where.
  * @returns The watch.
  */
 export function watchModelCalls(
   usage: UsageRecorder,
   call: { model: string; description: string; keyId?: string | null },
   pendingCosts: () => readonly PendingCost[],
+  llm: Pick<LlmApi, "costOf" | "servedBy">,
 ): ModelCallWatch {
   let served: string | undefined;
   return {
     callEnded(event) {
-      const upstream = provider().llm.servedBy(event);
+      const upstream = llm.servedBy(event);
       served = upstream ?? served;
-      const cost = provider().llm.costOf({ model: call.model, usage: event.usage, providerMetadata: event.providerMetadata });
+      const cost = llm.costOf({ model: call.model, usage: event.usage, providerMetadata: event.providerMetadata });
       usage.recordModelCall({ source: "model", model: call.model, upstream: upstream ?? "", cost });
     },
     served: () => served,
