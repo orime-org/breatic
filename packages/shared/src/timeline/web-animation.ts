@@ -20,7 +20,7 @@ const positiveInteger = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 
 /**
  * Where a web-animation execution is (inner#1711, #1490); only `timelineExecutionRepo.transition` moves it.
- * `awaiting_landing` is held only by rows written before #1490 and by the previous server during its deploy window.
+ * `awaiting_landing` is held only by rows written before #1490.
  */
 export const WebAnimationExecutionStatusSchema = z.enum(["awaiting_landing", "queued", "running", "cancelling", "succeeded", "failed", "cancelled", "expired"]);
 
@@ -103,7 +103,7 @@ export type WebAnimationExecutionKind = typeof CREATE | typeof MODIFY | typeof E
 
 const OriginSchema = z.enum(["timeline", "web_animation_space"]);
 
-/** Where an execution was asked for: a Motion Space, or a Timeline before #1490 (and an older tab still open). */
+/** Where an execution was asked for: a Motion Space, or a Timeline before #1490. */
 export type WebAnimationExecutionOrigin = z.infer<typeof OriginSchema>;
 
 const engine = z.literal("deepseek");
@@ -119,26 +119,12 @@ const createFields = { prompt: z.string().min(1), engine, aspect, durationSecond
 const modifyFields = { baseSourceVersionId: z.uuid(), instruction: z.string().min(1), engine, aspect, durationSeconds: positiveInteger };
 const exportFields = { sourceVersionId: z.uuid() };
 
-const kindedRequest = z.discriminatedUnion("kind", [
+/** What a Motion Space asks to run, read with where it was asked from. */
+export const WebAnimationExecutionRequestSchema = z.discriminatedUnion("kind", [
   z.object({ ...keyed, kind: z.literal(CREATE), ...createFields }).strict(),
   z.object({ ...keyed, kind: z.literal(MODIFY), ...modifyFields }).strict(),
   z.object({ ...keyed, kind: z.literal(EXPORT), ...exportFields }).strict(),
-]);
-
-/**
- * What an older Timeline tab still submits: a create without `kind`, with the Timeline document's frame rate.
- * Accepted only through the deploy window; the next release requires `kind` (#1490 design §4.1, §12).
- */
-const legacyCreateRequest = z.object({ ...keyed, ...createFields, fps: TimelineRateSchema }).strict();
-
-/**
- * What a client asks to run, read with where it was asked from. An older tab's kind-less body is a Timeline create
- * and its frame rate is dropped: the server freezes the configured one.
- */
-export const WebAnimationExecutionRequestSchema = z.union([
-  kindedRequest.transform((request) => ({ ...request, origin: "web_animation_space" as const })),
-  legacyCreateRequest.transform(({ fps: _fps, ...request }) => ({ ...request, kind: CREATE, origin: "timeline" as const })),
-]);
+]).transform((request) => ({ ...request, origin: "web_animation_space" as const }));
 
 /** A read execution request. */
 export type WebAnimationExecutionRequest = z.infer<typeof WebAnimationExecutionRequestSchema>;

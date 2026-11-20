@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The web-animation execution HTTP surface an older tab still uses (inner#1711 design §3.4, §4, §5.1; #1490 design
- * §4.1, §4.4).
+ * The web-animation execution HTTP surface (inner#1711 design §3.4, §4, §5.1; #1490 design §4.1, §4.4).
  *
  * `POST /timeline/executions` admits an execution as an Agent chat turn is admitted: a balance above zero is all it
- * needs, and no credits are held. A body without `kind` is an older tab's Timeline create: it is accepted as a create
- * with origin `timeline`, its frame rate dropped for the configured one, and the row starts `queued`. An action
- * already accepted answers its own row (or 409 when the input differs); a new one writes the execution and this
- * Project's grant in one transaction. The read routes answer through the grant rows, so a duplicated Project resolves
+ * needs, and no credits are held. A body names its `kind`; the row starts `queued`. An action already accepted
+ * answers its own row (or 409 when the input differs); a new one writes the execution and this Project's grant in one
+ * transaction. The read routes answer through the grant rows, so a duplicated Project resolves
  * and previews what its source made. Cancel ends a row nothing has started; there is nothing to release.
  */
 
@@ -49,7 +47,7 @@ beforeAll(() => {
 });
 
 /**
- * An older tab's create body: no `kind`, and the Timeline document's frame rate.
+ * A create body.
  * @param fx - The Project and Space.
  * @param overrides - Fields a case varies.
  * @returns The body.
@@ -59,11 +57,11 @@ function createBody(fx: ProjectFixture, overrides: Record<string, unknown> = {})
     projectId: fx.projectId,
     spaceId: fx.spaceId,
     actionId: crypto.randomUUID(),
+    kind: "web_animation_create",
     prompt: "A red square slides in from the left",
     engine: "deepseek",
     aspect: "16:9",
     durationSeconds: 4,
-    fps: { num: 24, den: 1 },
     ...overrides,
   };
 }
@@ -125,7 +123,7 @@ async function insertAsPreviousServer(fx: ProjectFixture): Promise<TimelineExecu
 }
 
 describe("POST /timeline/executions", () => {
-  it("accepts an older tab's kind-less body as a Timeline create, queued, with this Project's grant and no hold", async () => {
+  it("accepts a create, queued, with this Project's grant and no hold", async () => {
     const fx = await seedProject();
     const body = createBody(fx);
     const before = Date.now();
@@ -139,7 +137,7 @@ describe("POST /timeline/executions", () => {
       kind: "web_animation_create",
       engine: "deepseek",
       actionId: body.actionId,
-      origin: "timeline",
+      origin: "web_animation_space",
       status: "queued",
       request: body.prompt,
       ownProject: true,
@@ -148,7 +146,7 @@ describe("POST /timeline/executions", () => {
       resultSourceVersionId: null,
       billedAt: null,
     });
-    expect(data.input).toMatchObject({ prompt: body.prompt, aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } });
+    expect(data.input).toEqual({ prompt: body.prompt, engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: getTimelineConfig().web_animation.fps });
     const budget = getNodeTaskConfig().default_budget_ms;
     expect(Date.parse(data.deadlineAt)).toBeGreaterThanOrEqual(before + budget - 1);
     expect(Date.parse(data.deadlineAt)).toBeLessThanOrEqual(Date.now() + budget + 1);
@@ -164,10 +162,13 @@ describe("POST /timeline/executions", () => {
     expect(await holdsOf(fx.studioId)).toEqual([]);
   });
 
-  it("drops an older tab's frame rate and freezes the configured one", async () => {
+  it("refuses a body without a kind with 422 and writes nothing", async () => {
     const fx = await seedProject();
-    const row = await accepted(fx, { fps: { num: 30_000, den: 1001 } });
-    expect(row.input).toMatchObject({ fps: getTimelineConfig().web_animation.fps });
+    const { kind: _kind, ...kindless } = createBody(fx);
+    expect((await accept(fx.editor.cookie, kindless)).status).toBe(422);
+    expect((await accept(fx.editor.cookie, { ...kindless, fps: { num: 24, den: 1 } })).status).toBe(422);
+    const [{ count } = { count: -1 }] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM timeline_executions WHERE project_id = ${fx.projectId}`;
+    expect(count).toBe(0);
   });
 
   it("freezes the prompt as extractPromptText leaves it", async () => {

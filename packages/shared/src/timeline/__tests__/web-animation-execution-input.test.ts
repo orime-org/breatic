@@ -37,12 +37,10 @@ describe("WebAnimationExecutionRequestSchema", () => {
     expect(WebAnimationExecutionRequestSchema.parse(body)).toEqual({ ...body, origin: "web_animation_space" });
   });
 
-  it("reads an older tab's kind-less request as a Timeline create and drops its frame rate", () => {
-    const body = { spaceId: SPACE, actionId: ACTION, prompt: "A logo", engine: "deepseek", aspect: "1:1", durationSeconds: 3, fps: FPS };
-    expect(WebAnimationExecutionRequestSchema.parse(body)).toEqual({
-      spaceId: SPACE, actionId: ACTION, kind: "web_animation_create", prompt: "A logo", engine: "deepseek", aspect: "1:1",
-      durationSeconds: 3, origin: "timeline",
-    });
+  it("refuses a request without a kind", () => {
+    const body = { spaceId: SPACE, actionId: ACTION, prompt: "A logo", engine: "deepseek", aspect: "1:1", durationSeconds: 3 };
+    expect(WebAnimationExecutionRequestSchema.safeParse(body).success).toBe(false);
+    expect(WebAnimationExecutionRequestSchema.safeParse({ ...body, fps: FPS }).success).toBe(false);
   });
 
   it("refuses a frame rate on a request that names its kind", () => {
