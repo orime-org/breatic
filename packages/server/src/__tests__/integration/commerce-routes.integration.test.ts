@@ -78,13 +78,16 @@ describe("commerce routes", () => {
     ).toMatchObject({ status: 404, json: { code: "lot_not_found" } });
   });
 
-  it("refuses a malformed body and a step the path does not name", async () => {
+  it("refuses a malformed body, text the database cannot store and a step the path does not name", async () => {
     expect(await commerce("/refund-lots/facts", { body: { lotIds: Array.from({ length: 101 }, () => randomUUID()) } })).toMatchObject({
       status: 422,
       json: { code: "invalid_body" },
     });
     expect(
       await commerce(`/refund-steps/${randomUUID()}/settle`, { body: { lotId: randomUUID(), step: "reject", referenceId: "op", tell: null } }),
+    ).toMatchObject({ status: 422, json: { code: "invalid_body" } });
+    expect(
+      await commerce(`/refund-steps/${randomUUID()}/settle`, { body: { lotId: randomUUID(), step: "settle", referenceId: "o\u0000p", tell: null } }),
     ).toMatchObject({ status: 422, json: { code: "invalid_body" } });
   });
 

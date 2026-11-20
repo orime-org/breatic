@@ -254,7 +254,7 @@ describe("operator credit grants over signed HTTP", () => {
 
   it.each([
     { credits: "0" }, { credits: "1e2" }, { credits: "0.001" }, { credits: "NaN" }, { credits: "Infinity" },
-    { credits: 100 }, { reason: " " }, { reason: "x".repeat(501) }, { kind: "payment" },
+    { credits: 100 }, { reason: " " }, { reason: "x".repeat(501) }, { reason: "a\u0000b" }, { kind: "payment" },
     { expectedPersonalStudioId: "not-a-uuid" }, { studioId: "00000000-0000-4000-8000-000000000001" },
   ])("P19 rejects an invalid signed body without storing a decision %#", async (change) => {
     const fx = await seedPersonal(suite.sql);
