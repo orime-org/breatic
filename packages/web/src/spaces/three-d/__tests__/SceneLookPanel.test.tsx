@@ -135,6 +135,17 @@ describe('picking a Project picture for a part', () => {
     expect(lookOf(doc)).toBeUndefined();
   });
 
+  it('fits a picked picture to this device\u2019s largest texture edge when judging the total', async () => {
+    // With the edge capped at 4096 the picture is counted at 4096 px and fits exactly; at the configured edge it would not.
+    const ownBytes = IMPORT_LIMITS.maxTextureBytes - uploadBytes({ width: 4096, height: 4096 }, true);
+    const { doc } = panel({ ...REPORT, ownBytes, deviceMaxEdge: 4096 });
+    sizes.set(NEW, async () => ({ width: 6000, height: 6000, type: 'png' }));
+    await pick('0', NEW);
+    await flush();
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(lookOf(doc)).toEqual({ 0: { map: NEW } });
+  });
+
   it('judges the picture against the look at the moment it is written, not the one the panel last drew', async () => {
     const { doc } = panel();
     sizes.set(OTHER, async () => ({ width: 6000, height: 6000, type: 'png' }));
@@ -249,6 +260,20 @@ describe('a pick that ends after its Space or object changed', () => {
     await flush();
     expect(lookOf(doc)).toBeUndefined();
     expect(toast.warning).toHaveBeenCalledWith(t('spaces.threeD.look.pickSpaceClosed'));
+  });
+
+  it('writes nothing and says the Space was closed when it was opened again but has not loaded yet', async () => {
+    const { doc } = panel();
+    const release = await slowPick();
+    evictSceneSession(NAME);
+    const loading = new Y.Doc();
+    cleanups.push(() => loading.destroy());
+    getSceneSession(loading, NAME).setEnvironment({ readOnly: false, connected: true, hasEverSynced: false, writeAccess: 'granted', refused: false, awareness: null });
+    release();
+    await flush();
+    expect(lookOf(doc)).toBeUndefined();
+    expect(toast.warning).toHaveBeenCalledWith(t('spaces.threeD.look.pickSpaceClosed'));
+    expect(toast.warning).not.toHaveBeenCalledWith(t('spaces.threeD.look.pickObjectGone'));
   });
 
   it('puts the picture on through the Space opened again meanwhile', async () => {

@@ -101,7 +101,8 @@ const pickKey = (name: string, objectId: string, part: string): string => `${nam
  */
 function openObject(name: string, objectId: string): SceneObject | undefined {
   const open = peekSceneSession(name);
-  if (!open) {
+  // A Space opened again whose document has not loaded yet holds no objects; it was closed while the pick ran.
+  if (!open || open.getSnapshot().status !== 'ready') {
     notify({ key: 'spaces.threeD.look.pickSpaceClosed', severity: 'warning' });
     return undefined;
   }
