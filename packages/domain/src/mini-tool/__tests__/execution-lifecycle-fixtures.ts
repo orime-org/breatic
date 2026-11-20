@@ -31,7 +31,7 @@ const GOLDEN = {
   sourceKey: SOURCE_KEY,
   draft: { version: 1, draftId: "60000000-0000-4000-8000-000000000001", revision: "70000000-0000-4000-8000-000000000001", source: { nodeId: "30000000-0000-4000-8000-000000000001", canonicalURL: SOURCE_URL, mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } }, inputs: [], params: {} },
   analysisRefs: [], outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "remove-bg" } }],
-  model: "fixture-bria-fibo-video", provider: { provider: "wavespeed", model_id: "bria/fibo/video-background-remover" }, body: BODY,
+  model: "fixture-bria-fibo-video", route: { mode: "upstream", upstream: "wavespeed" }, body: BODY,
   preparation: PREPARATION, credits: 35, modelCredits: 30, chargeTo: "user",
   requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "8f36d34692aa41e3bc7f64f2aef5eefbb1f0f8a0c0fef3119aefc6af7bc22925",
 } as unknown as Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;

@@ -22,9 +22,7 @@ import type * as shared from "@breatic/shared";
 import { NO_CONSENT } from "@breatic/shared";
 import { miniToolConsumptionKey, miniToolExecutionRecordSchema, type MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
 import {
-  beginMiniToolStepAttempt, creditHoldService, miniToolExecutionService, modelCatalog,
-  recordMiniToolStepIdentity, recordMiniToolStepResult, taskRepo, upstreamStepRepo,
-  type AcceptedMiniToolExecution,
+  creditHoldService, miniToolExecutionService, modelCatalog, taskRepo, upstreamStepRepo, type AcceptedMiniToolExecution, endMiniToolModelStep, markStepSending, initProvider,
 } from "@breatic/domain";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
@@ -74,6 +72,8 @@ const OUTPUT_HASH = "147d7b46f5062b1cc7231edff71bed11071dd088c5b3434432f24e5d410
 function configure(payment = true, multiplier = 1, key = "unused-planned-admission"): void {
   initCore({ ...process.env, PAYMENT_ENABLED: String(payment), CREDIT_MULTIPLIER: String(multiplier), WAVESPEED_API_KEY: key,
     STRIPE_SECRET_KEY: "sk_test_unused", STRIPE_WEBHOOK_SECRET: "whsec_unused", UPLOAD_BASE_URL: "https://assets.example.test" });
+  // The provider reads the keys just set: a missing WaveSpeed key makes its models unservable here.
+  initProvider();
   modelCatalog.resetModelCatalog();
 }
 beforeAll(async () => {
@@ -96,7 +96,7 @@ beforeEach(() => {
     return new Response(body, { headers: { "Content-Type": "application/json" } });
   }));
 });
-afterAll(async () => { for (const token of tokens) await revokeSession(getRedis(), token); await pg.end(); initCore(process.env); modelCatalog.resetModelCatalog(); vi.unstubAllGlobals(); });
+afterAll(async () => { for (const token of tokens) await revokeSession(getRedis(), token); await pg.end(); initCore(process.env); initProvider(); modelCatalog.resetModelCatalog(); vi.unstubAllGlobals(); });
 
 /** A real, currently authorized member; UUIDs do not stand in for role decisions.
  * @throws {Error} On a fixture SQL failure.
@@ -166,14 +166,13 @@ async function accepted(f: Fixture, response: Response): Promise<void> {
 async function workerFacts(f: Fixture, completed: boolean): Promise<void> {
   const entered = await miniToolExecutionService.startMiniToolExecution(f.body.run_id, f.body.run_id);
   if (entered.execution.tool !== "video.remove-bg") throw new Error("Expected removal fixture plan");
-  const [s] = await upstreamStepRepo.ensureSteps(f.body.run_id, [{ kind: "generate", endpoint: entered.execution.provider.model_id, itemIndex: 0 }]); if (!s) throw new Error("Missing controlled worker step");
-  const deadlineAt = entered.task.createdAt.getTime() + getNodeTaskConfig().default_budget_ms; const attemptId = randomUUID();
-  await beginMiniToolStepAttempt({ taskId: f.body.run_id, stepId: s.id, attemptId, deadlineAt, requestBody: { ...entered.execution.body }, chargeTo: "user" });
-  await recordMiniToolStepIdentity({ taskId: f.body.run_id, stepId: s.id, attemptId, predictionId: "controlled-ack-prediction" });
+  const [s] = await upstreamStepRepo.ensureSteps(f.body.run_id, [{ kind: "generate", endpoint: entered.execution.model, itemIndex: 0 }]); if (!s) throw new Error("Missing controlled worker step");
+  const deadlineAt = entered.task.createdAt.getTime() + getNodeTaskConfig().default_budget_ms;
+  // The model step's send and its returned answer with a cost still pending (inner#1306 §11.2, §11.4).
+  await markStepSending(f.body.run_id, s.id, deadlineAt);
+  await endMiniToolModelStep({ taskId: f.body.run_id, stepId: s.id, end: { kind: "returned", link: "https://provider.example.test/controlled-result.webm" },
+    costs: [{ state: "pending", lookup: { upstream: "wavespeed", predictionId: "controlled-ack-prediction" } }], servedBy: "wavespeed" });
   if (!completed) return;
-  const url = "https://provider.example.test/controlled-result.webm";
-  await recordMiniToolStepResult({ taskId: f.body.run_id, stepId: s.id, identity: { kind: "provider", provider: "wavespeed", predictionId: "controlled-ack-prediction" }, outcome: "done", result: [url] },
-    { kind: "generate", parse: (value) => ({ providerURL: z.tuple([z.string().url()]).parse(value)[0] }) });
   const assetId = randomUUID(); const key = `video/ack-winner/${assetId}.webm`; const canonicalURL = publicUrl(key);
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,generation_task_id,width,height,duration_seconds)
     VALUES (${assetId},${f.studioId},${OUTPUT_HASH},${key},${canonicalURL},1588436,'video/webm','video','ai',${f.userId},${f.body.run_id},960,540,5.013)`;
@@ -239,8 +238,11 @@ describe("planned POST real admission, strict body and original row/hold/queue o
   });
   it("A21 refuses before claim a call longer than the model's vendor limit (inner#1306 §11.5)", async () => {
     const f = await seed(); await pg`UPDATE studio_assets SET duration_seconds=61 WHERE id=${f.sourceId}`;
+    // A 61 s source: 12,200 grid frames at the fixture's 200 fps; the call's length is the selected version's.
+    const presented = await presentedSource(f.sourceHash, f.sourceKey, publicUrl, { display: { frameCount: 12200, realFrameCount: 12200 }, duration: 61 });
+    outside.snapshots.set(f.sourceKey, presented.snapshot); f.body.presentation_ref = presented.presentationRef;
     const response = await post(f); expect(response.status).toBe(422);
-    expect(await response.json()).toMatchObject({ error: { reason: "input_refused" } }); expect(await counts(f)).toEqual({ tasks: 0, rows: 0, holds: 0, queue: 0 });
+    expect(await response.json()).toMatchObject({ error: { message: expect.stringContaining("60") } }); expect(await counts(f)).toEqual({ tasks: 0, rows: 0, holds: 0, queue: 0 });
   });
   it.each(["tool", "project_id", "space_id", "run_id", "draft", "analysis_refs", "outputs"])("H02 rejects missing %s as request_shape", async (field) => {
     const f = await seed(); const body = { ...f.body }; Reflect.deleteProperty(body, field); const response = await post(f, body);
@@ -449,13 +451,20 @@ async function holdExecution(f: ExecutionFixture): Promise<void> {
 /** Prepare an original durable intent and optional original receipt under actual SQL owners.
  * @throws {Error} When an owning persistence operation fails.
  */
-async function executionIdentity(f: ExecutionFixture, saveId: boolean): Promise<{ stepId: string; attemptId: string; consumptionKey: string }> {
-  const [s] = await upstreamStepRepo.ensureSteps(f.taskId, [{ kind: "generate", endpoint: f.plan.provider.model_id, itemIndex: 0 }]); if (!s) throw new Error("Missing admission fixture step");
+async function executionIdentity(f: ExecutionFixture, saveId: boolean): Promise<{ stepId: string; consumptionKey: string }> {
+  const [s] = await upstreamStepRepo.ensureSteps(f.taskId, [{ kind: "generate", endpoint: f.plan.model, itemIndex: 0 }]); if (!s) throw new Error("Missing admission fixture step");
   const task = await taskRepo.getMiniToolExecutionTask(f.taskId); if (!task) throw new Error("Missing admission fixture task");
-  const attemptId = randomUUID(); await beginMiniToolStepAttempt({ taskId: f.taskId, stepId: s.id, attemptId,
-    deadlineAt: task.createdAt.getTime() + getNodeTaskConfig().default_budget_ms, requestBody: { ...f.plan.body }, chargeTo: "user" });
-  if (saveId) await recordMiniToolStepIdentity({ taskId: f.taskId, stepId: s.id, attemptId, predictionId: "original-admission-prediction" });
-  return { stepId: s.id, attemptId, consumptionKey: await miniToolConsumptionKey({ taskId: f.taskId, stepId: s.id, identity: { kind: "provider", provider: "wavespeed", predictionId: "original-admission-prediction" } }) };
+  await markStepSending(f.taskId, s.id, task.createdAt.getTime() + getNodeTaskConfig().default_budget_ms);
+  if (saveId) await returnStep(f.taskId, s.id);
+  return { stepId: s.id, consumptionKey: await miniToolConsumptionKey({ taskId: f.taskId, stepId: s.id, identity: { kind: "provider", stepId: s.id } }) };
+}
+
+/** End a sent model step returned with a cost still pending.
+ * @throws {Error} When the step's end cannot be recorded.
+ */
+async function returnStep(taskId: string, stepId: string): Promise<void> {
+  await endMiniToolModelStep({ taskId, stepId, end: { kind: "returned", link: "https://provider.example.test/admission.webm" },
+    costs: [{ state: "pending", lookup: { upstream: "wavespeed", predictionId: "original-admission-prediction" } }], servedBy: "wavespeed" });
 }
 
 describe("planned admission failure shares the original task lock and settlement owner", () => {
@@ -466,7 +475,7 @@ describe("planned admission failure shares the original task lock and settlement
     const parent = await executionSnapshot(pg, f); expect(parent.status).toBe("failed"); expect(parent.params).toEqual({ miniToolExecution: f.plan }); expect(parent.result.preserved).toEqual({ token: "original" }); expect(parent.result.settlement).toMatchObject({ consumptionSetComplete: true });
     const [hold] = await pg`SELECT status FROM credit_holds WHERE reference_id=${f.taskId}`; expect(hold).toEqual({ status: "released" });
   });
-  it.each([false, true])("preparation A17 retains the actual held quote and durable original intent/identity (identity=%s)", async (saveId) => {
+  it.each([false, true])("preparation A17 retains the actual held quote and a sent model step, returned or not (returned=%s)", async (saveId) => {
     const f = await seedExecution(pg, "running"); await holdExecution(f); const i = await executionIdentity(f, saveId); const beforeSteps = await upstreamStepRepo.listSteps(f.taskId);
     const record = await miniToolExecutionService.failMiniToolExecutionAdmission(f.taskId, { code: "internal" }); expect(record.status).toBe("failed");
     expect(record.usage).toEqual(saveId ? [{ consumptionKey: i.consumptionKey, state: "pending", chargeTo: "user", costUsd: null, credits: null }] : []);
@@ -479,12 +488,12 @@ describe("planned admission failure shares the original task lock and settlement
     const before = await executionSnapshot(pg, f); const record = await miniToolExecutionService.failMiniToolExecutionAdmission(f.taskId, { code: "internal" });
     expect(record.status).toBe("completed"); expect(await executionSnapshot(pg, f)).toEqual(before); const [hold] = await pg`SELECT status FROM credit_holds WHERE reference_id=${f.taskId}`; expect(hold).toEqual({ status: "held" });
   });
-  it("serializes admission failure and recovery of an original prepared receipt on the same actual task lock", async () => {
+  it("serializes admission failure and a sent model step's return on the same actual task lock", async () => {
     const f = await seedExecution(pg, "running"); await holdExecution(f); const i = await executionIdentity(f, false);
     let entered!: () => void; let release!: () => void; const ready = new Promise<void>((r) => { entered = r; }); const gate = new Promise<void>((r) => { release = r; });
     const owner = pg.begin(async (tx) => { await tx`SELECT id FROM tasks WHERE id=${f.taskId} FOR UPDATE`; entered(); await gate; }); await ready;
     const failing = miniToolExecutionService.failMiniToolExecutionAdmission(f.taskId, { code: "internal" });
-    const receipt = recordMiniToolStepIdentity({ taskId: f.taskId, stepId: i.stepId, attemptId: i.attemptId, predictionId: "original-admission-prediction" }); void failing.catch(() => undefined); void receipt.catch(() => undefined);
+    const receipt = returnStep(f.taskId, i.stepId); void failing.catch(() => undefined); void receipt.catch(() => undefined);
     try { await waitUntilBlockedOn(pg, ["tasks", "for update"], 2); release(); await owner; await Promise.all([failing, receipt]);
       const parent = await executionSnapshot(pg, f); expect(parent.status).toBe("failed"); expect(parent.result.miniToolExecution).toMatchObject({ usage: [{ consumptionKey: i.consumptionKey, state: "pending", costUsd: null, credits: null }] });
       const [hold] = await pg`SELECT status FROM credit_holds WHERE reference_id=${f.taskId}`; expect(hold).toEqual({ status: "held" });

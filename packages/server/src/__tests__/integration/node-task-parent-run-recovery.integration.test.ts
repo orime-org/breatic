@@ -12,8 +12,7 @@ import {
 } from "@breatic/core";
 import { miniToolExecutionRecordSchema, type MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
 import {
-  beginMiniToolStepAttempt, miniToolExecutionService, modelCatalog, nodeHistoryService,
-  nodeTaskService, recordMiniToolStepIdentity, recordMiniToolStepResult, taskRepo, upstreamStepRepo,
+  miniToolExecutionService, modelCatalog, nodeHistoryService, nodeTaskService, taskRepo, upstreamStepRepo, endMiniToolModelStep, markStepSending, initProvider,
 } from "@breatic/domain";
 import type { NodeTaskEntry } from "@breatic/shared";
 import * as nodeTaskRepo from "../../../../domain/src/node-task/node-task.repo.js";
@@ -34,7 +33,7 @@ const tokens: string[] = [];
 
 beforeAll(async () => {
   initCore({ ...process.env, PAYMENT_ENABLED: "true", CREDIT_MULTIPLIER: "1", WAVESPEED_API_KEY: "unused-parent-run-test", STRIPE_SECRET_KEY: "sk_test_unused", STRIPE_WEBHOOK_SECRET: "whsec_unused", UPLOAD_BASE_URL: "https://assets.example.test" });
-  modelCatalog.resetModelCatalog(); loadLocales(); initLogger("node-parent-run-test");
+  initProvider(); modelCatalog.resetModelCatalog(); loadLocales(); initLogger("node-parent-run-test");
   pg = createPgClient(inject("DATABASE_URL"), { name: "node-parent-run-fixture", max: 4 });
   const { createApp } = await import("@server/app.js"); app = createApp();
   outside.ingest.mockImplementation(async (_url: string, _secret: string, input: { storageKey: string }): Promise<unknown> => structuredClone(outside.snapshots.get(input.storageKey)));
@@ -45,7 +44,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   for (const token of tokens) await revokeSession(getRedis(), token);
-  await pg?.end(); initCore(process.env); modelCatalog.resetModelCatalog(); vi.unstubAllGlobals();
+  await pg?.end(); initCore(process.env); initProvider(); modelCatalog.resetModelCatalog(); vi.unstubAllGlobals();
 });
 
 /** Authenticate against real Redis rather than bypassing route middleware.
@@ -118,14 +117,13 @@ async function admitted(): Promise<ExecutionFixture> {
  * @throws {Error} When a real persistence owner refuses these legal facts.
  */
 async function completedPending(f: ExecutionFixture): Promise<void> {
-  const [step] = await upstreamStepRepo.ensureSteps(f.taskId, [{ kind: "generate", endpoint: f.plan.provider.model_id, itemIndex: 0 }]);
-  if (!step) throw new Error("Missing original controlled provider step");
-  const attemptId = randomUUID(); const identity = { kind: "provider" as const, provider: "wavespeed" as const, predictionId: `parent-${f.taskId}` };
+  const [step] = await upstreamStepRepo.ensureSteps(f.taskId, [{ kind: "generate", endpoint: f.plan.model, itemIndex: 0 }]);
+  if (!step) throw new Error("Missing original controlled model step");
   const parent = await taskRepo.getTaskById(f.taskId); if (parent === null) throw new Error("Missing admitted parent");
-  await beginMiniToolStepAttempt({ taskId: f.taskId, stepId: step.id, attemptId, deadlineAt: parent.createdAt.getTime() + getNodeTaskConfig().default_budget_ms, requestBody: { ...f.plan.body }, chargeTo: "user" });
-  await recordMiniToolStepIdentity({ taskId: f.taskId, stepId: step.id, attemptId, predictionId: identity.predictionId });
-  await recordMiniToolStepResult({ taskId: f.taskId, stepId: step.id, identity, outcome: "done", result: ["https://provider.example.test/parent.webm"] },
-    { kind: "generate", parse: (value) => ({ providerURL: z.tuple([z.url()]).parse(value)[0] }) });
+  // The model step's send and its returned answer with a cost still pending (inner#1306 §11.2, §11.4).
+  await markStepSending(f.taskId, step.id, parent.createdAt.getTime() + getNodeTaskConfig().default_budget_ms);
+  await endMiniToolModelStep({ taskId: f.taskId, stepId: step.id, end: { kind: "returned", link: "https://provider.example.test/parent.webm" },
+    costs: [{ state: "pending", lookup: { upstream: "wavespeed", predictionId: `parent-${f.taskId}` } }], servedBy: "wavespeed" });
   await upstreamStepRepo.recordInline(step.id, { "miniToolAsset:0": f.registered.assetId }, 0);
   await miniToolExecutionService.finishMiniToolExecution(f.taskId, { planFingerprint: f.plan.planFingerprint, expectedVersion: 0, error: null,
     outputs: [{ ...f.plan.outputs[0]!, late: false, result: f.registered }] });
