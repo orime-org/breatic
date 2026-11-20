@@ -7,9 +7,9 @@ import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
 import { plannedOutputPlacementOf } from '../planned-output-placement';
 
 describe('F11 complete internal planned output placement', () => {
-  it('keeps one remove-bg output in the original column layout', () => {
-    const descriptor = { modality: 'video', namePrefix: 'MATTE' } as const;
-    expect(plannedOutputPlacementOf([descriptor], [], 'ORIGINAL')).toEqual([{ output: descriptor, name: 'MATTE-ORIGINAL', x: 0, y: 0, width: EMPTY_NODE_SIZE.width, height: EMPTY_NODE_SIZE.height }]);
+  it('keeps one output in the original column layout', () => {
+    const descriptor = { modality: 'video', namePrefix: 'CLIP' } as const;
+    expect(plannedOutputPlacementOf([descriptor], [], 'ORIGINAL')).toEqual([{ output: descriptor, name: 'CLIP-ORIGINAL', x: 0, y: 0, width: EMPTY_NODE_SIZE.width, height: EMPTY_NODE_SIZE.height }]);
   });
 
   it('places every internal descriptor in supplied order without legacy outputsOf or an implicit Group', () => {

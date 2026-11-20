@@ -919,7 +919,7 @@ async function quote(f: Fixture, body: unknown = f.body): Promise<{ status: numb
 
 // inner#1306 test plan §67.1 (S5-A01, S5-A05, S5-R05 rewritten) and §67.2 (A01, A02); frames-split design §5.5 「配置」行,
 // §10.7, §10.8 「请求」「受理」「计费」「重试」行. The shared platform-funded set (`packages/shared/src/mini-tools/platform-funded.ts`)
-// names `video.extract-frames`, `video.focus-crop` and the analysis kind `people` (`PLATFORM_FUNDED`, `miniToolChargeTo`);
+// names `video.extract-frames` and `video.focus-crop` (`PLATFORM_FUNDED`, `miniToolChargeTo`);
 // A02 replaces both in the `@breatic/shared/mini-tools` entry admission imports.
 describe("frame-grid requests and the platform-funded set at admission (§67.1, §67.2)", () => {
   it.each([

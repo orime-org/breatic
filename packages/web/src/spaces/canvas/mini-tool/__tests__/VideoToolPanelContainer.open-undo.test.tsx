@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Opening a video tool writes the user nothing to undo: the draft it seeds on a node with none, and the anchor an automatic
- * lip-sync people analysis freezes, stay off the canvas undo stack, so the user's next undo takes back their own last edit.
+ * Opening a video tool writes the user nothing to undo: the draft it seeds on a node with none stays off the canvas undo
+ * stack, so the user's next undo takes back their own last edit.
  */
 
 import * as React from 'react';

@@ -12,7 +12,7 @@ const INPUT_B = "20000000-0000-4000-8000-000000000002";
 const DEADLINE = Date.parse("2026-10-25T11:03:03.100Z");
 const inputs = [{ inputId: INPUT_A, storageKey: "fixtures/source-a.mp4" }, { inputId: INPUT_B, storageKey: "fixtures/source-b.mp4" }];
 const limits = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
-// frames-split design §7.17 (「唯一写点：worker的配方构造」, frame/segment/people/scene_cuts rows, 「去掉inspect_video步骤」):
+// frames-split design §7.17 (「唯一写点：worker的配方构造」, frame/segment/scene_cuts rows, 「去掉inspect_video步骤」):
 // every job recipe names the grid, the tool source and grid frame numbers the worker wrote from the frozen plan.
 const GRID = { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 125, realFrameCount: 125 };
 const SOURCE_REF = { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 2, allKeyframes: false } };

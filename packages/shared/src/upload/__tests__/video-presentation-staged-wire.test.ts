@@ -534,7 +534,7 @@ describe('E2-5 one key per sub-job and the grid recipe shapes (§5.4 「job id�
     ['an edit-file tool source', { ...frameRecipe, source: { kind: 'edit' } }],
     ['a hold frame past the real frames', { ...frameRecipe, frameIndex: 49 }],
     ['a 16-bit, alpha-keeping target', { ...frameRecipe, target: { ...FRAME_TARGET, pngBitDepth: 16, alpha: 'straight' } }],
-    // The display crop (people candidates, the video focus crop §5.5), in the display geometry of the target.
+    // The display crop (the video focus crop §5.5), in the display geometry of the target.
     ['a display crop', { ...frameRecipe, crop: { sourceWidth: 320, sourceHeight: 180, rect: { x: 2, y: 2, width: 100, height: 80 } } }],
   ])('FR01 admits a frame recipe with %s', (_name, recipe) => {
     expect(miniToolPlanRecipeSchema.parse(recipe)).toEqual(recipe);

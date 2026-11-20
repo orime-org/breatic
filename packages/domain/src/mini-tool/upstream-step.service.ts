@@ -28,8 +28,7 @@ export interface RecordMiniToolStepResultInput {
   /**
    * Presentation pins written with a newly stored preparation result (§7.15 prepared row, release points): the final prepared
    * output the run now keeps, outputs it no longer needs (a failed attempt's, chunks after their stitch), and intermediates
-   * appended to the run's execution pin, or an analysis's analysis pin (§97 D21-1: a lip-sync step's derived objects;
-   * execution design §10.3: a tracking analysis's clips and RLE).
+   * appended to the run's execution pin, or an analysis's analysis pin.
    */
   presentation?: { prepared?: { toolInputId: string; preparedKey: string }; retire?: string[]; pin?: string[] };
 }

@@ -252,7 +252,7 @@ export function recordFromTask(task: taskRepo.AnalysisTaskRow): MiniToolAnalysis
   }
   const status = task.status === "cancelled" ? "failed" : task.status;
   return miniToolAnalysisRecordSchema.parse({
-    // Once billed, the analysis reads as what it was charged (canvas design §4 erase row: the tracking's actual use).
+    // Once billed, the analysis reads as what it was charged.
     ...identity, status, result: stored?.result ?? null, usage: task.billedCredits === null ? stored?.usage ?? [] : [{ credits: task.billedCredits }],
     artifactUnavailable: stored?.artifactUnavailable ?? false,
     error: status === "failed" ? stored?.error ?? { code: task.errorMessage ?? "analysis_failed" } : null,

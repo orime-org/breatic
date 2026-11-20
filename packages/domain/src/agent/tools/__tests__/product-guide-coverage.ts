@@ -66,7 +66,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.videoUI.segmentPreview": { described: /beside its range while it plays/ },
   "canvas.miniTool.videoUI.outputCapExceeded": { described: /with more the panel says the limit in red/ },
   "canvas.miniTool.videoUI.invalidNumber": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
-  // Batch-six video tools (inner#1306): transitions, the lip-sync failure lines, range toasts and the tracking cost.
   "canvas.miniTool.videoUI.noCuts": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "canvas.miniTool.videoUI.tooManyOutputs": { described: /one run makes up to \d+ segments/ },
   "spaces.create.notAvailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },

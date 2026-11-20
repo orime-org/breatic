@@ -231,10 +231,10 @@ describe("pin and registration invariants over any event sequence (critical path
   });
 });
 
-// frames-split §7.15 唯一写点 and the execution holder row: the worker registers each run intermediate object (a lip-sync
-// RLE, transform table, person video, stem or generation result, a transitions chunk) by appending its key to the run's
-// `execution` pin rows inside the registration transaction, through the repository's one writer `appendPinObjects`; a later
-// `Chk` keeps those keys, and releasing the execution pin registers them, without a canonical key, beside the edit file.
+// frames-split §7.15 唯一写点 and the execution holder row: the worker registers each run intermediate object by appending
+// its key to the run's `execution` pin rows inside the registration transaction, through the repository's one writer
+// `appendPinObjects`; a later `Chk` keeps those keys, and releasing the execution pin registers them, without a canonical
+// key, beside the edit file.
 describe("appending run intermediates to the execution pin (§7.15)", () => {
   type Append = (taskId: string, keys: readonly string[], tx: DbTx) => Promise<void>;
   /**
@@ -274,8 +274,8 @@ describe("appending run intermediates to the execution pin (§7.15)", () => {
     expect(await queued(s.key)).toEqual([s.edit(T), key].sort());
   });
 
-  // A transitions run pins each of its two inputs in its own execution row; a done chunk it appends stays pinned with the
-  // run and is registered when the run's pins are released.
+  // A run with two inputs pins each in its own execution row; a done chunk it appends stays pinned with the run and is
+  // registered when the run's pins are released.
   it("PA04 a run with one execution row per input appends to it, and releasing the run registers the appended keys", async () => {
     const s = source(); const task = randomUUID(); const key = s.intermediate("e5");
     await pins().acquire({ holderKind: "execution", holderId: task, toolInputId: T, objectKeys: [s.edit(T)] });

@@ -665,7 +665,7 @@ describe("mini-tool consumption recording transaction", () => {
   it("records platform cost while keeping user credits zero", async () => {
     const fixture = await seed({
       chargeTo: "platform",
-      identity: { kind: "container", containerClass: "MiniToolContainerStd1", jobId: "people-preparation-001", chunkIndex: 0 },
+      identity: { kind: "container", containerClass: "MiniToolContainerStd1", jobId: "split-preparation-001", chunkIndex: 0 },
     });
     await record(fixture);
     const after = await snapshot(fixture);

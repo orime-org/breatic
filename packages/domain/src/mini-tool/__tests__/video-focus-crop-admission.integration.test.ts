@@ -29,7 +29,7 @@ import { resetModelCatalog } from "@domain/model-catalog/model-catalog.js";
 import { seedStudioFixture } from "../../../../server/src/__tests__/integration/studio-credit-fixtures.js";
 import { presentedSource } from "../../../../server/src/__tests__/integration/presentation-fixtures.js";
 
-const FUNDED: readonly string[] = ["video.extract-frames", "video.focus-crop", "people"];
+const FUNDED: readonly string[] = ["video.extract-frames", "video.focus-crop"];
 const outside = vi.hoisted(() => ({
   snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), ingest: vi.fn(),
   funded: new Set<string>(),
