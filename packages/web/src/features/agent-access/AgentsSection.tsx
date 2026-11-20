@@ -437,7 +437,7 @@ function CreateTokenDialog({ t }: { t: Translate }): React.JSX.Element {
               <DialogDescription>{t('agentTokens.tokenShownBody')}</DialogDescription>
             </DialogHeader>
             <div className='flex items-center gap-2 rounded-chrome border border-border bg-card p-2 font-mono text-xs'>
-              <span className='min-w-0 flex-1 break-all'>{shown}</span>
+              <span data-testid='agent-token-value' className='min-w-0 flex-1 break-all'>{shown}</span>
               <Button variant='ghost' size='sm' icon={copied ? <Check className='size-4' /> : <Copy className='size-4' />} onClick={() => void onCopy()}>
                 {copied ? t('agentTokens.copied') : t('agentTokens.copy')}
               </Button>
