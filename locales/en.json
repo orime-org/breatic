@@ -2447,11 +2447,11 @@
   "project": {
     "leaveGuard": {
       "title": "Leave with work in progress?",
-      "description": "An upload or edit hasn't finished syncing. Leaving now may lose it.",
+      "description": "An upload, edit or run you started hasn't finished. Leaving now may lose it.",
       "stay": "Stay",
       "leave": "Leave anyway",
       "unsyncedDescription": "Some changes have not synced. Refreshing or leaving now may lose them.",
-      "combinedDescription": "Some changes have not synced, and an upload or edit is still in progress. Refreshing or leaving now may lose this work.",
+      "combinedDescription": "Some changes have not synced, and an upload, edit or run is still in progress. Refreshing or leaving now may lose this work.",
       "completeDescription": "Changes are synced and operations are complete.",
       "completeTitle": "Ready to continue"
     },

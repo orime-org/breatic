@@ -2249,7 +2249,7 @@ export function renderProductGuide(): string {
       "plan of the studio's admin allows (only their upgrade raises it), and every browser tab that has the " +
       "space open counts, the user's own included. Closing other tabs on it and reconnecting, which reloads " +
       "the page, can free one.",
-    "- Going elsewhere in the site while local Canvas or Document edits have not synced, or an upload or file read is unfinished, asks " +
+    "- Going elsewhere in the site while local Canvas or Document edits have not synced, an upload or file read is unfinished, or a generation, tool run or Motion execution the server has not yet accepted is waiting, asks " +
       `${quoted(t("project.leaveGuard.title"))} with ${quoted(t("project.leaveGuard.stay"))} and ${quoted(t("project.leaveGuard.leave"))}. ` +
       "This covers content in background Space tabs of the current Project too. " +
       `The notice says ${quoted(t("project.leaveGuard.unsyncedDescription"))} for unsynced edits, ` +
