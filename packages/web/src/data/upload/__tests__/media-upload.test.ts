@@ -104,23 +104,6 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
   const file = new File(['x'], 'photo.png', { type: 'image/png' });
   const context = { projectId: 'p1', nodeId: 'n1', spaceId: 's1' };
 
-  it('asks before sending the bytes of content the server does not hold, and sends nothing when the caller stops there', async () => {
-    const stored = makeUploadDeps({ beforeSend: vi.fn(), requestTicket: vi.fn().mockResolvedValue({ alreadyExists: true, assetId: 'a', fileUrl: 'https://cdn/a.png', kind: 'image' }) });
-    await runMediaUpload(file, context, stored);
-    expect(stored.beforeSend).not.toHaveBeenCalled();
-    expect(stored.onSuccess).toHaveBeenCalled();
-
-    const controller = new AbortController();
-    const refused = makeUploadDeps({ beforeSend: vi.fn(async () => { controller.abort(); }) });
-    await expect(runMediaUpload(file, context, refused, controller.signal)).rejects.toThrow();
-    expect(refused.beforeSend).toHaveBeenCalledTimes(1);
-    expect(refused.sendToIngest).not.toHaveBeenCalled();
-
-    const accepted = makeUploadDeps({ beforeSend: vi.fn(async () => undefined) });
-    await runMediaUpload(file, context, accepted);
-    expect(accepted.sendToIngest).toHaveBeenCalledTimes(1);
-  });
-
   it('asks with what the server signs a ticket from, then sends the file', async () => {
     const deps = makeUploadDeps();
 
@@ -488,16 +471,6 @@ describe('uploadMedia — the pipeline wired to the real network, as a promise',
     expect(assetsApi.requestUploadTicket).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: 'p1', derived: true, hash: HASH }), undefined,
     );
-  });
-
-  it('asks before sending the bytes of a new upload', async () => {
-    wire();
-    const beforeSend = vi.fn(async () => undefined);
-
-    await uploadMedia(file, { projectId: 'p1' }, undefined, undefined, undefined, beforeSend);
-
-    expect(beforeSend).toHaveBeenCalledTimes(1);
-    expect(beforeSend.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(sendFileAndFinish).mock.invocationCallOrder.at(-1)!);
   });
 
   it('rejects with the pipeline\'s reason, readable as the message too', async () => {

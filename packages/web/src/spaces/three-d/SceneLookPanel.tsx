@@ -223,10 +223,11 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   const openChange = React.useCallback((open: boolean): void => { if (!open) setPickerPart(null); }, []);
 
   const uploadPercentOf = React.useMemo(() => {
-    // A new lookup per progress step, so the memoized section draws it.
+    // A new lookup per progress step, and per look change: a stored picture's row waits until the part shows it.
     void uploadVersion;
+    void look;
     return (part: string): number | null => uploads.get(spaceId, objectId, part)?.percent ?? null;
-  }, [uploads, spaceId, objectId, uploadVersion]);
+  }, [uploads, spaceId, objectId, uploadVersion, look]);
   return <>
     <SceneLookSection objectId={objectId} parts={ready ? ready.parts : report === 'failed' ? 'failed' : 'loading'} look={look}
       selectedPart={selectedPart} mutable={mutable} onSelectPart={onSelectPart} onCommand={onCommand} onChoosePicture={setPickerPart}

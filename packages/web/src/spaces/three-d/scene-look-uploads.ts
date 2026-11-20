@@ -3,7 +3,10 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 
-import { getLocale, isSceneLookImageMediaType, SCENE_LOOK_MAX_PARTS, t, uploadableFormatList, type SceneLook } from '@breatic/shared';
+import {
+  getLocale, isSceneLookImageMediaType, judgeSceneLookPicture, SCENE_LOOK_MAX_PARTS, t, uploadableFormatList, type SceneLook,
+  type SceneLookPictureRefusal,
+} from '@breatic/shared';
 
 import { projectImagesQueryKey } from '@web/data/api/scene';
 import { UploadFailedError, uploadMedia } from '@web/data/upload/media-upload';
@@ -24,12 +27,8 @@ export interface LookUploadNotice {
 }
 
 export interface SceneLookUploadDeps {
-  /**
-   * Send the file through the common upload pipeline; `beforeSend` runs once the server opened an upload for content it
-   * does not hold yet, and aborting `signal` there stops the upload before any byte is sent.
-   */
-  upload: (file: File, context: UploadContext, onProgress: (fraction: number) => void, signal: AbortSignal,
-    beforeSend: () => Promise<void>) => Promise<{ assetId: string }>;
+  /** Send the file through the common upload pipeline; the server and collab put it on the part (design 6.3). */
+  upload: (file: File, context: UploadContext, onProgress: (fraction: number) => void, signal: AbortSignal) => Promise<{ assetId: string }>;
   notify: (notice: LookUploadNotice) => void;
   /** Hold a Space busy (closing its tab is held back). */
   register: (spaceId: string, operationId: string) => void;
@@ -67,7 +66,7 @@ export interface SceneLookUploadStart {
   limits: LookTextureLimits;
 }
 
-/** One running upload, shown on its part row. */
+/** One upload, shown on its part row from the start until its picture is on the part or collab said why not. */
 export interface SceneLookUploadEntry {
   spaceId: string;
   objectId: string;
@@ -75,12 +74,29 @@ export interface SceneLookUploadEntry {
   percent: number;
   /** The upload that owns the entry. */
   operationId: string;
+  /** The Space document's name. */
+  name: string;
+  /** The part's picture when the upload started, or null for none. */
+  startMap: string | null;
+  /** The stored picture, once the server has it; collab then writes it. */
+  picture?: string;
+}
+
+/** Collab's word that it did not put an uploaded picture on its part. */
+export interface SceneLookRefusal {
+  spaceId: string;
+  objectId: string;
+  part: string;
+  picture: string;
+  reason: SceneLookPictureRefusal;
 }
 
 export interface SceneLookUploads {
   start: (input: SceneLookUploadStart) => Promise<void>;
-  /** The running upload of one part, if any. */
+  /** The upload of one part still in progress, if any. */
   get: (spaceId: string, objectId: string, part: string) => SceneLookUploadEntry | undefined;
+  /** Collab did not put a picture on its part: tell the uploader why. */
+  refused: (refusal: SceneLookRefusal) => void;
   subscribe: (listener: () => void) => () => void;
   getVersion: () => number;
 }
@@ -157,13 +173,26 @@ function lookOf(session: SceneSession, objectId: string): SceneLook | undefined 
 }
 
 /**
- * The page's part-picture uploads: each outlives the panel and the editor, and writes on completion only when the
- * Space, the object, the user's access, the part's picture and the budget still allow (inner#1693 design 6.3).
+ * Why collab did not write a picture, told to its uploader.
+ * @param reason - Collab's reason.
+ * @returns The notice.
+ */
+function refusalNotice(reason: SceneLookPictureRefusal): LookUploadNotice {
+  if (reason === 'objectGone') return { key: 'spaces.threeD.look.objectGone', severity: 'warning' };
+  if (reason === 'partChanged') return { key: 'spaces.threeD.look.partChanged', severity: 'warning' };
+  return { key: 'spaces.threeD.look.uploadedPartLimit', params: { max: String(SCENE_LOOK_MAX_PARTS) }, severity: 'warning' };
+}
+
+/**
+ * The page's part-picture uploads: each outlives the panel and the editor. The browser checks the file and the object's
+ * limits, sends the bytes, and leaves the write to the server and collab (inner#1693 design 6.3).
  * @param deps - The transport, the notices and the Space hold.
  * @returns The holder.
  */
 export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUploads {
   const entries = new Map<string, SceneLookUploadEntry>();
+  /** A refusal heard before its upload's answer named the stored picture, per part. */
+  const early = new Map<string, { picture: string; reason: SceneLookPictureRefusal }>();
   const listeners = new Set<() => void>();
   let version = 0;
   /**
@@ -181,80 +210,87 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
   };
 
   /**
+   * Whether an entry still waits: bytes still going, or a stored picture collab would still write onto the part as the
+   * open Space shows it now. A Space not open, or still loading, cannot say otherwise.
+   * @param entry - The entry.
+   * @returns True while the part row shows the upload.
+   */
+  const waiting = (entry: SceneLookUploadEntry): boolean => {
+    if (entry.picture === undefined) return true;
+    const session = deps.session(entry.name);
+    if (!session || session.getSnapshot().status !== 'ready') return true;
+    const object = session.getSnapshot().objects.find((item) => item.id === entry.objectId);
+    return judgeSceneLookPicture({ object, part: entry.part, startMap: entry.startMap, picture: entry.picture }) === 'write';
+  };
+
+  /**
    * Why putting this picture on the part would make a picture unusable, read from file headers.
    * @param input - The upload's start record.
    * @param look - The object's current look.
-   * @param map - The new picture's id, or a placeholder while it is local.
    * @param mapSize - The new picture's size.
    * @returns The refusal with the object's texture total, or null.
    */
-  const overLimit = (input: SceneLookUploadStart, look: SceneLook, map: string, mapSize: LookPictureSize): ReturnType<typeof checkLookWrite> =>
-    checkLookWrite({ ownBytes: input.ownBytes, clampBytes: input.clampBytes, limits: input.limits, look, part: input.part, map, mapSize,
+  const overLimit = (input: SceneLookUploadStart, look: SceneLook, mapSize: LookPictureSize): ReturnType<typeof checkLookWrite> =>
+    checkLookWrite({ ownBytes: input.ownBytes, clampBytes: input.clampBytes, limits: input.limits, look, part: input.part, map: 'local', mapSize,
       size: (assetId) => deps.size(input.projectId, assetId, input.limits.maxPictureHeaderBytes) });
 
   /**
    * Whether putting a picture on the part would give the object one part more than it can hold, judged by the same plan
-   * the write runs.
+   * the editor's write runs.
    * @param session - The Space's open session.
    * @param input - The upload's start record.
-   * @param map - The picture's id; before it is stored any id plans the same.
    * @returns True when the write would be refused for the part limit.
    */
-  const pastPartLimit = (session: SceneSession, input: SceneLookUploadStart, map: string): boolean => {
-    const plan = planSceneCommand(session.doc, session.name, { type: 'look', id: input.objectId, part: input.part, set: { map } },
+  const pastPartLimit = (session: SceneSession, input: SceneLookUploadStart): boolean => {
+    const plan = planSceneCommand(session.doc, session.name, { type: 'look', id: input.objectId, part: input.part, set: { map: crypto.randomUUID() } },
       session.getSnapshot().canEdit);
     return !plan.ok && plan.reason === 'lookPartLimit';
   };
 
   /**
-   * Upload the file and write it on completion when everything still allows (design 6.3).
+   * Check the file and the object's limits, then send the bytes (design 6.3).
    * @param input - The upload's start record.
-   * @param local - The local file's header size.
-   * @param startLook - The object's look when the upload started.
+   * @param entry - The part's entry.
    * @param key - The part's entry key.
+   * @returns The stored picture, or null when nothing was stored.
    */
-  const upload = async (input: SceneLookUploadStart, local: LookPictureSize, startLook: SceneLook | undefined,
-    key: string): Promise<void> => {
-    const controller = new AbortController();
-    let refused = false;
-    /** A picture the server does not hold yet is a new picture on the object: judge the total before sending it. */
-    const beforeSend = async (): Promise<void> => {
-      const session = deps.session(input.name);
-      const issue = await overLimit(input, (session ? lookOf(session, input.objectId) : undefined) ?? startLook ?? {}, 'local', local);
-      if (!issue) return;
-      refused = true;
-      deps.notify(lookLimitNotice(issue, input.limits));
-      controller.abort();
-    };
+  const send = async (input: SceneLookUploadStart, entry: SceneLookUploadEntry, key: string): Promise<string | null> => {
+    let local: LookPictureSize | null;
     try {
-      const stored = await deps.upload(input.file, { projectId: input.projectId, spaceId: input.spaceId }, (fraction) => {
-        const entry = entries.get(key);
-        if (entry) entries.set(key, { ...entry, percent: Math.round(fraction * 100) });
+      local = await deps.readLocalSize(input.file, input.limits.maxPictureHeaderBytes);
+    } catch {
+      deps.notify(pictureReadFailedNotice(input.file.name));
+      return null;
+    }
+    if (!local || !isLookImageType(local.type)) {
+      deps.notify(unsupportedPictureNotice(input.file.name));
+      return null;
+    }
+    const session = deps.session(input.name);
+    if (session && pastPartLimit(session, input)) {
+      deps.notify({ key: 'spaces.threeD.look.partLimit', params: { max: String(SCENE_LOOK_MAX_PARTS) }, severity: 'warning' });
+      return null;
+    }
+    // A picture the studio already holds is counted by its local size too: the ticket is what tells them apart.
+    const issue = await overLimit(input, (session ? lookOf(session, input.objectId) : undefined) ?? {}, local);
+    if (issue) {
+      deps.notify(lookLimitNotice(issue, input.limits));
+      return null;
+    }
+    try {
+      const stored = await deps.upload(input.file, {
+        projectId: input.projectId, spaceId: input.spaceId, purpose: 'scene_look', objectId: input.objectId, part: input.part,
+        startMap: entry.startMap,
+      }, (fraction) => {
+        const now = entries.get(key);
+        if (now) entries.set(key, { ...now, percent: Math.round(fraction * 100) });
         changed();
-      }, controller.signal, beforeSend);
+      }, new AbortController().signal);
       deps.invalidateImages(input.projectId);
-      // The total reads other pictures' headers and can take a while; every guard below is judged after it, so nothing
-      // the document gains meanwhile is missed before the write.
-      const before = deps.session(input.name);
-      const beforeLook = before ? lookOf(before, input.objectId) : undefined;
-      const overTotal = beforeLook === undefined ? null : await overLimit(input, beforeLook, stored.assetId, local);
-      const session = deps.session(input.name);
-      const object = session?.getSnapshot().objects.find((item) => item.id === input.objectId);
-      // A conditional write against the picture at start: another picture or 'none' there now blocks it; a part with
-      // no picture (reset, or cleared again) or the same picture takes the upload.
-      const nowMap = object?.look?.[input.part]?.map;
-      const partChanged = nowMap !== undefined && nowMap !== startLook?.[input.part]?.map;
-      if (!session) deps.notify({ key: 'spaces.threeD.look.spaceClosed', severity: 'warning' });
-      else if (!object || object.locked) deps.notify({ key: 'spaces.threeD.look.objectGone', severity: 'warning' });
-      else if (!session.getSnapshot().canEdit) deps.notify({ key: 'spaces.threeD.look.noLongerEditable', severity: 'warning' });
-      else if (partChanged) deps.notify({ key: 'spaces.threeD.look.partChanged', severity: 'warning' });
-      else if (pastPartLimit(session, input, stored.assetId)) {
-        deps.notify({ key: 'spaces.threeD.look.uploadedPartLimit', params: { max: String(SCENE_LOOK_MAX_PARTS) }, severity: 'warning' });
-      } else if (overTotal) deps.notify({ key: 'spaces.threeD.look.uploadedOverLimit', severity: 'warning' });
-      else session.execute({ type: 'look', id: input.objectId, part: input.part, set: { map: stored.assetId } });
+      return stored.assetId;
     } catch (error) {
-      if (refused) return;
       deps.notify(pictureUploadFailedNotice(error, input.file.name));
+      return null;
     }
   };
 
@@ -262,41 +298,52 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
     async start(input) {
       const key = keyOf(input.spaceId, input.objectId, input.part);
       // One upload per part: its row shows the progress and offers no picture choice until it ends.
-      if (entries.has(key)) return;
+      const held = entries.get(key);
+      if (held && waiting(held)) return;
       const operationId = crypto.randomUUID();
+      // The part's picture as the user saw it when starting; collab writes only while the part still holds it or none.
+      const starting = deps.session(input.name);
+      const startMap = (starting ? lookOf(starting, input.objectId) : undefined)?.[input.part]?.map ?? null;
+      const entry: SceneLookUploadEntry = { spaceId: input.spaceId, objectId: input.objectId, part: input.part, percent: 0, operationId,
+        name: input.name, startMap };
       // The row shows progress and the Space stays open from the same moment (design 6.3).
-      entries.set(key, { spaceId: input.spaceId, objectId: input.objectId, part: input.part, percent: 0, operationId });
+      entries.set(key, entry);
       deps.register(input.spaceId, operationId);
       changed();
-      // The part's look as the user saw it when starting; the conditional write at completion compares against it.
-      const starting = deps.session(input.name);
-      const startLook = starting ? lookOf(starting, input.objectId) : undefined;
+      let picture: string | null = null;
       try {
-        let local: LookPictureSize | null;
-        try {
-          local = await deps.readLocalSize(input.file, input.limits.maxPictureHeaderBytes);
-        } catch {
-          deps.notify(pictureReadFailedNotice(input.file.name));
-          return;
-        }
-        if (!local || !isLookImageType(local.type)) {
-          deps.notify(unsupportedPictureNotice(input.file.name));
-          return;
-        }
-        const opened = deps.session(input.name);
-        if (opened && pastPartLimit(opened, input, crypto.randomUUID())) {
-          deps.notify({ key: 'spaces.threeD.look.partLimit', params: { max: String(SCENE_LOOK_MAX_PARTS) }, severity: 'warning' });
-          return;
-        }
-        // The object total is judged once the server says whether it already holds this picture.
-        await upload(input, local, startLook, key);
+        picture = await send(input, entry, key);
       } finally {
-        if (entries.get(key)?.operationId === operationId) entries.delete(key);
         deps.unregister(input.spaceId, operationId);
+        const heard = early.get(key);
+        early.delete(key);
+        const refusal = heard !== undefined && heard.picture === picture ? heard.reason : undefined;
+        if (entries.get(key)?.operationId === operationId) {
+          if (picture === null || refusal !== undefined) entries.delete(key);
+          else entries.set(key, { ...entry, percent: 100, picture });
+          if (refusal !== undefined) deps.notify(refusalNotice(refusal));
+        }
         changed();
       }
     },
-    get: (spaceId, objectId, part) => entries.get(keyOf(spaceId, objectId, part)),
+    get(spaceId, objectId, part) {
+      const entry = entries.get(keyOf(spaceId, objectId, part));
+      return entry && waiting(entry) ? entry : undefined;
+    },
+    refused(refusal) {
+      const key = keyOf(refusal.spaceId, refusal.objectId, refusal.part);
+      const entry = entries.get(key);
+      if (!entry) return;
+      if (entry.picture === undefined) {
+        // A picture the studio already held is announced while its ticket is still being answered.
+        early.set(key, { picture: refusal.picture, reason: refusal.reason });
+        return;
+      }
+      if (entry.picture !== refusal.picture) return;
+      entries.delete(key);
+      deps.notify(refusalNotice(refusal.reason));
+      changed();
+    },
     subscribe(listener) {
       listeners.add(listener);
       return (): void => { listeners.delete(listener); };
@@ -314,7 +361,7 @@ let pageUploads: SceneLookUploads | null = null;
  */
 export function pageSceneLookUploads(queryClient: QueryClient): SceneLookUploads {
   pageUploads ??= createSceneLookUploads({
-    upload: (file, context, onProgress, signal, beforeSend) => uploadMedia(file, context, onProgress, signal, undefined, beforeSend),
+    upload: (file, context, onProgress, signal) => uploadMedia(file, context, onProgress, signal),
     notify: ({ key, params, severity }) => { toast[severity](t(key, params)); },
     register: (spaceId, operationId) => useSpaceOperationsStore.getState().register(spaceId, operationId),
     unregister: (spaceId, operationId) => useSpaceOperationsStore.getState().unregister(spaceId, operationId),

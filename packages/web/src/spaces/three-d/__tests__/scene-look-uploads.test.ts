@@ -3,8 +3,9 @@
 
 /**
  * Uploading a part picture from the computer (inner#1693 design 6.3): a page-level holder that
- * outlives the panel and the editor, checks the local header first, and writes on completion
- * only when the Space, the object, the user's access, the part's picture and the budget allow.
+ * outlives the panel and the editor. It checks the local header, the part limit and the object's
+ * texture budget before asking for a ticket, sends only the bytes, and leaves the write to collab:
+ * the part row waits until the picture shows on the part or collab says why it did not write.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -59,8 +60,11 @@ function lookOf(doc: Y.Doc): unknown {
 }
 
 interface Harness {
-  uploads: { start: (input: { projectId: string; spaceId: string; name: string; objectId: string; part: string; file: File; ownBytes: number; clampBytes: Record<string, number>; limits: { maxTextureEdge: number; maxTextureBytes: number; maxPictureHeaderBytes: number } }) => Promise<void>;
-    get: (spaceId: string, objectId: string, part: string) => { percent: number } | undefined };
+  uploads: {
+    start: (input: ReturnType<typeof startFor>) => Promise<void>;
+    get: (spaceId: string, objectId: string, part: string) => { percent: number } | undefined;
+    refused: (signal: { spaceId: string; objectId: string; part: string; picture: string; reason: 'objectGone' | 'partChanged' | 'partLimit' }) => void;
+  };
   upload: ReturnType<typeof vi.fn>;
   notify: ReturnType<typeof vi.fn>;
   register: ReturnType<typeof vi.fn>;
@@ -74,23 +78,22 @@ interface Harness {
 
 /**
  * A holder over controllable dependencies.
- * @param session - What the Space's name resolves to at completion.
+ * @param session - What the Space's name resolves to.
  * @param localSize - The local file header's answer, or the error reading it.
  * @param size - Sizes of pictures already in use.
  * @returns The harness.
  * @throws {AssertionError} When createSceneLookUploads is not exported.
  */
 function harness(session: () => SceneSession | undefined, localSize: { width: number; height: number; type: string } | null | Error = { width: 64, height: 64, type: 'png' },
-  size: (assetId: string) => Promise<{ width: number; height: number; type: string } | null> = async () => ({ width: 64, height: 64, type: 'png' }),
-  uploadImpl?: (file: File, context: unknown, onProgress: (fraction: number) => void, signal: AbortSignal, beforeSend: () => Promise<void>) => Promise<{ assetId: string }>): Harness {
+  size: (assetId: string) => Promise<{ width: number; height: number; type: string } | null> = async () => ({ width: 64, height: 64, type: 'png' })): Harness {
   const factory = (uploadsModule as Record<string, unknown>).createSceneLookUploads as ((deps: unknown) => Harness['uploads']) | undefined;
   expect(factory, 'createSceneLookUploads must be exported').toBeTypeOf('function');
   let finish: (assetId?: string) => void = () => {};
   let fail: (error: unknown) => void = () => {};
-  const upload = vi.fn(uploadImpl ?? (() => new Promise((resolve, reject) => {
+  const upload = vi.fn(() => new Promise((resolve, reject) => {
     finish = (assetId = UPLOADED) => resolve({ assetId, url: 'https://assets.example.test/u.png' });
     fail = reject;
-  })));
+  }));
   const notify = vi.fn(); const register = vi.fn(); const unregister = vi.fn(); const invalidateImages = vi.fn();
   const caps: number[] = [];
   const uploads = factory!({
@@ -107,23 +110,123 @@ async function settle(): Promise<void> {
 }
 
 /** A start request for part 0 of the object. */
-function startFor(file = new File(['x'], 'pattern.png', { type: 'image/png' })): Parameters<Harness['uploads']['start']>[0] {
+function startFor(file = new File(['x'], 'pattern.png', { type: 'image/png' })): {
+  projectId: string; spaceId: string; name: string; objectId: string; part: string; file: File; ownBytes: number;
+  clampBytes: Record<string, number>; limits: { maxTextureEdge: number; maxTextureBytes: number; maxPictureHeaderBytes: number };
+} {
   return { projectId: PROJECT, spaceId: SPACE, name: NAME, objectId: ID, part: '0', file, ownBytes: 0, clampBytes: {},
     limits: { maxTextureEdge: 8192, maxTextureBytes: 268_435_456, maxPictureHeaderBytes: 12_345_678 } };
 }
 
+/** Put a look on the object as a member's command would. */
+function look(doc: Y.Doc, part: string, set: Record<string, unknown>): void {
+  applySceneCommand(doc, { type: 'look', id: ID, part, set } as never, Symbol(), true, NAME);
+}
+
 describe('SceneLookUploads', () => {
-  it('holds the Space busy, writes the picture to the starting part and refreshes the project images', async () => {
+  it('asks for a ticket naming the part and its starting picture, holds the Space while bytes go, and writes nothing itself', async () => {
     const { doc, session } = editor();
+    look(doc, '0', { map: OTHER_IMAGE });
     const h = harness(() => session);
     const done = h.uploads.start(startFor());
     await settle();
     expect(h.register).toHaveBeenCalledWith(SPACE, expect.any(String));
+    expect(h.upload.mock.calls[0]?.[1]).toEqual({
+      projectId: PROJECT, spaceId: SPACE, purpose: 'scene_look', objectId: ID, part: '0', startMap: OTHER_IMAGE,
+    });
     h.finish();
     await done;
-    expect(lookOf(doc)).toEqual({ 0: { map: UPLOADED } });
+    expect(lookOf(doc)).toEqual({ 0: { map: OTHER_IMAGE } });
     expect(h.invalidateImages).toHaveBeenCalledWith(PROJECT);
     expect(h.unregister).toHaveBeenCalledWith(SPACE, h.register.mock.calls[0]?.[1]);
+  });
+
+  it('names no starting picture for a part that had none', async () => {
+    const { session } = editor();
+    const h = harness(() => session);
+    void h.uploads.start(startFor());
+    await settle();
+    expect(h.upload.mock.calls[0]?.[1]).toMatchObject({ purpose: 'scene_look', startMap: null });
+  });
+
+  it('keeps the part row waiting once the bytes are stored, until the picture shows on the part', async () => {
+    const { doc, session } = editor();
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    h.finish();
+    await done;
+    expect(h.uploads.get(SPACE, ID, '0')).toEqual(expect.objectContaining({ percent: 100 }));
+    // Collab writes the picture.
+    look(doc, '0', { map: UPLOADED });
+    expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
+  });
+
+  it('stops waiting when the part shows another picture or the object is gone, since collab will not write', async () => {
+    for (const change of ['picture', 'gone'] as const) {
+      const { doc, session } = editor();
+      const h = harness(() => session);
+      const done = h.uploads.start(startFor());
+      await settle();
+      h.finish();
+      await done;
+      if (change === 'picture') look(doc, '0', { map: OTHER_IMAGE });
+      else applySceneCommand(doc, { type: 'delete', ids: [ID] } as never, Symbol(), true, NAME);
+      expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
+    }
+  });
+
+  it('keeps waiting while the part was reset meanwhile, which collab still writes over', async () => {
+    const { doc, session } = editor();
+    look(doc, '0', { map: OTHER_IMAGE });
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    look(doc, '0', { map: null });
+    h.finish();
+    await done;
+    expect(h.uploads.get(SPACE, ID, '0')).toBeDefined();
+  });
+
+  it.each([
+    ['objectGone', { key: 'spaces.threeD.look.objectGone', severity: 'warning' }],
+    ['partChanged', { key: 'spaces.threeD.look.partChanged', severity: 'warning' }],
+    ['partLimit', { key: 'spaces.threeD.look.uploadedPartLimit', params: { max: '256' }, severity: 'warning' }],
+  ] as const)('says why collab did not write the picture (%s) and ends the wait', async (reason, notice) => {
+    const { session } = editor();
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    h.finish();
+    await done;
+    h.uploads.refused({ spaceId: SPACE, objectId: ID, part: '0', picture: UPLOADED, reason });
+    expect(h.notify).toHaveBeenCalledWith(notice);
+    expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
+  });
+
+  it('says why when collab refused a picture the studio already held before its upload answered', async () => {
+    const { session } = editor();
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    h.uploads.refused({ spaceId: SPACE, objectId: ID, part: '0', picture: UPLOADED, reason: 'partChanged' });
+    h.finish();
+    await done;
+    expect(h.notify).toHaveBeenCalledWith({ key: 'spaces.threeD.look.partChanged', severity: 'warning' });
+    expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
+  });
+
+  it('ignores a refusal for another picture or a part it is not waiting on', async () => {
+    const { session } = editor();
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    h.finish();
+    await done;
+    h.uploads.refused({ spaceId: SPACE, objectId: ID, part: '0', picture: OTHER_IMAGE, reason: 'partChanged' });
+    h.uploads.refused({ spaceId: SPACE, objectId: ID, part: '1', picture: UPLOADED, reason: 'partChanged' });
+    expect(h.notify).not.toHaveBeenCalled();
+    expect(h.uploads.get(SPACE, ID, '0')).toBeDefined();
   });
 
   it('refuses a file whose header it cannot read, or that is not PNG, JPEG or WebP, without uploading', async () => {
@@ -138,299 +241,58 @@ describe('SceneLookUploads', () => {
   });
 
   it('uploads a file over the edge limit, which is shown scaled down (inner#1693 design 7)', async () => {
-    const { doc, session } = editor();
-    const h = harness(() => session, { width: 9000, height: 10, type: 'png' });
-    const done = h.uploads.start(startFor());
+    const { session } = editor();
+    const h = harness(() => session, { width: 16_384, height: 16_384, type: 'png' });
+    void h.uploads.start({ ...startFor(), limits: { ...startFor().limits, maxTextureBytes: Number.MAX_SAFE_INTEGER } });
     await settle();
     expect(h.upload).toHaveBeenCalledTimes(1);
-    h.finish();
-    await done;
-    expect(lookOf(doc)).toEqual({ 0: { map: UPLOADED } });
   });
 
-  it('does not write when the Space is closed at completion, without creating a session', async () => {
-    const h = harness(() => undefined);
-    const done = h.uploads.start(startFor());
-    await settle();
-    h.finish();
-    await done;
-    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.spaceClosed' }));
-    expect(h.unregister).toHaveBeenCalled();
-  });
-
-  it('does not write when the object was locked or deleted meanwhile', async () => {
-    const { doc, session } = editor();
-    const h = harness(() => session);
-    const done = h.uploads.start(startFor());
-    await settle();
-    applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol(), true, NAME);
-    h.finish();
-    await done;
-    expect(lookOf(doc)).toBeUndefined();
-    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.objectGone' }));
-  });
-
-  it('says the object is gone and writes nothing when it was deleted meanwhile', async () => {
-    const { doc, session } = editor();
-    const h = harness(() => session);
-    const done = h.uploads.start(startFor());
-    await settle();
-    applySceneCommand(doc, { type: 'delete', ids: [ID] }, Symbol(), true, NAME);
-    h.finish();
-    await done;
-    expect(readSceneDocument(doc).objects).toEqual([]);
-    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.objectGone' }));
-    expect(session.getSnapshot().commandError).toBeNull();
-  });
-
-  it('does not write when the user can no longer edit the Space', async () => {
-    const { doc, session } = editor();
-    const h = harness(() => session);
-    const done = h.uploads.start(startFor());
-    await settle();
-    session.setEnvironment({ readOnly: true, connected: true, hasEverSynced: true, writeAccess: 'denied', refused: false, awareness: new Awareness(doc) });
-    h.finish();
-    await done;
-    expect(lookOf(doc)).toBeUndefined();
-    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.noLongerEditable' }));
-  });
-
-  it('does not write over another picture set on the part meanwhile', async () => {
-    const { doc, session } = editor();
-    const h = harness(() => session);
-    const done = h.uploads.start(startFor());
-    await settle();
-    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    h.finish();
-    await done;
-    expect(lookOf(doc)).toEqual({ 0: { map: OTHER_IMAGE } });
-    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.partChanged' }));
-  });
-
-  it('does not write over a picture a collaborator set while the Space was closed and opened again', async () => {
-    const first = editor();
-    let current = first.session;
-    const h = harness(() => current);
-    const done = h.uploads.start(startFor());
-    await settle();
-    const reopened = editor();
-    applySceneCommand(reopened.doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    current = reopened.session;
-    h.finish();
-    await done;
-    expect(lookOf(reopened.doc)).toEqual({ 0: { map: OTHER_IMAGE } });
-    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.partChanged' }));
-  });
-
-  it('still writes after the part was reset meanwhile, whether or not it had a picture', async () => {
-    for (const before of [{}, { map: OTHER_IMAGE }]) {
-      const { doc, session } = editor();
-      if ('map' in before) applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: before } as never, Symbol(), true, NAME);
-      const h = harness(() => session);
-      const done = h.uploads.start(startFor());
-      await settle();
-      applySceneCommand(doc, { type: 'look', id: ID, part: null, set: {} } as never, Symbol(), true, NAME);
-      h.finish();
-      await done;
-      expect(lookOf(doc)).toEqual({ 0: { map: UPLOADED } });
-    }
-  });
-
-  it('does not write over a picture a collaborator set while the file header was being read', async () => {
-    const { doc, session } = editor();
-    const h = harness(() => session);
-    const done = h.uploads.start(startFor());
-    // start() is now awaiting the local header read.
-    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    await settle();
-    h.finish();
-    await done;
-    expect(lookOf(doc)).toEqual({ 0: { map: OTHER_IMAGE } });
-    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.partChanged' }));
-  });
-
-  it('writes when the Space was reopened during the header read and still shows the picture it had at start', async () => {
-    const first = editor();
-    applySceneCommand(first.doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    let current: SceneSession | undefined = first.session;
-    const h = harness(() => current);
-    const done = h.uploads.start(startFor());
-    // Closed during the header read, opened again showing the same picture.
-    current = undefined;
-    await settle();
-    const reopened = editor();
-    applySceneCommand(reopened.doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    current = reopened.session;
-    h.finish();
-    await done;
-    expect(lookOf(reopened.doc)).toEqual({ 0: { map: UPLOADED } });
-    expect(h.notify).not.toHaveBeenCalled();
-  });
-
-  it('does not write after the part was set to no picture meanwhile', async () => {
-    const { doc, session } = editor();
-    const h = harness(() => session);
-    const done = h.uploads.start(startFor());
-    await settle();
-    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: 'none' } } as never, Symbol(), true, NAME);
-    h.finish();
-    await done;
-    expect(lookOf(doc)).toEqual({ 0: { map: 'none' } });
-    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.partChanged' }));
-  });
-
-  it('replaces the part’s picture when only other things changed meanwhile', async () => {
-    const { doc, session } = editor();
-    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    const h = harness(() => session);
-    const done = h.uploads.start(startFor());
-    await settle();
-    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { color: '#00ff00' } } as never, Symbol(), true, NAME);
-    h.finish();
-    await done;
-    expect(lookOf(doc)).toEqual({ 0: { map: UPLOADED }, 1: { color: '#00ff00' } });
-    expect(h.notify).not.toHaveBeenCalled();
-  });
-
-  it('replaces the part’s picture when the reopened Space still shows the picture it had at start', async () => {
-    const first = editor();
-    applySceneCommand(first.doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    let current = first.session;
-    const h = harness(() => current);
-    const done = h.uploads.start(startFor());
-    await settle();
-    const reopened = editor();
-    applySceneCommand(reopened.doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    current = reopened.session;
-    h.finish();
-    await done;
-    expect(lookOf(reopened.doc)).toEqual({ 0: { map: UPLOADED } });
-    expect(h.notify).not.toHaveBeenCalled();
-  });
-
-  it('writes when the part was reset and the reset undone meanwhile', async () => {
-    const { doc, session } = editor();
-    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    const h = harness(() => session);
-    const done = h.uploads.start(startFor());
-    await settle();
-    expect(session.execute({ type: 'look', id: ID, part: '0', set: { map: null } } as never).ok).toBe(true);
-    expect(session.historyStep('undo').ok).toBe(true);
-    expect(lookOf(doc)).toEqual({ 0: { map: OTHER_IMAGE } });
-    h.finish();
-    await done;
-    expect(lookOf(doc)).toEqual({ 0: { map: UPLOADED } });
-    expect(h.notify).not.toHaveBeenCalled();
-  });
-
-  it('writes when another picture set meanwhile was cleared again before completion', async () => {
-    const { doc, session } = editor();
-    const h = harness(() => session);
-    const done = h.uploads.start(startFor());
-    await settle();
-    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: null } } as never, Symbol(), true, NAME);
-    h.finish();
-    await done;
-    expect(lookOf(doc)).toEqual({ 0: { map: UPLOADED } });
-    expect(h.notify).not.toHaveBeenCalled();
-  });
-
-  it('does not write a picture that would go over the object budget at completion', async () => {
-    const { doc, session } = editor();
-    // Each picture fits alone (4096 and 6000 px); together they pass the 256 MiB budget.
-    const h = harness(() => session, { width: 4096, height: 4096, type: 'png' }, async () => ({ width: 6000, height: 6000, type: 'png' }));
-    const done = h.uploads.start({ ...startFor(), ownBytes: 0 });
-    await settle();
-    // A collaborator puts a picture on another part during the upload.
-    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    h.finish();
-    await done;
-    expect(lookOf(doc)).toEqual({ 1: { map: OTHER_IMAGE } });
-    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.uploadedOverLimit' }));
-  });
-
-  it('counts the model\u2019s own textures before sending, so a small picture on a model near its budget is not sent', async () => {
-    const { doc, session } = editor();
-    /** A holder whose upload runs the check before sending, as the real pipeline does. */
-    const sends = (): Harness => harness(() => session, { width: 64, height: 64, type: 'png' }, undefined,
-      async (_file, _context, _progress, _signal, beforeSend) => { await beforeSend(); return { assetId: UPLOADED }; });
-    const near = sends();
+  it('counts the model’s own textures and the local picture before asking for a ticket', async () => {
+    const { session } = editor();
+    const near = harness(() => session);
     await near.uploads.start({ ...startFor(), ownBytes: 268_435_456 - 1024 });
+    expect(near.upload).not.toHaveBeenCalled();
     expect(near.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.objectTexturesTooLarge' }));
-    expect(lookOf(doc)).toBeUndefined();
-    const room = sends();
-    await room.uploads.start({ ...startFor(), ownBytes: 0 });
-    expect(lookOf(doc)).toEqual({ 0: { map: UPLOADED } });
+    const room = harness(() => session);
+    void room.uploads.start(startFor());
+    await settle();
+    expect(room.upload).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops a picture that would take the object over its budget with the pictures it has, before asking for a ticket', async () => {
+    const { doc, session } = editor();
+    look(doc, '1', { map: OTHER_IMAGE });
+    const big = { width: 6000, height: 6000, type: 'png' };
+    const h = harness(() => session, big, async () => big);
+    await h.uploads.start(startFor());
+    expect(h.upload).not.toHaveBeenCalled();
+    expect(h.notify).toHaveBeenCalledTimes(1);
+    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.objectTexturesTooLarge' }));
+    expect(h.unregister).toHaveBeenCalled();
+    expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
   });
 
   it('names the part limit and sends nothing when the object already has a look on every part it can hold', async () => {
     const { doc, session } = editor();
-    for (let part = 1; part <= 256; part += 1) applySceneCommand(doc, { type: 'look', id: ID, part: String(part), set: { opacity: 0.5 } } as never, Symbol(), true, NAME);
+    for (let part = 1; part <= 256; part += 1) look(doc, String(part), { opacity: 0.5 });
     const h = harness(() => session);
     await h.uploads.start(startFor());
     expect(h.upload).not.toHaveBeenCalled();
     expect(h.notify).toHaveBeenCalledWith({ key: 'spaces.threeD.look.partLimit', params: { max: '256' }, severity: 'warning' });
   });
 
-  it('says the picture is in the Project images when the object reached its part limit during the upload', async () => {
-    const { doc, session } = editor();
-    for (let part = 1; part <= 255; part += 1) applySceneCommand(doc, { type: 'look', id: ID, part: String(part), set: { opacity: 0.5 } } as never, Symbol(), true, NAME);
-    const h = harness(() => session);
-    const done = h.uploads.start(startFor());
-    await settle();
-    // A collaborator changes one more part while the bytes are sent.
-    applySceneCommand(doc, { type: 'look', id: ID, part: '256', set: { opacity: 0.5 } } as never, Symbol(), true, NAME);
-    h.finish();
-    await done;
-    expect(lookOf(doc)).not.toHaveProperty('0');
-    expect(h.notify).toHaveBeenCalledWith({ key: 'spaces.threeD.look.uploadedPartLimit', params: { max: '256' }, severity: 'warning' });
-    expect(session.getSnapshot().commandError).toBeNull();
-  });
-
   it('reads every header with the configured byte cap', async () => {
     const { doc, session } = editor();
-    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
+    look(doc, '1', { map: OTHER_IMAGE });
     const h = harness(() => session);
-    const done = h.uploads.start(startFor());
+    void h.uploads.start(startFor());
     await settle();
-    h.finish();
-    await done;
     expect(h.caps.length).toBeGreaterThan(1);
     expect(new Set(h.caps)).toEqual(new Set([12_345_678]));
   });
 
-  it('judges every guard again after reading the other pictures, so a picture set on the part meanwhile stays', async () => {
-    const { doc, session } = editor();
-    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    let releaseSize: () => void = () => undefined;
-    const h = harness(() => session, { width: 64, height: 64, type: 'png' },
-      (assetId) => (assetId === OTHER_IMAGE ? new Promise((resolve) => { releaseSize = () => resolve({ width: 64, height: 64, type: 'png' }); }) : Promise.resolve({ width: 64, height: 64, type: 'png' })));
-    const done = h.uploads.start(startFor());
-    await settle();
-    h.finish();
-    await settle();
-    // A collaborator puts their own picture on the part while the other picture's size is read.
-    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    releaseSize();
-    await done;
-    expect(lookOf(doc)).toEqual({ 0: { map: OTHER_IMAGE }, 1: { map: OTHER_IMAGE } });
-    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.partChanged' }));
-  });
-
-  it('puts a picture on a part the object already changed when it holds the most parts it can', async () => {
-    const { doc, session } = editor();
-    for (let part = 0; part < 256; part += 1) applySceneCommand(doc, { type: 'look', id: ID, part: String(part), set: { opacity: 0.5 } } as never, Symbol(), true, NAME);
-    const h = harness(() => session);
-    const done = h.uploads.start(startFor());
-    await settle();
-    expect(h.upload).toHaveBeenCalledTimes(1);
-    h.finish();
-    await done;
-    expect((lookOf(doc) as Record<string, { map?: string }>)['0']?.map).toBe(UPLOADED);
-  });
-
-  it('tells the reason when the upload fails and leaves the part alone', async () => {
+  it('tells the reason when the upload fails and leaves the part and the row alone', async () => {
     const { doc, session } = editor();
     const h = harness(() => session);
     const done = h.uploads.start(startFor());
@@ -440,6 +302,7 @@ describe('SceneLookUploads', () => {
     expect(lookOf(doc)).toBeUndefined();
     expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'canvas.upload.storageFull' }));
     expect(h.unregister).toHaveBeenCalled();
+    expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
   });
 
   it.each([
@@ -466,38 +329,8 @@ describe('SceneLookUploads', () => {
     expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'canvas.upload.unsupportedType', params: { filename: 'pattern.png', kind: 'image', formats: uploadableFormatList('image') } }));
   });
 
-  it('puts the same picture already on another part on this one too, as picking it from the Project would', async () => {
-    const { doc, session } = editor();
-    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    // 6000 px alone fits the 256 MiB budget; counted twice it would not.
-    const big = { width: 6000, height: 6000, type: 'png' };
-    const h = harness(() => session, big, async () => big, async () => ({ assetId: OTHER_IMAGE }));
-    await h.uploads.start(startFor());
-    expect(lookOf(doc)).toEqual({ 0: { map: OTHER_IMAGE }, 1: { map: OTHER_IMAGE } });
-    expect(h.notify).not.toHaveBeenCalled();
-  });
-
-  it('stops a new picture that would take the object over its budget before any byte is sent', async () => {
-    const { doc, session } = editor();
-    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { map: OTHER_IMAGE } } as never, Symbol(), true, NAME);
-    const big = { width: 6000, height: 6000, type: 'png' };
-    let sent = false;
-    const h = harness(() => session, big, async () => big, async (_file, _context, _progress, signal, beforeSend) => {
-      await beforeSend();
-      signal.throwIfAborted();
-      sent = true;
-      return { assetId: UPLOADED };
-    });
-    await h.uploads.start(startFor());
-    expect(sent).toBe(false);
-    expect(lookOf(doc)).toEqual({ 1: { map: OTHER_IMAGE } });
-    expect(h.notify).toHaveBeenCalledTimes(1);
-    expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.objectTexturesTooLarge' }));
-    expect(h.unregister).toHaveBeenCalled();
-  });
-
   it('shows a part\'s upload from the moment it starts and runs one upload per part at a time', async () => {
-    const { doc, session } = editor();
+    const { session } = editor();
     const h = harness(() => session);
     const first = h.uploads.start(startFor());
     expect(h.uploads.get(SPACE, ID, '0')).toBeDefined();
@@ -505,14 +338,28 @@ describe('SceneLookUploads', () => {
     await settle();
     await second;
     expect(h.upload).toHaveBeenCalledTimes(1);
-    expect(h.uploads.get(SPACE, ID, '0')).toBeDefined();
     h.finish();
     await first;
-    expect(lookOf(doc)).toEqual({ 0: { map: UPLOADED } });
-    expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
+    // Still waiting for collab: another file for the part is not taken yet.
+    await h.uploads.start(startFor(new File(['z'], 'third.png', { type: 'image/png' })));
+    expect(h.upload).toHaveBeenCalledTimes(1);
   });
 
-  it('hands the page upload the check that runs before any byte is sent', async () => {
+  it('takes another file for a part once the picture it waited for shows there', async () => {
+    const { doc, session } = editor();
+    const h = harness(() => session);
+    const first = h.uploads.start(startFor());
+    await settle();
+    h.finish();
+    await first;
+    look(doc, '0', { map: UPLOADED });
+    void h.uploads.start(startFor(new File(['z'], 'next.png', { type: 'image/png' })));
+    await settle();
+    expect(h.upload).toHaveBeenCalledTimes(2);
+    expect(h.upload.mock.calls[1]?.[1]).toMatchObject({ startMap: UPLOADED });
+  });
+
+  it('hands the page upload the part context and nothing that runs before sending', async () => {
     const page = (uploadsModule as Record<string, unknown>).pageSceneLookUploads as () => Harness['uploads'];
     const header = new Uint8Array(33);
     header.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
@@ -524,11 +371,11 @@ describe('SceneLookUploads', () => {
     });
     void page().start({ ...startFor(file), objectId: '99999999-9999-4999-8999-999999999999' });
     await vi.waitFor(() => expect(uploadMedia).toHaveBeenCalledTimes(1));
-    const [, , , signal, onRegistering, beforeSend] = vi.mocked(uploadMedia).mock.calls[0]!;
+    const [, context, , signal, onRegistering] = vi.mocked(uploadMedia).mock.calls[0]!;
+    expect(context).toMatchObject({ purpose: 'scene_look', objectId: '99999999-9999-4999-8999-999999999999', part: '0', startMap: null });
     expect(signal).toBeInstanceOf(AbortSignal);
     expect(onRegistering).toBeUndefined();
-    expect(beforeSend).toBeTypeOf('function');
-    await expect((beforeSend as () => Promise<void>)()).resolves.toBeUndefined();
+    expect(vi.mocked(uploadMedia).mock.calls[0]).toHaveLength(4);
   });
 
   it('refreshes the Project pictures through the page holder once an upload is stored', async () => {
