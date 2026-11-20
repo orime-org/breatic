@@ -37,12 +37,6 @@ export function useProjectCreditsRefresh(
     [projectId, refresh],
   );
 
-  // A committed charge also completes what a mini-tool analysis used (canvas design §4 erase row), so its records are read again.
-  const charged = useCallback((): void => {
-    refresh();
-    void queryClient.invalidateQueries({ queryKey: ['mini-tool-analysis'] });
-  }, [queryClient, refresh]);
-
   useProjectSignal(provider, projectId, ACTIVITY_NEW_SIGNAL, refresh);
-  useProjectSignal(provider, projectId, CREDITS_CHANGED_SIGNAL, charged);
+  useProjectSignal(provider, projectId, CREDITS_CHANGED_SIGNAL, refresh);
 }

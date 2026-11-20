@@ -103,16 +103,6 @@ describe('useProjectCreditsRefresh', () => {
     view.unmount();
   });
 
-  // Canvas design §4 erase row: a tracking is billed after it ends, and its panel shows what it used once that charge commits.
-  it('reads the mini-tool analyses again when a charge in the project committed', () => {
-    const { provider, send } = providerDouble();
-    const view = mount(provider);
-    send({ t: CREDITS_CHANGED_SIGNAL, projectId: PROJECT });
-    vi.runAllTimers();
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['mini-tool-analysis'] });
-    view.unmount();
-  });
-
   it('ignores signals of other projects and traffic that is not a signal', () => {
     const { provider, send } = providerDouble();
     const view = mount(provider);

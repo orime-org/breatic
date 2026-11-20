@@ -34,7 +34,7 @@ import {
   type StudioAssetEntity,
 } from "@breatic/shared";
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
-import { ingestRunFor, resolveOwnerStudioId } from "@domain/asset/asset.service.js";
+import { ingestRunFor } from "@domain/asset/asset.service.js";
 import {
   openSignedUpload,
   signTicketFor,
@@ -309,43 +309,6 @@ export async function transferUrlToStorage(
     }, ctx.deadlineAt, ctx.knownAlpha),
     `the transfer of ${sourceUrl}`,
   );
-}
-
-/** Where a derived object fetched from a provider link lands (frames-split §7.17, the paragraph after the recipe table). */
-export interface DerivedTarget {
-  /** The key the caller names: a lip-sync step key and the attempt's id. */
-  storageKey: string;
-  /** What the object is served as. */
-  contentType: string;
-  /** The project whose studio the bytes are charged to. */
-  projectId: string;
-  /** Who the run belongs to; the ticket names who asked for it. */
-  actingUserId: string;
-  /** When the task runs out, in epoch ms; the fetch is bounded by it. */
-  deadlineAt: number;
-}
-
-/**
- * Have the Worker pull a provider's link into a named derived key (§97 D21-1): lane ③'s fetch, but under the key the
- * caller names and with no `studio_assets` row, no grant and no cover; the caller records the object with its step result
- * and pins it with the execution. Hash, size and type are the Worker's report on the stored bytes.
- * @param sourceUrl - The provider's temporary link.
- * @param target - The key, type, project, owner and deadline.
- * @returns The stored object as the Worker measured it.
- * @throws {DeadlinePassed} When the task's deadline has already come.
- * @throws {NotFoundError} When the project does not exist or is soft-deleted.
- * @throws {UploadHttpError} When the Worker could not store the source.
- * @throws {unknown} The transport's own failure when nothing answered.
- */
-export async function transferUrlToDerived(sourceUrl: string, target: DerivedTarget): Promise<{ storageKey: string; sha256: string; size: number; contentType: string }> {
-  assertBeforeDeadline(target.deadlineAt);
-  const { ingest, upload } = getStorageConfig();
-  const ticket = await signTicketFor({
-    storageKey: target.storageKey, studioId: await resolveOwnerStudioId(target.projectId), userId: target.actingUserId, declaredSize: upload.max_upload_bytes,
-    contentType: target.contentType, expiresAt: Date.now() + ingest.ticket_expires_seconds * 1000, deadlineAt: target.deadlineAt,
-  });
-  const measured = await fetchUrlToIngest(sourceUrl, ticket, env.INGEST_SHARED_SECRET, { deadlineAt: target.deadlineAt });
-  return { storageKey: target.storageKey, sha256: measured.sha256, size: measured.sizeBytes, contentType: measured.contentType };
 }
 
 /** Why a user's link did not land: the reason the grant was settled with. */
