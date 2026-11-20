@@ -87,6 +87,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const info = buildInfo(release ? parseReleaseTag(tag) : '0.0.0-dev', revision);
     console.log(`version=${info.releaseVersion}\nimage_tag=${tag}`);
   } else {
-    throw new Error('Usage: release.mjs check-index FILE AMD64_DIGEST ARM64_DIGEST | ci REF SHA | compose-tag TAG COMPOSE_FILE | build-info VERSION SHA OUTPUT | manifest TAG SHA REPOSITORY BACKEND_DIGEST WEB_DIGEST MEDIA_DIGEST WEB_READER_DIGEST WEB_ANIMATION_DIGEST OUTPUT');
+    throw new Error('Usage: release.mjs check-index FILE AMD64_DIGEST ARM64_DIGEST | ci REF SHA | compose-tag TAG COMPOSE_FILE | build-info VERSION SHA OUTPUT | manifest TAG SHA REPOSITORY BACKEND_DIGEST WEB_DIGEST MEDIA_DIGEST WEB_READER_DIGEST WEB_ANIMATION_DIGEST WEB_ANIMATION_RENDER_DIGEST OUTPUT');
   }
 }
