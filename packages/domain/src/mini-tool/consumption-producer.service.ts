@@ -58,19 +58,18 @@ async function pendingKeys(taskId: string, tx: DbTx): Promise<string[]> {
 export async function openMiniToolConsumption(input: OpenMiniToolConsumptionInput, transaction?: DbTx): Promise<MiniToolConsumptionRecord> {
   const request = openMiniToolConsumptionInputSchema.parse(input);
   return transaction === undefined
-    ? db.transaction((tx) => produceConsumption(request, tx, false))
-    : produceConsumption(request, transaction, false);
+    ? db.transaction((tx) => produceConsumption(request, tx))
+    : produceConsumption(request, transaction);
 }
 
 /**
  * Apply the common producer transition after its caller has established call authority.
  * @param request - The original consumption identity and first price policy.
  * @param tx - The shared identity, expense and task-period transaction.
- * @param recoverTerminalAttempt - Internal authority from a verified persisted old submit intent.
  * @returns The original or newly pending expense without estimating a missing amount.
  * @throws {Error} When ownership, immutable identity or the submission fence fails.
  */
-async function produceConsumption(request: OpenMiniToolConsumptionInput, tx: DbTx, recoverTerminalAttempt: boolean): Promise<MiniToolConsumptionRecord> {
+async function produceConsumption(request: OpenMiniToolConsumptionInput, tx: DbTx): Promise<MiniToolConsumptionRecord> {
   const task = await taskRepo.lockMiniToolConsumptionTask(request.taskId, tx);
   if (!task || task.source !== "mini_tool") throw new Error("Mini-tool consumption has no owning task");
   const step = await upstreamStepRepo.getStepForConsumption(task.id, request.stepId, tx);
@@ -84,7 +83,7 @@ async function produceConsumption(request: OpenMiniToolConsumptionInput, tx: DbT
     return held;
   }
   const previous = currentPeriod(task.result);
-  if (task.billedAt !== null || (!recoverTerminalAttempt && task.status !== "pending" && task.status !== "running") ||
+  if (task.billedAt !== null || (task.status !== "pending" && task.status !== "running") ||
     previous.consumptionSetComplete === true || previous.state === "settled") {
     throw new Error("Mini-tool consumption set no longer accepts new calls");
   }

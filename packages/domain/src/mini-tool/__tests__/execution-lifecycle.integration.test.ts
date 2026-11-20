@@ -6,8 +6,8 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { createPgClient, initCore, loadLocales } from "@breatic/core";
 import type { MiniToolExecutionRecord } from "@breatic/shared/mini-tools";
 import {
-  miniToolExecutionService, upstreamStepRepo, recordMiniToolStepIdentity, recordMiniToolStepResult,
-  confirmMiniToolConsumption, recordMiniToolConsumption,
+  miniToolExecutionService, upstreamStepRepo, endMiniToolModelStep, recordMiniToolStepResult,
+  recordMiniToolConsumptionLookup, recordMiniToolConsumption,
   openMiniToolConsumption, completeMiniToolConsumptionSet, settleMiniToolCharge,
   type MiniToolExecutionCompletion,
 } from "@domain/index.js";
@@ -147,60 +147,59 @@ describe("step-owned actual consumption public mirror transaction (U/B)", () => 
     const f = await seedExecution(pg, "running"); const i = await identity(f);
     const expected = { consumptionKey: i.key, state: "pending", chargeTo: "user", costUsd: null, credits: null };
     expect((await publicRecord(f)).usage).toEqual([expected]);
-    await recordMiniToolStepIdentity({ taskId: f.taskId, stepId: i.stepId, attemptId: i.attemptId, predictionId: P }); expect((await publicRecord(f)).usage).toEqual([expected]);
+    await endMiniToolModelStep({ taskId: f.taskId, stepId: i.stepId, end: { kind: "returned", link: "https://provider.example.test/fixture.webm" }, costs: [{ state: "pending", lookup: { upstream: "wavespeed", predictionId: P } }], servedBy: "wavespeed" }); expect((await publicRecord(f)).usage).toEqual([expected]);
   });
-  it("B02 leaves no fabricated usage when only a durable intent exists", async () => {
-    const f = await seedExecution(pg, "running"); await identity(f, "user", false);
+  it("B02 leaves no fabricated usage while the step is sent and not yet ended", async () => {
+    const f = await seedExecution(pg, "running"); await identity(f, false);
     expect((await miniToolExecutionService.getMiniToolExecution(f.projectId, f.taskId, f.viewerId)).billingState).toBe("waiting"); expect((await publicRecord(f)).usage).toEqual([]);
   });
-  it("U01 rolls original attempt/identity/expense back when the public pending write fails", async () => {
-    const f = await seedExecution(pg, "running"); const i = await identity(f, "user", false); const before = await financialSnapshot(f, i.stepId);
-    await rejectWrite(f, "public", async () => { await expect(recordMiniToolStepIdentity({ taskId: f.taskId, stepId: i.stepId, attemptId: i.attemptId, predictionId: P })).rejects.toMatchObject({ cause: { message: expect.stringContaining("fixture_execution_write_failed") } }); });
+  it("U01 rolls the step end and its expense back when the public pending write fails", async () => {
+    const f = await seedExecution(pg, "running"); const i = await identity(f, false); const before = await financialSnapshot(f, i.stepId);
+    await rejectWrite(f, "public", async () => { await expect(endMiniToolModelStep({ taskId: f.taskId, stepId: i.stepId, end: { kind: "returned", link: "https://provider.example.test/fixture.webm" }, costs: [{ state: "pending", lookup: { upstream: "wavespeed", predictionId: P } }], servedBy: "wavespeed" })).rejects.toMatchObject({ cause: { message: expect.stringContaining("fixture_execution_write_failed") } }); });
     expect(await financialSnapshot(f, i.stepId)).toEqual(before);
   });
-  it("U01 also mirrors the original generic consumption producer within its own transaction", async () => {
-    const f = await seedExecution(pg, "running"); const [s] = await upstreamStepRepo.ensureSteps(f.taskId, [{ kind: "generate", endpoint: f.plan.provider.model_id, itemIndex: 0 }]); if (!s) throw new Error("Missing fixture step");
-    await pg`UPDATE task_upstream_steps SET prediction_id=${P} WHERE id=${s.id}`;
-    const upstream = { kind: "provider" as const, provider: "wavespeed" as const, predictionId: P };
-    const c = await openMiniToolConsumption({ taskId: f.taskId, stepId: s.id, identity: upstream, chargeTo: "user", creditMultiplier: 1, containerPricing: null });
+  it("U01 also mirrors a container step's consumption from the generic producer within its own transaction", async () => {
+    const f = await seedExecution(pg, "running"); const [s] = await upstreamStepRepo.ensureSteps(f.taskId, [{ kind: "container_job", endpoint: "MiniToolContainerStd1", itemIndex: 0 }]); if (!s) throw new Error("Missing fixture step");
+    const upstream = { kind: "container" as const, containerClass: "MiniToolContainerStd1", jobId: `task:${f.taskId}:chunk:0`, chunkIndex: 0 };
+    const c = await openMiniToolConsumption({ taskId: f.taskId, stepId: s.id, identity: upstream, chargeTo: "user", creditMultiplier: 1, containerPricing: { configVersion: "cloudflare-2026-10-07", size: { vcpu: 0.5, memory_gib: 4, disk_gb: 8 }, prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 } } });
     expect((await publicRecord(f)).usage).toEqual([{ consumptionKey: c.consumptionKey, state: "pending", chargeTo: "user", costUsd: null, credits: null }]);
   });
-  it("U01 rolls generic producer step and cycle back if the public pending write fails", async () => {
-    const f = await seedExecution(pg, "running"); const [s] = await upstreamStepRepo.ensureSteps(f.taskId, [{ kind: "generate", endpoint: f.plan.provider.model_id, itemIndex: 0 }]); if (!s) throw new Error("Missing fixture step");
-    await pg`UPDATE task_upstream_steps SET prediction_id=${P} WHERE id=${s.id}`; const before = await financialSnapshot(f, s.id);
-    await rejectWrite(f, "public", async () => { await expect(openMiniToolConsumption({ taskId: f.taskId, stepId: s.id, identity: { kind: "provider", provider: "wavespeed", predictionId: P }, chargeTo: "user", creditMultiplier: 1, containerPricing: null })).rejects.toMatchObject({ cause: { message: expect.stringContaining("fixture_execution_write_failed") } }); });
+  it("U01 rolls a container step's consumption and cycle back if the public pending write fails", async () => {
+    const f = await seedExecution(pg, "running"); const [s] = await upstreamStepRepo.ensureSteps(f.taskId, [{ kind: "container_job", endpoint: "MiniToolContainerStd1", itemIndex: 0 }]); if (!s) throw new Error("Missing fixture step");
+    const before = await financialSnapshot(f, s.id);
+    await rejectWrite(f, "public", async () => { await expect(openMiniToolConsumption({ taskId: f.taskId, stepId: s.id, identity: { kind: "container", containerClass: "MiniToolContainerStd1", jobId: `task:${f.taskId}:chunk:0`, chunkIndex: 0 }, chargeTo: "user", creditMultiplier: 1, containerPricing: { configVersion: "cloudflare-2026-10-07", size: { vcpu: 0.5, memory_gib: 4, disk_gb: 8 }, prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 } } })).rejects.toMatchObject({ cause: { message: expect.stringContaining("fixture_execution_write_failed") } }); });
     expect(await financialSnapshot(f, s.id)).toEqual(before);
   });
   it("U02 confirms known in both owners before usage recording and without media version changes", async () => {
     const f = await seedExecution(pg, "running"); const i = await identity(f); const c = await claim(f);
-    await confirmMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim, costUsd: 0.3, costSource: "generation_lookup", raw: { total: 0.3 } });
+    await recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: i.stepId, claim: c.claim, costs: [{ state: "known", usd: 0.3, source: "billing" }] });
     expect((await publicRecord(f)).usage).toEqual([{ consumptionKey: i.key, state: "known", chargeTo: "user", costUsd: 0.3, credits: null }]); expect((await publicRecord(f)).resultVersion).toBe(0);
     const [count] = await pg<{ count: number }[]>`SELECT count(*)::int AS count FROM agent_usage_records WHERE operation_key=${i.key}`; expect(count).toEqual({ count: 0 });
   });
   it("U03 rolls known back to pending if the public mirror update fails", async () => {
     const f = await seedExecution(pg, "running"); const i = await identity(f); const c = await claim(f); const before = await financialSnapshot(f, i.stepId);
-    await rejectWrite(f, "public", async () => { await expect(confirmMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim, costUsd: 0.3, costSource: "generation_lookup", raw: {} })).rejects.toMatchObject({ cause: { message: expect.stringContaining("fixture_execution_write_failed") } }); });
+    await rejectWrite(f, "public", async () => { await expect(recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: i.stepId, claim: c.claim, costs: [{ state: "known", usd: 0.3, source: "billing" }] })).rejects.toMatchObject({ cause: { message: expect.stringContaining("fixture_execution_write_failed") } }); });
     expect(await financialSnapshot(f, i.stepId)).toEqual(before);
   });
-  it.each(["user", "platform"] as const)("U04/U07 records actual %s expense and its public credits exactly once", async (chargeTo) => {
-    const f = await seedExecution(pg, "running"); const i = await identity(f, chargeTo); const c = await claim(f);
-    await confirmMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim, costUsd: 0.3, costSource: "generation_lookup", raw: { cost: 0.3 } });
+  it("U04 records the model step's actual expense and its public credits exactly once", async () => {
+    const chargeTo = "user"; const f = await seedExecution(pg, "running"); const i = await identity(f); const c = await claim(f);
+    await recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: i.stepId, claim: c.claim, costs: [{ state: "known", usd: 0.3, source: "billing" }] });
     await recordMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim });
-    const expected = [{ consumptionKey: i.key, state: "recorded", chargeTo, costUsd: 0.3, credits: chargeTo === "platform" ? 0 : 30 }];
+    const expected = [{ consumptionKey: i.key, state: "recorded", chargeTo, costUsd: 0.3, credits: 30 }];
     expect((await publicRecord(f)).usage).toEqual(expected);
     await recordMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity }); expect((await publicRecord(f)).usage).toEqual(expected);
     const [count] = await pg<{ count: number }[]>`SELECT count(*)::int AS count FROM agent_usage_records WHERE operation_key=${i.key}`; expect(count).toEqual({ count: 1 });
   });
   it.each(["usage", "step", "public", "settlement"] as const)("U05 rolls all record writes back at %s", async (point) => {
     const f = await seedExecution(pg, "running"); const i = await identity(f); const c = await claim(f);
-    await confirmMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim, costUsd: 0.3, costSource: "generation_lookup", raw: {} });
+    await recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: i.stepId, claim: c.claim, costs: [{ state: "known", usd: 0.3, source: "billing" }] });
     const before = await financialSnapshot(f, i.stepId);
     await rejectWrite(f, point, async () => { await expect(recordMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim })).rejects.toMatchObject({ cause: { message: expect.stringContaining("fixture_execution_write_failed") } }); });
     expect(await financialSnapshot(f, i.stepId)).toEqual(before);
   });
-  it("U06 ignores an expired claim without changing mirrored pending or media", async () => {
+  it("U06 refuses an expired claim without changing mirrored pending or media", async () => {
     const f = await seedExecution(pg, "running"); const i = await identity(f); const c = await claim(f); const before = await executionSnapshot(pg, f);
-    await confirmMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: { ...c.claim, leaseToken: "stale-token" }, costUsd: 999, costSource: "generation_lookup", raw: {} });
+    await expect(recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: i.stepId, claim: { ...c.claim, leaseToken: "stale-token" }, costs: [{ state: "known", usd: 999, source: "billing" }] })).rejects.toThrow();
     expect(await executionSnapshot(pg, f)).toEqual(before);
   });
   it("U08/U09 keeps registered output readable while billing remains pending and the hold is held", async () => {
@@ -211,7 +210,7 @@ describe("step-owned actual consumption public mirror transaction (U/B)", () => 
   });
   it("U10 settles a closed recorded task once while retaining the media and public fees", async () => {
     const f = await seedExecution(pg, "running"); const i = await identity(f); const c = await claim(f);
-    await confirmMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim, costUsd: 0.3, costSource: "generation_lookup", raw: {} });
+    await recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: i.stepId, claim: c.claim, costs: [{ state: "known", usd: 0.3, source: "billing" }] });
     await recordMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim }); await terminal(f); await completeMiniToolConsumptionSet(f.taskId);
     const first = await settleMiniToolCharge(f.taskId); expect(first).toMatchObject({ state: "settled", credits: 30, first: true });
     expect(await settleMiniToolCharge(f.taskId)).toMatchObject({ state: "settled", credits: 30, first: false });
@@ -219,7 +218,7 @@ describe("step-owned actual consumption public mirror transaction (U/B)", () => 
   });
   it("B04 permits recorded actual expense beside an active idle cycle", async () => {
     const f = await seedExecution(pg, "running"); const i = await identity(f); const c = await claim(f);
-    await confirmMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim, costUsd: 0.3, costSource: "generation_lookup", raw: {} });
+    await recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: i.stepId, claim: c.claim, costs: [{ state: "known", usd: 0.3, source: "billing" }] });
     await recordMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim });
     const r = await miniToolExecutionService.getMiniToolExecution(f.projectId, f.taskId, f.viewerId); expect(r).toMatchObject({ status: "running", resultVersion: 0, billingState: "idle", usage: [{ consumptionKey: i.key, state: "recorded", costUsd: 0.3, credits: 30 }] });
   });
@@ -228,8 +227,8 @@ describe("step-owned actual consumption public mirror transaction (U/B)", () => 
     const period = await completeMiniToolConsumptionSet(f.taskId); expect(period).toMatchObject({ version: c.claim.version, state: "checking", leaseToken: c.claim.leaseToken, leaseUntil: c.leaseUntil, consumptionSetComplete: true });
     expect((await executionSnapshot(pg, f)).result.miniToolExecution).toEqual(before.result.miniToolExecution);
   });
-  it("U12 does not close an unresolved intent when failure is committed", async () => {
-    const f = await seedExecution(pg, "running"); await identity(f, "user", false);
+  it("U12 does not close a sent step that has not ended when failure is committed", async () => {
+    const f = await seedExecution(pg, "running"); await identity(f, false);
     const c = completion(f, true); await miniToolExecutionService.finishMiniToolExecution(f.taskId, c);
     const row = await executionSnapshot(pg, f); expect(row.status).toBe("failed"); expect(row.result.settlement).toMatchObject({ consumptionSetComplete: false }); expect(row.billed_at).toBeNull();
   });
