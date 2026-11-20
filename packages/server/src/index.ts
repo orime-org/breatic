@@ -38,6 +38,7 @@ import {
   logger,
   initLogger,
   loadLocales,
+  getCommerceConfig,
 } from "@breatic/core";
 import { getTrialGrantCredits } from "@server/config/credits.js";
 import { getPricingTiers } from "@server/config/pricing.js";
@@ -47,6 +48,7 @@ import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { renderMetrics } from "@server/infra/metrics.js";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
 import { startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
+import { startCommerceRelay } from "@server/modules/commerce/commerce-relay.js";
 import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
 import { getServerShutdownDeadlineMs } from "@server/config/limits.js";
 import { markShuttingDown } from "@server/agent/shutdown-flag.js";
@@ -195,6 +197,7 @@ if (env.INTERNAL_API_ENABLED) {
   try {
     getCreditRefundConfig();
     getMaintenanceConfig();
+    if (env.SELLING) getCommerceConfig();
   } catch (err) {
     logger.error({ err }, "internal_api_config_invalid");
     await exitProcess(1);
@@ -283,6 +286,10 @@ server.on("error", (err) => {
 // side cannot run inside the business transaction).
 const lifecycleRelay = startLifecycleRelay();
 
+// The billing service's outbox relay (inner#1993 §5.1): it runs where the
+// billing service can call back, which is the internal listener.
+const commerceRelay = env.INTERNAL_API_ENABLED && env.SELLING ? startCommerceRelay() : null;
+
 // The refund disposition loop (inner#1410 §7.1); it runs whenever the
 // internal API is on, since it finishes every disposition the API accepts.
 const refundLoop = startRefundLoop();
@@ -351,6 +358,7 @@ async function shutdown(signal: string): Promise<void> {
     drains: [
       () => {
         lifecycleRelay.stop();
+        commerceRelay?.stop();
         return Promise.resolve();
       },
       // Work a route left running after its reply (an Agent chat run, a
