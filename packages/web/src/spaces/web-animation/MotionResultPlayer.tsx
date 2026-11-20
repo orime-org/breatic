@@ -48,6 +48,9 @@ export function MotionResultPlayer({ projectId, executionId, sourceVersionId, in
   const position = React.useRef(frame);
   const durationFrames = webAnimationDurationFrames(input);
   const { fps } = input;
+  // The Space shows result after result in this one host; each maps the play bar with its own frame rate.
+  const latestFps = React.useRef(fps);
+  latestFps.current = fps;
   const clip = React.useMemo((): TimelineWebAnimationClip => ({
     id: executionId, trackId: '', kind: 'web-animation', contentBinding: { baseSourceResultId: sourceVersionId, operationId: null },
     startFrame: 0, sourceInFrame: 0, durationFrames, ...TIMELINE_DEFAULT_PLACEMENT,
@@ -55,7 +58,7 @@ export function MotionResultPlayer({ projectId, executionId, sourceVersionId, in
   const [state, setState] = React.useState<WebInstanceState | undefined>(undefined);
   const [host] = React.useState(() => {
     const created = createWebAnimationHost({
-      frame: () => position.current, timelineFps: () => fps, loadTimeoutMs: () => latestTimeoutMs.current,
+      frame: () => position.current, timelineFps: () => latestFps.current, loadTimeoutMs: () => latestTimeoutMs.current,
       // The one instance is keyed by its source version; its state decides whether the picture is drawn yet.
       onChange: () => setState(created.states().values().next().value),
     });
