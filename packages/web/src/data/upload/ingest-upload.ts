@@ -64,6 +64,8 @@ export type UploadContext = UploadTargetParams & {
   nodeId?: string;
   /** The space that node lives in. */
   spaceId?: string;
+  /** The Document body block the bytes land in, by its `uploadId`: the server writes it (breatic#1574). */
+  uploadId?: string;
   /** `mini_tool` for a mini-tool product. */
   source?: 'mini_tool';
   /** The mini-tool's name when `source` says so. */

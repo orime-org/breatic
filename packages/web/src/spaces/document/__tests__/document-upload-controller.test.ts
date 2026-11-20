@@ -26,6 +26,7 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import {
   createUploadController,
+  stampUploadHome,
   type AttachedBody,
   type UploadOutcome,
   type UploadController,
@@ -464,19 +465,120 @@ describe('attaching a body', () => {
 });
 
 describe('failure and retry', () => {
-  it('a failure is kept with whether it can be retried, and a retry runs the same source again', async () => {
+  it('a failure is kept with whether it can be retried, and a retry runs the same source again under a new id', async () => {
     const world = open();
     pastePending(world, 'u1');
     world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     world.uploads.get('u1')!.resolve({ ok: false, failure: { reason: 'failed', retryable: true } });
     await settle();
     expect(world.controller.entry('u1')).toMatchObject({ phase: 'failed', failure: { retryable: true } });
-    world.controller.retry('u1');
-    expect(world.controller.entry('u1')?.phase).toBe('uploading');
-    await finish(world, 'u1');
+    world.controller.retry('u1', 'u2');
+    expect(world.controller.entry('u1')).toBeUndefined();
+    expect(world.controller.entry('u2')?.phase).toBe('uploading');
+    expectEverywhere(world, [PENDING('u2')]);
+    await finish(world, 'u2');
     expectEverywhere(world, [WRITTEN()]);
   });
+
+  it('a failure collab wrote onto the block is dropped by a retry, which renames every copy (breatic#1574)', async () => {
+    const world = open();
+    pastePending(world, 'u1');
+    pastePending(world, 'u1', 'Copy');
+    world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
+    world.uploads.get('u1')!.resolve({ ok: true, handedOff: true });
+    await settle();
+    // Collab's write arrives from the peer.
+    world.peer.transact(() => {
+      const walk = (el: Y.XmlElement | Y.XmlFragment): void => {
+        el.toArray().forEach((child) => {
+          if (!(child instanceof Y.XmlElement)) return;
+          if (child.nodeName === 'image') {
+            child.setAttribute('uploadState', 'failed');
+            child.setAttribute('uploadFailure', 'unreachable');
+            child.setAttribute('uploadRetryable', true as never);
+          }
+          walk(child);
+        });
+      };
+      walk(documentBodyFragment(world.peer));
+    });
+    world.controller.retry('u1', 'u2');
+    expectEverywhere(world, [PENDING('u2'), PENDING('u2', 'Copy')]);
+    for (const node of serverAttrs(world.doc)) expect(node).toEqual({});
+    expect(world.controller.entry('u2')?.phase).toBe('uploading');
+  });
 });
+
+describe('handing the upload to the server (breatic#1574)', () => {
+  it('ends this page\'s part: nothing is written, the source is kept and the tab-close guard lets go', async () => {
+    const world = open();
+    pastePending(world, 'u1');
+    world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
+    await settle();
+    expect(world.register.mock.calls).toEqual([[SPACE, 'u1']]);
+    world.uploads.get('u1')!.resolve({ ok: true, handedOff: true });
+    await settle();
+    expect(world.controller.entry('u1')).toEqual({ phase: 'handedOff' });
+    expect(world.unregister.mock.calls).toEqual([[SPACE, 'u1']]);
+    expectEverywhere(world, [PENDING('u1')]);
+  });
+
+  it('names the Document the upload belongs to on its blocks only, outside every undo step', () => {
+    const world = open();
+    pastePending(world, 'u1');
+    world.manager.stopCapturing();
+    pastePending(world, 'u9', 'Other');
+    world.manager.stopCapturing();
+    stampUploadHome(world.doc, 'u1', 'project-p/document-s');
+    expect(homes(world.peer)).toEqual(['project-p/document-s', undefined]);
+    // The one undo takes the second paste away, not the name.
+    undo(world);
+    expect(yImages(world.doc)).toEqual([PENDING('u1')]);
+    expect(homes(world.doc)).toEqual(['project-p/document-s']);
+  });
+});
+
+/**
+ * What collab writes onto each image in a doc.
+ * @param doc - The doc.
+ * @returns Those attributes per image, in order.
+ */
+function serverAttrs(doc: Y.Doc): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  const walk = (el: Y.XmlElement | Y.XmlFragment): void => {
+    el.toArray().forEach((child) => {
+      if (!(child instanceof Y.XmlElement)) return;
+      if (child.nodeName === 'image') {
+        const a = child.getAttributes() as Record<string, unknown>;
+        out.push(Object.fromEntries(['uploadState', 'uploadDeadline', 'uploadFailure', 'uploadRetryable'].filter((k) => a[k] !== undefined).map((k) => [k, a[k]])));
+      }
+      walk(child);
+    });
+  };
+  walk(documentBodyFragment(doc));
+  return out;
+}
+
+/**
+ * The `uploadHome` of each image in a doc.
+ * @param doc - The doc.
+ * @returns Their homes, in order.
+ */
+function homes(doc: Y.Doc): (string | undefined)[] {
+  const out: (string | undefined)[] = [];
+  const walk = (el: Y.XmlElement | Y.XmlFragment): void => {
+    el.toArray().forEach((child) => {
+      if (!(child instanceof Y.XmlElement)) return;
+      if (child.nodeName === 'image') {
+        const home = child.getAttribute('uploadHome');
+        out.push(typeof home === 'string' && home !== '' ? home : undefined);
+      }
+      walk(child);
+    });
+  };
+  walk(documentBodyFragment(doc));
+  return out;
+}
 
 describe('the tab-close guard (A12)', () => {
   it('registers the Space once while an in-flight pending block sits in it, and lets go when it is gone or done', async () => {

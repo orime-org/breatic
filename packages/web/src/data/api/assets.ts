@@ -95,6 +95,7 @@ export const assetsApi = {
       client_hash: params.hash,
       ...(params.nodeId !== undefined && { node_id: params.nodeId }),
       ...(params.spaceId !== undefined && { space_id: params.spaceId }),
+      ...(params.uploadId !== undefined && { upload_id: params.uploadId }),
       ...(params.source !== undefined && { source: params.source }),
       ...(params.toolName !== undefined && { tool_name: params.toolName }),
       ...(params.derived !== undefined && { derived: params.derived }),
@@ -136,10 +137,11 @@ export const assetsApi = {
    * @param body.url - The `https:` address.
    * @param body.project_id - The project it lands in.
    * @param body.space_id - The Space it lands in.
+   * @param body.upload_id - The Document body block the result is written into (breatic#1574).
    * @returns The storage key its finish is queued under.
    * @throws {import('@web/data/api/types').ApiException} On 400 / 403 / 429 / 507, or 500 when the fetch could not be queued.
    */
-  ingestUrl(body: { url: string; project_id: string; space_id: string }): Promise<{ storage_key: string }> {
+  ingestUrl(body: { url: string; project_id: string; space_id: string; upload_id?: string }): Promise<{ storage_key: string }> {
     return apiPost<{ storage_key: string }>('/assets/ingest-url', body);
   },
 

@@ -53,6 +53,13 @@ export interface MediaBlockProps {
   readonly caption: string;
   /** The upload the block waits for; empty once its address is written (inner#1351). */
   readonly uploadId: string;
+  /** The Document the upload belongs to; empty on a block written before breatic#1574. */
+  readonly uploadHome?: string;
+  /** What collab wrote: `processing` or `failed` (breatic#1574). */
+  readonly uploadState?: string;
+  readonly uploadDeadline?: number;
+  readonly uploadFailure?: string;
+  readonly uploadRetryable?: boolean;
   /** Image and video only. */
   readonly previewWidth?: number;
   /** Image and video only: the pixel size the server read off the stored file (its upright copy for a picture with an EXIF orientation). */

@@ -11,10 +11,11 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type * as Y from 'yjs';
 
+import { newId } from '@breatic/shared';
+
 import { assetsApi } from '@web/data/api/assets';
 import { canvasApi } from '@web/data/api/canvas';
-import { uploadMedia } from '@web/data/upload/media-upload';
-import { waitForUploadEnding } from '@web/data/upload/upload-status';
+import { handOffDocumentMedia } from '@web/data/upload/media-upload';
 import { renewOnWorker } from '@web/lib/upload-claims';
 import { readDocFacts, readWriteAccess } from '@web/data/yjs/collab-socket';
 import { docName } from '@web/data/yjs/manager';
@@ -86,10 +87,10 @@ function runnerFor(target: UploadTarget): UploadControllerDeps['run'] {
   if (run === undefined) {
     const name = docName.documentSpace(target.projectId, target.spaceId);
     const sources = createUploadSources({
-      uploadFile: (file, onProgress) => uploadMedia(file, target, onProgress),
-      ingest: async (url) =>
-        (await assetsApi.ingestUrl({ url, project_id: target.projectId, space_id: target.spaceId })).storage_key,
-      waitForEnding: waitForUploadEnding,
+      uploadFile: (file, uploadId, onProgress) => handOffDocumentMedia(file, { ...target, uploadId }, onProgress),
+      ingest: async (url, uploadId) => {
+        await assetsApi.ingestUrl({ url, project_id: target.projectId, space_id: target.spaceId, upload_id: uploadId });
+      },
       register: async ({ urls, pairs }) =>
         (await canvasApi.paste({ project_id: target.projectId, urls, pairs, history: [] })).map,
       assetUrlPrefix: () =>
@@ -180,6 +181,14 @@ export function openPageBodyUploads(
     start: (uploadId, source) => {
       targets.set(uploadId, target);
       link.start(uploadId, source);
+    },
+    pending: {
+      ...link.pending,
+      retry: (uploadId) => {
+        const nextId = newId();
+        targets.set(nextId, target);
+        link.retryAs(uploadId, nextId);
+      },
     },
   };
 }

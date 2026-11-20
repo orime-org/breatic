@@ -19,12 +19,13 @@
 import { Loader2 } from 'lucide-react';
 import * as React from 'react';
 
+import type { PendingFailureReason } from '@breatic/shared';
+
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { MediaCaption } from '@web/spaces/document/DocumentMediaBlock';
 import type { PendingStatus } from '@web/spaces/document/document-pending-status';
-import type { PendingFailureReason } from '@web/spaces/document/document-upload-controller';
 
 /** Props of {@link DocumentPendingMedia}. */
 interface DocumentPendingMediaProps {
@@ -44,8 +45,9 @@ const FRAME =
  * status added to `PendingStatus` does not compile until it is placed here or
  * read as a failure.
  */
-const STATUS_MESSAGE: Readonly<Record<Exclude<PendingStatus['kind'], 'failed' | 'peerFailed'>, string>> = {
+const STATUS_MESSAGE: Readonly<Record<Exclude<PendingStatus['kind'], 'failed' | 'serverFailed' | 'peerFailed'>, string>> = {
   uploading: 'spaces.document.media.uploading',
+  processing: 'spaces.document.media.uploading',
   peerUploading: 'spaces.document.media.uploading',
   waitingDemoted: 'spaces.document.media.readOnlyWaiting',
   waitingRefused: 'spaces.document.media.notWrittenYet',
@@ -84,23 +86,23 @@ export const DocumentPendingMedia = React.memo(function DocumentPendingMedia({
   onRemove,
 }: DocumentPendingMediaProps): React.JSX.Element {
   const t = useTranslation();
-  const spinning = status.kind === 'uploading' || status.kind === 'peerUploading';
+  const spinning = status.kind === 'uploading' || status.kind === 'processing' || status.kind === 'peerUploading';
   const percent =
     status.kind === 'uploading' && status.progress !== null && status.progress < 1
       ? Math.round(status.progress * 100)
       : null;
   const named = caption === '';
-  const failed = status.kind === 'failed' || status.kind === 'peerFailed';
+  const failed = status.kind === 'failed' || status.kind === 'serverFailed' || status.kind === 'peerFailed';
   const said =
-    status.kind === 'failed'
+    status.kind === 'failed' || status.kind === 'serverFailed'
       ? t(FAILURE_MESSAGE[status.failure.reason])
       : status.kind === 'peerFailed'
         ? t(FAILURE_MESSAGE.failed)
         : percent === null
           ? t(STATUS_MESSAGE[status.kind])
           : t('spaces.document.media.uploadingPercent', { percent });
-  const retry = status.kind === 'failed' && status.failure.retryable;
-  const remove = status.kind === 'failed' || status.kind === 'notFinished';
+  const retry = (status.kind === 'failed' && status.failure.retryable) || (status.kind === 'serverFailed' && status.retry);
+  const remove = status.kind === 'failed' || status.kind === 'serverFailed' || status.kind === 'notFinished';
 
   return (
     // An inline-size container is held to the width it is given, as

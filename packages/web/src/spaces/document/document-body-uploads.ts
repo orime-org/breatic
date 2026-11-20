@@ -14,13 +14,20 @@
 
 import type * as Y from 'yjs';
 
+import { newId } from '@breatic/shared';
+
 import { readDocSize, subscribeDocSize } from '@web/data/yjs/doc-size';
 import { docNameOf } from '@web/data/yjs/manager';
 import { checkAdd } from '@web/data/yjs/space-write';
 import { claimIn } from '@web/lib/upload-claims';
 import type { PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
-import type { ClaimChannel, UploadController, UploadSource } from '@web/spaces/document/document-upload-controller';
+import {
+  stampUploadHome,
+  type ClaimChannel,
+  type UploadController,
+  type UploadSource,
+} from '@web/spaces/document/document-upload-controller';
 
 /** The awareness a body publishes claims in and reads others' from. */
 export interface BodyAwareness extends ClaimChannel {
@@ -50,6 +57,8 @@ export interface BodyUploads {
   start: (uploadId: string, source: UploadSource) => void;
   /** What the body's pending blocks read. */
   pending: PendingUploadsStore;
+  /** Runs an upload again under the id given, for a caller that has to know the new id first. */
+  retryAs: (uploadId: string, nextId: string) => void;
   /** Closes the link: the body's claims and guard registrations go. */
   detach: () => void;
 }
@@ -72,6 +81,7 @@ export function openBodyUploads(
   const name = body.name ?? docNameOf(body.doc);
   const detach = controller.attach({ spaceId: body.spaceId, doc: body.doc, name, ...connection });
   const pending: PendingUploadsStore = {
+    docName: name,
     factsOf: (uploadId) => ({
       entry: controller.entry(uploadId),
       access: connection.writeAccess(),
@@ -93,17 +103,27 @@ export function openBodyUploads(
       };
     },
     retry: (uploadId) => {
-      // A Retry asks the server again for what lands in the body: a Space
-      // that cannot take an add sends nothing and keeps the file (design 5.2).
-      if (name !== null && !checkAdd(name).ok) return;
-      controller.retry(uploadId);
+      retryAs(uploadId, newId());
     },
   };
+  /**
+   * Runs an upload again under a new id.
+   * @param uploadId - The upload.
+   * @param nextId - Its new id.
+   */
+  function retryAs(uploadId: string, nextId: string): void {
+    // A Retry asks the server again for what lands in the body: a Space
+    // that cannot take an add sends nothing and keeps the file (design 5.2).
+    if (name !== null && !checkAdd(name).ok) return;
+    controller.retry(uploadId, nextId);
+  }
   return {
     start: (uploadId, source) => {
+      if (name !== null) stampUploadHome(body.doc, uploadId, name);
       controller.start(uploadId, source);
     },
     pending,
+    retryAs,
     detach,
   };
 }

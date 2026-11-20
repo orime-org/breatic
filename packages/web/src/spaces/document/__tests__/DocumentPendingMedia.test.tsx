@@ -126,6 +126,19 @@ describe('a failure', () => {
   });
 });
 
+describe('what the server wrote (breatic#1574)', () => {
+  it('processing reads as uploading, with the spinner', () => {
+    draw({ kind: 'processing' });
+    expect(root().getAttribute('data-status')).toBe('processing');
+    expect(root().querySelector('svg.animate-spin')).not.toBeNull();
+  });
+
+  it('a server failure says its reason as a failure', () => {
+    draw({ kind: 'serverFailed', failure: { reason: 'unreachable', retryable: true }, retry: false });
+    expect(screen.getByTestId('doc-pending-failure')).toBeTruthy();
+  });
+});
+
 describe('its buttons', () => {
   /**
    * The buttons on screen.
@@ -144,6 +157,9 @@ describe('its buttons', () => {
     [{ kind: 'peerUploading' }, []],
     [{ kind: 'peerFailed' }, []],
     [{ kind: 'notFinished' }, ['doc-pending-remove']],
+    [{ kind: 'processing' }, []],
+    [{ kind: 'serverFailed', failure: FAILURE, retry: true }, ['doc-pending-retry', 'doc-pending-remove']],
+    [{ kind: 'serverFailed', failure: FAILURE, retry: false }, ['doc-pending-remove']],
   ])('%o → %o', (status, expected) => {
     draw(status);
     expect(buttons()).toEqual(expected);

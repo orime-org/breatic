@@ -258,6 +258,10 @@ function createDocumentEditor(
       onLeftOut: (count) => {
         toast.warning(t('spaces.document.media.leftOut', { count }));
       },
+      ...(target !== undefined && { docName: docName.documentSpace(target.projectId, target.spaceId) }),
+      onStillUploading: (count) => {
+        toast.warning(t('spaces.document.media.stillUploading', { count }));
+      },
       ...(uploads !== null && { start: uploads.start }),
     },
     ...(uploads !== null && {

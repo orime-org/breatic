@@ -138,13 +138,16 @@ describe('what tells it something changed', () => {
     expect(listener.mock.calls.length).toBeGreaterThan(afterAccess);
   });
 
-  it('a retry runs the failed upload again', async () => {
+  it('a retry runs the failed upload again under a new id', async () => {
     const { open, settle } = rig();
     open.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     settle.get('u1')!({ ok: false, failure: { reason: 'failed', retryable: true } });
     await flush();
     open.pending.retry('u1');
-    expect(open.pending.factsOf('u1').entry?.phase).toBe('uploading');
+    // The retry runs under a new id (breatic#1574).
+    const next = [...settle.keys()].find((id) => id !== 'u1')!;
+    expect(open.pending.factsOf(next).entry?.phase).toBe('uploading');
+    expect(open.pending.factsOf('u1').entry).toBeUndefined();
   });
 });
 

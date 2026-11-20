@@ -42,10 +42,14 @@ interface Sink {
  * @param sink - Told how many media a paste left out, and handed each upload.
  * @returns The editor.
  */
-function open(prefix: string | null, sink: Sink = { onLeftOut: vi.fn(), start: vi.fn() }): Editor {
+function open(
+  prefix: string | null,
+  sink: Sink = { onLeftOut: vi.fn(), start: vi.fn() },
+  home?: { docName: string; onStillUploading: (count: number) => void },
+): Editor {
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(new Y.Doc()),
-    media: { assetUrlPrefix: () => prefix, onLeftOut: sink.onLeftOut, start: sink.start },
+    media: { assetUrlPrefix: () => prefix, onLeftOut: sink.onLeftOut, start: sink.start, ...home },
   });
   const root = document.createElement('div');
   document.body.appendChild(root);
@@ -216,6 +220,43 @@ describe('media that stay as they are', () => {
     await settled();
 
     expect(media(editor)).toEqual([{ type: 'image', url: '', uploadId: 'u1', caption: 'Hero' }]);
+    expect(s.start).not.toHaveBeenCalled();
+  });
+
+  it('a pending block copied within its own Document keeps its upload id (breatic#1574)', async () => {
+    const source = open(OURS);
+    source.replaceBlocks(source.document, [{ type: 'image', props: { url: '', uploadId: 'u1', uploadHome: 'doc-a', caption: 'Hero' } }] as never);
+    const html = await source.blocksToFullHTML(source.document);
+    const stillUploading = vi.fn();
+    const editor = open(OURS, sink(), { docName: 'doc-a', onStillUploading: stillUploading });
+
+    pasteFormats(editor, { 'blocknote/html': html });
+    await settled();
+
+    expect(media(editor)).toEqual([{ type: 'image', url: '', uploadId: 'u1', caption: 'Hero' }]);
+    expect(stillUploading).not.toHaveBeenCalled();
+  });
+});
+
+describe('a pending block whose upload belongs to another Document (breatic#1574)', () => {
+  it('is left out, and the user is told it is still uploading', async () => {
+    const source = open(OURS);
+    source.replaceBlocks(source.document, [
+      { type: 'paragraph', content: 'kept' },
+      { type: 'image', props: { url: '', uploadId: 'u1', uploadHome: 'doc-a', caption: 'Hero' } },
+    ] as never);
+    const html = await source.blocksToFullHTML(source.document);
+    const s = sink();
+    const stillUploading = vi.fn();
+    const editor = open(OURS, s, { docName: 'doc-b', onStillUploading: stillUploading });
+
+    pasteFormats(editor, { 'blocknote/html': html });
+    await settled();
+
+    expect(media(editor)).toEqual([]);
+    expect(text(editor)).toContain('kept');
+    expect(stillUploading).toHaveBeenCalledExactlyOnceWith(1);
+    expect(s.onLeftOut).not.toHaveBeenCalled();
     expect(s.start).not.toHaveBeenCalled();
   });
 });
