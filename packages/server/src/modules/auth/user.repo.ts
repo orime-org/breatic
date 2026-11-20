@@ -10,7 +10,7 @@
 
 import { eq, and, or, isNull, inArray, sql } from "drizzle-orm";
 import { db, getDefaultMembershipTier, asKnownTier } from "@breatic/core";
-import { users } from "@breatic/core";
+import { studios, users } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { normalizeEmail } from "@breatic/shared";
 import type { Attribution, UserEntity } from "@breatic/shared";
@@ -53,6 +53,53 @@ export async function getUserById(userId: string, tx?: DbTx): Promise<UserEntity
     .where(and(eq(users.id, userId), isNull(users.deletedAt)))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/** An account's facts the billing service reads, deleted accounts included. */
+export interface AccountFacts {
+  userId: string;
+  email: string;
+  locale: string;
+  deleted: boolean;
+}
+
+/**
+ * Read an account's facts, whether or not it is deleted.
+ * @param userId - The account.
+ * @returns Its facts, or null when no such account ever existed.
+ */
+export async function readAccountFacts(userId: string): Promise<AccountFacts | null> {
+  const [row] = await db
+    .select({ userId: users.id, email: users.email, locale: users.locale, deletedAt: users.deletedAt })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row === undefined ? null : { userId: row.userId, email: row.email, locale: row.locale, deleted: row.deletedAt !== null };
+}
+
+/**
+ * Read many accounts' facts with the name of each one's personal Studio,
+ * deleted accounts included; ids that never existed are left out.
+ * @param ids - The accounts.
+ * @returns One row per known account, in no particular order.
+ */
+export async function lookupAccountFacts(ids: string[]): Promise<Array<AccountFacts & { personalStudioName: string | null }>> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select({ userId: users.id, email: users.email, locale: users.locale, deletedAt: users.deletedAt, personalStudioName: studios.name })
+    .from(users)
+    .leftJoin(
+      studios,
+      and(eq(studios.createdByUserId, users.id), eq(studios.type, "personal"), isNull(studios.deletedAt)),
+    )
+    .where(inArray(users.id, ids));
+  return rows.map((row) => ({
+    userId: row.userId,
+    email: row.email,
+    locale: row.locale,
+    deleted: row.deletedAt !== null,
+    personalStudioName: row.personalStudioName,
+  }));
 }
 
 /**

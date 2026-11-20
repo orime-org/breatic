@@ -41,7 +41,7 @@ import {
   projects,
   paymentReceipts,
 } from "@breatic/core";
-import { GRANTED_SOURCE_KINDS, IN_FLIGHT_REFUND_LIFECYCLES } from "@breatic/shared";
+import { GRANTED_SOURCE_KINDS, HELD_LIFECYCLES, IN_FLIGHT_REFUND_LIFECYCLES } from "@breatic/shared";
 import type {
   CreditLotEntity,
   CreditSourceKind,
@@ -746,6 +746,21 @@ export async function sumGrantedForUser(userId: string): Promise<string> {
         sql`${creditLots.remainingCredits} > 0`,
       ),
     );
+  return rows[0]?.total ?? "0";
+}
+
+/**
+ * Credits an account still holds across its lots: active, depleted-to-zero and
+ * under refund, which is the figure the credits overlay totals and a purchase
+ * confirmation states (inner#1993 §3.3 `accounts`).
+ * @param userId - The account.
+ * @returns The sum as decimal text.
+ */
+export async function sumHeldForUser(userId: string): Promise<string> {
+  const rows = await db
+    .select({ total: sql<string>`COALESCE(SUM(${creditLots.remainingCredits}), 0)::text` })
+    .from(creditLots)
+    .where(and(eq(creditLots.userId, userId), inArray(creditLots.lifecycle, HELD_LIFECYCLES), isNull(creditLots.deletedAt)));
   return rows[0]?.total ?? "0";
 }
 
