@@ -1553,6 +1553,23 @@ describe('creating a web animation', () => {
     act(() => refuse(new Error('refused')));
     expect(await screen.findByTestId('web-animation-prompt')).toHaveValue('A red dot');
   });
+
+  it('gives the dialog back with the unknown result when the press is let go without an answer', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    vi.mocked(timelineApi.acceptExecution).mockReset().mockReturnValue(new Promise((resolve) => { answer = resolve; }) as never);
+    show();
+    const user = userEvent.setup();
+    await executeNew(user, 'A dot');
+    await waitFor(() => expect(timelineApi.acceptExecution).toHaveBeenCalledOnce());
+    expect(screen.getByTestId('web-animation-prompt')).toBeDisabled();
+    // The account changes while the request is out, which lets every press go.
+    act(() => useCurrentUserStore.setState({ user: { id: 'u2' } as never }));
+    await act(async () => { answer({ row: inProgressRow(RUNNING, 'A dot'), created: true }); });
+    expect(await screen.findByRole('alert')).toHaveTextContent(t('common.runOnce.unknownResult'));
+    expect(screen.getByTestId('web-animation-prompt')).toBeEnabled();
+    expect(screen.getByTestId('web-animation-prompt')).toHaveValue('A dot');
+    expect(screen.getByTestId('web-animation-execute')).not.toHaveAttribute('aria-busy', 'true');
+  });
 });
 
 describe('the creation dialog\'s settings', () => {

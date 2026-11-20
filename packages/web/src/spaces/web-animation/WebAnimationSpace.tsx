@@ -417,7 +417,11 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         return answer;
       },
     }).then((outcome) => {
-      if (outcome.kind === 'released') return;
+      // A press let go without an answer gives the draft back with the unknown result; an export has nothing to give back.
+      if (outcome.kind === 'released') {
+        onRefused?.(t('common.runOnce.unknownResult'));
+        return;
+      }
       if (outcome.kind === 'failed') {
         const message = serverMessage(outcome.error, t('common.runOnce.unknownResult'));
         if (onRefused === undefined) toast.error(message); else onRefused(message);
