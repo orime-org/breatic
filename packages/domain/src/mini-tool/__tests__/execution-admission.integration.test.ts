@@ -15,7 +15,7 @@ import * as core from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError, createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
 import * as shared from "@breatic/shared";
 import { miniToolExecutionRecordSchema, type MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
-import { acceptMiniToolExecution, type AcceptedMiniToolExecution } from "@domain/index.js";
+import { acceptMiniToolExecution, initProvider, type AcceptedMiniToolExecution } from "@domain/index.js";
 import { containerCostUsd } from "@domain/credit/container-cost.js";
 import { creditsForUsd } from "@domain/credit/usage-cost.js";
 import { estimateModelCredits, MIN_TASK_CREDIT_COST, resetModelCatalog } from "@domain/model-catalog/model-catalog.js";
@@ -101,7 +101,7 @@ const GOLDEN_PLAN: AcceptedMiniToolExecution = {
   analysisRefs: [],
   outputs: GOLDEN_BODY.outputs,
   model: "bria-fibo-video-background-remover",
-  provider: { provider: "wavespeed", model_id: "bria/fibo/video-background-remover" },
+  route: { mode: "upstream", upstream: "wavespeed" },
   body: {
     // E3-8: the provider input is the prepared model input, resolved by the worker after its preparation steps.
     video: { kind: "prepared", inputId: "source", job: "50000000-0000-4000-8000-000000000001:prep:0" },
@@ -127,7 +127,7 @@ const GOLDEN_PLAN: AcceptedMiniToolExecution = {
   requestFingerprint: "91f5eef27ba46d6f47d72ab8878e296659fe7c0509b75eaea4a5fff359b78f86",
   // Both fingerprints were recomputed independently in Python (sorted keys, compact JSON, ECMAScript number text, SHA-256)
   // over the golden request and the plan with the golden source's grid version (frames-split §7.11).
-  planFingerprint: "45ea65fbb8cb54f21c6367499bf09b0f20a3537d66d1a76efc5ce6f505e3fee1",
+  planFingerprint: "174dba674db23eb6d9b4bde25f84b6029d951def2c95f5a9a92a7adc646e98c9",
 } as unknown as AcceptedMiniToolExecution;
 
 let pg: ReturnType<typeof createPgClient>;
@@ -136,6 +136,7 @@ let publicUrl: (key: string) => string;
 /** Configure only fixture values; the key is never sent to an upstream. @throws {Error} If test configuration is invalid. */
 function configure(key = "unused-by-admission-integration"): void {
   initCore({ ...process.env, PAYMENT_ENABLED: "false", CREDIT_MULTIPLIER: "1", WAVESPEED_API_KEY: key, UPLOAD_BASE_URL: "https://assets.example.test" });
+  initProvider();
   resetModelCatalog();
 }
 
@@ -164,7 +165,7 @@ beforeEach(() => {
     return new Response(body, { headers: { "Content-Type": "application/json" } });
   }));
 });
-afterAll(async () => { await pg.end(); initCore(process.env); resetModelCatalog(); vi.unstubAllGlobals(); });
+afterAll(async () => { await pg.end(); initCore(process.env); initProvider(); resetModelCatalog(); vi.unstubAllGlobals(); });
 
 /** Insert a real project member without synthesizing authorization answers. @throws {Error} On fixture SQL failure. */
 async function member(projectId: string, role: "editor" | "viewer"): Promise<string> {
