@@ -60,28 +60,6 @@ analyses.post(
   },
 );
 
-/**
- * Quote an analysis with the admission's own checks and price, writing nothing (canvas design §4 erase row).
- * @param c - Hono context with the request the press would send.
- * @returns `200` with `{ credits }`.
- * @throws {AppError} The refusal admission would give the same body.
- */
-analyses.post(
-  "/quote",
-  rateLimitFor("mini_tool_quote", "user"),
-  validate("json", miniToolAnalysisRequestSchema),
-  async (c) => {
-    const user = c.get("user");
-    const body = c.req.valid("json");
-    try {
-      return c.json({ data: await miniToolAnalysisService.quote(body, user.id) }, 200);
-    } catch (err) {
-      logger.error({ err, ctx: { userId: user.id, projectId: body.projectId, spaceId: body.spaceId, analysisRunId: body.analysisRunId, kind: body.kind } }, "mini_tool_analysis_quote_failed");
-      throw err;
-    }
-  },
-);
-
 analyses.get("/:id", validate("param", z.object({ id: z.string().uuid() })), async (c) => {
   const record = await miniToolAnalysisService.get(c.req.valid("param").id, c.get("user").id);
   return c.json({ data: record });

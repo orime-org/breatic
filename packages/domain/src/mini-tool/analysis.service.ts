@@ -303,20 +303,6 @@ async function freeze(body: MiniToolAnalysisRequest): Promise<{
 }
 
 /**
- * Quote an analysis request with the admission's own checks and price, writing nothing (canvas design §4 erase row).
- * @param body - The request the press would send.
- * @param userId - The authenticated editor.
- * @returns The credits admission would hold.
- * @throws {NotFoundError} When the Project is not visible to the caller.
- * @throws {ForbiddenError} When a viewer asks.
- * @throws {ValidationError} When admission would refuse the request.
- */
-export async function quote(body: MiniToolAnalysisRequest, userId: string): Promise<{ credits: number }> {
-  await assertAccess(body.projectId, userId, true);
-  return { credits: (await freeze(body)).credits };
-}
-
-/**
  * Freeze a new run or replay the durable identity before any node row or hold.
  * @param body - Validated editable inputs.
  * @param userId - The authenticated editor.
