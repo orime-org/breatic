@@ -23,8 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WEB_ANIMATION_BRIDGE_SCRIPT } from "@shared/timeline/web-animation-bridge.js";
 
 import type { WebAnimationRunBody } from "../../src/jobs/web-animation-run-body.js";
-import { packWebAnimationSource } from "@shared/timeline/web-animation-source.js";
-import { buildFontSetStylesheet } from "../web-animation-package.js";
+import { buildFontSetStylesheet, packWebAnimationSource } from "../web-animation-package.js";
 import { CHROMIUM_ARGS, runWebAnimation, type WebAnimationRunnerSettings } from "../web-animation-run.js";
 
 /** How long the run may take to report before the test calls it hung; well past anything the run does on its own. */

@@ -22,7 +22,6 @@ import { createInterface } from "node:readline";
 
 import { durationToFrames } from "@shared/timeline/time.js";
 import { WEB_ANIMATION_BRIDGE_SCRIPT } from "@shared/timeline/web-animation-bridge.js";
-import { packWebAnimationSource, unpackWebAnimationSource, type WebAnimationInlinePieces } from "@shared/timeline/web-animation-source.js";
 import type { WebAnimationRunBody, WebAnimationRunPhase } from "@ingest/jobs/web-animation-run-body.js";
 
 import { cpuUsec } from "./run-steps.js";
@@ -31,8 +30,11 @@ import {
   buildFontSetStylesheet,
   buildWebAnimationManifest,
   judgeWebAnimationCheck,
+  packWebAnimationSource,
+  unpackWebAnimationSource,
   webAnimationDshEnv,
   type WebAnimationCheckObservation,
+  type WebAnimationInlinePieces,
   type WebAnimationFontFace,
 } from "./web-animation-package.js";
 

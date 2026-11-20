@@ -42,7 +42,6 @@
     "../../shared/src/timeline/time.ts",
     "../../shared/src/timeline/web-animation-runtime.ts",
     "../../shared/src/timeline/web-animation-bridge.ts",
-    "../../shared/src/timeline/web-animation-source.ts",
     "__tests__/*.ts"
   ]
 }

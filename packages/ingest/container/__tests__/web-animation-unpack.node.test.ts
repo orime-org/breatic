@@ -11,9 +11,8 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import { WEB_ANIMATION_BRIDGE_SCRIPT } from "@shared/timeline/web-animation-bridge.js";
-import { packWebAnimationSource, unpackWebAnimationSource } from "@shared/timeline/web-animation-source.js";
 
-import { buildFontSetStylesheet } from "../web-animation-package.js";
+import { buildFontSetStylesheet, packWebAnimationSource, unpackWebAnimationSource } from "../web-animation-package.js";
 
 const RUNTIME = "(function(){var s='</script><!-- x -->';window.__hf=s;})();";
 const FONTS = buildFontSetStylesheet(1, [{ family: "Inter", file: "inter-latin", unicodeRange: "U+0000-00FF" }]);
