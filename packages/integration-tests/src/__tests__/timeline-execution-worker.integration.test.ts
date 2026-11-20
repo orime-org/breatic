@@ -419,12 +419,12 @@ describe("a pickup that finds the execution claimed by another meanwhile", () =>
 // slot starts when its turn comes, and a spend limit reached or a balance gone
 // meanwhile only lets it run past them (inner#1968 design 3.10).
 describe("a queued execution that waited for a running slot", () => {
-  const PAID = { ...process.env, PAYMENT_ENABLED: "true", STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite", STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite" };
+  const PAID = { ...ENV, PAYMENT_ENABLED: "true", STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite", STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite" };
   beforeAll(() => {
     initCore(PAID);
   });
   afterAll(() => {
-    initCore(process.env);
+    initCore(ENV);
   });
 
   it.each(["a spend limit of 0", "no credits left"])("starts when its turn comes with %s", async (situation) => {
