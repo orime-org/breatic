@@ -160,6 +160,7 @@ export {
   publishActivityNew,
   publishCreditsChanged,
   publishSpaceTasksChanged,
+  publishSceneLookRefused,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
   sessionsRevokedChannelName,

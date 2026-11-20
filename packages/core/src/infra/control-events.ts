@@ -56,12 +56,14 @@ import {
   activityNewChannel,
   creditsChangedChannel,
   spaceTasksChangedChannel,
+  sceneLookRefusedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
   type ActivityNewControlEvent,
   type CreditsChangedControlEvent,
   type SpaceTasksChangedControlEvent,
+  type SceneLookRefusedControlEvent,
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
   type SessionsRevokedEvent,
@@ -136,6 +138,21 @@ export async function publishSpaceTasksChanged(projectId: string, spaceId: strin
     ts: Date.now(),
   };
   await getStreamRedis().publish(spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+}
+
+/**
+ * Announce that collab did not put an uploaded picture on its 3D part
+ * (inner#1693 design 6.3); every collab instance relays it to its connections
+ * on the project meta doc as the `scene-look:refused` stateless signal, and
+ * the uploader's page tells them why. Fire-and-forget like
+ * {@link publishActivityNew}: the picture is in the Project's pictures either way.
+ * @param refusal - The part, the picture, the uploader and why.
+ * @returns Nothing.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function publishSceneLookRefused(refusal: Omit<SceneLookRefusedControlEvent, "type" | "ts">): Promise<void> {
+  const event: SceneLookRefusedControlEvent = { type: "project-scene-look:refused", ...refusal, ts: Date.now() };
+  await getStreamRedis().publish(sceneLookRefusedChannel(env.REDIS_KEY_PREFIX, refusal.projectId), JSON.stringify(event));
 }
 
 /**

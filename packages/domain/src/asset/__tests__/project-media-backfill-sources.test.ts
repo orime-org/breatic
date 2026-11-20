@@ -47,7 +47,7 @@ function grant(overrides: Partial<UploadGrant> = {}): UploadGrant {
   return { id: ROW, userId: "producer", studioId: "studio", storageKey: "unrelated-storage-key", declaredSize: 12,
     consumedAt: WHEN, voidedAt: null, assetId: ASSET, failureReason: null, expiresAt: WHEN, nodeId: null,
     projectId: PROJECT, spaceId: null, source: null, toolName: null, derived: null, filename: "Launch.mp4",
-    assetSource: "upload", generationTaskId: null, analyticsConsent: null, createdAt: WHEN, ...overrides };
+    assetSource: "upload", generationTaskId: null, sceneLook: null, analyticsConsent: null, createdAt: WHEN, ...overrides };
 }
 
 /** Construct one actual history writer's successful row. */
