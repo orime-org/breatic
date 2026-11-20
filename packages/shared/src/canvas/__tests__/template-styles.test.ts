@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { templateNodeWords, type GenerationTemplate } from '@shared/canvas/generation-templates.js';
+import { GENERATION_TEMPLATES, templateNodeWords, type GenerationTemplate } from '@shared/canvas/generation-templates.js';
 import { expandTemplate } from '@shared/canvas/template-expansion.js';
 import {
   TEMPLATE_STYLE_SETS,
@@ -20,6 +20,28 @@ import { resetLocales, setLocale, setLocaleMessages } from '@shared/i18n/index.j
 
 const FILM = templateStyleSet('film-styles');
 const STYLE = FILM.styles[0]?.id ?? '';
+
+/**
+ * What is wrong with how a template's nodes take style words: a node naming a part its template's set does not
+ * have, a node taking style words beside a shot or line list, style words on a template with no set, or a set no
+ * node takes words from.
+ * @param template - The template.
+ * @returns One line per problem.
+ */
+function styleWordsProblems(template: GenerationTemplate): string[] {
+  const set = templateStylesOf(template);
+  const problems: string[] = [];
+  let taken = 0;
+  for (const node of template.nodes) {
+    if (node.role !== 'generate' || node.styleWords === undefined) continue;
+    taken += 1;
+    if (set === undefined) problems.push(`${template.id}.${node.key}: style words with no set`);
+    else if (!set.parts.includes(node.styleWords)) problems.push(`${template.id}.${node.key}: ${node.styleWords} is not a part of ${set.id}`);
+    if (node.shots !== undefined || node.lines !== undefined) problems.push(`${template.id}.${node.key}: style words beside a shot or line list`);
+  }
+  if (set !== undefined && taken === 0) problems.push(`${template.id}: ${set.id} with no node taking its words`);
+  return problems;
+}
 
 /** A two-node template: a still the anchor's first frame comes from, both taking film styles. */
 const STYLED: GenerationTemplate = {
@@ -87,6 +109,18 @@ describe('template style sets', () => {
   it('gives a template its set and an unstyled template none', () => {
     expect(templateStylesOf(STYLED)?.id).toBe('film-styles');
     expect(templateStylesOf({ ...STYLED, styles: undefined })).toBeUndefined();
+  });
+
+  it('ties every registered node that takes style words to a part of its template\'s set', () => {
+    expect(GENERATION_TEMPLATES.flatMap(styleWordsProblems)).toEqual([]);
+  });
+
+  it('reports a part the set lacks, a part on a shot list, and style words with no set or no node to take them', () => {
+    const [shot, still, plain] = STYLED.nodes;
+    expect(styleWordsProblems({ ...STYLED, nodes: [{ ...shot!, styleWords: 'hit' }, still!, plain!] })).toHaveLength(1);
+    expect(styleWordsProblems({ ...STYLED, nodes: [{ ...shot!, shots: [{ seconds: 5 }] }, still!, plain!] })).toHaveLength(1);
+    expect(styleWordsProblems({ ...STYLED, styles: undefined })).toHaveLength(2);
+    expect(styleWordsProblems({ ...STYLED, nodes: [plain!] })).toHaveLength(1);
   });
 });
 
