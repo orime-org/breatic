@@ -4,12 +4,8 @@
 import { z } from "zod";
 import { hashMiniToolValue } from "@shared/mini-tools/canonical-value.js";
 
-/**
- * The upstream work a consumption pays for: a model step, whose provider ticket and costs live on its own step row
- * (inner#1306 execution design §11.2), or one container job.
- */
+/** The upstream work a consumption pays for: one container job. */
 export const miniToolConsumptionIdentitySchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("provider"), stepId: z.string().uuid() }),
   z.strictObject({ kind: z.literal("container"), containerClass: z.string().min(1), jobId: z.string().min(1), chunkIndex: z.number().int().nonnegative() }),
 ]);
 
