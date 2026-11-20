@@ -37,6 +37,7 @@ import {
   sessionCookieName,
   loadLocales,
 } from "@breatic/core";
+import { ingestReportService } from "@breatic/domain";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import type { Hono } from "hono";
 
@@ -201,6 +202,43 @@ describe("POST /assets/ingest-url — a Document body block (breatic#1574)", () 
     })]);
     // The page holds the same deadline as the block.
     expect(((await res.json()) as { data: Record<string, unknown> }).data.deadline).toBe(events[0]!.deadline);
+  });
+});
+
+describe("POST /assets/ingest-url — a Document block's fetch ending (breatic#1574)", () => {
+  /**
+   * Every Document upload event for one block, oldest first.
+   * @param uploadId - The block's upload.
+   * @returns Their payloads.
+   */
+  async function eventsOf(uploadId: string): Promise<Record<string, unknown>[]> {
+    const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
+    return raw.map(([, f]) => JSON.parse(f[f.indexOf("payload") + 1]!) as Record<string, unknown>)
+      .filter((e) => e.type === "document-upload" && e.uploadId === uploadId);
+  }
+
+  it("hands the block the fetched picture", async () => {
+    const { projectId, cookie } = await seedEditor();
+    const uploadId = crypto.randomUUID();
+    const res = await submit(cookie, { project_id: projectId, upload_id: uploadId });
+    const key = ((await res.json()) as { data: { storage_key: string } }).data.storage_key;
+
+    await ingestReportService.applyIngestReport({
+      storageKey: key, outcome: "completed", sha256: crypto.randomBytes(32).toString("hex"), sizeBytes: 4096, contentType: "image/png",
+    });
+
+    expect((await eventsOf(uploadId)).map((e) => e.state)).toEqual(["processing", "completed"]);
+  });
+
+  it("tells the block the fetch failed", async () => {
+    const { projectId, cookie } = await seedEditor();
+    const uploadId = crypto.randomUUID();
+    const res = await submit(cookie, { project_id: projectId, upload_id: uploadId });
+    const key = ((await res.json()) as { data: { storage_key: string } }).data.storage_key;
+
+    await ingestReportService.applyIngestReport({ storageKey: key, outcome: "aborted" });
+
+    expect((await eventsOf(uploadId)).map((e) => e.state)).toEqual(["processing", "failed"]);
   });
 });
 

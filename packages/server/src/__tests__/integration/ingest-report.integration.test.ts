@@ -344,6 +344,37 @@ async function documentEventsFor(docName: string): Promise<Record<string, unknow
     .filter((e): e is Record<string, unknown> => e !== null && e.type === "document-upload" && e.docName === docName);
 }
 
+/**
+ * Makes the task-events stream refuse one Document upload event: every other entry goes through.
+ * @param state - The state of the event to refuse.
+ * @returns The spy, to restore.
+ */
+function refuseDocumentEvent(state: string): { mockRestore: () => void } {
+  const redis = getStreamRedis();
+  const real = redis.xadd.bind(redis) as (...args: unknown[]) => Promise<unknown>;
+  return vi.spyOn(redis, "xadd").mockImplementation((async (...args: unknown[]) => {
+    const payload = args.find((a) => typeof a === "string" && a.includes('"document-upload"'));
+    if (typeof payload === "string" && (JSON.parse(payload) as { state: string }).state === state) {
+      throw new Error("the stream's Redis is unreachable");
+    }
+    return real(...args);
+  }) as never);
+}
+
+/**
+ * Asks for an upload ticket with exactly this body.
+ * @param cookie - Who asks.
+ * @param body - The body.
+ * @returns The answer.
+ */
+async function askTicket(cookie: string, body: Record<string, unknown>): Promise<Response> {
+  return app.request("/api/v1/assets/upload-ticket", {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify(body),
+  });
+}
+
 describe("a Document body upload (breatic#1574)", () => {
   it("announces processing when the bytes are handed over and the result when they land", async () => {
     const seed = await seedEditor();
@@ -400,6 +431,108 @@ describe("a Document body upload (breatic#1574)", () => {
       .filter((e) => e.uploadId === uploadId);
     expect(events.map((e) => e.state)).toEqual(["completed"]);
     expect(typeof (events[0]!.result as { url?: unknown }).url).toBe("string");
+  });
+
+  it("fails the finish when its result could not reach the block, and a rerun lands it", async () => {
+    const seed = await seedEditor();
+    const uploadId = crypto.randomUUID();
+    const key = await mintTicket(seed, { upload_id: uploadId });
+    const body = completed(key);
+
+    const refused = refuseDocumentEvent("completed");
+    // The job throws, so the queue delivers it again.
+    await expect(report(body)).rejects.toThrow();
+    refused.mockRestore();
+    await ingestReportService.applyIngestReport({
+      storageKey: key,
+      outcome: "completed",
+      sha256: body.sha256 as string,
+      sizeBytes: body.size_bytes as number,
+      contentType: body.content_type as string,
+    });
+
+    const events = (await documentEventsFor(`project-${seed.projectId}/document-${seed.spaceId}`))
+      .filter((e) => e.uploadId === uploadId);
+    expect(events.map((e) => e.state)).toEqual(["processing", "completed"]);
+  });
+
+  it("still takes the bytes when the wait could not be shown, naming no deadline", async () => {
+    const seed = await seedEditor();
+    const uploadId = crypto.randomUUID();
+    const key = await mintTicket(seed, { upload_id: uploadId });
+
+    const refused = refuseDocumentEvent("processing");
+    try {
+      // report() throws unless the finish route answered 202.
+      await report(completed(key));
+    } finally {
+      refused.mockRestore();
+    }
+
+    expect(lastFinishAnswer.data).not.toHaveProperty("deadline");
+    const events = (await documentEventsFor(`project-${seed.projectId}/document-${seed.spaceId}`))
+      .filter((e) => e.uploadId === uploadId);
+    expect(events.map((e) => e.state)).toEqual(["completed"]);
+  });
+
+  it("fails the block at the ticket when the copy the studio holds is not a picture, a video or a sound", async () => {
+    const seed = await seedEditor();
+    const sha = crypto.randomBytes(32).toString("hex");
+    // Named a picture, but the Worker read text off the stored bytes, which is what the ledger keeps.
+    await report(completed(await mintTicket(seed), { sha256: sha, content_type: "text/plain" }));
+    const uploadId = crypto.randomUUID();
+
+    const res = await askTicket(seed.cookie, {
+      filename: "again.png", content_type: "image/png", project_id: seed.projectId, space_id: seed.spaceId,
+      size: 4096, client_hash: sha, upload_id: uploadId,
+    });
+    expect(res.status).toBe(200);
+
+    const events = (await documentEventsFor(`project-${seed.projectId}/document-${seed.spaceId}`))
+      .filter((e) => e.uploadId === uploadId);
+    expect(events).toEqual([expect.objectContaining({ state: "failed", reason: "unsupported_type" })]);
+  });
+
+  it("fails the ticket when a dedup hit's result could not reach the block", async () => {
+    const seed = await seedEditor();
+    const sha = crypto.randomBytes(32).toString("hex");
+    await report(completed(await mintTicket(seed), { sha256: sha }));
+
+    const refused = refuseDocumentEvent("completed");
+    let res: Response;
+    try {
+      res = await askTicket(seed.cookie, {
+        filename: "again.png", content_type: "image/png", project_id: seed.projectId, space_id: seed.spaceId,
+        size: 4096, client_hash: sha, upload_id: crypto.randomUUID(),
+      });
+    } finally {
+      refused.mockRestore();
+    }
+
+    expect(res.status).toBe(500);
+  });
+
+  it.each([
+    ["with no Space", { space_id: undefined }],
+    // A model is the one purpose that lands in a Space, so only the upload id's own rule refuses it.
+    ["for a 3D model", { purpose: "scene_model", content_type: "model/gltf-binary", filename: "chair.glb", label: "Chair" }],
+    ["from a mini-tool", { source: "mini_tool", tool_name: "image.crop" }],
+  ])("refuses an upload id %s", async (_label, over) => {
+    const seed = await seedEditor();
+    const res = await askTicket(seed.cookie, {
+      filename: "x.png", content_type: "image/png", project_id: seed.projectId, space_id: seed.spaceId,
+      size: 4096, client_hash: crypto.randomBytes(32).toString("hex"), upload_id: crypto.randomUUID(), ...over,
+    });
+    expect(res.status).toBe(422);
+  });
+
+  it("refuses an upload id on a studio avatar", async () => {
+    const seed = await seedEditor();
+    const res = await askTicket(seed.cookie, {
+      filename: "x.png", content_type: "image/png", studio_id: seed.studioId, purpose: "studio_avatar",
+      size: 4096, client_hash: crypto.randomBytes(32).toString("hex"), upload_id: crypto.randomUUID(),
+    });
+    expect(res.status).toBe(422);
   });
 
   it("refuses an upload id together with a node", async () => {
