@@ -28,11 +28,11 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 
 ### Seven product tables
 
-**Collab writes only seven product-database tables: `project_activities`, `account_activity_events`, `comment_mentions`, `comment_assignments`, `notifications`, `project_asset_refs` and `project_edits`; adding a table to this list or removing one needs the maintainer's explicit approval, given both in conversation and in writing.** Collab owns the collaboration documents and business rows belong to server and worker, so each of these is a granted exception. `timeline_executions` is written here only until #1583 moves Timeline admission to the server. Check: does this change make collab insert, update or delete a product table outside the seven? Stop and ask first.
+**Collab writes only seven product-database tables: `project_activities`, `account_activity_events`, `comment_mentions`, `comment_assignments`, `notifications`, `project_asset_refs` and `project_edits`; adding a table to this list or removing one needs the maintainer's explicit approval, given both in conversation and in writing.** Collab owns the collaboration documents and business rows belong to server and worker, so each of these is a granted exception. Two temporary exceptions remain until their issues land: `timeline_executions` (#1583) and the collaborator first-action analytics, `analytics_milestones` and `ads_conversion_uploads` (#1585). Check: does this change make collab insert, update or delete a product table outside the seven? Stop and ask first.
 
 ### Collab never starts worker jobs
 
-**Collab never opens a BullMQ queue or adds a job: background work is enqueued by the server, and the worker reports back to collab over Redis.** The Timeline admission in `services/timeline-receipt-acceptance.ts` is the one exception until #1583 removes it.
+**Collab never opens a BullMQ queue or adds a job: background work is enqueued by the server, and the worker reports back to collab over Redis.** Two temporary exceptions remain: the Timeline admission in `services/timeline-receipt-acceptance.ts` (#1583) and the `ads-conversion` job reached through `services/space-analytics.ts` (#1585).
 
 ## Hocuspocus lifecycle
 
