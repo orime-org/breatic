@@ -44,7 +44,6 @@ const STANDARD = new Map([
   ["mit", "mit.txt"],
   ["apache-2.0", "apache-2.0.txt"],
   ["bsd-2-clause", "bsd-2-clause.txt"],
-  ["isc", "isc.txt"],
 ]);
 
 /**
@@ -70,7 +69,6 @@ const SPOKEN_BY = new Map([
     ],
   ],
   ["bsd-2-clause", ["redistributions of source code must retain"]],
-  ["isc", ["permission to use, copy, modify, and/or distribute"]],
 ]);
 
 /**
