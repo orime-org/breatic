@@ -12,13 +12,10 @@
  * lays these strings over them; `loadLocales` alone puts the real ones back.
  */
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
-import { loadLocales, MONOREPO_ROOT } from "@breatic/core";
+import { loadLocales } from "@breatic/core";
 import {
   markedSegments,
-  setLocaleMessages,
+  mergeLocaleMessages,
   t,
   templateMarkTargets,
   templateNodeWords,
@@ -331,18 +328,13 @@ const STRINGS: Record<string, Record<string, unknown>> = {
 export const FIXTURE_LOCALES = Object.keys(STRINGS);
 
 /**
- * Load the real catalogs and lay the fixtures' strings over `canvas.template`
- * in each locale that has them. `loadLocales()` alone restores the catalogs.
+ * Load the real catalogs, the template style words with them, and lay the
+ * fixtures' strings over `canvas.template` in each locale that has them.
+ * `loadLocales()` alone restores the catalogs.
  */
 export function loadFixtureLocales(): void {
   loadLocales();
-  for (const [locale, strings] of Object.entries(STRINGS)) {
-    const messages = JSON.parse(readFileSync(resolve(MONOREPO_ROOT, "locales", `${locale}.json`), "utf-8")) as {
-      canvas: { template: Record<string, unknown> };
-    };
-    messages.canvas.template = { ...messages.canvas.template, ...strings };
-    setLocaleMessages(locale, messages);
-  }
+  for (const [locale, strings] of Object.entries(STRINGS)) mergeLocaleMessages(locale, { canvas: { template: strings } });
 }
 
 /** Where each identity sits in a proposal: `node:<key>`, `input:<key>` or `guide`. */

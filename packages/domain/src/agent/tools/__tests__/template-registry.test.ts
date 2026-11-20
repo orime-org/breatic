@@ -215,7 +215,9 @@ describe("every styled template passes from both entries with each of its styles
           const agent = agentShape(template, { style: style.id });
           for (const node of template.nodes) {
             if (node.role !== "generate" || node.styleWords === undefined) continue;
-            const paragraph = { text: `\n${t(templateStyleKey(set.id, style.id, node.styleWords))}` };
+            const key = templateStyleKey(set.id, style.id, node.styleWords);
+            expect(t(key), `${locale} ${key}`).not.toBe(key);
+            const paragraph = { text: `\n${t(key)}` };
             const agentAt = agent.at.get(`node:${node.key}`) ?? -1;
             const panelAt = [...panel.identity].find(([, who]) => who === `node:${node.key}`)?.[0] ?? -1;
             expect(agent.sent.nodes[agentAt]?.prompt?.at(-1), `${style.id} ${node.key}`).toEqual(paragraph);
