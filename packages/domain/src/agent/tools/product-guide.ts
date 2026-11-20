@@ -1276,11 +1276,10 @@ export function renderProductGuide(): string {
       "none is selected; while a text is being typed, these keys act on the text itself. " +
       "The arrow stays greyed out until something is drawn or written, and the result is a plain " +
       `picture. ${quoted(t("canvas.miniTool.image.expand.label"))} puts a frame with eight handles over the ` +
-      "picture: drag the handles out past its edges, then drag the exposed checkerboard to move the frame " +
-      "around the fixed picture. The full picture stays inside the frame, at its original node position. " +
+      "picture: drag them out past its edges, and once the frame is larger the picture can be dragged inside it. " +
       `The panel's ${quoted(t("canvas.miniTool.param.aspect.label"))} offers Free, 1:1, 2:3, 3:2, 3:4, 4:3, ` +
-      "9:16 and 16:9; picking a ratio reshapes the frame around the fixed picture, while Free only unlocks " +
-      "the ratio and preserves the current frame; a " +
+      "9:16 and 16:9; picking a ratio reshapes the frame around the picture and puts the picture back where it " +
+      "sits on the node, while Free only unlocks the ratio and leaves the frame and the picture where they are; a " +
       `ratio the model cannot make that large is greyed out and says ${quoted(t("canvas.miniTool.panel.ratioTooLarge"))} ` +
       "on hover. Below is a box for what to fill in, which can be left empty. The arrow stays greyed out until " +
       "the frame reaches past the picture, and the node's task icons are hidden while the frame shows. " +
