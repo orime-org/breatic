@@ -28,7 +28,7 @@ The images are `ghcr.io/orime-org/breatic:v0.2.0`, `ghcr.io/orime-org/breatic-we
 | Git 标签 `v0.2.0` | 人指定的发布版本及其源码提交 |
 | 后端 `/app/build-info.json` | 构建写入的 `releaseVersion`、完整 `revision`，Server、Worker、Collab、迁移共用 |
 | 前端 `/app-version.json` | `releaseVersion`、完整 `revision`、更新检测用的 `version` |
-| Ingest media, page reader and web animation `/app/build-info.json` | The same product `releaseVersion` and full `revision` |
+| Ingest 媒体、页面读取、网页动画和网页动画渲染 `/app/build-info.json` | 同一个产品 `releaseVersion` 和完整 `revision` |
 | 镜像 OCI 标签 | `org.opencontainers.image.version` 和 `.revision` |
 | `docker-compose.yml` | 五个产品镜像的标签，等于这份源码对应的正式版本 |
 | GitHub Release `release.json` | Schema version, tag, release version, revision, repository, per-image `imagePlatforms` and immutable `images.backend`, `images.web`, `images.ingestMedia`, `images.ingestWebReader`, `images.ingestWebAnimation` and `images.ingestWebAnimationRender` references |

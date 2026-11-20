@@ -68,7 +68,7 @@ Choose **Motion** when creating a Project or adding a Space. Its **DEV** badge m
 | **Export video** | Render the shown result to a video in this Space; the list opens on **In progress** with the export highlighted. While its export is being made or finished, the button reads **View video**. |
 | On a finished video: **Download**, **Put on Canvas**, **View source animation** | Download the video, put it on a chosen Canvas near the middle of its last view (the message's **View** opens that Canvas with the video selected), or show the web animation it renders. On the Canvas, the video node's **Open source animation** brings the Motion Space back on that result. |
 | **Add annotation** | Pause at the current time, click the picture to mark a spot or just write, then send. **Annotations** opens the list of this Space's annotations grouped by result and ordered by time; pressing one shows that result at that time with its card, where you can reply, resolve or reopen it. Everyone in the Space sees annotations as they are written. |
-| The details button (three dots) | Show the result's name, status, request, steps, usage and, for a modification, the result it was modified from. |
+| The details button (three dots) | Show the result's name, request, steps, usage and, for a modification, the result it was modified from. |
 
 Viewers can open both panels, play, read annotations and download videos.
 

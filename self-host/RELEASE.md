@@ -28,7 +28,7 @@ The images are `ghcr.io/orime-org/breatic:v0.2.0`, `ghcr.io/orime-org/breatic-we
 | Git tag `v0.2.0` | Human-selected release identity and source commit |
 | Backend `/app/build-info.json` | Build-injected `releaseVersion` and full `revision`, shared by Server, Worker, Collab and migrations |
 | Frontend `/app-version.json` | `releaseVersion`, full `revision`, and `version` used by the existing update checker |
-| Ingest media, page reader and web animation `/app/build-info.json` | The same product `releaseVersion` and full `revision` |
+| Ingest media, page reader, web animation and web animation render `/app/build-info.json` | The same product `releaseVersion` and full `revision` |
 | OCI image labels | `org.opencontainers.image.version` and `.revision` |
 | `docker-compose.yml` | The five product image tags, equal to the stable release this source belongs to |
 | GitHub Release `release.json` | Schema version, tag, release version, revision, repository, per-image `imagePlatforms` and immutable `images.backend`, `images.web`, `images.ingestMedia`, `images.ingestWebReader`, `images.ingestWebAnimation` and `images.ingestWebAnimationRender` references |
