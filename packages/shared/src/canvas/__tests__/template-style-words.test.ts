@@ -112,6 +112,44 @@ const LEFTOVERS: Record<string, RegExp[]> = {
   ko: [/에서(을|까지)|^에서|[은는]안팎|[은는]가까이|[은는]이다|\(\s*안팎/u],
 };
 
+/**
+ * How each locale writes what a film style's words must not ask of the picture they extend (inner#1817): the shot's
+ * first frame is the finished still, so its first sentence builds nothing from black or bare paper and no shot opens
+ * on an iris or a door; the still is one picture, so it names no cut, dissolve or process still under way; and
+ * lettering in the language of the prompt asks for no letter case a language without capitals cannot have.
+ */
+const PICTURE_RULES: Record<string, { shotStart: RegExp; shotOpens: RegExp; stillMotion: RegExp; caseWithPromptLanguage?: RegExp }> = {
+  en: {
+    shotStart: /open(s)? on (black|blank)|starts? as|(draws|types|sprays|builds|colours|writes) itself|paint themselves in|develops? out of|snap on one by one/u,
+    shotOpens: /\bopens? or closes?\b|\bopens and closes\b/u,
+    stillMotion: /fast cuts|hard cuts?(?! edges)|dissolve|fade to|crossfade|whip pan|\bdeveloping\b/u,
+  },
+  'zh-CN': {
+    shotStart: /全黑|先只有|自己画|自己涂|自己写|一笔一笔|一笔笔画出来|打出来|喷到墙上|显出来/u,
+    shotOpens: /开场或收尾|开场和收尾|开头或结尾/u,
+    stillMotion: /快切|叠化|淡出|甩镜|正在显影/u,
+    caseWithPromptLanguage: /[^。]*(大写[^。]*这段提示词的语言|这段提示词的语言[^。]*大写)/u,
+  },
+  'zh-TW': {
+    shotStart: /全黑|先只有|自己畫|自己塗|自己寫|一筆一筆|一筆筆畫出來|打出來|噴到牆上|顯出來/u,
+    shotOpens: /開場或收尾|開場和收尾|開頭或結尾/u,
+    stillMotion: /快切|溶接|淡出|甩鏡|正在顯影/u,
+    caseWithPromptLanguage: /[^。]*(大寫[^。]*這段提示詞的語言|這段提示詞的語言[^。]*大寫)/u,
+  },
+  ja: {
+    shotStart: /黒から|鉛筆だけで始ま|描かれていく|描き込まれていく|ひとりでに|打たれて|吹きつけられ|浮かび上が/u,
+    shotOpens: /始まりか終わり|始まりと終わり|冒頭か終わり/u,
+    stillMotion: /速いカット|ディゾルブ|フェード|現像されていく/u,
+    caseWithPromptLanguage: /[^。]*(大文字[^。]*このプロンプトの言語|このプロンプトの言語[^。]*大文字)/u,
+  },
+  ko: {
+    shotStart: /검은 화면에서 시작|연필만으로 시작|스스로 그려|저절로|한 획씩 그려|타자로 쳐진 뒤|벽에 뿌려지고|떠오른다/u,
+    shotOpens: /시작이나 끝|시작과 끝/u,
+    stillMotion: /빠른 컷|디졸브|페이드|현상되고 있다/u,
+    caseWithPromptLanguage: /[^.]*(대문자[^.]*이 프롬프트의 언어|이 프롬프트의 언어[^.]*대문자)/u,
+  },
+};
+
 /** The bracket pairs a style's words use. */
 const BRACKETS = [['(', ')'], ['（', '）']] as const;
 
@@ -229,6 +267,31 @@ describe('template style words', () => {
         }
       }
     }
+  });
+
+  it('asks each part only for what its picture can hold: a shot starting from the finished still, a still with no motion', () => {
+    const found: string[] = [];
+    for (const locale of LOCALES) {
+      const rules = PICTURE_RULES[locale];
+      expect(rules, locale).toBeDefined();
+      if (rules === undefined) continue;
+      const stop = locale === 'en' || locale === 'ko' ? '. ' : '。';
+      for (const [key, text] of styleWords(locale)) {
+        const flag = (rule: RegExp | undefined, within: string): void => {
+          const hit = rule?.exec(within);
+          if (hit) found.push(`${locale} ${key}: ${hit[0]}`);
+        };
+        if (key.endsWith('.shot')) {
+          flag(rules.shotStart, text.split(stop)[0] ?? '');
+          flag(rules.shotOpens, text);
+        }
+        if (key.endsWith('.still')) {
+          flag(rules.stillMotion, text);
+          flag(rules.caseWithPromptLanguage, text);
+        }
+      }
+    }
+    expect(found).toEqual([]);
   });
 
   it('puts each Korean particle in the form the syllable before it takes', () => {
