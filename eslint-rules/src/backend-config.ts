@@ -25,6 +25,8 @@ export interface BackendConfigOptions {
   rootDir: string;
   /** The two header lines every source file opens with, where they are not this repository's AGPL lines. */
   licenseHeader?: { copyright: string; licence: string };
+  /** This repository's own tables with nothing to soft-delete, each with its reason (`schema-timestamps`). */
+  noSoftDelete?: Record<string, string>;
 }
 
 // eslint-plugin-jsdoc TypeScript preset (error level): enforces TSDoc-style
@@ -205,7 +207,11 @@ export function backendConfig(options: BackendConfigOptions): TSESLint.FlatConfi
     },
     { files: srcTsx, ignores: TEST_IGNORES_TSX, rules: { "breatic/no-relative-import": "error" } },
     { files: each("src/index.ts"), rules: { "breatic/service-observability": "error" } },
-    { files: src, ignores: TEST_IGNORES, rules: { "breatic/schema-timestamps": "error" } },
+    {
+      files: src,
+      ignores: TEST_IGNORES,
+      rules: { "breatic/schema-timestamps": options.noSoftDelete === undefined ? "error" : ["error", { noSoftDelete: options.noSoftDelete }] },
+    },
     { files: srcTsx, rules: { "breatic/no-deployed-host": "error" } },
     { files: srcTsx, ignores: TEST_IGNORES, rules: { "breatic/no-naked-fetch": "error" } },
     {

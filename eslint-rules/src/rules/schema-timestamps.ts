@@ -132,7 +132,7 @@ function columnKeysOf(
  * that cannot see the columns must say so, not pass.
  */
 export const schemaTimestamps = createRule<
-  [],
+  [{ noSoftDelete?: Record<string, string> }],
   "missingCreatedAt" | "missingDeletedAt" | "unreadableColumns"
 >({
   name: "schema-timestamps",
@@ -141,7 +141,17 @@ export const schemaTimestamps = createRule<
     docs: {
       description: "Drizzle tables carry created_at, and deleted_at unless exempt",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: {
+          // Another repository's own tables with nothing to soft-delete,
+          // each with its reason, the same bar as NO_SOFT_DELETE.
+          noSoftDelete: { type: "object", additionalProperties: { type: "string", minLength: 1 } },
+        },
+        additionalProperties: false,
+      },
+    ],
     messages: {
       missingCreatedAt:
         "Table '{{table}}' has no created_at. Use the timestamps helper, or a standalone created_at for an append-only table.",
@@ -151,8 +161,14 @@ export const schemaTimestamps = createRule<
         "Cannot read the columns of '{{table}}' — the second argument to pgTable is not an object literal, so the required timestamp columns cannot be verified.",
     },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{}],
+  create(context, [options]) {
+    /**
+     * Whether a table is exempt from carrying deleted_at.
+     * @param table - The table's variable name.
+     * @returns True when this rule's list or the repository's own list names it.
+     */
+    const exempt = (table: string): boolean => NO_SOFT_DELETE.has(table) || Object.hasOwn(options.noSoftDelete ?? {}, table);
     return {
       VariableDeclarator(node: TSESTree.VariableDeclarator): void {
         const init = node.init;
@@ -183,7 +199,7 @@ export const schemaTimestamps = createRule<
             data: { table },
           });
         }
-        if (!keys.has("deletedAt") && !NO_SOFT_DELETE.has(table)) {
+        if (!keys.has("deletedAt") && !exempt(table)) {
           context.report({
             node,
             messageId: "missingDeletedAt",

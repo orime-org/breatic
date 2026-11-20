@@ -101,3 +101,20 @@ ruleTester.run("schema-timestamps spend-limit tables", schemaTimestamps, {
     },
   ],
 });
+
+ruleTester.run("schema-timestamps with a repository's own exemptions", schemaTimestamps, {
+  valid: [
+    {
+      code: 'export const payments = pgTable("payments", { id: uuid("id"), createdAt: timestamp("created_at") });',
+      options: [{ noSoftDelete: { payments: "append-only financial record" } }],
+    },
+  ],
+  invalid: [
+    {
+      // An exemption covers only the table it names.
+      code: 'export const refunds = pgTable("refunds", { id: uuid("id"), createdAt: timestamp("created_at") });',
+      options: [{ noSoftDelete: { payments: "append-only financial record" } }],
+      errors: [{ messageId: "missingDeletedAt" }],
+    },
+  ],
+});
