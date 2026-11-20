@@ -52,12 +52,15 @@ export type PricedModelInfo = ModelInfo & {
   describedOnCredits?: true;
 };
 
-/** What a catalog tool is handed in its context: the studio whose payer's keys a run goes out on (inner#1953). */
+/**
+ * What the catalog and proposal tools are handed in their context: the studio whose payer's keys a run goes out on
+ * (inner#1953), and whose material a proposal may name.
+ */
 export interface StudioToolContext extends Record<string, unknown> {
   studioId: string;
 }
 
-/** Reads a catalog tool's context. */
+/** Reads that context. */
 export const studioToolContextSchema: z.ZodType<StudioToolContext> = z.object({ studioId: z.string().min(1) });
 
 /**
@@ -227,8 +230,9 @@ function entryWords(kind: WayKind, entry: Entry, box: string): string {
 function renderModel(model: PricedModelInfo): string {
   const at = model.atParams ? (model.rejected === undefined ? "at the params given" : "at the params it takes") : undefined;
   const refused = model.rejected === undefined ? "" : ` (${model.rejected.map((name) => `"${name}"`).join(", ")} not priced: not a setting or value it takes)`;
+  const notTaken = model.rejected === undefined ? "" : ` (${model.rejected.map((name) => `"${name}"`).join(", ")} not taken: not a setting or value it takes)`;
   const price = model.onPayerKey
-    ? `${payerKeyWords(model.describedOnCredits === true)}, `
+    ? `${payerKeyWords(model.describedOnCredits === true)}${notTaken}, `
     : model.price ? `${renderPrice(model.price, at)}${refused}, ` : "";
   const prompt = !model.takesPrompt
     ? " Takes no prompt: its words come from its sources."
@@ -467,7 +471,12 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
         if (payer === undefined) return priceModel(model, await lowestValues(model), taken);
         // Runnable on the payer's key wherever the deployment holds none of its keys.
         const { missingKeys: _deploymentKeys, ...runnable } = model;
-        return { ...runnable, onPayerKey: true, ...(payer.describedOnCredits && { describedOnCredits: true }) };
+        return {
+          ...runnable,
+          onPayerKey: true,
+          ...(payer.describedOnCredits && { describedOnCredits: true }),
+          ...(taken !== undefined && taken.rejected.length > 0 && { rejected: taken.rejected }),
+        };
       }),
     );
     return { available: true, models };

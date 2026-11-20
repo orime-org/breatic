@@ -104,6 +104,19 @@ describe("list_generation_models on the Studio payer's own keys", () => {
     expect(line).toContain("it runs on the Studio payer's own key, but describing its inputs takes credits");
   });
 
+  it("still names the params a model on the payer's key does not take", async () => {
+    const before = await imageModels();
+    if (!before.available) throw new Error("t2i has no models");
+    const model = before.models[0]!.name;
+    h.mediaOnPayer.add(model);
+
+    const answer = (await executeOf("list_generation_models")({ nodeType: "image", mode: "t2i", params: { not_a_setting: 1 } }, CONTEXT)) as PricedModelsForMode;
+    if (!answer.available) throw new Error("t2i has no models");
+    const line = renderGenerationModelsForModel({ available: true, models: answer.models.filter((m) => m.name === model) });
+    expect(line).toContain("no credits; it runs on the Studio payer's own key");
+    expect(line).toContain(`"not_a_setting" not taken: not a setting or value it takes`);
+  });
+
   it("prices a model on our keys in credits, as before", async () => {
     const answer = await imageModels();
     if (!answer.available) throw new Error("t2i has no models");

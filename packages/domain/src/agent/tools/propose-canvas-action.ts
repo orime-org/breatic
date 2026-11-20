@@ -54,7 +54,7 @@ import {
   type ProposalNode,
 } from "@breatic/shared";
 
-import { payerKeyWords, renderPrice } from "@domain/agent/tools/generation-models.js";
+import { payerKeyWords, renderPrice, studioToolContextSchema, type StudioToolContext } from "@domain/agent/tools/generation-models.js";
 import { upstreamRefusal } from "@domain/agent/tools/upstream-refusal.js";
 import { onDialogueSide, proposalDialogueText } from "@domain/agent/tools/proposal-dialogue.js";
 import { checkBlanks, checkGenerateNode, generateRunOf, takesPromptHere } from "@domain/agent/tools/proposal-generate-check.js";
@@ -689,13 +689,6 @@ function templateIndex(templates: readonly GenerationTemplate[]): string {
   );
 }
 
-/** What this tool is handed in its context: the studio whose material counts. */
-export interface ProposeContext extends Record<string, unknown> {
-  studioId: string;
-}
-
-const proposeContextSchema: z.ZodType<ProposeContext> = z.object({ studioId: z.string().min(1) });
-
 /**
  * The proposal tool over a template registry: its description indexes the
  * registry's templates.
@@ -704,7 +697,7 @@ const proposeContextSchema: z.ZodType<ProposeContext> = z.object({ studioId: z.s
  */
 export function makeProposeCanvasAction(
   templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
-): Tool<z.infer<typeof inputSchema>, ProposalAnswer, ProposeContext> {
+): Tool<z.infer<typeof inputSchema>, ProposalAnswer, StudioToolContext> {
   return tool({
   description:
     "The canvas is where models are run and where the pieces of one job are " +
@@ -740,7 +733,7 @@ export function makeProposeCanvasAction(
     "is placed -- what to put in, what to pick, what to press. " +
     templateIndex(templates),
   inputSchema,
-  contextSchema: proposeContextSchema,
+  contextSchema: studioToolContextSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
   toModelOutput: async ({ output }) => ({ type: "text", value: await renderProposalForModel(output) }),
   execute: async (
@@ -748,7 +741,7 @@ export function makeProposeCanvasAction(
     // The signal is unused: a cached catalog and at most a few ledger rows,
     // so there is nothing worth abandoning. Declared so every tool has the
     // same shape.
-    { context }: { abortSignal?: AbortSignal; context: ProposeContext },
+    { context }: { abortSignal?: AbortSignal; context: StudioToolContext },
   ): Promise<ProposalAnswer> => {
     const urls = proposal.nodes.flatMap((node) => (node.material === undefined ? [] : [node.material]));
     // A proposal with no material asks the ledger nothing.
