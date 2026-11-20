@@ -17,6 +17,7 @@ import { formatLocalDay } from '@web/lib/format-day';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
+import { creditSourceText } from '@web/features/credits/credit-source-label';
 import { SpendCapsSection } from '@web/pages/studio/container/tabs/SpendCapsSection';
 
 interface CreditsTabProps {
@@ -43,6 +44,11 @@ const LotRow = React.memo(function LotRow({
     >
       <span>
         <span className='block text-sm'>{lot.buyerName ?? '—'}</span>
+        {lot.sourceKind === undefined ? null : (
+          <span className='block text-xs text-muted-foreground'>
+            {creditSourceText({ ...lot, sourceKind: lot.sourceKind }, t)}
+          </span>
+        )}
         <span className='block text-xs text-muted-foreground'>
           {formatLocalDay(lot.createdAt)}
         </span>

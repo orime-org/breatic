@@ -1027,17 +1027,14 @@ export async function getPurchaseHistory(
     size,
     cursor === null ? null : { createdAt: cursor.createdAt, id: cursor.id },
   );
-  const origins = await creditSourceRepo.readGiftOrigins(rows.filter((row) => row.sourceKind === "gift").map((row) => row.sourceId!));
-  for (const row of rows) {
-    if (row.sourceKind === "gift" && !origins.has(row.sourceId!)) throw new Error("Gift receipt origin missing");
-  }
+  const details = await creditSourceRepo.readReceiptDetails(rows);
   return toPage(
     rows,
     size,
     (row) => ({
       rowId: row.rowId,
       sourceKind: row.sourceKind as CreditSourceKind,
-      ...(row.sourceKind === "gift" ? { giftOrigin: origins.get(row.sourceId!)! } : {}),
+      ...details.get(row.sourceId!),
       paymentId: row.paymentId,
       amountCents: row.amountCents,
       totalCents: row.totalCents,
@@ -1051,7 +1048,7 @@ export async function getPurchaseHistory(
       designatedStudioName: row.designatedStudioName,
       status: row.status,
       createdAt: row.createdAt.toISOString(),
-      // A row nobody paid for has no confirmation letter to send again.
+      // An online payment record supplies the confirmation email to resend.
       canResend:
         row.paymentId !== null && canResend(row.mailStatus, row.mailUpdatedAt),
     }),

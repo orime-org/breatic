@@ -352,6 +352,7 @@ export { createR2MaintenanceStorage, MaintenanceDeleteError, type MaintenanceSto
 export type { S3CompatibleConfig } from "@core/infra/storage/s3.js";
 
 export * from "@core/credit/credit-grant-contract.js";
+export * from "@core/credit/enterprise-credit-purchase-contract.js";
 
 export * as accountActivityRepo from "@core/activity/account-activity.repo.js";
 export * as accountActivityCoverageRepo from "@core/activity/account-activity-coverage.repo.js";

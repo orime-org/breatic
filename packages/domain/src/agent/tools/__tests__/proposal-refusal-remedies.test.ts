@@ -10,7 +10,7 @@
  * added without its case does not compile (inner#1315).
  */
 
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
 import { GENERATION_TEMPLATES, markedSegments, t, type GenerationTemplate, type ProposalNode } from "@breatic/shared";
@@ -24,7 +24,7 @@ import { REFUSALS, type RefusalId } from "../proposal-refusals.js";
 
 import { agentShape, COVER_MODEL, FIXTURES, loadFixtureLocales, PLACED_FIXTURES } from "./template-fixtures.js";
 
-beforeEach(() => {
+beforeAll(() => {
   loadFixtureLocales();
   useFullCatalog();
 });

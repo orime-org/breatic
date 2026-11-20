@@ -44,6 +44,7 @@ import type {
 } from "@breatic/shared";
 import type { AdsConversionJob } from "@core/ads/ads-types.js";
 import type { CreditGrantResult, CreditGrantWrite } from "@core/credit/credit-grant-contract.js";
+import type { EnterpriseCreditPurchaseResult, EnterpriseCreditPurchaseWrite } from "@core/credit/enterprise-credit-purchase-contract.js";
 import type { EnterpriseMembershipResult, EnterpriseMembershipWrite } from "@core/auth/enterprise-membership-contract.js";
 import type { ReclaimScope, ReclaimDecision, ReclaimControlDecision, ReclaimItemResult, ReclaimRun } from "@core/maintenance/types.js";
 import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
@@ -905,7 +906,7 @@ export const studioUpstreamClones = pgTable(
     /** The source asset's sha256; an element adds its name after a colon. */
     sourceKey: text("source_key").notNull(),
     upstreamId: text("upstream_id").notNull(),
-    /** Whose upstream account holds the clone: `deployment` for our keys, else the `account_provider_keys` row it was made with (0129, inner#1953). */
+    /** Whose upstream account holds the clone: `deployment` for our keys, else the `account_provider_keys` row it was made with (0130, inner#1953). */
     keyOwner: text("key_owner").default("deployment").notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
@@ -1197,7 +1198,7 @@ export const creditSources = pgTable(
   "credit_sources",
   {
     id: uuid("id").primaryKey(),
-    /** One of `payment` / `compensation` / `gift` / `discount`. CHECK in 0079. */
+    /** A credit source kind, constrained by the product migration. */
     kind: varchar("kind", { length: 16 }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -1223,7 +1224,7 @@ export const creditGrantOperations = pgTable("credit_grant_operations", {
 /**
  * An account's own key for one upstream, sealed (`secrets/provider-key-box.ts`); the only place a saved key is kept.
  * A live row always has its sealed text; replacing, deleting or erasing the key clears it and soft-deletes the row in
- * one write. One live row per account and upstream; the partial unique index and the CHECKs live in 0129.
+ * one write. One live row per account and upstream; the partial unique index and the CHECKs live in 0130.
  */
 export const accountProviderKeys = pgTable(
   "account_provider_keys",
@@ -1252,7 +1253,7 @@ export const accountProviderKeys = pgTable(
 
 /**
  * The upstream an account chose for a catalog model that is not a language model (inner#1953); one live choice per
- * account and model, and a model without one runs on the deployment's keys. Index and CHECKs live in 0129.
+ * account and model, and a model without one runs on the deployment's keys. Index and CHECKs live in 0130.
  */
 export const accountModelUpstreams = pgTable(
   "account_model_upstreams",
@@ -1268,6 +1269,30 @@ export const accountModelUpstreams = pgTable(
     uniqueIndex("account_model_upstreams_live_key").on(table.userId, table.model).where(sql`${table.deletedAt} IS NULL`),
   ],
 );
+/** Original enterprise purchase decisions retain keys after membership changes. */
+export const enterpriseCreditPurchaseOperations = pgTable("enterprise_credit_purchase_operations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  targetUserId: uuid("target_user_id").notNull(),
+  requestedBy: uuid("requested_by").notNull(),
+  requestBody: jsonb("request_body").$type<EnterpriseCreditPurchaseWrite>().notNull(),
+  result: jsonb("result").$type<EnterpriseCreditPurchaseResult>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Corporate purchase evidence shares the original source identity permanently. */
+export const creditEnterprisePurchases = pgTable("credit_enterprise_purchases", {
+  id: uuid("id").primaryKey(),
+  sourceKind: varchar("source_kind", { length: 16 }).default("enterprise").notNull(),
+  targetUserId: uuid("target_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
+  contractNumber: text("contract_number").notNull(),
+  reason: text("reason").notNull(),
+  operationKey: text("operation_key").notNull().unique(),
+  requestedBy: uuid("requested_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [foreignKey({ name: "credit_enterprise_purchases_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict")]);
 
 /** One promoter application; partial unique indexes and CHECKs live in 0118 (inner#1868). */
 export const promoterApplications = pgTable("promoter_applications", {
@@ -2445,13 +2470,13 @@ export const timelineExecutions = pgTable(
     deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
     resultSourceVersionId: uuid("result_source_version_id"),
     failureReason: text("failure_reason"),
-    /** The upstream a failure of the payer's own key names (0129, inner#1953); null for any other failure. */
+    /** The upstream a failure of the payer's own key names (0130, inner#1953); null for any other failure. */
     failureUpstream: text("failure_upstream"),
-    /** Why that upstream refused the payer's own key (0129, inner#1953); null for any other failure. */
+    /** Why that upstream refused the payer's own key (0130, inner#1953); null for any other failure. */
     failureKeyReason: text("failure_key_reason"),
     billedCredits: numeric("billed_credits"),
     billedAt: timestamp("billed_at", { withTimezone: true }),
-    /** The account key row its language-model calls run on (0129, inner#1953); null is the deployment's keys. */
+    /** The account key row its language-model calls run on (0130, inner#1953); null is the deployment's keys. */
     llmKeyId: uuid("llm_key_id").references(() => accountProviderKeys.id, { onDelete: "restrict" }),
     /** First time the running-task gate held this execution back (inner#1968). */
     slotWaitSince: timestamp("slot_wait_since", { withTimezone: true }),

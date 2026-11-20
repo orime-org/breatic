@@ -28,7 +28,8 @@
       "refund_already_spent": "Credits from this purchase have been spent, so it cannot be refunded.",
       "refund_window_closed": "The refund window for this purchase has closed.",
       "refund_state_changed": "This purchase's refund status has changed. Refresh and try again.",
-      "agent_tools_need_credits": "{refusal} {whose, select, self {Your own OpenRouter key} other {The Studio Admin's OpenRouter key}} pays for the Agent's model, but web search, image search and page reading run on our services and are paid in credits."
+      "agent_tools_need_credits": "{refusal} {whose, select, self {Your own OpenRouter key} other {The Studio Admin's OpenRouter key}} pays for the Agent's model, but web search, image search and page reading run on our services and are paid in credits.",
+      "refund_offline_contract": "Contact your contract representative for enterprise credit refunds."
     },
     "auth": {
       "invalid_credentials": "Invalid email or password",
@@ -4222,10 +4223,12 @@
     },
     "source": {
       "payment": "Purchase",
-      "gift": "Trial credits",
+      "gift": "Gift credits",
       "operatorGift": "Gift credits",
-      "compensation": "Compensation",
-      "discount": "Discount"
+      "compensation": "Gift credits",
+      "discount": "Discount",
+      "trial": "Trial credits",
+      "enterprise": "Enterprise credits"
     },
     "pinnedToPersonalStudio": "Your personal Studio only",
     "lifecycle": {
@@ -4289,6 +4292,7 @@
     "refundsEmpty": "No credit packs bought yet.",
     "askRefund": "Ask for a refund",
     "refundTitle": "Refund rule",
+    "onlinePurchaseRefundTitle": "Online credit purchase refund rules",
     "buy": {
       "taxNotice": "Prices exclude tax. What you pay is the price plus the tax where you are, and the checkout page shows the final amount.",
       "assignNotice": "Credits have to be assigned to a Studio before they can be spent.",
@@ -4330,11 +4334,19 @@
     "refundReason": {
       "spent": "Already used",
       "expired": "Over 30 days",
-      "restored": "Credits restored"
+      "restored": "Credits restored",
+      "offlineContract": "Contact your contract representative for enterprise credit refunds."
     },
     "refundHint": {
       "assigned": "Unassign it to ask for a refund"
     },
+    "sourceDetail": {
+      "registration": "Registration gift",
+      "operator": "Operator gift",
+      "compensation": "Compensation",
+      "enterprise": "Business purchase"
+    },
+    "contractReference": "Contract {contract}",
     "refusal": {
       "spendCap": "The monthly spend limit is reached. Contact the Studio admin."
     },

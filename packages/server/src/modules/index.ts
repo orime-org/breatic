@@ -58,3 +58,4 @@ export * as maintenanceService from "@server/modules/maintenance/maintenance.ser
 export * as creditGrantService from "@server/modules/credit-grant/credit-grant.service.js";
 
 export * as byokService from "@server/modules/byok/byok.service.js";
+export * as enterpriseCreditPurchaseService from "@server/modules/enterprise-credit-purchase/enterprise-credit-purchase.service.js";
