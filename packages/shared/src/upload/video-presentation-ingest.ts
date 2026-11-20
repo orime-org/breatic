@@ -172,6 +172,8 @@ export const videoPresentationIngestRequestSchema = z.discriminatedUnion('action
   // Only the job's measured usage travels; a bundle is assembled by the DO itself (§5.1 step 4).
   z.strictObject({ action: z.literal('report'), ...capability, fact: z.strictObject({ kind: z.literal('finished'), usage }) }),
   z.strictObject({ action: z.literal('fail'), ...identity, deadlineAt, code: errorCode }),
+  // The worker's job gave up for good (§7.1 failure sources): it knows only the job id, and the DO picks the code.
+  z.strictObject({ action: z.literal('abandon'), ...identity }),
   z.strictObject({ action: z.literal('ack_usage'), ...identity, deadlineAt }),
 ]);
 /** A parsed internal request. */

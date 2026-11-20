@@ -100,12 +100,8 @@ export class MediaContainer extends Container<MediaEnv> {
    * @returns The store view.
    * @throws {Error} When durable storage or R2 fails.
    */
-  async readPresentation(storageKey: string, sourceFingerprint: string): Promise<PresentationView> {
-    const store = this.presentationStore();
-    const view = await store.read(storageKey, sourceFingerprint);
-    const { state, jobId, deadlineAt } = view.candidate;
-    return (state === 'accepted' || state === 'building') && jobId !== null && deadlineAt !== null && deadlineAt <= Date.now()
-      ? store.fail({ storageKey, sourceFingerprint, jobId, deadlineAt }, 'expired') : view;
+  readPresentation(storageKey: string, sourceFingerprint: string): Promise<PresentationView> {
+    return this.presentationStore().read(storageKey, sourceFingerprint, Date.now());
   }
 
   /**
@@ -169,6 +165,14 @@ export class MediaContainer extends Container<MediaEnv> {
    * @throws {Error} When storage fails.
    */
   failPresentation(identity: PresentationJobIdentity, code: string): Promise<PresentationView> { return this.presentationStore().fail(identity, code); }
+
+  /**
+   * Fail a job's candidate after the worker's job gave up for good.
+   * @param identity - The job reference.
+   * @returns The store view.
+   * @throws {Error} When storage fails.
+   */
+  abandonPresentation(identity: PresentationJobRef): Promise<PresentationView> { return this.presentationStore().abandon(identity); }
 
   /**
    * Acknowledge one already-recorded platform usage fact.

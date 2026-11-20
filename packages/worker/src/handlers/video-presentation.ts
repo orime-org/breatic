@@ -12,8 +12,8 @@
  * the bundle; the worker only forwards the job DO's measured output receipts and syncs the presentation pins from each answer. At D the job fails `expired`.
  */
 
-import { DelayedError, type Job } from 'bullmq';
-import { env, getMiniToolsConfig, logger } from '@breatic/core';
+import { DelayedError, type Job, type Queue } from 'bullmq';
+import { defaultJobOpts, env, getMiniToolsConfig, logger } from '@breatic/core';
 import { assetRepo, containerCostUsd, createUsageRecorder, syncPresentationPins, type VideoPresentationJob } from '@breatic/domain';
 import {
   prepareVideoPresentationAtIngest, readMiniToolPlanJob, stepVideoPresentationAtIngest, untilDeadline, videoPresentationAtIngest,
@@ -370,4 +370,25 @@ export async function runVideoPresentation(job: Job<VideoPresentationJob>, token
     logger.error({ err, ctx: job.data }, 'video_presentation_attempt_failed');
     throw err;
   }
+}
+
+/**
+ * Settle a presentation job BullMQ gave up on (§7.1 failure sources): only the worker's job advances its candidate, so the
+ * DO fails it `presentation_failed`, and one more pickup under the settle id releases its candidate pin, records measured
+ * usage and settles attempts in flight; a failure with a retry still to come is not one. Driven by the queue's
+ * `QueueEvents` failed event, which every live instance receives, so a crashed worker's job is settled too.
+ * @param queue - The `video-presentation` queue, to read the job back and add the settle pickup.
+ * @param jobId - The failed BullMQ job id: the presentation job id, or its settle id.
+ * @returns Nothing.
+ * @throws {Error} When Redis, the database or ingest fails.
+ */
+export async function settleExhaustedVideoPresentation(queue: Pick<Queue, 'getJob' | 'add'>, jobId: string): Promise<void> {
+  const job = await queue.getJob(jobId);
+  if (job === undefined || job.finishedOn === undefined) return;
+  const data = job.data as VideoPresentationJob;
+  const row = await assetRepo.findById(data.assetId);
+  if (row === null || row.deletedAt !== null || row.kind !== 'video' || row.contentHash !== data.sourceFingerprint) return;
+  await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, { action: 'abandon', storageKey: row.storageKey, sourceFingerprint: row.contentHash, jobId: data.jobId });
+  // One settle id per presentation job: a settle pickup that gives up adds the same id, which BullMQ keeps only once.
+  await queue.add('prepare', data, { ...defaultJobOpts(), jobId: `${data.jobId}-settle` });
 }

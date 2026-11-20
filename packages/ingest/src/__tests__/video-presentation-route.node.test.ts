@@ -140,6 +140,23 @@ describe('staged presentation actions at the ingest boundary (inner#1306 §90 E2
     expect(failPresentation).toHaveBeenCalledWith({ ...identity, deadlineAt: accept.deadlineAt }, 'expired');
   });
 
+  it('RA06 abandon calls abandonPresentation with the job identity alone and answers the snapshot (§7.1 failure sources)', async () => {
+    const abandonPresentation = vi.fn(async () => view);
+    const response = await route({ action: 'abandon', ...identity }, { abandonPresentation });
+    expect(response.status).toBe(200);
+    expect(abandonPresentation).toHaveBeenCalledWith(identity);
+    expect(await response.json()).toMatchObject({ sourceBinding: { storageKey: identity.storageKey, sourceFingerprint: identity.sourceFingerprint } });
+  });
+
+  it('RA07 refuses an abandon that names a deadline or a code: the DO chooses the code', async () => {
+    const abandonPresentation = vi.fn();
+    for (const extra of [{ deadlineAt: accept.deadlineAt }, { code: 'expired' }]) {
+      const response = await route({ action: 'abandon', ...identity, ...extra }, { abandonPresentation });
+      expect(response.status).toBe(400);
+    }
+    expect(abandonPresentation).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['run', { action: 'run', ...identity, deadlineAt: accept.deadlineAt }],
     ['expire', { action: 'expire', ...identity, deadlineAt: accept.deadlineAt }],

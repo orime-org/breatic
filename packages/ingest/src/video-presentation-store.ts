@@ -704,6 +704,24 @@ export class VideoPresentationStore {
   }
 
   /**
+   * Fail the current job's unfinished candidate `presentation_failed` once the worker's job gave up for good (§7.1): the
+   * worker knows only the job id; a finished, archived or unknown job stays as it is.
+   * @param identity - The job reference.
+   * @returns The view.
+   * @throws {Error} When durable storage fails.
+   */
+  abandon(identity: PresentationJobRef): Promise<PresentationView> {
+    return this.gate(async () => {
+      const state = await this.load();
+      const found = state === undefined ? undefined : this.findRef(state, identity);
+      if (state === undefined || found?.kind !== 'current') return this.view(state);
+      await this.candidateEvent(state, found.job, { kind: 'Er', jobId: identity.jobId, code: 'presentation_failed' });
+      await this.save(state);
+      return this.view(state);
+    });
+  }
+
+  /**
    * Acknowledge a job's usage once its unique SQL record committed.
    * @param identity - The measured job.
    * @returns The view.
@@ -719,16 +737,22 @@ export class VideoPresentationStore {
   }
 
   /**
-   * Read the current facts, checking the stored descriptor against R2.
+   * Read the current facts, checking the stored descriptor against R2; an unfinished current job past D fails `expired`.
    * @param storageKey - Registered canonical key.
    * @param sourceFingerprint - Registered SHA-256.
+   * @param now - The current time.
    * @returns The view; empty for another source.
    * @throws {Error} When durable storage or R2 fails.
    */
-  read(storageKey: string, sourceFingerprint: string): Promise<PresentationView> {
+  read(storageKey: string, sourceFingerprint: string, now: number): Promise<PresentationView> {
     return this.gate(async () => {
       const state = await this.load();
       if (state?.sourceFingerprint !== sourceFingerprint) return this.view(undefined);
+      // Only the worker's job advances a candidate, so one past D is over even when no job is left to say so (§7.1).
+      const current = state.current;
+      if (current !== null && now >= current.admission.deadlineAt) {
+        await this.candidateEvent(state, current, { kind: 'Er', jobId: current.admission.jobId, code: 'expired' });
+      }
       if (state.selected.kind === 'ready') {
         const head = await this.bucket.head(videoPresentationKeyFor(storageKey));
         if (head === null || head.etag !== state.descriptorETag) {

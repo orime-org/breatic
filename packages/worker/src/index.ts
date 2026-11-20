@@ -152,7 +152,7 @@ import { settleStalledIngest } from "@worker/handlers/abort-ingest.js";
 import { runUsageLookup } from "@worker/handlers/usage-lookup.js";
 import { runMediaRead } from "@worker/handlers/media-read.js";
 import { runAudioPeaks } from "@worker/handlers/audio-peaks.js";
-import { runVideoPresentation } from '@worker/handlers/video-presentation.js';
+import { runVideoPresentation, settleExhaustedVideoPresentation } from '@worker/handlers/video-presentation.js';
 import { runUploadFinish } from "@worker/handlers/upload-finish.js";
 import { runMail } from "@worker/handlers/mail.js";
 import { startMiniToolSettlementWorker } from "@worker/handlers/mini-tool/settlement-worker.js";
@@ -415,6 +415,15 @@ export async function startWorker(): Promise<void> {
   videoPresentation.on('failed', (job, err) => {
     logger.error({ err, ctx: job?.data, attemptsMade: job?.attemptsMade, attemptsAllowed: job?.opts?.attempts }, 'video_presentation_job_failed');
   });
+  // Only the worker's job advances a presentation candidate: one that gave up for good is settled from the queue event
+  // every live instance receives, so a crashed worker's job is settled too (frames-split design §7.1 failure sources).
+  const videoPresentationQueue = createQueue(VIDEO_PRESENTATION_QUEUE);
+  const videoPresentationEvents = createQueueEvents(VIDEO_PRESENTATION_QUEUE);
+  videoPresentationEvents.on('failed', ({ jobId }) => {
+    void settleExhaustedVideoPresentation(videoPresentationQueue, jobId).catch((err: unknown) => {
+      logger.error({ err, jobId }, 'video_presentation_settle_failed');
+    });
+  });
 
   // Notification mail a request queued instead of waiting on SMTP (#1232).
   // A send that throws retries on the shared options, except one the server
@@ -605,6 +614,7 @@ export async function startWorker(): Promise<void> {
         () => mediaRead.close(),
         () => audioPeaks.close(),
         () => videoPresentation.close(),
+        () => videoPresentationEvents.close(),
         () => mail.close(),
         () => adsConversion.close(),
         () => flushServerAnalytics(),

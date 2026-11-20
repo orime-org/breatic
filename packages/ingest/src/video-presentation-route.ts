@@ -52,6 +52,10 @@ export async function videoPresentationRoute(request: Request, env: VideoPresent
         const { action: _action, code, ...identity } = body;
         return answer(await instance.failPresentation(identity, code));
       }
+      case 'abandon': {
+        const { action: _action, ...ref } = body;
+        return answer(await instance.abandonPresentation(ref));
+      }
       case 'ack_usage': {
         const { action: _action, ...identity } = body;
         return answer(await instance.acknowledgePresentationUsage(identity));

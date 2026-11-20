@@ -36,7 +36,8 @@ export interface MachineStore {
   prepare: (identity: Omit<Identity, 'token'>, now: number) => Promise<{ token: string | null; view: MachineView }>;
   report: (identity: Identity, fact: Fact) => Promise<MachineView>;
   fail: (identity: Identity, code: string) => Promise<MachineView>;
-  read: (storageKey: string, sourceFingerprint: string) => Promise<MachineView>;
+  read: (storageKey: string, sourceFingerprint: string, now?: number) => Promise<MachineView>;
+  abandon: (ref: { storageKey: string; sourceFingerprint: string; jobId: string }) => Promise<MachineView>;
   acknowledgeUsage: (identity: Identity) => Promise<MachineView>;
   planPresentation: (identity: Identity, plan: { route: Route; toolInputId: string | null; planSha256: string }, facts?: Record<string, unknown>) => Promise<{ accepted: boolean; view: MachineView }>;
   advanceStage: (identity: Identity, stage: string) => Promise<boolean>;

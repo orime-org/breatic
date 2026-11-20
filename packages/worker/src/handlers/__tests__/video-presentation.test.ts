@@ -651,3 +651,61 @@ describe('the deadline bounds the job (inner#1306 §5.1 step 1, §5.4 预算, E2
     expect(submitted()).toEqual([]);
   });
 });
+
+describe('a job BullMQ gave up on is settled from the queue failed event (frames-split design §7.1 failure sources)', () => {
+  interface FakeJob { id: string; data: typeof data; finishedOn?: number }
+  /**
+   * A queue that answers one job and records what is added back.
+   * @param job - The job `getJob` answers, or undefined.
+   * @returns The fake queue and the jobs added to it.
+   */
+  function queueWith(job: FakeJob | undefined): { queue: { getJob: (id: string) => Promise<FakeJob | undefined>; add: ReturnType<typeof vi.fn> }; added: unknown[][] } {
+    const added: unknown[][] = [];
+    const add = vi.fn(async (...args: unknown[]) => { added.push(args); return {}; });
+    return { queue: { getJob: async (id: string) => (job?.id === id ? job : undefined), add }, added };
+  }
+  /**
+   * The handler under test.
+   * @returns The exported settle function.
+   */
+  function settleExhausted(): (queue: unknown, jobId: string) => Promise<void> {
+    const fn = (handler as Record<string, unknown>).settleExhaustedVideoPresentation as ((queue: unknown, jobId: string) => Promise<void>) | undefined;
+    expect(fn, 'settleExhaustedVideoPresentation is exported from @worker/handlers/video-presentation.js').toBeTypeOf('function');
+    return fn!;
+  }
+
+  it('AB01 a failure with a retry still to come asks ingest nothing and queues nothing', async () => {
+    const { queue, added } = queueWith({ id: JOB, data });
+    await settleExhausted()(queue, JOB);
+    expect(sent).toEqual([]);
+    expect(added).toEqual([]);
+  });
+
+  it('AB02 a job that used up its retries is abandoned by its job id alone and queued once more under its settle id', async () => {
+    const { queue, added } = queueWith({ id: JOB, data, finishedOn: Date.now() });
+    await settleExhausted()(queue, JOB);
+    expect(actions('abandon')).toEqual([{ action: 'abandon', storageKey: KEY, sourceFingerprint: H, jobId: JOB }]);
+    expect(actions('prepare')).toEqual([]);
+    expect(added).toEqual([['prepare', data, expect.objectContaining({ jobId: `${JOB}-settle`, attempts: expect.any(Number) })]]);
+  });
+
+  it('AB03 the settle job giving up abandons again and queues the same settle id, never a new one', async () => {
+    const { queue, added } = queueWith({ id: `${JOB}-settle`, data, finishedOn: Date.now() });
+    await settleExhausted()(queue, `${JOB}-settle`);
+    expect(actions('abandon')).toEqual([{ action: 'abandon', storageKey: KEY, sourceFingerprint: H, jobId: JOB }]);
+    expect(added).toEqual([['prepare', data, expect.objectContaining({ jobId: `${JOB}-settle` })]]);
+  });
+
+  it.each([
+    ['a job the queue no longer holds', null, undefined],
+    ['a gone row', null, { id: JOB, data, finishedOn: 1 }],
+    ['a deleted row', { ...asset, deletedAt: new Date() }, { id: JOB, data, finishedOn: 1 }],
+    ['a row whose bytes changed', { ...asset, contentHash: 'b'.repeat(64) }, { id: JOB, data, finishedOn: 1 }],
+  ])('AB04 settles nothing for %s', async (_name, row, job) => {
+    if (job !== undefined) findById.mockResolvedValue(row);
+    const { queue, added } = queueWith(job);
+    await settleExhausted()(queue, JOB);
+    expect(sent).toEqual([]);
+    expect(added).toEqual([]);
+  });
+});

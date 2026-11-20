@@ -13,7 +13,7 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { videoPresentationKeyFor } from '@breatic/shared';
-import { admission, bundle, H, planned, source, storedDescriptor, T, withStore } from './helpers/machine-store.js';
+import { admission, bundle, D, H, planned, source, storedDescriptor, T, withStore } from './helpers/machine-store.js';
 
 describe('W §7.1–§7.4 store persistence and write points', () => {
   it('W01 the candidate, its frozen route and pinned toolInputId persist across store instances', async () => {
@@ -102,6 +102,41 @@ describe('W §7.1–§7.4 store persistence and write points', () => {
       expect(await store.advanceStage(a, 'edit')).toBe(false);
       expect(await store.advanceStage(a, 'encode')).toBe(false);
       expect((await store.read(key, H)).candidate.stage).toBe('plan');
+    });
+  });
+});
+
+describe('X §7.1 a candidate nobody advances any more is settled (failure sources: presentation_failed, expired)', () => {
+  it('X01 a read past D fails the unfinished current candidate `expired` and unpins it; a read before D leaves it building', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      await planned(store, key, 'job-a');
+      expect((await store.read(key, H, D - 1)).candidate).toMatchObject({ state: 'building', failure: null, pinned: true });
+      expect((await store.read(key, H, D)).candidate).toMatchObject({ state: 'failed', failure: 'expired', pinned: false });
+    });
+    expect((await withStore(key, (store) => store.read(key, H, D - 1))).candidate).toMatchObject({ state: 'failed', failure: 'expired' });
+  });
+
+  it('X03 abandon fails the current unfinished candidate `presentation_failed` by its job id alone; a second abandon keeps the first failure', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      await planned(store, key, 'job-a');
+      const ref = { storageKey: key, sourceFingerprint: H, jobId: 'job-a' };
+      expect((await store.abandon(ref)).candidate).toMatchObject({ state: 'failed', failure: 'presentation_failed', pinned: false });
+      expect((await store.abandon(ref)).candidate).toMatchObject({ state: 'failed', failure: 'presentation_failed' });
+    });
+  });
+
+  it('X04 abandon leaves an already failed candidate, an archived job and an unknown job as they are', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const a = await planned(store, key, 'job-a');
+      await store.fail(a, 'too_long');
+      expect((await store.abandon({ storageKey: key, sourceFingerprint: H, jobId: 'job-a' })).candidate).toMatchObject({ state: 'failed', failure: 'too_long' });
+      await store.accept(admission(key, 'job-b'));
+      const view = await store.abandon({ storageKey: key, sourceFingerprint: H, jobId: 'job-a' });
+      expect(view.candidate).toMatchObject({ state: 'accepted', jobId: 'job-b', failure: null });
+      expect((await store.abandon({ storageKey: key, sourceFingerprint: H, jobId: 'job-z' })).candidate).toMatchObject({ state: 'accepted', jobId: 'job-b' });
     });
   });
 });
