@@ -23,7 +23,7 @@
  * against the panel's own registries.
  */
 
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   canConnect,
   GENERATION_NODE_MODES,
@@ -310,7 +310,7 @@ function markTextOf(proposal: CanvasProposal): string {
   return (generate?.prompt ?? []).map((s) => (s.slot ? markText(s.slot) : "")).join("");
 }
 
-beforeEach(() => {
+beforeAll(() => {
   useFullCatalog();
 });
 
