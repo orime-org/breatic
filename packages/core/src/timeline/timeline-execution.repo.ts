@@ -295,7 +295,6 @@ export async function markBilled(id: string, credits: string, tx?: DbTx): Promis
   return rows.length > 0;
 }
 
-
 /**
  * List one page of the executions that have not reached a terminal state, by id, for the worker sweep, which pages
  * through all of them so no row waits behind a full batch of others.

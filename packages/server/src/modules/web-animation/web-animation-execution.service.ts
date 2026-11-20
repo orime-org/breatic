@@ -516,7 +516,6 @@ export async function getOne(userId: string, executionId: string, projectId: str
   return view;
 }
 
-
 /**
  * Resolve the sources and executions a Project's web clips reference, through its grants, with what made each so the
  * Timeline can name a copy and show its request. An export is no web source and is left out.

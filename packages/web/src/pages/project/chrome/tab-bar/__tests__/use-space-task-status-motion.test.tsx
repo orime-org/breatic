@@ -43,7 +43,6 @@ function page(inProgress: number): SpaceExecutionPage {
   return { rows: rows as unknown as SpaceExecutionPage['rows'], nextCursor: null, totals: { running: inProgress, succeeded: 3, failed: 0 } };
 }
 
-
 /**
  * A fresh cache and a wrapper providing it.
  * @returns Both.

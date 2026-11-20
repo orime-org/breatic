@@ -988,7 +988,6 @@ export interface TimelineExecution {
   updatedAt: string;
 }
 
-
 /**
  * What `GET /timeline/web-sources` answers for the references of a document's web-animation copies (inner#1711
  * design §3.2): the succeeded source versions and the executions placeholders wait for, as far as the Project holds a

@@ -60,7 +60,6 @@ timeline.post(
   },
 );
 
-
 timeline.get("/space-executions", validate("query", spaceExecutionsQuery), async (c) => {
   return c.json({ data: await executions.listSpace(c.get("user").id, c.req.valid("query")) });
 });

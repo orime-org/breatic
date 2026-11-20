@@ -295,7 +295,6 @@ describe("POST /timeline/executions", () => {
   });
 });
 
-
 describe("GET /timeline/web-sources", () => {
   it("resolves only the sources and executions this Project holds a grant for", async () => {
     const fx = await seedProject(0);
