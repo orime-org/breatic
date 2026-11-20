@@ -8,7 +8,7 @@ import { VIEW_CAPTURE_REQUEST_SIGNAL, projectMetaDocName } from "@breatic/shared
 import { relayViewCaptureRequest } from "@collab/services/project-control-sync.js";
 
 vi.mock("@breatic/core", async (real) => ({
-  ...(await real<typeof import("@breatic/core")>()),
+  ...(await real<Record<string, unknown>>()),
   getMcpConfig: () => ({ view_capture: { max_edge_px: 1568, max_bytes: 917504, timeout_ms: 8000 } }),
 }));
 
