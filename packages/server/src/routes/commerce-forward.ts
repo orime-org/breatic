@@ -8,8 +8,19 @@
  */
 
 import type { Context } from "hono";
-import { SignedCallError, isUnavailable, logger, type SignedCallResult } from "@breatic/core";
+import { PRODUCT_UNAVAILABLE_REASON, SignedCallError, isUnavailable, logger, type SignedCallResult } from "@breatic/core";
 import { billingUnavailable, callCommerce, type CommerceCall } from "@server/modules/commerce/commerce-client.js";
+
+/**
+ * Whether the billing service answered 503 because the product could not
+ * take its call, which is the user's answer to pass on, not an outage.
+ * @param err - The billing service's refusal.
+ * @returns True for a 503 carrying `PRODUCT_UNAVAILABLE_REASON`.
+ */
+function waitsOnProduct(err: SignedCallError): boolean {
+  const error = (err.body as { error?: { reason?: unknown } } | null)?.error;
+  return err.status === 503 && error?.reason === PRODUCT_UNAVAILABLE_REASON;
+}
 
 /**
  * Call the billing service, or say what to answer the user when it did not
@@ -23,7 +34,7 @@ export async function callCommerceOrAnswer(c: Context, call: CommerceCall): Prom
   try {
     return { answer: await callCommerce(call) };
   } catch (err) {
-    if (err instanceof SignedCallError && err.status !== null && !isUnavailable(err)) {
+    if (err instanceof SignedCallError && err.status !== null && (!isUnavailable(err) || waitsOnProduct(err))) {
       return { response: c.json(err.body ?? {}, err.status as 400) };
     }
     logger.error({ err, path: call.path }, "commerce_forward_unavailable");

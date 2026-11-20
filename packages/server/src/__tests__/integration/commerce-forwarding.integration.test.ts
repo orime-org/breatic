@@ -123,6 +123,17 @@ describe("forwarded endpoints", () => {
     expect(await res.json()).toMatchObject({ error: { code: 503, reason: "billing_unavailable", message: expect.not.stringMatching(/^server\./) } });
   });
 
+  it("passes on a 503 the billing service answers because the product could not take its call", async () => {
+    const userId = await insertAccount(suite.sql);
+    const waiting = { error: { code: 503, message: "Your payment went through, but your credits are still being added.", reason: "product_unavailable" } };
+    suite.reply = () => ({ status: 503, body: waiting });
+
+    const res = await send(userId, "POST", "/payment/confirm", { session_id: "cs_test_1" });
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual(waiting);
+  });
+
   it("answers 404 and calls nothing where no billing service is configured", async () => {
     const userId = await insertAccount(suite.sql);
     initCore(process.env);

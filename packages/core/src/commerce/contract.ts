@@ -12,6 +12,14 @@ import { ANALYTICS_EVENT_NAMES, BILLING_PERIODS, ConsentSnapshotSchema, MEMBERSH
 import { ADS_CONVERSIONS } from "@core/ads/ads-types.js";
 import { STRIPE_SUBSCRIPTION_STATUSES } from "@core/auth/subscription-state.js";
 
+/**
+ * The `error.reason` of a 503 the billing service answers when it is up but
+ * the product could not take its call back (a grant or a subscription fact a
+ * user is waiting on, §5.5). The product passes such an answer to the browser
+ * unchanged; any other 5xx means the billing service itself is unavailable.
+ */
+export const PRODUCT_UNAVAILABLE_REASON = "product_unavailable";
+
 const uuid = z.string().uuid();
 const cents = z.number().int().nonnegative();
 const instant = z.string().datetime({ offset: true });
