@@ -5,7 +5,7 @@ import type { QueryClient } from '@tanstack/react-query';
 
 import {
   getLocale, isSceneLookImageMediaType, judgeSceneLookPicture, SCENE_LOOK_MAX_PARTS, t, uploadableFormatList, type SceneLook,
-  type SceneLookPictureRefusal,
+  type SceneLookPictureOutcome, type SceneLookPictureRefusal, type SceneLookPictureSettlement,
 } from '@breatic/shared';
 
 import { projectImagesQueryKey } from '@web/data/api/scene';
@@ -82,21 +82,21 @@ export interface SceneLookUploadEntry {
   picture?: string;
 }
 
-/** Collab's word that it did not put an uploaded picture on its part. */
-export interface SceneLookRefusal {
+/** Collab's word on how it settled an uploaded picture: put on its part, or why not. */
+export interface SceneLookSettlement {
   spaceId: string;
   objectId: string;
   part: string;
   picture: string;
-  reason: SceneLookPictureRefusal;
+  outcome: SceneLookPictureSettlement;
 }
 
 export interface SceneLookUploads {
   start: (input: SceneLookUploadStart) => Promise<void>;
   /** The upload of one part still in progress, if any. */
   get: (spaceId: string, objectId: string, part: string) => SceneLookUploadEntry | undefined;
-  /** Collab did not put a picture on its part: tell the uploader why. */
-  refused: (refusal: SceneLookRefusal) => void;
+  /** Collab settled a picture: end its upload, and tell the uploader why when it was not put on. */
+  settled: (settlement: SceneLookSettlement) => void;
   subscribe: (listener: () => void) => () => void;
   getVersion: () => number;
 }
@@ -191,8 +191,13 @@ function refusalNotice(reason: SceneLookPictureRefusal): LookUploadNotice {
  */
 export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUploads {
   const entries = new Map<string, SceneLookUploadEntry>();
-  /** A refusal heard before its upload's answer named the stored picture, per part. */
-  const early = new Map<string, { picture: string; reason: SceneLookPictureRefusal }>();
+  /** A settlement heard before its upload's answer named the stored picture, per part. */
+  const early = new Map<string, { picture: string; outcome: SceneLookPictureSettlement }>();
+  /**
+   * Uploads whose row the open Space already freed (it shows collab will not write), keyed by part and picture: collab's
+   * settlement still tells the uploader why.
+   */
+  const ended = new Set<string>();
   const listeners = new Set<() => void>();
   let version = 0;
   /**
@@ -210,17 +215,46 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
   };
 
   /**
-   * Whether an entry still waits: bytes still going, or a stored picture collab would still write onto the part as the
-   * open Space shows it now. A Space not open, or still loading, cannot say otherwise.
+   * What the open Space shows for a stored picture now, judged by the rule collab writes with; unknown while the bytes
+   * still go or the Space is not open and ready.
+   * @param entry - The entry.
+   * @returns The outcome, or 'unknown'.
+   */
+  const shown = (entry: SceneLookUploadEntry): SceneLookPictureOutcome | 'unknown' => {
+    if (entry.picture === undefined) return 'unknown';
+    const session = deps.session(entry.name);
+    if (!session || session.getSnapshot().status !== 'ready') return 'unknown';
+    const object = session.getSnapshot().objects.find((item) => item.id === entry.objectId);
+    return judgeSceneLookPicture({ object, part: entry.part, startMap: entry.startMap, picture: entry.picture });
+  };
+
+  /**
+   * Whether an entry's row still shows the upload: bytes still going, or a stored picture collab would still write.
    * @param entry - The entry.
    * @returns True while the part row shows the upload.
    */
   const waiting = (entry: SceneLookUploadEntry): boolean => {
-    if (entry.picture === undefined) return true;
-    const session = deps.session(entry.name);
-    if (!session || session.getSnapshot().status !== 'ready') return true;
-    const object = session.getSnapshot().objects.find((item) => item.id === entry.objectId);
-    return judgeSceneLookPicture({ object, part: entry.part, startMap: entry.startMap, picture: entry.picture }) === 'write';
+    const outcome = shown(entry);
+    return outcome === 'unknown' || outcome === 'write';
+  };
+
+  /**
+   * Free a stored picture's row once the open Space shows its outcome. When the picture is not on the part, collab's
+   * settlement is still awaited for the reason.
+   * @param key - The part's entry key.
+   * @param entry - The entry.
+   */
+  const release = (key: string, entry: SceneLookUploadEntry): void => {
+    entries.delete(key);
+    if (entry.picture !== undefined && shown(entry) !== 'done') ended.add(`${key}\n${entry.picture}`);
+  };
+
+  /**
+   * Tell the uploader how collab settled their picture: nothing when it was written, the reason otherwise.
+   * @param outcome - Collab's outcome.
+   */
+  const tell = (outcome: SceneLookPictureSettlement): void => {
+    if (outcome !== 'written') deps.notify(refusalNotice(outcome));
   };
 
   /**
@@ -236,7 +270,7 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       if (entries.get(key) !== entry) stop();
       else if (!waiting(entry)) {
         stop();
-        entries.delete(key);
+        release(key, entry);
         changed();
       }
     });
@@ -336,17 +370,16 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
         deps.unregister(input.spaceId, operationId);
         const heard = early.get(key);
         early.delete(key);
-        const refusal = heard !== undefined && heard.picture === picture ? heard.reason : undefined;
+        const outcome = heard !== undefined && heard.picture === picture ? heard.outcome : undefined;
         if (entries.get(key)?.operationId === operationId) {
-          if (picture === null || refusal !== undefined) entries.delete(key);
+          if (picture === null || outcome !== undefined) entries.delete(key);
           else {
             const stored = { ...entry, percent: 100, picture };
-            if (waiting(stored)) {
-              entries.set(key, stored);
-              watch(key, stored);
-            } else entries.delete(key);
+            entries.set(key, stored);
+            if (waiting(stored)) watch(key, stored);
+            else release(key, stored);
           }
-          if (refusal !== undefined) deps.notify(refusalNotice(refusal));
+          if (outcome !== undefined) tell(outcome);
         }
         changed();
       }
@@ -356,22 +389,22 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       const entry = entries.get(key);
       if (!entry || waiting(entry)) return entry;
       // An upload whose outcome a Space opened later already shows is over.
-      entries.delete(key);
+      release(key, entry);
       return undefined;
     },
-    refused(refusal) {
-      const key = keyOf(refusal.spaceId, refusal.objectId, refusal.part);
+    settled(settlement) {
+      const key = keyOf(settlement.spaceId, settlement.objectId, settlement.part);
       const entry = entries.get(key);
-      if (!entry) return;
-      if (entry.picture === undefined) {
+      if (entry !== undefined && entry.picture === undefined) {
         // A picture the studio already held is announced while its ticket is still being answered.
-        early.set(key, { picture: refusal.picture, reason: refusal.reason });
+        early.set(key, { picture: settlement.picture, outcome: settlement.outcome });
         return;
       }
-      if (entry.picture !== refusal.picture) return;
-      entries.delete(key);
-      deps.notify(refusalNotice(refusal.reason));
-      changed();
+      if (entry?.picture === settlement.picture) {
+        entries.delete(key);
+        tell(settlement.outcome);
+        changed();
+      } else if (ended.delete(`${key}\n${settlement.picture}`)) tell(settlement.outcome);
     },
     subscribe(listener) {
       listeners.add(listener);

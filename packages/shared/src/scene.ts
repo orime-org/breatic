@@ -492,9 +492,11 @@ function editableDefaults(model: SceneModel): Omit<SceneObjectValues, 'model'> {
  * @param id - Stable scene object identity.
  * @param stored - The record's keys and values.
  * @returns The validated object.
+ * @throws {Error} When a look or a pose is stored whole under one key; both are stored only as flat keys.
  * @throws {z.ZodError} When the model or a stored value does not match the scene format.
  */
 export function readSceneRecord(id: string, stored: Readonly<Record<string, unknown>>): SceneObject {
+  if (Object.hasOwn(stored, 'look') || Object.hasOwn(stored, 'pose')) throw new Error('Look and pose are stored as flat keys');
   const model = SceneObjectValuesSchema.shape.model.parse(stored.model);
   return SceneObjectSchema.parse({ ...editableDefaults(model), ...gatherSceneLook(gatherScenePose(stored)), model, id });
 }
@@ -504,6 +506,9 @@ export type SceneLookPictureOutcome = 'write' | 'done' | 'objectGone' | 'partCha
 
 /** Why an uploaded picture was not put on its part. */
 export type SceneLookPictureRefusal = Exclude<SceneLookPictureOutcome, 'write' | 'done'>;
+
+/** How collab settled an uploaded picture: put on its part (or already there), or why not. */
+export type SceneLookPictureSettlement = 'written' | SceneLookPictureRefusal;
 
 /**
  * Whether an uploaded picture goes on the part the upload started from. The part may still hold the picture it held at

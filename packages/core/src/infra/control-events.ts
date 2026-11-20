@@ -56,14 +56,14 @@ import {
   activityNewChannel,
   creditsChangedChannel,
   spaceTasksChangedChannel,
-  sceneLookRefusedChannel,
+  sceneLookSettledChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
   type ActivityNewControlEvent,
   type CreditsChangedControlEvent,
   type SpaceTasksChangedControlEvent,
-  type SceneLookRefusedControlEvent,
+  type SceneLookSettledControlEvent,
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
   type SessionsRevokedEvent,
@@ -141,18 +141,19 @@ export async function publishSpaceTasksChanged(projectId: string, spaceId: strin
 }
 
 /**
- * Announce that collab did not put an uploaded picture on its 3D part
- * (inner#1693 design 6.3); every collab instance relays it to its connections
- * on the project meta doc as the `scene-look:refused` stateless signal, and
- * the uploader's page tells them why. Fire-and-forget like
- * {@link publishActivityNew}: the picture is in the Project's pictures either way.
- * @param refusal - The part, the picture, the uploader and why.
+ * Announce how collab settled an uploaded picture for a 3D part (inner#1693
+ * design 6.3); every collab instance relays it to its connections on the
+ * project meta doc as the `scene-look:settled` stateless signal, and the
+ * uploader's page ends that part's upload and tells them when it was not
+ * written. Fire-and-forget like {@link publishActivityNew}: the picture is in
+ * the Project's pictures either way.
+ * @param settlement - The part, the picture, the uploader and the outcome.
  * @returns Nothing.
  * @throws {Error} When Redis rejects the publish.
  */
-export async function publishSceneLookRefused(refusal: Omit<SceneLookRefusedControlEvent, "type" | "ts">): Promise<void> {
-  const event: SceneLookRefusedControlEvent = { type: "project-scene-look:refused", ...refusal, ts: Date.now() };
-  await getStreamRedis().publish(sceneLookRefusedChannel(env.REDIS_KEY_PREFIX, refusal.projectId), JSON.stringify(event));
+export async function publishSceneLookSettled(settlement: Omit<SceneLookSettledControlEvent, "type" | "ts">): Promise<void> {
+  const event: SceneLookSettledControlEvent = { type: "project-scene-look:settled", ...settlement, ts: Date.now() };
+  await getStreamRedis().publish(sceneLookSettledChannel(env.REDIS_KEY_PREFIX, settlement.projectId), JSON.stringify(event));
 }
 
 /**

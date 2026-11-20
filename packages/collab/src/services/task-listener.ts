@@ -35,7 +35,7 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import { ExecutionError, Redlock, ResourceLockedError } from "@sesamecare-oss/redlock";
 import type {
-  NodeTaskCountsEvent, SceneLookPictureEvent, SceneLookPictureRefusal, SceneLookRefusedControlEvent, SpaceTasksVersionEvent,
+  NodeTaskCountsEvent, SceneLookPictureEvent, SceneLookPictureSettlement, SceneLookSettledControlEvent, SpaceTasksVersionEvent,
 } from "@breatic/shared";
 import { parseDocName, SPACE_TASKS_TYPES } from "@breatic/shared";
 import { createLogger, type Redis } from "@breatic/core";
@@ -70,8 +70,8 @@ const COUNTS_VERSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 /** Every event this listener writes. */
 type TaskEvent = NodeTaskCountsEvent | SpaceTasksVersionEvent | SceneLookPictureEvent;
 
-/** A part picture collab did not write, said to its uploader. */
-export type SceneLookRefusal = Omit<SceneLookRefusedControlEvent, "type" | "ts">;
+/** How collab settled a part picture, said to its uploader. */
+export type SceneLookSettlement = Omit<SceneLookSettledControlEvent, "type" | "ts">;
 
 /** Settings of the task listener: the consumer group's, plus the per-document ones. */
 export interface TaskListenerSettings extends GroupConsumerSettings {
@@ -101,8 +101,8 @@ export interface TaskListenerDeps {
   coordination: Redis;
   /** Timing and limits. */
   settings: TaskListenerSettings;
-  /** Tell a part picture's uploader it was not written, and why (inner#1693 design 6.3). */
-  refuseSceneLook: (refusal: SceneLookRefusal) => Promise<void>;
+  /** Tell a part picture's uploader how it was settled: written, or why not (inner#1693 design 6.3). */
+  settleSceneLook: (settlement: SceneLookSettlement) => Promise<void>;
 }
 
 /** One parsed event and the stream entry it came from. */
@@ -263,12 +263,12 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
     // Only a canvas document takes node counts, so a batch is one kind of document throughout.
     const spaceTasks = batch.items[0]!.event.type !== "node-task-counts";
     /**
-     * Skip a batch whose Space has no live document; a part picture for it is refused as gone.
+     * Skip a batch whose Space has no live document; a part picture for it is settled as gone.
      * @returns Every event done.
      */
     const skipNotLive = async (): Promise<Map<string, EntryOutcome>> => {
       logger.info({ docName: batch.docName }, "task_doc_not_live_skipped");
-      await refuse(batch.items.flatMap(({ event }) => (event.type === "scene-look-picture" ? [{ event, reason: "objectGone" as const }] : [])));
+      await settle(batch.items.flatMap(({ event }) => (event.type === "scene-look-picture" ? [{ event, outcome: "objectGone" as const }] : [])));
       return outcomeForAll(batch, "done");
     };
     // A Space with no live row is skipped before its document is loaded into this instance.
@@ -318,7 +318,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       // Nothing awaits between here and the transaction, which runs synchronously.
       if (stopping() || signal.aborted) return outcomeForAll(batch, "wait");
       const moved = new Map<string, string>();
-      const pictures: { event: SceneLookPictureEvent; reason: SceneLookPictureRefusal | null }[] = [];
+      const pictures: { event: SceneLookPictureEvent; outcome: SceneLookPictureSettlement }[] = [];
       await connection.transact((d) => {
         for (const { entry, event } of batch.items) {
           try {
@@ -326,7 +326,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
               if (!applied.has(event.uploadKey)) {
                 const outcome = applySceneLookPicture(d, event);
                 applied.add(event.uploadKey);
-                pictures.push({ event, reason: outcome === "write" || outcome === "done" ? null : outcome });
+                pictures.push({ event, outcome: outcome === "write" || outcome === "done" ? "written" : outcome });
               }
               outcomes.set(entry.id, "done");
               continue;
@@ -363,7 +363,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       if (pictures.length > 0) {
         await coordination.hset(keys.applied, Object.fromEntries(pictures.map(({ event }) => [event.uploadKey, "1"])));
         await coordination.expire(keys.applied, COUNTS_VERSION_TTL_SECONDS);
-        await refuse(pictures.flatMap(({ event, reason }) => (reason === null ? [] : [{ event, reason }])));
+        await settle(pictures);
       }
       await coordination.set(keys.handoff, Buffer.from(vector).toString("base64"), "PX", settings.docLeaseMs * 2);
       logger.info(
@@ -382,21 +382,21 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
   }
 
   /**
-   * Tell each uploader why their part picture was not written. The picture is in the Project's pictures either way,
-   * so a notice that cannot be sent is logged and the event still counts as handled.
-   * @param refused - The events and why.
+   * Tell each uploader how their part picture was settled, so their page ends the upload. The picture is in the
+   * Project's pictures either way, so a notice that cannot be sent is logged and the event still counts as handled.
+   * @param settled - The events and their outcomes.
    */
-  async function refuse(refused: { event: SceneLookPictureEvent; reason: SceneLookPictureRefusal }[]): Promise<void> {
-    for (const { event, reason } of refused) {
+  async function settle(settled: { event: SceneLookPictureEvent; outcome: SceneLookPictureSettlement }[]): Promise<void> {
+    for (const { event, outcome } of settled) {
       const parsed = parseDocName(event.docName);
       if (parsed === null || parsed.kind !== "3d") continue;
       try {
-        await deps.refuseSceneLook({
+        await deps.settleSceneLook({
           projectId: parsed.projectId, spaceId: parsed.spaceId, objectId: event.objectId, part: event.part,
-          picture: event.picture, userId: event.userId, reason,
+          picture: event.picture, userId: event.userId, outcome,
         });
       } catch (err) {
-        logger.error({ err, docName: event.docName, uploadKey: event.uploadKey, reason }, "scene_look_refusal_publish_failed");
+        logger.error({ err, docName: event.docName, uploadKey: event.uploadKey, outcome }, "scene_look_settlement_publish_failed");
       }
     }
   }

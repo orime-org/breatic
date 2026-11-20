@@ -22,7 +22,7 @@ import { createRedisClient, db, initCore, schema, type Redis } from "@breatic/co
 import { eq } from "drizzle-orm";
 import {
   CANVAS_NODES_KEY, SCENE_FORMAT_VERSION, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, threeDSpaceDocName, timelineSpaceDocName,
-  type NodeTaskCountsEvent, type SceneLookPictureEvent, type SceneLookRefusedControlEvent,
+  type NodeTaskCountsEvent, type SceneLookPictureEvent, type SceneLookSettledControlEvent,
 } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
@@ -272,8 +272,8 @@ async function readRestored(docName: string): Promise<{ note: unknown; version: 
  * @param settings - Overrides.
  * @returns The listener.
  */
-/** Every part picture the listeners did not write, in order. */
-const refusals: Omit<SceneLookRefusedControlEvent, "type" | "ts">[] = [];
+/** How the listeners settled every part picture, in order. */
+const settlements: Omit<SceneLookSettledControlEvent, "type" | "ts">[] = [];
 
 function listen(
   c: Case,
@@ -290,7 +290,7 @@ function listen(
     instanceId,
     coordination,
     settings: { ...SETTINGS, ...settings },
-    refuseSceneLook: async (refusal) => { refusals.push(refusal); },
+    settleSceneLook: async (settlement) => { settlements.push(settlement); },
   });
   listeners.push(l);
   return l;
@@ -917,13 +917,15 @@ describe("stored 3D part pictures (inner#1693 design 6.3)", () => {
     }
   }
 
-  it("puts the picture on the part it was uploaded for, while nobody has the Space open", async () => {
+  it("puts the picture on the part it was uploaded for, while nobody has the Space open, and says it was written", async () => {
     const { c, event } = await sceneCase(START);
     const ids = await publishPictures(c, [event]);
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, ids));
     expect(await partMap(c.docName)).toBe(PICTURE);
-    expect(refusals.filter((r) => r.picture === PICTURE && r.spaceId === c.docName.split("/3d-")[1])).toEqual([]);
+    expect(settlements.filter((r) => r.spaceId === c.docName.split("/3d-")[1])).toEqual([
+      { projectId: PID, spaceId: c.docName.split("/3d-")[1], objectId: OBJECT, part: "3", picture: PICTURE, userId: "uploader", outcome: "written" },
+    ]);
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 
@@ -944,8 +946,8 @@ describe("stored 3D part pictures (inner#1693 design 6.3)", () => {
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, ids));
     expect(await partMap(c.docName)).toBe(OTHER);
-    expect(refusals).toContainEqual({
-      projectId: PID, spaceId, objectId: OBJECT, part: "3", picture: PICTURE, userId: "uploader", reason: "partChanged",
+    expect(settlements).toContainEqual({
+      projectId: PID, spaceId, objectId: OBJECT, part: "3", picture: PICTURE, userId: "uploader", outcome: "partChanged",
     });
   });
 
@@ -960,7 +962,7 @@ describe("stored 3D part pictures (inner#1693 design 6.3)", () => {
     await until(() => handled(c.streamKey, ids));
     await untilUnloaded(c.docName);
     expect(await yjsRepo.fetchDocData(c.docName)).toBeNull();
-    expect(refusals).toContainEqual(expect.objectContaining({ spaceId, reason: "objectGone" }));
+    expect(settlements).toContainEqual(expect.objectContaining({ spaceId, outcome: "objectGone" }));
   });
 });
 

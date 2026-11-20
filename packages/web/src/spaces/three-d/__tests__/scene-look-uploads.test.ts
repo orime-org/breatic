@@ -63,7 +63,7 @@ interface Harness {
   uploads: {
     start: (input: ReturnType<typeof startFor>) => Promise<void>;
     get: (spaceId: string, objectId: string, part: string) => { percent: number } | undefined;
-    refused: (signal: { spaceId: string; objectId: string; part: string; picture: string; reason: 'objectGone' | 'partChanged' | 'partLimit' }) => void;
+    settled: (signal: { spaceId: string; objectId: string; part: string; picture: string; outcome: 'written' | 'objectGone' | 'partChanged' | 'partLimit' }) => void;
   };
   upload: ReturnType<typeof vi.fn>;
   notify: ReturnType<typeof vi.fn>;
@@ -214,32 +214,100 @@ describe('SceneLookUploads', () => {
     await settle();
     h.finish();
     await done;
-    h.uploads.refused({ spaceId: SPACE, objectId: ID, part: '0', picture: UPLOADED, reason });
+    h.uploads.settled({ spaceId: SPACE, objectId: ID, part: '0', picture: UPLOADED, outcome: reason });
     expect(h.notify).toHaveBeenCalledWith(notice);
     expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
   });
 
-  it('says why when collab refused a picture the studio already held before its upload answered', async () => {
+  it('says why when collab settled a picture the studio already held before its upload answered', async () => {
     const { session } = editor();
     const h = harness(() => session);
     const done = h.uploads.start(startFor());
     await settle();
-    h.uploads.refused({ spaceId: SPACE, objectId: ID, part: '0', picture: UPLOADED, reason: 'partChanged' });
+    h.uploads.settled({ spaceId: SPACE, objectId: ID, part: '0', picture: UPLOADED, outcome: 'partChanged' });
     h.finish();
     await done;
     expect(h.notify).toHaveBeenCalledWith({ key: 'spaces.threeD.look.partChanged', severity: 'warning' });
     expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
   });
 
-  it('ignores a refusal for another picture or a part it is not waiting on', async () => {
+  it('ends the wait quietly when collab says the picture was written, even while the Space is closed', async () => {
+    const { doc, session } = editor();
+    let open: SceneSession | undefined = session;
+    const h = harness(() => open);
+    const done = h.uploads.start(startFor());
+    await settle();
+    h.finish();
+    await done;
+    open = undefined;
+    h.uploads.settled({ spaceId: SPACE, objectId: ID, part: '0', picture: UPLOADED, outcome: 'written' });
+    // Reopened after a collaborator removed the written picture: the row is free.
+    look(doc, '0', { map: null });
+    open = session;
+    expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
+    expect(h.notify).not.toHaveBeenCalled();
+  });
+
+  it('frees the row once the open Space shows why collab will not write, and still says why when collab does', async () => {
+    for (const change of ['picture', 'gone'] as const) {
+      const { doc, session } = editor();
+      const h = harness(() => session);
+      const done = h.uploads.start(startFor());
+      await settle();
+      if (change === 'picture') look(doc, '0', { map: OTHER_IMAGE });
+      else applySceneCommand(doc, { type: 'delete', ids: [ID] } as never, Symbol(), true, NAME);
+      h.finish();
+      await done;
+      expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
+      const outcome = change === 'picture' ? 'partChanged' : 'objectGone';
+      h.uploads.settled({ spaceId: SPACE, objectId: ID, part: '0', picture: UPLOADED, outcome });
+      expect(h.notify).toHaveBeenCalledWith({ key: `spaces.threeD.look.${outcome}`, severity: 'warning' });
+    }
+  });
+
+  it('keeps waiting while the Space is closed or still loading, and says why when collab settles it', async () => {
+    const { session } = editor();
+    const loading = new SceneSession(new Y.Doc(), NAME);
+    loading.setEnvironment({ readOnly: false, connected: true, hasEverSynced: false, writeAccess: 'granted', refused: false, awareness: new Awareness(new Y.Doc()) });
+    cleanups.push(() => { loading.destroy(); });
+    let open: SceneSession | undefined = session;
+    const h = harness(() => open);
+    const done = h.uploads.start(startFor());
+    await settle();
+    h.finish();
+    await done;
+    open = undefined;
+    expect(h.uploads.get(SPACE, ID, '0')).toBeDefined();
+    open = loading;
+    expect(h.uploads.get(SPACE, ID, '0')).toBeDefined();
+    h.uploads.settled({ spaceId: SPACE, objectId: ID, part: '0', picture: UPLOADED, outcome: 'partLimit' });
+    expect(h.notify).toHaveBeenCalledWith({ key: 'spaces.threeD.look.uploadedPartLimit', params: { max: '256' }, severity: 'warning' });
+    expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
+  });
+
+  it('names on the ticket the picture the part held before the file header was read', async () => {
+    const { doc, session } = editor();
+    let read: (size: { width: number; height: number; type: string }) => void = () => undefined;
+    const factory = (uploadsModule as Record<string, unknown>).createSceneLookUploads as (deps: unknown) => Harness['uploads'];
+    const upload = vi.fn((_file: File, _context: unknown) => new Promise(() => undefined));
+    const uploads = factory({ upload, notify: vi.fn(), register: vi.fn(), unregister: vi.fn(), invalidateImages: vi.fn(),
+      readLocalSize: () => new Promise((resolve) => { read = resolve; }), size: async () => null, session: () => session });
+    void uploads.start(startFor());
+    look(doc, '0', { map: OTHER_IMAGE });
+    read({ width: 64, height: 64, type: 'png' });
+    await vi.waitFor(() => expect(upload).toHaveBeenCalledTimes(1));
+    expect(upload.mock.calls[0]?.[1]).toMatchObject({ startMap: null });
+  });
+
+  it('ignores a settlement for another picture or a part it is not waiting on', async () => {
     const { session } = editor();
     const h = harness(() => session);
     const done = h.uploads.start(startFor());
     await settle();
     h.finish();
     await done;
-    h.uploads.refused({ spaceId: SPACE, objectId: ID, part: '0', picture: OTHER_IMAGE, reason: 'partChanged' });
-    h.uploads.refused({ spaceId: SPACE, objectId: ID, part: '1', picture: UPLOADED, reason: 'partChanged' });
+    h.uploads.settled({ spaceId: SPACE, objectId: ID, part: '0', picture: OTHER_IMAGE, outcome: 'partChanged' });
+    h.uploads.settled({ spaceId: SPACE, objectId: ID, part: '1', picture: UPLOADED, outcome: 'partChanged' });
     expect(h.notify).not.toHaveBeenCalled();
     expect(h.uploads.get(SPACE, ID, '0')).toBeDefined();
   });

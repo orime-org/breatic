@@ -625,7 +625,7 @@ beforeAll(async () => {
       handoffWaitMs: 200,
     },
     // A canvas run: no 3D part picture is refused here.
-    refuseSceneLook: async () => undefined,
+    settleSceneLook: async () => undefined,
   });
 
 

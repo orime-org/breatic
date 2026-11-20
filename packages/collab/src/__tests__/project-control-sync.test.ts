@@ -28,9 +28,9 @@ import {
   creditsChangedChannel,
   projectConnectionsCloseChannel,
   SPACE_TASKS_CHANGED_SIGNAL,
-  SCENE_LOOK_REFUSED_SIGNAL,
+  SCENE_LOOK_SETTLED_SIGNAL,
   spaceTasksChangedChannel,
-  sceneLookRefusedChannel,
+  sceneLookSettledChannel,
 } from "@breatic/shared";
 
 // The deployment prefix under test. `vi.hoisted` because the `vi.mock` factory
@@ -193,8 +193,8 @@ describe("startProjectControlSync — space-tasks:changed", () => {
   });
 });
 
-describe("startProjectControlSync — scene-look:refused", () => {
-  it("relays to the project's meta doc which part picture was not written, for whom and why", async () => {
+describe("startProjectControlSync — scene-look:settled", () => {
+  it("relays to the project's meta doc how a part picture was settled, for whom", async () => {
     const metaDoc: DocSpy = {
       doc: new Y.Doc(),
       broadcastStateless: vi.fn(),
@@ -205,18 +205,18 @@ describe("startProjectControlSync — scene-look:refused", () => {
     const { subscriber } = buildRedis();
     startProjectControlSync(hocuspocus, subscriber as unknown as Redis);
     await Promise.resolve();
-    const refusal = { projectId: PID, spaceId: "space-1", objectId: "o", part: "3", picture: "p", userId: "u", reason: "partChanged" };
+    const settlement = { projectId: PID, spaceId: "space-1", objectId: "o", part: "3", picture: "p", userId: "u", outcome: "partChanged" };
 
     subscriber.emit(
       "pmessage",
       `${TEST_PREFIX}:project:*`,
-      sceneLookRefusedChannel(TEST_PREFIX, PID),
-      JSON.stringify({ type: "project-scene-look:refused", ...refusal, ts: Date.now() }),
+      sceneLookSettledChannel(TEST_PREFIX, PID),
+      JSON.stringify({ type: "project-scene-look:settled", ...settlement, ts: Date.now() }),
     );
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(metaDoc.relayStateless).toHaveBeenCalledWith(JSON.stringify({ t: SCENE_LOOK_REFUSED_SIGNAL, ...refusal }));
+    expect(metaDoc.relayStateless).toHaveBeenCalledWith(JSON.stringify({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement }));
   });
 });
 

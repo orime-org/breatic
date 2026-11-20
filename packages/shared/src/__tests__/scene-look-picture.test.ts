@@ -48,6 +48,11 @@ describe("readSceneRecord", () => {
     expect(read.name).toBe("figure");
   });
 
+  it("throws for a look or a pose stored whole under one key", () => {
+    expect(() => shared.readSceneRecord(ID, { ...MODEL, look: { "3": { map: PICTURE } } })).toThrow("flat keys");
+    expect(() => shared.readSceneRecord(ID, { ...MODEL, pose: { "t:hips": [0, 0, 0, 1] } })).toThrow("flat keys");
+  });
+
   it("throws for a record outside the format", () => {
     expect(() => shared.readSceneRecord(ID, { ...MODEL, "look.3.map": 12 })).toThrow();
   });

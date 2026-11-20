@@ -109,8 +109,6 @@ function readEnvironment(scene: Y.Map<unknown>): SceneEnvironmentValues {
  */
 function readRecord(id: string, value: unknown): SceneObject {
   if (!(value instanceof Y.Map)) throw new Error('Object must be a shared map');
-  // A look and a pose are stored only as flat keys; a whole value under one key is outside the format.
-  if (value.has('look') || value.has('pose')) throw new Error('Look and pose are stored as flat keys');
   return readSceneRecord(id, Object.fromEntries(value.entries()));
 }
 

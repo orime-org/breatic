@@ -28,7 +28,7 @@
  * auth-related DB0 (session / lock / rate-limit).
  */
 
-import type { SceneLookPictureRefusal } from "@shared/scene.js";
+import type { SceneLookPictureSettlement } from "@shared/scene.js";
 
 // ── Project lifecycle (transactional outbox → durable stream) ───────
 //
@@ -157,33 +157,34 @@ export function spaceTasksChangedChannel(prefix: string, projectId: string): str
 }
 
 /**
- * Control event announcing that collab did not put an uploaded picture on the
- * part it was uploaded for (inner#1693 design 6.3). Collab relays it as the
- * `scene-look:refused` stateless signal on the project meta doc; the uploader's
- * page tells them why. Fire-and-forget: the picture stays in the Project's
- * pictures either way.
+ * Control event announcing how collab settled an uploaded picture for a 3D
+ * part (inner#1693 design 6.3): written, or why not. Collab relays it as the
+ * `scene-look:settled` stateless signal on the project meta doc; the
+ * uploader's page ends that part's upload and, when it was not written, tells
+ * them why. Fire-and-forget: the picture is in the Project's pictures either
+ * way.
  */
-export interface SceneLookRefusedControlEvent {
-  type: "project-scene-look:refused";
+export interface SceneLookSettledControlEvent {
+  type: "project-scene-look:settled";
   projectId: string;
   spaceId: string;
   objectId: string;
   part: string;
   picture: string;
   userId: string;
-  reason: SceneLookPictureRefusal;
+  outcome: SceneLookPictureSettlement;
   ts: number;
 }
 
 /**
- * Pub/sub channel for {@link SceneLookRefusedControlEvent}. Matched by
+ * Pub/sub channel for {@link SceneLookSettledControlEvent}. Matched by
  * {@link allProjectChannelsPattern}.
  * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
  * @param projectId - Project the Space belongs to.
- * @returns The channel name `{prefix}:project:{projectId}:scene-look:refused`.
+ * @returns The channel name `{prefix}:project:{projectId}:scene-look:settled`.
  */
-export function sceneLookRefusedChannel(prefix: string, projectId: string): string {
-  return `${prefix}:project:${projectId}:scene-look:refused`;
+export function sceneLookSettledChannel(prefix: string, projectId: string): string {
+  return `${prefix}:project:${projectId}:scene-look:settled`;
 }
 
 /** Why every collab instance closes a project's connections. */

@@ -33,7 +33,7 @@ vi.mock("@core/config/runtime.js", () => ({ env: envMock }));
 import {
   publishActivityNew,
   publishCreditsChanged,
-  publishSceneLookRefused,
+  publishSceneLookSettled,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
 } from "@core/infra/control-events.js";
@@ -94,15 +94,15 @@ describe("control-events — deployment prefix", () => {
     expect(JSON.parse(call[1])).toMatchObject({ type: "project-credits:changed", projectId: PID });
   });
 
-  it("publishes scene-look:refused on the prefixed channel, under the subscribe pattern, with who it is for", async () => {
-    await publishSceneLookRefused({
-      projectId: PID, spaceId: "s", objectId: "o", part: "3", picture: "p", userId: "u", reason: "partChanged",
+  it("publishes scene-look:settled on the prefixed channel, under the subscribe pattern, with who it is for and the outcome", async () => {
+    await publishSceneLookSettled({
+      projectId: PID, spaceId: "s", objectId: "o", part: "3", picture: "p", userId: "u", outcome: "partChanged",
     });
-    expect(lastChannel()).toBe(`dev:project:${PID}:scene-look:refused`);
+    expect(lastChannel()).toBe(`dev:project:${PID}:scene-look:settled`);
     expect(patternMatches(projectControlChannelPattern(), lastChannel())).toBe(true);
     const payload = JSON.parse((publishMock.mock.calls.at(-1) as unknown as [string, string])[1]) as Record<string, unknown>;
     expect(payload).toMatchObject({
-      type: "project-scene-look:refused", projectId: PID, spaceId: "s", objectId: "o", part: "3", picture: "p", userId: "u", reason: "partChanged",
+      type: "project-scene-look:settled", projectId: PID, spaceId: "s", objectId: "o", part: "3", picture: "p", userId: "u", outcome: "partChanged",
     });
   });
 

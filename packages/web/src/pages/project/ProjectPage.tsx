@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchProjectCredits } from '@web/data/api/credits';
 import { useProjectCreditsRefresh } from '@web/pages/project/use-project-credits-refresh';
 import { useSpaceTasksRefresh } from '@web/pages/project/use-space-tasks-refresh';
-import { useSceneLookRefusals } from '@web/pages/project/use-scene-look-refusals';
+import { useSceneLookSettlements } from '@web/pages/project/use-scene-look-settlements';
 import * as React from 'react';
 import { useStore } from 'zustand';
 import { useLocation, useParams } from 'react-router-dom';
@@ -363,7 +363,7 @@ function ProjectWorkspace({
   // user's own spend returning, or anyone's generation here ending.
   useProjectCreditsRefresh(projectId, provider);
   useSpaceTasksRefresh(projectId, provider);
-  useSceneLookRefusals(projectId, provider, userId);
+  useSceneLookSettlements(projectId, provider, userId);
   // The whole tab bar, held here and nowhere else. Every cell of the
   // transition table is one action on this reducer, so the strip and the
   // active tab have a single writer.

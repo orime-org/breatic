@@ -698,7 +698,7 @@ export interface NodeTaskCountsEvent {
  *
  * The browser only sends the bytes; collab writes the picture onto the part
  * the upload started from, when `judgeSceneLookPicture` allows it, and
- * otherwise tells the uploader why through `scene-look:refused`.
+ * tells the uploader how it settled through `scene-look:settled`.
  */
 export interface SceneLookPictureEvent {
   type: 'scene-look-picture';

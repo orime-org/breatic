@@ -5,12 +5,12 @@ import type { ReactNode } from 'react';
 import { renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
-import { SCENE_LOOK_REFUSED_SIGNAL } from '@breatic/shared';
+import { SCENE_LOOK_SETTLED_SIGNAL } from '@breatic/shared';
 
-const refused = vi.fn();
-vi.mock('@web/spaces/three-d/scene-look-uploads', () => ({ pageSceneLookUploads: () => ({ refused }) }));
+const settled = vi.fn();
+vi.mock('@web/spaces/three-d/scene-look-uploads', () => ({ pageSceneLookUploads: () => ({ settled }) }));
 
-const { useSceneLookRefusals } = await import('@web/pages/project/use-scene-look-refusals');
+const { useSceneLookSettlements } = await import('@web/pages/project/use-scene-look-settlements');
 
 const PROJECT = 'p-1';
 const ME = 'u-1';
@@ -34,34 +34,40 @@ function providerDouble(): { provider: { on: (e: string, f: (d: { payload: strin
  */
 function mount(provider: ReturnType<typeof providerDouble>['provider']): ReturnType<typeof renderHook> {
   const client = new QueryClient();
-  return renderHook(() => useSceneLookRefusals(PROJECT, provider as never, ME), {
+  return renderHook(() => useSceneLookSettlements(PROJECT, provider as never, ME), {
     wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
   });
 }
 
-describe('telling the uploader why collab did not put their part picture on (inner#1693 design 6.3)', () => {
-  const refusal = { projectId: PROJECT, spaceId: 's-1', objectId: 'o-1', part: '3', picture: 'a-1', userId: ME, reason: 'partChanged' };
+describe('handing the uploader how collab settled their part picture (inner#1693 design 6.3)', () => {
+  const settlement = { projectId: PROJECT, spaceId: 's-1', objectId: 'o-1', part: '3', picture: 'a-1', userId: ME, outcome: 'partChanged' };
 
-  it('hands this user\'s refusals in this project to the page\'s uploads, and no other signal', () => {
-    refused.mockClear();
+  it('hands this user\'s settlements in this project to the page\'s uploads, and no other signal', () => {
+    settled.mockClear();
     const { provider, send } = providerDouble();
     mount(provider);
 
-    send({ t: SCENE_LOOK_REFUSED_SIGNAL, ...refusal });
-    send({ t: SCENE_LOOK_REFUSED_SIGNAL, ...refusal, userId: 'someone-else' });
-    send({ t: SCENE_LOOK_REFUSED_SIGNAL, ...refusal, projectId: 'other' });
+    send({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement });
+    send({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement, userId: 'someone-else' });
+    send({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement, projectId: 'other' });
     send({ t: 'space-tasks:changed', projectId: PROJECT, spaceId: 's-1' });
     send('not json');
 
-    expect(refused.mock.calls).toEqual([[{ spaceId: 's-1', objectId: 'o-1', part: '3', picture: 'a-1', reason: 'partChanged' }]]);
+    send({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement, outcome: 'written', picture: 'a-2' });
+    send({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement, outcome: 'unknown' });
+
+    expect(settled.mock.calls).toEqual([
+      [{ spaceId: 's-1', objectId: 'o-1', part: '3', picture: 'a-1', outcome: 'partChanged' }],
+      [{ spaceId: 's-1', objectId: 'o-1', part: '3', picture: 'a-2', outcome: 'written' }],
+    ]);
   });
 
   it('stops listening when unmounted', () => {
-    refused.mockClear();
+    settled.mockClear();
     const { provider, send } = providerDouble();
     const { unmount } = mount(provider);
     unmount();
-    send({ t: SCENE_LOOK_REFUSED_SIGNAL, ...refusal });
-    expect(refused).not.toHaveBeenCalled();
+    send({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement });
+    expect(settled).not.toHaveBeenCalled();
   });
 });

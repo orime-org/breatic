@@ -133,7 +133,7 @@ export type {
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
   SpaceTasksChangedControlEvent,
-  SceneLookRefusedControlEvent,
+  SceneLookSettledControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
   ProjectConnectionsCloseReason,
@@ -173,7 +173,7 @@ export {
   activityNewChannel,
   creditsChangedChannel,
   spaceTasksChangedChannel,
-  sceneLookRefusedChannel,
+  sceneLookSettledChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
@@ -206,7 +206,7 @@ export {
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
   SPACE_TASKS_CHANGED_SIGNAL,
-  SCENE_LOOK_REFUSED_SIGNAL,
+  SCENE_LOOK_SETTLED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -243,7 +243,7 @@ export type {
   ActivityNewSignal,
   CreditsChangedSignal,
   SpaceTasksChangedSignal,
-  SceneLookRefusedSignal,
+  SceneLookSettledSignal,
 } from "@shared/types/index.js";
 
 export {
@@ -1204,7 +1204,7 @@ export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH
   readSceneRecord, judgeSceneLookPicture } from "@shared/scene.js";
 export type { SceneVector, SceneRotation, SceneModel, ScenePose, SceneLook, SceneLookPart, SceneLookField, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig, SceneCaptureConfig,
   SceneLightType, ViewfinderRatio, SceneModelFile, SceneCameraObject, SceneLightObject, SceneDirectorConfig,
-  SceneLookPictureOutcome, SceneLookPictureRefusal } from "@shared/scene.js";
+  SceneLookPictureOutcome, SceneLookPictureRefusal, SceneLookPictureSettlement } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
 
 export * from "@shared/credit-amount.js";

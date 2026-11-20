@@ -25,8 +25,7 @@ import {
  */
 function readObject(records: Y.Map<unknown>, id: string): SceneObject | undefined {
   const value = records.get(id);
-  // A look and a pose are stored only as flat keys; a whole value under one key is outside the format.
-  if (!(value instanceof Y.Map) || value.has("look") || value.has("pose")) return undefined;
+  if (!(value instanceof Y.Map)) return undefined;
   try {
     return readSceneRecord(id, Object.fromEntries(value.entries()));
   } catch {

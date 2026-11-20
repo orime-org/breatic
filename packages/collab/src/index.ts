@@ -40,7 +40,7 @@ import {
   projectAuthService,
   type MemberChangeListener,
 } from "@breatic/core";
-import { getTimelineConfig, onDatabaseWaitTimeout, publishSceneLookRefused } from "@breatic/core";
+import { getTimelineConfig, onDatabaseWaitTimeout, publishSceneLookSettled } from "@breatic/core";
 import { getCollabConfig, getReassemblyLimits } from "@collab/config.js";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
@@ -348,7 +348,7 @@ async function main(): Promise<void> {
       handoffPollMs: cfg.event_handoff_poll_ms,
       handoffWaitMs: cfg.event_handoff_wait_ms,
     },
-    refuseSceneLook: publishSceneLookRefused,
+    settleSceneLook: publishSceneLookSettled,
   });
 
   // Project-lifecycle commands (server outbox relay → yjs-DB copy and the
