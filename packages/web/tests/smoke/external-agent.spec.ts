@@ -170,6 +170,8 @@ test('a member mentioned in a note hears it from the bell on the project page at
   const peerPage = await inviteMember(page, peer, projectId, credentialsFor('B').email, 'editor');
   try {
     spaceId = await createSpace(page, 'canvas', `mention-${String(Date.now())}`);
+    // An inbox with nothing unread, so the row below can only be this note's.
+    await dataOf(await peer.request.post('/api/v1/users/me/notifications/read-all'), 'B clears news');
     await peerPage.goto(page.url());
     await peerPage.getByTestId('bell-trigger').click();
     const bell = peerPage.getByTestId('bell-popover');
