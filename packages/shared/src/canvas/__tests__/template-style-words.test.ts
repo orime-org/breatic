@@ -100,13 +100,28 @@ const WHOLE_PICTURE_COLOUR: Record<string, { absolute: RegExp; subject: string }
   ko: { absolute: /세피아뿐|다른 색|유일한 따뜻한 색|색 번짐|흑백|회색조/u, subject: '주체' },
 };
 
-/** How each locale gives a colour a share of the frame: such a sentence covers the subject unless it names it. */
-const COLOUR_SHARE: Record<string, { share: RegExp; colour: RegExp; background: RegExp }> = {
-  en: { share: /\bof the (frame|page)\b(?! width)|\b(a|one|two) (third|half|quarter|fifth)s?\b|\bmost of the rest\b/iu, colour: /\b(grey|greys|gray|black|blacks|white|whites|sepia|brown|silver|cream|ink)\b/iu, background: /\bbackgrounds?\b/iu },
-  'zh-CN': { share: /[一二三四五六七八九两]成画面|占(画面|版面)|画面约|画面[^宽，；。]*(成|分之|%)|(画面|版面)[^宽，；。]*[一二三四五六七八九两]成|其余大半/u, colour: /灰|黑|白|棕|褐|奶油|墨/u, background: /背景/u },
-  'zh-TW': { share: /[一二三四五六七八九兩]成畫面|[占佔](畫面|版面)|畫面約|畫面[^寬，；。]*(成|分之|%)|(畫面|版面)[^寬，；。]*[一二三四五六七八九兩]成|其餘大半/u, colour: /灰|黑|白|棕|褐|奶油|墨/u, background: /背景/u },
-  ja: { share: /(画面|紙面)[^幅。、]*(割(?!れ)|分の|%|大半)|残りの大半/u, colour: /グレー|灰|黒|白|セピア|茶|クリーム|インク/u, background: /背景/u },
-  ko: { share: /(화면|지면)[^폭.]*(%|분의|대부분)/u, colour: /회색|검|흰|흑|세피아|갈색|은색|크림|잉크/u, background: /배경/u },
+/**
+ * How each locale gives a colour a share of the frame: such a sentence covers the subject unless it names it, or
+ * unless it is about the background, the setting, a grid of cells or a width, which are not the subject's colour.
+ */
+const COLOUR_SHARE: Record<string, { share: RegExp; colour: RegExp; exempt: RegExp }> = {
+  en: { share: /\bof the (frame|page)\b|\b(a|one|two) (third|half|quarter|fifth)s?\b|\bmost of the rest\b|\d\s*%|\bpercent\b/iu, colour: /\b(grey|greys|gray|black|blacks|white|whites|sepia|brown|silver|cream|ink)\b/iu, exempt: /\b(backgrounds?|setting|cells?|width)\b/iu },
+  'zh-CN': { share: /[一二三四五六七八九两]成|占(画面|版面)|画面约|画面[^宽，；。]*(分之|%)|其余大半|\d\s*%/u, colour: /灰|黑|白|棕|褐|奶油|墨/u, exempt: /背景|环境|格子|宽/u },
+  'zh-TW': { share: /[一二三四五六七八九兩]成|[占佔](畫面|版面)|畫面約|畫面[^寬，；。]*(分之|%)|其餘大半|\d\s*%/u, colour: /灰|黑|白|棕|褐|奶油|墨/u, exempt: /背景|環境|格子|寬/u },
+  ja: { share: /[一二三四五六七八九]割(?!れ)|(画面|紙面)[^幅。、]*(分の|大半)|残りの大半|\d\s*%/u, colour: /グレー|灰|黒|白|セピア|茶|クリーム|インク/u, exempt: /背景|マス|幅/u },
+  ko: { share: /(화면|지면)[^폭.]*(분의|대부분)|\d\s*%/u, colour: /회색|검|흰|흑|세피아|갈색|은색|크림|잉크/u, exempt: /배경|칸|폭/u },
+};
+
+/**
+ * Ways, in each locale, a subject-keeps-colour sentence would print the subject in a single colour or only where
+ * black would go, which takes back the colours the same sentence keeps.
+ */
+const SUBJECT_COLOUR_LIMIT: Record<string, RegExp> = {
+  en: /\b(one|a single) (flat )?colou?r\b|\bspot plate\b|\bown plate\b|where black would go/iu,
+  'zh-CN': /一块[^，；。]*色版|专色版|取代原本的黑块/u,
+  'zh-TW': /一塊[^，；。]*色版|特別色版|取代原本的黑塊/u,
+  ja: /一枚の[^、。]*色版|(自分|専用)の(特)?色版|黒ベタの代わり/u,
+  ko: /한 장의[^,.]*색판|자기(만의)?\s*(별색\s*)?(색)?판|검정 면 대신/u,
 };
 
 /** What English still words ask for when they put lettering in the picture. */
@@ -381,12 +396,31 @@ describe('template style words', () => {
         const still = words.get(`canvas.template.styleSet.film-styles.style.${style}.still`) ?? '';
         for (const sentence of still.split(/(?<=[.;。；])\s*/u)) {
           const share = COLOUR_SHARE[locale];
-          const givesColourAShare = share !== undefined && share.share.test(sentence) && share.colour.test(sentence) && !share.background.test(sentence);
+          const givesColourAShare = share !== undefined && share.share.test(sentence) && share.colour.test(sentence) && !share.exempt.test(sentence);
           if ((rule.absolute.test(sentence) || givesColourAShare) && !sentence.includes(rule.subject)) overruling.push(`${locale} ${style}: ${sentence}`);
         }
       }
     }
     expect(overruling).toEqual([]);
+  });
+
+  it('lets the subject keep all its own colours wherever it is coloured', () => {
+    const limited: string[] = [];
+    for (const locale of LOCALES) {
+      const words = styleWords(locale);
+      const opening = SUBJECT_COLOUR_SENTENCE[locale] ?? '\u0000';
+      for (const style of SUBJECT_KEEPS_COLOUR) {
+        const still = words.get(`canvas.template.styleSet.film-styles.style.${style}.still`) ?? '';
+        const sentence = still.slice(still.indexOf(opening)).split(/(?<=[.。])\s*/u)[0] ?? '';
+        const hit = SUBJECT_COLOUR_LIMIT[locale]?.exec(sentence);
+        if (hit) limited.push(`${locale} ${style}: ${hit[0]}`);
+      }
+    }
+    expect(limited).toEqual([]);
+  });
+
+  it('labels every Japanese avoid list the same way', () => {
+    expect([...styleWords('ja')].filter(([, text]) => text.includes('避ける：')).map(([key]) => key)).toEqual([]);
   });
 
   it('names no person, work, publication, company, brand or trademark in the styles or their templates', () => {
