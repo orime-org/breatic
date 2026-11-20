@@ -233,7 +233,8 @@
       "storage_full": {
         "subject": "Your storage is full",
         "lead": "Your storage is full, so uploads and generations were refused in <b>{studio}</b>. Storage is counted across every studio you administer, not just this one.",
-        "footer": "Raise your membership to get more room."
+        "footer": "Raise your membership to get more room.",
+        "footer_enterprise": "Your storage is set by your agreement. Contact us to change it."
       },
       "password_reset": {
         "subject": "Reset your password",
@@ -363,6 +364,10 @@
     },
     "document": {
       "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
+    },
+    "spend_cap": {
+      "member": "You've reached your monthly spend limit in this Studio ({limit, select, 1 {1 credit} other {{limit} credits}}). Contact the Studio admin if you need more.",
+      "studio": "This Studio has reached its monthly spend limit. Contact the Studio admin."
     }
   },
   "chat": {
@@ -1126,13 +1131,15 @@
     },
     "task": {
       "stillRunning": "This task is still running.",
+      "alreadyStarted": "This task has already started and cannot be cancelled.",
       "expired": "This task ran out of time.",
       "couldNotStart": "This task could not be started. Try again.",
       "status": {
         "running": "Running",
         "done": "Done",
         "failed": "Failed",
-        "expired": "Expired"
+        "expired": "Expired",
+        "waiting": "Queued"
       },
       "countTip": "{status} · {count}",
       "action": {
@@ -1170,6 +1177,7 @@
         "tool_failed": "The tool could not process this file.",
         "no_audio_track": "{kind, select, audio {This audio has no sound to read.} other {This video has no audio track.}}",
         "cut_short": "This is too long to transcribe in full.",
+        "cancelled": "Cancelled.",
         "input_refused": "{model} can’t take this run as set up. Change the settings or pick another model.",
         "model_not_configured": "{model} is not set up on this deployment: it needs {envVars}."
       },
@@ -1178,7 +1186,15 @@
         "generate": "Generate",
         "understand": "Understand",
         "transcribe": "Transcribe"
-      }
+      },
+      "waitReason": "You've reached the number of tasks you can run at once. This one starts by itself when an earlier one ends.",
+      "you": "You",
+      "cancelFailed": "That task could not be cancelled.",
+      "waitReasonLimit": "You've reached your limit of {limit, plural, one {# task} other {# tasks}} running at once. This one starts by itself when an earlier one ends.",
+      "waitReasonOther": "The person who started it has reached the number of tasks they can run at once. It starts by itself when one of theirs ends.",
+      "waitReasonOtherLimit": "The person who started it has reached their limit of {limit, plural, one {# task} other {# tasks}} running at once. It starts by itself when one of theirs ends.",
+      "waitReasonEach": "{count, plural, =1 {It starts by itself once the person who started it is running fewer tasks than their limit.} other {Each one starts by itself once the person who started it is running fewer tasks than their limit.}}",
+      "waitReasonEachLimit": "{count, plural, =1 {It starts by itself once the person who started it is running fewer than {limit, plural, one {# task} other {# tasks}}.} other {Each one starts by itself once the person who started it is running fewer than {limit, plural, one {# task} other {# tasks}}.}}"
     },
     "panel": {
       "hostDeletedByPeer": "A collaborator deleted the node."
@@ -3584,7 +3600,42 @@
         "colProject": "Project",
         "colModel": "Model",
         "colAmount": "Credits",
-        "loadError": "Could not load credits. Refresh to try again."
+        "loadError": "Could not load credits. Refresh to try again.",
+        "spendCap": {
+          "title": "Spend limits",
+          "studioMonthly": "Studio monthly total",
+          "studioMonthlyHint": "Everyone together, separate from each person’s limit",
+          "memberDefault": "Default monthly limit per person",
+          "memberDefaultHint": "Applies to everyone without a limit of their own",
+          "notSet": "Not set",
+          "perMonth": "Per month",
+          "studioSpent": "Studio spent this month",
+          "resetsAt": "Resets",
+          "saved": "Spend limits saved.",
+          "saveFailed": "The spend limits could not be saved. Try again.",
+          "invalidAmount": "Enter 0 to {max} credits, up to two decimal places.",
+          "loadError": "Could not read the spend limits.",
+          "retry": "Try again",
+          "save": "Save",
+          "colMember": "Member",
+          "colRelation": "Relation",
+          "colSpent": "Spent this month",
+          "colEffective": "Limit in force",
+          "relationStudioMember": "Studio member",
+          "relationProjectCollaborator": "Project collaborator",
+          "relationFormer": "Left (read-only)",
+          "unlimited": "Unlimited",
+          "zero": "0 (no credits)",
+          "amount": "{amount, select, 1 {1 credit} other {{amount} credits}}",
+          "spentOfLimit": "{spent} / {limit, select, 1 {1 credit} other {{limit} credits}}",
+          "sourceOverride": "Own",
+          "sourceDefault": "Default",
+          "atCap": "At limit",
+          "override": "Set own limit…",
+          "useDefault": "Use the default ({fallback})",
+          "overrideTitle": "Own limit · {name}",
+          "overrideHint": "Applies to this person only, over the default (now {fallback})."
+        }
       },
       "members": {
         "invite": "Invite member",
@@ -3940,7 +3991,8 @@
       "projectsPerStudio": "Projects per Studio",
       "studioMembers": "Members per Studio",
       "projectMembers": "Members per Project",
-      "concurrentEditors": "Simultaneous connections per document"
+      "concurrentEditors": "Simultaneous connections per document",
+      "runningTasksPerUser": "Tasks running at once"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count}",
@@ -3949,9 +4001,10 @@
     "overLimitTag": "over",
     "overLimit": {
       "storage": "Storage is over the limit. What is already there works as before, but nothing new can be uploaded or generated. Upgrade for more space.",
+      "storageEnterprise": "Storage is over your agreement. What is already there works as before, but nothing new can be uploaded or generated. Contact us to change it.",
       "teamStudios": "You are over the team Studio limit. The ones you have work as before, but no new ones can be created. Upgrade for more."
     },
-    "enterpriseQuota": "Your allowances are set by a separate agreement and are not shown here.",
+    "enterpriseQuota": "Your other allowances are set by a separate agreement and are not shown here.",
     "compare": "Compare tiers",
     "contactEnterprise": "Need a bigger scale or separate commercial terms? Email us:",
     "contactSelfHosted": "Need a commercial licence or separate support terms? Email us:",
@@ -4011,7 +4064,8 @@
       "added": "Added. Choose a membership to get {percent}% off the first period.",
       "loadFailed": "Couldn't load referral information.",
       "retry": "Retry"
-    }
+    },
+    "quotaUnlimited": "{used} / Unlimited"
   },
   "promoter": {
     "heading": "Promoter program",
@@ -4096,7 +4150,7 @@
       "refunded": "Refunded"
     },
     "billingOff": {
-      "title": "This deployment does not charge credits",
+      "title": "A self-hosted deployment does not charge credits",
       "body": "Generating costs nothing and there is nothing to buy. What gets used is still recorded."
     },
     "total": "Account total",
@@ -4121,7 +4175,7 @@
     "allStudios": "All Studios",
     "filterByStudio": "Filter by Studio",
     "ledgerEmpty": "Nothing spent yet.",
-    "ledgerBillingOff": "This deployment does not charge credits. Below is what was used.",
+    "ledgerBillingOff": "A self-hosted deployment does not charge credits. Below is what was used.",
     "colDay": "Date",
     "colWho": "Who",
     "colStudio": "Studio",
@@ -4204,7 +4258,14 @@
       "compensation": "Compensation",
       "enterprise": "Business purchase"
     },
-    "contractReference": "Contract {contract}"
+    "contractReference": "Contract {contract}",
+    "refusal": {
+      "spendCap": "The monthly spend limit is reached. Contact the Studio admin."
+    },
+    "spendCap": {
+      "member": "You've reached your monthly spend limit in this Studio ({limit, select, 1 {1 credit} other {{limit} credits}}). It resets on {date}. Contact the Studio admin if you need more.",
+      "studio": "This Studio has reached its monthly spend limit. It resets on {date}. Contact the Studio admin."
+    }
   },
   "notFound": {
     "heading": "Page not found",

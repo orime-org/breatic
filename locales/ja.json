@@ -233,7 +233,8 @@
       "storage_full": {
         "subject": "ストレージがいっぱいです",
         "lead": "ストレージがいっぱいのため、<b>{studio}</b> でのアップロードと生成が拒否されました。ストレージはこの Studio だけでなく、あなたが管理するすべての Studio の合計で数えられます。",
-        "footer": "メンバーシップをアップグレードすると容量が増えます。"
+        "footer": "メンバーシップをアップグレードすると容量が増えます。",
+        "footer_enterprise": "保存容量は契約で定められています。変更はお問い合わせください。"
       },
       "password_reset": {
         "subject": "パスワードのリセット",
@@ -363,6 +364,10 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {この Document のスナップショットは上限の # 件に達しています。古いスナップショットを削除してから保存してください。}}"
+    },
+    "spend_cap": {
+      "member": "このStudioでの今月の利用額が上限（{limit} クレジット）に達しました。追加が必要な場合はStudioのAdminに連絡してください。",
+      "studio": "このStudioの今月の利用額が上限に達しました。StudioのAdminに連絡してください。"
     }
   },
   "chat": {
@@ -1126,13 +1131,15 @@
     },
     "task": {
       "stillRunning": "このタスクはまだ実行中です。",
+      "alreadyStarted": "このタスクはすでに開始しているため、キャンセルできません。",
       "expired": "このタスクは時間切れになりました。",
       "couldNotStart": "このタスクを開始できませんでした。もう一度お試しください。",
       "status": {
         "running": "実行中",
         "done": "完了",
         "failed": "失敗",
-        "expired": "時間切れ"
+        "expired": "時間切れ",
+        "waiting": "待機中"
       },
       "countTip": "{status} · {count}",
       "action": {
@@ -1170,6 +1177,7 @@
         "tool_failed": "ツールでこのファイルを処理できませんでした。",
         "no_audio_track": "{kind, select, audio {この音声から音を読み取れません。} other {この動画には音声トラックがありません。}}",
         "cut_short": "長すぎて最後まで文字起こしできませんでした。",
+        "cancelled": "キャンセルしました。",
         "input_refused": "{model} は現在の設定では実行できません。設定を変えるか、別のモデルを選んでください。",
         "model_not_configured": "このデプロイでは {model} がまだ設定されていません。{envVars} の設定が必要です。"
       },
@@ -1178,7 +1186,15 @@
         "generate": "生成",
         "understand": "内容を読み取る",
         "transcribe": "文字起こし"
-      }
+      },
+      "waitReason": "同時に実行できるタスク数の上限に達しています。前のタスクが終わると自動で開始します。",
+      "you": "あなた",
+      "cancelFailed": "このタスクをキャンセルできませんでした。",
+      "waitReasonLimit": "同時に実行できるタスクの上限（{limit} 件）に達しています。前のタスクが終わると自動で開始します。",
+      "waitReasonOther": "開始した人の同時実行タスク数が上限に達しています。その人の前のタスクが終わると自動で開始します。",
+      "waitReasonOtherLimit": "開始した人の同時実行タスクが上限（{limit} 件）に達しています。その人の前のタスクが終わると自動で開始します。",
+      "waitReasonEach": "{count, plural, =1 {この待機中のタスクは、開始した人の同時実行タスク数が上限を下回ると自動で開始します。} other {待機中の各タスクは、開始した人の同時実行タスク数が上限を下回ると自動で開始します。}}",
+      "waitReasonEachLimit": "{count, plural, =1 {この待機中のタスクは、開始した人の同時実行タスクが上限（{limit} 件）を下回ると自動で開始します。} other {待機中の各タスクは、開始した人の同時実行タスクが上限（{limit} 件）を下回ると自動で開始します。}}"
     },
     "panel": {
       "hostDeletedByPeer": "コラボレーターがノードを削除しました。"
@@ -3584,7 +3600,42 @@
         "colProject": "Project",
         "colModel": "モデル",
         "colAmount": "クレジット",
-        "loadError": "クレジット情報を読み込めませんでした。ページを再読み込みしてください。"
+        "loadError": "クレジット情報を読み込めませんでした。ページを再読み込みしてください。",
+        "spendCap": {
+          "title": "利用上限",
+          "studioMonthly": "Studio の月間合計上限",
+          "studioMonthlyHint": "全員の合計。各自の上限とは別です",
+          "memberDefault": "1 人あたりの月間上限の既定値",
+          "memberDefaultHint": "個別に設定していない人に適用されます",
+          "notSet": "設定しない",
+          "perMonth": "毎月",
+          "studioSpent": "今月の Studio 利用額",
+          "resetsAt": "リセット",
+          "saved": "利用上限を保存しました。",
+          "saveFailed": "利用上限を保存できませんでした。もう一度お試しください。",
+          "invalidAmount": "0〜{max} クレジットの範囲で、小数点以下 2 桁までで入力してください。",
+          "loadError": "利用上限を読み込めませんでした。",
+          "retry": "もう一度試す",
+          "save": "保存",
+          "colMember": "メンバー",
+          "colRelation": "関係",
+          "colSpent": "今月の利用額",
+          "colEffective": "適用中の上限",
+          "relationStudioMember": "Studio メンバー",
+          "relationProjectCollaborator": "Project 協力者",
+          "relationFormer": "退出済み（閲覧のみ）",
+          "unlimited": "無制限",
+          "zero": "0（クレジット使用不可）",
+          "amount": "{amount} クレジット",
+          "spentOfLimit": "{spent} / {limit} クレジット",
+          "sourceOverride": "個別",
+          "sourceDefault": "既定",
+          "atCap": "上限到達",
+          "override": "個別に設定…",
+          "useDefault": "既定を使う（{fallback}）",
+          "overrideTitle": "個別の上限 · {name}",
+          "overrideHint": "この人にだけ適用され、既定値より優先されます（現在の既定値：{fallback}）。"
+        }
       },
       "members": {
         "invite": "メンバーを招待",
@@ -3940,7 +3991,8 @@
       "projectsPerStudio": "Studio ごとの Project 上限",
       "studioMembers": "Studio ごとのメンバー上限",
       "projectMembers": "Project ごとのメンバー上限",
-      "concurrentEditors": "1 Document の同時編集数"
+      "concurrentEditors": "1 Document の同時編集数",
+      "runningTasksPerUser": "同時に実行できるタスク数"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count} 件",
@@ -3949,9 +4001,10 @@
     "overLimitTag": "超過",
     "overLimit": {
       "storage": "ストレージが上限を超えています。既存のコンテンツはそのまま使えますが、新しいアップロードと生成はできません。容量を増やすにはアップグレードしてください。",
+      "storageEnterprise": "保存容量が契約の上限を超えています。既存の内容はそのまま使えますが、新しいアップロードや生成はできません。変更はお問い合わせください。",
       "teamStudios": "チーム Studio の数が上限を超えています。既存のものはこれまでどおり使えますが、新しくは作成できません。必要な場合はアップグレードしてください。"
     },
-    "enterpriseQuota": "利用上限は個別契約で定められているため、ここには表示されません。",
+    "enterpriseQuota": "その他の利用上限は個別契約で定められているため、ここには表示されません。",
     "compare": "プラン比較",
     "contactEnterprise": "より大きな規模や個別の商用条件が必要ですか。メールでご相談ください:",
     "contactSelfHosted": "商用ライセンスや個別のサポート条件が必要ですか。メールでご相談ください:",
@@ -4011,7 +4064,8 @@
       "added": "登録しました。メンバーシップを選ぶと最初の期間が {percent}% 割引になります。",
       "loadFailed": "紹介情報を読み込めませんでした。",
       "retry": "再試行"
-    }
+    },
+    "quotaUnlimited": "{used} / 無制限"
   },
   "promoter": {
     "heading": "プロモータープログラム",
@@ -4096,7 +4150,7 @@
       "refunded": "返金済み"
     },
     "billingOff": {
-      "title": "この環境ではクレジットを消費しません",
+      "title": "セルフホストではクレジットを消費しません",
       "body": "生成しても差し引かれず、購入も不要です。使用量は記録されます。"
     },
     "total": "アカウント合計",
@@ -4121,7 +4175,7 @@
     "allStudios": "すべての Studio",
     "filterByStudio": "Studio で絞り込む",
     "ledgerEmpty": "消費の記録はまだありません。",
-    "ledgerBillingOff": "この環境ではクレジットを消費しません。以下は使用量の記録です。",
+    "ledgerBillingOff": "セルフホストではクレジットを消費しません。以下は使用量の記録です。",
     "colDay": "日付",
     "colWho": "使った人",
     "colStudio": "Studio",
@@ -4204,7 +4258,14 @@
       "compensation": "補償",
       "enterprise": "法人購入"
     },
-    "contractReference": "契約 {contract}"
+    "contractReference": "契約 {contract}",
+    "refusal": {
+      "spendCap": "今月の利用額が上限に達しました。StudioのAdminに連絡してください。"
+    },
+    "spendCap": {
+      "member": "このStudioでの今月の利用額が上限（{limit} クレジット）に達しました。{date} にリセットされます。追加が必要な場合はStudioのAdminに連絡してください。",
+      "studio": "このStudioの今月の利用額が上限に達しました。{date} にリセットされます。StudioのAdminに連絡してください。"
+    }
   },
   "notFound": {
     "heading": "ページが見つかりません",

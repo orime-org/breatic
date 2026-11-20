@@ -18,6 +18,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
 import { creditSourceText } from '@web/features/credits/credit-source-label';
+import { SpendCapsSection } from '@web/pages/studio/container/tabs/SpendCapsSection';
 
 interface CreditsTabProps {
   /** The studio being viewed. */
@@ -353,6 +354,8 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
           </ul>
         )}
       </section>
+
+      <SpendCapsSection slug={slug} />
 
       <section className='rounded-content-md border border-border p-4'>
         <h3 className='mb-3 text-sm font-semibold'>

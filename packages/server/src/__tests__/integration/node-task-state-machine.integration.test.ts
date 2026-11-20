@@ -127,12 +127,13 @@ describe("a machine reporting a fact", () => {
   it("moves a running row to done and shows up in the counts", async () => {
     const { taskId, nodeId } = await openTask();
     const before = await nodeTaskService.countsFor({ projectId, nodeId });
-    expect(before).toEqual({ running: 1, done: 0, failed: 0, expired: 0 });
+    expect(before).toEqual({ running: 1, waiting: 0, done: 0, failed: 0, expired: 0 });
 
     const settled = await nodeTaskService.settle({ taskId, outcome: "done" });
     expect(settled.applied).toBe(true);
     expect(settled.counts).toEqual({
       running: 0,
+      waiting: 0,
       done: 1,
       failed: 0,
       expired: 0,
@@ -241,6 +242,7 @@ describe("a user asking for an action", () => {
     expect(gone.removed).toBe(true);
     expect(gone.counts).toEqual({
       running: 0,
+      waiting: 0,
       done: 0,
       failed: 0,
       expired: 0,
@@ -250,7 +252,7 @@ describe("a user asking for an action", () => {
     // The row stays; only the user's view of it goes away.
     expect(row?.deleted_at).not.toBeNull();
     const stillThere = await nodeTaskService.countsFor({ projectId, nodeId });
-    expect(stillThere).toEqual({ running: 0, done: 0, failed: 0, expired: 0 });
+    expect(stillThere).toEqual({ running: 0, waiting: 0, done: 0, failed: 0, expired: 0 });
   });
 
   it("carries on when the row it names is not there", async () => {

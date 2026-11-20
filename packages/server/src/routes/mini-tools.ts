@@ -4,11 +4,14 @@
 /**
  * `POST /mini-tools` — the one entry every server-run mini-tool shares
  * (inner#888 §6.1). The body is validated against the registry, the run is
- * prepared, and the result nodes' rows open before the credit gate so a
- * refusal has somewhere to be said. Browser tools never come here: their
+ * prepared, and its estimate is held before the task row and the result
+ * nodes' rows are written, so a refusal by credits or a spend limit answers
+ * 402 and leaves nothing on the nodes (inner#1968). Browser tools never come
+ * here: their
  * export uploads like any other file.
  */
 
+import { randomUUID } from "node:crypto";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { currentConsent, defaultJobOpts, validate } from "@breatic/core";
@@ -22,7 +25,7 @@ import { runOnce } from "@server/middleware/run-once.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { projectService } from "@server/modules";
 import { prepareRun } from "@server/modules/mini-tool/mini-tool.service.js";
-import { startRowedRun } from "@server/modules/task/generation-task.js";
+import { holdRowedRun, startRowedRun } from "@server/modules/task/generation-task.js";
 
 const miniTools = new Hono<{ Variables: AuthVariables }>();
 
@@ -33,9 +36,9 @@ miniTools.use("*", requireAuth);
  * Run one mini-tool onto the result nodes the browser built.
  * @param c - Hono context with the validated request.
  * @returns `201` with `{ task_id, status }` — `"pending"` once queued,
- * `"failed"` when the run was refused after its rows opened (the rows hold
+ * `"failed"` when it failed after its rows opened (the rows hold
  * the cause).
- * @throws {AppError} The refusal itself, when no row was opened to carry it.
+ * @throws {AppError} 402 when credits or a spend limit refuse it, before any row opens; any other failure before a row opened.
  */
 miniTools.post(
   "/",
@@ -52,16 +55,16 @@ miniTools.post(
   const run = await prepareRun(spec, body);
 
   const taskType = outputTemplateOf(spec).modality;
-  const task = await admitGeneration(
-    user.id,
-    body.project_id,
-    body.space_id,
-    taskType,
-    "append",
-    run.params,
-    run.model,
-    "mini_tool",
-  );
+  // Its estimate is held under the id its task takes before any row opens,
+  // so a refusal leaves nothing on the nodes (inner#1968).
+  const taskId = randomUUID();
+  const task = await holdRowedRun({
+    taskId,
+    projectId: body.project_id,
+    userId: user.id,
+    credits: () => Promise.resolve(run.credits),
+    create: () => admitGeneration(user.id, body.project_id, body.space_id, taskType, "append", run.params, run.model, "mini_tool", taskId),
+  });
 
   const status = await startRowedRun({
     taskId: task.id,
@@ -71,7 +74,6 @@ miniTools.post(
     userId: user.id,
     action: "mini_tool",
     label: spec.id,
-    credits: () => Promise.resolve(run.credits),
     enqueue: () =>
       tasksQueue().add(
         "execute-mini-tool",

@@ -9,7 +9,7 @@
  * which replays the run's resumable stream (inner#1717).
  */
 
-import { accountActivityRepo, reportCollaboratorFirstAction, holdsOnlyStorableText, validate, AppError, getRedis, logger, getAgentConfig, NotFoundError, ValidationError } from "@breatic/core";
+import { accountActivityRepo, reportCollaboratorFirstAction, holdsOnlyStorableText, validate, AppError, getRedis, logger, getAgentConfig, NotFoundError, SpendCapReachedError, ValidationError } from "@breatic/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { randomUUID } from "node:crypto";
@@ -388,9 +388,14 @@ chat.post(
         await precheckCredits(projectId, user.id, SMALLEST_CREDIT);
       } catch (err) {
         if (!(err instanceof AppError) || err.statusCode !== 402) throw err;
-        return c.json({
-          data: { pending: pendingOf(await queue.pending(conversation.id)), running: false, awaiting: false, blocked: "credits", next_sync_ms },
-        });
+        const pending = pendingOf(await queue.pending(conversation.id));
+        // A spend limit is lifted by the Studio's admin, not by adding credits (inner#1968).
+        if (err instanceof SpendCapReachedError) {
+          return c.json({
+            data: { pending, running: false, awaiting: false, blocked: "spend_cap", scope: err.scope, limit: err.limit, resetsAt: err.resetsAt, next_sync_ms },
+          });
+        }
+        return c.json({ data: { pending, running: false, awaiting: false, blocked: "credits", next_sync_ms } });
       }
       const claimed = await queue.claim(conversation.id);
       if (claimed.status === "start") {

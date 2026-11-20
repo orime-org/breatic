@@ -15,7 +15,7 @@ interface TierComparisonProps {
 }
 
 /**
- * The priced tiers' six ceilings side by side.
+ * The priced tiers' ceilings side by side.
  *
  * A real `<table>` rather than a grid of divs: the numbers are a table, and
  * one that says so can be read down a column by anything that reads tables.
@@ -81,7 +81,7 @@ interface ComparisonRow {
   cell: (offer: TierOffer) => string;
 }
 
-/** The six ceilings, in the order the table lists them. */
+/** The seven figures (six ceilings and the tasks one person runs at once), in the order the table lists them. */
 const ROWS: readonly ComparisonRow[] = [
   { key: 'teamStudios', label: 'membership.quota.teamStudios', cell: (offer) => String(offer.limits.team_studios) },
   { key: 'projectsPerStudio', label: 'membership.quota.projectsPerStudio', cell: (offer) => String(offer.limits.projects_per_studio) },
@@ -89,6 +89,7 @@ const ROWS: readonly ComparisonRow[] = [
   { key: 'projectMembers', label: 'membership.quota.projectMembers', cell: (offer) => String(offer.limits.project_members) },
   { key: 'concurrentEditors', label: 'membership.quota.concurrentEditors', cell: (offer) => String(offer.limits.concurrent_editors) },
   { key: 'storage', label: 'membership.quota.storage', cell: (offer) => formatBytes(offer.limits.storage_bytes) },
+  { key: 'runningTasksPerUser', label: 'membership.quota.runningTasksPerUser', cell: (offer) => String(offer.limits.running_tasks_per_user) },
 ];
 
 /**

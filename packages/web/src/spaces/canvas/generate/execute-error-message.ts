@@ -11,6 +11,7 @@
 
 import { assetsApi, requestBodyLimitOf } from '@web/data/api/assets';
 import { ApiException } from '@web/data/api/types';
+import { refusalSentence } from '@web/data/api/server-message';
 import { formatBytes } from '@web/lib/format-bytes';
 
 /** The translate function, with ICU values. */
@@ -39,15 +40,17 @@ export async function tooLargeMessage(): Promise<{ key: string; params?: { limit
 }
 
 /**
- * Maps a failed execute request to a user-facing message. Credits, full
- * storage, an outage and a request over the body limit are the meaningful
- * task-create failures.
- * @param status - The HTTP status, or undefined for a non-API error.
+ * Maps a failed execute request to a user-facing message. A refusal at a
+ * spend limit (inner#1968) is read off the refusal's reason first; then credits, full storage, an outage and a request
+ * over the body limit are the meaningful task-create failures.
+ * @param err - What the request rejected with.
  * @param translate - The i18n translate function.
  * @returns A localized error message.
  */
-export async function executeErrorMessage(status: number | undefined, translate: Translate): Promise<string> {
-  switch (status) {
+export async function executeErrorMessage(err: unknown, translate: Translate): Promise<string> {
+  const refused = refusalSentence(err);
+  if (refused !== null) return refused;
+  switch (err instanceof ApiException ? err.status : undefined) {
     case 402:
       return translate('canvas.generatePanel.errorCredits');
     case 413: {
@@ -65,12 +68,12 @@ export async function executeErrorMessage(status: number | undefined, translate:
 
 /**
  * Maps any failed execute press to what the user reads: the sentence our server refused it with (a 422 names the
- * rule, the limit or the slot, in the user's language), else {@link executeErrorMessage} by status.
+ * rule, the limit or the slot, in the user's language), else {@link executeErrorMessage}.
  * @param err - What the request threw.
  * @param translate - The i18n translate function.
  * @returns A localized error message.
  */
 export async function executeFailureMessage(err: unknown, translate: Translate): Promise<string> {
   if (err instanceof ApiException && err.status === 422 && err.fromServer) return err.message;
-  return executeErrorMessage(err instanceof ApiException ? err.status : undefined, translate);
+  return executeErrorMessage(err, translate);
 }

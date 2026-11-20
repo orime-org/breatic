@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
+import type { TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
 
 /**
  * Canvas zoom at and above which screen-anchored overlays keep a constant
@@ -58,9 +58,13 @@ const COUNTS_COLUMN_WIDTH =
 
 /**
  * The counts column, top to bottom. The order is the task's own lifecycle:
- * what is happening now, then the three ways it can end.
+ * what is happening now and what waits to (inner#1968), then the three ways
+ * it can end.
  */
-export const TASK_COUNT_ORDER: readonly TaskStatus[] = ['running', 'done', 'failed', 'expired'];
+export const TASK_COUNT_CELLS: readonly TaskListKind[] = ['running', 'waiting', 'done', 'failed', 'expired'];
+
+/** Cells the column can stack. */
+const COUNTS_CELLS = TASK_COUNT_CELLS.length;
 
 /** The screen gap between two cells of the column (`gap-1`). */
 const COUNTS_CELL_GAP = 4;
@@ -86,7 +90,7 @@ export const COUNTS_COLUMN_FLOW_REACH = (COUNTS_COLUMN_GAP + COUNTS_COLUMN_WIDTH
  * counter-scale floor.
  */
 export const COUNTS_COLUMN_FLOW_DEPTH =
-  (TASK_COUNT_ORDER.length * COUNTS_COLUMN_WIDTH + (TASK_COUNT_ORDER.length - 1) * COUNTS_CELL_GAP) /
+  (COUNTS_CELLS * COUNTS_COLUMN_WIDTH + (COUNTS_CELLS - 1) * COUNTS_CELL_GAP) /
   OVERLAY_SCALE_FLOOR_ZOOM;
 
 /** Gap the user sees between the column and whatever is anchored past it. */

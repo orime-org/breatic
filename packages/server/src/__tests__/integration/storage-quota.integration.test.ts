@@ -2,22 +2,33 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * 存储配额闸门（#89，会员块五）—— real-PG 集成。
+ * The storage quota gate (#89, membership block five), against real Postgres.
  *
- * 判据只有一条：该 studio 的 admin 的档位存储上限，减去那个 admin 的账号总
- * 用量，剩下的大于 0 就放行。不看这一次要写多大，不冻结、不预留 —— 所以存储
- * 会超限，那是拍过板的接受结果。
+ * One rule decides it: the storage ceiling of the studio admin's tier, less
+ * that admin's usage across their whole account; anything left above zero
+ * lets the write through. The size of this write is not looked at and nothing
+ * is held or reserved, so storage can run past the ceiling, an outcome that
+ * was decided and accepted.
  *
- * 这里钉的四件事，每一条都对应一种「写起来很自然、但判错了对象」的实现：
+ * Four things are pinned here, each one an implementation that reads
+ * naturally but judges the wrong thing:
  *
- *   1. 判的是 admin，不是操作者。团队里 editor 上传时字节进团队池，判的是
- *      admin 的账号总量 —— editor 自己的个人 studio 装得多满都不算数。
- *   2. 用量是账号跨 studio 求和，不是这一个 studio 的字节。只数当前这个
- *      studio 的实现，在「admin 的个人 studio 快满、要写的团队 studio 是空
- *      的」这个场景下会放行，而账号早就满了。
- *   3. 上限经 honouredTier。欠费超过宽限窗口的 pro 账号按 base 判，不然
- *      别的上限按 base、存储按 pro，同一个账号两套标准。
- *   4. 企业档放行，且 limitBytes 是 null —— 不是编一个数，也不是 500。
+ *   1. The admin is judged, not whoever acts. When an editor uploads into a
+ *      team studio the bytes go to the team's pool and the admin's account
+ *      total is what counts; however full the editor's own studio is does not.
+ *   2. Usage is summed across the account's studios, not this one studio's
+ *      bytes. Counting only the current studio lets a write through when the
+ *      admin's personal studio is nearly full and the team studio is empty,
+ *      although the account is long full.
+ *   3. The ceiling comes from the membership reading's effective tier
+ *      (resolveMembershipReading). A pro account past its grace window is
+ *      judged as base, otherwise storage would be judged as pro and every
+ *      other ceiling as base: two standards for one account.
+ *   4. An enterprise account with no saved agreement passes, and
+ *      getStudioStorageQuota answers storageBytes: null, neither an invented
+ *      number nor a 500. An active agreement's
+ *      storage_bytes caps it, and an expired one is judged on its fallback
+ *      tier (enterprise-agreement-terms).
  */
 
 import {
@@ -366,9 +377,10 @@ describe("assertStorageAllowance", () => {
     });
   });
 
-  it("does not measure an account it has no ceiling to compare against", async () => {
-    // 企业档没有可比的上限，那次跨 studio 的求和就没人会读 —— 早返回排在它
-    // 之前。把顺序换回去这条会红（那次求和会真的发生）。
+  it("does not measure an account it has no ceiling to compare against (enterprise without an agreement)", async () => {
+    // An enterprise account with no agreement has no ceiling to compare with,
+    // so nobody would read the cross-studio sum: the early return comes before
+    // it. Swapping the order back turns this red (the sum would really run).
     const { userId, personalStudioId } = await insertUser("enterprise");
     const projectId = await insertProject(personalStudioId, userId);
     const before = usageCalls.length;
@@ -378,10 +390,11 @@ describe("assertStorageAllowance", () => {
     expect(usageCalls.length).toBe(before);
   });
 
-  it("lets the enterprise tier through however much it holds", async () => {
-    // 同样的用量在任何一个配置了上限的档位上都会被拒。「上限是 null 而不是
-    // 编出来的数」由 membership-tier-lookup 那套直接钉在 getStudioStorageQuota
-    // 上，这里钉的是产品规则本身：企业档放行。
+  it("lets the enterprise tier without an agreement through however much it holds", async () => {
+    // The same usage is refused on every tier with a configured ceiling. That
+    // the ceiling is null rather than an invented number is pinned on
+    // getStudioStorageQuota by membership-tier-lookup; this pins the product
+    // rule itself: with no agreement, enterprise passes.
     const { userId, personalStudioId } = await insertUser("enterprise");
     const projectId = await insertProject(personalStudioId, userId);
     await seedAsset(personalStudioId, userId, PRO_STORAGE * 10);
@@ -441,6 +454,26 @@ describe("assertStorageAllowance — telling the admin", () => {
       WHERE user_id = ${userId} AND type = 'storage.quota_exceeded'
     `;
   }
+
+  // inner#1968: an active agreement caps storage, and its admin has no upgrade
+  // to buy, so the mail ends on the agreement's sentence.
+  it("ends the mail on the agreement for an admin whose enterprise agreement is full", async () => {
+    const { userId, personalStudioId } = await insertUser("enterprise");
+    await sql`
+      INSERT INTO enterprise_memberships (user_id, expires_at, entry_timezone, contract_number, team_studios, projects_per_studio,
+        concurrent_editors, studio_members, project_members, storage_bytes, fallback_tier, revision, running_tasks_per_user)
+      VALUES (${userId}, now() + interval '30 days', 'UTC', 'TEST-SQ-1968', 8, 20, 30, 200, 80, 1024, 'base', 1, 10)
+    `;
+    const projectId = await insertProject(personalStudioId, userId);
+    await seedAsset(personalStudioId, userId, 2048);
+
+    await expect(assertStorageAllowance(projectId, "upload")).rejects.toMatchObject({ statusCode: 507 });
+
+    expect(sentMail).toHaveBeenCalledTimes(1);
+    const [mail] = sentMail.mock.calls[0] as [{ text: string }];
+    expect(mail.text).toContain("Your storage is set by your agreement. Contact us to change it.");
+    expect(mail.text).not.toContain("Raise your membership");
+  });
 
   it("puts a row in the admin's bell and sends the mail", async () => {
     const { adminUserId, adminEmail, studioId, studioName, projectId } =
