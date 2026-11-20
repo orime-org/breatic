@@ -9,10 +9,10 @@
 import { expect, type Locator, type Page } from 'playwright/test';
 
 import { dataOf } from '../helpers/api';
-import { acceptedRowId, executeInMotion, motionDetails, motionListTab, openSpaceById, shownSpaceId, waitMotionFinished } from '../helpers/motion';
+import { acceptedRowId, executeInMotion, motionDetails, motionListTab, shownSpaceId, waitMotionFinished } from '../helpers/motion';
 import { archiveProjects, openSmokeProject, smokeProjectId } from '../helpers/project';
 import { test } from '../helpers/slot';
-import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { createSpace, deleteSpace, openSpaceById, visibleSpace } from '../helpers/space';
 import { withTimelinePeer } from '../helpers/timeline-media';
 
 /** The shortest prompt whose picture visibly changes over time. */

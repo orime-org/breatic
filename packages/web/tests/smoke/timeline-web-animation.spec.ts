@@ -19,10 +19,10 @@ import type * as YjsManagerModule from '@web/data/yjs/manager';
 
 import { dataOf } from '../helpers/api';
 import { YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
-import { MOTION_RUN_MS, acceptedRowId, executeInMotion, motionDetails, motionListTab, openSpaceById, waitMotionFinished } from '../helpers/motion';
+import { MOTION_RUN_MS, acceptedRowId, executeInMotion, motionDetails, motionListTab, waitMotionFinished } from '../helpers/motion';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { test } from '../helpers/slot';
-import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { createSpace, deleteSpace, openSpaceById, visibleSpace } from '../helpers/space';
 import {
   addProjectTimelineVideo, expectTimelineStart, moveTimelineClip, openTimeline, selectTimelineClip, timelineClipIds,
   timelineVideoOf, uploadTimelineVideo, watchTimelineErrors, withTimelinePeer,

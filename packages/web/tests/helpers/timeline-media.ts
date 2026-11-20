@@ -12,7 +12,7 @@ import { dataOf } from './api';
 import { credentialsFor } from './credentials';
 import { liveModuleUrl, YJS_MANAGER } from './live-module';
 import { stateFile } from './slot';
-import { visibleSpace } from './space';
+import { openSpaceById, visibleSpace } from './space';
 import { roomForUploads } from './upload-budget';
 
 /** A real local upload and the placement created by accepting it. */
@@ -60,16 +60,7 @@ export function watchTimelineErrors(page: Page): TimelineErrors {
  * @throws {Error} When the requested Timeline cannot be opened.
  */
 export async function openTimeline(page: Page, spaceId: string): Promise<void> {
-  const tab = page.getByTestId(`space-tab-name-${spaceId}`);
-  if (await tab.count() === 0) {
-    await page.getByTestId('space-drawer-trigger').click();
-    const drawer = page.getByTestId('space-drawer');
-    await expect(drawer).toBeVisible();
-    await drawer.getByTestId(`space-drawer-row-${spaceId}`).getByRole('button', { name: /Open/ }).click();
-    await expect(drawer).toHaveCount(0);
-  } else {
-    await tab.click();
-  }
+  await openSpaceById(page, spaceId);
   await expect(visibleSpace(page).getByTestId('timeline-space')).toHaveAttribute('data-space-id', spaceId);
 }
 
