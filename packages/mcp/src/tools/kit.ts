@@ -20,6 +20,7 @@ import type { AgentCall } from "@mcp/app.js";
 import type { CommandChannel } from "@mcp/command-channel.js";
 import type { ServerApi } from "@mcp/server-api.js";
 import type { TaskTracker } from "@mcp/tools/task-tracker.js";
+import type { NewAssignments } from "@mcp/tools/new-assignments.js";
 
 /** What one call's tools run on. */
 export interface ToolDeps {
@@ -31,6 +32,8 @@ export interface ToolDeps {
   commands: CommandChannel;
   /** The tasks this connection started and has not been told about. */
   tasks: TaskTracker;
+  /** The threads newly handed to this connection. */
+  newAssignments: NewAssignments;
   /** `config/mcp.yaml`. */
   config: Readonly<McpConfig>;
   /** Log a failure the tool answers past, such as a report that did not go out. */

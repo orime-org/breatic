@@ -25,6 +25,7 @@ import { redisAnswers, serverAnswers, waitUntilReady } from "@mcp/probes.js";
 import { createServerApi } from "@mcp/server-api.js";
 import { ALL_TOOLS, INSTRUCTIONS } from "@mcp/tools/index.js";
 import { createTaskTracker } from "@mcp/tools/task-tracker.js";
+import { createNewAssignments } from "@mcp/tools/new-assignments.js";
 import { buildToolServer } from "@mcp/tools/tool-server.js";
 import { createTokenExchanger, discoverTokenEndpoint } from "@mcp/token-exchange.js";
 
@@ -119,6 +120,7 @@ async function main(): Promise<void> {
             ttlSeconds: taskListTtlSeconds,
             maxIdsPerQuery: mcpConfig.task_query_max_ids,
           }),
+          newAssignments: createNewAssignments({ redis: commandRedis, prefix: mcpEnv.REDIS_KEY_PREFIX, connectionId: call.connectionId }),
           config: mcpConfig,
           report: (err, context) => logger.error({ err, ctx: { ...context, ...who } }, "mcp_tool_background_failed"),
         },

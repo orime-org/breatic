@@ -82,6 +82,7 @@ export function stubDeps(answers: StubAnswers = {}): StubbedDeps {
       finished: vi.fn(async () => []),
       forget: vi.fn(async () => undefined),
     },
+    newAssignments: { take: vi.fn(async () => 0) },
     config: mcpConfigSchema.parse({}),
     report: (err, context) => {
       reported.push({ err, context });

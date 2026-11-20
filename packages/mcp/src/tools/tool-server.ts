@@ -66,10 +66,11 @@ function refusalBody(err: unknown): Record<string, unknown> | null {
  * @returns The reminder fields.
  */
 async function reminders(deps: ToolDeps, onError: (err: Error) => void): Promise<Record<string, unknown>> {
-  const [assignments, finished] = await Promise.allSettled([deps.api.get<unknown[]>("/agent/assignments"), deps.tasks.finished(deps.api)]);
+  const [fresh, finished] = await Promise.allSettled([deps.newAssignments.take(), deps.tasks.finished(deps.api)]);
   const out: Record<string, unknown> = {};
-  if (assignments.status === "fulfilled") out.pendingAssignments = assignments.value.length;
-  else onError(assignments.reason as Error);
+  if (fresh.status === "fulfilled") {
+    if (fresh.value > 0) out.newAssignments = fresh.value;
+  } else onError(fresh.reason as Error);
   if (finished.status === "fulfilled") {
     if (finished.value.length > 0) out.finishedTasks = finished.value.map((row) => ({ taskId: row.taskId, tool: row.tool, ...taskNodeOutcome(row) }));
   } else onError(finished.reason as Error);

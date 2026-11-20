@@ -10,9 +10,9 @@
 import type { ServerApi } from "@mcp/server-api.js";
 
 /** Fields whose value is a member's id. */
-const USER_FIELDS = new Set(["createdBy", "assignedBy", "userId"]);
+const USER_FIELDS = new Set(["createdBy", "assignedBy", "authorId", "userId"]);
 /** Fields whose value is an external-agent connection's id. */
-const AGENT_FIELDS = new Set(["via", "connectionId"]);
+const AGENT_FIELDS = new Set(["via", "connectionId", "handedTo"]);
 /** Most ids one lookup takes on either route. */
 const LOOKUP_MAX_IDS = 100;
 
