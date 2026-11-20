@@ -350,6 +350,20 @@ describe('SceneLookUploads', () => {
     expect(h.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.uploadedOverLimit' }));
   });
 
+  it('counts the model\u2019s own textures before sending, so a small picture on a model near its budget is not sent', async () => {
+    const { doc, session } = editor();
+    /** A holder whose upload runs the check before sending, as the real pipeline does. */
+    const sends = (): Harness => harness(() => session, { width: 64, height: 64, type: 'png' }, undefined,
+      async (_file, _context, _progress, _signal, beforeSend) => { await beforeSend(); return { assetId: UPLOADED }; });
+    const near = sends();
+    await near.uploads.start({ ...startFor(), ownBytes: 268_435_456 - 1024 });
+    expect(near.notify).toHaveBeenCalledWith(expect.objectContaining({ key: 'spaces.threeD.look.objectTexturesTooLarge' }));
+    expect(lookOf(doc)).toBeUndefined();
+    const room = sends();
+    await room.uploads.start({ ...startFor(), ownBytes: 0 });
+    expect(lookOf(doc)).toEqual({ 0: { map: UPLOADED } });
+  });
+
   it('names the part limit and sends nothing when the object already has a look on every part it can hold', async () => {
     const { doc, session } = editor();
     for (let part = 1; part <= 256; part += 1) applySceneCommand(doc, { type: 'look', id: ID, part: String(part), set: { opacity: 0.5 } } as never, Symbol(), true, NAME);
@@ -515,6 +529,26 @@ describe('SceneLookUploads', () => {
     expect(onRegistering).toBeUndefined();
     expect(beforeSend).toBeTypeOf('function');
     await expect((beforeSend as () => Promise<void>)()).resolves.toBeUndefined();
+  });
+
+  it('refreshes the Project pictures through the page holder once an upload is stored', async () => {
+    vi.resetModules();
+    const fresh = await import('@web/spaces/three-d/scene-look-uploads');
+    const { QueryClient } = await import('@tanstack/react-query');
+    const { projectImagesQueryKey } = await import('@web/data/api/scene');
+    const { uploadMedia: freshUpload } = await import('@web/data/upload/media-upload');
+    const client = new QueryClient();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    vi.mocked(freshUpload).mockResolvedValueOnce({ assetId: UPLOADED, url: 'https://assets.example.test/u.png' } as never);
+    const header = new Uint8Array(33);
+    header.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+    new DataView(header.buffer).setUint32(16, 64);
+    new DataView(header.buffer).setUint32(20, 64);
+    const file = Object.assign(new File([header], 'pattern.png', { type: 'image/png' }), {
+      stream: () => new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(header); controller.close(); } }),
+    });
+    await fresh.pageSceneLookUploads(client).start({ ...startFor(file), objectId: '99999999-9999-4999-8999-999999999999' });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: projectImagesQueryKey(PROJECT) });
   });
 
   it('is one holder for the page', () => {

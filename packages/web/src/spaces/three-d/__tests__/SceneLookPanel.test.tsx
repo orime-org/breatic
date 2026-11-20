@@ -58,7 +58,7 @@ const NO_DRAFTS: ReadonlyMap<string, SceneFieldDraft> = new Map<string, SceneFie
 afterEach(() => { cleanup(); cleanups.splice(0).forEach((done) => done()); sizes.clear(); caps.length = 0; vi.clearAllMocks(); });
 
 /** A panel on a scene with one figure, and its document; it can show another part or be opened again. */
-function panel(): { doc: Y.Doc; session: SceneSession; rerender: () => void; select: (part: string) => void; reopen: () => void } {
+function panel(report: typeof REPORT = REPORT): { doc: Y.Doc; session: SceneSession; rerender: () => void; select: (part: string) => void; reopen: () => void } {
   const doc = new Y.Doc();
   doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true, NAME);
@@ -70,7 +70,7 @@ function panel(): { doc: Y.Doc; session: SceneSession; rerender: () => void; sel
   let selected = '0';
   /** The panel for the object as it is now. */
   const view = (): React.JSX.Element => <QueryClientProvider client={client}>
-    <SceneLookPanel session={session} objectId={ID} look={(session.getSnapshot().objects[0] as SceneObject).look ?? {}} report={REPORT as never} projectId='p1' spaceId='s1'
+    <SceneLookPanel session={session} objectId={ID} look={(session.getSnapshot().objects[0] as SceneObject).look ?? {}} report={report as never} projectId='p1' spaceId='s1'
       limits={IMPORT_LIMITS} mutable selectedPart={selected} onSelectPart={vi.fn()} showing={NO_PICTURES} fieldDrafts={NO_DRAFTS} onFieldDraftChange={vi.fn()} />
   </QueryClientProvider>;
   let result = render(view());
@@ -121,6 +121,18 @@ describe('picking a Project picture for a part', () => {
     // The picked picture and the one already on the object are both read with the configured header cap.
     expect(caps.length).toBeGreaterThan(1);
     expect(new Set(caps)).toEqual(new Set([IMPORT_LIMITS.maxPictureHeaderBytes]));
+  });
+
+  it('counts the model\u2019s own textures, so a small picture on a model near its budget is refused', async () => {
+    const { doc } = panel({ ...REPORT, ownBytes: IMPORT_LIMITS.maxTextureBytes - 1024 });
+    sizes.set(NEW, async () => ({ width: 64, height: 64, type: 'png' }));
+    await pick('0', NEW);
+    await vi.waitFor(() => expect(toast.warning).toHaveBeenCalledTimes(1));
+    const mib = new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 });
+    const total = IMPORT_LIMITS.maxTextureBytes - 1024 + uploadBytes({ width: 64, height: 64 }, true);
+    expect(toast.warning).toHaveBeenCalledWith(t('spaces.threeD.look.objectTexturesTooLarge', {
+      actual: mib.format(Math.ceil(total / 1024 / 1024 * 10) / 10), allowed: mib.format(IMPORT_LIMITS.maxTextureBytes / 1024 / 1024) }));
+    expect(lookOf(doc)).toBeUndefined();
   });
 
   it('judges the picture against the look at the moment it is written, not the one the panel last drew', async () => {

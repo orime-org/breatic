@@ -12,11 +12,17 @@ import { MeshPhysicalMaterial, Texture, type Group, type Material, type Mesh } f
 import { httpRequest, type SceneObject } from '@breatic/shared';
 import type * as SharedModule from '@breatic/shared';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
+import * as modelResources from '@web/spaces/three-d/viewport/model-resources';
 import { loadSceneModel } from '@web/spaces/three-d/viewport/model-resources';
-import { SceneLookRuntime, type SceneLookPictures } from '@web/spaces/three-d/viewport/scene-look-runtime';
+import { SceneLookRuntime, lookReportOf, type SceneLookPictures } from '@web/spaces/three-d/viewport/scene-look-runtime';
 import type { LookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
 
 vi.mock('@breatic/shared', async (importOriginal) => ({ ...await importOriginal<typeof SharedModule>(), httpRequest: vi.fn() }));
+// Pass-through, so a case can give a model its own texture bytes.
+vi.mock('@web/spaces/three-d/viewport/model-resources', async (importOriginal) => {
+  const actual = await importOriginal<typeof modelResources>();
+  return { ...actual, lookModelOf: vi.fn(actual.lookModelOf) };
+});
 // jsdom never decodes the format probe images.
 vi.mock('@web/spaces/three-d/model-texture-format', () => ({ detectTextureFormatSupport: vi.fn(async () => ({ webp: true, avif: true })) }));
 
@@ -71,6 +77,26 @@ async function settle(): Promise<void> {
 const withLook = (look: SceneObject['look']): SceneObject => ({ ...BOX, look } as SceneObject);
 
 describe('SceneLookRuntime', () => {
+  it('counts the model\u2019s own textures in the object total, so a small picture on a model near its budget is not shown', async () => {
+    const fake = fakeCache(async () => SMALL);
+    const { runtime, root, failures } = await open(fake);
+    const actual = vi.mocked(modelResources.lookModelOf).getMockImplementation()!;
+    vi.mocked(modelResources.lookModelOf).mockImplementation((group) => {
+      const model = actual(group);
+      return model && { ...model, ownBytes: 268_435_456 - 1024 };
+    });
+    try {
+      runtime.sync({ ...BOX, look: { 0: { map: A } } } as SceneObject, root);
+      await settle();
+      expect(failures.at(-1)).toEqual({ retry: false, over: true, shown: [] });
+      expect(fake.acquire).not.toHaveBeenCalled();
+      // The panel judges a pick from the same number.
+      expect(lookReportOf(root, 8192, '#969696')?.ownBytes).toBe(268_435_456 - 1024);
+    } finally {
+      vi.mocked(modelResources.lookModelOf).mockImplementation(actual);
+    }
+  });
+
   it('recolours every visible tint of the highlight after a theme change', async () => {
     const three = await import('three');
     let colour = '#3b6fd8';

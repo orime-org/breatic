@@ -7,11 +7,12 @@
 
 import {
   BoxGeometry, BufferGeometry, Color, Float32BufferAttribute, Group, LineBasicMaterial, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial,
-  Points, PointsMaterial, Texture,
+  Points, PointsMaterial, RepeatWrapping, Texture,
 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 
 import * as looks from '@web/spaces/three-d/viewport/look-materials';
+import { uploadBytes } from '@web/spaces/three-d/model-texture-metadata';
 
 const IMAGE = '66666666-6666-4666-8666-666666666666';
 const THEME = '#5f5f5f';
@@ -54,6 +55,21 @@ const partOf = (material: unknown): string => (material as { userData: { lookPar
 const materialOf = (mesh: Mesh): MeshStandardMaterial => mesh.material as MeshStandardMaterial;
 
 describe('buildPartTable', () => {
+  it('counts the extra bytes a clamped model picture takes once it repeats, and none for one that already repeats', () => {
+    /** The part table entry of one part whose picture wraps as given. */
+    const entryWith = (repeats: boolean): { clampBytes: number } => {
+      const map = new Texture({ width: 64, height: 32 } as never);
+      if (repeats) { map.wrapS = RepeatWrapping; map.wrapT = RepeatWrapping; }
+      const material = new MeshStandardMaterial({ map });
+      material.userData.lookPart = '0';
+      const root = new Group();
+      root.add(new Mesh(new BoxGeometry(), material));
+      return exported<Build>('buildPartTable')(root, partOf, { builtin: false }).get('0') as unknown as { clampBytes: number };
+    };
+    expect(entryWith(false).clampBytes).toBe(uploadBytes({ width: 64, height: 32 }, true));
+    expect(entryWith(true).clampBytes).toBe(0);
+  });
+
   it('records each part\'s own class, values and transparency settings', () => {
     const { root } = model();
     const table = exported<Build>('buildPartTable')(root, partOf, { builtin: false });
