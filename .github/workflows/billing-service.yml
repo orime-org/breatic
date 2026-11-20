@@ -1,0 +1,40 @@
+name: Billing service
+
+# The optional private billing service builds on this repository's shared,
+# core, domain and provider packages. A pull request that changes them asks
+# the billing service's CI to build and test against its commit, which
+# reports back as the "billing service" status; a push to main asks it to
+# move to the new commit. The repository is named in the Actions variable
+# BILLING_SERVICE_REPO and the token in the secret
+# BILLING_SERVICE_DISPATCH_TOKEN; without them, and for pull requests from
+# forks, which receive no secrets, nothing is sent.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/shared/**"
+      - "packages/core/**"
+      - "packages/domain/**"
+      - "packages/provider/**"
+      - "pnpm-workspace.yaml"
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    name: Notify the billing service
+    runs-on: ubuntu-latest
+    if: vars.BILLING_SERVICE_REPO != '' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+    steps:
+      - name: Dispatch
+        env:
+          GH_TOKEN: ${{ secrets.BILLING_SERVICE_DISPATCH_TOKEN }}
+          TARGET: ${{ vars.BILLING_SERVICE_REPO }}
+          EVENT: ${{ github.event_name == 'push' && 'product-main-updated' || 'product-check' }}
+          SHA: ${{ github.event_name == 'push' && github.sha || github.event.pull_request.head.sha }}
+        run: |
+          gh api "repos/$TARGET/dispatches" \
+            -f event_type="$EVENT" \
+            -f "client_payload[sha]=$SHA" \
+            -f "client_payload[repo]=${{ github.repository }}"
