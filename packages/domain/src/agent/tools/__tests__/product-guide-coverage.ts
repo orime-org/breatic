@@ -10,6 +10,8 @@
  * screens fails the coverage test until someone decides where it belongs.
  */
 
+import { TEMPLATE_STYLE_SETS, templateStyleKey } from "@breatic/shared";
+
 /** Why a message is not in the guide. */
 export const REASONS = {
   SCREEN_READER: "Only a screen reader announces it; the guide describes the control by how it looks.",
@@ -53,8 +55,29 @@ interface Excluded {
   look?: RegExp;
 }
 
+/**
+ * Every style set's words (inner#1817): category headings and style names are the third level of the template
+ * menu, and a style's parts are the paragraph picking it writes into the prompt.
+ */
+const STYLE_SET_WORDS: Readonly<Record<string, Described>> = Object.fromEntries(
+  TEMPLATE_STYLE_SETS.flatMap((set) => [
+    ...(set.categories ?? []).map((category) => [
+      `canvas.template.styleSet.${set.id}.category.${category}`,
+      { described: /opens one more list, its styles, under headings/ },
+    ]),
+    ...set.styles.flatMap((style) => [
+      [templateStyleKey(set.id, style.id, "name"), { described: /opens one more list, its styles/ }],
+      ...set.parts.map((part) => [
+        templateStyleKey(set.id, style.id, part),
+        { described: /writes that style's description as a paragraph after the template's own words/ },
+      ]),
+    ]),
+  ]),
+);
+
 /** Every message the guide does not quote, and what the guide does with it. */
 export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
+  ...STYLE_SET_WORDS,
   "spaces.create.notAvailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.loading": { excluded: REASONS.PASSING },
   "timeline.unavailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
