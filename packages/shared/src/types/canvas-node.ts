@@ -211,8 +211,6 @@ export interface AnnotationReply {
   editedAt?: number;
   /** The external-agent connection that wrote it for its author; absent when the author typed it. */
   via?: string;
-  /** The hand-over this reply answers: the thread's `assignment.assignedAt` when it was written. */
-  answers?: number;
   /** The members this reply mentions (breatic#1488 §11.6). */
   mentions?: CommentMention[];
 }
@@ -232,21 +230,6 @@ export interface CommentMention {
   mentionedAt: number;
   /** The words inserted in the text, such as "@Alice". */
   label: string;
-}
-
-/**
- * A thread handed to one of a user's external-agent connections to answer
- * (breatic#1488): stored on the annotation's data, plain value.
- */
-export interface AnnotationAssignment {
-  /** The connection the thread is handed to. */
-  connectionId: string;
-  /** Who handed it over. */
-  assignedBy: string;
-  /** When, epoch milliseconds; a reply that answers it carries this. */
-  assignedAt: number;
-  /** The project it was handed over in; a project copy carries its source's and reads no hand-over. */
-  projectId: string;
 }
 
 // ── Content-node Generate: references + prompt ───────────
@@ -639,8 +622,6 @@ export interface CanvasNodeFields {
      * Annotation-only; `toJSON()` serializes it to this plain array.
      */
     replies?: AnnotationReply[];
-    /** Who the thread is handed to, when it is handed to an external agent. */
-    assignment?: AnnotationAssignment;
     /** The members the annotation's body mentions (breatic#1488 §11.6). */
     mentions?: CommentMention[];
 

@@ -29,7 +29,6 @@ import { writeNodeMedia, type NodeMediaFields } from '@shared/canvas/node-media.
 import { AUDIO_GENERATION_MODES, GENERATION_NODE_MODES } from '@shared/types/model-catalog.js';
 import {
   canGenerate,
-  type AnnotationAssignment,
   type AnnotationReply,
   type CanvasNodeFields,
   type CommentMention,
@@ -397,7 +396,6 @@ export function addReplyInDoc(doc: Y.Doc, nodeId: string, reply: AnnotationReply
   map.set('createdBy', reply.createdBy);
   map.set('createdAt', reply.createdAt);
   if (reply.via !== undefined) map.set('via', reply.via);
-  if (reply.answers !== undefined) map.set('answers', reply.answers);
   writeMentions(map, reply.mentions);
   replies.push([map]);
   return true;
@@ -451,21 +449,6 @@ export function editReplyInDoc(
   reply.set('content', content);
   reply.set('editedAt', editedAt);
   writeMentions(reply, mentions);
-  return true;
-}
-
-/**
- * Hand a thread to an external agent, or take it back (#1488 §11.7).
- * @param doc - The canvas document.
- * @param nodeId - Id of the annotation.
- * @param assignment - Who it is handed to; null removes the hand-over.
- * @returns Whether it was written; false when the annotation is gone.
- */
-export function setAnnotationAssignmentInDoc(doc: Y.Doc, nodeId: string, assignment: AnnotationAssignment | null): boolean {
-  const data = annotationEditTarget(doc, nodeId, null);
-  if (!data) return false;
-  if (assignment === null) data.delete('assignment');
-  else data.set('assignment', { ...assignment });
   return true;
 }
 

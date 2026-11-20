@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The members a Space document's comments mention and the threads handed to
- * external agents (breatic#1488 §11.6, §11.7), read from the document's
- * bytes. Collab syncs its `comment_mentions` and `comment_assignments` rows
- * from these after each store, and the browser reads the same way.
+ * The members a Space document's comments mention and whether a thread is
+ * still there (breatic#1488 §11.6, §11.7, §11.9). Collab reads these from
+ * the document it holds when it handles a comment request or an external
+ * agent's command.
  *
  * Collaborative data, so every field is read as untrusted.
  */
@@ -26,32 +26,17 @@ export interface CommentMentionRecord {
   mentionedAt: number;
 }
 
-/** Where a thread handed to an external agent stands. */
-export type CommentAssignmentStatus = "pending" | "answered" | "resolved";
-
-/** One thread handed to an external-agent connection. */
-export interface CommentAssignmentRecord {
-  threadId: string;
-  connectionId: string;
-  assignedBy: string;
-  assignedAt: number;
-  status: CommentAssignmentStatus;
-}
-
 /** One entry as both readers see it, whatever the Space kind. */
 interface Entry {
   id: string;
   authorId: string;
   mentions: unknown;
-  via: unknown;
-  answers: unknown;
 }
 
 /** One thread as both readers see it. */
 interface Thread {
   id: string;
   entries: Entry[];
-  assignment: unknown;
   resolved: boolean;
 }
 
@@ -87,15 +72,15 @@ function canvasThreads(doc: Y.Doc): Thread[] {
     if (!(node instanceof Y.Map) || node.get("type") !== "annotation") return;
     const data = fields(node.get("data"));
     if (!data) return;
-    const body: Entry = { id, authorId: String(data.createdBy ?? ""), mentions: data.mentions, via: undefined, answers: undefined };
+    const body: Entry = { id, authorId: String(data.createdBy ?? ""), mentions: data.mentions };
     const replies = Array.isArray(data.replies) ? data.replies : [];
     const entries = replies.flatMap((raw): Entry[] => {
       const reply = record(raw);
       return reply && typeof reply.id === "string"
-        ? [{ id: reply.id, authorId: String(reply.createdBy ?? ""), mentions: reply.mentions, via: reply.via, answers: reply.answers }]
+        ? [{ id: reply.id, authorId: String(reply.createdBy ?? ""), mentions: reply.mentions }]
         : [];
     });
-    threads.push({ id, entries: [body, ...entries], assignment: data.assignment, resolved: false });
+    threads.push({ id, entries: [body, ...entries], resolved: false });
   });
   return threads;
 }
@@ -144,9 +129,9 @@ function documentThreads(doc: Y.Doc): Thread[] {
       const comment = fields(raw);
       if (!comment || typeof comment.id !== "string" || comment.deletedAt !== undefined) return [];
       const metadata = record(comment.metadata) ?? {};
-      return [{ id: comment.id, authorId: String(comment.userId ?? ""), mentions: metadata.mentions, via: metadata.via, answers: metadata.answers }];
+      return [{ id: comment.id, authorId: String(comment.userId ?? ""), mentions: metadata.mentions }];
     });
-    threads.push({ id, entries, assignment: record(value.get("metadata"))?.assignment, resolved: value.get("resolved") === true });
+    threads.push({ id, entries, resolved: value.get("resolved") === true });
   });
   return threads;
 }
@@ -185,25 +170,21 @@ export function readCommentMentions(kind: CommentSpaceKind, doc: Y.Doc, projectI
   return out;
 }
 
+/** Whether a thread is there to work on: open, resolved (documents only) or gone. */
+export type CommentThreadState = "open" | "resolved" | "gone";
+
 /**
- * Every thread of a Space document handed to an external agent in this
- * project, and where it stands: answered once a reply written through that
- * connection answers this hand-over, resolved once a document thread is
- * resolved, pending otherwise. A hand-over given in another project, as a
- * project copy carries, is not read.
+ * Whether one thread is still in a Space document: a canvas annotation that
+ * is there, or a document thread whose words are still marked, resolved or
+ * not. A thread whose words were deleted reads as gone, as the comment panel
+ * hides it.
  * @param kind - The Space kind.
  * @param doc - Its document.
- * @param projectId - The project the document belongs to.
- * @returns The hand-overs.
+ * @param threadId - The thread.
+ * @returns Its state.
  */
-export function readCommentAssignments(kind: CommentSpaceKind, doc: Y.Doc, projectId: string): CommentAssignmentRecord[] {
-  const out: CommentAssignmentRecord[] = [];
-  for (const thread of threadsOf(kind, doc)) {
-    const a = record(thread.assignment);
-    if (!a || a.projectId !== projectId || typeof a.connectionId !== "string" || typeof a.assignedBy !== "string" || typeof a.assignedAt !== "number") continue;
-    const { connectionId, assignedBy, assignedAt } = a;
-    const answered = thread.entries.some((e) => e.via === connectionId && e.answers === assignedAt);
-    out.push({ threadId: thread.id, connectionId, assignedBy, assignedAt, status: answered ? "answered" : thread.resolved ? "resolved" : "pending" });
-  }
-  return out;
+export function readThreadState(kind: CommentSpaceKind, doc: Y.Doc, threadId: string): CommentThreadState {
+  const thread = threadsOf(kind, doc).find((t) => t.id === threadId);
+  if (thread === undefined) return "gone";
+  return thread.resolved ? "resolved" : "open";
 }

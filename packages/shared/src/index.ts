@@ -78,7 +78,6 @@ export type {
   NodeType,
   AttachRef,
   FocusImage,
-  AnnotationAssignment,
   CommentMention,
   AnnotationReply,
   CanvasNodeFields,
@@ -485,6 +484,21 @@ export {
   SyncConfirmedResponseSchema,
 } from "@shared/sync-receipt.js";
 export type { SyncConfirmRequest, SyncConfirmedResponse } from "@shared/sync-receipt.js";
+export {
+  CommentRequestErrorCodeSchema,
+  CommentRequestSchema,
+  CommentResponseSchema,
+  NOTIFICATIONS_CHANGED_SIGNAL,
+  notificationsChangedChannel,
+  NotificationsChangedSignalSchema,
+} from "@shared/comment-requests.js";
+export type {
+  CommentRequest,
+  CommentRequestErrorCode,
+  CommentResponse,
+  NotificationsChangedControlEvent,
+  NotificationsChangedSignal,
+} from "@shared/comment-requests.js";
 
 export { REQUEST_SHAPE_PARAMS, REQUEST_SHAPE_REASON } from "@shared/api/error-reason.js";
 export {
@@ -653,6 +667,7 @@ export {
   mcpCommandStreamKey,
   mcpDoneChannel,
   mcpInFlightTasksKey,
+  mcpNewAssignmentsKey,
   mcpOperationKey,
   mcpReplyKey,
   VIEW_CAPTURE_VIEW_MAX_BYTES,

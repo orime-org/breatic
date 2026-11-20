@@ -74,6 +74,18 @@ export function mcpInFlightTasksKey(prefix: string, connectionId: string): strin
 }
 
 /**
+ * Key of the set of threads newly handed to one agent connection
+ * (breatic#1488 §15.11): collab adds and removes members, each tool result
+ * takes them. Members are `{projectId}:{spaceId}:{threadId}`.
+ * @param prefix - The deployment's Redis key prefix
+ * @param connectionId - The agent connection id
+ * @returns The set's key
+ */
+export function mcpNewAssignmentsKey(prefix: string, connectionId: string): string {
+  return `${prefix}:mcp:new-assignments:${connectionId}`;
+}
+
+/**
  * Key for one capture request.
  * @param prefix - The deployment's Redis key prefix
  * @param requestId - The capture request id
@@ -241,6 +253,9 @@ const documentBlockSchema = z.looseObject({ type: z.string().min(1) });
 /** A list of node ids, at least one. */
 const nodeIdsSchema = z.array(nodeIdSchema).min(1);
 
+/** The threads a hand-over read asks about: the ones the server's records hand to this connection in one Space. */
+const threadIdsParams = z.object({ threadIds: z.array(z.string().min(1).max(64)).min(1) });
+
 /**
  * The parameters of each command type, by type (breatic#1488 §7). A type not
  * listed here is not a command collab executes.
@@ -335,8 +350,8 @@ export const agentCommandParamsSchemas = {
   read_document: z.object({}),
   // The threads handed to this connection that still wait for it, with where
   // each is (§11.7); one per Space kind, as a command names its document by kind.
-  read_canvas_assignments: z.object({}),
-  read_document_assignments: z.object({}),
+  read_canvas_assignments: threadIdsParams,
+  read_document_assignments: threadIdsParams,
   // Blocks as BlockNote block JSON (the MCP service converts Markdown);
   // whether the document schema can build one is collab's to judge.
   insert_document_blocks: z.object({

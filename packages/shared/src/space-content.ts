@@ -21,6 +21,6 @@ export {
 } from "@shared/upload/web-animation-job.js";
 export { WEB_ANIMATION_BRIDGE_SCRIPT } from "@shared/timeline/web-animation-bridge.js";
 export {
-  readCommentAssignments, readCommentMentions,
-  type CommentAssignmentRecord, type CommentAssignmentStatus, type CommentMentionRecord, type CommentSpaceKind,
+  readCommentMentions, readThreadState,
+  type CommentMentionRecord, type CommentSpaceKind, type CommentThreadState,
 } from "@shared/comment-records.js";
