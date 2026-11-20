@@ -68,11 +68,11 @@ REDIS_QUEUE_URL=redis://localhost:6379/1
 REDIS_STREAM_URL=redis://localhost:6379/2
 REDIS_COLLAB_URL=redis://localhost:6379/3
 REDIS_KEY_PREFIX=local-breatic
-PAYMENT_ENABLED=false
+CHARGING_ENABLED=false
 EMAIL_BACKEND=console
 ```
 
-`PAYMENT_ENABLED=false` 关闭站内支付和对应扣费检查，**不会免除外部 AI 服务费用**。`EMAIL_BACKEND=console` 将邮件内容输出到本机日志，不投递真实邮件；邮箱密码注册可用，不需要 Google OAuth。注册时需要输入 6 位验证码，`console` 模式下验证码在 server 日志的 `[console] email` 那一行里。`EMAIL_BACKEND=disabled` 时没有验证码这一步，注册后会显示恢复码，请自行保存。
+`CHARGING_ENABLED=false` 关闭积分记账和对应扣费检查，**不会免除外部 AI 服务费用**。`EMAIL_BACKEND=console` 将邮件内容输出到本机日志，不投递真实邮件；邮箱密码注册可用，不需要 Google OAuth。注册时需要输入 6 位验证码，`console` 模式下验证码在 server 日志的 `[console] email` 那一行里。`EMAIL_BACKEND=disabled` 时没有验证码这一步，注册后会显示恢复码，请自行保存。
 
 本文假设本机只有一套 Breatic。需要空闲端口：`5432`、`6379`、`3000`、`3001`、`1234`、`1235`、`9101`、`8000`、`8787`；`INTERNAL_API_ENABLED=true` 时还要 `3002`。如果已有其他实例，先停止自己不再使用的实例，不要让新实例误连已有业务数据。多实例隔离说明见 `.env.dev` 文件头。
 
@@ -173,7 +173,7 @@ INGEST_SHARED_SECRET=YOUR_GENERATED_SECRET
 
 图像、视频、音频、语音和 3D 生成不由一个文本密钥覆盖。这些模型各自的上游列在 `config/provider/media/<类型>.yaml`，至少配上其中一家的密钥，例如 `WAVESPEED_API_KEY` 或 `FAL_KEY`。无论配了什么，模型都会出现在列表里；一家可用上游都没有的模型，发起生成时会被拒绝，并写明缺哪些环境变量。没配的模型不作为本次验收项。
 
-Google 登录、真实 SMTP 邮件、Stripe 支付和 Brave 搜索是独立可选集成，不是启动前置条件。需要这些功能时，再按 `.env.dev` 对应配置段提供凭据；不要通过打开 `PAYMENT_ENABLED` 来解决 AI 供应商额度问题。
+Google 登录、真实 SMTP 邮件和 Brave 搜索是独立可选集成，不是启动前置条件。需要这些功能时，再按 `.env.dev` 对应配置段提供凭据；不要通过打开 `CHARGING_ENABLED` 来解决 AI 供应商额度问题。
 
 ## 6. 启动数据库并执行两套迁移
 

@@ -98,7 +98,7 @@ Configura tu Studio personal, crea un Project y usa **+** para añadir Document,
 
 La instalación utiliza imágenes Docker publicadas para la web, la API, las tareas en segundo plano y la colaboración, con PostgreSQL y Redis. Las cargas y el procesamiento multimedia requieren un Ingest Worker y un contenedor multimedia en **tu cuenta de Cloudflare**, con almacenamiento en tu bucket R2. Las llamadas de IA utilizan tus cuentas de proveedores y sus cuotas.
 
-No es una instalación sin conexión ni completamente local. El acceso por LAN requiere HTTPS de confianza. Los servicios en la nube y las llamadas a modelos pueden generar gastos; SMTP, el inicio de sesión con Google, los pagos con Stripe y la búsqueda son integraciones opcionales. Sigue la guía para configurar y comprobar la nube. El paso inicial con Node/pnpm/Wrangler es de despliegue, no un servidor de desarrollo necesario para el uso diario.
+No es una instalación sin conexión ni completamente local. El acceso por LAN requiere HTTPS de confianza. Los servicios en la nube y las llamadas a modelos pueden generar gastos; SMTP, el inicio de sesión con Google y la búsqueda son integraciones opcionales. Sigue la guía para configurar y comprobar la nube. El paso inicial con Node/pnpm/Wrangler es de despliegue, no un servidor de desarrollo necesario para el uso diario.
 
 ## Estado, ayuda y contribuciones
 

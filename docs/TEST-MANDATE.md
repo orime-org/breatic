@@ -53,7 +53,7 @@
 
 ### 2.2 要外部服务的用例:声明、默认不跑、发布前必须跑(MANDATORY)
 
-一条用例真的去打模型 / 公网 / R2 / ingest Worker / 声音目录 / Stripe / Brave / 本机 ffmpeg,就在 `test()` 名字末尾挂标签:
+一条用例真的去打模型 / 公网 / R2 / ingest Worker / 声音目录 / 收款服务 / Brave / 本机 ffmpeg,就在 `test()` 名字末尾挂标签:
 
 | 标签 | 要什么 | 谁在发布前签它 |
 |---|---|---|
@@ -62,7 +62,7 @@
 | `@needs-storage` | R2 | 做上传那块的 CC |
 | `@needs-ingest` | ingest Worker | 做上传那块的 CC |
 | `@needs-tts` | ElevenLabs / Fish 声音目录 | 做 agent 与生成那块的 CC |
-| `@needs-payments` | Stripe 与积分包 | 做支付那块的 CC |
+| `@needs-payments` | 收款服务(连 Stripe 测试模式)与积分包 | 做支付那块的 CC |
 | `@needs-search` | Brave | 做 agent 与生成那块的 CC |
 | `@needs-ffmpeg` | 本机 ffmpeg | 做上传那块的 CC |
 
@@ -97,12 +97,7 @@
 
 默认档的运行会印出它排除了什么(`覆盖 N 条,共 M 条;排除 K 条:@needs-… `)。**被排除的用例在报告里连一行都没有**,所以那行是唯一能让人知道这个绿盖了多少的地方。
 
-**server 的集成测试层用同一套标签**:`packages/server/vitest.integration.config.ts` 的 `testNamePattern` 默认把名字里带 `@needs-` 的用例排除在外,vitest 把每一条记成 skipped,汇总里的 skip 数就是这个绿没盖到的部分。子门有意去跑,加 `-t @needs-<标签>`,它替换掉默认那条排除。现有一个 `@needs-payments` 子门:`credit-refund-real-stripe.integration.test.ts` 对着真实 Stripe 测试模式跑积分包退款处置,`STRIPE_SECRET_KEY` 不是 `sk_test_` 开头就在第一次调用之前拒跑:
-
-```bash
-pnpm exec turbo run test:integration --filter=@breatic/server -- \
-  -t @needs-payments src/__tests__/integration/credit-refund-real-stripe.integration.test.ts
-```
+**server 的集成测试层用同一套标签**:`packages/server/vitest.integration.config.ts` 的 `testNamePattern` 默认把名字里带 `@needs-` 的用例排除在外,vitest 把每一条记成 skipped,汇总里的 skip 数就是这个绿没盖到的部分。子门有意去跑,加 `-t @needs-<标签>`,它替换掉默认那条排除。
 
 ### 2.3 写一条 smoke 的规则(MANDATORY)
 
@@ -151,5 +146,5 @@ pnpm exec turbo run test:integration --filter=@breatic/server -- \
 ## 4. 边界
 
 - **TDD vs smoke/E2E**:TDD(红绿蓝)= 写代码时的单测 / 集成,防回归;smoke/E2E = ship 前端到端确认 + **spec-gap 探测**(production / E2E / 用户反馈才是 spec gap 的真正 detector,不是 unit test —— 见 [TDD-MANDATE.md](./TDD-MANDATE.md))
-- **不 mock 关键路径**:integration / E2E 把 DB / API / Stripe 等关键路径 mock 掉 = 假测,违规(见 [TDD-MANDATE.md](./TDD-MANDATE.md))
+- **不 mock 关键路径**:integration / E2E 把 DB / API / 收款服务等关键路径 mock 掉 = 假测,违规(见 [TDD-MANDATE.md](./TDD-MANDATE.md))
 - **做不了必 explicit 说明**:环境 / 工具限制跑不了 smoke / E2E,必须明说理由,**不许默默跳过**

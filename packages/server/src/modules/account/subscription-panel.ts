@@ -5,9 +5,9 @@
  * What the membership panel is told about an account's subscription
  * (task #106 §11, #307).
  *
- * Read from our own rows only. Stripe tells us about every change by webhook,
- * and redelivers a failed one for three days; the rows those webhooks write
- * are what this answers from. A row still marked live but past its deadline
+ * Read from our own rows only. The billing service delivers every change
+ * Stripe reports as subscription facts; the rows those deliveries write are
+ * what this answers from. A row still marked live but past its deadline
  * reads as ended here exactly as it does for the ceilings, so the panel's
  * subscription lines and its tier never disagree.
  */

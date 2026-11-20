@@ -2,15 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Stores one subscription as Stripe described it, and settles the tier that
- * follows (#307 §5.4).
+ * Stores one subscription as the billing service read it from Stripe, and
+ * settles the tier that follows (#307 §5.4).
  *
- * Every path that learns something from Stripe ends here: the webhook, the
- * checkout return, the panel's own cancel / resume / plan change, and the
- * re-check before selling a second subscription. Only the part inside the
- * transaction is shared. Opening the transaction, claiming a webhook event,
- * the bell notice and the email after commit stay with each caller, because
- * each owes them to a different party.
+ * The billing service's subscription-facts delivery is its caller; opening
+ * the transaction, the bell notices, and the email and report after commit
+ * stay with that caller.
  */
 
 import {
@@ -44,7 +41,7 @@ export interface AppliedSubscription {
  * the lock (`upsertSubscription`).
  * @param input - What to store, and where.
  * @param input.userId - The account the subscription belongs to.
- * @param input.write - The snapshot, already read from Stripe.
+ * @param input.write - The snapshot the billing service read from Stripe.
  * @param input.referenceId - Identifies this change in the tier ledger.
  * @param input.firstActiveAt - When the subscription was first paid for, or null while it never was.
  * @param input.tx - The caller's transaction.

@@ -187,7 +187,7 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // the tier ceilings, which is why collab reads
 // `getProjectConcurrentEditorLimit` from here rather than walking to a
 // tier its own way. Server-private domain (auth /
-// project / payment / user.repo / stripe / mailer / pricing / ...)
+// project / user.repo / mailer / ...)
 // lives in @server/src; AIGC business shared by server+worker (credit /
 // task / node-history / agent / model-catalog) lives in
 // @breatic/domain — collab never touches it.

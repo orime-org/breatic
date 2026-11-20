@@ -41,9 +41,7 @@ describe("credits config", () => {
     expect(getTrialGrantCredits(dirWith("# the grant is off on this deployment\n"))).toBe(0);
   });
 
-  it("fails loudly when the file is missing, naming the template and the old place", () => {
-    expect(() => getTrialGrantCredits(mkdtempSync(join(tmpdir(), "credits-empty-")))).toThrow(
-      /credits\.yaml\.template.*pricing\.yaml/s,
-    );
+  it("fails loudly when the file is missing, naming the template", () => {
+    expect(() => getTrialGrantCredits(mkdtempSync(join(tmpdir(), "credits-empty-")))).toThrow(/credits\.yaml\.template/);
   });
 });

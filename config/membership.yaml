@@ -39,9 +39,9 @@ tiers:
     project_members: 4
     storage_bytes: 5368709120  # 5 GiB
 
-  # Paid tier. What it costs over each billing period is in
-  # config/subscription.yaml — a figure repeated here is a figure that goes
-  # stale the next time one of them changes.
+  # Paid tier. What it costs over each billing period is set in the billing
+  # service — a figure repeated here is a figure that goes stale the next
+  # time one of them changes.
   pro:
     team_studios: 1
     projects_per_studio: 100
@@ -50,8 +50,8 @@ tiers:
     project_members: 12
     storage_bytes: 214748364800  # 200 GiB
 
-  # Paid tier, charged flat rather than per seat. Its prices live in
-  # config/subscription.yaml, for the same reason as above.
+  # Paid tier, charged flat rather than per seat. Its prices live in the
+  # billing service, for the same reason as above.
   team:
     team_studios: 3
     projects_per_studio: 300

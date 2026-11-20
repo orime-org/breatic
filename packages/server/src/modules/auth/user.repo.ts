@@ -4,8 +4,8 @@
 /**
  * User repository — data access for the users table.
  *
- * Reads and writes account rows: identity, password, recovery codes, the
- * Stripe customer and the Agent model last picked.
+ * Reads and writes account rows: identity, password, recovery codes and the
+ * Agent model last picked.
  */
 
 import { eq, and, or, isNull, inArray, sql } from "drizzle-orm";

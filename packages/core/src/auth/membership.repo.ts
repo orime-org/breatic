@@ -223,10 +223,9 @@ export async function getMembershipForUser(
 /**
  * Takes the account's row for the rest of the transaction, reading nothing.
  *
- * For a caller that must serialise on the account BEFORE it goes and fetches
- * the facts it is about to write — the subscription webhook does, because two
- * events for one account would otherwise each ask Stripe for the current state
- * and the one that commits last could be holding the older answer.
+ * For a caller that must serialise on the account before it writes the facts
+ * it was handed — storing a subscription does, so two deliveries for one
+ * account settle the tier one after the other.
  *
  * `changeMembershipTier` takes the same lock, so a caller that only writes at
  * the end needs nothing from here.

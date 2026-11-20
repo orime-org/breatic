@@ -1,7 +1,7 @@
 # This deployment's credit grants. Copy to config/credits.yaml and fill in;
 # git does not track that copy, because what a deployment gives away is its
 # own decision. Read by server only where the deployment charges
-# (PAYMENT_ENABLED), and checked at startup there.
+# (CHARGING_ENABLED), and checked at startup there.
 
 # Credits a new account is given when its personal studio is created — the
 # first credits anybody gets without paying, and the only ones granted

@@ -46,8 +46,9 @@ credits.use(requireAuth);
 credits.get(
   "/overview",
   validate("query", creditAmountFormatQuerySchema),
-  // Reconciling below reaches Stripe on every read, so this reader is a caller
-  // of somebody else's API and is capped like one.
+  // Reconciling below asks the billing service, and through it Stripe, on
+  // every read, so this reader is a caller of somebody else's API and is
+  // capped like one.
   rateLimitFor("credits-read", "user"),
   async (c) => {
     const user = c.get("user");

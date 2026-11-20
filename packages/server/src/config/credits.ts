@@ -43,7 +43,7 @@ export function getTrialGrantCredits(configDir: string = resolve(MONOREPO_ROOT, 
     const file = resolve(configDir, "credits.yaml");
     if (!existsSync(file)) {
       throw new Error(
-        `${file} is missing: copy config/credits.yaml.template there and set trial_grant.credits to the value this deployment had under trial_grant in config/pricing.yaml`,
+        `${file} is missing: copy config/credits.yaml.template there and set trial_grant.credits`,
       );
     }
     // A file holding only comments parses to null and means every section left out.

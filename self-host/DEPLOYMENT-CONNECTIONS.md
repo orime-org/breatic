@@ -77,48 +77,15 @@ When you delete an account on request, soft-delete it first (set `users.deleted_
 
 ## Back office internal API
 
-`INTERNAL_API_ENABLED=true` starts a second server listener, called only by the Breatic back office, on `INTERNAL_API_HOST`:`INTERNAL_API_PORT` (default `127.0.0.1:3002`), plus the loop that finishes the credit-pack refunds it accepts. Every request carries an HMAC-SHA256 signature made with `INTERNAL_API_SECRET`, the same value the back office holds; with the API enabled and that secret empty, the services refuse to start. To rotate, move the old key to `INTERNAL_API_SECRET_PREVIOUS`: requests signed with either key are accepted until it is blanked. Requests are limited to 120 per 60 seconds per connection address (`internal-api` in `config/rate-limits.yaml`).
+`INTERNAL_API_ENABLED=true` starts a second server listener on `INTERNAL_API_HOST`:`INTERNAL_API_PORT` (default `127.0.0.1:3002`), called by the Breatic back office and, on a deployment that sells credits, by the billing service under `/internal/v1/commerce/`. Every request carries an HMAC-SHA256 signature: the back office signs with `INTERNAL_API_SECRET`, the billing service with `COMMERCE_API_SECRET`; with the API enabled and the secret it needs empty, the services refuse to start. To rotate, move the old key to `INTERNAL_API_SECRET_PREVIOUS` or `COMMERCE_API_SECRET_PREVIOUS`: requests signed with either key are accepted until it is blanked. Requests are limited per connection address: 120 per 60 seconds for the back office (`internal-api` in `config/rate-limits.yaml`) and 6000 per 60 seconds for the billing service (`commerce-api`).
 
-| Deployment | Product server | Back office connects to |
+| Deployment | Product server | Back office and billing service connect to |
 |---|---|---|
 | Local development | Binds `127.0.0.1:3002` | `http://127.0.0.1:3002` |
 | This `docker-compose.yml` | Binds `0.0.0.0` in the container; `expose: ["3002"]` only, no host port | `http://server:3002`, from a container on the same compose network |
 | Separate hosts in one VPC | Binds `0.0.0.0` in the container; publish `<private-ip>:3002:3002` | `http://<product private IP>:3002` |
 
 With separate hosts, the security group is the only network-level isolation: on Alibaba Cloud ECS, traffic to the public IP is translated to the primary private IP, and Docker-published ports bypass the host firewall. Allow inbound 3002 only from the back office server's private IP/32, and keep the product host's group free of intra-group allow rules (or use an enterprise security group). Make every deployment's verification probe 3002 from the public IP, and fail the deployment if the connection succeeds.
-
-Subscribe the product's Stripe webhook endpoint to `refund.created`, `refund.updated` and `refund.failed`.
-
-| Stripe access | What it needs |
-|---|---|
-| `STRIPE_SECRET_KEY` | Refunds are created (`refunds.create`) and listed (`refunds.list`); the preview and restoring credits also read `paymentIntents.retrieve` with `expand: ["latest_charge"]` for the charge's `disputed`. A restricted key needs write on Refunds and read on PaymentIntents and Charges. |
-| Operators' and support staff's Stripe Dashboard accounts | No refund permission: a read-only role, or a custom role without "Process refunds". A credit pack is refunded in full or not at all, only through the back office; a refund made in the Dashboard is never booked automatically, and the disposition that meets it stops for a person. |
-
-The back office reads refund records through its own read-only role: the five tables and two views created by migration `0094` (`credit_refunds_unresolved_failed`, `credit_lot_refund_failures`), plus `credit_refund_refusals` created by migration `0104`. Migration `0104` creates the refusal table and its constraints; access depends on the database's grants.
-
-Before running the migration, configure default privileges for the role that will actually create the table. Default privileges cover future tables created by that role in the named schema. Use the deployment's actual migration and read-only role names in these statements:
-
-```sql
-ALTER DEFAULT PRIVILEGES FOR ROLE migration_role IN SCHEMA public
-  GRANT SELECT ON TABLES TO backoffice_ro;
-```
-
-For an existing refusal table, its owner or a database administrator can grant access directly:
-
-```sql
-GRANT SELECT ON TABLE public.credit_refund_refusals TO backoffice_ro;
-```
-
-If migration `0094` used another creating role, also grant SELECT on its five tables and two views to the read-only role. After migration and grants, connect using the actual back office database account. Verify the query succeeds and the privilege check reports SELECT true and INSERT, UPDATE and DELETE false:
-
-```sql
-SELECT id FROM public.credit_refund_refusals LIMIT 0;
-SELECT
-  has_table_privilege(current_user, 'public.credit_refund_refusals', 'SELECT') AS can_select,
-  has_table_privilege(current_user, 'public.credit_refund_refusals', 'INSERT') AS can_insert,
-  has_table_privilege(current_user, 'public.credit_refund_refusals', 'UPDATE') AS can_update,
-  has_table_privilege(current_user, 'public.credit_refund_refusals', 'DELETE') AS can_delete;
-```
 
 ## Scope and verification
 

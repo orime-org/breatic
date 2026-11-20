@@ -61,12 +61,12 @@ WEB_BIND_ADDRESS=127.0.0.1
 ENV=dev
 COOKIE_DOMAIN=
 ALLOWED_ORIGINS=http://localhost
-PAYMENT_ENABLED=false
+CHARGING_ENABLED=false
 EMAIL_BACKEND=console
 REDIS_KEY_PREFIX=personal
 ```
 
-这里的 `ENV=dev` 是现有代码中允许 HTTP 会话 cookie 的运行配置，**不表示启动开发服务器**；容器仍运行编译产物。切换 HTTPS 后使用 `ENV=prod`。支付关闭不会免除外部模型费用；`console` 邮件只输出日志，不投递真实邮件。真实邮件、Google 登录、Stripe 和搜索可按模板另行配置。
+这里的 `ENV=dev` 是现有代码中允许 HTTP 会话 cookie 的运行配置，**不表示启动开发服务器**；容器仍运行编译产物。切换 HTTPS 后使用 `ENV=prod`。积分扣费关闭不会免除外部模型费用；`console` 邮件只输出日志，不投递真实邮件。真实邮件、Google 登录和搜索可按模板另行配置。
 
 保留容器内部连接地址：
 

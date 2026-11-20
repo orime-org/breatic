@@ -121,18 +121,10 @@ export const users = pgTable(
     // fresh code is generated + re-shown.
     recoveryCodeHash: text("recovery_code_hash"),
     recoveryCodeUsedAt: timestamp("recovery_code_used_at", { withTimezone: true }),
-    // The Stripe customer this account pays through (0055, #106).
-    //
-    // Written before the first Checkout Session is created, never after an
-    // event arrives — which is the whole point of it. Subscription events
-    // carry no identifier of ours (`client_reference_id` reaches the Session
-    // object only), so the customer on the event is what names the account.
-    // Letting Stripe create the customer at checkout would mean first seeing
-    // that id inside an event with nothing to match it against.
-    //
-    // Nullable: an account that has never tried to pay us has no customer,
-    // and creating one per registration would make a Stripe object per signup.
-    // One customer per account, reused across every subscription it ever has.
+    // The Stripe customer this account paid through before billing moved to
+    // the billing service (0055, #106; inner#1993). The billing service keeps
+    // customers in its own database now; nothing here reads or writes this
+    // column, which migration 0129 drops.
     stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
     // The account's language (0084, #286): every email to this account is
     // rendered in it. Written at sign-up from the language the request was
@@ -1323,9 +1315,9 @@ export const subscriptions = pgTable(
     payableInvoiceUrl: text("payable_invoice_url"),
     // When the snapshot this row was written from was taken (0058).
     //
-    // Several paths write here — the webhook and our own calls to Stripe —
-    // and each asks Stripe first and writes second, so the one that asked
-    // first can still commit last while holding the older answer. Comparing
+    // Each write is the billing service's snapshot of what Stripe said, and
+    // deliveries can arrive out of order, so the one read first can still
+    // commit last while holding the older answer. Comparing
     // this decides which view is newer, which is what lets them fetch outside
     // any lock: whoever saw Stripe more recently wins, whatever the commit
     // order.

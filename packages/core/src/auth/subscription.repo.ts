@@ -4,16 +4,16 @@
 /**
  * The `subscriptions` table's one home (task #106, design §5.2).
  *
- * In core rather than in server, although only server talks to Stripe: the
+ * In core rather than in server, although only server writes it: the
  * ceilings a tier carries are read here (`membership.repo.ts`), and a stored
  * subscription whose paid period ran out long ago says the tier on the account
  * is stale. That check has to reach the rows, and collab reaches the ceilings.
  *
- * Writing is one action, not several. A webhook, a redelivery of that same
- * webhook, an event that arrived out of order, and Stripe's answer to one of
- * our own calls all say the same thing — here is what
- * this subscription looks like now — so they all take the same path and it
- * converges on one row per Stripe subscription.
+ * Writing is one action, not several. Every delivery of the billing
+ * service's subscription facts, a redelivery or one that arrived out of
+ * order included, says the same thing — here is what this subscription looks
+ * like now — so they all take the same path and it converges on one row per
+ * Stripe subscription.
  */
 
 import { and, desc, eq, isNull, lte, sql, type SQL } from "drizzle-orm";
@@ -180,9 +180,9 @@ export async function listSubscriptions(
 /**
  * Writes what Stripe currently says about one subscription.
  *
- * Keyed on the Stripe id, so every path that learns the current state — the
- * webhook, a redelivery of it, an out-of-order event, our own calls —
- * converges on the same row rather than adding one.
+ * Keyed on the Stripe id, so every delivery of the current state — a
+ * redelivery or an out-of-order one included — converges on the same row
+ * rather than adding one.
  *
  * Every field is overwritten, including the ones being cleared. Leaving a
  * stale `payable_invoice_url` behind would put "finish paying" in front of

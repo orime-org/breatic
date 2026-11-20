@@ -61,12 +61,12 @@ WEB_BIND_ADDRESS=127.0.0.1
 ENV=dev
 COOKIE_DOMAIN=
 ALLOWED_ORIGINS=http://localhost
-PAYMENT_ENABLED=false
+CHARGING_ENABLED=false
 EMAIL_BACKEND=console
 REDIS_KEY_PREFIX=personal
 ```
 
-In the current application, `ENV=dev` permits session cookies over HTTP. **It does not start development servers**: these containers still run compiled application code. Use `ENV=prod` after switching to HTTPS. Disabling payments does not eliminate external AI charges. `console` writes email to logs rather than delivering it. Real email, Google sign-in, Stripe and search can be configured separately using the template.
+In the current application, `ENV=dev` permits session cookies over HTTP. **It does not start development servers**: these containers still run compiled application code. Use `ENV=prod` after switching to HTTPS. Disabling credit charging does not eliminate external AI charges. `console` writes email to logs rather than delivering it. Real email, Google sign-in and search can be configured separately using the template.
 
 Keep container-internal connection addresses:
 

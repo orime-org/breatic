@@ -256,7 +256,7 @@ export const coreConfigSchema = z.object({
 
   // ── Payment ──────────────────────────────────────
   // The old name of CHARGING_ENABLED, still read when CHARGING_ENABLED is unset
-  // (self-hosted .env files and the self-host documents use it).
+  // (self-hosted .env files written before the rename use it).
   PAYMENT_ENABLED: z
     .string()
     .default("false")
@@ -397,8 +397,7 @@ export type CoreConfig = z.infer<typeof coreConfigSchema>;
  *   function only processes the map it is handed).
  * @returns The validated, typed, default-applied configuration.
  * @throws {z.ZodError} if a required variable is missing / malformed.
- * @throws {Error} if payments are enabled without Stripe secrets, the
- *   internal API is enabled without its secret, or the billing service is
+ * @throws {Error} if the internal API is enabled without its secret, or the billing service is
  *   configured without charging, its secret or the internal listener.
  */
 export function parseConfig(rawEnv: Record<string, string | undefined>): CoreConfig {

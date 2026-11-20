@@ -98,7 +98,7 @@ Kişisel Studio’nuzu ayarlayın, bir Project oluşturun ve **+** ile Document,
 
 Kurulum; web, API, arka plan işleri ve iş birliği için yayımlanmış Docker imajlarını, PostgreSQL’i ve Redis’i kullanır. Yükleme ve medya işleme **kendi Cloudflare hesabınızdaki** Ingest Worker ve medya konteyneriyle yapılır; dosyalar R2 bucket’ınızda saklanır. Yapay zekâ çağrıları kendi sağlayıcı hesaplarınızı ve kotalarınızı kullanır.
 
-Bu, çevrim dışı veya bütünüyle yerel bir kurulum değildir. LAN erişimi güvenilir HTTPS gerektirir. Bulut hizmetleri ve model çağrıları ücret doğurabilir; SMTP, Google ile giriş, Stripe ödemeleri ve arama isteğe bağlı entegrasyonlardır. Bulut kurulumu ve doğrulama için kılavuzu izleyin. İlk Node/pnpm/Wrangler adımı dağıtım içindir; günlük kullanım için geliştirme sunucusu çalıştırmak gerekmez.
+Bu, çevrim dışı veya bütünüyle yerel bir kurulum değildir. LAN erişimi güvenilir HTTPS gerektirir. Bulut hizmetleri ve model çağrıları ücret doğurabilir; SMTP, Google ile giriş ve arama isteğe bağlı entegrasyonlardır. Bulut kurulumu ve doğrulama için kılavuzu izleyin. İlk Node/pnpm/Wrangler adımı dağıtım içindir; günlük kullanım için geliştirme sunucusu çalıştırmak gerekmez.
 
 ## Durum, yardım ve katkı
 

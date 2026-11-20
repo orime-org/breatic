@@ -113,8 +113,8 @@ export interface SituationReading<T extends SubscriptionRecord = SubscriptionRec
    *
    * Such a row is read as ended — its deadline passing without a word from
    * Stripe means the event that ended it never reached us — but it is reported
-   * here because what Stripe actually holds is still unknown, and an action
-   * that charges money asks Stripe about each of them before selling another.
+   * here because what Stripe actually holds is still unknown, and the billing
+   * service asks Stripe about each of them before selling another.
    */
   readonly lapsed: readonly T[];
 }

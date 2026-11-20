@@ -102,8 +102,9 @@ const TIER_LABEL: Readonly<Record<string, string>> = {
  *
  * Best-effort by design and by contract: the bell written inside the
  * transaction is the delivery guarantee, and `EMAIL_BACKEND` defaults to
- * `disabled`. A failure here is logged and goes no further — a webhook must
- * still answer 200, or Stripe redelivers an event we have already applied.
+ * `disabled`. A failure here is logged and goes no further — the delivery
+ * must still answer 200, or the billing service resends facts already
+ * applied.
  *
  * Separate from {@link settleTier} because it must not run inside the caller's
  * transaction: an email about a change that then rolls back cannot be recalled.
