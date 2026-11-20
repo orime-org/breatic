@@ -20,7 +20,7 @@ import {
 import { projectMetaDocName, type MembershipTier } from "@breatic/shared";
 import { createSession, logout } from "@server/modules/auth/auth.service.js";
 import { save } from "@server/modules/enterprise-membership/enterprise-membership.service.js";
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
+import { fingerprint } from "@breatic/core";
 import { createAuthHook, type AuthContext } from "@collab/hooks/auth.js";
 import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
 import { createConnectionRegistry, type ConnectionRegistry } from "@collab/services/connection-registry.js";
@@ -446,5 +446,19 @@ describe("persisted enterprise membership in real collab handshakes", () => {
     await seats(active, fixture, cap);
     expect(active.takes).toEqual(Array.from({ length: cap }, () => "seated"));
     expect(active.owns).toEqual(["no"]);
+  });
+
+  it("A-20 a pro studio's Space holds 4 writable editors and opens the 5th read-only (inner#1968)", async () => {
+    // Written out, not read from the config: the agreed pro number is 4.
+    const cap = 4;
+    const fixture = await createFixture("pro", cap + 1);
+    const active = await start(fixture);
+    for (let index = 0; index < cap; index++) {
+      await connect(active, fixture, index, "read-write");
+      await seats(active, fixture, index + 1);
+    }
+    const next = await connect(active, fixture, cap, "readonly");
+    await write(active, next, "pro-fifth-editor", false);
+    await seats(active, fixture, cap);
   });
 });

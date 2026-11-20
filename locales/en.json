@@ -233,7 +233,8 @@
       "storage_full": {
         "subject": "Your storage is full",
         "lead": "Your storage is full, so uploads and generations were refused in <b>{studio}</b>. Storage is counted across every studio you administer, not just this one.",
-        "footer": "Raise your membership to get more room."
+        "footer": "Raise your membership to get more room.",
+        "footer_enterprise": "Your storage is set by your agreement. Contact us to change it."
       },
       "password_reset": {
         "subject": "Reset your password",
@@ -370,6 +371,10 @@
       "key_malformed": "This key is not valid. Check it for extra characters and paste it again.",
       "key_not_connected": "This key could not connect. Check it and try again.",
       "model_choice_refused": "This provider cannot run this model with your saved keys."
+    },
+    "spend_cap": {
+      "member": "You've reached your monthly spend limit in this Studio ({limit, select, 1 {1 credit} other {{limit} credits}}). Contact the Studio admin if you need more.",
+      "studio": "This Studio has reached its monthly spend limit. Contact the Studio admin."
     }
   },
   "chat": {
@@ -891,6 +896,7 @@
       "errorNoDrivingVideo": "Pick a driving video",
       "errorNoDrivingAudio": "Pick a driving audio track",
       "promptNotUsed": "This mode does not need a prompt.",
+      "optionalParagraphHint": "Sent once {name} holds a picture",
       "refuseInsertNoPrompt": "This mode has no prompt to insert into",
       "errorStorageFull": "Studio storage is full. Generating is unavailable.",
       "refAudio": "Voice sample",
@@ -1137,13 +1143,15 @@
     },
     "task": {
       "stillRunning": "This task is still running.",
+      "alreadyStarted": "This task has already started and cannot be cancelled.",
       "expired": "This task ran out of time.",
       "couldNotStart": "This task could not be started. Try again.",
       "status": {
         "running": "Running",
         "done": "Done",
         "failed": "Failed",
-        "expired": "Expired"
+        "expired": "Expired",
+        "waiting": "Queued"
       },
       "countTip": "{status} · {count}",
       "action": {
@@ -1181,6 +1189,7 @@
         "tool_failed": "The tool could not process this file.",
         "no_audio_track": "{kind, select, audio {This audio has no sound to read.} other {This video has no audio track.}}",
         "cut_short": "This is too long to transcribe in full.",
+        "cancelled": "Cancelled.",
         "input_refused": "{model} can’t take this run as set up. Change the settings or pick another model.",
         "model_not_configured": "{model} is not set up on this deployment: it needs {envVars}.",
         "account_key_failed": "{whose, select, self {{keyReason, select, invalid {{upstream} turned down your key as invalid. Change it in BYOK settings.} no_balance {Your {upstream} key is out of balance. Top up at {upstream}.} model_not_found {{upstream} does not offer this model on your key. Pick another upstream in BYOK settings.} rate_limited {{upstream} is limiting requests on your key. Try again later.} other {Your {upstream} key failed. Check it in BYOK settings.}}} admin {{keyReason, select, invalid {{upstream} turned down the Studio Admin's key as invalid. Ask the Studio Admin to change it.} no_balance {The Studio Admin's {upstream} key is out of balance. Ask the Studio Admin to top up at {upstream}.} model_not_found {{upstream} does not offer this model on the Studio Admin's key. Ask the Studio Admin to pick another upstream.} rate_limited {{upstream} is limiting requests on the Studio Admin's key. Try again later.} other {The Studio Admin's {upstream} key failed. Ask the Studio Admin to check it.}}} other {{keyReason, select, invalid {{upstream} turned down the key as invalid. Change it in BYOK settings.} no_balance {The {upstream} key is out of balance. Top up at {upstream}.} model_not_found {{upstream} does not offer this model on this key. Pick another upstream in BYOK settings.} rate_limited {{upstream} is limiting requests on this key. Try again later.} other {The {upstream} key failed. Check it in BYOK settings.}}}}",
@@ -1192,7 +1201,15 @@
         "generate": "Generate",
         "understand": "Understand",
         "transcribe": "Transcribe"
-      }
+      },
+      "waitReason": "You've reached the number of tasks you can run at once. This one starts by itself when an earlier one ends.",
+      "you": "You",
+      "cancelFailed": "That task could not be cancelled.",
+      "waitReasonLimit": "You've reached your limit of {limit, plural, one {# task} other {# tasks}} running at once. This one starts by itself when an earlier one ends.",
+      "waitReasonOther": "The person who started it has reached the number of tasks they can run at once. It starts by itself when one of theirs ends.",
+      "waitReasonOtherLimit": "The person who started it has reached their limit of {limit, plural, one {# task} other {# tasks}} running at once. It starts by itself when one of theirs ends.",
+      "waitReasonEach": "{count, plural, =1 {It starts by itself once the person who started it is running fewer tasks than their limit.} other {Each one starts by itself once the person who started it is running fewer tasks than their limit.}}",
+      "waitReasonEachLimit": "{count, plural, =1 {It starts by itself once the person who started it is running fewer than {limit, plural, one {# task} other {# tasks}}.} other {Each one starts by itself once the person who started it is running fewer than {limit, plural, one {# task} other {# tasks}}.}}"
     },
     "panel": {
       "hostDeletedByPeer": "A collaborator deleted the node."
@@ -1545,8 +1562,12 @@
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
+        "animation": "Animated shorts",
+        "ecommerce": "E-commerce ads",
+        "product-showcase": "Product showcase",
         "food": "Food",
         "social-hooks": "Social hooks",
+        "talking": "Talking and dialogue",
         "posters": "Posters & graphics",
         "speed": "Motion & speed",
         "sound": "Sound, music & voice"
@@ -1559,6 +1580,366 @@
           "reference": {
             "name": "Character or scene",
             "note": "Add the character or scene reference first, then generate."
+          }
+        }
+      },
+      "storyboard-sheet-9": {
+        "name": "9-panel storyboard",
+        "description": "Nine numbered panels ready to drive one video",
+        "prompt": "One widescreen storyboard sheet of nine numbered panels in a 3x3 grid, read left to right, top to bottom. The character in every panel is [📎 Character]: face, hair and clothes as in the picture, the same in all nine panels, nothing else taken from it.\nThe place looks like [📎 Setting]; take nothing else from it.\nThe story, one beat per panel: {✏️ the nine beats, e.g. 1 she wakes late, 2 grabs her bag, 3 runs down the stairs, 4 misses the bus, 5 borrows a bike, 6 races through the market, 7 skids round a corner, 8 arrives at the gate, 9 the gate opens just in time}. In each panel the action is already under way; vary the shot sizes (wide, medium, close-up) as the story needs; a small panel number in each corner. Clean illustrated storyboard style, the same palette and light across panels. No timecodes, no captions, no extra characters, no watermark.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of your character first, then generate."
+          },
+          "setting": {
+            "name": "Setting",
+            "note": "Optional: add a picture of the place; leave it empty and the panels invent a place that fits the story."
+          }
+        }
+      },
+      "storyboard-to-video": {
+        "name": "Storyboard to video",
+        "description": "A six-panel storyboard, then a video that plays it",
+        "prompt": "(💡 Generate Storyboard sheet first)A 15-second widescreen video with sound that plays the storyboard [📎 Storyboard sheet] panel by panel, in order, each panel one shot of about 2.5 seconds; every panel is a complete shot, none skipped and none added. The sheet decides the place, the action, the framing and the order; take no numbers or panel borders from it. The character looks like [📎 Character]: face, hair and clothes as in the picture. Sound: {✏️ the sound, e.g. upbeat music and the sounds of each action}. No text on screen.",
+        "node": {
+          "sheet": {
+            "name": "Storyboard sheet",
+            "prompt": "One widescreen storyboard sheet of six numbered panels in a 3x2 grid, read left to right, top to bottom. The character in every panel is [📎 Character]: face, hair and clothes as in the picture, the same in all six panels, nothing else taken from it. The story, one beat per panel: {✏️ the six beats, e.g. 1 she spots a kite in a tree, 2 climbs the trunk, 3 the branch bends, 4 she grabs the kite, 5 slides down, 6 runs off with it}. In each panel the action is already under way, the shot sizes varied. Clean illustrated style. No timecodes, no captions, no extra characters, no watermark."
+          }
+        },
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of your character first, then generate Storyboard sheet."
+          }
+        }
+      },
+      "comic-page": {
+        "name": "Comic page",
+        "description": "A comic page with your character, balloons left empty",
+        "prompt": "One portrait comic page of five or six panels. The main character is [📎 Character]: face, hair and clothes as in the picture, drawn in the page's style, the same in every panel. Reading order: {✏️ the reading order, e.g. left to right, top to bottom}. Style: {✏️ the style, e.g. black-and-white manga with screentone}. What happens, panel by panel: {✏️ the panels, e.g. 1 a wide shot of a rainy street, 2 she finds a soaked kitten, 3 close-up of the kitten's eyes, 4 she hides it in her coat, 5 she smiles at home with it}. Panel sizes follow the pace: a big panel for the key moment, small ones for quick beats. One line weight and one screentone throughout. Speech balloons where people talk, left empty with their tails pointing at the speaker. No letters or words anywhere on the page.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "comic-4koma": {
+        "name": "Four-panel comic",
+        "description": "A vertical four-panel strip: setup, build-up, twist, punchline",
+        "prompt": "One vertical four-panel comic strip, the panels stacked top to bottom with equal height. The character is [📎 Character]: face, hair and clothes as in the picture, the same in every panel. 1 setup: {✏️ the setup, e.g. she proudly bakes her first cake}. 2 build-up: {✏️ the build-up, e.g. she carries it carefully to the table}. 3 twist: {✏️ the twist, e.g. the cat leaps onto the table}. 4 punchline: {✏️ the punchline, e.g. the cat sits in the cake looking pleased}, the panel holding on the reaction. Clean cartoon style with simple backgrounds. Speech balloons left empty with their tails pointing at the speaker. No letters or words anywhere in the strip.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "comic-page-to-motion": {
+        "name": "Motion comic",
+        "description": "Your comic page set moving in its own drawn style",
+        "prompt": "A 10-second widescreen motion comic with sound made from [📎 Comic page], in its own style: its line work, colouring and screentone exactly as drawn, never turning 3D or photographic. The camera moves across the panels in reading order, {✏️ the reading order, e.g. left to right, top to bottom}, settling on each panel in turn. In each panel only what it shows moves: {✏️ what moves, e.g. rain falls, her hair lifts in the wind, the cat blinks}. Speech balloons stay as drawn; their shapes set how the lines sound and their tails who speaks. Move from panel to panel on the paper itself, with a page turn or an ink bleed. Sound: soft ambience and music that follow the mood of each panel. No new text on screen.",
+        "input": {
+          "page": {
+            "name": "Comic page",
+            "note": "Add your comic page, strip or storyboard picture first, then generate."
+          }
+        }
+      },
+      "comic-panels-to-shots": {
+        "name": "One shot per panel",
+        "description": "Each panel of your comic page as its own timed shot",
+        "shot": {
+          "1": "Panel 1 of [📎 Comic page], in its own drawn style and framing, the line work and colouring as drawn: {✏️ what moves in panel 1, e.g. rain starts to fall on the street}. No new text on screen.",
+          "2": "Panel 2 of [📎 Comic page], in its own drawn style and framing: {✏️ what moves in panel 2}. No new text on screen.",
+          "3": "Panel 3 of [📎 Comic page], in its own drawn style and framing: {✏️ what moves in panel 3}. No new text on screen.",
+          "4": "Panel 4 of [📎 Comic page], in its own drawn style and framing, holding on the final moment: {✏️ what moves in panel 4}. No new text on screen."
+        },
+        "input": {
+          "page": {
+            "name": "Comic page",
+            "note": "Add your comic page first, then generate."
+          }
+        }
+      },
+      "cartoon-gag": {
+        "name": "Cartoon gag",
+        "description": "A five-second gag starring your character",
+        "prompt": "A 5-second vertical cartoon gag with sound. The character is [📎 Character]: its shape, colours and features as in the picture, nothing else taken from it. One style: {✏️ the style, e.g. flat 2D cartoon with thick outlines}, nothing mixed in. Setting: {✏️ the situation, e.g. a tiny kitchen at breakfast}. 0–1 s: the character crashes into frame. 1–2.5 s: the setup, {✏️ the setup, e.g. it tiptoes toward the last cookie}. 2.5–4 s: the exaggerated reaction, {✏️ the gag, e.g. the jar snaps shut on its nose and its eyes pop out}. 4–5 s: it shakes it off and recovers. A 0.3–0.5 s anticipation before every big move, squash on every landing, follow-through 0.2 s late on ears and tail. Sound: a cartoon sound effect on each beat, no dialogue. No text on screen.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "3d-cartoon-short": {
+        "name": "3D animated short",
+        "description": "Design a character, then a short where it chases one goal",
+        "prompt": "(💡 Generate Character design first)A 10-second widescreen 3D animated short with sound, in the look of a feature-length animated film. The character is [📎 Character design]: its shape, colours, materials and signature item exactly as in the picture in every shot. Setting: {✏️ the setting, e.g. an autumn orchard}. It wants one thing: {✏️ its goal, e.g. the last apple on a high branch}. 0–4 s: it tries. 4–7 s: a setback, {✏️ the setback, e.g. the branch springs back and flings it into the leaves}. 7–10 s: it gets there and reacts with pure joy. Soft subsurface scattering on the skin, fine fur that moves, a warm key light and a rim light. Sound: playful orchestral music and the sounds of its actions, no dialogue. No text on screen.",
+        "node": {
+          "design": {
+            "name": "Character design",
+            "prompt": "A square full-body character design for a 3D animated short: {✏️ the character, e.g. a small round hedgehog}, wearing its signature item, {✏️ the signature item, e.g. a red knitted scarf}. It stands in a neutral pose facing the camera on a plain light background. A stylised 3D render, big expressive eyes, soft subsurface scattering on the skin, fine fur. No text in the picture."
+          }
+        }
+      },
+      "stop-motion-short": {
+        "name": "Stop-motion short",
+        "description": "Your subject rebuilt in clay or paper, moving frame by frame",
+        "prompt": "An 8-second square stop-motion animation with sound, made of {✏️ the material, e.g. plasticine clay}. The subject is [📎 Subject]: its shape and colours as in the picture, rebuilt in that material, nothing else taken from the picture. Shot at 12 frames a second, each pose held for two frames, so it steps from pose to pose rather than gliding. Fingerprints and small dents on the surfaces, the light flickering slightly from frame to frame. What happens: {✏️ the action, e.g. it hops across a tabletop and climbs onto a teacup}. A tabletop set, a fixed camera at table height, soft lamp light. Sound: a small tap or click on each step, a gentle music box. No text on screen.",
+        "input": {
+          "subject": {
+            "name": "Subject",
+            "note": "Add a photo of the object or character first, then generate."
+          }
+        }
+      },
+      "anime-scene": {
+        "name": "Anime scene",
+        "description": "A hand-painted anime backdrop with a slow drifting shot",
+        "prompt": "(💡 Generate Scene first, then set it as the First frame)The video starts on the first frame. One slow camera move: {✏️ the move, e.g. a slow push toward the town}. Only ambient motion: {✏️ what moves, e.g. clouds drifting, leaves stirring, a train passing far away}. The hand-painted look stays the same to the end, never turning 3D or photographic. Sound: the ambience of the place. No text on screen.",
+        "node": {
+          "scene": {
+            "name": "Scene",
+            "prompt": "A widescreen hand-painted anime background: {✏️ the place and time, e.g. a hillside town at dusk after rain}. Watercolour skies with layered clouds, clean hand-drawn line work on the buildings, warm saturated light, lots of small everyday detail. Not photographic, not a 3D render, no characters in front. No text in the picture."
+          }
+        }
+      },
+      "anime-action-climax": {
+        "name": "Anime action climax",
+        "description": "Your character's anime fight climax with an impact frame",
+        "prompt": "A 10-second widescreen anime action climax with sound, cel-shaded with flat colour and hard shadows, limited animation. The hero is [📎 Hero]: face, hair, clothes and colours as in the picture, drawn in that anime style. Setting: {✏️ the setting, e.g. a ruined rooftop at night}. Their move: {✏️ the move, e.g. a flaming sword slash}. 0–3 s: the hero powers up, an aura flaring around them, the pose held for a beat. 3–6 s: they dash forward, speed lines filling the background, no motion blur. 6–7 s: the impact frame, a flash with a cross-shaped highlight, the picture held for half a second. 7–10 s: they land and hold a final pose as the dust settles. Key poses held for half a second to a second. Sound: a rising charge, a whoosh, one huge hit, then quiet wind. No text on screen.",
+        "input": {
+          "hero": {
+            "name": "Hero",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "anime-opening-15s": {
+        "name": "15-second anime opening",
+        "description": "An anime opening for two or three of your characters",
+        "shot": {
+          "1": "A burst of light and colour sweeps across the frame, leaving an empty space in the middle for a title added later; {✏️ the show's mood, e.g. a bright summer sky over a seaside town}, anime style, an upbeat opening song starting. No text on screen.",
+          "2": "The lead appears: [📎 Lead], drawn in the same anime style, face, hair and clothes as in the picture, turns to the camera with the wind in their hair, {✏️ where, e.g. on a school rooftop}. No text on screen.",
+          "3": "Action cuts: [📎 Lead] {✏️ the lead's action, e.g. runs and leaps across the rooftops}, fast cuts and speed lines. No text on screen.",
+          "4": "The others appear: [📎 Second], then [📎 Third], each drawn in the same anime style, faces, hair and clothes as in their pictures, each striking a short pose. No text on screen.",
+          "5": "Group shot: [📎 Lead], [📎 Second] and [📎 Third] together in a final frozen pose against {✏️ the backdrop, e.g. the sunset sky}. No text on screen."
+        },
+        "input": {
+          "lead": {
+            "name": "Lead",
+            "note": "Add a picture of the lead character first, then generate."
+          },
+          "second": {
+            "name": "Second",
+            "note": "Add a picture of the second character first, then generate."
+          },
+          "third": {
+            "name": "Third",
+            "note": "Add a picture of the third character first, then generate."
+          }
+        }
+      },
+      "product-ad-15s": {
+        "name": "15-second product ad",
+        "description": "A lifestyle still, then a 15-second ad built on it",
+        "prompt": "(💡 Generate Lifestyle still first)A 15-second vertical product ad with sound. The product is [📎 Product]: its shape, colours, materials, label and logo exactly as in the picture in every shot, no words on it changed or added, nothing else taken from the picture.\nThe person in the ad looks like [📎 Person]: face, hair, skin tone and clothes as in the picture, nothing else taken from it.\nThe place, light and colours follow [📎 Lifestyle still]; take nothing else from it. 0–2 s: {✏️ the hook, e.g. a hand sets the product down hard on the counter}, the first frame already moving. 2–8 s: the product in 3 cuts, each a different close angle with one physical effect: a slow turn, light sliding over its surface, a drop of water running down it. 8–12 s: someone uses it in {✏️ the scene, e.g. a sunlit kitchen} and the result shows on their face. 12–15 s: a clean end frame, the product alone in the centre with the top third left empty for text added later. Only one claim is made about it: {✏️ your selling point, e.g. keeps coffee hot for 12 hours}, said once by a warm voice-over. One main camera move per shot. Sound: a track with a clear beat under it, the product's own sounds in front, the music stops on the end frame. No text on screen.",
+        "node": {
+          "still": {
+            "name": "Lifestyle still",
+            "prompt": "A vertical lifestyle photo of [📎 Product] being used in {✏️ the scene, e.g. a sunlit kitchen}: its shape, colours, materials, label and logo exactly as in the picture, no words on it changed or added, nothing else taken from the picture.\nThe person using it looks like [📎 Person]: face, hair, skin tone and clothes as in the picture, nothing else taken from it.\nOne soft window light from the side, the product sharp in the foreground, a real lived-in place. No text in the picture."
+          }
+        },
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, its label and logo in view, then generate."
+          },
+          "person": {
+            "name": "Person",
+            "note": "Optional: add a photo of the person to appear; leave it empty and the video casts someone who fits."
+          }
+        }
+      },
+      "ugc-creator-review": {
+        "name": "Creator review",
+        "description": "A creator talks up your product on a hand-held phone",
+        "prompt": "A 15-second vertical video filmed on a phone the creator holds, as if they posted it themselves. The creator is [📎 Creator]: face, hair, skin tone and clothes as in the picture, nothing else taken from it. The product is [📎 Product]: its shape, colours, label and logo exactly as in the picture, no words on it changed or added; the label reads the right way round in every shot, never mirrored. 0–2 s: the creator already looks into the lens mid-sentence and says \"{✏️ the first line, at most 8 words, e.g. Okay, I did not expect this}\". 2–7 s: they hold the product up close and show {✏️ what they point out, e.g. how the lid clicks shut}, saying \"{✏️ the second line, at most 8 words}\". 7–12 s: they use it and react, saying \"{✏️ the third line, at most 8 words}\". 12–13 s: the product alone on the table, sharp, in daylight. 13–15 s: the creator holds the product next to their face and looks into the lens. Real phone footage: a small hand shake, the focus hunting once, window light, a slightly messy room. Sound: only the creator's voice close to the phone and the room around it, no music. No text on screen.",
+        "input": {
+          "creator": {
+            "name": "Creator",
+            "note": "Add a clear photo of the creator first, face and upper body in view, then generate."
+          },
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, its label and logo in view, then generate."
+          }
+        }
+      },
+      "livestream-pitch": {
+        "name": "Livestream pitch",
+        "description": "A host pitches your product live, close to the lens",
+        "prompt": "A 12-second vertical clip from a live shopping stream. The host is [📎 Host]: face, hair, skin tone and clothes as in the picture, nothing else taken from it. The product is [📎 Product]: its shape, colours, label and logo exactly as in the picture, no words on it changed or added. A bright live-stream room: a ring light in front of the host, a soft light from the left, shelves of products out of focus behind. The host sits at a desk facing the fixed camera, chest up, and talks straight to the viewers in a {✏️ tone, e.g. excited and fast} voice. 0–3 s: the host already holds the product up and calls out to the viewers. 3–9 s: they bring it close to the lens and show {✏️ the selling points, e.g. the soft fabric and the hidden pocket}, turning it in their hands. 9–12 s: they hold it next to their face, smile and point down at the screen. Sound: the host's voice close and clear, a quiet upbeat track under it. No text, captions or interface on screen.",
+        "input": {
+          "host": {
+            "name": "Host",
+            "note": "Add a clear photo of the host first, face and upper body in view, then generate."
+          },
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, its label and logo in view, then generate."
+          }
+        }
+      },
+      "hype-then-twist-ad": {
+        "name": "Luxury hype, plain twist",
+        "description": "Built up like a luxury ad, then the plain reveal",
+        "prompt": "A 12-second vertical funny ad that starts like a luxury commercial. The product is [📎 Product]: its shape, colours, label and logo exactly as in the picture, no words on it changed or added. 0–2 s: in darkness a thin line of gold light already slides across a curved surface, too close to tell what it is. 2–4 s: a slow-motion macro of a glossy edge with a lens flare. 4–6 s: smoke drifting past a shape on a black marble stand, lit from behind. 6–8 s: the camera slowly pulls back as the light swells. 8–10 s: the reveal: {✏️ the reveal, e.g. the plain product sits on a cluttered kitchen table under a bare bulb}, and at that cut the music stops dead. 10–12 s: the product in flat everyday light, held still, a beat of silence, then {✏️ one ordinary sound, e.g. a fridge hums}. Sound: a deep orchestral build and a whispered voice-over up to the reveal, then silence. No text on screen.",
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, its label and logo in view, then generate."
+          }
+        }
+      },
+      "product-commercial-shotlist": {
+        "name": "Premium product film",
+        "description": "A widescreen high-end product film, shot by shot",
+        "prompt": "{✏️ the look, e.g. cool, minimal, soft grey and steel}. A 12-second widescreen premium commercial for [📎 Product]: its shape, colours, materials, label and logo exactly as in the picture in every shot, no words on it changed or added, nothing else taken from the picture. A studio set, one soft light from above left, a dark seamless background.\n0–3s: macro, the camera glides along one edge of the product while a line of light slides over it.\n3–5s: top-down, the product turns slowly on a plinth and stops with its label facing the camera.\n5–8s: low angle, a slow push in as {✏️ one detail in slow motion, e.g. the cap lifts off}.\n8–12s: the hero frame: the product in the centre at eye level, the camera settles and holds still.\nSound: a low synth pad, one crisp sound on each cut, no voice. No text on screen. Keywords: premium, precise, clean reflections, shallow depth of field, slow motion.",
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, its label and logo in view, then generate."
+          }
+        }
+      },
+      "unboxing-ad": {
+        "name": "Unboxing ad",
+        "description": "From the closed package to your product in hand",
+        "prompt": "A 25-second vertical unboxing video of [📎 Product]: its shape, colours, label and logo exactly as in the picture, no words on it changed or added. Close and from above, on a clean wooden table, soft daylight from a window. 0–4 s: the closed package already slides into the frame: {✏️ what the package looks like, e.g. a matte black box with a gold ribbon}. 4–9 s: hands open it slowly, the lid lifts, tissue paper rustles. 9–14 s: the hands lift the product out and turn it once toward the camera. 14–20 s: close-ups of {✏️ two details, e.g. the stitching and the metal clasp}, one main camera move each. 20–25 s: the hands use it once and set it down beside the open box, and the camera holds still. Sound: crisp close sounds of paper, the lid and the product, a soft light beat under them, no voice. No text on screen.",
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, its label and logo in view, then generate."
+          }
+        }
+      },
+      "variant-carousel-ad": {
+        "name": "Every colour in one ad",
+        "description": "Your product in three colours or styles, one by one",
+        "prompt": "A 20-second vertical ad showing one product in three colours or styles, one after another. The same camera position, the same light and the same plain {✏️ backdrop colour, e.g. warm beige} backdrop in every part; only the product changes. 0–6 s: [📎 Variant 1], its colour, shape, label and logo exactly as in its picture, already turning slowly on a small plinth. 6–7 s: {✏️ one transition, e.g. a quick spin} carries it into the next. 7–13 s: [📎 Variant 2], exactly as in its picture, turning the same way. 13–14 s: the same transition. 14–20 s: [📎 Variant 3], exactly as in its picture, turning the same way, then all three stand side by side for the last 2 seconds. The shape and size stay the same in every part; each part takes its colour only from its own picture. Sound: one upbeat track with a soft whoosh on each transition. No text on screen.",
+        "input": {
+          "variant-1": {
+            "name": "Variant 1",
+            "note": "Add a clear photo of the product in its first colour or style first, then generate."
+          },
+          "variant-2": {
+            "name": "Variant 2",
+            "note": "Add a clear photo of the product in its second colour or style first, then generate."
+          },
+          "variant-3": {
+            "name": "Variant 3",
+            "note": "Add a clear photo of the product in its third colour or style first, then generate."
+          }
+        }
+      },
+      "product-hero-still": {
+        "name": "Product hero shot",
+        "description": "Your product photo made into a studio main image",
+        "prompt": "A square studio product photo made from [📎 Product]: its shape, proportions, colours, materials, label and logo exactly as in the picture, no words on it changed, redrawn or added, nothing else taken from the picture. The product stands on {✏️ the surface, e.g. a slab of pale travertine}. A soft key light from one side and a thin rim light that separates it from the background; a few out-of-focus props in the foreground, the product sharp in the middle, a clean softly lit background behind. The product fills about half of the frame, the top quarter left empty for copy added later. Photorealistic commercial photo. No text in the picture.",
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, its label and logo in view, then generate."
+          }
+        }
+      },
+      "product-hero-motion": {
+        "name": "Product in motion",
+        "description": "A hero shot of your product, then one thing moves",
+        "prompt": "(💡 Generate Hero shot first, then set it as the First frame)The video starts on the first frame. Only one thing changes: {✏️ the one thing that moves, e.g. a band of light slides slowly across the product}. The camera stays locked, or pushes in very slowly. The product's shape, label and logo stay exactly as in the first frame and sharp to the last frame; no new text, no new objects.",
+        "node": {
+          "still": {
+            "name": "Hero shot",
+            "prompt": "A square studio product photo made from [📎 Product]: its shape, proportions, colours, materials, label and logo exactly as in the picture, no words on it changed, redrawn or added, nothing else taken from the picture. The product stands on {✏️ the surface, e.g. dark wet stone}. A soft key light from one side and a thin rim light, a clean softly lit background. The product in the centre, filling about half of the frame. Photorealistic commercial photo. No text in the picture."
+          }
+        },
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, then generate Hero shot."
+          }
+        }
+      },
+      "product-turntable-360": {
+        "name": "360° turntable",
+        "description": "Three angles of your product as a turntable showcase",
+        "prompt": "A 10-second square product showcase with sound. The product is shown in three pictures: [📎 Front] from the front, [📎 Side] from the side, [📎 Back] from the back; its shape, colours, materials, label and logo exactly as in them from every angle, no words on it changed or added, nothing else taken from the pictures. 0–2 s: black, then a spotlight comes up on the product's front. 2–7 s: it turns on a turntable through its side and back, {✏️ the pace, e.g. slow and weighty, for a luxury watch}. 7–8 s: the camera pushes in to {✏️ the detail to show close up, e.g. the engraved clasp}. 8–10 s: back on its front, the turntable stops and the product rests in the light. A seamless black background, one key light and a rim light, a soft reflection under it. Sound: a low hum, and a soft click as it stops. No text on screen.",
+        "input": {
+          "front": {
+            "name": "Front",
+            "note": "Add a photo of the front of your product first, then generate."
+          },
+          "side": {
+            "name": "Side",
+            "note": "Add a photo of the side of your product first, then generate."
+          },
+          "back": {
+            "name": "Back",
+            "note": "Add a photo of the back of your product first, then generate."
+          }
+        }
+      },
+      "product-particle-reveal": {
+        "name": "Particle reveal",
+        "description": "Your product breaks into particles and reforms",
+        "prompt": "(💡 Generate 3D render first, then set it as the First frame)A 6-second widescreen tech reveal with sound. The video starts on the first frame. 0–1 s: the product holds in the dark, a thin line of light along its edge. 1–3 s: its surface breaks into fine glowing {✏️ the particle colour, e.g. cyan} particles that swirl once around it and stream back, reforming it exactly as it was, the same shape, label and logo. 3–6 s: the camera circles a quarter turn around it while {✏️ one small action, e.g. its lid slides open}. Sound: a rising shimmer as the particles swirl, a deep hit as it reforms. No text on screen.",
+        "node": {
+          "render": {
+            "name": "3D render",
+            "prompt": "A widescreen photorealistic 3D product render of [📎 Product]: its shape, proportions, colours, materials, label and logo exactly as in the picture, no words on it changed or added, nothing else taken from the picture. The product floats in the centre of a pure black space, lit by a cool rim light and a soft light from above, its surfaces glossy and precise, a faint reflection below. No text in the picture."
+          }
+        },
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, then generate 3D render."
+          }
+        }
+      },
+      "product-hero-direct-i2v": {
+        "name": "Animate my product picture",
+        "description": "Your finished product picture, set moving",
+        "prompt": "The video starts on the first frame, the product picture. Only one thing that is not in the picture happens: {✏️ the one thing that moves, e.g. steam rises from the cup}. The camera stays locked, or pushes in very slowly. The product's shape, label and logo stay exactly as in the first frame and sharp to the last frame; no new text, no new objects.",
+        "input": {
+          "picture": {
+            "name": "Product picture",
+            "note": "Add your finished product picture first, then pick it into the First frame."
+          }
+        }
+      },
+      "product-state-change": {
+        "name": "Product before and after",
+        "description": "Your product changes from one state to another",
+        "prompt": "(💡 Generate Before first, then set it as the First frame)(💡 Generate After first, then set it as the End frame)A 5-second square video with sound. It starts on the first frame and ends on the end frame: the same product on the same surface from the same camera, only its state changes. One continuous action from start to end: {✏️ how it changes, e.g. a hand lifts the lid and folds it back}. {✏️ the one thing that carries the change, e.g. the same hand} stays in view the whole time. The camera does not move. The label and logo stay readable and unchanged. Sound: the product's own sounds as it changes. No text on screen.",
+        "node": {
+          "before": {
+            "name": "Before",
+            "prompt": "A square studio photo of [📎 Product] on {✏️ the surface, e.g. a white oak table}: its shape, colours, materials, label and logo exactly as in the picture, no words on it changed or added, nothing else taken from the picture. It is in its starting state, as in the picture. A front three-quarter view at table height, the product in the centre filling about half of the frame, soft daylight from the left. No text in the picture."
+          },
+          "after": {
+            "name": "After",
+            "prompt": "(💡 Generate Before first)Edit [📎 Before]: keep the camera, framing, surface, light and background exactly as they are, and keep the product's shape, colours, materials, label and logo, no words on it changed or added. Change only its state: it is now {✏️ its other state, e.g. with the lid open and folded back}. No text in the picture."
+          }
+        },
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a clear photo of your product first, then generate Before, then After."
           }
         }
       },
@@ -1689,11 +2070,15 @@
       "pet-selfie-vlog": {
         "name": "Pet steals the selfie vlog",
         "description": "A selfie vlog the pet takes over, ending nose to lens",
-        "prompt": "A vertical phone selfie vlog. The only animal in the video is [📎 Pet]: exactly one, its breed, coat colour and markings, eye colour and size as in the picture, nothing else taken from the picture. 0–3 s: the phone is held at arm's length, someone starts talking to the camera in {✏️ where, e.g. a sunny living room}, and the pet already walks into the frame behind them. 3–7 s: the pet {✏️ what it does to steal the shot, e.g. jumps onto the sofa and sniffs the phone}, its ears, tail and paws moving the way this animal really moves. 7–10 s: the pet comes right up to the lens until its nose fills the frame and the picture goes soft. The camera is the hand-held phone the whole time, small wobbles, no cuts. Daylight from a window. Sound: the person's surprised laugh and the pet's own sounds, no music. No text on screen.",
+        "prompt": "A vertical phone selfie vlog. The only animal in the video is [📎 Pet]: exactly one, its breed, coat colour and markings, eye colour and size as in the picture, nothing else taken from the picture.\nThe person holding the phone looks like [📎 Person]: face, hair, skin tone and clothes as in the picture, nothing else taken from it.\n0–3 s: the phone is held at arm's length, someone starts talking to the camera in {✏️ where, e.g. a sunny living room}, and the pet already walks into the frame behind them. 3–7 s: the pet {✏️ what it does to steal the shot, e.g. jumps onto the sofa and sniffs the phone}, its ears, tail and paws moving the way this animal really moves. 7–10 s: the pet comes right up to the lens until its nose fills the frame and the picture goes soft. The camera is the hand-held phone the whole time, small wobbles, no cuts. Daylight from a window. Sound: the person's surprised laugh and the pet's own sounds, no music. No text on screen.",
         "input": {
           "pet": {
             "name": "Pet",
             "note": "Add a clear photo of your pet first, the whole animal in view, then generate."
+          },
+          "person": {
+            "name": "Person",
+            "note": "Optional: add a photo of the person filming; leave it empty and the video casts someone who fits."
           }
         }
       },
@@ -1838,6 +2223,82 @@
           "subject": {
             "name": "Subject",
             "note": "Add a photo of the person or the thing the tip is about first, then generate."
+          }
+        }
+      },
+      "talking-presenter": {
+        "name": "Talking presenter",
+        "description": "Your photo reads your script on camera",
+        "prompt": "(💡 Generate Portrait first, then pick it into the Character slot)(💡 Generate Voice-over first, then pick it into the Driving audio slot)The person looks straight into the lens and says the voice-over, lips matching every word. Small, calm head movements and expressions that follow what is said; {✏️ the manner, e.g. warm and confident, a slight smile at the end}. The camera does not move.",
+        "node": {
+          "portrait": {
+            "name": "Portrait",
+            "prompt": "A vertical medium close-up photo of the person in [📎 Person]: face, hair, skin tone and clothes as in the picture, nothing else taken from it. They face the camera straight on, mouth closed, eyes on the lens, in {✏️ the setting, e.g. a bright home office with a bookshelf}, lit by soft indoor light. The bottom third of the frame is plain enough for subtitles. No text in the picture."
+          },
+          "voice": {
+            "name": "Voice-over",
+            "prompt": "{✏️ the script, exactly the words to say, with a comma or a full stop wherever a pause belongs}"
+          }
+        },
+        "input": {
+          "person": {
+            "name": "Person",
+            "note": "Add a clear photo of the person first, face in view, then generate Portrait."
+          }
+        }
+      },
+      "talking-head-pitch": {
+        "name": "One-line talking clip",
+        "description": "A few short lines said straight to camera",
+        "prompt": "A 10-second vertical video with sound, spoken in {✏️ the language, e.g. English}. The person is [📎 Person]: face, hair, skin tone and clothes as in the picture, nothing else taken from it. A medium close-up, the camera locked; they look into the lens in {✏️ the setting, e.g. a sunlit café} and say \"{✏️ the first line, at most 10 words}\", then \"{✏️ the second line, at most 10 words}\". Lips match every word. Sound: only their voice and the quiet room around them, no music. No text, captions or subtitles on screen.",
+        "input": {
+          "person": {
+            "name": "Person",
+            "note": "Add a clear photo of the person first, face in view, then generate."
+          }
+        }
+      },
+      "two-speaker-talk": {
+        "name": "Two-person conversation",
+        "description": "Two people talking in one shot, each in their own voice",
+        "prompt": "(💡 Generate Two-shot first, then pick it into the Character slot)(💡 Generate Left voice first, then pick it into the Left audio slot)(💡 Generate Right voice first, then pick it into the Right audio slot)The person on the left speaks first, then the person on the right. Each one's lips move only while their own voice plays; the other listens, nods and reacts. A relaxed, natural conversation; the camera does not move.",
+        "node": {
+          "scene": {
+            "name": "Two-shot",
+            "prompt": "A widescreen photo of two people sitting side by side at {✏️ the setting, e.g. a podcast desk with two microphones}: on the left the person in [📎 Left person], on the right the person in [📎 Right person], each one's face, hair, skin tone and clothes as in their picture, nothing else taken from them. Both face the camera, turned slightly toward each other, mouths closed, both faces fully in view and the same size. Soft, even light. No text in the picture."
+          },
+          "left-voice": {
+            "name": "Left voice",
+            "prompt": "{✏️ what the person on the left says}"
+          },
+          "right-voice": {
+            "name": "Right voice",
+            "prompt": "{✏️ what the person on the right says}"
+          }
+        },
+        "input": {
+          "left-person": {
+            "name": "Left person",
+            "note": "Add a clear photo of the person on the left first, then generate Two-shot."
+          },
+          "right-person": {
+            "name": "Right person",
+            "note": "Add a clear photo of the person on the right first, then generate Two-shot."
+          }
+        }
+      },
+      "talking-own-voice": {
+        "name": "Talking in my own voice",
+        "description": "Your photo speaks your own recording",
+        "prompt": "The person looks into the lens and says the recording, lips matching every word; {✏️ the manner, e.g. relaxed, with small natural nods}. The camera does not move.",
+        "input": {
+          "portrait": {
+            "name": "Portrait",
+            "note": "Add your photo first, face in view, then pick it into the Character slot."
+          },
+          "recording": {
+            "name": "Recording",
+            "note": "Add your recording first, then pick it into the Driving audio slot."
           }
         }
       },
@@ -2624,6 +3085,9 @@
       },
       "columns": {
         "unavailable": "Columns can't go here"
+      },
+      "slashMenu": {
+        "empty": "No matches"
       }
     },
     "readOnlyReconnect": "Reconnect",
@@ -3151,7 +3615,42 @@
         "colProject": "Project",
         "colModel": "Model",
         "colAmount": "Credits",
-        "loadError": "Could not load credits. Refresh to try again."
+        "loadError": "Could not load credits. Refresh to try again.",
+        "spendCap": {
+          "title": "Spend limits",
+          "studioMonthly": "Studio monthly total",
+          "studioMonthlyHint": "Everyone together, separate from each person’s limit",
+          "memberDefault": "Default monthly limit per person",
+          "memberDefaultHint": "Applies to everyone without a limit of their own",
+          "notSet": "Not set",
+          "perMonth": "Per month",
+          "studioSpent": "Studio spent this month",
+          "resetsAt": "Resets",
+          "saved": "Spend limits saved.",
+          "saveFailed": "The spend limits could not be saved. Try again.",
+          "invalidAmount": "Enter 0 to {max} credits, up to two decimal places.",
+          "loadError": "Could not read the spend limits.",
+          "retry": "Try again",
+          "save": "Save",
+          "colMember": "Member",
+          "colRelation": "Relation",
+          "colSpent": "Spent this month",
+          "colEffective": "Limit in force",
+          "relationStudioMember": "Studio member",
+          "relationProjectCollaborator": "Project collaborator",
+          "relationFormer": "Left (read-only)",
+          "unlimited": "Unlimited",
+          "zero": "0 (no credits)",
+          "amount": "{amount, select, 1 {1 credit} other {{amount} credits}}",
+          "spentOfLimit": "{spent} / {limit, select, 1 {1 credit} other {{limit} credits}}",
+          "sourceOverride": "Own",
+          "sourceDefault": "Default",
+          "atCap": "At limit",
+          "override": "Set own limit…",
+          "useDefault": "Use the default ({fallback})",
+          "overrideTitle": "Own limit · {name}",
+          "overrideHint": "Applies to this person only, over the default (now {fallback})."
+        }
       },
       "members": {
         "invite": "Invite member",
@@ -3507,7 +4006,8 @@
       "projectsPerStudio": "Projects per Studio",
       "studioMembers": "Members per Studio",
       "projectMembers": "Members per Project",
-      "concurrentEditors": "Simultaneous connections per document"
+      "concurrentEditors": "Simultaneous connections per document",
+      "runningTasksPerUser": "Tasks running at once"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count}",
@@ -3516,9 +4016,10 @@
     "overLimitTag": "over",
     "overLimit": {
       "storage": "Storage is over the limit. What is already there works as before, but nothing new can be uploaded or generated. Upgrade for more space.",
+      "storageEnterprise": "Storage is over your agreement. What is already there works as before, but nothing new can be uploaded or generated. Contact us to change it.",
       "teamStudios": "You are over the team Studio limit. The ones you have work as before, but no new ones can be created. Upgrade for more."
     },
-    "enterpriseQuota": "Your allowances are set by a separate agreement and are not shown here.",
+    "enterpriseQuota": "Your other allowances are set by a separate agreement and are not shown here.",
     "compare": "Compare tiers",
     "contactEnterprise": "Need a bigger scale or separate commercial terms? Email us:",
     "contactSelfHosted": "Need a commercial licence or separate support terms? Email us:",
@@ -3578,7 +4079,8 @@
       "added": "Added. Choose a membership to get {percent}% off the first period.",
       "loadFailed": "Couldn't load referral information.",
       "retry": "Retry"
-    }
+    },
+    "quotaUnlimited": "{used} / Unlimited"
   },
   "promoter": {
     "heading": "Promoter program",
@@ -3733,7 +4235,7 @@
       "refunded": "Refunded"
     },
     "billingOff": {
-      "title": "This deployment does not charge credits",
+      "title": "A self-hosted deployment does not charge credits",
       "body": "Generating costs nothing and there is nothing to buy. What gets used is still recorded."
     },
     "total": "Account total",
@@ -3758,7 +4260,7 @@
     "allStudios": "All Studios",
     "filterByStudio": "Filter by Studio",
     "ledgerEmpty": "Nothing spent yet.",
-    "ledgerBillingOff": "This deployment does not charge credits. Below is what was used.",
+    "ledgerBillingOff": "A self-hosted deployment does not charge credits. Below is what was used.",
     "colDay": "Date",
     "colWho": "Who",
     "colStudio": "Studio",
@@ -3832,6 +4334,13 @@
     },
     "refundHint": {
       "assigned": "Unassign it to ask for a refund"
+    },
+    "refusal": {
+      "spendCap": "The monthly spend limit is reached. Contact the Studio admin."
+    },
+    "spendCap": {
+      "member": "You've reached your monthly spend limit in this Studio ({limit, select, 1 {1 credit} other {{limit} credits}}). It resets on {date}. Contact the Studio admin if you need more.",
+      "studio": "This Studio has reached its monthly spend limit. It resets on {date}. Contact the Studio admin."
     }
   },
   "notFound": {

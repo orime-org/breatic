@@ -119,6 +119,6 @@ describe("get_generation_template on the Studio payer's own keys", () => {
 
     const text = String(await executeOf("get_generation_template")({ id: "carried-object-transition" }, CONTEXT));
     expect(text).toMatch(/costs 10 credits/);
-    expect(text).toContain("seedance-2.5-image-to-video runs on the Studio payer's own key, at no credits");
+    expect(text).toContain(`"result" (seedance-2.5-image-to-video): no credits; it runs on the Studio payer's own key.`);
   });
 });

@@ -27,6 +27,8 @@ vi.mock('@web/data/api/text-tools', async (importOriginal) => ({
   textToolsApi: { stream, config },
 }));
 
+import { StreamRefusedError } from '@web/data/stream/sse';
+import { spendCapMessage } from '@web/lib/spend-cap-message';
 import { toast } from '@web/lib/toast';
 import { BODY_SURFACE_CLASS } from '@web/spaces/document/build-document-editor';
 import {
@@ -420,6 +422,17 @@ describe('a failure', () => {
     expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry']);
     expect(previewText()).not.toContain('Hel');
     expect(screen.getByTestId('doc-ai-dialog')).toBeInTheDocument();
+  });
+
+  it('toasts a spend-limit refusal with its amount and reset day, not the server\'s bare sentence (inner#1968 H-37)', async () => {
+    const { call } = await polishing();
+    const cap = { reason: 'spend_cap_reached', scope: 'member', limit: '10', resetsAt: '2026-12-01T00:00:00.000Z' };
+
+    await act(async () => {
+      call.fail(new StreamRefusedError(402, 'cap reached', true, cap.reason, { code: 402, message: 'cap reached', ...cap }));
+    });
+
+    expect(toastError).toHaveBeenCalledExactlyOnceWith(spendCapMessage('member', '10', cap.resetsAt));
   });
 
   it('from an error event fails the same way', async () => {

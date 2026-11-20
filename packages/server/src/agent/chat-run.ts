@@ -16,7 +16,7 @@
  * background. The whole run is after-reply work, from its first line, so a
  * shutdown waits for it before closing the pools it needs.
  */
-import { env, ForbiddenError, getAgentConfig, logger, NotFoundError, runWithContext, runWithLocale } from "@breatic/core";
+import { AppError, env, ForbiddenError, getAgentConfig, logger, NotFoundError, runWithContext, runWithLocale, SpendCapReachedError } from "@breatic/core";
 import { SMALLEST_CREDIT } from "@breatic/domain";
 import type { ChatSpaceContext } from "@breatic/shared";
 import type { UIMessageChunk } from "ai";
@@ -161,7 +161,9 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
   try {
     await precheckCredits(projectId, userId, SMALLEST_CREDIT);
   } catch (err) {
-    logger.warn({ err, ...ctx, runId }, "chat_run_no_credits");
+    if (err instanceof SpendCapReachedError) logger.warn({ err, ...ctx, runId }, "chat_run_spend_capped");
+    else if (err instanceof AppError && err.statusCode === 402) logger.warn({ err, ...ctx, runId }, "chat_run_no_credits");
+    else logger.error({ err, ...ctx, runId }, "chat_run_check_failed");
     await queue.settle(conversationId, runId, { kind: "unsaved" });
     return;
   }

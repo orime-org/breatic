@@ -573,6 +573,19 @@ describe('the credits overlay, section by section', () => {
       expect(fetchCreditLedger).toHaveBeenCalled();
       expect(body).toHaveTextContent('seedream-4.0');
     });
+
+    // inner#1968 E-08: with payments off the ledger says it is self-hosted.
+    it('says self-hosted where nothing is charged', async () => {
+      fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
+      setLocale('zh-CN');
+      try {
+        await openOn('ledger');
+        const body = await panel();
+        expect(body).toHaveTextContent('自部署不计积分，下面是用量记录。');
+      } finally {
+        setLocale('en');
+      }
+    });
   });
 
   describe('list mechanics', () => {

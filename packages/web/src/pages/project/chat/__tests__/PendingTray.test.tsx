@@ -33,7 +33,7 @@ function setup(props: Partial<Parameters<typeof PendingTray>[0]> = {}): ReturnTy
   const onTakeBack = vi.fn();
   render(
     <TooltipProvider>
-      <PendingTray items={ITEMS} awaiting={false} blocked={false} busy={{}} onTakeBack={onTakeBack} {...props} />
+      <PendingTray items={ITEMS} awaiting={false} blocked={false} capNote={null} busy={{}} onTakeBack={onTakeBack} {...props} />
     </TooltipProvider>,
   );
   return onTakeBack;
@@ -48,6 +48,11 @@ describe('the waiting area', () => {
     expect(rows[0]).toHaveTextContent('make it blue');
     expect(within(rows[0]!).getByText('notes.txt')).toBeInTheDocument();
     expect(rows[1]).toHaveTextContent('and bigger');
+  });
+
+  it('says the spend limit that stopped the run, over the blocked and awaiting notes (inner#1968 H-33)', () => {
+    setup({ blocked: true, awaiting: true, capNote: 'You have reached your monthly spend limit in this Studio.' });
+    expect(screen.getByTestId('chat-waiting-note').textContent).toBe('You have reached your monthly spend limit in this Studio.');
   });
 
   it('takes a message back into the box, or deletes it (WB-20, WB-21)', () => {

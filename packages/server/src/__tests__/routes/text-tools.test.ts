@@ -409,7 +409,8 @@ describe("who may call it", () => {
     const res = await post(bodyFor("polish"));
 
     expect(res.status).toBe(402);
-    expect(mocks.assetService.resolveOwnerStudioId).toHaveBeenCalledWith(PID);
+    // The project's studio pays: the admission is asked about this project.
+    expect(mocks.creditHoldService.judgeBalanceAdmission).toHaveBeenCalledWith(PID, "user-1", expect.any(Number));
     expect(model.calls).toHaveLength(0);
   });
 

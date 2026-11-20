@@ -16,17 +16,16 @@
  * failure hook throws, the exception reaches `errorHandler`, and every error
  * response in the product is produced in one place, in the caller's language.
  *
- * @see packages/server/src/middleware/validate.ts
+ * @see packages/core/src/http/validate.ts
  * @see packages/server/src/middleware/error-handler.ts
  */
 
 import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
 import { z } from "zod";
-import { loadLocales, runWithLocale } from "@breatic/core";
+import { loadLocales, runWithLocale, validate } from "@breatic/core";
 import { REQUEST_SHAPE_REASON, chatMessageSchema } from "@breatic/shared";
 
-import { validate } from "@server/middleware/validate.js";
 import { errorHandler } from "@server/middleware/error-handler.js";
 
 loadLocales();

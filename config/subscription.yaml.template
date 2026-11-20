@@ -20,7 +20,7 @@
 # to nothing, so there is nothing to sell.
 #
 # Separate from config/membership.yaml on purpose. That file answers "what are
-# this tier's six ceilings" and its header states that every number in it is a
+# this tier's seven ceilings" and its header states that every number in it is a
 # plain ceiling; a price is not one. config/pricing.yaml is the other leg of
 # the product entirely — credit packs bought once, not a subscription.
 #

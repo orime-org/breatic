@@ -88,6 +88,7 @@ import {
   handlePaymentFailed,
 } from "@server/modules/payment/payment.service.js";
 import { getConfirmationView } from "@server/modules/payment/payment.repo.js";
+import { settleAfterReply } from "@server/utils/after-reply.js";
 import { openPaymentSource } from "./payment-source.js";
 
 try {
@@ -260,6 +261,26 @@ describe("one paid session grants exactly once", () => {
       expect(row!.status).toBe("completed");
       expect(row!.tax_cents).toBe(240);
       expect(row!.total_cents).toBe(2240);
+    } finally {
+      await dropUser(userId);
+    }
+  });
+
+  it("is waited for by a shutdown, as all after-reply work is", async () => {
+    const { userId, sessionId } = await seedPending();
+    try {
+      stripe.checkout.sessions.retrieve.mockResolvedValue(paidSession(sessionId));
+      let delivered = false;
+      sentMail.mockImplementationOnce(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        delivered = true;
+        return true;
+      });
+
+      await fulfillPayment(sessionId, null);
+      await settleAfterReply();
+
+      expect(delivered).toBe(true);
     } finally {
       await dropUser(userId);
     }

@@ -73,6 +73,7 @@ function seedSource(id: string, type: 'text' | 'video' | 'audio' | 'annotation')
       const mention = new Y.XmlElement('referenceMention');
       mention.setAttribute('sourceNodeId', 'up-1');
       mention.setAttribute('label', 'Up');
+      mention.setAttribute('optional', true as unknown as string);
       const p = paragraph({ text: 'see ' });
       p.push([mention]);
       prompts.get(modes[0] as string)?.push([p]);
@@ -137,6 +138,10 @@ describe('node data snapshot', () => {
       expect(copy.get(mode)?.toString()).toBe(src.get(mode)?.toString());
     }
     expect(copy.get([...src.keys()][0] as string)?.toString()).toContain('sourceNodeId="up-1"');
+    // A mention of an optional template input stays optional in the copy, as the boolean the readers ask for (inner#1811, CAP-9).
+    const mentions = (copy.get([...src.keys()][0] as string)?.createTreeWalker((el) => el instanceof Y.XmlElement && el.nodeName === 'referenceMention') ?? []) as Iterable<Y.XmlElement>;
+    const optional: unknown[] = [...mentions].map((el) => el.getAttribute('optional'));
+    expect(optional).toContain(true);
   });
 
   it('keeps a container for every mode, even one the snapshot lacks', () => {

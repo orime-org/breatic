@@ -18,22 +18,23 @@ import { publishNodeEvent, type getStreamRedis } from "@breatic/core";
 import type { NodeTaskCounts, NodeTaskResult } from "@breatic/shared";
 
 /**
- * Publish a node's four task counts (#186, design §3.4).
+ * Publish a node's task counts (#186, design §3.4): one per state, how many
+ * of the running wait for a free slot, and the limit they wait under.
  *
  * One event covers every state change, because the canvas document holds
- * only the four numbers. Which task moved is not on the wire, so nothing
+ * only these counts. Which task moved is not on the wire, so nothing
  * here can be applied to the wrong row and there is no gen to check: a
  * number is either the current one or an older one, and the next state
  * change on that node replaces it outright.
  * @param streamRedis - Redis client for the stream DB.
  * @param docName - Canvas doc the node lives in.
  * @param nodeId - The node these counts belong to.
- * @param counts - All four, freshly counted from `node_tasks`.
+ * @param counts - All of them, freshly counted from `node_tasks`.
  * @param result - The content fields, on the transition into `done` and
  *   on no other. Required rather than optional, and it is the one caller-side
  *   distinction that matters: an event carrying content is the only way that
  *   content reaches the node, so losing it has to fail whoever sent it and let
- *   the retry happen. An event carrying only the four numbers is a courtesy to
+ *   the retry happen. An event carrying only the counts is a courtesy to
  *   other viewers, and failing a request over one throws away an answer
  *   already in hand. Having to name this parameter is what keeps the second
  *   kind from being written against this function by accident; the server

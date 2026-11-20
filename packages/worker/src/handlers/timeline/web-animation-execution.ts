@@ -35,6 +35,7 @@ import {
   getWorkerConfig,
   logger,
   timelineExecutionRepo,
+  timelineReportGraceMs,
   type TimelineExecutionEvent,
   type TimelineExecutionJobData,
 } from "@breatic/core";
@@ -46,6 +47,7 @@ import {
   handOffLookups,
   keysById,
   provider,
+  runningSlotService,
   sumCreditsByOperationKeys,
   timelineOperationKey,
   toChargeCredits,
@@ -252,13 +254,31 @@ function costOfCall(row: TimelineExecution, call: ReportedCall): Cost {
  */
 async function take(row: TimelineExecution): Promise<TimelineExecution | null> {
   if (row.status === "queued") {
-    // Never claimed, so never submitted: past its deadline it ends without a job.
-    if (Date.parse(row.deadlineAt) <= Date.now()) {
+    // Never claimed, so never submitted: past its deadline it ends without a
+    // job. One that waited for a running slot has no deadline until it starts.
+    if (row.slotWaitSince == null && Date.parse(row.deadlineAt) <= Date.now()) {
       await move(row, { type: "deadline" });
       return null;
     }
-    const claimed = await move(row, { type: "claim" });
-    return claimed.applied ? claimed.row : take(claimed.row);
+    // Its spend was judged once, at its acceptance; like a generation, waiting
+    // for a slot does not judge it again (inner#1968, design 3.10).
+    // The running-task gate claims it when its person runs fewer than their
+    // limit; otherwise it throws StillRunning and the job goes back to the
+    // queue (inner#1968). A row another pickup claimed first answers ended,
+    // and is read again and taken as it stands.
+    let gate: Awaited<ReturnType<typeof runningSlotService.claimWithinLimit>>;
+    try {
+      gate = await runningSlotService.claimWithinLimit(row.id);
+    } catch (err) {
+      if (err instanceof StillRunning) {
+        for (const failure of err.publishFailures) logger.error({ err: failure, executionId: row.id }, "running_slot_publish_failed");
+      }
+      throw err;
+    }
+    for (const err of gate.publishFailures) logger.error({ err, executionId: row.id }, "running_slot_publish_failed");
+    if (gate.outcome === "started") return gate.started;
+    const after = await timelineExecutionRepo.findById(row.id);
+    return after === undefined ? null : take(after);
   }
   if (row.status === "running") {
     // A new attempt changes nothing the user sees, so it does not signal the Space; a phase change does.
@@ -654,7 +674,7 @@ async function pickUp(job: Job<TimelineExecutionJobData>, token: string | undefi
     token,
     row,
     step,
-    endsAt: step.request.deadlineAt + 2 * getTimelineConfig().web_animation.poll_interval_ms,
+    endsAt: step.request.deadlineAt + timelineReportGraceMs(),
     llmKeyId,
   };
   if (row.status === "cancelling") return cancelling(pickup);

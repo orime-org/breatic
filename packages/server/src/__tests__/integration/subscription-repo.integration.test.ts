@@ -30,6 +30,8 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+import { TransactionRollbackError } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import {
   db,
@@ -94,7 +96,7 @@ describe("upsertSubscription (#106 §5.2)", () => {
     const userId = await makeUser();
     try {
       const periodEnd = new Date("2026-09-18T00:00:00.000Z");
-      const stored = await upsertSubscription({
+      const stored = await upsertSubscription(db, {
         userId,
         stripeSubscriptionId: `sub_new_${seq}`,
         tier: "pro",
@@ -127,7 +129,7 @@ describe("upsertSubscription (#106 §5.2)", () => {
     const userId = await makeUser();
     const stripeId = `sub_conv_${Date.now()}`;
     try {
-      await upsertSubscription({
+      await upsertSubscription(db, {
         userId,
         stripeSubscriptionId: stripeId,
         tier: "pro",
@@ -142,7 +144,7 @@ describe("upsertSubscription (#106 §5.2)", () => {
         payableInvoiceUrl: "https://invoice.example/1",
         observedAt: new Date(),
       });
-      const updated = await upsertSubscription({
+      const updated = await upsertSubscription(db, {
         userId,
         stripeSubscriptionId: stripeId,
         tier: "pro",
@@ -162,7 +164,7 @@ describe("upsertSubscription (#106 §5.2)", () => {
       // Cleared, not left behind: the invoice was paid, and a stale link would
       // put "finish paying" on the panel of somebody who is up to date.
       expect(updated.payableInvoiceUrl).toBeNull();
-      expect(await listSubscriptions(userId)).toHaveLength(1);
+      expect(await listSubscriptions(db, userId)).toHaveLength(1);
     } finally {
       await dropUser(userId);
     }
@@ -177,7 +179,7 @@ describe("upsertSubscription (#106 §5.2)", () => {
     const userId = await makeUser();
     const stripeId = `sub_period_${Date.now()}`;
     try {
-      await upsertSubscription({
+      await upsertSubscription(db, {
         userId,
         stripeSubscriptionId: stripeId,
         tier: "pro",
@@ -193,7 +195,7 @@ describe("upsertSubscription (#106 §5.2)", () => {
         observedAt: new Date(),
       });
 
-      const moved = await upsertSubscription({
+      const moved = await upsertSubscription(db, {
         userId,
         stripeSubscriptionId: stripeId,
         tier: "pro",
@@ -210,7 +212,7 @@ describe("upsertSubscription (#106 §5.2)", () => {
       });
 
       expect(moved.period).toBe("year");
-      const [reread] = await listSubscriptions(userId);
+      const [reread] = await listSubscriptions(db, userId);
       expect(reread?.period).toBe("year");
     } finally {
       await dropUser(userId);
@@ -234,7 +236,7 @@ describe("upsertSubscription (#106 §5.2)", () => {
       pendingTier: "pro" | "team" | null,
       pendingPeriod: "month" | "year" | null,
     ): ReturnType<typeof upsertSubscription> =>
-      await upsertSubscription({
+      await upsertSubscription(db, {
         userId,
         stripeSubscriptionId: stripeId,
         tier: "pro",
@@ -264,7 +266,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
   it("returns every subscription the account has held, newest first", async () => {
     const userId = await makeUser();
     try {
-      await upsertSubscription({
+      await upsertSubscription(db, {
         userId,
         stripeSubscriptionId: `sub_first_${seq}`,
         tier: "pro",
@@ -279,7 +281,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
         payableInvoiceUrl: null,
         observedAt: new Date(),
       });
-      await upsertSubscription({
+      await upsertSubscription(db, {
         userId,
         stripeSubscriptionId: `sub_second_${seq}`,
         tier: "team",
@@ -295,7 +297,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
         observedAt: new Date(),
       });
 
-      const rows = await listSubscriptions(userId);
+      const rows = await listSubscriptions(db, userId);
       expect(rows.map((r) => r.status)).toEqual(["active", "canceled"]);
     } finally {
       await dropUser(userId);
@@ -307,7 +309,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
     // the reading unchanged, and the account's tier follows from that.
     const userId = await makeUser();
     try {
-      await upsertSubscription({
+      await upsertSubscription(db, {
         userId,
         stripeSubscriptionId: `sub_wired_${seq}`,
         tier: "team",
@@ -324,7 +326,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
       });
 
       const { situation, record } = subscriptionSituation(
-        await listSubscriptions(userId),
+        await listSubscriptions(db, userId),
         BEFORE_FIXTURE_PERIODS,
       );
       expect(situation).toBe("cancelling");
@@ -346,6 +348,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
     try {
       await db.transaction(async (tx) => {
         await upsertSubscription(
+          tx,
           {
             userId,
             stripeSubscriptionId: older,
@@ -361,9 +364,9 @@ describe("listSubscriptions (#106 §5.2)", () => {
             payableInvoiceUrl: null,
             observedAt: new Date(),
           },
-          tx,
         );
         await upsertSubscription(
+          tx,
           {
             userId,
             stripeSubscriptionId: newer,
@@ -379,9 +382,8 @@ describe("listSubscriptions (#106 §5.2)", () => {
             payableInvoiceUrl: null,
             observedAt: new Date(),
           },
-          tx,
         );
-        const rows = await listSubscriptions(userId, tx);
+        const rows = await listSubscriptions(tx, userId);
         const { situation, record } = subscriptionSituation(rows, BEFORE_FIXTURE_PERIODS);
         expect(situation).toBe("active");
         expect(record?.stripeSubscriptionId).toBe(newer);
@@ -394,8 +396,8 @@ describe("listSubscriptions (#106 §5.2)", () => {
   it("answers with nothing for an account that has never subscribed", async () => {
     const userId = await makeUser();
     try {
-      expect(await listSubscriptions(userId)).toEqual([]);
-      expect(subscriptionSituation(await listSubscriptions(userId), BEFORE_FIXTURE_PERIODS).situation).toBe(
+      expect(await listSubscriptions(db, userId)).toEqual([]);
+      expect(subscriptionSituation(await listSubscriptions(db, userId), BEFORE_FIXTURE_PERIODS).situation).toBe(
         "none",
       );
     } finally {
@@ -407,7 +409,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
     const userId = await makeUser();
     const stripeId = `sub_soft_${Date.now()}`;
     try {
-      await upsertSubscription({
+      await upsertSubscription(db, {
         userId,
         stripeSubscriptionId: stripeId,
         tier: "pro",
@@ -426,7 +428,7 @@ describe("listSubscriptions (#106 §5.2)", () => {
         UPDATE subscriptions SET deleted_at = now()
         WHERE stripe_subscription_id = ${stripeId}
       `;
-      expect(await listSubscriptions(userId)).toEqual([]);
+      expect(await listSubscriptions(db, userId)).toEqual([]);
     } finally {
       await dropUser(userId);
     }
@@ -456,14 +458,14 @@ describe("两条活订阅同时存在时 (#106 §6.5.5)", () => {
       };
       const proId = `sub_live_a_${Date.now()}`;
       const teamId = `sub_live_b_${Date.now()}`;
-      await upsertSubscription({
+      await upsertSubscription(db, {
         ...base,
         stripeSubscriptionId: proId,
         tier: "pro",
         period: "month",
         status: "active",
       });
-      await upsertSubscription({
+      await upsertSubscription(db, {
         ...base,
         stripeSubscriptionId: teamId,
         tier: "team",
@@ -471,7 +473,7 @@ describe("两条活订阅同时存在时 (#106 §6.5.5)", () => {
         status: "active",
       });
 
-      const stored = await listSubscriptions(userId);
+      const stored = await listSubscriptions(db, userId);
       expect(stored).toHaveLength(2);
       const reading = subscriptionSituation(stored, BEFORE_FIXTURE_PERIODS);
       expect(reading.situation).toBe("active");
@@ -501,8 +503,8 @@ describe("两条活订阅同时存在时 (#106 §6.5.5)", () => {
         payableInvoiceUrl: null,
         observedAt: new Date(),
       };
-      await upsertSubscription(write);
-      const again = await upsertSubscription({ ...write, status: "past_due" });
+      await upsertSubscription(db, write);
+      const again = await upsertSubscription(db, { ...write, status: "past_due" });
       expect(again.status).toBe("past_due");
     } finally {
       await dropUser(userId);
@@ -513,7 +515,7 @@ describe("两条活订阅同时存在时 (#106 §6.5.5)", () => {
     // 验收第 7 条：老用户回来续费。终结的那条留着当账本，不挡新的。
     const userId = await makeUser();
     try {
-      await upsertSubscription({
+      await upsertSubscription(db, {
         userId,
         stripeSubscriptionId: `sub_done_${Date.now()}`,
         tier: "pro",
@@ -528,7 +530,7 @@ describe("两条活订阅同时存在时 (#106 §6.5.5)", () => {
         payableInvoiceUrl: null,
         observedAt: new Date(),
       });
-      const fresh = await upsertSubscription({
+      const fresh = await upsertSubscription(db, {
         userId,
         stripeSubscriptionId: `sub_again_${Date.now()}`,
         tier: "team",
@@ -544,7 +546,42 @@ describe("两条活订阅同时存在时 (#106 §6.5.5)", () => {
         observedAt: new Date(),
       });
       expect(fresh.tier).toBe("team");
-      expect(await listSubscriptions(userId)).toHaveLength(2);
+      expect(await listSubscriptions(db, userId)).toHaveLength(2);
+    } finally {
+      await dropUser(userId);
+    }
+  });
+});
+
+describe("the connection a caller hands in (inner#1993)", () => {
+  it("writes and reads through a client that is not core's db", async () => {
+    // The private service hands its own client; a transaction on this one,
+    // rolled back, proves the write went through it and nowhere else.
+    const own = drizzle(sql);
+    const userId = await makeUser();
+    try {
+      const rolledBack = own.transaction(async (tx) => {
+        const stored = await upsertSubscription(tx, {
+          userId,
+          stripeSubscriptionId: `sub_own_${seq}`,
+          tier: "pro",
+          period: "month",
+          status: "active",
+          currentPeriodEnd: new Date("2026-09-18T00:00:00.000Z"),
+          cancelAtPeriodEnd: false,
+          stripeItemId: "si_own",
+          hasPendingUpdate: false,
+          pendingTier: null,
+          pendingPeriod: null,
+          payableInvoiceUrl: null,
+          observedAt: new Date(),
+        });
+        expect(stored.userId).toBe(userId);
+        expect(await listSubscriptions(tx, userId)).toHaveLength(1);
+        tx.rollback();
+      });
+      await expect(rolledBack).rejects.toBeInstanceOf(TransactionRollbackError);
+      expect(await listSubscriptions(db, userId)).toHaveLength(0);
     } finally {
       await dropUser(userId);
     }

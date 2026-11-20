@@ -1043,13 +1043,22 @@ export interface ChatSyncAnswer {
   running: boolean;
   /** A card waits for the user's answer. */
   awaiting: boolean;
-  /** Present when what waits could not open a run because the balance cannot pay for it. */
-  blocked?: "credits";
   /**
-   * Beside `blocked`: the payer's own key runs the turn's model, so what the balance must pay for is the Agent's paid
-   * tools (inner#1953); `self` when that key is the caller's own, `admin` when it is the Studio Admin's.
+   * Present when what waits could not open a run: the balance cannot pay for
+   * it, or the user or the Studio has spent its monthly limit (inner#1968).
+   */
+  blocked?: "credits" | "spend_cap";
+  /**
+   * Beside `blocked: "credits"`: the payer's own key runs the turn's model, so what the balance must pay for is the
+   * Agent's paid tools (inner#1953); `self` when that key is the caller's own, `admin` when it is the Studio Admin's.
    */
   own_key?: "self" | "admin";
+  /** With `spend_cap`: whose limit, the user's own or the Studio's total. */
+  scope?: "member" | "studio";
+  /** With `spend_cap`: the limit reached, as a credit decimal. */
+  limit?: string;
+  /** With `spend_cap`: when the limit resets, as ISO text. */
+  resetsAt?: string;
   /** When to ask again, in milliseconds. */
   next_sync_ms: number;
 }

@@ -4,27 +4,28 @@
 /**
  * `POST /mini-tools` — the one entry every server-run mini-tool shares
  * (inner#888 §6.1). The body is validated against the registry, the run is
- * prepared, and the result nodes' rows open before the credit gate so a
- * refusal has somewhere to be said. Browser tools never come here: their
+ * prepared, and its estimate is held before the task row and the result
+ * nodes' rows are written, so a refusal by credits or a spend limit answers
+ * 402 and leaves nothing on the nodes (inner#1968). Browser tools never come
+ * here: their
  * export uploads like any other file.
  */
 
+import { randomUUID } from "node:crypto";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
-import { currentConsent } from "@breatic/core";
+import { currentConsent, defaultJobOpts, validate } from "@breatic/core";
 import { Hono } from "hono";
-import { defaultJobOpts } from "@breatic/core";
 import { miniToolById, miniToolRequestSchema, outputTemplateOf } from "@breatic/shared/mini-tools";
 
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { projectService } from "@server/modules";
 import { prepareRun } from "@server/modules/mini-tool/mini-tool.service.js";
-import { startRowedRun } from "@server/modules/task/generation-task.js";
+import { holdRowedRun, startRowedRun } from "@server/modules/task/generation-task.js";
 import { creditsToHold, taskKeyRows } from "@server/modules/task/run-keys.js";
 
 const miniTools = new Hono<{ Variables: AuthVariables }>();
@@ -36,9 +37,9 @@ miniTools.use("*", requireAuth);
  * Run one mini-tool onto the result nodes the browser built.
  * @param c - Hono context with the validated request.
  * @returns `201` with `{ task_id, status }` — `"pending"` once queued,
- * `"failed"` when the run was refused after its rows opened (the rows hold
+ * `"failed"` when it failed after its rows opened (the rows hold
  * the cause).
- * @throws {AppError} The refusal itself, when no row was opened to carry it.
+ * @throws {AppError} 402 when credits or a spend limit refuse it, before any row opens; any other failure before a row opened.
  */
 miniTools.post(
   "/",
@@ -55,18 +56,19 @@ miniTools.post(
   const run = await prepareRun(spec, body);
 
   const taskType = outputTemplateOf(spec).modality;
-  const task = await admitGeneration(
-    user.id,
-    body.project_id,
-    body.space_id,
-    taskType,
-    "append",
-    run.params,
-    run.model,
-    "mini_tool",
-    undefined,
-    run.keys === undefined ? undefined : taskKeyRows(run.keys),
-  );
+  // Its estimate is held under the id its task takes before any row opens,
+  // so a refusal leaves nothing on the nodes (inner#1968); what the payer's own key pays for is not held (inner#1953).
+  const taskId = randomUUID();
+  const task = await holdRowedRun({
+    taskId,
+    projectId: body.project_id,
+    userId: user.id,
+    credits: () => (run.keys === undefined ? Promise.resolve(run.credits) : creditsToHold(run.keys, body.project_id, user.id, () => Promise.resolve(run.credits))),
+    create: () => admitGeneration(
+      user.id, body.project_id, body.space_id, taskType, "append", run.params, run.model, "mini_tool", taskId,
+      run.keys === undefined ? undefined : taskKeyRows(run.keys),
+    ),
+  });
 
   const status = await startRowedRun({
     taskId: task.id,
@@ -76,8 +78,6 @@ miniTools.post(
     userId: user.id,
     action: "mini_tool",
     label: spec.id,
-    // What the payer's own key pays for is not held (inner#1953).
-    credits: () => (run.keys === undefined ? Promise.resolve(run.credits) : creditsToHold(run.keys, body.project_id, user.id, () => Promise.resolve(run.credits))),
     enqueue: () =>
       tasksQueue().add(
         "execute-mini-tool",

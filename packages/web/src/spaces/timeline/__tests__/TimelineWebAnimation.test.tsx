@@ -37,6 +37,7 @@ import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-document';
 import type { SocketState } from '@web/data/yjs/use-socket';
 import { toast } from '@web/lib/toast';
+import { spendCapMessage } from '@web/lib/spend-cap-message';
 import { writeUserPreference } from '@web/lib/user-preferences-storage';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
@@ -402,6 +403,21 @@ describe('creation dialog', () => {
     expect(within(dialog).getByTestId('web-animation-prompt')).toHaveValue('Spring sale title');
     expect(layout().operationReceipts).toEqual({});
     expect(webCopies()).toEqual([]);
+  });
+
+  it('H-33 toasts the spend limit with its amount and local reset day, and keeps the dialog and the input, when the accept is refused by a spend limit (inner#1968)', async () => {
+    seed();
+    showTimeline();
+    const dialog = await openCreate();
+    await userEvent.type(within(dialog).getByTestId('web-animation-prompt'), 'Spring sale title');
+    const details = { reason: 'spend_cap_reached', scope: 'member', limit: '10', resetsAt: '2026-12-01T00:00:00.000Z' };
+    vi.mocked(timelineApi.acceptExecution).mockRejectedValue(new ApiException({ status: 402, message: 'cap reached', reason: 'spend_cap_reached', fromServer: true, details }));
+    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+    expect(toast.error).toHaveBeenCalledWith(spendCapMessage('member', '10', '2026-12-01T00:00:00.000Z'));
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+    expect(within(dialog).getByTestId('web-animation-prompt')).toHaveValue('Spring sale title');
+    expect(layout().operationReceipts).toEqual({});
   });
 });
 
@@ -791,6 +807,14 @@ describe('execution row header, steps, usage and actions', () => {
     const steps = stepItems(await expand(id));
     expect(steps.map((item) => item.getAttribute('data-mark'))).toEqual(['done', 'stopped', 'pending', 'pending']);
     expect(steps[1]).not.toHaveClass('text-status-error-foreground');
+  });
+
+  // inner#1968: one cancelled while it waited for a running slot was never claimed, so it reached no step.
+  it.each(['cancelled', 'expired'] as const)('reaches no step past the request for a run %s before any pickup claimed it', async (status) => {
+    const id = '90000000-0000-4000-8000-0000000000c4';
+    await showRow(row(id, status, { phase: null, attempt: 0 }));
+    const steps = stepItems(await expand(id));
+    expect(steps.map((item) => item.getAttribute('data-mark'))).toEqual(['done', 'pending', 'pending', 'pending']);
   });
 
   it('lists the usage of a finished row as a labelled term beside the prompt', async () => {

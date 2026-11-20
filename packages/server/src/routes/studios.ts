@@ -21,15 +21,15 @@
  */
 
 import { Hono } from "hono";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
+import { frontendOrigin, validate, logger, NotFoundError, ValidationError } from "@breatic/core";
 import { z } from "zod";
-import { validate } from "@server/middleware/validate.js";
-import { getActiveLocale, t } from "@breatic/shared";
+import { getActiveLocale, SPEND_LIMIT_MAX_CREDITS, t } from "@breatic/shared";
 import { createTeamStudioSchema, emailSchema, updateStudioSchema } from "@breatic/shared";
 import { creditPageQuerySchema, projectListQuerySchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireStudioRole } from "@server/middleware/studio-role.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
+import { requirePayments } from "@server/middleware/require-payments.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import {
   studioService,
@@ -37,11 +37,11 @@ import {
   recentService,
   creditViewService,
 } from "@server/modules";
-import { logger, NotFoundError, ValidationError } from "@breatic/core";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
 import * as studioAvatarService from "@server/modules/studio/studioAvatar.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
+import * as spendLimitService from "@server/modules/studio/spend-limit.service.js";
 
 /** Invite body — recipient mailbox and granted role (never admin). */
 const inviteMemberSchema = z.object({
@@ -53,6 +53,21 @@ const inviteMemberSchema = z.object({
 const changeRoleSchema = z.object({
   role: z.enum(["maintainer", "guest"]),
 });
+
+/** A monthly spend limit in credits; null clears it (design 3.10). */
+const spendLimitAmount = z.number().nonnegative().max(SPEND_LIMIT_MAX_CREDITS).nullable();
+
+/** Spend-limits body — the per-person default and the studio total. */
+const studioSpendLimitsSchema = z.object({
+  memberDefault: spendLimitAmount,
+  studioMonthly: spendLimitAmount,
+});
+
+/** One person's spend limit; null means no limit for them. */
+const memberSpendLimitSchema = z.object({ monthlyCredits: spendLimitAmount });
+
+/** The person a spend-limit route names. */
+const spendLimitParamSchema = z.object({ slug: z.string(), userId: z.string().uuid() });
 
 /** Transfer-admin body — the member proposed as the new studio admin. */
 const transferAdminSchema = z.object({
@@ -377,6 +392,57 @@ studio.patch(
     return c.json({ data: { ok: true } });
   },
 );
+
+/**
+ * `GET /api/v1/studio/:slug/spend-limits` — the studio's monthly spend limits,
+ * this UTC month's span and spend, and everyone who can spend its credits
+ * (inner#1968). Admin-only. The four spend-limit routes answer 404 where
+ * payments are switched off: nothing judges a limit there.
+ * @returns `200` with `{ data: SpendLimitsView }`; `403` not admin, `404` personal studio
+ */
+studio.get("/:slug/spend-limits", requirePayments, requireStudioRole("admin"), async (c) => {
+  return c.json({ data: await spendLimitService.readSpendLimits(c.req.param("slug")) });
+});
+
+/**
+ * `PUT /api/v1/studio/:slug/spend-limits` — set the per-person default and the
+ * studio total, each rounded up to the cent; null clears one. Admin-only.
+ * @returns `200` with `{ data: { ok: true } }`; `403` not admin, `404` personal studio, `422` a negative amount
+ */
+studio.put("/:slug/spend-limits", requirePayments, requireStudioRole("admin"), validate("json", studioSpendLimitsSchema), async (c) => {
+  await spendLimitService.writeStudioLimits(c.req.param("slug"), c.get("user").id, c.req.valid("json"));
+  return c.json({ data: { ok: true } });
+});
+
+/**
+ * `PUT /api/v1/studio/:slug/members/:userId/spend-limit` — set one person's
+ * monthly limit over the default; null means no limit for them. Admin-only.
+ * @returns `200` with `{ data: { ok: true } }`; `403` not admin, `404` personal
+ *   studio, or the person is neither a member nor in any of its projects
+ */
+studio.put(
+  "/:slug/members/:userId/spend-limit",
+  requirePayments,
+  requireStudioRole("admin"),
+  validate("param", spendLimitParamSchema),
+  validate("json", memberSpendLimitSchema),
+  async (c) => {
+    const { slug, userId } = c.req.valid("param");
+    await spendLimitService.writeMemberLimit(slug, c.get("user").id, userId, c.req.valid("json").monthlyCredits);
+    return c.json({ data: { ok: true } });
+  },
+);
+
+/**
+ * `DELETE /api/v1/studio/:slug/members/:userId/spend-limit` — drop one
+ * person's limit, so the default applies again. Admin-only.
+ * @returns `200` with `{ data: { ok: true } }`; `403` not admin, `404` personal studio
+ */
+studio.delete("/:slug/members/:userId/spend-limit", requirePayments, requireStudioRole("admin"), validate("param", spendLimitParamSchema), async (c) => {
+  const { slug, userId } = c.req.valid("param");
+  await spendLimitService.removeMemberLimit(slug, userId);
+  return c.json({ data: { ok: true } });
+});
 
 /**
  * `POST /api/v1/studio/:slug/transfer-admin` — the admin asks an existing

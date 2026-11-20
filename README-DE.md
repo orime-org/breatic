@@ -35,17 +35,17 @@ In Breatic kannst du beim Arbeiten das Skript überarbeiten, Bildideen ausprobie
 
 | Funktion | **Breatic** | Higgsfield | TapNow | LibTV | Luma | LTX Studio |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Gemeinsame Dokumentbearbeitung** | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **Gemeinsamer Canvas** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Gemeinsame 3D-Bearbeitung** | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **Gemeinsame Zeitleiste** | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| 3D-Previsualisierung | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
-| Zeitleistenbearbeitung | ✓ | ✗ | ✓ | ✓ | ✗ | ✓ |
-| Projekt-Agent | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
-| Textvorschläge prüfen | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Mit dem Team teilen | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Gemeinsame Dokumentbearbeitung** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Gemeinsamer Canvas** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Gemeinsame 3D-Bearbeitung** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Gemeinsame Zeitleiste** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 3D-Previsualisierung | ✅ | ✅ | ✅ | ✅ | ✗ | ✗ |
+| Zeitleistenbearbeitung | ✅ | ✗ | ✅ | ✅ | ✗ | ✅ |
+| Projekt-Agent | ✅ | ✅ | ✅ | ✅ | ✅ | ✗ |
+| Textvorschläge prüfen | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Mit dem Team teilen | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-Zusammenarbeit bedeutet, dass mehrere Personen denselben Arbeitsbereich in Echtzeit bearbeiten können. Bei Textvorschlägen kannst du die Änderung des Agenten prüfen, bevor du entscheidest, ob du sie in den Originaltext übernimmst. Der Vergleich basiert auf öffentlich zugänglichen Produktinformationen mit Stand vom 18. November 2026. ✓ steht für bestätigte Unterstützung, ✗ für anhand öffentlicher Informationen nicht bestätigte Unterstützung.
+Zusammenarbeit bedeutet, dass mehrere Personen denselben Arbeitsbereich in Echtzeit bearbeiten können. Bei Textvorschlägen kannst du die Änderung des Agenten prüfen, bevor du entscheidest, ob du sie in den Originaltext übernimmst. Der Vergleich basiert auf öffentlich zugänglichen Produktinformationen mit Stand vom 18. November 2026. ✅ steht für bestätigte Unterstützung, ✗ für anhand öffentlicher Informationen nicht bestätigte Unterstützung.
 
 ![Bildvarianten eines Cafés auf dem Breatic-Canvas neben dem Projektchat; englische Oberfläche](docs/images/readme/workspace-en.png)
 

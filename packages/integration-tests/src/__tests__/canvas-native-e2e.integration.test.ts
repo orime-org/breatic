@@ -300,7 +300,7 @@ import { initCore, db as serviceDb, schema, createTestDb, createRedisClient, tas
 import { assetService, creditLotService, taskService } from "@breatic/domain";
 import { startTaskListener } from "@collab/services/task-listener.js";
 import type { GroupConsumer } from "@collab/services/stream-group-consumer.js";
-import { openGenerationTasks, startRowedRun } from "@server/modules/task/generation-task.js";
+import { holdRowedRun, openGenerationTasks, startRowedRun } from "@server/modules/task/generation-task.js";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import { eq } from "drizzle-orm";
@@ -554,6 +554,13 @@ beforeAll(async () => {
     name: "Integration Test Studio",
   }).onConflictDoNothing();
 
+  // Every studio has its admin; the running-task gate reads the limit from them.
+  await db.insert(schema.studioMembers).values({
+    studioId: FIXTURE_STUDIO_ID,
+    userId: FIXTURE_USER_ID,
+    role: "admin",
+  }).onConflictDoNothing();
+
   await db.insert(schema.projects).values({
     id: FIXTURE_PROJECT_ID,
     studioId: FIXTURE_STUDIO_ID,
@@ -745,6 +752,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     // The counts are what the node holds about tasks, and this run finished.
     expect(data!["taskCounts"]).toEqual({
       running: 0,
+      waiting: 0,
       done: 1,
       failed: 0,
       expired: 0,
@@ -910,6 +918,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     expect(data).not.toBeNull();
     expect(data!["taskCounts"]).toEqual({
       running: 0,
+      waiting: 0,
       done: 0,
       failed: 1,
       expired: 0,
@@ -1012,6 +1021,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     // anything, or the retry would have had nothing left to land on.
     expect(data!["taskCounts"]).toEqual({
       running: 0,
+      waiting: 0,
       done: 1,
       failed: 0,
       expired: 0,
@@ -1102,6 +1112,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       expect(data).not.toBeNull();
       expect(data!["taskCounts"]).toEqual({
         running: 0,
+        waiting: 0,
         done: 1,
         failed: 0,
         expired: 0,
@@ -1549,6 +1560,13 @@ describe("transcription results and usage cross the real settlement and collabor
           targetNodeIds: [nodeId],
           params,
         };
+        await holdRowedRun({
+          taskId,
+          projectId: FIXTURE_PROJECT_ID,
+          userId: FIXTURE_USER_ID,
+          credits: async () => 2,
+          create: async () => undefined,
+        });
         const admitted = await startRowedRun({
           taskId,
           projectId: FIXTURE_PROJECT_ID,
@@ -1557,7 +1575,6 @@ describe("transcription results and usage cross the real settlement and collabor
           userId: FIXTURE_USER_ID,
           action: "transcribe",
           label: MODEL,
-          credits: async () => 2,
           enqueue: async () => tasksQueue.add("run-task", jobData, { attempts: 1 }),
           logTag: "transcribe_integration",
         });
@@ -1579,7 +1596,7 @@ describe("transcription results and usage cross the real settlement and collabor
           (data) => settled(data) && data["bodyText"] === text,
           10_000, `transcription ${taskId} content and counts reached Yjs`);
         expect(node["bodyText"]).toBe(text);
-        expect(node["taskCounts"]).toEqual({ running: 0, done: 1, failed: 0, expired: 0 });
+        expect(node["taskCounts"]).toEqual({ running: 0, waiting: 0, done: 1, failed: 0, expired: 0 });
         expect(readingCtrl.requests).toHaveLength(1);
         expect(readingCtrl.requests[0]).toMatchObject({
           model: MODEL,

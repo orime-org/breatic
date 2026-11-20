@@ -106,8 +106,16 @@ function dataMaps(): (id: string) => Y.Map<unknown> | null {
   const root = doc.getMap<Y.Map<unknown>>('data');
   const styled = paragraph('Use ');
   styled.insert(1, [mention('Image 1'), new Y.XmlText(' as the style')]);
+  const person = mention('Person');
+  person.setAttribute('optional', true as unknown as string);
+  const optionalLine = paragraph('The person looks like ');
+  optionalLine.insert(1, [person, new Y.XmlText('.')]);
   root.set('i1', ymap({
-    prompts: ymap({ t2i: fragment(paragraph('a red car at dusk')), i2i: fragment(note('Pick the photo in the panel'), paragraph('make it blue')) }),
+    prompts: ymap({
+      t2i: fragment(paragraph('a red car at dusk')),
+      i2i: fragment(note('Pick the photo in the panel'), paragraph('make it blue')),
+      edit: fragment(paragraph('A product shot.'), optionalLine),
+    }),
   }));
   root.set('t1', ymap({ body: fragment(paragraph('Line one'), paragraph('Line two')) }));
   const shots = new Y.Array<Y.Map<unknown>>();
@@ -231,6 +239,12 @@ describe('a piece of the canvas handed to the agent', () => {
     const [image] = snapshot(['i1']).nodes;
 
     expect(image?.data).toMatchObject({ prompts: { i2i: '(💡 Pick the photo in the panel)\nmake it blue' } });
+  });
+
+  it('says which mention is of an optional template input (inner#1811)', () => {
+    const [image] = snapshot(['i1']).nodes;
+
+    expect(image?.data).toMatchObject({ prompts: { edit: 'A product shot.\nThe person looks like @Person (optional).' } });
   });
 
   it('gives the node its shots', () => {

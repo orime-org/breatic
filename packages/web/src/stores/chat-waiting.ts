@@ -25,6 +25,8 @@ export interface WaitingArea {
    * is, the viewer's own or the Studio Admin's. Null on our keys.
    */
   ownKey: 'self' | 'admin' | null;
+  /** What waits could not open a run past a spend limit: the sentence that says so (inner#1968). */
+  capNote: string | null;
   /** Which messages are being taken back, and whether into the box or away. */
   busy: Record<string, 'retract' | 'delete'>;
 }
@@ -34,7 +36,7 @@ interface ChatWaitingState {
 }
 
 /** Nothing waiting, and no reason given. */
-export const NOTHING_WAITING: Readonly<WaitingArea> = Object.freeze({ pending: [], awaiting: false, blocked: false, ownKey: null, busy: {} });
+export const NOTHING_WAITING: Readonly<WaitingArea> = Object.freeze({ pending: [], awaiting: false, blocked: false, ownKey: null, capNote: null, busy: {} });
 
 export const useChatWaiting = create<ChatWaitingState>(() => ({ byConversation: {} }));
 
@@ -58,7 +60,7 @@ export const chatWaiting = {
    * @param pending - The queue.
    */
   fromSend(conversationId: string, pending: ChatPendingItem[]): void {
-    update(conversationId, () => ({ pending, awaiting: false, blocked: false, ownKey: null }));
+    update(conversationId, () => ({ pending, awaiting: false, blocked: false, ownKey: null, capNote: null }));
   },
   /**
    * What a sync answered.
@@ -68,8 +70,9 @@ export const chatWaiting = {
    * @param seen.awaiting - A card waits.
    * @param seen.blocked - The balance cannot pay for a run.
    * @param seen.ownKey - Whose own key runs the model, so the balance pays for the paid tools; null on our keys.
+   * @param seen.capNote - A spend limit stopped the run: what says so.
    */
-  fromSync(conversationId: string, seen: { pending: ChatPendingItem[]; awaiting: boolean; blocked: boolean; ownKey: 'self' | 'admin' | null }): void {
+  fromSync(conversationId: string, seen: { pending: ChatPendingItem[]; awaiting: boolean; blocked: boolean; ownKey: 'self' | 'admin' | null; capNote: string | null }): void {
     update(conversationId, () => seen);
   },
   /**

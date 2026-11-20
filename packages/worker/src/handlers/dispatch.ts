@@ -23,7 +23,7 @@ import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivity
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getUnderstandConfig, getAgentConfig } from "@breatic/core";
 import { accountKeyFailureIn, costsOf, type Cost, type KeySet } from "@breatic/provider";
-import { failureOutcome, keyOwnerOf, taskRepo, taskService, upstreamStepRepo } from "@breatic/domain";
+import { failureOutcome, keyOwnerOf, runningSlotService, taskRepo, taskService, upstreamStepRepo } from "@breatic/domain";
 import { creditHoldService, creditLotService, toChargeCredits } from "@breatic/domain";
 import { modelCatalog, nodeHistoryService, sceneTaskService } from "@breatic/domain";
 import {
@@ -560,8 +560,34 @@ async function runTaskBody(
   }
 
   // A run picked up again (a retry, or a container job coming back for its
-  // next read) is still the same run: markRunning keeps its first start.
-  const startedAt = await taskService.markRunning(taskId, job.id ?? "", new Date());
+  // next read) is still the same run: markRunning keeps its first start. A
+  // task nobody has run yet first passes the running-task gate (inner#1968):
+  // it starts when its person runs fewer tasks than the limit, or goes back
+  // on the queue without spending an attempt. Placed before the retry warning
+  // and the deadline, since a waiting task has no start yet.
+  let startedAt: Date;
+  if (existing === null || existing.status === "running") {
+    startedAt = await taskService.markRunning(taskId, job.id ?? "", new Date());
+  } else {
+    let gate: Awaited<ReturnType<typeof runningSlotService.startWithinLimit>>;
+    try {
+      gate = await runningSlotService.startWithinLimit({ id: taskId, jobId: job.id ?? "" });
+    } catch (err) {
+      if (err instanceof StillRunning && token !== undefined) {
+        logPublishFailures(taskId, err.publishFailures);
+        await job.moveToDelayed(err.resumeAt, token);
+        throw new DelayedError();
+      }
+      throw err;
+    }
+    logPublishFailures(taskId, gate.publishFailures);
+    if (gate.outcome === "ended") {
+      // A task the old code failed while a retry was due: its open upstream steps end with it.
+      if (gate.failed === true) await upstreamStepRepo.failOpenSteps(taskId, existing?.errorMessage ?? "internal");
+      return { ended: true };
+    }
+    startedAt = gate.started;
+  }
 
 
   // ─── Stage 1: Run the work ────────────────────────────────────────
@@ -600,7 +626,7 @@ async function runTaskBody(
   // its own deadline, with a grace for its last report.
   let delayUntil = Number.POSITIVE_INFINITY;
   try {
-    deadlineAt = await taskDeadline(taskId, existing?.createdAt);
+    deadlineAt = await taskDeadline(taskId, startedAt);
     if (!containerRun) delayUntil = deadlineAt;
     if (source === "mini_tool" && toolId) {
       run = await runMiniTool({
@@ -1550,6 +1576,16 @@ export async function settleSceneRow(
   }
 }
 
+/**
+ * Log the canvas signals the running-task gate could not send: the rows are
+ * written, and a node's counts catch up on its next change.
+ * @param taskId - The task.
+ * @param failures - What failed.
+ */
+function logPublishFailures(taskId: string, failures: readonly unknown[]): void {
+  for (const err of failures) logger.error({ err, taskId }, "running_slot_publish_failed");
+}
+
 // ─── Failure-path helpers ────────────────────────────────────────────
 
 /** How a failed run's node rows end: out of its two hours, or failed for any other cause. */
@@ -1653,9 +1689,10 @@ export async function settleRunCharge(run: RunCharge): Promise<void> {
  * End a run that produced nothing, on every surface that was told it started.
  *
  * Five things, and every exit that ends a run does all five through here.
- * Two of them record the ATTEMPT — the task row is marked failed and each
- * target node gets a history entry — and happen however many attempts are
- * left. Three record the OUTCOME — the upstream steps still pending or
+ * Two of them record the ATTEMPT — the attempt's cause is written on the task
+ * row (which stays running and keeps its running slot while a retry is to
+ * come, and is marked failed only once `settles`) and each target node gets a
+ * history entry — and happen however many attempts are left. Three record the OUTCOME — the upstream steps still pending or
  * submitted are failed, the node's row is settled so its count stops saying a
  * run is happening, and the project feed gets the result — and wait for
  * `settles`, because a retry resumes from those steps and a row settled while
@@ -1676,7 +1713,13 @@ export async function settleRunCharge(run: RunCharge): Promise<void> {
 export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
   // A task completed and waiting on its cost is not failed by a stale run:
   // its result is delivered and its own job bills it (inner#1743).
-  if (!(await taskService.markFailed(end.taskId, end.errorMessage))) {
+  // An attempt with a retry to come keeps the task running, so it keeps its
+  // running slot and the retry resumes it (inner#1968); only the last word
+  // fails the row.
+  const written = end.settles
+    ? await taskService.markFailed(end.taskId, end.errorMessage)
+    : await taskRepo.recordAttemptError(end.taskId, end.errorMessage);
+  if (!written) {
     logger.warn({ taskId: end.taskId }, "failed_run_left_a_task_waiting_on_its_cost");
     return;
   }

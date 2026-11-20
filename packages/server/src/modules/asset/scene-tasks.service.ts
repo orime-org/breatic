@@ -34,7 +34,12 @@ interface SpaceTaskCommon {
   status: "running" | "done" | "failed" | "expired";
   startedByUserId: string;
   startedAt: string;
-  deadlineAt: string;
+  /** When its budget runs out; null while it waits for a free running slot, whose budget starts when it runs (inner#1968, design 3.9). */
+  deadlineAt: string | null;
+  /** Since when it waits for a free running slot; null once it runs (inner#1968). */
+  waitingSince: string | null;
+  /** The running-task limit it waits under (inner#1968); null when it does not wait. */
+  slotWaitLimit: number | null;
   assetId: string | null;
   /** The `task-failure` code, or the upstream's own words for a failure it gave. */
   errorMessage: string | null;
@@ -119,7 +124,9 @@ export async function listSpaceTasks(
         status: row.status,
         startedByUserId: row.startedByUserId,
         startedAt: row.startedAt.toISOString(),
-        deadlineAt: new Date(nodeTaskService.rowDeadline(row)).toISOString(),
+        deadlineAt: row.waitingSince === null ? new Date(nodeTaskService.rowDeadline({ startedAt: row.startedAt, budgetMs: row.budgetMs })).toISOString() : null,
+        waitingSince: row.waitingSince?.toISOString() ?? null,
+        slotWaitLimit: row.slotWaitLimit ?? null,
         assetId: row.assetId,
         errorMessage: row.errorMessage,
         notice: row.notice,

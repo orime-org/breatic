@@ -7,7 +7,7 @@
  * Handles task lifecycle tracking with conditional timestamp updates.
  */
 
-import { and, eq, desc, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import { and, eq, desc, inArray, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 import { db, type DbTx } from "@breatic/core";
 import { tasks } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
@@ -238,6 +238,22 @@ export async function setJobId(id: string, jobId: string): Promise<void> {
 }
 
 /**
+ * Keep the cause of an attempt that failed while a retry is still to come
+ * (inner#1968): the row stays running and keeps its slot.
+ * @param id - The task.
+ * @param error - The cause.
+ * @returns True when written; false for a task waiting on its cost, which no status write touches.
+ */
+export async function recordAttemptError(id: string, error: string): Promise<boolean> {
+  const rows = await db
+    .update(tasks)
+    .set({ errorMessage: error, updatedAt: new Date() })
+    .where(and(eq(tasks.id, id), notWaitingOnCost()))
+    .returning({ id: tasks.id });
+  return rows.length > 0;
+}
+
+/**
  * Mark a task running on a job and keep its first start.
  * @param id - UUID of the task.
  * @param jobId - The BullMQ job running it.
@@ -254,9 +270,11 @@ export async function markRunning(id: string, jobId: string, now: Date): Promise
       startedAt: sql`coalesce(${tasks.startedAt}, ${now.toISOString()}::timestamptz)`,
       updatedAt: now,
     })
-    .where(eq(tasks.id, id))
+    // Only a row already running: a task first starts through the running-task
+    // gate (inner#1968), and an ended row stays ended.
+    .where(and(eq(tasks.id, id), eq(tasks.status, "running")))
     .returning({ startedAt: tasks.startedAt });
-  if (!row?.startedAt) throw new Error(`task ${id} has no row to mark running`);
+  if (!row?.startedAt) throw new Error(`task ${id} has no running row to mark running`);
   return row.startedAt;
 }
 
@@ -419,4 +437,212 @@ export async function markBilled(id: string, credits: number, tx: DbTx): Promise
     .where(and(eq(tasks.id, id), isNull(tasks.billedAt)))
     .returning({ id: tasks.id });
   return rows.length > 0;
+}
+
+// ─── The running-task gate (inner#1968, design 3.9) ─────────────────────────
+
+/** A task as the running-task gate judges it. */
+export interface GateTaskRow {
+  id: string;
+  userId: string;
+  projectId: string | null;
+  status: string;
+  errorMessage: string | null;
+  /** Full-precision text, so a comparison against another row's creation loses no microseconds. */
+  createdAt: string;
+  startedAt: Date | null;
+}
+
+/**
+ * Take one person's running-slot lock for the rest of the transaction, if nobody holds it.
+ * @param userId - The person.
+ * @param tx - The transaction that keeps it.
+ * @returns Whether it was taken.
+ */
+export async function tryLockRunningSlots(userId: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx.execute<{ got: boolean }>(sql`select pg_try_advisory_xact_lock(hashtext(${`running-tasks:${userId}`})) as got`);
+  return rows[0]?.got === true;
+}
+
+/**
+ * Wait for one person's running-slot lock and keep it for the rest of the transaction.
+ * @param userId - The person.
+ * @param tx - The transaction that keeps it.
+ */
+export async function lockRunningSlots(userId: string, tx: DbTx): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`running-tasks:${userId}`}))`);
+}
+
+/**
+ * Read a task as the gate judges it.
+ * @param id - The task.
+ * @returns The row, or null when there is none.
+ */
+export async function findForGate(id: string): Promise<GateTaskRow | null> {
+  const [row] = await db
+    .select({
+      id: tasks.id,
+      userId: tasks.userId,
+      projectId: tasks.projectId,
+      status: tasks.status,
+      errorMessage: tasks.errorMessage,
+      createdAt: sql<string>`${tasks.createdAt}::text`,
+      startedAt: tasks.startedAt,
+    })
+    .from(tasks)
+    .where(eq(tasks.id, id));
+  return row ?? null;
+}
+
+/**
+ * How many of a person's tasks run within their budget and the report grace.
+ * @param userId - The person.
+ * @param windowMs - The budget plus the grace: a row started longer ago holds no slot.
+ * @param tx - The gate's transaction.
+ * @returns The count.
+ */
+export async function countRunningForUser(userId: string, windowMs: number, tx: DbTx): Promise<number> {
+  const [row] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(tasks)
+    .where(and(eq(tasks.userId, userId), eq(tasks.status, "running"), sql`${tasks.startedAt} > now() - (${windowMs} * interval '1 millisecond')`));
+  return row?.n ?? 0;
+}
+
+/**
+ * How many of a person's tasks wait under the same limit, created before a given instant and judged recently.
+ * @param userId - The person.
+ * @param limit - The limit they wait under.
+ * @param before - The instant, as full-precision text.
+ * @param staleMs - A waiter not judged within this long is left out.
+ * @param tx - The gate's transaction.
+ * @returns The count.
+ */
+export async function countWaitingBefore(userId: string, limit: number, before: string, staleMs: number, tx: DbTx): Promise<number> {
+  const [row] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(tasks)
+    .where(and(
+      eq(tasks.userId, userId),
+      eq(tasks.status, "pending"),
+      sql`${tasks.slotWaitSince} is not null`,
+      eq(tasks.slotWaitLimit, limit),
+      sql`${tasks.slotCheckedAt} > now() - (${staleMs} * interval '1 millisecond')`,
+      sql`${tasks.createdAt} < ${before}::timestamptz`,
+    ));
+  return row?.n ?? 0;
+}
+
+/**
+ * Note the gate's judgement of a pending task: the check time once it is older
+ * than a third of the stale window, the limit when it changed. Writes nothing
+ * when neither is due.
+ * @param id - The task.
+ * @param limit - The limit it was judged under.
+ * @param staleMs - The stale window.
+ * @param tx - The gate's transaction.
+ */
+export async function noteSlotCheck(id: string, limit: number, staleMs: number, tx: DbTx): Promise<void> {
+  const due = sql`(${tasks.slotCheckedAt} is null or ${tasks.slotCheckedAt} < now() - (${staleMs / 3} * interval '1 millisecond'))`;
+  await tx
+    .update(tasks)
+    .set({ slotCheckedAt: sql`case when ${due} then now() else ${tasks.slotCheckedAt} end`, slotWaitLimit: limit })
+    .where(and(eq(tasks.id, id), eq(tasks.status, "pending"), sql`(${due} or ${tasks.slotWaitLimit} is distinct from ${limit})`));
+}
+
+/**
+ * Whether a task is still pending, read in the gate's transaction under the
+ * person's lock: another pickup may have started or ended it since this one
+ * read it.
+ * @param id - The task.
+ * @param tx - The gate's transaction.
+ * @returns True while it is pending.
+ */
+export async function isPending(id: string, tx: DbTx): Promise<boolean> {
+  const [row] = await tx.select({ status: tasks.status }).from(tasks).where(eq(tasks.id, id));
+  return row?.status === "pending";
+}
+
+/**
+ * Mark a pending task as waiting for a slot, keeping the first moment it did,
+ * and the job that judged it when the task has none recorded yet: that job is
+ * the one that will pick it up again, and the stale-waiter sweep reads it.
+ * @param id - The task.
+ * @param jobId - The job judging it.
+ * @param tx - The gate's transaction.
+ */
+export async function markSlotWait(id: string, jobId: string, tx: DbTx): Promise<void> {
+  await tx
+    .update(tasks)
+    .set({ slotWaitSince: sql`now()`, arqJobId: sql`coalesce(${tasks.arqJobId}, ${jobId})` })
+    .where(and(eq(tasks.id, id), eq(tasks.status, "pending"), isNull(tasks.slotWaitSince)));
+}
+
+/**
+ * Start a pending task on a job: the gate's one write of a first start.
+ * @param id - The task.
+ * @param jobId - The job running it.
+ * @param tx - The gate's transaction.
+ * @returns Its start, or null when it was no longer pending.
+ */
+export async function startPending(id: string, jobId: string, tx: DbTx): Promise<Date | null> {
+  const [row] = await tx
+    .update(tasks)
+    .set({ status: "running", arqJobId: jobId, startedAt: sql`now()`, updatedAt: sql`now()` })
+    .where(and(eq(tasks.id, id), eq(tasks.status, "pending")))
+    .returning({ startedAt: tasks.startedAt });
+  return row?.startedAt ?? null;
+}
+
+/**
+ * Cancel a task that has not started.
+ * @param id - The task.
+ * @param tx - The cancel's transaction.
+ * @returns True when this call cancelled it.
+ */
+export async function cancelPending(id: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx
+    .update(tasks)
+    .set({ status: "cancelled", errorMessage: "cancelled", completedAt: sql`now()`, updatedAt: sql`now()` })
+    .where(and(eq(tasks.id, id), eq(tasks.status, "pending")))
+    .returning({ id: tasks.id });
+  return rows.length > 0;
+}
+
+/**
+ * Fail a task that has not ended, waiting or running.
+ * @param id - The task.
+ * @param error - The cause.
+ * @param tx - The cleanup's transaction.
+ * @returns True when this call failed it.
+ */
+export async function failOpen(id: string, error: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx
+    .update(tasks)
+    .set({ status: "failed", errorMessage: error, completedAt: sql`now()`, updatedAt: sql`now()` })
+    .where(and(eq(tasks.id, id), inArray(tasks.status, ["pending", "running"])))
+    .returning({ id: tasks.id });
+  return rows.length > 0;
+}
+
+/**
+ * Waiting tasks the gate has not judged within the stale window, oldest check first.
+ * @param staleMs - The stale window.
+ * @param limit - How many at most.
+ * @returns Each task, its owner and its job.
+ */
+export async function listStaleWaiters(staleMs: number, limit: number): Promise<Array<{ id: string; userId: string; arqJobId: string }>> {
+  const rows = await db
+    .select({ id: tasks.id, userId: tasks.userId, arqJobId: tasks.arqJobId })
+    .from(tasks)
+    .where(and(
+      eq(tasks.status, "pending"),
+      sql`${tasks.slotWaitSince} is not null`,
+      // The gate records the judging job on its first wait.
+      isNotNull(tasks.arqJobId),
+      sql`${tasks.slotCheckedAt} < now() - (${staleMs} * interval '1 millisecond')`,
+    ))
+    .orderBy(tasks.slotCheckedAt)
+    .limit(limit);
+  return rows.flatMap(({ arqJobId, ...row }) => (arqJobId === null ? [] : [{ ...row, arqJobId }]));
 }

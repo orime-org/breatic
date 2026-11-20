@@ -13,7 +13,7 @@ import { newId } from "@breatic/shared";
 import { Hono } from "hono";
 import type { StreamingApi } from "hono/utils/stream";
 import { streamUntilClientLeaves } from "@server/utils/sse-stream.js";
-import { validate } from "@server/middleware/validate.js";
+import { validate, ForbiddenError, NotFoundError, ValidationError, logger } from "@breatic/core";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { textToolSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -23,7 +23,6 @@ import { precheckCredits, projectService, textToolService } from "@server/module
 import { getModelForTool, getTextToolsConfig } from "@server/config/text-tools.js";
 import { assertLlmServable } from "@server/modules/task/model-servable.js";
 import { SMALLEST_CREDIT, resolveKeys } from "@breatic/domain";
-import { ForbiddenError, NotFoundError, ValidationError, logger } from "@breatic/core";
 import { t, TEXT_TOOL_INSTRUCTIONS_MAX } from "@breatic/shared";
 
 const textTools = new Hono<{ Variables: AuthVariables }>();

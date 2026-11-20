@@ -6,7 +6,8 @@ import fc from "fast-check";
 import { enterpriseMembershipWriteSchema, enterpriseMembershipResultSchema, enterpriseMembershipProfileSchema, enterpriseMembershipReadingSchema, enterpriseRecordSchema } from "../enterprise-membership-contract.js";
 
 const id = "00000000-0000-4000-8000-000000000029";
-const limits = { team_studios: 8, projects_per_studio: 500, concurrent_editors: 30, studio_members: 200, project_members: 80, storage_bytes: 1099511627776 };
+// The running-task term is part of every reading's limits since inner#1968 (design 3.6, 3.8).
+const limits = { team_studios: 8, projects_per_studio: 500, concurrent_editors: 30, studio_members: 200, project_members: 80, storage_bytes: 1099511627776, running_tasks_per_user: 10 };
 const body = { targetTier: "enterprise", expiresAt: "2027-10-26T00:00:00.000Z", entryTimezone: "UTC", contractNumber: "DEMO-ENT-29", limits, expectedRevision: null, expectedStoredTier: "pro" };
 const record = { expiresAt: body.expiresAt, entryTimezone: "UTC", contractNumber: body.contractNumber, limits, fallbackTier: "base", revision: 1, createdAt: "2026-10-25T00:00:00.000Z", updatedAt: "2026-10-25T00:00:00.000Z" };
 const result = { status: "applied", operation: { key: `bo-${id}`, accountId: id, adminId: "admin-one", requestHash: "a".repeat(64), recordedAt: record.createdAt }, before: { userId: id, storedTier: "pro", enterprise: null }, after: { userId: id, storedTier: "enterprise", enterprise: record } };
@@ -82,7 +83,7 @@ describe("enterprise membership contract", () => {
 
   it.each(["base", "pro", "team", "self_hosted"] as const)("preserves ordinary %s count limits above the negotiated count range", (effectiveTier) => {
     fc.assert(fc.property(fc.integer({ min: 2147483648, max: Number.MAX_SAFE_INTEGER }), (count) => {
-      const configured = { team_studios: count, projects_per_studio: count, concurrent_editors: count, studio_members: count, project_members: count, storage_bytes: Number.MAX_SAFE_INTEGER };
+      const configured = { team_studios: count, projects_per_studio: count, concurrent_editors: count, studio_members: count, project_members: count, storage_bytes: Number.MAX_SAFE_INTEGER, running_tasks_per_user: count };
       const profile = {
         account: { id, email: "owner@example.test" },
         snapshot: { userId: id, storedTier: effectiveTier, enterprise: null },
@@ -93,7 +94,7 @@ describe("enterprise membership contract", () => {
   });
 
   it.each(["base", "self_hosted"] as const)("preserves large configured limits after expiry to %s", (fallbackTier) => {
-    const configured = { team_studios: 2147483648, projects_per_studio: 2147483648, concurrent_editors: 2147483648, studio_members: 2147483648, project_members: 2147483648, storage_bytes: Number.MAX_SAFE_INTEGER };
+    const configured = { team_studios: 2147483648, projects_per_studio: 2147483648, concurrent_editors: 2147483648, studio_members: 2147483648, project_members: 2147483648, storage_bytes: Number.MAX_SAFE_INTEGER, running_tasks_per_user: 2147483648 };
     const expired = { ...record, expiresAt: "2000-01-01T00:00:00.000Z", fallbackTier };
     const profile = {
       account: { id, email: "owner@example.test" },

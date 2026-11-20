@@ -163,6 +163,16 @@ describe("templates in proposals", () => {
     }
   });
 
+  // inner#1811: the e-commerce goal, each of its templates with a case for when it also fits.
+  it("indexes the seven e-commerce ad templates under their goal, each saying when it also fits", () => {
+    const lines = String(makeProposeCanvasAction().description ?? "").split(" | ");
+    for (const id of ["product-ad-15s", "ugc-creator-review", "livestream-pitch", "hype-then-twist-ad", "product-commercial-shotlist", "unboxing-ad", "variant-carousel-ad"]) {
+      const line = lines.find((one) => one.includes(`${id} (ecommerce,`));
+      expect(line, `${id} indexed`).toBeDefined();
+      expect(line, id).toContain("It also fits when");
+    }
+  });
+
   // inner#1810: the speed goal; only the vehicle cut list has a case for when it also fits.
   it("indexes the three motion and speed templates under their goal, only the vehicle one saying when it also fits", () => {
     const lines = String(makeProposeCanvasAction().description ?? "").split(" | ");

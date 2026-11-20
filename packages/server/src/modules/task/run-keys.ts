@@ -10,7 +10,7 @@
 
 import { SMALLEST_CREDIT, resolveKeys, runCallsLlm, runDescribesInput, type ResolvedKeys } from "@breatic/domain";
 import type { KeySet, Route } from "@breatic/provider";
-import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
+import { precheckCredits } from "@server/modules/credit/credit-precheck.service.js";
 
 /** The keys a media run goes out on. */
 export interface RunKeys {

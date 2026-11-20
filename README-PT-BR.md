@@ -35,17 +35,17 @@ No Breatic, você pode revisar o roteiro, experimentar visuais, montar cenas e o
 
 | Recurso | **Breatic** | Higgsfield | TapNow | LibTV | Luma | LTX Studio |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Documentos colaborativos** | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **Canvas colaborativo** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Edição 3D colaborativa** | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| **Linha do tempo colaborativa** | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Pré-visualização 3D | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
-| Edição na linha do tempo | ✓ | ✗ | ✓ | ✓ | ✗ | ✓ |
-| Agente do projeto | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
-| Revisão de sugestões de reescrita | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Compartilhamento em equipe | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Documentos colaborativos** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Canvas colaborativo** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Edição 3D colaborativa** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| **Linha do tempo colaborativa** | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Pré-visualização 3D | ✅ | ✅ | ✅ | ✅ | ✗ | ✗ |
+| Edição na linha do tempo | ✅ | ✗ | ✅ | ✅ | ✗ | ✅ |
+| Agente do projeto | ✅ | ✅ | ✅ | ✅ | ✅ | ✗ |
+| Revisão de sugestões de reescrita | ✅ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Compartilhamento em equipe | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-Colaboração significa que várias pessoas podem editar o mesmo espaço de trabalho em tempo real. Você pode revisar as alterações sugeridas pelo agente antes de decidir se quer aplicá-las ao texto original. A comparação se baseia em informações públicas dos produtos disponíveis até 18 de novembro de 2026. ✓ indica suporte confirmado. ✗ indica que as informações públicas não confirmam o suporte.
+Colaboração significa que várias pessoas podem editar o mesmo espaço de trabalho em tempo real. Você pode revisar as alterações sugeridas pelo agente antes de decidir se quer aplicá-las ao texto original. A comparação se baseia em informações públicas dos produtos disponíveis até 18 de novembro de 2026. ✅ indica suporte confirmado. ✗ indica que as informações públicas não confirmam o suporte.
 
 ![Imagens de uma cafeteria no canvas do Breatic ao lado do chat do projeto; interface em inglês](docs/images/readme/workspace-en.png)
 

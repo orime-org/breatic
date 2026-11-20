@@ -13,7 +13,7 @@ import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { byokService } from "@server/modules";
 
 const byok = new Hono<{ Variables: AuthVariables }>();

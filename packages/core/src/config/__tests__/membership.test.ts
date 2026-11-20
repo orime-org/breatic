@@ -20,6 +20,7 @@ import {
   getMembershipLimits,
   getSubscriptionStaleAfterDays,
 } from "@core/config/membership.js";
+import { tierLimitsSchema } from "@breatic/shared";
 
 /** Every quota field a tier must carry. */
 const FIELDS = [
@@ -29,6 +30,7 @@ const FIELDS = [
   "studio_members",
   "project_members",
   "storage_bytes",
+  "running_tasks_per_user",
 ] as const;
 
 /**
@@ -44,6 +46,7 @@ function tier(over: Record<string, unknown> = {}): Record<string, unknown> {
     studio_members: 5,
     project_members: 4,
     storage_bytes: 1024,
+    running_tasks_per_user: 2,
     ...over,
   };
 }
@@ -62,6 +65,7 @@ function config(over: Record<string, unknown> = {}): Record<string, unknown> {
       team: tier(),
       self_hosted: tier(),
     },
+    stale_after_days: 14,
     ...over,
   };
 }
@@ -171,8 +175,10 @@ describe("membershipConfigSchema — default_tier", () => {
 });
 
 describe("membershipConfigSchema — stale_after_days", () => {
-  it("defaults the renewal window to Stripe's fourteen-day retry window", () => {
-    expect(membershipConfigSchema.parse(config()).stale_after_days).toBe(14);
+  it("rejects a config without the renewal window, so no default stands in for it", () => {
+    const c = config();
+    delete c.stale_after_days;
+    expect(() => membershipConfigSchema.parse(c)).toThrow();
   });
 
   it("rejects a window that is not a positive whole number of days", () => {
@@ -205,24 +211,76 @@ describe("the real config/membership.yaml", () => {
     }
   });
 
-  it("gives base the numbers the ratified decision states", () => {
-    // Straight from the 2026-07-30 tiers decision. If someone edits the
-    // shipped config, this is what tells them they changed a ratified value.
-    const base = getMembershipLimits("base");
-    expect(base.team_studios).toBe(0);
-    expect(base.projects_per_studio).toBe(10);
-    expect(base.concurrent_editors).toBe(2);
-    expect(base.project_members).toBe(4);
-    expect(base.storage_bytes).toBe(5 * 1024 ** 3);
+  it("gives base the 2026-11-15 numbers, all seven fields", () => {
+    expect(getMembershipLimits("base")).toEqual({
+      team_studios: 0,
+      projects_per_studio: 9999,
+      concurrent_editors: 2,
+      studio_members: 1,
+      project_members: 4,
+      storage_bytes: 5368709120,
+      running_tasks_per_user: 2,
+    });
   });
 
-  it("gives team the numbers the ratified decision states", () => {
-    const team = getMembershipLimits("team");
-    expect(team.team_studios).toBe(3);
-    expect(team.projects_per_studio).toBe(300);
-    expect(team.concurrent_editors).toBe(20);
-    expect(team.studio_members).toBe(100);
-    expect(team.project_members).toBe(40);
-    expect(team.storage_bytes).toBe(500 * 1024 ** 3);
+  it("gives pro the 2026-11-15 numbers, all seven fields", () => {
+    expect(getMembershipLimits("pro")).toEqual({
+      team_studios: 1,
+      projects_per_studio: 9999,
+      concurrent_editors: 4,
+      studio_members: 10,
+      project_members: 8,
+      storage_bytes: 107374182400,
+      running_tasks_per_user: 5,
+    });
+  });
+
+  it("gives team the 2026-11-15 numbers, all seven fields", () => {
+    expect(getMembershipLimits("team")).toEqual({
+      team_studios: 3,
+      projects_per_studio: 9999,
+      concurrent_editors: 20,
+      studio_members: 50,
+      project_members: 40,
+      storage_bytes: 536870912000,
+      running_tasks_per_user: 10,
+    });
+  });
+
+  it("keeps self_hosted's six ceilings and adds running_tasks_per_user at 9999", () => {
+    expect(getMembershipLimits("self_hosted")).toEqual({
+      team_studios: 9999,
+      projects_per_studio: 9999,
+      concurrent_editors: 9999,
+      studio_members: 9999,
+      project_members: 9999,
+      storage_bytes: 109951162777600,
+      running_tasks_per_user: 9999,
+    });
+  });
+});
+
+describe("membershipConfigSchema — the running-task field", () => {
+  for (const name of ["base", "pro", "team", "self_hosted"] as const) {
+    it(`rejects ${name} missing running_tasks_per_user`, () => {
+      const t = tier();
+      delete t.running_tasks_per_user;
+      const tiers = { ...(config().tiers as Record<string, unknown>), [name]: t };
+      expect(() => membershipConfigSchema.parse(config({ tiers }))).toThrow();
+    });
+  }
+
+  it("rejects a running-task cap of 0 or a fractional one", () => {
+    for (const over of [
+      { running_tasks_per_user: 0 },
+      { running_tasks_per_user: 2.5 },
+    ]) {
+      const tiers = { ...(config().tiers as Record<string, unknown>), base: tier(over) };
+      expect(() => membershipConfigSchema.parse(config({ tiers })), JSON.stringify(over)).toThrow();
+    }
+  });
+
+  it("lets tierLimitsSchema pass an unknown extra key, so an older image reads a newer file", () => {
+    expect(() => tierLimitsSchema.parse({ ...tier(), extra: 1 })).not.toThrow();
   });
 });

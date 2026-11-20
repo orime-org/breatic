@@ -13,7 +13,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { logger } from "@breatic/core";
+import { logger, validate } from "@breatic/core";
 import {
   documentVersionListQuerySchema,
   documentVersionRenameSchema,
@@ -24,7 +24,6 @@ import {
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { acceptTransferBody } from "@server/middleware/transfer-body.js";
-import { validate } from "@server/middleware/validate.js";
 import { documentVersionService, projectService } from "@server/modules";
 
 const documents = new Hono<{ Variables: AuthVariables }>();

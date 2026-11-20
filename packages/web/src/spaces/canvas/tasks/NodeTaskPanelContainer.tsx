@@ -14,21 +14,22 @@ import { NodeToolbar, Position, useStore } from '@xyflow/react';
 import * as React from 'react';
 
 import type { NodeRef } from '@web/data/yjs/node-view';
-import type { NodeTaskEntry } from '@breatic/shared';
+import type { NodeTaskCounts, NodeTaskEntry } from '@breatic/shared';
 
 import { canvasApi } from '@web/data/api/canvas';
 import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
+import { toastCancelFailure } from '@web/spaces/canvas/tasks/cancel-failure';
+import { NodeTaskPanel, countInList, inTaskList } from '@web/spaces/canvas/tasks/NodeTaskPanel';
+import type { TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { useTickingClock } from '@web/spaces/canvas/tasks/use-ticking-clock';
 import {
   clearRetryFile,
   hasRetryFile,
 } from '@web/spaces/canvas/upload-retry-files';
 import { countsColumnOffset } from '@web/spaces/canvas/overlay-scale';
-import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
+import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import {
   taskActionKey,
   trackTaskAction,
@@ -39,14 +40,14 @@ import {
 /** The media a refusal can name formats for. */
 const LISTED_MEDIA = ['image', 'video', 'audio'] as const;
 
-/** What this panel reads off its host: that it exists, and its four counts. */
+/** What this panel reads off its host: that it exists, and its counts. */
 type TaskHostNode = NodeRef;
 
 /** What {@link NodeTaskPanelContainer} needs from the canvas around it. */
 export interface NodeTaskPanelContainerProps {
   /**
    * The canvas's nodes, Yjs-observed. Two things are read off the host: that
-   * it still exists, and its four task counts — which move on their own while
+   * it still exists, and its task counts — which move on their own while
    * this list stays the snapshot one fetch returned.
    */
   nodes: ReadonlyArray<TaskHostNode>;
@@ -66,7 +67,7 @@ export interface NodeTaskPanelContainerProps {
 /** The open panel's own props, once there is a host to render for. */
 interface OpenNodeTaskPanelProps extends NodeTaskPanelContainerProps {
   nodeId: string;
-  status: TaskStatus;
+  status: TaskListKind;
 }
 
 /**
@@ -93,6 +94,7 @@ function OpenNodeTaskPanel({
   const t = useTranslation();
   const zoom = useStore((s) => s.transform[2]);
   const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
+  const session = useCanvasSessionStore();
   const openHistoryPanel = useCanvasSession((s) => s.openHistoryPanel);
   // Each row's first line names a model by what the catalog calls it. The
   // catalog is already cached by the time a list opens on a canvas.
@@ -127,7 +129,7 @@ function OpenNodeTaskPanel({
   const countsKey =
     counts === undefined
       ? 'none'
-      : `${counts.running}/${counts.done}/${counts.failed}/${counts.expired}`;
+      : `${counts.running}/${counts.waiting ?? 0}/${counts.done}/${counts.failed}/${counts.expired}`;
   const queryKey = React.useMemo(
     () => ['node-tasks', projectId, nodeId, countsKey] as const,
     [projectId, nodeId, countsKey],
@@ -148,7 +150,7 @@ function OpenNodeTaskPanel({
   // three settled states show fixed instants.
   const counting = React.useMemo(
     () =>
-      status === 'running' && entries.some((task) => task.status === 'running'),
+      status === 'running' && entries.some((task) => inTaskList(task, 'running')),
     [status, entries],
   );
   const now = useTickingClock(counting);
@@ -188,6 +190,22 @@ function OpenNodeTaskPanel({
     },
     [onRetry, nodeId, projectId, spaceId],
   );
+  // A row leaves the state this panel shows: cleared, or cancelled and ended.
+  // The count cell this panel opened from is drawn only while its own state
+  // holds a task, so the last row of THAT state leaving takes the cell with it.
+  // Whether any is left is read from the counts the server answered with: the
+  // list's cache is keyed on the node's counts, and a counts event that lands
+  // first moves it to a key not read yet. An answer that lands after the user
+  // opened another panel leaves that panel alone.
+  const rowLeft = React.useCallback(
+    (taskId: string, counts: NodeTaskCounts): void => {
+      queryClient.setQueryData<NodeTaskEntry[]>(queryKey, (rows) => rows?.filter((row) => row.id !== taskId));
+      const open = session.getState();
+      if (open.panelKind !== 'tasks' || open.panelHostId !== nodeId || open.taskPanelStatus !== status) return;
+      if (countInList(counts, status) === 0) closeActivePanel();
+    },
+    [queryClient, queryKey, session, nodeId, status, closeActivePanel],
+  );
   // Finish and Clear are the same request (§7.4). The row leaves this list as
   // soon as the server takes it — the list is this user's own fetch, not the
   // shared document. The node's counts wait for the event that follows.
@@ -195,26 +213,35 @@ function OpenNodeTaskPanel({
     (taskId: string): void => {
       const request = canvasApi
         .dismissNodeTask(taskId, { projectId, spaceId, nodeId })
-        .then(() => {
-          const left = (
-            queryClient.getQueryData<NodeTaskEntry[]>(queryKey) ?? []
-          ).filter((row) => row.id !== taskId);
-          queryClient.setQueryData<NodeTaskEntry[]>(queryKey, left);
+        .then(({ counts }) => {
           clearRetryFile(projectId, spaceId, taskId);
-          // The count cell this panel opened from is drawn only while its own
-          // state holds a task, so clearing the last one of THAT state takes
-          // the cell with it. This list holds every state the node has, so
-          // what remains in it says nothing about the one on screen; left
-          // open, the panel would sit on a generic empty line with nothing
-          // naming the state that emptied.
-          if (!left.some((row) => row.status === status)) closeActivePanel();
+          rowLeft(taskId, counts);
         })
         .catch(() => {
           toast.error(t('canvas.task.dismissFailed'));
         });
       trackTaskAction(taskActionKey(projectId, spaceId, taskId, 'dismiss'), request);
     },
-    [projectId, spaceId, nodeId, queryClient, queryKey, t, closeActivePanel, status],
+    [projectId, spaceId, nodeId, t, rowLeft],
+  );
+
+  // Cancel a task that waits for a free slot (inner#1968). The row ends as a
+  // failed one, so it leaves the queued list, the only one that offers Cancel.
+  // One that started meanwhile answers 409 with the server's sentence.
+  const cancel = React.useCallback(
+    (taskId: string): void => {
+      const request = canvasApi
+        .cancelTask(taskId, projectId)
+        .then(({ counts }) => {
+          // A 3D Space's own row answers no node counts; this list is a node's.
+          if (counts !== null) rowLeft(taskId, counts);
+        })
+        .catch((err: unknown) => {
+          toastCancelFailure(err, t('canvas.task.cancelFailed'));
+        });
+      trackTaskAction(taskActionKey(projectId, spaceId, taskId, 'cancel'), request);
+    },
+    [projectId, spaceId, t, rowLeft],
   );
 
   if (hostNode === undefined) return null;
@@ -251,6 +278,7 @@ function OpenNodeTaskPanel({
         displayNameOf={displayNameOf}
         onRetry={retry}
         onDismiss={dismiss}
+        onCancel={cancel}
       />
     </NodeToolbar>
   );

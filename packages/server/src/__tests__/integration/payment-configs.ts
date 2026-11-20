@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
  * fulfilment, the membership panel and the subscription webhooks still need
  * a price list to exercise, so a run that finds none lays down a fixture.
  */
-const PAYMENT_CONFIGS = ["pricing", "subscription"] as const;
+const PAYMENT_CONFIGS = ["pricing", "subscription", "credits"] as const;
 
 /** Repo root, from this file at packages/server/src/__tests__/integration/. */
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../..");

@@ -55,7 +55,6 @@ import {
   type TextToolRequest,
   type TextToolsConfig,
 } from '@web/data/api/text-tools';
-import { StreamRefusedError } from '@web/data/stream/sse';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { useKeyFailureWords } from '@web/features/byok/key-failure-words';
 import { langFor } from '@web/features/preferences/supported-langs';
@@ -64,6 +63,7 @@ import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-en
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
+import { ourSentence } from '@web/data/api/server-message';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentAiLaunchContext, TONE_LABEL_KEYS, type AiLaunch } from '@web/spaces/document/document-ai-context';
 import { aiCapture, aiContextOf } from '@web/spaces/document/document-ai-launch';
@@ -279,7 +279,7 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
             }
           },
           onError: (err) => {
-            failure.current = err instanceof StreamRefusedError && err.fromServer ? err.message : null;
+            failure.current = ourSentence(err);
             send({ type: 'error', seq });
           },
           signal: controller.signal,

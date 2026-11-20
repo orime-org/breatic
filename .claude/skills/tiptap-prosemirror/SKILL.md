@@ -75,6 +75,10 @@ A model position at a soft-wrap boundary has two visual places (end of the line,
 
 **Only one handler owns an Esc press: whoever calls `preventDefault`.** `defaultPrevented` is one bit shared by the tooltip capture layer, the `@` suggestion and inline rename editors, so a window-level handler cannot tell which one consumed it; skipping it when a tooltip is present, or tagging events from one consumer, lets one key press do two things. With a tooltip open, the user presses Esc once more.
 
+### A node view that moves its content keeps the page selection
+
+**A node view that moves its content DOM after ProseMirror has drawn the selection into it puts the page selection back after the move.** Removing a node collapses every range end inside it onto its old parent, and ProseMirror reads the page selection back on the DOM change, so with the body focused a caret put in the new node lands on the text before it. The table frame moves its `<table>` when its own React root commits; `moveKeepingSelection` in `spaces/document/document-table-nodes.tsx` records the selection before the move and restores it when either end lay inside. jsdom collapses ranges the same way, so a unit test can pin it by reading `document.getSelection()` after the commit.
+
 ### Input-method Enter is claimed by queue order
 
 **The Enter that confirms an input-method candidate is claimed by marking `compositionend` and releasing the mark with `setTimeout(0)`, never with a time window.** Chrome sends `compositionend` and then the key twice (keyCode 229, then 13); without a claim the second one splits the block. Keydowns from the same keystroke are already queued ahead of the release, a press the user makes later is queued behind it. Use `lib/composition-end.ts` (`compositionEnd`, `keyBelongsToInputMethod`); do not clear the mark inside the Enter handler, which lets the second keydown through.

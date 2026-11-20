@@ -30,7 +30,29 @@ export const enterpriseMembershipLimitsSchema = z.object({
   studio_members: count,
   project_members: count,
   storage_bytes: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  // Optional (inner#1968): a result stored before it existed is re-parsed
+  // strictly by findOperation and replayed as stored, so it has no default.
+  // A save that leaves it out keeps the value already agreed.
+  running_tasks_per_user: z.number().int().min(1).max(30).optional(),
 }).strict();
+
+/**
+ * Tasks one person may have running at once on an enterprise account without
+ * a saved agreement, and what the agreement column defaults to (migration 0128).
+ */
+export const MISSING_AGREEMENT_RUNNING_TASKS = 10;
+
+/**
+ * The one answer to "how many running tasks a person" for a reading: an active
+ * agreement's, the 10 of an enterprise account without one, or the effective
+ * tier's configured value. Never goes through the throwing enterprise limits lookup.
+ * @param reading - One membership reading.
+ * @param reading.limits - The limits it resolved, null for an enterprise account without an agreement.
+ * @returns Tasks one person may have running at once.
+ */
+export function runningTasksPerUserOf(reading: { readonly limits: { readonly running_tasks_per_user?: number } | null }): number {
+  return reading.limits?.running_tasks_per_user ?? MISSING_AGREEMENT_RUNNING_TASKS;
+}
 
 export const enterpriseMembershipWriteSchema = z.object({
   targetTier: z.literal("enterprise"),

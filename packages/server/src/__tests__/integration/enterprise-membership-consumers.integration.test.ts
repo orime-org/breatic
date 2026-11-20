@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { describe, expect, inject, it } from "vitest";
-import { getMembershipLimits, getMembershipReadingForUser, getLimitsForStudio } from "@breatic/core";
+import { getMembershipConfig, getMembershipLimits, getMembershipReadingForUser, getLimitsForStudio } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import * as studioInvites from "@server/modules/studio/studioInvite.service.js";
@@ -20,6 +20,25 @@ const negotiated = { team_studios: 2, projects_per_studio: 3, concurrent_editors
 const future = "2099-01-01T00:00:00.000Z";
 const past = "2000-01-01T00:00:00.000Z";
 type Limits = typeof negotiated;
+
+/**
+ * Run `body` with base's project ceiling at `ceiling`. Since inner#1968
+ * (design 3.8) every configured tier allows 9999 projects; these cases need a
+ * fallback ceiling an expired agreement can actually run into.
+ * @param ceiling - The temporary base projects_per_studio.
+ * @param body - The case.
+ * @returns What `body` returned.
+ */
+async function withBaseProjectCeiling<T>(ceiling: number, body: () => Promise<T>): Promise<T> {
+  const base = getMembershipConfig().tiers.base;
+  const original = base.projects_per_studio;
+  (base as { projects_per_studio: number }).projects_per_studio = ceiling;
+  try {
+    return await body();
+  } finally {
+    (base as { projects_per_studio: number }).projects_per_studio = original;
+  }
+}
 interface Account { id: string; email: string; studioId: string; slug: string }
 
 /** Seed ordinary identity and a personal studio; enterprise information always uses signed HTTP. */
@@ -117,7 +136,7 @@ describe("saved enterprise information reaches actual consumers", () => {
     expect(archived!.archived_at).not.toBeNull();
   });
 
-  it("rejects all three project additions on expiry while preserving old objects", async () => {
+  it("rejects all three project additions on expiry while preserving old objects", () => withBaseProjectCeiling(10, async () => {
     const a = await account(); await save(a, { ...negotiated, projects_per_studio: 20 });
     const source = await seedProject(a); const archived = await seedProject(a, true);
     for (let n = 1; n < getMembershipLimits("base").projects_per_studio; n++) await seedProject(a);
@@ -126,13 +145,14 @@ describe("saved enterprise information reaches actual consumers", () => {
     await expect(projectService.duplicate(source, a.id)).rejects.toMatchObject({ statusCode: 409 });
     await expect(projectService.restore(archived, a.id)).rejects.toMatchObject({ statusCode: 409 });
     expect(await suite.sql`select id from projects where studio_id=${a.studioId} and deleted_at is null`).toHaveLength(11);
-  });
+  }));
 
-  it("keeps a complete old 20-limit decision across an actual count blocked during the saved expired-999 update with 25 objects", async () => {
+  it("keeps a complete old 20-limit decision across an actual count blocked during the saved expired-999 update with 25 objects", () => withBaseProjectCeiling(10, async () => {
     const a = await account(); const old = { ...negotiated, projects_per_studio: 20 };
     const changed = { team_studios: 999, projects_per_studio: 999, concurrent_editors: 999, studio_members: 999, project_members: 999, storage_bytes: 999 };
     await save(a, old); for (let n = 0; n < 25; n++) await seedProject(a);
-    expect((await getMembershipReadingForUser(a.id)).limits).toEqual(old);
+    // The agreement is read back with its running_tasks_per_user term (inner#1968).
+    expect((await getMembershipReadingForUser(a.id)).limits).toEqual({ ...old, running_tasks_per_user: 10 });
     const gate = postgres(inject("DATABASE_URL"), { max: 1 });
     let release!: () => void; let locked!: () => void;
     const ready = new Promise<void>((resolve) => { locked = resolve; });
@@ -151,10 +171,12 @@ describe("saved enterprise information reaches actual consumers", () => {
       expect(await suite.sql`select id from projects where studio_id=${a.studioId} and deleted_at is null`).toHaveLength(25);
       expect(await getLimitsForStudio(a.studioId)).toEqual(getMembershipLimits("base"));
     } finally { release(); await holding; await Promise.allSettled([pending]); await gate.end({ timeout: 1 }); }
-  });
+  }));
 
-  it("uses the current admin for project additions and storage", async () => {
-    const a = await account(); const next = await account(); await save(a, { ...negotiated, projects_per_studio: 20 }); await save(next, { ...negotiated, projects_per_studio: 0 }, past);
+  // An active agreement caps storage at its storage_bytes since inner#1968
+  // (design 3.6), so the first admin's agreement leaves room for these bytes.
+  it("uses the current admin for project additions and storage", () => withBaseProjectCeiling(10, async () => {
+    const a = await account(); const next = await account(); await save(a, { ...negotiated, projects_per_studio: 20, storage_bytes: 2 * getMembershipLimits("base").storage_bytes }); await save(next, { ...negotiated, projects_per_studio: 0 }, past);
     await suite.sql`update studios set type='team' where id=${a.studioId}`;
     const source = await seedProject(a); await bytes(a, getMembershipLimits("base").storage_bytes);
     await expect(assertStorageAllowance(source, "upload")).resolves.toBeUndefined();
@@ -163,7 +185,7 @@ describe("saved enterprise information reaches actual consumers", () => {
     for (let n = 1; n < 10; n++) await seedProject(a);
     await expect(createProject(a)).rejects.toMatchObject({ statusCode: 409 });
     expect(await getLimitsForStudio(a.studioId)).toEqual(getMembershipLimits("base"));
-  });
+  }));
 
   it("uses the saved Studio member ceiling at invitation and acceptance, then rechecks expiry", async () => {
     const a = await account(); await suite.sql`update studios set type='team' where id=${a.studioId}`; await save(a, { ...negotiated, studio_members: 3 });
@@ -202,11 +224,13 @@ describe("saved enterprise information reaches actual consumers", () => {
     await expect(projectInvites.createInvite(project, a.id, invitee.email, "viewer")).rejects.toMatchObject({ statusCode: 409 });
   });
 
-  it("keeps effective enterprise storage exempt despite saved storage=1, then refuses both write purposes after expiry", async () => {
+  // Inverted by inner#1968 (design 3.6): an active agreement's storage_bytes
+  // caps storage; only an account without an agreement is uncapped.
+  it("caps active enterprise storage at saved storage=1, then refuses both write purposes after expiry", async () => {
     const a = await account(); await save(a); const project = await seedProject(a); await bytes(a, getMembershipLimits("base").storage_bytes);
-    await expect(assertStorageAllowance(project, "upload")).resolves.toBeUndefined();
-    await expect(assertStorageAllowance(project, "generate")).resolves.toBeUndefined();
-    expect(await readAccountMembership(a.id)).toMatchObject({ tier: "enterprise", limits: null, usage: { storageBytes: getMembershipLimits("base").storage_bytes } });
+    await expect(assertStorageAllowance(project, "upload")).rejects.toMatchObject({ statusCode: 507 });
+    await expect(assertStorageAllowance(project, "generate")).rejects.toMatchObject({ statusCode: 507 });
+    expect(await readAccountMembership(a.id)).toMatchObject({ tier: "enterprise", limits: null, storageLimitBytes: 1, usage: { storageBytes: getMembershipLimits("base").storage_bytes } });
     await save(a, negotiated, past, 1, "enterprise");
     await expect(assertStorageAllowance(project, "upload")).rejects.toMatchObject({ statusCode: 507 });
     await expect(assertStorageAllowance(project, "generate")).rejects.toMatchObject({ statusCode: 507 });

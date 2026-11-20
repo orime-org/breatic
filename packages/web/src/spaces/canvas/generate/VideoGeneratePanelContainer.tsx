@@ -726,7 +726,7 @@ function VideoGeneratePanelBody({
     const liveSpec = specOf(probe.modelEntry, probe.mode);
     const shotsNow = liveSpec ? (readShots(projectId, spaceId, nodeId) ?? []) : [];
     const mentioned = liveSpec
-      ? shotsNow.flatMap((shot) => mentionedSourceIds(shot.prompt))
+      ? shotsNow.flatMap((shot) => mentionedSourceIds(shot.prompt, referencesRef.current))
       : atMentionedRef.current;
     const fresh = freshVm(new Set(mentioned));
     const run = storyboardRun(

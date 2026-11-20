@@ -552,16 +552,21 @@ export interface NoteAsked {
  * a generation still to run. Every check counting notes reads this, so the
  * two never count differently.
  * @param arriving - The nodes going into the generation, each with its entry.
+ * @param optional - Whether a node stands for a template input the user may leave empty (inner#1811), whose note says so.
  * @returns One entry per note asked for.
  * @throws {never} Never.
  */
-export function notesAsked(arriving: readonly Arriving[]): NoteAsked[] {
+export function notesAsked(arriving: readonly Arriving[], optional: (node: ProposalNode) => boolean = () => false): NoteAsked[] {
   return arriving
     .filter(({ entry }) => entry.note)
     .map(({ node, entry }) => ({
       node,
-      why: entry.ref
-        ? node.role === "generate" ? "@'d, and empty until it is generated" : "@'d, and empty until a file is put in it"
-        : `going into ${entry.way.into}`,
+      why: !entry.ref
+        ? `going into ${entry.way.into}`
+        : node.role === "generate"
+          ? "@'d, and empty until it is generated"
+          : optional(node)
+            ? "@'d, optional and can be left empty"
+            : "@'d, and empty until a file is put in it",
     }));
 }

@@ -48,3 +48,11 @@ describe("the price file's currency", () => {
     expect(parsed.tiers[0]!.currency).toBe(written);
   });
 });
+
+describe("the trial grant's old place", () => {
+  it("refuses a price file that still carries trial_grant and names where it went", () => {
+    const result = pricingSchema.safeParse({ tiers: [tier()], trial_grant: { credits: 100 } });
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.error?.issues)).toContain("config/credits.yaml");
+  });
+});

@@ -13,8 +13,8 @@
  * not asked about; its run goes on on the server.
  */
 import { create } from 'zustand';
-import { newId } from '@breatic/shared';
-import type { AskUserAnswer, ChatAttachedChip, ChatPendingItem, ChatSendAnswer, ChatSpaceContext, SpaceRequestAnswer } from '@breatic/shared';
+import { newId, t } from '@breatic/shared';
+import type { AskUserAnswer, ChatAttachedChip, ChatPendingItem, ChatSendAnswer, ChatSyncAnswer, ChatSpaceContext, SpaceRequestAnswer } from '@breatic/shared';
 import { chatApi } from '@web/data/api/chat';
 import { bodyOrTransfer } from '@web/data/upload/transfer-body';
 import { chatAttachments } from '@web/stores/chat-attachments';
@@ -24,6 +24,7 @@ import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { noteTurnRunning } from '@web/stores/running-turns';
 import { runOnce } from '@web/stores/task-actions-in-flight';
 import { ApiException } from '@web/data/api/types';
+import { spendCapSentence } from '@web/lib/spend-cap-message';
 import { isReadingRun, layLatestPage, letGoOfRun, readRun, runNamedIn, settleAsk, type CardResult } from '@web/stores/chat-sessions';
 
 /** The conversation this page shows, and its project. */
@@ -61,6 +62,19 @@ const attaching = new Map<string, Promise<void>>();
  * history after it: a run opened since, which that one would not read.
  */
 const askedAgain = new Set<string>();
+
+/**
+ * What the tray says when a spend limit stopped the waiting messages' run
+ * (inner#1968, design 3.10 and 21 row 23): the toast's own sentence, with its
+ * reset day and, for a person's own limit, the amount; a bare one only from a
+ * server that sent neither.
+ * @param seen - What the sync answered.
+ * @returns The sentence, or null when no limit stopped it.
+ */
+function capNoteOf(seen: ChatSyncAnswer): string | null {
+  if (seen.blocked !== 'spend_cap') return null;
+  return spendCapSentence(seen, t('credits.refusal.spendCap'));
+}
 
 /**
  * Whether a conversation is the one on screen.
@@ -112,7 +126,7 @@ async function syncNow(conversationId: string): Promise<void> {
     const seen = await chatApi.sync(conversationId, shown.projectId);
     if (showing !== shown) return;
     shown.intervalMs = seen.next_sync_ms;
-    chatWaiting.fromSync(conversationId, { pending: seen.pending, awaiting: seen.awaiting, blocked: seen.blocked === 'credits', ownKey: seen.own_key ?? null });
+    chatWaiting.fromSync(conversationId, { pending: seen.pending, awaiting: seen.awaiting, blocked: seen.blocked === 'credits', ownKey: seen.own_key ?? null, capNote: capNoteOf(seen) });
     // Shown again with no run holding it: a run that ended while it was away
     // is in the history only. An attach under way reads it before its run and
     // again after; a read of ours landing during that run would replace the

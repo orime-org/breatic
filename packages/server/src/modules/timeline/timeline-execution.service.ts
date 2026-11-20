@@ -5,10 +5,10 @@
  * The Timeline execution routes' logic (inner#1711 design §4).
  *
  * Accepting looks up the action first: an action already accepted answers its own row, or a conflict when its input
- * differs. A new one, like an Agent chat turn, needs only a balance above zero and holds no credits; it writes the
- * execution and this Project's grant in one transaction, and settlement later charges actual use. Reads answer through
- * the grant rows, so a duplicated Project resolves and previews what its source made while its execution list stays
- * its own.
+ * differs. A new one, like an Agent chat turn, is admitted once, here, within the monthly spend limits and on a balance
+ * above zero, and holds no credits; it writes the execution and this Project's grant in one transaction, and settlement
+ * later charges actual use. Reads answer through the grant rows, so a duplicated Project resolves and previews what its
+ * source made while its execution list stays its own.
  */
 
 import { createHash } from "node:crypto";
@@ -17,6 +17,7 @@ import {
   ConflictError,
   NotFoundError,
   ValidationError,
+  announceExecutionChange,
   budgetDeadlineFrom,
   db,
   env,
@@ -36,9 +37,8 @@ import {
   type TimelineExecutionCreateInput,
   type TimelineExecutionInput,
 } from "@breatic/shared/space-content";
-import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
+import { precheckCredits } from "@server/modules/credit/credit-precheck.service.js";
 import * as projectService from "@server/modules/project/project.service.js";
-import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 import * as grantRepo from "@server/modules/timeline/execution-grant.repo.js";
 
 /** What accepting answered: the row, and whether this request created it. */
@@ -104,6 +104,7 @@ function sameAction(row: TimelineExecution, inputHash: string): AcceptedExecutio
  * @throws {ForbiddenError} When the caller is below editor.
  * @throws {ValidationError} When the input is out of the configured bounds.
  * @throws {ConflictError} When the action was accepted with a different input.
+ * @throws {SpendCapReachedError} 402 when the caller or the studio has spent its monthly limit.
  * @throws {AppError} 402 when the studio's balance is not above zero.
  */
 export async function accept(userId: string, body: TimelineExecutionCreateInput & { projectId: string }): Promise<AcceptedExecution> {
@@ -114,8 +115,9 @@ export async function accept(userId: string, body: TimelineExecutionCreateInput 
   const existing = await timelineExecutionRepo.findByAction({ projectId, spaceId, actionId });
   if (existing !== undefined) return sameAction(existing, inputHash);
 
-  // An execution needs a balance above zero to start, as an Agent chat turn does (chat.ts). Payments off: no check.
-  // Asked on the payer's own OpenRouter key too: the render container runs on ours (inner#1953).
+  // Admitted once, as an Agent chat turn is (chat.ts): the spend limits, then a balance above zero; one that then
+  // waits for a running slot starts without a second check (design 3.10). Payments off: no check. Asked on the payer's
+  // own OpenRouter key too: the render container runs on ours (inner#1953).
   await precheckCredits(projectId, userId, SMALLEST_CREDIT);
   // The key row its language-model calls run on, settled at acceptance and read back by id (inner#1953).
   const { keyId: llmKeyId } = await resolveKeys({ projectId }, { kind: "llm" });
@@ -241,7 +243,12 @@ export async function cancel(userId: string, executionId: string): Promise<Timel
   await projectService.assertAccess(row.projectId, userId, "editor");
   const result = await timelineExecutionRepo.transition({ id: executionId, event: { type: "cancel" } });
   if (!result.applied) return result.row;
-  await publishSpaceTasksQuietly(result.row.projectId, result.row.spaceId);
+  try {
+    await announceExecutionChange(result.row);
+  } catch (err) {
+    // The cancel stands; the Timeline's open tabs read the next change, and a tab opened later reads the list.
+    logger.error({ err, executionId: result.row.id, projectId: result.row.projectId, spaceId: result.row.spaceId }, "execution_change_publish_failed");
+  }
   return result.row;
 }
 

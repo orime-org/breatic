@@ -17,7 +17,7 @@
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { db, projectMembersRepo } from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
-import { studioMembersRepo } from "@breatic/domain";
+import { spendLimitRepo, studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import { onProjectOwnerChanged } from "@server/modules/project/projectOwnerChange.service.js";
 
@@ -150,6 +150,9 @@ async function detachMember(
       await onProjectOwnerChanged(projectId, adminUserId, tx);
     }
     await studioMembersRepo.softDelete(studio.id, targetUserId, tx);
+    // A spend limit set for them belongs to their membership; coming back
+    // starts from the default (inner#1968, design 3.10).
+    await spendLimitRepo.softDeleteOverride(studio.id, targetUserId, tx);
   });
 }
 

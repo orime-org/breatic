@@ -576,3 +576,68 @@ describe('runMediaUpload — the server could not open the upload (inner#1595)',
     expect(deps.onFailure).not.toHaveBeenCalled();
   });
 });
+
+// Spec R-07 (inner#1968): the ticket request carries no Idempotency-Key and
+// retries a 5xx; read through the real API call so the headers it sends are seen.
+describe('runMediaUpload — the ticket request carries no Idempotency-Key', () => {
+  const file = new File(['x'], 'photo.png', { type: 'image/png' });
+  const context = { projectId: 'p1', nodeId: 'n1', spaceId: 's1' };
+
+  /**
+   * Deps whose ticket request goes through the real `assetsApi` onto the
+   * stood-in `apiPost`.
+   * @returns The deps.
+   */
+  async function realTicketDeps(): Promise<Parameters<typeof runMediaUpload>[2]> {
+    const real = await vi.importActual<typeof import('@web/data/api/assets')>('@web/data/api/assets');
+    return makeUploadDeps({
+      requestTicket: (params, signal) => real.assetsApi.requestUploadTicket(params, signal),
+    });
+  }
+
+  /**
+   * Whether no ticket request carried an Idempotency-Key header.
+   * @returns True when none did.
+   */
+  function noKeySent(): boolean {
+    return apiPost.mock.calls.every((call) => !JSON.stringify(call[2] ?? {}).toLowerCase().includes('idempotency'));
+  }
+
+  it('R-07 retries a 5xx and then succeeds, with no Idempotency-Key', async () => {
+    apiPost.mockReset();
+    apiPost.mockRejectedValueOnce(apiError(503)).mockResolvedValueOnce(TICKET);
+    const deps = await realTicketDeps();
+
+    await runMediaUpload(file, context, deps);
+
+    expect(apiPost).toHaveBeenCalledTimes(2);
+    expect(deps.sendToIngest).toHaveBeenCalledOnce();
+    expect(deps.onFailure).not.toHaveBeenCalled();
+    expect(noKeySent()).toBe(true);
+  });
+
+  it('R-07 fails after clientMaxAttempts requests that all fail, with no Idempotency-Key', async () => {
+    apiPost.mockReset();
+    apiPost.mockRejectedValue(apiError(503));
+    const deps = await realTicketDeps();
+
+    await runMediaUpload(file, context, deps);
+
+    expect(apiPost).toHaveBeenCalledTimes(CFG.clientMaxAttempts);
+    expect(deps.sendToIngest).not.toHaveBeenCalled();
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'upload' });
+    expect(noKeySent()).toBe(true);
+  });
+
+  it('R-07 fails at once as rateLimited on a 429, with no Idempotency-Key', async () => {
+    apiPost.mockReset();
+    apiPost.mockRejectedValue(apiError(429));
+    const deps = await realTicketDeps();
+
+    await runMediaUpload(file, context, deps);
+
+    expect(apiPost).toHaveBeenCalledOnce();
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'rateLimited' });
+    expect(noKeySent()).toBe(true);
+  });
+});

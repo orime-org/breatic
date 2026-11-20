@@ -11,11 +11,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { modelCatalog, listVoices, getVoice } from "@breatic/domain";
-import { logger } from "@breatic/core";
+import { logger, validate } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { validate } from "@server/middleware/validate.js";
 
 const models = new Hono<{ Variables: AuthVariables }>();
 
