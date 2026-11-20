@@ -341,6 +341,43 @@ describe('useApplyTemplate', () => {
       expect(placed(place).proposal.nodes[0]?.prompt?.at(-1)).toEqual({ text: '\nThick oil paint.' });
     });
 
+    it('switches an applied instance to another style by rewriting the words only: no new node, each reused one ends with the new style', async () => {
+      const PAIR: GenerationTemplate = {
+        ...STYLED,
+        id: 'fixture-styled-pair',
+        anchor: 'final',
+        nodes: [
+          { key: 'final', role: 'generate', type: 'image', mode: 'i2i', model: ULTRA.name, params: {}, styleWords: 'still' },
+          { key: 'sketch', role: 'generate', type: 'image', mode: 'i2i', model: ULTRA.name, params: {}, styleWords: 'still' },
+        ],
+        edges: [{ from: 'sketch', to: 'final', into: 'styleImageUrls' }],
+      };
+      mergeLocaleMessages('en', {
+        canvas: {
+          template: {
+            'fixture-styled-pair': { name: 'Pair', prompt: 'Finish it.', node: { sketch: { name: 'Sketch', prompt: 'Sketch it.' } } },
+            styleSet: { 'film-styles': { style: { 'expressionist-woodcut': { still: 'Black ink cut into wood.' } } } },
+          },
+        },
+      });
+      // The instance an earlier apply with impasto-oil left: the anchor, and its sketch wired into it.
+      seed('target', 'image');
+      seed('target-sketch', 'image', { name: 'Sketch', templateNode: { template: 'fixture-styled-pair', key: 'sketch' } });
+      wire('target-sketch', 'target');
+      const place = vi.fn(lands);
+      const { result } = renderHook(() => useApplyTemplate('p', 's', 'target', [ULTRA], place));
+      result.current(PAIR, 'expressionist-woodcut');
+      await vi.waitFor(() => expect(place).toHaveBeenCalledTimes(1));
+
+      const { proposal, existing } = placed(place);
+      expect(appendedOf(proposal, existing)).toEqual([]);
+      expect([...existing.values()].map((e) => e.nodeId).sort()).toEqual(['target', 'target-sketch']);
+      for (const node of proposal.nodes) {
+        expect(node.prompt?.at(-1)).toEqual({ text: '\nBlack ink cut into wood.' });
+        expect(JSON.stringify(node.prompt)).not.toContain('Thick oil paint.');
+      }
+    });
+
     it('places nothing and asks the user to refresh when the style words do not arrive', async () => {
       vi.mocked(ensureTemplateStyleMessages).mockResolvedValueOnce(false);
       seed('target', 'image');
