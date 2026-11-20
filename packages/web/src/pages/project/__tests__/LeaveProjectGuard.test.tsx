@@ -9,6 +9,7 @@ import {
   shouldBlockLeave,
 } from '@web/pages/project/LeaveProjectGuard';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
+import { useTaskActionsInFlight } from '@web/stores/task-actions-in-flight';
 
 // Controllable blocker + captured condition — no real router needed.
 const blocker = vi.hoisted(() => ({
@@ -74,6 +75,19 @@ describe('LeaveProjectGuard (#1787)', () => {
     // Register a front-end op → block the leave.
     useSpaceOperationsStore.getState().register('space-1', 'op-1');
     expect(capturedCondition!(args)).toBe(true);
+  });
+
+  it('asks before leaving while a press waits for the server to accept it', () => {
+    render(<LeaveProjectGuard />);
+    const args = { currentLocation: { pathname: '/project/p' }, nextLocation: { pathname: '/studio' } };
+    expect(capturedCondition!(args)).toBe(false);
+    // An Execute, Generate or Run press that the server has not answered yet exists only in this page.
+    useTaskActionsInFlight.setState({ running: new Map([['press-1', true]]) });
+    expect(capturedCondition!(args)).toBe(true);
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+    useTaskActionsInFlight.setState({ running: new Map() });
   });
 
   it('lets the landing after leaving the project through, even with front-end ops in flight', () => {
