@@ -311,9 +311,11 @@ export async function recordMiniToolConsumptionLookup(input: RecordMiniToolConsu
       nextLookupAt: done ? null : now + pace().delay * 2 ** attempts,
     });
     await stepRepo.storeMiniToolConsumption(task.id, step.id, consumption, tx);
+    await mirrorMiniToolExecutionConsumption(task, consumption, tx);
+    // As a container confirmation does, the answer commits only under a lease still current after its writes.
+    if (!await taskRepo.hasMiniToolSettlementLease(task.id, request.claim, tx)) throw new Error("Mini-tool settlement lease expired before the lookup was written");
     // A known consumption is recorded next under the same lease; a pending one waits for its next lookup.
     if (!done) await rewaitSettlement(task, miniToolSettlementSchema.parse(task.result.settlement), nowText, tx);
-    await mirrorMiniToolExecutionConsumption(task, consumption, tx);
     return { consumption, now };
   });
   if (written.consumption.state === "pending") await holdThroughWindows(request.taskId, [written.consumption.windowEndsAt!], written.now);

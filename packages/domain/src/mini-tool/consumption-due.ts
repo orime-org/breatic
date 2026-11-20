@@ -6,13 +6,14 @@ import type { UpstreamStep } from "@domain/task/upstreamStep.repo.js";
 
 /**
  * When an unrecorded consumption is next due (inner#1306 execution design §11.4 lookup row): a model step's pending
- * consumption at its next lookup; a known one, and every container one, at once.
+ * consumption at its next lookup; a known one, and every container one, at once. Nothing is due before `now`, so a
+ * retry scheduled after an overdue lookup failed waits its delay instead of coming back at once.
  * @param consumption - The consumption.
- * @param now - The clock, in epoch milliseconds.
+ * @param now - The clock, in epoch milliseconds: the present, or the retry time of a deferred cycle.
  * @returns Epoch milliseconds.
  */
 export function consumptionDueAt(consumption: MiniToolConsumptionRecord, now: number): number {
-  return consumption.identity.kind === "provider" && consumption.state === "pending" ? consumption.nextLookupAt ?? now : now;
+  return consumption.identity.kind === "provider" && consumption.state === "pending" ? Math.max(consumption.nextLookupAt ?? now, now) : now;
 }
 
 /**
