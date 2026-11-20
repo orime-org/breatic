@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createHash } from "node:crypto";
 import { candidateOf, candidatesOf, type MediaBinding } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
 import { AccountKeyFailure, costsOf, DeadlinePassed, markCostsOf, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@provider/errors.js";
@@ -9,7 +8,7 @@ import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js
 import { fetchMedia, MediaRefused } from "@provider/http/fetch-media.js";
 import { boundSignal, sideBounds } from "@provider/http/request.js";
 import { outputUrls, type MediaAdapter, type Reach, type RequestBounds, type StepCodec, type StepContext, type StepOutput } from "@provider/media/adapter.js";
-import { assertAccountReaches, keyFailureOf, keyFor, paidInRun, recordedKeys, ticketOwners, triedOn, type KeySet, type TicketOwners } from "@provider/keys.js";
+import { assertAccountReaches, keyFailureOf, keyFor, keyScope, paidInRun, recordedKeys, ticketOwners, triedOn, type KeySet, type TicketOwners } from "@provider/keys.js";
 import { adapterOf } from "@provider/media/adapters.js";
 import { buildBody } from "@provider/media/body.js";
 import { assess, cloneKeyOf, heldClone, isPresent, stepCalls, stepSource, type CloneKind, type HeldClone } from "@provider/pricing/estimate.js";
@@ -370,10 +369,10 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @returns What the request answered.
    * @throws {Aborted} When the bounds end while it waits for a slot.
    */
-  const capped = async <T>(upstream: string, bounds: RequestBounds & Run, work: () => Promise<T>): Promise<T> => {
+  const capped = async <T>(upstream: string, bounds: Run, work: () => Promise<T>): Promise<T> => {
     const cap = config.upstreams[upstream]?.concurrency;
     if (cap === undefined) return work();
-    const slotId = bounds.keys.owner === "account" ? `${upstream}\u0000${createHash("sha256").update(keyFor(bounds.keys, upstream)).digest("hex")}` : upstream;
+    const slotId = bounds.keys.owner === "account" ? keyScope(upstream, keyFor(bounds.keys, upstream)) : upstream;
     const slot = inFlight.get(slotId) ?? { count: 0, waiting: [] };
     inFlight.set(slotId, slot);
     // First in, first out: a released slot is handed to the head of the queue, so a

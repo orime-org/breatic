@@ -7,7 +7,6 @@
  * reading media, the decisions endpoint and the picture capability.
  */
 
-import { createHash } from "node:crypto";
 import type { JSONValue, SystemModelMessage } from "ai";
 import { candidateOf, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost, PendingCost, TokenBuckets } from "@provider/cost.js";
@@ -20,7 +19,7 @@ import { classifyLlm, costRefOf, InBandError, pauseBeforeRetry, statusFailure, S
 import { AnswerUnread, assertSucceeded, MediaReadFailed, StepRefused, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
 import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
 import { messagesSpeakerOf } from "@provider/llm/upstreams/messages.js";
-import { assertAccountReaches, hasKey, keyFailureOf, keyFor, llmFailureOn, paidAsMarked, paidOn, payerMark, triedOn, type KeySet } from "@provider/keys.js";
+import { assertAccountReaches, hasKey, keyFailureOf, keyFor, keyScope, llmFailureOn, paidAsMarked, paidOn, payerMark, triedOn, type KeySet } from "@provider/keys.js";
 import { cacheMark, hasLlmAdapter, isClaude, messageOf, optionsFor, vendorOf, type ModelV4, type Vendor, type VendorOptions } from "@provider/llm/vendors.js";
 import type { MessagesPlan } from "@provider/messages/relay.js";
 import type { ProviderOptions } from "@provider/provider.js";
@@ -138,7 +137,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions, depl
     const decl = config.upstreams[upstream]!;
     const key = keyFor(keys, upstream);
     if (keys.owner === "account") return vendorOf(decl.kind).build(decl, key)(vendorModelId(route, upstream, modelId));
-    const cacheKey = `${upstream}\u0000${createHash("sha256").update(key).digest("hex")}`;
+    const cacheKey = keyScope(upstream, key);
     let factory = factories.get(cacheKey);
     if (factory === undefined) {
       factory = vendorOf(decl.kind).build(decl, key);

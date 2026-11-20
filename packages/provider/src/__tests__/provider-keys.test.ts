@@ -96,3 +96,13 @@ describe("estimate and refusal on a key set", () => {
     expect(deploymentKeys).not.toHaveBeenCalled();
   });
 });
+
+describe("keyScope", () => {
+  it("tells two keys on one upstream apart, keeps one key the same, and never holds the key", async () => {
+    const { keyScope } = await import("../keys.js");
+    expect(keyScope("openrouter", "sk-a")).toBe(keyScope("openrouter", "sk-a"));
+    expect(keyScope("openrouter", "sk-a")).not.toBe(keyScope("openrouter", "sk-b"));
+    expect(keyScope("openrouter", "sk-a")).not.toBe(keyScope("fal", "sk-a"));
+    expect(keyScope("openrouter", "sk-a")).not.toContain("sk-a");
+  });
+});

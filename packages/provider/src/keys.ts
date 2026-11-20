@@ -8,6 +8,7 @@
  * the deployment's), and the caller hands the same owner's keys back for every later step and lookup.
  */
 
+import { createHash } from "node:crypto";
 import type { ProviderConfig } from "@provider/config/schema.js";
 import { paidBy, type Cost, type CostLookup, type Payer } from "@provider/cost.js";
 import { AccountKeyFailure, NoUpstreamAvailable, UpstreamRequestRejected } from "@provider/errors.js";
@@ -92,6 +93,17 @@ export function keyIn(keys: KeySet, upstream: string): string | undefined {
  */
 export function keyFor(keys: KeySet, upstream: string): string {
   return keyIn(keys, upstream) ?? "";
+}
+
+/**
+ * An id for one key on one upstream that never holds the key: what tells two accounts' keys apart where state is kept
+ * per key (a client cache, a concurrency slot).
+ * @param upstream - The upstream.
+ * @param key - The key.
+ * @returns The upstream and the key's SHA-256.
+ */
+export function keyScope(upstream: string, key: string): string {
+  return `${upstream}\u0000${createHash("sha256").update(key).digest("hex")}`;
 }
 
 /**
