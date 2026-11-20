@@ -10,6 +10,7 @@
  * mid-run previewing the result. Each case spends one real model run, so every check that needs a finished result
  * shares the one run its case makes.
  */
+import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -993,19 +994,26 @@ test('a run cancelled from In progress moves to Failed as Cancelled, is not offe
 });
 
 /**
- * Ask for a web animation the way a Timeline tab from before Motion still does: a create without `kind`, from the
- * Timeline, with its frame rate. The server files it as made in a Timeline.
- * @returns The accepted execution's id.
- * @throws {Error} When the server refuses it.
+ * File runs this case made in its Motion Space as runs a Timeline made before Motion existed, the way migration 0128
+ * stored them: `origin = 'timeline'` on the Timeline's Space. The script loads the services' own configuration.
+ * @param projectId - The smoke Project.
+ * @param timelineId - The Timeline the runs are filed under.
+ * @param executionIds - The runs.
+ * @throws {Error} When the script fails or moves another number of runs.
  */
-async function legacyCreate(page: Page, projectId: string, timelineId: string): Promise<string> {
-  const res = await page.request.post('/api/v1/timeline/executions', {
-    headers: { 'Idempotency-Key': crypto.randomUUID() },
-    data: { projectId, spaceId: timelineId, actionId: crypto.randomUUID(), prompt: PROMPT, engine: 'deepseek', aspect: '16:9', durationSeconds: SECONDS, fps: { num: 30, den: 1 } },
+async function fileAsTimelineMade(projectId: string, timelineId: string, executionIds: string[]): Promise<void> {
+  const output = await new Promise<string>((resolveOutput, reject) => {
+    const child = spawn('pnpm', ['exec', 'tsx', '--tsconfig', 'packages/server/tsconfig.json', 'scripts/seed-smoke-timeline-made-runs.ts'], {
+      cwd: resolve(__dirname, '../../../..'), stdio: ['pipe', 'pipe', 'pipe'], timeout: 30_000,
+    });
+    let stdout = ''; let stderr = '';
+    child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+    child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+    child.on('error', reject);
+    child.on('close', (code) => { if (code === 0) resolveOutput(stdout); else reject(new Error(`Filing the runs as Timeline-made failed (${code}): ${stderr}`)); });
+    child.stdin.end(JSON.stringify({ projectId, timelineSpaceId: timelineId, executionIds }));
   });
-  const row = await dataOf<{ id: string; origin: string }>(res, 'accept a create from an older Timeline');
-  expect(row.origin).toBe('timeline');
-  return row.id;
+  expect((JSON.parse(output) as { moved: number }).moved).toBe(executionIds.length);
 }
 
 /**
@@ -1071,15 +1079,17 @@ test('a web animation made in a Timeline before Motion keeps its copy and name, 
   // The newest Motion Space holds the group of runs made in a Timeline.
   const motionId = await createSpace(page, 'web_animation', `Motion legacy ${crypto.randomUUID()}`);
   try {
-    const done = await legacyCreate(page, projectId, timelineId);
-    const cancelled = await legacyCreate(page, projectId, timelineId);
+    // Two runs made now and filed the way 0128 stored a Timeline's runs from before Motion.
+    const done = await executeInMotion(page, { prompt: PROMPT, seconds: SECONDS });
+    await waitMotionFinished(page, done);
+    const cancelled = await executeInMotion(page, { prompt: PROMPT, seconds: SECONDS });
     await dataOf(await page.request.post(`/api/v1/timeline/executions/${cancelled}/cancel`, {
       headers: { 'Idempotency-Key': crypto.randomUUID() }, data: { projectId },
-    }), 'cancel the second old run');
+    }), 'cancel the second run');
+    await waitExecutionEnded(page, projectId, motionId, cancelled, 'cancelled');
+    await fileAsTimelineMade(projectId, timelineId, [done, cancelled]);
 
     await test.step('Motion lists the old run under Made in a Timeline before', async () => {
-      await waitExecutionEnded(page, projectId, motionId, done, 'succeeded');
-      await waitExecutionEnded(page, projectId, motionId, cancelled, 'cancelled');
       await page.reload();
       await openSpaceById(page, motionId);
       await waitMotionFinished(page, done);
