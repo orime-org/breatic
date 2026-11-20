@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Frame numbers and seconds on a selected version's grid in the browser (inner#1306 frames-split design §4.3 "浏览器取帧号与跳帧",
+ * Frame numbers and seconds on a selected version's grid in the browser (inner#1306 frames-split design §4.3 "browser frame numbers and frame seeks",
  * §7.16): the current frame is the last requestVideoFrameCallback mediaTime times fps, rounded; every jump to a frame seeks its
  * midpoint (i + 0.5) / fps. A grid's frame i starts at i / fps and the grid ends at frameCount / fps.
  */

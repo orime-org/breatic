@@ -136,7 +136,7 @@ export function presentationRecipeOf(answer: VideoPresentationPrepareAnswer, uni
       if (plan.route !== 'edit' && plan.route !== 'reuse_edit') {
         return { recipe: { kind: 'chunk_encode', inputId: SOURCE_INPUT_ID, grid, source: fromOriginal, frames, target }, inputs: original, contentType: 'video/mp4' };
       }
-      if (plan.editStorageKey === null) throw new PresentationFactsUnavailable('presentation-chunk:edit_file');
+      if (plan.editStorageKey === null) throw new PresentationFactsUnavailable('presentation-chunk:edit_storage_key');
       return { recipe: { kind: 'chunk_encode', inputId: SOURCE_INPUT_ID, grid, source: { kind: 'edit' }, frames, target },
         inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.editStorageKey }], contentType: 'video/mp4' };
     }

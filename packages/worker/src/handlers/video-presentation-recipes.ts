@@ -60,7 +60,7 @@ export function gridOf(version: VideoPresentationVersion): MiniToolPlanGrid {
 }
 
 /**
- * The original as a tool source with its source keyframe statistics (§7.16 原片 row).
+ * The original as a tool source with its source keyframe statistics (§7.16 original row).
  * @param version - The frozen selected version.
  * @param sourceKey - The original's storage key.
  * @param inputId - The id it is bound under.

@@ -121,7 +121,7 @@ export async function acquire(pin: { holderKind: PresentationPinHolder; holderId
 }
 
 /**
- * Add: append keys to a holder's existing live row, in the transaction that records them (§7.15 钉住行).
+ * Add: append keys to a holder's existing live row, in the transaction that records them (§7.15 pin row).
  * @param holder - The holder.
  * @param keys - The keys.
  * @param tx - The caller's transaction, if any.

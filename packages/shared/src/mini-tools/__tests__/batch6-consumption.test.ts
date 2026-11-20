@@ -68,7 +68,7 @@ describe("batch six consumption identity and key", () => {
   });
 
   it.each(["taskId", "stepId"].flatMap((field) => ["", undefined, "not-a-uuid", 7, null].map((value) => ({ field, value }))))("rejects invalid scope $field=$value before constructing a consumption key", async ({ field, value }) => {
-    const invalid = { ...scope, identity: container, [field]: value } as unknown as Parameters<ConsumptionApi["miniToolConsumptionKey"]>[0];
+    const invalid = { ...scope, identity: container, [field]: value };
     await expect(Promise.resolve().then(() => api.miniToolConsumptionKey(invalid))).rejects.toThrow();
   });
 
