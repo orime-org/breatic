@@ -162,6 +162,21 @@ describe('SceneLookUploads', () => {
     expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
   });
 
+  it('ends the upload once its picture showed, so removing the picture later offers a new choice', async () => {
+    const { doc, session } = editor();
+    const h = harness(() => session);
+    const done = h.uploads.start(startFor());
+    await settle();
+    h.finish();
+    await done;
+    const version = (h.uploads as unknown as { getVersion: () => number }).getVersion();
+    // Collab writes the picture while no panel reads the row, then the user removes it.
+    look(doc, '0', { map: UPLOADED });
+    expect((h.uploads as unknown as { getVersion: () => number }).getVersion()).toBeGreaterThan(version);
+    look(doc, '0', { map: null });
+    expect(h.uploads.get(SPACE, ID, '0')).toBeUndefined();
+  });
+
   it('stops waiting when the part shows another picture or the object is gone, since collab will not write', async () => {
     for (const change of ['picture', 'gone'] as const) {
       const { doc, session } = editor();

@@ -224,6 +224,25 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
   };
 
   /**
+   * End a stored picture's wait as soon as the open Space shows its outcome: the picture on the part, or the part changed
+   * so collab will not write. A Space opened later is judged when its row is next read.
+   * @param key - The part's entry key.
+   * @param entry - The waiting entry.
+   */
+  const watch = (key: string, entry: SceneLookUploadEntry): void => {
+    const session = deps.session(entry.name);
+    if (!session) return;
+    const stop = session.subscribe(() => {
+      if (entries.get(key) !== entry) stop();
+      else if (!waiting(entry)) {
+        stop();
+        entries.delete(key);
+        changed();
+      }
+    });
+  };
+
+  /**
    * Why putting this picture on the part would make a picture unusable, read from file headers.
    * @param input - The upload's start record.
    * @param look - The object's current look.
@@ -320,15 +339,25 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
         const refusal = heard !== undefined && heard.picture === picture ? heard.reason : undefined;
         if (entries.get(key)?.operationId === operationId) {
           if (picture === null || refusal !== undefined) entries.delete(key);
-          else entries.set(key, { ...entry, percent: 100, picture });
+          else {
+            const stored = { ...entry, percent: 100, picture };
+            if (waiting(stored)) {
+              entries.set(key, stored);
+              watch(key, stored);
+            } else entries.delete(key);
+          }
           if (refusal !== undefined) deps.notify(refusalNotice(refusal));
         }
         changed();
       }
     },
     get(spaceId, objectId, part) {
-      const entry = entries.get(keyOf(spaceId, objectId, part));
-      return entry && waiting(entry) ? entry : undefined;
+      const key = keyOf(spaceId, objectId, part);
+      const entry = entries.get(key);
+      if (!entry || waiting(entry)) return entry;
+      // An upload whose outcome a Space opened later already shows is over.
+      entries.delete(key);
+      return undefined;
     },
     refused(refusal) {
       const key = keyOf(refusal.spaceId, refusal.objectId, refusal.part);

@@ -306,7 +306,8 @@ test('a picture from the computer uploads onto the part it was chosen for @needs
     await page.getByTestId('scene-image-picker-local').click();
     const chooser = page.waitForEvent('filechooser');
     await page.getByRole('button', { name: 'Choose file', exact: true }).click();
-    await (await chooser).setFiles({ name: 'pattern.png', mimeType: 'image/png', buffer: uniquePicture(readFileSync(join(FIXTURES, 'portrait.png'))) });
+    const picture = uniquePicture(readFileSync(join(FIXTURES, 'portrait.png')));
+    await (await chooser).setFiles({ name: 'pattern.png', mimeType: 'image/png', buffer: picture });
 
     await expect.poll(async () => {
       const [look] = await committedLooks(page, id);
@@ -329,6 +330,17 @@ test('a picture from the computer uploads onto the part it was chosen for @needs
     await page.getByTestId(`scene-image-picker-item-${assetId}`).click();
     await expect.poll(() => committedLooks(page, id), { timeout: 30_000 }).toEqual([{ 0: { map: assetId } }]);
     await expect.poll(async () => (await rendered(page))[0].parts['0'], { timeout: 60_000 }).toMatchObject({ map: true, color: '#ffffff' });
+
+    // The same file from the computer again: the server already holds it, and collab still puts it on the part.
+    await page.getByTestId('scene-look-remove-image').click();
+    await expect.poll(() => committedLooks(page, id)).toEqual([{}]);
+    await page.getByTestId('scene-look-choose-image').click();
+    await page.getByTestId('scene-image-picker-local').click();
+    const again = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Choose file', exact: true }).click();
+    await (await again).setFiles({ name: 'pattern.png', mimeType: 'image/png', buffer: picture });
+    await expect.poll(() => committedLooks(page, id), { timeout: 60_000 }).toEqual([{ 0: { map: assetId } }]);
+    await expect(page.getByTestId('scene-look-remove-image')).toBeVisible();
   } finally {
     await deleteSpace(page, id);
   }
