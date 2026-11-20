@@ -35,7 +35,7 @@ function measured(output: typeof outputs[number]): Record<string, unknown> {
 
 describe("planned media job requests", () => {
   it("retains the versionless legacy request and its unknown-field policy", () => {
-    expect(miniToolJobRequestSchema.parse({ ...legacy, extra: "ignored" })).toEqual(legacy);
+    expect(miniToolJobRequestSchema.parse({ ...legacy, unknownField: "ignored" })).toEqual(legacy);
   });
 
   it.each([0, 3, "2", null])("rejects explicit unknown version %s even with a legacy-shaped body", (schemaVersion) => {

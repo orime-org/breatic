@@ -33,7 +33,7 @@ const alpha: VideoPresentationSource = { canonicalURL: 'https://assets.example.t
   presentation: presentedBundle('https://assets.example.test/original.webm', { display, playback: { kind: 'alpha-packed', carrier: packed,
     manifest: { ...packed, storageKey: 'alpha.json', url: 'https://assets.example.test/alpha.json', contentType: 'application/json' } } }),
   manifest: { schemaVersion: 1, packed,
-    packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 96, y: 0, width: 96, height: 64 } } };
+    packedWidth: 196, packedHeight: 64, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 100, y: 0, width: 96, height: 64 } } };
 const selected = [7, 0];
 /**
  * Presents one frame on an element: runs every pending frame callback once with its mediaTime.

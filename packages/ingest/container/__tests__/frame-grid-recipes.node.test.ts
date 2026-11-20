@@ -348,7 +348,7 @@ describe.concurrent("edit_encode and its stitch: the edit-friendly file (§4.2)"
     }]);
     const file = join(dir, "alpha-edit.mov");
     await writeFile(file, mov!);
-    expect(await streamOf(file, "v:0")).toMatchObject({ codec_name: "prores", profile: "4444", pix_fmt: "yuva444p10le" });
+    expect(await streamOf(file, "v:0")).toMatchObject({ codec_name: "prores", profile: "4444", pix_fmt: "yuva444p12le" });
     const frames = await rawFrames(file, "rgba");
     expect(frames).toHaveLength(facts.grid.frameCount);
     frames.forEach((frame, at) => expectSlot(frame, oracle, at, `ProRes edit slot ${at}`));

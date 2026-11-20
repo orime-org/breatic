@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import * as miniTools from "@shared/mini-tools/index.js";
 
 type ConsumptionIdentity =
-  | { kind: "provider"; provider: "wavespeed"; predictionId: string }
+  | { kind: "provider"; stepId: string }
   | { kind: "container"; containerClass: string; jobId: string; chunkIndex: number };
 
 interface ConsumptionApi {
@@ -19,9 +19,10 @@ interface ConsumptionApi {
 
 // Missing exports fail the public-entry assertion without preventing collection.
 const api = miniTools as unknown as ConsumptionApi;
-const provider: ConsumptionIdentity = { kind: "provider", provider: "wavespeed", predictionId: "prediction-001" };
-const container: ConsumptionIdentity = { kind: "container", containerClass: "media-standard", jobId: "job-001", chunkIndex: 0 };
 const scope = { taskId: "10000000-0000-4000-8000-000000000001", stepId: "20000000-0000-4000-8000-000000000001" };
+// A model step is identified by its own step row (inner#1306 execution design §11.4).
+const provider: ConsumptionIdentity = { kind: "provider", stepId: scope.stepId };
+const container: ConsumptionIdentity = { kind: "container", containerClass: "media-standard", jobId: "job-001", chunkIndex: 0 };
 
 describe("batch six consumption identity and key", () => {
   it("exports both public entry points", () => {
@@ -33,9 +34,10 @@ describe("batch six consumption identity and key", () => {
   });
 
   it.each([
-    { kind: "provider", provider: "wavespeed" },
-    { ...provider, predictionId: "" },
-    { ...provider, provider: "unsupported" },
+    { kind: "provider" },
+    { ...provider, stepId: "" },
+    { ...provider, stepId: "not-a-uuid" },
+    { kind: "provider", provider: "wavespeed", predictionId: "prediction-001" },
     { ...provider, containerClass: "media-standard", jobId: "job-001", chunkIndex: 0 },
     { kind: "container", jobId: "job-001", chunkIndex: 0 },
     { kind: "container", containerClass: "media-standard", chunkIndex: 0 },
@@ -63,7 +65,7 @@ describe("batch six consumption identity and key", () => {
 
   it("includes each actual upstream identity field", async () => {
     const providerKey = await api.miniToolConsumptionKey({ ...scope, identity: provider });
-    expect(await api.miniToolConsumptionKey({ ...scope, identity: { ...provider, predictionId: "prediction-002" } })).not.toBe(providerKey);
+    expect(await api.miniToolConsumptionKey({ ...scope, identity: { ...provider, stepId: "20000000-0000-4000-8000-000000000002" } })).not.toBe(providerKey);
     const containerKey = await api.miniToolConsumptionKey({ ...scope, identity: container });
     for (const identity of [{ ...container, containerClass: "media-large" }, { ...container, jobId: "job-002" }, { ...container, chunkIndex: 1 }]) {
       expect(await api.miniToolConsumptionKey({ ...scope, identity })).not.toBe(containerKey);
@@ -72,7 +74,7 @@ describe("batch six consumption identity and key", () => {
   });
 
   it("normalizes identity key insertion order", async () => {
-    expect(await api.miniToolConsumptionKey({ ...scope, identity: { predictionId: "prediction-001", provider: "wavespeed", kind: "provider" } })).toBe(await api.miniToolConsumptionKey({ ...scope, identity: provider }));
+    expect(await api.miniToolConsumptionKey({ ...scope, identity: { stepId: scope.stepId, kind: "provider" } })).toBe(await api.miniToolConsumptionKey({ ...scope, identity: provider }));
     expect(await api.miniToolConsumptionKey({ ...scope, identity: { chunkIndex: 0, jobId: "job-001", containerClass: "media-standard", kind: "container" } })).toBe(await api.miniToolConsumptionKey({ ...scope, identity: container }));
   });
 
@@ -82,7 +84,7 @@ describe("batch six consumption identity and key", () => {
   });
 
   it.each([
-    [provider, "cdae9c015bd2ab630eb20c226b748a94cc5c8515170d1a292fff04d60d9caec7"],
+    [provider, "6be748b9e9861bdb4fe2e0f49a4799824f89dd795967f8186e9a2240222e45cd"],
     [container, "c407fd846a6fa2272ba9d1b59b0e2050538e3a077685d79d9e7d11074d825944"],
   ] as const)("matches the independent version-one $0.kind consumption key golden value", async (identity, expected) => {
     expect(await api.miniToolConsumptionKey({ ...scope, identity })).toBe(expected);
@@ -90,7 +92,7 @@ describe("batch six consumption identity and key", () => {
 
   it("keeps valid identities and keys stable through serialization", async () => {
     const identityArbitrary: fc.Arbitrary<ConsumptionIdentity> = fc.oneof(
-      fc.record({ kind: fc.constant("provider" as const), provider: fc.constant("wavespeed" as const), predictionId: fc.uuid() }),
+      fc.record({ kind: fc.constant("provider" as const), stepId: fc.uuid() }),
       fc.record({ kind: fc.constant("container" as const), containerClass: fc.constantFrom("media-standard", "media-large"), jobId: fc.uuid(), chunkIndex: fc.nat() }),
     );
     await fc.assert(fc.asyncProperty(fc.uuid(), fc.uuid(), identityArbitrary, async (taskId, stepId, identity) => {
