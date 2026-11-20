@@ -366,13 +366,13 @@ export const canvasApi = {
   },
 
   /**
-   * List the tasks behind a node's four counts (#186).
+   * List the tasks behind a node's task counts (#186).
    *
    * The document carries the numbers; this carries the rows they were counted
    * from, and only when the user opens the list. Each row already holds what
    * that task landed on the node, so "replace" needs no second request.
    *
-   * Asking also republishes the node's four numbers from the rows the server
+   * Asking also republishes the node's counts from the rows the server
    * just read (design §4.6.7). The two are not kept in lock step, and this is
    * the way back for a node whose count says something the table no longer
    * holds — which is why the space travels along: the counts are published to
@@ -393,6 +393,22 @@ export const canvasApi = {
       { params: { project_id: projectId, space_id: spaceId } },
     );
     return tasks;
+  },
+
+  /**
+   * Cancel a task that waits for a free running slot (inner#1968, design
+   * 3.9). A task that has started answers 409 and goes on.
+   * @param taskId - The task, or one of its rows in a task list.
+   * @param projectId - The project it runs in, whose credits it held.
+   * @returns The node's counts after it, null for a 3D Space's own row.
+   * @throws {ApiException} When the request fails, 409 once the task has started.
+   */
+  cancelTask(taskId: string, projectId: string): Promise<{ cancelled: true; counts: NodeTaskCounts | null }> {
+    // A cancelled wait releases the hold its run took, so the top bar reads
+    // the credits again, as it does when the run request returns (inner#1611).
+    return apiPost<{ cancelled: true; counts: NodeTaskCounts | null }>(`/canvas/tasks/${taskId}/cancel`, {}).finally(() =>
+      noteCreditsChanged(projectId),
+    );
   },
 
   /**

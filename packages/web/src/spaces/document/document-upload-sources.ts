@@ -94,6 +94,8 @@ const FETCH_FAILURE: Readonly<Record<TaskFailureReason, UploadFailure>> = {
   no_audio_track: { reason: 'failed', retryable: false },
   credits_held: { reason: 'failed', retryable: false },
   cut_short: { reason: 'failed', retryable: false },
+  // A fetch is not a task the running-slot cancel reaches; fetching again starts over.
+  cancelled: { reason: 'failed', retryable: true },
   input_refused: { reason: 'failed', retryable: false },
   model_not_configured: { reason: 'failed', retryable: false },
 };

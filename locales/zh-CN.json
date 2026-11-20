@@ -232,7 +232,8 @@
       "storage_full": {
         "subject": "你的存储空间已满",
         "lead": "你的存储空间已满，<b>{studio}</b> 中的上传和生成被拒绝了。存储按你管理的所有 Studio 合计，不只是这一个。",
-        "footer": "升级会员可以获得更多空间。"
+        "footer": "升级会员可以获得更多空间。",
+        "footer_enterprise": "你的存储额度由协议约定，联系我们调整。"
       },
       "password_reset": {
         "subject": "重置密码",
@@ -362,6 +363,10 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {这个 Document 的快照已满 # 张。删掉旧的快照后再保存。}}"
+    },
+    "spend_cap": {
+      "member": "你本月在这个 Studio 的花费已到上限（{limit} 积分）。需要更多请联系 Studio Admin。",
+      "studio": "这个 Studio 本月的花费已到上限。请联系 Studio Admin。"
     }
   },
   "chat": {
@@ -1125,13 +1130,15 @@
     },
     "task": {
       "stillRunning": "这个任务还在跑。",
+      "alreadyStarted": "这个任务已经开始运行，不能取消。",
       "expired": "这个任务超时了。",
       "couldNotStart": "这个任务没能开始，再试一次。",
       "status": {
         "running": "运行中",
         "done": "完成",
         "failed": "失败",
-        "expired": "超时"
+        "expired": "超时",
+        "waiting": "排队中"
       },
       "countTip": "{status} · {count}",
       "action": {
@@ -1169,6 +1176,7 @@
         "tool_failed": "工具没能处理这个文件。",
         "no_audio_track": "{kind, select, audio {这段音频读不出声音。} other {这个视频没有音轨。}}",
         "cut_short": "内容太长，没能转写完。",
+        "cancelled": "已取消。",
         "input_refused": "{model} 接不了现在的设置，请改设置或换个模型。",
         "model_not_configured": "这个部署还没配置好 {model}：需要设置 {envVars}。"
       },
@@ -1177,7 +1185,15 @@
         "generate": "生成",
         "understand": "理解",
         "transcribe": "转写"
-      }
+      },
+      "waitReason": "你同时运行的任务已达上限，前面的任务结束后自动开始。",
+      "you": "你",
+      "cancelFailed": "这个任务没能取消。",
+      "waitReasonLimit": "你同时运行的任务已达上限（{limit} 个），前面的任务结束后自动开始。",
+      "waitReasonOther": "发起人同时运行的任务已达上限，等发起人前面的任务结束后自动开始。",
+      "waitReasonOtherLimit": "发起人同时运行的任务已达上限（{limit} 个），等发起人前面的任务结束后自动开始。",
+      "waitReasonEach": "{count, plural, =1 {这条排队任务会在它的发起人同时运行的任务少于上限后自动开始。} other {每条排队任务会在它的发起人同时运行的任务少于上限后自动开始。}}",
+      "waitReasonEachLimit": "{count, plural, =1 {这条排队任务会在它的发起人同时运行的任务少于上限（{limit} 个）后自动开始。} other {每条排队任务会在它的发起人同时运行的任务少于上限（{limit} 个）后自动开始。}}"
     },
     "panel": {
       "hostDeletedByPeer": "协作者删除了节点。"
@@ -3583,7 +3599,42 @@
         "colProject": "Project",
         "colModel": "模型",
         "colAmount": "积分",
-        "loadError": "无法加载积分信息，请刷新页面重试。"
+        "loadError": "无法加载积分信息，请刷新页面重试。",
+        "spendCap": {
+          "title": "花费上限",
+          "studioMonthly": "Studio 每月总额上限",
+          "studioMonthlyHint": "所有人合计，独立于每人上限",
+          "memberDefault": "每人每月上限默认值",
+          "memberDefaultHint": "对没有单独设置的人生效",
+          "notSet": "不设",
+          "perMonth": "每月",
+          "studioSpent": "本月 Studio 已花",
+          "resetsAt": "重置于",
+          "saved": "花费上限已保存。",
+          "saveFailed": "花费上限没能保存，请重试。",
+          "invalidAmount": "请填写 0 到 {max} 之间的积分，最多两位小数。",
+          "loadError": "无法读取花费上限。",
+          "retry": "再试一次",
+          "save": "保存",
+          "colMember": "成员",
+          "colRelation": "关系",
+          "colSpent": "本月已花",
+          "colEffective": "生效上限",
+          "relationStudioMember": "Studio 成员",
+          "relationProjectCollaborator": "Project 协作者",
+          "relationFormer": "已离开（只读）",
+          "unlimited": "不限",
+          "zero": "0（禁止花积分）",
+          "amount": "{amount} 积分",
+          "spentOfLimit": "{spent} / {limit} 积分",
+          "sourceOverride": "单独设置",
+          "sourceDefault": "默认",
+          "atCap": "已到上限",
+          "override": "单独设置…",
+          "useDefault": "使用默认（{fallback}）",
+          "overrideTitle": "单独设置 · {name}",
+          "overrideHint": "只对这个人生效，覆盖默认值（现在默认 {fallback}）。"
+        }
       },
       "members": {
         "invite": "邀请成员",
@@ -3939,7 +3990,8 @@
       "projectsPerStudio": "每个 Studio 可建 Project",
       "studioMembers": "每个 Studio 成员上限",
       "projectMembers": "每个 Project 成员上限",
-      "concurrentEditors": "每个 Document 同时可编辑"
+      "concurrentEditors": "每个 Document 同时可编辑",
+      "runningTasksPerUser": "同时运行的任务数"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count} 个",
@@ -3948,9 +4000,10 @@
     "overLimitTag": "已超出",
     "overLimit": {
       "storage": "存储已超出上限。原有内容可正常使用，但不能再上传或生成新内容，需要更多空间请升级会员。",
+      "storageEnterprise": "存储已超出协议上限。原有内容可正常使用，但不能再上传或生成新内容，需要调整请联系我们。",
       "teamStudios": "团队 Studio 数量已超出上限。已建的可正常使用，但不能再建新的，需要更多请升级会员。"
     },
-    "enterpriseQuota": "你的额度由单独协议约定，不在这里显示。",
+    "enterpriseQuota": "你的其他额度由单独协议约定，不在这里显示。",
     "compare": "各档对比",
     "contactEnterprise": "需要更大规模或单独的商用条款？发邮件跟我们谈：",
     "contactSelfHosted": "需要商用授权或单独的支持条款？发邮件跟我们谈：",
@@ -4010,7 +4063,8 @@
       "added": "已绑定，选择会员即享首期 {zhe} 折。",
       "loadFailed": "没有读到推广信息。",
       "retry": "重试"
-    }
+    },
+    "quotaUnlimited": "{used} / 不限"
   },
   "promoter": {
     "heading": "推广计划",
@@ -4093,7 +4147,7 @@
       "refunded": "已退款"
     },
     "billingOff": {
-      "title": "这个部署不计积分",
+      "title": "自部署不计积分",
       "body": "生成不扣积分，也不需要充值。用量仍然会记录下来。"
     },
     "total": "账号总额",
@@ -4118,7 +4172,7 @@
     "allStudios": "全部 Studio",
     "filterByStudio": "按 Studio 筛选",
     "ledgerEmpty": "还没有消耗记录。",
-    "ledgerBillingOff": "这个部署不计积分，下面是用量记录。",
+    "ledgerBillingOff": "自部署不计积分，下面是用量记录。",
     "colDay": "日期",
     "colWho": "谁花的",
     "colStudio": "Studio",
@@ -4192,6 +4246,13 @@
     },
     "refundHint": {
       "assigned": "解除指定后可以申请退款"
+    },
+    "refusal": {
+      "spendCap": "本月花费已到上限。请联系 Studio Admin。"
+    },
+    "spendCap": {
+      "member": "你本月在这个 Studio 的花费已到上限（{limit} 积分），{date} 重置。需要更多请联系 Studio Admin。",
+      "studio": "这个 Studio 本月的花费已到上限，{date} 重置。请联系 Studio Admin。"
     }
   },
   "notFound": {

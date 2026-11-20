@@ -13,6 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { ApiException } from '@web/data/api/types';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 
 /** 把键原样返回，断言的就是「挑中了哪个键」。 */
@@ -20,13 +21,13 @@ const echo = (key: string): string => key;
 
 describe('executeErrorMessage', () => {
   it('says storage is full on 507', async () => {
-    expect(await executeErrorMessage(507, echo)).toBe(
+    expect(await executeErrorMessage(new ApiException({ status: 507, message: 'full' }), echo)).toBe(
       'canvas.generatePanel.errorStorageFull',
     );
   });
 
   it('still falls back for a status it has no sentence for', async () => {
-    expect(await executeErrorMessage(500, echo)).toBe(
+    expect(await executeErrorMessage(new ApiException({ status: 500, message: 'broke' }), echo)).toBe(
       'canvas.generatePanel.errorFailed',
     );
     expect(await executeErrorMessage(undefined, echo)).toBe(

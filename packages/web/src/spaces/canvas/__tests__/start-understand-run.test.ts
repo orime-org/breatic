@@ -48,6 +48,7 @@ import { toast } from '@web/lib/toast';
 
 import { startTranscribeRun, startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
 import { getRunning } from '@web/stores/task-actions-in-flight';
+import { spendCapMessage } from '@web/lib/spend-cap-message';
 
 const RUN = {
   projectId: 'p-1',
@@ -456,5 +457,32 @@ describe('one press of Transcribe', () => {
 
     expect(toast.warning).toHaveBeenCalledWith('Cannot transcribe this file type (a.m4a, OGG).');
     expect(addNode).not.toHaveBeenCalled();
+  });
+});
+
+// inner#1968 H-31: Understand and Transcribe refused at a spend limit say the
+// spend-limit sentence, with no action (adding credits does not lift a limit).
+describe('a reading refused at a spend limit', () => {
+  const SPOKEN = { ...RUN.source, name: 'meeting', kind: 'audio' as const, url: 'https://assets.invalid/audio/a.m4a', mimeType: 'audio/mp4' };
+  const READINGS = [
+    ['Understand', 'understand', () => startUnderstandRun(RUN)],
+    ['Transcribe', 'transcribe', () => startTranscribeRun({ ...RUN, source: SPOKEN, keepFillers: false })],
+  ] as const;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it.each(READINGS)('%s says the spend-limit sentence with no action', async (_name, call, start) => {
+    const details = { scope: 'member' as const, limit: '10', resetsAt: '2026-12-01T00:00:00.000Z' };
+    vi.mocked(canvasApi[call]).mockRejectedValueOnce(
+      new ApiException({ status: 402, message: 'cap reached', reason: 'spend_cap_reached', fromServer: true, details }),
+    );
+    await start();
+
+    const calls = [...vi.mocked(toast.error).mock.calls, ...vi.mocked(toast.warning).mock.calls] as unknown[][];
+    expect(calls).toHaveLength(1);
+    expect(calls[0]![0]).toBe(spendCapMessage(details.scope, details.limit, details.resetsAt));
+    expect((calls[0]![1] as { action?: unknown } | undefined)?.action).toBeUndefined();
   });
 });

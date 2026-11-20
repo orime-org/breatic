@@ -315,6 +315,8 @@ interface StorageQuotaExceededMailInput {
   recipientEmail: string;
   /** The studio that write was aimed at, for "where did this happen". */
   studioName: string;
+  /** Whether the admin is on an enterprise agreement, whose storage only we can change (inner#1968). */
+  enterprise: boolean;
 }
 
 /**
@@ -339,6 +341,6 @@ export function buildStorageQuotaExceededMail(
     to: input.recipientEmail,
     subject: { key: "server.mail.storage_full.subject" },
     body: [{ key: "server.mail.storage_full.lead", params: { studio: input.studioName } }],
-    note: { key: "server.mail.storage_full.footer" },
+    note: { key: input.enterprise ? "server.mail.storage_full.footer_enterprise" : "server.mail.storage_full.footer" },
   });
 }

@@ -56,7 +56,7 @@ export async function readAccountMembership(
   const subscription = selling
     ? await readStoredSubscriptionSummary(userId)
     : null;
-  const { tier, limits } = await getMembershipForUser(userId);
+  const { tier, limits, storageLimitBytes } = await getMembershipForUser(userId);
 
   const [teamStudios, storageBytes] = await Promise.all([
     studioRepo.countTeamStudiosAdministeredBy(userId),
@@ -67,6 +67,7 @@ export async function readAccountMembership(
     tier,
     limits,
     usage: { teamStudios, storageBytes },
+    storageLimitBytes,
     catalog: COMPARABLE_MEMBERSHIP_TIERS.map((offered) => ({
       tier: offered,
       limits: getMembershipLimits(offered),

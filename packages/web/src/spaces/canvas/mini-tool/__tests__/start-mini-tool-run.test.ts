@@ -24,6 +24,12 @@ vi.mock('@web/data/api/mini-tools', () => ({ miniToolsApi: api }));
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
+// R-02 runs the real grid export with the pixel work stood in for.
+const grid = vi.hoisted(() => ({ exportGridTiles: vi.fn() }));
+vi.mock('@web/spaces/canvas/mini-tool/grid-export', async (original) => ({
+  ...(await original<object>()),
+  ...grid,
+}));
 
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { toast } from '@web/lib/toast';
@@ -32,6 +38,10 @@ import { ImageTooLargeError } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { EMPTY_NODE_SIZE, mediaNodeHeight } from '@web/spaces/canvas/group-geometry';
 import { outputPlacementOf } from '@web/spaces/canvas/mini-tool/output-placement';
+import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
+import { creditMode } from '@web/spaces/canvas/mini-tool/mini-tool-view';
+import { fillNodesFromFiles } from '@web/spaces/canvas/canvas-upload';
+import type { BatchTicketAnswer, BatchTicketRequest } from '@web/data/upload/ingest-upload';
 import {
   miniToolIntent,
   startMiniToolRun,
@@ -307,6 +317,52 @@ describe('startMiniToolRun', () => {
     );
     expect(marksOfBuilt().map((mark) => mark?.action)).toEqual(['image.grid', 'image.grid', 'image.grid', 'image.grid']);
     expect(run.fillUpload).not.toHaveBeenCalled();
+  });
+
+  // Spec R-02 (inner#1968): the grid is a browser tool. Its tiles are
+  // cut here and go up in one batch ticket request, and nothing asks the
+  // server to run it.
+  it('R-02 cuts a 4x4 grid less two tiles in the browser and asks for all 14 tickets in one batch', async () => {
+    grid.exportGridTiles.mockImplementation(async (_source: unknown, _rows: number, _cols: number, cells: number[]) =>
+      cells.map(() => ({ blob: new Blob(['t'], { type: 'image/png' }), width: 10, height: 10 })),
+    );
+    const requestTicketBatch = vi.fn(
+      async (req: BatchTicketRequest): Promise<BatchTicketAnswer[]> => req.items.map(() => ({ refused: { reason: 'too_large' } })),
+    );
+    const run = press({
+      spec: tool('image.grid'),
+      snapshot: { ...SNAPSHOT, source: { url: 'https://cdn/a.png' }, params: { rows: 4, cols: 4, skip: [5, 10] } },
+      source: { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/png', width: 400, height: 400 },
+      exportFile: exportMiniToolFile,
+      fillUploads: (entries, tag) =>
+        fillNodesFromFiles(entries, '11111111-1111-4111-8111-111111111111', {
+          getUploadConfig: vi.fn().mockResolvedValue({ clientMaxAttempts: 3, clientRetryBaseDelayMs: 1 }),
+          hashFile: vi.fn().mockResolvedValue('a'.repeat(64)),
+          requestTicketBatch,
+          sendToIngest: vi.fn(),
+          sleep: () => Promise.resolve(),
+          spaceId: SPACE,
+          tag,
+          isLocked: () => false,
+          onLocked: vi.fn(),
+          track: vi.fn(),
+          onUploadFailure: vi.fn(),
+        }),
+    });
+
+    await startMiniToolRun(run);
+
+    expect(grid.exportGridTiles).toHaveBeenCalledTimes(1);
+    const [, rows, cols, cells] = grid.exportGridTiles.mock.calls[0]!;
+    expect([rows, cols]).toEqual([4, 4]);
+    expect(cells).toEqual([0, 1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14, 15]);
+    await vi.waitFor(() => expect(requestTicketBatch).toHaveBeenCalledTimes(1));
+    const built = canvas.addNode.mock.calls.map((call) => (call[2] as { id: string }).id);
+    expect(built).toHaveLength(14);
+    const items = requestTicketBatch.mock.calls[0]![0].items;
+    expect(items.map((item) => item.nodeId)).toEqual(built);
+    expect(api.run).not.toHaveBeenCalled();
+    expect(creditMode(run.spec)).toBe('free');
   });
 
   // A13: the tiles are laid out before the export, from the source's own size.

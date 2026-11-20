@@ -125,7 +125,7 @@ async function allMails(locale: string): Promise<Record<string, RenderedMail>> {
       locale, recipientEmail: "to@example.test", tierLabel: "PRO",
     }),
     storageFull: buildStorageQuotaExceededMail({
-      locale, recipientEmail: "to@example.test", studioName: NAME,
+      locale, recipientEmail: "to@example.test", studioName: NAME, enterprise: false,
     }),
     passwordReset: buildPasswordResetMail({
       locale, to: "to@example.test", url: LINK, expiresInSeconds: 3600,
@@ -361,5 +361,15 @@ describe("the language actually changes", () => {
 describe("mail contact address", () => {
   it("sends users who need help to the support mailbox", () => {
     expect(getMailLayout().contactEmail).toBe("support@breatic.ai");
+  });
+});
+
+describe("the storage-full mail (inner#1968)", () => {
+  it("tells an enterprise admin the agreement sets the storage, not to raise the membership", async () => {
+    const enterprise = await buildStorageQuotaExceededMail({ locale: "en", recipientEmail: "to@example.test", studioName: "Acme", enterprise: true });
+    expect(enterprise.text).toContain("Your storage is set by your agreement. Contact us to change it.");
+    expect(enterprise.text).not.toContain("Raise your membership");
+    const ordinary = await buildStorageQuotaExceededMail({ locale: "en", recipientEmail: "to@example.test", studioName: "Acme", enterprise: false });
+    expect(ordinary.text).toContain("Raise your membership to get more room.");
   });
 });

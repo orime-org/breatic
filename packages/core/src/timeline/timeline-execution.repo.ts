@@ -15,11 +15,13 @@ import type { PgColumn, PgUpdateSetSource } from "drizzle-orm/pg-core";
 import type { TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
 import { db, type DbTx } from "@core/db/client.js";
 import { timelineExecutions as t } from "@core/db/schema.js";
+import { getWorkerConfig } from "@core/config/worker.js";
 
 /** What a caller sends to move an execution; the matrix in the design decides what each does in each state. */
 export type TimelineExecutionEvent =
   | { type: "land"; inputHash: string }
-  | { type: "claim" }
+  /** `budgetMs`: an execution that waited for a running slot counts its deadline from this claim (inner#1968). */
+  | { type: "claim"; budgetMs?: number }
   | { type: "retry" }
   | { type: "success"; fence: string | null; resultSourceVersionId: string }
   | { type: "failure"; fence: string | null; reason: string }
@@ -81,6 +83,8 @@ const columns = {
   failureReason: t.failureReason,
   billedCredits: t.billedCredits,
   billedAt: iso<string | null>(t.billedAt),
+  slotWaitSince: iso<string | null>(t.slotWaitSince),
+  slotWaitLimit: t.slotWaitLimit,
   createdAt: iso(t.createdAt),
   updatedAt: iso(t.updatedAt),
 };
@@ -194,7 +198,16 @@ function plan(event: TimelineExecutionEvent): { where: SQL | undefined; set: PgU
         set: { status: "queued" },
       };
     case "claim":
-      return { where: eq(t.status, "queued"), set: { status: "running", ...newAttempt } };
+      return {
+        where: eq(t.status, "queued"),
+        set: {
+          status: "running",
+          ...newAttempt,
+          ...(event.budgetMs !== undefined && {
+            deadlineAt: sql`CASE WHEN ${t.slotWaitSince} IS NOT NULL THEN now() + (${event.budgetMs} * interval '1 millisecond') ELSE ${t.deadlineAt} END`,
+          }),
+        },
+      };
     case "retry":
       return { where: eq(t.status, "running"), set: newAttempt };
     case "success":
@@ -225,7 +238,11 @@ function plan(event: TimelineExecutionEvent): { where: SQL | undefined; set: PgU
     case "cancelAck":
       return { where: eq(t.status, "cancelling"), set: { status: "cancelled", fence: null } };
     case "deadline":
-      return { where: and(inArray(t.status, OPEN), lte(t.deadlineAt, sql`now()`)), set: { status: "expired", fence: null } };
+      // A queued row waiting for a running slot has no deadline yet (inner#1968).
+      return {
+        where: and(inArray(t.status, OPEN), lte(t.deadlineAt, sql`now()`), sql`NOT (${t.status} = 'queued' AND ${t.slotWaitSince} IS NOT NULL)`),
+        set: { status: "expired", fence: null },
+      };
     case "progress":
       return { where: and(eq(t.status, "running"), event.fence === null ? sql`false` : eq(t.fence, event.fence)), set: { phase: event.phase } };
   }
@@ -321,7 +338,8 @@ export async function listForSpace(
 }
 
 /**
- * List executions that have not reached a terminal state, oldest first, for the worker sweep.
+ * List executions that have not reached a terminal state, oldest first, for the worker sweep. A queued execution the
+ * running-task gate judged within the stale window is left out, so waiters do not fill the page (inner#1968).
  * @param options - The page.
  * @param options.limit - The most rows to return.
  * @param tx - The transaction to read in.
@@ -329,11 +347,94 @@ export async function listForSpace(
  * @throws {Error} When the read fails.
  */
 export async function listForSweep(options: { limit: number }, tx?: DbTx): Promise<TimelineExecution[]> {
+  const staleMs = getWorkerConfig().slot_wait_stale_ms;
   const rows = await (tx ?? db)
     .select(columns)
     .from(t)
-    .where(and(inArray(t.status, OPEN), isNull(t.deletedAt)))
+    .where(and(
+      inArray(t.status, OPEN),
+      isNull(t.deletedAt),
+      sql`NOT (${t.status} = 'queued' AND ${t.slotWaitSince} IS NOT NULL AND ${t.slotCheckedAt} > now() - (${staleMs} * interval '1 millisecond'))`,
+    ))
     .orderBy(asc(t.createdAt))
     .limit(options.limit);
   return rows.map(toEntity);
+}
+
+// ─── The running-task gate (inner#1968, design 3.9) ─────────────────────────
+
+/**
+ * How many of a person's executions run within their deadline and the report grace.
+ * @param actorUserId - The person.
+ * @param graceMs - The grace past the deadline.
+ * @param tx - The gate's transaction.
+ * @returns The count.
+ * @throws {Error} When the read fails.
+ */
+export async function countRunningForActor(actorUserId: string, graceMs: number, tx: DbTx): Promise<number> {
+  const [row] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(t)
+    .where(and(eq(t.actorUserId, actorUserId), inArray(t.status, ["running", "cancelling"]), isNull(t.deletedAt), sql`${t.deadlineAt} > now() - (${graceMs} * interval '1 millisecond')`));
+  return row?.n ?? 0;
+}
+
+/**
+ * How many of a person's executions wait under the same limit, created before an instant and judged recently.
+ * @param actorUserId - The person.
+ * @param limit - The limit they wait under.
+ * @param before - The instant, as full-precision text.
+ * @param staleMs - A waiter not judged within this long is left out.
+ * @param tx - The gate's transaction.
+ * @returns The count.
+ * @throws {Error} When the read fails.
+ */
+export async function countWaitingBefore(actorUserId: string, limit: number, before: string, staleMs: number, tx: DbTx): Promise<number> {
+  const [row] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(t)
+    .where(and(
+      eq(t.actorUserId, actorUserId),
+      eq(t.status, "queued"),
+      isNull(t.deletedAt),
+      sql`${t.slotWaitSince} IS NOT NULL`,
+      eq(t.slotWaitLimit, limit),
+      sql`${t.slotCheckedAt} > now() - (${staleMs} * interval '1 millisecond')`,
+      sql`${t.createdAt} < ${before}::timestamptz`,
+    ));
+  return row?.n ?? 0;
+}
+
+/**
+ * Note the gate's judgement of a queued execution: the check time once older than a third of the stale window, the
+ * limit when it changed; nothing when neither is due.
+ * @param id - The execution.
+ * @param limit - The limit it was judged under.
+ * @param staleMs - The stale window.
+ * @param tx - The gate's transaction.
+ * @returns Nothing.
+ * @throws {Error} When the write fails.
+ */
+export async function noteSlotCheck(id: string, limit: number, staleMs: number, tx: DbTx): Promise<void> {
+  const due = sql`(${t.slotCheckedAt} IS NULL OR ${t.slotCheckedAt} < now() - (${staleMs / 3} * interval '1 millisecond'))`;
+  await tx
+    .update(t)
+    .set({ slotCheckedAt: sql`CASE WHEN ${due} THEN now() ELSE ${t.slotCheckedAt} END`, slotWaitLimit: limit })
+    .where(and(eq(t.id, id), eq(t.status, "queued"), sql`(${due} OR ${t.slotWaitLimit} IS DISTINCT FROM ${limit})`));
+}
+
+/**
+ * Mark a queued execution as waiting for a running slot, keeping the first moment it did.
+ * @param id - The execution.
+ * @param tx - The gate's transaction.
+ * @returns True when this is its first wait.
+ * @throws {Error} When the write fails.
+ */
+export async function markSlotWait(id: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx
+    .update(t)
+    .set({ slotWaitSince: sql`now()` })
+    .where(and(eq(t.id, id), eq(t.status, "queued"), isNull(t.slotWaitSince)))
+    .returning({ id: t.id });
+  return rows.length > 0;
 }

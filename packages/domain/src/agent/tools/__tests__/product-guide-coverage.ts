@@ -55,6 +55,15 @@ interface Excluded {
 
 /** Every message the guide does not quote, and what the guide does with it. */
 export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
+  // inner#1968: waiting for a running-task slot, and the spend-limit refusals.
+  "canvas.task.waitReason": { described: /starts by itself when an earlier one ends|waits its turn/ },
+  "canvas.task.waitReasonOther": { described: /a row someone else started says so of that person/ },
+  "canvas.task.waitReasonEach": { described: /counts the running tasks of whoever started each one, against the Studio's limit/ },
+  "canvas.task.cancelFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "credits.spendCap.member": { described: /for the person's own limit the message names its amount and the day it resets/ },
+  "credits.spendCap.studio": { described: /for the Studio's total only the day it resets/ },
+  "server.spend_cap.member": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.spend_cap.studio": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.create.notAvailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.loading": { excluded: REASONS.PASSING },
   "timeline.unavailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
@@ -1231,6 +1240,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.mail.signup_code.lead": { excluded: REASONS.MAIL },
   "server.mail.signup_code.subject": { excluded: REASONS.MAIL },
   "server.mail.storage_full.footer": { excluded: REASONS.MAIL },
+  "server.mail.storage_full.footer_enterprise": { excluded: REASONS.MAIL },
   "server.mail.storage_full.lead": { excluded: REASONS.MAIL },
   "server.mail.storage_full.subject": { excluded: REASONS.MAIL },
   "server.mail.studio_invite.action": { excluded: REASONS.MAIL },

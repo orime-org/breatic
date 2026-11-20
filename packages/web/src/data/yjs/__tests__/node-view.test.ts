@@ -40,10 +40,10 @@ function fields(
 }
 
 /**
- * Builds the four task counts a node projects, so each test only names the
+ * Builds the task counts a node projects, so each test only names the
  * ones it is about.
  * @param over - The counts this test cares about; the rest are zero.
- * @returns A complete set of four counts.
+ * @returns A complete set of counts.
  */
 function counts(over: Partial<NodeTaskCounts> = {}): NodeTaskCounts {
   return { running: 0, done: 0, failed: 0, expired: 0, ...over };
@@ -122,7 +122,7 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     expect(bare).toMatchObject({ type: 'audio', data: { mimeType: undefined, sizeBytes: undefined } });
   });
 
-  it('projects the four task counts onto a content view (#186 §7.1)', () => {
+  it('projects the task counts onto a content view (#186 §7.1)', () => {
     // The counts column outside the node reads them straight off the view;
     // they are the whole of what the document says about its tasks.
     const counts = { running: 2, done: 1, failed: 0, expired: 3 };

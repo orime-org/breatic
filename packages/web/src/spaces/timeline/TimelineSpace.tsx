@@ -23,7 +23,7 @@ import { Separator } from '@web/components/ui/separator';
 import { Slider } from '@web/components/ui/slider';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { spaceTasksQueryKey } from '@web/data/api/scene';
-import { serverMessage } from '@web/data/api/server-message';
+import { refusalSentence, serverMessage } from '@web/data/api/server-message';
 import { timelineApi } from '@web/data/api/timeline';
 import { useDocProvider } from '@web/data/yjs/collab-socket';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -631,7 +631,14 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       send: (key, body) => timelineApi.acceptExecution(body, key),
     }).then((outcome) => {
       if (outcome.kind !== 'done') {
-        dispatchDraft({ type: 'refused', error: serverMessage(outcome.kind === 'failed' ? outcome.error : null, t('common.runOnce.unknownResult')) });
+        const failed = outcome.kind === 'failed' ? outcome.error : null;
+        // A spend limit is told in a toast with its reset day (and a person's
+        // own limit with its amount), as
+        // at every other entry (inner#1968, design 3.3a); the dialog comes
+        // back with the input either way.
+        const capped = refusalSentence(failed);
+        if (capped !== null) toast.error(capped);
+        dispatchDraft({ type: 'refused', error: capped === null ? serverMessage(failed, t('common.runOnce.unknownResult')) : null });
         return;
       }
       const execution = outcome.result;

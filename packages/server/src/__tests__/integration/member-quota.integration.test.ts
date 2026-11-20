@@ -463,7 +463,8 @@ describe("project collaborator cap — invite time (the early hint)", () => {
     await expect(
       inviteToProject(project, admin.id, invitee.email),
     ).rejects.toMatchObject({
-      message: "This project allows up to 12 collaborators. Upgrade to add more.",
+      // pro allows 8 collaborators since inner#1968 (design 3.8).
+      message: "This project allows up to 8 collaborators. Upgrade to add more.",
     });
   });
 });

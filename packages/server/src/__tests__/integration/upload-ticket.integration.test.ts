@@ -310,6 +310,20 @@ describe("POST /assets/upload-ticket", () => {
     expect(verified.ok).toBe(true);
   });
 
+  // Spec R-04 (inner#1968): the ticket asks for no Idempotency-Key and
+  // answers with no Idempotency-Status.
+  it("R-04 answers a ticket asked for without an Idempotency-Key, and no Idempotency-Status", async () => {
+    const { userId, projectId, cookie } = await seedEditor();
+    await sql`UPDATE users SET membership_tier = 'pro' WHERE id = ${userId}`;
+
+    const res = await requestTicket(cookie, body({ project_id: projectId }));
+
+    expect(res.status).toBe(201);
+    expect(res.headers.get("Idempotency-Status")).toBeNull();
+    const payload = (await res.json()) as { data: { uploadId?: string; storageKey?: string } };
+    expect(typeof payload.data.uploadId).toBe("string");
+  });
+
   // What the Worker acts on, and nothing more. The fencing generation is not
   // among it: the Worker never reads one, and every consequence of this upload
   // takes it off the grant row instead.
@@ -666,6 +680,7 @@ describe("POST /assets/upload-ticket", () => {
     expect(events).toHaveLength(1);
     expect(events[0]!.counts).toEqual({
       running: 0,
+      waiting: 0,
       done: 1,
       failed: 0,
       expired: 0,
