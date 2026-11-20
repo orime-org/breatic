@@ -2309,7 +2309,7 @@
       "film-style-shot": {
         "name": "Film style shot",
         "description": "A styled still that then moves with the style's own camera",
-        "prompt": "(💡 Generate Styled still first, then set it as the First frame)A 5-second shot with sound that starts on the first frame and keeps its drawn look in every frame: line, colour and texture never turn photographic or 3D. What moves: {✏️ what moves, e.g. the coat lifts in the wind and gulls wheel overhead}. No text on screen.",
+        "prompt": "(💡 Generate Styled still first, then set it as the First frame)A 5-second shot with sound that starts on the first frame and keeps the look of the style below in every frame: its medium, colour and texture never drift into another medium. What moves: {✏️ what moves, e.g. the coat lifts in the wind and gulls wheel overhead}. No text on screen beyond what the style below calls for.",
         "node": {
           "still": {
             "name": "Styled still",
@@ -2354,8 +2354,8 @@
       },
       "style-sound-bed": {
         "name": "Style sound bed",
-        "description": "Instrumental music in the era and medium of a classic style",
-        "prompt": "A 30-second instrumental music bed with no vocals, mood: {✏️ the mood, e.g. bright and playful}."
+        "description": "Music with no lyrics in the era and medium of a classic style",
+        "prompt": "A 30-second music bed with no lyrics, mood: {✏️ the mood, e.g. bright and playful}."
       },
       "vehicle-speed-cutlist": {
         "name": "Vehicle speed cut list",

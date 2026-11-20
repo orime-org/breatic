@@ -16,7 +16,7 @@ export const FILM_STYLE_SHOT: GenerationTemplate = {
   inputs: [{ key: "subject", type: "image", feeds: ["still"] }],
   steps: [],
   agentNote:
-    "a 5-second widescreen shot with sound in one classic style picked from the film styles: the user's subject is redrawn as a styled still first, which becomes the first frame, then it moves with that style's own camera and a transition made by the medium itself; the drawn look holds in every frame; read the template with a style to get that style's words",
+    "a 5-second widescreen shot with sound in one classic style picked from the film styles: the user's subject is redrawn as a styled still first, which becomes the first frame, then it moves with that style's own camera and a transition made by the medium itself; the style's look holds in every frame; read the template with a style to get that style's words",
   goal: "film-styles",
   triggers: {
     asks: ["make the art style move", "animate my picture in a painting or print style"],

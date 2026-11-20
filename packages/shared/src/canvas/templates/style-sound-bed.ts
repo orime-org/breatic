@@ -13,7 +13,7 @@ export const STYLE_SOUND_BED: GenerationTemplate = {
   inputs: [],
   steps: [],
   agentNote:
-    "a 30-second instrumental music bed in the era and medium of one classic style picked from the film styles, such as 1920s jazz for an art deco poster or a music hall piano for a rubber-hose cartoon; read the template with a style to get that style's words",
+    "a 30-second music bed with no lyrics in the era and medium of one classic style picked from the film styles, such as 1920s jazz for an art deco poster or a music hall piano for a rubber-hose cartoon; read the template with a style to get that style's words",
   goal: "film-styles",
   triggers: {
     asks: ["music with the feel of an old era", "a period soundtrack for my styled shot"],
