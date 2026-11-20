@@ -22,7 +22,7 @@ import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { blankPoint, bodySelection } from '../helpers/document-body';
 import { pressAndSettle } from '../helpers/editor-keys';
 import { wavBytes } from '../helpers/media-bytes';
-import { storedPicture, uniquePicture, watchQueuedFinish } from '../helpers/upload';
+import { recordRequests, storedPicture, uniquePicture } from '../helpers/upload';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, visibleSpace } from '../helpers/space';
 import { withTimelinePeer } from '../helpers/timeline-media';
 
@@ -236,16 +236,20 @@ test('the plus menu offers image, audio and video after the table, columns and t
 // sized from the server's width and height, which are the copy's.
 test('a WebP tagged to turn lands as its upright copy, sized from what the server read @needs-ingest @needs-storage', async () => {
   await openFreshDocument(page);
-  const finish = watchQueuedFinish(page);
+  const sent = recordRequests(page);
+  const finished = page.waitForResponse(
+    (r) => /\/assets\/uploads\/[^/]+\/complete$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST',
+    { timeout: 60_000 },
+  );
   await pickFromPlus(page, 'image', {
     name: 'photo.webp',
     mimeType: 'image/webp',
     buffer: uniquePicture(readFileSync(resolve(__dirname, '../fixtures/exif6-red-top.webp'))),
   });
-  const { queued, delivered } = await finish;
-  expect(queued).toBe(202);
-  expect([delivered.width, delivered.height]).toEqual([768, 1024]);
+  expect((await finished).status()).toBe(202);
+  // The result reaches the block through the Document's Yjs document (#1574), so the page never asks for it.
   await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  expect(sent.filter((request) => request.url.includes('/assets/upload-status'))).toEqual([]);
 
   const block = await page.evaluate((selector) => {
     const el = document.querySelector(selector) as unknown as {
@@ -257,10 +261,9 @@ test('a WebP tagged to turn lands as its upright copy, sized from what the serve
     });
     return found as { url: string; mediaWidth: number; mediaHeight: number } | null;
   }, EDITOR);
-  expect(block?.url).toBe(delivered.fileUrl);
   expect(block?.url).toMatch(/_upright\.[a-z]+$/);
   expect([block?.mediaWidth, block?.mediaHeight]).toEqual([768, 1024]);
-  const stored = await storedPicture(page, delivered.fileUrl);
+  const stored = await storedPicture(page, block?.url ?? '');
   expect([stored.orientation, stored.width, stored.height]).toEqual([1, 768, 1024]);
   const shown = await page.locator(`${IMAGE} img`).boundingBox();
   expect(shown !== null && Math.abs(shown.width / shown.height - 768 / 1024)).toBeLessThan(0.01);
