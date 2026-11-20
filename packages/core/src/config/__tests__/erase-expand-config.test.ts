@@ -29,10 +29,12 @@ describe('erase, expand and tracking configuration (execution design §10.6)', (
     expect((tracked.preparation as { precheck_seconds: number }).precheck_seconds).toBeGreaterThan(0);
   });
 
-  it('EX02 the erase block names Bria with its grid, its 1–5 s bounds, its rejection code and the matte', () => {
+  // Its 1–5 s are the vendor's, written once as provider rejects (inner#1306 execution design §11.5).
+  it('EX02 the erase block names Bria with its grid, its rejection code and the matte, and no seconds of its own', () => {
     const erase = parsed()['video.erase']!;
     expect(erase).toMatchObject({ container_class: 'MiniToolContainerStd4', max_outputs: 1,
-      model: { name: 'bria-video-eraser-mask', min_seconds: 1, max_seconds: 5, max_grid_fps: 30, async_rejection: { path: 'code', equals: 1401 } } });
+      model: { name: 'bria-video-eraser-mask', max_grid_fps: 30, async_rejection: { path: 'code', equals: 1401 } } });
+    expect(Object.keys(erase.model as object).sort()).toEqual(['async_rejection', 'max_grid_fps', 'name']);
     const matte = erase.matte as { dilate: number; feather: number };
     expect(matte.dilate).toBeGreaterThanOrEqual(0);
     expect(matte.feather).toBeGreaterThanOrEqual(0);
@@ -41,6 +43,12 @@ describe('erase, expand and tracking configuration (execution design §10.6)', (
   it('EX03 the expand block names VACE with its windows and the source limits', () => {
     expect(parsed()['video.expand']).toMatchObject({ container_class: 'MiniToolContainerStd4', max_outputs: 1,
       model: { name: 'wan-2.1-14b-vace', max_window_seconds: 10, overlap_seconds: 0.625, model_fps: 16 }, max_duration_seconds: 180, max_target_side: 4096 });
+  });
+
+  it('EX05 the schema refuses vendor seconds written into the erase model', () => {
+    const broken = structuredClone(raw) as { executions: Record<string, { model: Record<string, unknown> }> };
+    broken.executions['video.erase']!.model.max_seconds = 5;
+    expect(miniToolsConfigSchema.safeParse(broken).success).toBe(false);
   });
 
   it('EX04 the schema refuses an erase block without its model', () => {

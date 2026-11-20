@@ -24,7 +24,7 @@ import * as shared from "@breatic/shared";
 import * as miniTools from "@breatic/shared/mini-tools";
 import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, projectMiniToolAnalysisInput, type MiniToolAnalysisRecord } from "@breatic/shared/mini-tools";
 import {
-  containerCostUsd, creditHoldService, creditsForUsd, estimateTaskCredits, miniToolExecutionService, miniToolFrozenAnalysisSchema,
+  containerCostUsd, creditHoldService, creditsForUsd, estimateTaskCredits, initProvider, miniToolExecutionService, miniToolFrozenAnalysisSchema,
   MIN_TASK_CREDIT_COST, presentationPinService,
 } from "@breatic/domain";
 // The worker's §7.15 write point for derived step objects; the domain entry does not export the repository.
@@ -36,7 +36,7 @@ type SyncMode = "cut_off" | "silence" | "loop" | "bounce" | "remap";
 interface LipSyncModel { name: string; schema_fingerprint: string; min_duration_seconds: number; max_duration_seconds: number; crop_size: number; accepts_sync_mode: boolean }
 interface LipSyncExecution {
   container_class: string; precheck_seconds: number; max_outputs: number; max_outputs_per_job: number; models: LipSyncModel[];
-  tracking: { model: string; min_duration_seconds: number; max_duration_seconds: number }; max_people: number; max_dialogues: number; face_feather: number;
+  tracking: { model: string }; max_people: number; max_dialogues: number; face_feather: number;
 }
 interface Row { dialogueId: string; personId: string; analysisRunId: string; audioInputId: string; startTime: number }
 interface Body {
@@ -96,10 +96,17 @@ let lipSync: LipSyncExecution;
 let publicUrl: (key: string) => string;
 const tokens: string[] = [];
 
+// The tracker's seconds per call, which its vendor states in provider's rejects (execution design §11.5); a case moves them
+// through the provider the domain reads.
+let tracker = { min_duration_seconds: 1, max_duration_seconds: 600 };
+
 /** Configure a real paid admission with a served (never called) WaveSpeed catalog. @throws {Error} On invalid deployment configuration. */
 function configure(): void {
   core.initCore({ ...process.env, PAYMENT_ENABLED: "true", CREDIT_MULTIPLIER: "1", STRIPE_SECRET_KEY: "sk_test_unused_lipsync",
     STRIPE_WEBHOOK_SECRET: "whsec_unused_lipsync", WAVESPEED_API_KEY: "unused-by-lipsync-admission-tests", UPLOAD_BASE_URL: "https://assets.example.test" });
+  const real = initProvider();
+  initProvider({ ...real, inputLimits: (model) => (model === TRACKER
+    ? [{ field: "video", measure: "seconds", min: tracker.min_duration_seconds, max: tracker.max_duration_seconds }] : real.inputLimits(model)) });
 }
 
 /** The lip-sync execution configuration the design fixes (execution design §9.3; frames-split §7.11). @throws {never} Never. */
@@ -109,7 +116,7 @@ function lipSyncConfig(): LipSyncExecution {
       { name: SYNC, schema_fingerprint: SYNC_FINGERPRINT, min_duration_seconds: 1, max_duration_seconds: 300, crop_size: 512, accepts_sync_mode: true },
       { name: NO_SYNC_MODE, schema_fingerprint: NO_SYNC_MODE_FINGERPRINT, min_duration_seconds: 1, max_duration_seconds: 15, crop_size: 512, accepts_sync_mode: false },
     ],
-    tracking: { model: TRACKER, min_duration_seconds: 1, max_duration_seconds: 600 }, max_people: 2, max_dialogues: 8, face_feather: 0.2 };
+    tracking: { model: TRACKER }, max_people: 2, max_dialogues: 8, face_feather: 0.2 };
 }
 
 beforeAll(async () => {
@@ -123,6 +130,7 @@ beforeAll(async () => {
   app = (await import("@server/app.js")).createApp();
 });
 beforeEach(() => {
+  tracker = { min_duration_seconds: 1, max_duration_seconds: 600 };
   configure();
   settings = structuredClone(base); lipSync = lipSyncConfig();
   Reflect.set(settings.executions, "video.lip-sync", lipSync);
@@ -373,8 +381,8 @@ describe("lip-sync fresh admission refusals and their boundaries (§97; frames-s
     const f = await seed([{ registered: 3, claimed: 3 }, { registered: 2.5, claimed: 2.5 }]);
     speak(f, [[0, 0, 0], [1, 1, 1.5]]);
     if (!admitted) await control(f);
-    lipSync.tracking[field] = value;
-    const { min_duration_seconds: min, max_duration_seconds: max } = lipSync.tracking;
+    tracker[field] = value;
+    const { min_duration_seconds: min, max_duration_seconds: max } = tracker;
     if (admitted) await accept(f); else await refused(f, { key: "server.mini_tool.lipSyncTrackingOutOfRange", params: { min, max } });
   });
 
@@ -384,7 +392,7 @@ describe("lip-sync fresh admission refusals and their boundaries (§97; frames-s
     speak(f, [[0, 0, 0], [1, 1, 1.5]]); await control(f);
     lipSync.models[0]!.max_duration_seconds = 4.25;
     expect((await plan(await control(f))).timeline.duration).toBe(4);
-    lipSync.tracking.max_duration_seconds = 4.25;
+    tracker.max_duration_seconds = 4.25;
     await refused(f, { key: "server.mini_tool.lipSyncTrackingOutOfRange", params: { min: 1, max: 4.25 } });
     expect(lip.lipsyncUsedSourceRange!({ duration: 4, videoDuration: V, syncMode: "cut_off" }, [{ time: 4.5, windowEnd: 901 / 200 }])).toEqual({ start: 0, end: 901 / 200 });
   });
@@ -933,7 +941,7 @@ describe("lip-sync quote (§97 D26-1)", () => {
     // A valid quote of the same fixture first, so the refusal below is the changed fact and not the fixture or a missing route.
     expect((await quote(f)).status).toBe(200);
     if (bad === "a third referenced person") speak(f, [[0, 0, 0], [1, 1, 1.5], [2, 2, 2]]);
-    else lipSync.tracking.max_duration_seconds = 3.99;
+    else tracker.max_duration_seconds = 3.99;
     const quoted = await quote(f);
     const answer = { status: quoted.status, message: (await quoted.json() as { error?: { message?: string } }).error?.message };
     expect(answer).toEqual({ status: 400, message: shared.t(key, params) });

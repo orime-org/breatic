@@ -22,7 +22,7 @@ import * as core from "@breatic/core";
 import * as shared from "@breatic/shared";
 import * as miniTools from "@breatic/shared/mini-tools";
 import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, projectMiniToolAnalysisInput } from "@breatic/shared/mini-tools";
-import { creditHoldService, estimateTaskCredits, miniToolExecutionService, miniToolFrozenAnalysisSchema } from "@breatic/domain";
+import { creditHoldService, estimateTaskCredits, initProvider, miniToolExecutionService, miniToolFrozenAnalysisSchema } from "@breatic/domain";
 import { appendPinObjects } from "@domain/presentation/presentation-pin.repo.js";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
 import { presentedSource, type PresentedSource } from "./presentation-fixtures.js";
@@ -60,13 +60,14 @@ const tokens: string[] = [];
 function configure(): void {
   core.initCore({ ...process.env, PAYMENT_ENABLED: "true", CREDIT_MULTIPLIER: "1", STRIPE_SECRET_KEY: "sk_test_unused_erase",
     STRIPE_WEBHOOK_SECRET: "whsec_unused_erase", WAVESPEED_API_KEY: "unused-by-erase-admission-tests", UPLOAD_BASE_URL: "https://assets.example.test" });
+  initProvider();
 }
 
 /** The §10.6 execution blocks; matte values are the composite tests'. @throws {never} Never. */
 function executions(): Record<string, unknown> {
   return {
     "video.erase": { container_class: "MiniToolContainerStd4", precheck_seconds: 300, max_outputs: 1,
-      model: { name: BRIA, min_seconds: 1, max_seconds: 5, max_grid_fps: 30, async_rejection: { path: "code", equals: 1401 } }, matte: { dilate: 4, feather: 4 } },
+      model: { name: BRIA, max_grid_fps: 30, async_rejection: { path: "code", equals: 1401 } }, matte: { dilate: 4, feather: 4 } },
     "video.expand": { container_class: "MiniToolContainerStd4", precheck_seconds: 300, max_outputs: 1,
       model: { name: VACE, max_window_seconds: 10, overlap_seconds: 0.625, model_fps: 16 }, max_duration_seconds: 180, max_target_side: 4096 },
   };

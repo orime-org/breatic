@@ -47,10 +47,9 @@ executions:
         max_duration_seconds: 300
         crop_size: 512
         accepts_sync_mode: false
+    # The tracker's seconds are its vendor's, written once as provider rejects (config/provider/media/video.yaml).
     tracking:
       model: "sam3-video-rle"
-      min_duration_seconds: 0.04
-      max_duration_seconds: 600
     max_people: 2
     max_dialogues: 8
     # The composite feathers each face's edge over this fraction of the face's shorter side.
@@ -62,16 +61,14 @@ executions:
     precheck_seconds: 300
     max_outputs: 1
   # Erase (inner#1306): Bria's masked eraser keeps 24-30 fps and VFR frame for frame and refuses 60 fps with code 1401, so
-  # inputs above 30 fps are resampled on a 30 fps grid; it accepted inputs from 1 s to 5 s. The matte widens the tracked
-  # mask and softens its edge, in source pixels.
+  # inputs above 30 fps are resampled on a 30 fps grid; the 1-5 s it takes are its provider rejects
+  # (config/provider/media/video.yaml). The matte widens the tracked mask and softens its edge, in source pixels.
   video.erase:
     container_class: "MiniToolContainerStd4"
     precheck_seconds: 300
     max_outputs: 1
     model:
       name: "bria-video-eraser-mask"
-      min_seconds: 1
-      max_seconds: 5
       max_grid_fps: 30
       async_rejection:
         path: "code"

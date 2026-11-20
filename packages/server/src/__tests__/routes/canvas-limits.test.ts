@@ -12,6 +12,10 @@
  * The field names `removeBackgroundModel` and `lipSync` (camelCase, `null`
  * when the deployment configures no lip-sync) are shapes this test chose in
  * the route's existing style.
+ *
+ * inner#1306 execution design §11.5: the seconds a vendor takes per call (the tracker's, the eraser's) come only from
+ * provider's rejects through domain `modelSecondsRange`, never from `config/mini-tools.yaml`; a tool whose vendor
+ * bound is unknown is not offered.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -22,7 +26,8 @@ vi.mock("ai", () => ({
 
 // The optional lip-sync execution the mocked mini-tools config carries; a test
 // sets it to `undefined` for a deployment that configures no lip-sync.
-const lipSyncHolder: { execution: unknown } = vi.hoisted(() => ({ execution: undefined }));
+const lipSyncHolder: { execution: unknown; erase: unknown } = vi.hoisted(() => ({ execution: undefined, erase: undefined }));
+const secondsRange = vi.hoisted(() => vi.fn<(model: string) => { minSeconds: number; maxSeconds: number | null }>());
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const { coreMock } = await import("../helpers/mock-core.js");
@@ -41,6 +46,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
         "video.remove-bg": { model: "remove-bg-from-config", preparation: { container_class: "MiniToolContainerStd4", precheck_seconds: 300 } },
         "video.split": { container_class: "MiniToolContainerStd4", precheck_seconds: 300, max_outputs: 9, max_outputs_per_job: 8 },
         ...(lipSyncHolder.execution === undefined ? {} : { "video.lip-sync": lipSyncHolder.execution }),
+        ...(lipSyncHolder.erase === undefined ? {} : { "video.erase": lipSyncHolder.erase }),
       },
       // Not the shipped 20, so the case proves the route reads the accessor.
       join_max_clips: 17,
@@ -50,7 +56,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 vi.mock("@breatic/domain", async () => {
   const { domainMock } = await import("../helpers/mock-core.js");
-  return domainMock();
+  return { ...(await domainMock()), modelSecondsRange: secondsRange };
 });
 
 vi.mock("@server/modules", async (importOriginal) => {
@@ -84,7 +90,7 @@ function lipSyncExecution(): Record<string, unknown> {
       { name: "lipsync-first", schema_fingerprint: "1".repeat(64), min_duration_seconds: 1.5, max_duration_seconds: 300, crop_size: 512, accepts_sync_mode: true },
       { name: "lipsync-second", schema_fingerprint: "2".repeat(64), min_duration_seconds: 2, max_duration_seconds: 15, crop_size: 256, accepts_sync_mode: false },
     ],
-    tracking: { model: "tracker-from-config", min_duration_seconds: 0.5, max_duration_seconds: 600 },
+    tracking: { model: "tracker-from-config" },
     max_people: 3,
     max_dialogues: 7,
   };
@@ -94,6 +100,9 @@ describe("GET /canvas/limits", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     lipSyncHolder.execution = lipSyncExecution();
+    lipSyncHolder.erase = undefined;
+    secondsRange.mockImplementation((model) => (model === "tracker-from-config" ? { minSeconds: 0.5, maxSeconds: 600 }
+      : model === "eraser-from-config" ? { minSeconds: 1, maxSeconds: 5 } : { minSeconds: 0, maxSeconds: null }));
   });
 
   it("requires auth", async () => {
@@ -156,6 +165,21 @@ describe("GET /canvas/limits", () => {
       maxPeople: 3,
       maxDialogues: 7,
     });
+    expect(secondsRange).toHaveBeenCalledWith("tracker-from-config");
+  });
+
+  it("does not offer lip-sync when the tracker's vendor states no longest clip", async () => {
+    secondsRange.mockReturnValue({ minSeconds: 0, maxSeconds: null });
+    const body = (await (await createApp().request("/api/v1/canvas/limits", { headers: AUTH })).json()) as { data: Record<string, unknown> };
+    expect(body.data.lipSync).toBeNull();
+  });
+
+  it("serves the eraser's seconds from its vendor and the grid ceiling from the config", async () => {
+    lipSyncHolder.erase = { container_class: "MiniToolContainerStd4", precheck_seconds: 300, max_outputs: 1,
+      model: { name: "eraser-from-config", max_grid_fps: 30, async_rejection: { path: "code", equals: 1401 } }, matte: { dilate: 4, feather: 4 } };
+    const body = (await (await createApp().request("/api/v1/canvas/limits", { headers: AUTH })).json()) as { data: Record<string, unknown> };
+    expect(body.data.erase).toEqual({ minSeconds: 1, maxSeconds: 5, maxGridFps: 30 });
+    expect(secondsRange).toHaveBeenCalledWith("eraser-from-config");
   });
 
   // Frames-split design §10.7: the panel refuses more outputs than one run creates before it makes any node.

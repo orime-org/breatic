@@ -45,7 +45,7 @@ import {
   modelCatalog,
   violatesTextLengthForModel,
 } from "@breatic/domain";
-import { nodeHistoryService } from "@breatic/domain";
+import { modelSecondsRange, nodeHistoryService } from "@breatic/domain";
 import { assertLlmServable, assertServable, assertTakesInput } from "@server/modules/task/model-servable.js";
 import { catalogEntryOf } from "@breatic/shared/mini-tools";
 import { nodeTaskService } from "@breatic/domain";
@@ -148,7 +148,10 @@ canvas.get("/limits", (c) => {
  */
 function eraseLimits(): { minSeconds: number; maxSeconds: number; maxGridFps: number } | null {
   const erase = getMiniToolsConfig().executions["video.erase"];
-  return erase === undefined ? null : { minSeconds: erase.model.min_seconds, maxSeconds: erase.model.max_seconds, maxGridFps: erase.model.max_grid_fps };
+  if (erase === undefined) return null;
+  // The seconds are the eraser vendor's, from its provider rejects (inner#1306 execution design §11.5).
+  const { minSeconds, maxSeconds } = modelSecondsRange(erase.model.name);
+  return maxSeconds === null ? null : { minSeconds, maxSeconds, maxGridFps: erase.model.max_grid_fps };
 }
 
 /**
@@ -171,9 +174,12 @@ function lipSyncChoices(): { models: { name: string; minDurationSeconds: number;
   tracking: { minDurationSeconds: number; maxDurationSeconds: number }; maxPeople: number; maxDialogues: number } | null {
   const lipSync = getMiniToolsConfig().executions["video.lip-sync"];
   if (lipSync === undefined) return null;
+  // The tracker's seconds are its vendor's, from its provider rejects (inner#1306 execution design §11.5).
+  const tracker = modelSecondsRange(lipSync.tracking.model);
+  if (tracker.maxSeconds === null) return null;
   return {
     models: lipSync.models.map((model) => ({ name: model.name, minDurationSeconds: model.min_duration_seconds, maxDurationSeconds: model.max_duration_seconds })),
-    tracking: { minDurationSeconds: lipSync.tracking.min_duration_seconds, maxDurationSeconds: lipSync.tracking.max_duration_seconds },
+    tracking: { minDurationSeconds: tracker.minSeconds, maxDurationSeconds: tracker.maxSeconds },
     maxPeople: lipSync.max_people, maxDialogues: lipSync.max_dialogues,
   };
 }

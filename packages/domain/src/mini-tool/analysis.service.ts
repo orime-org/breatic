@@ -15,7 +15,7 @@ import { admitModelCall } from "@domain/mini-tool/model-call-admission.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import { completeResolvedMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
 import { selectedToolInput } from "@domain/mini-tool/selected-tool-input.js";
-import { assertOpaqueSource, eraseRangeGrid, trackingClipSeconds } from "@domain/mini-tool/tracking-range.js";
+import { assertOpaqueSource, eraseModelLimits, eraseRangeGrid, trackingClipSeconds } from "@domain/mini-tool/tracking-range.js";
 import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
 
 export { miniToolAnalysisRequestSchema, type MiniToolAnalysisRequest } from "@breatic/shared/mini-tools";
@@ -331,7 +331,9 @@ async function freeze(body: MiniToolAnalysisRequest): Promise<{
     const erase = getMiniToolsConfig().executions["video.erase"];
     assertOpaqueSource(version);
     if (erase === undefined) throw new AppError(400, t("server.mini_tool.unavailable"));
-    eraseRangeGrid(display, analysisInput.range, analysisInput.anchor, erase.model);
+    const limits = eraseModelLimits(erase.model);
+    if (limits === null) throw new AppError(503, t("server.mini_tool.unavailable"));
+    eraseRangeGrid(display, analysisInput.range, analysisInput.anchor, limits);
   }
   const inputFingerprint = await fingerprintMiniToolAnalysisInput(analysisInput);
   if (body.inputFingerprint !== undefined && body.inputFingerprint !== inputFingerprint) {

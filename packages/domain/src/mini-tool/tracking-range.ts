@@ -9,10 +9,24 @@
 import { AppError } from "@breatic/core";
 import { t, type VideoPresentationVersion } from "@breatic/shared";
 import { eraseRangeCheck, type ModelGrid, type TrackingAnchor, type TrackingClips, type TrackingTimeRange } from "@breatic/shared/mini-tools";
+import { modelSecondsRange } from "@domain/mini-tool/model-call-admission.js";
 import { presentsTransparent } from "@domain/mini-tool/selected-tool-input.js";
 
-/** The eraser limits a range is checked against. */
-export interface EraseModelLimits { min_seconds: number; max_seconds: number; max_grid_fps: number }
+/** The eraser limits a range is checked against: its vendor's seconds and the grid ceiling we resample to. */
+export interface EraseModelLimits { minSeconds: number; maxSeconds: number; maxGridFps: number }
+
+/**
+ * The configured eraser's limits: its seconds from its vendor's provider rejects (execution design §11.5), its grid
+ * ceiling from `config/mini-tools.yaml`.
+ * @param model - The erase execution's model.
+ * @param model.name - Its catalog name.
+ * @param model.max_grid_fps - The grid ceiling it is resampled to.
+ * @returns The limits, or null when the vendor states no longest call, so erase cannot be offered.
+ */
+export function eraseModelLimits(model: { name: string; max_grid_fps: number }): EraseModelLimits | null {
+  const { minSeconds, maxSeconds } = modelSecondsRange(model.name);
+  return maxSeconds === null ? null : { minSeconds, maxSeconds, maxGridFps: model.max_grid_fps };
+}
 
 /**
  * Refuse a source that presents with transparency (§10.4 transparent source row: neither Bria nor VACE takes alpha).
@@ -33,9 +47,9 @@ export function assertOpaqueSource(version: VideoPresentationVersion): void {
  * @throws {AppError} `anchorOutsideRange` or `eraseRange` when the check refuses it.
  */
 export function eraseRangeGrid(display: VideoPresentationVersion["display"], range: TrackingTimeRange, anchor: TrackingAnchor, model: EraseModelLimits): { first: number; count: number; grid: ModelGrid } {
-  const checked = eraseRangeCheck({ fps: display.fps, frameCount: display.frameCount }, range, anchor, { minSeconds: model.min_seconds, maxSeconds: model.max_seconds, maxGridFps: model.max_grid_fps });
+  const checked = eraseRangeCheck({ fps: display.fps, frameCount: display.frameCount }, range, anchor, model);
   if (checked.refusal !== null) {
-    throw new AppError(400, checked.refusal === "anchor" ? t("server.mini_tool.anchorOutsideRange") : t("server.mini_tool.eraseRange", { min: model.min_seconds, max: model.max_seconds }));
+    throw new AppError(400, checked.refusal === "anchor" ? t("server.mini_tool.anchorOutsideRange") : t("server.mini_tool.eraseRange", { min: model.minSeconds, max: model.maxSeconds }));
   }
   return { first: checked.first, count: checked.count, grid: checked.grid };
 }

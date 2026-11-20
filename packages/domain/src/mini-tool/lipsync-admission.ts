@@ -16,6 +16,7 @@ import {
 } from "@breatic/shared/mini-tools";
 import { miniToolFrozenAnalysisSchema } from "@domain/mini-tool/analysis.service.js";
 import * as assetRepo from "@domain/asset/asset.repo.js";
+import { modelSecondsRange } from "@domain/mini-tool/model-call-admission.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 
 /** A fresh lip-sync request. */
@@ -190,8 +191,11 @@ export function lipSyncTimeline(request: LipSyncRequest, display: VideoPresentat
     throw new AppError(400, t("server.mini_tool.lipSyncDurationOutOfRange", { min: model.min_duration_seconds, max: model.max_duration_seconds }));
   }
   const usedRange = lipsyncUsedSourceRange(timeline, [{ time: anchor * frameSeconds, windowEnd: (anchor + 1) * frameSeconds }]);
-  if (!within(usedRange.end - usedRange.start, settings.tracking)) {
-    throw new AppError(400, t("server.mini_tool.lipSyncTrackingOutOfRange", { min: settings.tracking.min_duration_seconds, max: settings.tracking.max_duration_seconds }));
+  // The tracker's seconds are its vendor's, from its provider rejects (execution design §11.5).
+  const tracker = modelSecondsRange(settings.tracking.model);
+  if (tracker.maxSeconds === null) throw new AppError(503, t("server.mini_tool.unavailable"));
+  if (!within(usedRange.end - usedRange.start, { min_duration_seconds: tracker.minSeconds, max_duration_seconds: tracker.maxSeconds })) {
+    throw new AppError(400, t("server.mini_tool.lipSyncTrackingOutOfRange", { min: tracker.minSeconds, max: tracker.maxSeconds }));
   }
   return { timeline, usedRange };
 }

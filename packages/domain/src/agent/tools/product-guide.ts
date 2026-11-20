@@ -33,6 +33,7 @@ import {
 } from "@breatic/shared";
 import { MINI_TOOLS, type MiniToolMedium } from "@breatic/shared/mini-tools";
 import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
+import { eraseModelLimits } from "@domain/mini-tool/tracking-range.js";
 
 /**
  * The guide's sections, grouped by where in the product they apply, each
@@ -120,7 +121,8 @@ function quoted(message: string): string {
  */
 function eraseRange(): string {
   const erase = getMiniToolsConfig().executions["video.erase"];
-  return erase === undefined ? "The" : `Erase takes a range of ${String(erase.model.min_seconds)}–${String(erase.model.max_seconds)} s, and the`;
+  const limits = erase === undefined ? null : eraseModelLimits(erase.model);
+  return limits === null ? "The" : `Erase takes a range of ${String(limits.minSeconds)}–${String(limits.maxSeconds)} s, and the`;
 }
 
 /**
@@ -1240,11 +1242,13 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.videoUI.sourceChanged"))} with ${quoted(t("canvas.miniTool.videoUI.useCurrentSource"))}; ` +
       "review the settings after switching to the current source. A source that cannot be read shows " +
       `${quoted(t("canvas.miniTool.videoUI.sourceUnavailable"))}.`,
-    `Video tools wait for ${quoted(t("canvas.miniTool.videoUI.loadingFrames"))} ` +
-      "before they can run; playback does not wait for this table. A temporary frame-table failure shows " +
-      `${quoted(t("canvas.miniTool.videoUI.mediaError"))} with ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
-      "Retry stays busy until current source facts have refreshed; closing the panel does not cancel accepted work. " +
-      `Unsupported content shows ${quoted(t("canvas.miniTool.videoUI.ledgerUnsupported"))} without Retry.`,
+    `While a video is being prepared, its tools show ${quoted(t("canvas.miniTool.videoUI.preparingVideo"))} and ` +
+      "cannot run yet; the node plays the original meanwhile when the browser can. If preparing fails for a reason " +
+      `that may pass, the panel shows ${quoted(t("canvas.miniTool.videoUI.preparationFailed"))} with ` +
+      `${quoted(t("canvas.miniTool.videoUI.retryPreview"))}; Retry stays busy until the video's facts have refreshed, and ` +
+      "closing the panel does not cancel accepted work. A video longer than can be prepared shows " +
+      `${quoted(t("canvas.miniTool.videoUI.tooLongToPrepare"))} and other unusable content shows ` +
+      `${quoted(t("canvas.miniTool.videoUI.ledgerUnsupported"))}, both without Retry.`,
     `In ${quoted(t("canvas.miniTool.video.erase.label"))}, the filmstrip at the top dims what lies outside the range and ` +
       "pressing it moves the playhead; set the range by dragging the two handles under it or with " +
       `${quoted(t("canvas.miniTool.videoUI.rangeStart"))} and ${quoted(t("canvas.miniTool.videoUI.rangeEnd"))}. Choose ` +
@@ -1418,8 +1422,9 @@ export function renderProductGuide(): string {
       `With one clip the panel says ${quoted(t("canvas.miniTool.panel.joinNeedsClip"))} and the arrow stays greyed out. ` +
       `Opened on more clips than a join takes, it says how many it takes, such as ${quoted(t("canvas.miniTool.panel.joinTooMany", { n: joinCap }))}, under the row and again on pressing the arrow, until clips are taken out. The result is ` +
       "one new node to the right of the clip furthest right, connected to every clip still on the canvas. The bottom line says what it costs: the picture tools crop, rotate, adjust, markup and " +
-      `grid split are free, the tools marked (${BILLED_BY_RUN_TIME}) in this section's list are billed that way, and the others show an ` +
-      "estimate. The X, Esc or a click on empty canvas closes the panel; in " +
+      `grid split are free, ${quoted(t("canvas.miniTool.video.extract-frames.label"))} uses no credits and its bottom line shows ` +
+      `${quoted(t("canvas.miniTool.panel.free"))}, the tools marked (${BILLED_BY_RUN_TIME}) in this section's list are billed that way, ` +
+      "and the others show an estimate. The X, Esc or a click on empty canvas closes the panel; in " +
       `${quoted(t("canvas.miniTool.image.mark.label"))}, Esc first leaves the text being typed, then lets go of ` +
       "the selected object, and only then closes the panel. While a tool that draws on the picture itself is open " +
       "(a crop box, an expand frame, the grid's lines and tiles, markup or a drawing), and during a focus crop, the " +
@@ -1449,7 +1454,11 @@ export function renderProductGuide(): string {
       "choose the frame, and the crop is a still picture of that frame. After " +
       `${quoted(t("canvas.generatePanel.focusConfirm"))}, the crop joins the strip above the prompt as a chip ` +
       "with a crop icon before the source node's name (a spinner shows while it uploads); if it cannot be made, " +
-      `a message says so, such as ${quoted(t("canvas.generatePanel.focusExportFailed"))} If the source node ` +
+      `a message says so, such as ${quoted(t("canvas.generatePanel.focusExportFailed"))} A video crop is taken in ` +
+      "the background from the full-quality video and uses no credits: after confirming, it waits as a card in that " +
+      "strip until the frame is ready, and a message still says when it finishes into a full pool or fails, even with " +
+      "the panel closed. While the video is still being prepared, the bar shows " +
+      `${quoted(t("canvas.miniTool.videoUI.preparingVideo"))} and the crop cannot be confirmed. If the source node ` +
       "is replaced, starts processing or is deleted while you crop it, the bar under it closes and a " +
       `message says what happened, such as ${quoted(t("canvas.generatePanel.focusSourceDeleted"))} Picking goes ` +
       "on: click a source node again. If the picture changed just as you pressed " +

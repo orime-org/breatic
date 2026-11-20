@@ -12,6 +12,7 @@ import type { Route } from "@breatic/provider";
 import { inputRefusalText, t } from "@breatic/shared";
 import type { EstimateInput } from "@breatic/shared/pricing";
 import { estimateModelCredits, findCatalogEntry, inputRefusalFor, servability } from "@domain/model-catalog/model-catalog.js";
+import { provider } from "@domain/provider/instance.js";
 
 /** The route every video mini-tool model call takes: the one upstream the tools' models and recipes were measured on. */
 export const MINI_TOOL_MODEL_ROUTE = { mode: "upstream", upstream: "wavespeed" } as const satisfies Route;
@@ -39,4 +40,21 @@ export async function admitModelCall(model: string, input: EstimateInput): Promi
   const estimate = await estimateModelCredits(model, input, MINI_TOOL_MODEL_ROUTE);
   if (estimate === undefined) throw new AppError(503, t("server.mini_tool.unavailable"));
   return estimate.credits;
+}
+
+/**
+ * The seconds a model's vendor takes per call (inner#1306 execution design §11.5): written once, as the `seconds` limits
+ * of its provider rejects, and read from there by the panel limits, admission and the product guide.
+ * @param model - The catalog model.
+ * @returns The shortest length (0 when no reject states one) and the longest (null when none states one).
+ */
+export function modelSecondsRange(model: string): { minSeconds: number; maxSeconds: number | null } {
+  let minSeconds = 0;
+  let maxSeconds: number | null = null;
+  for (const limit of provider().inputLimits(model)) {
+    if (limit.measure !== "seconds") continue;
+    if (limit.min !== undefined) minSeconds = Math.max(minSeconds, limit.min);
+    if (limit.max !== undefined) maxSeconds = maxSeconds === null ? limit.max : Math.min(maxSeconds, limit.max);
+  }
+  return { minSeconds, maxSeconds };
 }

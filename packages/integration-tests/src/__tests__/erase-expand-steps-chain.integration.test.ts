@@ -84,7 +84,7 @@ function configure(): void {
 function executions(expandWindow = 10): Record<string, unknown> {
   return {
     "video.erase": { container_class: "MiniToolContainerStd4", precheck_seconds: 300, max_outputs: 1,
-      model: { name: BRIA, min_seconds: 1, max_seconds: 5, max_grid_fps: 30, async_rejection: { path: "code", equals: 1401 } }, matte: { dilate: 4, feather: 4 } },
+      model: { name: BRIA, max_grid_fps: 30, async_rejection: { path: "code", equals: 1401 } }, matte: { dilate: 4, feather: 4 } },
     "video.expand": { container_class: "MiniToolContainerStd4", precheck_seconds: 300, max_outputs: 1,
       model: { name: VACE, max_window_seconds: expandWindow, overlap_seconds: 0.625, model_fps: 16 }, max_duration_seconds: 180, max_target_side: 4096 },
   };

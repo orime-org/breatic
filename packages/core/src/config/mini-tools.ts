@@ -68,7 +68,8 @@ const lipSyncSchema = containerExecutionSchema.extend({
     accepts_sync_mode: z.boolean(),
     async_rejection: z.strictObject({ path: z.string().min(1), equals: z.json() }).optional(),
   }).refine((model) => model.max_duration_seconds > model.min_duration_seconds)).min(1),
-  tracking: z.strictObject({ model: z.string().min(1), ...durationRange }).refine((tracking) => tracking.max_duration_seconds > tracking.min_duration_seconds),
+  // The tracker's seconds are its vendor's, written once as provider rejects (execution design §11.5).
+  tracking: z.strictObject({ model: z.string().min(1) }),
   max_people: z.number().int().positive(),
   max_dialogues: z.number().int().positive(),
   // The composite's feathered face edge, as a fraction of the face's shorter side (DD §7.2 step 6: feather(face) ∩ tracked
@@ -179,13 +180,14 @@ const analysisConfigSchema = z.strictObject({
   precheck_seconds: z.number().positive(),
 });
 
-// Erase (execution design §10.4, §10.6): the masked Bria eraser, its frame-for-frame grid ceiling, its measured duration
-// bounds and asynchronous rejection field, and the composite matte in source pixels. No default, as lip-sync.
+// Erase (execution design §10.4, §10.6): the masked Bria eraser, its frame-for-frame grid ceiling and asynchronous
+// rejection field, and the composite matte in source pixels; its seconds are its vendor's, written once as provider
+// rejects (§11.5). No default, as lip-sync.
 const eraseSchema = containerExecutionSchema.extend({
   model: z.strictObject({
-    name: z.string().min(1), min_seconds: z.number().positive(), max_seconds: z.number().positive(), max_grid_fps: z.number().positive(),
+    name: z.string().min(1), max_grid_fps: z.number().positive(),
     async_rejection: z.strictObject({ path: z.string().min(1), equals: z.json() }),
-  }).refine((model) => model.max_seconds > model.min_seconds),
+  }),
   matte: z.strictObject({ dilate: z.number().int().nonnegative(), feather: z.number().int().nonnegative() }),
 });
 // Expand (execution design §10.5, §10.6): VACE's window length, overlap and frame rate, and the source limits.

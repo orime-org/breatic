@@ -80,7 +80,7 @@ vi.mock("@breatic/core", async (original) => {
     Reflect.set(config.executions, "video.lip-sync", { container_class: "MiniToolContainerStd4", precheck_seconds: 300, max_outputs: 1, max_outputs_per_job: 1,
       models: [{ name: "sync-lipsync-3", schema_fingerprint: "1".repeat(64), min_duration_seconds: 1, max_duration_seconds: 300, crop_size: 512, accepts_sync_mode: true,
         async_rejection: outside.config.rejection }],
-      tracking: { model: "sam3-video-rle", min_duration_seconds: 1, max_duration_seconds: 600 }, max_people: 2, max_dialogues: 8, face_feather: 0.1 });
+      tracking: { model: "sam3-video-rle" }, max_people: 2, max_dialogues: 8, face_feather: 0.1 });
     return config;
   } };
 });

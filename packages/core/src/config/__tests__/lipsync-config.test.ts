@@ -35,10 +35,11 @@ describe('lip-sync execution configuration (§97 D11-5)', () => {
     }
   });
 
-  it('LC02 names the tracking model with its duration range and caps two people and eight dialogues', () => {
+  // The tracker's seconds are its vendor's, written once as provider rejects (inner#1306 execution design §11.5).
+  it('LC02 names the tracking model alone and caps two people and eight dialogues', () => {
     const lipSync = parsed();
     expect(lipSync.tracking.model.length).toBeGreaterThan(0);
-    expect(lipSync.tracking.max_duration_seconds).toBeGreaterThan(lipSync.tracking.min_duration_seconds);
+    expect(Object.keys(lipSync.tracking)).toEqual(['model']);
     expect([lipSync.max_people, lipSync.max_dialogues]).toEqual([2, 8]);
   });
 });
