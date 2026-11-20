@@ -5,17 +5,16 @@
  * Recipes on the frozen version's frame grid (inner#1306 test plan §67.3 W01; frames-split design §5.5, §7.16, §7.17).
  *
  * Every recipe names grid frames of the version's tool source: the original with its source keyframe statistics, or the
- * edit file with the original bound beside it for audio (§4.4); the grid is the version's display grid. The plan colour a
- * frozen version does not carry yet is stood in by `PLAN_COLOR` (see `frozen-plan-facts.ts`).
+ * edit file with the original bound beside it for audio (§4.4); the grid is the version's display grid. The colour is the
+ * plan colour the frozen version carries, read by `frozen-plan-facts.ts`.
  */
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { miniToolPlanRecipeSchema } from "@breatic/shared";
-import { PLAN_COLOR, frozenVersion } from "../mini-tool/__tests__/frozen-presentation.js";
+import { frozenVersion } from "../mini-tool/__tests__/frozen-presentation.js";
 import {
   AUDIO_INPUT_ID, chunkInputId, frameRecipeOf, peopleRecipeOf, sceneCutsRecipeOf, segmentRecipesOf, SOURCE_INPUT_ID, toolInputOf,
 } from "../video-presentation-recipes.js";
 
-vi.mock("@worker/handlers/frozen-plan-facts.js", () => ({ planColorOf: () => PLAN_COLOR }));
 
 const PROFILE = { id: "detector", version: "1", weightsHash: null, params: {} };
 const GRID = { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 96, realFrameCount: 96 };

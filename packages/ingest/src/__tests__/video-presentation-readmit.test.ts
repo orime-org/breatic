@@ -18,7 +18,7 @@ import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { videoPresentationKeyFor } from '@breatic/shared';
 import { presentationSnapshot } from '@ingest/video-presentation-store.js';
-import { admission, bundle, D, H, planned, source, T, withStore, type Admission, type MachineStore, type MachineView } from './helpers/machine-store.js';
+import { admission, bundle, D, H, PLAN, planned, source, T, withStore, type Admission, type MachineStore, type MachineView } from './helpers/machine-store.js';
 
 const V = 'e'.repeat(64);
 const V2 = 'f'.repeat(64);
@@ -64,7 +64,7 @@ async function publish(store: MachineStore, key: string, jobId: string, versionI
   const { token } = await store.prepare({ storageKey: key, sourceFingerprint: H, jobId, deadlineAt: D }, Date.now());
   expect(token, `${jobId} was admitted and started`).toEqual(expect.any(String));
   const identity = { storageKey: key, sourceFingerprint: H, jobId, deadlineAt: D, token: token! };
-  await store.planPresentation(identity, { route: 'reuse', toolInputId: T, planSha256: 'd'.repeat(64) });
+  await store.planPresentation(identity, { route: 'reuse', toolInputId: T, planSha256: PLAN });
   return store.report(identity, { kind: 'verified', bundle: await bundle(key, versionId) });
 }
 

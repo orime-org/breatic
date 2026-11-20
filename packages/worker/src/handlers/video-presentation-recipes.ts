@@ -165,7 +165,7 @@ export type SegmentTarget = MiniToolPlanTarget & { format: 'mp4-h264' | 'webm-vp
  * @param encode.crf - The crf.
  * @param encode.preset - The preset.
  * @returns The target.
- * @throws {MiniToolStepFailed} When the plan's colour is not available.
+ * @throws {never} Never.
  */
 export function segmentTarget(version: VideoPresentationVersion, encode: { crf: number; preset: MiniToolPlanTarget['preset'] }): SegmentTarget {
   const { colorMatrix, toneMap } = planColorOf(version);
@@ -181,7 +181,7 @@ export function segmentTarget(version: VideoPresentationVersion, encode: { crf: 
  * @param encode.crf - The crf.
  * @param encode.preset - The preset.
  * @returns The target.
- * @throws {MiniToolStepFailed} When the plan's colour is not available.
+ * @throws {never} Never.
  */
 export function modelInputTarget(version: VideoPresentationVersion, encode: { crf: number; preset: MiniToolPlanTarget['preset'] }): MiniToolPlanTarget {
   const { colorMatrix, toneMap } = planColorOf(version);
@@ -192,7 +192,7 @@ export function modelInputTarget(version: VideoPresentationVersion, encode: { cr
  * A still's PNG target: display geometry, the plan's colour and depth, straight alpha for a transparent version.
  * @param version - The frozen selected version.
  * @returns The target.
- * @throws {MiniToolStepFailed} When the plan's colour is not available.
+ * @throws {never} Never.
  */
 export function frameTarget(version: VideoPresentationVersion): MiniToolPlanFrameTarget {
   const { colorMatrix, toneMap, pngBitDepth } = planColorOf(version);
@@ -206,7 +206,7 @@ export function frameTarget(version: VideoPresentationVersion): MiniToolPlanFram
  * @param frameIndex - The grid frame.
  * @param crop - The crop rectangle in P.display, if any.
  * @returns The recipe and the input it reads.
- * @throws {MiniToolStepFailed} When the plan's colour is not available.
+ * @throws {never} Never.
  */
 export function frameRecipeOf(version: VideoPresentationVersion, input: ToolInput, frameIndex: number, crop?: MiniToolPlanFrameCrop['rect']): { recipe: MiniToolPlanRecipe; inputs: ToolInput['inputs'] } {
   const { width, height } = version.display;
@@ -221,7 +221,7 @@ export function frameRecipeOf(version: VideoPresentationVersion, input: ToolInpu
  * @param frameIndex - The anchor's grid frame.
  * @param profile - The frozen detector profile.
  * @returns The recipe.
- * @throws {MiniToolStepFailed} When the plan's colour is not available.
+ * @throws {never} Never.
  */
 export function peopleRecipeOf(version: VideoPresentationVersion, input: ToolInput, frameIndex: number, profile: MiniToolPlanDetectorProfile): MiniToolPlanRecipe {
   return { kind: 'people', inputId: input.inputId, grid: input.grid, source: input.source, frameIndex, target: frameTarget(version), profile };
@@ -234,7 +234,7 @@ export function peopleRecipeOf(version: VideoPresentationVersion, input: ToolInp
  * @param frames - The range.
  * @param profile - The frozen detector profile.
  * @returns The recipe.
- * @throws {MiniToolStepFailed} When the plan's colour is not available.
+ * @throws {never} Never.
  */
 export function sceneCutsRecipeOf(version: VideoPresentationVersion, input: ToolInput, frames: MiniToolPlanFrames, profile: MiniToolPlanDetectorProfile): MiniToolPlanRecipe {
   const { colorMatrix, toneMap } = planColorOf(version);
@@ -253,7 +253,7 @@ export function sceneCutsRecipeOf(version: VideoPresentationVersion, input: Tool
  * @param encode.preset - The preset.
  * @param windows - The frozen chunk windows; one window covering the range means no chunks.
  * @returns The recipes (the segment alone, or the chunks then the stitch) and the inputs every one reads.
- * @throws {MiniToolStepFailed} When the plan's colour is not available.
+ * @throws {never} Never.
  */
 export function segmentRecipesOf(version: VideoPresentationVersion, sourceKey: string, range: FrameWindow, encode: { crf: number; preset: MiniToolPlanTarget['preset'] },
   windows: readonly FrameWindow[]): { recipes: MiniToolPlanRecipe[]; inputs: ToolInput['inputs'] } {

@@ -351,17 +351,27 @@ async function encodeEditChunk(recipe: MiniToolPlanEditEncode, request: Presenta
   await checkWritten(request.output, { start: 0, end: recipe.frames.end - recipe.frames.start }, run);
 }
 
+/** A grid count's request: its recipe, the downloaded input, a scratch directory and the lifetime and IO bounds. */
+export interface GridCountRequest {
+  recipe: Extract<MiniToolPlanRecipe, { kind: "grid_count" }>;
+  inputs: ReadonlyMap<string, string>;
+  directory: string;
+  signal: AbortSignal;
+  limits: PlanLimits;
+}
+
 /**
  * Count the original's decoded video frames (§4.1 frame count row, §7.17 grid_count): every frame decoded to null without the
- * grid chain; the last frame's display time and the count, written as JSON.
- * @param recipe - The count recipe.
- * @param request - Its files and lifetime.
- * @param run - The lifetime and IO bounds.
- * @returns Nothing once written.
+ * grid chain; the last frame's display time and the count, which the job reports and never writes as an object.
+ * @param request - The count recipe, its downloaded input and lifetime.
+ * @returns The last decoded frame's display time and the decoded frames.
  * @throws {Error} When FFmpeg fails or no frame was decoded.
  */
-async function countGrid(recipe: Extract<MiniToolPlanRecipe, { kind: "grid_count" }>, request: PresentationRecipeRequest, run: Run): Promise<void> {
-  const file = local(request.inputs, recipe.inputId);
+export async function countPresentationGrid(request: GridCountRequest): Promise<{ lastVideoTime: FrameRate; sourceFrames: number }> {
+  request.signal.throwIfAborted();
+  const { limits, signal } = request;
+  const run = { signal, stdoutBytes: limits.analysisStdoutBytes, stderrTailBytes: limits.stderrTailBytes };
+  const file = local(request.inputs, request.recipe.inputId);
   const facts = await sourceFacts(file, run);
   const base = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0", "-show_entries", "stream=time_base",
     "-of", "json", file], run)).toString("utf8")) as { streams?: { time_base?: string }[] };
@@ -378,7 +388,7 @@ async function countGrid(recipe: Extract<MiniToolPlanRecipe, { kind: "grid_count
   }
   if (last === null) throw new Error("The counted video decoded no frame");
   const [num, den] = [BigInt(tick[1]!), BigInt(tick[2]!)];
-  await writeJson(request.output, { lastVideoTime: { numerator: Number(last * num), denominator: Number(den) }, sourceFrames: frames });
+  return { lastVideoTime: { numerator: Number(last * num), denominator: Number(den) }, sourceFrames: frames };
 }
 
 /**
@@ -778,7 +788,7 @@ export async function executePresentationRecipe(request: PresentationRecipeReque
     case "frame": return { ...await renderFrame(recipe, request, run), durationSeconds: null, cover: null };
     case "people": await detectPeople(recipe, request, run); return NO_MEDIA;
     case "scene_cuts": await detectScenes(recipe, request, run); return NO_MEDIA;
-    case "grid_count": await countGrid(recipe, request, run); return NO_MEDIA;
+    case "grid_count": throw new Error("A grid count is the job's count, never an output (§7.17 grid_count)");
     case "edit_encode": await encodeEditChunk(recipe, request, run); break;
     case "stitch": await ("clips" in recipe && recipe.clips !== undefined ? transitionStitch(recipe, request, run)
       : stitch(recipe as MiniToolPlanStitch | MiniToolPlanEditStitch, request, run)); break;

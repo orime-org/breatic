@@ -3,14 +3,14 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runPlanJob, type PlanRunBody } from "@ingest/container/plan-run.js";
-import { executePresentationRecipe } from "@ingest/container/presentation-recipes.js";
+import { countPresentationGrid, executePresentationRecipe } from "@ingest/container/presentation-recipes.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { download, put } from "@ingest/container/mini-tool-run.js";
 import { cpuUsec } from "@ingest/container/run-steps.js";
 
 // Frames-split design §7.17 (「唯一写点：worker的配方构造」): every job recipe is written on grid frame numbers and runs as a
 // presentation recipe; the download, alias and lifetime facts are asserted on the presentation executor.
-vi.mock("@ingest/container/presentation-recipes.js", async (original) => ({ ...await original<Record<string, unknown>>(), executePresentationRecipe: vi.fn() }));
+vi.mock("@ingest/container/presentation-recipes.js", async (original) => ({ ...await original<Record<string, unknown>>(), executePresentationRecipe: vi.fn(), countPresentationGrid: vi.fn() }));
 vi.mock("@ingest/container/plan-command.js", () => ({ runPlanCommand: vi.fn() }));
 vi.mock("@ingest/container/mini-tool-run.js", () => ({ download: vi.fn(), put: vi.fn() }));
 vi.mock("@ingest/container/run-steps.js", () => ({ cpuUsec: vi.fn() }));
@@ -118,5 +118,28 @@ describe("frame, segment, people and scene_cuts run as presentation recipes (§7
   ])("DP06 a %s recipe on grid frames runs as a presentation recipe", async (_name, recipe) => {
     await runPlanJob({ ...JOB, outputs: [{ ...JOB.outputs[0]!, recipe }] } as unknown as PlanRunBody);
     expect(vi.mocked(executePresentationRecipe).mock.calls.map(([request]) => request.recipe)).toEqual([recipe]);
+  });
+});
+
+// Frames-split design §7.17 grid_count: the job declares no output; it decodes its one input and reports the count, writing nothing.
+describe("a grid count job reports its count and writes no object (§7.17 grid_count)", () => {
+  const COUNT = { kind: "grid_count", inputId: A, gridStart: { numerator: 0, denominator: 1 }, fps: { numerator: 25, denominator: 1 }, gridEnd: null } as const;
+  const COUNTED = { lastVideoTime: { numerator: 49, denominator: 25 }, sourceFrames: 50 };
+
+  it("GC10 downloads the counted input once, writes nothing and reports the count", async () => {
+    vi.mocked(countPresentationGrid).mockResolvedValue(COUNTED);
+    await runPlanJob({ ...JOB, outputs: [], count: COUNT });
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(countPresentationGrid).mock.calls[0]![0]).toMatchObject({ recipe: COUNT, limits: JOB.limits });
+    expect(vi.mocked(countPresentationGrid).mock.calls[0]![0].inputs.get(A)).toBe(vi.mocked(download).mock.calls[0]![1]);
+    expect(put).not.toHaveBeenCalled();
+    expect(executePresentationRecipe).not.toHaveBeenCalled();
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]?.body))).toEqual({ schemaVersion: 2, attemptId: JOB.attemptId, ok: true, cpuUsec: 123, outputs: [], count: COUNTED });
+  });
+
+  it("GC11 a count that fails reports the failure and no count", async () => {
+    vi.mocked(countPresentationGrid).mockRejectedValue(new Error("The counted video decoded no frame"));
+    await runPlanJob({ ...JOB, outputs: [], count: COUNT });
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]?.body))).toEqual({ schemaVersion: 2, attemptId: JOB.attemptId, ok: false, cpuUsec: 123, outputs: [], reason: "tool_failed" });
   });
 });

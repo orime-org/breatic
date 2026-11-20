@@ -6,8 +6,8 @@
  * §7.16, §7.17 「唯一写点：worker的配方构造」, people anchor and scene_cuts rows): the runner reads the frozen version's grid,
  * tool source and source keyframe statistics and writes the job recipes on them; there is no inspect_video output, and
  * scene cuts come back as grid frame numbers. The people anchor and its thumbnails read the original under the binding's
- * id, the source the domain people assembly checks. Each job is opened with the payer the analysis froze. The plan colour
- * a frozen version does not carry yet is stood in by `PLAN_COLOR`.
+ * id, the source the domain people assembly checks. Each job is opened with the payer the analysis froze. The recipes read
+ * the plan colour the frozen version carries.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as domainModule from "@breatic/domain";
@@ -18,7 +18,7 @@ import { miniToolAnalysisRecordSchema, type MiniToolAnalysisResult } from "@brea
 import type { RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { frameTarget, originalInputOf, peopleRecipeOf, sceneCutsRecipeOf, toolInputOf } from "@worker/handlers/video-presentation-recipes.js";
-import { PLAN_COLOR, frozenVersion } from "./frozen-presentation.js";
+import { frozenVersion } from "./frozen-presentation.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 import { runMiniToolContainerAnalysis } from "../run-container-analysis.js";
 
@@ -36,7 +36,6 @@ vi.mock("@breatic/domain", async (original) => {
 });
 vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceRegisteredMiniToolPlanJob: h.advance }));
 vi.mock("@worker/handlers/mini-tool/read-analysis-json.js", () => ({ readMiniToolAnalysisJson: h.read }));
-vi.mock("@worker/handlers/frozen-plan-facts.js", () => ({ planColorOf: () => PLAN_COLOR }));
 
 const TASK = "10000000-0000-4000-8000-000000000001";
 const SOURCE = "20000000-0000-4000-8000-000000000001";

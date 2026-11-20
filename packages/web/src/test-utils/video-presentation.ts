@@ -57,6 +57,8 @@ export function presentedBundle(canonicalURL: string, fields: Partial<Bundle> = 
     schemaVersion: 1, sourceFingerprint: PRESENTED.fingerprint, versionId: PRESENTED.versionId, toolInputId: PRESENTED.toolInputId, planSha256: PRESENTED.planSha256,
     policyVersion: 1, producerVersion: '2'.repeat(64), profileVersion: '1'.repeat(64),
     original: { width: display.width, height: display.height, duration: display.frameCount * display.fps.denominator / display.fps.numerator }, display,
+    plan: { gridRulesVersion: 1, grid: { fps: display.fps, gridStart: display.gridStart, leadFrames: display.leadFrames, gridEnd: null, singleFrameDurationMs: 5000 },
+      toolSource: 'original', audioTrack: null, display: { width: display.width, height: display.height }, color: { matrix: 'bt709', toneMap: 'none' }, framePngBitDepth: 8 },
     playback: { kind: 'native', carrier: { storageKey: new URL(canonicalURL).pathname.slice(1), url: canonicalURL, etag: '"carrier"', size: 4096, sha256: PRESENTED.fingerprint, contentType: 'video/mp4' }, displayRect: null },
     toolSource: { edit: null, keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 2, allKeyframes: false }, sourceDecodeKey: 'sdr_8bit' },
     ...fields,

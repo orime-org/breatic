@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { miniToolPlanRecipeInputs, type MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
 import type { ContainerFailure } from "@shared/mini-tools/types.js";
-import type { PlanContainerOutput, MediaOfOutput } from "@ingest/jobs/container-report.js";
-import { executePresentationRecipe, RecipeFailure, type PlanLimits } from "@ingest/container/presentation-recipes.js";
+import type { PlanContainerCount, PlanContainerOutput, MediaOfOutput } from "@ingest/jobs/container-report.js";
+import { countPresentationGrid, executePresentationRecipe, RecipeFailure, type PlanLimits } from "@ingest/container/presentation-recipes.js";
 import { executeLipsyncRecipe, isLipsyncRecipe } from "@ingest/container/lipsync-recipes.js";
 import { executeModelRecipe, isModelRecipe } from "@ingest/container/model-recipes.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
@@ -16,7 +16,7 @@ import { cpuUsec } from "@ingest/container/run-steps.js";
 import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pngSize } from "@ingest/png-size.js";
 
-/** The internal, attempt-bound run sent by the validated job object. */
+/** The internal, attempt-bound run sent by the validated job object; a grid count names its recipe as `count` and has no output. */
 export interface PlanRunBody {
   schemaVersion: 2;
   attemptId: string;
@@ -24,6 +24,7 @@ export interface PlanRunBody {
   limits: PlanLimits;
   inputs: { inputId: string; url: string }[];
   outputs: { outputIndex: number; key: string; url: string; contentType: string; coverUrl?: string; recipe: MiniToolPlanRecipe }[];
+  count?: Extract<MiniToolPlanRecipe, { kind: "grid_count" }>;
   reportUrl: string;
 }
 /**
@@ -64,6 +65,7 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
   const remaining = job.deadlineAt - Date.now();
   const signal = remaining <= 0 ? AbortSignal.abort(new DOMException("Planned job deadline passed", "AbortError")) : AbortSignal.timeout(remaining);
   const completed: PlanContainerOutput[] = [];
+  let counted: PlanContainerCount | undefined;
   const files = new Map<string, string>();
   let directory: string | undefined;
   let outputIndex: number | undefined;
@@ -73,7 +75,8 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
     signal.throwIfAborted();
     const bindings = new Map(job.inputs.map((input) => [input.inputId, input.url]));
     const named = miniToolPlanRecipeInputs;
-    if (bindings.size !== job.inputs.length || job.outputs.some((output) => named(output.recipe).some((id) => !bindings.has(id)))) throw new Error("Planned recipe has an ambiguous or unbound input");
+    const recipes = [...job.outputs.map((output) => output.recipe), ...(job.count === undefined ? [] : [job.count])];
+    if (bindings.size !== job.inputs.length || recipes.some((recipe) => named(recipe).some((id) => !bindings.has(id)))) throw new Error("Planned recipe has an ambiguous or unbound input");
     const workDirectory = await mkdtemp(join(tmpdir(), "mini-tool-plan-"));
     directory = workDirectory;
     /**
@@ -93,6 +96,11 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
       }
       return file;
     };
+    if (job.count !== undefined) {
+      // §7.17 grid_count: decode the one input and report the count; no object is written.
+      const inputs = new Map([[job.count.inputId, await fetchInput(job.count.inputId)]]);
+      counted = await countPresentationGrid({ recipe: job.count, inputs, directory, signal, limits: job.limits });
+    }
     for (const output of job.outputs) {
       outputIndex = output.outputIndex;
       signal.throwIfAborted();
@@ -126,7 +134,8 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
   try {
     const response = await fetch(job.reportUrl, {
       method: "POST", signal, headers: { "content-type": "application/json" },
-      body: JSON.stringify({ schemaVersion: 2, attemptId: job.attemptId, ok, cpuUsec: await cpuUsec(), outputs: completed, ...(!ok && { reason }) }),
+      body: JSON.stringify({ schemaVersion: 2, attemptId: job.attemptId, ok, cpuUsec: await cpuUsec(), outputs: completed,
+        ...(ok && counted !== undefined && { count: counted }), ...(!ok && { reason }) }),
     });
     await response.body?.cancel();
     if (!response.ok) throw new Error(`Planned report was answered ${response.status}`);

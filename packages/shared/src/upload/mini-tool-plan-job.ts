@@ -121,17 +121,20 @@ const gridFrame = z.strictObject({ kind: z.literal("frame"), ...stillRecipe, tar
   .refine((recipe) => recipe.frameIndex < recipe.grid.frameCount, "The frame lies on the grid")
   .refine((recipe) => recipe.crop === undefined || (recipe.crop.sourceWidth === recipe.target.width && recipe.crop.sourceHeight === recipe.target.height));
 const analysisTarget = z.strictObject({ width: side, height: side, colorMatrix: z.string().min(1), toneMap: z.enum(["none", "sdr-bt709"]) });
-const colorInputs = z.strictObject({
+/** The explicit colour inputs the probe read (§4.3 colour/HDR row), which an edit chunk decodes with. */
+export const miniToolPlanColorInputsSchema = z.strictObject({
   matrix: z.string().min(1), transfer: z.string().min(1).nullable(), primaries: z.string().min(1).nullable(), range: z.enum(["tv", "pc"]), chromaLocation: z.string().min(1),
 });
+const colorInputs = miniToolPlanColorInputsSchema;
+// §7.17 grid_count: decode every video frame to null; the request declares no output and the job report carries the count.
+const gridCount = z.strictObject({ kind: z.literal("grid_count"), inputId, gridStart: rationalTimeSchema, fps: positiveRationalSchema, gridEnd: rationalTimeSchema.nullable() });
 const recipeUnion = z.discriminatedUnion("kind", [
   gridFrame,
   // §7.17 segment row: grid frames [k0, k1) re-encoded from the tool source, the original's audio over them.
   z.strictObject({ kind: z.literal("segment"), ...windowRecipe, ...audioRef }).refine(framesOnGrid),
   z.strictObject({ kind: z.literal("people"), ...stillRecipe, target: frameTarget, profile }).refine((recipe) => recipe.frameIndex < recipe.grid.frameCount),
   z.strictObject({ kind: z.literal("scene_cuts"), inputId, grid, source: toolSource, frames, profile, target: analysisTarget }).refine(framesOnGrid),
-  // §7.17 grid_count: decode every video frame to null; no object is written.
-  z.strictObject({ kind: z.literal("grid_count"), inputId, gridStart: rationalTimeSchema, fps: positiveRationalSchema, gridEnd: rationalTimeSchema.nullable() }),
+  gridCount,
   // §7.17 edit_encode: one edit-file chunk at its tier, the plan's explicit colour inputs, tone mapped once for HDR.
   z.strictObject({
     kind: z.literal("edit_encode"), inputId, grid, source: toolSource, frames,
@@ -239,7 +242,10 @@ const recipeUnion = z.discriminatedUnion("kind", [
  */
 export const miniToolPlanRecipeSchema = recipeUnion as unknown as z.ZodType<MiniToolPlanRecipe> & { options: typeof recipeUnion.options };
 
-/** The request holding a complete chunk's input and output identities. */
+/**
+ * The request holding a complete chunk's input and output identities. A grid count (§7.17 grid_count) declares no output and
+ * names its recipe as `count`; every other job declares at least one output and no count.
+ */
 export const miniToolPlanJobRequestSchema = z.strictObject({
   schemaVersion: z.literal(2),
   jobId: z.string().min(1).max(200),
@@ -254,8 +260,11 @@ export const miniToolPlanJobRequestSchema = z.strictObject({
     contentType: z.string().min(1).max(100),
     coverKey: storageKey.optional(),
     recipe: miniToolPlanRecipeSchema,
-  })).min(1).max(MINI_TOOL_JOB_MAX_OUTPUTS),
+  })).max(MINI_TOOL_JOB_MAX_OUTPUTS),
+  count: gridCount.optional(),
 }).superRefine((request, ctx) => {
+  if ((request.count === undefined) === (request.outputs.length === 0)) ctx.addIssue({ code: "custom", message: "A job declares outputs, or is a grid count with none" });
+  if (request.outputs.some((output) => output.recipe.kind === "grid_count")) ctx.addIssue({ code: "custom", message: "A grid count writes no output" });
   const ids = new Set<string>();
   for (const input of request.inputs) {
     if (ids.has(input.inputId)) ctx.addIssue({ code: "custom", message: "Duplicate input identity" });
@@ -263,6 +272,7 @@ export const miniToolPlanJobRequestSchema = z.strictObject({
   }
   const keys = new Set(request.inputs.map((input) => input.storageKey));
   const indices = new Set<number>();
+  if (request.count !== undefined && !ids.has(request.count.inputId)) ctx.addIssue({ code: "custom", message: "Recipe references an unbound input" });
   for (const output of request.outputs) {
     if (miniToolPlanRecipeInputs(output.recipe).some((id) => !ids.has(id))) ctx.addIssue({ code: "custom", message: "Recipe references an unbound input" });
     if (indices.has(output.outputIndex)) ctx.addIssue({ code: "custom", message: "Duplicate output index" });
@@ -293,11 +303,14 @@ const measuredOutput = ingestMeasurements.extend({
   }).nullish().transform((value) => value ?? null),
 });
 
-/** The indexed report of a planned job's actual written objects. */
+/** What a done grid count measured (§4.1 frame count row): the last decoded frame's display time and the decoded frames. */
+export const miniToolPlanGridCountSchema = z.strictObject({ lastVideoTime: rationalTimeSchema, sourceFrames: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) });
+
+/** The indexed report of a planned job's actual written objects; a done grid count carries its count instead. */
 export const miniToolPlanJobReportSchema = z.discriminatedUnion("state", [
   z.strictObject({ schemaVersion: z.literal(2), state: z.literal("starting") }),
   z.strictObject({ schemaVersion: z.literal(2), state: z.literal("running") }),
-  z.strictObject({ schemaVersion: z.literal(2), state: z.literal("done"), outputs: z.array(measuredOutput), usage }),
+  z.strictObject({ schemaVersion: z.literal(2), state: z.literal("done"), outputs: z.array(measuredOutput), usage, count: miniToolPlanGridCountSchema.optional() }),
   z.strictObject({ schemaVersion: z.literal(2), state: z.literal("failed"), outputs: z.array(measuredOutput), reason: z.enum(CONTAINER_FAILURES), usage: usage.nullable() }),
 ]);
 
@@ -342,7 +355,7 @@ export function sameMiniToolPlanJob(accepted: unknown, incoming: unknown): boole
  * @param report - The actual report received from the ingest Worker.
  * @returns The measured report bound to its declared output identities.
  * @throws {z.ZodError} When the request or report cannot be read.
- * @throws {Error} When the measured report conflicts with the declared capabilities.
+ * @throws {Error} When the measured report conflicts with the declared capabilities, or a count is missing or undeclared.
  */
 export function readMiniToolPlanJobReport(request: unknown, report: unknown): MiniToolPlanJobReport {
   const parsed = miniToolPlanJobRequestSchema.parse(request);
@@ -362,5 +375,6 @@ export function readMiniToolPlanJobReport(request: unknown, report: unknown): Mi
     observed.add(output.outputIndex);
   }
   if (read.state === "done" && observed.size !== expected.size) throw new Error("Planned job report is missing declared outputs");
+  if (read.state === "done" && (read.count !== undefined) !== (parsed.count !== undefined)) throw new Error("Planned job report has a count exactly when the job is a grid count");
   return read;
 }

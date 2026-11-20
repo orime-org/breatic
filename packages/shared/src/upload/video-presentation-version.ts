@@ -58,13 +58,35 @@ export const videoPresentationToolSourceSchema = z.strictObject({
 /** A parsed tool source. */
 export type VideoPresentationToolSource = z.infer<typeof videoPresentationToolSourceSchema>;
 
-/** The selected presentation version (P descriptor, §3.5); pending work belongs to preparation, so there is no state. */
+/**
+ * The presentation plan of §3.2 item 2: the grid's rule inputs, the grid rules version, the tool source kind, the selected
+ * audio track, the display geometry, the colour handling and the frame PNG depth; never carrier choices, URLs or hashes.
+ */
+export const videoPresentationPlanSchema = z.strictObject({
+  gridRulesVersion: positiveCount,
+  grid: z.strictObject({
+    fps: positiveRationalSchema, gridStart: rationalTimeSchema, leadFrames: count, gridEnd: rationalTimeSchema.nullable(), singleFrameDurationMs: positiveCount,
+  }),
+  toolSource: z.enum(['original', 'edit']),
+  audioTrack: count.nullable(),
+  display: z.strictObject({ width: pixel, height: pixel }),
+  color: z.strictObject({ matrix: z.string().min(1), toneMap: z.enum(['none', 'sdr-bt709']) }),
+  framePngBitDepth: z.union([z.literal(8), z.literal(16)]),
+});
+/** A parsed presentation plan. */
+export type VideoPresentationPlan = z.infer<typeof videoPresentationPlanSchema>;
+
+/**
+ * The selected presentation version (P descriptor, §3.5); pending work belongs to preparation, so there is no state. It
+ * carries the plan object itself (§3.2 item 6), which a reader adopts only after `verifyVideoPresentationPlan`.
+ */
 export const videoPresentationVersionSchema = z.strictObject({
   // producerVersion and profileVersion are sha256 digests the reuse routes compare (§7.1).
   schemaVersion: z.literal(1), sourceFingerprint: hash, versionId: hash, toolInputId: hash, planSha256: hash, policyVersion: positiveCount,
   producerVersion: hash, profileVersion: hash,
   original: z.strictObject({ width: pixel.nullable(), height: pixel.nullable(), duration: z.number().finite().positive().nullable() }),
   display: videoPresentationDisplaySchema,
+  plan: videoPresentationPlanSchema,
   playback: z.discriminatedUnion('kind', [
     // displayRect is the picture inside a carrier padded to even dimensions, null when unpadded.
     z.strictObject({ kind: z.literal('native'), carrier: objectReceipt, displayRect: rect.nullable() }),
@@ -97,24 +119,6 @@ export function alphaPackedManifestMatchesVersion(manifest: AlphaPackedManifest,
     [manifest.colorRect, manifest.alphaRect].every(area => area.width === width && area.height === height);
 }
 
-/**
- * The presentation plan of §3.2 item 2: the grid's rule inputs, the grid rules version, the tool source kind, the selected
- * audio track, the display geometry, the colour handling and the frame PNG depth; never carrier choices, URLs or hashes.
- */
-export const videoPresentationPlanSchema = z.strictObject({
-  gridRulesVersion: positiveCount,
-  grid: z.strictObject({
-    fps: positiveRationalSchema, gridStart: rationalTimeSchema, leadFrames: count, gridEnd: rationalTimeSchema.nullable(), singleFrameDurationMs: positiveCount,
-  }),
-  toolSource: z.enum(['original', 'edit']),
-  audioTrack: count.nullable(),
-  display: z.strictObject({ width: pixel, height: pixel }),
-  color: z.strictObject({ matrix: z.string().min(1), toneMap: z.enum(['none', 'sdr-bt709']) }),
-  framePngBitDepth: z.union([z.literal(8), z.literal(16)]),
-});
-/** A parsed presentation plan. */
-export type VideoPresentationPlan = z.infer<typeof videoPresentationPlanSchema>;
-
 /** An accepted execution's presentationRef: input id to the tool input it was planned against. */
 export const videoPresentationRefSchema = z.record(z.string().min(1), z.strictObject({ toolInputId: hash, planSha256: hash }))
   .refine(value => Object.keys(value).length > 0, 'Expected at least one input');
@@ -135,6 +139,19 @@ const versionInput = z.strictObject({
  */
 export async function videoPresentationPlanSha256(value: unknown): Promise<string> {
   return hashMiniToolValue(videoPresentationPlanSchema.parse(value));
+}
+
+/**
+ * Adopt a plan only when it is the one its digest names (§3.2 item 6): sha256(canonical(plan)) must equal planSha256, the
+ * check every reader of a version or a prepare answer runs where it crosses a trust boundary.
+ * @param value - A parsed version, or a plan with the digest it travels under.
+ * @param value.plan - The plan object.
+ * @param value.planSha256 - The digest it claims.
+ * @returns Nothing when the plan is the digest's.
+ * @throws {Error} When the plan's canonical digest is not planSha256.
+ */
+export async function verifyVideoPresentationPlan(value: { plan: VideoPresentationPlan; planSha256: string }): Promise<void> {
+  if (await videoPresentationPlanSha256(value.plan) !== value.planSha256) throw new Error('The presentation plan is not the one its planSha256 names');
 }
 
 /**

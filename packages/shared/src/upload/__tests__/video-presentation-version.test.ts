@@ -16,8 +16,8 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { canonicalMiniToolValue } from '../../mini-tools/canonical-value.js';
 import {
-  alphaPackedManifestMatchesVersion, alphaPackedManifestSchema, videoPresentationPlanSha256, videoPresentationRefSchema, videoPresentationToolInputId,
-  videoPresentationVersionId, videoPresentationVersionSchema,
+  alphaPackedManifestMatchesVersion, alphaPackedManifestSchema, verifyVideoPresentationPlan, videoPresentationPlanSha256, videoPresentationRefSchema,
+  videoPresentationToolInputId, videoPresentationVersionId, videoPresentationVersionSchema,
 } from '../video-presentation-version.js';
 
 const H = 'a'.repeat(64);
@@ -82,7 +82,7 @@ function display(width = 64, height = 48): Value {
 function nativeVersion(): Value {
   return {
     schemaVersion: 1, sourceFingerprint: H, versionId: VERSION, toolInputId: TOOL, planSha256: PLAN, policyVersion: 1, producerVersion: DIGEST, profileVersion: DIGEST,
-    original: { width: 64, height: 48, duration: 2 }, display: display(),
+    original: { width: 64, height: 48, duration: 2 }, display: display(), plan: plan(),
     playback: { kind: 'native', carrier: carrier('job-1.carrier.mp4'), displayRect: null },
     toolSource: { edit: null, keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 2, allKeyframes: false }, sourceDecodeKey: 'sdr_8bit' },
   };
@@ -221,6 +221,8 @@ describe('P §3.5 selected presentation version descriptor', () => {
     ['an edit file without its tier', ['toolSource', 'edit'], { ...carrier('edit.mp4'), editProfileVersion: DIGEST }],
     ['an http carrier', ['playback', 'carrier', 'url'], 'http://assets.example.test/video/fixture/job-1.carrier.mp4'],
     ['a native manifest', ['playback', 'manifest'], carrier('x.alpha.json', 'application/json')], ['a playback clock', ['playbackClock'], { schemaVersion: 1, timescale: 30, runs: [] }],
+    // §3.2 item 6: P carries the plan object itself, strict as the plan schema.
+    ['missing plan', ['plan'], undefined], ['a plan carrying a carrier encode setting', ['plan', 'crf'], 18], ['a plan without its colour', ['plan', 'color'], undefined],
   ] as const)('P03 rejects %s', (_, path, value) => {
     expect(videoPresentationVersionSchema.safeParse(nativeVersion()).success).toBe(true);
     expect(videoPresentationVersionSchema.safeParse(patched(nativeVersion(), path, value)).success).toBe(false);
@@ -234,6 +236,22 @@ describe('P §3.5 selected presentation version descriptor', () => {
   it('P04 an alpha-packed version carries its manifest receipt and no displayRect', () => {
     expect(videoPresentationVersionSchema.safeParse(patched(alphaVersion(), ['playback', 'manifest'], undefined)).success).toBe(false);
     expect(videoPresentationVersionSchema.safeParse(patched(alphaVersion(), ['playback', 'displayRect'], null)).success).toBe(false);
+  });
+});
+
+describe('PV §3.2 item 6 a reader adopts the plan only when sha256(canonical(plan)) is planSha256', () => {
+  it('PV01 a version whose planSha256 is its plan\'s digest is adopted', async () => {
+    const version = { ...nativeVersion(), planSha256: await videoPresentationPlanSha256(plan()) };
+    await expect(verifyVideoPresentationPlan(videoPresentationVersionSchema.parse(version))).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ['another digest', (value: Value): Value => ({ ...value, planSha256: PLAN })],
+    ['a plan changed after the digest', (value: Value): Value => patched(value, ['plan', 'framePngBitDepth'], 16)],
+    ['a plan of another colour', (value: Value): Value => patched(value, ['plan', 'color', 'toneMap'], 'sdr-bt709')],
+  ] as const)('PV02 a version with %s is refused', async (_, change) => {
+    const matching = { ...nativeVersion(), planSha256: await videoPresentationPlanSha256(plan()) };
+    await expect(verifyVideoPresentationPlan(videoPresentationVersionSchema.parse(change(matching)))).rejects.toThrow(/plan/);
   });
 });
 

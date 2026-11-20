@@ -16,8 +16,8 @@
  *
  * As in run-video-tool.test.ts, the job boundaries (`openMiniToolPlanJob` + `advanceMiniToolPlanJob` for unregistered work
  * objects, `advanceRegisteredMiniToolPlanJob` for registered ones), grants, steps, the SQL lifecycle and the completion owner
- * are mocked; the recipe builders and the shared planners stay real, with the plan colour a frozen version does not carry
- * yet stood in by `PLAN_COLOR`. Requests are read from both boundaries, so either may carry a chunk. The frozen plan below
+ * are mocked; the recipe builders and the shared planners stay real and read the plan colour each frozen version carries
+ * (`PLAN_COLOR`). Requests are read from both boundaries, so either may carry a chunk. The frozen plan below
  * names each clip by its draft input id (`presentationRef`, `presentations`, `versionIds`, `bindings` and `sourceKeys`); the
  * runner rebuilds the frame-grid timeline from the frozen `draft.params.clips` and `profile.fps` with `planVideoTimeline`,
  * the planner the panel uses, and each chunk names its clip's grid and place on the output grid (§7.16, §7.17).
@@ -62,7 +62,6 @@ vi.mock("@worker/handlers/mini-tool/delivery-worker.js", () => ({ deliverMiniToo
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }));
 vi.mock("@worker/handlers/mini-tool/run-remove-background.js", () => ({ runMiniToolRemoveBackground: h.removal }));
 vi.mock("@worker/handlers/dispatch.js", () => ({ isTerminalAttempt: () => false, verifyJobLockOwnership: async () => true }));
-vi.mock("@worker/handlers/frozen-plan-facts.js", () => ({ planColorOf: () => PLAN_COLOR }));
 // A run's end abandons its unresolved model steps through the step store; these runs hold no model step.
 vi.mock("@worker/handlers/mini-tool/run-end.js", () => ({ abandonUnresolvedModelSteps: async () => undefined }));
 

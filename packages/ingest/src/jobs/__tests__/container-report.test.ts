@@ -56,4 +56,22 @@ describe("readContainerReport", () => {
     expect(readContainerReport(planReport({ packing: GEOMETRY }))).not.toBeNull();
     expect(readContainerReport(planReport({ packing }))).toBeNull();
   });
+
+  // Frames-split design §7.17 grid_count: a count job reports the last decoded frame's time and the decoded frames.
+  const COUNTED = { lastVideoTime: { numerator: 49, denominator: 25 }, sourceFrames: 50 };
+  const countReport = (count: unknown): Record<string, unknown> => ({ schemaVersion: 2, attemptId: "a-1", ok: true, cpuUsec: 5, outputs: [], count });
+
+  it("GC08 keeps a planned report's count", () => {
+    expect(readContainerReport(countReport(COUNTED))).toEqual({ schemaVersion: 2, attemptId: "a-1", ok: true, cpuUsec: 5, outputs: [], count: COUNTED });
+    expect(readContainerReport(planReport({}))).not.toHaveProperty("count");
+  });
+
+  it.each([
+    ["a fractional frame count", { ...COUNTED, sourceFrames: 1.5 }],
+    ["a time without its denominator", { ...COUNTED, lastVideoTime: { numerator: 49 } }],
+    ["a count that is not an object", 50],
+  ])("GC09 refuses a planned report whose count has %s", (_name, count) => {
+    expect(readContainerReport(countReport(COUNTED))).not.toBeNull();
+    expect(readContainerReport(countReport(count))).toBeNull();
+  });
 });

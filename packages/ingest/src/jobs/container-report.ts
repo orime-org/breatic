@@ -33,13 +33,16 @@ export interface ContainerReportBody {
 
 /** One explicitly indexed output's metadata, independent of Worker byte measurements. */
 export interface PlanContainerOutput extends MediaOfOutput { outputIndex: number; storageKey: string }
-/** The versioned report from one immutable container attempt. */
+/** What a grid count measured (§7.17 grid_count): the last decoded frame's display time and the decoded frames. */
+export interface PlanContainerCount { lastVideoTime: { numerator: number; denominator: number }; sourceFrames: number }
+/** The versioned report from one immutable container attempt; a grid count reports its count and no output. */
 export interface PlanContainerReportBody {
   schemaVersion: 2;
   attemptId: string;
   ok: boolean;
   cpuUsec: number | null;
   outputs: PlanContainerOutput[];
+  count?: PlanContainerCount;
   reason?: ContainerFailure;
 }
 
@@ -80,6 +83,20 @@ function isPackedGeometry(value: unknown): value is PackedGeometry {
 }
 
 /**
+ * Whether a value has the shape of a grid count: safe-integer time terms and a safe-integer frame count. Its ranges are the
+ * shared report schema's, checked on the job report.
+ * @param value - The untrusted value.
+ * @returns Whether it is a count.
+ * @throws {never} Never.
+ */
+function isPlanCount(value: unknown): value is PlanContainerCount {
+  if (typeof value !== "object" || value === null) return false;
+  const raw = value as Record<string, unknown>;
+  const time = raw.lastVideoTime as Record<string, unknown> | null | undefined;
+  return Number.isSafeInteger(raw.sourceFrames) && typeof time === "object" && time !== null && Number.isSafeInteger(time.numerator) && Number.isSafeInteger(time.denominator);
+}
+
+/**
  * Read one owned metadata object returned by a planned recipe.
  * @param value - The untrusted report value.
  * @returns The metadata, or null for an invalid shape.
@@ -117,7 +134,9 @@ export function readContainerReport(body: unknown): ContainerReportBody | PlanCo
       if (typeof output.outputIndex !== "number" || !Number.isSafeInteger(output.outputIndex) || output.outputIndex < 0 || typeof output.storageKey !== "string") return null;
       outputs.push({ outputIndex: output.outputIndex, storageKey: output.storageKey, ...media });
     }
-    return { schemaVersion: 2, attemptId: raw.attemptId, ok: raw.ok, cpuUsec: raw.cpuUsec as number | null, outputs, ...(reason !== undefined && { reason }) };
+    if (raw.count !== undefined && !isPlanCount(raw.count)) return null;
+    return { schemaVersion: 2, attemptId: raw.attemptId, ok: raw.ok, cpuUsec: raw.cpuUsec as number | null, outputs,
+      ...(raw.count === undefined ? {} : { count: raw.count }), ...(reason !== undefined && { reason }) };
   }
   return {
     ok: raw.ok,

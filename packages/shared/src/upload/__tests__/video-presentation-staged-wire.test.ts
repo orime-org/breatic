@@ -21,7 +21,7 @@
 import { describe, expect, it } from 'vitest';
 import * as shared from '../../index.js';
 import { videoPresentationIngestRequestSchema } from '../video-presentation-ingest.js';
-import { miniToolPlanJobReportSchema, miniToolPlanJobRequestSchema, miniToolPlanRecipeSchema } from '../mini-tool-plan-job.js';
+import { miniToolPlanAccess, miniToolPlanJobReportSchema, miniToolPlanJobRequestSchema, miniToolPlanRecipeSchema, readMiniToolPlanJobReport } from '../mini-tool-plan-job.js';
 import { videoContainerJobId } from '../../mini-tools/video-encode-plan.js';
 import type { MiniToolPlanRecipe } from '../mini-tool-plan-types.js';
 import { videoPresentationKeyFor } from '../video-presentation.js';
@@ -52,7 +52,7 @@ const accept = {
   action: 'accept', storageKey: KEY, sourceFingerprint: H, jobId: 'video-presentation-a', deadlineAt: D,
   original: null, contentType: 'video/webm',
   limits: { maxSourceBytes: 1, maxPackedBytes: 1, crf: 18, preset: 'medium', probeStdoutBytes: 1, analysisStdoutBytes: 1, stderrTailBytes: 1 },
-  pricing: PRICING, targetPolicyVersion: 1, policy: { chunkRetries: 3, maxAutoRepairs: 3 }, encoding: ENCODING,
+  pricing: PRICING, targetPolicyVersion: 1, policy: { chunkRetries: 3 }, encoding: ENCODING,
   // S6d D1 (§91 D-6): the probe's sample count and the plan's single-frame duration are frozen at admission.
   probe: { sampleFrames: 1, singleFrameDurationMs: 5000, maxFps: 120 },
   actorUserId: '6061c056-f758-47c1-9527-8495ecba60e3', projectId: null,
@@ -60,6 +60,20 @@ const accept = {
 };
 const identity = { storageKey: KEY, sourceFingerprint: H, jobId: 'video-presentation-a' };
 const capability = { ...identity, deadlineAt: D, token: 'token-a' };
+// The plan of §3.2 item 2 a granted job carries in its prepare answer (§5.1 2a row), with the probe facts a unit recipe reads.
+const PLAN_CONTENT = {
+  gridRulesVersion: 1,
+  grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, leadFrames: 0, gridEnd: null, singleFrameDurationMs: 5000 },
+  toolSource: 'original', audioTrack: null, display: { width: 320, height: 180 }, color: { matrix: 'bt709', toneMap: 'none' }, framePngBitDepth: 8,
+};
+const PLAN_FACTS = {
+  content: PLAN_CONTENT,
+  display: { width: 320, height: 180, fps: { numerator: 25, denominator: 1 }, frameCount: 96, gridStart: { numerator: 0, denominator: 1 }, realFrameCount: 96, leadFrames: 0, holdFrames: 0 },
+  source: { color: { matrix: 'bt709', transfer: null, primaries: null, range: 'tv', chromaLocation: 'left' },
+    keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 2, allKeyframes: false }, editTier: null, alpha: false },
+  editStorageKey: null,
+};
+const FROZEN_EDIT = { crf: 15, preset: 'medium' };
 
 /**
  * The request schema's verdict.
@@ -291,10 +305,10 @@ describe('E4-15 / D3-3 role-tagged output receipts of a stitch (§5.1 step 4; §
     sourceBinding: { storageKey: KEY, sourceFingerprint: H }, presentation: null,
     preparation: { targetPolicyVersion: 1, jobId: identity.jobId, stage: 'publish', failure: null },
     capability: { token: 'token-a', deadlineAt: D },
-    plan: { route: 'encode', stages: ['plan', 'count', 'encode', 'stitch', 'publish'], toolInputId: T, planSha256: PLAN },
+    plan: { route: 'encode', stages: ['plan', 'count', 'encode', 'stitch', 'publish'], toolInputId: T, planSha256: PLAN, ...PLAN_FACTS },
     work: { kind: 'encode', chunks: [{ start: 0, end: 96 }] },
     units: {},
-    frozen: { pricing: PRICING, actorUserId: accept.actorUserId, projectId: null, carrier: { crf: 18, preset: 'medium', maxShortSide: 1080 } },
+    frozen: { pricing: PRICING, actorUserId: accept.actorUserId, projectId: null, carrier: { crf: 18, preset: 'medium', maxShortSide: 1080 }, edit: FROZEN_EDIT },
   };
   const stitchJob = videoContainerJobId({ kind: 'presentation-stitch', jobId: identity.jobId, attempt: 1 });
   const stitchUnit = (receipts: unknown): Record<string, unknown> => ({ [`video-presentation:${identity.jobId}:stitch`]: {
@@ -343,14 +357,16 @@ describe('E2-3 the worker-only prepare answer (§5.1 step 1 「worker 从 DO 的
     sourceBinding: { storageKey: KEY, sourceFingerprint: H }, presentation: null,
     preparation: { targetPolicyVersion: 1, jobId: identity.jobId, stage: 'plan', failure: null },
     capability: { token: 'token-a', deadlineAt: D },
-    plan: { route: 'encode', stages: ['plan', 'count', 'encode', 'stitch', 'publish'], toolInputId: T, planSha256: PLAN },
+    plan: { route: 'encode', stages: ['plan', 'count', 'encode', 'stitch', 'publish'], toolInputId: T, planSha256: PLAN, ...PLAN_FACTS },
     work: { kind: 'encode', chunks: [{ start: 0, end: 48 }, { start: 48, end: 96 }] },
     units: {},
-    // S6d D3b-1 (§91): the carrier encode parameters frozen at admission, so every chunk of a job encodes alike (§5.4).
-    frozen: { pricing: PRICING, actorUserId: accept.actorUserId, projectId: null, carrier: { crf: 18, preset: 'medium', maxShortSide: 1080 } },
+    // S6d D3b-1 (§91): the carrier and edit-file encode parameters frozen at admission, so every chunk of a job encodes alike (§5.4).
+    frozen: { pricing: PRICING, actorUserId: accept.actorUserId, projectId: null, carrier: { crf: 18, preset: 'medium', maxShortSide: 1080 }, edit: FROZEN_EDIT },
   };
+  const EDIT_SOURCE = { ...PLAN_FACTS.source, editTier: 'edit_h264_intra_8bit_420' };
   const EDIT = {
-    plan: { route: 'edit', stages: ['plan', 'count', 'edit', 'edit_stitch', 'encode', 'stitch', 'publish'], toolInputId: null, planSha256: PLAN },
+    plan: { route: 'edit', stages: ['plan', 'count', 'edit', 'edit_stitch', 'encode', 'stitch', 'publish'], toolInputId: null, planSha256: PLAN, ...PLAN_FACTS,
+      content: { ...PLAN_CONTENT, toolSource: 'edit' }, source: EDIT_SOURCE },
     work: { kind: 'edit', editChunks: [{ start: 0, end: 96 }], chunks: [{ start: 0, end: 48 }, { start: 48, end: 96 }] },
   };
   const parse = (value: unknown): boolean => exported<{ safeParse: (v: unknown) => { success: boolean } }>('videoPresentationPrepareAnswerSchema').safeParse(value).success;
@@ -364,7 +380,8 @@ describe('E2-3 the worker-only prepare answer (§5.1 step 1 「worker 从 DO 的
 
   it('PA04 parses each route with its work: the edit route before its toolInputId is known, reuse_edit, reuse', () => {
     expect(parse({ ...answer, ...EDIT })).toBe(true);
-    expect(parse({ ...answer, plan: { ...answer.plan, route: 'reuse_edit', stages: ['plan', 'encode', 'stitch', 'publish'] } })).toBe(true);
+    expect(parse({ ...answer, ...EDIT, plan: { ...EDIT.plan, editStorageKey: `${KEY}.edit` } })).toBe(true);
+    expect(parse({ ...answer, plan: { ...answer.plan, route: 'reuse_edit', stages: ['plan', 'encode', 'stitch', 'publish'], editStorageKey: `${KEY}.edit` } })).toBe(true);
     expect(parse({ ...answer, plan: { ...answer.plan, route: 'reuse', stages: ['plan', 'publish'] }, work: { kind: 'none' } })).toBe(true);
   });
 
@@ -388,10 +405,29 @@ describe('E2-3 the worker-only prepare answer (§5.1 step 1 「worker 从 DO 的
     ['no frozen standard-4 price', { frozen: { ...answer.frozen, pricing: { basic: PRICING.basic } } }],
     ['no frozen carrier parameters', { frozen: { pricing: PRICING, actorUserId: accept.actorUserId, projectId: null } }],
     ['a frozen crf out of range', { frozen: { ...answer.frozen, carrier: { crf: 52, preset: 'medium', maxShortSide: 1080 } } }],
+    ['no frozen edit-file encode', { frozen: { ...answer.frozen, edit: undefined } }],
+    // §5.1 2a row: the plan object itself and the probe facts each unit recipe is written from.
+    ['a plan without its content', { plan: { ...answer.plan, content: undefined } }],
+    ['plan content carrying a carrier crf', { plan: { ...answer.plan, content: { ...PLAN_CONTENT, crf: 18 } } }],
+    ['a plan without its display grid', { plan: { ...answer.plan, display: undefined } }],
+    ['a plan without the probe\'s colour inputs', { plan: { ...answer.plan, source: { ...PLAN_FACTS.source, color: undefined } } }],
+    ['a plan without the source keyframe statistics', { plan: { ...answer.plan, source: { ...PLAN_FACTS.source, keyframes: undefined } } }],
+    ['a plan without the source alpha fact', { plan: { ...answer.plan, source: { ...PLAN_FACTS.source, alpha: undefined } } }],
+    ['an edit route without its edit tier', { ...EDIT, plan: { ...EDIT.plan, source: PLAN_FACTS.source } }],
     ['a deadline outside the capability', { deadlineAt: D }],
   ])('PA03 rejects an answer with %s', (_name, change) => {
     expect(parse(answer)).toBe(true);
-    expect(parse({ ...answer, ...change })).toBe(false);
+    expect(parse(JSON.parse(JSON.stringify({ ...answer, ...change })))).toBe(false);
+  });
+
+  // §3.2 item 6: the worker adopts the plan content only when its canonical digest is the answer's planSha256.
+  it('PA05 the prepare answer reader adopts plan content whose digest is planSha256, and refuses any other', async () => {
+    const read = exported<(value: unknown) => Promise<unknown>>('readVideoPresentationPrepareAnswer');
+    const digest = await exported<(value: unknown) => Promise<string>>('videoPresentationPlanSha256')(PLAN_CONTENT);
+    const matching = { ...answer, plan: { ...answer.plan, planSha256: digest } };
+    await expect(read(matching)).resolves.toMatchObject({ plan: { content: PLAN_CONTENT } });
+    await expect(read(answer)).rejects.toThrow(/plan/);
+    await expect(read({ ...matching, plan: { ...matching.plan, content: { ...PLAN_CONTENT, framePngBitDepth: 16 } } })).rejects.toThrow(/plan/);
   });
 });
 
@@ -445,8 +481,6 @@ describe('E2-5 one key per sub-job and the grid recipe shapes (§5.4 「job id�
   }
 
   it.each([
-    ['grid_count', gridCount, []],
-    ['grid_count of a video without audio', { ...gridCount, gridEnd: null }, []],
     ['edit_encode tone mapping HDR once', editEncode, []],
     ['chunk_encode', chunkEncode, []],
     ['chunk_encode read from the edit file', { ...chunkEncode, source: { kind: 'edit' } }, []],
@@ -544,6 +578,50 @@ describe('E2-5 one key per sub-job and the grid recipe shapes (§5.4 「job id�
     // @ts-expect-error The frame recipe type has no orientation property.
     const withOrientation: Extract<MiniToolPlanRecipe, { kind: 'frame' }> = { kind: 'frame', inputId: INPUT, grid: GRID, source, frameIndex: 0, target, orientation: undefined };
     expect(withOrientation.kind).toBe('frame');
+  });
+
+  // §7.17 grid_count: the request declares no output and writes no object; the job report's `count` carries the measurement.
+  const countJob = (count: Record<string, unknown> = gridCount): Record<string, unknown> => ({ ...jobOf(gridCount), outputs: [], count });
+  const COUNTED = { lastVideoTime: r(95, 25), sourceFrames: 96 };
+  const doneReport = (fields: Record<string, unknown> = {}): Record<string, unknown> => ({ schemaVersion: 2, state: 'done', outputs: [], usage: { wallMs: 1, cpuUsec: 1 }, ...fields });
+
+  it.each([['grid_count', gridCount], ['grid_count of a video without audio', { ...gridCount, gridEnd: null }]])('GC01 admits a %s job that declares no output', (_name, recipe) => {
+    expect(miniToolPlanRecipeSchema.parse(recipe)).toEqual(recipe);
+    const request = countJob(recipe);
+    expect(miniToolPlanJobRequestSchema.parse(request)).toEqual(request);
+    expect(miniToolPlanAccess(request)).toEqual({ reads: [KEY], writes: {} });
+  });
+
+  it.each([
+    ['a grid_count output', { ...jobOf(gridCount) }],
+    ['a count beside an output', { ...jobOf(chunkEncode), count: gridCount }],
+    ['a job with neither an output nor a count', { ...jobOf(chunkEncode), outputs: [] }],
+    ['a count of another recipe kind', { ...jobOf(chunkEncode), outputs: [], count: chunkEncode }],
+    ['a count reading an unbound input', { ...countJob({ ...gridCount, inputId: CHUNK_A }) }],
+  ])('GC02 rejects %s', (_name, request) => {
+    expect(miniToolPlanJobRequestSchema.safeParse(countJob()).success).toBe(true);
+    expect(miniToolPlanJobRequestSchema.safeParse(request).success).toBe(false);
+  });
+
+  it('GC03 a done count job reports its count and no output; a done output job reports no count', () => {
+    expect(readMiniToolPlanJobReport(countJob(), doneReport({ count: COUNTED }))).toEqual(doneReport({ count: COUNTED }));
+    expect(() => readMiniToolPlanJobReport(countJob(), doneReport())).toThrow(/count/);
+    const output = { outputIndex: 0, storageKey: `${KEY}.${chunkJob}`, sha256: 'f'.repeat(64), sizeBytes: 4096, contentType: 'video/mp4', width: 320, height: 180, durationSeconds: 2, upright: null, cover: null };
+    expect(() => readMiniToolPlanJobReport(jobOf(chunkEncode), doneReport({ outputs: [output], count: COUNTED }))).toThrow(/count/);
+    expect(readMiniToolPlanJobReport(jobOf(chunkEncode), doneReport({ outputs: [output] }))).toMatchObject({ state: 'done' });
+  });
+
+  it.each([
+    ['a count without its decoded frames', { lastVideoTime: r(95, 25) }],
+    ['zero decoded frames', { ...COUNTED, sourceFrames: 0 }],
+    ['a string time', { ...COUNTED, lastVideoTime: { numerator: '95', denominator: '25' } }],
+  ])('GC04 a job report rejects %s', (_name, count) => {
+    expect(miniToolPlanJobReportSchema.safeParse(doneReport({ count: COUNTED })).success).toBe(true);
+    expect(miniToolPlanJobReportSchema.safeParse(doneReport({ count })).success).toBe(false);
+  });
+
+  it('GC05 a failed job report carries no count', () => {
+    expect(miniToolPlanJobReportSchema.safeParse({ schemaVersion: 2, state: 'failed', outputs: [], reason: 'tool_failed', usage: null, count: COUNTED }).success).toBe(false);
   });
 
   it('RC03 a stitch job request binds every chunk it names as an input', () => {

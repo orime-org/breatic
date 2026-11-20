@@ -23,7 +23,7 @@ import {
 import { videoContainerJobId } from '@breatic/shared/mini-tools';
 import { advanceMiniToolPlanJob, planReadUntil } from '@worker/handlers/mini-tool/advance-plan-job.js';
 import { StillRunning } from '@worker/handlers/still-running.js';
-import { gridCountOf, presentationRecipeOf } from '@worker/handlers/frozen-plan-facts.js';
+import { gridCountOf, presentationRecipeOf, PresentationFactsUnavailable } from '@worker/handlers/frozen-plan-facts.js';
 import { chunkInputId } from '@worker/handlers/video-presentation-recipes.js';
 
 /** Everything one pickup acts with. */
@@ -118,7 +118,8 @@ function joined(unit: VideoPresentationChunkUnit): VideoPresentationChunkUnit['k
 
 /**
  * The complete standard-4 request of one attempt: the frozen class and D, the attempt's own output key, and its recipe
- * on the candidate's grid (§7.17): its source inputs, and for a stitch each done chunk bound under its chunk id.
+ * on the candidate's grid (§7.17): its source inputs, and for a stitch each done chunk bound under its chunk id. A grid
+ * count names its recipe as the request's count and declares no output.
  * @param pickup - The pickup.
  * @param unit - The unit.
  * @param jobId - The attempt's job id.
@@ -131,11 +132,14 @@ function requestFor(pickup: Pickup, unit: VideoPresentationChunkUnit, jobId: str
   const chunks = chunkKind === null ? [] : stageUnits(chunkKind === 'presentation-edit' ? 'edit' : 'encode', answer.work).map((chunk) => doneOutput(pickup, chunk));
   if (chunkKind !== null && (chunks.length === 0 || chunks.some((key) => key === null))) return null;
   const { recipe, inputs, contentType } = presentationRecipeOf(answer, unit, identity.storageKey);
-  return {
-    schemaVersion: 2, jobId, containerClass: frozen.pricing.standard4.containerClass, deadlineAt: capability.deadlineAt, limits: getMiniToolsConfig().plan_limits,
+  const request = {
+    schemaVersion: 2 as const, jobId, containerClass: frozen.pricing.standard4.containerClass, deadlineAt: capability.deadlineAt, limits: getMiniToolsConfig().plan_limits,
     inputs: [...inputs, ...chunks.map((key, chunk) => ({ inputId: chunkInputId(chunk), storageKey: key! }))],
-    outputs: [{ outputIndex: 0, storageKey: videoPresentationWorkKeyFor(identity.storageKey, jobId), contentType, recipe }],
   };
+  // A grid count declares no output and writes no object; its job report carries the count (§7.17 grid_count).
+  if (recipe.kind === 'grid_count') return { ...request, outputs: [], count: recipe };
+  if (contentType === null) throw new PresentationFactsUnavailable(`${unit.kind}:content_type`);
+  return { ...request, outputs: [{ outputIndex: 0, storageKey: videoPresentationWorkKeyFor(identity.storageKey, jobId), contentType, recipe }] };
 }
 
 /**

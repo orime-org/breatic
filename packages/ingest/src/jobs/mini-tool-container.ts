@@ -110,8 +110,9 @@ function reportOf(record: JobRecord): MiniToolJobReport | MiniToolPlanJobReport 
       };
     });
     const measured = record.reported === undefined ? null : usage;
+    const count = record.reported !== undefined && "count" in record.reported ? record.reported.count : undefined;
     return readMiniToolPlanJobReport(request, state.phase === "done" && measured !== null
-      ? { schemaVersion: 2, state: "done", outputs, usage: measured }
+      ? { schemaVersion: 2, state: "done", outputs, usage: measured, ...(count === undefined ? {} : { count }) }
       : { schemaVersion: 2, state: "failed", reason: state.reason ?? "tool_failed", outputs, usage: measured });
   }
   if (state.phase === "starting" || state.phase === "running") return { state: state.phase };
@@ -213,6 +214,7 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
               key: output.storageKey, url: attemptUrl(mediaObjectUrl(output.storageKey), state.attemptId),
               ...(output.coverKey === undefined ? {} : { coverUrl: attemptUrl(mediaObjectUrl(output.coverKey), state.attemptId) }),
             })),
+            ...(request.count === undefined ? {} : { count: request.count }),
             reportUrl: attemptUrl(`http://${JOB_REPORT_HOST}/report`, state.attemptId),
           } : {
             op: request.op,
@@ -295,6 +297,8 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
           ...(output.packing === undefined ? {} : { packing: output.packing }) };
       }
       if (body.ok && seen.size !== record.request.outputs.length) throw new Error("Incomplete planned report metadata");
+      // A grid count reports its count exactly when it succeeded; no other job reports one (§7.17 grid_count).
+      if ((body.count !== undefined) !== (body.ok && record.request.count !== undefined)) throw new Error("Unexpected planned report count");
       if (record.reported !== undefined) {
         if (canonicalMiniToolValue(record.reported) !== canonicalMiniToolValue(body)) throw new Error("Conflicting immutable container report");
         return;

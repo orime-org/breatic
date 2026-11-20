@@ -47,7 +47,14 @@ export interface MachineStore {
 export const H = 'a'.repeat(64);
 export const T = 'c'.repeat(64);
 export const T2 = 'b'.repeat(64);
-export const PLAN = 'd'.repeat(64);
+// The default probe's plan (§3.2 item 2): 95x63, 25 fps from 0, no audio, BT.709, 8-bit PNG; P carries it (§3.2 item 6).
+export const PLAN_CONTENT = {
+  gridRulesVersion: 1, grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, leadFrames: 0, gridEnd: null, singleFrameDurationMs: 5000 },
+  toolSource: 'original' as 'original' | 'edit', audioTrack: null, display: { width: 95, height: 63 }, color: { matrix: 'bt709', toneMap: 'none' as const }, framePngBitDepth: 8 as const,
+};
+// sha256(canonical(PLAN_CONTENT)) and of the same plan read from an edit file, as literals so a reader's check is real.
+export const PLAN = '74269c2a4cb840ce1b1037b46dc21d3dc2cec7b59d563887fdf6d7b2550540c1';
+export const EDIT_PLAN = 'c306f80d69375ab0ab395f5bcce81048f458ec92888ecaf3f41524159e309c2c';
 export const PRODUCER = '1'.repeat(64);
 export const PROFILE = '2'.repeat(64);
 export const D = 1_900_000_000_000;
@@ -179,7 +186,7 @@ export async function bundle(key: string, versionId: string, toolInputId = T): P
   const head = await env.BUCKET.head(key);
   const descriptor = {
     schemaVersion: 1, sourceFingerprint: H, versionId, toolInputId, planSha256: PLAN, policyVersion: 1, producerVersion: PRODUCER, profileVersion: PROFILE,
-    original: ORIGINAL, display: DISPLAY,
+    original: ORIGINAL, display: DISPLAY, plan: PLAN_CONTENT,
     playback: { kind: 'native', carrier: { storageKey: key, url: `${PUBLIC_BASE}/${key}`, etag: head!.etag, size: head!.size, sha256: await digest(SOURCE_BYTES), contentType: 'video/mp4' }, displayRect: null },
     toolSource: { edit: null, keyframes: KEYFRAMES, sourceDecodeKey: 'sdr_8bit' },
   };

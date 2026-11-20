@@ -10,7 +10,7 @@
  */
 
 import {
-  alphaPackedManifestSchema, videoPresentationDoneReceiptsSchema, videoPresentationKeyFor, videoPresentationObjectURL,
+  alphaPackedManifestSchema, verifyVideoPresentationPlan, videoPresentationDoneReceiptsSchema, videoPresentationKeyFor, videoPresentationObjectURL,
   videoPresentationToolInputId, videoPresentationVersionId, videoPresentationVersionSchema, videoPresentationWorkKeyFor,
   type VideoPresentationAdmissionPolicy, type VideoPresentationProbeFacts, type VideoPresentationOutputReceipt, type VideoPresentationChunkReport, type VideoPresentationChunkUnit,
   type VideoPresentationDisplay, type VideoPresentationEncoding, type VideoPresentationIngestPricing, type VideoPresentationIngestSnapshot,
@@ -32,6 +32,7 @@ import {
 import type { PresentationProbeAnswerParsed } from '@ingest/presentation-run-contract.js';
 import type { PresentationGridInput, PresentationSourceFacts } from '@ingest/presentation-run-types.js';
 import { hashStoredObject } from '@ingest/stored-object.js';
+import { noteFailure } from '@ingest/error-monitoring.js';
 
 /** Backend-authorized admission of one canonical source's presentation work, frozen at the first accept. */
 export interface VideoPresentationAdmission {
@@ -355,8 +356,16 @@ export class VideoPresentationStore {
       const admission = job?.admission;
       const capability = job === undefined || now >= admission!.deadlineAt ? null : { token: job.token, deadlineAt: admission!.deadlineAt };
       const facts = capability === null ? undefined : job?.prepared;
-      const plan = facts === undefined ? null
-        : { route: facts.route, stages: videoCarrierRouteStages(facts.route), toolInputId: job!.candidate.toolInputId, planSha256: facts.planSha256 };
+      // The plan object and the probe facts every unit recipe is written from (§5.1 2a row, §7.17); the playback chunks of
+      // the edit route read its measured edit file, those of reuse_edit V's (§7.1).
+      const version = state?.presentation ?? null;
+      const reused = facts?.route === 'reuse_edit' && version !== null && version.versionId === job!.reuseFrom ? version.toolSource.edit : null;
+      const plan = facts === undefined ? null : {
+        route: facts.route, stages: videoCarrierRouteStages(facts.route), toolInputId: job!.candidate.toolInputId, planSha256: facts.planSha256,
+        content: facts.plan, display: facts.display,
+        source: { color: facts.source.color, keyframes: facts.source.keyframes, editTier: facts.source.editTier, alpha: facts.source.alpha },
+        editStorageKey: (facts.route === 'edit' ? job!.editFile : reused)?.storageKey ?? null,
+      };
       const units = Object.fromEntries(Object.entries(job?.chunks ?? {}).map(([key, chunk]) => [key, {
         state: chunk.state, attempt: chunk.attempt, attempts: chunk.attempts.map(({ attempt, jobId, state: attemptState, usageRecorded }) => ({ attempt, jobId, state: attemptState, usageRecorded })),
         ...(job?.receipts?.[key] === undefined ? {} : { receipts: job.receipts[key] }),
@@ -364,7 +373,8 @@ export class VideoPresentationStore {
       // The carrier's encode parameters frozen at admission reach the worker, so every chunk encodes alike (§5.4).
       const frozen = admission?.pricing === undefined || admission.actorUserId === undefined || admission.limits === undefined || admission.encoding === undefined ? null
         : { pricing: admission.pricing, actorUserId: admission.actorUserId, projectId: admission.projectId ?? null,
-          carrier: { crf: admission.limits.crf, preset: admission.limits.preset, maxShortSide: admission.encoding.carrier.maxShortSide } };
+          carrier: { crf: admission.limits.crf, preset: admission.limits.preset, maxShortSide: admission.encoding.carrier.maxShortSide },
+          edit: { crf: admission.encoding.edit.crf, preset: admission.encoding.edit.preset } };
       return { ...snapshot, capability, plan, work: facts?.work ?? { kind: 'none' }, units, frozen };
     });
   }
@@ -539,7 +549,7 @@ export class VideoPresentationStore {
       toolInputId, display: facts.display, playback: { sha256: playback.carrier.sha256, size: playback.carrier.size, contentType: playback.carrier.contentType } });
     return {
       schemaVersion: 1, sourceFingerprint: admission.sourceFingerprint, versionId, toolInputId, planSha256: facts.planSha256, policyVersion, producerVersion, profileVersion,
-      original: admission.original ?? { width: null, height: null, duration: null }, display: facts.display, playback, toolSource,
+      original: admission.original ?? { width: null, height: null, duration: null }, display: facts.display, plan: facts.plan, playback, toolSource,
     };
   }
 
@@ -782,7 +792,8 @@ export class VideoPresentationStore {
 
   /**
    * Submit Pub for a verified job: physical completeness and currency decide the selection; the current descriptor (R0) is
-   * replaced in R2 under its observed ETag before the DO selects it.
+   * replaced in R2 under its observed ETag before the DO selects it. A bundle whose plan is not the one its digest names
+   * (§3.2 item 6) is never published, and the mismatch is reported.
    * @param state - The state.
    * @param job - The verified job.
    * @returns Nothing.
@@ -792,6 +803,12 @@ export class VideoPresentationStore {
     const parsed = videoPresentationVersionSchema.safeParse(job.bundle);
     if (!parsed.success) return;
     const bundle = parsed.data;
+    // A throw here would break the Durable Object's input gate; the bundle is refused and the mismatch reported instead.
+    const mismatch = await verifyVideoPresentationPlan(bundle).then(() => null, (err: unknown) => err);
+    if (mismatch !== null) {
+      noteFailure('ingest_video_presentation_plan_mismatch', { storageKey: job.admission.storageKey, jobId: job.admission.jobId, versionId: bundle.versionId }, mismatch);
+      return;
+    }
     const complete = await this.bundleComplete(state, job, bundle);
     const current = state.current === job && !job.candidate.archived;
     const step = advanceSelectedPresentation(state.selected, { kind: 'Pub', candidate: { versionId: bundle.versionId, toolInputId: bundle.toolInputId }, complete, current });

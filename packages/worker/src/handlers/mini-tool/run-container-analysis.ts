@@ -124,7 +124,6 @@ function peopleRecipe(job: RegisteredMiniToolPlanJob): Extract<MiniToolPlanRecip
  * @param execution - The original SQL-owned execution identity, source and context.
  * @param deadlineAt - The task's unchanged computation deadline.
  * @returns The complete owned result after its registered dependencies are available.
- * @throws {MiniToolStepFailed} When the plan's colour is not available.
  * @throws {Error} When an original step, artifact or analysis cannot be completed.
  */
 export async function runMiniToolContainerAnalysis(

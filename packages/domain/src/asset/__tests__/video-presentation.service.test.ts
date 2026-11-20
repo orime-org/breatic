@@ -61,6 +61,8 @@ const bundle = {
   schemaVersion: 1, sourceFingerprint: H, versionId: 'e'.repeat(64), toolInputId: T, planSha256: PLAN, policyVersion: 1, producerVersion: 'd'.repeat(64), profileVersion: 'd'.repeat(64),
   original: { width: 64, height: 48, duration: 2.125 },
   display: { width: 64, height: 48, fps: { numerator: 8, denominator: 1 }, frameCount: 17, gridStart: { numerator: 0, denominator: 1 }, realFrameCount: 17, leadFrames: 0, holdFrames: 0 },
+  plan: { gridRulesVersion: 1, grid: { fps: { numerator: 8, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, leadFrames: 0, gridEnd: null, singleFrameDurationMs: 5000 },
+    toolSource: 'original', audioTrack: null, display: { width: 64, height: 48 }, color: { matrix: 'bt709', toneMap: 'none' }, framePngBitDepth: 8 },
   playback: { kind: 'native', carrier: { storageKey: asset.storageKey, url: canonicalURL, etag: 'e1', size: 4096, sha256: 'f'.repeat(64), contentType: 'video/webm' }, displayRect: null },
   toolSource: { edit: null, keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false }, sourceDecodeKey: 'sdr_8bit' },
 };

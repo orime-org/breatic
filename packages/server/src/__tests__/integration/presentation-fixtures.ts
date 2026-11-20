@@ -80,7 +80,7 @@ export async function presentedSource(hash: string, sourceKey: string, publicUrl
     schemaVersion: 1, sourceFingerprint: hash, versionId: REMOVAL_VERSION_ID, toolInputId, planSha256, policyVersion: 1, producerVersion: DIGEST, profileVersion: DIGEST,
     original: { width: plan.display.width, height: plan.display.height, duration: options.duration ?? 5.055 },
     display: { ...REMOVAL_DISPLAY, ...options.display, ...plan.display, fps: plan.grid.fps, gridStart: plan.grid.gridStart },
-    playback, toolSource: { edit, keyframes: options.keyframes ?? REMOVAL_KEYFRAMES, sourceDecodeKey: "sdr_8bit" },
+    plan, playback, toolSource: { edit, keyframes: options.keyframes ?? REMOVAL_KEYFRAMES, sourceDecodeKey: "sdr_8bit" },
   });
   const snapshot = { sourceBinding: { storageKey: sourceKey, sourceFingerprint: hash }, presentation: bundle, preparation: null, readmit: false };
   return { presentationRef: { source: { toolInputId, planSha256 } }, versionId: REMOVAL_VERSION_ID, bundle, snapshot };

@@ -79,7 +79,6 @@ function workChunk(execution: Transitions, spec: (attempt: number) => VideoConta
  * @param userId - Who ran the tool.
  * @param deadlineAt - The task deadline.
  * @returns The one output once it is settled, and whether a job still runs.
- * @throws {MiniToolStepFailed} When a clip's plan colour is not available.
  * @throws {Error} When persistence, grants or registration fail.
  */
 export async function runMiniToolTransitions(execution: AcceptedMiniToolExecution, userId: string, deadlineAt: number): Promise<VideoToolPickup> {

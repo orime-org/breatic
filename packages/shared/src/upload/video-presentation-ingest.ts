@@ -4,8 +4,12 @@
 import type { ContainerUsage } from '@shared/upload/container-usage.js';
 import { z } from 'zod';
 import { videoPresentationOriginalSchema } from '@shared/upload/video-presentation.js';
-import { rationalTimeSchema, videoPresentationVersionSchema, type VideoPresentationVersion } from '@shared/upload/video-presentation-version.js';
-import { videoCarrierRouteStages, type VideoCarrierStage } from '@shared/mini-tools/video-encode-plan.js';
+import {
+  rationalTimeSchema, sourceKeyframeStatsSchema, verifyVideoPresentationPlan, videoPresentationDisplaySchema, videoPresentationPlanSchema, videoPresentationVersionSchema,
+  type VideoPresentationVersion,
+} from '@shared/upload/video-presentation-version.js';
+import { EDIT_FILE_TIERS, videoCarrierRouteStages, type VideoCarrierStage } from '@shared/mini-tools/video-encode-plan.js';
+import { miniToolPlanColorInputsSchema } from '@shared/upload/mini-tool-plan-job.js';
 import { askWorker } from '@shared/upload/ingest-client.js';
 export { videoPresentationWorkKeyFor } from '@shared/upload/video-presentation-keys.js';
 import {
@@ -180,8 +184,17 @@ export const videoPresentationPrepareAnswerSchema = z.strictObject({
   preparation: videoPresentationIngestPreparationSchema.nullable(),
   usageFact: z.strictObject({ jobId: z.string().min(1), actorUserId: z.uuid(), projectId: z.uuid().nullable(), usage, pricing: videoPresentationPricingSchema }).optional(),
   capability: z.strictObject({ token: z.string().min(1), deadlineAt }).nullable(),
-  // toolInputId is null until an edit file is written and measured (§3.2 item 3).
-  plan: z.strictObject({ route: z.enum(['encode', 'edit', 'reuse_edit', 'reuse']), stages: z.array(stage), toolInputId: hash.nullable(), planSha256: hash }).nullable(),
+  // toolInputId is null until an edit file is written and measured (§3.2 item 3). The plan object itself, adopted only when
+  // its digest is planSha256, and the probe facts each unit recipe is written from (§5.1 2a row, §7.17): the candidate's
+  // display grid (the probe's estimate until the count makes it exact), the colour inputs, source keyframe statistics and
+  // alpha, the edit tier (null without an edit file), and the edit file the playback chunks read (the measured one on the
+  // edit route once written, V's on reuse_edit; null otherwise).
+  plan: z.strictObject({
+    route: z.enum(['encode', 'edit', 'reuse_edit', 'reuse']), stages: z.array(stage), toolInputId: hash.nullable(), planSha256: hash,
+    content: videoPresentationPlanSchema, display: videoPresentationDisplaySchema,
+    source: z.strictObject({ color: miniToolPlanColorInputsSchema, keyframes: sourceKeyframeStatsSchema, editTier: z.enum(EDIT_FILE_TIERS).nullable(), alpha: z.boolean() }),
+    editStorageKey: storageKey.nullable(),
+  }).nullable(),
   // The grid frame windows of the playback chunks, and of the edit file's chunks on the edit route (§5.4 chunking row).
   work: z.discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal('none') }),
@@ -195,9 +208,10 @@ export const videoPresentationPrepareAnswerSchema = z.strictObject({
     receipts: videoPresentationOutputReceiptsSchema.optional(),
   })),
   // Null only for a job this DO never admitted.
-  // carrier: the encode parameters frozen at admission, so every chunk of the job encodes alike (§5.4, §91 D3b-1).
+  // carrier and edit: the encode parameters frozen at admission, so every chunk of the job encodes alike (§5.4, §91 D3b-1).
   frozen: z.strictObject({ pricing: z.strictObject({ basic: videoPresentationPricingSchema, standard4: videoPresentationPricingSchema }), actorUserId: z.uuid(), projectId: z.uuid().nullable(),
-    carrier: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema, maxShortSide: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }) }).nullable(),
+    carrier: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema, maxShortSide: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
+    edit: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }) }).nullable(),
 }).superRefine((value, ctx) => {
   checkSelectedVideoPresentation(value, value.sourceBinding.sourceFingerprint, ctx);
   const { plan, work } = value;
@@ -206,9 +220,39 @@ export const videoPresentationPrepareAnswerSchema = z.strictObject({
   const kind = plan === null || plan.route === 'reuse' ? 'none' : plan.route === 'edit' ? 'edit' : 'encode';
   if (plan !== null && work.kind !== kind) ctx.addIssue({ code: 'custom', path: ['work'], message: 'The work does not belong to the route' });
   if (plan !== null && plan.route !== 'edit' && plan.toolInputId === null) ctx.addIssue({ code: 'custom', path: ['plan', 'toolInputId'], message: 'Only the edit route plans before its toolInputId is known' });
+  if (plan !== null && plan.route === 'edit' && plan.source.editTier === null) ctx.addIssue({ code: 'custom', path: ['plan', 'source', 'editTier'], message: 'The edit route encodes at its edit tier' });
 });
 /** A parsed prepare answer. */
 export type VideoPresentationPrepareAnswer = z.infer<typeof videoPresentationPrepareAnswerSchema>;
+
+/**
+ * Read a prepare answer across the trust boundary: the strict shape, then the plan content and the selected version's plan,
+ * each adopted only when it is the plan its digest names (§3.2 item 6).
+ * @param value - The unparsed answer.
+ * @returns The validated answer.
+ * @throws {z.ZodError} When the answer is malformed.
+ * @throws {Error} When a plan is not the one its planSha256 names.
+ */
+export async function readVideoPresentationPrepareAnswer(value: unknown): Promise<VideoPresentationPrepareAnswer> {
+  const answer = videoPresentationPrepareAnswerSchema.parse(value);
+  if (answer.plan !== null) await verifyVideoPresentationPlan({ plan: answer.plan.content, planSha256: answer.plan.planSha256 });
+  if (answer.presentation !== null) await verifyVideoPresentationPlan(answer.presentation);
+  return answer;
+}
+
+/**
+ * Read a snapshot across the trust boundary: the strict shape, then the selected version's plan, adopted only when it is the
+ * plan its digest names (§3.2 item 6).
+ * @param value - The unparsed snapshot.
+ * @returns The validated snapshot.
+ * @throws {z.ZodError} When the snapshot is malformed.
+ * @throws {Error} When the selected version's plan is not the one its planSha256 names.
+ */
+export async function readVideoPresentationIngestSnapshot(value: unknown): Promise<VideoPresentationIngestSnapshot> {
+  const snapshot = videoPresentationIngestSnapshotSchema.parse(value);
+  if (snapshot.presentation !== null) await verifyVideoPresentationPlan(snapshot.presentation);
+  return snapshot;
+}
 
 /**
  * The public URL of an object ingest writes or receives: the frozen public base joined to its key.
@@ -241,10 +285,10 @@ function askPresentation(baseURL: string, secret: string, request: VideoPresenta
  * @param secret - Shared backend credential.
  * @param request - The job identity.
  * @returns The validated answer.
- * @throws {Error} When ingest refuses or answers a malformed answer.
+ * @throws {Error} When ingest refuses, answers a malformed answer or a plan its digest does not name.
  */
 export async function prepareVideoPresentationAtIngest(baseURL: string, secret: string, request: Extract<VideoPresentationIngestRequest, { action: 'prepare' }>): Promise<VideoPresentationPrepareAnswer> {
-  return videoPresentationPrepareAnswerSchema.parse(await askPresentation(baseURL, secret, request));
+  return readVideoPresentationPrepareAnswer(await askPresentation(baseURL, secret, request));
 }
 
 /**
@@ -265,12 +309,12 @@ export async function stepVideoPresentationAtIngest(baseURL: string, secret: str
  * @param secret - Shared backend credential.
  * @param request - A replay-safe source and attempt operation.
  * @returns Durable admission and validated presentation facts.
- * @throws {Error} When ingest refuses or answers malformed source facts.
+ * @throws {Error} When ingest refuses, answers malformed source facts or a selected plan its digest does not name.
  */
 export async function videoPresentationAtIngest(
   baseURL: string,
   secret: string,
   request: Exclude<VideoPresentationIngestRequest, { action: 'prepare' | 'advance_stage' | 'report_chunk' }>,
 ): Promise<VideoPresentationIngestSnapshot> {
-  return videoPresentationIngestSnapshotSchema.parse(await askPresentation(baseURL, secret, request));
+  return readVideoPresentationIngestSnapshot(await askPresentation(baseURL, secret, request));
 }

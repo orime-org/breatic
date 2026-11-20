@@ -34,6 +34,8 @@ function versionOf(fps: number, count: number, size: { width: number; height: nu
     schemaVersion: 1, sourceFingerprint: DIGEST, versionId: DIGEST, toolInputId: DIGEST, planSha256: DIGEST, policyVersion: 1, producerVersion: DIGEST, profileVersion: DIGEST,
     original: { ...size, duration: count / fps },
     display: { ...size, fps: { numerator: fps, denominator: 1 }, frameCount: count, gridStart: { numerator: 0, denominator: 1 }, realFrameCount: count, leadFrames: 0, holdFrames: 0 },
+    plan: { gridRulesVersion: 1, grid: { fps: { numerator: fps, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, leadFrames: 0, gridEnd: null, singleFrameDurationMs: 5000 },
+      toolSource: "original", audioTrack: null, display: size, color: { matrix: "bt709", toneMap: "none" }, framePngBitDepth: 8 },
     playback: { kind: "native", carrier: receipt, displayRect: null },
     toolSource: { edit: null, keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false }, sourceDecodeKey: "sdr_8bit" },
   };

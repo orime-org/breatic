@@ -17,10 +17,13 @@ import { env } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import * as shared from '@breatic/shared';
 import { videoContainerJobId } from '@breatic/shared/mini-tools';
-import { alphaPackedManifestMatchesVersion, alphaPackedManifestSchema, videoPresentationToolInputId, videoPresentationVersionId, videoPresentationVersionSchema } from '@breatic/shared';
+import {
+  alphaPackedManifestMatchesVersion, alphaPackedManifestSchema, verifyVideoPresentationPlan, videoPresentationPlanSha256, videoPresentationToolInputId, videoPresentationVersionId,
+  videoPresentationVersionSchema,
+} from '@breatic/shared';
 import * as storeModule from '@ingest/video-presentation-store.js';
 import {
-  admission, D, digest, DISPLAY, ENCODING, H, KEYFRAMES, PLAN, PRICING, PRODUCER, PROFILE, PUBLIC_BASE, source, withStore, type Identity, type MachineStore,
+  admission, D, digest, DISPLAY, EDIT_PLAN, ENCODING, H, KEYFRAMES, PLAN, PLAN_CONTENT, PRICING, PRODUCER, PROFILE, PUBLIC_BASE, source, withStore, type Identity, type MachineStore,
 } from './helpers/machine-store.js';
 
 const EDIT_PROFILE = '3'.repeat(64);
@@ -37,16 +40,18 @@ interface Answer {
   presentation: Record<string, unknown> | null;
   preparation: { targetPolicyVersion: number; jobId: string; stage: string | null; failure: string | null } | null;
   capability: { token: string; deadlineAt: number } | null;
-  plan: { route: string; stages: string[]; toolInputId: string | null; planSha256: string } | null;
+  plan: { route: string; stages: string[]; toolInputId: string | null; planSha256: string; content: Record<string, unknown>; display: Record<string, unknown>;
+    source: Record<string, unknown>; editStorageKey: string | null } | null;
   work: Work;
   units: Record<string, { state: string; attempt: number; attempts: { attempt: number; jobId: string; state: string; usageRecorded: boolean }[]; receipts?: Record<string, unknown>[] }>;
-  frozen: { pricing: unknown; actorUserId: string; projectId: string | null; carrier?: unknown };
+  frozen: { pricing: unknown; actorUserId: string; projectId: string | null; carrier?: unknown; edit?: unknown };
 }
 type Prepare = (store: MachineStore, identity: { storageKey: string; sourceFingerprint: string; jobId: string }, port: Port, now: number) => Promise<Answer>;
 type Report = { kind: 'Sub' } | { kind: 'Done'; attempt: number; usage: number; receipts?: Record<string, unknown>[]; count?: Record<string, unknown> }
   | { kind: 'Fail'; attempt: number; code: string; usage: number | null };
 
 const USAGE = { wallMs: 4200, cpuUsec: 1_000_000 };
+const COLOR_INPUTS = { matrix: 'bt709', transfer: 'bt709', primaries: 'bt709', range: 'tv', chromaLocation: 'left' };
 
 /**
  * A planned probe answer (the contract's shape): an opaque 8-bit H.264 at 25 fps, 60 frames from 0, no audio.
@@ -56,12 +61,12 @@ const USAGE = { wallMs: 4200, cpuUsec: 1_000_000 };
 function planned(options: ProbeOptions = {}): ProbeOutcome {
   const { width = 95, height = 63, frames = 60, edit = false, seekable = true, keyframes = KEYFRAMES } = options;
   return {
+    // The digest is the plan's own: fakePort computes it, as the container does (§3.2 item 2).
     kind: 'planned', planSha256: PLAN,
-    plan: { gridRulesVersion: 1, grid: { fps: FPS, gridStart: ZERO, leadFrames: 0, gridEnd: null, singleFrameDurationMs: 5000 }, toolSource: edit ? 'edit' : 'original',
-      audioTrack: null, display: { width, height }, color: { matrix: 'bt709', toneMap: 'none' }, framePngBitDepth: 8 },
+    plan: { ...PLAN_CONTENT, grid: { fps: FPS, gridStart: ZERO, leadFrames: 0, gridEnd: null, singleFrameDurationMs: 5000 }, toolSource: edit ? 'edit' : 'original', display: { width, height } },
     versions: { producerVersion: PRODUCER, profileVersion: PROFILE, editProfileVersion: edit ? EDIT_PROFILE : null, ...options.versions },
     source: { sourceDecodeKey: 'sdr_8bit', keyframes, hdr: false, alpha: false, editTier: edit ? 'edit_h264_intra_8bit_420' : null, seekable, bitDepth: 8,
-      color: { matrix: 'bt709', transfer: 'bt709', primaries: 'bt709', range: 'tv', chromaLocation: 'left' } },
+      color: COLOR_INPUTS },
     gridInput: { fps: FPS, firstVideoTime: ZERO, firstAudioFrameTime: null, audioEnd: null, quantum: ZERO },
     estimate: { lastVideoTime: { numerator: frames - 1, denominator: 25 }, sourceFrames: frames, frameCount: frames, realFrameCount: frames },
     sourceBytes: 4,
@@ -89,12 +94,21 @@ function checked(answer: Answer): Answer {
 }
 
 /**
+ * A probe outcome with the digest of its own plan, as the container answers it.
+ * @param outcome - The outcome.
+ * @returns It, with planSha256 = sha256(canonical(plan)).
+ */
+async function withDigest(outcome: ProbeOutcome): Promise<ProbeOutcome> {
+  return outcome.kind === 'planned' ? { ...outcome, planSha256: await videoPresentationPlanSha256(outcome.plan) } : outcome;
+}
+
+/**
  * A fake port: the probe answers `outcome`; usage is measured.
  * @param outcome - The probe outcome.
  * @returns The port and its spies.
  */
 function fakePort(outcome: ProbeOutcome): Port & { spies: { probe: ReturnType<typeof vi.fn>; usage: ReturnType<typeof vi.fn> } } {
-  const probe = vi.fn(async () => outcome);
+  const probe = vi.fn(async () => withDigest(outcome));
   const usage = vi.fn(async () => USAGE);
   return { probe, usage, spies: { probe, usage } };
 }
@@ -167,7 +181,7 @@ function native(receipt: Record<string, unknown>): Record<string, unknown>[] {
  * @returns It.
  */
 function toolInputOf(editFileSha256: string | null = null): Promise<string> {
-  return videoPresentationToolInputId({ sourceFingerprint: H, planSha256: PLAN, editFileSha256 });
+  return videoPresentationToolInputId({ sourceFingerprint: H, planSha256: editFileSha256 === null ? PLAN : EDIT_PLAN, editFileSha256 });
 }
 
 /**
@@ -178,10 +192,11 @@ function toolInputOf(editFileSha256: string | null = null): Promise<string> {
  * @param measured.sha256 - Its SHA-256.
  * @param measured.sizeBytes - Its size.
  * @param display - The display grid.
+ * @param planSha256 - The plan's digest.
  * @returns The versionId.
  */
-function expectedVersionId(policyVersion: number, toolInputId: string, measured: { sha256: string; sizeBytes: number }, display: Record<string, unknown> = DISPLAY): Promise<string> {
-  return videoPresentationVersionId({ sourceFingerprint: H, policyVersion, producerVersion: PRODUCER, profileVersion: PROFILE, planSha256: PLAN, toolInputId,
+function expectedVersionId(policyVersion: number, toolInputId: string, measured: { sha256: string; sizeBytes: number }, display: Record<string, unknown> = DISPLAY, planSha256 = PLAN): Promise<string> {
+  return videoPresentationVersionId({ sourceFingerprint: H, policyVersion, producerVersion: PRODUCER, profileVersion: PROFILE, planSha256, toolInputId,
     display: display as typeof DISPLAY, playback: { sha256: measured.sha256, size: measured.sizeBytes, contentType: 'video/mp4' } });
 }
 
@@ -328,8 +343,9 @@ describe('granting the basic execution (inner#1306 §5.1 step 1, §7.1 St)', () 
     await withStore(key, async (store) => {
       const answer = await admitAndPrepare(store, key, 'job-a', fakePort(planned()));
       expect(answer.capability).toEqual({ token: expect.any(String), deadlineAt: D });
-      // The carrier encode parameters frozen at admission (limits crf/preset, encoding carrier cap) reach the worker.
-      expect(answer.frozen).toEqual({ pricing: PRICING, actorUserId: admission(key, 'job-a').actorUserId, projectId: null, carrier: { crf: 18, preset: 'medium', maxShortSide: ENCODING.carrier.maxShortSide } });
+      // The carrier and edit-file encode parameters frozen at admission (limits crf/preset, encoding carrier cap and edit settings) reach the worker.
+      expect(answer.frozen).toEqual({ pricing: PRICING, actorUserId: admission(key, 'job-a').actorUserId, projectId: null, carrier: { crf: 18, preset: 'medium', maxShortSide: ENCODING.carrier.maxShortSide },
+        edit: { crf: ENCODING.edit.crf, preset: ENCODING.edit.preset } });
     });
   });
 });
@@ -339,7 +355,7 @@ describe('the plan and route inside one basic execution (inner#1306 §5.1 step 2
     const key = await source();
     await withStore(key, async (store) => {
       const answer = await admitAndPrepare(store, key, 'job-a', fakePort(planned()));
-      expect(answer.plan).toEqual({ route: 'encode', stages: ['plan', 'count', 'encode', 'stitch', 'publish'], toolInputId: await toolInputOf(), planSha256: PLAN });
+      expect(answer.plan).toMatchObject({ route: 'encode', stages: ['plan', 'count', 'encode', 'stitch', 'publish'], toolInputId: await toolInputOf(), planSha256: PLAN });
       expect(answer.work.kind).toBe('encode');
       expectTiles((answer.work as Extract<Work, { kind: 'encode' }>).chunks, 60);
       expect(answer.presentation).toBe(null);
@@ -352,7 +368,7 @@ describe('the plan and route inside one basic execution (inner#1306 §5.1 step 2
     const key = await source();
     await withStore(key, async (store) => {
       const answer = await admitAndPrepare(store, key, 'job-a', fakePort(planned({ edit: true })));
-      expect(answer.plan).toEqual({ route: 'edit', stages: ['plan', 'count', 'edit', 'edit_stitch', 'encode', 'stitch', 'publish'], toolInputId: null, planSha256: PLAN });
+      expect(answer.plan).toMatchObject({ route: 'edit', stages: ['plan', 'count', 'edit', 'edit_stitch', 'encode', 'stitch', 'publish'], toolInputId: null, planSha256: EDIT_PLAN });
       const work = answer.work as Extract<Work, { kind: 'edit' }>;
       expect(work.kind).toBe('edit');
       expectTiles(work.editChunks, 60);
@@ -433,6 +449,40 @@ describe('every pickup reads the started job without probing again (inner#1306 �
   });
 });
 
+describe('the prepare answer carries the plan and the probe facts the worker writes recipes from (inner#1306 §5.1 2a row, §7.17)', () => {
+  it('PF01 a granted job\'s answer carries the plan object, its estimated grid, the probe\'s colour, keyframe and alpha facts and the frozen edit encode', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const answer = await admitAndPrepare(store, key, 'job-a', fakePort(planned()));
+      expect(answer.plan).toMatchObject({ content: PLAN_CONTENT, display: DISPLAY, editStorageKey: null,
+        source: { color: COLOR_INPUTS, keyframes: KEYFRAMES, editTier: null, alpha: false } });
+      await expect(verifyVideoPresentationPlan({ plan: answer.plan!.content as typeof PLAN_CONTENT, planSha256: answer.plan!.planSha256 })).resolves.toBeUndefined();
+      expect(answer.frozen.edit).toEqual({ crf: ENCODING.edit.crf, preset: ENCODING.edit.preset });
+    });
+  });
+
+  it('PF02 the edit route answers its tier, and the edit file the playback chunks read once the edit stitch is measured', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const answer = await admitAndPrepare(store, key, 'job-a', fakePort(planned({ edit: true })));
+      expect(answer.plan).toMatchObject({ content: { ...PLAN_CONTENT, toolSource: 'edit' }, source: { editTier: 'edit_h264_intra_8bit_420' }, editStorageKey: null });
+      const edit = await editStitched(store, key, capabilityOf(key, answer), answer);
+      const after = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-a' }, fakePort(planned({ edit: true })), Date.now()));
+      expect(after.plan?.editStorageKey).toBe(edit.storageKey);
+    });
+  });
+
+  it('PF03 the exact count is the answer\'s display grid once the count is done', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const answer = await admitAndPrepare(store, key, 'job-a', fakePort(planned()));
+      await counted(store, capabilityOf(key, answer), { lastVideoTime: { numerator: 71, denominator: 25 }, sourceFrames: 72 });
+      const after = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-a' }, fakePort(planned()), Date.now()));
+      expect(after.plan?.display).toEqual({ ...DISPLAY, frameCount: 72, realFrameCount: 72 });
+    });
+  });
+});
+
 describe('the count makes the grid exact (inner#1306 §4.1 frame count row, §5.4 chunking row)', () => {
   it('CG01 a count that decodes more frames than the estimate re-plans the windows on the exact count and publishes that grid', async () => {
     const key = await source();
@@ -460,7 +510,7 @@ describe('publishing after the stitch (inner#1306 §5.1 step 4, §3.2 items 4 an
       const toolInputId = await toolInputOf();
       expect(view.presentation).toEqual({
         schemaVersion: 1, sourceFingerprint: H, versionId: await expectedVersionId(1, toolInputId, carrier.receipt), toolInputId, planSha256: PLAN, policyVersion: 1,
-        producerVersion: PRODUCER, profileVersion: PROFILE, original: { width: 95, height: 63, duration: 2.4 }, display: DISPLAY,
+        producerVersion: PRODUCER, profileVersion: PROFILE, original: { width: 95, height: 63, duration: 2.4 }, display: DISPLAY, plan: PLAN_CONTENT,
         // The carrier URL is the frozen public base joined to its storage key; the 95x63 picture is padded to even inside it (§4.3).
         playback: { kind: 'native', displayRect: { x: 0, y: 0, width: 95, height: 63 },
           carrier: { storageKey: carrier.receipt.storageKey, url: `${PUBLIC_BASE}/${carrier.receipt.storageKey}`, etag: carrier.etag, size: carrier.receipt.sizeBytes, sha256: carrier.receipt.sha256, contentType: 'video/mp4' } },
@@ -490,6 +540,36 @@ describe('publishing after the stitch (inner#1306 §5.1 step 4, §3.2 items 4 an
   });
 });
 
+describe('P carries its plan, adopted only under its digest (inner#1306 §3.2 item 6)', () => {
+  it('PB04 the published bundle carries the probe\'s plan and passes the reader\'s check', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      await publishEncoded(store, key);
+      const version = videoPresentationVersionSchema.parse((await store.read(key, H)).presentation);
+      expect(version.plan).toEqual(PLAN_CONTENT);
+      await expect(verifyVideoPresentationPlan(version)).resolves.toBeUndefined();
+    });
+  });
+
+  it('PB05 a bundle whose plan is not the one its digest names is never published', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const port = fakePort(planned());
+      port.spies.probe.mockImplementation(async () => ({ ...planned(), planSha256: EDIT_PLAN }));
+      const answer = await admitAndPrepare(store, key, 'job-a', port);
+      const capability = capabilityOf(key, answer);
+      await counted(store, capability);
+      await encodeAndOpenStitch(store, key, capability);
+      const carrier = await writeOutput(workKey(key, videoContainerJobId({ kind: 'presentation-stitch', jobId: 'job-a', attempt: 1 })), new Uint8Array([1, 2]));
+      expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Done', attempt: 1, usage: 3000, receipts: native(carrier.receipt) })).toBe(true);
+      await store.advanceStage(capability, 'publish');
+      expect((await store.read(key, H)).selected.kind).not.toBe('ready');
+      expect(logged).toHaveBeenCalledWith('ingest_video_presentation_plan_mismatch', expect.objectContaining({ jobId: 'job-a' }));
+    });
+  });
+});
+
 describe('the edit file (inner#1306 §4.2, §3.2 item 3, §3.5 edit-file receipt row)', () => {
   it('ED01 the measured edit file gives the toolInputId; playback encodes after it and P carries its receipt', async () => {
     const key = await source();
@@ -503,7 +583,7 @@ describe('the edit file (inner#1306 §4.2, §3.2 item 3, §3.5 edit-file receipt
       const carrier = await stitchAndPublish(store, key, capability);
       const version = videoPresentationVersionSchema.parse((await store.read(key, H)).presentation);
       expect(version.toolInputId).toBe(toolInputId);
-      expect(version.versionId).toBe(await expectedVersionId(1, toolInputId, carrier.receipt));
+      expect(version.versionId).toBe(await expectedVersionId(1, toolInputId, carrier.receipt, DISPLAY, EDIT_PLAN));
       expect(version.toolSource.edit).toEqual({ storageKey: edit.storageKey, url: `${PUBLIC_BASE}/${String(edit.storageKey)}`, etag: edit.etag, size: edit.sizeBytes,
         sha256: edit.sha256, contentType: 'video/mp4', editProfileVersion: EDIT_PROFILE, tier: 'edit_h264_intra_8bit_420' });
     });
@@ -582,7 +662,7 @@ describe('the carrier reuse route from the selected bundle\'s identity (inner#13
       port.spies.probe.mockImplementation(async () => {
         await env.BUCKET.delete(shared.videoPresentationKeyFor(key));
         expect((await store.read(key, H)).selected.kind).toBe('invalid');
-        return planned();
+        return withDigest(planned());
       });
       const answer = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-b' }, port, Date.now()));
       expect(answer.plan?.route).toBe('reuse');
@@ -615,7 +695,9 @@ describe('the edit-file reuse route (inner#1306 §7.1 复用编辑用文件, §3
     await withStore(key, async (store) => {
       const v = await publishEdited(store, key);
       const answer = await admitAndPrepare(store, key, 'job-b', fakePort(planned({ edit: true, versions: { profileVersion: 'f'.repeat(64) } })));
-      expect(answer.plan).toEqual({ route: 'reuse_edit', stages: ['plan', 'encode', 'stitch', 'publish'], toolInputId: v.toolInputId, planSha256: PLAN });
+      expect(answer.plan).toMatchObject({ route: 'reuse_edit', stages: ['plan', 'encode', 'stitch', 'publish'], toolInputId: v.toolInputId, planSha256: EDIT_PLAN });
+      // §5.1 2a row: the playback chunks of the reuse route read V's edit file.
+      expect(answer.plan?.editStorageKey).toBe(v.toolSource.edit!.storageKey);
       const capability = capabilityOf(key, answer, 'job-b');
       await encodeAndOpenStitch(store, key, capability);
       await stitchAndPublish(store, key, capability, new Uint8Array([4, 4, 4]));

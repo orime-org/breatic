@@ -274,6 +274,32 @@ describe("planned startup facts preserve unknown consumption, with only the cont
   });
 
   // S6d D3-3 (inner#1306 §91): the job report hands a packed output's geometry on to the worker.
+  // Frames-split design §7.17 grid_count: the request declares no output and writes no object; the count reaches the report.
+  const COUNT_JOB = { ...PLAN, jobId: "plan-count-1", outputs: [],
+    count: { kind: "grid_count", inputId: PLAN.inputs[0]!.inputId, gridStart: { numerator: 0, denominator: 1 }, fps: { numerator: 25, denominator: 1 }, gridEnd: null } } as MiniToolPlanJobRequest;
+  const COUNTED = { lastVideoTime: { numerator: 49, denominator: 25 }, sourceFrames: 50 };
+
+  it("GC06 a grid count job sends its count recipe and no output, and its done report carries the container's count", async () => {
+    const { object, storage } = owner();
+    expect(await object.submit(COUNT_JOB)).toEqual({ schemaVersion: 2, state: "running" });
+    const sent = await runtime.sent[0]!.json<Record<string, unknown>>();
+    expect(sent).toMatchObject({ outputs: [], count: COUNT_JOB.count });
+    const attemptId = (storage.get("job") as { state: { attemptId: string } }).state.attemptId;
+    await object.noteReported({ schemaVersion: 2, attemptId, ok: true, cpuUsec: 123, outputs: [], count: COUNTED });
+    expect(await object.report()).toEqual({ schemaVersion: 2, state: "done", outputs: [], usage: { wallMs: 0, cpuUsec: 123 }, count: COUNTED });
+  });
+
+  it("GC07 a count job's ok report without its count, or an output job's report with one, is refused", async () => {
+    const counting = owner();
+    await counting.object.submit(COUNT_JOB);
+    const countAttempt = (counting.storage.get("job") as { state: { attemptId: string } }).state.attemptId;
+    await expect(counting.object.noteReported({ schemaVersion: 2, attemptId: countAttempt, ok: true, cpuUsec: 1, outputs: [] })).rejects.toThrow(/count/);
+    const writing = owner();
+    await writing.object.submit(PLAN);
+    const attemptId = (writing.storage.get("job") as { state: { attemptId: string } }).state.attemptId;
+    await expect(writing.object.noteReported({ schemaVersion: 2, attemptId, ok: false, cpuUsec: 1, outputs: [], reason: "tool_failed", count: COUNTED })).rejects.toThrow(/count/);
+  });
+
   it("PK03 the report carries a packed output's geometry as the container reported it", async () => {
     const GEOMETRY = { packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 95, height: 63 }, alphaRect: { x: 96, y: 0, width: 95, height: 63 } };
     const [source, chunk] = PLAN.inputs;

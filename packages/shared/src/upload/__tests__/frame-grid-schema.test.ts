@@ -74,6 +74,10 @@ function gridVersion(): Record<string, unknown> {
     producerVersion: PRODUCER, profileVersion: PROFILE,
     original: { width: 64, height: 48, duration: 2 },
     display: display(),
+    plan: {
+      gridRulesVersion: 1, grid: { fps: { numerator: 30, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, leadFrames: 0, gridEnd: null, singleFrameDurationMs: 5000 },
+      toolSource: 'original', audioTrack: null, display: { width: 64, height: 48 }, color: { matrix: 'bt601', toneMap: 'none' }, framePngBitDepth: 8,
+    },
     playback: { kind: 'native', carrier: receipt('playback.mp4'), displayRect: null },
     toolSource: originalToolSource(),
   };

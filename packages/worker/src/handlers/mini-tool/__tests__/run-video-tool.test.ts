@@ -13,7 +13,7 @@
  * to the frozen `chunkRetries`; exhausted outputs fail one by one and the others are delivered (D5-3, §7.11).
  *
  * The job boundary (`advanceRegisteredMiniToolPlanJob`), grants, steps, the SQL lifecycle and the completion owner are
- * mocked; the recipe builders stay real, with the plan colour a frozen version does not carry yet stood in by `PLAN_COLOR`.
+ * mocked; the recipe builders stay real and read the plan colour the frozen version carries.
  *
  * §93 D5-10: a segment in `layout.encodes` runs its frozen chunk windows as `run-chunk` jobs on the model-input preparation
  * path (work keys, `openMiniToolPlanJob` + `advanceMiniToolPlanJob`, a failed attempt's output retired with its result,
@@ -32,7 +32,7 @@ import { DeadlinePassed, videoPresentationWorkKeyFor, type MiniToolPlanJobReques
 import { videoContainerJobId } from "@breatic/shared/mini-tools";
 import type { RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { AUDIO_INPUT_ID, chunkInputId, frameRecipeOf, segmentRecipesOf, SOURCE_INPUT_ID, toolInputOf } from "@worker/handlers/video-presentation-recipes.js";
-import { PLAN_COLOR, frozenVersion, type VersionFields } from "./frozen-presentation.js";
+import { frozenVersion, type VersionFields } from "./frozen-presentation.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { runMiniToolExecutionTask } from "../run-execution-task.js";
@@ -68,7 +68,6 @@ vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }
 vi.mock("@worker/handlers/mini-tool/run-end.js", () => ({ abandonUnresolvedModelSteps: async () => undefined }));
 vi.mock("@worker/handlers/mini-tool/run-remove-background.js", () => ({ runMiniToolRemoveBackground: h.removal }));
 vi.mock("@worker/handlers/dispatch.js", () => ({ isTerminalAttempt: () => false, verifyJobLockOwnership: async () => true }));
-vi.mock("@worker/handlers/frozen-plan-facts.js", () => ({ planColorOf: () => PLAN_COLOR }));
 
 const TASK = "50000000-0000-4000-8000-000000000001";
 const PROJECT = "10000000-0000-4000-8000-000000000001";

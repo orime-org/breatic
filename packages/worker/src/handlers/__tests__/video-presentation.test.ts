@@ -12,9 +12,8 @@
  * function; each attempt's usage is recorded once as a platform expense keyed by its full job id, then marked with
  * `report_chunk Rec`. At D the job fails `expired`. The ingest boundary is faked at `fetch`.
  *
- * The prepare answer does not carry the plan's grid, colour or tool-source facts each unit's recipe is written from, nor
- * does a job report carry a count's measurement (`frozen-plan-facts.ts`); both are stood in here by recipes and a count of
- * this 320x180, 25 fps, 96-frame source, so the cases check the job's flow and what it forwards.
+ * Each unit's recipe is written by the real `frozen-plan-facts.ts` from the plan and probe facts the prepare answer carries
+ * for this 320x180, 25 fps, 96-frame source (§5.1 2a row, §7.17); a done count job reports its count (§7.17 grid_count).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,17 +21,16 @@ import fc from 'fast-check';
 import * as shared from '@breatic/shared';
 import { videoContainerJobId, videoCarrierRouteStages } from '@breatic/shared/mini-tools';
 import type * as coreModule from '@breatic/core';
-import type { MiniToolPlanRecipe, VideoPresentationChunkUnit, VideoPresentationPrepareAnswer } from '@breatic/shared';
 import { containerCostUsd } from '@breatic/domain';
 import * as handler from '@worker/handlers/video-presentation.js';
 import { StillRunning } from '@worker/handlers/still-running.js';
 import { chunkInputId, SOURCE_INPUT_ID } from '@worker/handlers/video-presentation-recipes.js';
+import { planDigest } from '@worker/handlers/mini-tool/__tests__/frozen-presentation.js';
 
-const { findById, createUsageRecorder, recordServiceCall, settle, syncPresentationPins, logger, recipeOf, countOf } = vi.hoisted(() => ({
+const { findById, createUsageRecorder, recordServiceCall, settle, syncPresentationPins, logger } = vi.hoisted(() => ({
   findById: vi.fn(), createUsageRecorder: vi.fn(), recordServiceCall: vi.fn(), settle: vi.fn(), syncPresentationPins: vi.fn(),
   // Every application-layer catch logs (root AGENTS.md "Application-layer error logging"); the spy lets the handler do so.
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
-  recipeOf: vi.fn(), countOf: vi.fn(),
 }));
 vi.mock('@breatic/core', async (original) => {
   const actual = await original<typeof coreModule>();
@@ -50,11 +48,9 @@ vi.mock('@breatic/domain', async (original) => ({
   // S6e E4-3: the domain function that writes candidate and selected pins from the prepare answer.
   syncPresentationPins,
 }));
-vi.mock('@worker/handlers/frozen-plan-facts.js', () => ({ presentationRecipeOf: recipeOf, gridCountOf: countOf }));
 
 const H = 'd'.repeat(64);
 const T = 'e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec';
-const PLAN = 'bf04fa15ca5b369ad3012912dacce70ff0ec47c9779c5c1f87e461505e3c4ea1';
 const KEY = 'video/canonical.webm';
 const JOB = 'video-presentation-a';
 const ACTOR = '6061c056-f758-47c1-9527-8495ecba60e3';
@@ -64,10 +60,17 @@ const price = (containerClass: string, vcpu: number, memory: number, disk: numbe
   containerClass, size: { vcpu, memory_gib: memory, disk_gb: disk }, prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.000003, disk_gb_second_usd: 0.0000001 },
 });
 const PRICING = { basic: price('MediaContainer', 0.25, 1, 4), standard4: price('MiniToolContainerStd4', 4, 12, 20) };
-// The stand-in recipe facts: a 320x180, 25 fps, 96-frame original, opaque, BT.709, the first edit tier.
-const GRID = { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 96, realFrameCount: 96 };
-const SOURCE = { kind: 'original' as const, keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1.92, allKeyframes: false } };
-const TARGET = { width: 320, height: 180, displayRect: null, colorMatrix: 'bt709', toneMap: 'none' as const, alpha: 'none' as const, crf: 18, preset: 'medium' as const };
+// The plan and probe facts of a 320x180, 25 fps, 96-frame original with audio, opaque, BT.709, the first edit tier.
+const ZERO = { numerator: 0, denominator: 1 };
+const FPS = { numerator: 25, denominator: 1 };
+const CONTENT = {
+  gridRulesVersion: 1, grid: { fps: FPS, gridStart: ZERO, leadFrames: 0, gridEnd: { numerator: 96, denominator: 25 }, singleFrameDurationMs: 5000 },
+  toolSource: 'original' as 'original' | 'edit', audioTrack: 0, display: { width: 320, height: 180 }, color: { matrix: 'bt709', toneMap: 'none' as const }, framePngBitDepth: 8 as const,
+};
+const DISPLAY = { width: 320, height: 180, fps: FPS, frameCount: 96, gridStart: ZERO, realFrameCount: 96, leadFrames: 0, holdFrames: 0 };
+const SOURCE_FACTS = { color: { matrix: 'bt709', transfer: 'bt709', primaries: 'bt709', range: 'tv', chromaLocation: 'left' },
+  keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1.92, allKeyframes: false }, alpha: false };
+const EDIT_KEY = `${KEY}.edit.mp4`;
 const TIER = 'edit_h264_intra_8bit_420' as const;
 const COUNT = { lastVideoTime: { numerator: 95, denominator: 25 }, sourceFrames: 96 };
 
@@ -93,35 +96,27 @@ function prepareAnswer(fields: Record<string, unknown> = {}): Record<string, unk
     sourceBinding: { storageKey: KEY, sourceFingerprint: H }, presentation: null,
     preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'plan', failure: null },
     capability: { token: 'token-a', deadlineAt: D },
-    plan: { route, stages: videoCarrierRouteStages(route), toolInputId: route === 'edit' ? null : T, planSha256: PLAN },
+    plan: plannedFacts(route),
     work: route === 'reuse' ? { kind: 'none' } : route === 'edit' ? { kind: 'edit', editChunks: [{ start: 0, end: 32 }, { start: 32, end: 64 }, { start: 64, end: 96 }], chunks } : { kind: 'encode', chunks },
     units: {},
-    // §91 D3b-1: the carrier encode parameters frozen at admission.
-    frozen: { pricing: PRICING, actorUserId: ACTOR, projectId: null, carrier: { crf: 18, preset: 'medium', maxShortSide: 1080 } },
+    // §91 D3b-1: the carrier and edit-file encode parameters frozen at admission.
+    frozen: { pricing: PRICING, actorUserId: ACTOR, projectId: null, carrier: { crf: 18, preset: 'medium', maxShortSide: 1080 }, edit: { crf: 15, preset: 'medium' } },
     ...rest,
   };
 }
 
 /**
- * The stand-in recipe of a unit (§7.17 grid_count, edit_encode, chunk_encode and stitch rows), from the answer's windows.
- * @param prepared - The parsed prepare answer.
- * @param unit - The unit.
- * @param storageKey - The original's key.
- * @returns The recipe, its source input and its output type.
+ * The plan part of a granted answer: the route, the plan object under its own digest and the probe facts (§5.1 2a row).
+ * @param route - The route.
+ * @returns It.
  */
-function standIn(prepared: VideoPresentationPrepareAnswer, unit: VideoPresentationChunkUnit, storageKey: string): { recipe: MiniToolPlanRecipe; inputs: { inputId: string; storageKey: string }[]; contentType: string } {
-  const work = prepared.work;
-  const chunks = work.kind === 'none' ? [] : work.chunks;
-  const edits = work.kind === 'edit' ? work.editChunks : [];
-  const refs = (windows: readonly { start: number; end: number }[]): { inputId: string; frames: { start: number; end: number } }[] =>
-    windows.map((window, chunk) => ({ inputId: chunkInputId(chunk), frames: { start: window.start, end: window.end } }));
-  const recipe: MiniToolPlanRecipe = unit.kind === 'presentation-count' ? { kind: 'grid_count', inputId: SOURCE_INPUT_ID, gridStart: GRID.gridStart, fps: GRID.fps, gridEnd: null }
-    : unit.kind === 'presentation-chunk' ? { kind: 'chunk_encode', inputId: SOURCE_INPUT_ID, grid: GRID, source: SOURCE, frames: chunks[unit.chunk]!, target: TARGET }
-      : unit.kind === 'presentation-edit' ? { kind: 'edit_encode', inputId: SOURCE_INPUT_ID, grid: GRID, source: SOURCE, frames: edits[unit.chunk]!,
-        edit: { profile: TIER, crf: 18, preset: 'medium' }, color: { matrix: 'bt709', transfer: null, primaries: null, range: 'tv', chromaLocation: 'left' }, toneMap: 'none' }
-        : unit.kind === 'presentation-edit-stitch' ? { kind: 'stitch', chunks: refs(edits), grid: GRID, edit: { profile: TIER } }
-          : { kind: 'stitch', inputId: SOURCE_INPUT_ID, grid: GRID, chunks: refs(chunks), audio: true, target: TARGET };
-  return { recipe, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey }], contentType: unit.kind === 'presentation-count' ? 'application/json' : 'video/mp4' };
+function plannedFacts(route: Route): Record<string, unknown> {
+  const edit = route === 'edit' || route === 'reuse_edit';
+  const content = { ...CONTENT, toolSource: edit ? 'edit' as const : 'original' as const };
+  return {
+    route, stages: videoCarrierRouteStages(route), toolInputId: route === 'edit' ? null : T, planSha256: planDigest(content), content, display: DISPLAY,
+    source: { ...SOURCE_FACTS, editTier: edit ? TIER : null }, editStorageKey: route === 'reuse_edit' ? EDIT_KEY : null,
+  };
 }
 
 /**
@@ -206,7 +201,10 @@ function indexOf(match: (call: Sent) => boolean): number {
  */
 function finished(jobId: string, state: 'done' | 'failed', usage: { wallMs: number; cpuUsec: number | null } | null): Record<string, unknown> {
   const output = { outputIndex: 0, storageKey: workKey(jobId), sha256: 'f'.repeat(64), sizeBytes: 100, contentType: 'video/mp4' };
-  return state === 'done' ? { schemaVersion: 2, state, outputs: [output], usage } : { schemaVersion: 2, state, outputs: [], reason: 'tool_failed', usage };
+  // A count job writes no object and reports its count (§7.17 grid_count).
+  const counting = [1, 2, 3, 4].some((attempt) => subJob('count', attempt) === jobId);
+  if (state !== 'done') return { schemaVersion: 2, state, outputs: [], reason: 'tool_failed', usage };
+  return counting ? { schemaVersion: 2, state, outputs: [], usage, count: COUNT } : { schemaVersion: 2, state, outputs: [output], usage };
 }
 
 beforeEach(() => {
@@ -219,8 +217,6 @@ beforeEach(() => {
   createUsageRecorder.mockReturnValue({ recordServiceCall, settle });
   settle.mockResolvedValue(0);
   syncPresentationPins.mockImplementation(async () => { sent.push({ path: 'sync-pins', method: 'CALL', body: null }); });
-  recipeOf.mockImplementation(standIn);
-  countOf.mockReturnValue(COUNT);
   vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input.toString() : input.url);
     const method = init?.method ?? 'GET';
@@ -312,8 +308,9 @@ describe('dispatch along the route on the frozen standard-4 class with §5.4 ide
     const job = submitted();
     const id = subJob('count', 1);
     expect(job).toEqual([expect.objectContaining({ jobId: id, containerClass: PRICING.standard4.containerClass, deadlineAt: D, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: KEY }] })]);
-    expect(job[0]!.outputs).toEqual([expect.objectContaining({ outputIndex: 0, storageKey: workKey(id), recipe: expect.objectContaining({ kind: 'grid_count' }) })]);
-    expect(recipeOf).toHaveBeenCalledWith(shared.videoPresentationPrepareAnswerSchema.parse(answer), { kind: 'presentation-count' }, KEY);
+    // §7.17 grid_count: the count declares no output and names the plan's grid rule inputs.
+    expect(job[0]!.outputs).toEqual([]);
+    expect(job[0]!.count).toEqual({ kind: 'grid_count', inputId: SOURCE_INPUT_ID, gridStart: CONTENT.grid.gridStart, fps: CONTENT.grid.fps, gridEnd: CONTENT.grid.gridEnd });
     expect(actions('report_chunk')).toEqual([expect.objectContaining({ token: 'token-a', unit: { kind: 'presentation-count' }, report: { kind: 'Sub' } })]);
     expect(indexOf((call) => call.body?.action === 'report_chunk')).toBeLessThan(indexOf((call) => call.path === '/jobs' && call.method === 'POST'));
   });
@@ -364,12 +361,16 @@ describe('dispatch along the route on the frozen standard-4 class with §5.4 ide
     await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
     expect(actions('advance_stage').map((body) => body.stage)).toEqual(['edit_stitch']);
     expect(submitted().map((job) => job.jobId)).toEqual([subJob('edit-stitch', 1)]);
-    expect(submitted()[0]!.inputs).toEqual([{ inputId: SOURCE_INPUT_ID, storageKey: KEY }, ...[0, 1, 2].map((chunk) => ({ inputId: chunkInputId(chunk), storageKey: workKey(subJob('edit', 1, chunk)) }))]);
+    // The edit stitch reads its chunks alone.
+    expect(submitted()[0]!.inputs).toEqual([0, 1, 2].map((chunk) => ({ inputId: chunkInputId(chunk), storageKey: workKey(subJob('edit', 1, chunk)) })));
     sent = [];
-    answer = at('edit_stitch', { ...edits, [`video-presentation:${JOB}:edit-stitch`]: unit(subJob('edit-stitch', 1), 'done', 'done', 1, true) }, 'edit');
+    // Once the edit file is measured the DO answers it, and the playback chunks read it (§5.1 2a row).
+    answer = { ...at('edit_stitch', { ...edits, [`video-presentation:${JOB}:edit-stitch`]: unit(subJob('edit-stitch', 1), 'done', 'done', 1, true) }, 'edit'),
+      plan: { ...plannedFacts('edit'), toolInputId: T, editStorageKey: EDIT_KEY } };
     await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
     expect(actions('advance_stage').map((body) => body.stage)).toEqual(['encode']);
     expect(submitted().map((job) => job.jobId)).toEqual([subJob('chunk', 1, 0), subJob('chunk', 1, 1)]);
+    expect(submitted().map((job) => job.inputs)).toEqual([0, 1].map(() => [{ inputId: SOURCE_INPUT_ID, storageKey: EDIT_KEY }]));
   });
 
   it('DS06 every chunk dispatched, one finishing on this pickup and one still running: no advance to stitch and no stitch job', async () => {
@@ -423,10 +424,8 @@ describe('what a done unit reports (§7.1.1 Done row; §91 D3-3; §4.1 frame cou
   it('RD01 a done count is reported Done with the measured count and no receipt', async () => {
     const id = subJob('count', 1);
     answer = prepareAnswer({ units: { [`video-presentation:${JOB}:count`]: unit(id, 'open', 'pending') }, preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'count', failure: null } });
-    // A job report lists its declared output; the count's measurement comes from the stand-in for its missing field.
-    const report = finished(id, 'done', { wallMs: 1000, cpuUsec: 2000 }) as { outputs: Record<string, unknown>[] };
-    report.outputs[0] = { ...report.outputs[0], contentType: 'application/json' };
-    reports.set(id, report);
+    // The job report carries the count in place of an output.
+    reports.set(id, finished(id, 'done', { wallMs: 1000, cpuUsec: 2000 }));
     await advance()(data).catch(() => undefined);
     const done = actions('report_chunk').find((body) => (body.report as { kind: string }).kind === 'Done');
     expect(done).toMatchObject({ unit: { kind: 'presentation-count' }, report: { kind: 'Done', attempt: 1, count: COUNT } });
