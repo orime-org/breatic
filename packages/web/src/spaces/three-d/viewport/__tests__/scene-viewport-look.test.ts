@@ -151,6 +151,22 @@ describe('a part picture that loads after the look applied (inner#1693 design 5.
   });
 });
 
+describe('shadows after a part picture settles (inner#1693 design 5.2)', () => {
+  it('redraws the shadow maps once a picture that was loading settles, as its cut-out can change the shadow', async () => {
+    const picture = '11111111-1111-4111-8111-11111111111a';
+    let fail: () => void = () => undefined;
+    const cache = { size: vi.fn(async () => ({ width: 64, height: 64, type: 'png' })), release: vi.fn(),
+      acquire: vi.fn(() => new Promise<Texture>((_resolve, reject) => { fail = () => reject(new Error('download failed')); })) };
+    const { runtime } = await open(props({ objects: [{ ...BOX, look: { 0: { map: picture } } }], lookTextures: cache as never }), '#969696');
+    await vi.waitFor(() => expect(cache.acquire).toHaveBeenCalled());
+    const { renderer } = runtime as unknown as { renderer: WebGLRenderer };
+    renderer.shadowMap.needsUpdate = false;
+    fail();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(renderer.shadowMap.needsUpdate).toBe(true);
+  });
+});
+
 describe('a restored GPU context (inner#1693 design 5.7)', () => {
   it('generates the environment again and redraws the shadows, since a restore empties GPU-made textures', async () => {
     const initial = props();

@@ -238,6 +238,8 @@ export class SceneViewportRuntime {
       const item = id === undefined ? undefined : this.items.get(id);
       if (item) item.parts = undefined;
       if (this.syncing) return;
+      // A picture that settles later can change a cut-out part's outline, which the shadow maps draw from.
+      this.markShadows(true);
       this.monitorEvent({ type: 'changed' });
       this.inspect();
     },
