@@ -219,9 +219,9 @@ export const TemplateMenu = React.memo(function TemplateMenu({
                       <DropdownMenuSub key={template.id}>
                         <DropdownMenuSubTrigger
                           data-testid={`generate-template-${template.id}`}
-                          className='flex-col items-start gap-0.5'
+                          className='items-start gap-2 [&>svg]:mt-0.5'
                         >
-                          {label}
+                          <span className='flex min-w-0 flex-1 flex-col items-start gap-0.5'>{label}</span>
                         </DropdownMenuSubTrigger>
                         <DropdownMenuSubContent className={set.thumbnails ? 'w-80' : undefined}>
                           <TemplateStyleChoices template={template} set={set} state={styleState} onPick={onPick} />
