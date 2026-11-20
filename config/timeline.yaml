@@ -39,9 +39,6 @@ web_animation:
   sweep_interval_ms: 30000
   sweep_batch_size: 200
   poll_interval_ms: 5000
-  # Read only by web builds from before Timeline state moved into its document (#1568): they poll at this interval.
-  # Remove, with sourceRefreshIntervalMs in the limits answer, in the release after #1568 ships.
-  source_refresh_interval_ms: 10000
   # The instance a run is billed for, at the prices in mini-tools.yaml.
   container:
     vcpu: 1

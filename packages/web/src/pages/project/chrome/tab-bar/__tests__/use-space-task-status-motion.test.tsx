@@ -14,7 +14,7 @@ import * as React from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SPACE_TASKS_KEY, SPACE_TASKS_VERSION, webAnimationSpaceDocName, type TimelineClientLimits } from '@breatic/shared';
+import { SPACE_TASKS_KEY, SPACE_TASKS_VERSION, webAnimationSpaceDocName } from '@breatic/shared';
 
 import { getDoc } from '@web/data/yjs/manager';
 import { timelineApi, type SpaceExecutionPage } from '@web/data/api/timeline';
@@ -25,7 +25,7 @@ import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
-  return { ...actual, timelineApi: { ...actual.timelineApi, listSpaceExecutions: vi.fn(), limits: vi.fn() } };
+  return { ...actual, timelineApi: { ...actual.timelineApi, listSpaceExecutions: vi.fn() } };
 });
 
 const PROJECT = '60000000-0000-4000-8000-000000000001';
@@ -43,15 +43,6 @@ function page(inProgress: number): SpaceExecutionPage {
   return { rows: rows as unknown as SpaceExecutionPage['rows'], nextCursor: null, totals: { running: inProgress, succeeded: 3, failed: 0 } };
 }
 
-/**
- * The limits the Project answers, with the refresh interval older clients poll at.
- * @param sourceRefreshIntervalMs - How often an older client reads an unfinished list again.
- * @returns The limits.
- * @throws {never} Never.
- */
-function limits(sourceRefreshIntervalMs: number): TimelineClientLimits {
-  return { webAnimation: { sourceRefreshIntervalMs } } as unknown as TimelineClientLimits;
-}
 
 /**
  * A fresh cache and a wrapper providing it.
@@ -81,7 +72,6 @@ function recordChange(version: string): void {
 beforeEach(() => {
   useSpaceOperationsStore.setState({ operations: {} });
   vi.mocked(timelineApi.listSpaceExecutions).mockReset().mockResolvedValue(page(0));
-  vi.mocked(timelineApi.limits).mockReset().mockResolvedValue(limits(3_600_000));
 });
 
 afterEach(() => {
@@ -107,7 +97,6 @@ describe('useSpaceTaskStatus for a Motion Space', () => {
   });
 
   it('stops once the last execution ends and the Space\'s document records it, without polling', async () => {
-    vi.mocked(timelineApi.limits).mockResolvedValue(limits(20));
     vi.mocked(timelineApi.listSpaceExecutions).mockResolvedValue(page(1));
     const { wrapper } = provider();
     const { result } = renderHook(() => useSpaceTaskStatus(PROJECT, SPACE, 'web_animation'), { wrapper });
