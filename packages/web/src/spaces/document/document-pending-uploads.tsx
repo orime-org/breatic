@@ -56,7 +56,7 @@ function blockFactsOf(props: MediaBlockProps, docName: string | null): PendingBl
   return {
     state,
     ...(props.uploadDeadline !== undefined && { deadline: props.uploadDeadline }),
-    ...(props.uploadFailure !== undefined && { failure: props.uploadFailure as PendingBlockFacts['failure'] }),
+    ...(props.uploadFailure !== undefined && props.uploadFailure !== '' && { failure: props.uploadFailure as PendingBlockFacts['failure'] }),
     ...(props.uploadRetryable !== undefined && { retryable: props.uploadRetryable }),
     foreign: props.uploadHome !== undefined && docName !== null && props.uploadHome !== docName,
   };

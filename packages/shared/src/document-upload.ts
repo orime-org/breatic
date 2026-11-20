@@ -147,8 +147,9 @@ function targets(fragment: Y.XmlFragment, event: DocumentUploadEvent): Y.XmlElem
  * @returns How many blocks it wrote.
  */
 export function applyDocumentUpload(fragment: Y.XmlFragment, event: DocumentUploadEvent): number {
+  // The editor writes every declared prop, so a block with no state yet holds "".
   const blocks = targets(fragment, event).filter((block) =>
-    event.state !== "processing" || block.getAttribute(UPLOAD_STATE_ATTR) === undefined);
+    event.state !== "processing" || !block.getAttribute(UPLOAD_STATE_ATTR));
   if (blocks.length === 0) return 0;
   /** Sets each block's attributes for this event. */
   const write = (): void => {

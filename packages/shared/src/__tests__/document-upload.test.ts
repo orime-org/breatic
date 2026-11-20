@@ -55,7 +55,8 @@ function media(fragment: Y.XmlFragment): Record<string, unknown>[] {
   return out;
 }
 
-const pending = { uploadId: "u1", uploadHome: HOME, url: "" };
+// The shape the editor writes: every declared prop, empty strings included.
+const pending = { uploadId: "u1", uploadHome: HOME, url: "", uploadState: "", uploadFailure: "" };
 const processing: DocumentUploadEvent = { type: "document-upload", docName: HOME, uploadId: "u1", state: "processing", deadline: 5000 };
 const completed: DocumentUploadEvent = {
   type: "document-upload", docName: HOME, uploadId: "u1", state: "completed",

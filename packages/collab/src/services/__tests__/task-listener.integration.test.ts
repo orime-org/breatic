@@ -868,6 +868,9 @@ async function newDocumentUploadCase(padding = 0): Promise<Case> {
   media.setAttribute("uploadId", "u1");
   media.setAttribute("uploadHome", c.docName);
   media.setAttribute("url", "");
+  // The editor writes every declared prop, so a fresh block holds these empty.
+  media.setAttribute("uploadState", "");
+  media.setAttribute("uploadFailure", "");
   const container = new Y.XmlElement("blockContainer");
   container.insert(0, [media]);
   group.insert(0, [container]);
