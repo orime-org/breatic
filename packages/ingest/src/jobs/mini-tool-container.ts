@@ -37,14 +37,12 @@ export interface MiniToolEnv {
   BUCKET: R2Bucket;
   MINI_TOOL_STD1: DurableObjectNamespace<MiniToolContainerStd1>;
   MINI_TOOL_STD4: DurableObjectNamespace<MiniToolContainerStd4>;
-  MINI_TOOL_GL: DurableObjectNamespace<MiniToolContainerGl>;
 }
 
 /** The binding each class is reached through, by class name. */
 export const CLASS_BINDINGS = {
   MiniToolContainerStd1: "MINI_TOOL_STD1",
   MiniToolContainerStd4: "MINI_TOOL_STD4",
-  MiniToolContainerGl: "MINI_TOOL_GL",
 } as const satisfies Record<string, keyof MiniToolEnv>;
 
 /** A class name this Worker binds. */
@@ -412,9 +410,6 @@ export class MiniToolContainerStd1 extends MiniToolContainer {}
 /** The standard-4 instance. */
 export class MiniToolContainerStd4 extends MiniToolContainer {}
 
-/** The standard-4 instance of the GL image (`Dockerfile` with `VARIANT=gl`): a transition's overlap windows (frames-split §5.4). */
-export class MiniToolContainerGl extends MiniToolContainer {}
-
 /**
  * The job object an outbound handler answers for.
  * @param env - The bindings.
@@ -455,6 +450,6 @@ async function jobReport(request: Request, env: MiniToolEnv, ctx: OutboundHandle
   return new Response(null, { status: 200 });
 }
 
-for (const kind of [MiniToolContainerStd1, MiniToolContainerStd4, MiniToolContainerGl]) {
+for (const kind of [MiniToolContainerStd1, MiniToolContainerStd4]) {
   kind.outboundHandlers = { [JOB_OBJECTS]: jobObjects, [JOB_REPORT]: jobReport };
 }

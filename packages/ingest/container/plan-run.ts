@@ -7,9 +7,7 @@ import { join } from "node:path";
 import { miniToolPlanRecipeInputs, type MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
 import type { ContainerFailure } from "@shared/mini-tools/types.js";
 import type { PlanContainerCount, PlanContainerOutput, MediaOfOutput } from "@ingest/jobs/container-report.js";
-import { countPresentationGrid, executePresentationRecipe, RecipeFailure, type PlanLimits } from "@ingest/container/presentation-recipes.js";
-import { executeLipsyncRecipe, isLipsyncRecipe } from "@ingest/container/lipsync-recipes.js";
-import { executeModelRecipe, isModelRecipe } from "@ingest/container/model-recipes.js";
+import { countPresentationGrid, executePresentationRecipe, type PlanLimits } from "@ingest/container/presentation-recipes.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { download, put } from "@ingest/container/mini-tool-run.js";
 import { cpuUsec } from "@ingest/container/run-steps.js";
@@ -110,12 +108,7 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
       const inputs = new Map<string, string>();
       for (const id of named(recipe)) inputs.set(id, await fetchInput(id));
       const request = { inputs, output: file, directory, signal, limits: job.limits };
-      let metadata: MediaOfOutput;
-      try {
-        metadata = isModelRecipe(recipe) ? await executeModelRecipe({ ...request, recipe })
-          : isLipsyncRecipe(recipe) ? await executeLipsyncRecipe({ ...request, recipe }) : await executePresentationRecipe({ ...request, recipe });
-      }
-      catch (error) { if (error instanceof RecipeFailure) reason = error.reason; throw error; }
+      const metadata = await executePresentationRecipe({ ...request, recipe });
       try { await put(output.url, file, signal); }
       catch (error) { reason = "internal"; throw error; }
       const cover = output.coverUrl !== undefined && metadata.width !== null

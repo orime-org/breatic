@@ -207,7 +207,7 @@ describe('frame on a grid frame of the original (§92 D4-3; design §7.17 frame 
     expect(header(png)).toMatchObject({ width: 96, height: 160 });
   });
 
-  // §93 D5 (frames-split design §7.17 frame row; people candidate crops): the display crop rides on the frame recipe, so the
+  // §93 D5 (frames-split design §7.17 frame row; the video focus crop): the display crop rides on the frame recipe, so the
   // pixel-exact crop facts (odd origin and size, one pixel, the whole frame) are read on the grid frame recipe.
   it.each([
     ['the whole box', { x: 40, y: 20, width: 20, height: 12 }, (x: number, y: number): boolean => x >= 0 && y >= 0],

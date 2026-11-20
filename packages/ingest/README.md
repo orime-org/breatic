@@ -46,7 +46,7 @@ media numbers and no cover, and the Agent cannot read pages.
 `THIRD-PARTY.md` inside the context. The template carries
 `image_build_context = "../.."` in every `[[containers]]` and
 `[[env.production.containers]]` block. The configured classes are `MediaContainer`,
-`MiniToolContainerStd1`, `MiniToolContainerStd4`, `MiniToolContainerGl`, `LongMediaContainer` and
+`MiniToolContainerStd1`, `MiniToolContainerStd4`, `LongMediaContainer` and
 `WebReaderContainer`, plus `WebAnimationContainer`, whose blocks stay commented
 out until web animation is enabled. Each block needs its own context because
 `containers` does not inherit into an environment.
@@ -75,14 +75,7 @@ deletes the tag another copy's Worker starts its containers from, and that
 Worker answers `No such image available named cloudflare-dev/mediacontainer:…`:
 uploads carry no media numbers and no cover, and container tools fail. `pnpm dev`
 checks for the line and, when a block lacks it, says what to add and leaves this
-Worker stopped.
-
-**Both `MiniToolContainerGl` blocks, top-level and production, carry
-`VARIANT = "gl"` in `image_vars`.** The transition renderer is installed only
-by the `gl` variant of the Dockerfile; a block without it builds the standard
-image, which starts and then fails every Crossfade and Wipe export. `pnpm dev`
-checks the top-level block for it as well. The other production blocks carry
-no `image_vars`.
+Worker stopped. The production blocks carry no `image_vars`.
 
 ### The server side of the same pipeline
 

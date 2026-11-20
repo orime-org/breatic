@@ -105,7 +105,7 @@ import {
 
 export { ContainerProxy } from "@cloudflare/containers";
 export { MediaContainer } from "@ingest/media-container.js";
-export { MiniToolContainerStd1, MiniToolContainerStd4, MiniToolContainerGl } from "@ingest/jobs/mini-tool-container.js";
+export { MiniToolContainerStd1, MiniToolContainerStd4 } from "@ingest/jobs/mini-tool-container.js";
 export { LongMediaContainer } from "@ingest/jobs/long-media-container.js";
 export { LongMediaJobTestObject } from "@ingest/jobs/long-media-container.js";
 export { WebReaderContainer } from "@ingest/web-reader-container.js";

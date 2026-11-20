@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """Isolated pinned detectors: trusted JSON request, complete BGR24 stdin, owned JSON stdout."""
-import hashlib
 import json
 import math
 from pathlib import Path
@@ -15,10 +14,6 @@ import numpy as np
 import scenedetect
 from scenedetect import FrameTimecode, StatsManager
 from scenedetect.detectors import ContentDetector
-
-
-WEIGHTS_SHA256 = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
-WEIGHTS = Path("/app/models/face_detection_yunet_2023mar.onnx")
 
 
 def positive_integer(value: object) -> bool:
@@ -43,17 +38,7 @@ def validate_request(request: object) -> dict:
     params = profile["params"]
     if not isinstance(params, dict):
         raise ValueError("Expected frozen detector parameters")
-    if request["kind"] in ("people", "faces"):
-        # People reads one anchor frame; faces reads every prepared frame of a lip-sync person (frames-split §7.17 lipsync_faces).
-        if request["kind"] == "people" and request["expectedFrameCount"] != 1:
-            raise ValueError("People analysis requires exactly one anchor frame")
-        if (profile["id"], profile["version"], profile["weightsHash"]) != ("opencv-yunet-2023mar", "2023mar", WEIGHTS_SHA256):
-            raise ValueError("Unsupported frozen YuNet profile or weights hash")
-        if set(params) != {"scoreThreshold", "nmsThreshold", "topK"}:
-            raise ValueError("Unsupported YuNet parameter keys")
-        if not all(finite_number(params[key]) and 0 <= params[key] <= 1 for key in ("scoreThreshold", "nmsThreshold")) or not positive_integer(params["topK"]):
-            raise ValueError("Invalid frozen YuNet parameters")
-    elif request["kind"] == "scene_cuts":
+    if request["kind"] == "scene_cuts":
         if (profile["id"], profile["version"], profile["weightsHash"]) != ("pyscenedetect-content", "0.7.2", None):
             raise ValueError("Unsupported frozen scene detector profile")
         if set(params) != {"threshold", "minSceneLength"}:
@@ -87,17 +72,6 @@ def analyze(request: dict, source: BinaryIO) -> dict:
     cv2.setNumThreads(1)
     frames = read_frames(source, request["width"], request["height"], request["expectedFrameCount"])
     params = request["profile"]["params"]
-    if request["kind"] in ("people", "faces"):
-        if hashlib.sha256(WEIGHTS.read_bytes()).hexdigest() != WEIGHTS_SHA256:
-            raise ValueError("Installed YuNet weights hash differs from the frozen profile")
-        detector = cv2.FaceDetectorYN.create(str(WEIGHTS), "", (request["width"], request["height"]),
-                                           float(params["scoreThreshold"]), float(params["nmsThreshold"]), params["topK"])
-        rows = []
-        for frame in frames:
-            _, found = detector.detect(frame)
-            rows.append(None if found is None else found.tolist())
-        # One frame is answered as the people anchor is; more as one row list per frame, in order.
-        return {"faces": rows[0]} if len(rows) == 1 else {"frames": rows}
     # FrameTimecode carries only detector-local indices. Source PTS stay in Node's ledger.
     stats = StatsManager(FrameTimecode(0, fps=30.0))
     detector = ContentDetector(threshold=float(params["threshold"]), min_scene_len=params["minSceneLength"])

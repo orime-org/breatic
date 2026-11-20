@@ -101,16 +101,11 @@ export function picture(target: MiniToolPlanTarget, range: 'tv' | 'pc', label: s
  * a keyframe every `PLAYBACK_GOP_SECONDS`, or a VP9 WebM split output with its alpha.
  * @param target - The target.
  * @param fps - The grid rate the frames are on.
- * @param clock - Instead of 1/fps, frames on a 1/`ticks` clock whose last frame ends at `end` ticks (a lip-sync clip ends at the
- *   result duration).
- * @param clock.ticks - Ticks a second.
- * @param clock.end - The end in ticks.
  * @returns The encoder arguments and the muxer arguments.
  * @throws {never} Never.
  */
-export function videoOutput(target: Pick<MiniToolPlanTarget, 'format' | 'alpha' | 'crf' | 'preset'>, fps: FrameRate, clock?: { ticks: number; end: number }): { video: string[]; muxer: string[] } {
-  const timing = clock === undefined ? ['-fps_mode', 'passthrough', '-enc_time_base:v', `${fps.denominator}/${fps.numerator}`, '-bsf:v', 'setts=duration=1']
-    : ['-fps_mode', 'passthrough', '-enc_time_base:v', `1/${clock.ticks}`, '-bsf:v', `setts=duration=if(eq(NEXT_PTS\\,NOPTS)\\,${clock.end}-PTS\\,NEXT_PTS-PTS)`];
+export function videoOutput(target: Pick<MiniToolPlanTarget, 'format' | 'alpha' | 'crf' | 'preset'>, fps: FrameRate): { video: string[]; muxer: string[] } {
+  const timing = ['-fps_mode', 'passthrough', '-enc_time_base:v', `${fps.denominator}/${fps.numerator}`, '-bsf:v', 'setts=duration=1'];
   if (target.format === 'webm-vp9') {
     const alpha = target.alpha === 'straight';
     return { video: ['-c:v', 'libvpx-vp9', '-pix_fmt', alpha ? 'yuva420p' : 'yuv420p', '-crf', String(target.crf), '-b:v', '0', '-deadline', 'good', '-row-mt', '1',

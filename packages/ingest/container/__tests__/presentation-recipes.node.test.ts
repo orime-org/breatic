@@ -3,10 +3,10 @@
 
 /**
  * S6d D3: the standard-4 presentation recipes on real media and the frame grid (inner#1306 test plan §91 D3; frames-split
- * design §4.1, §4.3, §5.3 model-input row, §5.4, §7.16, §7.17; answers D-1, D-2, D-5, D-7, D-8).
+ * design §4.1, §4.3, §5.4, §7.16, §7.17; answers D-1, D-2, D-5, D-7, D-8).
  *
  * Each case runs the planned job owner (`runPlanJob`) as the standard-4 container does: it downloads the bound inputs,
- * runs the recipe and writes the output, then reports. A window recipe (`chunk_encode`, `prepare_model_input`) names its
+ * runs the recipe and writes the output, then reports. A window recipe (`chunk_encode`) names its
  * tool source's grid (`grid` {fps, gridStart, frameCount, realFrameCount}, read here from each fixture with the harness's
  * `gridOf`), the tool source (the original with its keyframe statistics), the grid frames [start, end) and the plan's
  * `target`. A chunk is encoded on its own clock from 0 at 1/fps, opens with a keyframe and carries no audio; the stitch
@@ -516,52 +516,6 @@ describe('stitch (§5.4 块的时间、拼接)', () => {
     expect(await packets(file!)).toHaveLength(10);
     expect(reports[0]!.outputs).toHaveLength(1);
     expect(reports[0]!.outputs[0]!.packing).toEqual({ packedWidth: 132, packedHeight: 36, colorRect: { x: 0, y: 0, width: 64, height: 36 }, alphaRect: { x: 68, y: 0, width: 64, height: 36 } });
-  });
-});
-
-describe('prepare_model_input (§5.3 模型输入准备)', () => {
-  /**
-   * A prepare_model_input recipe over a fixture's grid frames [0, end).
-   * @param name - The fixture.
-   * @param end - The grid frame the window stops before.
-   * @param target - Its target block.
-   * @param audio - Whether it carries the original's audio over the same frames.
-   * @returns The recipe.
-   */
-  function modelInput(name: string, end: number, target: Recipe, audio: boolean): Recipe {
-    return { kind: 'prepare_model_input', inputId: SOURCE, ...gridOfFixture(name), frames: { start: 0, end }, target, audio };
-  }
-
-  it('PM01 renders the selected grid frames upright in the display geometry with the plan matrix and the original\'s audio over them (§5.3 模型输入准备)', async () => {
-    const [file] = await produce({ [SOURCE]: join(dir, 'rot90.mp4') }, [modelInput('rot90.mp4', 20, { ...TARGET, width: 180, height: 320 }, true)]);
-    const { streams } = await probe(file!);
-    const video = streams.find(stream => stream.codec_type === 'video')!;
-    expect([video.codec_name, video.pix_fmt, video.width, video.height]).toEqual(['h264', 'yuv420p', 180, 320]);
-    expect((video.side_data_list ?? []).filter(side => side.side_data_type === 'Display Matrix' && (side.rotation ?? 0) !== 0)).toEqual([]);
-    expectBt709(video);
-    expect(await packets(file!)).toHaveLength(20);
-    // §91 D3-4: a source with audio carries the original's audio over the selected grid frames, AAC at 48 kHz.
-    const audio = streams.filter(stream => stream.codec_type === 'audio');
-    expect(audio.map(stream => [stream.codec_name, stream.sample_rate])).toEqual([['aac', '48000']]);
-    expect(Math.abs(Number(audio[0]!.duration) - 0.8)).toBeLessThanOrEqual(1024 / 48000);
-  });
-
-  it('PM02 pads an odd display size to even with the picture at displayRect, never cropping it (§5.3 保留映射及所有真实内容; §91 D3-4)', async () => {
-    const recipe = modelInput('odd.mp4', 10, { ...TARGET, width: 162, height: 98, displayRect: { x: 0, y: 0, width: 161, height: 97 } }, false);
-    const [file] = await produce({ [SOURCE]: join(dir, 'odd.mp4') }, [recipe]);
-    const { streams } = await probe(file!);
-    expect(streams.map(stream => [stream.codec_type, stream.codec_name, stream.width, stream.height])).toEqual([['video', 'h264', 162, 98]]);
-    // The whole 161x97 picture is kept: its last column and row are still white.
-    expect(Math.min(...await lumaMeans(file!, { x: 0, y: 0, width: 161, height: 97 }))).toBeGreaterThan(200);
-    expect(Math.min(...await lumaMeans(file!, { x: 160, y: 0, width: 1, height: 96 }))).toBeGreaterThan(200);
-  });
-
-  // §91 D3b mutation C6 (D3b-2): the model input's counterpart of ST06.
-  it('PM03 a source without audio asked for its audio prepares a video-only model input and does not fail', async () => {
-    const recipe = modelInput('untagged.mp4', 10, { ...TARGET, colorMatrix: 'bt601' }, true);
-    const [file] = await produce({ [SOURCE]: join(dir, 'untagged.mp4') }, [recipe]);
-    expect((await probe(file!)).streams.map(stream => stream.codec_type)).toEqual(['video']);
-    expect(await packets(file!)).toHaveLength(10);
   });
 });
 

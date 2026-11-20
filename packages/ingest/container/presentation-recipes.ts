@@ -11,46 +11,33 @@
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { PACKED_PLANE_GAP, checkGridFrames, transitionFitRect } from "@shared/mini-tools/video-encode-plan.js";
+import { PACKED_PLANE_GAP, checkGridFrames } from "@shared/mini-tools/video-encode-plan.js";
 import { gridFilterChain, gridLandingLate, gridSeekPosition, type SourceKeyframeStats } from "@shared/upload/frame-grid.js";
 import type { FrameRate } from "@shared/upload/frame-grid-rate.js";
 import type {
-  MiniToolPlanEditEncode, MiniToolPlanEditStitch, MiniToolPlanExpandComposite, MiniToolPlanFrames, MiniToolPlanGrid, MiniToolPlanRecipe, MiniToolPlanStitch,
-  MiniToolPlanTarget, MiniToolPlanToolSource, MiniToolPlanTransitionProfile, MiniToolPlanTransitionStitch, MiniToolPlanTransitionWindow,
+  MiniToolPlanEditEncode, MiniToolPlanEditStitch, MiniToolPlanFrames, MiniToolPlanGrid, MiniToolPlanRecipe, MiniToolPlanStitch, MiniToolPlanToolSource,
 } from "@shared/upload/mini-tool-plan-types.js";
-import type { ContainerFailure } from "@shared/mini-tools/types.js";
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
-import { TAGGED_MATRICES } from "@ingest/container/physical-video-probe.js";
-import { BT709_TAGS, audioOutput, decodedPicture, picture, placement, scaleMatrix, videoOutput } from "@ingest/container/playback-command.js";
+import { BT709_TAGS, audioOutput, decodedPicture, picture, placement, videoOutput } from "@ingest/container/playback-command.js";
 import { editEncode, editMuxer, editPicture } from "@ingest/container/edit-command.js";
 import { alphaDecoderArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pickMediaMetadata } from "@ingest/media-metadata.js";
 import { pngSize } from "@ingest/png-size.js";
 import { runAnalysisPipeline } from "@ingest/container/analysis-pipeline.js";
-import { readSceneCutObservations, readYuNetFaces } from "@ingest/container/analysis-detection.js";
+import { readSceneCutObservations } from "@ingest/container/analysis-detection.js";
 
 export { BT709_TAGS, picture, placement, videoOutput };
-
-/** A recipe that ends on a property of its input, reported as the job's reason rather than `tool_failed`. */
-export class RecipeFailure extends Error {
-  /**
-   * Name the reason.
-   * @param reason - The report's reason.
-   */
-  constructor(readonly reason: ContainerFailure) { super(reason); this.name = "RecipeFailure"; }
-}
 
 /** Caller-frozen process IO bounds, with no local operational fallback. */
 export interface PlanLimits { probeStdoutBytes: number; analysisStdoutBytes: number; stderrTailBytes: number }
 /** The recipes this module runs. */
-export type PresentationRecipe = Extract<MiniToolPlanRecipe, { kind: "frame" | "segment" | "people" | "scene_cuts" | "grid_count" | "edit_encode" | "chunk_encode" | "stitch" | "prepare_model_input" | "transition_window" }>
-  | MiniToolPlanExpandComposite;
+export type PresentationRecipe = MiniToolPlanRecipe;
 /** The process lifetime and IO bounds of one command. */
 export type Run = { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number };
 /** One recipe's local files and lifetime. */
 export interface PresentationRecipeRequest {
-  /** Any admitted recipe but the lip-sync and model steps, which their own modules run. */
+  /** Any admitted recipe. */
   recipe: PresentationRecipe;
   /** Downloaded files by bound input id. */
   inputs: ReadonlyMap<string, string>;
@@ -163,26 +150,6 @@ export async function decodeGridWindow(window: GridWindow, facts: Pick<SourceFac
 }
 
 /**
- * The input arguments and graph head of a grid window whose seek lands in time, for a caller that streams the decode (a
- * lip-sync composite): a one-frame run checks the landing first (`decodeGridWindow`), and the streamed decode then opens the
- * same position, so the frames it reads are the window's.
- * @param window - The tool source and its frames.
- * @param facts - The source's facts.
- * @param directory - Where the landing record goes.
- * @param run - The lifetime and IO bounds.
- * @returns The input arguments and the graph head ending at `[g]`.
- * @throws {Error} When FFmpeg fails.
- */
-export async function landedGridInput(window: GridWindow, facts: Pick<SourceFacts, "decoder">, directory: string, run: Run): Promise<{ input: string[]; graph: string }> {
-  const landed = { input: [] as string[], graph: "" };
-  await decodeGridWindow(window, facts, directory, run, (input, graph) => {
-    Object.assign(landed, { input, graph });
-    return [...input, "-filter_complex", `${graph};[g]null[v]`, "-map", "[v]", "-frames:v", "1", "-f", "null", "-"];
-  });
-  return landed;
-}
-
-/**
  * A grid frame's first audio sample on the 48 kHz grid (§4.4): k / fps × 48000, rounded as FFmpeg `av_rescale` (nearest,
  * halves away from 0).
  * @param frame - The grid frame.
@@ -274,8 +241,8 @@ export async function writeJson(output: string, value: unknown): Promise<void> {
  * @throws {RangeError} When the plan matrix has no decode value.
  * @throws {Error} When FFmpeg fails or the PNG is incomplete.
  */
-async function renderFrame(recipe: Extract<MiniToolPlanRecipe, { kind: "frame" | "people" }> & { crop?: Extract<MiniToolPlanRecipe, { kind: "frame" }>["crop"] },
-  request: PresentationRecipeRequest, run: Run, output = request.output): Promise<{ width: number; height: number }> {
+async function renderFrame(recipe: Extract<MiniToolPlanRecipe, { kind: "frame" }>, request: PresentationRecipeRequest, run: Run,
+  output = request.output): Promise<{ width: number; height: number }> {
   const { target, crop } = recipe;
   const keep = target.alpha === "straight";
   const pixel = keep ? (target.pngBitDepth === 16 ? "rgba64be" : "rgba") : (target.pngBitDepth === 16 ? "rgb48be" : "rgb24");
@@ -292,17 +259,15 @@ async function renderFrame(recipe: Extract<MiniToolPlanRecipe, { kind: "frame" |
 
 /**
  * Render a window of grid frames into a target (§7.17 segment row, §5.4): the tool source's frames [k0, k1) from 0 at 1/fps,
- * opening with a keyframe; a segment or model input adds the original's audio over the same grid time, a chunk has none. A
- * model input may play backwards (a reversed tracking clip) or be resampled on its model grid (§10.2, §10.4).
- * @param recipe - The segment, chunk or model-input recipe.
+ * opening with a keyframe; a segment adds the original's audio over the same grid time, a chunk has none.
+ * @param recipe - The segment or chunk recipe.
  * @param request - Its files and lifetime.
  * @param run - The lifetime and IO bounds.
  * @returns Nothing once written.
  * @throws {RangeError} When the plan matrix has no decode value.
  * @throws {Error} When FFmpeg fails.
  */
-async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "segment" | "chunk_encode" | "prepare_model_input" }>, request: PresentationRecipeRequest, run: Run): Promise<void> {
-  if (recipe.kind === "chunk_encode" && recipe.profile !== undefined) { await renderTransitionChunk(recipe as TransitionChunk, request, run); return; }
+async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "segment" | "chunk_encode" }>, request: PresentationRecipeRequest, run: Run): Promise<void> {
   const { target, grid, frames } = recipe;
   const file = local(request.inputs, recipe.inputId);
   const facts = await sourceFacts(file, run);
@@ -310,23 +275,14 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "segment
   const audioFile = audioId === null ? null : local(request.inputs, audioId);
   const heard = audioFile !== null && (audioFile === file ? facts.audio : (await sourceFacts(audioFile, run)).audio);
   const count = frames.end - frames.start;
-  let chain = picture(target, facts.range, "p");
-  let fps = grid.fps;
-  if (recipe.kind === "prepare_model_input") {
-    if (recipe.order === "reverse") chain = `reverse,setpts=N,${chain}`;
-    if (recipe.model?.mode === "resample") {
-      const slots = recipe.model.frameCount;
-      chain = `${chain},fps=fps=${recipe.model.rate}:round=up,tpad=stop_mode=clone:stop=${slots},trim=end_frame=${slots}`;
-      fps = { numerator: recipe.model.rate, denominator: 1 };
-    }
-  }
-  const { video, muxer } = videoOutput(target, fps);
+  const chain = picture(target, facts.range, "p");
+  const { video, muxer } = videoOutput(target, grid.fps);
   await decodeGridWindow({ file, grid, source: recipe.source, frames }, facts, request.directory, run, (input, graph) => [
     ...input, ...(heard ? ["-i", audioFile] : []),
     "-filter_complex", `${graph};[g]${chain}[v]${heard ? `;${gridAudio(1, grid, frames)}` : ""}`,
     "-map", "[v]", ...video, ...(heard ? audioOutput(target) : ["-an"]), ...muxer, request.output,
   ]);
-  if (recipe.kind !== "prepare_model_input" || recipe.model === undefined) await checkWritten(request.output, { start: 0, end: count }, run);
+  await checkWritten(request.output, { start: 0, end: count }, run);
 }
 
 /**
@@ -423,7 +379,7 @@ async function concatList(chunks: readonly { file: string; frames: number }[], f
 
 /**
  * Join chunks by stream copy (§5.4 stitching row, §7.17 stitch row): a single-source stitch adds the original's audio over the
- * chunks' grid frames, or the lip-sync stems' sum; an edit stitch writes the edit file with no audio in its tier's container.
+ * chunks' grid frames; an edit stitch writes the edit file with no audio in its tier's container.
  * @param recipe - The stitch.
  * @param request - Its files and lifetime.
  * @param run - The lifetime and IO bounds.
@@ -443,14 +399,7 @@ async function stitch(recipe: MiniToolPlanStitch | MiniToolPlanEditStitch, reque
     return;
   }
   let graph: string | null = null;
-  if (typeof recipe.audio === "object") {
-    const samples = gridSample(window.end, recipe.grid.fps) - gridSample(window.start, recipe.grid.fps);
-    const labels = recipe.audio.inputs.map((_stem, at) => `[s${at}]`);
-    for (const stem of recipe.audio.inputs) args.push("-i", local(request.inputs, stem));
-    const heads = recipe.audio.inputs.map((_stem, at) => `[${at + 1}:a:0]aresample=48000,asetpts=PTS-STARTPTS${labels[at]}`);
-    const mix = labels.length === 1 ? "anull" : `amix=inputs=${labels.length}:normalize=0:duration=longest`;
-    graph = [...heads, `${labels.join("")}${mix},apad=whole_len=${samples},atrim=end_sample=${samples}[a]`].join(";");
-  } else if (recipe.audio) {
+  if (recipe.audio) {
     const source = local(request.inputs, recipe.inputId);
     if ((await sourceFacts(source, run)).audio) {
       args.push("-copyts", "-i", source);
@@ -461,211 +410,6 @@ async function stitch(recipe: MiniToolPlanStitch | MiniToolPlanEditStitch, reque
     ...(recipe.target.format === "webm-vp9" ? ["-f", "webm"] : ["-movflags", "+faststart", "-f", "mp4"]), request.output);
   await runPlanCommand("ffmpeg", args, run);
   await checkWritten(request.output, { start: 0, end: window.end - window.start }, run);
-}
-
-/** A transition chunk: a chunk encoded to the transition's output profile at its clip's placement. */
-type TransitionChunk = Extract<PresentationRecipe, { kind: "chunk_encode" }> & { profile: MiniToolPlanTransitionProfile; placement: { startFrame: number; inFrame: number } };
-
-/**
- * A transition output profile as an encode target (§7.17 transition output profile row).
- * @param profile - The profile.
- * @returns The target.
- * @throws {never} Never.
- */
-function profileTarget(profile: MiniToolPlanTransitionProfile): MiniToolPlanTarget {
-  return { width: profile.width, height: profile.height, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: profile.alpha ? "straight" : "none",
-    crf: profile.encode.crf, preset: profile.encode.preset, format: profile.codec === "vp9" ? "webm-vp9" : "mp4-h264" };
-}
-
-/**
- * The clip frames output frames [s, e) show (§7.17 transition output profile row): output frame k shows the clip's grid frame
- * covering (k − startFrame) / output fps after its in-frame; and the chain that puts the window's frames on their output slots.
- * @param clipFps - The clip's grid rate.
- * @param placementOf - Where the clip sits on the output grid.
- * @param placementOf.startFrame - The output frame it starts at.
- * @param placementOf.inFrame - Its first grid frame.
- * @param profile - The output profile.
- * @param frames - The output frames.
- * @returns The clip frames to read and the chain from them to `count` output frames on 1/fps.
- * @throws {never} Never.
- */
-function clipOnOutput(clipFps: FrameRate, placementOf: { startFrame: number; inFrame: number }, profile: MiniToolPlanTransitionProfile, frames: MiniToolPlanFrames): { read: MiniToolPlanFrames; chain: string } {
-  const [cn, cd, on, od] = [BigInt(clipFps.numerator), BigInt(clipFps.denominator), BigInt(profile.fps.numerator), BigInt(profile.fps.denominator)];
-  const covering = (k: number): number => placementOf.inFrame + Number(((BigInt(k - placementOf.startFrame)) * od * cn) / (on * cd));
-  const read = { start: covering(frames.start), end: covering(frames.end - 1) + 1 };
-  const count = frames.end - frames.start;
-  // The slot of window frame N: ceil((read.start + N − inFrame) × cd·on / (cn·od)) − (s − startFrame), clamped to 0.
-  const [a, b] = [cd * on, cn * od];
-  const slot = `max(ceil((N+${read.start - placementOf.inFrame})*${a}/${b})-${frames.start - placementOf.startFrame}\\,0)`;
-  return { read, chain: `settb=${profile.fps.denominator}/${profile.fps.numerator},setpts=${slot},fps=fps=${profile.fps.numerator}/${profile.fps.denominator}:round=up,` +
-    `tpad=stop_mode=clone:stop=${count},trim=end_frame=${count}` };
-}
-
-/**
- * Encode one transition chunk outside the overlap window (§7.17 chunk_encode row): the clip's grid frames on the output grid,
- * in its fitted rectangle, encoded with the profile so its headers equal the window chunks'.
- * @param recipe - The chunk.
- * @param request - Its files and lifetime.
- * @param run - The lifetime and IO bounds.
- * @returns Nothing once written.
- * @throws {Error} When FFmpeg fails.
- */
-async function renderTransitionChunk(recipe: TransitionChunk, request: PresentationRecipeRequest, run: Run): Promise<void> {
-  const { profile } = recipe;
-  const file = local(request.inputs, recipe.inputId);
-  const facts = await sourceFacts(file, run);
-  const target = profileTarget(profile);
-  const fit = transitionFitRect(recipe.target, profile);
-  const placed = { ...target, displayRect: profile.alpha ? null : fit, colorMatrix: recipe.target.colorMatrix };
-  const { read, chain } = clipOnOutput(recipe.grid.fps, recipe.placement, profile, recipe.frames);
-  const head = profile.alpha
-    ? `${decodedPicture(recipe.target.colorMatrix, facts.range, fit.width, fit.height, { format: "yuva444p", bt709: true })},pad=${profile.width}:${profile.height}:${fit.x}:${fit.y}:color=black@0,format=yuva420p,${BT709_TAGS}`
-    : picture(placed, facts.range, "t");
-  const { video, muxer } = videoOutput(target, profile.fps);
-  await decodeGridWindow({ file, grid: recipe.grid, source: recipe.source, frames: read }, facts, request.directory, run, (input, graph) => [
-    ...input, "-filter_complex", `${graph};[g]${head},${chain}[v]`, "-map", "[v]", ...video, "-an", ...muxer, request.output,
-  ]);
-}
-
-/** The headless-gl renderer of the MiniToolContainerGl image (the gl variant of packages/ingest/Dockerfile), a separate program. */
-const GL_RENDERER = "/app/gl-renderer/render.mjs";
-
-/**
- * Render one chunk of a transition's overlap window (§7.17 transition_window row): each clip's grid frames on the output grid as
- * RGBA in its fitted rectangle; the headless-gl renderer draws output frame k at progress (k − startFrame) / frameCount; FFmpeg
- * encodes them with the profile.
- * @param recipe - The window chunk.
- * @param request - Its files and lifetime.
- * @param run - The lifetime and IO bounds.
- * @returns Nothing once written.
- * @throws {Error} When an input is missing, the renderer or FFmpeg fails.
- */
-async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, request: PresentationRecipeRequest, run: Run): Promise<void> {
-  const { profile, frames, window } = recipe;
-  const { width, height } = profile;
-  const count = frames.end - frames.start;
-  const fill = `black@${profile.alpha ? 0 : 1}`;
-  const decoded = await Promise.all(recipe.clips.map(async (clip, at) => {
-    const file = local(request.inputs, clip.inputId);
-    const facts = await sourceFacts(file, run);
-    const { read, chain } = clipOnOutput(clip.grid.fps, clip.placement, profile, frames);
-    const out = join(request.directory, `transition-${at}.rgba`);
-    const convert = `${decodedPicture(clip.colorMatrix, facts.range, clip.fit.width, clip.fit.height, { format: profile.alpha ? "yuva444p" : "yuv444p", bt709: true })},` +
-      `scale=in_color_matrix=bt709:in_range=tv:out_range=pc,format=rgba,pad=${width}:${height}:${clip.fit.x}:${clip.fit.y}:color=${fill},setsar=1`;
-    await decodeGridWindow({ file, grid: clip.grid, source: clip.source, frames: read }, facts, request.directory, run, (input, graph) => [
-      ...input, "-filter_complex", `${graph};[g]${convert},${chain},format=rgba[v]`, "-map", "[v]", "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgba", out,
-    ]);
-    return out;
-  }));
-  const rendered = join(request.directory, "transition-out.rgba");
-  const description = join(request.directory, "transition-request.json");
-  await writeJson(description, { width, height, frameCount: count, transition: recipe.transition, from: decoded[0], to: decoded[1], output: rendered,
-    progress: Array.from({ length: count }, (_unused, at) => (frames.start + at - window.startFrame) / window.frameCount) });
-  await runPlanCommand("node", [GL_RENDERER, description], run);
-  const { video, muxer } = videoOutput(profileTarget(profile), profile.fps);
-  await runPlanCommand("ffmpeg", [...HEAD, "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${width}x${height}`, "-framerate", `${profile.fps.numerator}/${profile.fps.denominator}`,
-    "-i", rendered, "-vf", `scale=in_range=pc:out_color_matrix=bt709:out_range=tv,format=${profile.alpha ? "yuva420p" : "yuv420p"},setsar=1,${BT709_TAGS}`,
-    ...video, "-an", ...muxer, request.output], run);
-}
-
-/**
- * Join a transition's chunks by stream copy and lay both clips' audio under them (§7.17 stitch and transition rows): each
- * clip's audio over its own span from its in-frame, a clip without audio as silence; a Cut joins them directly and a
- * transition crosses them over the window (`acrossfade c1=tri:c2=tri`). Both meet in stereo.
- * @param recipe - The transition stitch.
- * @param request - Its files and lifetime.
- * @param run - The lifetime and IO bounds.
- * @returns Nothing once written.
- * @throws {Error} When the chunks' headers differ, an input is missing or FFmpeg fails.
- */
-async function transitionStitch(recipe: MiniToolPlanTransitionStitch, request: PresentationRecipeRequest, run: Run): Promise<void> {
-  const files = recipe.chunks.map((chunk) => local(request.inputs, chunk.inputId));
-  await sameCodecHeaders(files, run);
-  const list = join(request.directory, "stitch.txt");
-  await concatList(recipe.chunks.map((chunk, at) => ({ file: files[at]!, frames: chunk.frames.end - chunk.frames.start })), recipe.profile.fps, list);
-  const args = [...HEAD, "-f", "concat", "-safe", "0", "-i", list, "-copyts"];
-  const graph: string[] = [];
-  const facts = await Promise.all(recipe.clips.map(async (clip) => (clip.audio ? sourceFacts(local(request.inputs, clip.inputId), run) : null)));
-  if (facts.some((fact) => fact?.audio === true)) {
-    let inputs = 1;
-    recipe.clips.forEach((clip, at) => {
-      const samples = gridSample(clip.frameCount, recipe.profile.fps);
-      if (facts[at]?.audio !== true) { graph.push(`anullsrc=r=48000:cl=stereo,atrim=end_sample=${samples},asetpts=N/SR/TB[d${at}]`); return; }
-      args.push("-i", local(request.inputs, clip.inputId));
-      const from = gridSample(clip.placement.inFrame, clip.grid.fps);
-      graph.push(audioSamples(inputs, clip.grid.gridStart, from, from + samples, `c${at}`));
-      inputs += 1;
-      graph.push(`[c${at}]${facts[at].mono ? "pan=stereo|c0=c0|c1=c0" : "aformat=channel_layouts=stereo"},apad=whole_len=${samples},atrim=end_sample=${samples},asetpts=N/SR/TB[d${at}]`);
-    });
-    graph.push(recipe.crossfade === null ? "[d0][d1]concat=n=2:v=0:a=1[a]" : `[d0][d1]acrossfade=ns=${gridSample(recipe.crossfade.frameCount, recipe.profile.fps)}:c1=tri:c2=tri[a]`);
-  }
-  const target = profileTarget(recipe.profile);
-  args.push(...(graph.length === 0 ? [] : ["-filter_complex", graph.join(";")]), "-map", "0:v:0", "-c:v", "copy",
-    ...(graph.length === 0 ? ["-an"] : audioOutput(target)), ...(target.format === "webm-vp9" ? ["-f", "webm"] : ["-movflags", "+faststart", "-f", "mp4"]), request.output);
-  await runPlanCommand("ffmpeg", args, run);
-}
-
-/**
- * The scale options that decode a model's video result (erase, expand, lip-sync) from its own tags: a tagged matrix the plan
- * knows, BT.601 otherwise (the providers encode RGB with swscale's default and write no tags); its range, limited when untagged.
- * @param stream - The result's ffprobe video stream.
- * @returns The `in_color_matrix` and `in_range` options.
- * @throws {never} Never.
- */
-export function modelResultDecode(stream: Record<string, unknown>): string {
-  const tag = stream.color_space;
-  const matrix = scaleMatrix(typeof tag === "string" && Object.hasOwn(TAGGED_MATRICES, tag) ? TAGGED_MATRICES[tag]! : "bt601");
-  return `in_color_matrix=${matrix}:in_range=${stream.color_range === "pc" ? "pc" : "tv"}`;
-}
-
-/**
- * Probe a model's video result for its colour tags and return the scale options that decode it ({@link modelResultDecode}).
- * @param file - The result.
- * @param run - The lifetime and IO bounds.
- * @returns The options.
- * @throws {Error} When ffprobe fails.
- */
-export async function probeModelResultDecode(file: string, run: Run): Promise<string> {
-  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0", "-show_entries", "stream=color_space,color_range",
-    "-of", "json", file], run)).toString("utf8")) as { streams?: Record<string, unknown>[] };
-  return modelResultDecode(answer.streams?.[0] ?? {});
-}
-
-/**
- * Composite an expand's backgrounds over a chunk (§7.17 model_composite row; execution design §8, §8.1): the source's grid
- * frames at their frozen rectangle over each background laid from its window's start in grid seconds, a later background
- * faded in over its overlap with the one before. The audio is the stitch's.
- * @param recipe - The composite.
- * @param request - Its files and lifetime.
- * @param run - The lifetime and IO bounds.
- * @returns Nothing once written.
- * @throws {Error} When an input is missing or FFprobe or FFmpeg fails.
- */
-async function compositeWindow(recipe: MiniToolPlanExpandComposite, request: PresentationRecipeRequest, run: Run): Promise<void> {
-  const { target, grid, frames } = recipe;
-  const file = local(request.inputs, recipe.inputId);
-  const facts = await sourceFacts(file, run);
-  const { rect } = placement(target);
-  const origin = valueOf(grid.fps) === 0 ? 0 : frames.start / valueOf(grid.fps);
-  const decodes = await Promise.all(recipe.backgrounds.map((background) => probeModelResultDecode(local(request.inputs, background.inputId), run)));
-  const count = frames.end - frames.start;
-  const { video, muxer } = videoOutput(target, grid.fps);
-  await decodeGridWindow({ file, grid, source: recipe.source, frames }, facts, request.directory, run, (input, head) => {
-    const args = [...input];
-    const graph = [head, `[g]${decodedPicture(target.colorMatrix, facts.range, rect.width, rect.height, { format: "yuv420p", bt709: true })},${BT709_TAGS}[sv]`,
-      `color=c=black:s=${target.width}x${target.height}:r=${grid.fps.numerator}/${grid.fps.denominator},format=yuv420p,setsar=1,${BT709_TAGS},trim=end_frame=${count}[b0]`];
-    recipe.backgrounds.forEach((background, at) => {
-      args.push("-i", local(request.inputs, background.inputId));
-      const crop = background.crop === undefined ? "" : `crop=${background.crop.width}:${background.crop.height}:${background.crop.x}:${background.crop.y}:exact=1,`;
-      const previous = recipe.backgrounds[at - 1];
-      const overlap = previous === undefined ? 0 : valueOf(previous.window.end) - valueOf(background.window.start);
-      const fade = overlap <= 0 ? "" : `,setpts=PTS-STARTPTS,format=yuva420p,fade=t=in:st=0:d=${overlap.toFixed(6)}:alpha=1`;
-      graph.push(`[${at + 1}:v:0]${crop}scale=${target.width}:${target.height}:${decodes[at]!}:out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,${BT709_TAGS}${fade},` +
-        `setpts=PTS-STARTPTS+(${(valueOf(background.window.start) - origin).toFixed(6)})/TB[f${at}]`, `[b${at}][f${at}]overlay[b${at + 1}]`);
-    });
-    graph.push(`[b${recipe.backgrounds.length}][sv]overlay=${rect.x}:${rect.y},trim=end_frame=${count}[c]`);
-    return [...args, "-filter_complex", graph.join(";"), "-map", "[c]", ...video, "-an", ...muxer, request.output];
-  });
 }
 
 /**
@@ -683,7 +427,7 @@ async function compositeWindow(recipe: MiniToolPlanExpandComposite, request: Pre
  * @returns The detector's JSON object.
  * @throws {Error} When the detector, its input or its JSON fails.
  */
-export async function detect(kind: "people" | "scene_cuts" | "faces", profile: unknown, frames: { width: number; height: number; count: number; args: string[] }, directory: string,
+export async function detect(kind: "scene_cuts", profile: unknown, frames: { width: number; height: number; count: number; args: string[] }, directory: string,
   signal: AbortSignal, limits: PlanLimits): Promise<Record<string, unknown>> {
   const path = join(directory, "analysis-request.json");
   await writeJson(path, { kind, width: frames.width, height: frames.height, expectedFrameCount: frames.count, profile });
@@ -694,25 +438,6 @@ export async function detect(kind: "people" | "scene_cuts" | "faces", profile: u
   })).toString("utf8"));
   if (typeof answer !== "object" || answer === null || Array.isArray(answer)) throw new TypeError("Expected a complete detector object");
   return answer as Record<string, unknown>;
-}
-
-/**
- * Detect people on the anchor's grid frame (§7.17 people anchor row): the frame rendered at the target size, the candidates in
- * that display geometry.
- * @param recipe - The people recipe.
- * @param request - Its files and lifetime.
- * @param run - The lifetime and IO bounds.
- * @returns Nothing once written.
- * @throws {Error} When rendering, detection or writing fails.
- */
-async function detectPeople(recipe: Extract<PresentationRecipe, { kind: "people" }>, request: PresentationRecipeRequest, run: Run): Promise<void> {
-  const { width, height } = recipe.target;
-  const anchor = join(request.directory, "people-anchor.png");
-  await renderFrame(recipe, request, run, anchor);
-  const result = await detect("people", recipe.profile, { width, height, count: 1,
-    args: [...HEAD.filter((arg) => arg !== "-y"), "-i", anchor, "-map", "0:v:0", "-pix_fmt", "bgr24", "-f", "rawvideo", "pipe:1"] },
-  request.directory, request.signal, request.limits);
-  await writeJson(request.output, { schemaVersion: 1, kind: "people", coordinateSpace: "display", width, height, candidates: readYuNetFaces(result.faces, { width, height }, true) });
 }
 
 /**
@@ -786,19 +511,15 @@ export async function executePresentationRecipe(request: PresentationRecipeReque
   const run = { signal, stdoutBytes: limits.analysisStdoutBytes, stderrTailBytes: limits.stderrTailBytes };
   switch (recipe.kind) {
     case "frame": return { ...await renderFrame(recipe, request, run), durationSeconds: null, cover: null };
-    case "people": await detectPeople(recipe, request, run); return NO_MEDIA;
     case "scene_cuts": await detectScenes(recipe, request, run); return NO_MEDIA;
     case "grid_count": throw new Error("A grid count is the job's count, never an output (§7.17 grid_count)");
     case "edit_encode": await encodeEditChunk(recipe, request, run); break;
-    case "stitch": await ("clips" in recipe && recipe.clips !== undefined ? transitionStitch(recipe, request, run)
-      : stitch(recipe as MiniToolPlanStitch | MiniToolPlanEditStitch, request, run)); break;
-    case "model_composite": await compositeWindow(recipe, request, run); break;
-    case "transition_window": await renderTransitionWindow(recipe, request, run); break;
+    case "stitch": await stitch(recipe, request, run); break;
     default: await renderWindow(recipe, request, run);
   }
   const metadata = await readVideoMetadata(request.output, request, recipe.kind);
-  if (recipe.kind !== "stitch" || "clips" in recipe || "edit" in recipe || (recipe).target.alpha !== "packed") return { ...metadata, cover: null };
-  const { rect, planeWidth } = placement((recipe).target);
-  return { ...metadata, cover: null, packing: { packedWidth: (recipe).target.width, packedHeight: (recipe).target.height,
+  if (recipe.kind !== "stitch" || "edit" in recipe || recipe.target.alpha !== "packed") return { ...metadata, cover: null };
+  const { rect, planeWidth } = placement(recipe.target);
+  return { ...metadata, cover: null, packing: { packedWidth: recipe.target.width, packedHeight: recipe.target.height,
     colorRect: rect, alphaRect: { ...rect, x: rect.x + planeWidth + PACKED_PLANE_GAP } } };
 }

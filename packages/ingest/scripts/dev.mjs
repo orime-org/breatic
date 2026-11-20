@@ -45,11 +45,11 @@ if (!existsSync(CONFIG)) {
 // one removes the tag the other's containers start from. Nothing reports that
 // when it happens, so it is checked here.
 const topLevel = readFileSync(CONFIG, "utf8").split(/^\[env\./m)[0] ?? "";
-const blocks = topLevel
+const unnamed = topLevel
   .split(/^\[\[containers\]\]/m)
   .slice(1)
-  .map((block) => block.split(/^\[/m)[0] ?? "");
-const unnamed = blocks.filter((block) => !/^\s*image_vars\s*=\s*\{[^}]*\bDEV_COPY\s*=\s*"[^"<]+"/m.test(block));
+  .map((block) => block.split(/^\[/m)[0] ?? "")
+  .filter((block) => !/^\s*image_vars\s*=\s*\{[^}]*\bDEV_COPY\s*=\s*"[^"<]+"/m.test(block));
 if (unnamed.length > 0) {
   process.stdout.write(
     [
@@ -59,31 +59,6 @@ if (unnamed.length > 0) {
       "  Add this line to each top-level [[containers]] block, with one name",
       "  no other copy of the repository on this machine uses:",
       '    image_vars = { DEV_COPY = "<this directory\'s name>" }',
-      "  (see packages/ingest/README.md).",
-      "",
-      "  Everything else in `pnpm dev` is unaffected.",
-      "",
-    ].join("\n"),
-  );
-  process.exit(0);
-}
-
-// The transition renderer is installed only by the `gl` variant of the Dockerfile. A
-// MiniToolContainerGl block without it builds the standard image, which starts
-// fine and then fails every Crossfade and Wipe export, so it is checked here.
-const plainGl = blocks.filter(
-  (block) =>
-    /^\s*class_name\s*=\s*"MiniToolContainerGl"/m.test(block) &&
-    !/^\s*image_vars\s*=\s*\{[^}]*\bVARIANT\s*=\s*"gl"/m.test(block),
-);
-if (plainGl.length > 0) {
-  process.stdout.write(
-    [
-      "",
-      "  ingest Worker: the MiniToolContainerGl block in wrangler.toml does not build the gl image, so it is not starting.",
-      "",
-      "  Give its image_vars the variant beside the copy name:",
-      '    image_vars = { DEV_COPY = "<this directory\'s name>", VARIANT = "gl" }',
       "  (see packages/ingest/README.md).",
       "",
       "  Everything else in `pnpm dev` is unaffected.",

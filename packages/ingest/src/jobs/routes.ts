@@ -48,21 +48,8 @@ export const WEB_ANIMATION_CANCEL_PATH = new RegExp(`^/jobs/${WEB_ANIMATION_CONT
  */
 function namespaceOf(env: JobsEnv, containerClass: string): MiniToolEnv["MINI_TOOL_STD1"] | null {
   if (!Object.hasOwn(CLASS_BINDINGS, containerClass)) return null;
-  // Every class shares one shape; only their instance size and image differ.
+  // Both classes share one shape; only their instance size differs.
   return env[CLASS_BINDINGS[containerClass as MiniToolClass]];
-}
-
-/**
- * The binding a known class is reached through when this deployment has not configured it (`MINI_TOOL_GL` is optional,
- * so a deployment without the GL image answers its jobs with the binding's name rather than a crash).
- * @param env - The bindings.
- * @param containerClass - The class a job names.
- * @returns The missing binding's name, or null.
- */
-function missingBinding(env: JobsEnv, containerClass: string): string | null {
-  if (!Object.hasOwn(CLASS_BINDINGS, containerClass)) return null;
-  const binding = CLASS_BINDINGS[containerClass as MiniToolClass];
-  return env[binding] === undefined ? binding : null;
 }
 
 /**
@@ -130,10 +117,8 @@ async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Respo
  * `POST /jobs` — start a job, or answer the one already holding its id.
  * @param request - The request.
  * @param env - The bindings.
- * @returns 200 with the job's report; 400 for a body that is not a job or a
- *   class this Worker does not bind; 401 without the secret; 503 naming the
- *   binding when the class's binding is not configured, or when the container
- *   could not start; web-animation answers as above.
+ * @returns 200 with the job's report; 400 for a body that is not a job or a class this Worker does not bind; 401
+ *   without the secret; 503 when the container could not start; web-animation answers as above.
  * @throws {unknown} What a job object throws other than a start failure.
  */
 export async function submitJob(request: Request, env: JobsEnv): Promise<Response> {
@@ -146,11 +131,6 @@ export async function submitJob(request: Request, env: JobsEnv): Promise<Respons
   const parsed = version === 2 ? miniToolPlanJobRequestSchema.safeParse(body) : miniToolJobRequestSchema.safeParse(body);
   if (!parsed.success) return new Response("Not a job", { status: 400 });
   const job = parsed.data;
-  const missing = missingBinding(env, job.containerClass);
-  if (missing !== null) {
-    noteFailure("ingest_mini_tool_binding_missing", { jobId: job.jobId, containerClass: job.containerClass, binding: missing });
-    return new Response(`The ${missing} binding is not configured`, { status: 503 });
-  }
   const namespace = namespaceOf(env, job.containerClass);
   if (namespace === null) return new Response("Unknown container class", { status: 400 });
   try {
@@ -170,8 +150,8 @@ export async function submitJob(request: Request, env: JobsEnv): Promise<Respons
  * @param env - The bindings.
  * @param containerClass - The class it was submitted to.
  * @param jobId - Its id.
- * @returns 200 with its report; 404 when that class holds no such job; 401 without the secret; 503 naming the binding
- *   when the class's binding is not configured; 501 for a web-animation job while the feature is off.
+ * @returns 200 with its report; 404 when that class holds no such job; 401 without the secret; 501 for a
+ *   web-animation job while the feature is off.
  */
 export async function readJob(request: Request, env: JobsEnv, containerClass: string, jobId: string): Promise<Response> {
   if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
@@ -182,8 +162,6 @@ export async function readJob(request: Request, env: JobsEnv, containerClass: st
     const report = await namespace.get(namespace.idFromName(decodeURIComponent(jobId))).report();
     return report === null ? new Response("No such job", { status: 404 }) : Response.json(report);
   }
-  const missing = missingBinding(env, className);
-  if (missing !== null) return new Response(`The ${missing} binding is not configured`, { status: 503 });
   const namespace = namespaceOf(env, className);
   if (namespace === null) return new Response("No such job", { status: 404 });
   const report = await namespace.get(namespace.idFromName(decodeURIComponent(jobId))).report();

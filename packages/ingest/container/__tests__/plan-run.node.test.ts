@@ -104,15 +104,14 @@ describe("planned local owner with IO and recipes mocked, not actual media", () 
   });
 });
 
-// Frames-split design §7.17: frame, segment, people and scene_cuts read grid frames from the tool source, and each runs as a
+// Frames-split design §7.17: frame, segment and scene_cuts read grid frames from the tool source, and each runs as a
 // presentation recipe.
-describe("frame, segment, people and scene_cuts run as presentation recipes (§7.17)", () => {
+describe("frame, segment and scene_cuts run as presentation recipes (§7.17)", () => {
   const png = { width: 400, height: 200, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" };
   const video = { width: 400, height: 200, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", crf: 18, preset: "medium", format: "mp4-h264" };
   const frames = { start: 0, end: 1 };
   it.each([
     ["frame", { kind: "frame", inputId: A, ...STILL, target: png }],
-    ["people", { kind: "people", inputId: A, ...STILL, target: png, profile: "standard" }],
     ["scene_cuts", { kind: "scene_cuts", inputId: A, grid: GRID, source: SOURCE, frames, profile: "standard", target: { width: 400, height: 200, colorMatrix: "bt709", toneMap: "none" } }],
     ["segment", { kind: "segment", inputId: A, grid: GRID, source: SOURCE, frames, target: video, audio: false }],
   ])("DP06 a %s recipe on grid frames runs as a presentation recipe", async (_name, recipe) => {

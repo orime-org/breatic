@@ -79,8 +79,8 @@ export async function runPlanCommandWithStderr(program: string, args: readonly s
 export interface PlanPipe { stdin: Writable | null; stdout: Readable | null; done: Promise<void>; stop(): void; stderr(): string }
 
 /**
- * Start one directly spawned plan program whose stdin or stdout the caller streams (execution design paragraph before
- * §9.4: lip-sync frames move through pipes, never all at once).
+ * Start one directly spawned plan program whose stdin or stdout the caller streams, so frames move through pipes, never all
+ * at once.
  * @param program - A repository-selected executable.
  * @param args - Its owned argument vector.
  * @param options - The original lifetime and the IO bounds.
