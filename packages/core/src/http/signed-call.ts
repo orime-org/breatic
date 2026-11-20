@@ -30,7 +30,7 @@ export interface SignedCallTarget {
 /** One call. */
 export interface SignedCallRequest {
   method: "GET" | "POST" | "PUT";
-  /** The path with its query string, exactly as it is signed and sent. */
+  /** The path with its query string; it is signed as the URL parser reads it. */
   path: string;
   /** The JSON body; omitted for a request without one. */
   body?: unknown;
@@ -116,9 +116,13 @@ export async function signedCall(target: SignedCallTarget, request: SignedCallRe
   const body = request.body === undefined ? "" : JSON.stringify(request.body);
   const timestamp = String(Math.floor(Date.now() / 1000));
   const nonce = randomBytes(18).toString("base64url");
+  // The receiver verifies the path its URL parser read, which escapes some
+  // characters encodeURIComponent leaves (a quote in a query), so the path
+  // signed is the parsed one, and the request goes to that same URL.
+  const url = new URL(`${target.baseUrl}${request.path}`);
   const signature = signRequest(target.secret, {
     method: request.method,
-    pathWithQuery: request.path,
+    pathWithQuery: `${url.pathname}${url.search}`,
     timestamp,
     nonce,
     adminId: target.signer,
@@ -137,7 +141,7 @@ export async function signedCall(target: SignedCallTarget, request: SignedCallRe
   let response: Response;
   try {
     response = await httpRequest(
-      `${target.baseUrl}${request.path}`,
+      url.href,
       { method: request.method, headers, ...(request.body === undefined ? {} : { body }) },
       { replaySafe: false, timeoutMs: request.timeoutMs },
     );

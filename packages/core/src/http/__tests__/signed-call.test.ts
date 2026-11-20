@@ -117,6 +117,16 @@ describe("signedCall", () => {
     expect(verify(request)).toMatchObject({ ok: true, adminId: "product" });
   });
 
+  it("signs the path as it goes on the wire, where the URL parser escapes what encodeURIComponent leaves", async () => {
+    await signedCall(
+      { baseUrl, secret: SECRET, signer: "product" },
+      { method: "GET", path: `/v1/users/u-1/payment/history/unlanded?limit=2&before=${encodeURIComponent("it's")}`, timeoutMs: 2000 },
+    );
+    const request = seen[0]!;
+    expect(request.url).toBe("/v1/users/u-1/payment/history/unlanded?limit=2&before=it%27s");
+    expect(verify(request)).toMatchObject({ ok: true, adminId: "product" });
+  });
+
   it("uses a fresh nonce for every call", async () => {
     const target = { baseUrl, secret: SECRET, signer: "commerce" };
     await signedCall(target, { method: "GET", path: "/a", timeoutMs: 2000 });
