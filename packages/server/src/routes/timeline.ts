@@ -5,7 +5,7 @@
  * Web-animation executions (inner#1711 design §4; #1490 design §4.4): accept a create, modification or export, list a
  * Motion Space's executions and the Timeline-made group, list the Project's results for the Timeline picker, read one
  * execution, resolve the sources a Project's web clips reference, cancel an execution and sign a preview address. The
- * paths keep their Timeline names, because tabs already deployed call them.
+ * paths sit under `/timeline`, where web animation began.
  */
 
 import { Hono } from "hono";
