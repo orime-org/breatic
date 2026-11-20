@@ -8,7 +8,8 @@
  */
 
 import { z } from "zod";
-import { ConsentSnapshotSchema } from "@breatic/shared";
+import { ANALYTICS_EVENT_NAMES, ConsentSnapshotSchema, type AnalyticsEventName } from "@breatic/shared";
+import { ADS_CONVERSIONS } from "@core/ads/ads-types.js";
 
 const uuid = z.string().uuid();
 const cents = z.number().int().nonnegative();
@@ -67,3 +68,32 @@ export const lotRefundFactsSchema = z
   })
   .strict();
 export type LotRefundFacts = z.infer<typeof lotRefundFactsSchema>;
+
+/**
+ * `POST /internal/v1/commerce/conversions`: report an event no product
+ * transaction carries (a renewal, a cancellation, a failed payment).
+ * `consent: "account"` stands for the account's latest reported consent.
+ */
+export const conversionReportSchema = z
+  .object({
+    name: z.string().refine((name): name is AnalyticsEventName => (ANALYTICS_EVENT_NAMES as readonly string[]).includes(name)),
+    userId: uuid,
+    insertId: z.string().min(1).max(200),
+    properties: z.record(z.string(), z.unknown()),
+    consent: z.union([ConsentSnapshotSchema, z.literal("account")]),
+    ads: z
+      .object({
+        conversion: z.enum(ADS_CONVERSIONS),
+        transactionId: z.string().min(1).max(64),
+        click: adClickSchema.nullable(),
+        value: z.object({ amountCents: cents, currency: z.string().min(1).max(10) }).strict().nullable(),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+export type ConversionReport = z.infer<typeof conversionReportSchema>;
+
+/** The answer to a conversion report: whether each side took it. */
+export const conversionAnswerSchema = z.object({ tracked: z.boolean(), adsQueued: z.boolean() }).strict();
+export type ConversionAnswer = z.infer<typeof conversionAnswerSchema>;
