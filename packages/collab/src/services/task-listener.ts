@@ -8,9 +8,10 @@
  * Data path:
  *   server / worker → Redis stream → consumer group (one round per document) →
  *   per-document lease → one direct connection per round → applyNodeTaskCounts
- *   (canvas) or applySpaceTasksVersion (the Space types in SPACE_TASKS_TYPES)
+ *   (canvas), applyDocumentUpload (a Document body's media upload, breatic#1574)
+ *   or applySpaceTasksVersion (the Space types in SPACE_TASKS_TYPES)
  *
- * A change version is written only into a live Space document.
+ * A change version and a Document upload are written only into a live Space document.
  *
  * Collab executes; it does not judge. Which task moved, what the counts now
  * are, whether a result rides along — the server decided all of it.
@@ -25,17 +26,18 @@
  * version each node carries, and for other Space types the version their
  * document holds.
  *
- * Doc layout: `project-{pid}/canvas-{spaceId}` for node counts and the
- * content document of a Space type in `SPACE_TASKS_TYPES` for change
- * versions, one doc per Space. Any other doc name is skipped.
+ * Doc layout: `project-{pid}/canvas-{spaceId}` for node counts,
+ * `project-{pid}/document-{spaceId}` for Document uploads and the content
+ * document of a Space type in `SPACE_TASKS_TYPES` for change versions, one doc
+ * per Space. Any other doc name is skipped.
  */
 
 import { setTimeout as delay } from "node:timers/promises";
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import { ExecutionError, Redlock, ResourceLockedError } from "@sesamecare-oss/redlock";
-import type { NodeTaskCountsEvent, SpaceTasksVersionEvent } from "@breatic/shared";
-import { parseDocName, SPACE_TASKS_TYPES } from "@breatic/shared";
+import type { DocumentUploadEvent, NodeTaskCountsEvent, SpaceTasksVersionEvent } from "@breatic/shared";
+import { applyDocumentUpload, documentBodyFragment, parseDocName, SPACE_TASKS_TYPES } from "@breatic/shared";
 import { createLogger, type Redis } from "@breatic/core";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
 import { applySpaceTasksVersion } from "@collab/services/space-tasks-version.js";
@@ -94,10 +96,13 @@ export interface TaskListenerDeps {
   settings: TaskListenerSettings;
 }
 
+/** An event the listener writes. */
+type TaskEvent = NodeTaskCountsEvent | SpaceTasksVersionEvent | DocumentUploadEvent;
+
 /** One parsed event and the stream entry it came from. */
 interface Item {
   entry: StreamEntry;
-  event: NodeTaskCountsEvent | SpaceTasksVersionEvent;
+  event: TaskEvent;
 }
 
 /** One document's events, in stream order. */
@@ -165,12 +170,12 @@ async function leaseHeldElsewhere(err: unknown): Promise<boolean> {
 }
 
 /**
- * Read one entry as a task event: a node's counts for a canvas document, or a change version for a document of a
- * Space type listed in `SPACE_TASKS_TYPES`.
+ * Read one entry as a task event: a node's counts for a canvas document, a media upload for a Document, or a change
+ * version for a document of a Space type listed in `SPACE_TASKS_TYPES`.
  * @param entry - The stream entry.
  * @returns The event, or why it is skipped.
  */
-function readItem(entry: StreamEntry): NodeTaskCountsEvent | SpaceTasksVersionEvent | { skip: string } {
+function readItem(entry: StreamEntry): TaskEvent | { skip: string } {
   let event: unknown;
   try {
     event = JSON.parse(entry.payload ?? "");
@@ -178,12 +183,15 @@ function readItem(entry: StreamEntry): NodeTaskCountsEvent | SpaceTasksVersionEv
     return { skip: "task_event_unparseable_skipped" };
   }
   const type = typeof event === "object" && event !== null ? (event as { type?: unknown }).type : undefined;
-  if (type !== "node-task-counts" && type !== "space-tasks-version") return { skip: "task_event_unknown_type_skipped" };
+  if (type !== "node-task-counts" && type !== "space-tasks-version" && type !== "document-upload") return { skip: "task_event_unknown_type_skipped" };
   const docName = (event as { docName?: unknown }).docName;
   const parsed = typeof docName === "string" ? parseDocName(docName) : null;
-  const fits = parsed !== null && (type === "node-task-counts" ? parsed.kind === "canvas" : parsed.kind !== "meta" && SPACE_TASKS_TYPES.has(parsed.kind));
+  const fits = parsed !== null && (
+    type === "node-task-counts" ? parsed.kind === "canvas"
+      : type === "document-upload" ? parsed.kind === "document"
+        : parsed.kind !== "meta" && SPACE_TASKS_TYPES.has(parsed.kind));
   if (!fits) return { skip: "task_event_unknown_doc_skipped" };
-  return event as NodeTaskCountsEvent | SpaceTasksVersionEvent;
+  return event as TaskEvent;
 }
 
 /**
@@ -244,10 +252,11 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
     stopping: () => boolean,
   ): Promise<Map<string, EntryOutcome>> {
     const outcomes = new Map<string, EntryOutcome>();
-    const spaceTasks = batch.items[0]!.event.type === "space-tasks-version";
+    // A deleted Space's document loads empty, and what is written into it would be stored over the deleted content.
+    const liveOnly = batch.items[0]!.event.type !== "node-task-counts";
     // A Space with no live row is skipped before its document is loaded into this instance.
     try {
-      if (spaceTasks && !(await isLiveDoc(batch.docName))) {
+      if (liveOnly && !(await isLiveDoc(batch.docName))) {
         logger.info({ docName: batch.docName }, "task_doc_not_live_skipped");
         return outcomeForAll(batch, "done");
       }
@@ -281,7 +290,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       const doc = connection.document!;
       // Checked again after the load: a Space deleted while it loaded reads as empty, and a version written into that
       // empty document would be stored over the deleted row's content.
-      if (spaceTasks && !(await isLiveDoc(batch.docName))) {
+      if (liveOnly && !(await isLiveDoc(batch.docName))) {
         logger.info({ docName: batch.docName }, "task_doc_not_live_skipped");
         return outcomeForAll(batch, "done");
       }
@@ -298,6 +307,11 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
           try {
             if (event.type === "space-tasks-version") {
               applySpaceTasksVersion(d, entry.originId ?? entry.id);
+              outcomes.set(entry.id, "done");
+              continue;
+            }
+            if (event.type === "document-upload") {
+              applyDocumentUpload(documentBodyFragment(d), event);
               outcomes.set(entry.id, "done");
               continue;
             }
