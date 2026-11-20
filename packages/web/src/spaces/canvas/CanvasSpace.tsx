@@ -3911,6 +3911,18 @@ function CanvasSpaceInner({
     openHistoryPanel(nodeId);
     selectOnlyNode(nodeId);
   }, [nodeMenu.nodeId, openHistoryPanel, selectOnlyNode]);
+  // A video still showing what a Motion Space exported opens that result (#1490 design §9.3).
+  const menuSourceAnimation = React.useMemo(() => {
+    const node = nodes.find((n) => n.id === nodeMenu.nodeId);
+    return node === undefined ? null : sourceAnimationOf(node);
+  }, [nodes, nodeMenu.nodeId]);
+  const openSourceAnimationFromMenu = React.useCallback((): void => {
+    if (menuSourceAnimation === null) return;
+    useSpaceOpenRequestStore.getState().dispatch({
+      type: 'request',
+      request: { type: 'web_animation', spaceId: menuSourceAnimation.spaceId, select: menuSourceAnimation.executionId },
+    });
+  }, [menuSourceAnimation]);
   // Node menu "download": the asset the menu's node is showing, or null when
   // it shows none — which is also what decides whether the item is offered at
   // all, so the item and its target come from one answer (#2108).
@@ -3927,18 +3939,6 @@ function CanvasSpaceInner({
   // return in `onNodeContextMenu` — today that return is what keeps this menu
   // shut for them. The browser makes the request itself so the file lands in
   // its download list; nothing here learns how it went.
-  // A video still showing what a Motion Space exported opens that result (#1490 design §9.3).
-  const menuSourceAnimation = React.useMemo(() => {
-    const node = nodes.find((n) => n.id === nodeMenu.nodeId);
-    return node === undefined ? null : sourceAnimationOf(node);
-  }, [nodes, nodeMenu.nodeId]);
-  const openSourceAnimationFromMenu = React.useCallback((): void => {
-    if (menuSourceAnimation === null) return;
-    useSpaceOpenRequestStore.getState().dispatch({
-      type: 'request',
-      request: { type: 'web_animation', spaceId: menuSourceAnimation.spaceId, select: menuSourceAnimation.executionId },
-    });
-  }, [menuSourceAnimation]);
   const downloadFromMenu = React.useCallback((): void => {
     if (menuDownloadUrl !== null) downloadAsset(menuDownloadUrl);
   }, [menuDownloadUrl]);
