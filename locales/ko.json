@@ -3138,7 +3138,7 @@
         "imageOverLimit": "일부 파트의 이미지가 이 오브젝트의 이미지 한도를 넘어 표시되지 않습니다.",
         "pictureReadFailed": "{filename}을(를) 읽을 수 없습니다. 다시 시도하세요.",
         "objectTexturesTooLarge": "이 오브젝트의 이미지는 합계 {actual} MiB를 사용합니다. 한도는 {allowed} MiB입니다. 더 작은 이미지를 쓰거나 다른 파트의 이미지를 제거하세요.",
-        "objectGone": "이미지는 업로드되었지만 오브젝트가 삭제되었거나 잠겼습니다",
+        "objectGone": "이미지는 업로드되었지만 오브젝트가 삭제되었거나 잠겼습니다. 이미지는 Project 이미지에 있습니다",
         "partChanged": "이미지는 업로드되었지만 업로드 중에 이 파트의 이미지가 변경되었습니다. 이미지는 Project 이미지에 있습니다",
         "pickSpaceClosed": "Space가 닫혀 이미지가 적용되지 않았습니다",
         "pickObjectGone": "오브젝트가 삭제되어 이미지가 적용되지 않았습니다",

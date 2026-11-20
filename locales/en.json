@@ -3138,7 +3138,7 @@
         "imageOverLimit": "Some part images would take this object over its image limit and are not shown.",
         "pictureReadFailed": "{filename} could not be read. Try again.",
         "objectTexturesTooLarge": "This object's images would use {actual} MiB together; the limit is {allowed} MiB. Use a smaller image or remove another part's image.",
-        "objectGone": "The image was uploaded, but the object was deleted or locked",
+        "objectGone": "The image was uploaded, but the object was deleted or locked; it is in the Project images",
         "partChanged": "The image was uploaded, but this part's image was changed meanwhile; it is in the Project images",
         "pickSpaceClosed": "This Space was closed before the image was put on",
         "pickObjectGone": "The object was deleted before the image was put on",
