@@ -362,6 +362,9 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {この Document のスナップショットは上限の # 件に達しています。古いスナップショットを削除してから保存してください。}}"
+    },
+    "billing": {
+      "unavailable": "購入とメンバーシップは一時的にご利用いただけません。しばらくしてからもう一度お試しください。"
     }
   },
   "chat": {

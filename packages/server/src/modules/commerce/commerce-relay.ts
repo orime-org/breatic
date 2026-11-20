@@ -13,7 +13,6 @@ import {
   SignedCallError,
   commerceOutboxRepo,
   db,
-  env,
   getCommerceConfig,
   inboxAnswerSchema,
   isUnavailable,
@@ -25,9 +24,7 @@ import {
   type RelayForward,
   type RelayLoop,
 } from "@breatic/core";
-
-/** The name the product signs as on the billing service's listener. */
-const PRODUCT_SIGNER = "product";
+import { commerceTarget } from "@server/modules/commerce/commerce-client.js";
 
 /**
  * Give a row up.
@@ -66,14 +63,25 @@ function describe(err: unknown): string {
 export async function forwardNextCommerceEvent(): Promise<RelayForward | null> {
   return db.transaction(async (tx) => {
     const row = await commerceOutboxRepo.claimNextDue(tx);
-    if (row === null) return null;
+    return row === null ? null : deliverRow(row, tx);
+  });
+}
+
+/**
+ * Deliver one claimed row and record how it went.
+ * @param row - The row, held by `tx`.
+ * @param tx - The transaction holding it.
+ * @returns How it went: sent, put back with its error, or dead-lettered.
+ * @throws {Error} When the outbox write itself fails.
+ */
+export async function deliverRow(row: commerceOutboxRepo.CommerceOutboxRow, tx: DbTx): Promise<RelayForward> {
     const config = getCommerceConfig();
     const attempts = row.attempts + 1;
     let answered: unknown;
     try {
       answered = (
         await signedCall(
-          { baseUrl: env.COMMERCE_API_URL, secret: env.COMMERCE_API_SECRET, signer: PRODUCT_SIGNER },
+          commerceTarget(),
           {
             method: "POST",
             path: `/v1/inbox/${row.id}`,
@@ -99,7 +107,6 @@ export async function forwardNextCommerceEvent(): Promise<RelayForward | null> {
     }
     await commerceOutboxRepo.markSent(row.id, tx);
     return { id: row.id };
-  });
 }
 
 /**

@@ -362,6 +362,9 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {이 Document의 스냅샷이 최대 #개로 가득 찼습니다. 오래된 스냅샷을 삭제한 뒤 저장하세요.}}"
+    },
+    "billing": {
+      "unavailable": "구매 및 멤버십 서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 시도해 주세요."
     }
   },
   "chat": {

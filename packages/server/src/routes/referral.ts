@@ -2,36 +2,30 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The account's referral routes (inner#1868 §7, §8): the membership panel's
- * two sections read here, a code is bound later here, and promoter
- * applications are filed here. All answer 404 while payments are off.
+ * The account's referral routes (inner#1993 §3.2): the billing service holds
+ * referral codes, bindings and promoter applications; these keep the web
+ * paths, auth, rate limits and body checks and hand each request to the
+ * user's endpoint there. All answer 404 where nothing is sold.
  */
 
-import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { storableText, validate } from "@breatic/core";
-import {
-  PROMOTER_CHANNEL_INPUT_MAX,
-  PROMOTER_CHANNELS_MAX,
-  PROMOTER_PLAN_INPUT_MAX,
-  REFERRAL_CODE_INPUT_MAX,
-  t,
-} from "@breatic/shared";
+import { PROMOTER_CHANNEL_INPUT_MAX, PROMOTER_CHANNELS_MAX, PROMOTER_PLAN_INPUT_MAX, REFERRAL_CODE_INPUT_MAX } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { requirePayments } from "@server/middleware/require-payments.js";
+import { requireSelling } from "@server/middleware/require-selling.js";
 import { runOnce } from "@server/middleware/run-once.js";
-import { getLegalConfig } from "@server/config/legal.js";
-import { submitApplication } from "@server/modules/referral/promoter-application.service.js";
-import { bindLater, readAccountReferral } from "@server/modules/referral/referral.service.js";
+import { userPath } from "@server/modules/commerce/commerce-client.js";
+import { flushReferralBinding } from "@server/modules/commerce/referral-flush.service.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
+import { forwardToCommerce, idempotencyKeyOf } from "@server/routes/commerce-forward.js";
 
 const referral = new Hono<{ Variables: AuthVariables }>();
 
 referral.use(requireAuth);
-referral.use(requirePayments);
+referral.use(requireSelling);
 
 const bindingBody = z.object({ code: z.string().min(1).max(REFERRAL_CODE_INPUT_MAX) });
 const applicationBody = z.object({
@@ -41,25 +35,15 @@ const applicationBody = z.object({
   termsVersion: z.string().min(1).max(32),
 });
 
-/**
- * Answers a business refusal the browser can tell apart by `reason`.
- * @param c - The request context.
- * @param status - 409 or 422.
- * @param reason - The refusal code.
- * @param extra - Further fields the browser needs.
- * @returns The response.
- */
-function refuse(c: Context, status: 409 | 422, reason: string, extra: Record<string, unknown> = {}): Response {
-  return c.json({ error: { code: status, message: t(`server.referral.${reason}`), reason, ...extra } }, status);
-}
-
 /** `GET /account/referral` — what the membership panel's referral sections show. */
-referral.get("/", rateLimitFor("referral-read", "user"), async (c) => {
-  const userId = c.get("user").id;
-  return c.json({ data: await readAccountReferral(userId, getLegalConfig().promoter_terms_version) });
-});
+referral.get("/", rateLimitFor("referral-read", "user"), async (c) =>
+  forwardToCommerce(c, { method: "GET", path: userPath(c.get("user").id, "/referral"), quick: true }),
+);
 
-/** `POST /account/referral/binding` — attach a code before the first membership payment. */
+/**
+ * `POST /account/referral/binding` — attach a code before the first
+ * membership payment. The code the account signed up with is decided first.
+ */
 referral.post(
   "/binding",
   rateLimitFor("referral-bind", "user"),
@@ -68,9 +52,13 @@ referral.post(
   runOnce("referral"),
   async (c) => {
     const userId = c.get("user").id;
-    const outcome = await bindLater(userId, c.req.valid("json").code);
-    if (!outcome.ok) return refuse(c, 422, outcome.reason);
-    return c.json({ data: await readAccountReferral(userId, getLegalConfig().promoter_terms_version) });
+    await flushReferralBinding(userId);
+    return forwardToCommerce(c, {
+      method: "POST",
+      path: userPath(userId, "/referral/binding"),
+      body: c.req.valid("json"),
+      ...idempotencyKeyOf(c.req.valid("header")),
+    });
   },
 );
 
@@ -81,17 +69,13 @@ referral.post(
   validate("header", idempotencyKeyHeaderSchema),
   validate("json", applicationBody),
   runOnce("referral"),
-  async (c) => {
-    const userId = c.get("user").id;
-    const terms = getLegalConfig().promoter_terms_version;
-    const outcome = await submitApplication(userId, c.req.valid("json"), terms);
-    if (!outcome.ok) {
-      return outcome.reason === "terms_changed"
-        ? refuse(c, 409, outcome.reason, { termsVersion: outcome.termsVersion })
-        : refuse(c, 409, outcome.reason);
-    }
-    return c.json({ data: await readAccountReferral(userId, terms) });
-  },
+  async (c) =>
+    forwardToCommerce(c, {
+      method: "POST",
+      path: userPath(c.get("user").id, "/referral/applications"),
+      body: c.req.valid("json"),
+      ...idempotencyKeyOf(c.req.valid("header")),
+    }),
 );
 
 export { referral as referralRoute };

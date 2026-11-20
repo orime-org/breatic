@@ -362,6 +362,9 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {這個 Document 的快照已滿 # 張。刪掉舊的快照後再儲存。}}"
+    },
+    "billing": {
+      "unavailable": "購買和會員服務暫時無法使用，請稍後再試。"
     }
   },
   "chat": {

@@ -19,10 +19,10 @@ import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { validate, env, logger, ForbiddenError } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
-import { creditViewService, paymentService } from "@server/modules";
+import { creditViewService } from "@server/modules";
+import { callCommerce, userPath } from "@server/modules/commerce/commerce-client.js";
 import * as studioCreditDesignation from "@server/modules/studio/studioCreditDesignation.service.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { logFulfillment } from "@server/modules/payment/fulfillment-log.js";
 import {
   creditAmountFormatQuerySchema,
   creditLotQuerySchema,
@@ -52,32 +52,16 @@ credits.get(
   async (c) => {
     const user = c.get("user");
     // Purchases that neither the return-side confirmation nor the webhook
-    // settled are repaired here, because this is the query the overlay's seven
-    // sections already wait behind — the buyer is looking at the answer.
+    // granted are retried here by the billing service, because this is the
+    // query the overlay's seven sections already wait behind — the buyer is
+    // looking at the answer.
     //
     // A repair that could not run is not a reason to show them nothing: the
     // overview is answered from our own rows either way, and the next read
     // tries again.
-    if (env.PAYMENT_ENABLED) {
+    if (env.SELLING) {
       try {
-        for (const pass of await paymentService.reconcilePayments(user.id)) {
-          if ("failure" in pass) {
-            logger.error(
-              {
-                err: pass.failure,
-                userId: user.id,
-                stripeSessionId: pass.stripeSessionId,
-              },
-              "payment_reconcile_pass_failed",
-            );
-            continue;
-          }
-          logFulfillment(pass.outcome, {
-            stripeSessionId: pass.stripeSessionId,
-            from: "reconcile",
-            userId: user.id,
-          });
-        }
+        await callCommerce({ method: "POST", path: userPath(user.id, "/payment/reconcile"), quick: true });
       } catch (err) {
         logger.error({ err, userId: user.id }, "credits_reconcile_failed");
       }

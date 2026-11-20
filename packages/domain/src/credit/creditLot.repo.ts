@@ -1301,6 +1301,79 @@ export async function listLotIdsForMirror(windowDays: number): Promise<string[]>
   return rows.map((r) => r.id);
 }
 
+/** One row of the product's half of purchase history. */
+export interface LotHistoryRow {
+  /** The payment's id for a bought lot, the lot's own id otherwise. */
+  rowId: string;
+  sourceKind: string;
+  sourceId: string;
+  /** Set on a bought lot only. */
+  paymentId: string | null;
+  amountCents: number | null;
+  taxCents: number | null;
+  totalCents: number | null;
+  currency: string;
+  creditsGranted: string;
+  remainingCredits: string;
+  lifecycle: string;
+  designatedStudioId: string | null;
+  designatedStudioName: string | null;
+  /** When the lot was ordered (bought) or granted. */
+  createdAt: Date;
+  /** The same instant as a keyset position (`KEYSET_INSTANT`). */
+  cursorAt: string;
+}
+
+/**
+ * The product's half of purchase history (inner#1993 §3.2 #5): one account's
+ * live lots, newest first, a bought one dated by its order and carrying its
+ * receipt. The billing service answers the other half, the payments that
+ * opened no lot, on the same keyset.
+ * @param userId - Whose history.
+ * @param limit - The page size; one more row is read to tell whether more exist.
+ * @param cursor - The previous page's last `(cursorAt, rowId)`.
+ * @returns Up to `limit + 1` rows.
+ */
+export async function listLotHistory(
+  userId: string,
+  limit: number,
+  cursor: { createdAt: string; id: string } | null,
+): Promise<LotHistoryRow[]> {
+  const rowAt = sql`COALESCE(${paymentReceipts.orderedAt}, ${creditLots.createdAt})`;
+  const rowId = sql`COALESCE(${paymentReceipts.id}, ${creditLots.id})`;
+  const liveStudio = sql`CASE WHEN ${studios.deletedAt} IS NULL THEN`;
+  return db
+    .select({
+      rowId: sql<string>`${rowId}`,
+      sourceKind: creditLots.sourceKind,
+      sourceId: creditLots.sourceId,
+      paymentId: paymentReceipts.id,
+      amountCents: paymentReceipts.amountCents,
+      taxCents: paymentReceipts.taxCents,
+      totalCents: paymentReceipts.totalCents,
+      currency: sql<string>`COALESCE(${paymentReceipts.currency}, 'usd')`,
+      creditsGranted: sql<string>`${creditLots.purchasedCredits}::text`,
+      remainingCredits: sql<string>`${creditLots.remainingCredits}::text`,
+      lifecycle: creditLots.lifecycle,
+      designatedStudioId: sql<string | null>`${liveStudio} ${studios.id} ELSE NULL END`,
+      designatedStudioName: sql<string | null>`${liveStudio} ${studios.name} ELSE NULL END`,
+      createdAt: sql`${rowAt}`.mapWith(creditLots.createdAt),
+      cursorAt: sql<string>`to_char(${rowAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US"+00"')`,
+    })
+    .from(creditLots)
+    .leftJoin(paymentReceipts, eq(paymentReceipts.id, creditLots.sourceId))
+    .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
+    .where(
+      and(
+        eq(creditLots.userId, userId),
+        isNull(creditLots.deletedAt),
+        cursor === null ? undefined : sql`(${rowAt}, ${rowId}) < (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)`,
+      ),
+    )
+    .orderBy(sql`${rowAt} DESC`, sql`${rowId} DESC`)
+    .limit(limit + 1);
+}
+
 /** One lot a studio holds, with the buyer's display name. */
 export interface StudioLot extends CreditLotEntity {
   /** Who bought it. Absent when their personal studio is gone. */

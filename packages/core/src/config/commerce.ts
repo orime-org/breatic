@@ -17,6 +17,9 @@ const positiveInt = z.number().int().positive();
 
 /** Schema for `config/commerce.yaml`. */
 export const commerceConfigSchema = z.object({
+  call_timeout_ms: positiveInt.default(30_000),
+  quick_call_timeout_ms: positiveInt.default(3000),
+  catalog_cache_seconds: positiveInt.default(300),
   relay_interval_ms: positiveInt.default(2000),
   relay_batch: positiveInt.default(100),
   relay_call_timeout_ms: positiveInt.default(10_000),

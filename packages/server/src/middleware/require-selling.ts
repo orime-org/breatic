@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Refuses the endpoints that only exist where this deployment sells something.
+ * Refuses the endpoints that only exist where this deployment sells something,
+ * which is where a billing service is configured (`COMMERCE_API_URL`,
+ * inner#1993 §6.1).
  *
  * A `404` rather than a `403`: on a self-hosted install these endpoints are
  * not a feature that exists, and saying "forbidden" would imply they might
@@ -21,30 +23,34 @@ import { t } from "@breatic/shared";
 /**
  * Refuse with this leg's own sentence when the deployment sells nothing.
  * @param message - What to tell the caller, already in their language.
- * @throws {NotFoundError} When payments are switched off.
+ * @throws {NotFoundError} When nothing is sold here.
  */
 function refuseWhenNotSelling(message: string): void {
-  if (!env.PAYMENT_ENABLED) {
+  if (!env.SELLING) {
     throw new NotFoundError(message);
   }
 }
 
 /**
- * Throw on the membership endpoints when this deployment sells nothing.
- * @throws {NotFoundError} When payments are switched off.
- */
-export function assertPaymentsEnabled(): void {
-  refuseWhenNotSelling(t("server.membership.unavailable"));
-}
-
-/**
- * The same test as a middleware, for the credit endpoints.
+ * Refuse the membership endpoints when this deployment sells nothing.
  * @param _c - The request context, unused.
  * @param next - The handler behind the gate.
  * @returns Its result.
- * @throws {NotFoundError} When payments are switched off.
+ * @throws {NotFoundError} When nothing is sold here.
  */
-export const requirePayments: MiddlewareHandler = (_c, next) => {
+export const requireSellingMemberships: MiddlewareHandler = (_c, next) => {
+  refuseWhenNotSelling(t("server.membership.unavailable"));
+  return next();
+};
+
+/**
+ * Refuse the credit endpoints when this deployment sells nothing.
+ * @param _c - The request context, unused.
+ * @param next - The handler behind the gate.
+ * @returns Its result.
+ * @throws {NotFoundError} When nothing is sold here.
+ */
+export const requireSelling: MiddlewareHandler = (_c, next) => {
   refuseWhenNotSelling(t("server.payment.unavailable"));
   return next();
 };

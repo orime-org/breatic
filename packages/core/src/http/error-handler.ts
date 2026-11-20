@@ -35,7 +35,7 @@
 import type { ErrorHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { REQUEST_SHAPE_REASON, t } from "@breatic/shared";
-import { AppError, TooManyRequestsError } from "@core/app-errors.js";
+import { AppError, TooManyRequestsError, UnavailableError } from "@core/app-errors.js";
 import { RequestShapeError } from "@core/http/validate.js";
 
 /** What the error handler tells its service to log; core itself never logs. */
@@ -84,6 +84,7 @@ export function createErrorHandler(deps: { report: (event: ErrorHandlerEvent) =>
             code: err.statusCode,
             message: err.message,
             ...(err instanceof RequestShapeError ? { reason: REQUEST_SHAPE_REASON } : {}),
+            ...(err instanceof UnavailableError ? { reason: err.reason } : {}),
           },
         },
         err.statusCode as 400,

@@ -362,6 +362,9 @@
     },
     "document": {
       "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
+    },
+    "billing": {
+      "unavailable": "Purchases and memberships are temporarily unavailable. Please try again shortly."
     }
   },
   "chat": {

@@ -215,3 +215,77 @@ export const inboxAnswerSchema = z
   .object({ result: z.enum(["applied", "duplicate", "permanent_failure"]), detail: z.string().optional() })
   .strict();
 export type InboxAnswer = z.infer<typeof inboxAnswerSchema>;
+
+/**
+ * The billing service's answer to a membership checkout confirm: the ad
+ * conversion the page may report once the subscription is active.
+ */
+export const subscriptionConfirmAnswerSchema = z
+  .object({
+    data: z
+      .object({
+        conversion: z.object({ transactionId: z.string().min(1).max(64), amountCents: cents, currency: z.string().min(1).max(10) }).strict().nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+export type SubscriptionConfirmAnswer = z.infer<typeof subscriptionConfirmAnswerSchema>;
+
+/**
+ * A keyset position both sides write the same way: UTC, six fractional
+ * digits, in Postgres's text form. Two of them compare as strings, which is
+ * what lets purchase history merge the product's rows with the billing
+ * service's.
+ */
+export const KEYSET_INSTANT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}\+00$/;
+
+/** One payment the billing service holds that opened no lot yet: still clearing, failed or abandoned. */
+export const unlandedPaymentRowSchema = z
+  .object({
+    paymentId: uuid,
+    amountCents: cents,
+    taxCents: cents.nullable(),
+    totalCents: cents.nullable(),
+    currency: z.string().min(1).max(10),
+    creditsGranted: z.string().regex(/^\d+\.\d{6}$/),
+    status: z.string().min(1),
+    createdAt: instant,
+    cursorAt: z.string().regex(KEYSET_INSTANT),
+    canResend: z.boolean(),
+  })
+  .strict();
+export type UnlandedPaymentRow = z.infer<typeof unlandedPaymentRowSchema>;
+
+/**
+ * `GET /v1/users/:userId/payment/history/unlanded?limit=&before=`: the
+ * newest `limit` such payments before the cursor, newest first.
+ */
+export const unlandedPaymentsAnswerSchema = z.object({ data: z.array(unlandedPaymentRowSchema) }).strict();
+
+/** `POST /v1/users/:userId/payment/mail-status`: whether each purchase's letter can be sent again. */
+export const mailStatusRequestSchema = z.object({ paymentIds: z.array(uuid).min(1).max(100) }).strict();
+export const mailStatusAnswerSchema = z.object({ data: z.record(uuid, z.boolean()) }).strict();
+
+const tierPrice = z.object({ priceCents: cents, currency: z.string().min(1).max(10) }).strict().nullable();
+
+/**
+ * `GET /v1/users/:userId/membership-panel`: what the membership panel needs
+ * from the billing service — each comparable tier's price per period, and the
+ * hosted page for the account's outstanding invoice.
+ */
+export const membershipPanelAnswerSchema = z
+  .object({
+    data: z
+      .object({
+        prices: z.record(z.string(), z.object({ month: tierPrice, year: tierPrice }).strict()),
+        payableInvoiceUrl: z.string().url().nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+export type MembershipPanelAnswer = z.infer<typeof membershipPanelAnswerSchema>;
+
+/** `POST /v1/referral-codes/check`: whether a sign-up's code is active. */
+export const referralCodeCheckRequestSchema = z.object({ code: z.string().min(1).max(64) }).strict();
+/** The answer: whether it is active, and the code in the form it is stored. */
+export const referralCodeCheckAnswerSchema = z.object({ active: z.boolean(), code: z.string().min(1).max(64) }).strict();

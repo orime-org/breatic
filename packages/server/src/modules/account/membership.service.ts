@@ -14,19 +14,14 @@
  * costs on this deployment — and routes here translate protocol only
  * (prohibition #1).
  *
- * Everything here is read from our own data (#307): the tier through the same
- * period-end check the ceilings use, so the panel never shows a tier the
- * ceilings do not grant.
+ * The tier is read from our own data (#307), through the same period-end check
+ * the ceilings use, so the panel never shows a tier the ceilings do not grant;
+ * prices and the outstanding invoice come from the billing service (inner#1993
+ * §3.2 #17).
  */
 
+import { env, getCommerceConfig, getMembershipForUser, getMembershipLimits, logger, membershipPanelAnswerSchema } from "@breatic/core";
 import {
-  env,
-  getMembershipForUser,
-  getMembershipLimits,
-  getSubscriptionPlan,
-} from "@breatic/core";
-import {
-  BILLING_PERIODS,
   COMPARABLE_MEMBERSHIP_TIERS,
   type AccountMembership,
   type BillingPeriod,
@@ -35,8 +30,14 @@ import {
 } from "@breatic/shared";
 
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
+import { requestCommerce, userPath } from "@server/modules/commerce/commerce-client.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
+
+type Prices = Readonly<Record<string, Readonly<Record<BillingPeriod, TierPrice | null>>>>;
+
+/** The last prices the billing service quoted, kept for a read that fails. */
+let lastPrices: { prices: Prices; at: number } | null = null;
 
 /**
  * Reads everything the membership panel needs for one account.
@@ -48,14 +49,14 @@ import { readStoredSubscriptionSummary } from "@server/modules/subscription/subs
 export async function readAccountMembership(
   userId: string,
 ): Promise<AccountMembership> {
-  // Whether this deployment sells anything is decided once, here, and shapes
-  // two things at once: the prices on the comparison table and whether there
-  // is a subscription to describe. A self-hosted install has neither.
-  const selling = env.PAYMENT_ENABLED;
-
-  const subscription = selling
-    ? await readStoredSubscriptionSummary(userId)
-    : null;
+  // Whether this deployment sells anything shapes two things at once: the
+  // prices on the comparison table and whether there is a subscription to
+  // describe. A self-hosted install has neither.
+  const selling = env.SELLING;
+  const [stored, quoted] = selling
+    ? await Promise.all([readStoredSubscriptionSummary(userId), readBillingPanel(userId)])
+    : [null, null];
+  const subscription = stored === null ? null : { ...stored, payableInvoiceUrl: quoted?.payableInvoiceUrl ?? null };
   const { tier, limits } = await getMembershipForUser(userId);
 
   const [teamStudios, storageBytes] = await Promise.all([
@@ -70,31 +71,40 @@ export async function readAccountMembership(
     catalog: COMPARABLE_MEMBERSHIP_TIERS.map((offered) => ({
       tier: offered,
       limits: getMembershipLimits(offered),
-      prices: pricesOf(offered, selling),
+      prices: pricesOf(offered, quoted?.prices ?? null),
     })),
     subscription,
   };
 }
 
 /**
- * What one tier costs over each billing period, when this deployment sells it.
+ * The panel's prices and outstanding invoice from the billing service. A
+ * failed read falls back to the prices it last quoted, while they are younger
+ * than `catalog_cache_seconds`, and to none after that.
+ * @param userId - The account.
+ * @returns The prices (null when none can be quoted) and the invoice page.
+ */
+async function readBillingPanel(userId: string): Promise<{ prices: Prices | null; payableInvoiceUrl: string | null }> {
+  try {
+    const answer = membershipPanelAnswerSchema.parse(
+      await requestCommerce({ method: "GET", path: userPath(userId, "/membership-panel"), quick: true }),
+    );
+    lastPrices = { prices: answer.data.prices, at: Date.now() };
+    return answer.data;
+  } catch (err) {
+    logger.error({ err, userId }, "commerce_panel_read_failed");
+    const fresh = lastPrices !== null && Date.now() - lastPrices.at < getCommerceConfig().catalog_cache_seconds * 1000;
+    return { prices: fresh ? lastPrices!.prices : null, payableInvoiceUrl: null };
+  }
+}
+
+/**
+ * What one tier costs over each billing period, as the billing service quotes it.
  * @param tier - The tier the row describes.
- * @param selling - Whether this deployment sells subscriptions.
+ * @param prices - The quoted prices, or null when none can be quoted.
  * @returns One entry per period, each null when there is no price to quote.
  */
-function pricesOf(
-  tier: ComparableMembershipTier,
-  selling: boolean,
-): Record<BillingPeriod, TierPrice | null> {
-  // `base` is free rather than cheap: it has no plan to quote, and quoting
-  // zero would be a price nobody set.
-  if (!selling || tier === "base") {
-    return { month: null, year: null };
-  }
-  return Object.fromEntries(
-    BILLING_PERIODS.map((period) => {
-      const plan = getSubscriptionPlan(tier, period);
-      return [period, { priceCents: plan.priceCents, currency: plan.currency }];
-    }),
-  ) as Record<BillingPeriod, TierPrice | null>;
+function pricesOf(tier: ComparableMembershipTier, prices: Prices | null): Record<BillingPeriod, TierPrice | null> {
+  // `base` is free rather than cheap: it has no plan to quote.
+  return { month: null, year: null, ...(tier === "base" ? {} : prices?.[tier]) };
 }

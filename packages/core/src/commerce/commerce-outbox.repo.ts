@@ -57,6 +57,19 @@ export async function appendAccountErasure(userId: string, tx: DbTx): Promise<vo
   await append(`erasure:${userId}`, "account_erasure", { userId }, tx);
 }
 
+/**
+ * Append the referral code an account signed up with; the billing service
+ * binds it or refuses it (inner#1993 §8.4).
+ * @param binding - What to bind.
+ * @param binding.userId - The new account.
+ * @param binding.code - The code it signed up with.
+ * @param binding.source - Which sign-up path it came through.
+ * @param tx - The account's creating transaction.
+ */
+export async function appendReferralBinding(binding: { userId: string; code: string; source: string }, tx: DbTx): Promise<void> {
+  await append(`referral:${binding.userId}`, "referral_binding", { ...binding, requestedAt: new Date().toISOString() }, tx);
+}
+
 /** One claimed outbox row. */
 export interface CommerceOutboxRow {
   id: string;
@@ -77,16 +90,7 @@ export interface CommerceOutboxRow {
  * @returns The row, or null when none is due.
  */
 export async function claimNextDue(tx: DbTx): Promise<CommerceOutboxRow | null> {
-  const rows = await tx.execute<{
-    id: string;
-    seq: string;
-    aggregate_key: string;
-    type: CommerceOutboxType;
-    payload: Record<string, unknown>;
-    attempts: number;
-    last_error: string | null;
-    created_at: string;
-  }>(sql`
+  const rows = await tx.execute<RawRow>(sql`
     SELECT o.id, o.seq::text AS seq, o.aggregate_key, o.type, o.payload, o.attempts, o.last_error, o.created_at
     FROM commerce_outbox o
     WHERE o.sent_at IS NULL
@@ -98,8 +102,27 @@ export async function claimNextDue(tx: DbTx): Promise<CommerceOutboxRow | null> 
     ORDER BY o.seq
     LIMIT 1
     FOR UPDATE OF o SKIP LOCKED`);
-  const row = rows[0];
-  if (row === undefined) return null;
+  return rows[0] === undefined ? null : toRow(rows[0]);
+}
+
+/** An outbox row as the driver reads it. */
+type RawRow = {
+  id: string;
+  seq: string;
+  aggregate_key: string;
+  type: CommerceOutboxType;
+  payload: Record<string, unknown>;
+  attempts: number;
+  last_error: string | null;
+  created_at: string;
+};
+
+/**
+ * An outbox row in the names the code uses.
+ * @param row - The row as read.
+ * @returns The row.
+ */
+function toRow(row: RawRow): CommerceOutboxRow {
   return {
     id: row.id,
     seq: Number(row.seq),
@@ -110,6 +133,23 @@ export async function claimNextDue(tx: DbTx): Promise<CommerceOutboxRow | null> 
     lastError: row.last_error,
     createdAt: new Date(row.created_at),
   };
+}
+
+/**
+ * Lock an account's unsent referral binding, waiting for a relay that holds
+ * it to finish (inner#1993 §8.4, the flush before a checkout or a later
+ * binding). Postgres re-checks `sent_at IS NULL` on the row it waited for, so
+ * a row the relay just sent comes back as none.
+ * @param userId - The account.
+ * @param tx - The flush's transaction.
+ * @returns The row, or null when none is waiting.
+ */
+export async function lockUnsentReferralBinding(userId: string, tx: DbTx): Promise<CommerceOutboxRow | null> {
+  const rows = await tx.execute<RawRow>(sql`
+    SELECT id, seq::text AS seq, aggregate_key, type, payload, attempts, last_error, created_at
+    FROM commerce_outbox WHERE aggregate_key = ${`referral:${userId}`} AND sent_at IS NULL
+    ORDER BY seq LIMIT 1 FOR UPDATE`);
+  return rows[0] === undefined ? null : toRow(rows[0]);
 }
 
 /**
