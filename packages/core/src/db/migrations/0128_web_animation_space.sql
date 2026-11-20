@@ -4,10 +4,11 @@
 -- video. An export calls no model, so its engine is empty, and it ends with a registered video asset instead of a
 -- source version. `origin` records where it was asked for, so a Motion Space can list what the Timeline made before.
 --
--- The previous server keeps running through the deploy window and inserts rows without `status` and `origin`, and
--- grants with only their two ids: `status` keeps its `awaiting_landing` default and `origin` defaults to `timeline`
--- for this release, and the grant columns are filled by a trigger. The next release makes `status` default to
--- `queued` and drops the `origin` default.
+-- A new row starts `queued`, the column's default, and names its `origin`; `origin` has a default only while this
+-- migration marks the existing rows as made in a Timeline. A grant is written with its execution's creation time and
+-- origin.
+
+ALTER TABLE timeline_executions ALTER COLUMN status SET DEFAULT 'queued';--> statement-breakpoint
 
 ALTER TABLE timeline_executions DROP CONSTRAINT timeline_executions_kind_check;--> statement-breakpoint
 ALTER TABLE timeline_executions ADD CONSTRAINT timeline_executions_kind_check
@@ -33,6 +34,7 @@ ALTER TABLE timeline_executions ADD CONSTRAINT timeline_executions_result_check 
 
 ALTER TABLE timeline_executions ADD COLUMN origin text NOT NULL DEFAULT 'timeline'
   CONSTRAINT timeline_executions_origin_check CHECK (origin IN ('timeline', 'web_animation_space'));--> statement-breakpoint
+ALTER TABLE timeline_executions ALTER COLUMN origin DROP DEFAULT;--> statement-breakpoint
 
 -- One live export of a source in a Motion Space; a failed, cancelled or expired one may be made again.
 CREATE UNIQUE INDEX timeline_executions_export_source_idx
@@ -48,20 +50,6 @@ CREATE INDEX timeline_executions_space_order_idx
 -- are read from the grant table in order.
 ALTER TABLE timeline_execution_grants ADD COLUMN execution_created_at timestamptz;--> statement-breakpoint
 ALTER TABLE timeline_execution_grants ADD COLUMN execution_origin text;--> statement-breakpoint
-
-CREATE FUNCTION fill_timeline_grant_execution_fields() RETURNS trigger
-LANGUAGE plpgsql AS $$
-BEGIN
-  SELECT e.created_at, e.origin INTO NEW.execution_created_at, NEW.execution_origin
-  FROM timeline_executions e
-  WHERE e.id = NEW.execution_id;
-  RETURN NEW;
-END;
-$$;--> statement-breakpoint
-
-CREATE TRIGGER timeline_execution_grants_fill_execution_fields
-BEFORE INSERT ON timeline_execution_grants
-FOR EACH ROW EXECUTE FUNCTION fill_timeline_grant_execution_fields();--> statement-breakpoint
 
 UPDATE timeline_execution_grants g
 SET execution_created_at = e.created_at, execution_origin = e.origin

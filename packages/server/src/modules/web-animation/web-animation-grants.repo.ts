@@ -132,16 +132,27 @@ function grantedTo(projectId: string): SQL {
 }
 
 /**
- * Grant an execution to a Project.
+ * Grant an execution to a Project, with the execution's creation time and origin the lists order and group by.
  * @param input - The grant.
  * @param input.executionId - The execution.
  * @param input.projectId - The Project.
+ * @param input.executionCreatedAt - The execution's `createdAt` as the repository reads it, to the microsecond.
+ * @param input.executionOrigin - The execution's origin.
  * @param tx - The transaction to write in.
  * @returns Nothing once the row is written.
  * @throws {Error} When the write fails, including a live grant for the pair already existing.
  */
-export async function insertGrant(input: { executionId: string; projectId: string }, tx?: DbTx): Promise<void> {
-  await (tx ?? db).insert(g).values(input);
+export async function insertGrant(
+  input: { executionId: string; projectId: string; executionCreatedAt: string; executionOrigin: TimelineExecution["origin"] },
+  tx?: DbTx,
+): Promise<void> {
+  await (tx ?? db).insert(g).values({
+    executionId: input.executionId,
+    projectId: input.projectId,
+    // The text keeps the microseconds a Date would drop, so the grant orders exactly as its execution does.
+    executionCreatedAt: sql`${input.executionCreatedAt}::timestamptz`,
+    executionOrigin: input.executionOrigin,
+  });
 }
 
 /**
@@ -154,8 +165,11 @@ export async function insertGrant(input: { executionId: string; projectId: strin
  */
 export async function copyGrants(sourceProjectId: string, copyProjectId: string, tx: DbTx): Promise<void> {
   await tx.execute(sql`
-    INSERT INTO ${g} (${sql.identifier(g.executionId.name)}, ${sql.identifier(g.projectId.name)})
-    SELECT ${g.executionId}, ${copyProjectId}::uuid FROM ${g}
+    INSERT INTO ${g} (
+      ${sql.identifier(g.executionId.name)}, ${sql.identifier(g.projectId.name)},
+      ${sql.identifier(g.executionCreatedAt.name)}, ${sql.identifier(g.executionOrigin.name)}
+    )
+    SELECT ${g.executionId}, ${copyProjectId}::uuid, ${g.executionCreatedAt}, ${g.executionOrigin} FROM ${g}
     WHERE ${liveGrantOf(sourceProjectId)}
     ON CONFLICT DO NOTHING
   `);

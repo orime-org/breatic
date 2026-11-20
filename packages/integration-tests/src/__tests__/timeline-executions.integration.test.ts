@@ -7,8 +7,7 @@
  * `timelineExecutionRepo.transition` is the one writer of `status`. These tests drive it against the real database:
  * every state crossed with every event, the attempt fence, the invariants that hold for any event sequence, and the
  * `billed_at` gate that lets an execution be charged at most once. New code inserts rows `queued`; a row still
- * `awaiting_landing` is one the previous server wrote during the deploy window, and only the deadline or a cancel
- * moves it.
+ * `awaiting_landing` was stored before #1490, and only the deadline or a cancel moves it.
  */
 
 import { randomUUID } from "node:crypto";
@@ -89,17 +88,17 @@ async function accept(overrides: Partial<{ projectId: string; ownerId: string; s
 }
 
 /**
- * Insert a row the way the previous server did during the deploy window: no `status`, no `origin`.
+ * Insert a row as one stored before #1490 is: made in a Timeline and still waiting for its landing receipt.
  * @returns The row as the repository reads it.
  * @throws {Error} When the insert fails.
  */
-async function acceptAsPreviousServer(): Promise<TimelineExecution> {
+async function acceptBefore1490(): Promise<TimelineExecution> {
   const { projectId, ownerId } = await seedProject();
   const [inserted] = await sql<{ id: string }[]>`INSERT INTO timeline_executions
-      (project_id, space_id, actor_user_id, kind, engine, action_id, input, input_hash, deadline_at)
+      (project_id, space_id, actor_user_id, kind, engine, action_id, input, input_hash, deadline_at, status, origin)
     VALUES (${projectId}, ${randomUUID()}, ${ownerId}, 'web_animation_create', 'deepseek', ${randomUUID()},
       ${sql.json({ prompt: "A red square", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } })},
-      'sha256:input', now() + interval '2 hours')
+      'sha256:input', now() + interval '2 hours', 'awaiting_landing', 'timeline')
     RETURNING id`;
   if (inserted === undefined) throw new Error("Fixture execution missing");
   owned.executions.push(inserted.id);
@@ -137,7 +136,7 @@ type EventName = "claim" | "retry" | "success" | "failure" | "cancel" | "cancelA
  * @throws {Error} When a setup step is refused.
  */
 async function reach(state: Setup): Promise<TimelineExecution> {
-  if (state === "awaiting_landing") return acceptAsPreviousServer();
+  if (state === "awaiting_landing") return acceptBefore1490();
   const row = await accept();
   const step = async (event: TimelineExecutionEvent): Promise<TimelineExecution> => {
     const result = await timelineExecutionRepo.transition({ id: row.id, event });
@@ -229,9 +228,17 @@ describe("timelineExecutionRepo.insert", () => {
     expect(row).toMatchObject({ status: "queued", origin: "timeline" });
   });
 
-  it("gives a row the previous server inserts without status or origin awaiting_landing and timeline", async () => {
-    const row = await acceptAsPreviousServer();
-    expect(row).toMatchObject({ status: "awaiting_landing", origin: "timeline" });
+  it("queues a row inserted without a status and refuses one without an origin", async () => {
+    const { projectId, ownerId } = await seedProject();
+    const insertWithout = (origin: string | null): Promise<{ id: string; status: string }[]> => sql<{ id: string; status: string }[]>`
+      INSERT INTO timeline_executions (project_id, space_id, actor_user_id, kind, engine, action_id, input, input_hash, deadline_at, origin)
+      VALUES (${projectId}, ${randomUUID()}, ${ownerId}, 'web_animation_create', 'deepseek', ${randomUUID()}, '{}'::jsonb, 'sha256:input',
+        now() + interval '2 hours', ${origin})
+      RETURNING id, status`;
+    const [row] = await insertWithout("web_animation_space");
+    owned.executions.push(row!.id);
+    expect(row!.status).toBe("queued");
+    await expect(insertWithout(null)).rejects.toMatchObject({ code: "23502" });
   });
 
   it("answers null for a second insert of the same action in the same Project and Space", async () => {

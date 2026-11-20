@@ -3,8 +3,8 @@
 
 /**
  * What the Motion Space migration adds to the execution and grant tables (#1490 design §4.6, §6.4, §13.1): the three
- * kinds and what each may store, the export result column, the one live export per source in a Space, and the two
- * grant columns a trigger fills, so the previous server's two-column grant writes keep working.
+ * kinds and what each may store, the export result column, the one live export per source in a Space, the column
+ * defaults, and the two grant columns every grant is written with.
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -158,6 +158,15 @@ describe("timeline_executions — the three kinds", () => {
     await expect(sql`UPDATE timeline_executions SET result_asset_id = ${asset} WHERE id = ${created.id}`).rejects.toThrow(/check/i);
   });
 
+  it("defaults the status to queued and gives the origin no default", async () => {
+    const rows = await sql<{ column_name: string; column_default: string | null }[]>`SELECT column_name, column_default FROM information_schema.columns
+      WHERE table_schema = current_schema() AND table_name = 'timeline_executions' AND column_name IN ('origin', 'status') ORDER BY column_name`;
+    expect(rows).toEqual([
+      { column_name: "origin", column_default: null },
+      { column_name: "status", column_default: "'queued'::text" },
+    ]);
+  });
+
   it("refuses an origin outside timeline and web_animation_space", async () => {
     const row = await inserted(await seedProject(), "web_animation_create");
     await expect(sql`UPDATE timeline_executions SET origin = 'agent' WHERE id = ${row.id}`).rejects.toThrow(/check/i);
@@ -204,27 +213,36 @@ describe("timeline_executions_export_source_idx — one live export per source i
   });
 });
 
-describe("timeline_execution_grants — fields the trigger fills", () => {
-  it("fills the execution's creation time and origin on a grant written with two columns", async () => {
+describe("timeline_execution_grants — the execution's creation time and origin", () => {
+  it("writes them on a grant", async () => {
     const fixture = await seedProject();
     const row = await inserted(fixture, "web_animation_create");
-    await grantRepo.insertGrant({ executionId: row.id, projectId: fixture.projectId });
+    await grantRepo.insertGrant({ executionId: row.id, projectId: fixture.projectId, executionCreatedAt: row.createdAt, executionOrigin: row.origin });
     const [grant] = await sql<{ same_time: boolean; origin: string }[]>`SELECT g.execution_created_at = e.created_at AS same_time, g.execution_origin AS origin
       FROM timeline_execution_grants g JOIN timeline_executions e ON e.id = g.execution_id
       WHERE g.execution_id = ${row.id} AND g.project_id = ${fixture.projectId} AND g.deleted_at IS NULL`;
     expect(grant).toEqual({ same_time: true, origin: "web_animation_space" });
   });
 
-  it("fills them on the grants a duplicated Project copies", async () => {
+  it("copies them on the grants a duplicated Project copies", async () => {
     const source = await seedProject();
     const copy = await seedProject();
     const row = await inserted(source, "web_animation_create");
-    await grantRepo.insertGrant({ executionId: row.id, projectId: source.projectId });
+    await grantRepo.insertGrant({ executionId: row.id, projectId: source.projectId, executionCreatedAt: row.createdAt, executionOrigin: row.origin });
     await db.transaction((tx) => grantRepo.copyGrants(source.projectId, copy.projectId, tx));
     const [grant] = await sql<{ same_time: boolean; origin: string }[]>`SELECT g.execution_created_at = e.created_at AS same_time, g.execution_origin AS origin
       FROM timeline_execution_grants g JOIN timeline_executions e ON e.id = g.execution_id
       WHERE g.execution_id = ${row.id} AND g.project_id = ${copy.projectId} AND g.deleted_at IS NULL`;
     expect(grant).toEqual({ same_time: true, origin: "web_animation_space" });
+  });
+
+  it("refuses a grant written without them and fills nothing in on its own", async () => {
+    const fixture = await seedProject();
+    const row = await inserted(fixture, "web_animation_create");
+    await expect(sql`INSERT INTO timeline_execution_grants (execution_id, project_id) VALUES (${row.id}, ${fixture.projectId})`)
+      .rejects.toMatchObject({ code: "23502" });
+    const triggers = await sql<{ tgname: string }[]>`SELECT tgname FROM pg_trigger WHERE tgrelid = 'timeline_execution_grants'::regclass AND NOT tgisinternal`;
+    expect(triggers).toEqual([]);
   });
 
   it("keeps the two columns equal to their execution on every grant, the backfilled ones included", async () => {

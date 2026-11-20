@@ -266,7 +266,7 @@ export async function accept(userId: string, body: WebAnimationExecutionRequest 
         tx,
       );
       if (inserted === null) throw new InsertLost();
-      await grantRepo.insertGrant({ executionId: inserted.id, projectId }, tx);
+      await grantRepo.insertGrant({ executionId: inserted.id, projectId, executionCreatedAt: inserted.createdAt, executionOrigin: inserted.origin }, tx);
       return inserted;
     });
     // The row runs as soon as its job is in the queue; a failed add is left to the worker's sweep.

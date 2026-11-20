@@ -111,7 +111,7 @@ export async function seedExecution(
     origin: "web_animation_space",
   });
   if (inserted === null) throw new Error("Fixture execution conflicted");
-  // A row still waiting for its landing receipt is one the previous server wrote during the deploy window.
+  // A row still waiting for its landing receipt was stored before #1490.
   if (state === "awaiting_landing") await sql`UPDATE timeline_executions SET status = 'awaiting_landing' WHERE id = ${inserted.id}`;
   const step = async (event: Parameters<typeof timelineExecutionRepo.transition>[0]["event"]): Promise<TimelineExecution> => {
     const result = await timelineExecutionRepo.transition({ id: inserted.id, event });

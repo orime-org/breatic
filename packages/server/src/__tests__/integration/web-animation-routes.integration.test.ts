@@ -402,7 +402,8 @@ describe("POST /timeline/executions — export", () => {
           ${tx.json({ sourceVersionId: versionId, width: 1920, height: 1080, fps: { num: 24, den: 1 }, durationFrames: 96, videoKey: "generated/race.mp4" })},
           'sha256:race', NULL, 'queued', 'web_animation_space', now() + interval '2 hours')
       `;
-      await tx`INSERT INTO timeline_execution_grants (execution_id, project_id) VALUES (${competitorId}, ${fx.projectId})`;
+      await tx`INSERT INTO timeline_execution_grants (execution_id, project_id, execution_created_at, execution_origin)
+        SELECT id, ${fx.projectId}, created_at, origin FROM timeline_executions WHERE id = ${competitorId}`;
       written();
       await held;
     });

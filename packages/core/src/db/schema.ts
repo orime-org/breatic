@@ -2316,16 +2316,10 @@ export const timelineExecutions = pgTable(
     inputHash: text("input_hash").notNull(),
     /** Empty for an export, which calls no model (0128, #1490). */
     engine: text("engine"),
-    /**
-     * `awaiting_landing` only so the previous server's inserts during the deploy window keep working (0128, #1490);
-     * new code always writes `queued`. The next release makes `queued` the default.
-     */
-    status: text("status").notNull().default("awaiting_landing"),
-    /**
-     * Where it was asked for: `web_animation_space`, or `timeline` before #1490. The default serves the previous
-     * server during the deploy window only; new code always writes it, and the next release drops the default.
-     */
-    origin: text("origin").notNull().default("timeline"),
+    /** `awaiting_landing` is held only by rows written before #1490 (0128). */
+    status: text("status").notNull().default("queued"),
+    /** Where it was asked for: `web_animation_space`, or `timeline` before #1490 (0128). */
+    origin: text("origin").notNull(),
     phase: text("phase"),
     steps: jsonb("steps").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
     attempt: integer("attempt").notNull().default(0),
@@ -2439,11 +2433,9 @@ export const timelineExecutionGrants = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
-    // The two execution fields are written only by the BEFORE INSERT trigger fill_timeline_grant_execution_fields
-    // (0128, #1490); the database has no default for them. Declaring one here keeps them out of what an insert must
-    // pass, so Drizzle sends DEFAULT and the trigger fills them before NOT NULL is checked.
-    executionCreatedAt: timestamp("execution_created_at", { withTimezone: true }).notNull().default(sql`null`),
-    executionOrigin: text("execution_origin").notNull().default(sql`null`),
+    /** Its execution's creation time and origin, copied on insert so a Project's list reads in order (0128, #1490). */
+    executionCreatedAt: timestamp("execution_created_at", { withTimezone: true }).notNull(),
+    executionOrigin: text("execution_origin").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },

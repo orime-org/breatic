@@ -107,16 +107,17 @@ async function insertExecution(projectId: string, spaceId: string, actorUserId: 
 }
 
 /**
- * Insert a row the way the previous server did during the deploy window, and grant it to its Project.
+ * Insert a row as one stored before #1490 is, made in a Timeline and still waiting for its landing receipt, and grant
+ * it to its Project.
  * @param fx - The Project and Space.
  * @returns The row.
  */
-async function insertAsPreviousServer(fx: ProjectFixture): Promise<TimelineExecution> {
+async function insertBefore1490(fx: ProjectFixture): Promise<TimelineExecution> {
   const [row] = await sql<{ id: string }[]>`
-    INSERT INTO timeline_executions (project_id, space_id, actor_user_id, kind, action_id, input, input_hash, engine, deadline_at)
+    INSERT INTO timeline_executions (project_id, space_id, actor_user_id, kind, action_id, input, input_hash, engine, deadline_at, status, origin)
     VALUES (${fx.projectId}, ${fx.spaceId}, ${fx.editor.userId}, 'web_animation_create', ${crypto.randomUUID()},
       ${sql.json({ prompt: "A", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } })},
-      'sha256:previous', 'deepseek', now() + interval '2 hours')
+      'sha256:before', 'deepseek', now() + interval '2 hours', 'awaiting_landing', 'timeline')
     RETURNING id
   `;
   await grant(row!.id, fx.projectId);
@@ -269,9 +270,9 @@ describe("POST /timeline/executions", () => {
     const competitorId = crypto.randomUUID();
     const competitor = gate.begin(async (tx) => {
       await tx`
-        INSERT INTO timeline_executions (id, project_id, space_id, actor_user_id, kind, action_id, input, input_hash, engine, deadline_at)
+        INSERT INTO timeline_executions (id, project_id, space_id, actor_user_id, kind, action_id, input, input_hash, engine, deadline_at, origin)
         VALUES (${competitorId}, ${fx.projectId}, ${fx.spaceId}, ${fx.owner.userId}, 'web_animation_create', ${String(body.actionId)},
-                ${tx.json({ prompt: "Something else" })}, 'sha256:competitor', 'deepseek', now() + interval '2 hours')
+                ${tx.json({ prompt: "Something else" })}, 'sha256:competitor', 'deepseek', now() + interval '2 hours', 'web_animation_space')
       `;
       inserted();
       await held;
@@ -417,7 +418,7 @@ describe("POST /timeline/executions/:id/cancel", () => {
     "cancels a %s execution, with no hold to release, and tells its Timeline Space's document once",
     async (state) => {
       const fx = await seedProject();
-      const row = state === "queued" ? await accepted(fx) : await insertAsPreviousServer(fx);
+      const row = state === "queued" ? await accepted(fx) : await insertBefore1490(fx);
       signals.length = 0;
       const before = await executionChangesFor(fx.projectId, fx.spaceId, timelineSpaceDocName);
       const res = await cancel(fx.editor.cookie, fx, row.id);

@@ -196,7 +196,8 @@ export function useWebAnimationHarness(appName: string): WebAnimationHarness {
     },
 
     async grant(executionId, projectId) {
-      await db()`INSERT INTO timeline_execution_grants (execution_id, project_id) VALUES (${executionId}, ${projectId})`;
+      await db()`INSERT INTO timeline_execution_grants (execution_id, project_id, execution_created_at, execution_origin)
+        SELECT id, ${projectId}, created_at, origin FROM timeline_executions WHERE id = ${executionId}`;
     },
 
     async step(id, event) {
