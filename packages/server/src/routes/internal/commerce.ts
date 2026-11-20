@@ -23,7 +23,6 @@ import {
 import { lookupAccounts, readAccount } from "@server/modules/commerce/commerce-accounts.service.js";
 import { reportConversion } from "@server/modules/commerce/commerce-conversions.service.js";
 import { readRefundLotFacts } from "@server/modules/commerce/commerce-refund-lots.service.js";
-import type { StoredAnswer } from "@server/modules/commerce/commerce-request.repo.js";
 import { applyRefundStep } from "@server/modules/commerce/commerce-refund-steps.service.js";
 import { applySubscriptionFact } from "@server/modules/commerce/commerce-subscription-facts.service.js";
 import { grantPayment } from "@server/modules/commerce/payment-grant.service.js";
@@ -34,10 +33,12 @@ const uuid = z.string().uuid();
 /**
  * Send a stored answer.
  * @param c - The context.
- * @param answer - Status and body.
+ * @param answer - The service's stored answer.
+ * @param answer.httpStatus - Its status.
+ * @param answer.body - Its body.
  * @returns The response.
  */
-function send(c: Context, answer: StoredAnswer): Response {
+function send(c: Context, answer: { httpStatus: number; body: unknown }): Response {
   return c.json(answer.body as object, answer.httpStatus as 200);
 }
 
