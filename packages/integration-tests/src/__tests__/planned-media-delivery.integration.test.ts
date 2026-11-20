@@ -11,7 +11,6 @@ import { canvasSpaceDocName } from "@breatic/shared";
 import { runTask } from "@worker/handlers/dispatch.js";
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
 import { finishMiniToolExecutionAndNotify } from "@worker/handlers/mini-tool/execution-completion.js";
-import * as wavespeed from "@worker/providers/wavespeed.js";
 import * as upload from "@worker/handlers/backend-upload.js";
 import { seedExecution, type ExecutionFixture } from "../../../domain/src/mini-tool/__tests__/execution-lifecycle-fixtures.js";
 
@@ -27,11 +26,10 @@ beforeAll(() => {
   queue = createQueue("tasks");
 });
 beforeEach(() => {
-  vi.spyOn(wavespeed, "runPrediction").mockRejectedValue(new Error("Pure delivery must not call a provider"));
   vi.spyOn(upload, "storeFromUrl").mockRejectedValue(new Error("Pure delivery must not transfer or register media"));
 });
 afterEach(() => {
-  try { expect(wavespeed.runPrediction).not.toHaveBeenCalled(); expect(upload.storeFromUrl).not.toHaveBeenCalled(); }
+  try { expect(upload.storeFromUrl).not.toHaveBeenCalled(); }
   finally { vi.restoreAllMocks(); }
 });
 afterAll(async () => { await pg.end(); await yjsPg.end(); initCore(process.env); });

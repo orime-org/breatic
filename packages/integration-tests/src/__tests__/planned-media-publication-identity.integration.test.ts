@@ -8,7 +8,6 @@ import { createPgClient, getNodeTaskConfig, getStreamRedis, initCore, initLogger
 import type { MiniToolExecutionCompletion } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { finishMiniToolExecutionAndNotify } from "@worker/handlers/mini-tool/execution-completion.js";
-import * as wavespeed from "@worker/providers/wavespeed.js";
 import * as backendUpload from "@worker/handlers/backend-upload.js";
 import { executionSnapshot, seedExecution, type ExecutionFixture } from "../../../domain/src/mini-tool/__tests__/execution-lifecycle-fixtures.js";
 
@@ -25,13 +24,11 @@ beforeAll(() => {
 });
 beforeEach(() => {
   // Network tripwires return no fake media. Any accidental computation or transfer
-  // fails locally and is also rejected by the zero-call assertions after each case.
-  vi.spyOn(wavespeed, "runPrediction").mockRejectedValue(new Error("Publication must not call a provider"));
+  // fails locally and is also rejected by the zero-call assertion after each case.
   vi.spyOn(backendUpload, "storeFromUrl").mockRejectedValue(new Error("Publication must not transfer media"));
 });
 afterEach(() => {
   try {
-    expect(wavespeed.runPrediction).not.toHaveBeenCalled();
     expect(backendUpload.storeFromUrl).not.toHaveBeenCalled();
   } finally { vi.restoreAllMocks(); }
 });

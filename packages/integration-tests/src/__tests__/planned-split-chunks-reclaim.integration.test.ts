@@ -15,15 +15,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } fro
 import * as core from "@breatic/core";
 import type * as sharedModule from "@breatic/shared";
 import { videoPresentationWorkKeyFor } from "@breatic/shared";
-import { planVideoSplit, videoContainerJobId, type VideoPresentationTable } from "@breatic/shared/mini-tools";
+import { planVideoSplit, videoContainerJobId } from "@breatic/shared/mini-tools";
 import { creditHoldService, miniToolExecutionService, taskRepo } from "@breatic/domain";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 import { seedDesignatedLot, seedStudioFixture } from "@server/__tests__/integration/studio-credit-fixtures.js";
-import { presentedSource, REMOVAL_TABLE } from "@server/__tests__/integration/presentation-fixtures.js";
+import { presentedSource } from "@server/__tests__/integration/presentation-fixtures.js";
 import { INGEST_ENV } from "./ingest-jobs-fake.js";
 
-const outside = vi.hoisted(() => ({ ingest: vi.fn(), snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), config: vi.fn() }));
+const outside = vi.hoisted(() => ({ ingest: vi.fn(), snapshots: new Map<string, unknown>(), config: vi.fn() }));
 vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof sharedModule>(), videoPresentationAtIngest: outside.ingest }));
 vi.mock("@breatic/core", async (original) => ({ ...await original<typeof core>(), getMiniToolsConfig: outside.config }));
 
@@ -77,7 +77,7 @@ beforeEach(() => {
   settings.encoding.max_parallel_chunks = 64;
   outside.config.mockImplementation(() => settings);
   submitted = []; failing = /$^/;
-  outside.snapshots.clear(); outside.bodies.clear();
+  outside.snapshots.clear();
   outside.ingest.mockImplementation(async (_url: string, _secret: string, input: { action: string; storageKey: string }): Promise<unknown> => {
     const snapshot = outside.snapshots.get(input.storageKey);
     if (input.action !== "read" || !snapshot) throw new Error(`Unexpected presentation admission ${input.action}`);
@@ -94,8 +94,6 @@ beforeEach(() => {
       const request = submitted.find((candidate) => candidate.jobId === id);
       return request === undefined ? new Response("missing", { status: 404 }) : Response.json(report(request));
     }
-    const body = outside.bodies.get(url.href);
-    if (body !== undefined) return new Response(body, { headers: { "content-type": "application/json" } });
     return new Response("unexpected", { status: 500 });
   }));
 });
@@ -126,13 +124,14 @@ describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
       VALUES (${sourceId},${target.studioId},${hash},${sourceKey},${publicUrl(sourceKey)},4096,'video/mp4','video','upload',${target.userId},960,540,${V})`;
     const presented = await presentedSource(hash, sourceKey, publicUrl);
     outside.snapshots.set(sourceKey, presented.snapshot);
-    for (const [url, body] of presented.bodies) outside.bodies.set(url, body);
-    const cuts = [2.5];
+    // The cut 2.5 s in, as a frame of the selected grid (frames-split §10.7).
+    const grid = { fps: presented.bundle.display.fps, frameCount: presented.bundle.display.frameCount };
+    const cuts = [Math.round((2.5 * grid.fps.numerator) / grid.fps.denominator)];
     const body = { tool: "video.split", project_id: target.projectId, space_id: randomUUID(), run_id: randomUUID(),
       draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: randomUUID(), canonicalURL: publicUrl(sourceKey),
         mediaInfo: { width: 960, height: 540, duration: V, mimeType: "video/mp4" } }, inputs: [], params: { cuts } },
       analysis_refs: [], presentation_ref: presented.presentationRef,
-      outputs: planVideoSplit(REMOVAL_TABLE as VideoPresentationTable, cuts).map((output) => ({ outputIndex: output.outputIndex, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: output.start, end: output.end } } })) };
+      outputs: planVideoSplit(grid, cuts).map((output) => ({ outputIndex: output.outputIndex, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: output.start, end: output.end } } })) };
     const admitted = await post(target.userId, body);
     expect(admitted.status, await admitted.clone().text()).toBe(201);
     const { task, execution } = await miniToolExecutionService.startMiniToolExecution(body.run_id, body.run_id);
@@ -173,13 +172,14 @@ describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
       VALUES (${sourceId},${target.studioId},${hash},${sourceKey},${publicUrl(sourceKey)},4096,'video/mp4','video','upload',${target.userId},960,540,${V})`;
     const presented = await presentedSource(hash, sourceKey, publicUrl);
     outside.snapshots.set(sourceKey, presented.snapshot);
-    for (const [url, body] of presented.bodies) outside.bodies.set(url, body);
-    const cuts = [2.5];
+    // The cut 2.5 s in, as a frame of the selected grid (frames-split §10.7).
+    const grid = { fps: presented.bundle.display.fps, frameCount: presented.bundle.display.frameCount };
+    const cuts = [Math.round((2.5 * grid.fps.numerator) / grid.fps.denominator)];
     const body = { tool: "video.split", project_id: target.projectId, space_id: randomUUID(), run_id: randomUUID(),
       draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: randomUUID(), canonicalURL: publicUrl(sourceKey),
         mediaInfo: { width: 960, height: 540, duration: V, mimeType: "video/mp4" } }, inputs: [], params: { cuts } },
       analysis_refs: [], presentation_ref: presented.presentationRef,
-      outputs: planVideoSplit(REMOVAL_TABLE as VideoPresentationTable, cuts).map((output) => ({ outputIndex: output.outputIndex, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: output.start, end: output.end } } })) };
+      outputs: planVideoSplit(grid, cuts).map((output) => ({ outputIndex: output.outputIndex, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: output.start, end: output.end } } })) };
     const admitted = await post(target.userId, body);
     expect(admitted.status, await admitted.clone().text()).toBe(201);
     const { task, execution } = await miniToolExecutionService.startMiniToolExecution(body.run_id, body.run_id);
@@ -231,13 +231,14 @@ describe("a split the queue cleanup ends closes its consumption set (execution d
       VALUES (${sourceId},${target.studioId},${hash},${sourceKey},${publicUrl(sourceKey)},4096,'video/mp4','video','upload',${target.userId},960,540,${V})`;
     const presented = await presentedSource(hash, sourceKey, publicUrl);
     outside.snapshots.set(sourceKey, presented.snapshot);
-    for (const [url, body] of presented.bodies) outside.bodies.set(url, body);
-    const cuts = [2.5];
+    // The cut 2.5 s in, as a frame of the selected grid (frames-split §10.7).
+    const grid = { fps: presented.bundle.display.fps, frameCount: presented.bundle.display.frameCount };
+    const cuts = [Math.round((2.5 * grid.fps.numerator) / grid.fps.denominator)];
     const body = { tool: "video.split", project_id: target.projectId, space_id: randomUUID(), run_id: randomUUID(),
       draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: randomUUID(), canonicalURL: publicUrl(sourceKey),
         mediaInfo: { width: 960, height: 540, duration: V, mimeType: "video/mp4" } }, inputs: [], params: { cuts } },
       analysis_refs: [], presentation_ref: presented.presentationRef,
-      outputs: planVideoSplit(REMOVAL_TABLE as VideoPresentationTable, cuts).map((output) => ({ outputIndex: output.outputIndex, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: output.start, end: output.end } } })) };
+      outputs: planVideoSplit(grid, cuts).map((output) => ({ outputIndex: output.outputIndex, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: output.start, end: output.end } } })) };
     const admitted = await post(target.userId, body);
     expect(admitted.status, await admitted.clone().text()).toBe(201);
     const { task, execution } = await miniToolExecutionService.startMiniToolExecution(body.run_id, body.run_id);

@@ -24,7 +24,6 @@ import type { Queue } from "bullmq";
 import { runTask } from "@worker/handlers/dispatch.js";
 import { failedResult } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { finishMiniToolExecutionAndNotify } from "@worker/handlers/mini-tool/execution-completion.js";
-import * as wavespeed from "@worker/providers/wavespeed.js";
 import * as upload from "@worker/handlers/backend-upload.js";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
 import { seedExecution, type ExecutionFixture } from "../../../domain/src/mini-tool/__tests__/execution-lifecycle-fixtures.js";
@@ -51,7 +50,6 @@ beforeAll(() => {
   queue = createQueue("tasks");
 });
 beforeEach(() => {
-  vi.spyOn(wavespeed, "runPrediction").mockRejectedValue(new Error("Focus-crop delivery must not call a provider"));
   vi.spyOn(upload, "storeFromUrl").mockRejectedValue(new Error("Focus-crop delivery must not transfer media"));
 });
 afterEach(() => {
@@ -88,7 +86,7 @@ async function seedCrop(nodeStatus: NodeStatus = "running", outcome: "registered
   plan.credits = 0; plan.chargeTo = "platform";
   const { requestFingerprint: _request, planFingerprint: _plan, ...projection } = plan;
   plan.planFingerprint = await hashMiniToolValue(projection);
-  await pg`UPDATE tasks SET task_type='image', model='video.focus-crop', params=${pg.json({ miniToolExecution: plan } as never)} WHERE id=${f.taskId}`;
+  await pg`UPDATE tasks SET task_type='image', model='video.focus-crop', params=${pg.json({ miniToolExecution: plan })} WHERE id=${f.taskId}`;
   if (outcome === "registered") {
     const [row] = await pg<{ record: Record<string, unknown> & { outputs: Array<Record<string, unknown>> } }[]>`SELECT result->'miniToolExecution' AS record FROM tasks WHERE id=${f.taskId}`;
     const record = row!.record;
@@ -96,7 +94,7 @@ async function seedCrop(nodeStatus: NodeStatus = "running", outcome: "registered
     record.outputs = [{ ...record.outputs[0], ...plan.outputs[0] as object, result: { status: "registered", assetId, canonicalURL, kind: "image", contentHash: "c".repeat(64),
       mimeType: "image/png", size: 20480, width: 960, height: 540, duration: null, cover: null }, late: false }];
     const delivery = { schemaVersion: 1, planFingerprint: plan.planFingerprint, version: 1, outputs: [{ outputIndex: 0, state: "pending" }], lastErrorCode: null };
-    await pg`UPDATE tasks SET result=result || ${pg.json({ miniToolExecution: record, miniToolDelivery: delivery } as never)} WHERE id=${f.taskId}`;
+    await pg`UPDATE tasks SET result=result || ${pg.json({ miniToolExecution: record, miniToolDelivery: delivery })} WHERE id=${f.taskId}`;
   }
   const startedAt = new Date(Date.now() - (nodeStatus === "expired" ? getNodeTaskConfig().default_budget_ms + 1 : 0));
   if (nodeStatus === "expired") await pg`UPDATE tasks SET created_at=${startedAt} WHERE id=${f.taskId}`;
