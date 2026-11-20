@@ -196,7 +196,7 @@ describe("planned video submission schema", () => {
     const nodeData = {
       [`miniToolAnalysis:${REFERENCE.analysisRunId}`]: REFERENCE,
       "miniToolAnalysis:90000000-0000-4000-8000-000000000002": {
-        ...REFERENCE, analysisRunId: "90000000-0000-4000-8000-000000000002", toolId: "video.erase", kind: "tracked_mask",
+        ...REFERENCE, analysisRunId: "90000000-0000-4000-8000-000000000002", kind: "unknown",
       },
       "miniToolAnalysis:90000000-0000-4000-8000-000000000003": {
         ...REFERENCE, analysisRunId: "90000000-0000-4000-8000-000000000003",

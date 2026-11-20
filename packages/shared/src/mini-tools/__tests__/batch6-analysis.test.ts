@@ -337,8 +337,7 @@ describe("same-project copied analysis references", () => {
     { draftId: "20000000-0000-4000-8000-000000000003" },
     { analysisRunId: laterId },
     { inputFingerprint: "a".repeat(64) },
-    { kind: "people", toolId: "video.lip-sync" },
-    { toolId: "video.erase" },
+    { toolId: "video.extract-frames" },
     { version: 2 },
   ])("does not widen reuse for a missing or mismatched copied reference %j", (change) => {
     const record = recordFor("scene_cuts");

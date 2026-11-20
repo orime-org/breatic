@@ -109,7 +109,7 @@ describe("S5 planned frame and segment request contracts", () => {
     const body = changed(changed(retry(), "tool", "video.split"), "retry.outputIndexes", [0]);
     expect(miniToolExecutionRetryRequestSchema.parse(body)).toEqual(body);
     expect(miniToolSubmissionSchema.parse(body)).toEqual(body);
-    expect(miniToolExecutionRetryRequestSchema.safeParse(changed(body, "tool", "video.lip-sync")).success).toBe(false);
+    expect(miniToolExecutionRetryRequestSchema.safeParse(changed(body, "tool", "video.cut")).success).toBe(false);
     expect(miniToolSubmissionSchema.safeParse(changed(body, "tool", "video.unknown")).success).toBe(false);
   });
   it.each([
