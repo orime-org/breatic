@@ -141,8 +141,6 @@ export interface BackendUploadContext {
   assetSource: Extract<StudioAssetEntity["source"], "ai" | "cover" | "agent">;
   /** The generation that produced these bytes, when one did. */
   generationTaskId?: string;
-  /** Internal alpha-channel hint; trustworthy probing still verifies the source. */
-  knownAlpha?: boolean;
   /** The key's task segment, which also decides its extension. */
   taskType: string;
   /** The dotted extension the object is stored under. */
@@ -160,12 +158,11 @@ export interface BackendUploadContext {
  * Preserve the caller's original video budget at the registration boundary.
  * @param report - Trusted stored-byte measurements.
  * @param deadlineAt - Parent task's original absolute deadline.
- * @param knownAlpha - Internal channel hint, still verified by the auxiliary probe.
  * @returns The unchanged canonical registration outcome and typed side effects.
  * @throws {Error} When canonical registration fails.
  */
-function registerBackendOutcome(report: Extract<IngestReport, { outcome: 'completed' }>, deadlineAt: number, knownAlpha = false): Promise<IngestReportOutcome> {
-  return report.contentType.startsWith('video/') ? applyIngestReport(report, { presentation: { deadlineAt, knownAlpha } }) : applyIngestReport(report);
+function registerBackendOutcome(report: Extract<IngestReport, { outcome: 'completed' }>, deadlineAt: number): Promise<IngestReportOutcome> {
+  return report.contentType.startsWith('video/') ? applyIngestReport(report, { presentation: { deadlineAt } }) : applyIngestReport(report);
 }
 
 /**
@@ -268,7 +265,7 @@ export async function uploadBytesToStorage(
       storageKey,
       outcome: "completed",
       ...measured,
-    }, ctx.deadlineAt, ctx.knownAlpha),
+    }, ctx.deadlineAt),
     `the upload for project ${ctx.projectId}`,
   );
 }
@@ -306,7 +303,7 @@ export async function transferUrlToStorage(
       storageKey: granted.storageKey,
       outcome: "completed",
       ...measured,
-    }, ctx.deadlineAt, ctx.knownAlpha),
+    }, ctx.deadlineAt),
     `the transfer of ${sourceUrl}`,
   );
 }

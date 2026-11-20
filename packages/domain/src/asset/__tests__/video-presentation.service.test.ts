@@ -259,9 +259,9 @@ describe('the S6c admission request (inner#1306 §3.5 server/worker→ingest, §
 describe('deadlines fixed once at admission (inner#1306 §5.1 step 1)', () => {
   it('D01 a prep triggered inside a user run inherits that run\'s deadline; the queue carries only the job identity (E2-9)', async () => {
     const parent = 1900000000000;
-    await ensureVideoPresentation({ assetId: asset.id, parentDeadlineAt: parent, knownAlpha: true });
+    await ensureVideoPresentation({ assetId: asset.id, parentDeadlineAt: parent });
     const accept = acceptSent();
-    expect(accept).toMatchObject({ deadlineAt: parent, knownAlpha: true });
+    expect(accept).toMatchObject({ deadlineAt: parent });
     expect(queueAdd).toHaveBeenCalledWith('prepare', { assetId: asset.id, sourceFingerprint: H, jobId: accept.jobId }, expect.objectContaining({ jobId: accept.jobId }));
   });
 

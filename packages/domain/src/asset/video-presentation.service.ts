@@ -15,11 +15,11 @@ export interface ResolveVideoPresentationInput { projectId: string; userId: stri
 /** An explicit repair retains the press identity across delivery retries. */
 export interface RepairVideoPresentationInput extends ResolveVideoPresentationInput { sourceFingerprint: string; requestId: string }
 /** An automatic registration or first-read metadata preparation. */
-export interface EnsureVideoPresentationInput { assetId: string; parentDeadlineAt?: number; knownAlpha?: boolean; conditional?: boolean }
+export interface EnsureVideoPresentationInput { assetId: string; parentDeadlineAt?: number; conditional?: boolean }
 /** The queue retains the accepted source and job identity; the deadline lives in the DO admission record (design §5.1 step 1). */
 export interface VideoPresentationJob { assetId: string; sourceFingerprint: string; jobId: string }
 /** Internal admission context; explicit repairs retain their actual requester. */
-interface AdmissionOptions { parentDeadlineAt?: number; knownAlpha?: boolean; repair?: boolean; requestId?: string; userId?: string; projectId?: string; expect?: 'first' | 'readmit' }
+interface AdmissionOptions { parentDeadlineAt?: number; repair?: boolean; requestId?: string; userId?: string; projectId?: string; expect?: 'first' | 'readmit' }
 /** Automatic metadata preparation has no user task or credit hold. */
 export const VIDEO_PRESENTATION_QUEUE = 'video-presentation';
 let queue: ReturnType<typeof createQueue> | undefined;
@@ -130,7 +130,7 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
   const proposed = { jobId: `video-presentation-${options.requestId ?? randomUUID()}`, deadlineAt: options.parentDeadlineAt ?? budgetDeadlineFrom(Date.now()) };
   const request: VideoPresentationIngestRequest = {
     action: 'accept', storageKey: row.storageKey, sourceFingerprint: row.contentHash, ...proposed,
-    original: originalOf(row), contentType: row.mimeType, knownAlpha: options.knownAlpha === true, repair: options.repair === true,
+    original: originalOf(row), contentType: row.mimeType, repair: options.repair === true,
     ...(options.expect === undefined ? {} : { expect: options.expect }),
     registeredMetadata: { width: row.width, height: row.height, duration: row.durationSeconds },
     actorUserId: options.userId ?? row.producedByUserId, projectId: options.projectId ?? null,

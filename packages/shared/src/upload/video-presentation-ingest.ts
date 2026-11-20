@@ -143,7 +143,7 @@ export const videoPresentationIngestRequestSchema = z.discriminatedUnion('action
     action: z.literal('accept'), ...identity, deadlineAt,
     original: videoPresentationOriginalSchema.nullable(),
     registeredMetadata: z.strictObject({ width: z.number().int().positive().nullable(), height: z.number().int().positive().nullable(), duration: z.number().finite().positive().nullable() }).optional(),
-    contentType: z.string().min(1), knownAlpha: z.boolean().optional(), repair: z.boolean().optional(),
+    contentType: z.string().min(1), repair: z.boolean().optional(),
     // A discovery read's condition, re-checked by the DO in its serial entry (§3.5): still nothing selected or prepared, or still readmit.
     expect: z.enum(['first', 'readmit']).optional(),
     limits: videoPresentationProcessLimitsSchema,

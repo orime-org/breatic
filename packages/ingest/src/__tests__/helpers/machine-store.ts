@@ -136,7 +136,7 @@ export async function source(): Promise<string> {
  */
 export function admission(key: string, jobId: string, deadlineAt = D): Admission {
   return {
-    storageKey: key, sourceFingerprint: H, jobId, deadlineAt, original: ORIGINAL, contentType: 'video/mp4', knownAlpha: false,
+    storageKey: key, sourceFingerprint: H, jobId, deadlineAt, original: ORIGINAL, contentType: 'video/mp4',
     actorUserId: '6061c056-f758-47c1-9527-8495ecba60e3', projectId: null, pricing: PRICING,
     limits: { maxSourceBytes: 1073741824, maxPackedBytes: 1073741824, crf: 18, preset: 'medium', probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 },
     publicBaseURL: PUBLIC_BASE, targetPolicyVersion: 1, policy: POLICY, encoding: ENCODING,

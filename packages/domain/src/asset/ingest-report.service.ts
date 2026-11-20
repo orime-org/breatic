@@ -185,7 +185,7 @@ export interface IngestSideEffects {
 
 /** Trusted caller context, never parsed from a browser's registration report. */
 export interface IngestReportOptions {
-  presentation?: { deadlineAt: number; knownAlpha?: boolean };
+  presentation?: { deadlineAt: number };
 }
 
 /**
@@ -878,8 +878,7 @@ async function withPeaksQueued(outcome: IngestReportOutcome, grant: UploadGrant,
   // terminal of this upload admits only under the discovery read's conditions, so a running job is never archived.
   const conditional = !(outcome.status === 'registered' && outcome.ownRow);
   const presentationQueued = await Promise.resolve().then(async () => ensureVideoPresentation({
-    assetId: outcome.assetId, parentDeadlineAt: options.presentation?.deadlineAt ?? await uploadDeadline(grant),
-    knownAlpha: options.presentation?.knownAlpha === true, conditional,
+    assetId: outcome.assetId, parentDeadlineAt: options.presentation?.deadlineAt ?? await uploadDeadline(grant), conditional,
   })).then(() => true, () => false);
   return presentationQueued ? result : { ...result, presentationQueueFailed: true };
 }

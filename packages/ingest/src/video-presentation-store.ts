@@ -43,7 +43,6 @@ export interface VideoPresentationAdmission {
   contentType: string;
   original: VideoPresentation['original'] | null;
   registeredMetadata?: VideoPresentationRegisteredMetadata;
-  knownAlpha?: boolean;
   repair?: boolean;
   limits?: VideoPresentationProcessLimits;
   pricing?: VideoPresentationIngestPricing;
