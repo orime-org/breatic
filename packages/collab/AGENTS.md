@@ -24,6 +24,16 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 
 `pnpm dev` runs collab under `tsx watch`, which restarts on edits to its sources and to a rebuilt `core/dist`; there is no need to kill it by hand.
 
+## Product database writes
+
+### Seven product tables
+
+**Collab writes only seven product-database tables: `project_activities`, `account_activity_events`, `comment_mentions`, `comment_assignments`, `notifications`, `project_asset_refs` and `project_edits`; adding a table to this list or removing one needs the maintainer's explicit approval, given both in conversation and in writing.** Collab owns the collaboration documents and business rows belong to server and worker, so each of these is a granted exception. `timeline_executions` is written here only until #1583 moves Timeline admission to the server. Check: does this change make collab insert, update or delete a product table outside the seven? Stop and ask first.
+
+### Collab never starts worker jobs
+
+**Collab never opens a BullMQ queue or adds a job: background work is enqueued by the server, and the worker reports back to collab over Redis.** The Timeline admission in `services/timeline-receipt-acceptance.ts` is the one exception until #1583 removes it.
+
 ## Hocuspocus lifecycle
 
 ### Hook order
