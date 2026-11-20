@@ -10,8 +10,8 @@ const at = "2026-11-03T08:00:00.000Z";
 describe("tellConnectionsApart (#1488 design 19.2)", () => {
   it("adds nothing to a name that is the owner's only one", () => {
     const told = tellConnectionsApart([
-      { id: "a", kind: "cimd", displayName: "Claude Code", createdAt: at },
-      { id: "b", kind: "pat", displayName: "Cursor", createdAt: at, tokenPrefix: "brt_7f3a" },
+      { id: "a", displayName: "Claude Code", createdAt: at },
+      { id: "b", displayName: "Cursor", createdAt: at, tokenPrefix: "brt_7f3a" },
     ]);
     expect(told.get("a")).toBeNull();
     expect(told.get("b")).toBeNull();
@@ -19,8 +19,8 @@ describe("tellConnectionsApart (#1488 design 19.2)", () => {
 
   it("tells same-named connections apart by token prefix, or by when OAuth first connected", () => {
     const told = tellConnectionsApart([
-      { id: "a", kind: "cimd", displayName: "Claude Code", createdAt: at },
-      { id: "b", kind: "pat", displayName: "Claude Code", createdAt: at, tokenPrefix: "brt_7f3a" },
+      { id: "a", displayName: "Claude Code", createdAt: at },
+      { id: "b", displayName: "Claude Code", createdAt: at, tokenPrefix: "brt_7f3a" },
     ]);
     expect(told.get("a")).toEqual({ kind: "since", at });
     expect(told.get("b")).toEqual({ kind: "token", prefix: "brt_7f3a" });
@@ -28,9 +28,9 @@ describe("tellConnectionsApart (#1488 design 19.2)", () => {
 
   it("falls back to the date for a token whose prefix is unknown or empty", () => {
     const told = tellConnectionsApart([
-      { id: "a", kind: "pat", displayName: "Harness", createdAt: at },
-      { id: "b", kind: "pat", displayName: "Harness", createdAt: at, tokenPrefix: "" },
-      { id: "c", kind: "pat", displayName: "Harness", createdAt: at, tokenPrefix: "brt_1234" },
+      { id: "a", displayName: "Harness", createdAt: at },
+      { id: "b", displayName: "Harness", createdAt: at, tokenPrefix: "" },
+      { id: "c", displayName: "Harness", createdAt: at, tokenPrefix: "brt_1234" },
     ]);
     expect(told.get("a")).toEqual({ kind: "since", at });
     expect(told.get("b")).toEqual({ kind: "since", at });
