@@ -63,7 +63,7 @@ import { canvasSpaceDocName, NO_CONSENT, type ConsentSnapshot, type GenerationSo
 import { catalogEntryOf, isModelTool, miniToolById, modelOf } from "@breatic/shared/mini-tools";
 import type { NodeTaskResult, TaskFailureReason } from "@breatic/shared";
 import { logger } from "@breatic/core";
-import { abandonedCosts, runModelTask } from "@worker/handlers/model-task.js";
+import { abandonedCosts, runModelTask, type ModelTask } from "@worker/handlers/model-task.js";
 import { MediaRunFailed, type MediaRunDone } from "@worker/handlers/media-run.js";
 import type { CatalogModality } from "@worker/handlers/model-params.js";
 import {
@@ -122,9 +122,10 @@ export interface RunProduce {
  *   step's, each null on our keys.
  * @param rows.keyId - The media's row.
  * @param rows.llmKeyId - The language-model step's row.
+ * @param feature - What its usage rows say spent the account's key: a canvas generation or a mini-tool.
  * @returns The run's outputs and costs.
  */
-function produced(taskId: string, model: string, done: MediaRunDone, rows: { keyId: string | null; llmKeyId: string | null }): RunProduce {
+function produced(taskId: string, model: string, done: MediaRunDone, rows: { keyId: string | null; llmKeyId: string | null }, feature: ModelTask["feature"]): RunProduce {
   const { keyId, llmKeyId } = rows;
   const outputs: PersistedOutput[] = done.outputs.map((output) =>
     output.kind === "url" ? { url: output.url } : { extra: { buffer: Buffer.from(output.bytes), contentType: output.contentType } },
@@ -137,7 +138,7 @@ function produced(taskId: string, model: string, done: MediaRunDone, rows: { key
     servedBy: done.servedBy,
     ...((keyId !== null || llmKeyId !== null) && {
       costs: done.costs,
-      recordAs: { feature: "canvas_generation", model, ...(keyId !== null && { keyId }), ...(llmKeyId !== null && { llmKeyId }) },
+      recordAs: { feature, model, ...(keyId !== null && { keyId }), ...(llmKeyId !== null && { llmKeyId }) },
     }),
   };
 }
@@ -687,9 +688,10 @@ async function runTaskBody(
         deadlineAt,
         lastAttempt: isTerminalAttempt(job),
         actorUserId: userId,
+        feature: "canvas_generation",
         ...(keyId !== null && { keyId }),
         ...(llmKeyId !== null && { llmKeyId }),
-      }), { keyId, llmKeyId });
+      }), { keyId, llmKeyId }, "canvas_generation");
     } else {
       throw new Error(`Task type '${taskType}' has no runner`);
     }
@@ -1065,7 +1067,7 @@ function recordersByRow(end: RunContext, feature: RecordAs["feature"]): { of: (r
  */
 async function recordGenerationUsage(end: RunContext, run: RunProduce, model: string | undefined, servedBy: string): Promise<void> {
   const recordAs = run.recordAs;
-  if (run.costs === undefined || recordAs?.feature !== "canvas_generation") return;
+  if (run.costs === undefined || (recordAs?.feature !== "canvas_generation" && recordAs?.feature !== "mini_tool")) return;
   try {
     const recorders = recordersByRow(end, recordAs.feature);
     for (const cost of run.costs) {
@@ -2075,10 +2077,11 @@ export async function runMiniTool(opts: RunMiniToolOpts): Promise<RunProduce> {
       deadlineAt,
       lastAttempt,
       actorUserId: userId,
+      feature: "mini_tool",
       ...(opts.keyId != null && { keyId: opts.keyId }),
       ...(opts.llmKeyId != null && { llmKeyId: opts.llmKeyId }),
     });
-    return produced(taskId, model, done, { keyId: opts.keyId ?? null, llmKeyId: opts.llmKeyId ?? null });
+    return produced(taskId, model, done, { keyId: opts.keyId ?? null, llmKeyId: opts.llmKeyId ?? null }, "mini_tool");
   }
 
   if (spec.run.kind === "container") {

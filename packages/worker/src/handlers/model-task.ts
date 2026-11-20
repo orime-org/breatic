@@ -40,6 +40,8 @@ export interface ModelTask {
   lastAttempt: boolean;
   /** Who started the task, whose usage rows a call inside it is recorded under. */
   actorUserId: string;
+  /** What the task's usage rows say spent the account's key: a canvas generation or a mini-tool. */
+  feature: "canvas_generation" | "mini_tool";
   /** The account key row the media runs on (`tasks.key_id`); null or absent on our keys. */
   keyId?: string | null;
   /** The account key row of a language-model step inside the run (`tasks.llm_key_id`); null or absent on ours. */
@@ -180,7 +182,7 @@ async function recordRewrite(task: ModelTask, keyId: string, billed: RewriteBill
   try {
     const usage = createUsageRecorder({
       operationKey: `task:${task.taskId}`,
-      feature: "canvas_generation",
+      feature: task.feature,
       actorUserId: task.actorUserId,
       projectId: task.projectId ?? null,
       keyId,

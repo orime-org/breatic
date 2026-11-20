@@ -55,6 +55,7 @@ describe("a model mini-tool", () => {
       deadlineAt: RUN.deadlineAt,
       lastAttempt: true,
       actorUserId: RUN.userId,
+      feature: "mini_tool",
     });
   });
 
@@ -62,5 +63,11 @@ describe("a model mini-tool", () => {
     const run = await runMiniTool({ toolId: "image.remove-bg", params: {}, ...RUN });
 
     expect(run).toEqual({ result: { outputs: [{ url: "https://cdn/out.mp4" }], model: "bria-remove-background" }, credits: 0, pending: [], servedBy: "wavespeed" });
+  });
+
+  it("records a run on the payer's own key as mini-tool usage (inner#1953)", async () => {
+    const run = await runMiniTool({ toolId: "image.remove-bg", params: {}, ...RUN, keyId: "media-row" });
+
+    expect(run.recordAs).toMatchObject({ feature: "mini_tool", model: "bria-remove-background", keyId: "media-row" });
   });
 });

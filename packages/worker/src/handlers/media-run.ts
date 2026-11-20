@@ -54,7 +54,7 @@ export interface MediaRun {
   keys?: KeySet;
   /** The account's keys a language-model step inside the run runs on; absent on our keys. */
   llmKeys?: KeySet;
-  /** Whose keys make and reuse the run's clones: the account's id, or `deployment` for ours. */
+  /** Whose keys make and reuse the run's clones: the account key row the media goes out on, or `deployment` for ours. */
   cloneOwner: upstreamCloneRepo.CloneKeyOwner;
 }
 

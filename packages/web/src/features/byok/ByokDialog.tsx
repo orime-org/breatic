@@ -45,8 +45,8 @@ export function ByokDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const t = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* Its length follows the data (two or three dozen upstreams, seventy-odd models), so it pins its own height
-        and scrolls inside. */}
+      {/* Its length follows the data (one WaveSpeed key opens about seventy models), so it pins its own height and
+        scrolls inside. */}
       <DialogContent className='h-[min(40rem,85vh)] max-w-[880px]' aria-describedby={undefined} data-testid='byok-dialog'>
         <DialogHeader className='shrink-0'>
           <DialogTitle>{t('byok.heading')}</DialogTitle>

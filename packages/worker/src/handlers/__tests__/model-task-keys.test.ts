@@ -77,6 +77,7 @@ const TASK = {
   deadlineAt: Date.now() + 60_000,
   lastAttempt: false,
   actorUserId: "user-1",
+  feature: "canvas_generation",
   keyId: MEDIA_KEY_ID,
   llmKeyId: LLM_KEY_ID,
 } as unknown as ModelTask;
@@ -143,11 +144,24 @@ describe("the keys a model run uses", () => {
     const [run] = h.runMedia.mock.calls[0] as [{ input: (rows: object) => Promise<{ prompt: string }> }];
 
     expect((await run.input({})).prompt).toBe("{}");
-    expect(h.createUsageRecorder).toHaveBeenCalledWith(expect.objectContaining({ operationKey: "task:task-1", actorUserId: "user-1", keyId: LLM_KEY_ID }));
+    expect(h.createUsageRecorder).toHaveBeenCalledWith(expect.objectContaining({ operationKey: "task:task-1", feature: "canvas_generation", actorUserId: "user-1", keyId: LLM_KEY_ID }));
     expect(h.watchModelCalls).toHaveBeenCalledWith(expect.anything(), { model: "deepseek/deepseek-chat", description: "Task: prompt rewrite", keyId: LLM_KEY_ID }, pending, { name: "the-llm" });
     expect(h.callEnded).toHaveBeenCalledWith(ended);
     expect(h.handOff).toHaveBeenCalled();
     expect(settle).toHaveBeenCalled();
+  });
+
+  it("records a mini-tool's rewrite on the payer's key as mini-tool usage", async () => {
+    h.rewrittenPrompt.mockImplementationOnce(async (_p: string, _q: unknown, _f: string, _d: number, account: { record: (b: object) => Promise<void> }) => {
+      await account.record({ pending: () => [] });
+      return { prompt: "{}" };
+    });
+    h.createUsageRecorder.mockReturnValue({ operation: { operationKey: "task:task-1" }, settle: vi.fn(async () => 0) });
+    await runModelTask({ ...TASK, model: "nano-banana-2", params: { prompt: "a cat", resolution: "1k" }, feature: "mini_tool" });
+    const [run] = h.runMedia.mock.calls[0] as [{ input: (rows: object) => Promise<unknown> }];
+    await run.input({});
+
+    expect(h.createUsageRecorder).toHaveBeenCalledWith(expect.objectContaining({ feature: "mini_tool", keyId: LLM_KEY_ID }));
   });
 
   it("rewrites on our keys, recording nothing, when the task holds no LLM key row", async () => {

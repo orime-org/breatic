@@ -36,7 +36,7 @@ export interface CostWait {
 
 /** How a call is recorded once its cost is looked up: the task's feature and the model it called. */
 export interface RecordAs {
-  feature: "canvas_understand" | "canvas_transcribe" | "canvas_generation";
+  feature: "canvas_understand" | "canvas_transcribe" | "canvas_generation" | "mini_tool";
   model: string;
   /** The account key row the task's account-paid media calls are recorded under (inner#1953); absent on our keys. */
   keyId?: string;
