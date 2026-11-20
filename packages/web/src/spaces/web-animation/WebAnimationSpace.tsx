@@ -401,7 +401,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
       if (effect.type === 'toast_failed' && effect.reason !== 'space_full') toast.error(t('spaces.webAnimation.annotationFailed'));
       if (effect.type === 'confirm_discard') setDiscardAsked(event.type === 'switch_result' ? 'switch_result' : 'cancel');
       if (effect.type === 'write') {
-        store.createThread({ initialComment: { body: asCommentBody(effect.text.trim()) as never }, metadata: { webAnimationAnchor: effect.anchor } }).then((thread) => {
+        store.createThread({ initialComment: { body: asCommentBody(effect.text.trim()) }, metadata: { webAnimationAnchor: effect.anchor } }).then((thread) => {
           annotate({ type: 'written' });
           showWritten.current(thread.id);
         }, (err: unknown) => annotate({ type: 'write_failed', reason: err instanceof SpaceFullError ? 'space_full' : 'failed' }));

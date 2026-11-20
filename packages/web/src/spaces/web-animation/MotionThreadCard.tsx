@@ -80,7 +80,7 @@ export function MotionThreadCard({ thread, timeSeconds, store, myRole, viewerId,
   }, [t]);
   const onReply = React.useCallback(async (threadId: string, body: string): Promise<boolean> => {
     if (body.trim() === '') return false;
-    return run(() => store.addComment({ threadId, comment: { body: asCommentBody(body.trim()) as never } }));
+    return run(() => store.addComment({ threadId, comment: { body: asCommentBody(body.trim()) } }));
   }, [run, store]);
   const onResolve = React.useCallback((threadId: string): void => { void run(() => store.resolveThread({ threadId })); }, [run, store]);
   const onReopen = React.useCallback((threadId: string): void => { void run(() => store.unresolveThread({ threadId })); }, [run, store]);
