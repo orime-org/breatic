@@ -9,7 +9,8 @@
  */
 
 import type { Queue } from "bullmq";
-import { logger, timelineExecutionRepo, type TimelineExecutionJobData } from "@breatic/core";
+import { logger } from "@breatic/core";
+import { timelineExecutionRepo, type TimelineExecutionJobData } from "@breatic/domain";
 
 /**
  * Log a `timeline` job that failed for good; a failure with a retry still to come is not one.

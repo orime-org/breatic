@@ -21,10 +21,9 @@ import {
   sessionCookieName,
   setSession,
   taskEventsStreamKey,
-  timelineExecutionRepo,
   type Redis,
 } from "@breatic/core";
-import { webAnimationSourceRepo } from "@breatic/domain";
+import { webAnimationSourceRepo, timelineExecutionRepo } from "@breatic/domain";
 import { t, webAnimationSpaceDocName, type TimelineExecution } from "@breatic/shared";
 import { seedDesignatedLot } from "@server/__tests__/integration/studio-credit-fixtures.js";
 

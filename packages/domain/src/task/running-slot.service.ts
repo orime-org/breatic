@@ -28,9 +28,9 @@ import {
   timelineReportGraceMs,
   runningTaskLimitForStudio,
   runningTasksPerUserOf,
-  timelineExecutionRepo,
   type DbTx,
 } from "@breatic/core";
+import * as timelineExecutionRepo from "@domain/timeline/timeline-execution.repo.js";
 import { canvasSpaceDocName, type TaskFailureReason, type TimelineExecution } from "@breatic/shared";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as nodeTaskRepo from "@domain/node-task/node-task.repo.js";

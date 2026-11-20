@@ -14,7 +14,8 @@ import { join } from "node:path";
 import type { Job } from "bullmq";
 import * as Y from "yjs";
 import { expect, vi } from "vitest";
-import { env, getStorageAdapter, getTimelineConfig, initLogger, timelineExecutionRepo } from "@breatic/core";
+import { env, getStorageAdapter, getTimelineConfig, initLogger } from "@breatic/core";
+import { timelineExecutionRepo } from "@breatic/domain";
 import type { createPgClient } from "@breatic/core";
 import { projectMetaDocName, spaceContentDocName, type TimelineExecution } from "@breatic/shared";
 import {

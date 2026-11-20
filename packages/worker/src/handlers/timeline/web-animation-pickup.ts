@@ -8,8 +8,8 @@
  */
 
 import type { Job } from "bullmq";
-import { db, getWorkerConfig, logger, timelineExecutionRepo, timelineReportGraceMs, type TimelineExecutionJobData } from "@breatic/core";
-import { creditLotService, runningSlotService, sumCreditsByOperationKeys, timelineOperationKey, toChargeCredits } from "@breatic/domain";
+import { db, getWorkerConfig, logger, timelineReportGraceMs } from "@breatic/core";
+import { creditLotService, runningSlotService, sumCreditsByOperationKeys, timelineOperationKey, toChargeCredits, timelineExecutionRepo, type TimelineExecutionJobData } from "@breatic/domain";
 import type { TimelineExecution } from "@breatic/shared";
 import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
 import { StillRunning } from "@worker/handlers/still-running.js";

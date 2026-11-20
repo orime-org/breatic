@@ -19,7 +19,6 @@ import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
-  addTimelineExecutionJob,
   announceExecutionChange,
   budgetDeadlineFrom,
   db,
@@ -28,7 +27,6 @@ import {
   getTimelineConfig,
   logger,
   projectAssetReferenceService,
-  timelineExecutionRepo,
 } from "@breatic/core";
 import {
   SMALLEST_CREDIT,
@@ -36,6 +34,8 @@ import {
   timelineOperationKey,
   uploadGrantService,
   webAnimationSourceRepo,
+  addTimelineExecutionJob,
+  timelineExecutionRepo,
 } from "@breatic/domain";
 import {
   ceilToCreditCent,

@@ -58,8 +58,8 @@ vi.mock("ai", () => ({
 import type * as DomainModule from "@breatic/domain";
 import fc from "fast-check";
 import { createHash } from "node:crypto";
-import { createPgClient, createQueue, env, getStreamRedis, getTimelineConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
-import { initProvider, provider, toChargeCredits, USAGE_LOOKUP_QUEUE } from "@breatic/domain";
+import { createPgClient, createQueue, env, getStreamRedis, getTimelineConfig, initCore, loadLocales } from "@breatic/core";
+import { initProvider, provider, toChargeCredits, USAGE_LOOKUP_QUEUE, timelineExecutionRepo } from "@breatic/domain";
 import { NoUpstreamAvailable, type CostLookup } from "@breatic/provider";
 import { t } from "@breatic/shared";
 import { spaceTasksChangedChannel, webAnimationSpaceDocName } from "@breatic/shared";

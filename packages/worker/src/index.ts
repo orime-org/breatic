@@ -34,8 +34,6 @@ import {
   getAgentConfig,
   getWorkerConfig,
   getTimelineConfig,
-  TIMELINE_QUEUE,
-  type TimelineExecutionJobData,
   assertKnownQueues,
   installDeadlineBoundDispatcher,
   flushServerAnalytics,
@@ -62,6 +60,8 @@ import {
   type MediaReadJob,
   type UploadFinishJob,
   type UsageLookupJob,
+  TIMELINE_QUEUE,
+  type TimelineExecutionJobData,
 } from "@breatic/domain";
 
 // Error monitoring starts before the first log line, so error logs from the

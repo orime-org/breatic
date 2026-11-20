@@ -27,6 +27,14 @@ export * as creditHoldService from "@domain/credit/creditHold.service.js";
 export * as spendLimitRepo from "@domain/credit/spendLimit.repo.js";
 export { sumCreditsByOperationKeys } from "@domain/credit/agentUsage.repo.js";
 export * as webAnimationSourceRepo from "@domain/timeline/web-animation-source.repo.js";
+export * as timelineExecutionRepo from "@domain/timeline/timeline-execution.repo.js";
+export type { TimelineExecutionEvent, TimelineExecutionTransition, NewTimelineExecution } from "@domain/timeline/timeline-execution.repo.js";
+export {
+  TIMELINE_QUEUE,
+  TIMELINE_EXECUTION_JOB,
+  addTimelineExecutionJob,
+  type TimelineExecutionJobData,
+} from "@domain/timeline/timeline-queue.js";
 export { timelineOperationKey } from "@domain/timeline/operation-key.js";
 export { SMALLEST_CREDIT, toChargeCredits } from "@domain/credit/credit-math.js";
 export {

@@ -13,8 +13,8 @@
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
-import { createUsageRecorder, webAnimationSourceRepo } from "@breatic/domain";
+import { initCore, loadLocales } from "@breatic/core";
+import { createUsageRecorder, webAnimationSourceRepo, timelineExecutionRepo } from "@breatic/domain";
 
 let sql: ReturnType<typeof postgres>;
 

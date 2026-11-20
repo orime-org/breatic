@@ -14,9 +14,7 @@ import type { SQL } from "drizzle-orm";
 import type { PgColumn, PgUpdateSetSource } from "drizzle-orm/pg-core";
 import type { TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
 import { WEB_ANIMATION_OPEN_STATUSES } from "@breatic/shared/space-content";
-import { db, type DbTx } from "@core/db/client.js";
-import { timelineExecutions as t } from "@core/db/schema.js";
-import { getWorkerConfig } from "@core/config/worker.js";
+import { db, getWorkerConfig, timelineExecutions as t, type DbTx } from "@breatic/core";
 
 /** What a caller sends to move an execution; the matrix in the design decides what each does in each state. */
 export type TimelineExecutionEvent =

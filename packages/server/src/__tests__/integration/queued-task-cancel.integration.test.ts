@@ -33,8 +33,8 @@ vi.mock("@breatic/shared", async (importOriginal) =>
 import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
-import { env, getNodeTaskConfig, getStreamRedis, initCore, loadLocales, reportGraceMs, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
-import { nodeTaskService, runningSlotService } from "@breatic/domain";
+import { env, getNodeTaskConfig, getStreamRedis, initCore, loadLocales, reportGraceMs, taskEventsStreamKey } from "@breatic/core";
+import { nodeTaskService, runningSlotService, timelineExecutionRepo } from "@breatic/domain";
 import { canvasSpaceDocName, spaceTasksChangedChannel, TASK_FAILURE_REASONS } from "@breatic/shared";
 import { webAnimationExecutionService } from "@server/modules";
 import { PAYMENTS_ON, request, seedAccount, seedMember, type Account, type Actor } from "./paid-account-fixtures.js";

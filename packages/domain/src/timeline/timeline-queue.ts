@@ -7,8 +7,7 @@
  * it. One job per execution, under the execution's id, so adding it again while it waits is a no-op.
  */
 
-import type { Queue } from "bullmq";
-import { defaultJobOpts } from "@core/infra/queue.js";
+import { defaultJobOpts, type createQueue } from "@breatic/core";
 
 /** The queue Timeline executions run on. */
 export const TIMELINE_QUEUE = "timeline";
@@ -28,7 +27,7 @@ export interface TimelineExecutionJobData {
  * @returns Nothing once the job is in the queue.
  * @throws {Error} When Redis refuses the add.
  */
-export async function addTimelineExecutionJob(queue: Pick<Queue, "add">, executionId: string): Promise<void> {
+export async function addTimelineExecutionJob(queue: Pick<ReturnType<typeof createQueue>, "add">, executionId: string): Promise<void> {
   const data: TimelineExecutionJobData = { executionId };
   await queue.add(TIMELINE_EXECUTION_JOB, data, { ...defaultJobOpts(), jobId: executionId });
 }

@@ -6,7 +6,8 @@
  * import needs the core configuration before anything that merely imports it has set it up.
  */
 
-import { TIMELINE_QUEUE, createQueue } from "@breatic/core";
+import { createQueue } from "@breatic/core";
+import { TIMELINE_QUEUE } from "@breatic/domain";
 
 let queue: ReturnType<typeof createQueue> | undefined;
 

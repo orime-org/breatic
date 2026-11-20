@@ -12,7 +12,8 @@
  */
 
 import type { Queue } from "bullmq";
-import { addTimelineExecutionJob, getTimelineConfig, logger, timelineExecutionRepo } from "@breatic/core";
+import { getTimelineConfig, logger } from "@breatic/core";
+import { addTimelineExecutionJob, timelineExecutionRepo } from "@breatic/domain";
 import { move } from "@worker/handlers/timeline/timeline-transition.js";
 
 /** Job states that no longer run the execution. */

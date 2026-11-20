@@ -28,9 +28,6 @@ import {
   getStorageAdapter,
   getTimelineConfig,
   logger,
-  timelineExecutionRepo,
-  type TimelineExecutionEvent,
-  type TimelineExecutionJobData,
 } from "@breatic/core";
 import { costSchema, NoUpstreamAvailable, type Cost } from "@breatic/provider";
 import {
@@ -41,6 +38,9 @@ import {
   timelineOperationKey,
   webAnimationSourceRepo,
   type AwaitedLookup,
+  timelineExecutionRepo,
+  type TimelineExecutionEvent,
+  type TimelineExecutionJobData,
 } from "@breatic/domain";
 import { t, type TimelineExecution } from "@breatic/shared";
 import {

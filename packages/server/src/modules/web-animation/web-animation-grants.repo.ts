@@ -14,7 +14,8 @@
  */
 
 import { and, desc, eq, inArray, isNull, notInArray, sql, type SQL } from "drizzle-orm";
-import { db, timelineExecutionGrants as g, timelineExecutions as t, timelineExecutionRepo, type DbTx } from "@breatic/core";
+import { db, timelineExecutionGrants as g, timelineExecutions as t, type DbTx } from "@breatic/core";
+import { timelineExecutionRepo } from "@breatic/domain";
 import type { TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
 import { WEB_ANIMATION_FAILED_STATUSES, WEB_ANIMATION_OPEN_STATUSES } from "@breatic/shared/space-content";
 

@@ -13,8 +13,9 @@
 import { randomUUID } from "node:crypto";
 import fc from "fast-check";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
-import { createPgClient, db, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
-import type { TimelineExecutionEvent } from "@breatic/core";
+import { createPgClient, db, initCore, loadLocales } from "@breatic/core";
+import { timelineExecutionRepo, type TimelineExecutionEvent } from "@breatic/domain";
+
 import type { TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 

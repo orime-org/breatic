@@ -27,7 +27,8 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
-import { env, getNodeTaskConfig, getTimelineConfig, timelineExecutionRepo } from "@breatic/core";
+import { env, getNodeTaskConfig, getTimelineConfig } from "@breatic/core";
+import { timelineExecutionRepo } from "@breatic/domain";
 import { extractPromptText, readSignedPayload, t, timelineSpaceDocName, webAnimationSpaceDocName } from "@breatic/shared";
 import { decodePreviewToken } from "@breatic/shared/space-content";
 import type { TimelineExecution } from "@breatic/shared";

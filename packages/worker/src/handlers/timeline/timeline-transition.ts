@@ -7,7 +7,8 @@
  * it, since a new attempt changes nothing the user sees.
  */
 
-import { announceExecutionChange, logger, timelineExecutionRepo, type TimelineExecutionEvent, type TimelineExecutionTransition } from "@breatic/core";
+import { announceExecutionChange, logger } from "@breatic/core";
+import { timelineExecutionRepo, type TimelineExecutionEvent, type TimelineExecutionTransition } from "@breatic/domain";
 import type { TimelineExecution } from "@breatic/shared";
 
 /**

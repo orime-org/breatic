@@ -31,8 +31,8 @@ vi.mock("ai", () => ({
 
 import type * as DomainModule from "@breatic/domain";
 import { randomUUID } from "node:crypto";
-import { coverKeyFor, createPgClient, getTimelineConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
-import { createUsageRecorder, initProvider, timelineOperationKey, toChargeCredits, uploadGrantService, webAnimationSourceRepo } from "@breatic/domain";
+import { coverKeyFor, createPgClient, getTimelineConfig, initCore, loadLocales } from "@breatic/core";
+import { createUsageRecorder, initProvider, timelineOperationKey, toChargeCredits, uploadGrantService, webAnimationSourceRepo, timelineExecutionRepo } from "@breatic/domain";
 import { durationToFrames } from "@breatic/shared";
 import {
   WEB_ANIMATION_CONTAINER_CLASS, WEB_ANIMATION_RENDER_CONTAINER_CLASS, webAnimationJobRequestSchema, webAnimationRenderJobRequestSchema,
