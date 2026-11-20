@@ -9,7 +9,6 @@ import { z } from "zod";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { getMiniToolsConfig, getNodeTaskConfig, getRedis, getStorageAdapter, initCore, loadLocales, sessionCookieName, setSession } from "@breatic/core";
 import type * as shared from "@breatic/shared";
-import { t as sharedT } from "@breatic/shared";
 import { miniToolAnalysisRequestSchema, miniToolAnalysisService, taskRepo, taskService } from "@breatic/domain";
 import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, miniToolConsumptionKey, projectMiniToolAnalysisInput, type MiniToolAnalysisKind, type MiniToolAnalysisRecord } from "@breatic/shared/mini-tools";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
@@ -177,18 +176,15 @@ async function seed(options: { transparent?: boolean; edit?: boolean } = {}): Pr
  * @param kind - The analysis requested.
  * @returns Its complete public request body.
  */
-function requestFor(fixture: AnalysisFixture, kind: MiniToolAnalysisKind = "people"): AnalysisRequest {
+function requestFor(fixture: AnalysisFixture, kind: MiniToolAnalysisKind = "scene_cuts"): AnalysisRequest {
   const hostNodeId = crypto.randomUUID();
-  const anchor = { frameIndex: 0 };
   // Ranges are grid frames (frames-split §10.12): 5 s of the 200 fps fixture grid.
   const range = { start: 0, end: 1000 };
   return {
     analysisRunId: crypto.randomUUID(), projectId: fixture.projectId, spaceId: crypto.randomUUID(),
     hostNodeId, draftId: crypto.randomUUID(), revision: crypto.randomUUID(), kind,
     source: { nodeId: hostNodeId, canonicalURL: fixture.sourceURL, mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } },
-    params: kind === "people" ? { anchor } : kind === "scene_cuts" ? { range } : {
-      range, anchor, region: { box: { x: 0.1, y: 0.1, width: 0.4, height: 0.6 }, points: [] }, trackingPrompt: "the selected person",
-    },
+    params: { range },
     presentationRef: fixture.presentation.presentationRef,
   };
 }
@@ -255,20 +251,18 @@ async function counts(taskId: string): Promise<{ tasks: number; rows: number; ho
 }
 
 /**
- * Adds an empty successful people result to an accepted record.
- * @param record - A people analysis accepted by the server.
+ * Adds an empty successful scene result to an accepted record.
+ * @param record - A scene analysis accepted by the server.
  * @param acceptedAt - The full-precision initial task time.
  * @returns A complete record with its matching typed result.
- * @throws {Error} When the fixture is not a people analysis.
  */
-function completedPeople(record: MiniToolAnalysisRecord, acceptedAt: string): MiniToolAnalysisRecord {
-  if (record.kind !== "people" || record.analysisInput.kind !== "people") throw new Error("Expected a people analysis fixture");
+function completedScenes(record: MiniToolAnalysisRecord, acceptedAt: string): MiniToolAnalysisRecord {
   const identity = {
-    schemaVersion: 1 as const, draftId: record.draftId, revision: record.revision, kind: "people" as const,
+    schemaVersion: 1 as const, draftId: record.draftId, revision: record.revision, kind: "scene_cuts" as const,
     analysisRunId: record.analysisRunId, acceptedAt, binding: record.binding,
     analysisInput: record.analysisInput, inputFingerprint: record.inputFingerprint,
   };
-  return { ...record, acceptedAt, status: "completed", result: { ...identity, anchor: record.analysisInput.anchor, people: [] } };
+  return { ...record, acceptedAt, status: "completed", result: { ...identity, fps: { numerator: 200, denominator: 1 }, frameCount: 1011, cuts: [] } };
 }
 
 /**
@@ -280,25 +274,20 @@ function completedPeople(record: MiniToolAnalysisRecord, acceptedAt: string): Mi
 async function seedAccepted(fixture: AnalysisFixture, acceptedAt: string): Promise<MiniToolAnalysisRecord> {
   const body = requestFor(fixture);
   const analysisInput = projectMiniToolAnalysisInput({
-    kind: "people", source: body.source, params: body.params,
-    profile: {
-      id: "opencv-yunet-2023mar", version: "2023mar",
-      weightsHash: "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
-      params: { scoreThreshold: 0.6, nmsThreshold: 0.3, topK: 5000 },
-    },
+    kind: "scene_cuts", source: body.source, params: body.params, profile: getMiniToolsConfig().analyses.scene_cuts.profile,
   });
   const binding = { assetId: fixture.sourceAssetId, contentHash: fixture.sourceHash, canonicalURL: fixture.sourceURL, kind: "video" as const, mediaInfo: body.source.mediaInfo };
   const record: MiniToolAnalysisRecord = {
     schemaVersion: 1, analysisRunId: body.analysisRunId, draftId: body.draftId, revision: body.revision,
-    kind: "people", acceptedAt, binding, analysisInput, inputFingerprint: await fingerprintMiniToolAnalysisInput(analysisInput),
+    kind: "scene_cuts", acceptedAt, binding, analysisInput, inputFingerprint: await fingerprintMiniToolAnalysisInput(analysisInput),
     status: "pending", result: null, error: null, usage: [], artifactUnavailable: false,
   };
   const params: FrozenAnalysisParams = { analysis: {
     schemaVersion: 1, analysisRunId: body.analysisRunId, projectId: body.projectId, spaceId: body.spaceId,
-    hostNodeId: body.hostNodeId, draftId: body.draftId, revision: body.revision, kind: "people",
+    hostNodeId: body.hostNodeId, draftId: body.draftId, revision: body.revision, kind: "scene_cuts",
     source: body.source, binding, analysisInput, inputFingerprint: record.inputFingerprint,
     presentationRef: body.presentationRef, presentations: { source: fixture.presentation.bundle }, versionIds: { source: fixture.presentation.versionId },
-    chargeTo: "platform",
+    chargeTo: "user",
   } };
   // Keep the parameter's OID textual: the driver's timestamp serializer runs
   // strings through Date, which would discard the microseconds before insertion.
@@ -317,9 +306,7 @@ async function seedAccepted(fixture: AnalysisFixture, acceptedAt: string): Promi
 
 describe("mini-tool analysis admission and project reads", () => {
   it.each([
-    { kind: "people" as const, holds: 0 },
     { kind: "scene_cuts" as const, holds: 1 },
-    { kind: "tracked_mask" as const, holds: 1 },
   ])("accepts $kind with a frozen public record and one host task", async ({ kind, holds }) => {
     const fixture = await seed();
     const body = requestFor(fixture, kind);
@@ -343,7 +330,7 @@ describe("mini-tool analysis admission and project reads", () => {
       binding: record.binding, analysisInput: record.analysisInput, inputFingerprint: record.inputFingerprint,
       // The tool input and the selected version are frozen with the analysis (frames-split §7.11), with its payer (§5.5).
       presentationRef: body.presentationRef, presentations: { source: fixture.presentation.bundle }, versionIds: { source: fixture.presentation.versionId },
-      chargeTo: kind === "people" ? "platform" : "user",
+      chargeTo: "user",
     });
     const rows = await sql<{ node_id: string; action: string; budget_ms: number; task_id: string }[]>`
       SELECT node_id, action, budget_ms, task_id FROM node_tasks WHERE task_id = ${body.analysisRunId}
@@ -407,7 +394,7 @@ describe("mini-tool analysis admission and project reads", () => {
     const replay = await post(body, fixture.ownerCookie, key);
     expect(await accepted(replay)).toEqual(first);
     expect(replay.headers.get("Idempotent-Replayed")).toBe("true");
-    expect(await counts(body.analysisRunId)).toEqual({ tasks: 1, rows: 1, holds: 0 });
+    expect(await counts(body.analysisRunId)).toEqual({ tasks: 1, rows: 1, holds: 1 });
   });
 
   it("reuses the persistent run when the same body arrives under another press key", async () => {
@@ -415,7 +402,7 @@ describe("mini-tool analysis admission and project reads", () => {
     const body = requestFor(fixture);
     const first = await accepted(await post(body, fixture.ownerCookie));
     expect(await accepted(await post(body, fixture.ownerCookie))).toEqual(first);
-    expect(await counts(body.analysisRunId)).toEqual({ tasks: 1, rows: 1, holds: 0 });
+    expect(await counts(body.analysisRunId)).toEqual({ tasks: 1, rows: 1, holds: 1 });
   });
 
   it("refuses a changed body under the same press key and preserves the original analysis", async () => {
@@ -426,7 +413,7 @@ describe("mini-tool analysis admission and project reads", () => {
     const response = await post({ ...body, params: { anchor: { frameIndex: 1 } } }, fixture.ownerCookie, key);
     expect(response.status).toBe(422);
     expect(await reading(await get(body.analysisRunId, fixture.ownerCookie))).toEqual(first);
-    expect(await counts(body.analysisRunId)).toEqual({ tasks: 1, rows: 1, holds: 0 });
+    expect(await counts(body.analysisRunId)).toEqual({ tasks: 1, rows: 1, holds: 1 });
   });
 
   it("refuses conflicting persistent run ownership or inputs under another press key", async () => {
@@ -438,7 +425,7 @@ describe("mini-tool analysis admission and project reads", () => {
     const otherActor = await post(body, fixture.editorCookie);
     expect([409, 422]).toContain(otherActor.status);
     expect(await reading(await get(body.analysisRunId, fixture.ownerCookie))).toEqual(first);
-    expect(await counts(body.analysisRunId)).toEqual({ tasks: 1, rows: 1, holds: 0 });
+    expect(await counts(body.analysisRunId)).toEqual({ tasks: 1, rows: 1, holds: 1 });
   });
 
   it("holds the user-run scene analysis estimate once across press and persistent-run replay", async () => {
@@ -485,7 +472,7 @@ describe("mini-tool analysis admission and project reads", () => {
       expect(pending.acceptedAt).toBe(item.acceptedAt);
       await taskService.markRunning(item.record.analysisRunId, "analysis-microseconds", new Date("2026-10-24T09:04:00Z"));
       expect((await reading(await get(item.record.analysisRunId, fixture.viewerCookie))).acceptedAt).toBe(item.acceptedAt);
-      const completed = completedPeople(item.record, item.acceptedAt);
+      const completed = completedScenes(item.record, item.acceptedAt);
       await sql`UPDATE tasks SET status = 'completed', result = ${sql.json({ analysis: completed })} WHERE id = ${item.record.analysisRunId}`;
       expect(await reading(await get(item.record.analysisRunId, fixture.viewerCookie))).toEqual(completed);
     }
@@ -495,7 +482,7 @@ describe("mini-tool analysis admission and project reads", () => {
     const fixture = await seed();
     const body = requestFor(fixture);
     const pending = await accepted(await post(body, fixture.ownerCookie));
-    const completed = completedPeople(pending, pending.acceptedAt);
+    const completed = completedScenes(pending, pending.acceptedAt);
     const failed = { ...completed, status: "failed" as const, error: { code: "analysis_failed" } };
     await sql`UPDATE tasks SET status = 'failed', error_message = 'analysis_failed', result = ${sql.json({ analysis: failed })} WHERE id = ${body.analysisRunId}`;
     expect(await reading(await get(body.analysisRunId, fixture.viewerCookie))).toEqual(failed);
@@ -560,8 +547,6 @@ describe("mini-tool analysis admission and project reads", () => {
   });
 
   it.each([
-    { kind: "people" as const, nodeStatus: "running" },
-    { kind: "people" as const, nodeStatus: "done" },
     { kind: "scene_cuts" as const, nodeStatus: "running" },
     { kind: "scene_cuts" as const, nodeStatus: "done" },
   ])("keeps completed $kind and its $nodeStatus node after a queue acknowledgement error", async ({ kind, nodeStatus }) => {
@@ -574,9 +559,7 @@ describe("mini-tool analysis admission and project reads", () => {
       await sql`UPDATE tasks SET result=result || ${sql.json({ settlement, preserved: { fixture: true } })} WHERE id=${body.analysisRunId}`;
       // The public record's transport fields are not detector-result fields.
       const { status: _status, result: _result, error: _error, usage: _usage, artifactUnavailable: _unavailable, ...identity } = record;
-      const result = kind === "people" ? completedPeople(record, record.acceptedAt).result : {
-        ...identity, kind: "scene_cuts", fps: { numerator: 200, denominator: 1 }, frameCount: 20, cuts: [],
-      };
+      const result = { ...identity, kind, fps: { numerator: 200, denominator: 1 }, frameCount: 20, cuts: [] };
       committed = (await miniToolAnalysisService.finishMiniToolAnalysis(body.analysisRunId, { kind: "result", result })).record;
       if (nodeStatus === "done") await sql`UPDATE node_tasks SET status='done',settled_at=now() WHERE task_id=${body.analysisRunId}`;
       const [node] = await sql<{ value: unknown }[]>`SELECT to_jsonb(n) AS value FROM node_tasks n WHERE task_id=${body.analysisRunId}`;
@@ -592,12 +575,12 @@ describe("mini-tool analysis admission and project reads", () => {
       const [node] = await sql<{ value: unknown }[]>`SELECT to_jsonb(n) AS value FROM node_tasks n WHERE task_id=${body.analysisRunId}`;
       expect(node!.value).toEqual(nodeBefore);
       const holds = await sql<{ status: string }[]>`SELECT status FROM credit_holds WHERE reference_id=${body.analysisRunId}`;
-      expect([...holds]).toEqual(kind === "people" ? [] : [{ status: "held" }]);
-      expect(await counts(body.analysisRunId)).toEqual({ tasks: 1, rows: 1, holds: kind === "people" ? 0 : 1 });
+      expect([...holds]).toEqual([{ status: "held" }]);
+      expect(await counts(body.analysisRunId)).toEqual({ tasks: 1, rows: 1, holds: 1 });
     } finally { add.mockRestore(); }
   });
 
-  it.each(["people", "scene_cuts"] as const)("atomically fails an unsubmitted %s admission and releases its unused hold", async (kind) => {
+  it.each(["scene_cuts"] as const)("atomically fails an unsubmitted %s admission and releases its unused hold", async (kind) => {
     const fixture = await seed(); const body = requestFor(fixture, kind);
     const add = vi.spyOn(Queue.prototype, "add").mockRejectedValueOnce(new Error("fixture_queue_rejected_before_acceptance"));
     try {
@@ -610,7 +593,7 @@ describe("mini-tool analysis admission and project reads", () => {
       const [node] = await sql<{ status: string; budget_ms: number }[]>`SELECT status,budget_ms FROM node_tasks WHERE task_id=${body.analysisRunId}`;
       expect(node).toEqual({ status: "failed", budget_ms: getNodeTaskConfig().default_budget_ms });
       const holds = await sql<{ status: string }[]>`SELECT status FROM credit_holds WHERE reference_id=${body.analysisRunId}`;
-      expect([...holds]).toEqual(kind === "people" ? [] : [{ status: "released" }]);
+      expect([...holds]).toEqual([{ status: "released" }]);
     } finally { add.mockRestore(); }
   });
 
@@ -697,7 +680,7 @@ describe("analysis tool input and pins (inner#1306 §90 E4-2; design §7.11 分�
     const pending = await accepted(await post(body, fixture.ownerCookie));
     if (end === "completed") {
       const [row] = await sql<{ accepted_at: string }[]>`SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS accepted_at FROM tasks WHERE id=${body.analysisRunId}`;
-      await miniToolAnalysisService.finishMiniToolAnalysis(body.analysisRunId, { kind: "result", result: completedPeople(pending, row!.accepted_at).result });
+      await miniToolAnalysisService.finishMiniToolAnalysis(body.analysisRunId, { kind: "result", result: completedScenes(pending, row!.accepted_at).result });
     } else {
       await miniToolAnalysisService.finishMiniToolAnalysis(body.analysisRunId, { kind: "error", error: { code: "analysis_failed" } });
     }
@@ -706,113 +689,5 @@ describe("analysis tool input and pins (inner#1306 §90 E4-2; design §7.11 分�
     const queued = await sql<{ storage_key: string; kind: string; kept_storage_key: string | null }[]>`SELECT storage_key,kind,kept_storage_key FROM storage_reclaim_queue WHERE storage_key=${editKey}`;
     // A presentation-derived object is registered with its canonical key (frames-split §7.15).
     expect([...queued]).toEqual([{ storage_key: editKey, kind: "derived", kept_storage_key: fixture.sourceKey }]);
-  });
-});
-
-// Execution design §10.2, §10.4 and §10.8: tracking an erase selection is checked again at admission, each refusal with its
-// reason and no effect, and it is quoted per tracking clip.
-describe("tracked mask admission checks (execution design §10.2–§10.4)", () => {
-  /**
-   * A tracked mask request over a range with an anchor.
-   * @param fixture - The registered source.
-   * @param range - The range in seconds, sent as frames of the 200 fps fixture grid.
-   * @param range.start - Its start.
-   * @param range.end - Its end.
-   * @param anchorFrame - The anchor's presentation frame on the 200 fps fixture.
-   * @returns The request.
-   */
-  function tracked(fixture: AnalysisFixture, range: { start: number; end: number }, anchorFrame: number): AnalysisRequest {
-    const body = requestFor(fixture, "tracked_mask");
-    return { ...body, params: { ...body.params, range: { start: Math.round(range.start * 200), end: Math.round(range.end * 200) }, anchor: { frameIndex: anchorFrame } } };
-  }
-
-  /**
-   * Require a 400 refusal with its message and no durable effect.
-   * @param fixture - The fixture.
-   * @param body - The request.
-   * @param key - The message key.
-   * @param params - Its ICU values.
-   * @returns Nothing.
-   */
-  async function refused(fixture: AnalysisFixture, body: AnalysisRequest, key: string, params?: Record<string, number>): Promise<void> {
-    const response = await post(body, fixture.ownerCookie);
-    const json = await response.json() as { error?: { message?: string } };
-    expect({ status: response.status, message: json.error?.message }).toEqual({ status: 400, message: sharedT(key, params) });
-    expect(await counts(body.analysisRunId)).toEqual({ tasks: 0, rows: 0, holds: 0 });
-  }
-
-  /**
-   * The credits an accepted analysis holds.
-   * @param runId - The analysis.
-   * @returns The held amount.
-   */
-  async function held(runId: string): Promise<number> {
-    const [row] = await sql<{ amount: string }[]>`SELECT amount FROM credit_holds WHERE reference_id=${runId}`;
-    return Number(row?.amount);
-  }
-
-  it("TQ01 refuses an anchor outside the range", async () => {
-    const fixture = await seed();
-    await refused(fixture, tracked(fixture, { start: 1, end: 3 }, 700), "server.mini_tool.anchorOutsideRange");
-  });
-
-  it("TQ02 refuses a range whose model grid lasts longer than 5 s or under 1 s", async () => {
-    const fixture = await seed();
-    await refused(fixture, tracked(fixture, { start: 0, end: 5.055 }, 0), "server.mini_tool.eraseRange", { min: 1, max: 5 });
-    await refused(fixture, tracked(fixture, { start: 0, end: 0.9 }, 0), "server.mini_tool.eraseRange", { min: 1, max: 5 });
-  });
-
-  it("TQ03 refuses a transparent source", async () => {
-    const fixture = await seed({ transparent: true });
-    await refused(fixture, tracked(fixture, { start: 1, end: 3 }, 200), "server.mini_tool.transparentSource");
-  });
-
-  it("TQ04 quotes an anchor inside the range as two clips, each at the tracker's own floor", async () => {
-    const fixture = await seed();
-    const first = tracked(fixture, { start: 0, end: 5 }, 0);
-    const middle = tracked(fixture, { start: 0, end: 5 }, 500);
-    await accepted(await post(first, fixture.ownerCookie));
-    await accepted(await post(middle, fixture.ownerCookie));
-    // One 5 s clip against two 2.5 s clips, each priced at least the tracker's 3 s floor, plus a second preparation.
-    expect(await held(middle.analysisRunId)).toBeGreaterThan(await held(first.analysisRunId));
-  });
-
-  /**
-   * Quotes an analysis request through the real app.
-   * @param body - The request the press would send.
-   * @param cookie - The actor's session.
-   * @returns The HTTP response.
-   */
-  async function quote(body: unknown, cookie: string): Promise<Response> {
-    return app.request("/api/v1/mini-tools/analyses/quote", { method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie }, body: JSON.stringify(body) });
-  }
-
-  // Canvas design §4 erase row: the estimate beside "Track selection" is the server's quote of the request the press sends.
-  it("TQ05 quotes exactly what admitting the same request holds, and writes nothing", async () => {
-    const fixture = await seed();
-    const body = tracked(fixture, { start: 0, end: 5 }, 500);
-    const response = await quote(body, fixture.ownerCookie);
-    expect(response.status, await response.clone().text()).toBe(200);
-    const { data } = await response.json() as { data: { credits: number } };
-    expect(await counts(body.analysisRunId)).toEqual({ tasks: 0, rows: 0, holds: 0 });
-    await accepted(await post(body, fixture.ownerCookie));
-    expect(data.credits).toBe(await held(body.analysisRunId));
-  });
-
-  it("TQ06 refuses a quote as admission would refuse the request", async () => {
-    const fixture = await seed();
-    const response = await quote(tracked(fixture, { start: 1, end: 3 }, 700), fixture.ownerCookie);
-    const json = await response.json() as { error?: { message?: string } };
-    expect({ status: response.status, message: json.error?.message }).toEqual({ status: 400, message: sharedT("server.mini_tool.anchorOutsideRange") });
-  });
-
-  // Canvas design §4 erase row: once tracking is billed, the same place shows what it used; GET carries it as `usage`.
-  it("TQ07 reads a billed analysis with the credits it was charged as its usage", async () => {
-    const fixture = await seed();
-    const body = tracked(fixture, { start: 0, end: 5 }, 0);
-    const record = await accepted(await post(body, fixture.ownerCookie));
-    expect(record.usage).toEqual([]);
-    await sql`UPDATE tasks SET billed_credits = 6.25, billed_at = now() WHERE id = ${body.analysisRunId}`;
-    expect((await reading(await get(body.analysisRunId, fixture.ownerCookie))).usage).toEqual([{ credits: 6.25 }]);
   });
 });

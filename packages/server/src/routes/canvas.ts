@@ -45,7 +45,7 @@ import {
   modelCatalog,
   violatesTextLengthForModel,
 } from "@breatic/domain";
-import { modelSecondsRange, nodeHistoryService } from "@breatic/domain";
+import { nodeHistoryService } from "@breatic/domain";
 import { assertLlmServable, assertServable, assertTakesInput } from "@server/modules/task/model-servable.js";
 import { catalogEntryOf } from "@breatic/shared/mini-tools";
 import { nodeTaskService } from "@breatic/domain";
@@ -106,11 +106,8 @@ canvas.use("*", requireAuth);
  * often, and for how long, an open band re-reads a missing peaks file
  * (inner#1305).
  *
- * `removeBackgroundModel` and `lipSync`: the models the video panel quotes and
- * offers, from the same executions admission reads (inner#1306). `erase` and
- * `expand`: the limits the panel checks before tracking or running, as admission
- * checks them again (execution design §10.4, §10.5). `maxOutputs`: the frames and split
- * `max_outputs`, which the panel checks before creating the nodes (frames-split §10.7).
+ * `maxOutputs`: the frames and split `max_outputs`, which the panel checks
+ * before creating the nodes (frames-split §10.7).
  * `quoteDebounceMs`: how long a video tool panel's priced inputs hold still before
  * it asks for a quote.
  * `joinMaxClips`: the most clips one join takes, its source included; the
@@ -130,59 +127,11 @@ canvas.get("/limits", (c) => {
       waveformPeaksRetryMs: getMiniToolsConfig().waveform_peaks_retry_ms,
       waveformPeaksRetryMaxMs: getMiniToolsConfig().waveform_peaks_retry_max_ms,
       quoteDebounceMs: getMiniToolsConfig().quote_debounce_ms,
-      removeBackgroundModel: getMiniToolsConfig().executions["video.remove-bg"]?.model ?? null,
-      lipSync: lipSyncChoices(),
-      erase: eraseLimits(),
-      expand: expandLimits(),
-      maxOutputs: Object.fromEntries((["video.extract-frames", "video.split"] as const).map((tool) => [tool, getMiniToolsConfig().executions[tool]?.max_outputs])),
+      maxOutputs: Object.fromEntries((["video.extract-frames", "video.split"] as const).map((tool) => [tool, getMiniToolsConfig().executions[tool].max_outputs])),
       joinMaxClips: getMiniToolsConfig().join_max_clips,
     },
   });
 });
-
-/**
- * The erase limits the video panel checks, or null where the deployment offers no erase: the model input's seconds and the
- * grid rate it is timed on.
- * @returns The limits.
- * @throws {never} Never.
- */
-function eraseLimits(): { minSeconds: number; maxSeconds: number; maxGridFps: number } | null {
-  const erase = getMiniToolsConfig().executions["video.erase"];
-  if (erase === undefined) return null;
-  // The seconds are the eraser vendor's, from its provider rejects (inner#1306 execution design §11.5).
-  const { minSeconds, maxSeconds } = modelSecondsRange(erase.model.name);
-  return maxSeconds === null ? null : { minSeconds, maxSeconds, maxGridFps: erase.model.max_grid_fps };
-}
-
-/**
- * The expand limits the video panel checks, or null where the deployment offers no expand.
- * @returns The limits.
- * @throws {never} Never.
- */
-function expandLimits(): { maxDurationSeconds: number; maxTargetSide: number } | null {
-  const expand = getMiniToolsConfig().executions["video.expand"];
-  return expand === undefined ? null : { maxDurationSeconds: expand.max_duration_seconds, maxTargetSide: expand.max_target_side };
-}
-
-/**
- * The lip-sync choices the video panel offers, or null where the deployment configures none: each selectable model's
- * duration range, the tracking range and the caps; nothing else of the execution reaches the browser.
- * @returns The choices.
- * @throws {never} Never.
- */
-function lipSyncChoices(): { models: { name: string; minDurationSeconds: number; maxDurationSeconds: number }[];
-  tracking: { minDurationSeconds: number; maxDurationSeconds: number }; maxPeople: number; maxDialogues: number } | null {
-  const lipSync = getMiniToolsConfig().executions["video.lip-sync"];
-  if (lipSync === undefined) return null;
-  // The tracker's seconds are its vendor's, from its provider rejects (inner#1306 execution design §11.5).
-  const tracker = modelSecondsRange(lipSync.tracking.model);
-  if (tracker.maxSeconds === null) return null;
-  return {
-    models: lipSync.models.map((model) => ({ name: model.name, minDurationSeconds: model.min_duration_seconds, maxDurationSeconds: model.max_duration_seconds })),
-    tracking: { minDurationSeconds: tracker.minSeconds, maxDurationSeconds: tracker.maxSeconds },
-    maxPeople: lipSync.max_people, maxDialogues: lipSync.max_dialogues,
-  };
-}
 
 /**
  * `POST /canvas/tasks` — create a task and enqueue it for execution.

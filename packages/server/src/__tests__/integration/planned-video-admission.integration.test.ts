@@ -307,7 +307,7 @@ describe("S5 fresh frame and split execution admission", () => {
       container: { containerClass: "MiniToolContainerStd4", precheckSeconds: tool === "video.split" ? 23 : 17,
         size: settings.classes.MiniToolContainerStd4, prices: settings.prices, limits: settings.plan_limits } });
     // §93 D5-2 (design D-2 「crf/preset 取冻结的受理 limits」, §5.4 「编码参数完全一致」): the run's encode parameters and retry cap are
-    // frozen with its container, as remove-bg freezes them with its preparation.
+    // frozen with its container.
     expect(plan.container).toMatchObject({ encode: { crf: settings.presentation.crf, preset: settings.presentation.preset }, chunkRetries: settings.encoding.chunk_retries });
     const { requestFingerprint, planFingerprint, ...projection } = plan;
     expect(requestFingerprint).toBe(await hashMiniToolValue(original)); expect(planFingerprint).toBe(await hashMiniToolValue(projection));
@@ -974,7 +974,7 @@ describe("frame-grid requests and the platform-funded set at admission (§67.1, 
   it("A02 changing the platform-funded set after admission changes neither the admitted run's plan nor its retry's payer or quote", async () => {
     const f = await seed("video.extract-frames"); await failedFrames(f);
     const before = await parent(f.body.run_id);
-    outside.funded = new Set(["video.focus-crop", "people"]);
+    outside.funded = new Set(["video.focus-crop"]);
     try {
       const body = retry(f, [0]); await accept(f, body);
       const plan = (await parent(body.run_id)).params.miniToolExecution;

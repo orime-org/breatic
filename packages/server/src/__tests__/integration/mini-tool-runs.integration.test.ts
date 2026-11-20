@@ -69,7 +69,7 @@ describe("GET project-scoped planned executions (independent Q/B oracle)", () =>
   });
   it.each(["legacy", "analysis"] as const)("Q05 does not expose a %s task as a planned execution", async (lane) => {
     const f = await seedExecution(pg);
-    await pg`UPDATE tasks SET params=${pg.json(lane === "legacy" ? { tool: "remove-bg" } : { analysis: { kind: "people" } })},task_type=${lane === "analysis" ? "mini_tool_analysis" : "video"} WHERE id=${f.taskId}`;
+    await pg`UPDATE tasks SET params=${pg.json(lane === "legacy" ? { tool: "remove-bg" } : { analysis: { kind: "scene_cuts" } })},task_type=${lane === "analysis" ? "mini_tool_analysis" : "video"} WHERE id=${f.taskId}`;
     expect((await get(f)).status).toBe(404);
   });
   it("Q06/B01 projects complete active0 from accepted F without writing or opening steps", async () => {

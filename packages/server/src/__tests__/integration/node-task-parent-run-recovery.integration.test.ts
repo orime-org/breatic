@@ -12,16 +12,16 @@ import {
 } from "@breatic/core";
 import { miniToolExecutionRecordSchema, type MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
 import {
-  miniToolExecutionService, modelCatalog, nodeHistoryService, nodeTaskService, taskRepo, upstreamStepRepo, endMiniToolModelStep, markStepSending, initProvider,
+  miniToolExecutionService, modelCatalog, nodeHistoryService, nodeTaskService, openMiniToolPlanJob, upstreamStepRepo, initProvider,
 } from "@breatic/domain";
-import type { NodeTaskEntry } from "@breatic/shared";
+import { miniToolPlanJobRequestSchema, type NodeTaskEntry } from "@breatic/shared";
 import * as nodeTaskRepo from "../../../../domain/src/node-task/node-task.repo.js";
 import { executionSnapshot, seedExecution, type ExecutionFixture } from "../../../../domain/src/mini-tool/__tests__/execution-lifecycle-fixtures.js";
 import { seedDesignatedLot, seedStudioFixture } from "./studio-credit-fixtures.js";
 import type * as shared from "@breatic/shared";
 import { presentedSource } from "./presentation-fixtures.js";
 
-// S6e E3b (inner#1306 §90): a removal request names its tool input; the ingest presentation read and the stored
+// S6e E3b (inner#1306 §90): a split request names its tool input; the ingest presentation read and the stored
 // full/compact objects are controlled at the shared client and `fetch`.
 const outside = vi.hoisted(() => ({ snapshots: new Map<string, unknown>(), bodies: new Map<string, string>(), ingest: vi.fn() }));
 vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof shared>(), videoPresentationAtIngest: outside.ingest }));
@@ -57,7 +57,7 @@ async function cookie(userId: string): Promise<string> {
 /** Open a real node-task row with its distinct persistent parent foreign key.
  * @throws {Error} When the original node-task owner refuses the fixture.
  */
-async function open(f: ExecutionFixture, nodeId = f.plan.targetNodeIds[0]!, action: "mini_tool" | "generate" | "upload" = "mini_tool", parent: string | null = f.taskId, label = "video.remove-bg"): Promise<string> {
+async function open(f: ExecutionFixture, nodeId = f.plan.targetNodeIds[0]!, action: "mini_tool" | "generate" | "upload" = "mini_tool", parent: string | null = f.taskId, label = "video.split"): Promise<string> {
   const row = await nodeTaskService.open({ projectId: f.projectId, spaceId: f.plan.spaceId, nodeId, kind: action === "upload" ? "upload" : "generation", action,
     startedByUserId: f.userId, budgetMs: getNodeTaskConfig().default_budget_ms, label, ...(parent === null ? {} : { taskId: parent }) });
   return row.id;
@@ -100,13 +100,14 @@ async function admitted(): Promise<ExecutionFixture> {
     VALUES (${sourceId},${f.studioId},${"a".repeat(64)},${sourceKey},${sourceURL},4096,'video/mp4','video','upload',${f.userId},960,540,5.055)`;
   const presented = await presentedSource("a".repeat(64), sourceKey, (key) => sourceURL.slice(0, sourceURL.length - sourceKey.length) + key);
   outside.snapshots.set(sourceKey, presented.snapshot); 
-  const body = { presentation_ref: presented.presentationRef, tool: "video.remove-bg", project_id: f.projectId, space_id: randomUUID(), run_id: randomUUID(),
-    draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: randomUUID(), canonicalURL: sourceURL, mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } }, inputs: [], params: {} },
-    analysis_refs: [], outputs: [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "remove-bg" } }] } as MiniToolPlannedRequest;
+  // One segment over the fixture version's whole grid (presentation-fixtures.ts: 1011 frames).
+  const body = { presentation_ref: presented.presentationRef, tool: "video.split", project_id: f.projectId, space_id: randomUUID(), run_id: randomUUID(),
+    draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: randomUUID(), canonicalURL: sourceURL, mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } }, inputs: [], params: { cuts: [] } },
+    analysis_refs: [], outputs: [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 0, end: 1011 } } }] } as MiniToolPlannedRequest;
   const response = await app.request("/api/v1/mini-tools", { method: "POST", headers: { Cookie: await cookie(f.userId), "Content-Type": "application/json", "Idempotency-Key": randomUUID() }, body: JSON.stringify(body) });
   expect(response.status).toBe(201); expect(await response.json()).toEqual({ data: { task_id: body.run_id, status: "pending" } });
   const context = await miniToolExecutionService.startMiniToolExecution(body.run_id, body.run_id);
-  const plan = context.execution; if (plan.tool !== "video.remove-bg") throw new Error("Expected removal fixture plan");
+  const plan = context.execution;
   const record = await miniToolExecutionService.getMiniToolExecution(f.projectId, body.run_id, viewerId);
   const assetId = randomUUID(); const key = `video/parent-winner/${assetId}.webm`; const canonicalURL = (await getStorageAdapter()).publicUrl(key);
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,generation_task_id,width,height,duration_seconds)
@@ -117,13 +118,17 @@ async function admitted(): Promise<ExecutionFixture> {
  * @throws {Error} When a real persistence owner refuses these legal facts.
  */
 async function completedPending(f: ExecutionFixture): Promise<void> {
-  const [step] = await upstreamStepRepo.ensureSteps(f.taskId, [{ kind: "generate", endpoint: f.plan.model, itemIndex: 0 }]);
-  if (!step) throw new Error("Missing original controlled model step");
-  const parent = await taskRepo.getTaskById(f.taskId); if (parent === null) throw new Error("Missing admitted parent");
-  // The model step's send and its returned answer with a cost still pending (inner#1306 §11.2, §11.4).
-  await markStepSending(f.taskId, step.id, parent.createdAt.getTime() + getNodeTaskConfig().default_budget_ms, "wavespeed");
-  await endMiniToolModelStep({ taskId: f.taskId, stepId: step.id, end: { kind: "returned", link: "https://provider.example.test/parent.webm" },
-    costs: [{ state: "pending", lookup: { upstream: "wavespeed", predictionId: `parent-${f.taskId}` } }], servedBy: "wavespeed" });
+  const [step] = await upstreamStepRepo.ensureSteps(f.taskId, [{ kind: "container_job", endpoint: "MiniToolContainerStd4", itemIndex: 0 }]);
+  if (!step) throw new Error("Missing original controlled container step");
+  // The run's one container job, its cost still pending on its report (frames-split §5.4).
+  const inputId = randomUUID();
+  const request = miniToolPlanJobRequestSchema.parse({ schemaVersion: 2, jobId: `${f.taskId}:batch:0:a1`, containerClass: "MiniToolContainerStd4", deadlineAt: 4070908800000,
+    limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, inputs: [{ inputId, storageKey: "video/source.mp4" }],
+    outputs: [{ outputIndex: 0, storageKey: `planned/${f.taskId}/0.mp4`, contentType: "video/mp4", recipe: { kind: "segment", inputId,
+      grid: { fps: { numerator: 200, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 1011, realFrameCount: 1011 },
+      source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false } }, frames: { start: 0, end: 1011 },
+      target: { width: 960, height: 540, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", crf: 18, preset: "medium", format: "mp4-h264" }, audio: true } }] });
+  await openMiniToolPlanJob({ taskId: f.taskId, stepId: step.id, chunkIndex: 0, chargeTo: f.plan.chargeTo, request });
   await upstreamStepRepo.recordInline(step.id, { "miniToolAsset:0": f.registered.assetId }, 0);
   await miniToolExecutionService.finishMiniToolExecution(f.taskId, { planFingerprint: f.plan.planFingerprint, expectedVersion: 0, error: null,
     outputs: [{ ...f.plan.outputs[0]!, late: false, result: f.registered }] });
@@ -135,7 +140,7 @@ describe("node-task parent-run recovery through original persistent owners", () 
     expect(row?.task_id).toBe(f.taskId); expect(row?.id).not.toBe(f.taskId);
     expect(await nodeTaskRepo.findById(row!.id)).toMatchObject({ id: row!.id, taskId: f.taskId });
     expect(await nodeTaskService.listLive({ projectId: f.projectId, nodeId: f.plan.targetNodeIds[0]! })).toEqual([expect.objectContaining({ id: row!.id, taskId: f.taskId })]);
-    const result = await list(f); expect(result.response.status).toBe(200); expect(result.rows).toEqual([expect.objectContaining({ id: row!.id, taskId: f.taskId, action: "mini_tool", label: "video.remove-bg" })]);
+    const result = await list(f); expect(result.response.status).toBe(200); expect(result.rows).toEqual([expect.objectContaining({ id: row!.id, taskId: f.taskId, action: "mini_tool", label: "video.split" })]);
   });
   it("N02 emits explicit null for an upload without a parent", async () => {
     const f = await seedExecution(pg); const id = await open(f, undefined, "upload", null, "clip.webm"); const result = await list(f);
@@ -161,7 +166,7 @@ describe("node-task parent-run recovery through original persistent owners", () 
     const result = await list(f); expect(result.rows.map((r) => ({ id: r.id, taskId: r.taskId }))).toEqual([{ id: c, taskId: f.taskId }, { id: b, taskId: other }, { id: a, taskId: f.taskId }]);
   });
   it("N06 projects one SQL parent across two node rows without claiming a legal multi-output F", async () => {
-    // This is the real node-row FK/query boundary only. The current F permits one remove-bg slot.
+    // This is the real node-row FK/query boundary only. The fixture F has one split slot.
     const f = await seedExecution(pg); const secondNode = randomUUID(); const a = await open(f); const b = await open(f, secondNode);
     expect((await list(f)).rows).toEqual([expect.objectContaining({ id: a, taskId: f.taskId })]);
     expect((await list(f, f.userId, secondNode)).rows).toEqual([expect.objectContaining({ id: b, taskId: f.taskId })]);
