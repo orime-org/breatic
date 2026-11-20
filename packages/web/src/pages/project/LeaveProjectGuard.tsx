@@ -81,7 +81,7 @@ export function LeaveProjectGuard({ ref }: { ref?: React.Ref<LeaveProjectGuardHa
   const unsynced = useProjectUnsyncedEdits(projectId);
   // A press the server has not answered yet (Execute, Generate, Run) lives only in this page until it is accepted.
   const spaceOperations = useSpaceOperationsStore((state) => state.hasAnyOperations());
-  const pressing = useTaskActionsInFlight((state) => state.running.size > 0);
+  const pressing = useTaskActionsInFlight((state) => state.waiting > 0);
   const operations = spaceOperations || pressing;
   const [refreshRequested, setRefreshRequested] = React.useState(false);
   const reloadApproved = React.useRef(false);
@@ -93,7 +93,7 @@ export function LeaveProjectGuard({ ref }: { ref?: React.Ref<LeaveProjectGuardHa
    * @throws {never} Never.
    */
   const hasRisk = React.useCallback((): boolean =>
-    hasProjectUnsyncedEdits(projectId) || useSpaceOperationsStore.getState().hasAnyOperations() || useTaskActionsInFlight.getState().running.size > 0, [projectId]);
+    hasProjectUnsyncedEdits(projectId) || useSpaceOperationsStore.getState().hasAnyOperations() || useTaskActionsInFlight.getState().waiting > 0, [projectId]);
 
   const blocker = useBlocker(
     React.useCallback(

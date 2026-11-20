@@ -9,7 +9,7 @@ import {
   shouldBlockLeave,
 } from '@web/pages/project/LeaveProjectGuard';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
-import { useTaskActionsInFlight } from '@web/stores/task-actions-in-flight';
+import { getRunning, resetRunOnceForTests, runOnce } from '@web/stores/task-actions-in-flight';
 
 // Controllable blocker + captured condition — no real router needed.
 const blocker = vi.hoisted(() => ({
@@ -77,17 +77,30 @@ describe('LeaveProjectGuard (#1787)', () => {
     expect(capturedCondition!(args)).toBe(true);
   });
 
-  it('asks before leaving while a press waits for the server to accept it', () => {
+  it('asks before leaving while a press waits for the server to accept it', async () => {
     render(<LeaveProjectGuard />);
     const args = { currentLocation: { pathname: '/project/p' }, nextLocation: { pathname: '/studio' } };
     expect(capturedCondition!(args)).toBe(false);
     // An Execute, Generate or Run press that the server has not answered yet exists only in this page.
-    useTaskActionsInFlight.setState({ running: new Map([['press-1', true]]) });
-    expect(capturedCondition!(args)).toBe(true);
+    void runOnce('press-1', { scope: 'timeline-execution', prepare: async () => ({}), send: () => new Promise(() => {}) });
+    await vi.waitFor(() => expect(capturedCondition!(args)).toBe(true));
     const unload = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(unload);
     expect(unload.defaultPrevented).toBe(true);
-    useTaskActionsInFlight.setState({ running: new Map() });
+    resetRunOnceForTests();
+  });
+
+  it('lets a press whose answer sends the page away leave without asking', async () => {
+    render(<LeaveProjectGuard />);
+    const args = { currentLocation: { pathname: '/project/p' }, nextLocation: { pathname: '/studio' } };
+    // A checkout press keeps its button waiting while the browser goes to the payment page.
+    await runOnce('checkout', { scope: 'credits-checkout', prepare: async () => ({}), send: async () => ({ url: 'https://pay.example' }), onDone: () => 'leaving' });
+    expect(getRunning('checkout')).toBe(true);
+    expect(capturedCondition!(args)).toBe(false);
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(false);
+    resetRunOnceForTests();
   });
 
   it('lets the landing after leaving the project through, even with front-end ops in flight', () => {
